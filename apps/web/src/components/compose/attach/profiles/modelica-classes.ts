@@ -34,7 +34,8 @@ function stripNonCode(source: string): string {
 }
 
 export function scanModelicaClasses(source: string): ModelicaClassInfo[] {
-  const tokens = stripNonCode(source).match(/'[^']*'|[A-Za-z_][A-Za-z0-9_]*|[;=()]/g) ?? [];
+  const cleanSource = stripNonCode(source);
+  const tokens = cleanSource.match(/'[^']*'|[A-Za-z_][A-Za-z0-9_]*|[;=()]/g) ?? [];
   const classes: ModelicaClassInfo[] = [];
   const stack: ModelicaClassInfo[] = [];
   let parenDepth = 0;
@@ -71,13 +72,47 @@ export function scanModelicaClasses(source: string): ModelicaClassInfo[] {
     const prefix = tokens.slice(Math.max(0, i - 4), i);
     const parent = stack[stack.length - 1];
     const name = next.replace(/^'|'$/g, "");
+    const kind = tok as ModelicaClassKind;
+    const partial = prefix.includes("partial");
+
+    // Inspect class body in cleanSource for diagram annotations or connect equations
+    let hasDiagram = false;
+    let hasSimulation = false;
+    if (kind === "model" || kind === "block" || kind === "class") {
+      const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const classPattern = new RegExp(
+        `\\b(?:model|block|class)\\s+${escapedName}\\b([\\s\\S]*?)\\bend\\s+${escapedName}\\s*;`,
+        "i",
+      );
+      const match = cleanSource.match(classPattern);
+      const classBody = match ? match[1] || "" : "";
+      if (classBody) {
+        hasDiagram =
+          /\bPlacement\s*\(/i.test(classBody) ||
+          /\bconnect\s*\(/i.test(classBody) ||
+          /\bLine\s*\(/i.test(classBody) ||
+          /\bPolygon\s*\(/i.test(classBody);
+        hasSimulation =
+          !partial &&
+          (/\bequation\b/i.test(classBody) ||
+            /\balgorithm\b/i.test(classBody) ||
+            /\bder\s*\(/i.test(classBody) ||
+            /\bextends\b/i.test(classBody) ||
+            /\bconnect\s*\(/i.test(classBody));
+      } else {
+        hasSimulation = !partial;
+      }
+    }
+
     const info: ModelicaClassInfo = {
       name,
       qualifiedName: parent ? `${parent.qualifiedName}.${name}` : name,
-      kind: tok as ModelicaClassKind,
-      partial: prefix.includes("partial"),
+      kind,
+      partial,
       depth: stack.length,
       hasExperiment: false,
+      hasDiagram,
+      hasSimulation,
     };
     classes.push(info);
     stack.push(info);

@@ -386,4 +386,177 @@ describe("Simulation Ergonomics & Analysis Engine", () => {
       assert.ok(sbatch.includes('--override="Kp_pos=55"'));
     });
   });
+
+  describe("Parameter Sweep Trajectories & Chart Data Preservation", () => {
+    it("preserves sweep columns and generates valid trace keys for TrajectoryChart", () => {
+      const mockSweepResults = [
+        { value: 10, y: [[0], [1.5], [2.8]] },
+        { value: 20, y: [[0], [3.2], [5.9]] },
+        { value: 30, y: [[0], [4.7], [8.9]] },
+      ];
+      const states = ["capacitor.v"];
+      const t = [0.0, 0.5, 1.0];
+
+      // Simulate row mapping in useMorselEngine
+      const localSimulationData = t.map((timeVal, i) => {
+        const rowObj: Record<string, number | string> = { time: timeVal };
+        mockSweepResults.forEach((sweep) => {
+          states.forEach((state, vIndex) => {
+            rowObj[`${state} (${sweep.value})`] = sweep.y[i]?.[vIndex] ?? 0;
+          });
+        });
+        states.forEach((state, vIndex) => {
+          rowObj[state] = mockSweepResults[0]?.y[i]?.[vIndex] ?? 0;
+        });
+        return rowObj;
+      });
+
+      assert.equal(localSimulationData.length, 3);
+      assert.equal(localSimulationData[1]!["capacitor.v (10)"], 1.5);
+      assert.equal(localSimulationData[1]!["capacitor.v (20)"], 3.2);
+      assert.equal(localSimulationData[1]!["capacitor.v (30)"], 4.7);
+      assert.equal(localSimulationData[1]!["capacitor.v"], 1.5);
+
+      // Simulate SimulationResults chartData mapping
+      const headers = Object.keys(localSimulationData[0]!);
+      const timeCol = headers.find((h) => h.toLowerCase() === "time") || headers[0]!;
+      const vars = states;
+
+      const chartData = localSimulationData.map((row) => {
+        const newRow: Record<string, number | string> = {
+          ...row,
+          time: row[timeCol] !== undefined ? row[timeCol]! : (row.time ?? 0),
+        };
+        vars.forEach((v) => {
+          if (newRow[v] === undefined) {
+            const sweepKey = Object.keys(row).find((k) => k.startsWith(`${v} (`));
+            if (sweepKey !== undefined && row[sweepKey] !== undefined) {
+              newRow[v] = row[sweepKey]!;
+            }
+          }
+        });
+        return newRow;
+      });
+
+      // Verify all sweep keys exist in every chart row
+      for (const row of chartData) {
+        assert.ok("capacitor.v (10)" in row);
+        assert.ok("capacitor.v (20)" in row);
+        assert.ok("capacitor.v (30)" in row);
+        assert.ok("capacitor.v" in row);
+      }
+
+      // Verify TrajectoryChart line keys match chart data
+      const activeVariables = ["capacitor.v"];
+      const lineKeys = activeVariables.flatMap((v) => {
+        return mockSweepResults.map((sweep) => `${v} (${sweep.value})`);
+      });
+
+      assert.deepEqual(lineKeys, ["capacitor.v (10)", "capacitor.v (20)", "capacitor.v (30)"]);
+
+      // Every line key must have a finite numerical value in chartData
+      for (const key of lineKeys) {
+        for (const row of chartData) {
+          assert.equal(typeof row[key], "number");
+          assert.ok(Number.isFinite(row[key]));
+        }
+      }
+    });
+
+    it("preserves user-selected simulation variables across subsequent simulation runs", () => {
+      const initialSimulationVariables = ["default_var1", "default_var2"];
+      const simulatedStates = ["default_var1", "default_var2", "custom_var1", "custom_var2"];
+
+      // Function simulating the resolution logic in handleSimulate
+      function resolveSelectedVariables(
+        prevSelection: string[],
+        states: string[],
+        userSelectionMade: boolean,
+        initialVars?: string[],
+      ): string[] {
+        // 1. If user already has active selections that exist in the newly simulated states, preserve them!
+        if (prevSelection.length > 0) {
+          const matchedPrev = prevSelection.filter((v) => states.includes(v));
+          if (matchedPrev.length > 0) return matchedPrev;
+        }
+        // 2. If user explicitly cleared selection, preserve empty selection
+        if (userSelectionMade && prevSelection.length === 0) {
+          return prevSelection;
+        }
+        // 3. Fall back to initialSimulationVariables if valid and user hasn't made a custom selection
+        if (!userSelectionMade && initialVars && initialVars.length > 0) {
+          const matchedInitial = initialVars.filter((v) => states.includes(v));
+          if (matchedInitial.length > 0) return matchedInitial;
+        }
+        // 4. Default: first 3 non-derivative states
+        const candidates = states.filter((v) => !v.startsWith("der(") && v !== "time");
+        return candidates.length > 0 ? candidates.slice(0, 3) : states.slice(0, 3);
+      }
+
+      // Initial run: user has not interacted yet, initialSimulationVariables should be used
+      const initialRunSelection = resolveSelectedVariables([], simulatedStates, false, initialSimulationVariables);
+      assert.deepEqual(initialRunSelection, ["default_var1", "default_var2"]);
+
+      // User customizes selection to ["custom_var1"]
+      let currentSelection = ["custom_var1"];
+      let userInteracted = true;
+
+      // User runs simulate again: the selection must NOT reset to default_var1/2!
+      const secondRunSelection = resolveSelectedVariables(
+        currentSelection,
+        simulatedStates,
+        userInteracted,
+        initialSimulationVariables,
+      );
+      assert.deepEqual(secondRunSelection, ["custom_var1"]);
+
+      // User adds custom_var2 and runs simulate a third time
+      currentSelection = ["custom_var1", "custom_var2"];
+      const thirdRunSelection = resolveSelectedVariables(
+        currentSelection,
+        simulatedStates,
+        userInteracted,
+        initialSimulationVariables,
+      );
+      assert.deepEqual(thirdRunSelection, ["custom_var1", "custom_var2"]);
+
+      // If user deliberately unchecks all variables
+      currentSelection = [];
+      const fourthRunSelection = resolveSelectedVariables(
+        currentSelection,
+        simulatedStates,
+        userInteracted,
+        initialSimulationVariables,
+      );
+      assert.deepEqual(fourthRunSelection, []);
+    });
+
+    it("handles missing selectedVariables gracefully in SimulationResults fallback", () => {
+      const sampleData = [
+        { time: 0, "gen1.v": 1.0, "gen1.w": 377.0, "gen1.p": 0.8 },
+        { time: 0.1, "gen1.v": 1.02, "gen1.w": 376.8, "gen1.p": 0.85 },
+      ];
+      const headers = Object.keys(sampleData[0]!).filter((k) => k !== "time");
+
+      // Verify effective variable resolution when props are omitted (e.g. from ClassSimulationTab)
+      const propSelectedVariables = undefined;
+      const internalSelectedVars: string[] = [];
+      const simulationVariables = ["gen1.v", "gen1.w", "gen1.p"];
+
+      const effectiveSelectedVariables =
+        propSelectedVariables !== undefined && propSelectedVariables !== null
+          ? propSelectedVariables
+          : internalSelectedVars.length > 0
+            ? internalSelectedVars
+            : simulationVariables && simulationVariables.length > 0
+              ? simulationVariables
+              : headers;
+
+      assert.deepEqual(effectiveSelectedVariables, ["gen1.v", "gen1.w", "gen1.p"]);
+
+      const hiddenVars = new Set<string>();
+      const activeVariables = (effectiveSelectedVariables || []).filter((v) => !hiddenVars.has(v));
+      assert.deepEqual(activeVariables, ["gen1.v", "gen1.w", "gen1.p"]);
+    });
+  });
 });

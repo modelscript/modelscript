@@ -8,7 +8,7 @@
  * string slicing or wrapper object allocations.
  */
 
-import { BinOp, type DAEBuilder, UnaryOp } from "@modelscript/runtime";
+import { BinOp, type DAEBuilder, ExprKind, UnaryOp } from "@modelscript/runtime";
 import { type SysmlCstNode, lowerSysmlExpr, prefixSysmlExpression } from "./cst-lowerer.js";
 
 /**
@@ -224,6 +224,12 @@ export function lowerDirectCstExpression(
       const operandId = lowerDirectCstExpression(operandNode, arena, prefix, localNames);
 
       if (opText === "-") {
+        if (arena.getExprKind(operandId) === ExprKind.Binary && arena.getExprData1(operandId) === BinOp.Mul) {
+          const leftId = arena.getExprLeft(operandId);
+          const rightId = arena.getExprRight(operandId);
+          const negLeft = arena.addUnaryExpr(UnaryOp.Negate, leftId);
+          return arena.addBinaryExpr(BinOp.Mul, negLeft, rightId);
+        }
         return arena.addUnaryExpr(UnaryOp.Negate, operandId);
       }
       if (opText === "not" || opText === "~" || opText === "!") {

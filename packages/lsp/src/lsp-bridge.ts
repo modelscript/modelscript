@@ -846,12 +846,20 @@ export class LSPBridge {
       }
       const entries = childrenOf.get(parentId) || [];
       return entries.map((entry) => {
-        const range = this.positions.rangeFromOffsets(entry.startOffset, entry.endOffset);
+        const fullStart = Math.min(entry.startOffset, entry.endOffset);
+        const fullEnd = Math.max(entry.startOffset, entry.endOffset);
+        let range = this.positions.rangeFromOffsets(fullStart, fullEnd);
+        if (
+          range.end.line < range.start.line ||
+          (range.end.line === range.start.line && range.end.character < range.start.character)
+        ) {
+          range = { start: range.start, end: { ...range.start } };
+        }
 
         let name = entry.name;
-        if (name === "<anonymous>") {
+        if (!name || name === "<anonymous>") {
           try {
-            const source = this.engine.cstText(entry.startOffset, entry.endOffset, entry);
+            const source = this.engine.cstText(fullStart, fullEnd, entry);
             if (source) {
               const firstLine = source.trim().split("\n")[0]!.trim();
               name = firstLine.length > 40 ? firstLine.substring(0, 37) + "..." : firstLine;
@@ -860,25 +868,46 @@ export class LSPBridge {
             // fallback if engine doesn't support cstText
           }
         }
+        if (!name) name = "anonymous";
 
         let selectionRange = range;
         const nameField =
           entry.fieldRanges?.["name"] ??
           (entry.fieldRanges ? entry.fieldRanges[entry.namePath] || entry.fieldRanges["identifier"] : undefined);
         if (nameField) {
-          selectionRange = this.positions.rangeFromOffsets(nameField.startOffset, nameField.endOffset);
+          const nfStart = Math.min(nameField.startOffset, nameField.endOffset);
+          const nfEnd = Math.max(nameField.startOffset, nameField.endOffset);
+          const selStart = Math.max(fullStart, Math.min(nfStart, fullEnd));
+          const selEnd = Math.max(selStart, Math.min(nfEnd, fullEnd));
+          selectionRange = this.positions.rangeFromOffsets(selStart, selEnd);
         } else {
           const text = this.positions.getSourceText();
           if (text && entry.name && entry.name !== "<anonymous>") {
-            const startOff = entry.startOffset;
-            const endOff = entry.endOffset;
-            const slice = text.slice(startOff, Math.min(startOff + 300, endOff));
+            const slice = text.slice(fullStart, Math.min(fullStart + 300, fullEnd));
             const idx = slice.indexOf(entry.name);
             if (idx !== -1) {
-              selectionRange = this.positions.rangeFromOffsets(startOff + idx, startOff + idx + entry.name.length);
+              const selStart = fullStart + idx;
+              const selEnd = Math.min(selStart + entry.name.length, fullEnd);
+              selectionRange = this.positions.rangeFromOffsets(selStart, selEnd);
             }
           }
         }
+
+        // Validate & clamp selectionRange inside range so VS Code never throws selectionRange must be contained in fullRange
+        let sStart = { ...selectionRange.start };
+        let sEnd = { ...selectionRange.end };
+        const isBefore = (a: { line: number; character: number }, b: { line: number; character: number }) =>
+          a.line < b.line || (a.line === b.line && a.character < b.character);
+        if (isBefore(sEnd, sStart)) sEnd = { ...sStart };
+        if (isBefore(sStart, range.start)) sStart = { ...range.start };
+        if (isBefore(range.end, sStart)) sStart = { ...range.end };
+        if (isBefore(sEnd, sStart)) sEnd = { ...sStart };
+        if (isBefore(range.end, sEnd)) sEnd = { ...range.end };
+        if (isBefore(sEnd, sStart) || isBefore(sStart, range.start) || isBefore(range.end, sEnd)) {
+          sStart = { ...range.start };
+          sEnd = { ...range.end };
+        }
+        selectionRange = { start: sStart, end: sEnd };
 
         const symbol: LSPDocumentSymbol = {
           name,

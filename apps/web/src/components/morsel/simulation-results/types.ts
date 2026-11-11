@@ -6,8 +6,8 @@ export interface SimulationResultsProps {
   sweepResults?: { value: number; y: number[][] }[] | null | undefined;
   simulationVariables?: string[] | undefined;
   error?: string | null | undefined;
-  selectedVariables: string[];
-  onVariablesLoaded: (variables: string[]) => void;
+  selectedVariables?: string[] | undefined;
+  onVariablesLoaded?: ((variables: string[]) => void) | undefined;
   colorMode?: "light" | "dark" | undefined;
 }
 

@@ -1127,23 +1127,6 @@ export function generateParserTables(
     return "";
   };
 
-  const hasDaeOrSim = Boolean(
-    (originalGrammar as any).simulation ||
-    (originalGrammar as any).dae ||
-    (originalGrammar as any).domains?.dae ||
-    (originalGrammar as any).domains?.simulation ||
-    originalGrammar.pipelines ||
-    originalGrammar.connectors ||
-    (originalGrammar as any).solvers ||
-    originalGrammar.classes ||
-    originalGrammar.functions ||
-    originalGrammar.simplification ||
-    originalGrammar.analysis ||
-    (originalGrammar.runtimeFiles &&
-      originalGrammar.runtimeFiles.some((f: any) => f.filename && f.filename.includes("flattener"))),
-  );
-  const hasPolyglot = Boolean(originalGrammar.polyglot);
-
   code += "\n";
   code += extractExports(engineCode, "./parser/engine");
   code += extractExports(lspCode, "./parser/lsp");
@@ -1153,17 +1136,12 @@ export function generateParserTables(
   code += extractExports(gssCode, "./parser/gss");
   code += extractExports(recoveryCode, "./parser/recovery");
 
-  if (hasDaeOrSim) {
-    code += extractExports(bltCode, "./structural/blt");
-    code += extractExports(groebnerCode, "./solvers/groebner");
-    code += extractExports(linalgCode, "./solvers/linalg");
-  }
-
-  if (hasPolyglot) {
-    code += extractExports(correspondenceCode, "./indexing/correspondence");
-    code += extractExports(polyglot_arenaCode, "./polyglot/polyglot_arena");
-    code += extractExports(tgg_reconcilerCode, "./polyglot/tgg_reconciler");
-  }
+  code += extractExports(bltCode, "./structural/blt");
+  code += extractExports(correspondenceCode, "./indexing/correspondence");
+  code += extractExports(polyglot_arenaCode, "./polyglot/polyglot_arena");
+  code += extractExports(tgg_reconcilerCode, "./polyglot/tgg_reconciler");
+  code += extractExports(groebnerCode, "./solvers/groebner");
+  code += extractExports(linalgCode, "./solvers/linalg");
 
   if (originalGrammar.typeSystem) {
     const tsCode = generateTypeSystem(originalGrammar, originalGrammar.typeSystem.customCode || "");
@@ -1350,54 +1328,49 @@ export function generateParserTables(
     });
   }
 
-  if (hasDaeOrSim) {
-    code += extractExports(daeBuilderCode, "./dae/builder");
-    code += extractExports(daeTypesCode, "./dae/types");
-    code += extractExports(daeAccessorsCode, "./dae/accessors");
-    code += extractExports(aliasCode, "./dae/alias");
-    code += extractExports(evalCode, "./dae/eval");
-    code += extractExports(eventsCode, "./simulation/events");
-    code += extractExports(integratorsCode, "./solvers/integrators");
-    code += extractExports(matrixCode, "./solvers/matrix");
-    code += extractExports(builtins_mathCode, "./dae/builtins_math");
-    code += extractExports(casCode, "./dae/cas");
-    code += extractExports(tapeCode, "./autodiff/tape");
-    code += extractExports(foldCode, "./dae/fold");
-    code += extractExports(tearingCode, "./structural/tearing");
-    code += extractExports(pantelidesCode, "./structural/pantelides");
-    code += extractExports(isolationCode, "./optimization/isolation");
-    code += extractExports(scalarizeCode, "./dae/scalarize");
-    code += extractExports(cseCode, "./cse");
-    code += extractExports(coloringCode, "./autodiff/coloring");
-    code += extractExports(sparse_luCode, "./solvers/sparse_lu");
-    code += extractExports(sparse_choleskyCode, "./solvers/sparse_cholesky");
-    code += extractExports(bdfCode, "./solvers/bdf");
-    code += extractExports(homotopyCode, "./simulation/homotopy");
-    code += extractExports(delayCode, "./simulation/delay");
-    code += extractExports(fmi2_wasmCode, "./fmi/fmi2_wasm");
-    code += extractExports(fmi3_wasmCode, "./fmi/fmi3_wasm");
-    code += extractExports(vmapCode, "./simulation/vmap");
-    code += extractExports(integrateCode, "./solvers/integrate");
-    code += extractExports(intervalCode, "./autodiff/interval");
-    code += extractExports(mccormickCode, "./autodiff/mccormick");
-    code += extractExports(branch_and_boundCode, "./optimization/branch_and_bound");
-    code += extractExports(dualCode, "./autodiff/dual");
-    code += extractExports(monte_carloCode, "./simulation/monte_carlo");
-    code += extractExports(doeCode, "./simulation/doe");
-    code += extractExports(statementsCode, "./dae/statements");
-    code += extractExports(verifierCode, "./simulation/verifier");
-  }
+  code += extractExports(daeBuilderCode, "./dae/builder");
+  code += extractExports(daeTypesCode, "./dae/types");
+  code += extractExports(daeAccessorsCode, "./dae/accessors");
+  code += extractExports(aliasCode, "./dae/alias");
+  code += extractExports(evalCode, "./dae/eval");
+  code += extractExports(eventsCode, "./simulation/events");
+  code += extractExports(integratorsCode, "./solvers/integrators");
+  code += extractExports(matrixCode, "./solvers/matrix");
+  code += extractExports(builtins_mathCode, "./dae/builtins_math");
+  code += extractExports(casCode, "./dae/cas");
+  code += extractExports(tapeCode, "./autodiff/tape");
+  code += extractExports(foldCode, "./dae/fold");
+  code += extractExports(tearingCode, "./structural/tearing");
+  code += extractExports(pantelidesCode, "./structural/pantelides");
+  code += extractExports(isolationCode, "./optimization/isolation");
+  code += extractExports(scalarizeCode, "./dae/scalarize");
+  code += extractExports(cseCode, "./cse");
+  code += extractExports(coloringCode, "./autodiff/coloring");
+  code += extractExports(sparse_luCode, "./solvers/sparse_lu");
+  code += extractExports(sparse_choleskyCode, "./solvers/sparse_cholesky");
+  code += extractExports(bdfCode, "./solvers/bdf");
+  code += extractExports(homotopyCode, "./simulation/homotopy");
+  code += extractExports(delayCode, "./simulation/delay");
+  code += extractExports(fmi2_wasmCode, "./fmi/fmi2_wasm");
+  code += extractExports(fmi3_wasmCode, "./fmi/fmi3_wasm");
+  code += extractExports(vmapCode, "./simulation/vmap");
+  code += extractExports(integrateCode, "./solvers/integrate");
+  code += extractExports(intervalCode, "./autodiff/interval");
+  code += extractExports(mccormickCode, "./autodiff/mccormick");
+  code += extractExports(branch_and_boundCode, "./optimization/branch_and_bound");
+  code += extractExports(dualCode, "./autodiff/dual");
+  code += extractExports(monte_carloCode, "./simulation/monte_carlo");
+  code += extractExports(doeCode, "./simulation/doe");
+  code += extractExports(statementsCode, "./dae/statements");
+  code += extractExports(verifierCode, "./simulation/verifier");
 
   code += extractExports(stubCode, "./indexing/stub");
   code += extractExports(trigramCode, "./indexing/trigram");
+  code += extractExports(ontologyCode, "./ontology_module/ontology");
+  code += extractExports(ontology_projectionCode, "./ontology_module/ontology_projection");
   code += extractExports(scope_stackCode, "./core/scope_stack");
   code += extractExports(string_poolCode, "./core/string_pool");
   code += extractExports(hashmapCode, "./core/hashmap");
-
-  if ((originalGrammar as any).ontology) {
-    code += extractExports(ontologyCode, "./ontology_module/ontology");
-    code += extractExports(ontology_projectionCode, "./ontology_module/ontology_projection");
-  }
 
   // Section 11: Abstract Interpretation, CFG/SSA, and Custom Runtime Transpilation
   if (originalGrammar.cfgNodes || originalGrammar.analysis || Boolean(originalGrammar.domains?.["bounds"])) {

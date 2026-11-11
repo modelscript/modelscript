@@ -117,6 +117,29 @@ export function getKindBadgeStyle(
   }
 }
 
+export function getClassKindFallbackIcon(kind: string | undefined, size = 15): React.ReactElement {
+  const k = (kind || "").toLowerCase();
+  if (k.includes("sysml")) {
+    return <WorkflowIcon size={size} style={{ color: "#a855f7", flexShrink: 0 }} />;
+  }
+  if (k.includes("cad") || k.includes("product") || k.includes("shape")) {
+    return <PackageIcon size={size} style={{ color: "var(--color-accent-cyan, #06b6d4)", flexShrink: 0 }} />;
+  }
+  if (k === "function" || k === "algorithm") {
+    return <CodeIcon size={size} style={{ color: "#c084fc", flexShrink: 0 }} />;
+  }
+  if (k === "connector" || k.includes("port")) {
+    return <WorkflowIcon size={size} style={{ color: "#eab308", flexShrink: 0 }} />;
+  }
+  if (k === "model" || k === "block") {
+    return <CpuIcon size={size} style={{ color: "var(--color-accent-cyan, #06b6d4)", flexShrink: 0 }} />;
+  }
+  if (k === "record" || k === "type") {
+    return <DatabaseIcon size={size} style={{ color: "#3b82f6", flexShrink: 0 }} />;
+  }
+  return <PackageIcon size={size} style={{ color: "var(--color-text-muted)", flexShrink: 0 }} />;
+}
+
 /* ─── tree node component ─── */
 
 export const ClassTreeNode: React.FC<{
@@ -146,21 +169,7 @@ export const ClassTreeNode: React.FC<{
   const isActive = activeClassName === node.fullName;
   const badgeStyle = getKindBadgeStyle(node.classKind);
 
-  const fallbackIcon = node.classKind.includes("sysml") ? (
-    <WorkflowIcon size={15} style={{ color: "#a855f7", flexShrink: 0 }} />
-  ) : node.classKind.includes("cad") || node.classKind.includes("product") || node.classKind.includes("shape") ? (
-    <PackageIcon size={15} style={{ color: "var(--color-accent-cyan, #06b6d4)", flexShrink: 0 }} />
-  ) : node.classKind === "function" ? (
-    <CodeIcon size={15} style={{ color: "#c084fc", flexShrink: 0 }} />
-  ) : node.classKind === "connector" ? (
-    <WorkflowIcon size={15} style={{ color: "#eab308", flexShrink: 0 }} />
-  ) : node.classKind === "model" || node.classKind === "block" ? (
-    <CpuIcon size={15} style={{ color: "var(--color-accent-cyan, #06b6d4)", flexShrink: 0 }} />
-  ) : node.classKind === "record" ? (
-    <DatabaseIcon size={15} style={{ color: "#3b82f6", flexShrink: 0 }} />
-  ) : (
-    <PackageIcon size={15} style={{ color: "var(--color-text-muted)", flexShrink: 0 }} />
-  );
+  const fallbackIcon = getClassKindFallbackIcon(node.classKind, 15);
 
   return (
     <>

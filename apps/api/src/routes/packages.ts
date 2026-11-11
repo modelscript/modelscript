@@ -3057,6 +3057,48 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     },
   );
 
+  function injectPackageLabelIfBare(svg: string, className: string): string {
+    // Check if SVG already has non-empty text content
+    const textMatches = svg.match(/<text\b[^>]*>([\s\S]*?)<\/text>/gi);
+    if (textMatches && textMatches.some((t) => t.replace(/<[^>]*>/g, "").trim().length > 0)) {
+      return svg;
+    }
+    // Check if SVG has distinct inner graphical elements
+    if (/<(line|circle|path|polygon|polyline|ellipse|image)\b/i.test(svg)) {
+      return svg;
+    }
+
+    const shortName = className.split(".").pop() || className;
+    if (!shortName) return svg;
+
+    const vbMatch = svg.match(/viewBox="([^"]+)"/i);
+    let centerX = 0;
+    let centerY = 8;
+    if (vbMatch) {
+      const parts = vbMatch[1]!
+        .trim()
+        .split(/[\s,]+/)
+        .map(Number);
+      if (parts.length === 4 && parts.every((n) => !isNaN(n))) {
+        const [minX, minY, w, h] = parts;
+        centerX = minX! + w! / 2;
+        centerY = minY! + h! / 2 + h! * 0.04;
+      }
+    }
+
+    const fontSize = Math.max(16, Math.min(32, Math.round(240 / Math.max(shortName.length, 6))));
+    const escaped = shortName
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&apos;");
+
+    const textElement = `<g class="package-label"><text x="${centerX}" y="${centerY}" font-family="'Open Sans', 'Helvetica Neue', Arial, sans-serif" font-size="${fontSize}" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#333333">${escaped}</text></g>`;
+
+    return svg.replace(/<\/svg\s*>/i, `${textElement}</svg>`);
+  }
+
   /**
    * GET /api/v1/libraries/:name/:version/classes/:className/icon.svg
    * GET /api/v1/libraries/:scope/:name/:version/classes/:className/icon.svg
@@ -3074,9 +3116,48 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         res.status(400).json({ error: "Package name, version, and class name are required" });
         return;
       }
+      const currentClassName: string = className;
+
+      function resolveClassIcon(targetClassName: string): string | null {
+        // 1. Direct read in current package
+        let bSvg = storage.readSvg(name, version, targetClassName, "icon");
+        if (bSvg) return bSvg;
+
+        // 2. Relative resolution in current package
+        const classParts = currentClassName.split(".");
+        for (let i = classParts.length - 1; i > 0; i--) {
+          const candidateFqn = `${classParts.slice(0, i).join(".")}.${targetClassName}`;
+          bSvg = storage.readSvg(name, version, candidateFqn, "icon");
+          if (bSvg) return bSvg;
+        }
+
+        // 3. Cross-library check (e.g. Modelica.Icons.*)
+        const parts = targetClassName.split(".");
+        const libCandidate = parts[0];
+        if (libCandidate && libCandidate !== name) {
+          const pkgRec = database.getPackage(libCandidate);
+          const candidateVersions: string[] = [];
+          if (pkgRec) {
+            candidateVersions.push(...database.getPackageVersions(pkgRec.id).map((v) => v.version));
+          }
+          if (libCandidate === "Modelica") {
+            if (!candidateVersions.includes("4.0.0")) candidateVersions.unshift("4.0.0");
+            if (!candidateVersions.includes("4.1.0")) candidateVersions.unshift("4.1.0");
+            if (!candidateVersions.includes("3.2.3")) candidateVersions.push("3.2.3");
+          }
+          for (const candVer of candidateVersions) {
+            bSvg = storage.readSvg(libCandidate, candVer, targetClassName, "icon");
+            if (bSvg) return bSvg;
+          }
+        }
+        return null;
+      }
 
       // 1. Check for custom package icon on disk (override)
       let svg = storage.readSvg(name, version, className, "icon");
+      if (svg) {
+        svg = injectPackageLabelIfBare(svg, className);
+      }
       if (svg && svg.includes("modelica://")) {
         const extracted = storage.getExtractedPath(name, version);
         if (extracted && fs.existsSync(extracted)) {
@@ -3111,7 +3192,6 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         !svg.includes('viewBox="0 0 120 80"') &&
         (/<(line|circle|path|polygon|polyline|ellipse)\b/i.test(svg) ||
           /<image\b[^>]*\b(?:href|xlink:href)=["'](?!\s*["']|modelica:\/\/)/i.test(svg) ||
-          /url\(#/i.test(svg) ||
           /<text\b[^>]*>(?:(?!<\/?text\b)[^<])+<\/text>/i.test(svg) ||
           /<rect\b[^>]*\b(?:rx="[^0]|ry="[^0]|fill="url\(#|width="(?!200(?:\.0+)?")[^"]+"|height="(?!200(?:\.0+)?")[^"]+)/i.test(
             svg,
@@ -3212,23 +3292,26 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       const cls = database.getClass(name, version, className);
       if (cls && cls.extends && cls.extends.length > 0) {
         for (const baseClass of cls.extends) {
-          const baseSvg = storage.readSvg(name, version, baseClass, "icon");
-          if (
-            baseSvg &&
-            !baseSvg.includes('viewBox="0 0 120 80"') &&
-            (/<(line|circle|path|polygon|polyline|ellipse|image)\b/i.test(baseSvg) ||
-              /url\(#/i.test(baseSvg) ||
-              /<rect\b[^>]*\b(?:rx="[^0]|ry="[^0])/i.test(baseSvg))
-          ) {
-            res.setHeader("Content-Type", "image/svg+xml");
-            res.setHeader(
-              "Content-Security-Policy",
-              "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
-            );
-            res.setHeader("X-Content-Type-Options", "nosniff");
-            res.setHeader("Cache-Control", "public, max-age=300");
-            res.send(baseSvg);
-            return;
+          let baseSvg = resolveClassIcon(baseClass);
+          if (baseSvg) {
+            if (baseClass === "Modelica.Icons.Package" || baseClass.endsWith(".Package")) {
+              baseSvg = injectPackageLabelIfBare(baseSvg, className);
+            }
+            if (
+              !baseSvg.includes('viewBox="0 0 120 80"') &&
+              (/<(line|circle|path|polygon|polyline|ellipse|image|text)\b/i.test(baseSvg) ||
+                /<rect\b[^>]*\b(?:rx="[^0]|ry="[^0])/i.test(baseSvg))
+            ) {
+              res.setHeader("Content-Type", "image/svg+xml");
+              res.setHeader(
+                "Content-Security-Policy",
+                "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+              );
+              res.setHeader("X-Content-Type-Options", "nosniff");
+              res.setHeader("Cache-Control", "public, max-age=300");
+              res.send(baseSvg);
+              return;
+            }
           }
         }
       }
@@ -3243,8 +3326,11 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         else if (cls.classKind === "block") fallbackClass = "Modelica.Blocks.Icons.Block";
 
         if (fallbackClass) {
-          const fallbackSvg = storage.readSvg(name, version, fallbackClass, "icon");
+          let fallbackSvg = resolveClassIcon(fallbackClass);
           if (fallbackSvg) {
+            if (fallbackClass === "Modelica.Icons.Package") {
+              fallbackSvg = injectPackageLabelIfBare(fallbackSvg, className);
+            }
             res.setHeader("Content-Type", "image/svg+xml");
             res.setHeader(
               "Content-Security-Policy",
@@ -3285,8 +3371,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       const icons: Record<string, string> = {};
 
       for (const className of classNames) {
-        const svg = storage.readSvg(name, version, className, "icon");
+        let svg = storage.readSvg(name, version, className, "icon");
         if (svg) {
+          svg = injectPackageLabelIfBare(svg, className);
           const hasVisual = /<(line|rect|circle|path|polygon|polyline|ellipse|text|image)\b/i.test(svg);
           if (hasVisual) {
             icons[className] = svg;

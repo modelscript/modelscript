@@ -525,13 +525,14 @@ function resolveSymbolIdInScope(
   return resolveSymbolId(context, name);
 }
 
-function buildClassAdapter(
+export function buildClassAdapter(
   context: Context,
   symbolId: number,
   AnnotationEvaluatorClass: AnnotationEvaluatorConstructor,
   depth = 0,
   adapterCache = new Map<number, ClassAdapter | null>(),
   visited = new Set<number>(),
+  extendsDepth = 0,
 ): ClassAdapter | null {
   if (visited.has(symbolId)) return null;
   const cacheKey = depth === 0 ? symbolId : -symbolId;
@@ -577,6 +578,7 @@ function buildClassAdapter(
               depth + 1,
               adapterCache,
               new Set(visited),
+              0,
             )
           : null;
       const childMod = queryDB.query("effectiveModification", child.id) as ModificationLike | undefined;
@@ -657,14 +659,15 @@ function buildClassAdapter(
         const baseId = resolveSymbolIdInScope(context, symbolId, baseName);
         if (baseId) baseSym = queryDB.symbol(baseId);
       }
-      if (baseSym && typeof baseSym.id === "number" && !visited.has(baseSym.id) && depth < 2) {
+      if (baseSym && typeof baseSym.id === "number" && !visited.has(baseSym.id) && extendsDepth < 10) {
         const baseAdapter = buildClassAdapter(
           context,
           baseSym.id,
           AnnotationEvaluatorClass,
-          depth + 1,
+          depth,
           adapterCache,
           new Set(visited),
+          extendsDepth + 1,
         );
         if (baseAdapter) {
           extendsClassInstances.push({ classInstance: baseAdapter });
@@ -1195,9 +1198,10 @@ export async function processLibrary(
           const memoryTight = isMemoryTight();
           let iconSvg: string | null = null;
           let diagramSvg: string | null = null;
-          const skipRendering = Boolean(options?.skipSvg) || memoryTight || children.length > 300;
+          const skipDiagram = Boolean(options?.skipSvg) || memoryTight || children.length > 2500;
+          const skipIcon = Boolean(options?.skipSvg) || memoryTight;
 
-          if (!skipRendering) {
+          if (!skipIcon || !skipDiagram) {
             try {
               const canReuseIcon = Boolean(prev && prev.iconHash && prev.iconHash === iconHash);
               if (canReuseIcon) {
@@ -1212,14 +1216,16 @@ export async function processLibrary(
                 sharedAdapterCache,
               );
               if (adapter) {
-                if (!canReuseIcon) {
+                if (!skipIcon && !canReuseIcon) {
                   const svgStr = renderIconSvgString(adapter as unknown as Parameters<typeof renderIconSvgString>[0]);
                   if (svgStr && hasVisualContent(svgStr)) iconSvg = svgStr;
                 }
-                const svgStr = renderDiagramSvgString(
-                  adapter as unknown as Parameters<typeof renderDiagramSvgString>[0],
-                );
-                if (svgStr && hasVisualContent(svgStr)) diagramSvg = svgStr;
+                if (!skipDiagram) {
+                  const svgStr = renderDiagramSvgString(
+                    adapter as unknown as Parameters<typeof renderDiagramSvgString>[0],
+                  );
+                  if (svgStr && hasVisualContent(svgStr)) diagramSvg = svgStr;
+                }
               }
             } catch {}
           }
@@ -1231,8 +1237,8 @@ export async function processLibrary(
             documentation,
             baseClasses,
             components,
-            iconHash: skipRendering ? null : iconHash,
-            diagramHash: skipRendering ? null : diagramHash,
+            iconHash: skipIcon ? null : iconHash,
+            diagramHash: skipDiagram ? null : diagramHash,
           };
 
           await onClass(className, metadata, { icon: iconSvg, diagram: diagramSvg });

@@ -17,9 +17,9 @@ import styled from "styled-components";
 import { updateArtifactView } from "../../api/artifacts";
 import { useAuth } from "../../AuthContext";
 import { useTheme } from "../../theme";
+import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
-import { compressMorselPayload } from "../morsel/util/permalink";
 import { useToast } from "../ToastContext";
 import { CompactTabStrip, FloatingToolBtn, FloatingTools, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
 import type { ModelicaPreviewMetadata, ModelicaPreviewMode } from "./modelica-preview-mode.js";
@@ -392,6 +392,22 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
   const [simTriggerCount, setSimTriggerCount] = useState<number>(() =>
     previewMode === "simulation" || previewMode === "3d" ? 1 : 0,
   );
+  const simPreview = viewConfig?.simulationPreview as Record<string, unknown> | undefined;
+  const initialSimVars = useMemo(() => {
+    if (Array.isArray(simPreview?.states) && simPreview.states.length > 0) {
+      return simPreview.states as string[];
+    }
+    if (Array.isArray(viewConfig?.simulationVariables) && (viewConfig.simulationVariables as string[]).length > 0) {
+      return viewConfig.simulationVariables as string[];
+    }
+    if (Array.isArray(viewConfig?.states) && (viewConfig.states as string[]).length > 0) {
+      return viewConfig.states as string[];
+    }
+    return undefined;
+  }, [simPreview, viewConfig]);
+  const initialStartTime = typeof simPreview?.startTime === "number" ? (simPreview.startTime as number) : undefined;
+  const initialStopTime = typeof simPreview?.stopTime === "number" ? (simPreview.stopTime as number) : undefined;
+
   const [copied, setCopied] = useState(false);
   const [copiedSvg, setCopiedSvg] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -489,14 +505,17 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
   };
 
   const getForkUrl = () => {
-    const hash = compressMorselPayload({
-      v: 1,
-      lang: dialect as any,
+    if (!viewConfig?.artifactId && !artifactId) {
+      return `/morsel#m=${encodeURIComponent(code)}`;
+    }
+    return buildEditorUrlForArtifact({
+      artifactId: (viewConfig?.artifactId ?? artifactId) as string | number | undefined,
+      viewType: "modelica-diagram",
+      viewConfig,
       code,
       title,
+      dialect,
     });
-    const fromArtifact = viewConfig?.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-    return `/morsel${fromArtifact}#m=${hash}`;
   };
 
   const handleFork = () => {
@@ -802,6 +821,9 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
                   initialDialect={dialect}
                   initialView={activeMorselView}
                   initialClassName={typeof viewConfig.primaryClass === "string" ? viewConfig.primaryClass : undefined}
+                  initialSimulationVariables={initialSimVars}
+                  initialStartTime={initialStartTime}
+                  initialStopTime={initialStopTime}
                   hideCenterFloatingToolbar={!isFullScreen}
                   defaultRibbonExpanded={Boolean(isFullScreen && (viewMode === "simulation" || viewMode === "3d"))}
                   simulateTriggerCount={simTriggerCount > 0 ? simTriggerCount : undefined}

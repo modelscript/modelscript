@@ -7,6 +7,7 @@ export interface InteractiveLegendProps {
   hiddenVars: Set<string>;
   onToggleVariable: (v: string) => void;
   colors: string[];
+  sweepResults?: { value: number; y: number[][] }[] | null | undefined;
 }
 
 export const InteractiveLegend: React.FC<InteractiveLegendProps> = ({
@@ -14,8 +15,11 @@ export const InteractiveLegend: React.FC<InteractiveLegendProps> = ({
   hiddenVars,
   onToggleVariable,
   colors,
+  sweepResults,
 }) => {
   if (selectedVariables.length === 0) return null;
+
+  const sweepCount = sweepResults && sweepResults.length > 0 ? sweepResults.length : null;
 
   return (
     <div
@@ -49,7 +53,7 @@ export const InteractiveLegend: React.FC<InteractiveLegendProps> = ({
               opacity: isHidden ? 0.6 : 1,
               textDecoration: isHidden ? "line-through" : "none",
             }}
-            title={`Click to ${isHidden ? "show" : "hide"} ${v}`}
+            title={`Click to ${isHidden ? "show" : "hide"} ${v}${sweepCount ? ` (${sweepCount} parameter sweeps)` : ""}`}
           >
             <span
               style={{
@@ -60,6 +64,7 @@ export const InteractiveLegend: React.FC<InteractiveLegendProps> = ({
               }}
             />
             {v}
+            {sweepCount ? <span style={{ fontSize: "10px", opacity: 0.75 }}>({sweepCount} sweeps)</span> : null}
           </button>
         );
       })}

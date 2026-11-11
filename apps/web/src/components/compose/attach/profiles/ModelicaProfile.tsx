@@ -206,6 +206,9 @@ const EmptyNotice = styled.div`
 const ModelicaStep: React.FC<WizardStepProps<ModelicaAttachDraft>> = ({ draft, update, issues }) => {
   const recommended = defaultModelicaClass(draft.candidates)?.qualifiedName;
   const selectedInfo = draft.candidates.find((c) => c.qualifiedName === draft.selected);
+  const hasDiagram = selectedInfo?.hasDiagram ?? true;
+  const hasSimulation = selectedInfo?.hasSimulation ?? true;
+
   return (
     <>
       {draft.candidates.length > 1 && (
@@ -213,7 +216,18 @@ const ModelicaStep: React.FC<WizardStepProps<ModelicaAttachDraft>> = ({ draft, u
           <ChoiceCards<string>
             label="Model to show"
             value={draft.selected}
-            onChange={(value) => update({ selected: value })}
+            onChange={(value) => {
+              const newInfo = draft.candidates.find((c) => c.qualifiedName === value);
+              const nextOpenAs: ModelicaOpenAs =
+                draft.openAs === "diagram" && newInfo && !newInfo.hasDiagram
+                  ? newInfo.hasSimulation
+                    ? "simulation"
+                    : "code"
+                  : draft.openAs === "simulation" && newInfo && !newInfo.hasSimulation
+                    ? "code"
+                    : draft.openAs;
+              update({ selected: value, openAs: nextOpenAs });
+            }}
             options={draft.candidates.map((c) => ({
               value: c.qualifiedName,
               title: c.qualifiedName,
@@ -228,14 +242,30 @@ const ModelicaStep: React.FC<WizardStepProps<ModelicaAttachDraft>> = ({ draft, u
         value={draft.openAs}
         onChange={(value) => update({ openAs: value })}
         options={[
-          { value: "diagram", title: "Diagram", hint: "Schematic of the model" },
+          {
+            value: "diagram",
+            title: "Diagram",
+            hint: hasDiagram ? "Schematic of the model" : "No schematic components declared",
+            disabled: !hasDiagram,
+            recommended: hasDiagram && !selectedInfo?.hasExperiment,
+          },
           {
             value: "simulation",
             title: "Simulation",
-            hint: selectedInfo?.hasExperiment ? "Uses the model's experiment settings" : "Runs with default settings",
-            recommended: Boolean(selectedInfo?.hasExperiment),
+            hint: !hasSimulation
+              ? "Non-simulatable class"
+              : selectedInfo?.hasExperiment
+                ? "Uses the model's experiment settings"
+                : "Runs with default settings",
+            disabled: !hasSimulation,
+            recommended: hasSimulation && (Boolean(selectedInfo?.hasExperiment) || !hasDiagram),
           },
-          { value: "code", title: "Code", hint: "Source first" },
+          {
+            value: "code",
+            title: "Code",
+            hint: "Source first",
+            recommended: !hasDiagram && !hasSimulation,
+          },
         ]}
       />
       <IssueList issues={issues.filter((i) => i.severity !== "error")} />
@@ -387,15 +417,19 @@ export const modelicaAttachProfile: AttachProfile<ModelicaAttachDraft> = {
       });
     }
 
+    const defaultCls = defaultModelicaClass(candidates);
+    const initialOpenAs: ModelicaOpenAs =
+      defaultCls && !defaultCls.hasDiagram ? (defaultCls.hasSimulation ? "simulation" : "code") : "diagram";
+
     const draft: ModelicaAttachDraft = {
       file,
       text,
       classes,
       candidates,
-      selected: defaultModelicaClass(candidates)?.qualifiedName,
-      openAs: "diagram",
+      selected: defaultCls?.qualifiedName,
+      openAs: initialOpenAs,
       dependencies,
-      initialOpenAs: "diagram",
+      initialOpenAs,
       initialDependencies: dependencies,
     };
     return { draft, chips, issues };

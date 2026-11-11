@@ -18,6 +18,7 @@ import { getDiagramUrl, getIconUrl, rewriteModelicaUris, type ClassSummary } fro
 import CadStepViewer from "../../../components/artifacts/CadStepViewer";
 import SysmlViewer from "../../../components/artifacts/SysmlViewer";
 import Box from "../../../components/Box";
+import { getClassKindFallbackIcon } from "../../../components/ClassTree";
 import type { CategorizedClassComponents } from "../../../components/classTreeUtils";
 import InvertedSvg from "../../../components/InvertedSvg";
 import { PackageDiagramViewer } from "../../package/components/PackageDiagramViewer";
@@ -182,7 +183,7 @@ export const ClassOverviewTab: React.FC<ClassOverviewTabProps> = ({
                         <Box display="flex" alignItems="center" gap="8px">
                           <InvertedSvg
                             src={getIconUrl(libraryName, version, child.class_name)}
-                            fallback={<PackageIcon size={14} />}
+                            fallback={getClassKindFallbackIcon(child.class_kind, 14)}
                             alt=""
                             width={18}
                             height={18}

@@ -1112,7 +1112,13 @@ export declare class SyntaxNode {
   /** Returns true if the node is a named (non-anonymous) node. */
   get isNamed(): boolean;
   private _cachedHasError;
-  /** Returns true if the node or any of its descendants represents a syntax error. */
+  /** Evaluates whether this node or any of its descendants has a syntax error. */
+  private _computeHasError;
+  /**
+   * Returns true if the node or any of its descendants represents a syntax error.
+   * Defined as a getter property that can also be called as a method (node.hasError())
+   * for backward compatibility with tests and callers expecting either signature.
+   */
   get hasError(): boolean;
   /** Returns true if this node itself represents a syntax error. */
   get isError(): boolean;

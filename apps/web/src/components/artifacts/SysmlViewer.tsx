@@ -19,9 +19,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
+import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
-import { compressMorselPayload } from "../morsel/util/permalink";
 import { CompactTabStrip, FloatingToolBtn, FloatingTools, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
@@ -1288,15 +1288,16 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
 
   const handleOpenPlayground = () => {
     const targetDiagramType = diagramMode === "ibd" ? "IBD" : "BDD";
-    const hash = compressMorselPayload({
-      v: 1,
-      lang: "sysml2" as any,
+    const targetUrl = buildEditorUrlForArtifact({
+      artifactId: viewConfig.artifactId,
+      viewType: "sysml2",
+      viewConfig: { ...viewConfig, diagramType: targetDiagramType, diagramMode },
       code: sourceCode || `package ${systemName.replace(/\W+/g, "_")} {\n}\n`,
       title: systemName,
+      dialect: "sysml2",
       diagramType: targetDiagramType,
     });
-    const fromArtifact = viewConfig.artifactId ? `&fromArtifact=${viewConfig.artifactId}` : "";
-    navigate(`/morsel?diagramType=${targetDiagramType}${fromArtifact}#m=${hash}`);
+    navigate(targetUrl);
   };
 
   const filteredParts = useMemo(() => {

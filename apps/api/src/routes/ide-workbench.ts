@@ -606,6 +606,16 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
       res.removeHeader("X-Frame-Options");
+      let currentCsp = res.getHeader("Content-Security-Policy");
+      if (typeof currentCsp === "string") {
+        if (!currentCsp.includes("'unsafe-eval'")) {
+          currentCsp = currentCsp.replace("script-src ", "script-src 'unsafe-eval' ");
+        }
+        if (!currentCsp.includes("http:")) {
+          currentCsp = currentCsp.replace("connect-src ", "connect-src http: ");
+        }
+        res.setHeader("Content-Security-Policy", currentCsp);
+      }
     }
 
     const isWorkerOrStatic =
@@ -1279,12 +1289,13 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
       const clientAuth = typeof req.headers["authorization"] === "string" ? req.headers["authorization"].trim() : "";
       const clientTokenRaw = clientAuth.replace(/^(?:Bearer|token)\s+/i, "").trim();
       // Never forward an internal Ansatz JWT (3-part base64url token starting with eyJ...) to api.github.com
-      const isAnsatzJwt =
-        clientTokenRaw.startsWith("eyJ") || clientTokenRaw.split(".").length === 3;
+      const isAnsatzJwt = clientTokenRaw.startsWith("eyJ") || clientTokenRaw.split(".").length === 3;
       const isExplicitGitHubToken =
         Boolean(clientTokenRaw) &&
         !isAnsatzJwt &&
-        (/^(?:gh[pousr]_|github_pat_)/i.test(clientTokenRaw) || /^token\s+/i.test(clientAuth) || !clientTokenRaw.includes("."));
+        (/^(?:gh[pousr]_|github_pat_)/i.test(clientTokenRaw) ||
+          /^token\s+/i.test(clientAuth) ||
+          !clientTokenRaw.includes("."));
 
       if (isExplicitGitHubToken) {
         headers["Authorization"] = clientAuth;

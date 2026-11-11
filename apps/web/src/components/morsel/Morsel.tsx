@@ -48,6 +48,10 @@ export interface MorselEditorProps {
   initialDialect?: string | undefined;
   initialLanguage?: string | undefined;
   initialView?: string | undefined;
+  initialVisualizerSubview?: "diagram" | "simulation" | "3d" | "inspector" | undefined;
+  initialSimulationVariables?: string[] | undefined;
+  initialStartTime?: number | undefined;
+  initialStopTime?: number | undefined;
   initialDiagramType?: string | undefined;
   /** Modelica: class to select initially (otherwise the file's primary class). */
   initialClassName?: string | undefined;
@@ -137,22 +141,28 @@ export default function MorselEditor(props: MorselEditorProps) {
   const content = loadedCodeOverride ?? baseContent;
   const [editor, setEditor] = useState<editor.ICodeEditor | null>(null);
 
+  const isSplitInit =
+    props.initialView === "split" || props.initialView === "split-columns" || props.initialView === "split-rows";
+
   const initialIsCad =
     props.initialView === "cad-only" ||
     props.initialView === "cad" ||
     props.initialView === "3d" ||
+    (isSplitInit && props.initialVisualizerSubview === "3d") ||
     (initialLangInfo.supports3d && !initialLangInfo.supportsDiagram);
   const initialIsPlot =
-    props.initialView === "plot-only" || props.initialView === "plot" || props.initialView === "simulation";
-  const initialIsInspector = props.initialView === "inspector";
+    props.initialView === "plot-only" ||
+    props.initialView === "plot" ||
+    props.initialView === "simulation" ||
+    (isSplitInit && props.initialVisualizerSubview === "simulation");
+  const initialIsInspector =
+    props.initialView === "inspector" || (isSplitInit && props.initialVisualizerSubview === "inspector");
   const initialViewMode =
     props.initialView === "code-only" || props.initialView === "code"
       ? View.CODE
       : props.initialView === "diagram-only" ||
           props.initialView === "diagram" ||
-          initialIsCad ||
-          initialIsPlot ||
-          initialIsInspector
+          (!isSplitInit && (initialIsCad || initialIsPlot || initialIsInspector))
         ? View.DIAGRAM
         : props.initialView === "split-rows"
           ? View.SPLIT_ROWS
@@ -212,44 +222,47 @@ export default function MorselEditor(props: MorselEditorProps) {
     return () => window.removeEventListener("morsel:toggle-sidebar", handleToggle);
   }, []);
 
-  const applyViewMode = useCallback((targetView: string) => {
-    if (targetView === "code-only" || targetView === "code") {
-      setView(View.CODE);
-      setShowCadView(false);
-      setShowResultsView(false);
-      setShowAnalysisView(false);
-    } else if (targetView === "diagram-only" || targetView === "diagram") {
-      setView(View.DIAGRAM);
-      setShowCadView(false);
-      setShowResultsView(false);
-      setShowAnalysisView(false);
-    } else if (targetView === "cad-only" || targetView === "cad" || targetView === "3d") {
-      setView(View.DIAGRAM);
-      setShowCadView(true);
-      setShowResultsView(false);
-      setShowAnalysisView(false);
-    } else if (targetView === "plot-only" || targetView === "plot" || targetView === "simulation") {
-      setView(View.DIAGRAM);
-      setShowCadView(false);
-      setShowResultsView(true);
-      setShowAnalysisView(false);
-    } else if (targetView === "inspector") {
-      setView(View.DIAGRAM);
-      setShowCadView(false);
-      setShowResultsView(false);
-      setShowAnalysisView(true);
-    } else if (targetView === "split" || targetView === "split-columns") {
-      setView(View.SPLIT_COLUMNS);
-      setShowCadView(false);
-      setShowResultsView(false);
-      setShowAnalysisView(false);
-    } else if (targetView === "split-rows") {
-      setView(View.SPLIT_ROWS);
-      setShowCadView(false);
-      setShowResultsView(false);
-      setShowAnalysisView(false);
-    }
-  }, []);
+  const applyViewMode = useCallback(
+    (targetView: string) => {
+      if (targetView === "code-only" || targetView === "code") {
+        setView(View.CODE);
+        setShowCadView(false);
+        setShowResultsView(false);
+        setShowAnalysisView(false);
+      } else if (targetView === "diagram-only" || targetView === "diagram") {
+        setView(View.DIAGRAM);
+        setShowCadView(false);
+        setShowResultsView(false);
+        setShowAnalysisView(false);
+      } else if (targetView === "cad-only" || targetView === "cad" || targetView === "3d") {
+        setView(View.DIAGRAM);
+        setShowCadView(true);
+        setShowResultsView(false);
+        setShowAnalysisView(false);
+      } else if (targetView === "plot-only" || targetView === "plot" || targetView === "simulation") {
+        setView(View.DIAGRAM);
+        setShowCadView(false);
+        setShowResultsView(true);
+        setShowAnalysisView(false);
+      } else if (targetView === "inspector") {
+        setView(View.DIAGRAM);
+        setShowCadView(false);
+        setShowResultsView(false);
+        setShowAnalysisView(true);
+      } else if (targetView === "split" || targetView === "split-columns") {
+        setView(View.SPLIT_COLUMNS);
+        setShowCadView(props.initialVisualizerSubview === "3d");
+        setShowResultsView(props.initialVisualizerSubview === "simulation");
+        setShowAnalysisView(props.initialVisualizerSubview === "inspector");
+      } else if (targetView === "split-rows") {
+        setView(View.SPLIT_ROWS);
+        setShowCadView(props.initialVisualizerSubview === "3d");
+        setShowResultsView(props.initialVisualizerSubview === "simulation");
+        setShowAnalysisView(props.initialVisualizerSubview === "inspector");
+      }
+    },
+    [props.initialVisualizerSubview],
+  );
 
   useEffect(() => {
     if (!props.initialView) return;
@@ -414,6 +427,9 @@ export default function MorselEditor(props: MorselEditorProps) {
     setTreeVisible,
     setView,
     viewDiagramEnum: View.DIAGRAM,
+    initialSimulationVariables: props.initialSimulationVariables,
+    initialStartTime: props.initialStartTime,
+    initialStopTime: props.initialStopTime,
   });
 
   const lastSimulatedTriggerRef = useRef(0);

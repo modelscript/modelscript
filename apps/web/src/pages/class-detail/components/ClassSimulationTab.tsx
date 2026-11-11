@@ -88,6 +88,7 @@ export const ClassSimulationTab: React.FC<ClassSimulationTabProps> = ({
     simulationError,
     lastSolveDurationMs,
     chartData,
+    availableStates,
     autoRunOnScrub,
     setAutoRunOnScrub,
     runSimulation,
@@ -175,6 +176,7 @@ export const ClassSimulationTab: React.FC<ClassSimulationTabProps> = ({
             >
               <SimulationResults
                 localData={chartData}
+                simulationVariables={availableStates}
                 modelName={className}
                 error={simulationError}
                 onRetry={() => runSimulation()}

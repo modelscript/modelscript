@@ -2145,13 +2145,13 @@ function renderTextX6(
   if (!rawText.includes("%")) {
     textContent = rawText;
   } else if (rawText === "%name") {
-    textContent = componentInstance?.name ?? classInstance?.name ?? "";
+    textContent = componentInstance?.name ?? "";
   } else {
     const replacer = (_match: string, expr: string): string => {
       return evaluateMacroExpression(expr, classInstance, componentInstance);
     };
     const ESCAPED_PERCENT = "__PERCENT__";
-    const nameText = componentInstance?.name ?? classInstance?.name ?? "";
+    const nameText = componentInstance?.name ?? "";
     const classText = classInstance?.name ?? "";
     const commentText = componentInstance?.["description"] ?? classInstance?.["description"] ?? "";
     textContent = rawText
@@ -2162,6 +2162,10 @@ function renderTextX6(
       .replace(/%\{([^}]*)\}/g, replacer)
       .replace(/%(\w+)\b/g, replacer)
       .replace(/__PERCENT__/g, "%");
+  }
+
+  if (!textContent || textContent.trim().length === 0) {
+    return { tagName: "g", children: [] };
   }
 
   // fontSize=0 means "auto-size to fit extent" in Modelica.
@@ -2711,7 +2715,7 @@ export function getClassIconSvg(
   if (!includePorts && !componentInstance) {
     const cstNodes = collectInheritedCstNodesBottomUp(cls);
     if (cstNodes && cstNodes.length > 0) {
-      const wasmSvg = renderInheritedIconSvgWasm(cstNodes, size, cls.name ?? clsObj.entry?.name);
+      const wasmSvg = renderInheritedIconSvgWasm(cstNodes, size);
       if (wasmSvg) {
         if (identityKey) {
           standaloneIconSvgCache.set(identityKey, wasmSvg);
@@ -2890,19 +2894,34 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
       }
 
       const cwd = (globalThis as any).process?.cwd?.();
+      const roots: string[] = [];
       if (cwd) {
-        candidates.push(nodePath.join(cwd, "scripts", "msl", `${libraryName} 4.0.0`, relativePath));
-        candidates.push(nodePath.join(cwd, "scripts", "msl", libraryName, relativePath));
-        candidates.push(nodePath.join(cwd, "scripts", libraryName, relativePath));
-        candidates.push(nodePath.join(cwd, "scripts", relativePath));
-        candidates.push(nodePath.join(cwd, ".cache", "test-openipsl", libraryName, relativePath));
-        candidates.push(nodePath.join(cwd, "data", libraryName, relativePath));
+        roots.push(cwd);
+        let curr = cwd;
+        while (curr && curr !== nodePath.dirname(curr)) {
+          if (
+            nodeFs.existsSync(nodePath.join(curr, ".git")) ||
+            nodeFs.existsSync(nodePath.join(curr, "pnpm-workspace.yaml"))
+          ) {
+            if (!roots.includes(curr)) roots.push(curr);
+            break;
+          }
+          curr = nodePath.dirname(curr);
+        }
+      }
+      for (const root of roots) {
+        candidates.push(nodePath.join(root, "scripts", "msl", `${libraryName} 4.0.0`, relativePath));
+        candidates.push(nodePath.join(root, "scripts", "msl", libraryName, relativePath));
+        candidates.push(nodePath.join(root, "scripts", libraryName, relativePath));
+        candidates.push(nodePath.join(root, "scripts", relativePath));
+        candidates.push(nodePath.join(root, ".cache", "test-openipsl", libraryName, relativePath));
+        candidates.push(nodePath.join(root, "data", libraryName, relativePath));
         candidates.push(
-          nodePath.join(cwd, "data", "libraries", libraryName, "3.1.0", "extracted", libraryName, relativePath),
+          nodePath.join(root, "data", "libraries", libraryName, "3.1.0", "extracted", libraryName, relativePath),
         );
-        candidates.push(nodePath.join(cwd, "data", "libraries", libraryName, relativePath));
+        candidates.push(nodePath.join(root, "data", "libraries", libraryName, relativePath));
         // Search across any version directory under data/libraries/<libraryName>/*/extracted/<libraryName>/
-        const libDataDir = nodePath.join(cwd, "data", "libraries", libraryName);
+        const libDataDir = nodePath.join(root, "data", "libraries", libraryName);
         if (nodeFs.existsSync(libDataDir)) {
           try {
             const versionEntries = nodeFs.readdirSync(libDataDir, { withFileTypes: true });

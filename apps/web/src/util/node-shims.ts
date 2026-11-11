@@ -131,6 +131,138 @@ export const release = (): string => "1.0.0";
 export const endianness = (): string => "LE";
 export const EOL = "\n";
 
+// --- readline ---
+export interface InterfaceStub {
+  on: (event: string, listener: (...args: unknown[]) => void) => InterfaceStub;
+  once: (event: string, listener: (...args: unknown[]) => void) => InterfaceStub;
+  emit: (event: string, ...args: unknown[]) => boolean;
+  close: () => void;
+  pause: () => void;
+  resume: () => void;
+  write: () => void;
+  question: (query: string, callback: (answer: string) => void) => void;
+  [Symbol.asyncIterator]?: () => AsyncIterableIterator<string>;
+}
+
+export const createInterface = (): InterfaceStub => {
+  const rl: InterfaceStub = {
+    on: () => rl,
+    once: () => rl,
+    emit: () => false,
+    close: () => {},
+    pause: () => {},
+    resume: () => {},
+    write: () => {},
+    question: (_q, cb) => cb(""),
+    [Symbol.asyncIterator]: async function* () {},
+  };
+  return rl;
+};
+
+export const clearLine = (): boolean => true;
+export const clearScreenDown = (): boolean => true;
+export const cursorTo = (): boolean => true;
+export const moveCursor = (): boolean => true;
+
+export const readline = {
+  createInterface,
+  clearLine,
+  clearScreenDown,
+  cursorTo,
+  moveCursor,
+  promises: {
+    createInterface,
+  },
+};
+
+// --- zlib ---
+export const inflateRawSync = (buf: Uint8Array | string): Uint8Array =>
+  typeof buf === "string" ? new TextEncoder().encode(buf) : buf;
+export const deflateRawSync = (buf: Uint8Array | string): Uint8Array =>
+  typeof buf === "string" ? new TextEncoder().encode(buf) : buf;
+export const gzipSync = (buf: Uint8Array | string): Uint8Array =>
+  typeof buf === "string" ? new TextEncoder().encode(buf) : buf;
+export const gunzipSync = (buf: Uint8Array | string): Uint8Array =>
+  typeof buf === "string" ? new TextEncoder().encode(buf) : buf;
+
+export const zlib = {
+  inflateRawSync,
+  deflateRawSync,
+  gzipSync,
+  gunzipSync,
+};
+
+// --- crypto ---
+export const randomUUID = (): string => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "00000000-0000-4000-8000-000000000000";
+};
+export const randomBytes = (size: number): Uint8Array => {
+  const buf = new Uint8Array(size);
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    crypto.getRandomValues(buf);
+  }
+  return buf;
+};
+export const createHash = () => ({
+  update: () => ({ digest: () => "" }),
+  digest: () => "",
+});
+
+export const cryptoModule = {
+  randomUUID,
+  randomBytes,
+  createHash,
+};
+
+// --- net ---
+export const createConnection = () => ({ on: () => {}, write: () => {}, end: () => {}, destroy: () => {} });
+export const connect = createConnection;
+export const createServer = () => ({ listen: () => {}, on: () => {}, close: () => {} });
+
+export const net = {
+  createConnection,
+  connect,
+  createServer,
+};
+
+// --- events ---
+export class EventEmitter {
+  private _events: Record<string, ((...args: unknown[]) => void)[]> = {};
+  on(event: string, listener: (...args: unknown[]) => void) {
+    (this._events[event] = this._events[event] || []).push(listener);
+    return this;
+  }
+  once(event: string, listener: (...args: unknown[]) => void) {
+    const g = (...args: unknown[]) => {
+      this.off(event, g);
+      listener.apply(this, args);
+    };
+    return this.on(event, g);
+  }
+  off(event: string, listener: (...args: unknown[]) => void) {
+    const list = this._events[event];
+    if (list) this._events[event] = list.filter((l) => l !== listener);
+    return this;
+  }
+  removeListener(event: string, listener: (...args: unknown[]) => void) {
+    return this.off(event, listener);
+  }
+  emit(event: string, ...args: unknown[]) {
+    const list = this._events[event];
+    if (!list) return false;
+    for (const fn of [...list]) fn.apply(this, args);
+    return true;
+  }
+  removeAllListeners(event?: string) {
+    if (event) Reflect.deleteProperty(this._events, event);
+    else this._events = {};
+    return this;
+  }
+}
+
 const defaultExport = {
   sep,
   delimiter,
@@ -179,6 +311,26 @@ const defaultExport = {
   release,
   endianness,
   EOL,
+  createInterface,
+  clearLine,
+  clearScreenDown,
+  cursorTo,
+  moveCursor,
+  readline,
+  inflateRawSync,
+  deflateRawSync,
+  gzipSync,
+  gunzipSync,
+  zlib,
+  randomUUID,
+  randomBytes,
+  createHash,
+  crypto: cryptoModule,
+  createConnection,
+  connect,
+  createServer,
+  net,
+  EventEmitter,
 };
 
 export default defaultExport;

@@ -676,17 +676,17 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
       curY += 4;
 
       for (const sec of sections) {
-        curY += 12;
+        curY += 14;
         bodyParts.push(
           `<text x="${nw / 2}" y="${curY}" text-anchor="middle" fill="${mutedTextColor}" class="compartment-header">«${escapeXml(sec.header.toLowerCase())}»</text>`,
         );
         for (const entry of sec.entries) {
-          curY += 14;
+          curY += 18;
           bodyParts.push(
             `<text x="16" y="${curY}" fill="${textColor}" class="compartment-row">${escapeXml(entry)}</text>`,
           );
         }
-        curY += 4;
+        curY += 6;
         bodyParts.push(
           `<line x1="0" y1="${curY}" x2="${nw}" y2="${curY}" stroke="${borderColor}" stroke-width="0.5"/>`,
         );

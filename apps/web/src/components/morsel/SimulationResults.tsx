@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import Papa from "papaparse";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getSimulationJobResult } from "../../api";
 import { useTheme } from "../../theme";
 import { downloadParquetFile } from "../../util/binary-export";
@@ -25,7 +25,7 @@ export function SimulationResults({
   sweepResults,
   simulationVariables,
   error: externalError,
-  selectedVariables,
+  selectedVariables: propSelectedVariables,
   onVariablesLoaded,
   colorMode: propColorMode,
   modelName,
@@ -40,8 +40,43 @@ export function SimulationResults({
   const [isLogScale, setIsLogScale] = useState(false);
   const [xAxisVar, setXAxisVar] = useState<string>("time");
   const [hiddenVars, setHiddenVars] = useState<Set<string>>(new Set());
+  const [internalSelectedVars, setInternalSelectedVars] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
   const [showIeee2800, setShowIeee2800] = useState(false);
+
+  const allVars = useMemo(() => {
+    if (simulationVariables && simulationVariables.length > 0) {
+      return simulationVariables;
+    }
+    if (data.length > 0) {
+      const headers = Object.keys(data[0]!);
+      const timeCol = headers.find((h) => h.toLowerCase() === "time") || headers[0]!;
+      return headers.filter((h) => h !== timeCol);
+    }
+    return [];
+  }, [simulationVariables, data]);
+
+  const selectedVariables = useMemo(() => {
+    if (propSelectedVariables !== undefined && propSelectedVariables !== null) {
+      return propSelectedVariables;
+    }
+    if (internalSelectedVars.length > 0) {
+      return internalSelectedVars;
+    }
+    return allVars;
+  }, [propSelectedVariables, internalSelectedVars, allVars]);
+
+  const autoHiddenRef = useRef(false);
+  useEffect(() => {
+    autoHiddenRef.current = false;
+  }, [modelName, jobId]);
+
+  useEffect(() => {
+    if (propSelectedVariables === undefined && allVars.length > 6 && !autoHiddenRef.current) {
+      autoHiddenRef.current = true;
+      setHiddenVars(new Set(allVars.slice(6)));
+    }
+  }, [propSelectedVariables, allVars]);
 
   const hasIeee2800Channels = useMemo(() => {
     if (!data || data.length === 0) return false;
@@ -116,15 +151,26 @@ export function SimulationResults({
         if (localData) {
           if (localData.length > 0) {
             const headers = Object.keys(localData[0]!);
-            const timeCol = headers[0]!;
+            const timeCol = headers.find((h) => h.toLowerCase() === "time") || headers[0]!;
             const vars = simulationVariables ?? headers.filter((h) => h !== timeCol);
 
-            onVariablesLoaded(vars);
+            onVariablesLoaded?.(vars);
+            if (!propSelectedVariables) {
+              setInternalSelectedVars(vars);
+            }
 
             const chartData = localData.map((row) => {
-              const newRow: Record<string, number | string> = { time: row[timeCol]! };
+              const newRow: Record<string, number | string> = {
+                ...row,
+                time: row[timeCol] !== undefined ? row[timeCol]! : (row.time ?? 0),
+              };
               vars.forEach((v) => {
-                newRow[v] = row[v]!;
+                if (newRow[v] === undefined) {
+                  const sweepKey = Object.keys(row).find((k) => k.startsWith(`${v} (`));
+                  if (sweepKey !== undefined && row[sweepKey] !== undefined) {
+                    newRow[v] = row[sweepKey]!;
+                  }
+                }
               });
               return newRow;
             });
@@ -162,7 +208,10 @@ export function SimulationResults({
               const timeCol = headers[0]!;
               const vars = headers.filter((h) => h !== timeCol);
 
-              onVariablesLoaded(vars);
+              onVariablesLoaded?.(vars);
+              if (!propSelectedVariables) {
+                setInternalSelectedVars(vars);
+              }
 
               const chartData = parsedData.map((row) => {
                 const newRow: Record<string, number | string> = { time: row[timeCol]! };
@@ -194,10 +243,10 @@ export function SimulationResults({
     return () => {
       isMounted = false;
     };
-  }, [jobId, localData, onVariablesLoaded, externalError]);
+  }, [jobId, localData, onVariablesLoaded, externalError, simulationVariables, sweepResults, propSelectedVariables]);
 
   const activeVariables = useMemo(() => {
-    return selectedVariables.filter((v) => !hiddenVars.has(v));
+    return (selectedVariables || []).filter((v) => !hiddenVars.has(v));
   }, [selectedVariables, hiddenVars]);
 
   // Compute normalized data when in normalized mode
@@ -206,14 +255,25 @@ export function SimulationResults({
 
     const minMax: Record<string, { min: number; max: number }> = {};
     if (isNormalized) {
-      for (const v of selectedVariables) {
+      for (const v of selectedVariables || []) {
+        const sweepKeys = sweepResults && sweepResults.length > 0 ? sweepResults.map((s) => `${v} (${s.value})`) : [v];
+
         let min = Infinity;
         let max = -Infinity;
         for (const row of data) {
-          const val = Number(row[v]);
-          if (!isNaN(val)) {
-            if (val < min) min = val;
-            if (val > max) max = val;
+          for (const k of sweepKeys) {
+            const val = Number(row[k]);
+            if (!isNaN(val)) {
+              if (val < min) min = val;
+              if (val > max) max = val;
+            }
+          }
+          if (row[v] !== undefined) {
+            const val = Number(row[v]);
+            if (!isNaN(val)) {
+              if (val < min) min = val;
+              if (val > max) max = val;
+            }
           }
         }
         if (!isFinite(min) || !isFinite(max)) {
@@ -229,12 +289,24 @@ export function SimulationResults({
 
       const normalized = data.map((row) => {
         const newRow: Record<string, number | string> = { ...row };
-        for (const v of selectedVariables) {
-          const val = Number(row[v]);
+        for (const v of selectedVariables || []) {
           const mm = minMax[v];
-          if (!isNaN(val) && mm) {
-            newRow[`_raw_${v}`] = val;
-            newRow[v] = ((val - mm.min) / (mm.max - mm.min || 1)) * 100;
+          if (!mm) continue;
+          const sweepKeys =
+            sweepResults && sweepResults.length > 0 ? sweepResults.map((s) => `${v} (${s.value})`) : [v];
+          for (const k of sweepKeys) {
+            const val = Number(row[k]);
+            if (!isNaN(val)) {
+              newRow[`_raw_${k}`] = val;
+              newRow[k] = ((val - mm.min) / (mm.max - mm.min || 1)) * 100;
+            }
+          }
+          if (row[v] !== undefined) {
+            const val = Number(row[v]);
+            if (!isNaN(val)) {
+              newRow[`_raw_${v}`] = val;
+              newRow[v] = ((val - mm.min) / (mm.max - mm.min || 1)) * 100;
+            }
           }
         }
         return newRow;
@@ -243,7 +315,7 @@ export function SimulationResults({
     }
 
     return { chartData: data, minMaxMap: minMax };
-  }, [data, isNormalized, selectedVariables]);
+  }, [data, isNormalized, selectedVariables, sweepResults]);
 
   // Merge baseline trajectory into chartData if comparison is active (with linear interpolation for mismatched solver timestamps)
   const mergedChartData = useMemo(() => {
@@ -300,7 +372,7 @@ export function SimulationResults({
     return chartData.map((row, idx) => {
       const t = Number(row.time);
       const merged: Record<string, number | string> = { ...row };
-      for (const v of selectedVariables) {
+      for (const v of selectedVariables || []) {
         const bVal = !isNaN(t) ? interpolateBaselineValue(t, v) : baselineData[idx]?.[v];
         if (bVal !== undefined) {
           const rawBVal = Number(bVal);
@@ -343,10 +415,10 @@ export function SimulationResults({
 
   // Statistical metrics per selected variable
   const statsMap = useMemo(() => {
-    if (!data.length || !selectedVariables.length) return {};
+    if (!data.length || !(selectedVariables && selectedVariables.length)) return {};
     const res: Record<string, VariableStatEntry> = {};
 
-    for (const v of selectedVariables) {
+    for (const v of selectedVariables || []) {
       let min = Infinity;
       let max = -Infinity;
       let sum = 0;
@@ -379,7 +451,13 @@ export function SimulationResults({
 
   // Dual-cursor measurement metrics (dt, frequency, dy, slope)
   const cursorMetrics = useMemo(() => {
-    if (cursor1Time === null || cursor2Time === null || !data.length) return null;
+    if (
+      cursor1Time === null ||
+      cursor2Time === null ||
+      !data.length ||
+      !(selectedVariables && selectedVariables.length)
+    )
+      return null;
     const t1 = Math.min(cursor1Time, cursor2Time);
     const t2 = Math.max(cursor1Time, cursor2Time);
     const dt = t2 - t1;
@@ -402,7 +480,7 @@ export function SimulationResults({
     const row2 = findNearest(t2);
 
     const deltas: Record<string, { y1: number; y2: number; dy: number; slope: number }> = {};
-    for (const v of selectedVariables) {
+    for (const v of selectedVariables || []) {
       const y1 = Number(row1![v]);
       const y2 = Number(row2![v]);
       if (!isNaN(y1) && !isNaN(y2)) {
@@ -427,7 +505,7 @@ export function SimulationResults({
         closest = data[i]!;
       }
     }
-    const varsToExtract = activeVariables.length > 0 ? activeVariables : selectedVariables;
+    const varsToExtract = activeVariables.length > 0 ? activeVariables : selectedVariables || [];
     for (const v of varsToExtract) {
       const numVal = Number(closest[v]);
       if (Number.isFinite(numVal)) {
@@ -671,8 +749,6 @@ export function SimulationResults({
     );
   }
 
-  const allVars = simulationVariables || Object.keys(data[0] || {}).filter((k) => k !== "time");
-
   return (
     <div style={{ padding: "20px 24px", height: "100%", display: "flex", flexDirection: "column", gap: "12px" }}>
       {/* Top Header & Toolbar */}
@@ -752,10 +828,11 @@ export function SimulationResults({
 
       {/* Interactive Legend Bar */}
       <InteractiveLegend
-        selectedVariables={selectedVariables}
+        selectedVariables={selectedVariables || []}
         hiddenVars={hiddenVars}
         onToggleVariable={toggleVariable}
         colors={SIMULATION_COLORS}
+        sweepResults={sweepResults}
       />
 
       {/* Main Plot Area */}
@@ -777,7 +854,7 @@ export function SimulationResults({
           cursor1Time={cursor1Time}
           cursor2Time={cursor2Time}
           activeVariables={activeVariables}
-          selectedVariables={selectedVariables}
+          selectedVariables={selectedVariables || []}
           sweepResults={sweepResults}
           baselineData={baselineData}
           colors={SIMULATION_COLORS}
@@ -790,7 +867,7 @@ export function SimulationResults({
         showStats={showStats}
         statsMap={statsMap}
         activeVariables={activeVariables}
-        selectedVariables={selectedVariables}
+        selectedVariables={selectedVariables || []}
         colors={SIMULATION_COLORS}
       />
     </div>

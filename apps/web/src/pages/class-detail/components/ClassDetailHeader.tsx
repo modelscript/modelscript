@@ -4,7 +4,6 @@ import {
   BeakerIcon,
   BookIcon,
   FileCodeIcon,
-  PackageIcon,
   PulseIcon,
   SidebarExpandIcon,
   SlidersIcon,
@@ -16,6 +15,7 @@ import styledImport from "styled-components";
 import { getIconUrl, type ClassSummary } from "../../../api";
 import Box from "../../../components/Box";
 import Breadcrumbs from "../../../components/Breadcrumbs";
+import { getClassKindFallbackIcon } from "../../../components/ClassTree";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
 import { HeaderBar, TabBar, TabButton, TabCountBadge } from "../styles";
 import type { ClassDetail, ClassTabId, JobStatus } from "../types";
@@ -237,7 +237,7 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
                 justifyContent="center"
                 style={{ color: "var(--color-text-muted)" }}
               >
-                <PackageIcon size={36} />
+                {getClassKindFallbackIcon(cls.classKind, 36)}
                 <span
                   style={{
                     fontSize: "10px",

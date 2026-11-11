@@ -118,7 +118,7 @@ function parseModelicaWithGLR(modelicaSource: string): SysML2GenericDefinition {
     const isParam = typePrefix.includes("parameter");
 
     const compList = cc.childForFieldName("component_list");
-    const compDecls = compList ? findNodes(compList, "component_declaration") : [];
+    const compDecls = compList ? findNodes(compList, "component_declaration") : findNodes(cc, "component_declaration");
     for (const cd of compDecls) {
       const decl = cd.childForFieldName("declaration") || cd;
       const compName =
@@ -198,8 +198,9 @@ function parseModelicaWithGLR(modelicaSource: string): SysML2GenericDefinition {
 
   const connectEqs = findNodes(root, "connect_equation");
   for (const conn of connectEqs) {
-    const lhs = conn.childForFieldName("lhs")?.text?.trim() || "";
-    const rhs = conn.childForFieldName("rhs")?.text?.trim() || "";
+    const compRefs = findNodes(conn, "component_reference");
+    const lhs = conn.childForFieldName?.("lhs")?.text?.trim() || compRefs[0]?.text?.trim() || "";
+    const rhs = conn.childForFieldName?.("rhs")?.text?.trim() || compRefs[1]?.text?.trim() || "";
     connections.push({ source: lhs, target: rhs, kind: "physical" });
   }
 

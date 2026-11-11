@@ -55,15 +55,10 @@ function hasDistinctGraphics(svg: string): boolean {
     return false;
   if (/<(line|circle|path|polygon|polyline|ellipse)\b/i.test(svg)) return true;
   if (/<image\b[^>]*\b(?:href|xlink:href)=["'](?!\s*["']|modelica:\/\/)/i.test(svg)) return true;
-  if (/url\(#/i.test(svg)) return true;
   const textMatches = svg.match(/<text\b[^>]*>([\s\S]*?)<\/text>/gi);
   if (textMatches && textMatches.some((t) => stripAllHtmlTags(t).trim().length > 0)) return true;
   const rectMatches = svg.match(/<rect\b[^>]*>/gi);
   if (rectMatches) {
-    const hasVisualRect = rectMatches.some(
-      (r) => /\b(rx|ry)\s*=\s*"[^0]/i.test(r) || /fill="url\(#/i.test(r) || /stroke="(?!none)[^"]+"/i.test(r),
-    );
-    if (hasVisualRect) return true;
     const nonBackgroundRects = rectMatches.filter((r) => {
       const is200 = /width="200(?:\.0+)?"/i.test(r) && /height="200(?:\.0+)?"/i.test(r);
       return !is200;

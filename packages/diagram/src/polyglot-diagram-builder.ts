@@ -1286,10 +1286,10 @@ export function buildPolyglotDiagram(
       }
 
       const hasCompartments = actionLines.length > 0;
-      const LINE_HEIGHT = 15;
-      const HEADER_H = 36;
+      const LINE_HEIGHT = 18;
+      const HEADER_H = 38;
       const bubbleWidth = Math.max(140, nameText.length * 9 + 40);
-      const bubbleHeight = hasCompartments ? HEADER_H + actionLines.length * LINE_HEIGHT + 12 : 44;
+      const bubbleHeight = hasCompartments ? HEADER_H + actionLines.length * LINE_HEIGHT + 14 : 44;
 
       const stateMarkup: X6Markup[] = [
         { tagName: "rect", selector: "body" },
@@ -1527,9 +1527,9 @@ export function buildPolyglotDiagram(
 
     if (isStructural && !hasExplicitVectorGlyph) {
       // ── Dynamic markup generation for compartmented BDD blocks & Use Cases ──
-      const HEADER_HEIGHT = isEllipse ? 46 : 42; // stereotype + label area
-      const LINE_HEIGHT = 15; // pixels per text line
-      const SECTION_PAD = 2; // padding above section header
+      const HEADER_HEIGHT = isEllipse ? 50 : 46; // stereotype + label area
+      const LINE_HEIGHT = 18; // pixels per text line
+      const SECTION_PAD = 4; // padding above section header
 
       // Build markup array and attrs dynamically
       const markup: X6Markup[] = isEllipse
@@ -1570,7 +1570,7 @@ export function buildPolyglotDiagram(
           textAnchor: "middle",
           textVerticalAnchor: "top",
           refX: 0.5,
-          refY: isEllipse ? 10 : 6,
+          refY: isEllipse ? 10 : 7,
         },
         label: {
           text: nameText,
@@ -1580,7 +1580,7 @@ export function buildPolyglotDiagram(
           textAnchor: "middle",
           textVerticalAnchor: "top",
           refX: 0.5,
-          refY: isEllipse ? 26 : 22,
+          refY: isEllipse ? 28 : 24,
         },
       };
 
@@ -1596,8 +1596,14 @@ export function buildPolyglotDiagram(
         strokeWidth: 1,
       };
 
-      // Find the required width based on longest text content
-      let maxContentWidth = Math.max(size.width, nameText.length * 9.5 + 40, stereoText.length * 7.5 + 32);
+      const badgeWidth = shortName ? shortName.length * 6.8 + 12 : 0;
+      // Find the required width based on longest text content and badge spacing
+      let maxContentWidth = Math.max(
+        size.width,
+        nameText.length * 9.5 + 40,
+        stereoText.length * 7.5 + 32,
+        shortName ? nameText.length * 9.5 + badgeWidth * 2 + 28 : 0,
+      );
 
       for (let si = 0; si < sections.length; si++) {
         const section = sections[si]!;
@@ -1615,6 +1621,7 @@ export function buildPolyglotDiagram(
             stroke: strokeColor,
             strokeWidth: 0.5,
           };
+          currentY += 4;
         }
 
         currentY += SECTION_PAD;
@@ -1632,7 +1639,7 @@ export function buildPolyglotDiagram(
           refX: 0.5,
           refY: currentY,
         };
-        currentY += LINE_HEIGHT;
+        currentY += 16;
         maxContentWidth = Math.max(maxContentWidth, section.header.length * 8 + 32);
 
         // Entries
@@ -1661,12 +1668,13 @@ export function buildPolyglotDiagram(
             refY: currentY,
           };
           currentY += LINE_HEIGHT;
-          const entryWidth = entryText.length * (isEllipse ? 8.5 : 8.2) + 42;
+          const entryWidth = entryText.length * (isEllipse ? 8.5 : 8.2) + 48;
           maxContentWidth = Math.max(maxContentWidth, entryWidth);
         }
+        currentY += 4;
       }
 
-      currentY += 4; // bottom padding
+      currentY += 6; // bottom padding
 
       const adjustedWidth = isEllipse
         ? Math.ceil(Math.max(size.width, maxContentWidth * 1.35 + 40, 200))
@@ -1688,12 +1696,11 @@ export function buildPolyglotDiagram(
       }
 
       if (shortName && !isEllipse) {
-        const badgeWidth = shortName.length * 6.8 + 12;
         attrs["idBadgeRect"] = {
           x: adjustedWidth - badgeWidth - 8,
-          y: 6,
+          y: 7,
           width: badgeWidth,
-          height: 15,
+          height: 16,
           rx: 3,
           ry: 3,
           fill: strokeColor,
@@ -1707,7 +1714,7 @@ export function buildPolyglotDiagram(
           textAnchor: "middle",
           textVerticalAnchor: "top",
           refX: adjustedWidth - badgeWidth / 2 - 8,
-          refY: 8,
+          refY: 9,
         };
       }
 

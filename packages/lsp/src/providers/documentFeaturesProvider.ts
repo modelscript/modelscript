@@ -1,12 +1,78 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { getPscadDocumentSymbols, getPscadFoldingRanges } from "@modelscript/pscad";
-import { Connection, DocumentHighlightKind, TextDocuments } from "vscode-languageserver";
+import { Connection, DocumentHighlightKind, DocumentSymbol, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { nodeRange } from "../utils/ast-utils.js";
 import type { SyntaxNode } from "../utils/cst-facade.js";
+
+function isPosBefore(a: { line: number; character: number }, b: { line: number; character: number }): boolean {
+  return a.line < b.line || (a.line === b.line && a.character < b.character);
+}
+
+export function sanitizeDocumentSymbols(symbols: unknown): DocumentSymbol[] {
+  if (!Array.isArray(symbols)) return [];
+  const sanitized: DocumentSymbol[] = [];
+
+  for (const s of symbols) {
+    if (!s || typeof s !== "object") continue;
+    const sObj = s as Record<string, unknown>;
+    const name = typeof sObj["name"] === "string" && sObj["name"].trim().length > 0 ? sObj["name"] : "anonymous";
+
+    let range: { start: { line: number; character: number }; end: { line: number; character: number } };
+    const rawRange = sObj["range"] as
+      | { start?: { line?: number; character?: number }; end?: { line?: number; character?: number } }
+      | undefined;
+    if (!rawRange || typeof rawRange.start?.line !== "number" || typeof rawRange.end?.line !== "number") {
+      range = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
+    } else {
+      let rStart = { line: Math.max(0, rawRange.start.line), character: Math.max(0, rawRange.start.character ?? 0) };
+      let rEnd = { line: Math.max(0, rawRange.end.line), character: Math.max(0, rawRange.end.character ?? 0) };
+      if (isPosBefore(rEnd, rStart)) {
+        rEnd = { ...rStart };
+      }
+      range = { start: rStart, end: rEnd };
+    }
+
+    let sel: { start: { line: number; character: number }; end: { line: number; character: number } };
+    const rawSel = sObj["selectionRange"] as
+      | { start?: { line?: number; character?: number }; end?: { line?: number; character?: number } }
+      | undefined;
+    if (!rawSel || typeof rawSel.start?.line !== "number" || typeof rawSel.end?.line !== "number") {
+      sel = { start: { ...range.start }, end: { ...range.end } };
+    } else {
+      let sStart = { line: Math.max(0, rawSel.start.line), character: Math.max(0, rawSel.start.character ?? 0) };
+      let sEnd = { line: Math.max(0, rawSel.end.line), character: Math.max(0, rawSel.end.character ?? 0) };
+      if (isPosBefore(sEnd, sStart)) sEnd = { ...sStart };
+      if (isPosBefore(sStart, range.start)) sStart = { ...range.start };
+      if (isPosBefore(range.end, sStart)) sStart = { ...range.end };
+      if (isPosBefore(sEnd, sStart)) sEnd = { ...sStart };
+      if (isPosBefore(range.end, sEnd)) sEnd = { ...range.end };
+      if (isPosBefore(sEnd, sStart) || isPosBefore(sStart, range.start) || isPosBefore(range.end, sEnd)) {
+        sStart = { ...range.start };
+        sEnd = { ...range.end };
+      }
+      sel = { start: sStart, end: sEnd };
+    }
+
+    const children =
+      Array.isArray(sObj["children"]) && sObj["children"].length > 0
+        ? sanitizeDocumentSymbols(sObj["children"])
+        : undefined;
+
+    sanitized.push({
+      ...(s as DocumentSymbol),
+      name,
+      range: range as { start: { line: number; character: number }; end: { line: number; character: number } },
+      selectionRange: sel as { start: { line: number; character: number }; end: { line: number; character: number } },
+      ...(children !== undefined ? { children } : {}),
+    });
+  }
+
+  return sanitized;
+}
 
 export function registerDocumentFeaturesProvider(
   connection: Connection,
@@ -59,7 +125,7 @@ export function registerDocumentFeaturesProvider(
         const doc = getDoc(params.textDocument.uri);
         const text = doc ? doc.getText() : getDocumentTree(params.textDocument.uri)?.text;
         if (text) {
-          return getPscadDocumentSymbols(text) as any[];
+          return sanitizeDocumentSymbols(getPscadDocumentSymbols(text));
         }
       }
 
@@ -144,7 +210,7 @@ export function registerDocumentFeaturesProvider(
       if (!bridge) {
         if (plugin) {
           if (plugin.customHandlers?.symbols) {
-            return plugin.customHandlers.symbols(getDocumentTree(params.textDocument.uri));
+            return sanitizeDocumentSymbols(plugin.customHandlers.symbols(getDocumentTree(params.textDocument.uri)));
           }
           if (plugin.facade?.getDocumentSymbols && parser) {
             try {
@@ -156,7 +222,7 @@ export function registerDocumentFeaturesProvider(
                   const rootPtr = tree?.rootNode?.id ?? tree?.rootNode?.ptr ?? (tree as any)?.rootPtr ?? 0;
                   if (rootPtr) {
                     const symbols = plugin.facade.getDocumentSymbols(rootPtr);
-                    if (symbols && symbols.length > 0) return symbols;
+                    if (symbols && symbols.length > 0) return sanitizeDocumentSymbols(symbols);
                   }
                 } finally {
                   tree?.delete?.();
@@ -167,9 +233,10 @@ export function registerDocumentFeaturesProvider(
         }
         return [];
       }
-      return bridge.documentSymbols() as any[];
-    } catch (e: any) {
-      connection.console.error(`[documentSymbol] ${e.message}`);
+      return sanitizeDocumentSymbols(bridge.documentSymbols());
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      connection.console.error(`[documentSymbol] ${message}`);
       return [];
     }
   });

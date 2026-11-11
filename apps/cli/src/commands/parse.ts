@@ -271,10 +271,6 @@ export const Parse: CommandModule<{}, ParseArgs> = {
       return [row, col];
     }
 
-    const wasmExports = wasmInstance.exports as {
-      getFatPaddingPtr?: ((rawPad: number) => number) | undefined;
-    };
-
     function toSExpr(node: RawSExprNode, currentOffset: number, depth = 0): { strs: string[]; nextOffset: number } {
       if (depth > 100) return { strs: ["(...)"], nextOffset: currentOffset };
 
@@ -283,12 +279,9 @@ export const Parse: CommandModule<{}, ParseArgs> = {
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
 
       const typeFlags = runtime.readU32(node.getPtr());
-      const envHashPadding = runtime.readU32(node.getPtr() + 4);
-      const rawPad = typeFlags >>> 22;
-      const isFat = (envHashPadding >>> 23) & 1;
-      const pad =
-        isFat && wasmExports.getFatPaddingPtr ? runtime.readU32(wasmExports.getFatPaddingPtr(rawPad)) : rawPad;
-      const len = envHashPadding & 0x007fffff;
+      const flags = typeFlags >>> 16;
+      const len = runtime.readU32(node.getPtr() + 4);
+      const pad = runtime.readU32(node.getPtr() + 8);
       typeName = typeName + ":" + typeId;
 
       const startOffset = currentOffset + pad;
@@ -300,7 +293,7 @@ export const Parse: CommandModule<{}, ParseArgs> = {
       const posStr = `[${startPos[0]}, ${startPos[1]}] - [${endPos[0]}, ${endPos[1]}]`;
       const indent = "  ".repeat(depth);
 
-      const isInvisible = (typeFlags & (1 << 12)) !== 0;
+      const isInvisible = (flags & 4) !== 0;
       void isInvisible;
 
       let child = node.getFirstChild();

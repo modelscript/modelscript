@@ -249,4 +249,61 @@ describe("66-Language Playground Registry & Single-File vs. Multi-File Editor Ro
       "App.tsx must guard /:username/status/:id with UserRootRouteGuard",
     );
   });
+
+  it("propagates thumbnail simulation variables and time bounds into Morsel URL parameters and permalink payload", () => {
+    const editorUrl = buildEditorUrlForArtifact({
+      artifactId: 501,
+      viewType: "modelica-diagram",
+      viewConfig: {
+        code: "model ElectroHydrostaticActuator end ElectroHydrostaticActuator;",
+        title: "ElectroHydrostaticActuator",
+        dialect: "modelica",
+        previewMode: "simulation",
+        simulationPreview: {
+          startTime: 0,
+          stopTime: 5,
+          states: ["x_cmd"],
+        },
+      },
+    });
+
+    assert.ok(editorUrl.includes("fromArtifact=501"));
+    assert.ok(editorUrl.includes("view=split"));
+    assert.ok(editorUrl.includes("subview=simulation"));
+    assert.ok(editorUrl.includes("autoSimulate=1"));
+    assert.ok(editorUrl.includes("simVars=x_cmd"), "Must include simVars=x_cmd parameter");
+    assert.ok(editorUrl.includes("startTime=0"), "Must include startTime=0 parameter");
+    assert.ok(editorUrl.includes("stopTime=5"), "Must include stopTime=5 parameter");
+
+    const hashIdx = editorUrl.indexOf("#m=");
+    assert.ok(hashIdx !== -1, "Expected compressed #m= permalink hash");
+    const decoded = decompressMorselPayload(editorUrl.slice(hashIdx));
+    assert.ok(decoded);
+    assert.deepEqual(decoded.sim?.variables, ["x_cmd"]);
+    assert.equal(decoded.sim?.startTime, 0);
+    assert.equal(decoded.sim?.stopTime, 5);
+  });
+
+  it("propagates SysML v2 IBD diagram mode into Morsel URL parameters and permalink payload matching post thumbnail", () => {
+    const editorUrl = buildEditorUrlForArtifact({
+      artifactId: 621973719857762304,
+      viewType: "sysml2",
+      viewConfig: {
+        code: "package ArtemisLunarLanderGNC {\n  part def LunarDescentStage {}\n}",
+        title: "ArtemisLunarLanderGNC",
+        format: "SysML2",
+        rootPartDef: "LunarDescentStage",
+        parts: [{ name: "lidarHazardScanner", type: "TerrainRelativeNavSensor" }],
+      },
+    });
+
+    assert.ok(editorUrl.includes("lang=sysml2"), "Must preserve dialect=sysml2");
+    assert.ok(editorUrl.includes("diagramType=IBD"), "Must route to IBD diagram matching post thumbnail");
+
+    const hashIdx = editorUrl.indexOf("#m=");
+    assert.ok(hashIdx !== -1, "Expected compressed #m= permalink hash");
+    const decoded = decompressMorselPayload(editorUrl.slice(hashIdx));
+    assert.ok(decoded);
+    assert.equal(decoded.diagramType, "IBD", "Decoded permalink payload must include diagramType=IBD");
+  });
 });

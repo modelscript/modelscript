@@ -529,6 +529,7 @@ export interface BuildEditorUrlOptions {
   code?: string | undefined;
   title?: string | undefined;
   dialect?: string | undefined;
+  diagramType?: string | undefined;
   mode?: "open" | "fork" | "edit" | "reply" | undefined;
   editPostId?: number | undefined;
   replyToPostId?: number | undefined;
@@ -637,6 +638,15 @@ export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): strin
       ? parsedViewConfig.metadata["previewMode"]
       : undefined);
 
+  const simPreview = parsedViewConfig.simulationPreview;
+  const simStates: string[] = Array.isArray(simPreview?.states)
+    ? simPreview.states
+    : Array.isArray(parsedViewConfig.simulationVariables)
+      ? parsedViewConfig.simulationVariables
+      : Array.isArray(parsedViewConfig.states)
+        ? parsedViewConfig.states
+        : [];
+
   if (previewMode === "simulation") {
     params.set("view", "split");
     params.set("subview", "simulation");
@@ -649,6 +659,33 @@ export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): strin
   ) {
     params.set("view", "split");
     params.set("subview", "diagram");
+  }
+
+  if (simStates.length > 0) {
+    params.set("simVars", simStates.join(","));
+  }
+  if (typeof simPreview?.startTime === "number") {
+    params.set("startTime", String(simPreview.startTime));
+  }
+  if (typeof simPreview?.stopTime === "number") {
+    params.set("stopTime", String(simPreview.stopTime));
+  }
+
+  const explicitDiagramType =
+    options.diagramType ||
+    parsedViewConfig.diagramType ||
+    (parsedViewConfig.diagramMode === "ibd" ? "IBD" : parsedViewConfig.diagramMode === "bdd" ? "BDD" : undefined);
+  const targetDiagramType =
+    explicitDiagramType ||
+    (dialect === "sysml2" &&
+    (parsedViewConfig.rootPartDef ||
+      (Array.isArray(parsedViewConfig.parts) && parsedViewConfig.parts.length > 0) ||
+      !parsedViewConfig.diagramType)
+      ? "IBD"
+      : undefined);
+
+  if (targetDiagramType) {
+    params.set("diagramType", targetDiagramType);
   }
 
   let hash = "";
@@ -665,6 +702,16 @@ export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): strin
       isMultiFile: false,
       ...(artifactId !== undefined && artifactId !== null ? { artifactId: String(artifactId) } : {}),
       ...(dependencies ? { dependencies } : {}),
+      ...(targetDiagramType ? { diagramType: targetDiagramType } : {}),
+      ...(simStates.length > 0 || typeof simPreview?.startTime === "number" || typeof simPreview?.stopTime === "number"
+        ? {
+            sim: {
+              ...(simStates.length > 0 ? { variables: simStates } : {}),
+              ...(typeof simPreview?.startTime === "number" ? { startTime: simPreview.startTime } : {}),
+              ...(typeof simPreview?.stopTime === "number" ? { stopTime: simPreview.stopTime } : {}),
+            },
+          }
+        : {}),
     });
     hash = `#m=${encoded}`;
   }

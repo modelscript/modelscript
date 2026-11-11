@@ -24,10 +24,6 @@ export class HardwareDongleStatusBar implements vscode.Disposable {
     this.updateStatus([]);
 
     this.statusBarItem.show();
-    this.refreshDongles();
-
-    // Poll for hardware/daemon connectivity changes every 15 seconds
-    this.timer = setInterval(() => this.refreshDongles(), 15000);
 
     // Register quick pick menu command
     this.disposables.push(

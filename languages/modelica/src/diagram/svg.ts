@@ -216,7 +216,7 @@ function evaluateTextMacros(
     : (classInstance as ModelicaClassInstance | undefined);
 
   const ESCAPED_PERCENT = "__PERCENT__";
-  const nameText = compInst?.name ?? clsInst?.name ?? classInstance?.name ?? "";
+  const nameText = compInst?.name ?? "";
   const classText = compInst?.["typeSpecifier"] ?? clsInst?.name ?? classInstance?.name ?? "";
   const commentText = compInst?.["description"] ?? clsInst?.["description"] ?? classInstance?.["description"] ?? "";
 
@@ -678,6 +678,7 @@ function renderGraphicItemString(
       const txt = graphicItem as IText;
       const rawStr = txt.string ?? txt.textString ?? "";
       const str = evaluateTextMacros(rawStr, classInstance, componentInstance);
+      if (!str || str.trim().length === 0) return "";
       const extent = txt.extent;
       const minX = Math.min(extent?.[0]?.[0] ?? 0, extent?.[1]?.[0] ?? 0);
       const maxX = Math.max(extent?.[0]?.[0] ?? 0, extent?.[1]?.[0] ?? 0);
@@ -871,7 +872,7 @@ export function renderIconSvgString(
   const width = maxX - minX;
   const height = maxY - minY;
 
-  const body = renderIconGroupsString(
+  let body = renderIconGroupsString(
     ctx,
     classInstance,
     componentInstance,
@@ -881,6 +882,27 @@ export function renderIconSvgString(
     true,
     null,
   );
+
+  const clsObj = classInstance as unknown as Record<string, unknown> | undefined;
+  const effObj = effectiveClass as unknown as Record<string, unknown> | undefined;
+  const isPackageLike =
+    clsObj?.["classKind"] === ModelicaClassKind.PACKAGE ||
+    clsObj?.["classKind"] === "package" ||
+    effObj?.["classKind"] === ModelicaClassKind.PACKAGE ||
+    effObj?.["classKind"] === "package" ||
+    clsObj?.["name"] === "Package";
+
+  if (isPackageLike && !body) {
+    const key = "package:fallback:cylinder";
+    const gradId = allocDefId(
+      ctx,
+      key,
+      (defId) =>
+        `<linearGradient id="${defId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgb(200,200,200)"/><stop offset="0.5" stop-color="rgb(248,248,248)"/><stop offset="1" stop-color="rgb(200,200,200)"/></linearGradient>`,
+    );
+    body = `<g><rect width="200" height="200" x="-100" y="-100" rx="25" ry="25" fill="url(#${gradId})" stroke="rgb(200,200,200)" stroke-width="0.85" vector-effect="non-scaling-stroke"/><rect width="200" height="200" x="-100" y="-100" rx="25" ry="25" fill="none" stroke="rgb(128,128,128)" stroke-width="0.85" vector-effect="non-scaling-stroke"/></g>`;
+  }
+
   const defsBlock = ctx.defs.length > 0 ? `<defs>${ctx.defs.join("")}</defs>` : "";
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${minX} ${-maxY} ${width} ${height}">${defsBlock}${body}</svg>`;
 }

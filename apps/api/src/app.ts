@@ -303,25 +303,41 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       }
     })();
     app.locals["devSeedPromise"] = devSeedPromise;
+  }
 
-    if (!isProductionEnv && (isTestEnv || isExplicitDevOverride || process.env["ENABLE_DEV_RESET"] === "true")) {
-      app.post("/api/v1/dev/reset", async (_req, res) => {
-        console.log("[DevServer] Resetting database and re-seeding...");
-        try {
-          jobQueue.clear();
-          database.resetDevData();
-          seedScriptsAndTemplates(database);
+  const isDevResetAllowed =
+    process.env["ENABLE_DEV_RESET"] === "true" ||
+    (process.env["NODE_ENV"] !== "production" &&
+      (!isProductionPreset || isExplicitDevOverride || process.env["ALLOW_DEV_RESET"] === "true"));
 
-          await seedPolyglotSocialData(database, { force: true });
-          await seedExamplePackages(libraryStorage, database, jobQueue);
-          await seedPrepackagedLibraries(libraryStorage, database, jobQueue);
-          res.json({ success: true });
-        } catch (err) {
-          console.error("[DevServer] Failed to reset dev data:", err);
-          res.status(500).json({ success: false, error: String(err) });
+  if (isDevResetAllowed) {
+    app.post("/api/v1/dev/reset", async (_req, res) => {
+      console.log("[DevServer] Resetting database and re-seeding...");
+      try {
+        jobQueue.clear();
+        database.resetDevData();
+
+        if (
+          process.env["ADMIN_INIT_USERNAME"] ||
+          process.env["ADMIN_INIT_PASSWORD"] ||
+          process.env["AUTO_SEED_ADMIN"] === "true" ||
+          process.env["NODE_ENV"] !== "production"
+        ) {
+          await seedInitialAdmin(database);
         }
-      });
-    }
+
+        seedScriptsAndTemplates(database);
+        seedPolyglotUsers(database);
+
+        await seedPolyglotSocialData(database, { force: true });
+        await seedExamplePackages(libraryStorage, database, jobQueue);
+        await seedPrepackagedLibraries(libraryStorage, database, jobQueue);
+        res.json({ success: true });
+      } catch (err) {
+        console.error("[DevServer] Failed to reset dev data:", err);
+        res.status(500).json({ success: false, error: String(err) });
+      }
+    });
   }
 
   // ── Periodic Workers (disabled in test environment) ──
@@ -563,7 +579,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       } else {
         res.header(
           "Content-Security-Policy",
-          "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; img-src 'self' data: blob: https:; connect-src 'self' https: wss: ws:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self';",
+          "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' data: https:; img-src 'self' data: blob: https:; connect-src 'self' http: https: wss: ws:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self';",
         );
       }
     }

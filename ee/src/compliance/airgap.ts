@@ -40,7 +40,7 @@ export function createAirgapSecurityHeadersMiddleware() {
 
     res.header(
       "Content-Security-Policy",
-      `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ws: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; ${frameAncestorsDirective}`,
+      `default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' http: ws: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; ${frameAncestorsDirective}`,
     );
     res.header("X-Airgap-Enforced", "true");
     res.header("X-CEII-Compliance", "FERC-18-CFR-388.113");

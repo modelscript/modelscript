@@ -29,6 +29,9 @@ export interface UseMorselEngineProps {
   setTreeVisible: (v: boolean) => void;
   setView: (v: any) => void;
   viewDiagramEnum: any;
+  initialSimulationVariables?: string[] | undefined;
+  initialStartTime?: number | undefined;
+  initialStopTime?: number | undefined;
 }
 
 /** Extract STEP filename from // @step-file: annotation or ISO-10303-21 FILE_NAME header. */
@@ -956,6 +959,9 @@ export function useMorselEngine({
   setTreeVisible,
   setView,
   viewDiagramEnum,
+  initialSimulationVariables,
+  initialStartTime,
+  initialStopTime,
 }: UseMorselEngineProps) {
   const { preferences: modelingPrefs } = useModelingPreferences();
   const prefStopTime = modelingPrefs.defaultStopTime ?? 10;
@@ -984,8 +990,20 @@ export function useMorselEngine({
   const buildExperimentMeta = useCallback(
     (rawExp?: Record<string, any> | null) => {
       const parsedFromSource = extractExperimentFromCode(editorValue);
-      const startTime = Number(rawExp?.startTime ?? rawExp?.StartTime ?? parsedFromSource?.startTime ?? 0);
-      const stopTime = Number(rawExp?.stopTime ?? rawExp?.StopTime ?? parsedFromSource?.stopTime ?? prefStopTime);
+      const startTime = Number(
+        rawExp?.startTime ??
+          rawExp?.StartTime ??
+          (rawExp ? undefined : initialStartTime) ??
+          parsedFromSource?.startTime ??
+          0,
+      );
+      const stopTime = Number(
+        rawExp?.stopTime ??
+          rawExp?.StopTime ??
+          (rawExp ? undefined : initialStopTime) ??
+          parsedFromSource?.stopTime ??
+          prefStopTime,
+      );
       const numberOfIntervals = Number(
         rawExp?.numberOfIntervals ?? rawExp?.NumberOfIntervals ?? parsedFromSource?.numberOfIntervals ?? prefIntervals,
       );
@@ -1015,6 +1033,8 @@ export function useMorselEngine({
     },
     [
       editorValue,
+      initialStartTime,
+      initialStopTime,
       prefStopTime,
       prefIntervals,
       prefTolerance,
@@ -1026,8 +1046,18 @@ export function useMorselEngine({
   );
 
   // ── Simulation State ──
+  const userSelectionMadeRef = useRef<boolean>(false);
   const [simulationVariables, setSimulationVariables] = useState<string[]>([]);
-  const [selectedSimulationVariables, setSelectedSimulationVariables] = useState<string[]>([]);
+  const [selectedSimulationVariables, setSelectedSimulationVariables] = useState<string[]>(
+    () => initialSimulationVariables ?? [],
+  );
+
+  useEffect(() => {
+    if (!userSelectionMadeRef.current && initialSimulationVariables && initialSimulationVariables.length > 0) {
+      setSelectedSimulationVariables(initialSimulationVariables);
+    }
+  }, [initialSimulationVariables]);
+
   const [simulationParameters, setSimulationParameters] = useState<ParameterInfo[]>([]);
   const [parameterOverrides, setParameterOverrides] = useState<Map<string, number>>(new Map());
   const [sweepState, setSweepState] = useState<SweepState | null>(null);
@@ -1035,7 +1065,20 @@ export function useMorselEngine({
   const [simExperiment, setSimExperiment] = useState(() => buildExperimentMeta(null));
   const [experimentOverrides, setExperimentOverrides] = useState<ExperimentOverrides>(() => ({
     equidistant: true,
+    ...(initialStartTime !== undefined ? { startTime: initialStartTime } : {}),
+    ...(initialStopTime !== undefined ? { stopTime: initialStopTime } : {}),
   }));
+
+  useEffect(() => {
+    if (initialStartTime !== undefined || initialStopTime !== undefined) {
+      setExperimentOverrides((prev) => ({
+        ...prev,
+        ...(initialStartTime !== undefined ? { startTime: initialStartTime } : {}),
+        ...(initialStopTime !== undefined ? { stopTime: initialStopTime } : {}),
+      }));
+    }
+  }, [initialStartTime, initialStopTime]);
+
   const [cachedSimulator, setCachedSimulator] = useState<any>(() => {
     const initialExp = buildExperimentMeta(null);
     return { experiment: initialExp, dae: { experiment: initialExp } };
@@ -1121,7 +1164,13 @@ export function useMorselEngine({
     });
   };
 
+  const setUserSelectedSimulationVariables = useCallback((action: React.SetStateAction<string[]>) => {
+    userSelectionMadeRef.current = true;
+    setSelectedSimulationVariables(action);
+  }, []);
+
   const handleToggleSimulationVariable = useCallback((variable: string) => {
+    userSelectionMadeRef.current = true;
     setSelectedSimulationVariables((prev) =>
       prev.includes(variable) ? prev.filter((v) => v !== variable) : [...prev, variable],
     );
@@ -1129,7 +1178,10 @@ export function useMorselEngine({
 
   const handleVariablesLoaded = useCallback((variables: string[]) => {
     setSimulationVariables(variables);
-    setSelectedSimulationVariables((prev) => (prev.length > 0 ? prev : variables.slice(0, 3)));
+    setSelectedSimulationVariables((prev) => {
+      if (prev.length > 0 || userSelectionMadeRef.current) return prev;
+      return variables.slice(0, 3);
+    });
   }, []);
 
   // Listen for variable selection events from CosimPanel in MorselVisualizerPane
@@ -1139,6 +1191,7 @@ export function useMorselEngine({
       const detail = (e as CustomEvent<{ participantId?: string; variable?: string }>).detail;
       const variable = detail?.variable;
       if (!variable) return;
+      userSelectionMadeRef.current = true;
       setSimulationVariables((prev) => (prev.includes(variable) ? prev : [...prev, variable]));
       setSelectedSimulationVariables((prev) =>
         prev.includes(variable) ? prev.filter((v) => v !== variable) : [...prev, variable],
@@ -1408,9 +1461,24 @@ export function useMorselEngine({
                   rowObj[`${state} (${sweep.value})`] = sweep.y[i]?.[vIndex] ?? 0;
                 });
               });
+              states.forEach((state: string, vIndex: number) => {
+                rowObj[state] = result.sweepResults![0]?.y[i]?.[vIndex] ?? 0;
+              });
               return rowObj;
             }),
           );
+          lastSimTrajectoryRef.current = {
+            t: result.t,
+            y: result.sweepResults[0]?.y ?? result.y ?? [],
+            states,
+          };
+          if (animationControllerRef.current && cadComponents.length > 0) {
+            animationControllerRef.current.loadTimeseries(
+              result.t,
+              result.sweepResults[0]?.y ?? result.y ?? [],
+              states,
+            );
+          }
         } else {
           setSweepResults(null);
           const chartData = result.t.map((t: number, i: number) => {
@@ -1501,6 +1569,25 @@ export function useMorselEngine({
 
       const states = result.states ?? [];
       setSimulationVariables(states);
+      setSelectedSimulationVariables((prev) => {
+        // 1. If user already has active selections that exist in the newly simulated states, preserve them!
+        if (prev.length > 0) {
+          const matchedPrev = prev.filter((v) => states.includes(v));
+          if (matchedPrev.length > 0) return matchedPrev;
+        }
+        // 2. If user explicitly cleared selection, preserve empty selection
+        if (userSelectionMadeRef.current && prev.length === 0) {
+          return prev;
+        }
+        // 3. Fall back to initialSimulationVariables if valid and user hasn't made a custom selection
+        if (!userSelectionMadeRef.current && initialSimulationVariables && initialSimulationVariables.length > 0) {
+          const matchedInitial = initialSimulationVariables.filter((v) => states.includes(v));
+          if (matchedInitial.length > 0) return matchedInitial;
+        }
+        // 4. Default: first 3 non-derivative states
+        const candidates = states.filter((v) => !v.startsWith("der(") && v !== "time");
+        return candidates.length > 0 ? candidates.slice(0, 3) : states.slice(0, 3);
+      });
 
       if (result.sweepResults) {
         setSweepResults(result.sweepResults);
@@ -1512,9 +1599,20 @@ export function useMorselEngine({
                 rowObj[`${state} (${sweep.value})`] = sweep.y[i]?.[vIndex] ?? 0;
               });
             });
+            states.forEach((state: string, vIndex: number) => {
+              rowObj[state] = result.sweepResults![0]?.y[i]?.[vIndex] ?? 0;
+            });
             return rowObj;
           }),
         );
+        lastSimTrajectoryRef.current = {
+          t: result.t,
+          y: result.sweepResults[0]?.y ?? result.y ?? [],
+          states,
+        };
+        if (animationControllerRef.current && cadComponents.length > 0) {
+          animationControllerRef.current.loadTimeseries(result.t, result.sweepResults[0]?.y ?? result.y ?? [], states);
+        }
       } else {
         setSweepResults(null);
         const chartData = result.t.map((t: number, i: number) => {
@@ -1595,7 +1693,7 @@ export function useMorselEngine({
     simulationVariables,
     setSimulationVariables,
     selectedSimulationVariables,
-    setSelectedSimulationVariables,
+    setSelectedSimulationVariables: setUserSelectedSimulationVariables,
     handleToggleSimulationVariable,
     handleVariablesLoaded,
     simulationParameters,

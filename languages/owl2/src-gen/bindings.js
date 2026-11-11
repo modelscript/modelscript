@@ -5293,8 +5293,8 @@ export class SyntaxNode {
     return !t.startsWith('"') && !t.startsWith("/") && !t.startsWith("_");
   }
   _cachedHasError = undefined;
-  /** Returns true if the node or any of its descendants represents a syntax error. */
-  get hasError() {
+  /** Evaluates whether this node or any of its descendants has a syntax error. */
+  _computeHasError() {
     if (this._cachedHasError !== undefined) return this._cachedHasError;
     if (this._cachedTypeId === 0) {
       return (this._cachedHasError = true);
@@ -5309,6 +5309,14 @@ export class SyntaxNode {
       }
     }
     return (this._cachedHasError = false);
+  }
+  /**
+   * Returns true if the node or any of its descendants represents a syntax error.
+   * Defined as a getter property that can also be called as a method (node.hasError())
+   * for backward compatibility with tests and callers expecting either signature.
+   */
+  get hasError() {
+    return this._computeHasError();
   }
   /** Returns true if this node itself represents a syntax error. */
   get isError() {

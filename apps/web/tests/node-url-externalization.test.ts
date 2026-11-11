@@ -46,6 +46,8 @@ describe("Browser node:url shim & Vite bundle resolution", () => {
     assert.match(content, /\^os\$/);
     assert.match(content, /\^node:path\$/);
     assert.match(content, /\^path\$/);
+    assert.match(content, /\^node:readline\$/);
+    assert.match(content, /\^readline\$/);
   });
 
   it("node-shims provides browser-safe stubs without throwing on access", async () => {
@@ -56,9 +58,14 @@ describe("Browser node:url shim & Vite bundle resolution", () => {
     assert.strictEqual(typeof nodeShims.readFileSync, "function");
     assert.strictEqual(typeof nodeShims.join, "function");
     assert.strictEqual(typeof nodeShims.resolve, "function");
+    assert.strictEqual(typeof nodeShims.createInterface, "function");
+    assert.strictEqual(typeof nodeShims.readline.createInterface, "function");
     assert.strictEqual(nodeShims.existsSync("/any/path"), false);
     assert.strictEqual(nodeShims.join("a", "b"), "a/b");
     const child = nodeShims.spawn("olga");
     assert.strictEqual(typeof child.on, "function");
+    const rl = nodeShims.createInterface();
+    assert.strictEqual(typeof rl.on, "function");
+    assert.strictEqual(typeof rl.close, "function");
   });
 });

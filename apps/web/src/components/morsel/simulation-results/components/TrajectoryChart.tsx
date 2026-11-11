@@ -157,7 +157,8 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
               if (sweepResults && sweepResults.length > 0) {
                 return sweepResults.map((sweep, j) => {
                   const key = `${v} (${sweep.value})`;
-                  const colorIdx = (selectedVariables.indexOf(v) * sweepResults.length + j) % colors.length;
+                  const varIdx = Math.max(0, selectedVariables.indexOf(v));
+                  const colorIdx = (varIdx * sweepResults.length + j) % colors.length;
                   return (
                     <Line
                       key={key}

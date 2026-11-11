@@ -135,7 +135,8 @@ describe("Modelica attach profile", () => {
     const built = await modelicaAttachProfile.build(analysis.draft, ctxWith(uploads));
     assert.deepEqual(uploads[0]!.fields, {});
     assert.equal(built.view_config["primaryClass"], undefined);
-    assert.equal(built.view_config["previewMode"], "diagram");
+    // Pendulum has no schematic/diagram components, so it correctly defaults to simulation
+    assert.equal(built.view_config["previewMode"], "simulation");
     assert.equal(built.view_config["code"], SINGLE);
   });
 
@@ -266,5 +267,19 @@ end ChilledWaterPlant;
     );
     assert.equal(editAnalysis.draft.dependencies.length, 1);
     assert.equal(editAnalysis.draft.dependencies[0]!.version, "10.0.0");
+  });
+
+  it("detects when a pure equation model lacks diagram components and defaults to simulation", async () => {
+    const pureDae = `model EHA
+      Real x;
+    equation
+      der(x) = -x;
+    end EHA;`;
+    const classes = scanModelicaClasses(pureDae);
+    assert.equal(classes[0]!.hasDiagram, false);
+    assert.equal(classes[0]!.hasSimulation, true);
+
+    const analysis = await modelicaAttachProfile.analyze(new File([pureDae], "eha.mo"), ctxWith([]));
+    assert.equal(analysis.draft.openAs, "simulation");
   });
 });

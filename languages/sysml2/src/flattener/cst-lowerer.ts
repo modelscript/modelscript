@@ -202,12 +202,12 @@ export function findCstChildren(
   ) {
     const mem32: Uint32Array = node.tree.mem32;
     const syntaxNames: string[] = node.tree.facade.syntaxNames;
-    const exports = node.tree.facade.exports;
     const NodeCtor = node.constructor as unknown as SysmlCstNodeConstructor;
 
-    // Linear CST node layout in WASM memory (20 bytes per node):
-    //   +0:  typeFlags (bits 0..9 = typeId, bit 14 = isInvisible, bits 22..31 = rawPad)
-    //   +4:  envHashPadding (bits 0..22 = byte length, bit 23 = isFatPadding)
+    // Linear CST node layout in WASM memory (32 bytes per node):
+    //   +0:  typeFlags (bits 0..15 = typeId, bits 16..31 = flags)
+    //   +4:  byteLength (full 32-bit u32)
+    //   +8:  paddingLength (full 32-bit u32)
     //   +12: firstChildPtr (u32 byte pointer)
     //   +16: nextSiblingPtr (u32 byte pointer)
     const ptrStack: number[] = [];
@@ -218,17 +218,12 @@ export function findCstChildren(
     while (true) {
       if (currentChildPtr !== 0) {
         const typeFlags = mem32[currentChildPtr >>> 2]!;
-        const typeId = typeFlags & 0x03ff;
+        const typeId = typeFlags & 0xffff;
         const name = syntaxNames[typeId] || "";
-        const envHashPadding = mem32[(currentChildPtr + 4) >>> 2]!;
-        const rawPad = typeFlags >>> 22;
-        const isFat = (envHashPadding >>> 23) & 1;
-        const pad = isFat
-          ? mem32[(currentChildPtr + 28) >>> 2] ||
-            (exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]! : rawPad)
-          : rawPad;
-        const len = envHashPadding & 0x007fffff;
-        const isInvisible = (typeFlags & (1 << 14)) !== 0;
+        const flags = typeFlags >>> 16;
+        const len = mem32[(currentChildPtr + 4) >>> 2]!;
+        const pad = mem32[(currentChildPtr + 8) >>> 2]!;
+        const isInvisible = (flags & 4) !== 0;
 
         const nextChildPtr = mem32[(currentChildPtr + 16) >>> 2]!;
         const nextOffset = currentOffset + pad + len;
@@ -283,7 +278,6 @@ export function findCstDescendants(
     if (node.type === type) results.push(node);
     const mem32: Uint32Array = node.tree.mem32;
     const syntaxNames: string[] = node.tree.facade.syntaxNames;
-    const exports = node.tree.facade.exports;
     const NodeCtor = node.constructor as unknown as SysmlCstNodeConstructor;
 
     const ptrStack: number[] = [];
@@ -294,17 +288,12 @@ export function findCstDescendants(
     while (true) {
       if (currentChildPtr !== 0) {
         const typeFlags = mem32[currentChildPtr >>> 2]!;
-        const typeId = typeFlags & 0x03ff;
+        const typeId = typeFlags & 0xffff;
         const name = syntaxNames[typeId] || "";
-        const envHashPadding = mem32[(currentChildPtr + 4) >>> 2]!;
-        const rawPad = typeFlags >>> 22;
-        const isFat = (envHashPadding >>> 23) & 1;
-        const pad = isFat
-          ? mem32[(currentChildPtr + 28) >>> 2] ||
-            (exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]! : rawPad)
-          : rawPad;
-        const len = envHashPadding & 0x007fffff;
-        const isInvisible = (typeFlags & (1 << 14)) !== 0;
+        const flags = typeFlags >>> 16;
+        const len = mem32[(currentChildPtr + 4) >>> 2]!;
+        const pad = mem32[(currentChildPtr + 8) >>> 2]!;
+        const isInvisible = (flags & 4) !== 0;
 
         if (!isInvisible && name === type) {
           results.push(new NodeCtor(node.tree, currentChildPtr, currentOffset, node, pad, len, typeId, -1));
@@ -352,7 +341,6 @@ export function findFirstDescendant(node: SysmlCstNode | null | undefined, type:
     if (node.type === type) return node;
     const mem32: Uint32Array = node.tree.mem32;
     const syntaxNames: string[] = node.tree.facade.syntaxNames;
-    const exports = node.tree.facade.exports;
     const NodeCtor = node.constructor as unknown as SysmlCstNodeConstructor;
 
     const ptrStack: number[] = [];
@@ -363,17 +351,12 @@ export function findFirstDescendant(node: SysmlCstNode | null | undefined, type:
     while (true) {
       if (currentChildPtr !== 0) {
         const typeFlags = mem32[currentChildPtr >>> 2]!;
-        const typeId = typeFlags & 0x03ff;
+        const typeId = typeFlags & 0xffff;
         const name = syntaxNames[typeId] || "";
-        const envHashPadding = mem32[(currentChildPtr + 4) >>> 2]!;
-        const rawPad = typeFlags >>> 22;
-        const isFat = (envHashPadding >>> 23) & 1;
-        const pad = isFat
-          ? mem32[(currentChildPtr + 28) >>> 2] ||
-            (exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]! : rawPad)
-          : rawPad;
-        const len = envHashPadding & 0x007fffff;
-        const isInvisible = (typeFlags & (1 << 14)) !== 0;
+        const flags = typeFlags >>> 16;
+        const len = mem32[(currentChildPtr + 4) >>> 2]!;
+        const pad = mem32[(currentChildPtr + 8) >>> 2]!;
+        const isInvisible = (flags & 4) !== 0;
 
         if (!isInvisible && name === type) {
           return new NodeCtor(node.tree, currentChildPtr, currentOffset, node, pad, len, typeId, -1);

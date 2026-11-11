@@ -417,4 +417,57 @@ describe("Class Icon Tests", () => {
 
     console.log("test-wasm-icon-kernel passed successfully!");
   });
+
+  test("test-function-and-package-icons-no-name-leak", async () => {
+    console.log("Starting test-function-and-package-icons-no-name-leak...");
+    const docManager = new DocumentManager();
+    const wm = new WorkspaceManager(docManager);
+
+    const fnMo = `package External
+  extends Modelica.Icons.Package;
+  function loadRequest
+    extends Modelica.Icons.Function;
+    input String url;
+    output String response;
+  end loadRequest;
+end External;`;
+    const iconsPath = resolve(repoRoot, "data/libraries/Modelica/4.1.0/extracted/Modelica/Icons.mo");
+    const iconsText = readFileSync(iconsPath, "utf-8");
+
+    (globalThis as any).sharedFs = {
+      exists: () => true,
+      read: (p: string) => {
+        if (p.includes("Icons")) return iconsText;
+        return fnMo;
+      },
+    };
+
+    wm.unifiedWorkspace.registerWorkspace("modelica", wm.globalWorkspaceIndex);
+    const fnTree = (globalThis as any).modelicaParser.parse(fnMo);
+    wm.globalWorkspaceIndex.register("modelica:/workspace/External.mo", () => fnTree.rootNode, "");
+    const iconsTree = (globalThis as any).modelicaParser.parse(iconsText);
+    wm.globalWorkspaceIndex.register("modelica:/lib/Modelica/Icons.mo", () => iconsTree.rootNode, "Modelica");
+
+    wm.globalWorkspaceIndex.ensureIndexed("modelica:/workspace/External.mo");
+    wm.globalWorkspaceIndex.ensureIndexed("modelica:/lib/Modelica/Icons.mo");
+    wm.unifiedWorkspace.ensureChildrenIndexed("");
+
+    const extPkg = wm.resolveModelicaClassInstance("modelica:/workspace/External.mo", "External");
+    assert(extPkg, "External package must resolve");
+    const extSvg = getClassIconSvg(extPkg, 20, false);
+    assert(extSvg, "External package must produce SVG");
+    assert.strictEqual(extSvg.includes("External"), false, "Package icon must NOT have package name text");
+
+    const loadReqCls = wm.resolveModelicaClassInstance("modelica:/workspace/External.mo", "External.loadRequest");
+    assert(loadReqCls, "loadRequest function must resolve");
+    const loadReqSvg = getClassIconSvg(loadReqCls, 20, false);
+    assert(loadReqSvg, "loadRequest must produce SVG");
+    assert.strictEqual(loadReqSvg.includes("loadRequest"), false, "loadRequest icon must NOT have class name text");
+    assert.strictEqual(loadReqSvg.includes("%name"), false, "loadRequest icon must NOT have raw %name");
+    assert.ok(
+      loadReqSvg.includes(">f<") || loadReqSvg.includes(">  f  <") || loadReqSvg.includes("f</text>"),
+      "Function icon must preserve 'f' glyph",
+    );
+    console.log("test-function-and-package-icons-no-name-leak passed successfully!");
+  });
 });

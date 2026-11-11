@@ -95,6 +95,11 @@ export const PlaygroundPage: React.FC = () => {
   const fromArtifactParam = searchParams.get("fromArtifact");
   const morselParam = searchParams.get("morsel");
   const viewParam = searchParams.get("view");
+  const subviewParam = searchParams.get("subview");
+  const autoSimulateParam = searchParams.get("autoSimulate");
+  const simVarsParam = searchParams.get("simVars") || searchParams.get("variables");
+  const startTimeParam = searchParams.get("startTime");
+  const stopTimeParam = searchParams.get("stopTime");
   const langParam = searchParams.get("lang") || searchParams.get("dialect") || searchParams.get("language");
   const titleParam = searchParams.get("title");
   const editPostIdParam = searchParams.get("editPostId");
@@ -152,6 +157,20 @@ export const PlaygroundPage: React.FC = () => {
   const [currentTitle, setCurrentTitle] = useState<string>(defaultInitialTitle);
   const [currentLang, setCurrentLang] = useState<string>(defaultInitialLang);
   const [resolvedFromArtifact, setResolvedFromArtifact] = useState<string | null>(fromArtifactParam);
+  const [initialSimVars, setInitialSimVars] = useState<string[] | undefined>(() =>
+    simVarsParam
+      ? simVarsParam
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined,
+  );
+  const [initialStartTime, setInitialStartTime] = useState<number | undefined>(() =>
+    startTimeParam ? Number(startTimeParam) : undefined,
+  );
+  const [initialStopTime, setInitialStopTime] = useState<number | undefined>(() =>
+    stopTimeParam ? Number(stopTimeParam) : undefined,
+  );
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const [pendingExample, setPendingExample] = useState<HeroExample | null>(null);
   const baselineCodeRef = useRef<string>(defaultInitialCode);
@@ -437,6 +456,15 @@ export const PlaygroundPage: React.FC = () => {
           if (p.title || titleParam) {
             setCurrentTitle((p.title || titleParam)!);
           }
+          if (p.sim?.variables && p.sim.variables.length > 0) {
+            setInitialSimVars(p.sim.variables);
+          }
+          if (typeof p.sim?.startTime === "number") {
+            setInitialStartTime(p.sim.startTime);
+          }
+          if (typeof p.sim?.stopTime === "number") {
+            setInitialStopTime(p.sim.stopTime);
+          }
           if (p.dependencies) {
             mountArtifactDependencies(p.dependencies);
           }
@@ -597,6 +625,37 @@ export const PlaygroundPage: React.FC = () => {
             if (dependencies) {
               mountArtifactDependencies(dependencies);
             }
+            const simPreview = cfg.simulationPreview;
+            const previewVars =
+              (Array.isArray(simPreview?.states) && simPreview.states.length > 0
+                ? simPreview.states
+                : Array.isArray(cfg.simulationVariables) && cfg.simulationVariables.length > 0
+                  ? cfg.simulationVariables
+                  : Array.isArray(cfg.states) && cfg.states.length > 0
+                    ? cfg.states
+                    : undefined) ||
+              (simVarsParam
+                ? simVarsParam
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                : undefined);
+            if (previewVars && previewVars.length > 0) {
+              setInitialSimVars(previewVars);
+            }
+            if (typeof simPreview?.startTime === "number") {
+              setInitialStartTime(simPreview.startTime);
+            }
+            const artifactDiagramType =
+              diagramTypeParam ||
+              (payload as any)?.diagramType ||
+              cfg.diagramType ||
+              (cfg.diagramMode === "ibd" ? "IBD" : cfg.diagramMode === "bdd" ? "BDD" : undefined) ||
+              (detectedLang === "sysml2" &&
+              (cfg.rootPartDef || (Array.isArray(cfg.parts) && cfg.parts.length > 0) || !cfg.diagramType)
+                ? "IBD"
+                : undefined);
+
             setPayload({
               v: 1,
               lang: detectedLang,
@@ -607,6 +666,7 @@ export const PlaygroundPage: React.FC = () => {
               ...(viewParam ? { view: viewParam } : {}),
               title: resolvedTitle,
               ...(dependencies ? { dependencies } : {}),
+              ...(artifactDiagramType ? { diagramType: artifactDiagramType } : {}),
             });
             const hash = compressMorselPayload({
               v: 1,
@@ -619,6 +679,7 @@ export const PlaygroundPage: React.FC = () => {
               title: resolvedTitle,
               artifactId: String(effectiveArtifactId),
               ...(dependencies ? { dependencies } : {}),
+              ...(artifactDiagramType ? { diagramType: artifactDiagramType } : {}),
             });
             window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
           } else {
@@ -1147,8 +1208,15 @@ export const PlaygroundPage: React.FC = () => {
       window.dispatchEvent(new CustomEvent("morsel:toggle-sidebar"));
     }
   }, []);
-  const [simulateTriggerCount, setSimulateTriggerCount] = useState(0);
+  const [simulateTriggerCount, setSimulateTriggerCount] = useState<number>(() => (autoSimulateParam === "1" ? 1 : 0));
   const [isSimulating, setIsSimulating] = useState(false);
+
+  // If autoSimulate=1 is requested and artifact loads, ensure simulateTriggerCount is at least 1
+  useEffect(() => {
+    if (autoSimulateParam === "1" && currentCode) {
+      setSimulateTriggerCount((c) => Math.max(1, c));
+    }
+  }, [autoSimulateParam, currentCode]);
 
   const compilerDiagnostics = useMemo(() => {
     return analyzeSnippetDiagnostics(currentCode, currentLang);
@@ -1459,6 +1527,17 @@ export const PlaygroundPage: React.FC = () => {
               hideCenterFloatingToolbar={true}
               initialDialect={currentLang}
               initialView={currentView}
+              initialVisualizerSubview={
+                subviewParam === "simulation" ||
+                subviewParam === "3d" ||
+                subviewParam === "inspector" ||
+                subviewParam === "diagram"
+                  ? subviewParam
+                  : undefined
+              }
+              initialSimulationVariables={initialSimVars}
+              initialStartTime={initialStartTime}
+              initialStopTime={initialStopTime}
               initialDiagramType={diagramTypeParam || (payload as any)?.diagramType || undefined}
               initialClassName={extractPrimaryModelicaClassName(currentCode) || undefined}
               initialAnchor={payload?.anchor}

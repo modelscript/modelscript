@@ -23,9 +23,11 @@ export interface CompressedMorselPayload {
   params?: Record<string, number> | undefined;
   sim?:
     | {
+        startTime?: number | undefined;
         stopTime?: number | undefined;
         stepSize?: number | undefined;
         tolerance?: number | undefined;
+        variables?: string[] | undefined;
       }
     | undefined;
   camera?:

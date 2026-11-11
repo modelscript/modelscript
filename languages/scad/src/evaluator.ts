@@ -1567,7 +1567,6 @@ export class ScadEvaluator {
     if (node && typeof node.ptr === "number" && node.ptr > 0 && node.tree?.mem32 && node.tree?.facade?.syntaxNames) {
       const mem32: Uint32Array = node.tree.mem32;
       const syntaxNames: string[] = node.tree.facade.syntaxNames;
-      const exports = node.tree.facade.exports;
       const enc = node.tree.facade.getInputEncoding ? node.tree.facade.getInputEncoding() : (node.tree._encoding ?? 1);
       const div = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
 
@@ -1579,17 +1578,12 @@ export class ScadEvaluator {
       while (true) {
         if (curPtr !== 0) {
           const tf = mem32[curPtr >>> 2]!;
-          const tid = tf & 0x03ff;
+          const tid = tf & 0xffff;
           const tName = syntaxNames[tid] || "";
-          const ehp = mem32[(curPtr + 4) >>> 2]!;
-          const rPad = tf >>> 22;
-          const isFat = (ehp >>> 23) & 1;
-          const pad = isFat
-            ? mem32[(curPtr + 28) >>> 2] ||
-              (exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rPad) >>> 2]! : rPad)
-            : rPad;
-          const len = ehp & 0x007fffff;
-          const isInv = (tf & (1 << 14)) !== 0;
+          const flags = tf >>> 16;
+          const len = mem32[(curPtr + 4) >>> 2]!;
+          const pad = mem32[(curPtr + 8) >>> 2]!;
+          const isInv = (flags & 4) !== 0;
 
           if (!isInv && tName === "IDENTIFIER" && node.tree.sourceCode) {
             const s = Math.floor((curOff + pad) / div);
@@ -2618,7 +2612,6 @@ export class ScadEvaluator {
     ) {
       const mem32: Uint32Array = node.tree.mem32;
       const syntaxNames: string[] = node.tree.facade.syntaxNames;
-      const exports = node.tree.facade.exports;
       type ScadCstNodeConstructor = new (
         tree: ScadCstTree,
         ptr: number,
@@ -2639,17 +2632,12 @@ export class ScadEvaluator {
       while (true) {
         if (curPtr !== 0) {
           const tf = mem32[curPtr >>> 2]!;
-          const tid = tf & 0x03ff;
+          const tid = tf & 0xffff;
           const tName = syntaxNames[tid] || "";
-          const ehp = mem32[(curPtr + 4) >>> 2]!;
-          const rPad = tf >>> 22;
-          const isFat = (ehp >>> 23) & 1;
-          const pad = isFat
-            ? mem32[(curPtr + 28) >>> 2] ||
-              (exports?.getFatPaddingPtr ? mem32[exports.getFatPaddingPtr(rPad) >>> 2]! : rPad)
-            : rPad;
-          const len = ehp & 0x007fffff;
-          const isInv = (tf & (1 << 14)) !== 0;
+          const flags = tf >>> 16;
+          const len = mem32[(curPtr + 4) >>> 2]!;
+          const pad = mem32[(curPtr + 8) >>> 2]!;
+          const isInv = (flags & 4) !== 0;
 
           const nextPtr = mem32[(curPtr + 16) >>> 2]!;
           const nextOff = curOff + pad + len;
