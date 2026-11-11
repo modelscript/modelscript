@@ -30,8 +30,10 @@ test("Package Icons & Polyglot Badges Resolution", async (t) => {
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
     assert.equal(resolveModelicaBitmapUri(dataUri), dataUri);
 
-    // OpenIPSL / MSL logo resolution
+    // OpenIPSL / MSL / Modelica logo resolution
     const resolved =
+      resolveModelicaBitmapUri("modelica://Modelica/Resources/Images/Blocks/Sources/Constant.png") ??
+      resolveModelicaBitmapUri("modelica://Modelica/assets/icon-light.png") ??
       resolveModelicaBitmapUri("modelica://OpenIPSL/Resources/images/OpenIPSL_Logo.png") ??
       resolveModelicaBitmapUri("modelica://ModelicaReference/Resources/Images/sin.png");
     assert.ok(resolved, "Should resolve Modelica image from package resources");

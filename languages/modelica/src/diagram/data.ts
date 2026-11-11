@@ -2901,6 +2901,7 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
         while (curr && curr !== nodePath.dirname(curr)) {
           if (
             nodeFs.existsSync(nodePath.join(curr, ".git")) ||
+            nodeFs.existsSync(nodePath.join(curr, "nx.json")) ||
             nodeFs.existsSync(nodePath.join(curr, "pnpm-workspace.yaml"))
           ) {
             if (!roots.includes(curr)) roots.push(curr);
@@ -2909,6 +2910,22 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
           curr = nodePath.dirname(curr);
         }
       }
+      try {
+        if (typeof import.meta !== "undefined" && (import.meta as unknown as { dirname?: string }).dirname) {
+          let metaCurr = (import.meta as unknown as { dirname?: string }).dirname;
+          while (metaCurr && metaCurr !== nodePath.dirname(metaCurr)) {
+            if (
+              nodeFs.existsSync(nodePath.join(metaCurr, ".git")) ||
+              nodeFs.existsSync(nodePath.join(metaCurr, "nx.json")) ||
+              nodeFs.existsSync(nodePath.join(metaCurr, "pnpm-workspace.yaml"))
+            ) {
+              if (!roots.includes(metaCurr)) roots.push(metaCurr);
+              break;
+            }
+            metaCurr = nodePath.dirname(metaCurr);
+          }
+        }
+      } catch {}
       for (const root of roots) {
         candidates.push(nodePath.join(root, "scripts", "msl", `${libraryName} 4.0.0`, relativePath));
         candidates.push(nodePath.join(root, "scripts", "msl", libraryName, relativePath));
@@ -2934,6 +2951,16 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
             }
           } catch {}
         }
+        if (libraryName) {
+          const libLower = libraryName.toLowerCase();
+          candidates.push(nodePath.join(root, "languages", libLower, "assets", relativePath));
+          candidates.push(nodePath.join(root, "languages", libLower, "assets", nodePath.basename(relativePath)));
+          candidates.push(nodePath.join(root, "languages", libLower, "assets", "icon-light.png"));
+          candidates.push(nodePath.join(root, "languages", libLower, "assets", "icon-dark.png"));
+        }
+        candidates.push(nodePath.join(root, "languages", "modelica", "assets", relativePath));
+        candidates.push(nodePath.join(root, "languages", "modelica", "assets", nodePath.basename(relativePath)));
+        candidates.push(nodePath.join(root, "languages", "modelica", "assets", "icon-light.png"));
       }
       const home = (globalThis as any).process?.env?.HOME;
       if (home) {
