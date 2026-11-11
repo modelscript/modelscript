@@ -8,7 +8,6 @@ import {
   psseLanguage,
   psseToEmtNetlist,
   psseToModelica,
-  PsseWorkspaceIndex,
   solvePowerFlow,
   validatePsse,
 } from "@modelscript/psse";
@@ -57,7 +56,6 @@ describe("PSS/E LSP Integration Suite (@modelscript/lsp)", () => {
       name: "PSSE",
       extensions: [".raw", ".dyr", ".sav"],
       languageDef: psseLanguage,
-      workspaceIndex: new PsseWorkspaceIndex(),
       customHandlers: {
         symbols: (text: string) => getPsseDocumentSymbols(text),
         hover: (offset: number, text: string) => {

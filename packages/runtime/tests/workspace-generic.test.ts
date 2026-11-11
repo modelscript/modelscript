@@ -113,12 +113,7 @@ async function runTests() {
     assert.strictEqual(text, "MyClass", "Default cstTextProvider returns correct slice");
 
     const mockSubWs: any = {
-      toUnified: () => ({
-        symbols: new Map([[1, entry]]),
-        byName: new Map([["MyClass", [1]]]),
-        childrenOf: new Map(),
-      }),
-      toUnifiedPartial: () => ({
+      getIndex: () => ({
         symbols: new Map([[1, entry]]),
         byName: new Map([["MyClass", [1]]]),
         childrenOf: new Map(),
@@ -132,21 +127,21 @@ async function runTests() {
     console.log("✓ Default CST Providers tests passed");
   }
 
-  // 5. Multi-Workspace Aggregation in toUnified
+  // 5. Multi-Workspace Aggregation in getIndex
   {
     const ws = new UnifiedWorkspace();
     const entry1: any = { id: 1, name: "ClassM", kind: "Class" };
     const entry2: any = { id: 2, name: "DefS", kind: "Def" };
 
     const wsM: any = {
-      toUnified: () => ({
+      getIndex: () => ({
         symbols: new Map([[1, entry1]]),
         byName: new Map([["ClassM", [1]]]),
         childrenOf: new Map([[0, [1]]]),
       }),
     };
     const wsS: any = {
-      toUnified: () => ({
+      getIndex: () => ({
         symbols: new Map([[2, entry2]]),
         byName: new Map([["DefS", [2]]]),
         childrenOf: new Map([[0, [2]]]),
@@ -156,7 +151,7 @@ async function runTests() {
     ws.registerWorkspace("modelica", wsM);
     ws.registerWorkspace("sysml2", wsS);
 
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
     assert.strictEqual(unified.symbols.size, 2, "Merged unified index has 2 symbols");
     assert.strictEqual(unified.symbols.get(1)?.name, "ClassM");
     assert.strictEqual(unified.symbols.get(1)?.language, "modelica");
@@ -166,8 +161,8 @@ async function runTests() {
     assert.deepStrictEqual(unified.byName.get("DefS"), [2]);
     assert.deepStrictEqual(unified.childrenOf.get(0), [1, 2]);
 
-    const symbolIdx = ws.toSymbolIndex();
-    assert.strictEqual(symbolIdx.symbols.size, 2, "toSymbolIndex produces identical merged symbols");
+    const symbolIdx = ws.getIndex();
+    assert.strictEqual(symbolIdx.symbols.size, 2, "getIndex produces identical merged symbols");
     console.log("✓ Multi-Workspace Aggregation tests passed");
   }
 
@@ -197,9 +192,9 @@ async function runTests() {
     langIdx.indexDocument("file:///model.mo", () => mockRootNode);
     assert.strictEqual(langIdx.fileCount, 1, "File count is 1 after indexDocument");
 
-    const symIdx = langIdx.toSymbolIndex();
-    assert(symIdx !== undefined, "toSymbolIndex returns symbol index");
-    assert.strictEqual(langIdx.toUnified(), symIdx, "toUnified alias returns same index as toSymbolIndex");
+    const symIdx = langIdx.getIndex({ eager: true });
+    assert(symIdx !== undefined, "getIndex returns symbol index");
+    assert.strictEqual(langIdx.getIndex(), symIdx, "getIndex returns same index");
 
     // Test reindexDocument
     langIdx.reindexDocument("file:///model.mo", () => mockRootNode);

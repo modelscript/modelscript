@@ -248,12 +248,11 @@ export function auditLanguage(slug: string): LanguageAuditResult {
   const hasLsp =
     fs.existsSync(path.join(srcDir, "lsp.ts")) ||
     fs.existsSync(path.join(srcDir, "lsp")) ||
-    fs.existsSync(path.join(srcDir, "workspace-index.ts")) ||
     fs.existsSync(path.join(srcDir, "language.ts")) ||
     CORE_FOUNDATIONAL_LANGUAGES.has(slug);
   const hasLspTests =
     testFiles.some((f) => f.includes("lsp") || f.includes("workspace") || f.includes("outline")) ||
-    /LspService|documentSymbols|hover|completion|WorkspaceIndex/i.test(combinedTests) ||
+    /LspService|documentSymbols|hover|completion|UnifiedWorkspace|getIndex/i.test(combinedTests) ||
     CORE_FOUNDATIONAL_LANGUAGES.has(slug);
 
   const testFileCount = testFiles.length;

@@ -5518,7 +5518,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
   projectLanguage(language: string): OWL2AxiomDelta {
     if (!this._workspace) return { assertions: [], retractions: [] };
 
-    const unified = typeof this._workspace.toUnifiedPartial === "function" ? this._workspace.toUnifiedPartial() : null;
+    const unified = typeof this._workspace.getIndex === "function" ? this._workspace.getIndex() : null;
     if (!unified || !unified.symbols) return { assertions: [], retractions: [] };
 
     const projected: OWL2Axiom[] = [];

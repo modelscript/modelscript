@@ -153,6 +153,28 @@ export async function syncLibrary(lib: StdlibEntry, options: SyncOptions = {}): 
         fs.rmSync(tmpDir, { recursive: true, force: true });
         if (fs.existsSync(tempDownload)) fs.unlinkSync(tempDownload);
       }
+    } else if (lib.upstream?.repack === "openipsl-only") {
+      console.log(`[sync-stdlibs] Extracting and repacking OpenIPSL library only...`);
+      const tmpDir = path.join(__dirname, `_extract_${lib.id}`);
+      if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
+      fs.mkdirSync(tmpDir, { recursive: true });
+
+      try {
+        execSync(`unzip -q -o "${tempDownload}" "OpenIPSL-3.1.0/OpenIPSL/*" -d "${tmpDir}"`, {
+          stdio: "pipe",
+        });
+        const openipslDir = path.join(tmpDir, "OpenIPSL-3.1.0", "OpenIPSL");
+        const cleanDir = path.join(tmpDir, "OpenIPSL");
+        if (fs.existsSync(openipslDir)) {
+          fs.renameSync(openipslDir, cleanDir);
+          execSync(`cd "${tmpDir}" && zip -q -r "${targetPath}" OpenIPSL`, { stdio: "pipe" });
+        } else {
+          fs.renameSync(tempDownload, targetPath);
+        }
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+        if (fs.existsSync(tempDownload)) fs.unlinkSync(tempDownload);
+      }
     } else {
       fs.renameSync(tempDownload, targetPath);
     }

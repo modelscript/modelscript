@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AdamsWorkspaceIndex } from "../src/workspace-index.js";
+import { adamsLanguage, getAdamsDataset } from "../src/index.js";
 
 const FILE1 = `
 PART/1, GROUND
@@ -12,14 +13,14 @@ MARKER/2, PART = 2, QP = 0, 0, 0
 JOINT/1, REVOLUTE, I = 1, J = 2
 `;
 
-test("Adams WorkspaceIndex - Multi-File Indexing and Symbol Recovery", () => {
-  const index = new AdamsWorkspaceIndex();
-  index.indexFile("file:///project/crank.adm", FILE1);
+test("Adams UnifiedWorkspace - Multi-File Indexing and Symbol Recovery", () => {
+  const ws = new UnifiedWorkspace(adamsLanguage);
+  ws.setDocument("file:///project/crank.adm", FILE1);
 
-  assert.equal(index.fileCount, 1);
-  assert.equal(index.has("file:///project/crank.adm"), true);
+  assert.equal(ws.fileCount, 1);
+  assert.equal(ws.hasDocument("file:///project/crank.adm"), true);
 
-  const fileIdx = index.getFileIndex("file:///project/crank.adm");
+  const fileIdx = ws.getFileIndex("file:///project/crank.adm");
   assert.ok(fileIdx);
 
   // Check indexed symbols
@@ -28,7 +29,11 @@ test("Adams WorkspaceIndex - Multi-File Indexing and Symbol Recovery", () => {
   assert.ok(fileIdx.byName.has("marker_1"));
   assert.ok(fileIdx.byName.has("joint_1"));
 
-  const dataset = index.getDataset("file:///project/crank.adm");
+  const merged = ws.getIndex();
+  assert.ok(merged.byName.has("ground"));
+  assert.ok(merged.byName.has("joint_1"));
+
+  const dataset = getAdamsDataset(ws, "file:///project/crank.adm");
   assert.ok(dataset);
   assert.equal(dataset.parts.size, 2);
 });

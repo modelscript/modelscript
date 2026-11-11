@@ -1132,7 +1132,7 @@ export function registerWorkspaceFeaturesProvider(
     // Search using the global unified workspace index
     const globalWsIdx = getGlobalWorkspaceIndex?.();
     if (globalWsIdx) {
-      const unifiedIndex = globalWsIdx.toUnified();
+      const unifiedIndex = globalWsIdx.getIndex({ eager: true });
       for (const entry of unifiedIndex.symbols.values()) {
         if (symbols.length >= MAX_RESULTS) break;
         if (!entry.name || entry.name.startsWith("<")) continue;

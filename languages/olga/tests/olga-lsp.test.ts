@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { lowerOlgaToDae } from "../src/dae/index.js";
+import { olgaLanguage } from "../src/language.js";
 import { executeOlgaAction, getOlgaDocumentSymbols, getOlgaHover, validateOlga } from "../src/lsp.js";
 import { parseOlga } from "../src/parser/index.js";
 import { olgaToModelica } from "../src/projections/olga-to-modelica.js";
-import { OlgaWorkspaceIndex } from "../src/workspace-index.js";
 
 const SAMPLE_OLGA = `CASE TITLE = "SubseaTieback"
 FILES TABLE = "fluids.tab"
@@ -46,9 +47,10 @@ describe("OLGA LSP Services & DAE Lowering (@modelscript/olga)", () => {
     assert.ok(dae.eqCount >= 5);
   });
 
-  it("indexes .key files in OlgaWorkspaceIndex and emits connect(...) equations in olgaToModelica", () => {
-    const idx = new OlgaWorkspaceIndex();
-    const symIdx = idx.indexFile("file:///subsea/tieback.key", SAMPLE_OLGA);
+  it("indexes .key files in UnifiedWorkspace and emits connect(...) equations in olgaToModelica", () => {
+    const ws = new UnifiedWorkspace(olgaLanguage);
+    ws.setDocument("file:///subsea/tieback.key", SAMPLE_OLGA);
+    const symIdx = ws.getIndex();
     assert.ok(symIdx.byName.has("TiebackLine"));
     assert.ok(symIdx.byName.has("TiebackLine.P-101"));
     assert.ok(symIdx.byName.has("InletWell"));

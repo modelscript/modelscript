@@ -105,8 +105,7 @@ export function registerDocumentFeaturesProvider(
             ws.register(params.textDocument.uri, () => tree.rootNode);
             ws.getFileIndex(params.textDocument.uri);
             const unified =
-              wm?.unifiedWorkspace?.toUnifiedPartial?.() ??
-              (typeof ws.toUnifiedPartial === "function" ? ws.toUnifiedPartial() : ws.toUnified());
+              wm?.unifiedWorkspace?.getIndex?.() ?? (typeof ws.getIndex === "function" ? ws.getIndex() : ws);
             const realEngine = plugin?.queryEngine ?? wm?.getQueryEngine(langId);
             const engine = realEngine ?? {
               toQueryDB: () => ({ index: unified }),
@@ -131,7 +130,7 @@ export function registerDocumentFeaturesProvider(
         const doc = getDoc(params.textDocument.uri);
         const treeWrapper = getDocumentTree(params.textDocument.uri);
         const text = doc?.getText() ?? treeWrapper?.text;
-        const unifiedIndex = validationService?.workspaceManager?.unifiedWorkspace?.toUnifiedPartial();
+        const unifiedIndex = validationService?.workspaceManager?.unifiedWorkspace?.getIndex();
         const engine = plugin?.queryEngine ?? validationService?.workspaceManager?.globalModelicaQueryEngine;
         if (text && unifiedIndex && engine) {
           bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), params.textDocument.uri, {

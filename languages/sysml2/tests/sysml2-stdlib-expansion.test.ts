@@ -20,14 +20,14 @@ describe("SysML v2 Comprehensive Standard Library Expansion (Phase 4)", () => {
     assert.strictEqual(uri, "sysml2://stdlib/KerML.sysml");
     assert.ok(elapsed < 50, `Snapshot hydration must be fast (< 50ms), took ${elapsed.toFixed(2)}ms`);
 
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
     assert.strictEqual(unified.symbols.size, 675);
   });
 
   it("indexes and verifies all standard library packages across domains", () => {
     const ws = createSysML2WorkspaceIndex();
     loadEmbeddedKerMLStdlib(ws);
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
     const qe = createSysML2QueryEngine(unified);
     const db = qe.toQueryDB();
 
@@ -58,7 +58,7 @@ describe("SysML v2 Comprehensive Standard Library Expansion (Phase 4)", () => {
   it("verifies comprehensive ISO/IEC 80000 ISQ quantities across multiple engineering domains", () => {
     const ws = createSysML2WorkspaceIndex();
     loadEmbeddedKerMLStdlib(ws);
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
     const qe = createSysML2QueryEngine(unified);
     const db = qe.toQueryDB();
 
@@ -156,7 +156,7 @@ describe("SysML v2 Comprehensive Standard Library Expansion (Phase 4)", () => {
   it("verifies unified SI unit symbols, prefixes, and derived quantities", () => {
     const ws = createSysML2WorkspaceIndex();
     loadEmbeddedKerMLStdlib(ws);
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
     const qe = createSysML2QueryEngine(unified);
     const db = qe.toQueryDB();
 
@@ -236,7 +236,7 @@ describe("SysML v2 Comprehensive Standard Library Expansion (Phase 4)", () => {
   it("verifies US Customary and Imperial units coverage", () => {
     const ws = createSysML2WorkspaceIndex();
     loadEmbeddedKerMLStdlib(ws);
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
     const qe = createSysML2QueryEngine(unified);
     const db = qe.toQueryDB();
 
@@ -281,7 +281,7 @@ describe("SysML v2 Comprehensive Standard Library Expansion (Phase 4)", () => {
   it("verifies CauseAndEffect and SpatialFrames safety and geometric types", () => {
     const ws = createSysML2WorkspaceIndex();
     loadEmbeddedKerMLStdlib(ws);
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
     const qe = createSysML2QueryEngine(unified);
     const db = qe.toQueryDB();
 
@@ -378,7 +378,7 @@ describe("SysML v2 Comprehensive Standard Library Expansion (Phase 4)", () => {
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified);
     const db = qe.toQueryDB();
 

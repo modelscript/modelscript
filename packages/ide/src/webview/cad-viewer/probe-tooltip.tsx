@@ -4,14 +4,14 @@ export interface ProbeData {
   screenX: number;
   screenY: number;
   worldPos: [number, number, number];
-  nodeId?: number;
-  faceIndex?: number;
-  stressMPa?: number;
-  displacementMm?: number;
-  displacementVector?: [number, number, number];
-  safetyFactor?: number;
-  velocityMagnitude?: number;
-  pressurePa?: number;
+  nodeId?: number | undefined;
+  faceIndex?: number | undefined;
+  stressMPa?: number | undefined;
+  displacementMm?: number | undefined;
+  displacementVector?: [number, number, number] | undefined;
+  safetyFactor?: number | undefined;
+  velocityMagnitude?: number | undefined;
+  pressurePa?: number | undefined;
 }
 
 export interface ProbeTooltipProps {

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { pscadLanguage } from "../src/language.js";
 import { getUserDefinitionForm } from "../src/model/definition-form.js";
 import {
   buildProjectModel,
@@ -14,7 +16,6 @@ import {
 } from "../src/model/pscad-model.js";
 import { clearPscadSources } from "../src/model/workspace-registry.js";
 import { parsePscx } from "../src/parser/pscx-parser.js";
-import { PscadWorkspaceIndex } from "../src/workspace-index.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const corpus = process.env["PSCAD_CORPUS_DIR"] ?? path.resolve(here, "../../../.cache/pscad-corpus");
@@ -100,7 +101,7 @@ describe("pscad workspace registry feeds parsePscx (corpus)", { skip: !existsSyn
         (c) => c.definitionName.startsWith("DC_EMT_lib:") && c.ports.length > 0,
       ).length;
     const before = countWithPorts();
-    new PscadWorkspaceIndex().indexFile(libPath, readFileSync(libPath, "utf8"));
+    new UnifiedWorkspace(pscadLanguage).setDocument(libPath, readFileSync(libPath, "utf8"));
     const after = countWithPorts();
     clearPscadSources();
     assert.ok(after > before, "indexed library should add ports to library instances");
@@ -114,7 +115,7 @@ describe("pscad definition forms (corpus)", { skip: !existsSync(corpus) }, () =>
     const libPath = all.find((f) => f.endsWith("DC_EMT_lib.pslx"));
     if (!demoPath || !libPath) return;
     clearPscadSources();
-    new PscadWorkspaceIndex().indexFile(libPath, readFileSync(libPath, "utf8"));
+    new UnifiedWorkspace(pscadLanguage).setDocument(libPath, readFileSync(libPath, "utf8"));
     const form = getUserDefinitionForm(readFileSync(demoPath, "utf8"), "DC_EMT_lib:AC_Grid_Eq");
     clearPscadSources();
     assert.ok(form, "form should resolve through the indexed library");

@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  getLandgemDocumentSymbols,
+  landgemLanguage,
   lintLandgem,
   lowerLandgemToDae,
   parseLandgem,
   solveBiogas,
-  LandgemWorkspaceIndex,
   validateLandgem,
-  getLandgemDocumentSymbols,
+  type LandgemModel,
 } from "../src/index.js";
 
 const SAMPLE_LANDGEM_DECK = `
@@ -111,13 +113,16 @@ test("LandGEM DAE Lowering — lowers methane and digester equations to DAE aren
   assert.ok(eqs.length >= 4);
 });
 
-test("LandGEM Workspace Index — indexes site, cohorts, and digester symbols", () => {
-  const indexer = new LandgemWorkspaceIndex();
-  const idx = indexer.indexFile("file:///site.landgem", SAMPLE_LANDGEM_DECK);
+test("LandGEM UnifiedWorkspace — indexes site, cohorts, and digester symbols", () => {
+  const ws = new UnifiedWorkspace(landgemLanguage);
+  ws.setDocument("file:///site.landgem", SAMPLE_LANDGEM_DECK);
+  const idx = ws.getIndex();
 
   assert.ok(idx.symbols.size > 0);
   assert.ok(idx.byName.has("PineCreekLandfill"));
   assert.ok(idx.byName.has("CoDigestionFacility"));
+  const parsed = ws.getParsedModel<LandgemModel>("file:///site.landgem");
+  assert.strictEqual(parsed?.sites.length, 1);
 });
 
 test("LandGEM LSP — produces diagnostics and symbols", () => {

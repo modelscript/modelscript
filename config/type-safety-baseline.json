@@ -6,7 +6,7 @@
       "tsComments": 0
     },
     "apps/cli": {
-      "explicitAny": 26,
+      "explicitAny": 23,
       "tsComments": 0
     },
     "apps/desktop": {
@@ -122,7 +122,7 @@
       "tsComments": 0
     },
     "languages/epanet": {
-      "explicitAny": 18,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/fea": {
@@ -194,7 +194,7 @@
       "tsComments": 0
     },
     "languages/modelica": {
-      "explicitAny": 3302,
+      "explicitAny": 3314,
       "tsComments": 0
     },
     "languages/modelscript": {
@@ -282,7 +282,7 @@
       "tsComments": 0
     },
     "languages/psse": {
-      "explicitAny": 8,
+      "explicitAny": 11,
       "tsComments": 0
     },
     "languages/qif": {
@@ -358,7 +358,7 @@
       "tsComments": 0
     },
     "languages/swmm": {
-      "explicitAny": 13,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/sysml2": {
@@ -410,7 +410,7 @@
       "tsComments": 0
     },
     "packages/dsl": {
-      "explicitAny": 748,
+      "explicitAny": 752,
       "tsComments": 0
     },
     "packages/embed": {
@@ -438,7 +438,7 @@
       "tsComments": 0
     },
     "packages/lsp": {
-      "explicitAny": 1785,
+      "explicitAny": 1810,
       "tsComments": 0
     },
     "packages/mcp": {
@@ -450,11 +450,11 @@
       "tsComments": 0
     },
     "packages/runtime": {
-      "explicitAny": 852,
+      "explicitAny": 862,
       "tsComments": 0
     },
     "packages/simulate": {
-      "explicitAny": 39,
+      "explicitAny": 40,
       "tsComments": 0
     }
   }

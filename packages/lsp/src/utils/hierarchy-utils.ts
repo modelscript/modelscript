@@ -248,6 +248,26 @@ export function getLibraryInfo(resourceId?: string): { name: string; version?: s
     };
   }
 
+  // 7. Native PSS/E standard dynamics library & DSL-registered language builtins
+  if (
+    resourceId === "builtin://psse" ||
+    resourceId.startsWith("psse://stdlib/") ||
+    resourceId.startsWith("psse://builtins")
+  ) {
+    return {
+      name: "PSSE-Standard-Dynamics",
+      version: mountedLibraryMetadata.get("PSSE-Standard-Dynamics")?.version || "1.0.0",
+    };
+  }
+  if (resourceId.startsWith("builtin://")) {
+    const lang = resourceId.slice("builtin://".length).split("/")[0] || "";
+    for (const [mountedName, meta] of mountedLibraryMetadata.entries()) {
+      if (meta.language === lang) {
+        return { name: mountedName, version: meta.version };
+      }
+    }
+  }
+
   return null;
 }
 
@@ -362,7 +382,9 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
         classKind: "package",
         description: formattedVer,
         hasChildren: true,
-        language: meta?.language ?? (libName.includes("SysML") ? "sysml2" : "modelica"),
+        language:
+          meta?.language ??
+          (libName.includes("SysML") ? "sysml2" : libName === "PSSE-Standard-Dynamics" ? "psse" : "modelica"),
       });
     }
 

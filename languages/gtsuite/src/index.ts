@@ -76,4 +76,3 @@ export type {
   GtTurboTurbineComponent,
   GtValveComponent,
 } from "./types.js";
-export { GtSuiteWorkspaceIndex } from "./workspace-index.js";

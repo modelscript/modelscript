@@ -372,7 +372,7 @@ export async function verifyGate2Dimensions(
     loadEmbeddedKerMLStdlib(ws);
 
     ws.register(documentUri, () => tree.rootNode);
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
     const qe = createSysML2QueryEngine(unified, tree);
     const db = qe.toQueryDB();
 
@@ -686,7 +686,7 @@ export async function verifyGate3Requirements(
       const ws = createSysML2WorkspaceIndex();
       loadEmbeddedKerMLStdlib(ws);
       ws.register(documentUri, () => tree.rootNode);
-      const unified = ws.toUnified();
+      const unified = ws.getIndex({ eager: true });
       const qe = createSysML2QueryEngine(unified, tree);
       const db = qe.toQueryDB();
       constraints = extractSysML2Constraints(db) || [];

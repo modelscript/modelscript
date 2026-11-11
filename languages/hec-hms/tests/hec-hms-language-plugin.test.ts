@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getDiagnostics, getDocumentSymbols, hecHmsLanguage, HmsWorkspaceIndex } from "../src/index.js";
+import { getDiagnostics, getDocumentSymbols, hecHmsLanguage, type HmsBasinModel } from "../src/index.js";
 
 const TEST_BASIN = `Basin: Sample Basin
   Unit System: Metric
@@ -27,7 +28,7 @@ Sink: Outlet
 End:
 `;
 
-test("HEC-HMS LSP & Workspace Index: generates outline symbols and indexes documents", () => {
+test("HEC-HMS LSP & UnifiedWorkspace: generates outline symbols and indexes documents", () => {
   const symbols = getDocumentSymbols(TEST_BASIN);
   assert.equal(symbols.length, 2, "Should have 2 root categories: Subbasins, Reaches");
 
@@ -38,11 +39,14 @@ test("HEC-HMS LSP & Workspace Index: generates outline symbols and indexes docum
   const diags = getDiagnostics(TEST_BASIN);
   assert.equal(diags.length, 0, "Clean basin should produce zero diagnostics");
 
-  const index = new HmsWorkspaceIndex();
-  index.indexDocument("file:///sample.basin", TEST_BASIN);
-  const model = index.getModel("file:///sample.basin");
-  assert.ok(model);
-  assert.equal(model.basin.subbasins.size, 1);
+  const ws = new UnifiedWorkspace(hecHmsLanguage);
+  ws.setDocument("file:///sample.basin", TEST_BASIN);
+  const basin = ws.getParsedModel<HmsBasinModel>("file:///sample.basin");
+  assert.ok(basin);
+  assert.equal(basin.subbasins.size, 1);
+  const idx = ws.getIndex();
+  assert.ok(idx.byName.has("Sub1"));
+  assert.ok(idx.byName.has("Reach1"));
 });
 
 test("HEC-HMS Language Plugin: executes language actions", async () => {

@@ -10,6 +10,7 @@
 
 import { language } from "@modelscript/dsl";
 import { lowerOpenSimToDae } from "./dae/index.js";
+import { indexOpenSimFile } from "./indexing.js";
 import { lintOpenSimDocument } from "./lints/index.js";
 import { parseOpenSim } from "./parser/index.js";
 import { openSimToModelica, openSimToUrdf } from "./projections/index.js";
@@ -19,6 +20,9 @@ export const openSimLanguage = language({
   name: "opensim",
   fileExtensions: [".osim"],
   maturity: "beta",
+  indexing: {
+    indexFile: indexOpenSimFile,
+  },
   lsp: {
     fileExtensions: [".osim"],
   },
@@ -87,3 +91,5 @@ export const openSimLanguage = language({
     },
   ],
 });
+
+export const opensimLanguage = openSimLanguage;

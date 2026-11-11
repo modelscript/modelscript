@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerCanteraToDae } from "./dae/cantera-to-dae.js";
+import { canIndexCantera, indexCanteraDocument } from "./indexing.js";
 import { lintCantera } from "./lints/index.js";
 import { parseCantera } from "./parser/cantera-parser.js";
 import { canteraToModelica } from "./projections/cantera-to-modelica.js";
@@ -12,10 +13,14 @@ import { solveCanteraReactor, type CanteraReactorOptions } from "./solvers/kinet
  */
 export const canteraLanguage = language({
   name: "cantera",
-  fileExtensions: [".yaml", ".cti"],
+  fileExtensions: [".yaml", ".yml", ".cti"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexCanteraDocument,
+    canIndex: canIndexCantera,
+  },
   lsp: {
-    fileExtensions: [".yaml", ".cti"],
+    fileExtensions: [".yaml", ".yml", ".cti"],
     icons: {
       light: "./assets/cantera/icon-light.png",
       dark: "./assets/cantera/icon-dark.png",

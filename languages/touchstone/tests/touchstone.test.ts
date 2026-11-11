@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import test from "node:test";
 import {
@@ -11,8 +12,8 @@ import {
   lowerTouchstoneToDae,
   parseTouchstone,
   serializeTouchstone,
+  touchstoneLanguage,
   touchstoneToModelica,
-  TouchstoneWorkspaceIndex,
   verifyPassivity,
 } from "../src/index.js";
 
@@ -250,13 +251,13 @@ test("Touchstone Modelica Projection: generates syntactically valid Modelica 3.x
   assert(mo.includes("end BandpassFilter;"));
 });
 
-test("Touchstone Workspace Index: indexes multi-file symbols accurately", () => {
-  const indexer = new TouchstoneWorkspaceIndex();
+test("Touchstone UnifiedWorkspace: indexes multi-file symbols accurately", () => {
+  const ws = new UnifiedWorkspace(touchstoneLanguage);
   const uri = "file:///models/filter.s2p";
-  indexer.indexFile(uri, SAMPLE_2PORT_FILTER_S2P);
+  ws.setDocument(uri, SAMPLE_2PORT_FILTER_S2P);
 
-  assert.strictEqual(indexer.has(uri), true);
-  const fileIdx = indexer.getFileIndex(uri);
+  assert.strictEqual(ws.hasDocument(uri), true);
+  const fileIdx = ws.getFileIndex(uri);
   assert(fileIdx !== undefined);
   assert(fileIdx.symbols.size >= 5);
 

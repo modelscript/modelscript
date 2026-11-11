@@ -45,7 +45,7 @@ test("LSP classquery: modelscript/getClassLocation", async () => {
       getFileUriForFQN: (fqn: string) => (fqn === "MyPackage.MyModel" ? docUri : undefined),
     }),
     unifiedWorkspace: {
-      toUnifiedPartial: () => ({
+      getIndex: () => ({
         symbols,
         byName,
       }),

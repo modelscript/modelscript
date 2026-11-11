@@ -185,7 +185,7 @@ interface IndexedSymbolWithLocation {
  */
 interface WorkspaceHolder {
   unifiedWorkspace?: UnifiedWorkspace | undefined;
-  toUnifiedPartial?: (() => ReturnType<UnifiedWorkspace["toUnifiedPartial"]>) | undefined;
+  getIndex?: ((options?: { eager?: boolean | undefined }) => ReturnType<UnifiedWorkspace["getIndex"]>) | undefined;
   polyglot?: PolyglotHostLike | undefined;
 }
 
@@ -900,7 +900,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         );
         u.registerWorkspace("sysml2", sIdx, sysml2LangFallback);
 
-        const db = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
+        const db = await u.getIndexAsync();
 
         // Ensure the ontology store has a full projection
         u.owl2Store.fullProjection();
@@ -1605,7 +1605,10 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     let unit = "V";
     const shortName = conflictId.split(".").pop() ?? conflictId;
     const wsHolder = ctx.workspace as WorkspaceHolder | null | undefined;
-    const symbols = wsHolder?.toUnifiedPartial?.()?.symbols ?? ctx.current?.queryEngine?.index?.symbols;
+    const symbols =
+      wsHolder?.getIndex?.()?.symbols ??
+      wsHolder?.unifiedWorkspace?.getIndex()?.symbols ??
+      ctx.current?.queryEngine?.index?.symbols;
     if (symbols) {
       for (const sym of symbols.values() as IterableIterator<IndexedSymbolWithLocation>) {
         if (sym.name === shortName || sym.name === conflictId) {
@@ -1868,7 +1871,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     async ({ rowDomain, colDomain }) => {
       const wsHolder = ctx.workspace as WorkspaceHolder | null | undefined;
       const workspace = wsHolder?.unifiedWorkspace ?? new UnifiedWorkspace();
-      const db = workspace.toUnifiedPartial();
+      const db = workspace.getIndex();
       const matrix = RtmIndexEngine.buildMatrix(db, rowDomain, colDomain);
 
       return {
@@ -1905,7 +1908,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     async ({ requirementName }) => {
       const wsHolder = ctx.workspace as WorkspaceHolder | null | undefined;
       const workspace = wsHolder?.unifiedWorkspace ?? new UnifiedWorkspace();
-      const db = workspace.toUnifiedPartial();
+      const db = workspace.getIndex();
       const components = RtmIndexEngine.extractElementsByDomain(db, "sysml_logical");
 
       // Score components based on naming similarity or keyword overlap
@@ -1961,7 +1964,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       const linkKey = `${sourceName}|${targetRequirement}`;
       const wsHolder = ctx.workspace as WorkspaceHolder | null | undefined;
       const workspace = wsHolder?.unifiedWorkspace ?? wsHolder ?? new UnifiedWorkspace();
-      const db = typeof workspace.toUnifiedPartial === "function" ? workspace.toUnifiedPartial() : undefined;
+      const db = typeof workspace.getIndex === "function" ? workspace.getIndex() : undefined;
       const matrix = db ? RtmIndexEngine.buildMatrix(db, "sysml_logical", "requirement") : undefined;
       const linkEntry = (
         matrix?.links as

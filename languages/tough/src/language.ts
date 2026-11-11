@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerToughToDae } from "./dae/index.js";
+import { canIndexToughFile, indexToughFile } from "./indexing.js";
 import { lintTough } from "./lints/index.js";
 import { parseTough } from "./parser/index.js";
 import { solveGeothermalWells } from "./solver/index.js";
@@ -10,6 +11,10 @@ export const toughLanguage = language({
   name: "tough",
   fileExtensions: [".tough", ".dat", ".tgh"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexToughFile,
+    canIndex: canIndexToughFile,
+  },
   lsp: {
     fileExtensions: [".tough", ".dat", ".tgh"],
   },

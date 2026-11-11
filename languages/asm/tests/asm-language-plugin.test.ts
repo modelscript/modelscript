@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { getAllAsmModels } from "../src/indexing.js";
 import { asmLanguage } from "../src/language.js";
 import { getAsmDiagnostics, getAsmDocumentSymbols } from "../src/lsp.js";
-import { AsmWorkspaceIndex } from "../src/workspace-index.js";
 
 describe("IWA ASM Language Plugin & LSP Services", () => {
   const sampleText = `plant BSM1 {
@@ -83,12 +84,14 @@ describe("IWA ASM Language Plugin & LSP Services", () => {
     assert.ok(Array.isArray(lintRes));
   });
 
-  it("should index documents in AsmWorkspaceIndex", () => {
-    const index = new AsmWorkspaceIndex();
-    index.indexDocument("plant1.asm", sampleText);
-    const models = index.getAllModels();
+  it("should index documents in UnifiedWorkspace", () => {
+    const ws = new UnifiedWorkspace(asmLanguage);
+    ws.setDocument("plant1.asm", sampleText);
+    const models = getAllAsmModels(ws);
     assert.equal(models.length, 1);
     assert.equal(models[0]?.plantName, "BSM1");
     assert.equal(models[0]?.reactorCount, 1);
+    assert.ok(ws.getIndex().byName.has("BSM1"));
+    assert.ok(ws.getIndex().byName.has("TANK1"));
   });
 });

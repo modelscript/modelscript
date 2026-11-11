@@ -46,6 +46,7 @@ packages/exchange/validation/fmi/reference_fmus
 packages/exchange/validation/fmi/reference_fmus_repo
 scripts/*.zip
 !scripts/ModelicaStandardLibrary_v4.1.0.zip
+!scripts/OpenIPSL_v3.1.0.zip
 !scripts/SysML-v2-Release-2026-03.zip
 
 # Package-specific runtime data

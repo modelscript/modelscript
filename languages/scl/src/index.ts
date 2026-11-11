@@ -8,6 +8,7 @@
 
 export * from "./analysis/goose-validator.js";
 export * from "./dae/scl-to-dae.js";
+export * from "./indexing.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";
@@ -15,4 +16,3 @@ export * from "./parser/scl-parser.js";
 export * from "./parser/scl-writer.js";
 export * from "./projections/scl-to-grid.js";
 export * from "./types.js";
-export * from "./workspace-index.js";

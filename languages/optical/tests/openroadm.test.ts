@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import test from "node:test";
-import { OpticalWorkspaceIndex, parseOpenRoadmTopology } from "../src/index.js";
+import { getOpticalTopology, opticalLanguage, parseOpenRoadmTopology } from "../src/index.js";
 
 const SAMPLE_OPENROADM_NETWORK = {
   "network-name": "US-NorthEast-ROADM-Ring",
@@ -113,18 +114,18 @@ test("OpenROADM MSA & GNPy network parser and indexer", async (t) => {
     assert.equal(ch.pathSpanIds.length, 2);
   });
 
-  await t.test("indexes OpenROADM topologies in OpticalWorkspaceIndex", () => {
-    const index = new OpticalWorkspaceIndex();
+  await t.test("indexes OpenROADM topologies in UnifiedWorkspace", () => {
+    const ws = new UnifiedWorkspace(opticalLanguage);
     const uri = "file:///workspace/northeast_roadm.json";
 
-    index.reindexDocument(uri, () => JSON.stringify(SAMPLE_OPENROADM_NETWORK));
-    assert.equal(index.fileCount, 1);
+    ws.setDocument(uri, JSON.stringify(SAMPLE_OPENROADM_NETWORK));
+    assert.equal(ws.fileCount, 1);
 
-    const topo = index.getTopology(uri);
+    const topo = getOpticalTopology(ws, uri);
     assert.ok(topo);
     assert.equal(topo.name, "US-NorthEast-ROADM-Ring");
 
-    const found = index.findByName("New York Hub");
+    const found = ws.findSymbolsByName("New York Hub");
     assert.ok(found.length > 0, "Should index node name as symbol");
   });
 });

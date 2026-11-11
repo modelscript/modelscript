@@ -32,11 +32,11 @@ function createTestValidationService() {
   };
 
   const wsManager: any = {
-    stepWorkspaceIndex: {
-      parseStepFile: async () => ({}),
-    },
     unifiedWorkspace: {
-      toUnifiedPartial: () => ({
+      registerLanguage: () => {},
+      hasLanguage: () => true,
+      setDocument: () => {},
+      getIndex: () => ({
         symbols: new Map(),
         byName: new Map(),
         childrenOf: new Map(),

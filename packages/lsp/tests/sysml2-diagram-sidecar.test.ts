@@ -280,7 +280,7 @@ describe("SysML v2 Diagram Sidecar Layout Persistence", () => {
     const mockDocManager = { documents: new Map() } as any;
     const mockWorkspaceManager = {
       unifiedWorkspace: {
-        toUnified: () => ({
+        getIndex: () => ({
           symbols: new Map([
             ["s1", { id: "s1", name: "Chassis", resourceId: uri }],
             ["s2", { id: "s2", name: "Engine", resourceId: uri }],

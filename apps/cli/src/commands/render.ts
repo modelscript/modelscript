@@ -182,7 +182,7 @@ export const Render: CommandModule<{}, RenderArgs> = {
           return tree ? tree.rootNode : null;
         });
       }
-      const unified = wsIndex.toUnified();
+      const unified = wsIndex.getIndex({ eager: true });
       const data = buildSysML2DiagramData(
         unified as unknown as Parameters<typeof buildSysML2DiagramData>[0],
         targetUri,

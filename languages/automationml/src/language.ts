@@ -10,6 +10,7 @@
 import { language } from "@modelscript/dsl";
 import { runAmlVirtualCommissioning } from "./cosim/index.js";
 import { lowerAutomationMLToDae } from "./dae/index.js";
+import { indexAutomationMLDocument } from "./indexing.js";
 import { lintAutomationML } from "./lints/rules.js";
 import { parseAutomationML } from "./parser/index.js";
 import { amlToModelica, amlToSsp, amlToSysML2 } from "./projections/index.js";
@@ -18,6 +19,9 @@ export const automationMLLanguage = language({
   name: "automationml",
   fileExtensions: [".aml", ".caex"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexAutomationMLDocument,
+  },
   lsp: {
     fileExtensions: [".aml", ".caex"],
   },

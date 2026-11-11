@@ -31,7 +31,7 @@ end BouncingBall;`;
   wsIndex.indexDocument(uri, () => tree.rootNode);
   wsIndex.getFileIndex(uri);
 
-  const unified = wsIndex.toUnified();
+  const unified = wsIndex.getIndex({ eager: true });
   console.log("Unified symbols count:", unified.symbols.size);
   console.log("Unified byName:", Array.from(unified.byName.keys()));
 

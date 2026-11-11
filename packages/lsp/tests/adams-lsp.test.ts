@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  adamsLanguage,
-  AdamsWorkspaceIndex,
-  getAdamsDocumentSymbols,
-  getAdamsHover,
-  validateAdams,
-} from "@modelscript/adams";
+import { adamsLanguage, getAdamsDocumentSymbols, getAdamsHover, validateAdams } from "@modelscript/adams";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { globalLanguageRegistry } from "../src/registry/LanguageRegistry.js";
@@ -29,7 +23,6 @@ describe("MSC Adams LSP Integration Suite", () => {
       name: "MSC Adams",
       extensions: [".adm", ".cmd", ".acf"],
       languageDef: adamsLanguage,
-      workspaceIndex: new AdamsWorkspaceIndex(),
       customHandlers: {
         symbols: (text: string) => getAdamsDocumentSymbols(text),
         hover: (offset: number, text: string) => getAdamsHover(text, offset),

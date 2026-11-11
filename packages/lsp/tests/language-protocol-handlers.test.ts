@@ -18,7 +18,7 @@ test("Language-Defined Custom LSP Protocol Handlers", async (t) => {
     },
     workspaceManager: {
       unifiedWorkspace: {
-        toUnifiedPartial: () => ({ symbols: new Map() }),
+        getIndex: () => ({ symbols: new Map() }),
       },
     },
     documentManager: new Map(),

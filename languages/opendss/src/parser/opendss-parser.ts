@@ -81,7 +81,8 @@ function cleanValue(val: string): string {
   }
   // Check if v is an RPN expression e.g. "(8 1000 /)" or "8 1000 /"
   const parts = v.split(/\s+/);
-  if (parts.length >= 3 && ["+", "-", "*", "/"].includes(parts[parts.length - 1]!)) {
+  const lastPart = parts[parts.length - 1];
+  if (parts.length >= 3 && lastPart !== undefined && ["+", "-", "*", "/"].includes(lastPart)) {
     const stack: number[] = [];
     let isRpn = true;
     for (const p of parts) {
@@ -90,8 +91,12 @@ function cleanValue(val: string): string {
           isRpn = false;
           break;
         }
-        const b = stack.pop()!;
-        const a = stack.pop()!;
+        const b = stack.pop();
+        const a = stack.pop();
+        if (a === undefined || b === undefined) {
+          isRpn = false;
+          break;
+        }
         if (p === "+") stack.push(a + b);
         else if (p === "-") stack.push(a - b);
         else if (p === "*") stack.push(a * b);
@@ -120,28 +125,31 @@ function parseKeyValuePairs(tokens: string[]): Map<string, string> {
   const pairs = new Map<string, string>();
   let i = 0;
   while (i < tokens.length) {
-    const tok = tokens[i]!;
+    const tok = tokens[i];
+    if (tok === undefined) break;
     const eqIdx = tok.indexOf("=");
     if (eqIdx !== -1) {
       const key = tok.slice(0, eqIdx).trim().toLowerCase();
       let val = tok.slice(eqIdx + 1).trim();
       if (val.length === 0 && i + 1 < tokens.length) {
         i++;
-        val = tokens[i]!.trim();
+        const nextTok = tokens[i];
+        val = nextTok !== undefined ? nextTok.trim() : "";
       }
       if (key.length > 0) {
         pairs.set(key, cleanValue(val));
       }
     } else if (i + 1 < tokens.length) {
-      const nextTok = tokens[i + 1]!;
+      const nextTok = tokens[i + 1];
       if (nextTok === "=") {
         const key = tok.trim().toLowerCase();
         i += 2;
-        const val = i < tokens.length ? tokens[i]!.trim() : "";
+        const valTok = i < tokens.length ? tokens[i] : undefined;
+        const val = valTok !== undefined ? valTok.trim() : "";
         if (key.length > 0) {
           pairs.set(key, cleanValue(val));
         }
-      } else if (nextTok.startsWith("=")) {
+      } else if (nextTok !== undefined && nextTok.startsWith("=")) {
         const key = tok.trim().toLowerCase();
         i++;
         const val = nextTok.slice(1).trim();
@@ -216,9 +224,12 @@ export function parseMatrixValues(raw: string): number[][] {
     if (isLowerTriangular) {
       const full: number[][] = [];
       for (let r = 0; r < n; r++) {
-        full[r] = [];
+        const rowR = rows[r];
+        const rowArr: number[] = [];
+        full[r] = rowArr;
         for (let c = 0; c < n; c++) {
-          full[r]![c] = c <= r ? rows[r]![c]! : rows[c]![r]!;
+          const rowC = rows[c];
+          rowArr[c] = c <= r ? (rowR?.[c] ?? 0) : (rowC?.[r] ?? 0);
         }
       }
       return full;
@@ -381,8 +392,8 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
     // OpenDSS continuation line starts with ~
     if (lineText.startsWith("~")) {
       const cont = lineText.slice(1).trim();
-      if (logicalLines.length > 0) {
-        const prev = logicalLines[logicalLines.length - 1]!;
+      const prev = logicalLines[logicalLines.length - 1];
+      if (prev !== undefined) {
         prev.text += " " + cont;
         prev.endLine = lineNum;
         continue;
@@ -599,14 +610,16 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
         // Parse winding-by-winding properties if wdg=1 ... wdg=2 syntax is present
         let curWdg = 0;
         for (let tIdx = 2; tIdx < tokens.length; tIdx++) {
-          const tok = tokens[tIdx]!;
+          const tok = tokens[tIdx];
+          if (tok === undefined) continue;
           const eq = tok.indexOf("=");
           if (eq !== -1) {
             const k = tok.slice(0, eq).trim().toLowerCase();
             let v = tok.slice(eq + 1).trim();
             if (v.length === 0 && tIdx + 1 < tokens.length) {
               tIdx++;
-              v = tokens[tIdx]!.trim();
+              const nextTok = tokens[tIdx];
+              v = nextTok !== undefined ? nextTok.trim() : "";
             }
             v = cleanValue(v);
             if (k === "wdg" || k === "winding") {
@@ -754,8 +767,8 @@ export function parseOpenDss(content: string, filename?: string): DssDeck {
         const rmatrix = rmatrixRaw !== undefined ? parseMatrixValues(rmatrixRaw) : undefined;
         const xmatrix = xmatrixRaw !== undefined ? parseMatrixValues(xmatrixRaw) : undefined;
         const cmatrix = cmatrixRaw !== undefined ? parseMatrixValues(cmatrixRaw) : undefined;
-        const r1 = r1Raw !== undefined ? parseFloat(r1Raw) : (rmatrix ? rmatrix[0]?.[0] ?? 0.1 : 0.1);
-        const x1 = x1Raw !== undefined ? parseFloat(x1Raw) : (xmatrix ? xmatrix[0]?.[0] ?? 0.4 : 0.4);
+        const r1 = r1Raw !== undefined ? parseFloat(r1Raw) : rmatrix ? (rmatrix[0]?.[0] ?? 0.1) : 0.1;
+        const x1 = x1Raw !== undefined ? parseFloat(x1Raw) : xmatrix ? (xmatrix[0]?.[0] ?? 0.4) : 0.4;
         const c1 = c1Raw !== undefined ? parseFloat(c1Raw) : undefined;
         const r0 = r0Raw !== undefined ? parseFloat(r0Raw) : undefined;
         const x0 = x0Raw !== undefined ? parseFloat(x0Raw) : undefined;

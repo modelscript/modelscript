@@ -10,6 +10,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerCcsdsToDae } from "./dae/ccsds-to-dae.js";
+import { canIndexCcsds, indexCcsdsDocument } from "./indexing.js";
 import { lintCcsds } from "./lints/rules.js";
 import { parseCcsds } from "./parser/index.js";
 import { ccsdsToModelica } from "./projections/ccsds-to-modelica.js";
@@ -17,10 +18,14 @@ import { ccsdsToSysml } from "./projections/ccsds-to-sysml.js";
 
 export const ccsdsLanguage = language({
   name: "ccsds",
-  fileExtensions: [".oem", ".opm", ".omm", ".xtce"],
+  fileExtensions: [".oem", ".opm", ".omm", ".xtce", ".xml"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexCcsdsDocument,
+    canIndex: canIndexCcsds,
+  },
   lsp: {
-    fileExtensions: [".oem", ".opm", ".omm", ".xtce"],
+    fileExtensions: [".oem", ".opm", ".omm", ".xtce", ".xml"],
   },
   rules: {
     Root: () => "ccsds",

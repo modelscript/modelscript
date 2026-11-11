@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  EclipseWorkspaceIndex,
+  eclipseLanguage,
   eclipseToModelica,
+  getEclipseDeck,
   lintEclipse,
   lowerEclipseToDae,
   parseEclipse,
@@ -286,25 +288,27 @@ test("ECLIPSE Modelica Projection: generates syntactically valid Modelica 3.x re
   assert.ok(mo.includes("end BrentReservoirModel;"));
 });
 
-test("ECLIPSE Workspace Index: indexes multi-file symbols accurately", () => {
-  const index = new EclipseWorkspaceIndex();
-  index.indexFile("file:///reservoir/brent.data", VALID_ECLIPSE_DECK);
+test("ECLIPSE UnifiedWorkspace: indexes multi-file symbols accurately", () => {
+  const ws = new UnifiedWorkspace(eclipseLanguage);
+  const uri = "file:///reservoir/brent.data";
+  ws.setDocument(uri, VALID_ECLIPSE_DECK);
 
-  assert.equal(index.fileCount, 1);
-  const symbols = index.getSymbols("file:///reservoir/brent.data");
+  assert.equal(ws.fileCount, 1);
+  assert.equal(getEclipseDeck(ws, uri)?.title, "North Sea Brent Sandstone Oil Field Simulation");
+  const symbols = ws.getSymbolsForUri(uri);
   assert.ok(symbols.length >= 4);
 
-  const gridSym = index.findDefinition("ReservoirGrid");
+  const gridSym = ws.findSymbolsByName("ReservoirGrid")[0];
   assert.ok(gridSym);
 
-  const pvtSym = index.findDefinition("PVT_Props");
+  const pvtSym = ws.findSymbolsByName("PVT_Props")[0];
   assert.ok(pvtSym);
 
-  const prodSym = index.findDefinition("PROD1");
+  const prodSym = ws.findSymbolsByName("PROD1")[0];
   assert.ok(prodSym);
   assert.equal(prodSym.name, "PROD1");
 
-  const injSym = index.findDefinition("INJ1");
+  const injSym = ws.findSymbolsByName("INJ1")[0];
   assert.ok(injSym);
   assert.equal(injSym.name, "INJ1");
 });

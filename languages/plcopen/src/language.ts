@@ -9,6 +9,7 @@
 
 import { language } from "@modelscript/dsl";
 import { lowerPlcopenToDae } from "./dae/plcopen-to-dae.js";
+import { indexPlcopenFile } from "./indexing.js";
 import { lintPlcProject } from "./lints/rules.js";
 import { parsePlcopen } from "./parser/index.js";
 import { plcopenToModelica } from "./projections/plcopen-to-modelica.js";
@@ -17,10 +18,26 @@ import { VirtualPlc } from "./solver/virtual-plc.js";
 
 export const plcopenLanguage = language({
   name: "plcopen",
-  fileExtensions: [".xml", ".plcopen", ".st"],
+  fileExtensions: [".xml", ".plcopen", ".plcopen.xml", ".st"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexPlcopenFile,
+    canIndex: (uri, text) => {
+      const lower = uri.toLowerCase();
+      if (lower.endsWith(".plcopen") || lower.endsWith(".plcopen.xml") || lower.endsWith(".st")) {
+        return true;
+      }
+      return Boolean(
+        text &&
+        (text.includes("plcopen") ||
+          text.includes("<pous") ||
+          text.includes("PROGRAM ") ||
+          text.includes("FUNCTION_BLOCK ")),
+      );
+    },
+  },
   lsp: {
-    fileExtensions: [".xml", ".plcopen", ".st"],
+    fileExtensions: [".xml", ".plcopen", ".plcopen.xml", ".st"],
   },
   rules: {
     Root: () => "plcopen",

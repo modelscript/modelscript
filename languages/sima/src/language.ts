@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, field, language, optional, repeat, seq } from "@modelscript/dsl";
+import { simaIndexing } from "./indexing.js";
 import { SimaErrorCode } from "./lints/error-codes.js";
 
 /**
@@ -10,6 +11,7 @@ export const simaLanguage = language({
   name: "sima",
   fileExtensions: [".inp", ".sima", ".sys", ".hyd"],
   maturity: "beta",
+  indexing: simaIndexing,
   lsp: {
     fileExtensions: [".inp", ".sima", ".sys", ".hyd"],
   },

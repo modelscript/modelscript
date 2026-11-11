@@ -155,9 +155,10 @@ sub bogie_subsystem
     assert.ok(contactRes.totalForce > 25000);
   });
 
-  it("should index GENSYS models into Salsa multi-file WorkspaceIndex", async () => {
-    const { GensysWorkspaceIndex } = await import("../src/workspace-index.js");
-    const index = new GensysWorkspaceIndex();
+  it("should index GENSYS models into Salsa multi-file UnifiedWorkspace", async () => {
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    const { gensysLanguage } = await import("../src/language.js");
+    const ws = new UnifiedWorkspace(gensysLanguage);
 
     const deck = `
 body carbody 32000.0 65000.0 1800000.0 1700000.0 0 0 1.2
@@ -165,8 +166,9 @@ body bogie1  3000.0   2500.0    3000.0    5000.0 9 0 0.4
 spring sec_susp carbody bogie1 150000 150000 400000 20000 20000 35000
 sub bogie_rear
 `;
-    const res = index.indexFile("file:///workspace/Coach.calc", deck);
-    assert.equal(index.fileCount, 1);
+    ws.setDocument("file:///workspace/Coach.calc", deck);
+    const res = ws.getIndex();
+    assert.equal(ws.fileCount, 1);
     assert.ok(res.symbols.size >= 4);
     assert.ok(res.byName.has("carbody"));
     assert.ok(res.byName.has("sec_susp"));
@@ -253,26 +255,28 @@ spring s1 carbody ground k_sec 0 0 5000 0 0
   });
 
   it("should resolve and merge hierarchical child subsystems across workspace files", async () => {
-    const { GensysWorkspaceIndex } = await import("../src/workspace-index.js");
-    const index = new GensysWorkspaceIndex();
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    const { gensysLanguage } = await import("../src/language.js");
+    const { getGensysModel, resolveGensysSubsystems } = await import("../src/indexing.js");
+    const ws = new UnifiedWorkspace(gensysLanguage);
 
     const bogieDeck = `
 body frame 2500.0 1200.0 1800.0 2200.0 0 0 0.5
 spring prim_front frame ground 800000 800000 1200000 30000 30000 45000
 `;
-    index.indexFile("file:///workspace/bogie_front.sub", bogieDeck);
+    ws.setDocument("file:///workspace/bogie_front.sub", bogieDeck);
 
     const carDeck = `
 body carbody 32000.0 25000.0 180000.0 190000.0 0 0 1.8
 sub bogie_front
 `;
-    index.indexFile("file:///workspace/Coach.calc", carDeck);
+    ws.setDocument("file:///workspace/Coach.calc", carDeck);
 
-    const coachModel = index.getModel("file:///workspace/Coach.calc")!;
+    const coachModel = getGensysModel(ws, "file:///workspace/Coach.calc")!;
     assert.equal(coachModel.bodies.size, 1);
     assert.equal(coachModel.subsystems.length, 1);
 
-    const merged = index.resolveSubsystems(coachModel, "file:///workspace/Coach.calc");
+    const merged = resolveGensysSubsystems(ws, coachModel, "file:///workspace/Coach.calc");
     assert.equal(merged.bodies.size, 2);
     assert.ok(merged.bodies.has("carbody"));
     assert.ok(merged.bodies.has("bogie_front.frame"));
@@ -576,4 +580,3 @@ axle_load ws1 0.0
     assert.ok(g1010, "Expected G1010 ZERO_AXLE_LOAD");
   });
 });
-

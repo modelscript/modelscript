@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { DAEBuilder } from "@modelscript/runtime";
+import { DAEBuilder, UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import {
+  getOlgaModel,
   interpolatePvt,
   lintOlgaModel,
   lowerFlowpathToDae,
+  olgaLanguage,
   olgaToSysml2,
-  OlgaWorkspaceIndex,
   parseKeyDeck,
   parseOlga,
   parseOlgaTpl,
@@ -160,18 +161,20 @@ console.log(
   `✔ PVT bilinear interpolation: rhoG=${interp.rhoG.toFixed(1)} kg/m^3, rhoL=${interp.rhoL.toFixed(1)} kg/m^3!`,
 );
 
-// 9. Test Multi-File Workspace Indexer (OlgaWorkspaceIndex)
-console.log("9. Testing OlgaWorkspaceIndex Multi-File Indexing...");
-const ws = new OlgaWorkspaceIndex();
+// 9. Test Multi-File Indexing (UnifiedWorkspace)
+console.log("9. Testing UnifiedWorkspace Multi-File Indexing...");
+const ws = new UnifiedWorkspace(olgaLanguage);
 const fileUri = "file:///project/subsea_tieback.opi";
-const index = ws.indexFile(fileUri, sampleOpiXml);
+ws.setDocument(fileUri, sampleOpiXml);
+const index = ws.getIndex();
 assert.strictEqual(ws.fileCount, 1);
-assert.ok(ws.has(fileUri));
+assert.ok(ws.hasDocument(fileUri));
+assert.strictEqual(getOlgaModel(ws, fileUri)?.title, "Deepwater Flowline Riser");
 assert.ok(index.byName.has("Deepwater Flowline Riser"));
 assert.ok(index.byName.has("PRODUCTION_LOOP"));
 assert.ok(index.byName.has("PRODUCTION_LOOP.SEABED_TIEBACK"));
 assert.ok(index.byName.has("WELLHEAD_MANIFOLD"));
-console.log(`✔ OlgaWorkspaceIndex indexed ${index.symbols.size} symbols across file hierarchy!`);
+console.log(`✔ UnifiedWorkspace indexed ${index.symbols.size} symbols across file hierarchy!`);
 
 // 10. Test Keyword Deck Ingestion (.key / .genkey) & Universal parseOlga
 console.log("10. Testing Legacy Keyword Deck Ingestion (.key / .genkey)...");

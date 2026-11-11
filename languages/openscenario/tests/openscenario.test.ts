@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  findOpenScenarioDefinition,
   lintOpenScenario,
   lowerOpenScenarioToDae,
+  openScenarioLanguage,
   openScenarioToModelica,
-  OpenScenarioWorkspaceIndex,
   parseOpenScenario,
   serializeOpenScenario,
   simulateScenario,
@@ -400,24 +402,24 @@ test("OpenSCENARIO Modelica Projection: generates syntactically valid Modelica 3
   assert.ok(mo.includes("end HighwayCutIn;"));
 });
 
-test("OpenSCENARIO Workspace Index: indexes multi-file symbols accurately", () => {
-  const index = new OpenScenarioWorkspaceIndex();
-  index.indexFile("file:///scenarios/cut_in.xosc", VALID_CUT_IN_SCENARIO);
+test("OpenSCENARIO UnifiedWorkspace: indexes multi-file symbols accurately", () => {
+  const ws = new UnifiedWorkspace(openScenarioLanguage);
+  ws.setDocument("file:///scenarios/cut_in.xosc", VALID_CUT_IN_SCENARIO);
 
-  assert.equal(index.fileCount, 1);
-  const symbols = index.getSymbols("file:///scenarios/cut_in.xosc");
+  assert.equal(ws.fileCount, 1);
+  const symbols = ws.getSymbolsForUri("file:///scenarios/cut_in.xosc");
   assert.ok(symbols.length >= 6);
 
-  const egoSym = index.findDefinition("Ego");
+  const egoSym = findOpenScenarioDefinition(ws, "Ego");
   assert.ok(egoSym);
   assert.equal(egoSym.name, "Ego");
   assert.equal(egoSym.metadata["isEgo"], true);
 
-  const leadSym = index.findDefinition("NpcLead");
+  const leadSym = findOpenScenarioDefinition(ws, "NpcLead");
   assert.ok(leadSym);
   assert.equal(leadSym.name, "NpcLead");
 
-  const storySym = index.findDefinition("CutInStory");
+  const storySym = findOpenScenarioDefinition(ws, "CutInStory");
   assert.ok(storySym);
 });
 
@@ -636,9 +638,24 @@ test("OpenSCENARIO Linter: detects M8502, M8507, M8511, M8512, and M8513", () =>
   const doc = parseOpenScenario(flawedXml);
   const diags = lintOpenScenario(doc);
 
-  assert.ok(diags.some((d) => d.code === 8502), "Expected M8502 unsatisfiable trigger");
-  assert.ok(diags.some((d) => d.code === 8507), "Expected M8507 excessive deceleration");
-  assert.ok(diags.some((d) => d.code === 8511), "Expected M8511 unreachable waypoint");
-  assert.ok(diags.some((d) => d.code === 8512), "Expected M8512 negative time to collision");
-  assert.ok(diags.some((d) => d.code === 8513), "Expected M8513 conflicting longitudinal actions");
+  assert.ok(
+    diags.some((d) => d.code === 8502),
+    "Expected M8502 unsatisfiable trigger",
+  );
+  assert.ok(
+    diags.some((d) => d.code === 8507),
+    "Expected M8507 excessive deceleration",
+  );
+  assert.ok(
+    diags.some((d) => d.code === 8511),
+    "Expected M8511 unreachable waypoint",
+  );
+  assert.ok(
+    diags.some((d) => d.code === 8512),
+    "Expected M8512 negative time to collision",
+  );
+  assert.ok(
+    diags.some((d) => d.code === 8513),
+    "Expected M8513 conflicting longitudinal actions",
+  );
 });

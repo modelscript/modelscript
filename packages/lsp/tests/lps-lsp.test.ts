@@ -6,7 +6,6 @@ import {
   lowerLpsToDae,
   lpsLanguage,
   lpsToModelica,
-  LpsWorkspaceIndex,
   parseLps,
   validateLps,
 } from "@modelscript/lps";
@@ -40,7 +39,6 @@ describe("PipelineStudio LSP Integration Suite (@modelscript/lsp)", () => {
       name: "PipelineStudio",
       extensions: [".lps", ".tgx", ".tlx", ".tgn", ".tln", ".psg", ".psl"],
       languageDef: lpsLanguage,
-      workspaceIndex: new LpsWorkspaceIndex(),
       customHandlers: {
         symbols: (text: string) => getLpsDocumentSymbols(text),
         hover: (offset: number, text: string) => {

@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerSbmlToDae } from "./dae/sbml-to-dae.js";
+import { sbmlIndexing } from "./indexing.js";
 import { lintSbml } from "./lints/index.js";
 import { parseSbml } from "./parser/sbml-parser.js";
 import { sbmlToModelica } from "./projections/sbml-to-modelica.js";
@@ -14,6 +15,7 @@ export const sbmlLanguage = language({
   name: "sbml",
   fileExtensions: [".sbml", ".xml"],
   maturity: "experimental",
+  indexing: sbmlIndexing,
   lsp: {
     fileExtensions: [".sbml", ".xml"],
     icons: {

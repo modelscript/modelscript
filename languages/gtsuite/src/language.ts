@@ -2,6 +2,7 @@
 
 import { choice, field, language, optional, repeat, seq } from "@modelscript/dsl";
 import { GtSuiteErrorCode } from "./lints/index.js";
+import { parseGtmModel } from "./parser/gtm-parser.js";
 
 /**
  * DSL language specification for Gamma Technologies GT-SUITE (.gtm, .gtd, .gtx, .gt).
@@ -12,6 +13,34 @@ export const gtsuiteLanguage = language({
   maturity: "experimental",
   lsp: {
     fileExtensions: [".gtm", ".gtd", ".gtx", ".gt"],
+  },
+  indexing: {
+    indexFile(ctx) {
+      const model = parseGtmModel(ctx.text);
+      ctx.setParsedModel(model);
+
+      const modelRootId = ctx.addSymbol(model.name, "Package", null, 0, ctx.text.length, undefined, {
+        ruleName: "component",
+        namePath: "name",
+      });
+
+      for (const comp of model.components) {
+        const label = `${comp.id} [${comp.kind}]`;
+        ctx.addSymbol(
+          label,
+          "Class",
+          modelRootId,
+          0,
+          0,
+          { id: comp.id, kind: comp.kind },
+          {
+            ruleName: "component",
+            namePath: "name",
+            aliases: [comp.id],
+          },
+        );
+      }
+    },
   },
 
   errorCodes: GtSuiteErrorCode,

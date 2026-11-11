@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { type ActionExecutionContext, choice, field, language, optional, repeat, seq } from "@modelscript/dsl";
+import { indexEasy5Document } from "./indexing.js";
 import { Easy5ErrorCode } from "./lints/index.js";
 import { easy5PolyglotConfig, type SyncOptions } from "./tgg/index.js";
 
@@ -16,6 +17,9 @@ export const easy5Language = language({
   name: "easy5",
   fileExtensions: [".ez5", ".ezm", ".ezd", ".eas"],
   maturity: "beta",
+  indexing: {
+    indexFile: indexEasy5Document,
+  },
   lsp: {
     fileExtensions: [".ez5", ".ezm", ".ezd", ".eas"],
   },

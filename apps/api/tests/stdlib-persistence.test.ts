@@ -206,7 +206,7 @@ describe("Standard Library Persistence, Self-Healing & Registry Parity", () => {
 
       // Clean out test dummy directories for non-Modelica libraries
       for (const entry of fs.readdirSync(storage.dataDir)) {
-        if (entry !== "Modelica" && entry !== "Complex" && entry !== "ModelicaServices") {
+        if (entry !== "Modelica" && entry !== "Complex" && entry !== "ModelicaServices" && entry !== "OpenIPSL") {
           fs.rmSync(path.join(storage.dataDir, entry), { recursive: true, force: true });
         }
       }
@@ -217,6 +217,7 @@ describe("Standard Library Persistence, Self-Healing & Registry Parity", () => {
       assert.ok(dbPackages.includes("Modelica"), "Modelica MSL must be in DB");
       assert.ok(dbPackages.includes("Complex"), "Complex must be in DB");
       assert.ok(dbPackages.includes("ModelicaServices"), "ModelicaServices must be in DB");
+      assert.ok(dbPackages.includes("OpenIPSL"), "OpenIPSL must be in DB");
 
       assert.equal(dbPackages.includes("SysML"), false, "SysML should not be seeded in DB in flagship");
       assert.equal(dbPackages.includes("SPICE-Standard"), false, "SPICE should not be seeded in DB in flagship");
@@ -240,6 +241,7 @@ describe("Standard Library Persistence, Self-Healing & Registry Parity", () => {
       assert.ok(names.includes("Modelica"), "Modelica MSL must be seeded in flagship");
       assert.ok(names.includes("Complex"), "Complex must be seeded in flagship");
       assert.ok(names.includes("ModelicaServices"), "ModelicaServices must be seeded in flagship");
+      assert.ok(names.includes("OpenIPSL"), "OpenIPSL must be seeded in flagship");
 
       // Non-Modelica polyglot packages must NOT be seeded in flagship
       assert.equal(names.includes("SysML"), false, "SysML should not be seeded in flagship");

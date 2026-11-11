@@ -5,6 +5,7 @@ export {
   createSelfProxy,
   extractI18nConfig,
   extractIndexerHooks,
+  extractIndexingConfig,
   extractQueryHooks,
   extractQueryHooksMap,
   extractRefHooks,

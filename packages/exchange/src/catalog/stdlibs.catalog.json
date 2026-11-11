@@ -128,6 +128,26 @@
       "minExpectedClasses": 5
     },
     {
+      "id": "modelica-openipsl-3.1.0",
+      "language": "modelica",
+      "packageName": "OpenIPSL",
+      "version": "3.1.0",
+      "description": "Open-Instance Power System Library (OpenIPSL) v3.1.0 for phasor time-domain power system dynamic simulation",
+      "license": "BSD-3-Clause",
+      "tier": "tier1_core",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "OpenIPSL_v3.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/openipsl/OpenIPSL/archive/refs/tags/v3.1.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/OpenIPSL_v3.1.0.zip",
+        "archiveType": "zip",
+        "repack": "openipsl-only",
+        "sha256": "2b70c2a3a320257090e59667d2573148f8b441d4f5799b65b0798a4906ae3a81"
+      },
+      "minExpectedClasses": 200
+    },
+    {
       "id": "sysml-v2-2026-03",
       "language": "sysml2",
       "packageName": "SysML",
@@ -434,6 +454,2832 @@
         "archiveType": "zip"
       },
       "minExpectedClasses": 5
+    },
+    {
+      "id": "modelica-vehicleinterfaces-2.0.2",
+      "language": "modelica",
+      "packageName": "VehicleInterfaces",
+      "version": "2.0.2",
+      "description": "Free (standard conforming) library for interface definitions and architectures for vehicle system modeling",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "VehicleInterfaces_v2.0.2.zip",
+      "upstream": {
+        "url": "https://github.com/modelica/VehicleInterfaces/archive/8f43b5255112b3ecac5c6df978d555da4029e0ba.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/VehicleInterfaces_v2.0.2.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-compliance-1.0.0",
+      "language": "modelica",
+      "packageName": "Modelica-Compliance",
+      "version": "1.0.0",
+      "description": "A semantics compliance suite for the Modelica language",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Modelica-Compliance_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica/Modelica-Compliance/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica-Compliance_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-linearsystems2-3.0.1",
+      "language": "modelica",
+      "packageName": "Modelica_LinearSystems2",
+      "version": "3.0.1",
+      "description": "Free library providing different representations of linear, time invariant differential and difference equation systems, as well as typical operations on these system descriptions.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Modelica_LinearSystems2_v3.0.1.zip",
+      "upstream": {
+        "url": "https://github.com/modelica/Modelica_LinearSystems2/archive/c553617563ae651433b48e287e702cdc08e3e67e.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica_LinearSystems2_v3.0.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-absolut-1.0.0",
+      "language": "modelica",
+      "packageName": "Absolut",
+      "version": "1.0.0",
+      "description": "Modelica open-source library Absolut",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Absolut_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/Absolut/archive/refs/tags/v1.0.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Absolut_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-adgenkinetics-1.0.0",
+      "language": "modelica",
+      "packageName": "ADGenKinetics",
+      "version": "1.0.0",
+      "description": "Modeling biochemical reaction networks with generalized kinetic formats with capabilities for computing parameter sensitivities using algorithmic differentiation techniques.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "life-sciences",
+      "pack": "life-sciences",
+      "filename": "ADGenKinetics_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/AtiyahElsheikh/ADGenKinetics/archive/cdfd50846c1a4ad8d8887bb4dd2a36e675c033a0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ADGenKinetics_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-admsl-1.1.0",
+      "language": "modelica",
+      "packageName": "ADMSL",
+      "version": "1.1.0",
+      "description": "An example for algorithmic differentiation of a part of the Electrical sublibrary of the Modelica Standard Library",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "ADMSL_v1.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/Mathemodica/ADMSL/archive/785476f46de74a8af9228e6db1e41321ec854861.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ADMSL_v1.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-advancednoise-1.2.0",
+      "language": "modelica",
+      "packageName": "AdvancedNoise",
+      "version": "1.2.0",
+      "description": "Modelica library with advanced noise features building on Modelica_Noise",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "AdvancedNoise_v1.2.0.zip",
+      "upstream": {
+        "url": "https://github.com/DLR-SR/AdvancedNoise/archive/7fd853cf68c4f5f5b103a79491718685db91eac4.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/AdvancedNoise_v1.2.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-aixlib-1.0.0",
+      "language": "modelica",
+      "packageName": "AixLib",
+      "version": "1.0.0",
+      "description": "A Modelica model library for building performance simulations",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "AixLib_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/RWTH-EBC/AixLib/archive/2a0329b5899274e8d470e4e3e0e7e8a428918e49.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/AixLib_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-algebratestsuite-1.0.0",
+      "language": "modelica",
+      "packageName": "AlgebraTestSuite",
+      "version": "1.0.0",
+      "description": "Test problems of algebraic equation systems in Modelica",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "AlgebraTestSuite_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/sielemann/AlgebraTestSuite/archive/b937e1a7f447138c59abec9b2092f84f16bf02e8.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/AlgebraTestSuite_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-approxspline-1.0.1",
+      "language": "modelica",
+      "packageName": "ApproxSpline",
+      "version": "1.0.1",
+      "description": "Modelica Library for Smooth Spline Approximation",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ApproxSpline_v1.0.1.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ApproxSpline/archive/5c6203d3065ca7f31fcca02bfa6c1758ec3bc0b8.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ApproxSpline_v1.0.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-atplus-2.1.0",
+      "language": "modelica",
+      "packageName": "ATplus",
+      "version": "2.1.0",
+      "description": "Free library for Building Simulation and Building Control, fuzzy control library included. (unlicensed)",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ATplus_v2.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ATplus/archive/961e3d6af3fcea6d467d5003c54bff252e9aef24.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ATplus_v2.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-biochem-1.1.2",
+      "language": "modelica",
+      "packageName": "BioChem",
+      "version": "1.1.2",
+      "description": "Free library for biochemical modeling and simulation with Modelica.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "life-sciences",
+      "pack": "life-sciences",
+      "filename": "BioChem_v1.1.2.zip",
+      "upstream": {
+        "url": "https://github.com/OpenModelica/BioChem/archive/c3876e8a6e8d6e5ce4eadf6997e20d918d02db21.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/BioChem_v1.1.2.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-bondgraph-1.1.0",
+      "language": "modelica",
+      "packageName": "BondGraph",
+      "version": "1.1.0",
+      "description": "Free library for graphical Bond Graph modelling that contains common standard linear elements, sensors, and specific non-linear elements, especially for hydraulic networks.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "BondGraph_v1.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/BondGraph/archive/20c23e60d12989bd4668ccac47659d82d39d29cc.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/BondGraph_v1.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-bondlib-2.3.0",
+      "language": "modelica",
+      "packageName": "BondLib",
+      "version": "2.3.0",
+      "description": "Free library to model physical systems with bond graphs.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "BondLib_v2.3.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/BondLib/archive/df7a40fe612617da22e27d39edfa4b27d65f23d0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/BondLib_v2.3.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-brineprop-0.7.0",
+      "language": "modelica",
+      "packageName": "BrineProp",
+      "version": "0.7.0",
+      "description": "Modelica Media models for p-h-T-rho-eta properties of aqueous solutions of multiple salts and gases",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "BrineProp_v0.7.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/BrineProp/archive/refs/tags/v0.7.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/BrineProp_v0.7.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-buildingcontrollib-1.0.0",
+      "language": "modelica",
+      "packageName": "BuildingControlLib",
+      "version": "1.0.0",
+      "description": "Welcome to BuildingControlLib, a Modelica library for modelling an simulation of standardized and non-standardized control functions from Building Automation Systems. The library is developed at the Fraunhofer Institute for Building Physics IBP.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "BuildingControlLib_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/TechnicalBuildingSystems/BuildingControlLib/archive/fffe3d891d2785fa676b94324d3f939c833fae5e.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/BuildingControlLib_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-buildings-9.1.3",
+      "language": "modelica",
+      "packageName": "Buildings",
+      "version": "9.1.3",
+      "description": "Modelica Buildings library",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Buildings_v9.1.3.zip",
+      "upstream": {
+        "url": "https://github.com/lbl-srg/modelica-buildings/archive/8924c7e6ec10cf8da27d3b36d999f7c6a601c9ef.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Buildings_v9.1.3.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-buildingsystems-2.0.0",
+      "language": "modelica",
+      "packageName": "BuildingSystems",
+      "version": "2.0.0",
+      "description": "Modelica BuildingSystems library",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "BuildingSystems_v2.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/UdK-VPT/BuildingSystems/archive/37f23a121434b999f66f0bf7ee16bb67ad8b2b83.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/BuildingSystems_v2.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-buildsyspro-3.7.0",
+      "language": "modelica",
+      "packageName": "BuildSysPro",
+      "version": "3.7.0",
+      "description": "BuildSysPro open source: EDF's Modelica library for buildings, districts and energy systems modelling",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "BuildSysPro_v3.7.0.zip",
+      "upstream": {
+        "url": "https://github.com/EDF-TREE/BuildSysPro/archive/7d30fb7b35c996f1946023dfc303601542102978.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/BuildSysPro_v3.7.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-businesssimulation-1.0.0",
+      "language": "modelica",
+      "packageName": "BusinessSimulation",
+      "version": "1.0.0",
+      "description": "Business Simulation Library (BSL) - A library for modeling & simulation of dynamical systems in the social sciences, e.g., business/economics, and ecology using the System Dynamics metaphor",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "BusinessSimulation_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/bslMS/BusinessSimulation/archive/608cf499af56233766130afe2cfa0a7b80d5cc6d.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/BusinessSimulation_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-chemical-2.0.1",
+      "language": "modelica",
+      "packageName": "Chemical",
+      "version": "2.0.1",
+      "description": "Modelica Library of Chemical processes",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Chemical_v2.0.1.zip",
+      "upstream": {
+        "url": "https://github.com/MarekMatejak/Chemical/archive/218185566941eeb217279cbad000583ee70836a1.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Chemical_v2.0.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-complexlib-1.0.0",
+      "language": "modelica",
+      "packageName": "ComplexLib",
+      "version": "1.0.0",
+      "description": "Free library for steady-state analysis of AC circuits within phasor domain.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "ComplexLib_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ComplexLib/archive/0b78942ee4fa95ae71347a0d552dd869fdf4c708.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ComplexLib_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-credibility-1.0.0",
+      "language": "modelica",
+      "packageName": "Credibility",
+      "version": "1.0.0",
+      "description": "Credibility library",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Credibility_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/DLR-SR/Credibility/archive/5f11021e7e2aa0a2dfa3c13b2efa248eee91bd25.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Credibility_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-datetime-0.1.0",
+      "language": "modelica",
+      "packageName": "DateTime",
+      "version": "0.1.0",
+      "description": "A Modelica-native DateTime library with support for timezones, daylight savings, and predefined scheduling components to trigger events at human-readable calendrical dates and times in natural repetition intervals",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "life-sciences",
+      "pack": "life-sciences",
+      "filename": "DateTime_v0.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/DateTime/archive/refs/tags/v0.1.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/DateTime_v0.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-deploystructlib-1.0.0",
+      "language": "modelica",
+      "packageName": "DeployStructLib",
+      "version": "1.0.0",
+      "description": "A Modelica library providing specialized structural and mechanism components for modeling deployable structures",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "DeployStructLib_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/ATAEngineering/DeployStructLib/archive/ef1faa77179742cc7d2b7694aa49d85380481585.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/DeployStructLib_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-deslib-1.0.0",
+      "language": "modelica",
+      "packageName": "DESLib",
+      "version": "1.0.0",
+      "description": "Free library for Parallel DEVS and Process-Oriented Modeling in Modelica",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "DESLib_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/DESLib/archive/7a473d8d16b118c3ea05761c6f43b17fd9838e4e.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/DESLib_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-dhcsim-1.0.0",
+      "language": "modelica",
+      "packageName": "dhcSim",
+      "version": "1.0.0",
+      "description": "This is a repository of the dhcSim Modelica library",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "dhcSim_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/mabachmann/dhcSim/archive/2858c98d0a784930a461677e826335a5de7cbb38.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/dhcSim_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-disheatlib-1.2.0",
+      "language": "modelica",
+      "packageName": "DisHeatLib",
+      "version": "1.2.0",
+      "description": "Modelica library for district heating network modelling using IBPSA library as core",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "DisHeatLib_v1.2.0.zip",
+      "upstream": {
+        "url": "https://github.com/AIT-IES/DisHeatLib/archive/217f4016b06f317f82c3955bd4853f3ece36f5e7.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/DisHeatLib_v1.2.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-drivecontrol-4.1.0",
+      "language": "modelica",
+      "packageName": "DriveControl",
+      "version": "4.1.0",
+      "description": "Modelica library to demonstrate the control of electric drives.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "DriveControl_v4.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/AHaumer/DriveControl/archive/002b4d85a6de77acd0c5de43e2e5827e01752edd.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/DriveControl_v4.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-ehptlib-1.0.0",
+      "language": "modelica",
+      "packageName": "EHPTlib",
+      "version": "1.0.0",
+      "description": "Free library to simulate power trains of electric and hybrid vehicles",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "EHPTlib_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/ceraolo/EHPTlib/archive/c7b90f8e2b3f300a9b139e2ca77165810bf57d1b.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/EHPTlib_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-electricalenergystorage-3.2.2",
+      "language": "modelica",
+      "packageName": "ElectricalEnergyStorage",
+      "version": "3.2.2",
+      "description": "Free library that contains models with different complexity for simulating of electric energy storages like batteries (single cells as well as stacks) interacting with loads, battery management systems, loads and charging devices.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "ElectricalEnergyStorage_v3.2.2.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ElectricalEnergyStorage/archive/72ba3d49aae809280208a991c88134541b8c14f9.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ElectricalEnergyStorage_v3.2.2.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-electrolytemedia-0.2.0",
+      "language": "modelica",
+      "packageName": "electrolytemedia",
+      "version": "0.2.0",
+      "description": "Mirror of https://github.com/andreasbremen: Modelica framework for the dynamic simulation of aqueous electrolyte systems under consideration of dissociation and phase equilibria",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "electrolytemedia_v0.2.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/electrolytemedia/archive/refs/tags/v0.2.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/electrolytemedia_v0.2.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-electromechanicaldrives-3.0.0",
+      "language": "modelica",
+      "packageName": "ElectroMechanicalDrives",
+      "version": "3.0.0",
+      "description": "Electromechancial drives",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "ElectroMechanicalDrives_v3.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/christiankral/ElectroMechanicalDrives/archive/deda94da4e168a00426b86f7fa74fd11208eccdb.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ElectroMechanicalDrives_v3.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-embs-modelicalib-1.0.0",
+      "language": "modelica",
+      "packageName": "EMBS_ModelicaLib",
+      "version": "1.0.0",
+      "description": "A Modelica lib for elastic multi body systems simulation",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "EMBS_ModelicaLib_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/EMBS_ModelicaLib/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/EMBS_ModelicaLib_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-emoth-1.9.1",
+      "language": "modelica",
+      "packageName": "EMOTH",
+      "version": "1.9.1",
+      "description": "E-Mobility Library of OTH Regensburg (developed by master student Alexander Grimm)",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "EMOTH_v1.9.1.zip",
+      "upstream": {
+        "url": "https://github.com/AHaumer/EMOTH/archive/1beb919f0c3d353902854cc20c83ab664d5a8c35.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/EMOTH_v1.9.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-esl-1.0.0",
+      "language": "modelica",
+      "packageName": "ESL",
+      "version": "1.0.0",
+      "description": "Modelica open-source library ESL",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ESL_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ESL/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ESL_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-extendedpetrinets-1.0.0",
+      "language": "modelica",
+      "packageName": "ExtendedPetriNets",
+      "version": "1.0.0",
+      "description": "Free library to model Petri nets and state transition diagrams (extended version).",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ExtendedPetriNets_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ExtendedPetriNets/archive/8062f3719c500a4a209f5544deff3fa4036f8bdb.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ExtendedPetriNets_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-externalmedia-4.0.0",
+      "language": "modelica",
+      "packageName": "ExternalMedia",
+      "version": "4.0.0",
+      "description": "The ExternalMedia library provides a framework for interfacing external codes computing fluid properties to Modelica.Media-compatible component models.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "ExternalMedia_v4.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ExternalMedia/releases/download/v4.0.0/ExternalMedia-4.0.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ExternalMedia_v4.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-externalmemorylib-1.0.0",
+      "language": "modelica",
+      "packageName": "ExternalMemoryLib",
+      "version": "1.0.0",
+      "description": "A Modelica Library to get permanent access to some memory in case you want to conserve some data during simulation.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ExternalMemoryLib_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/vwaurich/ExternalMemoryLib/archive/146a17aff81a60bb6753b91000152b0d6fe0690b.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ExternalMemoryLib_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-externdata-3.2.0",
+      "language": "modelica",
+      "packageName": "ExternData",
+      "version": "3.2.0",
+      "description": ":page_facing_up: Modelica library for data I/O of CSV, INI, JSON, MATLAB MAT, SSV, TIR, Excel XLS/XLSX and XML files",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ExternData_v3.2.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ExternData/archive/720b6c87696cfaade44484aedc31a207322ceb08.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ExternData_v3.2.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-failuremodes-2.0.0",
+      "language": "modelica",
+      "packageName": "FailureModes",
+      "version": "2.0.0",
+      "description": "A collection of examples of failure modes for Modelica models",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "FailureModes_v2.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/casella/FailureModes/archive/894be5ce74947120e95595a574a5d04f04766f03.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/FailureModes_v2.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-fastbuildings-1.0.0",
+      "language": "modelica",
+      "packageName": "FastBuildings",
+      "version": "1.0.0",
+      "description": "Modelica library for low-order building modelling",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "FastBuildings_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/open-ideas/FastBuildings/archive/34e7296a025e789fa12b6d39699d9c287b60e008.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/FastBuildings_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-faulttriggering-0.6.6",
+      "language": "modelica",
+      "packageName": "FaultTriggering",
+      "version": "0.6.6",
+      "description": "Library for fault modelling in Modelica",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "FaultTriggering_v0.6.6.zip",
+      "upstream": {
+        "url": "https://github.com/DLR-SR/FaultTriggering/archive/89687bce9253f646a81011725645871413393c4b.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/FaultTriggering_v0.6.6.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-fcsys-1.0.0",
+      "language": "modelica",
+      "packageName": "FCSys",
+      "version": "1.0.0",
+      "description": "Modelica library of fuel cell models",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "life-sciences",
+      "pack": "life-sciences",
+      "filename": "FCSys_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/kdavies4/FCSys/archive/eaf8e7af9142803d8fb7e3b8675ed0795aa915ff.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/FCSys_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-feeddrivelibrary-1.0.1",
+      "language": "modelica",
+      "packageName": "FeedDriveLibrary",
+      "version": "1.0.1",
+      "description": "Modelica Feed Drive Library",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "FeedDriveLibrary_v1.0.1.zip",
+      "upstream": {
+        "url": "https://github.com/denistwo/FeedDriveLibrary/archive/b25dd3ef582872ac6ed5f5e15cbac9e9a6df194a.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/FeedDriveLibrary_v1.0.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-fluidsystemcomponents-2022.12.30",
+      "language": "modelica",
+      "packageName": "FluidSystemComponents",
+      "version": "2022.12.30",
+      "description": "Modelica lib. of basic components of fluid system, ex. pump, check-valve, piston-cylinder...",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "FluidSystemComponents_v2022.12.30.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/FluidSystemComponents/archive/refs/tags/ver.2022.12.30.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/FluidSystemComponents_v2022.12.30.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-fmitest-1.0.0",
+      "language": "modelica",
+      "packageName": "FMITest",
+      "version": "1.0.0",
+      "description": "Library of Modelica models to test connected FMUs in a Modelica tool",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "FMITest_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/DLR-SR/FMITest/archive/a67a276083f4010b249802ad8fc70dc30c09adfd.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/FMITest_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-freefluidsmodelica-1.0.0",
+      "language": "modelica",
+      "packageName": "FreeFluidsModelica",
+      "version": "1.0.0",
+      "description": "Modelica package for chemical engineering. Includes media definitions compatible with Modelica.Media",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "FreeFluidsModelica_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/FreeFluidsModelica/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/FreeFluidsModelica_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-fuelcelllib-1.0.0",
+      "language": "modelica",
+      "packageName": "FuelCellLib",
+      "version": "1.0.0",
+      "description": "Free library to model fuel cells (unlicensed)",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "life-sciences",
+      "pack": "life-sciences",
+      "filename": "FuelCellLib_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/FuelCellLib/archive/a6acb23f66ac30cd9dc40c071efe0e6707e826ac.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/FuelCellLib_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-fuzzycontrol-1.0.0",
+      "language": "modelica",
+      "packageName": "FuzzyControl",
+      "version": "1.0.0",
+      "description": "Free library for fuzzy control (unlicensed)",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "FuzzyControl_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/FuzzyControl/archive/19ff67ff129a440482cc85f216f287b05ea6ec0d.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/FuzzyControl_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-greenhouses-library-1.0.0",
+      "language": "modelica",
+      "packageName": "Greenhouses-Library",
+      "version": "1.0.0",
+      "description": "The Greenhouse Modelica Library aims at providing a fully open-source modeling framework for the simulation of greenhouse climate, crop yield and the energy integration of greenhouses with thermal systems (e.g. generation units, thermal storage units, district heating networks, etc.).",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "Greenhouses-Library_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/Greenhouses-Library/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Greenhouses-Library_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-hansermodelica-2.0.1",
+      "language": "modelica",
+      "packageName": "HanserModelica",
+      "version": "2.0.1",
+      "description": "HanserModelica",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "HanserModelica_v2.0.1.zip",
+      "upstream": {
+        "url": "https://github.com/christiankral/HanserModelica/archive/6f8c15b4cc836cb4f45d3c7438618457f10ec60d.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/HanserModelica_v2.0.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-heattransfercomponents-2022.12.30",
+      "language": "modelica",
+      "packageName": "HeatTransferComponents",
+      "version": "2022.12.30",
+      "description": "Modelica component library for heat transfer",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "HeatTransferComponents_v2022.12.30.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/HeatTransferComponents/archive/refs/tags/ver.2022.12.30.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/HeatTransferComponents_v2022.12.30.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-helmholtzmedia-1.0.0",
+      "language": "modelica",
+      "packageName": "HelmholtzMedia",
+      "version": "1.0.0",
+      "description": "Fluid properties for Modelica, for pure fluids that can be described by a Helmholtz energy equation of state",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "HelmholtzMedia_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/thorade/HelmholtzMedia/archive/2045ee572a098a340f377b0902a2206ba2444680.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/HelmholtzMedia_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-icons-1.0.0",
+      "language": "modelica",
+      "packageName": "Icons",
+      "version": "1.0.0",
+      "description": "Modelica Icons",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Icons_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/christiankral/Icons/archive/7884a0edb38cc039bc6fbaf8dee7114f2b7e7de4.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Icons_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-idealizedcontact-0.2.0",
+      "language": "modelica",
+      "packageName": "IdealizedContact",
+      "version": "0.2.0",
+      "description": "A Modelica library for idealized simulation of contact phenomena",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "IdealizedContact_v0.2.0.zip",
+      "upstream": {
+        "url": "https://github.com/tbeu/IdealizedContact/archive/ae8b0397ea8207bc4327bea1e81ac09c6d4bcea9.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/IdealizedContact_v0.2.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-ideas-4.0.0",
+      "language": "modelica",
+      "packageName": "IDEAS",
+      "version": "4.0.0",
+      "description": "Modelica library allowing simultaneous transient simulation of thermal and electrical systems at both building and feeder level.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "IDEAS_v4.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/open-ideas/IDEAS/archive/a9cc4fd988fdc2e8d7dbec9b1f8b97f599f57c8b.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/IDEAS_v4.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-industrialcontrolsystems-2.0.0",
+      "language": "modelica",
+      "packageName": "IndustrialControlSystems",
+      "version": "2.0.0",
+      "description": "A Modelica library for the realistic modelling of industrial control system",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "IndustrialControlSystems_v2.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/looms-polimi/IndustrialControlSystems/archive/148672debbeffe842dc7be441cc4b896ea677284.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/IndustrialControlSystems_v2.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-ipsl-1.1.1",
+      "language": "modelica",
+      "packageName": "ipsl",
+      "version": "1.1.1",
+      "description": "iTesla Power System Library",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "ipsl_v1.1.1.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ipsl/archive/refs/tags/v1.1.1.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ipsl_v1.1.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-keywordio-0.9.0",
+      "language": "modelica",
+      "packageName": "KeyWordIO",
+      "version": "0.9.0",
+      "description": "Modelica library for reading and writing variables and parameters to files. The main objective of the library is to read and write variables and parameters in INI file format.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "KeyWordIO_v0.9.0.zip",
+      "upstream": {
+        "url": "https://github.com/christiankral/KeyWordIO/archive/74eeea2df4c54ace14f6eeb13106cdb290f0c5b0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/KeyWordIO_v0.9.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-lcc-hvdc-1.0.0",
+      "language": "modelica",
+      "packageName": "LCC_HVDC",
+      "version": "1.0.0",
+      "description": "A library for simulating line commutated converter high voltage direct current (LCC HVDC) systems.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "LCC_HVDC_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/LCC_HVDC/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/LCC_HVDC_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-libras-1.0.0",
+      "language": "modelica",
+      "packageName": "LibRAS",
+      "version": "1.0.0",
+      "description": "A Modelica library for simulation of recirculating aquaculture systems",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "LibRAS_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/FishSim/LibRAS/archive/fca9de50a484a2213f3ca1b39e275c237c471688.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/LibRAS_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-linearmpc-1.0.0",
+      "language": "modelica",
+      "packageName": "LinearMPC",
+      "version": "1.0.0",
+      "description": "Library for model-based predictive controllers with linear process models.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "LinearMPC_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/LinearMPC/archive/1e91a5dcaa662cd30c5b09a9d0267289703f933b.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/LinearMPC_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-arduino-0.3.0",
+      "language": "modelica",
+      "packageName": "Modelica-Arduino",
+      "version": "0.3.0",
+      "description": "Simulate circuits and sketches on a virtual Arduino Uno in Modelica",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "Modelica-Arduino_v0.3.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/Modelica-Arduino/archive/refs/tags/v0.3.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica-Arduino_v0.3.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-drone-3d-fmi-1.0.0",
+      "language": "modelica",
+      "packageName": "Modelica-Drone-3D-FMI",
+      "version": "1.0.0",
+      "description": "DroneLibrary: Multi-Domain Drone Modeling in Modelica with 3D visualization and FMU export configuration",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Modelica-Drone-3D-FMI_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/Modelica-Drone-3D-FMI/archive/refs/tags/v1.0.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica-Drone-3D-FMI_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-externallibrary-1.0.0",
+      "language": "modelica",
+      "packageName": "Modelica-ExternalLibrary",
+      "version": "1.0.0",
+      "description": "Use C++ and Python objects in Modelica",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Modelica-ExternalLibrary_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/Modelica-ExternalLibrary/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica-ExternalLibrary_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-flight-1.0.0",
+      "language": "modelica",
+      "packageName": "modelica-flight",
+      "version": "1.0.0",
+      "description": "Flight dynamics library for Modelica.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "modelica-flight_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/modelica-flight/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/modelica-flight_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-gnu-scientificlibrary-1.0.0",
+      "language": "modelica",
+      "packageName": "Modelica-GNU_ScientificLibrary",
+      "version": "1.0.0",
+      "description": "Free library for accessing the GNU Scientific Library functions via Modelica",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Modelica-GNU_ScientificLibrary_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/Modelica-GNU_ScientificLibrary/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica-GNU_ScientificLibrary_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-ibpsa-3.0.0",
+      "language": "modelica",
+      "packageName": "modelica-ibpsa",
+      "version": "3.0.0",
+      "description": "Modelica library for building and district energy systems developed within IBPSA Project 1",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "modelica-ibpsa_v3.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/modelica-ibpsa/archive/refs/tags/v3.0.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/modelica-ibpsa_v3.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-mvem-1.0.1",
+      "language": "modelica",
+      "packageName": "Modelica-MVEM",
+      "version": "1.0.1",
+      "description": "Free Modelica Libraries resulting from the openProd combustion engine use case",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "Modelica-MVEM_v1.0.1.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/Modelica-MVEM/archive/refs/tags/v1.0.1.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica-MVEM_v1.0.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelicaads-1.0.1",
+      "language": "modelica",
+      "packageName": "ModelicaADS",
+      "version": "1.0.1",
+      "description": "This is a Modelica wrapper for TwinCATs ADS library. It provides functions for communicating with TwinCAT devices. ModelicaADS uses the C API AdsDLL.dll. The documentation for the ADS API is available on https://infosys.beckhoff.com/",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ModelicaADS_v1.0.1.zip",
+      "upstream": {
+        "url": "https://github.com/TechnicalBuildingSystems/ModelicaADS/archive/606dd3dd6817a1e8cfc543a0cb89ee0d1b2f4eac.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ModelicaADS_v1.0.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelicadevs-1.0.0",
+      "language": "modelica",
+      "packageName": "ModelicaDEVS",
+      "version": "1.0.0",
+      "description": "A free library for discrete-event modeling using the DEVS formalism. (unlicensed)",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ModelicaDEVS_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ModelicaDEVS/archive/a987aa9552fbbe71b2ee2e8c28958f9d213087ae.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ModelicaDEVS_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelicadfr-1.0.0",
+      "language": "modelica",
+      "packageName": "ModelicaDFR",
+      "version": "1.0.0",
+      "description": "A package for Modelica simulating Molten Salt Reactors",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ModelicaDFR_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ModelicaDFR/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ModelicaDFR_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelicatableadditions-1.0.0",
+      "language": "modelica",
+      "packageName": "ModelicaTableAdditions",
+      "version": "1.0.0",
+      "description": "\ud83d\udcca Extension of the CombiTable blocks of the Modelica Standard Library to additionally support cubic interpolation and reading of CSV, EPW (EnergyPlus Weather) and JSON files",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "ModelicaTableAdditions_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/tbeu/ModelicaTableAdditions/archive/452a4fa9ec13f4e63ed474bcd2b790705dbc7006.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ModelicaTableAdditions_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelicatutorials-1.0.0",
+      "language": "modelica",
+      "packageName": "ModelicaTutorials",
+      "version": "1.0.0",
+      "description": "A collection of Modelica tutorials on the topics that have not already been covered by others.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ModelicaTutorials_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ModelicaTutorials/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ModelicaTutorials_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-devicedrivers-2.2.0",
+      "language": "modelica",
+      "packageName": "Modelica_DeviceDrivers",
+      "version": "2.2.0",
+      "description": "Free library for interfacing hardware drivers to Modelica models. There is support for joysticks, keyboards, UDP, TCP/IP, LCM, MQTT, shared memory, AD/DA converters, serial port and other devices.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "Modelica_DeviceDrivers_v2.2.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/Modelica_DeviceDrivers/archive/f0ea4af79f50c7bd1e9560c88b3fb4d82f0f8e98.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica_DeviceDrivers_v2.2.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-requirements-0.7.0",
+      "language": "modelica",
+      "packageName": "Modelica_Requirements",
+      "version": "0.7.0",
+      "description": "Defining requirements formally and checking them when simulating",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Modelica_Requirements_v0.7.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/Modelica_Requirements/archive/90397485985a57aa9bdca009dfe3c9f5bc25e809.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica_Requirements_v0.7.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-stategraph2-2.1.1",
+      "language": "modelica",
+      "packageName": "Modelica_StateGraph2",
+      "version": "2.1.1",
+      "description": "Free Dymola library providing components to model discrete event, reactive and hybrid systems in a convenient way with deterministic hierarchical state diagrams. Modelica_StateGraph2 is not fully Modelica compliant and will never be, since a better solution is available with Modelica 3.3",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Modelica_StateGraph2_v2.1.1.zip",
+      "upstream": {
+        "url": "https://github.com/HansOlsson/Modelica_StateGraph2/archive/b2f5f2d7439f638b5765133a072bb031554fe471.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica_StateGraph2_v2.1.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modpowersystems-1.0.0",
+      "language": "modelica",
+      "packageName": "ModPowerSystems",
+      "version": "1.0.0",
+      "description": "Modelica open-source library ModPowerSystems",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "ModPowerSystems_v1.0.0.zip",
+      "upstream": {
+        "url": "https://git.rwth-aachen.de/acs/public/simulation/modpowersystems/-/archive/df3afce27d5e935c4111f392275744a655abe216/modpowersystems-df3afce27d5e935c4111f392275744a655abe216.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ModPowerSystems_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-momourensysi-1.0.0",
+      "language": "modelica",
+      "packageName": "MoMoUrEnSySi",
+      "version": "1.0.0",
+      "description": "MOdelica MOdels for URban ENergy SYstem SImulation",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "MoMoUrEnSySi_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/MoMoUrEnSySi/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/MoMoUrEnSySi_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-mosdh-1.1.0",
+      "language": "modelica",
+      "packageName": "MoSDH",
+      "version": "1.1.0",
+      "description": "Library for solar and geothermal district heating systems with seasonal storage",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "MoSDH_v1.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/MoSDH/archive/refs/tags/v1.1.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/MoSDH_v1.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-motorcycledynamics-0.7.0",
+      "language": "modelica",
+      "packageName": "MotorcycleDynamics",
+      "version": "0.7.0",
+      "description": "Free library for the dynamic simulation of a motorcycle, and tailored to test and validation of active control systems for motorcycle dynamics.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "MotorcycleDynamics_v0.7.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/MotorcycleDynamics/archive/refs/tags/v0.7.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/MotorcycleDynamics_v0.7.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-motorcyclelib-1.0.0",
+      "language": "modelica",
+      "packageName": "MotorcycleLib",
+      "version": "1.0.0",
+      "description": "Free Modelica library for the purpose of simulation, analysis and control of bicycles and motorcycles (single-track vehicles, uses BondLib)",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "MotorcycleLib_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/MotorcycleLib/archive/refs/tags/v1.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/MotorcycleLib_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-msgpack-modelica-0.2.0",
+      "language": "modelica",
+      "packageName": "msgpack-modelica",
+      "version": "0.2.0",
+      "description": "A MessagePack implementation as a Modelica package",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "msgpack-modelica_v0.2.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/msgpack-modelica/archive/refs/tags/v0.2.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/msgpack-modelica_v0.2.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-multibondlib-1.3.0",
+      "language": "modelica",
+      "packageName": "MultiBondLib",
+      "version": "1.3.0",
+      "description": "Free library to model physical systems with multi-bond graphs.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "MultiBondLib_v1.3.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/MultiBondLib/archive/refs/tags/v1.3.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/MultiBondLib_v1.3.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-multiphasemixturemedia-1.0.0",
+      "language": "modelica",
+      "packageName": "MultiPhaseMixtureMedia",
+      "version": "1.0.0",
+      "description": "MultiPhaseMixtureMedia is a framework for thermodynamic properties in Modelica including an external C/C++ Modelica property interface with back ends to CAPE-OPEN, RefProp and FluidProp.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "MultiPhaseMixtureMedia_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/MultiPhaseMixtureMedia/archive/refs/tags/v1.0.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/MultiPhaseMixtureMedia_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-nclib-0.82.0",
+      "language": "modelica",
+      "packageName": "NCLib",
+      "version": "0.82.0",
+      "description": "Free library for combined simulation of networks and controllers in the domain of automation systems.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "NCLib_v0.82.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/NCLib/archive/refs/tags/v0.82.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/NCLib_v0.82.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-netcdf-datareader-2.5.0",
+      "language": "modelica",
+      "packageName": "netCDF-DataReader",
+      "version": "2.5.0",
+      "description": "Modelica library for interfacing netCDF files using different interpolation and extrapolation methods",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "netCDF-DataReader_v2.5.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/netCDF-DataReader/archive/refs/tags/v2.5.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/netCDF-DataReader_v2.5.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-neuralnetwork-1.0.0",
+      "language": "modelica",
+      "packageName": "NeuralNetwork",
+      "version": "1.0.0",
+      "description": "Free library that provides a neural network mathematical model.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "life-sciences",
+      "pack": "life-sciences",
+      "filename": "NeuralNetwork_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/AMIT-HSBI/NeuralNetwork/archive/2add7e07681bba90d7f33b91feaaa43c2c0615e1.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/NeuralNetwork_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-noise-0.2.0",
+      "language": "modelica",
+      "packageName": "Noise",
+      "version": "0.2.0",
+      "description": "An open Library for the Generation of Stochastic Signals in Modelica",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Noise_v0.2.0.zip",
+      "upstream": {
+        "url": "https://github.com/DLR-SR/Noise/archive/e5f4c012d98f82b605477020d2dc792ad70d2114.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Noise_v0.2.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-objectstab-2.0.0",
+      "language": "modelica",
+      "packageName": "ObjectStab",
+      "version": "2.0.0",
+      "description": "A Modelica Library for Power System Stability Studies",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "ObjectStab_v2.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ObjectStab/archive/5ccca21c3c14d79d51b6522155ab23bbfeeb1311.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ObjectStab_v2.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-open-bldc-modelica-1.0.0",
+      "language": "modelica",
+      "packageName": "open-bldc-modelica",
+      "version": "1.0.0",
+      "description": "Multi physics simulation models for open-bldc",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "open-bldc-modelica_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/open-bldc-modelica/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/open-bldc-modelica_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-openfdm-1.0.0",
+      "language": "modelica",
+      "packageName": "openfdm",
+      "version": "1.0.0",
+      "description": "An open source flight dynamics library for Modelica",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "openfdm_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/openfdm/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/openfdm_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-openhydraulics-1.0.0",
+      "language": "modelica",
+      "packageName": "OpenHydraulics",
+      "version": "1.0.0",
+      "description": "A free Modelica package providing components describing 1-dimensional fluid flow in hydraulic circuits.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "OpenHydraulics_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/cparedis/OpenHydraulics/archive/d7832e6af944702db67c4a23bbbb3b429c272dde.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/OpenHydraulics_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-openimdml-1.0.0",
+      "language": "modelica",
+      "packageName": "OpenIMDML",
+      "version": "1.0.0",
+      "description": "Open Instance Multi-Domain Motor Library using Modelica",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "OpenIMDML_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/ALSETLab/OpenIMDML/archive/3447b44ba063802dce7fe7c66ce493d658dc3136.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/OpenIMDML_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-openmodelica-microgrids-1.0.0",
+      "language": "modelica",
+      "packageName": "OpenModelica_Microgrids",
+      "version": "1.0.0",
+      "description": "OpenModelica_Microgrids is a library to simulate three phase AC Microgrids. Usable as stand-alone version or part of the toolbox OpenModelica Microgrid Gym (https://github.com/upb-lea/openmodelica-microgrid-gym).",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "OpenModelica_Microgrids_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/upb-lea/OpenModelica_Microgrids/archive/23067b08010c1e60e8fcd95acbb3f6cf685c41e1.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/OpenModelica_Microgrids_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-optimisers-0.1.0",
+      "language": "modelica",
+      "packageName": "Optimisers",
+      "version": "0.1.0",
+      "description": "Modelica model-based optimisation library",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Optimisers_v0.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/harmanpa/Optimisers/archive/e33c69edaad6dad8029167b0ca00533964a6fe37.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Optimisers_v0.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-pdelib-1.0.0",
+      "language": "modelica",
+      "packageName": "PDELib",
+      "version": "1.0.0",
+      "description": "A free library for modeling systems described by 1D partial differential equations.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "PDELib_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/PDELib/archive/refs/tags/v1.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/PDELib_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-pharmacolibrary-1.0.0",
+      "language": "modelica",
+      "packageName": "Pharmacolibrary",
+      "version": "1.0.0",
+      "description": "Modelica open-source library Pharmacolibrary",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "life-sciences",
+      "pack": "life-sciences",
+      "filename": "Pharmacolibrary_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/creative-connections/Pharmacolibrary/archive/568ea6e0f0d5563dffcea9e63ab20420d22caee6.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Pharmacolibrary_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-photovoltaics-2.1.0",
+      "language": "modelica",
+      "packageName": "PhotoVoltaics",
+      "version": "2.1.0",
+      "description": "Modelica library for the simulation of photo voltaic cells and modules",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "PhotoVoltaics_v2.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/christiankral/PhotoVoltaics/archive/097631258eb78dd799e50b0ae750805b904b0306.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/PhotoVoltaics_v2.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-physiolibrary-3.0.0",
+      "language": "modelica",
+      "packageName": "Physiolibrary",
+      "version": "3.0.0",
+      "description": "Modelica library for Human Physiology",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "life-sciences",
+      "pack": "life-sciences",
+      "filename": "Physiolibrary_v3.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/MarekMatejak/Physiolibrary/archive/0ef8b5848b8bd08912a1713d0641b6bb03c3e3b2.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Physiolibrary_v3.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-physiomodel-1.1.0",
+      "language": "modelica",
+      "packageName": "Physiomodel",
+      "version": "1.1.0",
+      "description": "Mammalian physiology model in Modelica",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "life-sciences",
+      "pack": "life-sciences",
+      "filename": "Physiomodel_v1.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/physiology/Physiomodel/archive/856a41222bc046dce3550535c5fd513fcbf71b8d.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Physiomodel_v1.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-planarmechanics-1.6.0",
+      "language": "modelica",
+      "packageName": "PlanarMechanics",
+      "version": "1.6.0",
+      "description": "A free Modelica library for planar mechanical multi-body systems",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "PlanarMechanics_v1.6.0.zip",
+      "upstream": {
+        "url": "https://github.com/dzimmer/PlanarMechanics/archive/3ae99d218bf1331901efb7c93569f44b9c3c573a.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/PlanarMechanics_v1.6.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-pnlib-3.0.0",
+      "language": "modelica",
+      "packageName": "PNlib",
+      "version": "3.0.0",
+      "description": "Free library for modeling xHPN",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "PNlib_v3.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/AMIT-HSBI/PNlib/archive/8ed0c217a3ff2db4655d85b4e5446edfa0ecade0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/PNlib_v3.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-powergrids-1.0.3",
+      "language": "modelica",
+      "packageName": "PowerGrids",
+      "version": "1.0.3",
+      "description": "This repository contains the code for PowerGrids, a Modelica library for electro-mechanical modelling of power systems.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "PowerGrids_v1.0.3.zip",
+      "upstream": {
+        "url": "https://github.com/PowerGrids/PowerGrids/archive/1858e8b1d5234a3d9506e89da89c3c1df793b866.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/PowerGrids_v1.0.3.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-powersystems-2.0.0",
+      "language": "modelica",
+      "packageName": "PowerSystems",
+      "version": "2.0.0",
+      "description": "Free (standard conform) library that is intended to model electrical power systems at different levels of detail both in transient and steady-state mode.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "PowerSystems_v2.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/PowerSystems/archive/1ecfd2648d7cd54ed88926594455b713186529de.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/PowerSystems_v2.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-pow-el-1.0.0",
+      "language": "modelica",
+      "packageName": "pow_el",
+      "version": "1.0.0",
+      "description": "A Modelica library with building blocks for modeling of SMPS (switched - mode power supply) based power electronics applications.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "pow_el_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/pow_el/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/pow_el_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-praxissimulationstechnik-1.0.0",
+      "language": "modelica",
+      "packageName": "PraxisSimulationstechnik",
+      "version": "1.0.0",
+      "description": "Modelica library from Peter Junglas' book \"Praxis der Simulationstechnik\"",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "PraxisSimulationstechnik_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/PraxisSimulationstechnik/archive/7446be67ec1c931b1d43fb51721b23b495916c1f.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/PraxisSimulationstechnik_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-propulsionsystem-2022.12.17",
+      "language": "modelica",
+      "packageName": "PropulsionSystem",
+      "version": "2022.12.17",
+      "description": "Modelica lib. of propulsion&power system. Under active development",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "PropulsionSystem_v2022.12.17.zip",
+      "upstream": {
+        "url": "https://github.com/zeta-plusplus/PropulsionSystem/archive/35bf4756e6654e9df8874d583bf776380274e7d4.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/PropulsionSystem_v2022.12.17.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-pvsystems-0.6.3",
+      "language": "modelica",
+      "packageName": "PVSystems",
+      "version": "0.6.3",
+      "description": "A Modelica library for photovoltaic systems",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "PVSystems_v0.6.3.zip",
+      "upstream": {
+        "url": "https://github.com/raulrpearson/PVSystems/archive/e99fb5bcd583d17f0d8a9e2e2bcd51a1ed3fb060.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/PVSystems_v0.6.3.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-qcalc-0.3.3",
+      "language": "modelica",
+      "packageName": "QCalc",
+      "version": "0.3.3",
+      "description": "Modelica units based on quantity calculus",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "QCalc_v0.3.3.zip",
+      "upstream": {
+        "url": "https://github.com/kdavies4/QCalc/archive/af6c34dda691a9bdf7ca1de10650974b2d5cecf5.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/QCalc_v0.3.3.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-qssfluidflow-1.0.0",
+      "language": "modelica",
+      "packageName": "QSSFluidFlow",
+      "version": "1.0.0",
+      "description": "Free library for quasi steady-state fluid pipe flow.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "QSSFluidFlow_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/QSSFluidFlow/archive/d84a2c107132f2cd47ea3c3751238d69e4b1f64b.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/QSSFluidFlow_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-realtimecoordinationlibrary-1.0.4",
+      "language": "modelica",
+      "packageName": "RealTimeCoordinationLibrary",
+      "version": "1.0.4",
+      "description": "Enables modeling asynchronous and synchronous communication and rich real-time constraints for complex coordination protocols.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "RealTimeCoordinationLibrary_v1.0.4.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/RealTimeCoordinationLibrary/archive/5aaf3c3971850ff7ecdb1392b8ef020b605235e8.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/RealTimeCoordinationLibrary_v1.0.4.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-rotoraerolib-1.0.0",
+      "language": "modelica",
+      "packageName": "RotorAeroLib",
+      "version": "1.0.0",
+      "description": "A Modelica library for performing aerodynamics and stability analysis of rotorcraft",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "RotorAeroLib_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/ATAEngineering/RotorAeroLib/archive/ef0f5b62d22af7e5e515614aae5f8b7048fe9095.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/RotorAeroLib_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-scalabletestsuite-2.2.0",
+      "language": "modelica",
+      "packageName": "ScalableTestSuite",
+      "version": "2.2.0",
+      "description": "A suite of scalable Modelica test models",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ScalableTestSuite_v2.2.0.zip",
+      "upstream": {
+        "url": "https://github.com/casella/ScalableTestSuite/archive/ce9eedecd9f6c487d11cfc2ed9724e75c0229323.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ScalableTestSuite_v2.2.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-servomechanisms-1.0.0",
+      "language": "modelica",
+      "packageName": "Servomechanisms",
+      "version": "1.0.0",
+      "description": "Modelica package for simulation of simple 2 DOF servomechanisms",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Servomechanisms_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/afrhu/Servomechanisms/archive/f3a43f346a7471746bde9da69ca2b2bfbcc9101d.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Servomechanisms_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-shipsim-2.0.0",
+      "language": "modelica",
+      "packageName": "ShipSIM",
+      "version": "2.0.0",
+      "description": "Modelica library for naval architecture simulations",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "ShipSIM_v2.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ShipSIM/archive/refs/tags/v2.0.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ShipSIM_v2.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-smartiint-0.2.2",
+      "language": "modelica",
+      "packageName": "SMArtIInt",
+      "version": "0.2.2",
+      "description": "Simple Modelica Artificial Intelligence Interface",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "SMArtIInt_v0.2.2.zip",
+      "upstream": {
+        "url": "https://github.com/xrg-simulation/SMArtIInt/archive/d0e8b787082356f51471f4e894ad1f83556ffb59.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/SMArtIInt_v0.2.2.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-smehv-1.0.0",
+      "language": "modelica",
+      "packageName": "SMEHV",
+      "version": "1.0.0",
+      "description": "Simplified Modelling of Electric&Hybrid Vehicles",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "SMEHV_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/SMEHV/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/SMEHV_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-solartherm-0.2.0",
+      "language": "modelica",
+      "packageName": "SolarTherm",
+      "version": "0.2.0",
+      "description": "Solar thermal power station performance simulation and optimisation using Modelica. Read a paper about their project: https://is.gd/solth",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "SolarTherm_v0.2.0.zip",
+      "upstream": {
+        "url": "https://github.com/SolarTherm/SolarTherm/archive/b5614b12ed96b3bb47b3f5d28c1b194110ed93de.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/SolarTherm_v0.2.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-soltermica-1.0.0",
+      "language": "modelica",
+      "packageName": "Soltermica",
+      "version": "1.0.0",
+      "description": "Low-Temperature Solar Thermal Systems Modelica Libary",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "Soltermica_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/gheralb/Soltermica/archive/9f7224bd89335f95dffe1ccdaa094df5a3279fdf.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Soltermica_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-spicelib-1.1.0",
+      "language": "modelica",
+      "packageName": "SPICELib",
+      "version": "1.1.0",
+      "description": "Free library with some of the modeling and analysis capabilities of the electric circuit simulator PSPICE.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "SPICELib_v1.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/SPICELib/archive/refs/tags/v1.1.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/SPICELib_v1.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-spot-0.706.1",
+      "language": "modelica",
+      "packageName": "Spot",
+      "version": "0.706.1",
+      "description": "Free library providing components to model power systems both in transient and steady-state mode.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "Spot_v0.706.1.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/Spot/archive/b5c084ca0cbb13ba137ac2c449240410cecfaaf1.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Spot_v0.706.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-systemdynamics-2.1.2",
+      "language": "modelica",
+      "packageName": "SystemDynamics",
+      "version": "2.1.2",
+      "description": "Free library for modeling according to the principles of system dynamics of J. Forrester.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "SystemDynamics_v2.1.2.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/SystemDynamics/archive/e5aed2e3673616c0175c08ac8453a02c30d0d119.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/SystemDynamics_v2.1.2.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-techthermo-1.0.0",
+      "language": "modelica",
+      "packageName": "TechThermo",
+      "version": "1.0.0",
+      "description": "Free library for technical thermodynamics. (unlicensed)",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "TechThermo_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/TechThermo/archive/refs/tags/v1.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/TechThermo_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-thermalmatters-0.3.3",
+      "language": "modelica",
+      "packageName": "ThermalMatters",
+      "version": "0.3.3",
+      "description": "Extension of MSL Thermal Library",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "ThermalMatters_v0.3.3.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ThermalMatters/archive/refs/tags/v0.3.3.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ThermalMatters_v0.3.3.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-thermalseparation-0.2.0",
+      "language": "modelica",
+      "packageName": "ThermalSeparation",
+      "version": "0.2.0",
+      "description": "The ThermalSeparation library is an open-source Modelica library developed at Technische Universit\u00e4t Hamburg-Harburg.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "ThermalSeparation_v0.2.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ThermalSeparation/archive/fd1928130a9a46effefb5f6a117d2e2c7c7637cf.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ThermalSeparation_v0.2.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-thermobondlib-2.1.0",
+      "language": "modelica",
+      "packageName": "ThermoBondLib",
+      "version": "2.1.0",
+      "description": "Free library library that is designed as a graphical library for modeling convective flows using the thermo-bond graph metaphor (uses BondLib)",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "ThermoBondLib_v2.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/ThermoBondLib/archive/refs/tags/v2.1.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ThermoBondLib_v2.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-thermocycle-library-2.0.0",
+      "language": "modelica",
+      "packageName": "Thermocycle-library",
+      "version": "2.0.0",
+      "description": "Thermocycle library",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "Thermocycle-library_v2.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/Thermocycle-library/archive/refs/tags/v2.0.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Thermocycle-library_v2.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-thermofluidstream-1.0.0",
+      "language": "modelica",
+      "packageName": "ThermofluidStream",
+      "version": "1.0.0",
+      "description": "The DLR Thermofluid Stream Library",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "ThermofluidStream_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/DLR-SR/ThermofluidStream/archive/049904d82787acc75ad83ada86ab3b961816fe87.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ThermofluidStream_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-thermopower-3.1.0",
+      "language": "modelica",
+      "packageName": "ThermoPower",
+      "version": "3.1.0",
+      "description": "A Modelica library for thermal power generation system modelling",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "ThermoPower_v3.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/casella/ThermoPower/archive/e2b011ac7fd90f9cf5771f29f1aefa160550b6ee.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ThermoPower_v3.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-thermosyspro-4.1.0",
+      "language": "modelica",
+      "packageName": "ThermoSysPro",
+      "version": "4.1.0",
+      "description": "ThermoSysPro is a library providing model components in the disciplines of thermal hydraulics and instrumentation and control.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "ThermoSysPro_v4.1.0.zip",
+      "upstream": {
+        "url": "https://gitlab.pam-retd.fr/thermosysproandco/ThermoSysPro/-/archive/d3d2cc3b84b8a030c61907756c263e7140061f41/ThermoSysPro-d3d2cc3b84b8a030c61907756c263e7140061f41.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ThermoSysPro_v4.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-tilmediaclara-1.9.0",
+      "language": "modelica",
+      "packageName": "TILMediaClaRa",
+      "version": "1.9.0",
+      "description": "TILMedia ClaRa is a Modelica library implemented in C/C++.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "TILMediaClaRa_v1.9.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/TILMediaClaRa/archive/refs/tags/1.9.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/TILMediaClaRa_v1.9.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-transform-library-1.1.0",
+      "language": "modelica",
+      "packageName": "TRANSFORM-Library",
+      "version": "1.1.0",
+      "description": "A Dymola library for modeling thermal hydraulic energy systems and other multi-physics systems",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "TRANSFORM-Library_v1.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/TRANSFORM-Library/archive/refs/tags/v1.1.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/TRANSFORM-Library_v1.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-urdfmodelica-0.3.6",
+      "language": "modelica",
+      "packageName": "urdfmodelica",
+      "version": "0.3.6",
+      "description": "Standalone simple Modelica URDF robots",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "urdfmodelica_v0.3.6.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/urdfmodelica/archive/refs/tags/0.3.6.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/urdfmodelica_v0.3.6.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-verif-2.2.0",
+      "language": "modelica",
+      "packageName": "Verif",
+      "version": "2.2.0",
+      "description": "A free library for verifying the ModelicaSpice library (part of BondLib).",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "Verif_v2.2.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/Verif/archive/refs/tags/v2.2.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Verif_v2.2.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-vvdrlib-1.0.0",
+      "language": "modelica",
+      "packageName": "VVDRlib",
+      "version": "1.0.0",
+      "description": "A Modelica library with abstractions for requirement modelling",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "VVDRlib_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/lenaRB/VVDRlib/archive/eae4981674642eddffc7f2aa3690320fcaddee0e.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/VVDRlib_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-wastewater-2.1.0",
+      "language": "modelica",
+      "packageName": "WasteWater",
+      "version": "2.1.0",
+      "description": "Free library for modelling and simulation of waste water treatment plants.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "WasteWater_v2.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/WasteWater/archive/0c5eecaadf82cd9e3a6a4ffa6241903e38fd1946.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/WasteWater_v2.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-waterhub-1.0.0",
+      "language": "modelica",
+      "packageName": "WaterHub",
+      "version": "1.0.0",
+      "description": "Modelica Package for the modeling of household-level water systems",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "WaterHub_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/WaterHub/archive/c0fd0edab8b44743bcca60f3c5e3b7bbf6a30b88.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/WaterHub_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-wavelet-1.0.0",
+      "language": "modelica",
+      "packageName": "Wavelet",
+      "version": "1.0.0",
+      "description": "Modelica Wavelet Library",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Wavelet_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/Wavelet/archive/0efd31402f62014dc8f4774e043b45428f390156.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Wavelet_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-wheelsandtires-1.0.0",
+      "language": "modelica",
+      "packageName": "WheelsAndTires",
+      "version": "1.0.0",
+      "description": "Free Modelica package providing the easily modifiable tire models. (uses BondLib and MultiBondLib)",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "WheelsAndTires_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-3rdparty/WheelsAndTires/archive/refs/tags/v1.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/WheelsAndTires_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-windpowerplants-2.0.0",
+      "language": "modelica",
+      "packageName": "WindPowerPlants",
+      "version": "2.0.0",
+      "description": "The WindPowerPlants library is an open source library for the simulation of wind power plants. The library provides models of wind turbines, generators and control.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "WindPowerPlants_v2.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/christiankral/WindPowerPlants/archive/a4f6df4c8ac04ccd5ef2a6b9276f5ca328d62e04.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/WindPowerPlants_v2.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-xogenytest-1.1.0",
+      "language": "modelica",
+      "packageName": "XogenyTest",
+      "version": "1.1.0",
+      "description": "An example of a testing framework written in 100% Modelica",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "XogenyTest_v1.1.0.zip",
+      "upstream": {
+        "url": "https://github.com/xogeny/XogenyTest/archive/4410a3224e1803565d57ff323c3bef5a4bfd6b4d.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/XogenyTest_v1.1.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-instantaneoussymmetricalcomponents-1.0.0",
+      "language": "modelica",
+      "packageName": "InstantaneousSymmetricalComponents",
+      "version": "1.0.0",
+      "description": "Archived from svn.modelica.org",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "InstantaneousSymmetricalComponents_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-deprecated/InstantaneousSymmetricalComponents/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/InstantaneousSymmetricalComponents_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelicaadditions-1.5.0",
+      "language": "modelica",
+      "packageName": "ModelicaAdditions",
+      "version": "1.5.0",
+      "description": "All components of this library have been incorporated in an improved form into the Modelica Standard Library in version 2.1",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ModelicaAdditions_v1.5.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-deprecated/ModelicaAdditions/archive/568db43766186826b880f9d4bfafeff25cc2c4ab.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ModelicaAdditions_v1.5.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-electricalenergystorages-1.0.0",
+      "language": "modelica",
+      "packageName": "Modelica_ElectricalEnergyStorages",
+      "version": "1.0.0",
+      "description": "Archived from svn.modelica.org",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "Modelica_ElectricalEnergyStorages_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-deprecated/Modelica_ElectricalEnergyStorages/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica_ElectricalEnergyStorages_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-electrical-powerconverters-201.4.0",
+      "language": "modelica",
+      "packageName": "Modelica_Electrical_PowerConverters",
+      "version": "201.4.0",
+      "description": "Archived from svn.modelica.org",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "Modelica_Electrical_PowerConverters_v201.4.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-deprecated/Modelica_Electrical_PowerConverters/archive/refs/tags/Modelica_Electrical_PowerConverters%201.4.0@7785.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica_Electrical_PowerConverters_v201.4.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-fluid-1.0.0",
+      "language": "modelica",
+      "packageName": "Modelica_Fluid",
+      "version": "1.0.0",
+      "description": "Free library from the Modelica Association providing components to model 1-dimensional thermo-fluid flow in networks of vessels, pipes, fluid machines, valves and fittings. This library is included in the Modelica Standard Library since version 3.1.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "fluids-process",
+      "pack": "fluids-process",
+      "filename": "Modelica_Fluid_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-deprecated/Modelica_Fluid/archive/refs/tags/v1.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica_Fluid_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-fundamentalwave-0.6.0",
+      "language": "modelica",
+      "packageName": "Modelica_FundamentalWave",
+      "version": "0.6.0",
+      "description": "Free library for the modeling of spatial fundamental wave effects of electro magnetic quantities in electric machines. (Still using Modelica Standard Library 2.2.2!) This library is included in the Modelica Standard Library since version 3.1.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "Modelica_FundamentalWave_v0.6.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-deprecated/Modelica_FundamentalWave/archive/refs/tags/v0.6.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica_FundamentalWave_v0.6.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-magnetic-1.0.0",
+      "language": "modelica",
+      "packageName": "Modelica_Magnetic",
+      "version": "1.0.0",
+      "description": "Free library for modelling of electromagnetic devices with lumped magnetic networks. This library is included in the Modelica Standard Library since version 3.1.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Modelica_Magnetic_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-deprecated/Modelica_Magnetic/archive/refs/tags/v1.0.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica_Magnetic_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-powerflow-1.0.0",
+      "language": "modelica",
+      "packageName": "Modelica_PowerFlow",
+      "version": "1.0.0",
+      "description": "Archived from svn.modelica.org",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "Modelica_PowerFlow_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-deprecated/Modelica_PowerFlow/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica_PowerFlow_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-quasistatic-fluxtubes-1.0.0",
+      "language": "modelica",
+      "packageName": "Modelica_QuasiStatic_FluxTubes",
+      "version": "1.0.0",
+      "description": "Archived from svn.modelica.org",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "Modelica_QuasiStatic_FluxTubes_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-deprecated/Modelica_QuasiStatic_FluxTubes/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica_QuasiStatic_FluxTubes_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-quasistationary-0.9.3",
+      "language": "modelica",
+      "packageName": "Modelica_Quasistationary",
+      "version": "0.9.3",
+      "description": "Free library for the analysis of electrical circuits with purely sinusoidal voltages and currents. With this library single and multi phase circuits can be modelled. (Still uses Modelica Standard Library 2.2.2!) This library is included in the MSL starting from version 3.2.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "Modelica_Quasistationary_v0.9.3.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-deprecated/Modelica_Quasistationary/archive/refs/tags/v0.9.3.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica_Quasistationary_v0.9.3.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-modelica-synchronous-0.93.0",
+      "language": "modelica",
+      "packageName": "Modelica_Synchronous",
+      "version": "0.93.0",
+      "description": "Free (standard conforming) library to precisely define and synchronize sampled data systems with different sampling rates. It provides convenient to use blocks to utilize the new synchronous language elements introduced in Modelica 3.3.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "power-energy",
+      "pack": "power-energy",
+      "filename": "Modelica_Synchronous_v0.93.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica/Modelica_Synchronous/archive/c8350276bfd945086962cf4150ba941b9c57ed13.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/Modelica_Synchronous_v0.93.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-multibody-1.0.1",
+      "language": "modelica",
+      "packageName": "MultiBody",
+      "version": "1.0.1",
+      "description": "Deprecated library which is part of the Modelica Standard Library since version 2.1.",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "mobility-auto",
+      "pack": "mobility-auto",
+      "filename": "MultiBody_v1.0.1.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-deprecated/MultiBody/archive/refs/tags/v1.0.1.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/MultiBody_v1.0.1.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-obsoletemodelica3-3.2.3",
+      "language": "modelica",
+      "packageName": "ObsoleteModelica3",
+      "version": "3.2.3",
+      "description": "Library that contains components from Modelica Standard Library 2.2.2 that have been removed from version 3.0",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "ObsoleteModelica3_v3.2.3.zip",
+      "upstream": {
+        "url": "https://github.com/OpenModelica/OpenModelica-ModelicaStandardLibrary/archive/efd981a1176f124938d6d6759f7c09e0fbf55ddf.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/ObsoleteModelica3_v3.2.3.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
+    },
+    {
+      "id": "modelica-quasistaticfundamentalwave-1.0.0",
+      "language": "modelica",
+      "packageName": "QuasiStaticFundamentalWave",
+      "version": "1.0.0",
+      "description": "Archived from svn.modelica.org",
+      "license": "BSD-3-Clause",
+      "tier": "tier3_ondemand",
+      "domain": "systems-physics",
+      "pack": "core",
+      "filename": "QuasiStaticFundamentalWave_v1.0.0.zip",
+      "upstream": {
+        "url": "https://github.com/modelica-deprecated/QuasiStaticFundamentalWave/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://ansatz.social/lsp/server/dist/QuasiStaticFundamentalWave_v1.0.0.zip",
+        "archiveType": "zip"
+      },
+      "minExpectedClasses": 20
     }
   ]
 }

@@ -12,19 +12,23 @@ import {
   tggEq,
   tggRule,
 } from "@modelscript/dsl";
+import { indexOwl2Document } from "./indexing.js";
 
 /**
- * Language definition for OWL 2 Functional-Style Syntax (`.owl`, `.owl2`, `.ofn`, `.ttl`),
+ * Language definition for OWL 2 Functional-Style Syntax (`.owl`, `.owl2`, `.ofn`, `.owx`, `.ttl`),
  * providing the native GLR grammar, reasoning/query IDE actions, MCP server tools,
  * and Triple Graph Grammar (TGG) synchronization rules with SysML v2 and Modelica.
  */
 export const owl2Language = language({
   name: "owl2",
   displayName: "OWL 2",
-  fileExtensions: [".owl", ".owl2", ".ofn", ".ttl"],
+  fileExtensions: [".owl", ".owl2", ".ofn", ".owx", ".ttl", ".rdf"],
   maturity: "stable",
+  indexing: {
+    indexFile: indexOwl2Document,
+  },
   lsp: {
-    fileExtensions: [".owl", ".owl2", ".ofn", ".ttl"],
+    fileExtensions: [".owl", ".owl2", ".ofn", ".owx", ".ttl", ".rdf"],
     icons: {
       light: "./assets/owl2/icon-light.png",
       dark: "./assets/owl2/icon-dark.png",

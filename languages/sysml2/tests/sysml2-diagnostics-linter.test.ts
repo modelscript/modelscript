@@ -97,7 +97,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
     const db = qe.toQueryDB();
 
@@ -144,7 +144,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
     const db = qe.toQueryDB();
 
@@ -183,7 +183,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
     const db = qe.toQueryDB();
 
@@ -215,7 +215,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
     const db = qe.toQueryDB();
 
@@ -260,7 +260,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
     const db = qe.toQueryDB();
 
@@ -337,7 +337,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
     const db = qe.toQueryDB();
 
@@ -385,7 +385,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
     const db = qe.toQueryDB();
 
@@ -430,7 +430,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
 
     const diags = qe.runAllLints(uri);
@@ -472,7 +472,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
     const db = qe.toQueryDB();
 
@@ -534,7 +534,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
     const db = qe.toQueryDB();
 
@@ -586,7 +586,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
     const db = qe.toQueryDB();
 
@@ -645,7 +645,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
     const db = qe.toQueryDB();
 
@@ -786,7 +786,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
     sysmlWs.indexDocument(uri, () => currentTree.rootNode);
     sysmlWs.takeGlobalChangedIds();
 
-    const engine = createSysML2QueryEngine(unifiedWs.toUnifiedPartial(), {
+    const engine = createSysML2QueryEngine(unifiedWs.getIndex(), {
       getText: (s: number, e: number) => currentText.slice(s, e),
       getNode: (s: number, e: number) => currentTree.rootNode.descendantForIndex(s, Math.max(s, e)),
     });
@@ -804,7 +804,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       edit1.newEndIndex - edit1.oldEndIndex,
     );
     const changed1 = sysmlWs.takeGlobalChangedIds()!;
-    engine.swapIndex(unifiedWs.toUnifiedPartial(), changed1.changedIds, changed1.structuralChangedIds);
+    engine.swapIndex(unifiedWs.getIndex(), changed1.changedIds, changed1.structuralChangedIds);
     const diags2 = (await engine.runAllLintsAsync(uri)).filter((d) => d.severity === "error");
     assert.strictEqual(diags2.length, 1);
     assert.strictEqual(diags2[0]!.code, 2002);
@@ -820,7 +820,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       edit2.newEndIndex - edit2.oldEndIndex,
     );
     const changed2 = sysmlWs.takeGlobalChangedIds()!;
-    engine.swapIndex(unifiedWs.toUnifiedPartial(), changed2.changedIds, changed2.structuralChangedIds);
+    engine.swapIndex(unifiedWs.getIndex(), changed2.changedIds, changed2.structuralChangedIds);
     const diags3 = (await engine.runAllLintsAsync(uri)).filter((d) => d.severity === "error");
     assert.strictEqual(diags3.length, 0);
   });
@@ -860,7 +860,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       const tree = parser.parse(code);
       return tree ? (tree.rootNode as any) : null;
     });
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
     const db = qe.toQueryDB();
 
@@ -923,7 +923,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
     const db = qe.toQueryDB();
 
@@ -989,7 +989,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
     const db = qe.toQueryDB();
 
@@ -1041,7 +1041,7 @@ describe("SysML v2 Structured Error Codes, Static Diagnostics & Frontend Type Ch
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified, parser.parse(code));
     const db = qe.toQueryDB();
 

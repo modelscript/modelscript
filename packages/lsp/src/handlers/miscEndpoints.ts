@@ -275,7 +275,7 @@ export function registerMiscEndpoints(context: LspContext) {
 
   context.connection.onRequest("modelscript/getTraceabilityMatrix", (_params: { uri: string }) => {
     try {
-      const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+      const db = context.workspaceManager.unifiedWorkspace.getIndex();
       return getTraceabilityMatrix(db); // Do not filter by uri to show workspace-level traceability
     } catch (e) {
       console.error("[traceability] Error:", e);
@@ -285,7 +285,7 @@ export function registerMiscEndpoints(context: LspContext) {
 
   context.connection.onRequest("modelscript/resolveMarkdownVars", (): { values: Record<string, string> } => {
     try {
-      const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+      const db = context.workspaceManager.unifiedWorkspace.getIndex();
       const values: Record<string, string> = {};
 
       for (const entry of db.symbols.values()) {
@@ -379,14 +379,14 @@ export function registerMiscEndpoints(context: LspContext) {
           oldTree = langParser.parse(change.oldText);
           const oldWs = isSysml ? createSysML2WorkspaceIndex() : createModelicaWorkspaceIndex();
           oldWs.reindexDocument(change.uri, () => oldTree.rootNode);
-          const oldIndex = oldWs.toUnifiedPartial();
+          const oldIndex = oldWs.getIndex();
           const oldDb = isSysml ? createSysML2QueryEngine(oldIndex) : createModelicaQueryEngine(oldIndex);
           const oldRootEntries = oldIndex.childrenOf.get(null) || [];
 
           newTree = langParser.parse(change.newText);
           const newWs = isSysml ? createSysML2WorkspaceIndex() : createModelicaWorkspaceIndex();
           newWs.reindexDocument(change.uri, () => newTree.rootNode);
-          const newIndex = newWs.toUnifiedPartial();
+          const newIndex = newWs.getIndex();
           const newDb = isSysml ? createSysML2QueryEngine(newIndex) : createModelicaQueryEngine(newIndex);
           const newRootEntries = newIndex.childrenOf.get(null) || [];
 
@@ -492,7 +492,7 @@ export function registerMiscEndpoints(context: LspContext) {
         if (typeof oldWs.reindexDocument === "function") {
           oldWs.reindexDocument(params.uri, () => oldTree.rootNode);
         }
-        const oldIndex = typeof oldWs.toUnifiedPartial === "function" ? oldWs.toUnifiedPartial() : oldWs;
+        const oldIndex = typeof oldWs.getIndex === "function" ? oldWs.getIndex() : oldWs;
         const oldDb = createDb(oldIndex);
         const oldRootEntries = oldIndex?.childrenOf?.get(null) || [];
 
@@ -501,7 +501,7 @@ export function registerMiscEndpoints(context: LspContext) {
         if (typeof newWs.reindexDocument === "function") {
           newWs.reindexDocument(params.uri, () => newTree.rootNode);
         }
-        const newIndex = typeof newWs.toUnifiedPartial === "function" ? newWs.toUnifiedPartial() : newWs;
+        const newIndex = typeof newWs.getIndex === "function" ? newWs.getIndex() : newWs;
         const newDb = createDb(newIndex);
         const newRootEntries = newIndex?.childrenOf?.get(null) || [];
 

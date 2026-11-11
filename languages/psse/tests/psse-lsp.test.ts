@@ -191,17 +191,19 @@ describe("PSS/E LSP Services & DAE Lowering (@modelscript/psse)", () => {
     assert.equal(simRes.summary.stable, true);
   });
 
-  it("pairs companion .raw and .dyr files in PsseWorkspaceIndex and enables cross-file hover and Go-to-Definition", async () => {
-    const { PsseWorkspaceIndex } = await import("../src/workspace-index.js");
-    const ws = new PsseWorkspaceIndex();
+  it("pairs companion .raw and .dyr files in UnifiedWorkspace and enables cross-file hover and Go-to-Definition", async () => {
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    const { psseLanguage, findCompanionPsseDyr, findCompanionPsseRaw, getMergedPsseCase } =
+      await import("../src/index.js");
+    const ws = new UnifiedWorkspace(psseLanguage);
     const rawUri = "file:///workspace/ieee14.raw";
     const dyrUri = "file:///workspace/ieee14.dyr";
-    ws.indexFile(rawUri, IEEE_14_RAW);
-    ws.indexFile(dyrUri, SAMPLE_DYR);
+    ws.setDocument(rawUri, IEEE_14_RAW);
+    ws.setDocument(dyrUri, SAMPLE_DYR);
 
-    assert.equal(ws.findCompanionDyr(rawUri)?.uri, dyrUri);
-    assert.equal(ws.findCompanionRaw(dyrUri)?.uri, rawUri);
-    const merged = ws.getMergedCase(rawUri);
+    assert.equal(findCompanionPsseDyr(ws, rawUri)?.uri, dyrUri);
+    assert.equal(findCompanionPsseRaw(ws, dyrUri)?.uri, rawUri);
+    const merged = getMergedPsseCase(ws, rawUri);
     assert.ok(merged?.dyr);
     assert.equal(merged?.dyr?.records.length, 2);
 
@@ -235,13 +237,14 @@ describe("PSS/E LSP Services & DAE Lowering (@modelscript/psse)", () => {
     assert.equal(dyrHints.length, 2);
     assert.ok(dyrHints[0]?.label.includes("Td0p=6.5"));
 
-    // Atomic Bus Rename: renumber Bus 2 -> Bus 202 across .raw and companion .dyr
-    const { PsseWorkspaceIndex } = await import("../src/workspace-index.js");
-    const ws = new PsseWorkspaceIndex();
+    // Atomic Bus Rename: renumber Bus 1 -> Bus 101 across .raw and companion .dyr
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    const { psseLanguage } = await import("../src/index.js");
+    const ws = new UnifiedWorkspace(psseLanguage);
     const rawUri = "file:///workspace/ieee14.raw";
     const dyrUri = "file:///workspace/ieee14.dyr";
-    ws.indexFile(rawUri, IEEE_14_RAW);
-    ws.indexFile(dyrUri, SAMPLE_DYR);
+    ws.setDocument(rawUri, IEEE_14_RAW);
+    ws.setDocument(dyrUri, SAMPLE_DYR);
 
     const renameEdit = getPsseRenameEdits(IEEE_14_RAW, { line: 3, character: 0 }, "101", rawUri, ws);
     assert.ok(renameEdit);

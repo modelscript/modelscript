@@ -3,6 +3,7 @@
 export * from "./dae/swmm-to-dae.js";
 export * from "./errors.js";
 export * from "./exporters/index.js";
+export * from "./indexing.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";
@@ -22,4 +23,3 @@ export * from "./solver/swmm-quality.js";
 export * from "./solver/swmm-rtc.js";
 export * from "./spatial/index.js";
 export * from "./types.js";
-export * from "./workspace-index.js";

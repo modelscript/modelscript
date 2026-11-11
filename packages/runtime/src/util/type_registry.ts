@@ -162,7 +162,7 @@ export class WorkspaceTypeRegistry {
     // 4. Dynamic workspace symbol resolution
     if (workspace) {
       try {
-        const symbolIdx = typeof workspace.toSymbolIndex === "function" ? workspace.toSymbolIndex() : null;
+        const symbolIdx = typeof workspace.getIndex === "function" ? workspace.getIndex({ eager: true }) : null;
         if (symbolIdx && symbolIdx.byName) {
           // Check if target type exists under exact name or synonym in target language
           const shortName = sourceType.split(".").pop()?.split("::").pop() ?? sourceType;

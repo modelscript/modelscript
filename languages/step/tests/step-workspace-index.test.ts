@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { stepLanguage } from "../src/language.js";
-import { StepWorkspaceIndex } from "../src/workspace-index.js";
+import { getStepAssemblyModel, indexStepDocument, stepLanguage } from "../src/index.js";
 
-describe("StepWorkspaceIndex and STEP LSP Handlers", () => {
+describe("STEP UnifiedWorkspace Indexing and STEP LSP Handlers", () => {
   const sampleUri = "memfs:/drone-meshing/drone.step";
   const sampleText = `ISO-10303-21;
 HEADER;
@@ -19,44 +19,35 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;`;
 
-  it("implements IWorkspaceIndex with has, getFileIndex, register, and reindexDocument", async () => {
-    const index = new StepWorkspaceIndex();
+  it("indexes STEP products, shapes, and assembly models into UnifiedWorkspace via getIndex()", async () => {
+    const ws = new UnifiedWorkspace(stepLanguage);
 
-    assert.strictEqual(typeof index.has, "function");
-    assert.strictEqual(typeof index.getFileIndex, "function");
-    assert.strictEqual(typeof index.register, "function");
-    assert.strictEqual(typeof index.reindexDocument, "function");
+    assert.strictEqual(ws.hasDocument(sampleUri), false);
+    assert.strictEqual(ws.getFileIndex(sampleUri), undefined);
 
-    assert.strictEqual(index.has(sampleUri), false);
-    assert.strictEqual(index.getFileIndex(sampleUri), undefined);
+    const initialRev = ws.version;
+    ws.setDocument(sampleUri, sampleText);
+    assert.ok(ws.version > initialRev);
+    assert.strictEqual(ws.hasDocument(sampleUri), true);
 
-    index.register(sampleUri);
-    assert.strictEqual(index.has(sampleUri), true);
-    assert.ok(index.getFileIndex(sampleUri));
-
-    const initialRev = index.version;
-    index.reindexDocument(sampleUri);
-    assert.ok(index.version > initialRev);
-
-    // Parse actual content
-    const buffer = new TextEncoder().encode(sampleText);
-    await index.parseStepFile(sampleUri, buffer);
-
-    assert.strictEqual(index.has(sampleUri), true);
-    const fileIndex = index.getFileIndex(sampleUri);
+    const fileIndex = ws.getFileIndex(sampleUri);
     assert.ok(fileIndex);
     assert.ok(fileIndex.symbols.size > 0);
+    assert.ok(ws.getIndex().byName.has("DroneChassis"));
+    assert.ok(ws.getIndex().byName.has("CentralBody"));
+    assert.ok(getStepAssemblyModel(ws, sampleUri));
+
+    const buffer = new TextEncoder().encode(sampleText);
+    const asyncIndex = await indexStepDocument(ws, sampleUri, buffer);
+    assert.ok(asyncIndex.symbols.size > 0);
   });
 
   it("returns meshes from modelscript/getStepMeshes handler for STEP files", async () => {
-    const wsIndex = new StepWorkspaceIndex();
+    const ws = new UnifiedWorkspace(stepLanguage);
+    ws.setDocument(sampleUri, sampleText);
     const mockContext = {
       workspaceManager: {
-        stepWorkspaceIndex: wsIndex,
-        getWorkspaceIndex: (id: string) => (id === "step" ? wsIndex : null),
-        unifiedWorkspace: {
-          toUnifiedPartial: () => wsIndex.toUnified(),
-        },
+        unifiedWorkspace: ws,
       },
       documentManager: {
         documentTrees: new Map([[sampleUri, { text: sampleText }]]),

@@ -7,6 +7,7 @@
 import { language } from "@modelscript/dsl";
 import { processTelemetryStream } from "./analysis/telemetry-processor.js";
 import { lowerDnp3ToDae } from "./dae/dnp3-to-dae.js";
+import { canIndexDnp3, indexDnp3Document } from "./indexing.js";
 import { lintDnp3Profile } from "./lints/index.js";
 import { parseDnp3 } from "./parser/dnp3-parser.js";
 import { writeDnp3Xml } from "./parser/dnp3-writer.js";
@@ -15,6 +16,10 @@ export const dnp3Language = language({
   name: "dnp3",
   fileExtensions: [".dnp3", ".xml", ".json"],
   maturity: "beta",
+  indexing: {
+    indexFile: indexDnp3Document,
+    canIndex: canIndexDnp3,
+  },
   lsp: {
     fileExtensions: [".dnp3", ".xml", ".json"],
   },

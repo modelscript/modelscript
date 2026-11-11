@@ -6,13 +6,28 @@
 
 import { language } from "@modelscript/dsl";
 import { lowerOpticalEdfaToDae } from "./dae/optical-to-dae.js";
+import { indexOpticalFile } from "./indexing.js";
 import { lintOpticalTopology } from "./lints/optical-linter.js";
 import { parseOpenRoadmTopology } from "./parser/openroadm-parser.js";
 
 export const opticalLanguage = language({
   name: "optical",
-  fileExtensions: [".sor", ".openroadm.json"],
+  fileExtensions: [".sor", ".openroadm.json", ".json"],
   maturity: "stable",
+  indexing: {
+    indexFile: indexOpticalFile,
+    canIndex: (uri, text) => {
+      const lower = uri.toLowerCase();
+      if (lower.endsWith(".sor") || lower.endsWith(".openroadm.json")) return true;
+      return Boolean(
+        text &&
+        (text.includes("network-name") ||
+          text.includes("openroadm") ||
+          text.includes("node-type") ||
+          text.includes("attenuation-db-per-km")),
+      );
+    },
+  },
   lsp: {
     fileExtensions: [".sor", ".openroadm.json"],
   },
@@ -33,7 +48,8 @@ export const opticalLanguage = language({
     {
       id: "optical_to_dae",
       title: "Lower Optical EDFA to DAE",
-      description: "Compiles dynamic Erbium-Doped Fiber Amplifier (EDFA) gain saturation differential equations into DAEBuilder.",
+      description:
+        "Compiles dynamic Erbium-Doped Fiber Amplifier (EDFA) gain saturation differential equations into DAEBuilder.",
       category: "transform",
       execute: async () => {
         const dae = lowerOpticalEdfaToDae();

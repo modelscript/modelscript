@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseOpenAdr } from "../src/parser/openadr-parser.js";
+import { getAllOpenAdrEvents, getOpenAdrDeck, openadrLanguage, parseOpenAdr } from "../src/index.js";
 
 const SAMPLE_DECLARATIVE = `
 program "Summer_Peak_Flex" {
@@ -88,5 +89,18 @@ describe("OpenADR Parser", () => {
     assert.strictEqual(evt.intervals.length, 1);
     assert.strictEqual(evt.intervals[0]?.durationSeconds, 3600);
     assert.strictEqual(evt.intervals[0]?.payload, 75.0);
+  });
+
+  it("indexes OpenADR documents in UnifiedWorkspace", () => {
+    const ws = new UnifiedWorkspace(openadrLanguage);
+    ws.setDocument("file:///flex.oadr", SAMPLE_DECLARATIVE);
+    ws.setDocument("file:///shave.oadr.xml", SAMPLE_XML);
+
+    const idx = ws.getIndex();
+    assert.ok(idx.byName.has("Summer_Peak_Flex"));
+    assert.ok(idx.byName.has("DR_EV_01"));
+    assert.ok(idx.byName.has("EVENT-PEAK-SHAVE-99"));
+    assert.strictEqual(getOpenAdrDeck(ws, "file:///flex.oadr")?.programs.length, 1);
+    assert.strictEqual(getAllOpenAdrEvents(ws).events.length, 2);
   });
 });

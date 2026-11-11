@@ -183,4 +183,3 @@ export * from "./math/double64.js";
 export * from "./solvers/distributed-krylov.js";
 export * from "./solvers/sparse_arnoldi.js";
 export * from "./util/snowflake.js";
-export * from "./workspace/base_workspace_index.js";

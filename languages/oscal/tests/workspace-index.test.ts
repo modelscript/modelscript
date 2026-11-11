@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { OscalWorkspaceIndex } from "../src/workspace-index.js";
+import { oscalLanguage, resolveOscalInScope } from "../src/index.js";
 
-describe("OscalWorkspaceIndex", () => {
+describe("OSCAL UnifiedWorkspace Indexing", () => {
   const catalogJson = JSON.stringify({
     catalog: {
       uuid: "11111111-2222-4333-8444-555555555555",
@@ -50,29 +51,29 @@ describe("OscalWorkspaceIndex", () => {
   });
 
   it("indexes multiple OSCAL files and resolves controls, parameters, and components across the workspace", () => {
-    const index = new OscalWorkspaceIndex();
-    index.indexFile("file:///workspace/catalog.oscal.json", catalogJson);
-    index.indexFile("file:///workspace/ssp.oscal.json", sspJson);
+    const ws = new UnifiedWorkspace(oscalLanguage);
+    ws.setDocument("file:///workspace/catalog.oscal.json", catalogJson);
+    ws.setDocument("file:///workspace/ssp.oscal.json", sspJson);
 
-    assert.strictEqual(index.fileCount, 2);
-    assert(index.has("file:///workspace/catalog.oscal.json"));
-    assert(index.has("file:///workspace/ssp.oscal.json"));
+    assert.strictEqual(ws.fileCount, 2);
+    assert(ws.hasDocument("file:///workspace/catalog.oscal.json"));
+    assert(ws.hasDocument("file:///workspace/ssp.oscal.json"));
 
-    const sc7Entries = index.findByName("sc-7");
+    const sc7Entries = ws.findSymbolsByName("sc-7");
     assert.strictEqual(sc7Entries.length, 2);
 
-    const iedByTitle = index.findByName("BayControllerIED");
+    const iedByTitle = ws.findSymbolsByName("BayControllerIED");
     assert.strictEqual(iedByTitle.length, 1);
     assert.strictEqual(iedByTitle[0]?.kind, "Component");
 
-    const iedByUuid = index.findByName("22222222-3333-4444-8555-666666666666");
+    const iedByUuid = ws.findSymbolsByName("22222222-3333-4444-8555-666666666666");
     assert.strictEqual(iedByUuid.length, 1);
 
-    const resolvedParam = index.resolveInScope("sc-7_prm_1", null, "file:///workspace/catalog.oscal.json");
+    const resolvedParam = resolveOscalInScope(ws, "sc-7_prm_1", null, "file:///workspace/catalog.oscal.json");
     assert(resolvedParam !== null);
     assert.strictEqual(resolvedParam.ruleName, "oscal_parameter");
 
-    index.clear();
-    assert.strictEqual(index.fileCount, 0);
+    ws.clear();
+    assert.strictEqual(ws.fileCount, 0);
   });
 });

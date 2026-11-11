@@ -13,6 +13,66 @@ export const landgemLanguage = language({
   lsp: {
     fileExtensions: [".landgem", ".lfg", ".biogas"],
   },
+  indexing: {
+    indexFile(ctx) {
+      try {
+        const model = parseLandgem(ctx.text);
+        ctx.setParsedModel(model);
+
+        const rootName = model.sites[0]?.name ?? model.digesters[0]?.name ?? "Biogas_Model";
+        const rootId = ctx.addSymbol(rootName, "package", null, 0, ctx.text.length, undefined, {
+          ruleName: "landgem_symbol",
+        });
+
+        for (const site of model.sites) {
+          const sId = ctx.addSymbol(
+            site.name,
+            "class",
+            rootId,
+            0,
+            50,
+            {
+              openYear: site.openYear,
+              closeYear: site.closeYear,
+              k: site.params.k,
+              l0: site.params.l0,
+            },
+            { ruleName: "landgem_symbol" },
+          );
+          for (const c of site.cohorts) {
+            ctx.addSymbol(
+              `Cohort_${c.year}`,
+              "variable",
+              sId,
+              0,
+              30,
+              { year: c.year, massMg: c.massMg },
+              { ruleName: "landgem_symbol" },
+            );
+          }
+        }
+
+        for (const d of model.digesters) {
+          ctx.addSymbol(
+            d.name,
+            "class",
+            rootId,
+            0,
+            50,
+            {
+              volumeM3: d.volumeM3,
+              temperatureC: d.temperatureC,
+              hrtDays: d.hrtDays,
+              ph: d.ph,
+            },
+            { ruleName: "landgem_symbol" },
+          );
+        }
+      } catch {
+        // Ignore malformed input during background indexing
+      }
+    },
+  },
   actions: [
     {
       id: "landgem_lint",

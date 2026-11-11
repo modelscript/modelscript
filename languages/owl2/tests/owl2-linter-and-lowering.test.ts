@@ -436,7 +436,7 @@ Ontology(
     const root = parseFss(src);
     const ws = createOWL2WorkspaceIndex();
     ws.register("file:///test.owl", () => root);
-    const engine = createOWL2QueryEngine(ws.toUnifiedPartial());
+    const engine = createOWL2QueryEngine(ws.getIndex());
     const diags = await engine.runAllLintsAsync("file:///test.owl");
 
     assert.ok(

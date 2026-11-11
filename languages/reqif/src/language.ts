@@ -10,6 +10,7 @@
 
 import { language, tggComplement, tggDefaultVal, tggEq, tggRule, type TabularMutationRequest } from "@modelscript/dsl";
 import { buildReqIfDiagram, renderReqIfDiagramSvg, reqifDiagramConfig } from "./diagram.js";
+import { reqifIndexing } from "./indexing.js";
 import { parseReqIf } from "./parser/reqif-parser.js";
 import { reqifToModelicaVerifier } from "./projections/modelica.js";
 import { reqifToSysml2 } from "./projections/sysml2.js";
@@ -28,6 +29,7 @@ export const reqifLanguage = language({
   displayName: "OMG ReqIF 1.2",
   fileExtensions: [".reqif", ".reqifz"],
   maturity: "stable",
+  indexing: reqifIndexing,
   lsp: {
     fileExtensions: [".reqif", ".reqifz"],
     icons: {

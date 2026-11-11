@@ -99,4 +99,18 @@ describe("HEC-RAS Parser", () => {
     assert.ok(res.geometry);
     assert.strictEqual(res.geometry.crossSections.length, 2);
   });
+
+  it("indexes geometry and flow decks in UnifiedWorkspace via hecRasLanguage", async () => {
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    const { getHecRasProjectModels, hecRasLanguage } = await import("../src/index.js");
+    const ws = new UnifiedWorkspace(hecRasLanguage);
+    ws.setDocument("file:///river.g01", SAMPLE_GEOMETRY);
+    ws.setDocument("file:///river.u01", SAMPLE_FLOW);
+    const idx = ws.getIndex();
+    assert.ok(idx.byName.has("Columbia:ReachA"));
+    assert.ok(idx.byName.has("RS_1000"));
+    const models = getHecRasProjectModels(ws);
+    assert.strictEqual(models.geometryFiles.size, 1);
+    assert.strictEqual(models.flowFiles.size, 1);
+  });
 });

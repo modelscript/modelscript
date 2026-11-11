@@ -44,6 +44,15 @@ test("Core libraries exist in catalog", () => {
   assert.equal(sysml.version, "2026.3.0");
   assert.equal(sysml.tier, "tier1_core");
   assert.equal(sysml.pack, "core");
+
+  const openipsl = getStdlibById("modelica-openipsl-3.1.0");
+  assert.ok(openipsl);
+  assert.equal(openipsl.packageName, "OpenIPSL");
+  assert.equal(openipsl.version, "3.1.0");
+  assert.equal(openipsl.tier, "tier1_core");
+  assert.equal(openipsl.pack, "power-energy");
+  assert.equal(openipsl.language, "modelica");
+  assert.equal(openipsl.filename, "OpenIPSL_v3.1.0.zip");
 });
 
 test("getStdlibsForLanguage finds language libraries correctly", () => {
@@ -71,6 +80,7 @@ test("getStdlibsByPack groups correctly", () => {
 
   const modelicaLibs = getStdlibsByPack("modelica");
   assert.ok(modelicaLibs.length >= 1);
+  assert.ok(modelicaLibs.some((l) => l.packageName === "OpenIPSL"));
   assert.ok(modelicaLibs.every((l) => l.language === "modelica" || l.packageName === "Modelica"));
   assert.ok(!modelicaLibs.some((l) => l.packageName === "SysML"));
 
@@ -105,16 +115,18 @@ test("getBenchmarkCatalog returns valid benchmark suite entries", async () => {
     assert.ok(b.referenceTool, "Benchmark must declare a referenceTool");
   }
 
-  // Check Preview-to-Beta benchmarks (e.g. SBML, OpenDSS)
+  // Check Preview-to-Beta benchmarks (e.g. Fortran, Aspen)
   const previewToBeta = getBenchmarksByTier("preview-to-beta");
   assert.ok(previewToBeta.length >= 3);
-  assert.ok(previewToBeta.some((b) => b.language === "sbml"));
-  assert.ok(previewToBeta.some((b) => b.language === "opendss"));
+  assert.ok(previewToBeta.some((b) => b.language === "fortran"));
+  assert.ok(previewToBeta.some((b) => b.language === "aspen"));
 
-  // Check Beta-to-Stable benchmarks (e.g. EPANET, OpenSim, Verilog-A)
+  // Check Beta-to-Stable benchmarks (e.g. EPANET, SBML, OpenDSS, OpenSim, Verilog-A)
   const betaToStable = getBenchmarksByTier("beta-to-stable");
   assert.ok(betaToStable.length >= 3);
   assert.ok(betaToStable.some((b) => b.language === "epanet"));
+  assert.ok(betaToStable.some((b) => b.language === "sbml"));
+  assert.ok(betaToStable.some((b) => b.language === "opendss"));
   assert.ok(betaToStable.some((b) => b.language === "opensim"));
   assert.ok(betaToStable.some((b) => b.language === "verilog-a"));
 
@@ -127,4 +139,3 @@ test("getBenchmarkCatalog returns valid benchmark suite entries", async () => {
   assert.ok(epanetLibs.length >= 1);
   assert.equal(epanetLibs[0]?.id, "epanet-benchmark-networks");
 });
-

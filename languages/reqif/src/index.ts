@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./diagram.js";
+export * from "./indexing.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";
@@ -13,4 +14,3 @@ export * from "./tgg/reqif-sync.js";
 export * from "./types.js";
 export * from "./verification/entailment.js";
 export * from "./verification/multi-domain.js";
-export * from "./workspace-index.js";

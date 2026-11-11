@@ -9,6 +9,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerCellmlToDae } from "./dae/index.js";
+import { canIndexCellml, indexCellmlDocument } from "./indexing.js";
 import { lintCellmlDocument } from "./lints/index.js";
 import { parseCellml } from "./parser/index.js";
 import { cellmlToModelica, cellmlToSbml } from "./projections/index.js";
@@ -18,6 +19,10 @@ export const cellmlLanguage = language({
   name: "cellml",
   fileExtensions: [".cellml", ".xml"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexCellmlDocument,
+    canIndex: canIndexCellml,
+  },
   lsp: {
     fileExtensions: [".cellml", ".xml"],
   },

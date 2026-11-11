@@ -4,12 +4,26 @@ import { initBltWasm } from "@modelscript/runtime";
 import { simulateArena } from "@modelscript/simulate";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { createWasmParser } from "../src-gen/bindings.js";
 import { Context } from "../src/context.js";
 import { NodeFileSystem } from "./node-filesystem.js";
 
 const cacheDir = path.resolve(import.meta.dirname, "../../../.cache/openipsl-omc");
+const omcLibrariesRoot =
+  process.env.MODELICAPATH?.split(path.delimiter).find((p) => p && fs.existsSync(p)) ??
+  path.join(os.homedir(), ".openmodelica", "libraries");
+
+function resolveLibDir(dirName: string): string {
+  const full = path.join(omcLibrariesRoot, dirName);
+  if (!fs.existsSync(full)) {
+    throw new Error(
+      `Modelica library '${dirName}' not found under '${omcLibrariesRoot}' (set MODELICAPATH to override).`,
+    );
+  }
+  return full;
+}
 
 function getOmcSim(
   modelName: string,
@@ -29,13 +43,18 @@ function getOmcSim(
     return parseCsv(csv, meta.durationMs);
   }
 
+  const complexPkg = path.join(resolveLibDir("Complex 4.0.0+maint.om"), "package.mo");
+  const servicesPkg = path.join(resolveLibDir("ModelicaServices 4.0.0+maint.om"), "package.mo");
+  const mslPkg = path.join(resolveLibDir("Modelica 4.0.0+maint.om"), "package.mo");
+  const openipslPkg = path.join(resolveLibDir("OpenIPSL 3.1.0"), "package.mo");
+
   const tmpDir = path.join(cacheDir, `tmp_${Date.now()}`);
   fs.mkdirSync(tmpDir, { recursive: true });
   const mos = `
-loadFile("/home/omar/.openmodelica/libraries/Complex 4.0.0+maint.om/package.mo");
-loadFile("/home/omar/.openmodelica/libraries/ModelicaServices 4.0.0+maint.om/package.mo");
-loadFile("/home/omar/.openmodelica/libraries/Modelica 4.0.0+maint.om/package.mo");
-loadFile("/home/omar/.openmodelica/libraries/OpenIPSL 3.1.0/package.mo");
+loadFile(${JSON.stringify(complexPkg)});
+loadFile(${JSON.stringify(servicesPkg)});
+loadFile(${JSON.stringify(mslPkg)});
+loadFile(${JSON.stringify(openipslPkg)});
 simulate(${modelName}, startTime=0, stopTime=${stopTime}, numberOfIntervals=${intervals}, tolerance=1e-6, outputFormat="csv");
 print(getErrorString());
 `;
@@ -69,10 +88,10 @@ async function main() {
   Context.registerParser(".mo", parser as any);
 
   const ctx = new Context(new NodeFileSystem());
-  const complexDir = "/home/omar/.openmodelica/libraries/Complex 4.0.0+maint.om";
-  const servicesDir = "/home/omar/.openmodelica/libraries/ModelicaServices 4.0.0+maint.om";
-  const mslDir = "/home/omar/.openmodelica/libraries/Modelica 4.0.0+maint.om";
-  const openipslDir = "/home/omar/.openmodelica/libraries/OpenIPSL 3.1.0";
+  const complexDir = resolveLibDir("Complex 4.0.0+maint.om");
+  const servicesDir = resolveLibDir("ModelicaServices 4.0.0+maint.om");
+  const mslDir = resolveLibDir("Modelica 4.0.0+maint.om");
+  const openipslDir = resolveLibDir("OpenIPSL 3.1.0");
   await ctx.addLibrary(complexDir, { skipIndex: true });
   await ctx.addLibrary(servicesDir, { skipIndex: true });
   await ctx.addLibrary(mslDir, { skipIndex: true });

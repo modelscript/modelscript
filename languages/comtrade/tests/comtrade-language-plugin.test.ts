@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { getAllComtradeModels } from "../src/indexing.js";
 import { comtradeLanguage } from "../src/language.js";
 import { getComtradeDiagnostics, getComtradeDocumentSymbols } from "../src/lsp.js";
-import { ComtradeWorkspaceIndex } from "../src/workspace-index.js";
 
 describe("COMTRADE Language Plugin & LSP Services", () => {
   const sampleCff = `--- file type: CFG ---
@@ -90,13 +91,15 @@ ASCII
     assert.ok(cffRes.includes("--- file type: CFG ---"));
   });
 
-  it("should index records in ComtradeWorkspaceIndex", () => {
-    const index = new ComtradeWorkspaceIndex();
-    index.indexDocument("sub_a.cff", sampleCff);
-    const models = index.getAllModels();
+  it("should index records in UnifiedWorkspace", () => {
+    const ws = new UnifiedWorkspace(comtradeLanguage);
+    ws.setDocument("sub_a.cff", sampleCff);
+    const models = getAllComtradeModels(ws);
     assert.equal(models.length, 1);
     assert.equal(models[0]?.stationName, "STATION_ALPHA");
     assert.equal(models[0]?.analogChannelCount, 2);
     assert.equal(models[0]?.digitalChannelCount, 1);
+    assert.ok(ws.findSymbolsByName("STATION_ALPHA").length >= 1);
+    assert.ok(ws.findSymbolsByName("VA").length >= 1);
   });
 });

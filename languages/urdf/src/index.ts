@@ -7,6 +7,7 @@
 export * from "./dae/index.js";
 export * from "./diagram/index.js";
 export * from "./errors.js";
+export * from "./indexing.js";
 export * from "./kinematics/index.js";
 export * from "./language.js";
 export * from "./lints/index.js";
@@ -16,4 +17,3 @@ export * from "./projections/index.js";
 export * from "./tgg/urdf-rules.js";
 export * from "./tgg/urdf-sync.js";
 export * from "./types.js";
-export * from "./workspace-index.js";

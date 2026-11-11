@@ -21,6 +21,7 @@ import {
   normalizeLibraryName,
 } from "../utils/hierarchy-utils.js";
 import { loadPrebakedMslIcons } from "../utils/msl-icons-loader.js";
+import { findCuratedPackageFallback } from "./curated-package-fallbacks.js";
 import { ingestSalsaIndex } from "./salsa-index-ingester.js";
 
 export interface LoaderContext {
@@ -307,7 +308,7 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
     registerDirLazy(basePath);
 
     // Eagerly trigger indexing for all registered files so their symbols
-    // appear in toUnifiedPartial() and are available for name resolution.
+    // appear in getIndex() and are available for name resolution.
     // Without this, lazy-registered files are invisible to the validation pipeline.
     let indexedCount = 0;
     let indexErrors = 0;
@@ -574,6 +575,42 @@ export async function loadDependencyFromRegistry(
     });
     ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
   } catch (e) {
+    const curated = findCuratedPackageFallback(dep.name);
+    if (curated) {
+      try {
+        const effectiveVersion = dep.version || curated.version;
+        if (curated.icons) {
+          for (const [className, svg] of Object.entries(curated.icons)) {
+            iconCache.set(`${normName}@${effectiveVersion}:${className}`, svg);
+            iconCache.set(className, svg);
+          }
+        }
+        // Native PSS/E standard dynamics models are already registered in UnifiedWorkspace via psseLanguage.indexing.builtins;
+        // mounting the curated .mo stub would shadow their native port and DAE-lowering metadata.
+        if (!(curated.language === "psse" && normName === "PSSE-Standard-Dynamics")) {
+          await loadRegistryPackage(
+            {
+              name: curated.packageName,
+              version: effectiveVersion,
+              files: curated.files,
+              modelscript: { languages: [curated.language] },
+            },
+            ctx,
+          );
+        }
+        loadingLibraryState.delete(normName);
+        mountedLibraryMetadata.set(normName, {
+          name: normName,
+          version: effectiveVersion,
+          language: curated.language,
+        });
+        ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+        ctx.logger.log(`[deps] Mounted offline curated fallback for ${label}`);
+        return;
+      } catch (fallbackErr) {
+        ctx.logger.warn(`[deps] Offline curated fallback failed for ${label}: ${fallbackErr}`);
+      }
+    }
     loadingLibraryState.delete(normName);
     ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
     ctx.logger.error(`[deps] Failed to load ${label} from registry:`, e);
@@ -795,7 +832,7 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext, versio
         ctx.logger.log(`[loadMSL] Ensuring indexed: ${modelicaPkgUri}`);
         ctx.globalWorkspaceIndex.ensureIndexed(modelicaPkgUri);
         ctx.logger.log(
-          `[loadMSL] After ensureIndexed(${modelicaPkgUri}), symbols=${ctx.globalWorkspaceIndex.toUnifiedPartial?.()?.symbols?.size}`,
+          `[loadMSL] After ensureIndexed(${modelicaPkgUri}), symbols=${ctx.globalWorkspaceIndex.getIndex?.()?.symbols?.size}`,
         );
       } catch (err: any) {
         ctx.logger.error(`[loadMSL] Failed to ensureIndexed ${modelicaPkgUri}:`, err);
@@ -806,7 +843,7 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext, versio
         ctx.logger.log(`[loadMSL] Ensuring indexed: ${complexUri}`);
         ctx.globalWorkspaceIndex.ensureIndexed(complexUri);
         ctx.logger.log(
-          `[loadMSL] After ensureIndexed(${complexUri}), symbols=${ctx.globalWorkspaceIndex.toUnifiedPartial?.()?.symbols?.size}`,
+          `[loadMSL] After ensureIndexed(${complexUri}), symbols=${ctx.globalWorkspaceIndex.getIndex?.()?.symbols?.size}`,
         );
       } catch (err: any) {
         ctx.logger.error(`[loadMSL] Failed to ensureIndexed ${complexUri}:`, err);
@@ -1168,8 +1205,7 @@ export function unloadLibraryPackage(packageName: string, ctx: LoaderContext): n
     fileLoaders?: Map<string, unknown>;
     fileSymbols?: Map<string, unknown>;
     unifiedTreeIndex?: { symbols?: Map<number, { resourceId?: string }> };
-    toTreeIndex?(): { symbols?: Map<number, { resourceId?: string }> } | undefined;
-    toUnifiedPartial?(): { symbols?: Map<number, { resourceId?: string }> } | undefined;
+    getIndex?(): { symbols?: Map<number, { resourceId?: string }> } | undefined;
   };
 
   const evictFromWorkspaceIndex = (wsIdx: WorkspaceIndexEvictionTarget | null | undefined) => {
@@ -1199,9 +1235,9 @@ export function unloadLibraryPackage(packageName: string, ctx: LoaderContext): n
       }
     }
 
-    // 3. Check unified tree index symbols for any remapped file:// URIs
+    // 3. Check unified index symbols for any remapped file:// URIs
     try {
-      const treeIdx = wsIdx.toTreeIndex?.() ?? wsIdx.toUnifiedPartial?.();
+      const treeIdx = wsIdx.getIndex?.();
       if (treeIdx?.symbols instanceof Map) {
         for (const sym of treeIdx.symbols.values()) {
           if (sym?.resourceId && getLibraryName(String(sym.resourceId)) === normName) {

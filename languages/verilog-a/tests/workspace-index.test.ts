@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { VerilogAWorkspaceIndex } from "../src/workspace-index.js";
+import { findVerilogAReferences, verilogALanguage } from "../src/index.js";
 
-describe("Verilog-A Workspace Index", () => {
+describe("Verilog-A UnifiedWorkspace", () => {
   it("indexes modules, ports, parameters, and variables across files", () => {
-    const index = new VerilogAWorkspaceIndex();
+    const ws = new UnifiedWorkspace(verilogALanguage);
     const uri = "file:///models/diode.va";
     const code = `
       module diode(a, c);
@@ -22,23 +23,23 @@ describe("Verilog-A Workspace Index", () => {
       endmodule
     `;
 
-    index.indexFile(uri, code);
-    assert.strictEqual(index.fileCount, 1);
-    assert(index.has(uri));
+    ws.setDocument(uri, code);
+    assert.strictEqual(ws.fileCount, 1);
+    assert(ws.hasDocument(uri));
 
-    const sym = index.findSymbol(uri, "diode");
+    const sym = ws.findSymbolsByName("diode", uri)[0];
     assert(sym !== undefined);
     assert.strictEqual(sym.name, "diode");
 
-    const all = index.getAllSymbols(uri);
+    const all = ws.getSymbolsForUri(uri);
     assert(all.length >= 4); // diode, a, c, Is, Vd, Id
 
-    const byName = index.findSymbolsByName("Is");
+    const byName = ws.findSymbolsByName("Is");
     assert.strictEqual(byName.length, 1);
-    assert.strictEqual(byName[0].name, "Is");
+    assert.strictEqual(byName[0]?.name, "Is");
 
-    const refs = index.findReferences("diode");
+    const refs = findVerilogAReferences(ws, "diode");
     assert.strictEqual(refs.length, 1);
-    assert.strictEqual(refs[0].uri, uri);
+    assert.strictEqual(refs[0]?.uri, uri);
   });
 });

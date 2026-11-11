@@ -32,10 +32,6 @@
       "types": "./dist/src/schema.d.ts",
       "default": "./dist/src/schema.js"
     },
-    "./workspace-index": {
-      "types": "./dist/src/workspace-index.d.ts",
-      "default": "./dist/src/workspace-index.js"
-    },
     "./physical-data": {
       "types": "./dist/src/physical-data.d.ts",
       "default": "./dist/src/physical-data.js"

@@ -1733,8 +1733,11 @@ export class WasmQueryEngine {
     const entry = this.resolveEntry(symbolId);
     if (!entry) return undefined;
 
-    // Resolve the query hook implementation registered for the symbol's grammar rule.
-    const hooks = this.hooksByRule.get(entry.ruleName);
+    // Resolve the query hook implementation registered for the symbol's grammar rule,
+    // falling back to a generic `@kind:<SymbolKind>` adapter for cross-language symbols on non-lint queries.
+    const hooks =
+      this.hooksByRule.get(entry.ruleName) ??
+      (!queryName.startsWith("lint__") ? this.hooksByRule.get(`@kind:${entry.kind}`) : undefined);
     const rawQuery = hooks?.[queryName];
     if (!rawQuery) return undefined;
     const queryFn: QueryFn | undefined =
@@ -2083,8 +2086,8 @@ export class WasmQueryEngine {
           ? (ws.takeLazyChangedIds() as { changedIds: Set<SymbolId>; structuralChangedIds: Set<SymbolId> })
           : null;
       const hadChanges = lazyChanges ? lazyChanges.changedIds.size > 0 : true;
-      if (hadChanges && typeof ws.toUnifiedPartial === "function" && this.index) {
-        const newIdx = ws.toUnifiedPartial();
+      if (hadChanges && typeof ws.getIndex === "function" && this.index) {
+        const newIdx = ws.getIndex();
         if (newIdx && newIdx !== this.index) {
           if (newIdx.symbols && this.index.symbols) {
             for (const [id, entry] of newIdx.symbols.entries()) {
@@ -2414,11 +2417,27 @@ export class WasmQueryEngine {
       childrenOf(id: SymbolId): SymbolEntry[] {
         const results: SymbolEntry[] = [];
         const lookupId = engine.specializationBases.get(id) ?? id;
-        const childIds = engine.index.childrenOf.get(lookupId ?? 0);
-        if (childIds) {
-          for (const cid of childIds) {
-            const entry = engine.resolveEntry(cid);
-            if (entry) results.push(entry);
+        if (lookupId === null || lookupId === undefined || lookupId === 0) {
+          const seen = new Set<SymbolId>();
+          for (const rootKey of [0, null] as (SymbolId | null)[]) {
+            const childIds = engine.index.childrenOf.get(rootKey as SymbolId);
+            if (childIds) {
+              for (const cid of childIds) {
+                if (!seen.has(cid)) {
+                  seen.add(cid);
+                  const entry = engine.resolveEntry(cid);
+                  if (entry) results.push(entry);
+                }
+              }
+            }
+          }
+        } else {
+          const childIds = engine.index.childrenOf.get(lookupId);
+          if (childIds) {
+            for (const cid of childIds) {
+              const entry = engine.resolveEntry(cid);
+              if (entry) results.push(entry);
+            }
           }
         }
         for (const vEntry of engine.virtualEntries.values()) {
@@ -2430,11 +2449,27 @@ export class WasmQueryEngine {
       childrenOfField(id: SymbolId, fieldName: string): SymbolEntry[] {
         const results: SymbolEntry[] = [];
         const lookupId = engine.specializationBases.get(id) ?? id;
-        const childIds = engine.index.childrenOf.get(lookupId ?? 0);
-        if (childIds) {
-          for (const cid of childIds) {
-            const entry = engine.resolveEntry(cid);
-            if (entry && entry.fieldName === fieldName) results.push(entry);
+        if (lookupId === null || lookupId === undefined || lookupId === 0) {
+          const seen = new Set<SymbolId>();
+          for (const rootKey of [0, null] as (SymbolId | null)[]) {
+            const childIds = engine.index.childrenOf.get(rootKey as SymbolId);
+            if (childIds) {
+              for (const cid of childIds) {
+                if (!seen.has(cid)) {
+                  seen.add(cid);
+                  const entry = engine.resolveEntry(cid);
+                  if (entry && entry.fieldName === fieldName) results.push(entry);
+                }
+              }
+            }
+          }
+        } else {
+          const childIds = engine.index.childrenOf.get(lookupId);
+          if (childIds) {
+            for (const cid of childIds) {
+              const entry = engine.resolveEntry(cid);
+              if (entry && entry.fieldName === fieldName) results.push(entry);
+            }
           }
         }
         for (const vEntry of engine.virtualEntries.values()) {

@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import {
-  DicomRtWorkspaceIndex,
   dicomRtLanguage,
   executeDicomRtAction,
   getDicomRtCompletions,
   getDicomRtDefinition,
+  getDicomRtDocument,
   getDicomRtDocumentSymbols,
   getDicomRtHover,
+  resolveDicomRtInScope,
   validateDicomRt,
 } from "../src/index.js";
 
@@ -39,35 +41,37 @@ describe("DICOM-RT Workspace Indexer, LSP Services, and Language Definition", ()
   </DoseDistribution>
 </DicomRtPlan>`;
 
-  it("indexes multi-file symbols in DicomRtWorkspaceIndex", () => {
+  it("indexes multi-file symbols in UnifiedWorkspace", () => {
     const uri = "file:///thorax.dcm.xml";
-    const index = new DicomRtWorkspaceIndex();
-    index.register(uri);
-    assert.strictEqual(index.has(uri), true);
+    const ws = new UnifiedWorkspace(dicomRtLanguage);
+    ws.setDocument(uri, planXml);
+    assert.strictEqual(ws.hasDocument(uri), true);
 
-    const fileIdx = index.indexFile(uri, planXml);
-    assert(fileIdx.symbols.size >= 6);
-    assert.strictEqual(index.fileCount, 1);
+    const fileIdx = ws.getFileIndex(uri);
+    assert(fileIdx !== undefined && fileIdx.symbols.size >= 6);
+    assert.strictEqual(ws.fileCount, 1);
+    assert.strictEqual(getDicomRtDocument(ws, uri)?.planLabel, "Thorax_IMRT");
 
-    const ptvMatches = index.findByName("PTV_60");
+    const ptvMatches = ws.findSymbolsByName("PTV_60");
     assert.strictEqual(ptvMatches.length, 1);
     assert.strictEqual(ptvMatches[0]?.ruleName, "dicom_rt_roi");
 
-    const beamSym = index.resolveInScope("Anterior_Field", null, uri);
+    const beamSym = resolveDicomRtInScope(ws, "Anterior_Field", null, uri);
     assert(beamSym !== null);
     assert.strictEqual(beamSym.ruleName, "dicom_rt_beam");
 
-    const cpSym = index.resolveInScope("CP_0", beamSym.id, uri);
+    const cpSym = resolveDicomRtInScope(ws, "CP_0", beamSym.id, uri);
     assert(cpSym !== null);
     assert.strictEqual(cpSym.ruleName, "dicom_rt_control_point");
 
-    index.reindexDocument(uri, () => ({ text: planXml }));
-    assert(index.version >= 2);
-    assert.strictEqual(index.getAllFiles().length, 1);
-    assert(index.getAllSymbols(uri).length >= 6);
+    const prevVersion = ws.version;
+    ws.setDocument(uri, planXml);
+    assert(ws.version > prevVersion);
+    assert.strictEqual(ws.listDocumentUris().length, 1);
+    assert(ws.getSymbolsForUri(uri).length >= 6);
 
-    index.clear();
-    assert.strictEqual(index.fileCount, 0);
+    ws.clear();
+    assert.strictEqual(ws.fileCount, 0);
   });
 
   it("provides LSP diagnostics, document symbols, hover cards, completions, go-to-definition, and actions", async () => {

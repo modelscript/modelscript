@@ -16,13 +16,125 @@ interface JsbsimActionContext {
  */
 export const jsbsimLanguage = language({
   name: "jsbsim",
-  fileExtensions: [".jsbsim", ".xml"],
+  fileExtensions: [".jsbsim", ".jsbsim.xml", ".xml"],
   maturity: "experimental",
   lsp: {
-    fileExtensions: [".jsbsim", ".xml"],
+    fileExtensions: [".jsbsim", ".jsbsim.xml", ".xml"],
     icons: {
       light: "./assets/jsbsim/icon-light.png",
       dark: "./assets/jsbsim/icon-dark.png",
+    },
+  },
+  indexing: {
+    canIndex: (uri, text) =>
+      uri.toLowerCase().endsWith(".jsbsim") ||
+      uri.toLowerCase().endsWith(".jsbsim.xml") ||
+      Boolean(text && text.includes("<fdm_config")),
+    indexFile(ctx) {
+      try {
+        const doc = parseJsbsim(ctx.text, ctx.uri);
+        ctx.setParsedModel(doc);
+        const m = doc.model;
+
+        const rootId = ctx.addSymbol(
+          m.name || "AircraftModel",
+          "package",
+          null,
+          0,
+          ctx.text.length,
+          {
+            version: m.version,
+            wingArea: m.metrics.wingArea,
+            emptyWeight: m.massBalance.emptyWeight,
+            enginesCount: m.engines.length,
+          },
+          { ruleName: "jsbsim_symbol" },
+        );
+
+        if (m.metrics) {
+          const start = m.metrics.range?.startOffset ?? 0;
+          const end = m.metrics.range?.endOffset ?? 50;
+          ctx.addSymbol(
+            "AirframeMetrics",
+            "struct",
+            rootId,
+            start,
+            end,
+            {
+              wingArea: m.metrics.wingArea,
+              wingspan: m.metrics.wingspan,
+              chord: m.metrics.chord,
+            },
+            { ruleName: "jsbsim_symbol" },
+          );
+        }
+
+        if (m.massBalance) {
+          const start = m.massBalance.range?.startOffset ?? 0;
+          const end = m.massBalance.range?.endOffset ?? 50;
+          ctx.addSymbol(
+            "MassBalance",
+            "struct",
+            rootId,
+            start,
+            end,
+            {
+              emptyWeight: m.massBalance.emptyWeight,
+              ixx: m.massBalance.ixx,
+              iyy: m.massBalance.iyy,
+              izz: m.massBalance.izz,
+            },
+            { ruleName: "jsbsim_symbol" },
+          );
+        }
+
+        for (const g of m.groundReactions) {
+          const start = g.range?.startOffset ?? 0;
+          const end = g.range?.endOffset ?? 50;
+          ctx.addSymbol(
+            `Gear_${g.name}`,
+            "component",
+            rootId,
+            start,
+            end,
+            {
+              type: g.type,
+              steerable: g.steerable,
+            },
+            { ruleName: "jsbsim_symbol" },
+          );
+        }
+
+        for (const e of m.engines) {
+          const start = e.range?.startOffset ?? 0;
+          const end = e.range?.endOffset ?? 50;
+          ctx.addSymbol(
+            `Engine_${e.name}`,
+            "component",
+            rootId,
+            start,
+            end,
+            { maxThrust: e.maxThrust },
+            { ruleName: "jsbsim_symbol" },
+          );
+        }
+
+        for (const c of m.aeroCoefficients) {
+          const start = c.range?.startOffset ?? 0;
+          const end = c.range?.endOffset ?? 50;
+          ctx.addSymbol(
+            c.name,
+            "variable",
+            rootId,
+            start,
+            end,
+            { axis: c.axis, baseValue: c.baseValue },
+            { ruleName: "jsbsim_symbol" },
+          );
+        }
+      } catch {
+        // Return partial symbol map if parsing failed
+      }
     },
   },
 

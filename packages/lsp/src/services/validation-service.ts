@@ -1169,7 +1169,7 @@ export class ValidationService {
       }, 500);
     }
 
-    const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+    const unifiedIndex = this.workspaceManager.unifiedWorkspace.getIndex();
     const cstTreeWrapper = this.parserService.getSharedCstTreeWrapper();
 
     let engine = plugin?.queryEngine ?? this.workspaceManager.getQueryEngine(langId);
@@ -1210,6 +1210,31 @@ export class ValidationService {
 
     this.populateClassWrappers(effectiveUri, uri, unifiedIndex, engine, context);
     return true;
+  }
+
+  /**
+   * Indexes a document directly into `UnifiedWorkspace` using its declarative DSL `indexing.indexFile` hook,
+   * registering `languageDef` on the fly if needed.
+   */
+  private indexNativeDslDocument(uri: string, text: string, langId: string, languageDef?: any): boolean {
+    const uw = this.workspaceManager?.unifiedWorkspace;
+    if (!uw || typeof uw.indexDocumentText !== "function") return false;
+    const def = languageDef ?? globalLanguageRegistry.getPluginById(langId)?.languageDef;
+    if (def && typeof uw.getLanguageDef === "function" && !uw.getLanguageDef(langId)) {
+      uw.registerLanguageDef(langId, def);
+    }
+    if (typeof uw.getLanguageDef === "function" && !uw.getLanguageDef(langId) && !def) {
+      return false;
+    }
+    try {
+      uw.indexDocumentText(uri, text, langId);
+      return true;
+    } catch (err: any) {
+      this.connection?.console?.warn?.(
+        `[validate] Failed to index ${uri} via DSL UnifiedWorkspace (${langId}): ${err?.message ?? err}`,
+      );
+      return false;
+    }
   }
 
   /**
@@ -1301,7 +1326,9 @@ export class ValidationService {
             tree: { rootNode: { text } } as any,
             classCache: new Map(),
           });
-          if (plugin.workspaceIndex) {
+          if ((plugin.languageDef as any)?.indexing?.indexFile) {
+            this.indexNativeDslDocument(uri, text, plugin.id, plugin.languageDef);
+          } else if (plugin.workspaceIndex) {
             try {
               if (typeof (plugin.workspaceIndex as any).indexFile === "function") {
                 (plugin.workspaceIndex as any).indexFile(uri, text);
@@ -1432,7 +1459,9 @@ export class ValidationService {
               classCache: new Map(),
             });
             const wsIdx = plugin.workspaceIndex ?? this.workspaceManager.getWorkspaceIndex(plugin.id);
-            if (wsIdx) {
+            if ((plugin.languageDef as any)?.indexing?.indexFile) {
+              this.indexNativeDslDocument(uri, text, plugin.id, plugin.languageDef);
+            } else if (wsIdx) {
               try {
                 if (typeof (wsIdx as any).indexFile === "function") {
                   (wsIdx as any).indexFile(uri, text);
@@ -1722,6 +1751,13 @@ export class ValidationService {
         changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
         structuralChangedIds = changedIdsObj ? (changedIdsObj as any).structuralChangedIds : null;
         changedNames = typeof wsIndex.takeGlobalChangedNames === "function" ? wsIndex.takeGlobalChangedNames() : null;
+      } else if (textChanged && (plugin?.languageDef as any)?.indexing?.indexFile) {
+        this.indexNativeDslDocument(effectiveUri, text, plugin?.id ?? langId, plugin?.languageDef);
+        this.workspaceManager.workspaceInstances.delete(uri);
+        this.workspaceManager.workspaceInstances.delete(effectiveUri);
+        this.workspaceManager.documentInstances.delete(uri);
+        this.workspaceManager.documentInstances.delete(effectiveUri);
+        this.lastIndexedText.set(effectiveUri, text);
       }
 
       if (isStale()) return;
@@ -1742,7 +1778,7 @@ export class ValidationService {
       }
 
       // ── Step 3: Unified Index & QueryEngine Update ───────────────────────
-      const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+      const unifiedIndex = this.workspaceManager.unifiedWorkspace.getIndex();
       const cstTreeWrapper = this.parserService.getSharedCstTreeWrapper();
 
       let engine = plugin?.queryEngine ?? this.workspaceManager.getQueryEngine(langId);
@@ -2401,7 +2437,7 @@ export class ValidationService {
 
     try {
       this.connection.console.info(`[pscad] Validating ${textDocument.uri} (${text.length} chars)`);
-      const { parsePscx, lintPscx } = await import("@modelscript/pscad");
+      const { parsePscx, lintPscx, pscadLanguage } = await import("@modelscript/pscad");
       const project = parsePscx(text);
       const lints = lintPscx(project);
 
@@ -2439,9 +2475,7 @@ export class ValidationService {
       });
 
       // Index symbols for Library Tree panel and navigation
-      const pscadWs = this.workspaceManager.getWorkspaceIndex("pscad");
-      if (pscadWs && typeof (pscadWs as any).indexFile === "function") {
-        (pscadWs as any).indexFile(textDocument.uri, text);
+      if (this.indexNativeDslDocument(textDocument.uri, text, "pscad", pscadLanguage)) {
         this.sendProjectTreeChanged();
       }
     } catch (err: any) {
@@ -2469,7 +2503,7 @@ export class ValidationService {
     try {
       const text = textDocument.getText();
       this.connection.console.info(`[easy5] Validating ${textDocument.uri} (${text.length} chars)`);
-      const { parseEasy5, lintEasy5 } = await import("@modelscript/easy5");
+      const { parseEasy5, lintEasy5, easy5Language } = await import("@modelscript/easy5");
       const model = parseEasy5(text);
       const lints = lintEasy5(model);
 
@@ -2507,9 +2541,7 @@ export class ValidationService {
       });
 
       // Index symbols for Library Tree panel and navigation
-      const easy5Ws = this.workspaceManager.getWorkspaceIndex("easy5");
-      if (easy5Ws && typeof (easy5Ws as any).indexFile === "function") {
-        (easy5Ws as any).indexFile(textDocument.uri, text);
+      if (this.indexNativeDslDocument(textDocument.uri, text, "easy5", easy5Language)) {
         this.sendProjectTreeChanged();
       }
     } catch (err: any) {
@@ -2537,7 +2569,7 @@ export class ValidationService {
     try {
       const text = textDocument.getText();
       this.connection.console.info(`[rocets] Validating ${textDocument.uri} (${text.length} chars)`);
-      const { parseRocetsDeck, lintRocets } = await import("@modelscript/rocets");
+      const { parseRocetsDeck, lintRocets, rocetsLanguage } = await import("@modelscript/rocets");
       const model = parseRocetsDeck(text);
       const lints = lintRocets(model);
 
@@ -2575,9 +2607,7 @@ export class ValidationService {
       });
 
       // Index symbols for Library Tree panel and navigation
-      const rocetsWs = this.workspaceManager.getWorkspaceIndex("rocets");
-      if (rocetsWs && typeof (rocetsWs as any).indexFile === "function") {
-        (rocetsWs as any).indexFile(textDocument.uri, text);
+      if (this.indexNativeDslDocument(textDocument.uri, text, "rocets", rocetsLanguage)) {
         this.sendProjectTreeChanged();
       }
     } catch (err: any) {
@@ -3256,25 +3286,25 @@ export class ValidationService {
 
     try {
       this.connection.console.info(`[step] Validating ${textDocument.uri} (${text.length} chars)`);
-      let astIndex;
       let tree;
       const stepParser = plugin?.parser ?? this.parserService.getParser("step");
       if (stepParser) {
         tree = stepParser.parse(text);
         if (tree) {
           this.documentManager.documentTrees.set(textDocument.uri, { text, tree, classCache: new Map() });
-          astIndex = { symbols: new Map(), byName: new Map(), childrenOf: new Map() } as any;
         }
       }
 
-      const stepIndex = await this.workspaceManager.stepWorkspaceIndex.parseStepFile(
+      const { indexStepDocument } = await import("@modelscript/step");
+      const serverDistBase = (this.parserService as any)?.serverDistBase ?? (globalThis as any).serverDistBase;
+      await indexStepDocument(
+        this.workspaceManager.unifiedWorkspace,
         textDocument.uri,
         buffer,
-        astIndex,
+        serverDistBase ? { serverDistBase } : undefined,
       );
-      void stepIndex;
 
-      const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+      const unifiedIndex = this.workspaceManager.unifiedWorkspace.getIndex();
       if (this.workspaceManager.globalModelicaQueryEngine) {
         this.workspaceManager.globalModelicaQueryEngine.updateIndex(unifiedIndex);
       }
@@ -3524,13 +3554,14 @@ export class ValidationService {
   }
 
   /**
-   * Updates the ontological reasoner after polyglot document validation across any of the 68 languages.
+   * Updates the ontological reasoner after polyglot document validation across any of the 81 languages.
    * Projects the file's SymbolIndex into BFO/IOF OWL2 axioms and triggers incremental reasoning.
    */
   private postValidatePolyglotReasoner(effectiveUri: string, langId: string, diagnostics: Diagnostic[]): void {
     try {
       const wsIdx = this.workspaceManager.getWorkspaceIndex?.(langId);
-      const fileIdx = wsIdx?.getFileIndex?.(effectiveUri);
+      const fileIdx =
+        wsIdx?.getFileIndex?.(effectiveUri) ?? this.workspaceManager?.unifiedWorkspace?.getFileIndex?.(effectiveUri);
       if (!fileIdx) return;
 
       const store = this.workspaceManager?.unifiedWorkspace?.owl2Store;
@@ -3552,7 +3583,8 @@ export class ValidationService {
       }
 
       const versions = new Map<string, number>();
-      if (wsIdx) versions.set(langId, wsIdx.version);
+      const ver = wsIdx?.version ?? this.workspaceManager?.unifiedWorkspace?.version;
+      if (typeof ver === "number") versions.set(langId, ver);
 
       const consistency = this.reasonerService?.updateAndReason
         ? this.reasonerService.updateAndReason(versions, delta)
@@ -3571,8 +3603,40 @@ export class ValidationService {
   private postValidatePolyglotDrift(effectiveUri: string, _langId: string, diagnostics: Diagnostic[]): void {
     try {
       const sources: PolyglotModelSource[] = [];
-      const plugins = globalLanguageRegistry.getAllPlugins();
+      const seenUris = new Set<string>();
+      const pushFileSymbols = (pId: string, fUri: string, fIdx: any) => {
+        if (!fIdx?.symbols || seenUris.has(fUri)) return;
+        seenUris.add(fUri);
+        for (const sym of fIdx.symbols.values()) {
+          const val =
+            sym.metadata?.value ??
+            sym.metadata?.nominal ??
+            sym.metadata?.defaultValue ??
+            (sym.metadata?.variability === "parameter" && typeof sym.metadata?.binding === "number"
+              ? sym.metadata.binding
+              : undefined);
+          if (val !== undefined && typeof val === "number" && Number.isFinite(val)) {
+            const parent = sym.parentId ? fIdx.symbols.get(sym.parentId) : undefined;
+            const fileBase =
+              fUri
+                .split("/")
+                .pop()
+                ?.replace(/\.[^.]+$/, "") || sym.name;
+            const compName = parent ? parent.name : fileBase;
+            sources.push({
+              lang: pId,
+              uri: fUri,
+              component: compName,
+              param: sym.name,
+              value: val,
+              startOffset: sym.startOffset,
+              endOffset: sym.endOffset,
+            });
+          }
+        }
+      };
 
+      const plugins = globalLanguageRegistry.getAllPlugins();
       for (const plugin of plugins) {
         const pId = plugin.id;
         const wsIdx = plugin.workspaceIndex ?? this.workspaceManager?.getWorkspaceIndex?.(pId);
@@ -3581,35 +3645,17 @@ export class ValidationService {
         const files: Map<string, any> | undefined = wsIdx.files ?? wsIdx.fileIndices;
         if (files) {
           for (const [fUri, fIdx] of files.entries()) {
-            if (!fIdx?.symbols) continue;
-            for (const sym of fIdx.symbols.values()) {
-              const val =
-                sym.metadata?.value ??
-                sym.metadata?.nominal ??
-                sym.metadata?.defaultValue ??
-                (sym.metadata?.variability === "parameter" && typeof sym.metadata?.binding === "number"
-                  ? sym.metadata.binding
-                  : undefined);
-              if (val !== undefined && typeof val === "number" && Number.isFinite(val)) {
-                const parent = sym.parentId ? fIdx.symbols.get(sym.parentId) : undefined;
-                const fileBase =
-                  fUri
-                    .split("/")
-                    .pop()
-                    ?.replace(/\.[^.]+$/, "") || sym.name;
-                const compName = parent ? parent.name : fileBase;
-                sources.push({
-                  lang: pId,
-                  uri: fUri,
-                  component: compName,
-                  param: sym.name,
-                  value: val,
-                  startOffset: sym.startOffset,
-                  endOffset: sym.endOffset,
-                });
-              }
-            }
+            pushFileSymbols(pId, fUri, fIdx);
           }
+        }
+      }
+
+      const unifiedWs = this.workspaceManager?.unifiedWorkspace;
+      if (unifiedWs && typeof unifiedWs.listDocumentUris === "function") {
+        for (const fUri of unifiedWs.listDocumentUris()) {
+          const fIdx = unifiedWs.getNativeFileIndex?.(fUri) ?? unifiedWs.getFileIndex?.(fUri);
+          const pId = globalLanguageRegistry.getPluginForUri(fUri)?.id ?? _langId;
+          pushFileSymbols(pId, fUri, fIdx);
         }
       }
 
@@ -4598,7 +4644,7 @@ export class ValidationService {
   private checkAutoVerify(effectiveUri: string): void {
     if (this.workspaceManager.unifiedWorkspace) {
       try {
-        const udb = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+        const udb = this.workspaceManager.unifiedWorkspace.getIndex();
         const docSymbolIds = udb.symbolsByResource?.get(effectiveUri);
         let hasVerifyCases = false;
         if (docSymbolIds) {
@@ -4753,7 +4799,7 @@ export class ValidationService {
         });
       }
 
-      const db = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+      const db = this.workspaceManager.unifiedWorkspace.getIndex();
       const fileNodes = Array.from(db.symbols.values()).filter(
         (s: any) =>
           s.resourceId === textDocument.uri &&
@@ -5043,7 +5089,7 @@ export class ValidationService {
       if (local && !candidates.includes(local)) candidates.push(local);
     }
 
-    const db = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+    const db = this.workspaceManager.unifiedWorkspace.getIndex();
     for (const cand of candidates) {
       const nameIds = db.byName.get(cand);
       if (nameIds && nameIds.length > 0) {
@@ -5128,7 +5174,7 @@ export class ValidationService {
       if (local && !candidates.includes(local)) candidates.push(local);
     }
 
-    const db = this.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
+    const db = this.workspaceManager?.unifiedWorkspace?.getIndex?.();
     if (!db || !db.byName || !db.symbols) return null;
 
     for (const cand of candidates) {

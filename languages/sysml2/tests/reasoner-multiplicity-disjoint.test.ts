@@ -35,7 +35,7 @@ async function main() {
 
   const workspaceIndex = createSysML2WorkspaceIndex();
   workspaceIndex.register("file:///vehicle.sysml", () => tree.rootNode as any);
-  const unified = await workspaceIndex.toUnifiedAsync();
+  const unified = await workspaceIndex.getIndexAsync();
   const queryEngine = createSysML2QueryEngine(unified);
   const db = queryEngine.toQueryDB();
 
@@ -127,7 +127,7 @@ async function main() {
   const badTree = parser.parse(badModel);
   const badWs = createSysML2WorkspaceIndex();
   badWs.register("file:///inconsistent.sysml", () => badTree.rootNode as any);
-  const badUnified = await badWs.toUnifiedAsync();
+  const badUnified = await badWs.getIndexAsync();
   const badQE = createSysML2QueryEngine(badUnified);
   const badPkg = badQE.toQueryDB().byName("InconsistentModel")[0];
   const badLint: any = badQE.fetch("lint__ontologicalInconsistency", badPkg.id);

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -12,8 +13,8 @@ import {
   serializeSwmm,
   solveSwmmDynamicWave,
   solveSwmmHydraulics,
+  swmmLanguage,
   swmmToModelica,
-  SwmmWorkspaceIndex,
 } from "../src/index.js";
 
 const VALID_SWMM_INP = `[TITLE]
@@ -279,12 +280,13 @@ test("SWMM Modelica Projection: generates syntactically valid Modelica 3.x code"
   assert.match(moCode, /end Example_3_Node_Stormwater_Network;/);
 });
 
-test("SWMM Workspace Index: indexes multi-file symbols accurately", () => {
-  const index = new SwmmWorkspaceIndex();
+test("SWMM UnifiedWorkspace: indexes multi-file symbols accurately", () => {
+  const ws = new UnifiedWorkspace(swmmLanguage);
   const uri = "file:///workspace/network.inp";
-  const symIdx = index.indexFile(uri, VALID_SWMM_INP);
+  ws.setDocument(uri, VALID_SWMM_INP);
+  const symIdx = ws.getIndex();
 
-  assert.ok(index.has(uri));
+  assert.ok(ws.hasDocument(uri));
   assert.ok(symIdx.symbols.size > 0);
 
   // Name based lookup

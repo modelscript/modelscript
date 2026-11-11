@@ -4,7 +4,6 @@ import {
   getSimulinkDocumentSymbols,
   getSimulinkHover,
   simulinkLanguage,
-  SimulinkWorkspaceIndex,
   validateSimulink,
 } from "@modelscript/simulink";
 import assert from "node:assert/strict";
@@ -41,7 +40,6 @@ describe("Simulink LSP Integration Suite (@modelscript/lsp)", () => {
       name: "MATLAB Simulink",
       extensions: [".mdl", ".slx"],
       languageDef: simulinkLanguage,
-      workspaceIndex: new SimulinkWorkspaceIndex(),
       customHandlers: {
         symbols: (text: string) => getSimulinkDocumentSymbols(text, "model.mdl"),
         hover: (offset: number, text: string) => {

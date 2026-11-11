@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  Easy5WorkspaceIndex,
   buildEasy5DiagramData,
+  easy5Language,
   easy5ToModelica,
   easy5ToSsp,
+  getEasy5Model,
   parseEasy5,
   renderEasy5SchematicSvg,
 } from "../src/index.js";
@@ -64,13 +66,15 @@ CONNECTIONS:
     assert.ok(svg.includes("IN01"));
   });
 
-  it("indexes EASY5 models in Easy5WorkspaceIndex for multi-file workspace navigation", () => {
-    const ws = new Easy5WorkspaceIndex();
+  it("indexes EASY5 models in UnifiedWorkspace for multi-file workspace navigation", () => {
+    const ws = new UnifiedWorkspace(easy5Language);
     const uri = "file:///workspace/models/actuator.ez5";
-    const symIndex = ws.indexFile(uri, sampleModel);
+    ws.setDocument(uri, sampleModel);
+    const symIndex = ws.getIndex();
 
-    assert.ok(ws.has(uri));
+    assert.ok(ws.hasDocument(uri));
     assert.strictEqual(ws.fileCount, 1);
+    assert.strictEqual(getEasy5Model(ws, uri)?.name, "ActuatorSystem");
 
     const modelSym = symIndex.byName.get("ActuatorSystem");
     assert.ok(modelSym && modelSym.length > 0);

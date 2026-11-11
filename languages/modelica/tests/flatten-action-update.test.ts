@@ -32,7 +32,7 @@ end BouncingBall;`;
     const wsIndex = createModelicaWorkspaceIndex();
     wsIndex.indexDocument(uri, () => tree.rootNode);
 
-    const unified = wsIndex.toUnified();
+    const unified = wsIndex.getIndex({ eager: true });
     const queryEngine = createModelicaQueryEngine(unified, {
       getText: (s, e) => oldMo.substring(s, e),
       getNode: (s, e) => tree.rootNode.descendantForIndex(s, e),
@@ -66,7 +66,7 @@ end BouncingBall;`;
     const newTree = parser.parse(newMo);
     wsIndex.indexDocument(uri, () => newTree.rootNode);
 
-    const unified2 = wsIndex.toUnified();
+    const unified2 = wsIndex.getIndex({ eager: true });
     const queryEngine2 = createModelicaQueryEngine(unified2, {
       getText: (s, e) => newMo.substring(s, e),
       getNode: (s, e) => newTree.rootNode.descendantForIndex(s, e),

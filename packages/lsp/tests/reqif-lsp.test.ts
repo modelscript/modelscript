@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  getReqifDocumentSymbols,
-  getReqifHover,
-  reqifLanguage,
-  ReqIfWorkspaceIndex,
-  validateReqif,
-} from "@modelscript/reqif";
+import { getReqifDocumentSymbols, getReqifHover, reqifLanguage, validateReqif } from "@modelscript/reqif";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { globalLanguageRegistry } from "../src/registry/LanguageRegistry.js";
@@ -84,7 +78,6 @@ describe("ReqIF LSP Language Server Integration", () => {
       name: "ReqIF",
       extensions: [".reqif", ".reqifz"],
       languageDef: reqifLanguage,
-      workspaceIndex: new ReqIfWorkspaceIndex(),
       customHandlers: {
         symbols: (text: string) => getReqifDocumentSymbols(text),
         hover: (offset: number, text: string) => getReqifHover(text, 0, offset),

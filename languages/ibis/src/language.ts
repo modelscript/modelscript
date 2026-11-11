@@ -21,6 +21,63 @@ export const ibisLanguage = language({
       dark: "./assets/ibis/icon-dark.png",
     },
   },
+  indexing: {
+    indexFile(ctx) {
+      try {
+        const deck = parseIbis(ctx.text, ctx.uri);
+        ctx.setParsedModel(deck);
+
+        const rootName = deck.fileName || "IbisDocument";
+        const rootId = ctx.addSymbol(
+          rootName,
+          "package",
+          null,
+          0,
+          ctx.text.length,
+          { ibisVer: deck.ibisVer },
+          { ruleName: "ibis_symbol" },
+        );
+
+        for (const [compName, comp] of deck.components) {
+          const compId = ctx.addSymbol(
+            compName,
+            "class",
+            rootId,
+            0,
+            50,
+            { manufacturer: comp.manufacturer },
+            { ruleName: "ibis_symbol" },
+          );
+
+          for (const [pinName, pin] of comp.pins) {
+            ctx.addSymbol(
+              pinName,
+              "field",
+              compId,
+              0,
+              50,
+              { signal: pin.signalName, model: pin.modelName },
+              { ruleName: "ibis_symbol" },
+            );
+          }
+        }
+
+        for (const [modName, mod] of deck.models) {
+          ctx.addSymbol(
+            modName,
+            "interface",
+            rootId,
+            0,
+            50,
+            { modelType: mod.modelType, vcc: mod.voltageRange.typ },
+            { ruleName: "ibis_symbol" },
+          );
+        }
+      } catch {
+        // If parsing fails, preserve empty symbol table
+      }
+    },
+  },
 
   writeback: {
     operators: ["="],

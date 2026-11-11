@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   SmilesErrorCode,
-  SmilesWorkspaceIndex,
   estimateThermophysicalProperties,
   executeSmilesAction,
   getSmilesDocumentSymbols,
@@ -281,13 +281,13 @@ test("SMILES Projections: generates Modelica 3.x thermodynamic models and Aspen 
   assert.equal(aspenComp.id, "ASPIRIN");
 });
 
-test("SMILES Workspace Index & LSP: indexes symbols, hover cards, completions, and actions", async () => {
-  const index = new SmilesWorkspaceIndex();
+test("SMILES UnifiedWorkspace & LSP: indexes symbols, hover cards, completions, and actions", async () => {
+  const ws = new UnifiedWorkspace(smilesLanguage);
   const sampleText = `${ASPIRIN_SMILES} Aspirin\n${CAFFEINE_SMILES} Caffeine`;
-  index.indexFile("file:///chem/drugs.smi", sampleText);
+  ws.setDocument("file:///chem/drugs.smi", sampleText);
 
-  assert.equal(index.fileCount, 1);
-  const aspirinSym = index.findDefinition("Aspirin");
+  assert.equal(ws.fileCount, 1);
+  const aspirinSym = ws.findSymbolsByName("Aspirin")[0];
   assert.ok(aspirinSym);
   assert.equal(aspirinSym.metadata?.["formula"], "C9H8O4");
 

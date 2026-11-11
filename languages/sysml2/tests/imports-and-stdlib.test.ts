@@ -43,7 +43,7 @@ async function runTests() {
     const tree = parser.parse(userModelCode);
     return tree ? (tree.rootNode as any) : null;
   });
-  const unified = await workspaceIndex.toUnifiedAsync();
+  const unified = await workspaceIndex.getIndexAsync();
   const queryEngine = createSysML2QueryEngine(unified);
   const db = queryEngine.toQueryDB();
 

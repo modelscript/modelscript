@@ -4,7 +4,6 @@ import {
   feaLanguage,
   feaToDae,
   feaToModelica,
-  FeaWorkspaceIndex,
   getFeaDocumentSymbols,
   getFeaHover,
   parseFeaDeck,
@@ -48,7 +47,6 @@ describe("FEA LSP Integration Suite (@modelscript/lsp)", () => {
       name: "FEA",
       extensions: [".fea", ".inp", ".inpt", ".bdf", ".dat"],
       languageDef: feaLanguage,
-      workspaceIndex: new FeaWorkspaceIndex(),
       customHandlers: {
         symbols: (text: string) => getFeaDocumentSymbols(text),
         hover: (offset: number, text: string) => {

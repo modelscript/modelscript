@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import test from "node:test";
-import { FiberWorkspaceIndex, parseFiberGis, resolveStrandColor } from "../src/index.js";
+import { fiberLanguage, getFiberNetwork, parseFiberGis, resolveStrandColor } from "../src/index.js";
 
 const SAMPLE_OSP_GEOJSON = {
   name: "Metro-FTTx-Feeder",
@@ -154,19 +155,19 @@ test("ANSI/TIA-598-D color code registry and OSP cadastre parser", async (t) => 
     assert.equal(trace[2]?.strandNumber, 1);
   });
 
-  await t.test("FiberWorkspaceIndex indexes OSP network and exposes symbols", () => {
-    const index = new FiberWorkspaceIndex();
+  await t.test("UnifiedWorkspace indexes OSP network and exposes symbols", () => {
+    const ws = new UnifiedWorkspace(fiberLanguage);
     const uri = "file:///workspace/metro_osp.geojson";
 
-    index.reindexDocument(uri, () => JSON.stringify(SAMPLE_OSP_GEOJSON));
-    assert.equal(index.fileCount, 1);
-    assert.ok(index.has(uri));
+    ws.setDocument(uri, JSON.stringify(SAMPLE_OSP_GEOJSON));
+    assert.equal(ws.fileCount, 1);
+    assert.ok(ws.hasDocument(uri));
 
-    const net = index.getNetwork(uri);
+    const net = getFiberNetwork(ws, uri);
     assert.ok(net);
     assert.equal(net.name, "Metro-FTTx-Feeder");
 
-    const found = index.findByName("Midtown Feeder Cable");
+    const found = ws.findSymbolsByName("Midtown Feeder Cable");
     assert.ok(found.length > 0, "Should index cable as symbol");
   });
 });

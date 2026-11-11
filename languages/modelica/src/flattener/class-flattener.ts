@@ -1420,6 +1420,9 @@ export class ModelicaFlattener {
         if (
           targetClass &&
           ((sym?.resourceId && targetClass.resourceId && targetClass.resourceId !== sym.resourceId) ||
+            (targetClass.language && targetClass.language !== "modelica") ||
+            typeof (targetClass.metadata as Record<string, unknown> | undefined)?.["lowerComponentToDae"] ===
+              "function" ||
             this.isOperatorRecordSym(targetClass) ||
             targetClass.name === "Complex")
         ) {
@@ -3191,6 +3194,7 @@ export class ModelicaFlattener {
       }
     }
 
+    let layer2EqStartIdx = dae.eqCount;
     if (!flattenedInWasm) {
       // Validate rootClassId itself if it is an enumeration
       const rootSym = this.db.symbol(rootClassId);
@@ -3260,6 +3264,7 @@ export class ModelicaFlattener {
       }
 
       // 2. Layer 2: Direct CST Equation extraction
+      layer2EqStartIdx = dae.eqCount;
       this.extractClassEquations(rootClassId, "", dae);
       if (this.pendingArrayBindings.size > 0) {
         for (const items of this.pendingArrayBindings.values()) {
@@ -3315,6 +3320,39 @@ export class ModelicaFlattener {
     };
 
     expandArrayConnectEquations(dae);
+
+    const pendingForeignDefaults = (dae.extensionMetadata as Record<string, unknown>)[
+      "__pendingForeignInputDefaults"
+    ] as Array<{ varName: string; rhsExprId: number }> | undefined;
+    if (pendingForeignDefaults && pendingForeignDefaults.length > 0) {
+      delete (dae.extensionMetadata as Record<string, unknown>)["__pendingForeignInputDefaults"];
+      const externallyDrivenVars = new Set<string>();
+      for (let eqIdx = layer2EqStartIdx; eqIdx < dae.eqCount; eqIdx++) {
+        const kind = dae.getEqKind(eqIdx);
+        const l = dae.getEqLhs(eqIdx);
+        const r = dae.getEqRhs(eqIdx);
+        if (kind === EqKind.Connect) {
+          if (l >= 0 && dae.getExprKind(l) === ExprKind.Name) {
+            const ln = dae.interner.resolve(dae.getExprData1(l));
+            if (ln) externallyDrivenVars.add(ln);
+          }
+          if (r >= 0 && dae.getExprKind(r) === ExprKind.Name) {
+            const rn = dae.interner.resolve(dae.getExprData1(r));
+            if (rn) externallyDrivenVars.add(rn);
+          }
+        } else if (kind === EqKind.Simple) {
+          if (l >= 0 && dae.getExprKind(l) === ExprKind.Name) {
+            const ln = dae.interner.resolve(dae.getExprData1(l));
+            if (ln) externallyDrivenVars.add(ln);
+          }
+        }
+      }
+      for (const def of pendingForeignDefaults) {
+        if (!externallyDrivenVars.has(def.varName)) {
+          dae.addEquation(EqKind.Simple, dae.addNameExpr(def.varName), def.rhsExprId);
+        }
+      }
+    }
 
     const resolvedRecordValCache = new Map<string, number | null>();
     const rootComponentsMap = new Map<string, any>();

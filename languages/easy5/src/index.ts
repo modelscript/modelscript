@@ -13,6 +13,7 @@ export {
 export * from "./grammar/index.js";
 export { easy5Language } from "./language.js";
 
+export { getEasy5Model, indexEasy5Document } from "./indexing.js";
 export {
   buildModelEvaluator,
   computeBodePlot,
@@ -55,4 +56,3 @@ export type {
   PortKind,
   SystemEigenvalue,
 } from "./types.js";
-export { Easy5WorkspaceIndex } from "./workspace-index.js";

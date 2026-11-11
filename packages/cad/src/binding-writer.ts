@@ -324,3 +324,148 @@ export function patchModelicaCadAnnotation(
     newText: insertion,
   };
 }
+
+/**
+ * Adds or updates a CADPort(...) annotation on a Modelica component declaration.
+ */
+export function patchModelicaCadPortAnnotation(
+  source: string,
+  componentName: string,
+  port: {
+    feature: string;
+    offsetPosition?: [number, number, number] | undefined;
+    offsetRotation?: [number, number, number] | undefined;
+  },
+): { updatedSource: string; replacedRange?: { start: number; end: number } | undefined; newText?: string | undefined } {
+  const compRegex = new RegExp(`\\b${componentName}\\b([\\s\\S]*?)(;)`, "m");
+  const compMatch = compRegex.exec(source);
+
+  if (!compMatch) {
+    return { updatedSource: source };
+  }
+
+  const compBody = compMatch[1]!;
+  const compStart = compMatch.index;
+  const compEnd = compStart + compMatch[0].length;
+
+  const posStr = port.offsetPosition
+    ? `, offsetPosition = {${port.offsetPosition.map((v) => Number(v.toFixed(4))).join(", ")}}`
+    : "";
+  const rotStr = port.offsetRotation
+    ? `, offsetRotation = {${port.offsetRotation.map((v) => Number(v.toFixed(4))).join(", ")}}`
+    : "";
+  const cadPortStr = `CADPort(feature = "${port.feature}"${posStr}${rotStr})`;
+
+  const annotCall = findBalancedCall(compBody, "annotation");
+  if (annotCall) {
+    const existingContent = annotCall.inner.trim();
+    const updatedAnnot = `annotation(${existingContent ? existingContent + ",\n  " : ""}${cadPortStr})`;
+    const updatedCompBody = compBody.slice(0, annotCall.callStart) + updatedAnnot + compBody.slice(annotCall.callEnd);
+    const bodyStart = compStart + compMatch[0].indexOf(compBody);
+    const bodyEnd = compEnd - 1;
+    const updatedSource = source.slice(0, bodyStart) + updatedCompBody + source.slice(bodyEnd);
+
+    return {
+      updatedSource,
+      replacedRange: { start: bodyStart, end: bodyEnd },
+      newText: updatedCompBody,
+    };
+  }
+
+  const insertion = ` annotation(${cadPortStr})`;
+  const semicolonIdx = compEnd - 1;
+  const updatedSource = source.slice(0, semicolonIdx) + insertion + source.slice(semicolonIdx);
+
+  return {
+    updatedSource,
+    replacedRange: { start: semicolonIdx, end: semicolonIdx },
+    newText: insertion,
+  };
+}
+
+export type MultiBodyJointType = "Revolute" | "Prismatic" | "Cylindrical" | "Spherical" | "Fixed";
+
+export interface AssemblyJointSpec {
+  jointName: string;
+  jointType: MultiBodyJointType;
+  partA: string;
+  frameA?: string | undefined;
+  partB: string;
+  frameB?: string | undefined;
+  axis?: [number, number, number] | undefined;
+  phi_offset?: number | undefined;
+  s_offset?: number | undefined;
+}
+
+/**
+ * Synthesizes and injects a Modelica MultiBody Joint declaration and connect equations
+ * between two components/frames in an assembly model.
+ */
+export function patchModelicaAssemblyJoint(
+  source: string,
+  joint: AssemblyJointSpec,
+): {
+  updatedSource: string;
+  replacedRange?: { start: number; end: number } | undefined;
+  newText?: string | undefined;
+} {
+  const { jointName, jointType, partA, frameA, partB, frameB, axis, phi_offset, s_offset } = joint;
+
+  const params: string[] = [];
+  if (axis && (jointType === "Revolute" || jointType === "Prismatic" || jointType === "Cylindrical")) {
+    params.push(`n = {${axis.map((v) => Number(v.toFixed(4))).join(", ")}}`);
+  }
+  if (phi_offset !== undefined && (jointType === "Revolute" || jointType === "Cylindrical")) {
+    params.push(`phi_offset = ${Number(phi_offset.toFixed(4))}`);
+  }
+  if (s_offset !== undefined && (jointType === "Prismatic" || jointType === "Cylindrical")) {
+    params.push(`s_offset = ${Number(s_offset.toFixed(4))}`);
+  }
+
+  const paramStr = params.length > 0 ? `(${params.join(", ")})` : "";
+  const jointDecl = `  Modelica.Mechanics.MultiBody.Joints.${jointType} ${jointName}${paramStr};`;
+
+  const connA = frameA ? `${partA}.${frameA}` : `${partA}.frame_b`;
+  const connB = frameB ? `${partB}.${frameB}` : `${partB}.frame_a`;
+  const connEquations = `  connect(${connA}, ${jointName}.frame_a);\n  connect(${jointName}.frame_b, ${connB});`;
+
+  // Check if an equation section already exists
+  const eqMatch = /\n([ \t]*)equation\b/m.exec(source);
+  if (eqMatch) {
+    const eqIdx = eqMatch.index;
+    const afterEq = eqIdx + eqMatch[0].length;
+    const updatedSource =
+      source.slice(0, eqIdx) +
+      `\n${jointDecl}\n` +
+      source.slice(eqIdx, afterEq) +
+      `\n${connEquations}` +
+      source.slice(afterEq);
+
+    return {
+      updatedSource,
+      replacedRange: { start: eqIdx, end: afterEq },
+      newText: `\n${jointDecl}\n${eqMatch[0]}\n${connEquations}`,
+    };
+  }
+
+  // If no equation section exists, search for end <ModelName>;
+  const endMatch = /\n([ \t]*)end\s+([A-Za-z0-9_]+)\s*;/m.exec(source);
+  if (endMatch) {
+    const endIdx = endMatch.index;
+    const insertion = `\n${jointDecl}\n\nequation\n${connEquations}\n`;
+    const updatedSource = source.slice(0, endIdx) + insertion + source.slice(endIdx);
+    return {
+      updatedSource,
+      replacedRange: { start: endIdx, end: endIdx },
+      newText: insertion,
+    };
+  }
+
+  // Fallback: append at the end
+  const appendStr = `\n${jointDecl}\n\nequation\n${connEquations}\n`;
+  return {
+    updatedSource: source + appendStr,
+    replacedRange: { start: source.length, end: source.length },
+    newText: appendStr,
+  };
+}

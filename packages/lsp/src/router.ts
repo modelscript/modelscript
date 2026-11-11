@@ -89,7 +89,7 @@ export function registerAllLspProviders(context: LspContext): void {
       const idx = isSysML2
         ? workspaceManager.getWorkspaceIndex("sysml2")
         : workspaceManager.getWorkspaceIndex("modelica");
-      return await idx?.toUnifiedAsync();
+      return await idx?.getIndexAsync();
     },
     () => workspaceManager.getWorkspaceIndex("modelica"),
   );

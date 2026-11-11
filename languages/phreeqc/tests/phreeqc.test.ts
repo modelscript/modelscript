@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   PhreeqcErrorCode,
-  PhreeqcWorkspaceIndex,
   executePhreeqcAction,
+  findPhreeqcDefinition,
+  getPhreeqcDocument,
   getPhreeqcDocumentSymbols,
   getPhreeqcHover,
   lintPhreeqc,
   lowerPhreeqcToDae,
   parsePhreeqc,
+  phreeqcLanguage,
   phreeqcToModelica,
   serializePhreeqc,
   solvePhreeqcSpeciation,
@@ -265,20 +268,21 @@ test("PHREEQC Modelica Projection: generates valid Modelica 3.x aqueous geochemi
   assert.ok(mo.includes("end KarstAquiferModel;"));
 });
 
-test("PHREEQC WorkspaceIndex & LSP: indexes symbols, hover, diagnostics, and actions", async () => {
-  const index = new PhreeqcWorkspaceIndex();
+test("PHREEQC UnifiedWorkspace & LSP: indexes symbols, hover, diagnostics, and actions", async () => {
+  const ws = new UnifiedWorkspace(phreeqcLanguage);
   const uri = "file:///geochem/karst.pqi";
-  index.indexFile(uri, VALID_PHREEQC_DECK);
+  ws.setDocument(uri, VALID_PHREEQC_DECK);
 
-  assert.equal(index.fileCount, 1);
-  const symbols = index.getSymbols(uri);
+  assert.equal(ws.fileCount, 1);
+  assert.equal(getPhreeqcDocument(ws, uri)?.solutions.size, 2);
+  const symbols = ws.getSymbolsForUri(uri);
   assert.ok(symbols.length >= 10);
 
-  const solDef = index.findDefinition("SOLUTION_1");
+  const solDef = findPhreeqcDefinition(ws, "SOLUTION_1");
   assert.ok(solDef);
-  const caDef = index.findDefinition("Ca");
+  const caDef = findPhreeqcDefinition(ws, "Ca");
   assert.ok(caDef);
-  const calciteDef = index.findDefinition("Calcite");
+  const calciteDef = findPhreeqcDefinition(ws, "Calcite");
   assert.ok(calciteDef);
 
   const lspDiags = validatePhreeqc(VALID_PHREEQC_DECK);

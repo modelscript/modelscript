@@ -9,6 +9,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerVerilogAToDae } from "./dae/verilog-a-to-dae.js";
+import { indexVerilogAFile } from "./indexing.js";
 import { lintVerilogA } from "./lints/rules.js";
 import { parseVerilogA } from "./parser/verilog-a-parser.js";
 import { verilogAToModelica } from "./projections/verilog-a-to-modelica.js";
@@ -18,6 +19,9 @@ export const verilogALanguage = language({
   name: "verilog-a",
   fileExtensions: [".va", ".vams"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexVerilogAFile,
+  },
   lsp: {
     fileExtensions: [".va", ".vams"],
   },

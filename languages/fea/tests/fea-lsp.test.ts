@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import {
   executeFeaAction,
+  feaLanguage,
   feaToDae,
   feaToModelica,
-  FeaWorkspaceIndex,
+  findFeaDefinitions,
+  getFeaDeck,
   getFeaDocumentSymbols,
   getFeaHover,
   parseFeaDeck,
@@ -184,18 +187,19 @@ Inverted Element & Shell Section Checks
     assert.ok(mo.includes("end CantileverBeam;"), "Should cleanly terminate Modelica model");
   });
 
-  test("indexes FEA models in FeaWorkspaceIndex for multi-file discovery", () => {
-    const index = new FeaWorkspaceIndex();
-    index.indexFile("file:///structures/beam.inp", VALID_INP_DECK);
+  test("indexes FEA models in UnifiedWorkspace for multi-file discovery", () => {
+    const ws = new UnifiedWorkspace(feaLanguage);
+    const uri = "file:///structures/beam.inp";
+    ws.setDocument(uri, VALID_INP_DECK);
 
-    assert.equal(index.fileCount, 1);
-    assert.ok(index.has("file:///structures/beam.inp"));
+    assert.equal(ws.fileCount, 1);
+    assert.ok(ws.hasDocument(uri));
 
-    const deck = index.getDeck("file:///structures/beam.inp");
+    const deck = getFeaDeck(ws, uri);
     assert.ok(deck);
     assert.ok(deck.materials.has("STEEL"));
 
-    const defs = index.findDefinition("STEEL", "file:///structures/beam.inp");
+    const defs = findFeaDefinitions(ws, "STEEL", uri);
     assert.ok(defs.length > 0, "Should locate definition of material 'STEEL'");
   });
 

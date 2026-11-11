@@ -44,7 +44,7 @@ end Child;`;
     "MyPackage.Child FQN should be indexed",
   );
 
-  const qe = createModelicaQueryEngine(ws.toUnified());
+  const qe = createModelicaQueryEngine(ws.getIndex({ eager: true }));
   const qdb = qe.toQueryDB();
 
   const resolveSimple = qdb.query("resolveSimpleName", childSym.id) as (name: string) => any;
@@ -94,7 +94,7 @@ end ChildSim;`;
   const childTree = parser.parse(childCode);
   ws.indexDocument("file:///Physics/ChildSim.mo", () => childTree.rootNode);
 
-  const qe = createModelicaQueryEngine(ws.toUnified());
+  const qe = createModelicaQueryEngine(ws.getIndex({ eager: true }));
 
   const docTrees = new Map();
   docTrees.set("file:///Physics/package.mo", { text: pkgCode, tree: pkgTree });

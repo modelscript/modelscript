@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerSbolToDae } from "./dae/sbol-to-dae.js";
+import { sbolIndexing } from "./indexing.js";
 import { lintSbol } from "./lints/index.js";
 import { parseSbol } from "./parser/sbol-parser.js";
 import { sbolToModelica, sbolToSbmlXml } from "./projections/sbol-projections.js";
@@ -14,6 +15,7 @@ export const sbolLanguage = language({
   name: "sbol",
   fileExtensions: [".sbol", ".ttl"],
   maturity: "experimental",
+  indexing: sbolIndexing,
   lsp: {
     fileExtensions: [".sbol", ".ttl"],
     icons: {

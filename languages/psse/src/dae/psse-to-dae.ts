@@ -16,7 +16,9 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import { getPsseModelPortSpecs, PSSE_MODEL_DEFAULTS } from "../builtins.js";
 import { extractPowerFlowNetlist } from "../netlist/powerflow-netlist.js";
+import { DYR_MODEL_SCHEMAS } from "../parser/dyr-parser.js";
 import type { PsseCase } from "../types.js";
 
 export interface PsseDaeOptions {
@@ -369,4 +371,365 @@ export function lowerPsseToDae(psseCase: PsseCase, options?: PsseDaeOptions): DA
   }
 
   return dae;
+}
+
+export interface PsseComponentParamOverride {
+  value?: number | undefined;
+  exprId?: number | undefined;
+}
+
+export interface PsseDeferredInputDefault {
+  varName: string;
+  rhsExprId: number;
+}
+
+export interface PsseComponentLowerOptions {
+  paramOverrides?: Record<string, PsseComponentParamOverride> | undefined;
+  connectedInputPorts?: ReadonlySet<string> | undefined;
+  deferInputDefaults?: boolean | undefined;
+}
+
+/**
+ * Lowers a single PSS/E standard dynamic model instance (e.g. `PSSEDynamics.GENROU`, `EXST1`,
+ * `TGOV1`, `IEEEST`, `REGC_A`) directly into linear-memory `DAEBuilder` variables and equations.
+ *
+ * Maintains exact equation-unknown structural balance both when standalone (unconnected input ports
+ * bind to steady-state operating setpoints) and when wired via `connect(...)` in Modelica / SysML v2.
+ */
+export function lowerPsseComponentToDae(
+  dae: DAEBuilder,
+  modelName: string,
+  instancePrefix: string,
+  options?: PsseComponentLowerOptions,
+): PsseDeferredInputDefault[] {
+  const upperModel = modelName.toUpperCase();
+  const canonicalKey = upperModel === "REGCA1" ? "REGC_A" : upperModel;
+  const schema = DYR_MODEL_SCHEMAS[canonicalKey] ?? DYR_MODEL_SCHEMAS["GENROU"]!;
+  const defaults = {
+    ...(PSSE_MODEL_DEFAULTS[canonicalKey] ?? PSSE_MODEL_DEFAULTS["GENROU"]!),
+  };
+  const overrides = options?.paramOverrides ?? {};
+  const connected = options?.connectedInputPorts ?? new Set<string>();
+  const deferredDefaults: PsseDeferredInputDefault[] = [];
+
+  const p = (localName: string): string => (instancePrefix ? `${instancePrefix}.${localName}` : localName);
+
+  // 1. Emit declared DYR + operating-point parameters as Variability.Parameter
+  const numericParams: Record<string, number> = { ...defaults };
+  const allParamNames = new Set<string>(schema.params.map((sp) => sp.name));
+  for (const k of Object.keys(defaults)) {
+    allParamNames.add(k);
+  }
+
+  for (const paramName of allParamNames) {
+    const ov = overrides[paramName];
+    const startVal = ov?.value !== undefined && Number.isFinite(ov.value) ? ov.value : (defaults[paramName] ?? 0.0);
+    numericParams[paramName] = startVal;
+    const varIdx = dae.addVariable(p(paramName), VarType.Real, Variability.Parameter, Causality.Local, startVal);
+    const bindExpr = ov?.exprId !== undefined ? ov.exprId : dae.addRealLiteral(startVal);
+    dae.setVarExpression(varIdx, bindExpr);
+  }
+
+  const ensureParamExpr = (paramName: string, fallbackVal: number): number => {
+    if (allParamNames.has(paramName)) {
+      return dae.addNameExpr(p(paramName));
+    }
+    return dae.addRealLiteral(fallbackVal);
+  };
+
+  // 2. Emit connectable signal ports (Causality.Local as sub-component continuous variables)
+  const portSpecs = getPsseModelPortSpecs(upperModel, schema.category);
+  const portStartVal = (portName: string): number => {
+    switch (portName) {
+      case "Pm_in":
+      case "Pm_out":
+      case "Pe_out":
+      case "Pcmd_in":
+      case "Ip_out":
+        return numericParams["P0"] ?? 0.8;
+      case "Qcmd_in":
+      case "Iq_out":
+        return numericParams["Q0"] ?? 0.0;
+      case "Efd_in":
+      case "Efd_out":
+        return numericParams["Efd0"] ?? 1.05;
+      case "Vt_in":
+        return numericParams["V0"] ?? 1.0;
+      case "omega_in":
+      case "omega_out":
+        return numericParams["omega0"] ?? 376.99111843077515;
+      default:
+        return 0.0;
+    }
+  };
+
+  for (const port of portSpecs) {
+    dae.addVariable(p(port.name), VarType.Real, Variability.Continuous, Causality.Local, portStartVal(port.name));
+  }
+
+  const bindUnconnectedInput = (portName: string, defaultRhsExpr: number): void => {
+    if (connected.has(portName)) return;
+    if (options?.deferInputDefaults) {
+      deferredDefaults.push({ varName: p(portName), rhsExprId: defaultRhsExpr });
+      return;
+    }
+    dae.addEquation(EqKind.Simple, dae.addNameExpr(p(portName)), defaultRhsExpr);
+  };
+
+  // 3. Emit category-specific linear-memory differential & algebraic equations
+  if (upperModel.startsWith("REGC")) {
+    // WECC Renewable Converter Interface (REGC_A / REGCA1 / REGC_B)
+    const p0Val = numericParams["P0"] ?? 0.8;
+    const q0Val = numericParams["Q0"] ?? 0.0;
+    const v0Val = Math.max(0.1, numericParams["V0"] ?? 1.0);
+
+    bindUnconnectedInput("Pcmd_in", ensureParamExpr("P0", p0Val));
+    bindUnconnectedInput("Qcmd_in", ensureParamExpr("Q0", q0Val));
+    bindUnconnectedInput("Vt_in", ensureParamExpr("V0", v0Val));
+
+    dae.addVariable(p("Ip"), VarType.Real, Variability.Continuous, Causality.Local, p0Val / v0Val);
+    dae.addVariable(p("Iq"), VarType.Real, Variability.Continuous, Causality.Local, q0Val / v0Val);
+
+    const tgExpr = ensureParamExpr("Tg", 0.02);
+    const tfltrExpr = ensureParamExpr("Tfltr", 0.02);
+    const v0Expr = ensureParamExpr("V0", v0Val);
+    const khvExpr = ensureParamExpr("Khv", 0.7);
+
+    // Tg * der(Ip) = (Pcmd_in / V0) - Ip
+    const lhsIp = dae.addBinaryExpr(BinOp.Mul, tgExpr, dae.addDerExpr(dae.addNameExpr(p("Ip"))));
+    const ipCmd = dae.addBinaryExpr(BinOp.Div, dae.addNameExpr(p("Pcmd_in")), v0Expr);
+    dae.addEquation(EqKind.Simple, lhsIp, dae.addBinaryExpr(BinOp.Sub, ipCmd, dae.addNameExpr(p("Ip"))));
+
+    // Tfltr * der(Iq) = (Qcmd_in / V0) + Khv * (V0 - Vt_in) - Iq
+    const lhsIq = dae.addBinaryExpr(BinOp.Mul, tfltrExpr, dae.addDerExpr(dae.addNameExpr(p("Iq"))));
+    const iqCmd = dae.addBinaryExpr(BinOp.Div, dae.addNameExpr(p("Qcmd_in")), v0Expr);
+    const lvrtBoost = dae.addBinaryExpr(
+      BinOp.Mul,
+      khvExpr,
+      dae.addBinaryExpr(BinOp.Sub, v0Expr, dae.addNameExpr(p("Vt_in"))),
+    );
+    dae.addEquation(
+      EqKind.Simple,
+      lhsIq,
+      dae.addBinaryExpr(BinOp.Sub, dae.addBinaryExpr(BinOp.Add, iqCmd, lvrtBoost), dae.addNameExpr(p("Iq"))),
+    );
+
+    // Ip_out = Ip ; Iq_out = Iq
+    dae.addEquation(EqKind.Simple, dae.addNameExpr(p("Ip_out")), dae.addNameExpr(p("Ip")));
+    dae.addEquation(EqKind.Simple, dae.addNameExpr(p("Iq_out")), dae.addNameExpr(p("Iq")));
+    return deferredDefaults;
+  }
+
+  if (schema.category === "generator") {
+    const omega0Val = Math.max(1.0, numericParams["omega0"] ?? 376.99111843077515);
+    const p0Val = numericParams["P0"] ?? 0.8;
+    const v0Val = Math.max(0.1, numericParams["V0"] ?? 1.0);
+    const efd0Val = Math.max(0.1, numericParams["Efd0"] ?? 1.05);
+    const xdpVal = Math.max(0.05, numericParams["Xdp"] ?? 0.25);
+    const delta0Val = (p0Val * xdpVal) / (efd0Val * v0Val);
+
+    bindUnconnectedInput("Pm_in", ensureParamExpr("P0", p0Val));
+    bindUnconnectedInput("Efd_in", ensureParamExpr("Efd0", efd0Val));
+    bindUnconnectedInput("Vt_in", ensureParamExpr("V0", v0Val));
+
+    dae.addVariable(p("delta"), VarType.Real, Variability.Continuous, Causality.Local, delta0Val);
+    dae.addVariable(p("omega"), VarType.Real, Variability.Continuous, Causality.Local, omega0Val);
+
+    const omega0Expr = ensureParamExpr("omega0", omega0Val);
+    const hExpr = ensureParamExpr("H", Math.max(0.1, numericParams["H"] || 3.5));
+    const dExpr = ensureParamExpr("D", numericParams["D"] ?? 1.0);
+    const xdpExpr = ensureParamExpr("Xdp", xdpVal);
+    const p0Expr = ensureParamExpr("P0", p0Val);
+    const v0Expr = ensureParamExpr("V0", v0Val);
+
+    // Eq 1: der(delta) = omega - omega0
+    const omegaDiff = dae.addBinaryExpr(BinOp.Sub, dae.addNameExpr(p("omega")), omega0Expr);
+    dae.addEquation(EqKind.Simple, dae.addDerExpr(dae.addNameExpr(p("delta"))), omegaDiff);
+
+    // Eq 2: (2 * H / omega0) * der(omega) = Pm_in - Pe_out - D * ((omega - omega0) / omega0)
+    const twoH = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(2.0), hExpr);
+    const mInertia = dae.addBinaryExpr(BinOp.Div, twoH, omega0Expr);
+    const lhsSwing = dae.addBinaryExpr(BinOp.Mul, mInertia, dae.addDerExpr(dae.addNameExpr(p("omega"))));
+    const pAccel = dae.addBinaryExpr(BinOp.Sub, dae.addNameExpr(p("Pm_in")), dae.addNameExpr(p("Pe_out")));
+    const puSpeedDev = dae.addBinaryExpr(BinOp.Div, omegaDiff, omega0Expr);
+    const dampTerm = dae.addBinaryExpr(BinOp.Mul, dExpr, puSpeedDev);
+    dae.addEquation(EqKind.Simple, lhsSwing, dae.addBinaryExpr(BinOp.Sub, pAccel, dampTerm));
+
+    const deltaDev = dae.addBinaryExpr(BinOp.Sub, dae.addNameExpr(p("delta")), dae.addRealLiteral(delta0Val));
+    const sinDeltaDev = dae.addCallExpr("sin", [deltaDev]);
+
+    if (upperModel === "GENCLS") {
+      // Pe_out = P0 + (Efd_in * Vt_in / Xdp) * sin(delta - delta0)
+      const evProd = dae.addBinaryExpr(BinOp.Mul, dae.addNameExpr(p("Efd_in")), dae.addNameExpr(p("Vt_in")));
+      const kSync = dae.addBinaryExpr(BinOp.Div, evProd, xdpExpr);
+      const peRhs = dae.addBinaryExpr(BinOp.Add, p0Expr, dae.addBinaryExpr(BinOp.Mul, kSync, sinDeltaDev));
+      dae.addEquation(EqKind.Simple, dae.addNameExpr(p("Pe_out")), peRhs);
+    } else {
+      // Subtransient / transient synchronous machine (GENROU / GENSAL / GENTPJ / GENSAE)
+      dae.addVariable(p("Eqp"), VarType.Real, Variability.Continuous, Causality.Local, efd0Val);
+      dae.addVariable(p("Edp"), VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+
+      const td0pExpr = ensureParamExpr("Td0p", Math.max(0.05, numericParams["Td0p"] || 6.5));
+      const tq0pExpr = allParamNames.has("Tq0p")
+        ? dae.addNameExpr(p("Tq0p"))
+        : ensureParamExpr("Tq0pp", Math.max(0.05, numericParams["Tq0pp"] || 0.5));
+      const xdExpr = ensureParamExpr("Xd", Math.max(xdpVal, numericParams["Xd"] || 1.8));
+      const xqExpr = ensureParamExpr("Xq", Math.max(xdpVal, numericParams["Xq"] || 1.7));
+      const xqpExpr = allParamNames.has("Xqp")
+        ? dae.addNameExpr(p("Xqp"))
+        : ensureParamExpr("Xdpp", Math.max(0.05, numericParams["Xdpp"] || 0.25));
+      const efd0Expr = ensureParamExpr("Efd0", efd0Val);
+
+      // Eq 3: Td0p * der(Eqp) = Efd_in - Eqp - ((Xd - Xdp) / Xd) * (V0 - Vt_in)
+      const lhsEqp = dae.addBinaryExpr(BinOp.Mul, td0pExpr, dae.addDerExpr(dae.addNameExpr(p("Eqp"))));
+      const armatureDrop = dae.addBinaryExpr(
+        BinOp.Mul,
+        dae.addBinaryExpr(BinOp.Div, dae.addBinaryExpr(BinOp.Sub, xdExpr, xdpExpr), xdExpr),
+        dae.addBinaryExpr(BinOp.Sub, v0Expr, dae.addNameExpr(p("Vt_in"))),
+      );
+      const rhsEqp = dae.addBinaryExpr(
+        BinOp.Sub,
+        dae.addBinaryExpr(BinOp.Sub, dae.addNameExpr(p("Efd_in")), dae.addNameExpr(p("Eqp"))),
+        armatureDrop,
+      );
+      dae.addEquation(EqKind.Simple, lhsEqp, rhsEqp);
+
+      // Eq 4: Tq0p * der(Edp) = ((Xq - Xqp) / Xq) * sin(delta - delta0) - Edp
+      const lhsEdp = dae.addBinaryExpr(BinOp.Mul, tq0pExpr, dae.addDerExpr(dae.addNameExpr(p("Edp"))));
+      const qAxisGain = dae.addBinaryExpr(BinOp.Div, dae.addBinaryExpr(BinOp.Sub, xqExpr, xqpExpr), xqExpr);
+      const rhsEdp = dae.addBinaryExpr(
+        BinOp.Sub,
+        dae.addBinaryExpr(BinOp.Mul, qAxisGain, sinDeltaDev),
+        dae.addNameExpr(p("Edp")),
+      );
+      dae.addEquation(EqKind.Simple, lhsEdp, rhsEdp);
+
+      // Eq 5: Pe_out = P0 * (Eqp / Efd0) * (Vt_in / V0) + (Eqp * Vt_in / Xdp) * sin(delta - delta0)
+      const fluxScale = dae.addBinaryExpr(
+        BinOp.Mul,
+        dae.addBinaryExpr(BinOp.Div, dae.addNameExpr(p("Eqp")), efd0Expr),
+        dae.addBinaryExpr(BinOp.Div, dae.addNameExpr(p("Vt_in")), v0Expr),
+      );
+      const baseP = dae.addBinaryExpr(BinOp.Mul, p0Expr, fluxScale);
+      const syncAmp = dae.addBinaryExpr(
+        BinOp.Div,
+        dae.addBinaryExpr(BinOp.Mul, dae.addNameExpr(p("Eqp")), dae.addNameExpr(p("Vt_in"))),
+        xdpExpr,
+      );
+      const peRhs = dae.addBinaryExpr(BinOp.Add, baseP, dae.addBinaryExpr(BinOp.Mul, syncAmp, sinDeltaDev));
+      dae.addEquation(EqKind.Simple, dae.addNameExpr(p("Pe_out")), peRhs);
+    }
+
+    // Output speed tie: omega_out = omega
+    dae.addEquation(EqKind.Simple, dae.addNameExpr(p("omega_out")), dae.addNameExpr(p("omega")));
+    return deferredDefaults;
+  }
+
+  if (schema.category === "exciter") {
+    const v0Val = numericParams["V0"] ?? 1.0;
+    const efd0Val = numericParams["Efd0"] ?? 1.05;
+
+    bindUnconnectedInput("Vt_in", ensureParamExpr("V0", v0Val));
+    bindUnconnectedInput("Vs_in", dae.addRealLiteral(0.0));
+
+    dae.addVariable(p("Efd"), VarType.Real, Variability.Continuous, Causality.Local, efd0Val);
+    const kaExpr = allParamNames.has("KA")
+      ? dae.addNameExpr(p("KA"))
+      : allParamNames.has("K")
+        ? dae.addNameExpr(p("K"))
+        : allParamNames.has("Kvp")
+          ? dae.addNameExpr(p("Kvp"))
+          : dae.addRealLiteral(100.0);
+    const taExpr = allParamNames.has("TA")
+      ? dae.addNameExpr(p("TA"))
+      : allParamNames.has("TE")
+        ? dae.addNameExpr(p("TE"))
+        : allParamNames.has("Tiq")
+          ? dae.addNameExpr(p("Tiq"))
+          : dae.addRealLiteral(0.05);
+    const v0Expr = ensureParamExpr("V0", v0Val);
+    const efd0Expr = ensureParamExpr("Efd0", efd0Val);
+
+    // TA * der(Efd) = Efd0 + KA * ((V0 - Vt_in) + Vs_in) - Efd
+    const lhsExc = dae.addBinaryExpr(BinOp.Mul, taExpr, dae.addDerExpr(dae.addNameExpr(p("Efd"))));
+    const vErr = dae.addBinaryExpr(
+      BinOp.Add,
+      dae.addBinaryExpr(BinOp.Sub, v0Expr, dae.addNameExpr(p("Vt_in"))),
+      dae.addNameExpr(p("Vs_in")),
+    );
+    const regOut = dae.addBinaryExpr(BinOp.Add, efd0Expr, dae.addBinaryExpr(BinOp.Mul, kaExpr, vErr));
+    dae.addEquation(EqKind.Simple, lhsExc, dae.addBinaryExpr(BinOp.Sub, regOut, dae.addNameExpr(p("Efd"))));
+    dae.addEquation(EqKind.Simple, dae.addNameExpr(p("Efd_out")), dae.addNameExpr(p("Efd")));
+    return deferredDefaults;
+  }
+
+  if (schema.category === "governor") {
+    const p0Val = numericParams["P0"] ?? 0.8;
+    const omega0Val = Math.max(1.0, numericParams["omega0"] ?? 376.99111843077515);
+
+    bindUnconnectedInput("omega_in", ensureParamExpr("omega0", omega0Val));
+
+    dae.addVariable(p("Pm"), VarType.Real, Variability.Continuous, Causality.Local, p0Val);
+    const tGovExpr = allParamNames.has("T1")
+      ? dae.addNameExpr(p("T1"))
+      : allParamNames.has("Tg")
+        ? dae.addNameExpr(p("Tg"))
+        : allParamNames.has("Tact")
+          ? dae.addNameExpr(p("Tact"))
+          : dae.addRealLiteral(0.5);
+    const droopGainExpr = allParamNames.has("R")
+      ? dae.addBinaryExpr(BinOp.Div, dae.addRealLiteral(1.0), dae.addNameExpr(p("R")))
+      : allParamNames.has("K")
+        ? dae.addNameExpr(p("K"))
+        : allParamNames.has("Ddn")
+          ? dae.addNameExpr(p("Ddn"))
+          : dae.addRealLiteral(20.0);
+    const p0Expr = ensureParamExpr("P0", p0Val);
+    const omega0Expr = ensureParamExpr("omega0", omega0Val);
+
+    // T1 * der(Pm) = P0 - (1 / R) * ((omega_in - omega0) / omega0) - Pm
+    const lhsGov = dae.addBinaryExpr(BinOp.Mul, tGovExpr, dae.addDerExpr(dae.addNameExpr(p("Pm"))));
+    const speedPuErr = dae.addBinaryExpr(
+      BinOp.Div,
+      dae.addBinaryExpr(BinOp.Sub, dae.addNameExpr(p("omega_in")), omega0Expr),
+      omega0Expr,
+    );
+    const droopTerm = dae.addBinaryExpr(BinOp.Mul, droopGainExpr, speedPuErr);
+    const pCmd = dae.addBinaryExpr(BinOp.Sub, p0Expr, droopTerm);
+    dae.addEquation(EqKind.Simple, lhsGov, dae.addBinaryExpr(BinOp.Sub, pCmd, dae.addNameExpr(p("Pm"))));
+    dae.addEquation(EqKind.Simple, dae.addNameExpr(p("Pm_out")), dae.addNameExpr(p("Pm")));
+    return deferredDefaults;
+  }
+
+  // Stabilizer (IEEEST / PSS2A)
+  const omega0Val = Math.max(1.0, numericParams["omega0"] ?? 376.99111843077515);
+  bindUnconnectedInput("omega_in", ensureParamExpr("omega0", omega0Val));
+
+  dae.addVariable(p("x_wash"), VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+  const twExpr = allParamNames.has("T6")
+    ? dae.addNameExpr(p("T6"))
+    : allParamNames.has("Tw1")
+      ? dae.addNameExpr(p("Tw1"))
+      : dae.addRealLiteral(5.0);
+  const ksExpr = allParamNames.has("KS")
+    ? dae.addNameExpr(p("KS"))
+    : allParamNames.has("Ks1")
+      ? dae.addNameExpr(p("Ks1"))
+      : dae.addRealLiteral(10.0);
+  const omega0Expr = ensureParamExpr("omega0", omega0Val);
+
+  const speedSignal = dae.addBinaryExpr(
+    BinOp.Mul,
+    ksExpr,
+    dae.addBinaryExpr(BinOp.Div, dae.addBinaryExpr(BinOp.Sub, dae.addNameExpr(p("omega_in")), omega0Expr), omega0Expr),
+  );
+  // Tw * der(x_wash) = KS * dw - x_wash ; Vs_out = KS * dw - x_wash
+  const washDiff = dae.addBinaryExpr(BinOp.Sub, speedSignal, dae.addNameExpr(p("x_wash")));
+  dae.addEquation(
+    EqKind.Simple,
+    dae.addBinaryExpr(BinOp.Mul, twExpr, dae.addDerExpr(dae.addNameExpr(p("x_wash")))),
+    washDiff,
+  );
+  dae.addEquation(EqKind.Simple, dae.addNameExpr(p("Vs_out")), washDiff);
+  return deferredDefaults;
 }

@@ -173,7 +173,72 @@ export class ModelicaDiagramBackend implements DiagramBackend {
       docText = this.deps.getDocumentText(params.uri);
     }
 
-    if (!instances?.[0] || !docText) {
+    if (!instances?.[0]) {
+      const currentText = docText ?? "";
+      const strippedText = currentText.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "").trim();
+      const addActions = params.actions.filter((a) => a.type === "addComponent");
+      if (strippedText.length === 0 && addActions.length > 0) {
+        const cleanUri = params.uri.split(/[?#]/)[0] ?? "";
+        const baseFile =
+          cleanUri
+            .split(/[/\\]/)
+            .pop()
+            ?.replace(/\.[^.]+$/, "") ?? "";
+        const modelName = /^[A-Za-z_][A-Za-z0-9_]*$/.test(baseFile) ? baseFile : "Model1";
+        const usedNames = new Set<string>();
+        const declLines: string[] = [];
+        for (const act of addActions) {
+          if (act.type !== "addComponent") continue;
+          const rawClass = act.className ?? "";
+          if (
+            !rawClass ||
+            rawClass.startsWith("__LOADING__:") ||
+            rawClass.startsWith("__ONTOLOGY__:") ||
+            (rawClass.startsWith("__LIB__:") && !rawClass.includes("/") && !rawClass.includes("."))
+          ) {
+            continue;
+          }
+          const cleanClass = rawClass.replace(/^__LIB__:[^/]+\//, "").replace(/^__LIB__:/, "");
+          const baseName = (cleanClass.split(".").pop() || "comp").replace(/[^A-Za-z0-9_]/g, "") || "comp";
+          let uniqueName = act.name || `${baseName}1`;
+          let idx = 1;
+          if (!act.name) {
+            while (usedNames.has(uniqueName)) {
+              idx++;
+              uniqueName = `${baseName}${idx}`;
+            }
+          }
+          usedNames.add(uniqueName);
+          const ox = Math.round(act.x ?? 0);
+          const oy = -Math.round(act.y ?? 0);
+          declLines.push(
+            `  ${cleanClass} ${uniqueName} annotation(Placement(transformation(origin={${ox},${oy}}, extent={{-10,-10},{10,10}})));`,
+          );
+        }
+        if (declLines.length > 0) {
+          const lines = currentText.split("\n");
+          const endLine = Math.max(0, lines.length - 1);
+          const endChar = lines[endLine]?.length ?? 0;
+          const prefix = currentText.length > 0 && !currentText.endsWith("\n") ? `${currentText}\n` : currentText;
+          const newText = `${prefix}model ${modelName}\n${declLines.join("\n")}\nend ${modelName};\n`;
+          return {
+            seq: params.seq,
+            edits: [
+              {
+                range: {
+                  start: { line: 0, character: 0 },
+                  end: { line: endLine, character: endChar },
+                },
+                newText,
+              },
+            ],
+            renderHint: "immediate",
+          };
+        }
+      }
+      return { seq: params.seq, edits: [], renderHint: "none" };
+    }
+    if (docText === undefined) {
       return { seq: params.seq, edits: [], renderHint: "none" };
     }
 
@@ -3377,7 +3442,17 @@ export function processDiagramEditBatch(
         needsRender = "immediate";
         break;
       case "addComponent": {
-        const baseName = action.className.split(".").pop() || "comp";
+        const rawClass = action.className ?? "";
+        if (
+          !rawClass ||
+          rawClass.startsWith("__LOADING__:") ||
+          rawClass.startsWith("__ONTOLOGY__:") ||
+          (rawClass.startsWith("__LIB__:") && !rawClass.includes("/") && !rawClass.includes("."))
+        ) {
+          break;
+        }
+        const cleanClass = rawClass.replace(/^__LIB__:[^/]+\//, "").replace(/^__LIB__:/, "");
+        const baseName = (cleanClass.split(".").pop() || "comp").replace(/[^A-Za-z0-9_]/g, "") || "comp";
         let uniqueName = action.name || baseName + "1";
         let counter = 1;
 
@@ -3392,7 +3467,7 @@ export function processDiagramEditBatch(
         createdComponentNames.add(uniqueName);
         if (ops.computeComponentInsert) {
           allEdits.push(
-            ...ops.computeComponentInsert(classInstance, action.className, uniqueName, action.x, action.y, docText),
+            ...ops.computeComponentInsert(classInstance, cleanClass, uniqueName, action.x, action.y, docText),
           );
         }
         needsRender = "immediate";

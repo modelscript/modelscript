@@ -21,6 +21,151 @@ export const nmtranLanguage = language({
       dark: "./assets/nmtran/icon-dark.png",
     },
   },
+  indexing: {
+    canIndex: (uri, text) =>
+      uri.toLowerCase().endsWith(".ctl") ||
+      Boolean(
+        text &&
+        (text.includes("$PROBLEM") ||
+          text.includes("$PROB") ||
+          text.includes("$THETA") ||
+          text.includes("$PK") ||
+          text.includes("$PRED") ||
+          text.includes("$DES")),
+      ),
+    indexFile(ctx) {
+      try {
+        const doc = parseNmtran(ctx.text, ctx.uri);
+        ctx.setParsedModel(doc);
+        const cs = doc.controlStream;
+
+        const rootId = ctx.addSymbol(
+          cs.problem || "NmtranControlStream",
+          "package",
+          null,
+          0,
+          ctx.text.length,
+          {
+            advan: cs.subroutines.advan,
+            trans: cs.subroutines.trans,
+            thetaCount: cs.thetas.length,
+            omegaCount: cs.omegas.length,
+            compartmentCount: cs.compartments.length,
+          },
+          { ruleName: "nmtran_symbol" },
+        );
+
+        for (const c of cs.compartments) {
+          const start = c.range?.startOffset ?? 0;
+          const end = c.range?.endOffset ?? 50;
+          ctx.addSymbol(
+            c.name,
+            "struct",
+            rootId,
+            start,
+            end,
+            {
+              index: c.index,
+              defDose: c.defDose,
+              defObs: c.defObs,
+            },
+            { ruleName: "nmtran_symbol" },
+          );
+        }
+
+        for (const st of cs.pkStatements) {
+          const start = st.range?.startOffset ?? 0;
+          const end = st.range?.endOffset ?? 50;
+          ctx.addSymbol(
+            st.lhs,
+            "variable",
+            rootId,
+            start,
+            end,
+            {
+              rhs: st.rhs,
+              thetaRefs: st.thetaRefs,
+              etaRefs: st.etaRefs,
+            },
+            { ruleName: "nmtran_symbol" },
+          );
+        }
+
+        for (const th of cs.thetas) {
+          const start = th.range?.startOffset ?? 0;
+          const end = th.range?.endOffset ?? 50;
+          ctx.addSymbol(
+            `THETA(${th.index})`,
+            "constant",
+            rootId,
+            start,
+            end,
+            {
+              index: th.index,
+              name: th.name,
+              lower: th.lower,
+              init: th.init,
+              upper: th.upper,
+              fixed: th.fixed,
+            },
+            { ruleName: "nmtran_symbol" },
+          );
+          if (th.name) {
+            ctx.addSymbol(
+              th.name,
+              "constant",
+              rootId,
+              start,
+              end,
+              {
+                thetaIndex: th.index,
+                init: th.init,
+              },
+              { ruleName: "nmtran_symbol" },
+            );
+          }
+        }
+
+        for (const om of cs.omegas) {
+          const start = om.range?.startOffset ?? 0;
+          const end = om.range?.endOffset ?? 50;
+          ctx.addSymbol(
+            `ETA(${om.index})`,
+            "constant",
+            rootId,
+            start,
+            end,
+            {
+              index: om.index,
+              variance: om.variance,
+              fixed: om.fixed,
+            },
+            { ruleName: "nmtran_symbol" },
+          );
+        }
+
+        for (const eq of cs.desEquations) {
+          const start = eq.range?.startOffset ?? 0;
+          const end = eq.range?.endOffset ?? 50;
+          ctx.addSymbol(
+            eq.lhs,
+            "function",
+            rootId,
+            start,
+            end,
+            {
+              rhs: eq.rhs,
+              compartmentIndex: eq.compartmentIndex,
+              isDerivative: eq.isDerivative,
+            },
+            { ruleName: "nmtran_symbol" },
+          );
+        }
+      } catch {
+        // Return partial symbol map if parsing failed
+      }
+    },
+  },
 
   writeback: {
     operators: ["="],

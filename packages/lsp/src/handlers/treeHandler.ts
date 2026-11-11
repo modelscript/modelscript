@@ -71,12 +71,7 @@ export function registerTreeHandlers(context: LspContext) {
         (uw as IndexWithChildren | undefined)?.ensureChildrenIndexed?.(params.parentId);
       }
 
-      const unifiedIndex =
-        typeof uw?.toTreeIndex === "function"
-          ? uw.toTreeIndex()
-          : typeof uw?.toUnifiedPartial === "function"
-            ? uw.toUnifiedPartial()
-            : uw?.toUnified?.();
+      const unifiedIndex = typeof uw?.getIndex === "function" ? uw.getIndex() : undefined;
       if (!unifiedIndex) return [];
 
       // Invalidate FQN cache when the index changes
@@ -85,7 +80,11 @@ export function registerTreeHandlers(context: LspContext) {
         fqnCacheState.index = unifiedIndex;
       }
 
-      if (params.parentId?.startsWith("__LIB__:Modelica") || params.parentId?.startsWith("Modelica") || !params.parentId) {
+      if (
+        params.parentId?.startsWith("__LIB__:Modelica") ||
+        params.parentId?.startsWith("Modelica") ||
+        !params.parentId
+      ) {
         await loadPrebakedMslIcons((globalThis as any).serverDistBase ?? params.uri);
       }
 
@@ -118,13 +117,9 @@ export function registerTreeHandlers(context: LspContext) {
       const nodes: ProjectTreeNodeInfo[] = [];
 
       const getIndex = (ws: any) =>
-        typeof ws?.toTreeIndex === "function"
-          ? ws.toTreeIndex()
-          : typeof ws?.toUnifiedPartial === "function"
-            ? ws.toUnifiedPartial()
-            : typeof ws?.toUnified === "function"
-              ? ws.toUnified()
-              : (ws?.toSymbolIndex?.() ?? { symbols: new Map(), byName: new Map(), childrenOf: new Map() });
+        typeof ws?.getIndex === "function"
+          ? ws.getIndex()
+          : { symbols: new Map(), byName: new Map(), childrenOf: new Map() };
 
       const unified = getIndex(context.workspaceManager?.unifiedWorkspace);
 
@@ -260,12 +255,7 @@ export function registerTreeHandlers(context: LspContext) {
 
     // Check if unified index has this symbol with metadata.iconSvg (e.g. PSCAD components)
     const uw = context.workspaceManager.unifiedWorkspace;
-    const unified =
-      typeof uw?.toTreeIndex === "function"
-        ? uw.toTreeIndex()
-        : typeof uw?.toUnifiedPartial === "function"
-          ? uw.toUnifiedPartial()
-          : uw?.toUnified?.();
+    const unified = typeof uw?.getIndex === "function" ? uw.getIndex() : undefined;
     if (unified) {
       let symIds = unified.byName.get(cleanName) ?? unified.byName.get(className);
       if (!symIds || symIds.length === 0) {
@@ -366,7 +356,7 @@ export function registerTreeHandlers(context: LspContext) {
       const classes: { name: string; kind: string; uri: string }[] = [];
       const seen = new Set<string>();
 
-      const unified = context.workspaceManager.unifiedWorkspace.toTreeIndex();
+      const unified = context.workspaceManager.unifiedWorkspace.getIndex();
 
       const allSymbols = new Map<string, any>();
       if (unified?.symbols) {

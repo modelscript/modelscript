@@ -11,6 +11,7 @@
 import { language } from "@modelscript/dsl";
 import { lowerDicomRtToDae } from "./dae/index.js";
 import { evaluateDicomRtDosimetry } from "./dosimetry/index.js";
+import { canIndexDicomRt, indexDicomRtDocument } from "./indexing.js";
 import { lintDicomRtDocument } from "./lints/rules.js";
 import { parseDicomRt } from "./parser/index.js";
 import { dicomRtToScad, dicomRtToSysML2 } from "./projections/index.js";
@@ -19,6 +20,10 @@ export const dicomRtLanguage = language({
   name: "dicom-rt",
   fileExtensions: [".dcm.json", ".dcm.xml", ".rtplan", ".rtstruct", ".rtdose", ".dicom-rt"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexDicomRtDocument,
+    canIndex: canIndexDicomRt,
+  },
   lsp: {
     fileExtensions: [".dcm.json", ".dcm.xml", ".rtplan", ".rtstruct", ".rtdose", ".dicom-rt"],
   },

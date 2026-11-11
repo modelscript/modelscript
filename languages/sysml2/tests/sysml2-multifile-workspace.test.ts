@@ -73,7 +73,7 @@ describe("SysML v2 Multi-File Workspace Elaboration", () => {
     });
 
     // 2. Compile unified symbol index and create Salsa QueryEngine
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const queryEngine = createSysML2QueryEngine(unified);
     const queryDb = queryEngine.toQueryDB();
 

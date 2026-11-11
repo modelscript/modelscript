@@ -167,7 +167,7 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
         const baseAst = parser.parse(baseContent)?.rootNode;
         const baseWIdx = createSysML2WorkspaceIndex();
         baseWIdx.register(targetFile, () => baseAst);
-        const baseIndex = await baseWIdx.toUnifiedAsync();
+        const baseIndex = await baseWIdx.getIndexAsync();
         baseDiagram = buildSysML2DiagramData(
           baseIndex as unknown as Parameters<typeof buildSysML2DiagramData>[0],
           targetFile,
@@ -180,7 +180,7 @@ export const PrDiff: CommandModule<{}, PrDiffArgs> = {
         const headAst = parser.parse(headContent)?.rootNode;
         const headWIdx = createSysML2WorkspaceIndex();
         headWIdx.register(targetFile, () => headAst);
-        const headIndex = await headWIdx.toUnifiedAsync();
+        const headIndex = await headWIdx.getIndexAsync();
         headDiagram = buildSysML2DiagramData(
           headIndex as unknown as Parameters<typeof buildSysML2DiagramData>[0],
           targetFile,

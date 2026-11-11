@@ -419,6 +419,10 @@ export default defineConfig({
           dest: "lsp/server/dist",
         },
         {
+          src: "../../scripts/OpenIPSL_v3.1.0.zip",
+          dest: "lsp/server/dist",
+        },
+        {
           src: "../../scripts/SysML-v2-Release-2026-03.zip",
           dest: "lsp/server/dist",
         },

@@ -1440,8 +1440,15 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
 
   commands.push({
     command: "modelscript.openModel",
-    title: "Open Model in Editor",
+    title: "Open Model...",
     category: "ModelScript",
+  });
+
+  commands.push({
+    command: "modelscript.openModelGallery",
+    title: "Open Model Gallery...",
+    category: "ModelScript",
+    icon: "$(circuit-board)",
   });
 
   commands.push({
@@ -1470,6 +1477,11 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       "editor/context": editorContextMenus,
       "explorer/context": explorerContextMenus,
       "view/title": [
+        {
+          command: "modelscript.openModelGallery",
+          when: "view == modelscript.libraryTree",
+          group: "navigation@0",
+        },
         {
           command: "modelscript.libraryView.addPackage",
           when: "view == modelscript.libraryTree",
@@ -2470,15 +2482,7 @@ export function deactivate() {}
 `;
 }
 
-const DEFAULT_VSCODEIGNORE = [
-  "**/*.map",
-  "**/*.ts",
-  "tsconfig.json",
-  "src/**",
-  "*.vsix",
-  ".DS_Store",
-  "",
-].join("\n");
+const DEFAULT_VSCODEIGNORE = ["**/*.map", "**/*.ts", "tsconfig.json", "src/**", "*.vsix", ".DS_Store", ""].join("\n");
 
 /**
  * Generates the complete set of files for a VS Code Extension in-memory.
@@ -2864,6 +2868,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
       path.join(repoRoot, "scripts/ModelicaStandardLibrary_v4.1.0.zip"),
       "server/dist/ModelicaStandardLibrary_v4.1.0.zip",
     ],
+    [path.join(repoRoot, "scripts/OpenIPSL_v3.1.0.zip"), "server/dist/OpenIPSL_v3.1.0.zip"],
     [path.join(repoRoot, "scripts/SysML-v2-Release-2026-03.zip"), "server/dist/SysML-v2-Release-2026-03.zip"],
     [path.join(repoRoot, "languages/modelica/assets"), "assets"],
     [path.join(repoRoot, "apps/web/public/ms-logo.png"), "images/icon.png"],

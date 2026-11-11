@@ -6,7 +6,6 @@ import {
   gtsuiteLanguage,
   gtsuiteToDae,
   gtsuiteToModelica,
-  GtSuiteWorkspaceIndex,
   parseGtmModel,
   validateGtsuite,
 } from "@modelscript/gtsuite";
@@ -45,7 +44,6 @@ describe("GT-SUITE LSP Integration Suite (@modelscript/lsp)", () => {
       name: "GT-SUITE",
       extensions: [".gtm", ".gtd", ".gtx", ".gt"],
       languageDef: gtsuiteLanguage,
-      workspaceIndex: new GtSuiteWorkspaceIndex(),
       customHandlers: {
         symbols: (text: string) => getGtsuiteDocumentSymbols(text),
         hover: (offset: number, text: string) => {

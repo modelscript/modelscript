@@ -527,7 +527,7 @@ export const modelicaLanguage = language({
         const sharedContext = ctx.parserService?.sharedContext;
         if (!sharedContext) return [];
 
-        const unifiedIndex = ctx.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
+        const unifiedIndex = ctx.workspaceManager?.unifiedWorkspace?.getIndex?.();
         if (!unifiedIndex) return [];
 
         let targetClassName: string | undefined = params.className;

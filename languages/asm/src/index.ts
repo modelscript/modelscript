@@ -8,6 +8,7 @@
 
 export * from "./clarifier/takacs.js";
 export * from "./dae/asm-to-dae.js";
+export * from "./indexing.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";
@@ -15,4 +16,3 @@ export * from "./models/asm1.js";
 export * from "./parser/asm-parser.js";
 export * from "./parser/asm-writer.js";
 export * from "./types.js";
-export * from "./workspace-index.js";

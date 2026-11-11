@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { UnifiedWorkspace } from "@modelscript/runtime";
+import { findCompanionPsseDyr, findCompanionPsseRaw } from "./builtins.js";
 import { lowerPsseToDae } from "./dae/psse-to-dae.js";
 import { PsseErrorCode } from "./errors.js";
 import { lintPsse } from "./lints/index.js";
@@ -17,7 +19,6 @@ import {
   solvePowerFlow,
 } from "./solver/ac-powerflow.js";
 import type { PsseCase, SourceSpan } from "./types.js";
-import type { PsseWorkspaceIndex } from "./workspace-index.js";
 
 export interface LspPosition {
   line: number;
@@ -589,7 +590,7 @@ export function getPsseHover(
   content: string,
   position: LspPosition,
   uri: string = "model.raw",
-  workspaceIndex?: PsseWorkspaceIndex,
+  workspace?: UnifiedWorkspace,
 ): LspHover | undefined {
   try {
     const lines = content.split(/\r?\n/);
@@ -599,7 +600,7 @@ export function getPsseHover(
     // 0. Check if this is a .dyr dynamic model file
     if (uri.toLowerCase().endsWith(".dyr") || isLikelyDyrContent(content)) {
       const dyr = parseDyr(content);
-      const companionRaw = workspaceIndex?.findCompanionRaw(uri)?.psseCase;
+      const companionRaw = workspace ? findCompanionPsseRaw(workspace, uri)?.psseCase : undefined;
       for (const rec of dyr.records) {
         if (rec.span?.line === targetLine1) {
           const schema = DYR_MODEL_SCHEMAS[rec.model];
@@ -640,7 +641,7 @@ export function getPsseHover(
     }
 
     const psseCase = parseRaw(content);
-    const companionDyr = psseCase.dyr ?? workspaceIndex?.findCompanionDyr(uri)?.dyr;
+    const companionDyr = psseCase.dyr ?? (workspace ? findCompanionPsseDyr(workspace, uri)?.dyr : undefined);
     const colIdx = getColumnIndexAtCursor(line, position.character);
 
     // 1. Header line
@@ -880,7 +881,7 @@ export function getPsseDefinition(
   content: string,
   position: LspPosition,
   uri: string = "model.raw",
-  workspaceIndex?: PsseWorkspaceIndex,
+  workspace?: UnifiedWorkspace,
 ): LspLocation | undefined {
   try {
     const lines = content.split(/\r?\n/);
@@ -891,7 +892,7 @@ export function getPsseDefinition(
       const dyr = parseDyr(content);
       const rec = dyr.records.find((r) => r.span?.line === targetLine1);
       if (!rec) return undefined;
-      const companion = workspaceIndex?.findCompanionRaw(uri);
+      const companion = workspace ? findCompanionPsseRaw(workspace, uri) : undefined;
       if (companion) {
         const bus = companion.psseCase.buses.get(rec.ibus);
         if (bus?.span) {
@@ -912,10 +913,10 @@ export function getPsseDefinition(
     const colIdx = getColumnIndexAtCursor(line, position.character);
 
     // Cross-file jump from .raw Generator ID (column 1) -> companion .dyr generator model
-    if (colIdx === 1 && workspaceIndex) {
+    if (colIdx === 1 && workspace) {
       const gen = psseCase.generators.find((g) => g.span?.line === targetLine1);
       if (gen) {
-        const companionDyr = workspaceIndex.findCompanionDyr(uri);
+        const companionDyr = findCompanionPsseDyr(workspace, uri);
         const dyrRec =
           companionDyr?.dyr.generatorsByBusId.get(`${gen.i}_${gen.id.trim() || "1"}`) ??
           companionDyr?.dyr.generatorsByBusId.get(String(gen.i));
@@ -951,7 +952,7 @@ export function getPsseReferences(
   content: string,
   position: LspPosition,
   uri: string = "model.raw",
-  workspaceIndex?: PsseWorkspaceIndex,
+  workspace?: UnifiedWorkspace,
 ): LspLocation[] {
   try {
     const lines = content.split(/\r?\n/);
@@ -973,7 +974,7 @@ export function getPsseReferences(
           locations.push({ uri, range: spanToRange(r.span, lines) });
         }
       }
-      const companionRaw = workspaceIndex?.findCompanionRaw(uri);
+      const companionRaw = workspace ? findCompanionPsseRaw(workspace, uri) : undefined;
       if (companionRaw) {
         const cBus = companionRaw.psseCase.buses.get(busNum);
         if (cBus?.span) {
@@ -1027,8 +1028,8 @@ export function getPsseReferences(
       }
     }
 
-    // Include cross-file references in companion .dyr file when workspaceIndex is provided
-    const companionDyr = workspaceIndex?.findCompanionDyr(uri);
+    // Include cross-file references in companion .dyr file when workspace is provided
+    const companionDyr = workspace ? findCompanionPsseDyr(workspace, uri) : undefined;
     if (companionDyr) {
       for (const r of companionDyr.dyr.records) {
         if (r.ibus === busNum && r.span) {
@@ -1230,7 +1231,7 @@ export function getPsseRenameEdits(
   position: LspPosition,
   newName: string,
   uri: string = "model.raw",
-  workspaceIndex?: PsseWorkspaceIndex,
+  workspace?: UnifiedWorkspace,
 ): LspWorkspaceEdit | undefined {
   const newBusNum = Number.parseInt(newName.trim(), 10);
   if (!Number.isFinite(newBusNum) || newBusNum <= 0 || newBusNum > 999997) {
@@ -1299,7 +1300,7 @@ export function getPsseRenameEdits(
       ],
     };
 
-    const companionDyr = workspaceIndex?.findCompanionDyr(uri);
+    const companionDyr = workspace ? findCompanionPsseDyr(workspace, uri) : undefined;
     if (companionDyr) {
       for (const rec of companionDyr.dyr.records) {
         if (rec.ibus === oldBusNum) {
@@ -1746,7 +1747,12 @@ export function applyPsseDiagramWriteback(
     }
   }
 
-  if (targetSpan && targetSpan.startOffset !== undefined && targetSpan.endOffset !== undefined && formattedLine !== undefined) {
+  if (
+    targetSpan &&
+    targetSpan.startOffset !== undefined &&
+    targetSpan.endOffset !== undefined &&
+    formattedLine !== undefined
+  ) {
     return sourceText.slice(0, targetSpan.startOffset) + formattedLine + sourceText.slice(targetSpan.endOffset);
   }
 

@@ -9,6 +9,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerEpanetToDae } from "./dae/epanet-to-dae.js";
+import { canIndexEpanet, indexEpanetDocument } from "./indexing.js";
 import { lintEpanet } from "./lints/rules.js";
 import { parseInp } from "./parser/index.js";
 import { epanetToModelica } from "./projections/epanet-to-modelica.js";
@@ -16,10 +17,14 @@ import { solveHydraulics } from "./solver/todini-ggm.js";
 
 export const epanetLanguage = language({
   name: "epanet",
-  fileExtensions: [".epanet", ".inp", ".net"],
+  fileExtensions: [".epanet", ".epanet.inp", ".inp", ".net"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexEpanetDocument,
+    canIndex: canIndexEpanet,
+  },
   lsp: {
-    fileExtensions: [".epanet", ".inp", ".net"],
+    fileExtensions: [".epanet", ".epanet.inp", ".inp", ".net"],
   },
   rules: {
     Root: () => "epanet",

@@ -310,6 +310,10 @@ export function checkModifierNotFound(
           );
           continue;
         }
+      } else if (!db.cstNode(typeEntry.id)) {
+        // Foreign / CST-less classes are outside the WASM CST table (so WASM M4045 does not inspect them)
+        msg = ModelicaErrorCode.MODIFIED_ELEMENT_NOT_FOUND.message(arg.name, typeEntry.name);
+        diagCode = ModelicaErrorCode.MODIFIED_ELEMENT_NOT_FOUND.code;
       } else {
         // Direct component modifier is already handled by WASM M4045
         continue;
@@ -2570,7 +2574,9 @@ export const classDefinitionQueries: Record<string, any> = {
   /** Evaluates and memoizes the Icon annotation graphics for this class definition. */
   classIconGraphics: (db: QueryDB, self: SymbolEntry) => {
     const cst = db.cstNode(self.id);
-    if (!cst) return null;
+    if (!cst) {
+      return (self.metadata as Record<string, unknown> | undefined)?.["iconAnnotation"] ?? null;
+    }
     const wasmIcon = evaluateIconWasm(cst);
     if (wasmIcon !== undefined) return wasmIcon;
     const evaluator = new AnnotationEvaluator();
@@ -2579,7 +2585,9 @@ export const classDefinitionQueries: Record<string, any> = {
   /** Evaluates and memoizes the Diagram annotation graphics for this class definition. */
   classDiagramGraphics: (db: QueryDB, self: SymbolEntry) => {
     const cst = db.cstNode(self.id);
-    if (!cst) return null;
+    if (!cst) {
+      return (self.metadata as Record<string, unknown> | undefined)?.["diagramAnnotation"] ?? null;
+    }
     const wasmDiagram = evaluateDiagramWasm(cst);
     if (wasmDiagram !== undefined) return wasmDiagram;
     const evaluator = new AnnotationEvaluator();
@@ -3303,11 +3311,11 @@ export const classDefinitionQueries: Record<string, any> = {
    * Check if this class is a connector type.
    */
   isConnector: (db: QueryDB, self: SymbolEntry) => {
-    let kind = String(
-      (self.metadata as Record<string, unknown>)?.["classPrefixes"] ??
-        (self.metadata as Record<string, unknown>)?.["classKind"] ??
-        "",
-    );
+    const meta = self.metadata as Record<string, unknown> | undefined;
+    if (meta?.["isConnector"] === true) {
+      return true;
+    }
+    let kind = String(meta?.["classPrefixes"] ?? meta?.["classKind"] ?? "");
     if (!kind) {
       const cst = db.cstNode(self.id) as any;
       if (cst) {
@@ -4329,7 +4337,9 @@ export const componentDeclarationQueries: Record<string, any> = {
   /** Evaluates and memoizes the Placement annotation for this component declaration. */
   componentPlacement: (db: QueryDB, self: SymbolEntry) => {
     const cst = db.cstNode(self.id);
-    if (!cst) return null;
+    if (!cst) {
+      return (self.metadata as Record<string, unknown> | undefined)?.["placementAnnotation"] ?? null;
+    }
     const wasmPlacement = evaluatePlacementWasm(cst);
     if (wasmPlacement !== undefined) return wasmPlacement;
     const evaluator = new AnnotationEvaluator();
@@ -4423,6 +4433,22 @@ export const componentDeclarationQueries: Record<string, any> = {
    */
   effectiveModification: (db: QueryDB, self: SymbolEntry) => {
     const cst = db.cstNode(self.id) as any;
+    if (!cst) {
+      const meta = self.metadata as Record<string, unknown> | undefined;
+      if (meta?.["modification"]) return meta["modification"];
+      const defaultVal = meta?.["defaultValue"];
+      if (defaultVal !== undefined) {
+        return {
+          args: [],
+          bindingExpression: {
+            kind: typeof defaultVal === "number" || typeof defaultVal === "boolean" ? "literal" : "expression",
+            value: defaultVal,
+            text: String(defaultVal),
+          },
+        };
+      }
+      return null;
+    }
     let current = cst;
     while (
       current &&
@@ -4449,6 +4475,8 @@ export const componentDeclarationQueries: Record<string, any> = {
    * Check if this component's type is a connector.
    */
   isConnectorType: (db: QueryDB, self: SymbolEntry) => {
+    const selfMeta = self.metadata as Record<string, unknown> | undefined;
+    if (selfMeta?.["isConnectorPort"] === true) return true;
     const cstNode = db.cstNode(self.id);
     let current = cstNode as any;
     while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
@@ -4457,7 +4485,8 @@ export const componentDeclarationQueries: Record<string, any> = {
     const typeSpecNode =
       Cst.ComponentClause.typeSpecifier(current) ??
       current?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
-    let typeName = typeSpecNode?.text;
+    let typeName =
+      typeSpecNode?.text ?? (typeof selfMeta?.["typeSpecifier"] === "string" ? selfMeta["typeSpecifier"] : undefined);
     if (!typeName || typeof typeName !== "string") return false;
 
     let typeEntry: SymbolEntry | null = null;
@@ -4475,8 +4504,11 @@ export const componentDeclarationQueries: Record<string, any> = {
 
     // Fallback: global lookup — try full qualified name first
     if (!typeEntry && typeName.includes(".")) {
-      const entries = db.byName(typeName);
-      typeEntry = entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
+      typeEntry = resolveQualified(db, typeName);
+      if (!typeEntry) {
+        const entries = db.byName(typeName);
+        typeEntry = entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
+      }
     }
     if (!typeEntry) {
       const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
@@ -4488,7 +4520,9 @@ export const componentDeclarationQueries: Record<string, any> = {
     }
 
     if (!typeEntry) return false;
-    const classPrefixes = (typeEntry.metadata as Record<string, unknown>)?.["classPrefixes"];
+    const entryMeta = typeEntry.metadata as Record<string, unknown> | undefined;
+    if (entryMeta?.["isConnector"] === true) return true;
+    const classPrefixes = entryMeta?.["classPrefixes"] ?? entryMeta?.["classKind"];
     return typeof classPrefixes === "string" && classPrefixes.includes("connector");
   },
 
@@ -4498,6 +4532,13 @@ export const componentDeclarationQueries: Record<string, any> = {
    */
   variability: (db: QueryDB, self: SymbolEntry) => {
     let current = db.cstNode(self.id) as any;
+    if (!current) {
+      const metaVar = (self.metadata as Record<string, unknown> | undefined)?.["variability"];
+      if (metaVar === "parameter" || metaVar === "constant" || metaVar === "discrete") {
+        return metaVar;
+      }
+      return null;
+    }
     while (
       current &&
       current.type !== "ComponentClause" &&
@@ -4522,6 +4563,13 @@ export const componentDeclarationQueries: Record<string, any> = {
    */
   causality: (db: QueryDB, self: SymbolEntry) => {
     let current = db.cstNode(self.id) as any;
+    if (!current) {
+      const metaCaus = (self.metadata as Record<string, unknown> | undefined)?.["causality"];
+      if (metaCaus === "input" || metaCaus === "output") {
+        return metaCaus;
+      }
+      return null;
+    }
     while (
       current &&
       current.type !== "ComponentClause" &&
@@ -4545,6 +4593,13 @@ export const componentDeclarationQueries: Record<string, any> = {
    */
   flowPrefix: (db: QueryDB, self: SymbolEntry) => {
     let current = db.cstNode(self.id) as any;
+    if (!current) {
+      const metaFlow = (self.metadata as Record<string, unknown> | undefined)?.["flowPrefix"];
+      if (metaFlow === "flow" || metaFlow === "stream") {
+        return metaFlow;
+      }
+      return null;
+    }
     while (
       current &&
       current.type !== "ComponentClause" &&
@@ -5134,23 +5189,54 @@ export const componentDeclarationQueries: Record<string, any> = {
   componentInstance: (db: QueryDB, self: SymbolEntry) => {
     const cstNode = db.cstNode(self.id) as any;
     if (!cstNode) {
+      const meta = (self.metadata as Record<string, unknown> | undefined) ?? {};
+      const typeSpec =
+        typeof meta["typeSpecifier"] === "string" && meta["typeSpecifier"].trim().length > 0
+          ? meta["typeSpecifier"].trim()
+          : null;
+      const variability =
+        meta["variability"] === "parameter" || meta["variability"] === "constant" || meta["variability"] === "discrete"
+          ? (meta["variability"] as string)
+          : null;
+      const causality =
+        meta["causality"] === "input" || meta["causality"] === "output" ? (meta["causality"] as string) : null;
+      const flowPrefix =
+        meta["flowPrefix"] === "flow" || meta["flowPrefix"] === "stream" ? (meta["flowPrefix"] as string) : null;
+      const isPrim = typeSpec === "Real" || typeSpec === "Integer" || typeSpec === "Boolean" || typeSpec === "String";
+      const classInst = !isPrim && typeSpec ? db.query<SymbolId | null>("classInstance", self.id) : null;
+      const isConn =
+        meta["isConnectorPort"] === true ||
+        (classInst !== null ? Boolean(db.query<boolean>("isConnector", classInst)) : false);
+      const defaultVal = meta["defaultValue"];
+      const modification =
+        meta["modification"] ??
+        (defaultVal !== undefined
+          ? {
+              args: [],
+              bindingExpression: {
+                kind: typeof defaultVal === "number" || typeof defaultVal === "boolean" ? "literal" : "expression",
+                value: defaultVal,
+                text: String(defaultVal),
+              },
+            }
+          : null);
       return {
         id: self.id,
         name: self.name,
-        classInstance: null,
-        variability: null,
-        causality: null,
-        flowPrefix: null,
-        isFinal: false,
-        isRedeclare: false,
-        isInner: false,
-        isOuter: false,
-        isReplaceable: false,
-        isProtected: false,
-        arrayDimensions: null,
-        isConnectorType: false,
-        typeSpecifier: null,
-        modification: null,
+        classInstance: classInst,
+        variability,
+        causality,
+        flowPrefix,
+        isFinal: Boolean(meta["isFinal"]),
+        isRedeclare: Boolean(meta["redeclare"] || meta["isRedeclare"]),
+        isInner: Boolean(meta["isInner"]),
+        isOuter: Boolean(meta["isOuter"]),
+        isReplaceable: Boolean(meta["isReplaceable"]),
+        isProtected: Boolean(meta["isProtected"]),
+        arrayDimensions: Array.isArray(meta["arrayDimensions"]) ? (meta["arrayDimensions"] as number[]) : null,
+        isConnectorType: isConn,
+        typeSpecifier: typeSpec,
+        modification,
       };
     }
 
@@ -5770,8 +5856,7 @@ export const shortClassSpecifierQueries: Record<string, any> = {
       const compute = (): SymbolEntry | null => {
         const effMod = db.query<any>("effectiveModification", self.id);
         const redeclClassArg = effMod?.args?.find(
-          (a: any) =>
-            a.name === name && a.isRedeclaration && a.redeclaredKind === "class" && a.redeclaredTypeSpecifier,
+          (a: any) => a.name === name && a.isRedeclaration && a.redeclaredKind === "class" && a.redeclaredTypeSpecifier,
         );
         if (redeclClassArg) {
           const evalScopeId = redeclClassArg.evaluationScopeId ?? self.parentId;
@@ -6388,8 +6473,26 @@ export const connectEquationQueries: Record<string, any> = {
   },
 };
 
+function stripLintQueries(hooks: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [key, fn] of Object.entries(hooks)) {
+    if (!key.startsWith("lint__")) {
+      out[key] = fn;
+    }
+  }
+  return out;
+}
+
 /**
- * Registry mapping Modelica CST node rule names to their corresponding Salsa query hook tables.
+ * Polyglot fallback Salsa query tables for non-Modelica symbols (`PSSEDynamics.*`, `PSCAD`,
+ * `SPICE`, `SysML v2`, etc.) resolved by `SymbolEntry.kind` when `ruleName` is foreign.
+ */
+export const foreignClassQueries: Record<string, any> = stripLintQueries(classDefinitionQueries);
+export const foreignComponentQueries: Record<string, any> = stripLintQueries(componentDeclarationQueries);
+
+/**
+ * Registry mapping Modelica CST node rule names (and polyglot `@kind:*` fallbacks)
+ * to their corresponding Salsa query hook tables.
  */
 export const modelicaQueryHooks = new Map<string, Record<string, any>>([
   ["class_definition", classDefinitionQueries],
@@ -6402,4 +6505,8 @@ export const modelicaQueryHooks = new Map<string, Record<string, any>>([
   ["ShortClassSpecifier", shortClassSpecifierQueries],
   ["connect_equation", connectEquationQueries],
   ["ConnectEquation", connectEquationQueries],
+  ["@kind:Class", foreignClassQueries],
+  ["@kind:Package", foreignClassQueries],
+  ["@kind:Component", foreignComponentQueries],
+  ["@kind:Variable", foreignComponentQueries],
 ]);

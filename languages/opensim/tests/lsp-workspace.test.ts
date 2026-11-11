@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import {
   executeOpenSimAction,
   getOpenSimDocumentSymbols,
   openSimLanguage,
-  OpenSimWorkspaceIndex,
   provideOpenSimCompletions,
   provideOpenSimDefinition,
   provideOpenSimHover,
+  resolveOpenSimInScope,
   validateOpenSimDocument,
 } from "../src/index.js";
 
@@ -60,25 +61,25 @@ const WORKSPACE_OSIM = `
 </OpenSimDocument>
 `;
 
-describe("OpenSim LSP Providers, Language Registration & Workspace Index", () => {
-  it("indexes symbols in OpenSimWorkspaceIndex and resolves by name and scope", () => {
+describe("OpenSim LSP Providers, Language Registration & UnifiedWorkspace", () => {
+  it("indexes symbols in UnifiedWorkspace and resolves by name and scope", () => {
     const uri = "file:///ankle.osim";
-    const ws = new OpenSimWorkspaceIndex();
-    ws.indexFile(uri, WORKSPACE_OSIM);
+    const ws = new UnifiedWorkspace(openSimLanguage);
+    ws.setDocument(uri, WORKSPACE_OSIM);
 
-    assert.strictEqual(ws.has(uri), true);
+    assert.strictEqual(ws.hasDocument(uri), true);
     assert.strictEqual(ws.fileCount, 1);
 
-    const allSyms = ws.getAllSymbols(uri);
+    const allSyms = ws.getSymbolsForUri(uri);
     assert(allSyms.length >= 5);
 
-    const talus = ws.findByName("talus")[0];
+    const talus = ws.findSymbolsByName("talus")[0];
     assert(talus !== undefined);
     assert.strictEqual(talus.ruleName, "opensim_body");
 
-    const ankleJoint = ws.findByName("ankle")[0];
+    const ankleJoint = ws.findSymbolsByName("ankle")[0];
     assert(ankleJoint !== undefined);
-    const resolvedCoord = ws.resolveInScope("ankle_angle", ankleJoint.id, uri);
+    const resolvedCoord = resolveOpenSimInScope(ws, "ankle_angle", ankleJoint.id, uri);
     assert(resolvedCoord !== undefined && resolvedCoord !== null);
     assert.strictEqual(resolvedCoord.ruleName, "opensim_coordinate");
   });

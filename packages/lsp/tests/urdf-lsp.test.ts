@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  getUrdfDocumentSymbols,
-  getUrdfHover,
-  urdfLanguage,
-  UrdfWorkspaceIndex,
-  validateUrdf,
-} from "@modelscript/urdf";
+import { getUrdfDocumentSymbols, getUrdfHover, urdfLanguage, validateUrdf } from "@modelscript/urdf";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { globalLanguageRegistry } from "../src/registry/LanguageRegistry.js";
@@ -41,7 +35,6 @@ describe("ROS URDF / SDFormat LSP Integration Suite", () => {
       name: "ROS URDF & SDFormat",
       extensions: [".urdf", ".sdf", ".xacro"],
       languageDef: urdfLanguage,
-      workspaceIndex: new UrdfWorkspaceIndex(),
       customHandlers: {
         symbols: (text: string) => getUrdfDocumentSymbols(text),
         hover: (offset: number, text: string) => getUrdfHover(text, offset),

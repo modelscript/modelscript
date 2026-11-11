@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   AntimonyErrorCode,
-  AntimonyWorkspaceIndex,
   antimonyLanguage,
   antimonyToModelica,
   antimonyToSbmlXml,
   executeAntimonyAction,
+  getAntimonyDocument,
   getAntimonyDocumentSymbols,
   getAntimonyHover,
   lintAntimony,
@@ -354,17 +355,19 @@ test("Antimony Projections: exports valid Modelica 3.x and SBML Level 3 XML", ()
   assert.ok(xml.includes('<event id="E1"'));
 });
 
-test("Antimony WorkspaceIndex & LSP: indexes symbols, hover, completions, and actions", async () => {
-  const index = new AntimonyWorkspaceIndex();
+test("Antimony UnifiedWorkspace & LSP: indexes symbols, hover, completions, and actions", async () => {
+  const ws = new UnifiedWorkspace(antimonyLanguage);
   const uri = "file:///workspace/cascade.ant";
-  index.indexFile(uri, VALID_ANTIMONY_MODEL);
+  ws.setDocument(uri, VALID_ANTIMONY_MODEL);
 
-  assert.equal(index.fileCount, 1);
-  assert.ok(index.has(uri));
-  assert.ok(index.getSymbols(uri).length >= 8);
-  assert.equal(index.findDefinition("S")?.name, "S");
-  assert.equal(index.findDefinition("J_cat")?.name, "J_cat");
-  assert.ok(index.findReferences("S").length >= 1);
+  assert.equal(ws.fileCount, 1);
+  assert.ok(ws.hasDocument(uri));
+  assert.ok(ws.getSymbolsForUri(uri).length >= 8);
+  assert.equal(ws.findSymbolsByName("S")[0]?.name, "S");
+  assert.equal(ws.findSymbolsByName("J_cat")[0]?.name, "J_cat");
+  assert.ok(ws.findSymbolsByName("S").length >= 1);
+  assert.ok(ws.getIndex().byName.has("EnzymeCascade"));
+  assert.equal(getAntimonyDocument(ws, uri)?.mainModule.id, "EnzymeCascade");
 
   const diags = validateAntimony(VALID_ANTIMONY_MODEL);
   assert.equal(diags.length, 0);

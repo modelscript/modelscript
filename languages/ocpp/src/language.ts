@@ -2,14 +2,29 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerOcppToDae } from "./dae/ocpp-to-dae.js";
+import { indexOcppFile } from "./indexing.js";
 import { lintOcpp } from "./lints/rules.js";
 import { parseOcpp } from "./parser/ocpp-parser.js";
 import { scheduleSmartCharging } from "./solver/charging-scheduler.js";
 
 export const ocppLanguage = language({
   name: "ocpp",
-  fileExtensions: [".ocpp", ".ocpp.json", ".cpo"],
+  fileExtensions: [".ocpp", ".ocpp.json", ".cpo", ".json"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexOcppFile,
+    canIndex: (uri, text) => {
+      const lower = uri.toLowerCase();
+      if (lower.endsWith(".ocpp") || lower.endsWith(".ocpp.json") || lower.endsWith(".cpo")) return true;
+      return Boolean(
+        text &&
+        (text.includes("chargingStationId") ||
+          text.includes("chargingProfile") ||
+          text.includes("gridLimitKW") ||
+          text.includes("evse ")),
+      );
+    },
+  },
   lsp: {
     fileExtensions: [".ocpp", ".ocpp.json", ".cpo"],
   },
@@ -43,7 +58,8 @@ export const ocppLanguage = language({
     {
       id: "ocpp_to_dae",
       title: "Lower OCPP to DAE Arena",
-      description: "Compiles EV charger active/reactive power and battery energy dynamics into ModelScript linear memory.",
+      description:
+        "Compiles EV charger active/reactive power and battery energy dynamics into ModelScript linear memory.",
       category: "transform",
       execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";

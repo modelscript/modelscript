@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, def, language, repeat, type QueryDB, type SymbolEntry, type SymbolId } from "@modelscript/dsl";
+import { buildPsseBuiltinSymbols, indexPsseDocument } from "./builtins.js";
 import { auditNercCompliance } from "./compliance/nerc-auditor.js";
 import { lintPsse } from "./lints/index.js";
 import { extractPowerFlowNetlist, serializePowerFlowNetlist } from "./netlist/powerflow-netlist.js";
@@ -29,6 +30,10 @@ export const psseLanguage = language({
   name: "psse",
   fileExtensions: [".raw", ".dyr", ".seq", ".con", ".mon", ".sub", ".sav", ".out"],
   maturity: "stable",
+  indexing: {
+    builtins: buildPsseBuiltinSymbols,
+    indexFile: indexPsseDocument,
+  },
   lsp: {
     fileExtensions: [".raw", ".dyr", ".seq", ".con", ".mon", ".sub", ".sav", ".out"],
     icons: {

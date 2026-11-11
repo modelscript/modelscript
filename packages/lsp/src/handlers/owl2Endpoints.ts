@@ -344,8 +344,10 @@ export function registerOwl2Endpoints(context: LspContext): void {
     async (params: { iri: string }): Promise<{ uri: string; line: number; character: number } | null> => {
       try {
         const idx = context.workspaceManager.owl2WorkspaceIndex;
-        if (idx && typeof (idx as any).toUnifiedPartial === "function") {
-          const unified = (idx as any).toUnifiedPartial();
+        const unified =
+          (idx && typeof (idx as any).getIndex === "function" ? (idx as any).getIndex() : null) ??
+          context.workspaceManager.unifiedWorkspace?.getIndex?.();
+        if (unified) {
           const ids = unified.byName.get(params.iri) ?? [];
           if (ids.length > 0) {
             const entry = unified.symbols.get(ids[0]!);

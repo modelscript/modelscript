@@ -29,10 +29,6 @@
       "types": "./dist/src/dae/index.d.ts",
       "default": "./dist/src/dae/index.js"
     },
-    "./workspace-index": {
-      "types": "./dist/src/workspace-index.d.ts",
-      "default": "./dist/src/workspace-index.js"
-    },
     "./lsp": {
       "types": "./dist/src/lsp.d.ts",
       "default": "./dist/src/lsp.js"

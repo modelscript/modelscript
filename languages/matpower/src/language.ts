@@ -18,6 +18,52 @@ export const matpowerLanguage = language({
   lsp: {
     fileExtensions: [".m", ".matpower"],
   },
+  indexing: {
+    canIndex: (uri, text) =>
+      uri.toLowerCase().endsWith(".matpower") ||
+      Boolean(text && (text.includes("mpc.bus") || text.includes("mpc.gen") || text.includes("mpc.baseMVA"))),
+    indexFile(ctx) {
+      if (ctx.text.includes("mpc.bus") || ctx.text.includes("mpc.gen") || ctx.text.includes("mpc.baseMVA")) {
+        const caseData = parseMatpowerCase(ctx.text);
+        ctx.setParsedModel(caseData);
+
+        const rootName = caseData.caseName || "MatpowerCase";
+        const rootId = ctx.addSymbol(rootName, "Package", null, 0, ctx.text.length, {
+          version: caseData.version,
+          baseMVA: caseData.baseMVA,
+        });
+        for (const b of caseData.bus) {
+          const busName = b.name || `Bus_${b.bus_i}`;
+          ctx.addSymbol(
+            busName,
+            "Component",
+            rootId,
+            0,
+            0,
+            { bus_i: b.bus_i, type: b.type, baseKv: b.baseKv, vm: b.vm, va: b.va },
+            { aliases: [String(b.bus_i), `Bus_${b.bus_i}`] },
+          );
+        }
+        for (let i = 0; i < caseData.gen.length; i++) {
+          const g = caseData.gen[i]!;
+          ctx.addSymbol(`Gen_${i + 1}_Bus_${g.bus}`, "Component", rootId, 0, 0, {
+            bus: g.bus,
+            pg: g.pg,
+            qg: g.qg,
+          });
+        }
+        for (let i = 0; i < caseData.branch.length; i++) {
+          const br = caseData.branch[i]!;
+          ctx.addSymbol(`Branch_${br.fbus}_${br.tbus}_${i + 1}`, "Variable", rootId, 0, 0, {
+            fbus: br.fbus,
+            tbus: br.tbus,
+            r: br.r,
+            x: br.x,
+          });
+        }
+      }
+    },
+  },
 
   actions: [
     {

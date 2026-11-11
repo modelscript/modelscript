@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, language, repeat, seq } from "@modelscript/dsl";
+import { canIndexUrdfFile, indexUrdfFile } from "./indexing.js";
 
 /**
  * DSL language specification for ROS URDF, SDFormat, and Xacro files (.urdf, .sdf, .xacro).
@@ -9,6 +10,10 @@ export const urdfLanguage = language({
   name: "urdf",
   fileExtensions: [".urdf", ".sdf", ".xacro"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexUrdfFile,
+    canIndex: canIndexUrdfFile,
+  },
   lsp: {
     fileExtensions: [".urdf", ".sdf", ".xacro"],
   },

@@ -2,6 +2,7 @@
 
 import { language } from "@modelscript/dsl";
 import { lowerSwmmToDae } from "./dae/swmm-to-dae.js";
+import { canIndexSwmmFile, indexSwmmFile } from "./indexing.js";
 import { lintSwmm } from "./lints/index.js";
 import { parseSwmm } from "./parser/swmm-parser.js";
 import { swmmToModelica } from "./projections/swmm-to-modelica.js";
@@ -12,10 +13,14 @@ import { routeNetworkFlow } from "./solver/hydraulic-solver.js";
  */
 export const swmmLanguage = language({
   name: "swmm",
-  fileExtensions: [".swmm", ".inp"],
+  fileExtensions: [".swmm", ".inp", ".swmm.inp"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexSwmmFile,
+    canIndex: canIndexSwmmFile,
+  },
   lsp: {
-    fileExtensions: [".swmm", ".inp"],
+    fileExtensions: [".swmm", ".inp", ".swmm.inp"],
     icons: {
       light: "./assets/swmm/icon-light.png",
       dark: "./assets/swmm/icon-dark.png",

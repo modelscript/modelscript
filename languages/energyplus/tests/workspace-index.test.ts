@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { EnergyPlusWorkspaceIndex } from "../src/workspace-index.js";
+import { energyplusLanguage, getAllEnergyPlusZones, getEnergyPlusDocument } from "../src/index.js";
 
 const MODEL_A = `
 Building, TowerA, 0, City;
@@ -20,30 +21,30 @@ Construction, GlassFacade, Glass;
 
 describe("EnergyPlus Multi-File Workspace Indexer", () => {
   it("indexes multiple EnergyPlus building decks across files", () => {
-    const indexer = new EnergyPlusWorkspaceIndex();
+    const ws = new UnifiedWorkspace(energyplusLanguage);
     const uriA = "file:///workspace/models/tower_a.idf";
     const uriB = "file:///workspace/models/tower_b.idf";
 
-    indexer.indexSource(uriA, MODEL_A);
-    indexer.indexSource(uriB, MODEL_B);
+    ws.setDocument(uriA, MODEL_A);
+    ws.setDocument(uriB, MODEL_B);
 
-    assert.strictEqual(indexer.fileCount, 2);
-    assert.strictEqual(indexer.has(uriA), true);
-    assert.strictEqual(indexer.has(uriB), true);
+    assert.strictEqual(ws.fileCount, 2);
+    assert.strictEqual(ws.hasDocument(uriA), true);
+    assert.strictEqual(ws.hasDocument(uriB), true);
 
-    const docA = indexer.getDocument(uriA);
+    const docA = getEnergyPlusDocument(ws, uriA);
     assert.strictEqual(docA?.building?.name, "TowerA");
     assert.strictEqual(docA?.zones.length, 1);
 
-    const docB = indexer.getDocument(uriB);
+    const docB = getEnergyPlusDocument(ws, uriB);
     assert.strictEqual(docB?.building?.name, "TowerB");
     assert.strictEqual(docB?.zones.length, 1);
 
-    const level1Syms = indexer.getSymbolsByName("Level1");
+    const level1Syms = ws.findSymbolsByName("Level1");
     assert.strictEqual(level1Syms.length, 1);
     assert.strictEqual(level1Syms[0]?.name, "Level1");
 
-    const allZones = indexer.getAllZones();
+    const allZones = getAllEnergyPlusZones(ws);
     assert.strictEqual(allZones.length, 2);
   });
 });

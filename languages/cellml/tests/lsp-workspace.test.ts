@@ -1,51 +1,53 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  CellmlWorkspaceIndex,
   cellmlLanguage,
   executeCellmlAction,
   getCellmlCompletions,
   getCellmlDefinition,
+  getCellmlDocument,
   getCellmlDocumentSymbols,
   getCellmlHover,
+  resolveCellmlInScope,
   validateCellml,
 } from "../src/index.js";
 import { HODGKIN_HUXLEY_FULL_CELLML } from "./solver-dae.test.js";
 
-describe("CellML Workspace Index & LSP Services", () => {
-  it("indexes multi-file CellML symbols and resolves definitions in CellmlWorkspaceIndex", () => {
-    const index = new CellmlWorkspaceIndex();
+describe("CellML UnifiedWorkspace & LSP Services", () => {
+  it("indexes multi-file CellML symbols and resolves definitions in UnifiedWorkspace", () => {
+    const ws = new UnifiedWorkspace(cellmlLanguage);
     const uri = "file:///models/hh.cellml";
-    index.register(uri);
-    assert.equal(index.has(uri), true);
+    ws.setDocument(uri, HODGKIN_HUXLEY_FULL_CELLML);
+    assert.equal(ws.hasDocument(uri), true);
+    assert.equal(ws.fileCount, 1);
+    assert.ok(getCellmlDocument(ws, uri));
+    assert.ok(ws.getSymbolsForUri(uri).length >= 25);
 
-    const symIndex = index.indexFile(uri, HODGKIN_HUXLEY_FULL_CELLML);
-    assert.equal(index.fileCount, 1);
-    assert.ok(symIndex.symbols.size >= 25);
-
-    const modelDef = index.findDefinition("hodgkin_huxley_squid_axon_1952");
+    const modelDef = ws.findSymbolsByName("hodgkin_huxley_squid_axon_1952")[0];
     assert.ok(modelDef);
     assert.equal(modelDef.kind, "Package");
 
-    const compDef = index.findDefinition("sodium_channel");
+    const compDef = ws.findSymbolsByName("sodium_channel")[0];
     assert.ok(compDef);
     assert.equal(compDef.kind, "Component");
 
-    const varDef = index.findDefinition("membrane.V");
+    const varDef = ws.findSymbolsByName("membrane.V")[0];
     assert.ok(varDef);
     assert.equal(varDef.name, "V");
 
-    const resolvedInScope = index.resolveInScope("V", compDef.id, uri);
+    const resolvedInScope = resolveCellmlInScope(ws, "V", compDef.id, uri);
     assert.ok(resolvedInScope);
     assert.equal(resolvedInScope.name, "V");
 
-    index.reindexDocument(uri, () => ({ text: HODGKIN_HUXLEY_FULL_CELLML }));
-    assert.ok(index.version >= 2);
+    const prevVersion = ws.version;
+    ws.setDocument(uri, HODGKIN_HUXLEY_FULL_CELLML);
+    assert.ok(ws.version >= prevVersion);
 
-    index.clear();
-    assert.equal(index.fileCount, 0);
+    ws.clear();
+    assert.equal(ws.fileCount, 0);
   });
 
   it("provides LSP validation, document symbols, hover cards, completions, definitions, and actions", async () => {

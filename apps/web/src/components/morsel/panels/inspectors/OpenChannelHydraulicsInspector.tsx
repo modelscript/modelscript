@@ -25,7 +25,7 @@ interface RiverCrossSection {
 }
 
 export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspectorProps> = ({
-  code,
+  code: _code,
   lines,
   colorMode,
   onRevealLine,
@@ -69,14 +69,17 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
             manning: currentManning,
             topWidthM: 25.0 + wDepth * 3.0,
             areaM2: 25.0 * wDepth + 1.5 * wDepth * wDepth,
-            points: curPoints.length > 0 ? curPoints : [
-              { x: 0, z: currentInvert + 5 },
-              { x: 10, z: currentInvert + 2 },
-              { x: 20, z: currentInvert },
-              { x: 30, z: currentInvert },
-              { x: 40, z: currentInvert + 2 },
-              { x: 50, z: currentInvert + 5 },
-            ],
+            points:
+              curPoints.length > 0
+                ? curPoints
+                : [
+                    { x: 0, z: currentInvert + 5 },
+                    { x: 10, z: currentInvert + 2 },
+                    { x: 20, z: currentInvert },
+                    { x: 30, z: currentInvert },
+                    { x: 40, z: currentInvert + 2 },
+                    { x: 50, z: currentInvert + 5 },
+                  ],
             line: currentLine,
           });
         }
@@ -111,12 +114,15 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
         manning: currentManning,
         topWidthM: 32.0,
         areaM2: 85.0,
-        points: curPoints.length > 0 ? curPoints : [
-          { x: 0, z: currentInvert + 6 },
-          { x: 15, z: currentInvert },
-          { x: 35, z: currentInvert },
-          { x: 50, z: currentInvert + 6 },
-        ],
+        points:
+          curPoints.length > 0
+            ? curPoints
+            : [
+                { x: 0, z: currentInvert + 6 },
+                { x: 15, z: currentInvert },
+                { x: 35, z: currentInvert },
+                { x: 50, z: currentInvert + 6 },
+              ],
         line: currentLine,
       });
     }
@@ -189,27 +195,54 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
   };
 
   // SVG Paths for Profile
-  const invertPath = sections.map((s, idx) => `${idx === 0 ? "M" : "L"} ${toSvgX(s.station).toFixed(1)} ${toSvgY(s.invertElev).toFixed(1)}`).join(" ");
-  const waterPath = sections.map((s, idx) => `${idx === 0 ? "M" : "L"} ${toSvgX(s.station).toFixed(1)} ${toSvgY(s.waterElev).toFixed(1)}`).join(" ");
-  const eglPath = sections.map((s, idx) => `${idx === 0 ? "M" : "L"} ${toSvgX(s.station).toFixed(1)} ${toSvgY(s.eglElev).toFixed(1)}`).join(" ");
+  const invertPath = sections
+    .map((s, idx) => `${idx === 0 ? "M" : "L"} ${toSvgX(s.station).toFixed(1)} ${toSvgY(s.invertElev).toFixed(1)}`)
+    .join(" ");
+  const waterPath = sections
+    .map((s, idx) => `${idx === 0 ? "M" : "L"} ${toSvgX(s.station).toFixed(1)} ${toSvgY(s.waterElev).toFixed(1)}`)
+    .join(" ");
+  const eglPath = sections
+    .map((s, idx) => `${idx === 0 ? "M" : "L"} ${toSvgX(s.station).toFixed(1)} ${toSvgY(s.eglElev).toFixed(1)}`)
+    .join(" ");
 
   // Closed water body polygon
-  const waterPolygon = `${waterPath} ` + sections.slice().reverse().map((s) => `L ${toSvgX(s.station).toFixed(1)} ${toSvgY(s.invertElev).toFixed(1)}`).join(" ") + " Z";
+  const waterPolygon =
+    `${waterPath} ` +
+    sections
+      .slice()
+      .reverse()
+      .map((s) => `L ${toSvgX(s.station).toFixed(1)} ${toSvgY(s.invertElev).toFixed(1)}`)
+      .join(" ") +
+    " Z";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, color: textPrimary, fontSize: 13 }}>
       {/* Header & Sub-navigation */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 10, borderBottom: `1px solid ${borderCol}` }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          paddingBottom: 10,
+          borderBottom: `1px solid ${borderCol}`,
+        }}
+      >
         <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: "#58a6ff" }}>
-            River Basin & Open-Channel Hydraulics
-          </div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "#58a6ff" }}>River Basin & Open-Channel Hydraulics</div>
           <div style={{ fontSize: 12, color: textMuted }}>
             Saint-Venant 1D Standard-Step Backwater & Longitudinal Surface Profiles
           </div>
         </div>
 
-        <div style={{ display: "inline-flex", borderRadius: 6, border: `1px solid ${borderCol}`, overflow: "hidden", backgroundColor: isDark ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.8)" }}>
+        <div
+          style={{
+            display: "inline-flex",
+            borderRadius: 6,
+            border: `1px solid ${borderCol}`,
+            overflow: "hidden",
+            backgroundColor: isDark ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.8)",
+          }}
+        >
           {[
             { id: "profile", label: `WSP & EGL Profile (${sections.length} XS)` },
             { id: "section", label: `Cross-Section STA ${activeSection.station}` },
@@ -237,27 +270,42 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
 
       {/* KPI Ribbon */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10 }}>
-        <div style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}>
+        <div
+          style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}
+        >
           <div style={{ fontSize: 11, color: textMuted }}>Reach Reach-Length</div>
           <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace" }}>
             {(bounds.maxX - bounds.minX).toFixed(0)} m
           </div>
         </div>
-        <div style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}>
+        <div
+          style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}
+        >
           <div style={{ fontSize: 11, color: textMuted }}>Design Discharge Q</div>
           <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#58a6ff" }}>
             {activeSection.flowM3s.toFixed(1)} m³/s
           </div>
         </div>
-        <div style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}>
+        <div
+          style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}
+        >
           <div style={{ fontSize: 11, color: textMuted }}>Avg Velocity</div>
           <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#3fb950" }}>
             {activeSection.velocityMs.toFixed(2)} m/s
           </div>
         </div>
-        <div style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}>
+        <div
+          style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}
+        >
           <div style={{ fontSize: 11, color: textMuted }}>Max Froude Number</div>
-          <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: activeSection.froude < 1 ? "#3fb950" : "#d29922" }}>
+          <div
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              fontFamily: "monospace",
+              color: activeSection.froude < 1 ? "#3fb950" : "#d29922",
+            }}
+          >
             {activeSection.froude.toFixed(3)} ({activeSection.froude < 1 ? "Subcritical" : "Supercritical"})
           </div>
         </div>
@@ -278,7 +326,8 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
                 <span style={{ width: 10, height: 10, backgroundColor: "#388bfd", borderRadius: 2 }} /> WSEL
               </span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                <span style={{ width: 12, height: 2, backgroundColor: "#39c5bb", borderTop: "2px dashed #39c5bb" }} /> EGL
+                <span style={{ width: 12, height: 2, backgroundColor: "#39c5bb", borderTop: "2px dashed #39c5bb" }} />{" "}
+                EGL
               </span>
             </div>
           </div>
@@ -290,7 +339,14 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
               const elevVal = bounds.maxY - frac * (bounds.maxY - bounds.minY);
               return (
                 <g key={idx}>
-                  <line x1={padL} y1={y} x2={svgWidth - padR} y2={y} stroke={isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"} strokeDasharray="3 3" />
+                  <line
+                    x1={padL}
+                    y1={y}
+                    x2={svgWidth - padR}
+                    y2={y}
+                    stroke={isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"}
+                    strokeDasharray="3 3"
+                  />
                   <text x={padL - 6} y={y + 4} fill={textMuted} fontSize={10} textAnchor="end" fontFamily="monospace">
                     {elevVal.toFixed(1)}m
                   </text>
@@ -390,7 +446,9 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
               const xsSvgX = (x: number) => 40 + ((x - xsMinX) / (xsMaxX - xsMinX || 1)) * 420;
               const xsSvgY = (z: number) => 150 - ((z - xsMinZ) / (xsMaxZ - xsMinZ || 1)) * 120;
 
-              const groundPath = activeSection.points.map((p, idx) => `${idx === 0 ? "M" : "L"} ${xsSvgX(p.x).toFixed(1)} ${xsSvgY(p.z).toFixed(1)}`).join(" ");
+              const groundPath = activeSection.points
+                .map((p, idx) => `${idx === 0 ? "M" : "L"} ${xsSvgX(p.x).toFixed(1)} ${xsSvgY(p.z).toFixed(1)}`)
+                .join(" ");
               const wY = xsSvgY(activeSection.waterElev);
 
               return (
@@ -416,7 +474,8 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
           {/* Cross section parameters */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 14 }}>
             <div style={{ fontSize: 12 }}>
-              <span style={{ color: textMuted }}>Top Width:</span> <strong>{activeSection.topWidthM.toFixed(1)} m</strong>
+              <span style={{ color: textMuted }}>Top Width:</span>{" "}
+              <strong>{activeSection.topWidthM.toFixed(1)} m</strong>
             </div>
             <div style={{ fontSize: 12 }}>
               <span style={{ color: textMuted }}>Flow Area:</span> <strong>{activeSection.areaM2.toFixed(1)} m²</strong>
@@ -425,7 +484,8 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
               <span style={{ color: textMuted }}>Manning n:</span> <strong>{activeSection.manning}</strong>
             </div>
             <div style={{ fontSize: 12 }}>
-              <span style={{ color: textMuted }}>Velocity:</span> <strong>{activeSection.velocityMs.toFixed(2)} m/s</strong>
+              <span style={{ color: textMuted }}>Velocity:</span>{" "}
+              <strong>{activeSection.velocityMs.toFixed(2)} m/s</strong>
             </div>
           </div>
         </div>
@@ -436,7 +496,13 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
         <div style={{ borderRadius: 8, border: `1px solid ${borderCol}`, overflow: "hidden", backgroundColor: cardBg }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
-              <tr style={{ borderBottom: `1px solid ${borderCol}`, backgroundColor: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)", textAlign: "left" }}>
+              <tr
+                style={{
+                  borderBottom: `1px solid ${borderCol}`,
+                  backgroundColor: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
+                  textAlign: "left",
+                }}
+              >
                 <th style={{ padding: "8px 12px" }}>River Sta</th>
                 <th style={{ padding: "8px 12px" }}>Q (m³/s)</th>
                 <th style={{ padding: "8px 12px" }}>Invert (m)</th>
@@ -455,14 +521,23 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
                   style={{
                     borderBottom: `1px solid ${borderCol}`,
                     cursor: "pointer",
-                    backgroundColor: idx === selectedStationIdx ? (isDark ? "rgba(56, 139, 253, 0.15)" : "rgba(56, 139, 253, 0.1)") : "transparent",
+                    backgroundColor:
+                      idx === selectedStationIdx
+                        ? isDark
+                          ? "rgba(56, 139, 253, 0.15)"
+                          : "rgba(56, 139, 253, 0.1)"
+                        : "transparent",
                   }}
                 >
                   <td style={{ padding: "8px 12px", fontFamily: "monospace", fontWeight: 600 }}>{s.station}</td>
                   <td style={{ padding: "8px 12px", fontFamily: "monospace" }}>{s.flowM3s.toFixed(1)}</td>
                   <td style={{ padding: "8px 12px", fontFamily: "monospace" }}>{s.invertElev.toFixed(2)}</td>
-                  <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#388bfd" }}>{s.waterElev.toFixed(2)}</td>
-                  <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#39c5bb" }}>{s.eglElev.toFixed(2)}</td>
+                  <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#388bfd" }}>
+                    {s.waterElev.toFixed(2)}
+                  </td>
+                  <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#39c5bb" }}>
+                    {s.eglElev.toFixed(2)}
+                  </td>
                   <td style={{ padding: "8px 12px", fontFamily: "monospace" }}>{s.velocityMs.toFixed(2)}</td>
                   <td style={{ padding: "8px 12px", fontFamily: "monospace" }}>{s.froude.toFixed(3)}</td>
                   <td style={{ padding: "8px 12px" }}>

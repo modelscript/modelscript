@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  type SimaModel,
   lintSimaProject,
   parseCardDeck,
   parseHydFile,
@@ -11,7 +13,6 @@ import {
   simaLanguage,
   simaToModelica,
   simaToSsp,
-  SimaWorkspaceIndex,
   solveCatenary,
   verifyDnvMooringCompliance,
   WasmCatenaryBridge,
@@ -257,11 +258,12 @@ describe("@modelscript/sima DNV compliance verification suite", () => {
 
 describe("@modelscript/sima workspace index & projections suite", () => {
   it("indexes SIMA models into symbol table correctly", () => {
-    const idx = new SimaWorkspaceIndex();
-    const syms = idx.indexFile("sima://workspace/case.inp", SAMPLE_SIMO_DECK);
-    assert.ok(syms.symbols.size >= 7);
-    assert.ok(idx.has("sima://workspace/case.inp"));
-    const m = idx.getModel("sima://workspace/case.inp");
+    const ws = new UnifiedWorkspace(simaLanguage);
+    ws.setDocument("sima://workspace/case.inp", SAMPLE_SIMO_DECK);
+    const syms = ws.getFileIndex("sima://workspace/case.inp");
+    assert.ok(syms && syms.symbols.size >= 7);
+    assert.ok(ws.hasDocument("sima://workspace/case.inp"));
+    const m = ws.getParsedModel<SimaModel>("sima://workspace/case.inp");
     assert.equal(m?.vessels[0]?.name, "OC4_Semi");
   });
 

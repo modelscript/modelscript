@@ -10,6 +10,7 @@ import {
   type SolidSourceMetadata,
   type UsdExportOptions,
 } from "@modelscript/cad";
+import type { UnifiedWorkspace } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,9 +27,8 @@ import {
 import { scadLanguage } from "./language.js";
 import { lintScadCst, type ScadDiagnostic, type ScadLintOptions } from "./linter.js";
 import { ScadPatcher, type ScadCstNode, type ScadCstTree } from "./patcher.js";
-import type { ScadWorkspaceIndex } from "./workspace-index.js";
 
-export * from "./workspace-index.js";
+export * from "./indexing.js";
 export { evaluateScad, lintScadCst, parseScadSource, ScadErrorCode, ScadEvaluator, scadLanguage, ScadPatcher };
 export type {
   ScadCstNode,
@@ -107,7 +107,7 @@ export async function getScadParser(wasmUrlOrBytes?: Uint8Array | ArrayBuffer | 
  */
 export async function lintScad(
   source: string,
-  options?: ScadLintOptions | ScadWorkspaceIndex,
+  options?: ScadLintOptions | UnifiedWorkspace,
 ): Promise<ScadDiagnostic[]> {
   const parser = await getScadParser();
   const tree = parser.parse(source);

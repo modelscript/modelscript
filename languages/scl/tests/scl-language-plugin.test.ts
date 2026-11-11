@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { sclLanguage } from "../src/language.js";
+import { getAllSclWorkspaceModels, sclLanguage } from "../src/index.js";
 import { getSclDiagnostics, getSclDocumentSymbols } from "../src/lsp.js";
-import { SclWorkspaceIndex } from "../src/workspace-index.js";
 
 describe("IEC 61850 SCL Language Plugin & LSP Services", () => {
   const sampleScd = `<?xml version="1.0" encoding="UTF-8"?>
@@ -102,12 +102,13 @@ describe("IEC 61850 SCL Language Plugin & LSP Services", () => {
     assert.ok(Array.isArray(lintRes));
   });
 
-  it("should index documents in SclWorkspaceIndex", () => {
-    const index = new SclWorkspaceIndex();
-    index.indexDocument("alpha.scd", sampleScd);
-    const models = index.getAllModels();
+  it("should index documents in UnifiedWorkspace via sclLanguage", () => {
+    const ws = new UnifiedWorkspace(sclLanguage);
+    ws.setDocument("alpha.scd", sampleScd);
+    const models = getAllSclWorkspaceModels(ws);
     assert.equal(models.length, 1);
     assert.equal(models[0]?.substationName, "SUB_TEST");
     assert.equal(models[0]?.iedCount, 1);
+    assert.ok(ws.findSymbolsByName("SUB_TEST").length > 0);
   });
 });

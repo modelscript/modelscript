@@ -4,7 +4,6 @@ import {
   cfdLanguage,
   cfdToDae,
   cfdToModelica,
-  CfdWorkspaceIndex,
   getCfdDocumentSymbols,
   getCfdHover,
   parseCfdConfig,
@@ -40,7 +39,6 @@ describe("CFD LSP Integration Suite (@modelscript/lsp)", () => {
       name: "CFD",
       extensions: [".cfd", ".cfg", ".cfgt", ".su2", ".foam"],
       languageDef: cfdLanguage,
-      workspaceIndex: new CfdWorkspaceIndex(),
       customHandlers: {
         symbols: (text: string) => getCfdDocumentSymbols(text),
         hover: (offset: number, text: string) => {

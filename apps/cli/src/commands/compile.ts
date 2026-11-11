@@ -238,8 +238,8 @@ export const Compile: CommandModule<{}, CompileArgs> = {
         sysmlIndex,
         sysml2LangFallback as unknown as Parameters<UnifiedWorkspace["registerWorkspace"]>[2],
       );
-      await sysmlIndex.toUnifiedAsync();
-      const unifiedDb = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
+      await sysmlIndex.getIndexAsync();
+      const unifiedDb = await u.getIndexAsync();
       const sysmlFactory = await import("@modelscript/sysml2/factory");
       u.registerParser(".mo", parser as unknown as Parameters<typeof u.registerParser>[1]);
       if (sysmlParser) {
@@ -289,11 +289,9 @@ export const Compile: CommandModule<{}, CompileArgs> = {
     // Flatten the model using Arena
     profiler.start("flattening");
     let arena: import("@modelscript/runtime").DAEBuilder | null = null;
-    if (hasSysML && !paths.some((p) => p.endsWith(".mo"))) {
+    if (hasSysML && sysmlIndex && !paths.some((p) => p.endsWith(".mo"))) {
       const { createSysML2QueryEngine, SysML2DaeLowerer } = await import("@modelscript/sysml2");
-      const unified = (sysmlIndex as any).toUnifiedAsync
-        ? await (sysmlIndex as any).toUnifiedAsync()
-        : (sysmlIndex as any).toUnified();
+      const unified = await sysmlIndex.getIndexAsync();
       const qe = createSysML2QueryEngine(unified);
       const queryDb = qe.toQueryDB();
       const primaryPath = paths.find((p) => p.endsWith(".sysml")) ?? paths[0]!;

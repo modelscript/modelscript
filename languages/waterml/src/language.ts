@@ -7,6 +7,7 @@
 import { language } from "@modelscript/dsl";
 import { fitRatingCurve } from "./analysis/rating-curve.js";
 import { lowerWaterMlToDae } from "./dae/waterml-to-dae.js";
+import { canIndexWaterMlFile, indexWaterMlFile } from "./indexing.js";
 import { lintWaterMlDocument } from "./lints/index.js";
 import { parseWaterMl } from "./parser/waterml-parser.js";
 import { writeWaterMlXml } from "./parser/waterml-writer.js";
@@ -16,6 +17,10 @@ export const watermlLanguage = language({
   name: "waterml",
   fileExtensions: [".waterml", ".wml2", ".xml", ".json"],
   maturity: "beta",
+  indexing: {
+    indexFile: indexWaterMlFile,
+    canIndex: canIndexWaterMlFile,
+  },
   lsp: {
     fileExtensions: [".waterml", ".wml2", ".xml", ".json"],
   },

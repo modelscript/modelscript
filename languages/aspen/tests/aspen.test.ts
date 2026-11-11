@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  AspenWorkspaceIndex,
+  aspenLanguage,
   aspenToModelica,
+  getAspenDeck,
   lintAspen,
   lowerAspenToDae,
   parseAspen,
@@ -347,16 +349,18 @@ test("Aspen Modelica Projection: generates syntactically valid Modelica 3.x code
   assert.match(moCode, /end METHANOL_WATER_FLASH_AND_SEPARATION;/);
 });
 
-test("Aspen Workspace Index: indexes multi-file symbols accurately", () => {
-  const index = new AspenWorkspaceIndex();
+test("Aspen UnifiedWorkspace: indexes multi-file symbols accurately", () => {
+  const ws = new UnifiedWorkspace(aspenLanguage);
   const uri = "file:///workspace/plant.in";
-  const symIdx = index.indexFile(uri, VALID_ASPEN_DECK);
+  ws.setDocument(uri, VALID_ASPEN_DECK);
 
-  assert.ok(index.has(uri));
+  assert.ok(ws.hasDocument(uri));
+  const symIdx = ws.getIndex();
   assert.ok(symIdx.symbols.size > 0);
 
   // Name based lookup
   assert.ok(symIdx.byName.has("METHANOL"));
   assert.ok(symIdx.byName.has("FLASH1"));
   assert.ok(symIdx.byName.has("FEED"));
+  assert.ok(getAspenDeck(ws, uri)?.components.has("METHANOL"));
 });

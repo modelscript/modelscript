@@ -2,6 +2,7 @@
 
 import { language } from "@modelscript/dsl";
 import { lowerTouchstoneToDae } from "./dae/touchstone-to-dae.js";
+import { indexTouchstoneFile } from "./indexing.js";
 import { lintTouchstone } from "./lints/index.js";
 import { parseTouchstone } from "./parser/touchstone-parser.js";
 import { touchstoneToModelica } from "./projections/touchstone-to-modelica.js";
@@ -32,6 +33,9 @@ export const touchstoneLanguage = language({
   name: "touchstone",
   maturity: "beta",
   fileExtensions: touchstoneExtensions,
+  indexing: {
+    indexFile: indexTouchstoneFile,
+  },
   lsp: {
     fileExtensions: touchstoneExtensions,
     icons: {

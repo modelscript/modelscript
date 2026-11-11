@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getModflowDocumentSymbols, ModflowWorkspaceIndex, validateModflow } from "../src/index.js";
+import { getModflowDocumentSymbols, modflowLanguage, validateModflow } from "../src/index.js";
 
 const DECK = `
 BEGIN DIS6
@@ -17,9 +18,10 @@ BEGIN NPF6
 END NPF6
 `;
 
-test("MODFLOW Workspace Index — indexes grid and boundary symbols", () => {
-  const indexer = new ModflowWorkspaceIndex();
-  const idx = indexer.indexFile("file:///aquifer.dis", DECK);
+test("MODFLOW UnifiedWorkspace — indexes grid and boundary symbols", () => {
+  const ws = new UnifiedWorkspace(modflowLanguage);
+  ws.setDocument("file:///aquifer.dis", DECK);
+  const idx = ws.getIndex();
   assert.ok(idx.symbols.size > 0);
   assert.ok(idx.byName.has("MODFLOW_Aquifer"));
 });

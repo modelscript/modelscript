@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { QifWorkspaceIndex } from "../src/workspace-index.js";
+import { qifLanguage, resolveQifInScope } from "../src/index.js";
 
-describe("QIF 3.0 Multi-File Workspace Index", () => {
+describe("QIF 3.0 Multi-File UnifiedWorkspace Indexing", () => {
   it("indexes QIF symbols and resolves by name and scope", () => {
-    const index = new QifWorkspaceIndex();
+    const ws = new UnifiedWorkspace(qifLanguage);
     const uri = "file:///housing.qif";
     const content = `
       QIF 3.0.0
@@ -19,25 +20,26 @@ describe("QIF 3.0 Multi-File Workspace Index", () => {
       ACTUAL ACT1 characteristic=C1 serial="SN-01" value=0.02 actualSize=30.01 status=PASS
     `;
 
-    const fileIdx = index.indexFile(uri, content);
-    assert(index.has(uri));
-    assert.strictEqual(index.fileCount, 1);
-    assert(fileIdx.symbols.size >= 7);
+    ws.setDocument(uri, content);
+    const fileIdx = ws.getFileIndex(uri);
+    assert(ws.hasDocument(uri));
+    assert.strictEqual(ws.fileCount, 1);
+    assert(fileIdx && fileIdx.symbols.size >= 7);
 
-    const foundBore = index.findByName("MainBore");
+    const foundBore = ws.findSymbolsByName("MainBore");
     assert.strictEqual(foundBore.length, 1);
     assert.strictEqual(foundBore[0]?.ruleName, "qif_feature");
 
-    const foundChar = index.findByName("C1");
+    const foundChar = ws.findSymbolsByName("C1");
     assert.strictEqual(foundChar.length, 1);
     const charId = foundChar[0]!.id;
 
     // Resolve child actual in characteristic scope
-    const resolvedAct = index.resolveInScope("ACT1", charId, uri);
+    const resolvedAct = resolveQifInScope(ws, "ACT1", charId, uri);
     assert(resolvedAct !== null);
     assert.strictEqual(resolvedAct.ruleName, "qif_actual");
 
-    index.clear();
-    assert.strictEqual(index.fileCount, 0);
+    ws.clear();
+    assert.strictEqual(ws.fileCount, 0);
   });
 });

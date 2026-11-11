@@ -135,7 +135,7 @@ describe("Lazy VFS and Federated Cache Remediation", () => {
     ws.hydrate("bundle:PackageA", bundle1);
     ws.hydrate("bundle:PackageB", bundle2);
 
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
 
     const symAId = unified.byName.get("PackageA")?.[0];
     const symBId = unified.byName.get("PackageB")?.[0];

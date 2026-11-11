@@ -264,9 +264,8 @@ END-ISO-10303-21;
       documentLSPBridges,
       workspaceManager: {
         getQueryEngine: (_lang: string) => queryEngine,
-        stepWorkspaceIndex: {
-          fileIndices: new Map([[stepUri, unifiedIndex]]),
-          getFileIndex: (_u: string) => unifiedIndex,
+        unifiedWorkspace: {
+          getIndex: () => unifiedIndex,
         },
         getThreadsForUri: (uri: string) => {
           if (uri === stepUri) {
@@ -531,10 +530,10 @@ END-ISO-10303-21;
     assert.ok(md.includes("Motor"));
   });
 
-  it("CAD Product fallback: navigates to STEP PRODUCT definition even without stepWorkspaceIndex", () => {
+  it("CAD Product fallback: navigates to STEP PRODUCT definition even without unifiedWorkspace", () => {
     const ws = setupPolyglotWorkspace();
-    // Simulate empty/missing stepWorkspaceIndex
-    delete ws.validationService.workspaceManager.stepWorkspaceIndex;
+    // Simulate empty/missing unifiedWorkspace
+    delete ws.validationService.workspaceManager.unifiedWorkspace;
 
     let defHandler: any = null;
     const connection: any = {

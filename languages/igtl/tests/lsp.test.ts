@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import {
@@ -9,11 +10,11 @@ import {
   getIgtlDocumentSymbols,
   getIgtlHover,
   igtlLanguage,
-  IgtlWorkspaceIndex,
+  resolveIgtlInScope,
   validateIgtl,
 } from "../src/index.js";
 
-describe("OpenIGTLink / PLUS LSP Service & WorkspaceIndex", () => {
+describe("OpenIGTLink / PLUS LSP Service & UnifiedWorkspace", () => {
   const sampleXml = `<PlusConfiguration version="2.1">
   <DataCollection>
     <DeviceSet Name="SurgicalTracking">
@@ -38,18 +39,18 @@ describe("OpenIGTLink / PLUS LSP Service & WorkspaceIndex", () => {
   </PlusOpenIGTLinkServer>
 </PlusConfiguration>`;
 
-  it("indexes symbols in IgtlWorkspaceIndex and resolves across scope", () => {
-    const idx = new IgtlWorkspaceIndex();
+  it("indexes symbols in UnifiedWorkspace and resolves across scope", () => {
+    const ws = new UnifiedWorkspace(igtlLanguage);
     const uri = "file:///nav.plus.xml";
-    idx.indexFile(uri, sampleXml);
-    assert.strictEqual(idx.fileCount, 1);
-    assert(idx.has(uri));
+    ws.setDocument(uri, sampleXml);
+    assert.strictEqual(ws.fileCount, 1);
+    assert(ws.hasDocument(uri));
 
-    const devSyms = idx.findByName("TrackerDevice");
+    const devSyms = ws.findSymbolsByName("TrackerDevice");
     assert.strictEqual(devSyms.length, 1);
     assert.strictEqual(devSyms[0]?.kind, "Component");
 
-    const ds = idx.resolveInScope("Stylus", devSyms[0]!.id, uri);
+    const ds = resolveIgtlInScope(ws, "Stylus", devSyms[0]!.id, uri);
     assert(ds !== null);
     assert.strictEqual(ds.namePath, "TrackerDevice.Stylus");
   });

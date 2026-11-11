@@ -15,6 +15,7 @@ import {
   tggEq,
   tggRule,
 } from "@modelscript/dsl";
+import { indexScadDocument } from "./indexing.js";
 import type { ScadCstNode } from "./patcher.js";
 import { scadWriteback } from "./writeback.js";
 
@@ -179,6 +180,10 @@ export const scadLanguage = language({
 
   // Bidirectional writeback handler for updating SCAD source dimensions and transforms from 3D gizmos
   writeback: scadWriteback,
+
+  indexing: {
+    indexFile: indexScadDocument,
+  },
 
   // IDE and AI agent actions for 3D CSG evaluation and ISO 10303 STEP export
   actions: [

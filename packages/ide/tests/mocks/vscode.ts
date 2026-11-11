@@ -145,8 +145,18 @@ export const ViewColumn = {
   Three: 3,
 };
 
+export const ColorThemeKind = {
+  Light: 1,
+  Dark: 2,
+  HighContrast: 3,
+  HighContrastLight: 4,
+};
+
 export const workspace = {
+  workspaceFolders: undefined as any[] | undefined,
   textDocuments: [] as any[],
+  findFiles: async (_include: any, _exclude?: any, _maxResults?: number) => [] as any[],
+  asRelativePath: (pathOrUri: any) => (typeof pathOrUri === "string" ? pathOrUri : (pathOrUri?.path ?? "")),
   applyEdit: async (_edit: any) => true,
   onDidChangeTextDocument: (_listener: any) => new Disposable(),
   onDidSaveTextDocument: (_listener: any) => new Disposable(),
@@ -158,16 +168,29 @@ export const workspace = {
     positionAt: (offset: number) => new Position(0, offset),
   }),
   fs: {
+    stat: async (_uri: any) => ({ type: 1, ctime: 0, mtime: 0, size: 0 }),
     readFile: async (_uri: any) => new Uint8Array(),
     writeFile: async (_uri: any, _content: Uint8Array) => {},
   },
 };
 
+export const ProgressLocation = {
+  SourceControl: 1,
+  Window: 10,
+  Notification: 15,
+};
+
 export const window = {
+  activeColorTheme: { kind: ColorThemeKind.Dark },
   activeTextEditor: undefined as any,
+  showTextDocument: async (doc: any, _options?: any) => ({ document: doc }),
+  showOpenDialog: async (_options?: any) => undefined as any[] | undefined,
   onDidChangeActiveTextEditor: (_listener: any) => new Disposable(),
+  withProgress: async (_options: any, task: any) =>
+    task({ report: () => {} }, { isCancellationRequested: false, onCancellationRequested: () => new Disposable() }),
   createWebviewPanel: (_viewType: string, _title: string, _showOptions: any, _options?: any) => ({
     webview: {
+      cspSource: "vscode-webview://test",
       asWebviewUri: (u: any) => u,
       postMessage: async (_message: any) => true,
       onDidReceiveMessage: (_listener: any) => new Disposable(),

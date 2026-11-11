@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { createWasmParser } from "@modelscript/dsl/bindings";
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -8,8 +9,8 @@ import { fileURLToPath } from "node:url";
 import {
   detectOwl2Format,
   lowerCstToAxioms,
+  owl2Language,
   Owl2TableauReasoner,
-  Owl2WorkspaceIndex,
   parseOwl2ToAxioms,
   parseOwlXmlToAxioms,
   parseTurtleToOwl2Axioms,
@@ -197,8 +198,9 @@ describe("OWL 2 Recursive Tseitin Normalization & Turtle/OWL-XML Frontends", () 
     assert.equal(reasoner.isSubClassOf(":JetAircraft", ":Aircraft"), true);
     assert.equal(reasoner.isInstanceOf(":plane1", ":DualJetAircraft"), true);
 
-    const ws = new Owl2WorkspaceIndex();
-    const symIdx = ws.indexFile("file:///aero.ttl", ttlSource);
+    const ws = new UnifiedWorkspace(owl2Language);
+    ws.setDocument("file:///aero.ttl", ttlSource);
+    const symIdx = ws.getIndex();
     assert.ok(symIdx.byName.has("JetAircraft"));
     assert.ok(symIdx.byName.has("hasEngine"));
   });

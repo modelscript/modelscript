@@ -93,11 +93,13 @@ describe("PSCAD Library Project (.pslx) Suite", () => {
     assert.equal(ann.parameters?.AL1, "Header Title");
   });
 
-  it("indexes .pslx components into PscadWorkspaceIndex for the Library panel", async () => {
+  it("indexes .pslx components into UnifiedWorkspace for the Library panel", async () => {
     const text = fs.readFileSync(pslxFixturePath, "utf-8");
-    const { PscadWorkspaceIndex } = await import("../src/workspace-index.js");
-    const wsIndex = new PscadWorkspaceIndex();
-    const index = wsIndex.indexFile("file:///Component_Lib.pslx", text);
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    const { pscadLanguage } = await import("../src/language.js");
+    const ws = new UnifiedWorkspace(pscadLanguage);
+    ws.setDocument("file:///Component_Lib.pslx", text);
+    const index = ws.getIndex();
 
     assert.ok(index.symbols.size >= 4, "Should index package and at least 3 components");
     const rootSymbol = Array.from(index.symbols.values()).find((s) => s.parentId === null);

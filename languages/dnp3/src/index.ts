@@ -9,10 +9,10 @@
 
 export * from "./analysis/telemetry-processor.js";
 export * from "./dae/dnp3-to-dae.js";
+export * from "./indexing.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";
 export * from "./parser/dnp3-parser.js";
 export * from "./parser/dnp3-writer.js";
 export * from "./types.js";
-export * from "./workspace-index.js";

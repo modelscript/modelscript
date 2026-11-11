@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   evaluateAeroExpr,
   evaluateAeroTable,
+  jsbsimLanguage,
   jsbsimToModelica,
-  JsbsimWorkspaceIndex,
   linearizeFlightDynamics,
   lintJsbsim,
   lowerJsbsimToDae,
@@ -14,6 +15,7 @@ import {
   serializeJsbsim,
   solveFlightDynamics,
   trimFlightCondition,
+  type JsbsimDocument,
 } from "../src/index.js";
 
 const VALID_C172_XML = `<?xml version="1.0"?>
@@ -261,22 +263,25 @@ test("JSBSim Modelica Projection: generates syntactically valid Modelica 3.x fli
   assert.ok(mo.includes("end C172SkyhawkFlight;"));
 });
 
-test("JSBSim Workspace Index: indexes multi-file symbols accurately", () => {
-  const index = new JsbsimWorkspaceIndex();
-  index.indexFile("file:///aero/c172p.xml", VALID_C172_XML);
+test("JSBSim UnifiedWorkspace: indexes multi-file symbols accurately", () => {
+  const ws = new UnifiedWorkspace(jsbsimLanguage);
+  ws.setDocument("file:///aero/c172p.xml", VALID_C172_XML);
 
-  assert.equal(index.fileCount, 1);
-  const symbols = index.getSymbols("file:///aero/c172p.xml");
+  assert.equal(ws.fileCount, 1);
+  const symbols = ws.getSymbolsForUri("file:///aero/c172p.xml");
   assert.ok(symbols.length >= 5);
 
-  const modelSym = index.findDefinition("c172p");
+  const modelSym = ws.findSymbolsByName("c172p")[0];
   assert.ok(modelSym);
 
-  const metricsSym = index.findDefinition("AirframeMetrics");
+  const metricsSym = ws.findSymbolsByName("AirframeMetrics")[0];
   assert.ok(metricsSym);
 
-  const gearSym = index.findDefinition("Gear_NOSE");
+  const gearSym = ws.findSymbolsByName("Gear_NOSE")[0];
   assert.ok(gearSym);
+
+  const doc = ws.getParsedModel<JsbsimDocument>("file:///aero/c172p.xml");
+  assert.equal(doc?.model.name, "c172p");
 });
 
 test("JSBSim Linter & Solver: detects M8909 undefined FCS input, M8910 unrealistic CG location, and responds to elevatorDeg", () => {

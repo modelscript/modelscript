@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerPhreeqcToDae } from "./dae/phreeqc-to-dae.js";
+import { indexPhreeqcFile } from "./indexing.js";
 import { lintPhreeqc } from "./lints/index.js";
 import { parsePhreeqc } from "./parser/phreeqc-parser.js";
 import { phreeqcToModelica } from "./projections/phreeqc-to-modelica.js";
@@ -14,6 +15,18 @@ export const phreeqcLanguage = language({
   name: "phreeqc",
   fileExtensions: [".pqi", ".dat"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexPhreeqcFile,
+    canIndex: (uri, text) =>
+      uri.toLowerCase().endsWith(".pqi") ||
+      Boolean(
+        text &&
+        (text.includes("SOLUTION") ||
+          text.includes("EQUILIBRIUM_PHASES") ||
+          text.includes("KINETICS") ||
+          text.includes("SOLUTION_SPECIES")),
+      ),
+  },
   lsp: {
     fileExtensions: [".pqi", ".dat"],
     icons: {

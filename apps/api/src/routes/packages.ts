@@ -407,13 +407,21 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     for (const pkgName of snapshot.packagesByName.keys()) {
       storageNames.add(pkgName);
     }
+    if (query || req.query["includeCatalog"] === "true") {
+      for (const pkgName of catalogByPkgName.keys()) {
+        storageNames.add(pkgName);
+      }
+    }
     const names = Array.from(storageNames).sort();
 
     const allPackages = names.map((name) => {
+      const catalogLib = getStdlibById(name) ?? catalogByPkgName.get(name);
       const pkgRecord = snapshot.packagesByName.get(name);
       const storageVersions = storage.versions(name);
       const dbVersions = pkgRecord ? (snapshot.versionsByPackageId.get(pkgRecord.id) ?? []).map((v) => v.version) : [];
-      const versions = Array.from(new Set([...storageVersions, ...dbVersions])).sort((a, b) => {
+      const versions = Array.from(
+        new Set([...storageVersions, ...dbVersions, ...(catalogLib ? [catalogLib.version] : [])]),
+      ).sort((a, b) => {
         if (semver.valid(a) && semver.valid(b)) return semver.rcompare(a, b);
         return b.localeCompare(a);
       });
@@ -505,7 +513,6 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         }
       }
 
-      const catalogLib = getStdlibById(name) ?? catalogByPkgName.get(name);
       if (domainSet.size === 0) {
         if (catalogLib?.domain) {
           domainSet.add(catalogLib.domain);
@@ -1344,6 +1351,34 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           }
         }
 
+        const catalogLib =
+          getStdlibById(name) ??
+          getStdlibCatalog().libraries.find(
+            (l) => l.packageName === name && (l.version === version || semver.satisfies(l.version, version)),
+          );
+        if (catalogLib) {
+          res.json({
+            name,
+            version,
+            description: catalogLib.description,
+            license: catalogLib.license,
+            author: catalogLib.upstream?.url?.includes("github.com/")
+              ? catalogLib.upstream.url.split("github.com/")[1]?.split("/")[0]
+              : undefined,
+            profile: "engineering-package",
+            modelicaVersion: version,
+            domain: catalogLib.domain,
+            tier: catalogLib.tier,
+            upstream: catalogLib.upstream,
+            isDeprecated: false,
+            isYanked: false,
+            canManage: false,
+            vulnerabilitiesCount: 0,
+            vulnerabilities: [],
+          });
+          return;
+        }
+
         res.status(404).json({ error: `Package "${name}@${version}" not found` });
         return;
       }
@@ -1774,6 +1809,72 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
             }
           } catch {
             // Fall through to next upstream registry
+          }
+        }
+
+        // Fallback to stdlib catalog upstream download URLs
+        const catalogLib =
+          getStdlibById(name) ??
+          getStdlibCatalog().libraries.find(
+            (l) => l.packageName === name && (l.version === version || semver.satisfies(l.version, version)),
+          );
+        if (
+          catalogLib?.upstream?.url ||
+          catalogLib?.upstream?.fallbackUrl ||
+          catalogLib?.upstream?.mirrorUrls?.length
+        ) {
+          const candidateUrls = [
+            catalogLib.upstream.url,
+            catalogLib.upstream.fallbackUrl,
+            ...(catalogLib.upstream.mirrorUrls || []),
+          ].filter(Boolean) as string[];
+
+          for (const url of candidateUrls) {
+            try {
+              const fetchRes = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(60000) });
+              if (!fetchRes.ok) continue;
+              const buffer = await fetchRes.arrayBuffer();
+              const nodeBuffer = Buffer.from(buffer);
+              if (nodeBuffer.length === 0 || nodeBuffer.length > 100 * 1024 * 1024) continue;
+
+              const scanResult = await scanPackageArchive(nodeBuffer);
+              if (!scanResult.valid) {
+                res.status(502).json({
+                  error: `Upstream package failed security screening: ${scanResult.violations.join(", ")}`,
+                });
+                return;
+              }
+
+              try {
+                await storage.store(name, version, nodeBuffer);
+                const libraryPath = await storage.extractLibrary(name, version);
+                const { fileURLToPath } = await import("node:url");
+                const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
+                const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
+                jobQueue.enqueueProcess(
+                  `${name}@${version}`,
+                  workerScript,
+                  {
+                    name,
+                    version,
+                    libraryPath,
+                    storageDir: storage.dataDir,
+                    dbDir: database.dbDir,
+                  },
+                  { priority: "normal" },
+                );
+              } catch {
+                // Ignore if storage/extraction already exists or fails
+              }
+
+              res.setHeader("Content-Type", "application/zip");
+              res.setHeader("Content-Disposition", `attachment; filename="${safeFileBase}.zip"`);
+              res.setHeader("Content-Length", String(nodeBuffer.length));
+              res.send(nodeBuffer);
+              return;
+            } catch {
+              // Try next candidate URL
+            }
           }
         }
 

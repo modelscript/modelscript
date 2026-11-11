@@ -67,7 +67,7 @@ test("QUDV Physical Dimensions Calculus", async (t) => {
   await t.test("resolves dimensions from KerML stdlib types", async () => {
     const ws = createSysML2WorkspaceIndex();
     loadEmbeddedKerMLStdlib(ws);
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
     const qe = createSysML2QueryEngine(unified);
     const db = qe.toQueryDB();
 
@@ -131,7 +131,7 @@ test("QUDV Physical Dimensions Calculus", async (t) => {
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
     const qe = createSysML2QueryEngine(unified, parser.parse(modelCode));
     const db = qe.toQueryDB();
 
@@ -207,7 +207,7 @@ test("QUDV Physical Dimensions Calculus", async (t) => {
 
     const uri = "file:///workspace/DroneReachabilitySystem.sysml";
     ws.register(uri, () => tree.rootNode as any);
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
     const qe = createSysML2QueryEngine(unified, tree);
     const db = qe.toQueryDB();
 

@@ -178,7 +178,7 @@ function ensureClassIndexed(
           if (typeof ws.reindexDocument === "function") {
             ws.reindexDocument(effectiveUri, () => tree.rootNode);
           }
-          unified = uws.toUnifiedPartial();
+          unified = uws.getIndex();
           changedInfo = ws.takeGlobalChangedIds?.();
         } else {
           if (typeof ws.reindexDocument === "function") {
@@ -186,7 +186,7 @@ function ensureClassIndexed(
           } else {
             ws.indexDocument(effectiveUri, () => tree.rootNode);
           }
-          unified = ws.toUnified();
+          unified = ws.getIndex({ eager: true });
           changedInfo = ws.takeGlobalChangedIds?.();
         }
 
@@ -236,7 +236,7 @@ function ensureClassIndexed(
       }
     }
     if (firstId !== undefined && typeof queryEngine.updateIndex === "function") {
-      const unified = ws.toUnified();
+      const unified = ws.getIndex({ eager: true });
       injectPredefinedTypes(unified);
       queryEngine.updateIndex(unified);
       queryDB = queryEngine.toQueryDB();
@@ -247,7 +247,7 @@ function ensureClassIndexed(
   }
 
   if (firstId === undefined && (context.workspaceManager as any)?.unifiedWorkspace) {
-    const uws = (context.workspaceManager as any).unifiedWorkspace.toUnifiedPartial();
+    const uws = (context.workspaceManager as any).unifiedWorkspace.getIndex();
     if (uws?.byName) {
       let entries = uws.byName.get(className) || [];
       if (entries.length === 0 && shortName !== className) {
@@ -656,7 +656,7 @@ export const modelicaActionHandlers: Record<
       const tree = parser.parse(code);
       const wsIndex = createModelicaWorkspaceIndex();
       wsIndex.register("input.mo", () => tree.rootNode as never);
-      const unified = wsIndex.toUnified();
+      const unified = wsIndex.getIndex({ eager: true });
       const classes: { name: string; kind: string }[] = [];
       for (const sym of unified.symbols.values()) {
         if (sym.kind === "Class") {

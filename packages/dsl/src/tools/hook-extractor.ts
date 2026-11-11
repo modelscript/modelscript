@@ -370,3 +370,13 @@ export function extractGraphicsConfig(langConfig: any, $?: Record<string, any>):
 
   return configs;
 }
+
+/**
+ * Extracts declarative `LanguageIndexingConfig` from a language definition, if defined.
+ */
+export function extractIndexingConfig(
+  langConfig: any,
+): import("../dsl/language.js").LanguageIndexingConfig | undefined {
+  if (!langConfig || typeof langConfig !== "object") return undefined;
+  return langConfig.indexing;
+}

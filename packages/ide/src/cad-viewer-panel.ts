@@ -122,6 +122,15 @@ export class CadViewerPanel extends BaseWebviewPanel {
           case "commitGizmoDelta":
             void this.handleCommitGizmoDelta(message.payload);
             break;
+          case "commitDimensionDelta":
+            void this.handleCommitDimensionDelta(message.payload);
+            break;
+          case "commitFaceTag":
+            void this.handleCommitFaceTag(message.payload);
+            break;
+          case "commitAssemblyJoint":
+            void this.handleCommitAssemblyJoint(message.payload);
+            break;
           case "commitCadBinding":
             void this.handleCommitCadBinding(message.payload);
             break;
@@ -576,6 +585,201 @@ export class CadViewerPanel extends BaseWebviewPanel {
         const endPos = doc.positionAt(patch.replacedRange.end);
         edit.replace(doc.uri, new vscode.Range(startPos, endPos), patch.newText ?? patch.updatedSource);
         await vscode.workspace.applyEdit(edit);
+      }
+    }
+  }
+
+  /**
+   * Applies direct dimension dragging writebacks (width, height, radius) to the active editor document.
+   */
+  public async handleCommitDimensionDelta(payload: {
+    componentName: string;
+    dimensionIndex: number;
+    newValue: number;
+    primitiveType?: string | undefined;
+    sourceMetadata?:
+      | {
+          parameterName?: string | undefined;
+          dimensionParams?: [string | undefined, string | undefined, string | undefined] | undefined;
+          dimensions?: [number, number, number] | undefined;
+          primitiveStartOffset?: number | undefined;
+          primitiveEndOffset?: number | undefined;
+        }
+      | undefined;
+  }): Promise<void> {
+    if (!payload) return;
+    const doc = this._resolveTargetDocument();
+    if (!doc) return;
+
+    const source = doc.getText();
+    const { dimensionIndex, newValue, primitiveType, sourceMetadata } = payload;
+
+    if (doc.languageId === "scad" || doc.fileName.endsWith(".scad")) {
+      try {
+        const { getScadParser, ScadPatcher } = await import("@modelscript/scad");
+        let wasmBytes: Uint8Array | undefined;
+        try {
+          const wasmUri = vscode.Uri.joinPath(this._extensionUri, "dist", "scad.wasm");
+          const read = await vscode.workspace.fs.readFile(wasmUri);
+          if (read && read.byteLength > 0) wasmBytes = read;
+        } catch {
+          // Node fallback
+        }
+        const parser = await getScadParser(wasmBytes);
+        const tree = parser.parse(source);
+        if (!tree) return;
+
+        const targetRange =
+          sourceMetadata?.primitiveStartOffset !== undefined && sourceMetadata?.primitiveEndOffset !== undefined
+            ? { startOffset: sourceMetadata.primitiveStartOffset, endOffset: sourceMetadata.primitiveEndOffset }
+            : undefined;
+
+        const paramName = sourceMetadata?.dimensionParams?.[dimensionIndex] ?? sourceMetadata?.parameterName;
+
+        const patchRes = ScadPatcher.patchPrimitiveDimension(
+          source,
+          tree.rootNode,
+          dimensionIndex,
+          newValue,
+          targetRange,
+          paramName,
+          primitiveType,
+        );
+
+        if (patchRes) {
+          const edit = new vscode.WorkspaceEdit();
+          const startPos = doc.positionAt(patchRes.replacedRange.startOffset);
+          const endPos = doc.positionAt(patchRes.replacedRange.endOffset);
+          edit.replace(doc.uri, new vscode.Range(startPos, endPos), patchRes.newValue);
+          await vscode.workspace.applyEdit(edit);
+          await this.update();
+        }
+      } catch (err) {
+        console.warn("[CAD Viewer] Failed to patch OpenSCAD dimension:", err);
+      }
+    }
+  }
+
+  /**
+   * Applies 3D face boundary condition or port tagging writeback to the active editor document.
+   */
+  public async handleCommitFaceTag(payload: {
+    componentName: string;
+    portName: string;
+    portType?: string | undefined;
+    normal?: [number, number, number] | undefined;
+    worldPos?: [number, number, number] | undefined;
+    sourceMetadata?:
+      | {
+          primitiveStartOffset?: number | undefined;
+          primitiveEndOffset?: number | undefined;
+          startOffset?: number | undefined;
+          endOffset?: number | undefined;
+        }
+      | undefined;
+  }): Promise<void> {
+    if (!payload) return;
+    const doc = this._resolveTargetDocument();
+    if (!doc) return;
+
+    const source = doc.getText();
+    const { componentName, portName, portType = "fixed_support", normal, worldPos, sourceMetadata } = payload;
+
+    // 1. OpenSCAD document: wrap solid with tag_port("name", "type", normal) { ... }
+    if (doc.languageId === "scad" || doc.fileName.endsWith(".scad")) {
+      try {
+        const { ScadPatcher } = await import("@modelscript/scad");
+        const startOffset = sourceMetadata?.primitiveStartOffset ?? sourceMetadata?.startOffset;
+        const endOffset = sourceMetadata?.primitiveEndOffset ?? sourceMetadata?.endOffset;
+
+        if (startOffset !== undefined && endOffset !== undefined && endOffset > startOffset) {
+          const patchRes = ScadPatcher.wrapSolidWithTagPort(
+            source,
+            { startOffset, endOffset },
+            portName,
+            portType,
+            normal,
+          );
+
+          const edit = new vscode.WorkspaceEdit();
+          const startPos = doc.positionAt(patchRes.replacedRange.startOffset);
+          const endPos = doc.positionAt(patchRes.replacedRange.endOffset);
+          edit.replace(doc.uri, new vscode.Range(startPos, endPos), patchRes.newValue);
+          await vscode.workspace.applyEdit(edit);
+          await this.update();
+        }
+      } catch (err) {
+        console.warn("[CAD Viewer] Failed to patch OpenSCAD tag_port:", err);
+      }
+    }
+
+    // 2. Modelica document: inject CADPort annotation
+    if (doc.languageId === "modelica" || doc.fileName.endsWith(".mo")) {
+      try {
+        const { patchModelicaCadPortAnnotation } = await import("@modelscript/cad");
+        const patch = patchModelicaCadPortAnnotation(source, componentName, {
+          feature: portName,
+          offsetPosition: worldPos,
+        });
+
+        if (patch.updatedSource !== source && patch.replacedRange) {
+          const edit = new vscode.WorkspaceEdit();
+          const startPos = doc.positionAt(patch.replacedRange.start);
+          const endPos = doc.positionAt(patch.replacedRange.end);
+          edit.replace(doc.uri, new vscode.Range(startPos, endPos), patch.newText ?? patch.updatedSource);
+          await vscode.workspace.applyEdit(edit);
+          await this.update();
+        }
+      } catch (err) {
+        console.warn("[CAD Viewer] Failed to patch Modelica CADPort annotation:", err);
+      }
+    }
+  }
+
+  /**
+   * Synthesizes and applies a Modelica MultiBody Joint or OpenSCAD assembly mate
+   * between two parts/frames in the active document.
+   */
+  public async handleCommitAssemblyJoint(payload: {
+    jointName: string;
+    jointType: "Revolute" | "Prismatic" | "Cylindrical" | "Spherical" | "Fixed";
+    partA: string;
+    frameA?: string | undefined;
+    partB: string;
+    frameB?: string | undefined;
+    axis?: [number, number, number] | undefined;
+    phi_offset?: number | undefined;
+    s_offset?: number | undefined;
+  }): Promise<void> {
+    if (!payload) return;
+    const doc = this._resolveTargetDocument();
+    if (!doc) return;
+
+    const source = doc.getText();
+    const isModelica = doc.languageId === "modelica" || doc.fileName.endsWith(".mo");
+
+    if (isModelica) {
+      try {
+        const { patchModelicaAssemblyJoint } = await import("@modelscript/cad");
+        const patch = patchModelicaAssemblyJoint(source, payload);
+        if (patch.updatedSource !== source) {
+          const edit = new vscode.WorkspaceEdit();
+          if (patch.replacedRange) {
+            const startPos = doc.positionAt(patch.replacedRange.start);
+            const endPos = doc.positionAt(patch.replacedRange.end);
+            edit.replace(doc.uri, new vscode.Range(startPos, endPos), patch.newText ?? patch.updatedSource);
+          } else {
+            edit.replace(
+              doc.uri,
+              new vscode.Range(doc.positionAt(0), doc.positionAt(source.length)),
+              patch.updatedSource,
+            );
+          }
+          await vscode.workspace.applyEdit(edit);
+          await this.update();
+        }
+      } catch (err) {
+        console.warn("[CAD Viewer] Failed to patch Modelica assembly joint:", err);
       }
     }
   }

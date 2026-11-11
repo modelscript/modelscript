@@ -322,7 +322,7 @@ async function runTests() {
   assert.ok(wIndex, "WorkspaceIndex should be created");
   assert.strictEqual(typeof wIndex.register, "function", "WorkspaceIndex must have register method");
 
-  const queryEngine = createOWL2QueryEngine(wIndex.toUnifiedPartial());
+  const queryEngine = createOWL2QueryEngine(wIndex.getIndex());
   assert.ok(queryEngine, "QueryEngine should be created");
   console.log("✔ OWL2 WorkspaceIndex and QueryEngine created successfully.");
 

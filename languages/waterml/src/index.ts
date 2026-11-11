@@ -8,6 +8,7 @@
 
 export * from "./analysis/rating-curve.js";
 export * from "./dae/waterml-to-dae.js";
+export * from "./indexing.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";
@@ -15,4 +16,3 @@ export * from "./parser/waterml-parser.js";
 export * from "./parser/waterml-writer.js";
 export * from "./projections/waterml-to-boundary.js";
 export * from "./types.js";
-export * from "./workspace-index.js";

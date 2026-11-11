@@ -18,6 +18,7 @@ export * from "./language.js";
 export { default as olgaLanguage } from "./language.js";
 export * from "./lints/index.js";
 
+export * from "./indexing.js";
 export * from "./lsp.js";
 export * from "./parser/index.js";
 export * from "./projections/olga-to-modelica.js";
@@ -49,4 +50,3 @@ export * from "./tuning/index.js";
 export * from "./types.js";
 export * from "./verification/flow-assurance-gate.js";
 export * from "./verification/flow-assurance-verifier.js";
-export * from "./workspace-index.js";

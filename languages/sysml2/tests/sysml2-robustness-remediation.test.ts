@@ -125,7 +125,7 @@ describe("SysML v2 Bugs, Robustness & Efficiency Remediation Suite", () => {
     const uri = "file:///test_coupling.sysml";
     ws.register(uri, () => parser.parse(validSource)?.rootNode);
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified);
     const db = qe.toQueryDB();
 
@@ -227,7 +227,7 @@ describe("SysML v2 Bugs, Robustness & Efficiency Remediation Suite", () => {
     const ws = createSysML2WorkspaceIndex();
     const uri = "file:///mechanics.sysml";
     ws.register(uri, () => tree.rootNode);
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified);
     const db = qe.toQueryDB();
 
@@ -260,7 +260,7 @@ describe("SysML v2 Bugs, Robustness & Efficiency Remediation Suite", () => {
     const ws = createSysML2WorkspaceIndex();
     const uri = "file:///optics.sysml";
     ws.register(uri, () => tree.rootNode);
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified);
     const db = qe.toQueryDB();
 
@@ -298,7 +298,7 @@ describe("SysML v2 Bugs, Robustness & Efficiency Remediation Suite", () => {
     const ws = createSysML2WorkspaceIndex();
     const uri = "file:///robot.sysml";
     ws.register(uri, () => tree.rootNode);
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified);
     const db = qe.toQueryDB();
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import {
@@ -8,12 +9,12 @@ import {
   getThreeMfDefinition,
   getThreeMfDocumentSymbols,
   getThreeMfHover,
+  resolveThreeMfInScope,
   threeMfLanguage,
-  ThreeMfWorkspaceIndex,
   validateThreeMf,
 } from "../src/index.js";
 
-describe("3MF LSP Service & WorkspaceIndex", () => {
+describe("3MF LSP Service & UnifiedWorkspace", () => {
   const sampleXml = `<model unit="millimeter">
     <resources>
       <basematerials id="5">
@@ -44,18 +45,18 @@ describe("3MF LSP Service & WorkspaceIndex", () => {
     </build>
   </model>`;
 
-  it("indexes symbols in ThreeMfWorkspaceIndex and resolves across scope", () => {
-    const idx = new ThreeMfWorkspaceIndex();
+  it("indexes symbols in UnifiedWorkspace and resolves across scope", () => {
+    const ws = new UnifiedWorkspace(threeMfLanguage);
     const uri = "file:///orbital.3mf";
-    idx.indexFile(uri, sampleXml);
-    assert.strictEqual(idx.fileCount, 1);
-    assert(idx.has(uri));
+    ws.setDocument(uri, sampleXml);
+    assert.strictEqual(ws.fileCount, 1);
+    assert(ws.hasDocument(uri));
 
-    const found = idx.findByName("OrbitalFloorImplant");
+    const found = ws.findSymbolsByName("OrbitalFloorImplant");
     assert.strictEqual(found.length, 1);
     assert.strictEqual(found[0]?.kind, "Component");
 
-    const sleeve = idx.resolveInScope("ScrewHole1", found[0]!.id, uri);
+    const sleeve = resolveThreeMfInScope(ws, "ScrewHole1", found[0]!.id, uri);
     assert(sleeve !== null);
     assert.strictEqual(sleeve.namePath, "OrbitalFloorImplant.ScrewHole1");
   });

@@ -70,7 +70,7 @@ test("test-prebaked-msl-icons-loader", async () => {
     },
     workspaceManager: {
       unifiedWorkspace: {
-        toTreeIndex: () => ({ symbols: new Map(), byName: new Map(), childrenOf: new Map() }),
+        getIndex: () => ({ symbols: new Map(), byName: new Map(), childrenOf: new Map() }),
       },
     },
   };

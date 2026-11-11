@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  getGtfsDocumentSymbols,
+  gtfsLanguage,
   lintGtfs,
   lowerGtfsToDae,
   parseGtfs,
-  solveTractionProfiles,
   solveDepotCharging,
-  GtfsWorkspaceIndex,
+  solveTractionProfiles,
   validateGtfs,
-  getGtfsDocumentSymbols,
+  type GtfsFeed,
 } from "../src/index.js";
 
 const SAMPLE_GTFS_FEED = `
@@ -132,13 +134,17 @@ test("GTFS DAE Lowering — lowers transit vehicle velocity, SOC, and depot grid
   assert.ok(eqs.length >= 4);
 });
 
-test("GTFS Workspace Index — indexes feed routes, stops, and trips", () => {
-  const indexer = new GtfsWorkspaceIndex();
-  const idx = indexer.indexFile("file:///feed.gtfs", SAMPLE_GTFS_FEED);
+test("GTFS UnifiedWorkspace — indexes feed routes, stops, and trips", () => {
+  const ws = new UnifiedWorkspace(gtfsLanguage);
+  ws.setDocument("file:///feed.gtfs", SAMPLE_GTFS_FEED);
+  const idx = ws.getIndex();
 
   assert.ok(idx.symbols.size > 0);
   assert.ok(idx.byName.has("Central Station"));
   assert.ok(idx.byName.has("TRIP_101"));
+  const parsed = ws.getParsedModel<GtfsFeed>("file:///feed.gtfs");
+  assert.ok(parsed);
+  assert.strictEqual(parsed.routes.length, 1);
 });
 
 test("GTFS LSP — produces diagnostics and symbols", () => {

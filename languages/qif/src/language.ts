@@ -9,6 +9,7 @@
  */
 
 import { language } from "@modelscript/dsl";
+import { qifIndexing } from "./indexing.js";
 import { lintQifDocument } from "./lints/rules.js";
 import { parseQif } from "./parser/index.js";
 import { qifToModelica, qifToSysML2 } from "./projections/index.js";
@@ -19,6 +20,7 @@ export const qifLanguage = language({
   name: "qif",
   fileExtensions: [".qif", ".qif.xml"],
   maturity: "experimental",
+  indexing: qifIndexing,
   lsp: {
     fileExtensions: [".qif", ".qif.xml"],
   },

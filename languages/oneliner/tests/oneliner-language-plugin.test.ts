@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { getAllOneLinerModels, getOneLinerModel } from "../src/indexing.js";
 import { onelinerLanguage } from "../src/language.js";
 import { getOneLinerDiagnostics, getOneLinerDocumentSymbols } from "../src/lsp.js";
-import { OneLinerWorkspaceIndex } from "../src/workspace-index.js";
 
 const SAMPLE_DXT = `[CASE DATA]
 BASE_MVA=100.0, FREQ=60.0, TITLE="Plugin Test Substation"
@@ -24,11 +25,11 @@ BASE_MVA=100.0, FREQ=60.0, TITLE="Plugin Test Substation"
 `;
 
 describe("ASPEN OneLiner Language Plugin & LSP Services", () => {
-  it("indexes OneLiner documents in workspace index", () => {
-    const index = new OneLinerWorkspaceIndex();
-    index.indexDocument("file:///test/system.dxt", SAMPLE_DXT);
+  it("indexes OneLiner documents in UnifiedWorkspace", () => {
+    const ws = new UnifiedWorkspace(onelinerLanguage);
+    ws.setDocument("file:///test/system.dxt", SAMPLE_DXT);
 
-    const model = index.getModel("file:///test/system.dxt");
+    const model = getOneLinerModel(ws, "file:///test/system.dxt");
     assert.ok(model !== undefined);
     assert.equal(model?.title, "Plugin Test Substation");
     assert.equal(model?.busCount, 2);
@@ -36,9 +37,14 @@ describe("ASPEN OneLiner Language Plugin & LSP Services", () => {
     assert.equal(model?.generatorCount, 1);
     assert.equal(model?.relayCount, 1);
 
-    assert.equal(index.getAllModels().length, 1);
-    index.clear();
-    assert.equal(index.getAllModels().length, 0);
+    const symIdx = ws.getIndex();
+    assert.ok(symIdx.byName.has("Plugin Test Substation"));
+    assert.ok(symIdx.byName.has("BUS_A"));
+    assert.ok(symIdx.byName.has("101"));
+
+    assert.equal(getAllOneLinerModels(ws).length, 1);
+    ws.clear();
+    assert.equal(getAllOneLinerModels(ws).length, 0);
   });
 
   it("extracts hierarchical LSP document symbols", () => {

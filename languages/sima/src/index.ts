@@ -5,6 +5,7 @@ export * from "./grammar/index.js";
 export { simaLanguage } from "./language.js";
 export { SimaErrorCode, lintSimaProject, type SimaDiagnostic } from "./lints/index.js";
 
+export * from "./indexing.js";
 export {
   executeSimaAction,
   getSimaDocumentSymbols,
@@ -59,4 +60,3 @@ export {
   type RainflowCycle,
   type SnCurveParameters,
 } from "./verification/index.js";
-export { SimaWorkspaceIndex } from "./workspace-index.js";

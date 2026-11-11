@@ -4,7 +4,6 @@ import {
   easy5Language,
   easy5ToDae,
   easy5ToModelica,
-  Easy5WorkspaceIndex,
   getEasy5DocumentSymbols,
   getEasy5Hover,
   parseEasy5,
@@ -39,7 +38,6 @@ describe("EASY5 LSP Integration Suite (@modelscript/lsp)", () => {
       name: "EASY5",
       extensions: [".ez5", ".ezm", ".ezd", ".eas"],
       languageDef: easy5Language,
-      workspaceIndex: new Easy5WorkspaceIndex(),
       customHandlers: {
         symbols: (text: string) => getEasy5DocumentSymbols(text),
         hover: (offset: number, text: string) => {

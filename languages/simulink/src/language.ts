@@ -2,6 +2,7 @@
 
 import { choice, field, language, repeat, seq } from "@modelscript/dsl";
 import { lowerSimulinkToDae } from "./dae/simulink-to-dae.js";
+import { indexSimulinkFile } from "./indexing.js";
 import { lintSimulinkModel } from "./lints/simulink-linters.js";
 import { parseMdl } from "./parser/mdl-parser.js";
 import { parseSlx } from "./parser/slx-parser.js";
@@ -16,6 +17,9 @@ export const simulinkLanguage = language({
   name: "simulink",
   fileExtensions: [".slx", ".mdl"],
   maturity: "beta",
+  indexing: {
+    indexFile: indexSimulinkFile,
+  },
   lsp: {
     fileExtensions: [".slx", ".mdl"],
   },

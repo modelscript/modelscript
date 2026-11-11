@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import test from "node:test";
-import { interpolateAntennaGain, parseNsmaAdf, parsePlanetPat, RanWorkspaceIndex } from "../src/index.js";
+import {
+  type AntennaPatternDeck,
+  interpolateAntennaGain,
+  parseNsmaAdf,
+  parsePlanetPat,
+  ranLanguage,
+} from "../src/index.js";
 
 const SAMPLE_NSMA_ADF = `REVNUM: 1.01
 PATTYP: C
@@ -105,19 +112,19 @@ test("NSMA WG16 & Planet antenna pattern parser and 3D interpolator", async (t) 
     assert.ok(backLobe <= -10.0, `Expected backlobe <= -10.0 dBi, got ${backLobe}`);
   });
 
-  await t.test("RanWorkspaceIndex indexes antenna files and exposes symbols", () => {
-    const index = new RanWorkspaceIndex();
+  await t.test("UnifiedWorkspace(ranLanguage) indexes antenna files and exposes symbols", () => {
+    const ws = new UnifiedWorkspace(ranLanguage);
     const uri = "file:///workspace/antennas/sector.adf";
 
-    index.reindexDocument(uri, () => SAMPLE_NSMA_ADF);
-    assert.equal(index.fileCount, 1);
-    assert.ok(index.has(uri));
+    ws.setDocument(uri, SAMPLE_NSMA_ADF);
+    assert.equal(ws.fileCount, 1);
+    assert.ok(ws.hasDocument(uri));
 
-    const deck = index.getDeck(uri);
+    const deck = ws.getParsedModel<AntennaPatternDeck>(uri);
     assert.ok(deck);
     assert.equal(deck.model, "MSX-HEX-65-18");
 
-    const found = index.findByName("MSX-HEX-65-18");
+    const found = ws.findSymbolsByName("MSX-HEX-65-18");
     assert.ok(found.length > 0, "Should index antenna model as symbol");
   });
 });

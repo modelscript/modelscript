@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   NmtranErrorCode,
-  NmtranWorkspaceIndex,
   executeNmtranAction,
   getNmtranDocumentSymbols,
   getNmtranHover,
   lintNmtran,
   lowerNmtranToDae,
+  nmtranLanguage,
   nmtranToModelica,
   parseNmtran,
   provideNmtranCompletions,
@@ -339,14 +340,14 @@ test("NMTRAN Modelica Projection: generates valid Modelica 3.x pharmacokinetic m
   assert.ok(mo.includes("end CustomTwoCmtPK;"));
 });
 
-test("NMTRAN WorkspaceIndex & LSP: indexes symbols, validates diagnostics, hover, completions, and actions", async () => {
-  const index = new NmtranWorkspaceIndex();
-  index.indexFile("file:///pk/study.ctl", TWO_CMT_ORAL_CTL);
+test("NMTRAN UnifiedWorkspace & LSP: indexes symbols, validates diagnostics, hover, completions, and actions", async () => {
+  const ws = new UnifiedWorkspace(nmtranLanguage);
+  ws.setDocument("file:///pk/study.ctl", TWO_CMT_ORAL_CTL);
 
-  assert.equal(index.fileCount, 1);
-  assert.ok(index.getSymbols("file:///pk/study.ctl").length >= 10);
-  assert.ok(index.findDefinition("CL"));
-  assert.ok(index.findDefinition("THETA(1)"));
+  assert.equal(ws.fileCount, 1);
+  assert.ok(ws.getSymbolsForUri("file:///pk/study.ctl").length >= 10);
+  assert.ok(ws.findSymbolsByName("CL")[0]);
+  assert.ok(ws.findSymbolsByName("THETA(1)")[0]);
 
   const lspDiags = validateNmtran(TWO_CMT_ORAL_CTL);
   assert.equal(lspDiags.length, 0);

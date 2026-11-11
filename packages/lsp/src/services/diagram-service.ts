@@ -421,7 +421,7 @@ export class DiagramService {
         buildDiagramData: (params) => {
           // Delegate to the existing SysML2 diagram data builder inline
           try {
-            const unified = this.workspaceManager.unifiedWorkspace.toUnified();
+            const unified = this.workspaceManager.unifiedWorkspace.getIndex({ eager: true });
             const diagramTypeRaw = params.diagramType ?? "All";
             const validTypes = [
               "All",
@@ -514,7 +514,7 @@ export class DiagramService {
         computeParameterEdit: (...args: any[]) => sysmlOps.computeSysML2ParameterEdit?.(...args) ?? [],
         getSymbolData: (uri, componentName) => {
           try {
-            const unified = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+            const unified = this.workspaceManager.unifiedWorkspace.getIndex();
             // Find the symbol matching the component name in this document
             for (const [, sym] of unified.symbols) {
               if (sym.resourceId === uri && sym.name === componentName) {
@@ -567,7 +567,7 @@ export class DiagramService {
         getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
         getSymbolIndex: () => {
           try {
-            return this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+            return this.workspaceManager.unifiedWorkspace.getIndex();
           } catch {
             return undefined;
           }

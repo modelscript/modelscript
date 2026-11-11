@@ -7,6 +7,7 @@
 import { language } from "@modelscript/dsl";
 import { evaluateRelayProtection } from "./analysis/selogic-evaluator.js";
 import { lowerSELToDae } from "./dae/sel-to-dae.js";
+import { selIndexing } from "./indexing.js";
 import { lintSELSettings } from "./lints/index.js";
 import { parseSELSettings } from "./parser/sel-parser.js";
 import { writeSELAscii, writeSELJson } from "./parser/sel-writer.js";
@@ -15,6 +16,7 @@ export const selLanguage = language({
   name: "sel",
   fileExtensions: [".rcf", ".rdb", ".sel", ".txt"],
   maturity: "beta",
+  indexing: selIndexing,
   lsp: {
     fileExtensions: [".rcf", ".rdb", ".sel", ".txt"],
   },

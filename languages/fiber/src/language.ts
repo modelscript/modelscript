@@ -8,14 +8,19 @@ import { language } from "@modelscript/dsl";
 import { DAEBuilder } from "@modelscript/runtime";
 import { findNetworkSrlgSpofs, type SrlgNetwork, type SrlgPath } from "./analysis/srlg-analyzer.js";
 import { lowerFiberNetworkToDae } from "./dae/lowering.js";
+import { canIndexFiber, indexFiberDocument } from "./indexing.js";
 import { parseFiberGis } from "./parser/fiber-gis-parser.js";
 
 export const fiberLanguage = language({
   name: "fiber",
   fileExtensions: [".fiber.geojson", ".osp.json"],
   maturity: "stable",
+  indexing: {
+    indexFile: indexFiberDocument,
+    canIndex: canIndexFiber,
+  },
   lsp: {
-    fileExtensions: [".fiber.geojson", ".osp.json"],
+    fileExtensions: [".fiber.geojson", ".osp.json", ".geojson", ".json"],
   },
 
   actions: [
@@ -51,7 +56,8 @@ export const fiberLanguage = language({
     {
       id: "fiber_to_dae",
       title: "Lower Fiber Plant to DAE",
-      description: "Lowers optical fiber attenuation budgets and NESC Rule 250 catenary sag/tension equations into DAEBuilder.",
+      description:
+        "Lowers optical fiber attenuation budgets and NESC Rule 250 catenary sag/tension equations into DAEBuilder.",
       category: "transform",
       execute: async (ctx: { documentText?: string | undefined }, params?: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;

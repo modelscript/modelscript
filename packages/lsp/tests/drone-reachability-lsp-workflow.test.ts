@@ -477,7 +477,7 @@ cube([10, 10, 10]);
       },
       workspaceManager: {
         unifiedWorkspace: {
-          toUnifiedPartial: () => ({
+          getIndex: () => ({
             symbols: new Map([
               [
                 1,

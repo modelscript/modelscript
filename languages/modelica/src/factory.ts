@@ -233,7 +233,7 @@ export function createModelicaQueryEngine(
   maxMemos?: number,
   extraHooks?: Map<string, any>,
 ): QueryEngine {
-  const symbolIndex = index?.toUnified ? index.toUnified() : index;
+  const symbolIndex = typeof index?.getIndex === "function" ? index.getIndex({ eager: true }) : index;
   injectPredefinedTypes(symbolIndex);
 
   const finalHooks = new Map(mergedQueryHooks);

@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { AssemblyJointSpec, Verification3DOverlayPayload } from "@modelscript/cad";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { Verification3DOverlayPayload } from "@modelscript/cad";
 import { AnimationController } from "./cad-viewer/animation-controller";
-import CadViewer, { type CadComponent, type GizmoCommitPayload, type QifOverlayPayload } from "./cad-viewer/cad-viewer";
+import CadViewer, {
+  type CadComponent,
+  type CommitFaceTagPayload,
+  type GizmoCommitPayload,
+  type QifOverlayPayload,
+} from "./cad-viewer/cad-viewer";
 import type { CfdMeshPayload } from "./cad-viewer/cfd-mesh-renderer";
+import type { CommitDimensionPayload } from "./cad-viewer/dimension-handles";
 import type { FeaMeshPayload } from "./cad-viewer/fea-mesh-renderer";
 import { extractCadComponents } from "./cad-viewer/parse-cad-annotations";
 
@@ -184,6 +190,27 @@ function App() {
     });
   };
 
+  const handleCommitDimensionDelta = (payload: CommitDimensionPayload) => {
+    vscode?.postMessage({
+      type: "commitDimensionDelta",
+      payload,
+    });
+  };
+
+  const handleCommitFaceTag = (payload: CommitFaceTagPayload) => {
+    vscode?.postMessage({
+      type: "commitFaceTag",
+      payload,
+    });
+  };
+
+  const handleCommitAssemblyJoint = (spec: AssemblyJointSpec) => {
+    vscode?.postMessage({
+      type: "commitAssemblyJoint",
+      payload: spec,
+    });
+  };
+
   const handleCommitCadBinding = (payload: { componentName: string; bindings: unknown[]; uri?: string }) => {
     vscode?.postMessage({
       type: "commitCadBinding",
@@ -201,6 +228,9 @@ function App() {
         selectedName={selectedName}
         onSelect={handleSelect}
         onCommitGizmoDelta={handleCommitGizmoDelta}
+        onCommitDimensionDelta={handleCommitDimensionDelta}
+        onCommitFaceTag={handleCommitFaceTag}
+        onCommitAssemblyJoint={handleCommitAssemblyJoint}
         onCommitCadBinding={handleCommitCadBinding}
         dark={isDark}
         assetBaseUrl={(window as unknown as { __CAD_ASSET_BASE_URL__: string }).__CAD_ASSET_BASE_URL__}

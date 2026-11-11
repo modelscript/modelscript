@@ -6,6 +6,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerAmplToDae } from "./dae/index.js";
+import { canIndexAmpl, indexAmplDocument } from "./indexing.js";
 import { instantiateAmpl } from "./instantiator/index.js";
 import { lintAmpl } from "./lints/index.js";
 import { writeMpsProblem } from "./mps/index.js";
@@ -21,6 +22,10 @@ export const amplLanguage = language({
   name: "ampl",
   fileExtensions: [".mod", ".dat", ".run", ".ampl", ".mps"],
   maturity: "beta",
+  indexing: {
+    indexFile: indexAmplDocument,
+    canIndex: canIndexAmpl,
+  },
   lsp: {
     fileExtensions: [".mod", ".dat", ".run", ".ampl", ".mps"],
   },
@@ -130,7 +135,8 @@ export const amplLanguage = language({
     {
       id: "ampl_to_mps",
       title: "Export to MPS Format",
-      description: "Generates an industry-standard Fixed/Free MPS file for LP/MILP solvers (CPLEX, HiGHS, Gurobi, CBC, SCIP).",
+      description:
+        "Generates an industry-standard Fixed/Free MPS file for LP/MILP solvers (CPLEX, HiGHS, Gurobi, CBC, SCIP).",
       category: "export",
       execute: async (
         ctx: ActionExecutionContext,

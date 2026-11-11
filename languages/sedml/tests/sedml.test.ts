@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   SedmlErrorCode,
-  SedmlWorkspaceIndex,
   executeSedmlAction,
   executeSedmlExperiment,
   getSedmlDocumentSymbols,
@@ -431,19 +431,19 @@ test("SED-ML Modelica Projection: generates Modelica 3.x model with experiment a
   assert.ok(mo.includes("end EnzymeSedmlExperiment;"));
 });
 
-test("SED-ML WorkspaceIndex & LSP: indexes symbols, validates diagnostics, provides hover, and executes actions", async () => {
-  const index = new SedmlWorkspaceIndex();
-  index.indexFile("file:///experiments/enzyme.sedml", VALID_SEDML_EXPERIMENT);
+test("SED-ML UnifiedWorkspace & LSP: indexes symbols, validates diagnostics, provides hover, and executes actions", async () => {
+  const ws = new UnifiedWorkspace(sedmlLanguage);
+  ws.setDocument("file:///experiments/enzyme.sedml", VALID_SEDML_EXPERIMENT);
 
-  assert.equal(index.fileCount, 1);
-  const symbols = index.getSymbols("file:///experiments/enzyme.sedml");
+  assert.equal(ws.fileCount, 1);
+  const symbols = ws.getSymbolsForUri("file:///experiments/enzyme.sedml");
   assert.ok(symbols.length >= 10);
 
-  assert.ok(index.findDefinition("sim_tc"));
-  assert.ok(index.findDefinition("model_derived"));
-  assert.ok(index.findDefinition("task_derived"));
-  assert.ok(index.findDefinition("dg_P_norm"));
-  assert.ok(index.findDefinition("plot_kinetics"));
+  assert.ok(ws.findSymbolsByName("sim_tc")[0]);
+  assert.ok(ws.findSymbolsByName("model_derived")[0]);
+  assert.ok(ws.findSymbolsByName("task_derived")[0]);
+  assert.ok(ws.findSymbolsByName("dg_P_norm")[0]);
+  assert.ok(ws.findSymbolsByName("plot_kinetics")[0]);
 
   const lspDiags = validateSedml(VALID_SEDML_EXPERIMENT);
   assert.equal(lspDiags.length, 0);

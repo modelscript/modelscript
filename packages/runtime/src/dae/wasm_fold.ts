@@ -475,6 +475,12 @@ export function evaluateConstantArenaExpression(
       }
       const bindExpr = arena.getVarExpression(varIdx);
       if (bindExpr !== undefined && bindExpr >= 0 && bindExpr !== exprId) {
+        const bindMemo: Map<number, ArenaConstantValue> | undefined = !onlyConstants
+          ? (paramMap as any)?._bindMemo
+          : undefined;
+        if (bindMemo && bindMemo.has(bindExpr)) {
+          return bindMemo.get(bindExpr)!;
+        }
         const val = evaluateConstantArenaExpression(
           arena,
           bindExpr,
@@ -485,7 +491,10 @@ export function evaluateConstantArenaExpression(
           scopeId,
           onlyConstants,
         );
-        if (val !== null) return val;
+        if (val !== null) {
+          if (bindMemo) bindMemo.set(bindExpr, val);
+          return val;
+        }
       }
       if (
         variability !== Variability.Constant &&
@@ -2247,6 +2256,8 @@ export function foldArenaConstants(
 
     // 1. Update parameter map from current constant and parameter variables
     paramMap.clear();
+    const bindMemo: Map<number, ArenaConstantValue> = ((paramMap as any)._bindMemo ??= new Map());
+    bindMemo.clear();
     constMap.clear();
     finalParamOrConstMap.clear();
     for (const i of bindingIndices) {
@@ -2923,6 +2934,22 @@ function getArrayCtorElement(dae: DAEBuilder, ctorId: number, idx: number[]): nu
  * Checks if the DAE contains any array or record equations that need to be scalarized.
  */
 export function hasArrayEquations(dae: DAEBuilder): boolean {
+  let compositePrefixes: Set<string> | null = null;
+  const getCompositePrefixes = (): Set<string> => {
+    if (compositePrefixes) return compositePrefixes;
+    compositePrefixes = new Set<string>();
+    for (let i = 0; i < dae.varCount; i++) {
+      if (dae.isVarRemoved(i)) continue;
+      const vName = dae.getVarName(i);
+      let dotPos = vName.indexOf(".");
+      while (dotPos > 0) {
+        compositePrefixes.add(vName.slice(0, dotPos));
+        dotPos = vName.indexOf(".", dotPos + 1);
+      }
+    }
+    return compositePrefixes;
+  };
+
   const isComposite = (exprId: number): boolean => {
     if (exprId < 0) return false;
     const k = dae.getExprKind(exprId);
@@ -2934,13 +2961,8 @@ export function hasArrayEquations(dae: DAEBuilder): boolean {
         if (dae.getVarIdxByName(`${name}[1]`) >= 0) return true;
         const vIdx = dae.getVarIdxByName(name);
         if (vIdx >= 0 && dae.getVarShape(vIdx).length > 0) return true;
-        if (dae.getVarIdxByName(name) < 0) {
-          const prefix = `${name}.`;
-          for (let i = 0; i < dae.varCount; i++) {
-            if (!dae.isVarRemoved(i) && dae.getVarName(i).startsWith(prefix)) {
-              return true;
-            }
-          }
+        if (vIdx < 0 && getCompositePrefixes().has(name)) {
+          return true;
         }
       }
     }
@@ -3127,14 +3149,31 @@ function getArrayElements(dae: DAEBuilder, exprId: number): number[] | null {
         if (shape.length === 0) {
           const prefixMatch = `${baseName}[`;
           const maxDims: number[] = [];
-          for (let v = 0; v < dae.varCount; v++) {
-            if (dae.isVarRemoved(v)) continue;
-            const vName = dae.getVarName(v);
-            if (vName.startsWith(prefixMatch) && vName.endsWith("]")) {
-              const idxParts = vName.slice(prefixMatch.length, -1).split(",").map(Number);
-              for (let d = 0; d < idxParts.length; d++) {
-                if (idxParts[d]! > (maxDims[d] ?? 0)) {
-                  maxDims[d] = idxParts[d]!;
+          const candidateIndices =
+            typeof dae.getArrayElementIndices === "function" ? dae.getArrayElementIndices(baseName) : null;
+          if (candidateIndices && candidateIndices.length > 0) {
+            for (const v of candidateIndices) {
+              if (dae.isVarRemoved(v)) continue;
+              const vName = dae.getVarName(v);
+              if (vName.startsWith(prefixMatch) && vName.endsWith("]")) {
+                const idxParts = vName.slice(prefixMatch.length, -1).split(",").map(Number);
+                for (let d = 0; d < idxParts.length; d++) {
+                  if (idxParts[d]! > (maxDims[d] ?? 0)) {
+                    maxDims[d] = idxParts[d]!;
+                  }
+                }
+              }
+            }
+          } else if (!candidateIndices) {
+            for (let v = 0; v < dae.varCount; v++) {
+              if (dae.isVarRemoved(v)) continue;
+              const vName = dae.getVarName(v);
+              if (vName.startsWith(prefixMatch) && vName.endsWith("]")) {
+                const idxParts = vName.slice(prefixMatch.length, -1).split(",").map(Number);
+                for (let d = 0; d < idxParts.length; d++) {
+                  if (idxParts[d]! > (maxDims[d] ?? 0)) {
+                    maxDims[d] = idxParts[d]!;
+                  }
                 }
               }
             }
@@ -3315,7 +3354,68 @@ function isComplexRecordCall(dae: DAEBuilder, exprId: number): boolean {
   );
 }
 
-function getRecordFields(dae: DAEBuilder, exprId: number, expandOperatorRecords = false): string[] | null {
+interface RecordFieldIndex {
+  exactFields: Map<string, string[]>;
+  arrayElemFields: Map<string, string[]>;
+  streamPrefixes: Set<string>;
+}
+
+function buildRecordFieldIndex(dae: DAEBuilder): RecordFieldIndex {
+  const exactFields = new Map<string, string[]>();
+  const arrayElemFields = new Map<string, string[]>();
+  const streamPrefixes = new Set<string>();
+
+  for (let i = 0; i < dae.varCount; i++) {
+    if (dae.isVarRemoved(i)) continue;
+    const vName = dae.getVarName(i);
+    if (!vName.includes(".")) continue;
+    const isStream = dae.isVarStream(i);
+
+    let bracketDepth = 0;
+    for (let c = 0; c < vName.length; c++) {
+      const ch = vName.charCodeAt(c);
+      if (ch === 91 /* '[' */) {
+        bracketDepth++;
+      } else if (ch === 93 /* ']' */) {
+        if (bracketDepth > 0) bracketDepth--;
+      } else if (ch === 46 /* '.' */ && bracketDepth === 0) {
+        const pfx = vName.slice(0, c);
+        const rest = vName.slice(c + 1);
+        if (!rest) continue;
+        let list = exactFields.get(pfx);
+        if (!list) {
+          list = [];
+          exactFields.set(pfx, list);
+        }
+        list.push(rest);
+
+        if (pfx.endsWith("]")) {
+          const stripped = pfx.replace(/(?:\[[^\][]*\])+$/, "");
+          if (stripped && stripped !== pfx) {
+            let arrList = arrayElemFields.get(stripped);
+            if (!arrList) {
+              arrList = [];
+              arrayElemFields.set(stripped, arrList);
+            }
+            arrList.push(rest);
+          }
+        }
+        if (isStream) {
+          streamPrefixes.add(pfx);
+        }
+      }
+    }
+  }
+
+  return { exactFields, arrayElemFields, streamPrefixes };
+}
+
+function getRecordFields(
+  dae: DAEBuilder,
+  exprId: number,
+  expandOperatorRecords = false,
+  recordIndex?: RecordFieldIndex,
+): string[] | null {
   if (exprId < 0) return null;
   const kind = dae.getExprKind(exprId);
   if (expandOperatorRecords && kind === ExprKind.Call && isComplexRecordCall(dae, exprId)) {
@@ -3324,6 +3424,18 @@ function getRecordFields(dae: DAEBuilder, exprId: number, expandOperatorRecords 
   if (kind === ExprKind.Name) {
     const name = dae.interner.resolve(dae.getExprData1(exprId));
     if (name && dae.getVarIdxByName(name) < 0) {
+      if (recordIndex) {
+        const baseName = name.replace(/\[[^\][]*\]/g, "");
+        const exact = recordIndex.exactFields.get(name);
+        const baseExact = baseName !== name ? recordIndex.exactFields.get(baseName) : undefined;
+        const arrElem = recordIndex.arrayElemFields.get(baseName);
+        if (!exact && !baseExact && !arrElem) return null;
+        const seen = new Set<string>();
+        if (exact) for (const f of exact) seen.add(f);
+        if (baseExact) for (const f of baseExact) seen.add(f);
+        if (arrElem) for (const f of arrElem) seen.add(f);
+        return seen.size > 0 ? Array.from(seen) : null;
+      }
       const prefix = `${name}.`;
       const baseName = name.replace(/\[[^\][]*\]/g, "");
       const basePrefix = `${baseName}.`;
@@ -3351,12 +3463,12 @@ function getRecordFields(dae: DAEBuilder, exprId: number, expandOperatorRecords 
     }
   }
   if (kind === ExprKind.Subscript) {
-    return getRecordFields(dae, dae.getExprData1(exprId), expandOperatorRecords);
+    return getRecordFields(dae, dae.getExprData1(exprId), expandOperatorRecords, recordIndex);
   }
   if (kind === ExprKind.IfElse) {
     return (
-      getRecordFields(dae, dae.getExprLeft(exprId), expandOperatorRecords) ||
-      getRecordFields(dae, dae.getExprRight(exprId), expandOperatorRecords)
+      getRecordFields(dae, dae.getExprLeft(exprId), expandOperatorRecords, recordIndex) ||
+      getRecordFields(dae, dae.getExprRight(exprId), expandOperatorRecords, recordIndex)
     );
   }
   return null;
@@ -5047,6 +5159,8 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
     return null;
   };
 
+  const recordIndex = buildRecordFieldIndex(dae);
+
   // --- Step 4: Equation Scalarization Helper (`emitEquation`) ---
   // Splits array equations element-by-element (coercing integer literals to Real when paired
   // with Real LHS/RHS elements), decomposes record and `connect(...)` equations field-by-field
@@ -5113,8 +5227,8 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
       return;
     }
 
-    const lhsRec = getRecordFields(dae, lhsId, expandArrayEquations);
-    const rhsRec = getRecordFields(dae, rhsId, expandArrayEquations);
+    const lhsRec = getRecordFields(dae, lhsId, expandArrayEquations, recordIndex);
+    const rhsRec = getRecordFields(dae, rhsId, expandArrayEquations, recordIndex);
 
     if (rhsElements && rhsElements.length > 0) {
       const N = rhsElements.length;
@@ -5203,14 +5317,7 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
       const isBus = (name: string) => expBuses.some((b) => b && (name === b || name.startsWith(b + ".")));
       const isExpConnect = isBus(lhsName) || isBus(rhsName);
 
-      const hasStreamMember = (name: string): boolean => {
-        if (!name) return false;
-        const pfx = name + ".";
-        for (let vi = 0; vi < dae.varCount; vi++) {
-          if (dae.isVarStream(vi) && dae.getVarName(vi).startsWith(pfx)) return true;
-        }
-        return false;
-      };
+      const hasStreamMember = (name: string): boolean => Boolean(name && recordIndex.streamPrefixes.has(name));
       const isOuterOuterStream = eqFlags === 3 && (hasStreamMember(lhsName) || hasStreamMember(rhsName));
 
       if (isExpConnect || isOuterOuterStream) {

@@ -244,19 +244,14 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
 
-    const hasPolyglotCaeFiles = paths.some((p) =>
-      /\.(scad|inp|cfd|urdf|step|stp)$/i.test(p),
-    );
+    const hasPolyglotCaeFiles = paths.some((p) => /\.(scad|inp|cfd|urdf|step|stp)$/i.test(p));
     if (args.coordinator || hasPolyglotCaeFiles) {
       const enginePath = path.resolve(
         __dirname,
         "../../../docs/docs/.vitepress/theme/util/semantic-coordinator-engine.js",
       );
       const coordinatorModule: any = await import(pathToFileURL(enginePath).href);
-      const {
-        COORDINATOR_SCENARIOS,
-        evaluatePolyglotDigitalThreadFromFiles,
-      } = coordinatorModule;
+      const { COORDINATOR_SCENARIOS, evaluatePolyglotDigitalThreadFromFiles } = coordinatorModule;
 
       const loadedFiles: { fileName: string; content: string }[] = [];
       for (const p of paths) {
@@ -292,14 +287,8 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         }
       }
 
-      const explicitScenario =
-        target && COORDINATOR_SCENARIOS.some((s: any) => s.id === target)
-          ? target
-          : undefined;
-      const res = evaluatePolyglotDigitalThreadFromFiles(
-        loadedFiles,
-        explicitScenario,
-      );
+      const explicitScenario = target && COORDINATOR_SCENARIOS.some((s: any) => s.id === target) ? target : undefined;
+      const res = evaluatePolyglotDigitalThreadFromFiles(loadedFiles, explicitScenario);
 
       if (args.format === "json") {
         console.log(
@@ -339,7 +328,9 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
             );
           }
         }
-        console.log(`\n--- Symbolically Evaluated Domain Equations (${res.parsedMetadata.evaluatedEquations.length}) ---`);
+        console.log(
+          `\n--- Symbolically Evaluated Domain Equations (${res.parsedMetadata.evaluatedEquations.length}) ---`,
+        );
         for (const eq of res.parsedMetadata.evaluatedEquations) {
           console.log(
             `  [${eq.language}] ${eq.fileName}: ${eq.lhs} = ${eq.rhsExpression} => ${eq.evaluatedValue} ${eq.unit}`,
@@ -428,8 +419,8 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       sysml2LangFallback as unknown as Parameters<typeof u.registerWorkspace>[2],
     );
 
-    if (sysmlIndex) await sysmlIndex.toUnifiedAsync();
-    const unifiedDb = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
+    if (sysmlIndex) await sysmlIndex.getIndexAsync();
+    const unifiedDb = await u.getIndexAsync();
 
     const { createModelicaQueryEngine } = await import("@modelscript/modelica/factory");
     const sysmlFactory = await import("@modelscript/sysml2/factory");
@@ -706,11 +697,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
 
       const { createSysML2QueryEngine, exportToNuXmv, exportToOcra, exportToSmtLib } =
         await import("@modelscript/sysml2");
-      const unifiedSysml = sysmlIndex
-        ? sysmlIndex.toUnifiedAsync
-          ? await sysmlIndex.toUnifiedAsync()
-          : sysmlIndex.toUnified()
-        : unifiedDb;
+      const unifiedSysml = sysmlIndex ? await sysmlIndex.getIndexAsync() : unifiedDb;
       const qe = createSysML2QueryEngine(unifiedSysml);
       const qdb = qe.toQueryDB();
 

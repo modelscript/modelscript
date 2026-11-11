@@ -7,6 +7,7 @@
 import { language } from "@modelscript/dsl";
 import { evaluateTakacsClarifierDerivatives } from "./clarifier/takacs.js";
 import { lowerAsmToDae } from "./dae/asm-to-dae.js";
+import { indexAsmDocument } from "./indexing.js";
 import { lintAsmPlant } from "./lints/index.js";
 import { computeAsm1ConversionRates, evaluateAsm1ProcessRates } from "./models/asm1.js";
 import { parseAsmPlant } from "./parser/asm-parser.js";
@@ -15,6 +16,9 @@ export const asmLanguage = language({
   name: "asm",
   fileExtensions: [".asm", ".bsm", ".wrrf"],
   maturity: "beta",
+  indexing: {
+    indexFile: indexAsmDocument,
+  },
   lsp: {
     fileExtensions: [".asm", ".bsm", ".wrrf"],
   },

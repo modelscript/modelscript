@@ -7,7 +7,6 @@ import {
   rocetsLanguage,
   rocetsToDae,
   rocetsToModelica,
-  RocetsWorkspaceIndex,
   validateRocets,
 } from "@modelscript/rocets";
 import assert from "node:assert/strict";
@@ -43,7 +42,6 @@ describe("ROCETS LSP Integration Suite (@modelscript/lsp)", () => {
       name: "ROCETS",
       extensions: [".roc", ".deck"],
       languageDef: rocetsLanguage,
-      workspaceIndex: new RocetsWorkspaceIndex(),
       customHandlers: {
         symbols: (text: string) => getRocetsDocumentSymbols(text),
         hover: (offset: number, text: string) => {

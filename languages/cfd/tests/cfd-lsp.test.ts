@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import {
+  cfdLanguage,
   cfdToDae,
   cfdToModelica,
-  CfdWorkspaceIndex,
   executeCfdAction,
+  findCfdDefinition,
+  getCfdConfig,
   getCfdDocumentSymbols,
   getCfdHover,
   parseCfdConfig,
@@ -145,18 +148,18 @@ OUTLET_MASS_FLOW= 9.8
     assert.ok(mo.includes("end OneraM6Wing;"), "Should cleanly terminate Modelica model");
   });
 
-  test("indexes CFD models in CfdWorkspaceIndex for multi-file discovery", () => {
-    const index = new CfdWorkspaceIndex();
-    index.indexFile("file:///cases/oneraM6.cfg", VALID_SU2_DECK);
+  test("indexes CFD models in UnifiedWorkspace for multi-file discovery", () => {
+    const ws = new UnifiedWorkspace(cfdLanguage);
+    ws.setDocument("file:///cases/oneraM6.cfg", VALID_SU2_DECK);
 
-    assert.equal(index.fileCount, 1);
-    assert.ok(index.has("file:///cases/oneraM6.cfg"));
+    assert.equal(ws.fileCount, 1);
+    assert.ok(ws.hasDocument("file:///cases/oneraM6.cfg"));
 
-    const config = index.getConfig("file:///cases/oneraM6.cfg");
+    const config = getCfdConfig(ws, "file:///cases/oneraM6.cfg");
     assert.ok(config);
     assert.equal(config.machNumber, 0.8395);
 
-    const defs = index.findDefinition("wing", "file:///cases/oneraM6.cfg");
+    const defs = findCfdDefinition(ws, "wing", "file:///cases/oneraM6.cfg");
     assert.ok(defs.length > 0, "Should locate definition of marker 'wing'");
   });
 

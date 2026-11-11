@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, field, language, optional, repeat, seq } from "@modelscript/dsl";
+import { rocetsIndexing } from "./indexing.js";
 import { RocetsErrorCode } from "./lints/index.js";
 
 /**
- * DSL language specification for NASA ROCETS (.roc, .rct, .inp).
+ * DSL language specification for NASA ROCETS (.roc, .rct, .inp, .dat, .deck).
  */
 export const rocetsLanguage = language({
   name: "rocets",
-  fileExtensions: [".roc", ".rct", ".inp"],
+  fileExtensions: [".roc", ".rct", ".inp", ".dat", ".deck"],
   maturity: "beta",
+  indexing: rocetsIndexing,
   lsp: {
-    fileExtensions: [".roc", ".rct", ".inp"],
+    fileExtensions: [".roc", ".rct", ".inp", ".dat", ".deck"],
   },
 
   errorCodes: RocetsErrorCode,

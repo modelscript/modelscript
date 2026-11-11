@@ -25,7 +25,14 @@ import React from "react";
 import { getKindBadgeStyle } from "../ClassTree";
 import { getSemanticKindIcon } from "./ComponentList";
 import { startPlacement } from "./placement";
-import { getClassIcon, getLibraryTree, globalClassIconCache, searchClasses, type TreeNodeInfo } from "./util/lsp-bridge";
+import {
+  getClassIcon,
+  getLibraryTree,
+  getMountedLibraries,
+  globalClassIconCache,
+  searchClasses,
+  type TreeNodeInfo,
+} from "./util/lsp-bridge";
 import { invertSvgColors, normalizeSvgForIcon } from "./util/x6";
 
 // ────────────────────────────────────────────────────────────────────
@@ -134,9 +141,7 @@ function ClassIcon({
   const cleanClassName = className.startsWith("__LIB__:") ? className.slice("__LIB__:".length) : className;
   const { colorMode, resolvedColorMode } = useTheme();
   const isDark = colorMode === "dark" || resolvedColorMode === "dark";
-  const [svg, setSvg] = React.useState<string | null>(
-    propSvg ?? (iconCache.get(cleanClassName) ?? null),
-  );
+  const [svg, setSvg] = React.useState<string | null>(propSvg ?? iconCache.get(cleanClassName) ?? null);
   const requested = React.useRef(false);
 
   React.useEffect(() => {
@@ -326,32 +331,59 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
           e.stopPropagation();
           if (node.classKind === "loading-package") return;
           onHighlight?.(compositeName);
+          // Let onDoubleClick handle the second click of a double-click without re-toggling or double-loading
+          if (e.detail >= 2) return;
+          const isNonLoadableContainer =
+            node.classKind === "package" ||
+            node.id.startsWith("__LIB__:") ||
+            node.id.startsWith("__LOADING__:") ||
+            node.id.startsWith("__ONTOLOGY__:");
+          if (isNonLoadableContainer) {
+            if (hasChildren) toggleExpand();
+            return;
+          }
           const isCoarsePointer = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
           if (hasChildren) {
             toggleExpand();
-            if (isCoarsePointer && node.classKind && node.classKind !== "package") {
-              onSelect(compositeName, node.classKind);
+            if (isCoarsePointer) {
+              onSelect(compositeName, node.classKind ?? "class");
             }
-          } else {
+          } else if (node.uri === uri || isCoarsePointer) {
             onSelect(compositeName, node.classKind ?? "class");
           }
         }}
         onDoubleClick={(e) => {
           e.stopPropagation();
-          if (node.classKind === "loading-package") return;
+          const isNonLoadableContainer =
+            node.classKind === "loading-package" ||
+            node.classKind === "package" ||
+            node.id.startsWith("__LIB__:") ||
+            node.id.startsWith("__LOADING__:") ||
+            node.id.startsWith("__ONTOLOGY__:");
+          if (isNonLoadableContainer) return;
           onHighlight?.(compositeName);
           onSelect(compositeName, node.classKind ?? "class");
         }}
         onKeyDown={(e) => {
           if (node.classKind === "loading-package") return;
+          const isNonLoadableContainer =
+            node.classKind === "package" ||
+            node.id.startsWith("__LIB__:") ||
+            node.id.startsWith("__LOADING__:") ||
+            node.id.startsWith("__ONTOLOGY__:");
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             e.stopPropagation();
             onHighlight?.(compositeName);
+            if (isNonLoadableContainer) {
+              if (hasChildren) toggleExpand();
+              return;
+            }
             if (hasChildren) {
-              toggleExpand();
-              if (e.key === "Enter" && node.classKind && node.classKind !== "package") {
-                onSelect(compositeName, node.classKind);
+              if (e.key === " ") {
+                toggleExpand();
+              } else {
+                onSelect(compositeName, node.classKind ?? "class");
               }
             } else {
               onSelect(compositeName, node.classKind ?? "class");
@@ -370,34 +402,44 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
             }
           }
         }}
-        draggable={node.classKind !== "loading-package"}
+        draggable={
+          node.classKind !== "loading-package" &&
+          node.classKind !== "package" &&
+          !node.id.startsWith("__LIB__:") &&
+          !node.id.startsWith("__LOADING__:") &&
+          !node.id.startsWith("__ONTOLOGY__:")
+        }
         onDragStart={(e) => {
-          if (node.classKind === "loading-package") {
+          if (
+            node.classKind === "loading-package" ||
+            node.classKind === "package" ||
+            node.id.startsWith("__LIB__:") ||
+            node.id.startsWith("__LOADING__:") ||
+            node.id.startsWith("__ONTOLOGY__:")
+          ) {
             e.preventDefault();
             return;
           }
-          const cleanCompositeName = compositeName.startsWith("__LIB__:")
-            ? compositeName.slice("__LIB__:".length)
-            : compositeName;
+          const cleanCompositeName = compositeName.replace(/^__LIB__:[^/]+\//, "").replace(/^__LIB__:/, "");
           const iconSvg = node.iconSvg || iconCache.get(cleanCompositeName) || iconCache.get(compositeName);
           const payload = {
-            className: compositeName,
+            className: cleanCompositeName,
             classKind: node.classKind,
             iconSvg: iconSvg ?? null,
           };
           e.dataTransfer.setData("application/json", JSON.stringify(payload));
           e.dataTransfer.setData("text/plain", JSON.stringify(payload));
-          e.dataTransfer.setData("application/vnd.modelscript.classname", compositeName);
+          e.dataTransfer.setData("application/vnd.modelscript.classname", cleanCompositeName);
           if (iconSvg) {
             e.dataTransfer.setData("application/vnd.modelscript.iconsvg", iconSvg);
           }
           e.dataTransfer.effectAllowed = "copy";
 
-          setDragPreview(e, iconSvg, compositeName);
+          setDragPreview(e, iconSvg, cleanCompositeName);
 
           // Tell diagram editor that placement/drag mode started
           startPlacement({
-            className: compositeName,
+            className: cleanCompositeName,
             classKind: node.classKind ?? "class",
             iconSvg: iconSvg ?? undefined,
           });
@@ -562,15 +604,36 @@ function inferLanguageFromUri(uri: string): string | null {
   return null;
 }
 
+const POLYGLOT_MODELICA_COMPONENT_LANGUAGES = new Set([
+  "modelica",
+  "modelscript",
+  "psse",
+  "pscad",
+  "spice",
+  "opendss",
+  "cgmes",
+  "powerfactory",
+  "pslf",
+  "urdf",
+  "easy5",
+  "simulink",
+  "adams",
+  "epanet",
+  "swmm",
+  "relap5",
+  "olga",
+]);
+
 function isLanguageCompatible(nodeLanguage: string | undefined, nodeName: string, activeLanguage: string): boolean {
   const normActive = activeLanguage.toLowerCase();
   const normNodeLang = (nodeLanguage || "").toLowerCase();
   const normNodeName = nodeName.toLowerCase();
 
-  // Modelica family
+  // Modelica / ModelScript family (accepts native Modelica + polyglot DAE component languages)
   if (normActive === "modelica" || normActive === "modelscript") {
+    if (normNodeName === "sysml" || normNodeName === "kerml") return false;
     if (normNodeName === "modelica" || normNodeName === "complex" || normNodeName === "modelicaservices") return true;
-    if (normNodeLang === "modelica" || normNodeLang === "modelscript") return true;
+    if (POLYGLOT_MODELICA_COMPONENT_LANGUAGES.has(normNodeLang)) return true;
     return false;
   }
 
@@ -592,6 +655,7 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
   const filter = props.filter?.toLowerCase() ?? "";
   const effectiveLanguage = props.language || inferLanguageFromUri(props.uri);
   const [rootNodes, setRootNodes] = React.useState<TreeNodeInfo[]>([]);
+  const [explicitlyInstalledNames, setExplicitlyInstalledNames] = React.useState<Set<string>>(new Set());
   const [searchState, setSearchState] = React.useState<SearchState>({
     results: [],
     searching: false,
@@ -603,9 +667,16 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
   React.useEffect(() => {
     if (!props.uri) return;
 
-    getLibraryTree(props.uri)
-      .then((nodes) => {
+    Promise.all([getLibraryTree(props.uri), getMountedLibraries()])
+      .then(([nodes, mountedState]) => {
         setRootNodes(nodes);
+        const explicit = new Set<string>();
+        for (const m of mountedState.mounted) {
+          if (m.explicitlyInstalled) {
+            explicit.add(m.name.toLowerCase());
+          }
+        }
+        setExplicitlyInstalledNames(explicit);
       })
       .catch((e) => console.warn("[tree] Failed to load root nodes:", e));
   }, [props.uri, props.version]);
@@ -728,7 +799,10 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
     // Root tree nodes
     for (const node of rootNodes) {
       if (effectiveLanguage && node.id.startsWith("__LIB__:")) {
-        if (!isLanguageCompatible(node.language, node.name, effectiveLanguage)) {
+        if (
+          !explicitlyInstalledNames.has(node.name.toLowerCase()) &&
+          !isLanguageCompatible(node.language, node.name, effectiveLanguage)
+        ) {
           continue;
         }
       } else if (effectiveLanguage && node.language && node.uri && node.uri !== props.uri) {

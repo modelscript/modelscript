@@ -58,7 +58,7 @@ async function runTests() {
     (origPath: string) => `/mapped/${origPath}`,
   );
 
-  const unified = index.toUnified();
+  const unified = index.getIndex({ eager: true });
 
   assert.strictEqual(unified.symbols.size, 2, "Should have hydrated 2 symbols");
   assert.ok(unified.symbols.has(1), "Should contain symbol 1");
@@ -96,7 +96,7 @@ async function runTests() {
     childrenOf: new Map([[null, [3]]]),
   });
 
-  const merged = index.toUnified();
+  const merged = index.getIndex({ eager: true });
   assert.strictEqual(merged.symbols.size, 3, "Should have 3 symbols after incremental hydration");
   assert.ok(merged.symbols.has(3));
   assert.deepStrictEqual(merged.childrenOf.get(null), [1, 2, 3], "Root children should be merged");
@@ -146,7 +146,7 @@ async function runTests() {
     ]),
   });
 
-  const finalMerged = index.toUnified();
+  const finalMerged = index.getIndex({ eager: true });
   assert.strictEqual(finalMerged.symbols.size, 5, "Should have 5 symbols total with no overwrites");
   // Original symbols still intact
   assert.strictEqual(finalMerged.symbols.get(1)?.name, "Resistor");

@@ -129,9 +129,11 @@ describe("PSCAD LSP Integration Suite", () => {
     const pslxFixturePath = path.resolve(__dirname, "../../../languages/pscad/tests/fixtures/Component_Lib.pslx");
     const text = fs.readFileSync(pslxFixturePath, "utf-8");
 
-    const { PscadWorkspaceIndex } = await import("@modelscript/pscad");
-    const wsIndex = new PscadWorkspaceIndex();
-    const index = wsIndex.indexFile("file:///Component_Lib.pslx", text);
+    const { pscadLanguage } = await import("@modelscript/pscad");
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    const ws = new UnifiedWorkspace(pscadLanguage);
+    ws.setDocument("file:///Component_Lib.pslx", text);
+    const index = ws.getFileIndex("file:///Component_Lib.pslx")!;
 
     const { getTreeChildrenFast } = await import("../src/utils/hierarchy-utils.js");
 

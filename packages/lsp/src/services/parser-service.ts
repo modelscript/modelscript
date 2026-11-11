@@ -878,11 +878,15 @@ export class ParserService {
             } else {
               const pDesc = Object.getOwnPropertyDescriptor(existingSysml, "parser");
               if (!pDesc || pDesc.writable || typeof pDesc.set === "function") {
-                try { existingSysml.parser = result.parser; } catch {}
+                try {
+                  existingSysml.parser = result.parser;
+                } catch {}
               }
               const fDesc = Object.getOwnPropertyDescriptor(existingSysml, "facade");
               if (!fDesc || fDesc.writable || typeof fDesc.set === "function") {
-                try { existingSysml.facade = result.facade; } catch {}
+                try {
+                  existingSysml.facade = result.facade;
+                } catch {}
               }
             }
           }
@@ -901,11 +905,15 @@ export class ParserService {
           } else {
             const pDesc = Object.getOwnPropertyDescriptor(existing, "parser");
             if (!pDesc || pDesc.writable || typeof pDesc.set === "function") {
-              try { existing.parser = result.parser; } catch {}
+              try {
+                existing.parser = result.parser;
+              } catch {}
             }
             const fDesc = Object.getOwnPropertyDescriptor(existing, "facade");
             if (!fDesc || fDesc.writable || typeof fDesc.set === "function") {
-              try { existing.facade = result.facade; } catch {}
+              try {
+                existing.facade = result.facade;
+              } catch {}
             }
           }
 
@@ -987,7 +995,8 @@ export class ParserService {
               const docLang = this.resolveNormalizedLanguageId(doc.languageId || doc.uri);
               if (docLang === norm) {
                 try {
-                  await (this.validationServiceRef?.validateTextDocument?.(doc) ?? globalCtx.validateTextDocument?.(doc));
+                  await (this.validationServiceRef?.validateTextDocument?.(doc) ??
+                    globalCtx.validateTextDocument?.(doc));
                 } catch (err) {
                   this.connection.console.warn(`[lsp] Failed to validate open doc after ${libKey} load: ${err}`);
                 }
@@ -1207,8 +1216,6 @@ export class ParserService {
       }
 
       // Set this EARLY so that occt-import-js has the right path during early validation pass
-      const stepWs = this.workspaceManager.getWorkspaceIndex("step");
-      if (stepWs) stepWs.serverDistBase = serverDistBase;
       (globalThis as any).serverDistBase = serverDistBase;
       this.serverDistBase = serverDistBase;
       this.lazyLoadParsers = Boolean(options?.lazyLoadParsers);
@@ -1306,8 +1313,8 @@ export class ParserService {
       if (createModelicaQE) {
         try {
           const unified =
-            this.workspaceManager.getWorkspaceIndex("modelica")?.toUnified?.() ??
-            this.workspaceManager.unifiedWorkspace?.toUnifiedPartial?.();
+            this.workspaceManager.getWorkspaceIndex("modelica")?.getIndex?.({ eager: true }) ??
+            this.workspaceManager.unifiedWorkspace?.getIndex?.();
           if (unified) {
             this.workspaceManager.globalModelicaQueryEngine = createModelicaQE(
               unified,
@@ -1503,7 +1510,7 @@ export class ParserService {
     iri: string,
     currentUri: string,
   ): { start: { line: number; character: number }; end: { line: number; character: number } } | null {
-    const db = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+    const db = this.workspaceManager.unifiedWorkspace.getIndex();
     const nameIds = db.byName.get(iri);
     if (nameIds && nameIds.length > 0) {
       for (const id of nameIds) {

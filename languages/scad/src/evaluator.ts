@@ -54,8 +54,9 @@ import {
   type Vec3,
 } from "@modelscript/cad";
 
+import type { UnifiedWorkspace } from "@modelscript/runtime";
+import { resolveScadDependencyInfo } from "./indexing.js";
 import type { ScadCstNode, ScadCstTree } from "./patcher.js";
-import type { ScadWorkspaceIndex } from "./workspace-index.js";
 
 export type ScadValue = number | string | boolean | undefined | ScadValue[];
 
@@ -69,14 +70,16 @@ interface ScadCallableDef {
 
 /**
  * Options for configuring an OpenSCAD evaluation run, such as externally injected variables
- * and cross-file workspace index resolution.
+ * and cross-file workspace resolution.
  */
 export interface ScadEvaluationOptions {
   /** Optional map of initial variable bindings (e.g., synchronized from Modelica parameters). */
   variables?: Record<string, ScadValue> | undefined;
-  /** Optional multi-file workspace index for resolving `include <...>` and `use <...>` directives. */
-  workspaceIndex?: ScadWorkspaceIndex | undefined;
-  /** Optional document URI for relative dependency resolution in `workspaceIndex`. */
+  /** Optional multi-file `UnifiedWorkspace` for resolving `include <...>` and `use <...>` directives. */
+  workspace?: UnifiedWorkspace | undefined;
+  /** Optional alias for `workspace` (`UnifiedWorkspace`) for resolving `include <...>` and `use <...>` directives. */
+  workspaceIndex?: UnifiedWorkspace | undefined;
+  /** Optional document URI for relative dependency resolution in `workspace`. */
   uri?: string | undefined;
 }
 
@@ -584,14 +587,14 @@ function buildRotateExtrudeSolid(poly: [number, number][], angleDeg: number, fn:
 export class ScadEvaluator {
   private static readonly MAX_CALL_DEPTH = 64;
   private globalScope: Scope;
-  private workspaceIndex?: ScadWorkspaceIndex | undefined;
+  private workspace?: UnifiedWorkspace | undefined;
   private currentUri?: string | undefined;
   private activeDirectiveStack = new Set<string>();
   private callDepth = 0;
 
   constructor(options?: ScadEvaluationOptions) {
     this.globalScope = new Scope();
-    this.workspaceIndex = options?.workspaceIndex;
+    this.workspace = options?.workspace ?? options?.workspaceIndex;
     this.currentUri = options?.uri;
     if (options?.variables) {
       for (const [k, v] of Object.entries(options.variables)) {
@@ -666,8 +669,8 @@ export class ScadEvaluator {
   }
 
   private resolveDirectiveCst(targetPath: string): { uri: string; rootNode: ScadCstNode } | null {
-    if (!this.workspaceIndex) return null;
-    const depInfo = this.workspaceIndex.resolveDependencyInfo(targetPath, this.currentUri);
+    if (!this.workspace) return null;
+    const depInfo = resolveScadDependencyInfo(this.workspace, targetPath, this.currentUri);
     if (!depInfo?.sourceText) return null;
     if (this.activeDirectiveStack.has(depInfo.uri)) return null;
     return {

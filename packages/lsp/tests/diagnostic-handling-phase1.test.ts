@@ -648,7 +648,7 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
 
       ws.indexDocument("file:///test.mo", () => mockCst);
 
-      const entries = Array.from(ws.toUnifiedPartial().symbols.values());
+      const entries = Array.from(ws.getIndex().symbols.values());
       const classEntry = entries.find((e) => e.name === "MyClass");
       assert.ok(classEntry, "Class symbol must be indexed");
       assert.strictEqual(classEntry.startOffset, 15);

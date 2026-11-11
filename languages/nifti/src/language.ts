@@ -9,6 +9,7 @@
  */
 
 import { language } from "@modelscript/dsl";
+import { indexNiftiFile } from "./indexing.js";
 import { lintNiftiDocument } from "./lints/rules.js";
 import { extractIsoSurfaceMesh, lowerNiftiToDae } from "./mesh/index.js";
 import { parseNifti } from "./parser/index.js";
@@ -16,10 +17,13 @@ import { niftiToScad, niftiToStep } from "./projections/index.js";
 
 export const niftiLanguage = language({
   name: "nifti",
-  fileExtensions: [".nii.json", ".nii", ".nrrd", ".nhdr"],
+  fileExtensions: [".nii.json", ".nii.gz", ".nii", ".nrrd", ".nhdr"],
   maturity: "experimental",
   lsp: {
-    fileExtensions: [".nii.json", ".nii", ".nrrd", ".nhdr"],
+    fileExtensions: [".nii.json", ".nii.gz", ".nii", ".nrrd", ".nhdr"],
+  },
+  indexing: {
+    indexFile: indexNiftiFile,
   },
   rules: {
     Root: () => "nifti",

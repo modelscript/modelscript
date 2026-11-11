@@ -32,10 +32,6 @@
       "types": "./dist/src/projections/index.d.ts",
       "default": "./dist/src/projections/index.js"
     },
-    "./workspace-index": {
-      "types": "./dist/src/workspace-index.d.ts",
-      "default": "./dist/src/workspace-index.js"
-    },
     "./lsp": {
       "types": "./dist/src/lsp.d.ts",
       "default": "./dist/src/lsp.js"

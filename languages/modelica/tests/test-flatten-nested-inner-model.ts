@@ -30,7 +30,7 @@ end BouncingBall;`;
 
   const ws = createModelicaWorkspaceIndex();
   ws.indexDocument(uri, () => initialTree.rootNode);
-  const unified = ws.toUnified();
+  const unified = ws.getIndex({ eager: true });
 
   const cstWrapper = {
     getText: (startOffset: number, endOffset: number, entry?: any): string | null => {
@@ -122,7 +122,7 @@ end X;`;
   const moWs = createModelicaWorkspaceIndex();
   unifiedWs.registerWorkspace("modelica", moWs);
 
-  const uwsEngine = createModelicaQueryEngine(unifiedWs.toUnifiedPartial(), cstWrapper);
+  const uwsEngine = createModelicaQueryEngine(unifiedWs.getIndex(), cstWrapper);
 
   const execContext3: any = {
     uri,

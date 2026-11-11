@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { getAllWaterMlModels, getWaterMlModel } from "../src/indexing.js";
 import { watermlLanguage } from "../src/language.js";
 import { getWaterMlDiagnostics, getWaterMlDocumentSymbols } from "../src/lsp.js";
-import { WaterMlWorkspaceIndex } from "../src/workspace-index.js";
 
 const SAMPLE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <wml2:Collection xmlns:wml2="http://www.opengis.net/waterml/2.0"
@@ -42,20 +43,20 @@ const SAMPLE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 </wml2:Collection>`;
 
 describe("WaterML Language Plugin & LSP Services", () => {
-  it("indexes WaterML documents in workspace index", () => {
-    const index = new WaterMlWorkspaceIndex();
-    index.indexDocument("file:///test/gage.xml", SAMPLE_XML);
+  it("indexes WaterML documents in UnifiedWorkspace", () => {
+    const ws = new UnifiedWorkspace(watermlLanguage);
+    ws.setDocument("file:///test/gage.xml", SAMPLE_XML);
 
-    const model = index.getModel("file:///test/gage.xml");
+    const model = getWaterMlModel(ws, "file:///test/gage.xml");
     assert.ok(model !== undefined);
     assert.equal(model?.docId, "COLLECTION_TEST_01");
     assert.ok(model?.stationIds.includes("GAGE_01"));
     assert.ok(model?.observedProperties.includes("Discharge"));
     assert.equal(model?.timeSeriesCount, 1);
 
-    assert.equal(index.getAllModels().length, 1);
-    index.clear();
-    assert.equal(index.getAllModels().length, 0);
+    assert.equal(getAllWaterMlModels(ws).length, 1);
+    ws.clear();
+    assert.equal(getAllWaterMlModels(ws).length, 0);
   });
 
   it("extracts hierarchical LSP document symbols", () => {

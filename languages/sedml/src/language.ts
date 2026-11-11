@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerSedmlToDae } from "./dae/sedml-to-dae.js";
+import { sedmlIndexing } from "./indexing.js";
 import { lintSedml } from "./lints/index.js";
 import { parseSedml } from "./parser/sedml-parser.js";
 import { sedmlToModelica } from "./projections/sedml-to-modelica.js";
@@ -14,6 +15,7 @@ export const sedmlLanguage = language({
   name: "sedml",
   fileExtensions: [".sedml", ".xml"],
   maturity: "experimental",
+  indexing: sedmlIndexing,
   lsp: {
     fileExtensions: [".sedml", ".xml"],
     icons: {

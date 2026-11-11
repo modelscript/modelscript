@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildRocetsDiagramData,
   parseRocetsDeck,
   renderRocetsPidSvg,
+  rocetsLanguage,
   rocetsToModelica,
   rocetsToSsp,
-  RocetsWorkspaceIndex,
 } from "../src/index.js";
 
 describe("@modelscript/rocets Projections & Diagrams Suite", () => {
@@ -65,18 +66,19 @@ CONNECTIONS:
   });
 
   it("indexes symbols across workspace files", () => {
-    const index = new RocetsWorkspaceIndex();
+    const ws = new UnifiedWorkspace(rocetsLanguage);
     const uri = "file:///models/j2x.roc";
-    const symIdx = index.indexFile(uri, sampleDeck);
+    ws.setDocument(uri, sampleDeck);
+    const symIdx = ws.getFileIndex(uri);
 
     assert.ok(symIdx);
-    assert.strictEqual(index.fileCount, 1);
-    assert.ok(index.has(uri));
+    assert.strictEqual(ws.fileCount, 1);
+    assert.ok(ws.hasDocument(uri));
 
     const modelSyms = symIdx.byName.get("J2X_Engine");
     assert.ok(modelSyms && modelSyms.length > 0, "Expected J2X_Engine root symbol");
 
-    const partial = index.toUnifiedPartial();
-    assert.ok(partial.symbols.size >= 5, "Expected unified symbols");
+    const unified = ws.getIndex();
+    assert.ok(unified.symbols.size >= 5, "Expected unified symbols");
   });
 });

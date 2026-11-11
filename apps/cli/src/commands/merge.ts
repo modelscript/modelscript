@@ -85,7 +85,7 @@ async function buildIndexedDb(
     const ast = parser.parse(sourceText)?.rootNode;
     const wIdx = createModelicaWorkspaceIndex();
     wIdx.register(filePath, () => ast);
-    const index = wIdx.toUnified();
+    const index = wIdx.getIndex({ eager: true });
     const db = new QueryEngine(
       index,
       (modelicaLangFallback as { queryHooks?: Map<string, QueryHooks> | undefined }).queryHooks ?? new Map(),
@@ -105,7 +105,7 @@ async function buildIndexedDb(
   const ast = parser.parse(sourceText)?.rootNode;
   const wIdx = createSysML2WorkspaceIndex();
   wIdx.register(filePath, () => ast);
-  const index = await wIdx.toUnifiedAsync();
+  const index = await wIdx.getIndexAsync();
   const db = new QueryEngine(
     index,
     (sysml2LangFallback as { queryHooks?: Map<string, QueryHooks> | undefined }).queryHooks ?? new Map(),

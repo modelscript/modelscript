@@ -65,6 +65,7 @@ export interface MorselEditorProps {
   simulateTriggerCount?: number | undefined;
   externalParams?: Record<string, string | number | boolean> | undefined;
   onCodeChange?: ((code: string) => void) | undefined;
+  onClassLoaded?: ((code: string, className: string, dialect: string) => void) | undefined;
   onDialectChange?: ((dialect: string) => void) | undefined;
   onAnchorClick?: ((anchor: { elementId: string; kind: "component" }) => void) | undefined;
   onSimulationStatus?: ((status: string, data?: unknown) => void) | undefined;
@@ -112,7 +113,9 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const codeEditorRef = useRef<CodeEditorHandle>(null);
   const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
-  const content = props.initialCode ?? decodedContent ?? initialLangInfo.defaultCode;
+  const baseContent = props.initialCode ?? decodedContent ?? initialLangInfo.defaultCode;
+  const [loadedCodeOverride, setLoadedCodeOverride] = useState<string | null>(null);
+  const content = loadedCodeOverride ?? baseContent;
   const [editor, setEditor] = useState<editor.ICodeEditor | null>(null);
 
   const initialIsCad =
@@ -143,7 +146,9 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [mobileTab, setMobileTab] = useState<MobileTab>(
     initialIsCad ? "cad" : initialIsPlot ? "results" : initialViewMode === View.CODE ? "code" : "diagram",
   );
-  const [lastLoadedContent, setLastLoadedContent] = useState<string>("");
+  const [lastLoadedContent, setLastLoadedContent] = useState<string>(baseContent);
+  const lastSyncedCodeRef = useRef<string | null>(null);
+  const loadingClassRef = useRef<string | null>(null);
   const [isDirtyDialogOpen, setDirtyDialogOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<string | null>(props.initialAnchor?.elementId ?? null);
   const [selectedComponent, setSelectedComponent] = useState<string | null>(props.initialAnchor?.elementId ?? null);
@@ -237,10 +242,23 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   useEffect(() => {
     if (props.initialCode !== undefined) {
-      setLastLoadedContent(props.initialCode);
-      if (editor && editor.getValue() !== props.initialCode) {
-        editor.setValue(props.initialCode);
-        didOpen(documentUriRef.current, props.initialCode, dialect);
+      if (loadedCodeOverride !== null && props.initialCode !== loadedCodeOverride) {
+        setLoadedCodeOverride(null);
+      }
+      const targetCode =
+        loadedCodeOverride !== null && props.initialCode === loadedCodeOverride
+          ? loadedCodeOverride
+          : props.initialCode;
+      setLastLoadedContent(targetCode);
+      const alreadyInEditor = Boolean(editor && editor.getValue() === targetCode);
+      if (editor && !alreadyInEditor) {
+        editor.setValue(targetCode);
+      }
+      if (alreadyInEditor) {
+        lastSyncedCodeRef.current = targetCode;
+      } else if (lastSyncedCodeRef.current !== targetCode) {
+        lastSyncedCodeRef.current = targetCode;
+        didOpen(documentUriRef.current, targetCode, dialect);
         codeEditorRef.current?.sync();
         const primary = dialect === "modelica" || !dialect ? extractPrimaryModelicaClassName(props.initialCode) : null;
         if (primary) {
@@ -249,7 +267,7 @@ export default function MorselEditor(props: MorselEditorProps) {
         setContextVersion((v) => v + 1);
       }
     }
-  }, [props.initialCode, editor, dialect]);
+  }, [props.initialCode, editor, dialect, loadedCodeOverride]);
 
   const NARROW_BREAKPOINT = 768;
   const isNarrow = windowWidth < NARROW_BREAKPOINT;
@@ -401,6 +419,9 @@ export default function MorselEditor(props: MorselEditorProps) {
   const pendingDiagramActionsRef = useRef<any[]>([]);
   const diagramActionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const diagramEditQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const diagramEditSeqRef = useRef(1);
+  const selectedTreeClassNameRef = useRef<string | null>(selectedTreeClassName);
+  selectedTreeClassNameRef.current = selectedTreeClassName;
   const onCodeChangeRef = useRef(props.onCodeChange);
   onCodeChangeRef.current = props.onCodeChange;
 
@@ -456,7 +477,25 @@ export default function MorselEditor(props: MorselEditorProps) {
         if (actions.length > 0) {
           diagramEditQueueRef.current = diagramEditQueueRef.current
             .then(async () => {
-              const response = await applyDiagramEdits(documentUriRef.current, actions, 1);
+              // Flush any pending/debounced live Monaco edits before computing LSP diagram TextEdits
+              if (editorRef.current) {
+                const liveCode = editorRef.current.getValue();
+                if (liveCode !== lastLoadedContentRef.current) {
+                  setLastLoadedContent(liveCode);
+                  if (codeEditorRef.current) {
+                    await codeEditorRef.current.sync();
+                  } else {
+                    await didChange(documentUriRef.current, liveCode);
+                  }
+                }
+              }
+              const seq = diagramEditSeqRef.current++;
+              const response = await applyDiagramEdits(
+                documentUriRef.current,
+                actions,
+                seq,
+                selectedTreeClassNameRef.current ?? undefined,
+              );
               if (response?.sidecarContent !== undefined) {
                 setSidecarContent(response.sidecarContent);
               }
@@ -929,6 +968,30 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, [resolvedInitialDialect, dialect, handleSelectDialect]);
 
   const loadClass = async (className: string, kind?: string) => {
+    if (!className || className.startsWith("__") || kind === "package" || kind === "loading-package") {
+      return;
+    }
+
+    // Fast path: if selecting a top-level class already defined in the active document, switch to it directly
+    if (!className.includes(".") && documentModels.some((m) => m.name === className)) {
+      setSelectedTreeClassName(className);
+      setDrillDownPath([]);
+      setSelectedComponent(null);
+      setSelectedComponentProperties(null);
+      setShowResultsView(false);
+      if (view === View.DIAGRAM || isSplit(view)) {
+        setTimeout(() => {
+          diagramEditorRef.current?.fitContent();
+        }, 100);
+      }
+      return;
+    }
+
+    if (loadingClassRef.current === className) {
+      return;
+    }
+    loadingClassRef.current = className;
+
     // Store the name so the diagram tab auto-selects if it's a model/block
     if (kind === "model" || kind === "block") {
       pendingModelNameRef.current = className;
@@ -936,36 +999,65 @@ export default function MorselEditor(props: MorselEditorProps) {
       pendingModelNameRef.current = null;
     }
 
-    if (view === View.DIAGRAM || isSplit(view)) {
-      setTimeout(() => {
-        diagramEditorRef.current?.fitContent();
-      }, 100);
-    }
-
     try {
       const { getClassSource } = await import("./util/lsp-bridge");
-      const { content: fetchedContent, error } = await getClassSource(className);
-      if (fetchedContent && editorRef.current) {
-        if (dialect !== "modelica") {
+      const { content: fetchedContent, uri: sourceUri, error } = await getClassSource(className);
+      if (fetchedContent) {
+        const lowerUri = (sourceUri || "").toLowerCase();
+        const targetDialect =
+          lowerUri.endsWith(".sysml") ||
+          lowerUri.endsWith(".sysml2") ||
+          lowerUri.endsWith(".kerml") ||
+          lowerUri.startsWith("sysml2:")
+            ? "sysml2"
+            : "modelica";
+        const targetUri = `${instanceDocPrefix}.${getLanguageExtension(targetDialect)}`;
+
+        if (dialect !== targetDialect) {
           didClose(documentUriRef.current);
-          setDialectState("modelica");
+          setDialectState(targetDialect);
           setSidecarContent(undefined);
-          setDiagramType("diagram");
+          setDiagramType(getLanguageInfo(targetDialect).diagramTypes?.[0]?.id ?? "diagram");
+          props.onDialectChange?.(targetDialect);
         }
-        editorRef.current.setValue(fetchedContent);
+
+        setLoadedCodeOverride(fetchedContent);
+        if (editorRef.current) {
+          editorRef.current.setValue(fetchedContent);
+        }
         setLastLoadedContent(fetchedContent);
-        didOpen(`${instanceDocPrefix}.mo`, fetchedContent, "modelica");
+        lastLoadedContentRef.current = fetchedContent;
+        lastSyncedCodeRef.current = fetchedContent;
+        setDrillDownPath([]);
+        setSelectedComponent(null);
+        setSelectedComponentProperties(null);
+        setShowResultsView(false);
+
+        didOpen(targetUri, fetchedContent, targetDialect);
         codeEditorRef.current?.sync();
         const primaryClassName =
-          extractPrimaryModelicaClassName(fetchedContent) || className.split(".").pop() || className;
+          targetDialect === "modelica"
+            ? extractPrimaryModelicaClassName(fetchedContent) || className.split(".").pop() || className
+            : className.split(".").pop() || className;
         setSelectedTreeClassName(primaryClassName);
         setContextVersion((v) => v + 1);
+        props.onClassLoaded?.(fetchedContent, className, targetDialect);
         props.onCodeChange?.(fetchedContent);
+
+        if (view === View.DIAGRAM || isSplit(view)) {
+          setTimeout(() => {
+            diagramEditorRef.current?.fitContent();
+          }, 150);
+        }
       } else if (error) {
         console.warn("Failed to fetch source for %s:", className, error);
       }
     } catch (e) {
       console.error("Error loading source for %s:", className, e);
+    } finally {
+      if (loadingClassRef.current === className) {
+        loadingClassRef.current = null;
+      }
     }
   };
 
@@ -976,17 +1068,55 @@ export default function MorselEditor(props: MorselEditorProps) {
   lastLoadedContentRef.current = lastLoadedContent;
   loadClassRef.current = loadClass;
 
-  const handleTreeSelect = useCallback(
-    (className: string, kind?: string) => {
-      if (editorRef.current?.getValue() !== lastLoadedContentRef.current && pendingSelection !== className) {
-        setPendingSelection(className);
-        setDirtyDialogOpen(true);
-      } else {
-        loadClassRef.current(className, kind);
+  const handleLoadStarterExample = useCallback(
+    (exampleCode: string, exampleTitle?: string) => {
+      if (!exampleCode) return;
+      setLoadedCodeOverride(exampleCode);
+      if (editorRef.current) {
+        editorRef.current.setValue(exampleCode);
       }
+      setLastLoadedContent(exampleCode);
+      lastLoadedContentRef.current = exampleCode;
+      lastSyncedCodeRef.current = exampleCode;
+      setDrillDownPath([]);
+      setSelectedComponent(null);
+      setSelectedComponentProperties(null);
+      setShowResultsView(false);
+
+      const targetUri = documentUriRef.current;
+      didOpen(targetUri, exampleCode, dialect);
+      codeEditorRef.current?.sync();
+      const primary =
+        dialect === "modelica" || !dialect ? extractPrimaryModelicaClassName(exampleCode) : (exampleTitle ?? null);
+      if (primary) {
+        setSelectedTreeClassName(primary);
+      }
+      setContextVersion((v) => v + 1);
+      props.onClassLoaded?.(exampleCode, exampleTitle || primary || "StarterModel", dialect);
+      props.onCodeChange?.(exampleCode);
     },
-    [pendingSelection],
+    [dialect, props.onClassLoaded, props.onCodeChange],
   );
+
+  const handleTreeSelect = useCallback((className: string, kind?: string) => {
+    if (!className || className.startsWith("__") || kind === "package" || kind === "loading-package") {
+      return;
+    }
+    const currentEditorVal = editorRef.current?.getValue();
+    const isDefaultOrEmpty =
+      currentEditorVal === undefined ||
+      !currentEditorVal.trim() ||
+      MORSEL_LANGUAGES.some((l) => l.defaultCode === currentEditorVal);
+    const isBufferDirty =
+      currentEditorVal !== undefined && !isDefaultOrEmpty && currentEditorVal !== lastLoadedContentRef.current;
+
+    if (isBufferDirty) {
+      setPendingSelection(className);
+      setDirtyDialogOpen(true);
+      return;
+    }
+    loadClassRef.current(className, kind);
+  }, []);
 
   const [highlightedComponent, setHighlightedComponent] = useState<string | null>(null);
 
@@ -1305,7 +1435,9 @@ export default function MorselEditor(props: MorselEditorProps) {
               hideCenterFloatingToolbar={props.hideCenterFloatingToolbar}
               showAnalysisView={showAnalysisView}
               setShowAnalysisView={setShowAnalysisView}
+              documentUri={documentUri}
               loadingProgress={loadingProgress}
+              onLoadStarterExample={handleLoadStarterExample}
             />
 
             {/* Split Resizer */}
@@ -1542,6 +1674,8 @@ export default function MorselEditor(props: MorselEditorProps) {
           dialect={dialect}
           documentUri={documentUri}
           onSelectDialect={handleSelectDialect}
+          onSelectTreeClassName={setSelectedTreeClassName}
+          onPlaceComponent={handleInsertStencilSnippet}
           setLastLoadedContent={setLastLoadedContent}
           parameterOverrides={parameterOverrides}
           isDirtyDialogOpen={isDirtyDialogOpen}

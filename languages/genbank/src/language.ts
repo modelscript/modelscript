@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerGenbankToDae } from "./dae/genbank-to-dae.js";
+import { indexGenbankDocument } from "./indexing.js";
 import { lintGenbank } from "./lints/index.js";
 import { parseGenbank } from "./parser/genbank-parser.js";
 import { genbankToModelica, genbankToSbolXml } from "./projections/genbank-projections.js";
@@ -15,6 +16,9 @@ export const genbankLanguage = language({
   name: "genbank",
   fileExtensions: [".gb", ".gbk", ".fasta", ".fa"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexGenbankDocument,
+  },
   lsp: {
     fileExtensions: [".gb", ".gbk", ".fasta", ".fa"],
     icons: {

@@ -74,7 +74,7 @@ end LspB2BTestModel;
       getDocument: (uri: string) => (uri === docUri ? doc : undefined),
       getQueryEngine: () => undefined,
       unifiedWorkspace: {
-        toUnifiedPartial: () => ({
+        getIndex: () => ({
           symbols: new Map(),
           byName: new Map(),
           childrenOf: new Map(),

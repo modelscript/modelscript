@@ -212,8 +212,14 @@ export async function applyDiagramEdits(
   uri: string,
   actions: DiagramEditAction[],
   seq = 1,
+  className?: string,
 ): Promise<DiagramApplyEditsResult> {
-  return (await lsp()).sendRequest(DiagramMethods.applyEdits, { uri, seq, actions });
+  return (await lsp()).sendRequest(DiagramMethods.applyEdits, {
+    uri,
+    seq,
+    actions,
+    ...(className ? { className } : {}),
+  });
 }
 
 export async function getDiagramData(
@@ -223,7 +229,13 @@ export async function getDiagramData(
   sidecarContent?: string,
   documentText?: string,
 ): Promise<DiagramData | null> {
-  return (await lsp()).sendRequest(DiagramMethods.getData, { uri, className, diagramType, sidecarContent, documentText });
+  return (await lsp()).sendRequest(DiagramMethods.getData, {
+    uri,
+    className,
+    diagramType,
+    sidecarContent,
+    documentText,
+  });
 }
 
 export async function getComponentProperties(
@@ -361,6 +373,38 @@ export async function getCadComponents(
   return (await lsp()).sendRequest("modelscript/getCadComponents", { uri, className });
 }
 
+export interface DiagramPreviewRequestItem {
+  id: string;
+  className?: string | undefined;
+  uri?: string | undefined;
+  documentText?: string | undefined;
+  languageId?: string | undefined;
+  diagramType?: string | undefined;
+}
+
+export interface DiagramPreviewResultItem {
+  svg: string;
+  nodeCount: number;
+  edgeCount: number;
+}
+
+export async function getDiagramPreviewSvgs(
+  items: DiagramPreviewRequestItem[],
+  isDark = false,
+): Promise<Record<string, DiagramPreviewResultItem>> {
+  if (!items.length) return {};
+  try {
+    const res = await (
+      await lsp()
+    ).sendRequest<{
+      previews?: Record<string, DiagramPreviewResultItem>;
+    }>("modelscript/getDiagramPreviewSvgs", { items, isDark });
+    return res?.previews ?? {};
+  } catch {
+    return {};
+  }
+}
+
 // ────────────────────────────────────────────────────────────────────
 // List classes (for model tabs)
 // ────────────────────────────────────────────────────────────────────
@@ -382,8 +426,71 @@ export async function getDocumentSymbols(uri: string): Promise<any[]> {
   return (await lsp()).sendRequest("textDocument/documentSymbol", { textDocument: { uri } });
 }
 
-export async function installDependency(name: string, version: string): Promise<void> {
-  (await lsp()).sendNotification("modelscript/installDependency", { name, version });
+export interface MountedLibraryEntry {
+  name: string;
+  version: string;
+  description?: string | undefined;
+  language?: string | undefined;
+  explicitlyInstalled?: boolean | undefined;
+}
+
+export async function getMountedLibraries(): Promise<{
+  mounted: MountedLibraryEntry[];
+  loading: Array<{ name: string; version: string; status?: string; message?: string }>;
+}> {
+  try {
+    return await (await lsp()).sendRequest("modelscript/getMountedLibraries", {});
+  } catch {
+    return { mounted: [], loading: [] };
+  }
+}
+
+export async function installDependency(name: string, version: string): Promise<MountedLibraryEntry[]> {
+  const conn = await lsp();
+  try {
+    const res = await conn.sendRequest<{
+      ok: boolean;
+      name: string;
+      version: string;
+      mounted: MountedLibraryEntry[];
+      error?: string;
+    }>("modelscript/installPackage", { name, version });
+    if (res && res.ok === false) {
+      throw new Error(res.error || `Failed to mount ${name}@${version}`);
+    }
+    return res?.mounted ?? [];
+  } catch (err) {
+    // Only fall back to notification if request method itself was unrecognized
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("Method not found") || msg.includes("-32601")) {
+      conn.sendNotification("modelscript/installDependency", { name, version });
+      return [];
+    }
+    throw err;
+  }
+}
+
+export async function uninstallDependency(name: string): Promise<MountedLibraryEntry[]> {
+  const conn = await lsp();
+  try {
+    const res = await conn.sendRequest<{
+      ok: boolean;
+      evicted: number;
+      mounted: MountedLibraryEntry[];
+      error?: string;
+    }>("modelscript/uninstallPackage", { name });
+    if (res && res.ok === false) {
+      throw new Error(res.error || `Failed to remove ${name}`);
+    }
+    return res?.mounted ?? [];
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("Method not found") || msg.includes("-32601")) {
+      conn.sendNotification("modelscript/uninstallDependency", { name });
+      return [];
+    }
+    throw err;
+  }
 }
 
 /** Place a component onto the diagram canvas at (x, y) via unified diagram edits. */
@@ -477,10 +584,44 @@ function extractZipTextFiles(zipBytes: Uint8Array): Record<string, string> {
 }
 
 /**
+ * Register an FMU archive (base64-encoded) in the active LSP workspace.
+ */
+export async function registerFmu(name: string, data: string): Promise<{ ok: boolean; error?: string }> {
+  const conn = await lsp();
+  try {
+    return await conn.sendRequest<{ ok: boolean; error?: string }>("modelscript/registerFmu", { name, data });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: msg };
+  }
+}
+
+export interface LoadLibraryResult {
+  packageName: string;
+  fileCount: number;
+}
+
+/**
  * Load a library archive (.zip), FMU (.fmu), or Modelica/SysML source file from a Uint8Array
  * buffer into the active LSP workspace.
+ *
+ * Accepts either `(buffer, filename)` or `(filename, buffer)`.
  */
-export async function loadLibraryFromBuffer(buffer: Uint8Array, filename: string): Promise<void> {
+export async function loadLibraryFromBuffer(
+  arg1: Uint8Array | ArrayBuffer | string,
+  arg2: string | Uint8Array | ArrayBuffer,
+): Promise<LoadLibraryResult> {
+  let buffer: Uint8Array;
+  let filename: string;
+
+  if (typeof arg1 === "string") {
+    filename = arg1;
+    buffer = arg2 instanceof Uint8Array ? arg2 : new Uint8Array(arg2 as ArrayBuffer);
+  } else {
+    buffer = arg1 instanceof Uint8Array ? arg1 : new Uint8Array(arg1 as ArrayBuffer);
+    filename = typeof arg2 === "string" ? arg2 : "UploadedLibrary";
+  }
+
   const conn = await lsp();
   const cleanName = filename.replace(/\.(zip|mo|fmu|msx|sysml|sysml2)$/i, "") || "UploadedLibrary";
 
@@ -492,7 +633,7 @@ export async function loadLibraryFromBuffer(buffer: Uint8Array, filename: string
     }
     const base64 = btoa(chunks.join(""));
     await conn.sendRequest("modelscript/importFmu", { name: cleanName, data: base64 });
-    return;
+    return { packageName: cleanName, fileCount: 1 };
   }
 
   const isZip =
@@ -517,7 +658,7 @@ export async function loadLibraryFromBuffer(buffer: Uint8Array, filename: string
         },
       ],
     });
-    return;
+    return { packageName: pkgName, fileCount: keys.length };
   }
 
   // Single source file (.mo, .sysml, etc.)
@@ -531,6 +672,7 @@ export async function loadLibraryFromBuffer(buffer: Uint8Array, filename: string
       },
     ],
   });
+  return { packageName: cleanName, fileCount: 1 };
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -596,30 +738,38 @@ export interface FlatSemanticEdit {
   action: "none" | "insert" | "delete" | "update" | "move";
   description: string;
   kind?: string | undefined;
-  oldRange?: {
-    startLine: number;
-    startCharacter: number;
-    endLine: number;
-    endCharacter: number;
-  } | undefined;
-  newRange?: {
-    startLine: number;
-    startCharacter: number;
-    endLine: number;
-    endCharacter: number;
-  } | undefined;
-  regulatoryImpact?: {
-    isSafetyCritical: boolean;
-    hazardId?: string | undefined;
-    hazardName?: string | undefined;
-    requirementId?: string | undefined;
-    riskSeverity?: number | undefined;
-    invalidatedLinks?: {
-      targetName: string;
-      targetKind: string;
-      reason: string;
-    }[] | undefined;
-  } | undefined;
+  oldRange?:
+    | {
+        startLine: number;
+        startCharacter: number;
+        endLine: number;
+        endCharacter: number;
+      }
+    | undefined;
+  newRange?:
+    | {
+        startLine: number;
+        startCharacter: number;
+        endLine: number;
+        endCharacter: number;
+      }
+    | undefined;
+  regulatoryImpact?:
+    | {
+        isSafetyCritical: boolean;
+        hazardId?: string | undefined;
+        hazardName?: string | undefined;
+        requirementId?: string | undefined;
+        riskSeverity?: number | undefined;
+        invalidatedLinks?:
+          | {
+              targetName: string;
+              targetKind: string;
+              reason: string;
+            }[]
+          | undefined;
+      }
+    | undefined;
 }
 
 /**
@@ -640,4 +790,3 @@ export async function getSemanticDiff(
     newText,
   });
 }
-

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import test from "node:test";
 import {
@@ -12,11 +13,12 @@ import {
   evaluateTccCurve,
   evaluateVoltVarCurve,
   evaluateVoltWattCurve,
+  getOpenDssDeck,
   kronReduce,
   lintOpenDss,
   lowerOpenDssToDae,
+  openDssLanguage,
   openDssToModelica,
-  OpenDssWorkspaceIndex,
   parseOpenDss,
   serializeOpenDss,
   solveAdmittancePowerFlow,
@@ -235,13 +237,14 @@ test("OpenDSS Linter: detects zero transformer impedance (M8402) and out-of-rang
   );
 });
 
-test("OpenDSS Workspace Index: indexes multi-file symbols accurately", () => {
-  const indexer = new OpenDssWorkspaceIndex();
+test("OpenDSS UnifiedWorkspace: indexes multi-file symbols accurately", () => {
+  const ws = new UnifiedWorkspace(openDssLanguage);
   const uri = "file:///models/ieee4.dss";
-  indexer.indexFile(uri, SAMPLE_IEEE_4BUS);
+  ws.setDocument(uri, SAMPLE_IEEE_4BUS);
 
-  assert.strictEqual(indexer.has(uri), true);
-  const fileIdx = indexer.getFileIndex(uri);
+  assert.strictEqual(ws.hasDocument(uri), true);
+  assert.strictEqual(getOpenDssDeck(ws, uri)?.circuit?.name, "IEEE4Bus");
+  const fileIdx = ws.getFileIndex(uri);
   assert(fileIdx !== undefined);
 
   const circuitSyms = fileIdx.byName.get("IEEE4Bus");

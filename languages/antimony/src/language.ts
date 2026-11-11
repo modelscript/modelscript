@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerAntimonyToDae } from "./dae/antimony-to-dae.js";
+import { indexAntimonyDocument } from "./indexing.js";
 import { lintAntimony } from "./lints/index.js";
 import { parseAntimony } from "./parser/antimony-parser.js";
 import { antimonyToModelica, antimonyToSbmlXml } from "./projections/antimony-projections.js";
@@ -14,6 +15,9 @@ export const antimonyLanguage = language({
   name: "antimony",
   fileExtensions: [".ant"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexAntimonyDocument,
+  },
   lsp: {
     fileExtensions: [".ant"],
     icons: {

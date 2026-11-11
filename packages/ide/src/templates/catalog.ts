@@ -5227,7 +5227,10 @@ export function mountArtifactToMemFs(
     memFs.clearDirectory(workspaceUri);
   } else if (typeof memFs.delete === "function") {
     try {
-      const existing = typeof memFs.readDirectory === "function" ? (memFs.readDirectory(workspaceUri) as any) : [];
+      const existing =
+        typeof memFs.readDirectory === "function"
+          ? (memFs.readDirectory(workspaceUri) as unknown as [string, unknown][])
+          : [];
       if (Array.isArray(existing)) {
         for (const [staleName] of existing) {
           if (

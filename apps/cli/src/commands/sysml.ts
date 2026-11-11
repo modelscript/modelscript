@@ -320,7 +320,7 @@ export const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
       ws.register(uri, () => ast as unknown as ReturnType<NonNullable<Parameters<typeof ws.register>[1]>>, text);
     }
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const cstProvider = {
       getText: (startOffset: number, endOffset: number, entry?: { resourceId?: string | undefined }) => {
         if (!entry || !entry.resourceId) return null;
@@ -426,7 +426,7 @@ export const SysMLInfoCommand: CommandModule<{}, SysMLInfoArgs> = {
       return tree ? (tree.rootNode as unknown as ReturnType<NonNullable<Parameters<typeof ws.register>[1]>>) : null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(unified);
     const db = qe.toQueryDB();
 

@@ -1,0 +1,908 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+export type EngineeringDomainId =
+  | "all"
+  | "electrical"
+  | "mechanics"
+  | "fluids-thermal"
+  | "control"
+  | "power-grids"
+  | "robotics-cad"
+  | "systems";
+
+export interface DomainFilterMeta {
+  id: EngineeringDomainId;
+  label: string;
+  accent: string;
+  /** Crisp monochrome 16x16 SVG path content (rendered inside <svg viewBox="0 0 16 16">). */
+  svgInner: string;
+}
+
+export interface GalleryComponentItem {
+  id: string;
+  shortName: string;
+  fqn: string;
+  kind: string;
+  category: Exclude<EngineeringDomainId, "all">;
+  packageName: string;
+  packageVersion: string;
+  summary: string;
+  portsAndParams: string;
+  declarationSnippet: string;
+  keywords: string[];
+  /** Authentic engineering schematic SVG (`viewBox="0 0 80 56"`). */
+  schematicSvg: string;
+}
+
+export interface PackageComponentSummary {
+  name: string;
+  kind: string;
+  description: string;
+}
+
+export interface RegistryPackage {
+  name: string;
+  version: string;
+  versions?: string[];
+  description: string | null;
+  date?: string;
+  domain?: Exclude<EngineeringDomainId, "all">;
+  language?: string;
+  license?: string;
+  downloads?: number;
+  sizeBytes?: number;
+  verified?: boolean;
+  components?: PackageComponentSummary[];
+  dependencies?: Record<string, string>;
+  slsaLevel?: number;
+  vulnerabilities?: number;
+  readme?: string;
+}
+
+export const DOMAIN_FILTERS: DomainFilterMeta[] = [
+  {
+    id: "all",
+    label: "All",
+    accent: "#3b82f6",
+    svgInner:
+      '<rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.4"/><rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.4"/><rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.4"/><rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.4"/>',
+  },
+  {
+    id: "electrical",
+    label: "Electrical",
+    accent: "#2563eb",
+    svgInner:
+      '<path d="M9.2 1.5L3.8 8.6h3.8L6.8 14.5l5.4-7.1H8.4L9.2 1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>',
+  },
+  {
+    id: "mechanics",
+    label: "Mechanics",
+    accent: "#0891b2",
+    svgInner:
+      '<circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>',
+  },
+  {
+    id: "fluids-thermal",
+    label: "Fluids & Thermal",
+    accent: "#0284c7",
+    svgInner:
+      '<path d="M8 2C8 2 3.5 6.8 3.5 10a4.5 4.5 0 009 0C12.5 6.8 8 2 8 2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>',
+  },
+  {
+    id: "control",
+    label: "Control Blocks",
+    accent: "#6366f1",
+    svgInner:
+      '<rect x="2.5" y="3" width="11" height="10" rx="1.8" stroke="currentColor" stroke-width="1.4"/><path d="M4.8 10.5c1.2-3.5 2.4-4.2 6.4-4.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>',
+  },
+  {
+    id: "power-grids",
+    label: "Power Grids",
+    accent: "#d97706",
+    svgInner:
+      '<circle cx="6" cy="8" r="3.5" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="8" r="3.5" stroke="currentColor" stroke-width="1.4"/>',
+  },
+  {
+    id: "robotics-cad",
+    label: "Robotics & CAD",
+    accent: "#10b981",
+    svgInner:
+      '<path d="M8 2L13.5 5.2v5.6L8 14 2.5 10.8V5.2L8 2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M2.5 5.2L8 8.4l5.5-3.2M8 8.4V14" stroke="currentColor" stroke-width="1.3"/>',
+  },
+  {
+    id: "systems",
+    label: "Systems",
+    accent: "#8b5cf6",
+    svgInner:
+      '<rect x="2" y="2.5" width="5" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="9.5" width="5" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M7 4.5h3.5v5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
+  },
+];
+
+const S = 'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 56" fill="none"';
+
+export const GALLERY_COMPONENTS: GalleryComponentItem[] = [
+  // ── Electrical & Electronics ─────────────────────────────────────────────
+  {
+    id: "msl-resistor",
+    shortName: "Resistor",
+    fqn: "Modelica.Electrical.Analog.Basic.Resistor",
+    kind: "model",
+    category: "electrical",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Ideal linear electrical resistor (v = R·i)",
+    portsAndParams: "R = 1 Ω · p, n",
+    declarationSnippet: "Modelica.Electrical.Analog.Basic.Resistor R1(R = 100);",
+    keywords: ["resistor", "ohm", "resistance", "rlc", "passive", "electrical", "analog"],
+    schematicSvg: `<svg ${S}><line x1="6" y1="28" x2="22" y2="28" stroke="#3b82f6" stroke-width="2.2"/><rect x="22" y="19" width="36" height="18" rx="1.5" stroke="currentColor" stroke-width="2.2" fill="rgba(59,130,246,0.10)"/><line x1="58" y1="28" x2="74" y2="28" stroke="#3b82f6" stroke-width="2.2"/><rect x="4" y="25" width="5" height="6" fill="#2563eb"/><rect x="71" y="25" width="5" height="6" stroke="#2563eb" stroke-width="1.6" fill="#ffffff"/></svg>`,
+  },
+  {
+    id: "msl-capacitor",
+    shortName: "Capacitor",
+    fqn: "Modelica.Electrical.Analog.Basic.Capacitor",
+    kind: "model",
+    category: "electrical",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Ideal linear electrical capacitor (i = C·der(v))",
+    portsAndParams: "C = 1 F · p, n",
+    declarationSnippet: "Modelica.Electrical.Analog.Basic.Capacitor C1(C = 1e-6);",
+    keywords: ["capacitor", "farad", "capacitance", "rlc", "charge", "electrical", "analog"],
+    schematicSvg: `<svg ${S}><line x1="6" y1="28" x2="35" y2="28" stroke="#3b82f6" stroke-width="2.2"/><line x1="35" y1="13" x2="35" y2="43" stroke="currentColor" stroke-width="2.8"/><line x1="45" y1="13" x2="45" y2="43" stroke="currentColor" stroke-width="2.8"/><line x1="45" y1="28" x2="74" y2="28" stroke="#3b82f6" stroke-width="2.2"/><rect x="4" y="25" width="5" height="6" fill="#2563eb"/><rect x="71" y="25" width="5" height="6" stroke="#2563eb" stroke-width="1.6" fill="#ffffff"/></svg>`,
+  },
+  {
+    id: "msl-inductor",
+    shortName: "Inductor",
+    fqn: "Modelica.Electrical.Analog.Basic.Inductor",
+    kind: "model",
+    category: "electrical",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Ideal linear electrical inductor (v = L·der(i))",
+    portsAndParams: "L = 1 H · p, n",
+    declarationSnippet: "Modelica.Electrical.Analog.Basic.Inductor L1(L = 1e-3);",
+    keywords: ["inductor", "coil", "henry", "inductance", "rlc", "choke", "electrical"],
+    schematicSvg: `<svg ${S}><line x1="6" y1="30" x2="18" y2="30" stroke="#3b82f6" stroke-width="2.2"/><path d="M18 30 A5.5 7 0 0 1 29 30 A5.5 7 0 0 1 40 30 A5.5 7 0 0 1 51 30 A5.5 7 0 0 1 62 30" stroke="currentColor" stroke-width="2.3" fill="none"/><line x1="62" y1="30" x2="74" y2="30" stroke="#3b82f6" stroke-width="2.2"/><rect x="4" y="27" width="5" height="6" fill="#2563eb"/><rect x="71" y="27" width="5" height="6" stroke="#2563eb" stroke-width="1.6" fill="#ffffff"/></svg>`,
+  },
+  {
+    id: "msl-sine-voltage",
+    shortName: "SineVoltage",
+    fqn: "Modelica.Electrical.Analog.Sources.SineVoltage",
+    kind: "model",
+    category: "electrical",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Sinusoidal AC voltage source with amplitude, frequency & phase",
+    portsAndParams: "V, f, phase · p, n",
+    declarationSnippet: "Modelica.Electrical.Analog.Sources.SineVoltage V1(V = 120, f = 60);",
+    keywords: ["sine", "voltage", "ac", "source", "supply", "generator", "harmonic", "electrical"],
+    schematicSvg: `<svg ${S}><line x1="6" y1="28" x2="23" y2="28" stroke="#3b82f6" stroke-width="2.2"/><circle cx="40" cy="28" r="17" stroke="currentColor" stroke-width="2.2" fill="rgba(59,130,246,0.08)"/><path d="M30 28 C33 19, 37 19, 40 28 C43 37, 47 37, 50 28" stroke="#3b82f6" stroke-width="2.2" fill="none"/><line x1="57" y1="28" x2="74" y2="28" stroke="#3b82f6" stroke-width="2.2"/><rect x="4" y="25" width="5" height="6" fill="#2563eb"/><rect x="71" y="25" width="5" height="6" stroke="#2563eb" stroke-width="1.6" fill="#ffffff"/></svg>`,
+  },
+  {
+    id: "msl-constant-voltage",
+    shortName: "ConstantVoltage",
+    fqn: "Modelica.Electrical.Analog.Sources.ConstantVoltage",
+    kind: "model",
+    category: "electrical",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Ideal constant DC voltage battery / rail source",
+    portsAndParams: "V = 12 V · p, n",
+    declarationSnippet: "Modelica.Electrical.Analog.Sources.ConstantVoltage Vdc(V = 12);",
+    keywords: ["dc", "voltage", "battery", "constant", "source", "power", "rail"],
+    schematicSvg: `<svg ${S}><line x1="6" y1="28" x2="35" y2="28" stroke="#3b82f6" stroke-width="2.2"/><line x1="35" y1="12" x2="35" y2="44" stroke="currentColor" stroke-width="2.6"/><line x1="44" y1="19" x2="44" y2="37" stroke="currentColor" stroke-width="3.2"/><line x1="44" y1="28" x2="74" y2="28" stroke="#3b82f6" stroke-width="2.2"/><text x="24" y="18" font-size="11" fill="#3b82f6" font-weight="bold">+</text><rect x="4" y="25" width="5" height="6" fill="#2563eb"/><rect x="71" y="25" width="5" height="6" stroke="#2563eb" stroke-width="1.6" fill="#ffffff"/></svg>`,
+  },
+  {
+    id: "msl-ground",
+    shortName: "Ground",
+    fqn: "Modelica.Electrical.Analog.Basic.Ground",
+    kind: "model",
+    category: "electrical",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Zero-potential electrical ground reference node (v = 0)",
+    portsAndParams: "p (v = 0 V)",
+    declarationSnippet: "Modelica.Electrical.Analog.Basic.Ground G;",
+    keywords: ["ground", "gnd", "earth", "reference", "zero", "electrical"],
+    schematicSvg: `<svg ${S}><rect x="37" y="7" width="6" height="6" fill="#2563eb"/><line x1="40" y1="13" x2="40" y2="29" stroke="#3b82f6" stroke-width="2.3"/><line x1="24" y1="29" x2="56" y2="29" stroke="currentColor" stroke-width="2.5"/><line x1="29" y1="36" x2="51" y2="36" stroke="currentColor" stroke-width="2.3"/><line x1="35" y1="43" x2="45" y2="43" stroke="currentColor" stroke-width="2.2"/></svg>`,
+  },
+  {
+    id: "msl-opamp",
+    shortName: "IdealOpAmp",
+    fqn: "Modelica.Electrical.Analog.Ideal.IdealOpAmp3Pin",
+    kind: "model",
+    category: "electrical",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Ideal 3-pin operational amplifier differential stage",
+    portsAndParams: "in_p, in_n → out",
+    declarationSnippet: "Modelica.Electrical.Analog.Ideal.IdealOpAmp3Pin opAmp;",
+    keywords: ["opamp", "amplifier", "operational", "analog", "filter", "differential"],
+    schematicSvg: `<svg ${S}><polygon points="22,10 60,28 22,46" stroke="currentColor" stroke-width="2.2" fill="rgba(59,130,246,0.09)"/><line x1="6" y1="20" x2="22" y2="20" stroke="#3b82f6" stroke-width="2.2"/><line x1="6" y1="36" x2="22" y2="36" stroke="#3b82f6" stroke-width="2.2"/><line x1="60" y1="28" x2="74" y2="28" stroke="#3b82f6" stroke-width="2.2"/><line x1="26" y1="20" x2="32" y2="20" stroke="#ef4444" stroke-width="2"/><line x1="26" y1="36" x2="32" y2="36" stroke="#3b82f6" stroke-width="2"/><line x1="29" y1="33" x2="29" y2="39" stroke="#3b82f6" stroke-width="2"/></svg>`,
+  },
+  {
+    id: "msl-voltage-sensor",
+    shortName: "VoltageSensor",
+    fqn: "Modelica.Electrical.Analog.Sensors.VoltageSensor",
+    kind: "model",
+    category: "electrical",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Ideal voltmeter measuring potential difference (v = p.v - n.v)",
+    portsAndParams: "p, n → v (RealOutput)",
+    declarationSnippet: "Modelica.Electrical.Analog.Sensors.VoltageSensor VS;",
+    keywords: ["voltage", "sensor", "voltmeter", "probe", "measurement", "electrical"],
+    schematicSvg: `<svg ${S}><line x1="6" y1="28" x2="24" y2="28" stroke="#3b82f6" stroke-width="2.2"/><circle cx="40" cy="28" r="15" stroke="currentColor" stroke-width="2.2" fill="rgba(59,130,246,0.08)"/><text x="40" y="33" text-anchor="middle" font-size="14" font-weight="700" fill="currentColor">V</text><line x1="55" y1="28" x2="74" y2="28" stroke="#3b82f6" stroke-width="2.2"/><line x1="40" y1="43" x2="40" y2="52" stroke="#6366f1" stroke-width="2"/></svg>`,
+  },
+  {
+    id: "spice-diode",
+    shortName: "Diode 1N4148",
+    fqn: "SPICE.Semiconductors.Diode1N4148",
+    kind: "model",
+    category: "electrical",
+    packageName: "SPICE-Standard",
+    packageVersion: "1.0.0",
+    summary: "High-speed silicon switching PN diode (Shockley SPICE model)",
+    portsAndParams: "Is = 2.52 nA · p, n",
+    declarationSnippet: "SPICE.Semiconductors.Diode1N4148 D1;",
+    keywords: ["diode", "1n4148", "rectifier", "pn", "semiconductor", "spice"],
+    schematicSvg: `<svg ${S}><line x1="8" y1="28" x2="28" y2="28" stroke="#3b82f6" stroke-width="2.2"/><polygon points="28,15 50,28 28,41" stroke="currentColor" stroke-width="2.2" fill="rgba(59,130,246,0.16)"/><line x1="50" y1="14" x2="50" y2="42" stroke="currentColor" stroke-width="2.8"/><line x1="50" y1="28" x2="72" y2="28" stroke="#3b82f6" stroke-width="2.2"/></svg>`,
+  },
+  {
+    id: "spice-mosfet",
+    shortName: "MOSFET NMOS",
+    fqn: "SPICE.Semiconductors.MOSFET_NMOS",
+    kind: "model",
+    category: "electrical",
+    packageName: "SPICE-Standard",
+    packageVersion: "1.0.0",
+    summary: "Enhancement-mode N-channel MOSFET behavioral device",
+    portsAndParams: "Vth, Kp · G, D, S",
+    declarationSnippet: "SPICE.Semiconductors.MOSFET_NMOS M1(Vth = 1.5);",
+    keywords: ["mosfet", "nmos", "transistor", "fet", "switch", "semiconductor", "spice"],
+    schematicSvg: `<svg ${S}><line x1="10" y1="36" x2="28" y2="36" stroke="#3b82f6" stroke-width="2.2"/><line x1="28" y1="16" x2="28" y2="40" stroke="currentColor" stroke-width="2.4"/><line x1="35" y1="14" x2="35" y2="42" stroke="currentColor" stroke-width="2.4" stroke-dasharray="6 3"/><line x1="35" y1="18" x2="56" y2="18" stroke="#3b82f6" stroke-width="2.2"/><line x1="56" y1="18" x2="56" y2="7" stroke="#3b82f6" stroke-width="2.2"/><line x1="35" y1="38" x2="56" y2="38" stroke="#3b82f6" stroke-width="2.2"/><line x1="56" y1="38" x2="56" y2="49" stroke="#3b82f6" stroke-width="2.2"/></svg>`,
+  },
+  {
+    id: "spice-bjt",
+    shortName: "NPN BJT 2N2222",
+    fqn: "SPICE.Semiconductors.Transistor2N2222",
+    kind: "model",
+    category: "electrical",
+    packageName: "SPICE-Standard",
+    packageVersion: "1.0.0",
+    summary: "General-purpose NPN bipolar junction transistor",
+    portsAndParams: "Bf = 200 · C, B, E",
+    declarationSnippet: "SPICE.Semiconductors.Transistor2N2222 Q1(Bf = 200);",
+    keywords: ["bjt", "npn", "2n2222", "transistor", "bipolar", "spice", "amplifier"],
+    schematicSvg: `<svg ${S}><circle cx="43" cy="28" r="19" stroke="currentColor" stroke-width="1.6" opacity="0.55"/><line x1="10" y1="28" x2="35" y2="28" stroke="#3b82f6" stroke-width="2.2"/><line x1="35" y1="16" x2="35" y2="40" stroke="currentColor" stroke-width="2.8"/><line x1="35" y1="22" x2="54" y2="10" stroke="#3b82f6" stroke-width="2.2"/><line x1="35" y1="34" x2="54" y2="46" stroke="#3b82f6" stroke-width="2.2"/><polygon points="53,45 45,44 49,38" fill="#3b82f6"/></svg>`,
+  },
+
+  // ── Mechanics & Motion ───────────────────────────────────────────────────
+  {
+    id: "msl-inertia",
+    shortName: "Inertia",
+    fqn: "Modelica.Mechanics.Rotational.Components.Inertia",
+    kind: "model",
+    category: "mechanics",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "1D rotational inertia with dual mechanical shaft flanges (J·der(w) = τ)",
+    portsAndParams: "J = 1 kg·m² · flange_a, flange_b",
+    declarationSnippet: "Modelica.Mechanics.Rotational.Components.Inertia inertia1(J = 0.25);",
+    keywords: ["inertia", "rotational", "shaft", "flywheel", "rotor", "mechanics", "torque"],
+    schematicSvg: `<svg ${S}><line x1="8" y1="28" x2="22" y2="28" stroke="#64748b" stroke-width="3.2"/><rect x="22" y="14" width="36" height="28" rx="3" stroke="currentColor" stroke-width="2.2" fill="rgba(8,145,178,0.14)"/><text x="40" y="33" text-anchor="middle" font-size="14" font-weight="700" fill="currentColor">J</text><line x1="58" y1="28" x2="72" y2="28" stroke="#64748b" stroke-width="3.2"/><circle cx="7" cy="28" r="3.5" fill="#64748b"/><circle cx="73" cy="28" r="3.5" stroke="#64748b" stroke-width="1.8" fill="#ffffff"/></svg>`,
+  },
+  {
+    id: "msl-spring-damper",
+    shortName: "SpringDamper",
+    fqn: "Modelica.Mechanics.Rotational.Components.SpringDamper",
+    kind: "model",
+    category: "mechanics",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Linear 1D torsional spring and viscous dashpot damper in parallel",
+    portsAndParams: "c, d · flange_a, flange_b",
+    declarationSnippet: "Modelica.Mechanics.Rotational.Components.SpringDamper sd1(c = 100, d = 2);",
+    keywords: ["spring", "damper", "torsional", "stiffness", "damping", "oscillator", "mechanics"],
+    schematicSvg: `<svg ${S}><line x1="6" y1="28" x2="17" y2="28" stroke="#64748b" stroke-width="2.4"/><line x1="17" y1="16" x2="17" y2="40" stroke="currentColor" stroke-width="2"/><polyline points="17,16 24,16 27,11 33,21 39,11 45,21 51,11 55,16 63,16" stroke="currentColor" stroke-width="2" fill="none"/><line x1="17" y1="40" x2="36" y2="40" stroke="currentColor" stroke-width="2"/><path d="M36 34 H46 V46 H36" stroke="currentColor" stroke-width="2" fill="none"/><line x1="41" y1="36" x2="41" y2="44" stroke="currentColor" stroke-width="2.4"/><line x1="46" y1="40" x2="63" y2="40" stroke="currentColor" stroke-width="2"/><line x1="63" y1="16" x2="63" y2="40" stroke="currentColor" stroke-width="2"/><line x1="63" y1="28" x2="74" y2="28" stroke="#64748b" stroke-width="2.4"/></svg>`,
+  },
+  {
+    id: "msl-ideal-gear",
+    shortName: "IdealGear",
+    fqn: "Modelica.Mechanics.Rotational.Components.IdealGear",
+    kind: "model",
+    category: "mechanics",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Lossless rotational gearbox transmission stage with fixed ratio",
+    portsAndParams: "ratio = 5 · flange_a, flange_b",
+    declarationSnippet: "Modelica.Mechanics.Rotational.Components.IdealGear gear(ratio = 5);",
+    keywords: ["gear", "gearbox", "ratio", "transmission", "drivetrain", "rotational", "mechanics"],
+    schematicSvg: `<svg ${S}><line x1="6" y1="22" x2="32" y2="22" stroke="#64748b" stroke-width="2.6"/><circle cx="38" cy="20" r="8" stroke="currentColor" stroke-width="2.2" fill="rgba(8,145,178,0.14)"/><circle cx="44" cy="36" r="11" stroke="currentColor" stroke-width="2.2" fill="rgba(8,145,178,0.22)"/><line x1="50" y1="36" x2="74" y2="36" stroke="#64748b" stroke-width="2.6"/></svg>`,
+  },
+  {
+    id: "msl-sliding-mass",
+    shortName: "SlidingMass",
+    fqn: "Modelica.Mechanics.Translational.Components.Mass",
+    kind: "model",
+    category: "mechanics",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "1D translational point mass with inertia (m·der(v) = f_a + f_b)",
+    portsAndParams: "m = 1 kg · flange_a, flange_b",
+    declarationSnippet: "Modelica.Mechanics.Translational.Components.Mass mass1(m = 2.5);",
+    keywords: ["mass", "translational", "linear", "newton", "mechanics", "cart"],
+    schematicSvg: `<svg ${S}><line x1="6" y1="26" x2="21" y2="26" stroke="#10b981" stroke-width="2.4"/><rect x="21" y="13" width="38" height="24" rx="2.5" stroke="currentColor" stroke-width="2.2" fill="rgba(16,185,129,0.14)"/><text x="40" y="29" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">m</text><circle cx="29" cy="42" r="4" stroke="currentColor" stroke-width="1.8"/><circle cx="51" cy="42" r="4" stroke="currentColor" stroke-width="1.8"/><line x1="16" y1="47" x2="64" y2="47" stroke="currentColor" stroke-width="1.8"/><line x1="59" y1="26" x2="74" y2="26" stroke="#10b981" stroke-width="2.4"/></svg>`,
+  },
+  {
+    id: "planar-revolute",
+    shortName: "Revolute Joint",
+    fqn: "PlanarMechanics.Joints.Revolute",
+    kind: "model",
+    category: "mechanics",
+    packageName: "PlanarMechanics",
+    packageVersion: "1.6.1",
+    summary: "2D planar 1-DOF revolute pin joint connecting multi-body frames",
+    portsAndParams: "phi, w · frame_a, frame_b",
+    declarationSnippet: "PlanarMechanics.Joints.Revolute rev1;",
+    keywords: ["revolute", "joint", "hinge", "pin", "planar", "multibody", "kinematic"],
+    schematicSvg: `<svg ${S}><line x1="8" y1="28" x2="28" y2="28" stroke="#0891b2" stroke-width="3"/><line x1="52" y1="28" x2="72" y2="28" stroke="#0891b2" stroke-width="3"/><circle cx="40" cy="28" r="12" stroke="currentColor" stroke-width="2.3" fill="rgba(8,145,178,0.15)"/><circle cx="40" cy="28" r="4" fill="#0891b2"/><path d="M29 14 A16 16 0 0 1 51 14" stroke="#0891b2" stroke-width="1.8" fill="none"/></svg>`,
+  },
+  {
+    id: "planar-body",
+    shortName: "BodyCylinder",
+    fqn: "PlanarMechanics.Parts.BodyCylinder",
+    kind: "model",
+    category: "mechanics",
+    packageName: "PlanarMechanics",
+    packageVersion: "1.6.1",
+    summary: "2D rigid planar link with distributed mass and moment of inertia",
+    portsAndParams: "m, I, length · frame_a, frame_b",
+    declarationSnippet: "PlanarMechanics.Parts.BodyCylinder link1(m = 1.0, length = 0.5);",
+    keywords: ["body", "link", "rod", "pendulum", "planar", "multibody", "cylinder"],
+    schematicSvg: `<svg ${S}><line x1="6" y1="28" x2="16" y2="28" stroke="#0891b2" stroke-width="2.5"/><rect x="16" y="19" width="48" height="18" rx="9" stroke="currentColor" stroke-width="2.2" fill="rgba(8,145,178,0.16)"/><circle cx="24" cy="28" r="3.2" fill="#0891b2"/><circle cx="56" cy="28" r="3.2" fill="#0891b2"/><line x1="64" y1="28" x2="74" y2="28" stroke="#0891b2" stroke-width="2.5"/></svg>`,
+  },
+
+  // ── Fluids & Thermal ─────────────────────────────────────────────────────
+  {
+    id: "msl-heat-capacitor",
+    shortName: "HeatCapacitor",
+    fqn: "Modelica.Thermal.HeatTransfer.Components.HeatCapacitor",
+    kind: "model",
+    category: "fluids-thermal",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Lumped thermal heat capacity element (C·der(T) = Q_flow)",
+    portsAndParams: "C = 100 J/K · port",
+    declarationSnippet: "Modelica.Thermal.HeatTransfer.Components.HeatCapacitor cap(C = 500);",
+    keywords: ["heat", "thermal", "capacitor", "temperature", "mass", "specific heat"],
+    schematicSvg: `<svg ${S}><rect x="20" y="10" width="40" height="26" rx="3" stroke="currentColor" stroke-width="2.2" fill="rgba(239,68,68,0.12)"/><text x="40" y="28" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">C</text><line x1="40" y1="36" x2="40" y2="47" stroke="#ef4444" stroke-width="2.4"/><rect x="36" y="46" width="8" height="6" fill="#dc2626"/></svg>`,
+  },
+  {
+    id: "msl-thermal-conductor",
+    shortName: "ThermalConductor",
+    fqn: "Modelica.Thermal.HeatTransfer.Components.ThermalConductor",
+    kind: "model",
+    category: "fluids-thermal",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Linear thermal conduction element (Q_flow = G·ΔT)",
+    portsAndParams: "G = 10 W/K · port_a, port_b",
+    declarationSnippet: "Modelica.Thermal.HeatTransfer.Components.ThermalConductor cond(G = 10);",
+    keywords: ["thermal", "conductor", "conduction", "heat", "resistance", "insulation"],
+    schematicSvg: `<svg ${S}><line x1="8" y1="28" x2="22" y2="28" stroke="#ef4444" stroke-width="2.4"/><rect x="22" y="16" width="36" height="24" rx="2" stroke="currentColor" stroke-width="2.2" fill="rgba(239,68,68,0.12)"/><path d="M29 28 H51 M45 22 L51 28 L45 34" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><line x1="58" y1="28" x2="72" y2="28" stroke="#ef4444" stroke-width="2.4"/><rect x="4" y="25" width="5" height="6" fill="#dc2626"/><rect x="71" y="25" width="5" height="6" stroke="#dc2626" stroke-width="1.6" fill="#ffffff"/></svg>`,
+  },
+  {
+    id: "msl-fixed-temp",
+    shortName: "FixedTemperature",
+    fqn: "Modelica.Thermal.HeatTransfer.Sources.FixedTemperature",
+    kind: "model",
+    category: "fluids-thermal",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Ambient isothermal boundary condition (fixed temperature T)",
+    portsAndParams: "T = 293.15 K · port",
+    declarationSnippet: "Modelica.Thermal.HeatTransfer.Sources.FixedTemperature Tamb(T = 293.15);",
+    keywords: ["temperature", "ambient", "boundary", "source", "thermal", "kelvin"],
+    schematicSvg: `<svg ${S}><rect x="16" y="15" width="34" height="26" rx="3" stroke="currentColor" stroke-width="2.2" fill="rgba(239,68,68,0.14)"/><text x="33" y="33" text-anchor="middle" font-size="13" font-weight="700" fill="#ef4444">T</text><line x1="50" y1="28" x2="72" y2="28" stroke="#ef4444" stroke-width="2.4"/><rect x="70" y="25" width="6" height="6" fill="#dc2626"/></svg>`,
+  },
+  {
+    id: "buildings-pump",
+    shortName: "Centrifugal Pump",
+    fqn: "Buildings.Fluid.Movers.FlowControlled_m_flow",
+    kind: "model",
+    category: "fluids-thermal",
+    packageName: "Buildings",
+    packageVersion: "11.0.0",
+    summary: "Hydronic centrifugal pump / fan mover with controlled mass flow",
+    portsAndParams: "m_flow_nominal · port_a, port_b",
+    declarationSnippet: "Buildings.Fluid.Movers.FlowControlled_m_flow pump(m_flow_nominal = 1.5);",
+    keywords: ["pump", "fan", "mover", "fluid", "hvac", "hydronic", "flow", "buildings"],
+    schematicSvg: `<svg ${S}><line x1="6" y1="28" x2="22" y2="28" stroke="#0284c7" stroke-width="2.8"/><circle cx="40" cy="28" r="17" stroke="currentColor" stroke-width="2.2" fill="rgba(2,132,199,0.14)"/><polygon points="33,17 53,28 33,39" fill="#0284c7"/><line x1="57" y1="28" x2="74" y2="28" stroke="#0284c7" stroke-width="2.8"/></svg>`,
+  },
+  {
+    id: "buildings-valve",
+    shortName: "Two-Way Valve",
+    fqn: "Buildings.Fluid.Actuators.TwoWayEqualPercentage",
+    kind: "model",
+    category: "fluids-thermal",
+    packageName: "Buildings",
+    packageVersion: "11.0.0",
+    summary: "Modulating two-way equal-percentage hydronic control valve",
+    portsAndParams: "kFixed, y → port_a, port_b",
+    declarationSnippet: "Buildings.Fluid.Actuators.TwoWayEqualPercentage valve;",
+    keywords: ["valve", "actuator", "flow", "throttle", "fluid", "hvac", "buildings"],
+    schematicSvg: `<svg ${S}><line x1="6" y1="33" x2="22" y2="33" stroke="#0284c7" stroke-width="2.6"/><polygon points="22,21 40,33 22,45" stroke="currentColor" stroke-width="2" fill="rgba(2,132,199,0.18)"/><polygon points="58,21 40,33 58,45" stroke="currentColor" stroke-width="2" fill="rgba(2,132,199,0.18)"/><line x1="40" y1="33" x2="40" y2="15" stroke="currentColor" stroke-width="2.2"/><path d="M29 15 A11 8 0 0 1 51 15 Z" stroke="currentColor" stroke-width="1.9" fill="rgba(99,102,241,0.22)"/><line x1="58" y1="33" x2="74" y2="33" stroke="#0284c7" stroke-width="2.6"/></svg>`,
+  },
+  {
+    id: "buildings-volume",
+    shortName: "MixingVolume",
+    fqn: "Buildings.Fluid.MixingVolumes.MixingVolume",
+    kind: "model",
+    category: "fluids-thermal",
+    packageName: "Buildings",
+    packageVersion: "11.0.0",
+    summary: "Well-mixed thermofluid tank or building zone control volume",
+    portsAndParams: "V = 1 m³ · port_a, port_b",
+    declarationSnippet: "Buildings.Fluid.MixingVolumes.MixingVolume tank(V = 2.0);",
+    keywords: ["tank", "volume", "reservoir", "room", "zone", "fluid", "hvac", "buildings"],
+    schematicSvg: `<svg ${S}><rect x="20" y="9" width="40" height="38" rx="5" stroke="currentColor" stroke-width="2.2" fill="rgba(2,132,199,0.08)"/><path d="M22 27 Q31 23 40 27 T58 27 V45 H22 Z" fill="rgba(56,189,248,0.35)"/><line x1="6" y1="20" x2="20" y2="20" stroke="#0284c7" stroke-width="2.6"/><line x1="60" y1="36" x2="74" y2="36" stroke="#0284c7" stroke-width="2.6"/></svg>`,
+  },
+  {
+    id: "epanet-pipe",
+    shortName: "Pressurized Pipe",
+    fqn: "EPANET.PressurizedPipe",
+    kind: "model",
+    category: "fluids-thermal",
+    packageName: "EPANET-Benchmark-Networks",
+    packageVersion: "2.2.0",
+    summary: "Hazen-Williams / Darcy-Weisbach municipal water distribution pipe",
+    portsAndParams: "length, diameter · Q_flow",
+    declarationSnippet: "EPANET.PressurizedPipe mainPipe(length = 500, diameter = 0.3);",
+    keywords: ["pipe", "water", "hydraulic", "epanet", "pipeline", "headloss"],
+    schematicSvg: `<svg ${S}><rect x="12" y="20" width="56" height="16" rx="2" stroke="currentColor" stroke-width="2.2" fill="rgba(2,132,199,0.16)"/><line x1="22" y1="28" x2="54" y2="28" stroke="#0284c7" stroke-width="2.2"/><polygon points="50,23 58,28 50,33" fill="#0284c7"/><circle cx="10" cy="28" r="4" fill="#0284c7"/><circle cx="70" cy="28" r="4" fill="#0284c7"/></svg>`,
+  },
+
+  // ── Control & Signal Blocks ──────────────────────────────────────────────
+  {
+    id: "msl-pid",
+    shortName: "PID Controller",
+    fqn: "Modelica.Blocks.Continuous.PID",
+    kind: "block",
+    category: "control",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Continuous PID controller with anti-windup and derivative filter",
+    portsAndParams: "k, Ti, Td · u → y",
+    declarationSnippet: "Modelica.Blocks.Continuous.PID pid(k = 2.0, Ti = 0.5, Td = 0.1);",
+    keywords: ["pid", "controller", "feedback", "control", "regulator", "blocks", "continuous"],
+    schematicSvg: `<svg ${S}><polygon points="8,23 16,28 8,33" fill="#6366f1"/><rect x="16" y="9" width="48" height="38" rx="3" stroke="currentColor" stroke-width="2.1" fill="rgba(99,102,241,0.10)"/><text x="40" y="24" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor">PID</text><path d="M23 40 V29 L33 36 L56 31" stroke="#6366f1" stroke-width="2.1" fill="none"/><polygon points="64,23 72,28 64,33" stroke="#6366f1" stroke-width="1.6" fill="#ffffff"/></svg>`,
+  },
+  {
+    id: "msl-first-order",
+    shortName: "FirstOrder (PT1)",
+    fqn: "Modelica.Blocks.Continuous.FirstOrder",
+    kind: "block",
+    category: "control",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "First-order lag transfer block y = k / (T·s + 1) · u",
+    portsAndParams: "k = 1, T = 1 s · u → y",
+    declarationSnippet: "Modelica.Blocks.Continuous.FirstOrder pt1(k = 1.0, T = 0.2);",
+    keywords: ["pt1", "firstorder", "lag", "lowpass", "filter", "transfer", "control", "blocks"],
+    schematicSvg: `<svg ${S}><polygon points="8,23 16,28 8,33" fill="#6366f1"/><rect x="16" y="9" width="48" height="38" rx="3" stroke="currentColor" stroke-width="2.1" fill="rgba(99,102,241,0.08)"/><line x1="22" y1="40" x2="58" y2="40" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><line x1="24" y1="15" x2="24" y2="42" stroke="currentColor" stroke-width="1.2" opacity="0.5"/><path d="M24 40 C28 22, 38 18, 57 18" stroke="#6366f1" stroke-width="2.3" fill="none"/><polygon points="64,23 72,28 64,33" stroke="#6366f1" stroke-width="1.6" fill="#ffffff"/></svg>`,
+  },
+  {
+    id: "msl-integrator",
+    shortName: "Integrator",
+    fqn: "Modelica.Blocks.Continuous.Integrator",
+    kind: "block",
+    category: "control",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Continuous-time signal integrator block (der(y) = k·u)",
+    portsAndParams: "k = 1 · u → y",
+    declarationSnippet: "Modelica.Blocks.Continuous.Integrator integ(k = 1.0);",
+    keywords: ["integrator", "integral", "1/s", "state", "control", "blocks"],
+    schematicSvg: `<svg ${S}><polygon points="8,23 16,28 8,33" fill="#6366f1"/><rect x="16" y="9" width="48" height="38" rx="3" stroke="currentColor" stroke-width="2.1" fill="rgba(99,102,241,0.08)"/><text x="40" y="36" text-anchor="middle" font-size="22" font-family="serif" fill="#6366f1">∫</text><polygon points="64,23 72,28 64,33" stroke="#6366f1" stroke-width="1.6" fill="#ffffff"/></svg>`,
+  },
+  {
+    id: "msl-transfer-fn",
+    shortName: "TransferFunction",
+    fqn: "Modelica.Blocks.Continuous.TransferFunction",
+    kind: "block",
+    category: "control",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Linear SISO rational Laplace transfer function b(s) / a(s)",
+    portsAndParams: "b = {1}, a = {1, 1} · u → y",
+    declarationSnippet: "Modelica.Blocks.Continuous.TransferFunction tf(b = {1}, a = {1, 1});",
+    keywords: ["transfer", "laplace", "siso", "poles", "zeros", "bode", "control"],
+    schematicSvg: `<svg ${S}><polygon points="8,23 16,28 8,33" fill="#6366f1"/><rect x="16" y="9" width="48" height="38" rx="3" stroke="currentColor" stroke-width="2.1" fill="rgba(99,102,241,0.08)"/><text x="40" y="23" text-anchor="middle" font-size="10.5" font-family="monospace" fill="currentColor">b(s)</text><line x1="25" y1="28" x2="55" y2="28" stroke="currentColor" stroke-width="1.6"/><text x="40" y="40" text-anchor="middle" font-size="10.5" font-family="monospace" fill="currentColor">a(s)</text><polygon points="64,23 72,28 64,33" stroke="#6366f1" stroke-width="1.6" fill="#ffffff"/></svg>`,
+  },
+  {
+    id: "msl-step",
+    shortName: "Step",
+    fqn: "Modelica.Blocks.Sources.Step",
+    kind: "block",
+    category: "control",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Step reference signal generator with configurable step height & time",
+    portsAndParams: "height = 1, startTime = 0 → y",
+    declarationSnippet: "Modelica.Blocks.Sources.Step step1(height = 1.0, startTime = 0.5);",
+    keywords: ["step", "heaviside", "setpoint", "input", "signal", "source", "blocks"],
+    schematicSvg: `<svg ${S}><rect x="14" y="9" width="48" height="38" rx="3" stroke="currentColor" stroke-width="2.1" fill="rgba(99,102,241,0.08)"/><polyline points="21,38 37,38 37,18 55,18" stroke="#6366f1" stroke-width="2.5" fill="none"/><polygon points="62,23 70,28 62,33" stroke="#6366f1" stroke-width="1.6" fill="#ffffff"/></svg>`,
+  },
+  {
+    id: "msl-feedback",
+    shortName: "Feedback",
+    fqn: "Modelica.Blocks.Math.Feedback",
+    kind: "block",
+    category: "control",
+    packageName: "Modelica",
+    packageVersion: "4.1.0",
+    summary: "Negative feedback summing junction (y = u1 - u2)",
+    portsAndParams: "u1 (+), u2 (−) → y",
+    declarationSnippet: "Modelica.Blocks.Math.Feedback fb;",
+    keywords: ["feedback", "sum", "error", "junction", "loop", "control", "math"],
+    schematicSvg: `<svg ${S}><line x1="8" y1="28" x2="26" y2="28" stroke="#6366f1" stroke-width="2.2"/><circle cx="40" cy="28" r="14" stroke="currentColor" stroke-width="2.2" fill="rgba(99,102,241,0.10)"/><text x="33" y="31" font-size="11" font-weight="bold" fill="#6366f1">+</text><text x="38" y="40" font-size="12" font-weight="bold" fill="#ef4444">−</text><line x1="40" y1="52" x2="40" y2="42" stroke="#6366f1" stroke-width="2.2"/><line x1="54" y1="28" x2="72" y2="28" stroke="#6366f1" stroke-width="2.2"/></svg>`,
+  },
+
+  // ── Power Grids ──────────────────────────────────────────────────────────
+  {
+    id: "grid-ieee13",
+    shortName: "IEEE 13-Node Feeder",
+    fqn: "IEEEFeeders.IEEE13Node",
+    kind: "model",
+    category: "power-grids",
+    packageName: "IEEE-Test-Feeders",
+    packageVersion: "1.0.0",
+    summary: "Unbalanced 4.16 kV 3-phase distribution test feeder with regulator",
+    portsAndParams: "Vbase = 4.16 kV · 13 buses",
+    declarationSnippet: "IEEEFeeders.IEEE13Node feeder13;",
+    keywords: ["ieee", "13", "feeder", "distribution", "opendss", "grid", "bus", "power"],
+    schematicSvg: `<svg ${S}><line x1="20" y1="12" x2="20" y2="44" stroke="#d97706" stroke-width="3.4"/><line x1="20" y1="18" x2="62" y2="18" stroke="currentColor" stroke-width="2"/><line x1="20" y1="28" x2="68" y2="28" stroke="currentColor" stroke-width="2"/><line x1="20" y1="38" x2="54" y2="38" stroke="currentColor" stroke-width="2"/><circle cx="44" cy="18" r="3.5" fill="#d97706"/><circle cx="52" cy="28" r="3.5" fill="#d97706"/><circle cx="38" cy="38" r="3.5" fill="#d97706"/></svg>`,
+  },
+  {
+    id: "grid-genrou",
+    shortName: "Sync Generator GENROU",
+    fqn: "PSSEDynamics.GENROU",
+    kind: "model",
+    category: "power-grids",
+    packageName: "PSSE-Standard-Dynamics",
+    packageVersion: "1.0.0",
+    summary: "Round-rotor synchronous turbine generator transient stability model",
+    portsAndParams: "H = 4.5 s, D = 1.0 · delta, omega",
+    declarationSnippet: "PSSEDynamics.GENROU gen1(H = 4.5);",
+    keywords: ["generator", "synchronous", "genrou", "psse", "turbine", "machine", "grid"],
+    schematicSvg: `<svg ${S}><circle cx="40" cy="28" r="18" stroke="currentColor" stroke-width="2.2" fill="rgba(217,119,6,0.12)"/><text x="40" y="26" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">G</text><path d="M31 35 C34 29, 37 29, 40 35 C43 41, 46 41, 49 35" stroke="#d97706" stroke-width="2.1" fill="none"/><line x1="58" y1="28" x2="74" y2="28" stroke="#d97706" stroke-width="2.6"/></svg>`,
+  },
+  {
+    id: "grid-ibr",
+    shortName: "Inverter REGC_A",
+    fqn: "PSSEDynamics.REGC_A",
+    kind: "model",
+    category: "power-grids",
+    packageName: "PSSE-Standard-Dynamics",
+    packageVersion: "1.0.0",
+    summary: "WECC grid-following solar PV / BESS renewable inverter dynamic model",
+    portsAndParams: "Tg = 0.02 s · DC/AC converter",
+    declarationSnippet: "PSSEDynamics.REGC_A pvInverter;",
+    keywords: ["inverter", "solar", "pv", "bess", "ibr", "regc", "wecc", "psse", "grid"],
+    schematicSvg: `<svg ${S}><rect x="20" y="10" width="40" height="36" rx="3" stroke="currentColor" stroke-width="2.2" fill="rgba(217,119,6,0.10)"/><line x1="20" y1="46" x2="60" y2="10" stroke="currentColor" stroke-width="1.8"/><text x="29" y="24" font-size="13" font-weight="700" fill="currentColor">=</text><path d="M43 37 C45 33, 48 33, 50 37 C52 41, 55 41, 57 37" stroke="#d97706" stroke-width="2" fill="none"/><line x1="8" y1="28" x2="20" y2="28" stroke="#d97706" stroke-width="2.4"/><line x1="60" y1="28" x2="72" y2="28" stroke="#d97706" stroke-width="2.4"/></svg>`,
+  },
+
+  // ── Robotics & CAD ───────────────────────────────────────────────────────
+  {
+    id: "robot-ur5",
+    shortName: "UR5 6-DOF Arm",
+    fqn: "StandardRobots.UR5",
+    kind: "model",
+    category: "robotics-cad",
+    packageName: "Standard-Robots",
+    packageVersion: "1.0.0",
+    summary: "Universal Robots UR5 6-axis articulated collaborative manipulator",
+    portsAndParams: "6 revolute joints · URDF / multibody",
+    declarationSnippet: "StandardRobots.UR5 robot;",
+    keywords: ["ur5", "robot", "arm", "manipulator", "urdf", "6dof", "kinematics"],
+    schematicSvg: `<svg ${S}><rect x="20" y="44" width="24" height="5" rx="1.5" fill="#10b981"/><line x1="32" y1="44" x2="28" y2="28" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/><line x1="28" y1="28" x2="48" y2="15" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/><line x1="48" y1="15" x2="60" y2="22" stroke="#10b981" stroke-width="2.4" stroke-linecap="round"/><circle cx="32" cy="43" r="3.5" fill="#10b981"/><circle cx="28" cy="28" r="3.5" fill="#10b981"/><circle cx="48" cy="15" r="3.2" fill="#10b981"/></svg>`,
+  },
+  {
+    id: "robot-panda",
+    shortName: "Franka Panda 7-DOF",
+    fqn: "StandardRobots.FrankaPanda",
+    kind: "model",
+    category: "robotics-cad",
+    packageName: "Standard-Robots",
+    packageVersion: "1.0.0",
+    summary: "7-DOF redundant torque-controlled collaborative robot arm",
+    portsAndParams: "7 torque joints · end-effector gripper",
+    declarationSnippet: "StandardRobots.FrankaPanda panda;",
+    keywords: ["franka", "panda", "robot", "7dof", "torque", "gripper", "urdf"],
+    schematicSvg: `<svg ${S}><rect x="22" y="44" width="22" height="5" rx="1.5" fill="#10b981"/><path d="M33 44 L33 30 L45 16 L58 20" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M58 16 V24 M58 17 H63 M58 23 H63" stroke="#10b981" stroke-width="2" stroke-linecap="round"/><circle cx="33" cy="30" r="3.2" fill="#10b981"/><circle cx="45" cy="16" r="3.2" fill="#10b981"/></svg>`,
+  },
+  {
+    id: "cad-m8-bolt",
+    shortName: "ISO 4762 M8 Bolt",
+    fqn: "STEPFasteners.M8x30_SocketCapScrew",
+    kind: "record",
+    category: "robotics-cad",
+    packageName: "STEP-Fasteners",
+    packageVersion: "1.0.0",
+    summary: "ISO 4762 M8×30 hexagon socket head cap screw B-Rep solid",
+    portsAndParams: "d = 8 mm, L = 30 mm · STEP AP242",
+    declarationSnippet: "STEPFasteners.M8x30_SocketCapScrew boltM8;",
+    keywords: ["bolt", "screw", "fastener", "m8", "iso", "step", "cad", "brep"],
+    schematicSvg: `<svg ${S}><rect x="18" y="16" width="14" height="24" rx="2" stroke="currentColor" stroke-width="2.2" fill="rgba(16,185,129,0.18)"/><rect x="32" y="21" width="32" height="14" stroke="currentColor" stroke-width="2" fill="rgba(16,185,129,0.10)"/><line x1="38" y1="21" x2="36" y2="35" stroke="currentColor" stroke-width="1.4"/><line x1="45" y1="21" x2="43" y2="35" stroke="currentColor" stroke-width="1.4"/><line x1="52" y1="21" x2="50" y2="35" stroke="currentColor" stroke-width="1.4"/><line x1="59" y1="21" x2="57" y2="35" stroke="currentColor" stroke-width="1.4"/></svg>`,
+  },
+
+  // ── Systems & Architecture ───────────────────────────────────────────────
+  {
+    id: "sysml-isq-length",
+    shortName: "ISQ Length",
+    fqn: "SysML.ISQ.Length",
+    kind: "part def",
+    category: "systems",
+    packageName: "SysML",
+    packageVersion: "2026.3.0",
+    summary: "ISO 80000 SI base length dimension & unit definition",
+    portsAndParams: "SysML v2 · SI [m]",
+    declarationSnippet: "attribute length : ISQ::LengthValue;",
+    keywords: ["sysml", "isq", "length", "unit", "quantity", "si", "systems"],
+    schematicSvg: `<svg ${S}><rect x="14" y="10" width="52" height="36" rx="4" stroke="#8b5cf6" stroke-width="2" fill="rgba(139,92,246,0.10)"/><line x1="14" y1="23" x2="66" y2="23" stroke="#8b5cf6" stroke-width="1.4"/><text x="40" y="19" text-anchor="middle" font-size="8.5" fill="#8b5cf6" font-family="monospace">&lt;&lt;attribute def&gt;&gt;</text><text x="40" y="36" text-anchor="middle" font-size="12" font-weight="700" fill="currentColor">ISQ::Length</text></svg>`,
+  },
+  {
+    id: "autosar-swc",
+    shortName: "Application SW-C",
+    fqn: "AUTOSAR.ApplicationSwComponentType",
+    kind: "block",
+    category: "systems",
+    packageName: "AUTOSAR-Metamodels",
+    packageVersion: "4.4.0",
+    summary: "AUTOSAR Atomic Application Software Component with RPort/PPort",
+    portsAndParams: "RPort_VehicleSpeed → PPort_Torque",
+    declarationSnippet: "AUTOSAR.ApplicationSwComponentType swc;",
+    keywords: ["autosar", "swc", "ecu", "automotive", "port", "arxml", "systems"],
+    schematicSvg: `<svg ${S}><rect x="18" y="12" width="44" height="32" rx="4" stroke="#8b5cf6" stroke-width="2.1" fill="rgba(139,92,246,0.10)"/><rect x="12" y="23" width="8" height="10" rx="1.5" stroke="#8b5cf6" stroke-width="1.8" fill="#ffffff"/><rect x="60" y="23" width="8" height="10" rx="1.5" fill="#8b5cf6"/><text x="40" y="32" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor">SW-C</text></svg>`,
+  },
+];
+
+export const CURATED_ANSATZ_PACKAGES: RegistryPackage[] = [
+  {
+    name: "Modelica",
+    version: "4.1.0",
+    versions: ["4.1.0", "4.0.0", "3.2.3"],
+    description:
+      "Modelica Standard Library (MSL) — multi-domain physical modeling across Electrical, Mechanics, Fluids, Thermal & Control Blocks.",
+    domain: "electrical",
+    language: "Modelica",
+    license: "BSD-3-Clause",
+    downloads: 148200,
+    sizeBytes: 5033164,
+    verified: true,
+    dependencies: { Complex: ">=4.0.0" },
+  },
+  {
+    name: "Buildings",
+    version: "11.0.0",
+    versions: ["11.0.0", "10.0.0"],
+    description:
+      "LBNL Modelica Buildings Library — hydronic HVAC, centrifugal pumps, modulating valves, heat exchangers & district energy.",
+    domain: "fluids-thermal",
+    language: "Modelica",
+    license: "BSD-3-Clause",
+    downloads: 54300,
+    sizeBytes: 3820100,
+    verified: true,
+    dependencies: { Modelica: ">=4.0.0" },
+  },
+  {
+    name: "PlanarMechanics",
+    version: "1.6.1",
+    versions: ["1.6.1", "1.6.0"],
+    description:
+      "DLR 2D planar multi-body mechanical systems — revolute/prismatic joints, rigid links, gear trains, friction & kinematic loops.",
+    domain: "mechanics",
+    language: "Modelica",
+    license: "BSD-3-Clause",
+    downloads: 41800,
+    sizeBytes: 912400,
+    verified: true,
+    dependencies: { Modelica: ">=4.0.0" },
+  },
+  {
+    name: "SPICE-Standard",
+    version: "1.0.0",
+    versions: ["1.0.0"],
+    description:
+      "Standard discrete semiconductor diodes (1N4148), bipolar transistors (2N2222), power MOSFETs & op-amp macromodels.",
+    domain: "electrical",
+    language: "SPICE",
+    license: "BSD-3-Clause",
+    downloads: 38400,
+    sizeBytes: 420910,
+    verified: true,
+  },
+  {
+    name: "SysML",
+    version: "2026.3.0",
+    versions: ["2026.3.0", "2025.1.0"],
+    description:
+      "OMG Systems Modeling Language (SysML v2) & KerML Standard Library — ISO 80000 quantities, requirements & architecture views.",
+    domain: "systems",
+    language: "SysML v2",
+    license: "OMG-SysML-2.0",
+    downloads: 94100,
+    sizeBytes: 2202009,
+    verified: true,
+  },
+  {
+    name: "IEEE-Test-Feeders",
+    version: "1.0.0",
+    versions: ["1.0.0"],
+    description:
+      "IEEE 13-Bus, 34-Bus & 123-Bus unbalanced 3-phase radial distribution test feeders with voltage regulators.",
+    domain: "power-grids",
+    language: "OpenDSS",
+    license: "Apache-2.0",
+    downloads: 27900,
+    sizeBytes: 819200,
+    verified: true,
+  },
+  {
+    name: "PSSE-Standard-Dynamics",
+    version: "1.0.0",
+    versions: ["1.0.0"],
+    description:
+      "IEEE/WECC synchronous generators (GENROU), exciters (EXST1), governors & grid-following renewable IBR models (REGC_A).",
+    domain: "power-grids",
+    language: "PSS/E",
+    license: "Apache-2.0",
+    downloads: 22150,
+    sizeBytes: 512000,
+    verified: true,
+  },
+  {
+    name: "Standard-Robots",
+    version: "1.0.0",
+    versions: ["1.0.0"],
+    description:
+      "Industrial and collaborative robot kinematic & dynamic manipulators (Universal Robots UR5, Franka Panda, KUKA iiwa).",
+    domain: "robotics-cad",
+    language: "URDF",
+    license: "BSD-3-Clause",
+    downloads: 31500,
+    sizeBytes: 1450000,
+    verified: true,
+  },
+  {
+    name: "EPANET-Benchmark-Networks",
+    version: "2.2.0",
+    versions: ["2.2.0"],
+    description:
+      "EPA pressurized municipal water distribution networks, Hazen-Williams pipes, elevated storage tanks & pump stations.",
+    domain: "fluids-thermal",
+    language: "EPANET",
+    license: "Public-Domain",
+    downloads: 16200,
+    sizeBytes: 318000,
+    verified: true,
+  },
+  {
+    name: "AUTOSAR-Metamodels",
+    version: "4.4.0",
+    versions: ["4.4.0"],
+    description:
+      "AUTOSAR Classic & Adaptive software component definitions, sender-receiver port interfaces & ECU composition templates.",
+    domain: "systems",
+    language: "AUTOSAR",
+    license: "AUTOSAR",
+    downloads: 14800,
+    sizeBytes: 640000,
+    verified: true,
+  },
+  {
+    name: "STEP-Fasteners",
+    version: "1.0.0",
+    versions: ["1.0.0"],
+    description:
+      "ISO 4762 socket head cap screws, ISO 4017 hex bolts & ISO 4032 nuts parametric B-Rep mechanical fastener catalog.",
+    domain: "robotics-cad",
+    language: "STEP",
+    license: "CC0-1.0",
+    downloads: 21000,
+    sizeBytes: 790000,
+    verified: true,
+  },
+  {
+    name: "SWMM-Reference-Networks",
+    version: "5.2.0",
+    versions: ["5.2.0"],
+    description:
+      "EPA urban stormwater runoff catchments, detention basins, culverts & dynamic wave open-channel routing networks.",
+    domain: "fluids-thermal",
+    language: "SWMM",
+    license: "Public-Domain",
+    downloads: 12400,
+    sizeBytes: 295000,
+    verified: true,
+  },
+];
+
+export { CURATED_ANSATZ_PACKAGES as CURATED_PACKAGES, CURATED_ANSATZ_PACKAGES as CURATED_STDLIB_PACKAGES };
+
+/** Map an arbitrary FQN from live LSP `searchClasses` to a domain category & clean fallback schematic SVG. */
+export function inferDomainForFqn(fqn: string, language?: string): Exclude<EngineeringDomainId, "all"> {
+  const lower = fqn.toLowerCase();
+  const lang = (language || "").toLowerCase();
+  if (
+    lower.includes("electrical") ||
+    lower.includes("spice") ||
+    lower.includes("semiconductor") ||
+    lower.includes("analog") ||
+    lang === "spice"
+  ) {
+    return "electrical";
+  }
+  if (
+    lower.includes("mechanics") ||
+    lower.includes("rotational") ||
+    lower.includes("translational") ||
+    lower.includes("multibody") ||
+    lower.includes("planar")
+  ) {
+    return "mechanics";
+  }
+  if (
+    lower.includes("fluid") ||
+    lower.includes("thermal") ||
+    lower.includes("heat") ||
+    lower.includes("media") ||
+    lower.includes("buildings") ||
+    lang === "epanet" ||
+    lang === "swmm"
+  ) {
+    return "fluids-thermal";
+  }
+  if (lower.includes("blocks") || lower.includes("control") || lower.includes("math") || lower.includes("clocked")) {
+    return "control";
+  }
+  if (
+    lower.includes("ieee") ||
+    lower.includes("psse") ||
+    lower.includes("power") ||
+    lang === "opendss" ||
+    lang === "psse"
+  ) {
+    return "power-grids";
+  }
+  if (
+    lower.includes("robot") ||
+    lower.includes("step") ||
+    lower.includes("cad") ||
+    lang === "urdf" ||
+    lang === "step"
+  ) {
+    return "robotics-cad";
+  }
+  return "systems";
+}
+
+export function buildGenericSchematicSvg(
+  shortName: string,
+  kind: string,
+  domain: Exclude<EngineeringDomainId, "all">,
+): string {
+  const accent = DOMAIN_FILTERS.find((d) => d.id === domain)?.accent ?? "#3b82f6";
+  const abbrev =
+    shortName
+      .replace(/[^A-Za-z0-9]/g, "")
+      .slice(0, 4)
+      .toUpperCase() || "CMP";
+  const isBlock = kind === "block" || kind === "function";
+  if (isBlock) {
+    return `<svg ${S}><polygon points="8,23 16,28 8,33" fill="${accent}"/><rect x="16" y="11" width="48" height="34" rx="3.5" stroke="currentColor" stroke-width="2" fill="${accent}18"/><text x="40" y="32" text-anchor="middle" font-size="11" font-weight="700" font-family="monospace" fill="currentColor">${abbrev}</text><polygon points="64,23 72,28 64,33" stroke="${accent}" stroke-width="1.6" fill="#ffffff"/></svg>`;
+  }
+  return `<svg ${S}><line x1="6" y1="28" x2="18" y2="28" stroke="${accent}" stroke-width="2.2"/><rect x="18" y="12" width="44" height="32" rx="4" stroke="currentColor" stroke-width="2" fill="${accent}16"/><text x="40" y="32" text-anchor="middle" font-size="11" font-weight="700" font-family="monospace" fill="currentColor">${abbrev}</text><line x1="62" y1="28" x2="74" y2="28" stroke="${accent}" stroke-width="2.2"/><circle cx="6" cy="28" r="2.8" fill="${accent}"/><circle cx="74" cy="28" r="2.8" stroke="${accent}" stroke-width="1.5" fill="#ffffff"/></svg>`;
+}

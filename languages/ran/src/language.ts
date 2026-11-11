@@ -7,16 +7,18 @@
 import { language } from "@modelscript/dsl";
 import { DAEBuilder } from "@modelscript/runtime";
 import { lowerRanLinkToDae } from "./dae/lowering.js";
+import { ranIndexing } from "./indexing.js";
 import { lintAntennaPatternDeck } from "./lints/ran-linter.js";
 import { parseNsmaAdf } from "./parser/nsma-parser.js";
 import { parsePlanetPat } from "./parser/planet-parser.js";
 
 export const ranLanguage = language({
   name: "ran",
-  fileExtensions: [".adf", ".nsma", ".msi", ".planet"],
+  fileExtensions: [".adf", ".nsma", ".msi", ".planet", ".pat"],
   maturity: "stable",
+  indexing: ranIndexing,
   lsp: {
-    fileExtensions: [".adf", ".nsma", ".msi", ".planet"],
+    fileExtensions: [".adf", ".nsma", ".msi", ".planet", ".pat"],
   },
 
   actions: [

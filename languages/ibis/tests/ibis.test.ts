@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import test from "node:test";
 import {
   calculateOutputResistance,
   evaluateBufferCurrent,
+  ibisLanguage,
   ibisToModelica,
-  IbisWorkspaceIndex,
   lintIbis,
   lowerIbisToDae,
   parseIbis,
   serializeIbis,
   simulateIbisChannel,
+  type IbisDeck,
 } from "../src/index.js";
 
 const SAMPLE_IBIS = `[IBIS Ver] 3.2
@@ -255,13 +257,13 @@ test("IBIS Modelica Projection: generates syntactically valid Modelica 3.x code"
   assert(mo.includes("end LVCMOS_Driver;"));
 });
 
-test("IBIS Workspace Index: indexes multi-file symbols accurately", () => {
-  const indexer = new IbisWorkspaceIndex();
+test("IBIS UnifiedWorkspace: indexes multi-file symbols accurately", () => {
+  const ws = new UnifiedWorkspace(ibisLanguage);
   const uri = "file:///models/sample.ibs";
-  indexer.indexFile(uri, SAMPLE_IBIS);
+  ws.setDocument(uri, SAMPLE_IBIS);
 
-  assert.strictEqual(indexer.has(uri), true);
-  const fileIdx = indexer.getFileIndex(uri);
+  assert.strictEqual(ws.hasDocument(uri), true);
+  const fileIdx = ws.getFileIndex(uri);
   assert(fileIdx !== undefined);
 
   const txChipSyms = fileIdx.byName.get("TX_CHIP");
@@ -269,6 +271,10 @@ test("IBIS Workspace Index: indexes multi-file symbols accurately", () => {
 
   const modSyms = fileIdx.byName.get("LVCMOS_33_OUT");
   assert(modSyms !== undefined && modSyms.length > 0);
+
+  const deck = ws.getParsedModel<IbisDeck>(uri);
+  assert(deck !== undefined);
+  assert.strictEqual(deck.ibisVer, "3.2");
 });
 
 test("IBIS-AMI Channel Solver: parses [Algorithmic Model] and opens degraded eye with FFE/CTLE/DFE equalization", () => {

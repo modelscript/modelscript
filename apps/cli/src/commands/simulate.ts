@@ -432,7 +432,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
           }
         }
       }
-      const unified = ws.toUnifiedAsync ? await ws.toUnifiedAsync() : ws.toUnified();
+      const unified = await ws.getIndexAsync();
       const qe = createSysML2QueryEngine(unified);
       const queryDb = qe.toQueryDB();
       profiler.end("parsing");

@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerSmilesToDae, type SmilesDaeOptions } from "./dae/smiles-to-dae.js";
+import { indexSmilesFile } from "./indexing.js";
 import { lintSmiles } from "./lints/index.js";
 import { parseSmilesDocument } from "./parser/smiles-parser.js";
 import { smilesToAspenDeck, smilesToModelica } from "./projections/smiles-to-modelica.js";
@@ -14,6 +15,9 @@ export const smilesLanguage = language({
   name: "smiles",
   fileExtensions: [".smi", ".smarts", ".mol", ".sdf"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexSmilesFile,
+  },
   lsp: {
     fileExtensions: [".smi", ".smarts", ".mol", ".sdf"],
     icons: {

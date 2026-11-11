@@ -106,7 +106,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
       if (!query) return { results: [] };
 
       const limit = params.limit ?? 50;
-      const unifiedIndex = context.workspaceManager.unifiedWorkspace.toTreeIndex();
+      const unifiedIndex = context.workspaceManager.unifiedWorkspace.getIndex();
       if (!unifiedIndex) return { results: [] };
 
       const results: TreeNodeInfo[] = [];
@@ -138,18 +138,25 @@ export function registerClassQueryEndpoints(context: LspContext) {
       className: string;
     }): { content: string | null; uri?: string | undefined; error?: string | undefined } => {
       try {
-        const unifiedIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+        const unifiedIndex = context.workspaceManager.unifiedWorkspace.getIndex();
         const parts = params.className.split(".");
         let entries = unifiedIndex.byName.get(parts[parts.length - 1]!);
         let entry = undefined;
 
         if (entries) {
+          let builtinEntry: any = undefined;
           for (const id of entries) {
             const e = unifiedIndex.symbols.get(id);
             if (e && getCompositeName(e, unifiedIndex) === params.className) {
-              entry = e;
-              break;
+              if (!e.resourceId?.startsWith("builtin://")) {
+                entry = e;
+                break;
+              }
+              if (!builtinEntry) builtinEntry = e;
             }
+          }
+          if (!entry && builtinEntry) {
+            entry = builtinEntry;
           }
         }
 
@@ -161,6 +168,37 @@ export function registerClassQueryEndpoints(context: LspContext) {
           uri =
             (moIdx as any)?.getFileUriForFQN?.(params.className) ||
             (sysmlIdx as any)?.getFileUriForFQN?.(params.className);
+        }
+
+        if (uri?.startsWith("builtin://") && entry) {
+          const classPrefix =
+            (entry.metadata as any)?.classPrefixes ?? (entry.kind === "Package" ? "package" : "model");
+          const desc = (entry.metadata as any)?.description
+            ? ` "${String((entry.metadata as any).description).replace(/"/g, '\\"')}"`
+            : "";
+          const childIds = unifiedIndex.childrenOf.get(entry.id) ?? [];
+          const bodyLines: string[] = [];
+          for (const cid of childIds) {
+            const ch = unifiedIndex.symbols.get(cid);
+            if (!ch) continue;
+            if (ch.kind === "Component" || ch.kind === "Variable") {
+              const m = (ch.metadata ?? {}) as Record<string, unknown>;
+              const prefix =
+                m["variability"] === "parameter"
+                  ? "parameter "
+                  : m["causality"] === "input"
+                    ? "input "
+                    : m["causality"] === "output"
+                      ? "output "
+                      : "";
+              const tSpec = String(m["typeSpecifier"] ?? "Real");
+              const defVal = m["defaultValue"] !== undefined ? ` = ${m["defaultValue"]}` : "";
+              const chDesc = m["description"] ? ` "${String(m["description"]).replace(/"/g, '\\"')}"` : "";
+              bodyLines.push(`  ${prefix}${tSpec} ${ch.name}${defVal}${chDesc};`);
+            }
+          }
+          const synth = `${classPrefix} ${entry.name}${desc}\n${bodyLines.join("\n")}\nend ${entry.name};\n`;
+          return { content: synth, uri };
         }
 
         if (uri && context.state.sharedContext) {
@@ -196,7 +234,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
         // Only query unified index if uri wasn't found via fast-path
         if (!uri) {
-          const unifiedIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+          const unifiedIndex = context.workspaceManager.unifiedWorkspace.getIndex();
           let entries = unifiedIndex.byName.get(params.className) ?? unifiedIndex.byName.get(lastName);
 
           if (entries) {
@@ -295,12 +333,23 @@ export function registerClassQueryEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/addComponent",
     async (params: { uri: string; className: string; x: number; y: number }) => {
+      const rawClass = params.className ?? "";
+      if (
+        !rawClass ||
+        rawClass.startsWith("__LOADING__:") ||
+        rawClass.startsWith("__ONTOLOGY__:") ||
+        (rawClass.startsWith("__LIB__:") && !rawClass.includes("/") && !rawClass.includes("."))
+      ) {
+        return [];
+      }
+      const cleanClassName = rawClass.replace(/^__LIB__:[^/]+\//, "").replace(/^__LIB__:/, "");
+
       // SysML2 — dispatch handles element insert + layout storage
       if (params.uri.endsWith(".sysml")) {
         const result = await context.diagramService.getDiagramDispatch().applyEdits({
           uri: params.uri,
           seq: 0,
-          actions: [{ type: "addComponent", className: params.className, x: params.x, y: params.y }],
+          actions: [{ type: "addComponent", className: cleanClassName, x: params.x, y: params.y }],
         });
         return result.edits;
       }
@@ -308,7 +357,15 @@ export function registerClassQueryEndpoints(context: LspContext) {
       // Modelica — uses context-aware name generation (defaultComponentName annotation)
       const instances = context.workspaceManager.documentInstances.get(params.uri);
       const doc = context.documents.get(params.uri);
-      if (!instances?.[0] || !doc) return [];
+      if (!instances?.[0]) {
+        const result = await context.diagramService.getDiagramDispatch().applyEdits({
+          uri: params.uri,
+          seq: 0,
+          actions: [{ type: "addComponent", className: cleanClassName, x: params.x, y: params.y }],
+        });
+        return result.edits;
+      }
+      if (!doc) return [];
 
       const classInstance = instances[0];
       const docContext = context.workspaceManager.documentContexts.get(params.uri);
@@ -316,13 +373,13 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
       try {
         // Get base name from defaultComponentName annotation or class name
-        const shortName = params.className.split(".").pop() || "component";
+        const shortName = cleanClassName.split(".").pop() || "component";
         let baseName = shortName.toLowerCase();
         try {
           let droppedClass: any = null;
           if (context.workspaceManager.globalModelicaQueryEngine) {
             const db = context.workspaceManager.globalModelicaQueryEngine.toQueryDB();
-            const parts = params.className.split(".");
+            const parts = cleanClassName.split(".");
             let currentId: any = null;
             for (const part of parts) {
               const resolver = db.query<any>("resolveSimpleName", currentId);
@@ -357,7 +414,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
           i++;
         }
 
-        return computeComponentInsert(classInstance, params.className, name, params.x, params.y, doc.getText());
+        return computeComponentInsert(classInstance, cleanClassName, name, params.x, params.y, doc.getText());
       } catch (e) {
         console.error("[diagram] addComponent error:", e);
         return [];
@@ -411,7 +468,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
         // Ensure the full index is available before flattening
         const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
         if (!context.state.dependenciesReady && (moIdx?.pendingFileCount ?? 0) > 0) {
-          const fullIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+          const fullIndex = context.workspaceManager.unifiedWorkspace.getIndex();
           injectPredefinedTypes(fullIndex);
           const langId = params.uri?.endsWith(".sysml") ? "sysml2" : "modelica";
           const engine = context.workspaceManager.getQueryEngine(langId);

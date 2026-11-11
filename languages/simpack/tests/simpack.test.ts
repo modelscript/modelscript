@@ -99,9 +99,10 @@ MODE 4 35.1 1100.0 5.4e7
     assert.equal(res.orientationError.x, 0);
   });
 
-  it("should index SIMPACK models into Salsa multi-file WorkspaceIndex", async () => {
-    const { SimpackWorkspaceIndex } = await import("../src/workspace-index.js");
-    const index = new SimpackWorkspaceIndex();
+  it("should index SIMPACK models into Salsa multi-file UnifiedWorkspace", async () => {
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    const { simpackLanguage } = await import("../src/index.js");
+    const ws = new UnifiedWorkspace(simpackLanguage);
 
     const xml = `
 <simpack_model name="SuspensionAssembly">
@@ -110,9 +111,10 @@ MODE 4 35.1 1100.0 5.4e7
   <joint id="j_spin" type="revolute" from="m_wheel_center" to="m_spindle" />
 </simpack_model>
 `;
-    const res = index.indexFile("file:///workspace/Suspension.spck", xml);
-    assert.equal(index.fileCount, 1);
-    assert.ok(res.symbols.size >= 3);
+    ws.setDocument("file:///workspace/Suspension.spck", xml);
+    const res = ws.getFileIndex("file:///workspace/Suspension.spck");
+    assert.equal(ws.fileCount, 1);
+    assert.ok(res && res.symbols.size >= 3);
     assert.ok(res.byName.has("b_wheel"));
     assert.ok(res.byName.has("j_spin"));
   });
@@ -215,8 +217,9 @@ MARKER m1 b_chassis l_base 0.0 0.0
   });
 
   it("should merge multiple SIMPACK sub-models into a unified multi-body assembly", async () => {
-    const { SimpackWorkspaceIndex } = await import("../src/workspace-index.js");
-    const index = new SimpackWorkspaceIndex();
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    const { mergeSimpackAssembly, simpackLanguage } = await import("../src/index.js");
+    const ws = new UnifiedWorkspace(simpackLanguage);
 
     const wheelXml = `
 <simpack_model name="WheelModule">
@@ -224,7 +227,7 @@ MARKER m1 b_chassis l_base 0.0 0.0
   <marker id="m_hub" body="wheel" x="0" y="0" z="0" />
 </simpack_model>
 `;
-    index.indexFile("file:///workspace/Wheel.spck", wheelXml);
+    ws.setDocument("file:///workspace/Wheel.spck", wheelXml);
 
     const chassisXml = `
 <simpack_model name="ChassisAssembly">
@@ -232,12 +235,12 @@ MARKER m1 b_chassis l_base 0.0 0.0
   <marker id="m_susp_point" body="chassis" x="0" y="0" z="-0.2" />
 </simpack_model>
 `;
-    index.indexFile("file:///workspace/Chassis.spck", chassisXml);
+    ws.setDocument("file:///workspace/Chassis.spck", chassisXml);
 
-    const chassisModel = index.getModel("file:///workspace/Chassis.spck")!;
+    const chassisModel = ws.getParsedModel<import("../src/types.js").SimpackModel>("file:///workspace/Chassis.spck")!;
     assert.equal(chassisModel.bodies.size, 1);
 
-    const merged = index.mergeAssembly(chassisModel, ["file:///workspace/Wheel.spck"]);
+    const merged = mergeSimpackAssembly(ws, chassisModel, ["file:///workspace/Wheel.spck"]);
     assert.equal(merged.bodies.size, 2);
     assert.ok(merged.bodies.has("chassis"));
     assert.ok(merged.bodies.has("WheelModule.wheel"));
@@ -456,7 +459,6 @@ MARKER m1 b_chassis l_base 0.0 0.0
     assert.ok(k7010, "Should emit K7010 for degenerate inertia tensor");
     assert.ok(k7010.message.includes("b_bad_inertia"));
   });
-
 
   it("should lower 3D marker lever arms, rotational joint constraints, and 6-DOF rotational/nonlinear bushings into DAE arena", async () => {
     const { lowerSimpackToDae, getSimpackJointConstraintSpec } = await import("../src/dae/simpack-to-dae.js");

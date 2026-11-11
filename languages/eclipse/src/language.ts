@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerEclipseToDae } from "./dae/eclipse-to-dae.js";
+import { canIndexEclipse, indexEclipseDocument } from "./indexing.js";
 import { lintEclipse } from "./lints/index.js";
 import { parseEclipse } from "./parser/eclipse-parser.js";
 import { eclipseToModelica } from "./projections/eclipse-to-modelica.js";
@@ -14,6 +15,10 @@ export const eclipseLanguage = language({
   name: "eclipse",
   fileExtensions: [".data", ".dat", ".inc"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexEclipseDocument,
+    canIndex: canIndexEclipse,
+  },
   lsp: {
     fileExtensions: [".data", ".dat", ".inc"],
     icons: {

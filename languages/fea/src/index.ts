@@ -4,6 +4,7 @@ export * from "./dae/index.js";
 export * from "./dialects/index.js";
 export { parseInpDeck } from "./dialects/inp.js";
 export * from "./errors.js";
+export * from "./indexing.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";
@@ -12,5 +13,4 @@ export { materializeFeaDeck as materializeCalculixDeck } from "./materializer.js
 export * from "./mesh.js";
 export * from "./projections/index.js";
 export * from "./types.js";
-export * from "./workspace-index.js";
 export type InpDeckData = import("./types.js").FeaModelData;

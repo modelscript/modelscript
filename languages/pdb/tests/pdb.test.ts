@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   PdbErrorCode,
-  PdbWorkspaceIndex,
   computeDihedralAngle,
   computeRamachandranAngles,
   executePdbAction,
+  findPdbDefinition,
+  getPdbDocument,
   getPdbDocumentSymbols,
   getPdbHover,
   lintPdb,
@@ -409,16 +411,18 @@ test("PDB DAE Lowering & Modelica Projection: compiles C_alpha elastic network O
   assert.ok(mo.includes("end HelixElasticModel;"));
 });
 
-test("PDB Workspace Index & LSP: indexes chains/residues, hover cards, completions, and actions", async () => {
-  const index = new PdbWorkspaceIndex();
-  index.indexFile("file:///structures/1hlx.pdb", IDEAL_HELIX_PDB);
+test("PDB UnifiedWorkspace & LSP: indexes chains/residues, hover cards, completions, and actions", async () => {
+  const ws = new UnifiedWorkspace(pdbLanguage);
+  const uri = "file:///structures/1hlx.pdb";
+  ws.setDocument(uri, IDEAL_HELIX_PDB);
 
-  assert.equal(index.fileCount, 1);
-  const rootSym = index.findDefinition("1HLX");
+  assert.equal(ws.fileCount, 1);
+  assert.equal(getPdbDocument(ws, uri)?.id, "1HLX");
+  const rootSym = findPdbDefinition(ws, "1HLX");
   assert.ok(rootSym);
   assert.equal(rootSym.metadata?.["chainCount"], 1);
 
-  const chainSym = index.findDefinition("Chain_A");
+  const chainSym = findPdbDefinition(ws, "Chain_A");
   assert.ok(chainSym);
   assert.equal(chainSym.metadata?.["sequence"], "CALGC");
 

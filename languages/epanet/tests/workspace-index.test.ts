@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { EpanetWorkspaceIndex } from "../src/workspace-index.js";
+import { epanetLanguage, getEpanetNetwork } from "../src/index.js";
 
 const NET_A = `
 [TITLE]
@@ -34,22 +35,22 @@ Sector B
 
 describe("EPANET Multi-File Workspace Indexer", () => {
   it("indexes multiple EPANET hydraulic network files across workspace", () => {
-    const indexer = new EpanetWorkspaceIndex();
+    const ws = new UnifiedWorkspace(epanetLanguage);
     const uriA = "file:///workspace/networks/sector_a.inp";
     const uriB = "file:///workspace/networks/sector_b.inp";
 
-    indexer.indexSource(uriA, NET_A);
-    indexer.indexSource(uriB, NET_B);
+    ws.setDocument(uriA, NET_A);
+    ws.setDocument(uriB, NET_B);
 
-    assert.strictEqual(indexer.fileCount, 2);
-    assert.strictEqual(indexer.has(uriA), true);
-    assert.strictEqual(indexer.has(uriB), true);
+    assert.strictEqual(ws.fileCount, 2);
+    assert.strictEqual(ws.hasDocument(uriA), true);
+    assert.strictEqual(ws.hasDocument(uriB), true);
 
-    const docA = indexer.getDocument(uriA);
+    const docA = getEpanetNetwork(ws, uriA);
     assert.strictEqual(docA?.junctions.length, 1);
     assert.strictEqual(docA?.junctions[0]?.id, "JuncA1");
 
-    const syms = indexer.getSymbolsByName("JuncB1");
+    const syms = ws.findSymbolsByName("JuncB1");
     assert.strictEqual(syms.length, 1);
     assert.strictEqual(syms[0]?.name, "JuncB1");
   });

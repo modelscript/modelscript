@@ -70,6 +70,74 @@ cube([arm_length, width, 10])
     throw new Error("Failed to evaluate solid after second patch");
   }
 
+  // 4. Test patchPrimitiveDimension on literal cube([40, 40, 20])
+  const hubCubeNode = ScadPatcher.findChildByType(tree3.rootNode, "CubePrimitive");
+  const cubeSource = `cube([100, 50, 10]);\ncylinder(h = 30, r = 15);\nsphere(r = 12);`;
+  const treePrimitives = parser.parse(cubeSource);
+
+  // Patch cube Y dimension (index 1) from 50 to 65
+  const patchDimCube = ScadPatcher.patchPrimitiveDimension(
+    cubeSource,
+    treePrimitives.rootNode,
+    1,
+    65,
+    undefined,
+    undefined,
+    "cube",
+  );
+  if (!patchDimCube || !patchDimCube.updatedSource.includes("cube([100, 65, 10]);")) {
+    throw new Error(`Failed to patch cube dimension: ${patchDimCube?.updatedSource}`);
+  }
+  console.log("✔ Successfully patched literal cube dimension (50 -> 65)");
+
+  // Re-parse and patch cylinder height (index 1) from 30 to 45
+  const treeCyl = parser.parse(patchDimCube.updatedSource);
+  const patchDimCylH = ScadPatcher.patchPrimitiveDimension(
+    patchDimCube.updatedSource,
+    treeCyl.rootNode,
+    1,
+    45,
+    undefined,
+    undefined,
+    "cylinder",
+  );
+  if (!patchDimCylH || !patchDimCylH.updatedSource.includes("cylinder(h = 45, r = 15);")) {
+    throw new Error(`Failed to patch cylinder height: ${patchDimCylH?.updatedSource}`);
+  }
+  console.log("✔ Successfully patched cylinder height (30 -> 45)");
+
+  // Re-parse and patch cylinder radius (index 0) from 15 to 22.5
+  const treeCylR = parser.parse(patchDimCylH.updatedSource);
+  const patchDimCylR = ScadPatcher.patchPrimitiveDimension(
+    patchDimCylH.updatedSource,
+    treeCylR.rootNode,
+    0,
+    22.5,
+    undefined,
+    undefined,
+    "cylinder",
+  );
+  if (!patchDimCylR || !patchDimCylR.updatedSource.includes("cylinder(h = 45, r = 22.5);")) {
+    throw new Error(`Failed to patch cylinder radius: ${patchDimCylR?.updatedSource}`);
+  }
+  console.log("✔ Successfully patched cylinder radius (15 -> 22.5)");
+
+  // Re-parse and patch sphere radius from 12 to 18
+  const treeSph = parser.parse(patchDimCylR.updatedSource);
+  const patchDimSph = ScadPatcher.patchPrimitiveDimension(
+    patchDimCylR.updatedSource,
+    treeSph.rootNode,
+    0,
+    18,
+    undefined,
+    undefined,
+    "sphere",
+  );
+  if (!patchDimSph || !patchDimSph.updatedSource.includes("sphere(r = 18);")) {
+    throw new Error(`Failed to patch sphere radius: ${patchDimSph?.updatedSource}`);
+  }
+  console.log("✔ Successfully patched sphere radius (12 -> 18)");
+
   console.log("✔ ScadPatcher successfully updated source text while preserving comments and CST formatting!");
 }
 

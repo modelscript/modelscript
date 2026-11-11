@@ -20,6 +20,7 @@ import {
   EqKind,
   ExprKind,
   StmtKind,
+  VarAttrKind,
   VarType,
   Variability,
   differentiateArenaExpressionWrt,
@@ -895,14 +896,25 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
   // their `start` values per MLS §8.6.1.
   // CRITICAL: NEVER fix states whose derivative or value is explicitly constrained in initial equations!
   if (unknowns.size > initEquations.length) {
-    for (const ref of allDerRefs) {
+    for (const allowExplicitFixedFalse of [false, true]) {
       if (unknowns.size <= initEquations.length) break;
-      if (ref.startsWith("der(") && ref.endsWith(")")) {
-        const stateName = ref.slice(4, -1);
-        if (initReferenced.has(stateName) || initReferenced.has(ref)) {
-          continue;
-        }
-        if (unknowns.has(stateName)) {
+      for (const ref of allDerRefs) {
+        if (unknowns.size <= initEquations.length) break;
+        if (ref.startsWith("der(") && ref.endsWith(")")) {
+          const stateName = ref.slice(4, -1);
+          if (initReferenced.has(stateName) || initReferenced.has(ref)) {
+            continue;
+          }
+          if (!unknowns.has(stateName)) continue;
+          if (!allowExplicitFixedFalse) {
+            const vIdx = dae.getVarIdxByName(stateName);
+            const hasExplicitFixedFalse =
+              vIdx >= 0 &&
+              !dae.isVarFixed(vIdx) &&
+              (dae.getVarAttrExprId(vIdx, "fixed") !== undefined ||
+                (typeof dae.getVarAttrExpr === "function" && dae.getVarAttrExpr(vIdx, VarAttrKind.Fixed) >= 0));
+            if (hasExplicitFixedFalse) continue;
+          }
           unknowns.delete(stateName);
           knowns.add(stateName);
         }
@@ -1691,51 +1703,88 @@ function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float
     }
   }
 
+  // Pre-collect variable start/fixed metadata and simple alias pairs (u = v) once
+  const envLen = result.valuesByStringId.length;
+  const isLocked = new Uint8Array(envLen);
+  const hasExplicitStart = new Uint8Array(envLen);
+  const aliasPairs: number[] = [];
+
+  for (let i = 0; i < arena.varCount; i++) {
+    if (arena.isVarRemoved(i)) continue;
+    const uId = arena.getVarNameId(i);
+    if (uId >= 0 && uId < envLen) {
+      const variability = arena.getVarVariability(i);
+      if (
+        variability === Variability.Constant ||
+        arena.isVarFixed(i) ||
+        (variability === Variability.Parameter && arena.hasExplicitVarExpression(i))
+      ) {
+        isLocked[uId] = 1;
+        hasExplicitStart[uId] = 1;
+      } else if (
+        arena.getVarAttrExprId(i, "start") !== undefined ||
+        (typeof arena.getVarAttrExpr === "function" && arena.getVarAttrExpr(i, VarAttrKind.Start) > 0) ||
+        arena.hasExplicitVarExpression(i)
+      ) {
+        hasExplicitStart[uId] = 1;
+      }
+    }
+    const exprId = arena.getVarExpression(i);
+    if (exprId !== undefined && exprId >= 0 && arena.getExprKind(exprId) === ExprKind.Name) {
+      const vId = arena.getExprData1(exprId);
+      if (uId >= 0 && vId >= 0 && uId !== vId) {
+        aliasPairs.push(uId, vId);
+      }
+    }
+  }
+
+  for (let i = 0; i < arena.eqCount; i++) {
+    if (arena.isEqRemoved(i)) continue;
+    if (arena.getEqKind(i) === EqKind.Simple) {
+      const lhs = arena.getEqLhs(i);
+      const rhs = arena.getEqRhs(i);
+      if (arena.getExprKind(lhs) === ExprKind.Name && arena.getExprKind(rhs) === ExprKind.Name) {
+        const uId = arena.getExprData1(lhs);
+        const vId = arena.getExprData1(rhs);
+        if (uId >= 0 && vId >= 0 && uId !== vId) {
+          aliasPairs.push(uId, vId);
+        }
+      }
+    }
+  }
+
   // Transitive propagation across bindings and simple equality equations u = v
   let changed = true;
   let pass = 0;
   while (changed && pass < 10) {
     changed = false;
     pass++;
+    for (let p = 0; p < aliasPairs.length; p += 2) {
+      const uId = aliasPairs[p]!;
+      const vId = aliasPairs[p + 1]!;
+      const uVal = result.valuesByStringId[uId] ?? 0;
+      const vVal = result.valuesByStringId[vId] ?? 0;
+      const uExp = hasExplicitStart[uId] ?? 0;
+      const vExp = hasExplicitStart[vId] ?? 0;
 
-    // 1. Variable expressions (bindings: vs.re = p.vr, etc.)
-    for (let i = 0; i < arena.varCount; i++) {
-      if (arena.isVarRemoved(i)) continue;
-      const exprId = arena.getVarExpression(i);
-      if (exprId !== undefined && exprId >= 0 && arena.getExprKind(exprId) === ExprKind.Name) {
-        const uId = arena.getVarNameId(i);
-        const vId = arena.getExprData1(exprId);
-        const uVal = result.valuesByStringId[uId] ?? 0;
-        const vVal = result.valuesByStringId[vId] ?? 0;
-        if (uVal !== 0 && vVal === 0) {
+      if (uExp > vExp && !isLocked[vId]) {
+        if (vVal !== uVal || vExp === 0) {
           result.valuesByStringId[vId] = uVal;
+          hasExplicitStart[vId] = 1;
           changed = true;
-        } else if (vVal !== 0 && uVal === 0) {
+        }
+      } else if (vExp > uExp && !isLocked[uId]) {
+        if (uVal !== vVal || uExp === 0) {
           result.valuesByStringId[uId] = vVal;
+          hasExplicitStart[uId] = 1;
           changed = true;
         }
-      }
-    }
-
-    // 2. Simple equality equations u = v
-    for (let i = 0; i < arena.eqCount; i++) {
-      if (arena.isEqRemoved(i)) continue;
-      if (arena.getEqKind(i) === EqKind.Simple) {
-        const lhs = arena.getEqLhs(i);
-        const rhs = arena.getEqRhs(i);
-        if (arena.getExprKind(lhs) === ExprKind.Name && arena.getExprKind(rhs) === ExprKind.Name) {
-          const uId = arena.getExprData1(lhs);
-          const vId = arena.getExprData1(rhs);
-          const uVal = result.valuesByStringId[uId] ?? 0;
-          const vVal = result.valuesByStringId[vId] ?? 0;
-          if (uVal !== 0 && vVal === 0) {
-            result.valuesByStringId[vId] = uVal;
-            changed = true;
-          } else if (vVal !== 0 && uVal === 0) {
-            result.valuesByStringId[uId] = vVal;
-            changed = true;
-          }
-        }
+      } else if (uVal !== 0 && vVal === 0 && !isLocked[vId]) {
+        result.valuesByStringId[vId] = uVal;
+        changed = true;
+      } else if (vVal !== 0 && uVal === 0 && !isLocked[uId]) {
+        result.valuesByStringId[uId] = vVal;
+        changed = true;
       }
     }
   }

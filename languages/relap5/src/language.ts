@@ -3,6 +3,7 @@
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerRelap5ToDae } from "./dae/relap5-to-dae.js";
 import { relap5DeckGrammar } from "./grammar/relap5-grammar.js";
+import { relap5Indexing } from "./indexing.js";
 import { lintRelap5 } from "./lints/index.js";
 import { parseRelap5 } from "./parser/relap5-parser.js";
 import { relap5ToModelica } from "./projections/relap5-to-modelica.js";
@@ -15,6 +16,7 @@ export const relap5Language = language({
   name: "relap5",
   fileExtensions: [".i", ".inp", ".r5"],
   maturity: "experimental",
+  indexing: relap5Indexing,
   lsp: {
     fileExtensions: [".i", ".inp", ".r5"],
     icons: {

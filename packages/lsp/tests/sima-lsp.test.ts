@@ -7,7 +7,6 @@ import {
   parseSimaFile,
   simaLanguage,
   simaToModelica,
-  SimaWorkspaceIndex,
   validateSima,
 } from "@modelscript/sima";
 import assert from "node:assert/strict";
@@ -42,7 +41,6 @@ describe("SIMA LSP Integration Suite (@modelscript/lsp)", () => {
       name: "SIMA",
       extensions: [".inp", ".sima", ".sys", ".hyd"],
       languageDef: simaLanguage,
-      workspaceIndex: new SimaWorkspaceIndex(),
       customHandlers: {
         symbols: (text: string) => getSimaDocumentSymbols(text),
         hover: (offset: number, text: string) => {

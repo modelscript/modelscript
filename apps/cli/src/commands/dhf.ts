@@ -318,7 +318,7 @@ export const Dhf: CommandModule<{}, DhfExportArgs> = {
       }
     }
 
-    const index = await sysmlIndex.toUnifiedAsync();
+    const index = await sysmlIndex.getIndexAsync();
 
     const hazards = RtmIndexEngine.extractElementsByDomain(index, "hazard");
     const requirements = RtmIndexEngine.extractElementsByDomain(index, "requirement");

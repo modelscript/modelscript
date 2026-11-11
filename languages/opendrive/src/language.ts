@@ -10,6 +10,7 @@
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerOpenDriveToDae } from "./dae/opendrive-to-dae.js";
 import { sampleRoadTrack } from "./geometry/clothoid.js";
+import { indexOpenDriveFile } from "./indexing.js";
 import { lintOpenDrive } from "./lints/rules.js";
 import { parseOpenDrive } from "./parser/index.js";
 import { opendriveToGensys } from "./projections/opendrive-to-gensys.js";
@@ -18,6 +19,10 @@ export const opendriveLanguage = language({
   name: "opendrive",
   fileExtensions: [".xodr", ".xml"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexOpenDriveFile,
+    canIndex: (uri, text) => uri.toLowerCase().endsWith(".xodr") || Boolean(text && text.includes("<OpenDRIVE")),
+  },
   lsp: {
     fileExtensions: [".xodr", ".xml"],
   },

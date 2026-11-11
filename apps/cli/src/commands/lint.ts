@@ -683,10 +683,10 @@ export const Lint: CommandModule<{}, LintArgs> = {
     }
 
     if (hasSysML && sIdx) {
-      await sIdx.toUnifiedAsync();
+      await sIdx.getIndexAsync();
     }
 
-    const db = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
+    const db = await u.getIndexAsync();
 
     // Implement WorkspaceCSTProvider to enable AST-dependent Salsa queries and formal verifiers
     const cstProvider: NonNullable<Parameters<typeof createModelicaQueryEngine>[1]> = {
@@ -1013,7 +1013,7 @@ export const Lint: CommandModule<{}, LintArgs> = {
             const startLine = ad.range?.start.line ?? 1;
             const startCol = ad.range?.start.column ?? 1;
             const endLine = ad.range?.end.line ?? startLine;
-            const endCol = ad.range?.end.column ?? (startCol + 5);
+            const endCol = ad.range?.end.column ?? startCol + 5;
             const startOffset = lineColToByte(item.text, startLine, startCol);
             const endOffset = lineColToByte(item.text, endLine, endCol);
             diagnostics.push({

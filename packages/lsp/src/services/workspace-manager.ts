@@ -217,6 +217,8 @@ export class WorkspaceManager {
     return domainElements;
   }
 
+  private readonly resolvingWorkspaceIndex = new Set<string>();
+
   /**
    * Retrieves (or lazily creates via registered factories) the workspace symbol index for `langId`.
    */
@@ -225,9 +227,17 @@ export class WorkspaceManager {
     const ctx = this.languageContexts.get(norm);
     if (ctx?.index) return ctx.index;
     const plugin = globalLanguageRegistry.getPluginById(norm);
-    if (plugin?.workspaceIndex) {
-      this.setWorkspaceIndex(norm, plugin.workspaceIndex);
-      return plugin.workspaceIndex;
+    if (plugin && !this.resolvingWorkspaceIndex.has(norm)) {
+      this.resolvingWorkspaceIndex.add(norm);
+      try {
+        const pIdx = plugin.workspaceIndex;
+        if (pIdx) {
+          this.setWorkspaceIndex(norm, pIdx);
+          return pIdx;
+        }
+      } finally {
+        this.resolvingWorkspaceIndex.delete(norm);
+      }
     }
     if (norm === "sysml") {
       const s2 = this.getWorkspaceIndex("sysml2");
@@ -260,13 +270,6 @@ export class WorkspaceManager {
           const mod = nodeRequire("@modelscript/owl2/factory");
           if (mod?.createOWL2WorkspaceIndex) {
             const idx = mod.createOWL2WorkspaceIndex();
-            this.setWorkspaceIndex(norm, idx);
-            return idx;
-          }
-        } else if (norm === "pscad") {
-          const mod = nodeRequire("@modelscript/pscad");
-          if (mod?.PscadWorkspaceIndex) {
-            const idx = new mod.PscadWorkspaceIndex();
             this.setWorkspaceIndex(norm, idx);
             return idx;
           }
@@ -361,7 +364,16 @@ export class WorkspaceManager {
         }
         const idx = this.getWorkspaceIndex("modelica");
         if (idx) {
-          const uIdx = typeof idx.toUnifiedPartial === "function" ? idx.toUnifiedPartial() : idx;
+          const uIdx =
+            this.unifiedWorkspace && typeof this.unifiedWorkspace.getIndex === "function"
+              ? this.unifiedWorkspace.getIndex()
+              : typeof idx.getIndex === "function"
+                ? idx.getIndex()
+                : idx;
+          const injectFn = (globalThis as any).injectPredefinedTypes;
+          if (typeof injectFn === "function") {
+            injectFn(uIdx);
+          }
           const cstWrapper = (this as any).parserService?.getSharedCstTreeWrapper?.();
           const qe = createModelicaQueryEngine(uIdx, cstWrapper);
           this.setQueryEngine(norm, qe);
@@ -383,6 +395,9 @@ export class WorkspaceManager {
     const existing = this.languageContexts.get(norm) ?? { index: null, queryEngine: null };
     existing.queryEngine = qe;
     this.languageContexts.set(norm, existing);
+    if (qe && this.unifiedWorkspace && typeof (this.unifiedWorkspace as any).registerQueryEngine === "function") {
+      this.unifiedWorkspace.registerQueryEngine(norm, qe);
+    }
 
     const alt = norm === "sysml" ? "sysml2" : norm === "sysml2" ? "sysml" : null;
     if (alt) {
@@ -432,22 +447,6 @@ export class WorkspaceManager {
   }
   set owl2WorkspaceIndex(val: any) {
     this.setWorkspaceIndex("owl2", val);
-  }
-
-  /** @deprecated Use `getWorkspaceIndex("step")` instead. */
-  get stepWorkspaceIndex() {
-    return this.getWorkspaceIndex("step");
-  }
-  set stepWorkspaceIndex(val: any) {
-    this.setWorkspaceIndex("step", val);
-  }
-
-  /** Returns the PSCAD workspace symbol index. */
-  get pscadWorkspaceIndex() {
-    return this.getWorkspaceIndex("pscad");
-  }
-  set pscadWorkspaceIndex(val: any) {
-    this.setWorkspaceIndex("pscad", val);
   }
 
   /** @deprecated Use `getQueryEngine("modelica")` instead. */
@@ -515,8 +514,11 @@ export class WorkspaceManager {
       this.seedDemoThreads();
     }
 
-    // Seed default workspace indices from registered language plugins
+    // Seed default workspace indices and declarative DSL language configs from registered language plugins
     for (const plugin of globalLanguageRegistry.getAllPlugins()) {
+      if (plugin.languageDef && typeof (this.unifiedWorkspace as any).registerLanguageDef === "function") {
+        this.unifiedWorkspace.registerLanguageDef(plugin.id, plugin.languageDef);
+      }
       if (plugin.workspaceIndex) {
         this.setWorkspaceIndex(plugin.id, plugin.workspaceIndex);
       }
@@ -524,7 +526,7 @@ export class WorkspaceManager {
 
     // Wire up CST providers for cross-language polyglot queries
     this.unifiedWorkspace.cstNodeProvider = (id) => {
-      const entry = this.unifiedWorkspace.toUnifiedPartial().symbols.get(id);
+      const entry = this.unifiedWorkspace.getIndex().symbols.get(id);
       return this.getCstNodeForSymbol(entry);
     };
 
@@ -535,7 +537,7 @@ export class WorkspaceManager {
     };
 
     this.unifiedWorkspace.queryProvider = (queryName, id) => {
-      const entry = this.unifiedWorkspace.toUnifiedPartial().symbols.get(id);
+      const entry = this.unifiedWorkspace.getIndex().symbols.get(id);
       if (!entry || !entry.resourceId) return null;
       const engine = this.getEngine(entry.resourceId);
       return engine?.query(queryName, id) ?? null;
@@ -932,6 +934,9 @@ export class WorkspaceManager {
             name: child.name,
             annotations: [],
             declaration: child,
+            defaultValue: (child.metadata as any)?.defaultValue,
+            unit: (child.metadata as any)?.unit,
+            description: (child.metadata as any)?.description ?? null,
             get classInstance() {
               return getComponentClassInstance();
             },
@@ -957,6 +962,14 @@ export class WorkspaceManager {
                       return salsaPlacement;
                     }
                   } catch {}
+                }
+                if (
+                  (annName === "Placement" || annName === "placement") &&
+                  (child.metadata as any)?.placementAnnotation != null
+                ) {
+                  const metaPlacement = (child.metadata as any).placementAnnotation;
+                  compAnnCache.set(annName, metaPlacement);
+                  return metaPlacement;
                 }
                 let evaluatorClass = (globalThis as any).AnnotationEvaluator ?? AnnotationEvaluator;
                 if (!evaluatorClass && nodeRequire) {
@@ -1201,7 +1214,7 @@ export class WorkspaceManager {
               classCstNode ?? (db.cstNode ? db.cstNode(entry.id) : null) ?? this.getCstNodeForSymbol(entry);
 
             try {
-              if ((name === "Icon" || name === "Diagram") && !hasCtxInstance && db.query) {
+              if ((name === "Icon" || name === "Diagram") && (!hasCtxInstance || !cstNode) && db.query) {
                 try {
                   const qName = name === "Icon" ? "classIconGraphics" : "classDiagramGraphics";
                   const salsaLayer = db.query(qName, entry.id);
@@ -1209,7 +1222,19 @@ export class WorkspaceManager {
                     return setCache(salsaLayer);
                   }
                 } catch {
-                  // fall through to evaluator
+                  // fall through to metadata / evaluator
+                }
+              }
+
+              if (!cstNode && entry?.metadata) {
+                if (name === "Icon" && (entry.metadata as any).iconAnnotation != null) {
+                  return setCache((entry.metadata as any).iconAnnotation);
+                }
+                if (name === "Diagram" && (entry.metadata as any).diagramAnnotation != null) {
+                  return setCache((entry.metadata as any).diagramAnnotation);
+                }
+                if (name === "defaultComponentName" && (entry.metadata as any).defaultComponentName != null) {
+                  return setCache((entry.metadata as any).defaultComponentName);
                 }
               }
 
@@ -1290,7 +1315,7 @@ export class WorkspaceManager {
         (this.unifiedWorkspace as any).ensureChildrenIndexed(className);
       }
 
-      const idx = this.unifiedWorkspace.toUnifiedPartial();
+      const idx = this.unifiedWorkspace.getIndex();
       let rawSymbolIds = idx.byName.get(className) || [];
       // Prefer actual Class/Def symbols over Extends or Import references
       let symbolIds = rawSymbolIds.filter((id: number) => {
@@ -1436,7 +1461,7 @@ export class WorkspaceManager {
       return null;
     }
 
-    const idx = this.unifiedWorkspace.toUnifiedPartial();
+    const idx = this.unifiedWorkspace.getIndex();
     const fallbackDb = {
       childrenOf: (id: number) => {
         const childIds = idx.childrenOf.get(id) || [];

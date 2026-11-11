@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerHecRasToDae } from "./dae/hec-ras-to-dae.js";
+import { indexHecRasFile } from "./indexing.js";
 import { lintHecRas } from "./lints/rules.js";
 import { parseHecRas } from "./parser/hec-ras-parser.js";
 import { solveWaterSurfaceProfile } from "./solver/steady-step-solver.js";
@@ -13,6 +14,9 @@ export const hecRasLanguage = language({
   lsp: {
     fileExtensions: [".g01", ".g02", ".rasgeo", ".u01", ".f01", ".prj"],
   },
+  indexing: {
+    indexFile: indexHecRasFile,
+  },
   rules: {
     Root: () => "hec-ras",
   },
@@ -21,7 +25,8 @@ export const hecRasLanguage = language({
     {
       id: "hecras_lint",
       title: "Lint HEC-RAS Deck",
-      description: "Checks river reach connectivity, station monotonicity, adverse bed slopes, and Manning roughness bounds.",
+      description:
+        "Checks river reach connectivity, station monotonicity, adverse bed slopes, and Manning roughness bounds.",
       category: "verify",
       execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
@@ -33,7 +38,8 @@ export const hecRasLanguage = language({
     {
       id: "hecras_solve_profile",
       title: "Solve Water Surface Profile",
-      description: "Computes 1D standard-step water surface elevations (WSEL), energy grade line (EGL), velocities, and Froude numbers.",
+      description:
+        "Computes 1D standard-step water surface elevations (WSEL), energy grade line (EGL), velocities, and Froude numbers.",
       category: "simulate",
       execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";
@@ -68,7 +74,8 @@ export const hecRasLanguage = language({
     {
       id: "hecras_to_dae",
       title: "Lower HEC-RAS to DAE Arena",
-      description: "Compiles open-channel 1D Saint-Venant hydraulic balance equations directly into ModelScript linear memory.",
+      description:
+        "Compiles open-channel 1D Saint-Venant hydraulic balance equations directly into ModelScript linear memory.",
       category: "transform",
       execute: async (context: ActionExecutionContext) => {
         const text = context.documentText || "";

@@ -5,7 +5,6 @@ import {
   getOlgaHover,
   lowerOlgaToDae,
   olgaLanguage,
-  OlgaWorkspaceIndex,
   parseOlga,
   simulateDriftFlux,
   validateOlga,
@@ -30,7 +29,6 @@ describe("OLGA LSP Integration Suite (@modelscript/lsp)", () => {
       name: "OLGA",
       extensions: [".genkey", ".key", ".opi", ".olga", ".pvt", ".tab"],
       languageDef: olgaLanguage,
-      workspaceIndex: new OlgaWorkspaceIndex(),
       customHandlers: {
         symbols: (text: string) => getOlgaDocumentSymbols(text),
         hover: (offset: number, text: string) => {

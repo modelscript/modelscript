@@ -9,6 +9,7 @@
  */
 
 import { language } from "@modelscript/dsl";
+import { indexThreeMfFile } from "./indexing.js";
 import { lintThreeMfDocument } from "./lints/rules.js";
 import { parseThreeMf } from "./parser/index.js";
 import { threeMfToScad, threeMfToStep } from "./projections/index.js";
@@ -18,6 +19,9 @@ export const threeMfLanguage = language({
   name: "three-mf",
   fileExtensions: [".3mf"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexThreeMfFile,
+  },
   lsp: {
     fileExtensions: [".3mf"],
   },

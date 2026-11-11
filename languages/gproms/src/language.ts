@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerGpromsToDae } from "./dae/gproms-to-dae.js";
+import { indexGpromsDocument } from "./indexing.js";
 import { lintGproms } from "./lints/index.js";
 import { parseGproms } from "./parser/gproms-parser.js";
 import { gpromsToModelica } from "./projections/gproms-to-modelica.js";
@@ -20,6 +21,10 @@ export const gpromsLanguage = language({
       light: "./assets/gproms/icon-light.png",
       dark: "./assets/gproms/icon-dark.png",
     },
+  },
+
+  indexing: {
+    indexFile: indexGpromsDocument,
   },
 
   writeback: {

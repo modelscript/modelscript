@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { getAutosarModel } from "../src/indexing.js";
+import { autosarLanguage } from "../src/language.js";
 import { executeAutosarAction, getAutosarDocumentSymbols, getAutosarHover, validateAutosar } from "../src/lsp.js";
-import { AutosarWorkspaceIndex } from "../src/workspace-index.js";
 
 const VALID_ARXML = `<?xml version="1.0" encoding="UTF-8"?>
 <AUTOSAR>
@@ -84,18 +86,20 @@ describe("AUTOSAR LSP Services & Workspace Index (@modelscript/autosar)", () => 
     assert.ok(rteRes.length >= 3);
   });
 
-  it("should index and resolve symbols across workspace via AutosarWorkspaceIndex", () => {
-    const index = new AutosarWorkspaceIndex();
-    index.indexFile("file:///workspace/abs.arxml", VALID_ARXML);
+  it("should index and resolve symbols across workspace via UnifiedWorkspace", () => {
+    const ws = new UnifiedWorkspace(autosarLanguage);
+    ws.setDocument("file:///workspace/abs.arxml", VALID_ARXML);
 
-    assert.equal(index.fileCount, 1);
-    const results = index.lookup("AbsController");
+    assert.equal(ws.fileCount, 1);
+    const results = ws.findSymbolsByName("AbsController");
     assert.equal(results.length, 1);
     assert.equal(results[0]?.name, "AbsController");
     assert.equal(results[0]?.kind, "Class");
 
-    const portResults = index.lookup("BrakePressureOut");
+    const portResults = ws.findSymbolsByName("BrakePressureOut");
     assert.equal(portResults.length, 1);
     assert.equal(portResults[0]?.kind, "Component");
+
+    assert.ok(getAutosarModel(ws, "file:///workspace/abs.arxml")?.packages.has("Brakes"));
   });
 });

@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import test from "node:test";
 import {
   createSorDocument,
-  OpticalWorkspaceIndex,
+  getOpticalSorDocument,
+  opticalLanguage,
   parseSor,
+  setOpticalSorDocument,
   writeSor,
   type SorDocument,
   type SorKeyEvent,
@@ -147,20 +150,20 @@ test("Telcordia/Bellcore .sor binary codec and metrics", async (t) => {
     assert.ok(Math.abs(fiberLength - 10000) < 100, `Expected ~10000m length, got ${fiberLength}`);
   });
 
-  await t.test("OpticalWorkspaceIndex indexes .sor files and exposes symbols", () => {
+  await t.test("UnifiedWorkspace indexes .sor files and exposes symbols", () => {
     const binaryData = writeSor(mockDoc);
-    const index = new OpticalWorkspaceIndex();
+    const ws = new UnifiedWorkspace(opticalLanguage);
     const uri = "file:///workspace/metro_span.sor";
 
-    index.reindexDocument(uri, () => binaryData);
-    assert.equal(index.fileCount, 1);
-    assert.ok(index.has(uri));
+    setOpticalSorDocument(ws, uri, binaryData);
+    assert.equal(ws.fileCount, 1);
+    assert.ok(ws.hasDocument(uri));
 
-    const sorDoc = index.getSorDocument(uri);
+    const sorDoc = getOpticalSorDocument(ws, uri);
     assert.ok(sorDoc);
     assert.equal(sorDoc.genParams.cableId, "CABLE-METRO-EAST-01");
 
-    const syms = index.findByName("STRAND-12");
+    const syms = ws.findSymbolsByName("STRAND-12");
     assert.ok(syms.length > 0, "Should index fiberId as symbol");
   });
 });

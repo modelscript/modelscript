@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { getSimulinkBlocksByName } from "../src/indexing.js";
+import { simulinkLanguage } from "../src/language.js";
 import { executeSimulinkAction, getSimulinkDocumentSymbols, getSimulinkHover, validateSimulink } from "../src/lsp.js";
-import { SimulinkWorkspaceIndex } from "../src/workspace-index.js";
 
-describe("Simulink LSP Services & Workspace Index (@modelscript/simulink)", () => {
+describe("Simulink LSP Services & UnifiedWorkspace (@modelscript/simulink)", () => {
   const cleanMdl = `Model {
   Name "CleanSystem"
   System {
@@ -61,15 +63,15 @@ describe("Simulink LSP Services & Workspace Index (@modelscript/simulink)", () =
     assert.ok(daeRes.eqCount >= 2);
   });
 
-  it("should index and resolve symbols across workspace via SimulinkWorkspaceIndex", () => {
-    const ws = new SimulinkWorkspaceIndex();
-    ws.indexFile("CleanSystem.mdl", cleanMdl);
+  it("should index and resolve symbols across workspace via UnifiedWorkspace", () => {
+    const ws = new UnifiedWorkspace(simulinkLanguage);
+    ws.setDocument("CleanSystem.mdl", cleanMdl);
 
     assert.equal(ws.fileCount, 1);
-    const lookupModel = ws.lookup("CleanSystem");
+    const lookupModel = ws.findSymbolsByName("CleanSystem");
     assert.ok(lookupModel.length > 0);
 
-    const blocks = ws.getBlocksByName("C1");
+    const blocks = getSimulinkBlocksByName(ws, "C1");
     assert.equal(blocks.length, 1);
     assert.equal(blocks[0]!.type, "Constant");
   });

@@ -2,18 +2,22 @@
 
 import { choice, language, repeat, seq } from "@modelscript/dsl";
 import { lowerUsdToDae } from "./dae/usd-to-dae.js";
+import { indexUsdFile } from "./indexing.js";
 import { lintUsdStage } from "./lints/index.js";
 import { parseUsd } from "./parser/index.js";
 
 /**
- * DSL language specification for OpenUSD (.usd, .usda, .usdz) scene description.
+ * DSL language specification for OpenUSD (.usd, .usda, .usdc, .usdz) scene description.
  */
 export const usdLanguage = language({
   name: "usd",
-  fileExtensions: [".usd", ".usda", ".usdz"],
+  fileExtensions: [".usd", ".usda", ".usdc", ".usdz"],
   maturity: "beta",
+  indexing: {
+    indexFile: indexUsdFile,
+  },
   lsp: {
-    fileExtensions: [".usd", ".usda", ".usdz"],
+    fileExtensions: [".usd", ".usda", ".usdc", ".usdz"],
   },
 
   actions: [
@@ -32,7 +36,8 @@ export const usdLanguage = language({
     {
       id: "usd_to_dae",
       title: "Lower UsdPhysics Stage to DAE",
-      description: "Lowers OpenUSD UsdPhysics rigid bodies and joints into ModelScript's linear-memory DAEBuilder arena.",
+      description:
+        "Lowers OpenUSD UsdPhysics rigid bodies and joints into ModelScript's linear-memory DAEBuilder arena.",
       category: "transform",
       execute: async (ctx: { documentText?: string | undefined }, params?: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { getAllAtpModels, getAtpModel } from "../src/indexing.js";
 import { atpLanguage } from "../src/language.js";
 import { getAtpDiagnostics, getAtpDocumentSymbols } from "../src/lsp.js";
-import { AtpWorkspaceIndex } from "../src/workspace-index.js";
 
 const SAMPLE_ATP = `BEGIN NEW DATA CASE
 C 138kV Substation Breaker Case
@@ -24,21 +25,22 @@ BLANK RECORD
 `;
 
 describe("ATP Language Plugin & LSP Services", () => {
-  it("indexes ATP documents in workspace index", () => {
-    const index = new AtpWorkspaceIndex();
-    index.indexDocument("file:///test/substation.atp", SAMPLE_ATP);
+  it("indexes ATP documents in UnifiedWorkspace", () => {
+    const ws = new UnifiedWorkspace(atpLanguage);
+    ws.setDocument("file:///test/substation.atp", SAMPLE_ATP);
 
-    const model = index.getModel("file:///test/substation.atp");
+    const model = getAtpModel(ws, "file:///test/substation.atp");
     assert.ok(model !== undefined);
     assert.equal(model?.title, "138kV Substation Breaker Case");
     assert.equal(model?.branchCount, 1);
     assert.equal(model?.switchCount, 1);
     assert.equal(model?.sourceCount, 1);
     assert.ok(model?.nodes.includes("BUS1"));
+    assert.ok(ws.getIndex().byName.has("BUS1"));
 
-    assert.equal(index.getAllModels().length, 1);
-    index.clear();
-    assert.equal(index.getAllModels().length, 0);
+    assert.equal(getAllAtpModels(ws).length, 1);
+    ws.clear();
+    assert.equal(getAllAtpModels(ws).length, 0);
   });
 
   it("extracts hierarchical LSP document symbols", () => {

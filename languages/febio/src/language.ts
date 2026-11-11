@@ -9,6 +9,7 @@
  */
 
 import { language } from "@modelscript/dsl";
+import { canIndexFebio, indexFebioDocument } from "./indexing.js";
 import { lintFebioDocument } from "./lints/rules.js";
 import { parseFebio } from "./parser/index.js";
 import { febioToCalculixInp, febioToModelica } from "./projections/index.js";
@@ -18,6 +19,10 @@ export const febioLanguage = language({
   name: "febio",
   fileExtensions: [".feb", ".scn"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexFebioDocument,
+    canIndex: canIndexFebio,
+  },
   lsp: {
     fileExtensions: [".feb", ".scn"],
   },

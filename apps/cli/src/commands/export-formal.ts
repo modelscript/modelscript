@@ -122,7 +122,7 @@ export const ExportFormal: CommandModule<{}, ExportFormalArgs> = {
       }
     }
 
-    const unifiedIndex = await sysmlIndex.toUnifiedAsync();
+    const unifiedIndex = await sysmlIndex.getIndexAsync();
     const qe = createSysML2QueryEngine(unifiedIndex);
     const db = qe.toQueryDB();
     let resultText = "";

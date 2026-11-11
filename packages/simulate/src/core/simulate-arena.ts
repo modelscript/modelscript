@@ -115,6 +115,15 @@ interface TornExecutionPlan {
   cachedJ?: Float64Array | undefined;
   cachedPiv?: Int32Array | undefined;
   cachedScale?: Float64Array | undefined;
+  luEpoch?: number | undefined;
+  fallbackCount?: number | undefined;
+  scratchXTear?: Float64Array | undefined;
+  scratchR?: Float64Array | undefined;
+  scratchRPert?: Float64Array | undefined;
+  scratchDeltaX?: Float64Array | undefined;
+  scratchXTrial?: Float64Array | undefined;
+  scratchBestXTear?: Float64Array | undefined;
+  scratchOrigVals?: Float64Array | undefined;
 }
 
 type SystemExecutionBlock = Extract<import("@modelscript/runtime").ArenaExecutionBlock, { type: "system" }> & {
@@ -126,8 +135,19 @@ type SystemExecutionBlock = Extract<import("@modelscript/runtime").ArenaExecutio
   _compiledResiduals?: ((env: Float64Array, x: Float64Array, R: Float64Array) => number) | undefined;
   _compiledJacobian?: ((env: Float64Array, x: Float64Array, R: Float64Array, J: Float64Array) => void) | undefined;
   _isLinearSystem?: boolean | undefined;
+  _isJacInvariantBetweenEvents?: boolean | undefined;
+  _cachedFactJ?: Float64Array | undefined;
+  _cachedPiv?: Int32Array | undefined;
+  _cachedScale?: Float64Array | undefined;
+  _cachedLuFact?: LUFactorizationFlat | undefined;
+  _luEpoch?: number | undefined;
+  _chordFailStreak?: number | undefined;
+  _chordSkipRemaining?: number | undefined;
   _tornPlan?: TornExecutionPlan | null | undefined;
 };
+
+/** Globally monotonic epoch counter so cached LU factorizations never alias across simulator instances or discrete events. */
+let nextDiscreteEventEpoch = 1;
 
 type ArenaCpuSolver =
   | "euler"
@@ -161,6 +181,8 @@ const NEWTON_MAX_ITER = 20;
 const NEWTON_TOL = 1e-10;
 /** Square root of machine epsilon for finite-difference perturbation. */
 const SQRT_EPS = 1.4901161193847656e-8;
+/** Static backtracking step-size schedule for torn Newton line search (zero per-call array allocations). */
+const TORN_LINE_ALPHAS = [1.0, 0.5, 0.25, 0.125, 0.05] as const;
 
 /**
  * Arena-native DAE/ODE simulation engine operating directly on linear-memory `DAEBuilder` structures.
@@ -240,8 +262,28 @@ export class ArenaSimulator {
   public fmuRegistry?: FmuSubsystemRegistry | undefined;
   public fmuLoader?: ((fmuPath: string, instance: FmuInstanceMetadata) => FmuSubsystem) | undefined;
 
-  /** Warm-start cache for algebraic loop variables (varNameId → value). */
-  private algWarmStart = new Map<number, number>();
+  /** Flat L1-friendly warm-start cache for algebraic loop variables indexed directly by interned StringId. */
+  private algWarmStartVals = new Float64Array(4096);
+  private algWarmStartValid = new Uint8Array(4096);
+  /** Current discrete-event epoch; incremented whenever discrete variables, state machines, or parameters change. */
+  private discreteEventEpoch = nextDiscreteEventEpoch++;
+  /** True during intermediate trial-stage ODE RHS evaluations inside adaptive solvers. */
+  private inAdaptiveTrialStage = false;
+  /** Signaled when an algebraic loop diverges badly during an adaptive trial stage so the solver shrinks step size. */
+  private algebraicDivergedInTrialStage = false;
+
+  private ensureWarmStartCapacity(minLen: number): void {
+    if (this.algWarmStartVals.length < minLen) {
+      let cap = this.algWarmStartVals.length * 2;
+      if (cap < minLen) cap = minLen + 256;
+      const nextVals = new Float64Array(cap);
+      nextVals.set(this.algWarmStartVals);
+      const nextValid = new Uint8Array(cap);
+      nextValid.set(this.algWarmStartValid);
+      this.algWarmStartVals = nextVals;
+      this.algWarmStartValid = nextValid;
+    }
+  }
 
   /** Cached FMU prefix → subsystem mapping (built once in prepare). */
   private fmuMappings: { prefix: string; subsystem: FmuSubsystem; inputIds: number[]; outputIds: number[] }[] = [];
@@ -254,10 +296,16 @@ export class ArenaSimulator {
   // ── Pre-allocated zero-allocation scratch buffers for Newton algebraic loops ──
   /** Scratch vector for current algebraic iterate $x_k$. */
   private newtonScratchX = new Float64Array(32);
+  /** Scratch vector for best finite algebraic iterate $x_{\text{best}}$. */
+  private newtonScratchBestX = new Float64Array(32);
   /** Scratch vector for residual evaluation $r(x_k)$. */
   private newtonScratchR = new Float64Array(32);
   /** Scratch vector for negated residual $-r(x_k)$ (overwritten with Newton step $\Delta x$). */
   private newtonScratchNegR = new Float64Array(32);
+  /** Scratch vector for Armijo line-search / Chord trial iterate $x_{\text{trial}}$. */
+  private newtonScratchTrialX = new Float64Array(32);
+  /** Scratch vector for Armijo line-search / Chord trial residual $r(x_{\text{trial}})$. */
+  private newtonScratchTrialR = new Float64Array(32);
   /** Scratch array mapping block variable indices to interned string IDs. */
   private newtonScratchVarIds = new Int32Array(32);
   /** Scratch flat row-major buffer for the $m \times m$ block Jacobian matrix $J$. */
@@ -278,8 +326,11 @@ export class ArenaSimulator {
     if (this.newtonScratchX.length < m) {
       const cap = Math.max(m, this.newtonScratchX.length * 2);
       this.newtonScratchX = new Float64Array(cap);
+      this.newtonScratchBestX = new Float64Array(cap);
       this.newtonScratchR = new Float64Array(cap);
       this.newtonScratchNegR = new Float64Array(cap);
+      this.newtonScratchTrialX = new Float64Array(cap);
+      this.newtonScratchTrialR = new Float64Array(cap);
       this.newtonScratchVarIds = new Int32Array(cap);
       this.newtonScratchMat = new Float64Array(cap * cap);
       this.newtonScratchPiv = new Int32Array(cap);
@@ -303,6 +354,8 @@ export class ArenaSimulator {
    * causalization, compiles execution blocks, and extracts hybrid events, assertions, and state machines.
    */
   prepare() {
+    this.discreteEventEpoch = nextDiscreteEventEpoch++;
+    this.algWarmStartValid.fill(0);
     this.eliminatedDerVars.clear();
     const preOverrides = this.parameters.size > 0 ? new Map(this.parameters) : null;
 
@@ -3364,8 +3417,19 @@ export class ArenaSimulator {
    * Returns true if the torn solve succeeded, or false to fall back to untorn Newton.
    */
   private trySolveTornBlock(sysBlock: SystemExecutionBlock, valuesByStringId: Float64Array): boolean {
+    if (sysBlock._tornPlan === null) {
+      return false;
+    }
     const tearing = sysBlock.tearing;
-    if (!tearing || tearing.tearingVars.length === 0 || tearing.tearingVars.length >= sysBlock.vars.length) {
+    const m = sysBlock.vars.length;
+    if (!tearing || m <= 2 || tearing.tearingVars.length === 0 || tearing.tearingVars.length >= m) {
+      return false;
+    }
+    if (sysBlock._isJacInvariantBetweenEvents === true && tearing.tearingVars.length > 2) {
+      return false;
+    }
+    if (sysBlock._compiledJacobian !== undefined && tearing.tearingVars.length * 4 > m * 3) {
+      sysBlock._tornPlan = null;
       return false;
     }
 
@@ -3414,72 +3478,81 @@ export class ArenaSimulator {
         tearingVarNameIds: tearVarNameIds,
         residualExprIds: resExprIds,
         causalChain: causalPlan,
+        fallbackCount: 0,
+        scratchXTear: new Float64Array(k),
+        scratchR: new Float64Array(k),
+        scratchRPert: new Float64Array(k),
+        scratchDeltaX: new Float64Array(k),
+        scratchXTrial: new Float64Array(k),
+        scratchBestXTear: new Float64Array(k),
+        scratchOrigVals: new Float64Array(k + causalPlan.length),
       };
       this.compileTornPlan(plan);
-      sysBlock._tornPlan = plan;
-    }
-
-    if (sysBlock._tornPlan === null) return false;
-
-    const plan = sysBlock._tornPlan;
-    const k = plan.k;
-    const xTear = new Float64Array(k);
-    for (let i = 0; i < k; i++) {
-      const nid = plan.tearingVarNameIds[i]!;
-      const v = this.algWarmStart.get(nid) ?? valuesByStringId[nid] ?? 0;
-      xTear[i] = Number.isFinite(v) ? v : 0;
-    }
-
-    const compiled = plan.compiledResiduals;
-    const evalResiduals = compiled
-      ? (xTrial: Float64Array, R_out: Float64Array): number => {
-          return compiled(valuesByStringId, xTrial, R_out);
-        }
-      : (xTrial: Float64Array, R_out: Float64Array): number => {
+      if (!plan.compiledResiduals) {
+        plan.compiledResiduals = (env: Float64Array, xT: Float64Array, R_out: Float64Array): number => {
           for (let i = 0; i < k; i++) {
-            valuesByStringId[plan.tearingVarNameIds[i]!] = xTrial[i]!;
+            env[plan.tearingVarNameIds[i]!] = xT[i]!;
           }
           for (let c = 0; c < plan.causalChain.length; c++) {
             const step = plan.causalChain[c]!;
-            const val = evaluateArenaRuntime(
-              this.arena,
-              step.isolatedExprId,
-              valuesByStringId,
-              this.preValuesByStringId,
-            );
-            valuesByStringId[step.solvedVarNameId] = Number.isFinite(val) ? val : 0;
+            const val = evaluateArenaRuntime(this.arena, step.isolatedExprId, env, this.preValuesByStringId);
+            env[step.solvedVarNameId] = Number.isFinite(val) ? val : 0;
           }
           let maxR = 0;
           for (let j = 0; j < k; j++) {
-            const r = evaluateArenaRuntime(
-              this.arena,
-              plan.residualExprIds[j]!,
-              valuesByStringId,
-              this.preValuesByStringId,
-            );
+            const r = evaluateArenaRuntime(this.arena, plan.residualExprIds[j]!, env, this.preValuesByStringId);
             const ar = Math.abs(r);
             R_out[j] = Number.isFinite(r) ? r : 1e10;
             if (ar > maxR) maxR = ar;
           }
           return maxR;
         };
+      }
+      sysBlock._tornPlan = plan;
+    }
 
-    const R = new Float64Array(k);
-    const R_pert = new Float64Array(k);
-    const deltaX = new Float64Array(k);
-    const xTrial = new Float64Array(k);
+    if (sysBlock._tornPlan === null) return false;
+
+    this.ensureWarmStartCapacity(valuesByStringId.length);
+    const wsVals = this.algWarmStartVals;
+    const wsValid = this.algWarmStartValid;
+
+    const plan = sysBlock._tornPlan;
+    const k = plan.k;
+    const xTear = plan.scratchXTear ?? (plan.scratchXTear = new Float64Array(k));
+    const origVals = plan.scratchOrigVals ?? (plan.scratchOrigVals = new Float64Array(k + plan.causalChain.length));
+    for (let i = 0; i < k; i++) {
+      const nid = plan.tearingVarNameIds[i]!;
+      const envVal = valuesByStringId[nid] ?? 0;
+      origVals[i] = envVal;
+      const v = wsValid[nid] === 1 ? wsVals[nid]! : envVal;
+      xTear[i] = Number.isFinite(v) ? v : 0;
+    }
+    for (let c = 0; c < plan.causalChain.length; c++) {
+      origVals[k + c] = valuesByStringId[plan.causalChain[c]!.solvedVarNameId] ?? 0;
+    }
+
+    const evalRes = plan.compiledResiduals!;
+    const R = plan.scratchR ?? (plan.scratchR = new Float64Array(k));
+    const R_pert = plan.scratchRPert ?? (plan.scratchRPert = new Float64Array(k));
+    const deltaX = plan.scratchDeltaX ?? (plan.scratchDeltaX = new Float64Array(k));
+    const xTrial = plan.scratchXTrial ?? (plan.scratchXTrial = new Float64Array(k));
 
     const tearTol = 1e-10;
-    let currentMaxR = evalResiduals(xTear, R);
+    let currentMaxR = evalRes(valuesByStringId, xTear, R);
     if (currentMaxR < tearTol) {
+      plan.fallbackCount = 0;
       for (let i = 0; i < k; i++) {
-        this.algWarmStart.set(plan.tearingVarNameIds[i]!, xTear[i]!);
+        const nid = plan.tearingVarNameIds[i]!;
+        wsVals[nid] = xTear[i]!;
+        wsValid[nid] = 1;
       }
       return true;
     }
 
     let bestMaxR = currentMaxR;
-    const bestXTear = new Float64Array(xTear);
+    const bestXTear = plan.scratchBestXTear ?? (plan.scratchBestXTear = new Float64Array(k));
+    bestXTear.set(xTear);
 
     if (!plan.cachedPiv) plan.cachedPiv = new Int32Array(k);
     if (!plan.cachedScale) plan.cachedScale = new Float64Array(k);
@@ -3491,13 +3564,14 @@ export class ArenaSimulator {
     const J = plan.cachedJ;
     const factJ = plan.cachedFactJ;
 
-    let haveFact = plan.cachedFact !== undefined;
+    let haveFact = plan.cachedFact !== undefined && plan.luEpoch === this.discreteEventEpoch;
     let chordSteps = 0;
 
-    for (let iter = 0; iter < 40; iter++) {
+    for (let iter = 0; iter < 25; iter++) {
+      const prevMaxR = currentMaxR;
       let solvedStep = false;
 
-      // ── Try Chord Step if we have a valid factored Jacobian near the root ──
+      // ── Try full Chord Step (alpha = 1) if we have a valid factored Jacobian near the root ──
       if (haveFact && chordSteps < 4 && currentMaxR < 1e-2) {
         for (let i = 0; i < k; i++) deltaX[i] = -R[i]!;
         luSolveFlat(plan.cachedFact!, deltaX);
@@ -3509,23 +3583,20 @@ export class ArenaSimulator {
           }
         }
         if (stepFinite) {
-          for (const alpha of [1.0, 0.5, 0.25]) {
-            for (let i = 0; i < k; i++) xTrial[i] = xTear[i]! + alpha * deltaX[i]!;
-            const trialR = evalResiduals(xTrial, R_pert);
-            if (trialR < currentMaxR * 0.9 || trialR < tearTol) {
-              for (let i = 0; i < k; i++) {
-                xTear[i] = xTrial[i]!;
-                R[i] = R_pert[i]!;
-              }
-              currentMaxR = trialR;
-              if (currentMaxR < bestMaxR) {
-                bestMaxR = currentMaxR;
-                bestXTear.set(xTear);
-              }
-              solvedStep = true;
-              chordSteps++;
-              break;
+          for (let i = 0; i < k; i++) xTrial[i] = xTear[i]! + deltaX[i]!;
+          const trialR = evalRes(valuesByStringId, xTrial, R_pert);
+          if (trialR < currentMaxR * 0.5 || trialR < tearTol) {
+            for (let i = 0; i < k; i++) {
+              xTear[i] = xTrial[i]!;
+              R[i] = R_pert[i]!;
             }
+            currentMaxR = trialR;
+            if (currentMaxR < bestMaxR) {
+              bestMaxR = currentMaxR;
+              bestXTear.set(xTear);
+            }
+            solvedStep = true;
+            chordSteps++;
           }
         }
       }
@@ -3535,23 +3606,37 @@ export class ArenaSimulator {
         chordSteps = 0;
         if (k === 1) {
           const origX = xTear[0]!;
-          const eps = 1e-7 * Math.max(1.0, Math.abs(origX));
+          const eps = SQRT_EPS * Math.max(1.0, Math.abs(origX));
           xTear[0] = origX + eps;
-          evalResiduals(xTear, R_pert);
+          evalRes(valuesByStringId, xTear, R_pert);
+          let diag = (R_pert[0]! - R[0]!) / eps;
+          if (Math.abs(diag) < 1e-14) {
+            // Probe opposite direction in case origX + eps stepped into a min/max saturation plateau
+            xTear[0] = origX - eps;
+            evalRes(valuesByStringId, xTear, R_pert);
+            diag = (R[0]! - R_pert[0]!) / eps;
+          }
           xTear[0] = origX;
-          const diag = (R_pert[0]! - R[0]!) / eps;
           if (Math.abs(diag) < 1e-14) break;
           deltaX[0] = -R[0]! / diag;
         } else if (k === 2) {
           for (let j = 0; j < 2; j++) {
             const origXj = xTear[j]!;
-            const eps = 1e-7 * Math.max(1.0, Math.abs(origXj));
+            const eps = SQRT_EPS * Math.max(1.0, Math.abs(origXj));
             xTear[j] = origXj + eps;
-            evalResiduals(xTear, R_pert);
-            xTear[j] = origXj;
+            evalRes(valuesByStringId, xTear, R_pert);
             const invEps = 1.0 / eps;
-            J[0 * 2 + j] = (R_pert[0]! - R[0]!) * invEps;
-            J[1 * 2 + j] = (R_pert[1]! - R[1]!) * invEps;
+            let d0 = (R_pert[0]! - R[0]!) * invEps;
+            let d1 = (R_pert[1]! - R[1]!) * invEps;
+            if (Math.abs(d0) < 1e-14 && Math.abs(d1) < 1e-14) {
+              xTear[j] = origXj - eps;
+              evalRes(valuesByStringId, xTear, R_pert);
+              d0 = (R[0]! - R_pert[0]!) * invEps;
+              d1 = (R[1]! - R_pert[1]!) * invEps;
+            }
+            xTear[j] = origXj;
+            J[0 * 2 + j] = d0;
+            J[1 * 2 + j] = d1;
           }
           const j00 = J[0]!,
             j01 = J[1]!,
@@ -3565,19 +3650,31 @@ export class ArenaSimulator {
         } else {
           for (let j = 0; j < k; j++) {
             const origXj = xTear[j]!;
-            const eps = 1e-7 * Math.max(1.0, Math.abs(origXj));
+            const eps = SQRT_EPS * Math.max(1.0, Math.abs(origXj));
             xTear[j] = origXj + eps;
-            evalResiduals(xTear, R_pert);
-            xTear[j] = origXj;
+            evalRes(valuesByStringId, xTear, R_pert);
             const invEps = 1.0 / eps;
+            let colMax = 0;
             for (let i = 0; i < k; i++) {
-              J[i * k + j] = (R_pert[i]! - R[i]!) * invEps;
+              const d = (R_pert[i]! - R[i]!) * invEps;
+              J[i * k + j] = d;
+              const ad = Math.abs(d);
+              if (ad > colMax) colMax = ad;
             }
+            if (colMax < 1e-14) {
+              xTear[j] = origXj - eps;
+              evalRes(valuesByStringId, xTear, R_pert);
+              for (let i = 0; i < k; i++) {
+                J[i * k + j] = (R[i]! - R_pert[i]!) * invEps;
+              }
+            }
+            xTear[j] = origXj;
           }
 
           try {
             factJ.set(J);
             plan.cachedFact = luFactorFlat(factJ, k, piv, scale);
+            plan.luEpoch = this.discreteEventEpoch;
             haveFact = true;
             for (let i = 0; i < k; i++) deltaX[i] = -R[i]!;
             luSolveFlat(plan.cachedFact, deltaX);
@@ -3597,9 +3694,10 @@ export class ArenaSimulator {
         }
 
         let stepAccepted = false;
-        for (const alpha of [1.0, 0.5, 0.25, 0.125, 0.05]) {
+        for (let aIdx = 0; aIdx < TORN_LINE_ALPHAS.length; aIdx++) {
+          const alpha = TORN_LINE_ALPHAS[aIdx]!;
           for (let i = 0; i < k; i++) xTrial[i] = xTear[i]! + alpha * deltaX[i]!;
-          const trialR = evalResiduals(xTrial, R_pert);
+          const trialR = evalRes(valuesByStringId, xTrial, R_pert);
           if (trialR < currentMaxR) {
             for (let i = 0; i < k; i++) {
               xTear[i] = xTrial[i]!;
@@ -3617,7 +3715,7 @@ export class ArenaSimulator {
 
         if (!stepAccepted) {
           for (let i = 0; i < k; i++) xTear[i] = xTear[i]! + deltaX[i]!;
-          currentMaxR = evalResiduals(xTear, R);
+          currentMaxR = evalRes(valuesByStringId, xTear, R);
           if (currentMaxR < bestMaxR) {
             bestMaxR = currentMaxR;
             bestXTear.set(xTear);
@@ -3626,29 +3724,51 @@ export class ArenaSimulator {
       }
 
       if (currentMaxR < tearTol) {
-        evalResiduals(xTear, R);
+        plan.fallbackCount = 0;
         for (let i = 0; i < k; i++) {
-          this.algWarmStart.set(plan.tearingVarNameIds[i]!, xTear[i]!);
+          const nid = plan.tearingVarNameIds[i]!;
+          wsVals[nid] = xTear[i]!;
+          wsValid[nid] = 1;
         }
         return true;
       }
+
+      // Stagnation check on non-smooth / finite-difference-limited blocks: bail out to analytical Newton
+      if (iter >= 12 && currentMaxR >= prevMaxR * 0.99) {
+        break;
+      }
     }
 
-    if (bestMaxR < 1e-6) {
-      evalResiduals(bestXTear, R);
+    if (bestMaxR < 1e-8) {
+      plan.fallbackCount = 0;
+      evalRes(valuesByStringId, bestXTear, R);
       for (let i = 0; i < k; i++) {
-        this.algWarmStart.set(plan.tearingVarNameIds[i]!, bestXTear[i]!);
+        const nid = plan.tearingVarNameIds[i]!;
+        wsVals[nid] = bestXTear[i]!;
+        wsValid[nid] = 1;
       }
       return true;
     }
 
+    // Restore pre-tear environment values and disable torn plan only if it fails 8 times consecutively
+    for (let i = 0; i < k; i++) {
+      valuesByStringId[plan.tearingVarNameIds[i]!] = origVals[i]!;
+    }
+    for (let c = 0; c < plan.causalChain.length; c++) {
+      valuesByStringId[plan.causalChain[c]!.solvedVarNameId] = origVals[k + c]!;
+    }
+    const fbCount = (plan.fallbackCount ?? 0) + 1;
+    plan.fallbackCount = fbCount;
+    if (fbCount >= 8) {
+      sysBlock._tornPlan = null;
+    }
     return false;
   }
 
   /**
    * Solves a simultaneous algebraic loop (`type: "system"`) using damped Newton-Raphson
    * with pre-allocated scratch buffers, forward-mode AD / JIT-compiled Jacobians,
-   * flat LU factorization (`luFactorFlat`), and warm-starting across time steps.
+   * epoch-cached flat LU factorization (`luFactorFlat`), Chord-Newton reuse, and warm-starting.
    */
   private solveNewtonBlock(
     block: Extract<import("@modelscript/runtime").ArenaExecutionBlock, { type: "system" }>,
@@ -3663,10 +3783,16 @@ export class ArenaSimulator {
     }
 
     this.ensureNewtonCapacity(m);
+    this.ensureWarmStartCapacity(valuesByStringId.length);
+    const wsVals = this.algWarmStartVals;
+    const wsValid = this.algWarmStartValid;
 
     const x = this.newtonScratchX;
+    const bestX = this.newtonScratchBestX;
     const R = this.newtonScratchR;
     const negR = this.newtonScratchNegR;
+    const trialX = this.newtonScratchTrialX;
+    const trialR = this.newtonScratchTrialR;
     const varNameIds = this.newtonScratchVarIds;
     const J = this.newtonScratchMat;
     const piv = this.newtonScratchPiv;
@@ -3723,47 +3849,98 @@ export class ArenaSimulator {
       sysBlock._hasBoolVars = hasBoolVars;
     }
 
-    const bestX = new Float64Array(m);
-    let bestMaxR = Infinity;
-    let bestBoolConsistent = false;
-
-    // Collect variable name StringIds
+    // Collect variable name StringIds & warm-start iterate
     for (let i = 0; i < m; i++) {
       const nid = cachedVarIds[i] as number;
       varNameIds[i] = nid;
-      // Initialize from warm-start cache or current environment
-      const initVal = this.algWarmStart.get(nid) ?? valuesByStringId[nid] ?? 0;
+      const initVal = wsValid[nid] === 1 ? wsVals[nid]! : (valuesByStringId[nid] ?? 0);
       x[i] = Number.isFinite(initVal) ? initVal : 0;
-      bestX[i] = x[i]!;
     }
 
     const compiledRes = sysBlock._compiledResiduals;
     const compiledJac = sysBlock._compiledJacobian;
     const isLinearSystem = sysBlock._isLinearSystem === true && !hasBoolVars;
 
-    let converged = false;
-
-    for (let iter = 0; iter < NEWTON_MAX_ITER; iter++) {
-      // Set current values into the environment
-      for (let i = 0; i < m; i++) valuesByStringId[varNameIds[i] as number] = x[i] as number;
-
-      // Evaluate residuals: R_i = lhs_i - rhs_i
-      let maxR = 0;
+    const evalBlockResiduals = (xVec: Float64Array, RVec: Float64Array): number => {
+      for (let i = 0; i < m; i++) valuesByStringId[varNameIds[i] as number] = xVec[i] as number;
       if (compiledRes) {
-        maxR = compiledRes(valuesByStringId, x, R);
-      } else {
+        return compiledRes(valuesByStringId, xVec, RVec);
+      }
+      let mr = 0;
+      for (let i = 0; i < m; i++) {
+        const resId = cachedResIds![i] as number;
+        const exprVal = evaluateArenaRuntime(this.arena, resId, valuesByStringId, this.preValuesByStringId);
+        if (Number.isFinite(exprVal)) {
+          RVec[i] = exprVal;
+          const absR = Math.abs(exprVal);
+          if (absR > mr) mr = absR;
+        } else {
+          RVec[i] = 1e10;
+          mr = Infinity;
+        }
+      }
+      return mr;
+    };
+
+    // Fast path for affine linear blocks whose Jacobian is invariant between discrete events:
+    // Reuse pre-factored LU in O(m^2) without recomputing J or running O(m^3) LU decomposition.
+    if (
+      isLinearSystem &&
+      sysBlock._isJacInvariantBetweenEvents === true &&
+      sysBlock._cachedLuFact !== undefined &&
+      sysBlock._luEpoch === this.discreteEventEpoch
+    ) {
+      const initMaxR = evalBlockResiduals(x, R);
+      if (initMaxR < NEWTON_TOL) {
         for (let i = 0; i < m; i++) {
-          const resId = cachedResIds[i] as number;
-          const exprVal = evaluateArenaRuntime(this.arena, resId, valuesByStringId, this.preValuesByStringId);
-          if (Number.isFinite(exprVal)) {
-            R[i] = exprVal;
-            const absR = Math.abs(exprVal);
-            if (absR > maxR) maxR = absR;
-          } else {
-            R[i] = 1e10;
-            maxR = Infinity;
+          const nid = varNameIds[i] as number;
+          wsVals[nid] = x[i] as number;
+          wsValid[nid] = 1;
+        }
+        return;
+      }
+      if (Number.isFinite(initMaxR)) {
+        for (let i = 0; i < m; i++) negR[i] = -(R[i] as number);
+        luSolveFlat(sysBlock._cachedLuFact, negR);
+        let stepFinite = true;
+        for (let i = 0; i < m; i++) {
+          if (!Number.isFinite(negR[i] as number)) {
+            stepFinite = false;
+            break;
           }
         }
+        if (stepFinite) {
+          for (let i = 0; i < m; i++) {
+            const nid = varNameIds[i] as number;
+            const nx = (x[i] as number) + (negR[i] as number);
+            valuesByStringId[nid] = nx;
+            wsVals[nid] = nx;
+            wsValid[nid] = 1;
+          }
+          return;
+        }
+      }
+    }
+
+    for (let i = 0; i < m; i++) bestX[i] = x[i]!;
+    let bestMaxR = Infinity;
+    let bestBoolConsistent = false;
+
+    let converged = false;
+    let haveResidual = false;
+    let maxR = 0;
+    let chordSteps = 0;
+    const chordSkip = sysBlock._chordSkipRemaining ?? 0;
+    if (chordSkip > 0) {
+      sysBlock._chordSkipRemaining = chordSkip - 1;
+    }
+
+    for (let iter = 0; iter < NEWTON_MAX_ITER; iter++) {
+      if (!haveResidual) {
+        maxR = evalBlockResiduals(x, R);
+      } else {
+        for (let i = 0; i < m; i++) valuesByStringId[varNameIds[i] as number] = x[i] as number;
+        haveResidual = false;
       }
 
       let maxContR = maxR;
@@ -3804,6 +3981,67 @@ export class ArenaSimulator {
         break;
       }
 
+      // Chord-Newton reuse for smooth nonlinear blocks (O(m^2) triangular solve)
+      if (
+        !hasBoolVars &&
+        !isLinearSystem &&
+        (chordSteps > 0 || chordSkip === 0) &&
+        chordSteps < 3 &&
+        maxR < 1e-2 &&
+        sysBlock._cachedLuFact !== undefined &&
+        sysBlock._luEpoch === this.discreteEventEpoch
+      ) {
+        for (let i = 0; i < m; i++) negR[i] = -(R[i] as number);
+        luSolveFlat(sysBlock._cachedLuFact, negR);
+        let chordFinite = true;
+        for (let i = 0; i < m; i++) {
+          if (!Number.isFinite(negR[i] as number)) {
+            chordFinite = false;
+            break;
+          }
+        }
+        if (chordFinite) {
+          for (let i = 0; i < m; i++) trialX[i] = (x[i] as number) + (negR[i] as number);
+          const trialMaxR = evalBlockResiduals(trialX, trialR);
+          if (trialMaxR < NEWTON_TOL) {
+            for (let i = 0; i < m; i++) {
+              x[i] = trialX[i]!;
+              bestX[i] = trialX[i]!;
+            }
+            if (chordSteps === 0) sysBlock._chordFailStreak = 0;
+            converged = true;
+            break;
+          }
+          if (trialMaxR < 0.25 * maxR) {
+            for (let i = 0; i < m; i++) {
+              x[i] = trialX[i]!;
+              R[i] = trialR[i]!;
+            }
+            if (trialMaxR < bestMaxR) {
+              bestMaxR = trialMaxR;
+              for (let i = 0; i < m; i++) bestX[i] = trialX[i]!;
+            }
+            maxR = trialMaxR;
+            haveResidual = true;
+            if (chordSteps === 0) sysBlock._chordFailStreak = 0;
+            chordSteps++;
+            continue;
+          }
+        }
+        if (chordSteps === 0) {
+          const streak = (sysBlock._chordFailStreak ?? 0) + 1;
+          if (streak >= 2) {
+            sysBlock._chordSkipRemaining = 12;
+            sysBlock._chordFailStreak = 0;
+          } else {
+            sysBlock._chordFailStreak = streak;
+          }
+        }
+        for (let i = 0; i < m; i++) valuesByStringId[varNameIds[i] as number] = x[i] as number;
+      }
+
+      chordSteps = 0;
+
       // Compute Jacobian
       if (compiledJac) {
         compiledJac(valuesByStringId, x, R, J);
@@ -3815,10 +4053,8 @@ export class ArenaSimulator {
             const resId = cachedResIds[i] as number;
             const ok = evaluateArenaDualFlat(this.arena, resId, valuesByStringId, nid, dualStack, 0);
             if (ok && Number.isFinite(dualStack[1] as number)) {
-              // J[i][j] = d(res_i)/dx_j
               J[i * m + j] = dualStack[1] as number;
             } else {
-              // AD failed — fall back to finite differences
               const xj = x[j] as number;
               const eps = SQRT_EPS * Math.max(Math.abs(xj), 1.0);
               valuesByStringId[nid] = xj + eps;
@@ -3831,11 +4067,44 @@ export class ArenaSimulator {
         }
       }
 
-      // Solve J · Δx = -R via zero-allocation flat LU factorization
+      // Solve J · Δx = -R via closed-form 1x1 / 2x2 or flat LU factorization
       try {
-        const fact = luFactorFlat(J, m, piv, scale);
-        for (let i = 0; i < m; i++) negR[i] = -(R[i] as number);
-        luSolveFlat(fact, negR);
+        if (m === 1 && !hasBoolVars && sysBlock._isJacInvariantBetweenEvents !== true) {
+          const d0 = J[0] as number;
+          if (!Number.isFinite(d0) || Math.abs(d0) < 1e-15) throw new Error("Singular 1x1");
+          negR[0] = -(R[0] as number) / d0;
+        } else if (m === 2 && !hasBoolVars && sysBlock._isJacInvariantBetweenEvents !== true) {
+          const j00 = J[0] as number,
+            j01 = J[1] as number,
+            j10 = J[2] as number,
+            j11 = J[3] as number;
+          const det = j00 * j11 - j01 * j10;
+          if (!Number.isFinite(det) || Math.abs(det) < 1e-15) throw new Error("Singular 2x2");
+          const invDet = 1.0 / det;
+          const r0 = R[0] as number,
+            r1 = R[1] as number;
+          negR[0] = (-r0 * j11 + r1 * j01) * invDet;
+          negR[1] = (-r1 * j00 + r0 * j10) * invDet;
+        } else {
+          let fact: LUFactorizationFlat;
+          if (!hasBoolVars) {
+            if (!sysBlock._cachedFactJ || sysBlock._cachedFactJ.length !== m * m) {
+              sysBlock._cachedFactJ = new Float64Array(m * m);
+              sysBlock._cachedPiv = new Int32Array(m);
+              sysBlock._cachedScale = new Float64Array(m);
+            }
+            const factJ = sysBlock._cachedFactJ;
+            for (let k = 0; k < m * m; k++) factJ[k] = J[k] as number;
+            fact = luFactorFlat(factJ, m, sysBlock._cachedPiv!, sysBlock._cachedScale!);
+            sysBlock._cachedLuFact = fact;
+            sysBlock._luEpoch = this.discreteEventEpoch;
+          } else {
+            fact = luFactorFlat(J, m, piv, scale);
+          }
+
+          for (let i = 0; i < m; i++) negR[i] = -(R[i] as number);
+          luSolveFlat(fact, negR);
+        }
         let stepFinite = true;
         for (let i = 0; i < m; i++) {
           if (!Number.isFinite(negR[i] as number)) {
@@ -3879,19 +4148,70 @@ export class ArenaSimulator {
               break;
             }
           }
-        } else {
+        } else if (isLinearSystem) {
           for (let i = 0; i < m; i++) {
             const nx = (x[i] as number) + (negR[i] as number);
             x[i] = nx;
+            bestX[i] = nx;
             valuesByStringId[varNameIds[i] as number] = nx;
           }
-        }
-        if (isLinearSystem) {
           converged = true;
-          for (let i = 0; i < m; i++) bestX[i] = x[i] as number;
           break;
+        } else {
+          // Armijo backtracking line search (reuses trialR on next iter so alpha=1 costs 0 extra evals)
+          let accepted = false;
+          let fullStepFinite = false;
+          for (let alpha = 1.0; alpha >= 0.125; alpha *= 0.5) {
+            for (let i = 0; i < m; i++) {
+              trialX[i] = (x[i] as number) + alpha * (negR[i] as number);
+            }
+            const trialMaxR = evalBlockResiduals(trialX, trialR);
+            if (alpha === 1.0 && Number.isFinite(trialMaxR)) {
+              fullStepFinite = true;
+            }
+            if (trialMaxR < NEWTON_TOL) {
+              for (let i = 0; i < m; i++) {
+                x[i] = trialX[i]!;
+                bestX[i] = trialX[i]!;
+              }
+              converged = true;
+              accepted = true;
+              break;
+            }
+            if (trialMaxR < (1 - 1e-4 * alpha) * maxR) {
+              for (let i = 0; i < m; i++) {
+                x[i] = trialX[i]!;
+                R[i] = trialR[i]!;
+              }
+              if (trialMaxR < bestMaxR) {
+                bestMaxR = trialMaxR;
+                for (let i = 0; i < m; i++) bestX[i] = trialX[i]!;
+              }
+              maxR = trialMaxR;
+              haveResidual = true;
+              accepted = true;
+              break;
+            }
+          }
+          if (converged) break;
+          if (!accepted) {
+            if (fullStepFinite) {
+              for (let i = 0; i < m; i++) {
+                const nx = (x[i] as number) + (negR[i] as number);
+                x[i] = nx;
+                valuesByStringId[varNameIds[i] as number] = nx;
+              }
+            } else {
+              for (let i = 0; i < m; i++) {
+                x[i] = bestX[i]!;
+                valuesByStringId[varNameIds[i] as number] = bestX[i]!;
+              }
+              break;
+            }
+          }
         }
       } catch {
+        sysBlock._cachedLuFact = undefined;
         // Singular Jacobian — restore best finite iterate
         for (let i = 0; i < m; i++) {
           x[i] = bestX[i]!;
@@ -3905,6 +4225,9 @@ export class ArenaSimulator {
       for (let i = 0; i < m; i++) {
         x[i] = bestX[i]!;
       }
+      if (this.inAdaptiveTrialStage && bestMaxR > 1e-2) {
+        this.algebraicDivergedInTrialStage = true;
+      }
     }
 
     // Write converged/best finite values and update warm-start cache
@@ -3912,7 +4235,8 @@ export class ArenaSimulator {
       const nid = varNameIds[i] as number;
       const finalVal = Number.isFinite(x[i] as number) ? (x[i] as number) : (bestX[i] ?? 0);
       valuesByStringId[nid] = finalVal;
-      this.algWarmStart.set(nid, finalVal);
+      wsVals[nid] = finalVal;
+      wsValid[nid] = 1;
     }
   }
 
@@ -4309,6 +4633,19 @@ export class ArenaSimulator {
         return false;
       };
 
+      // Track interned StringIds whose values can vary continuously between discrete events:
+      // `time`, continuous ODE states (`this.stateVars`), and any causal/algebraic variables
+      // that transitively depend on them.
+      const continuousChangingIds = new Set<number>();
+      continuousChangingIds.add(arena.interner.intern("time"));
+      for (const sVarIdx of this.stateVars) {
+        continuousChangingIds.add(arena.getVarNameId(sVarIdx));
+      }
+      const hasContinuousSideEffects =
+        this.arena.algorithmSections.length > 0 ||
+        Boolean(this.fmuRegistry || this.fmuLoader || (this.arena.extensionMetadata as any)?.fmuInstances?.length);
+      const envTokenRe = /\benv\[(\d+)\]/g;
+
       // Chunk into functions of at most 4,000 statements to stay within V8 JIT limits
       const CHUNK_SIZE = 4000;
       type CompiledBlockChunk = (env: Float64Array, h: typeof helpers) => void;
@@ -4319,6 +4656,13 @@ export class ArenaSimulator {
         if (block.type === "single") {
           const varNameId = arena.getVarNameId(block.varIdx);
           const exprJs = exprToJs(block.exprId);
+          if (
+            hasContinuousSideEffects ||
+            exprJs.includes("helpers.") ||
+            exprDependsOnVars(block.exprId, continuousChangingIds)
+          ) {
+            continuousChangingIds.add(varNameId);
+          }
           currentLines.push(`env[${varNameId}] = ${exprJs};`);
           if (currentLines.length >= CHUNK_SIZE) {
             chunks.push(createDynamicFunction("env", "helpers", currentLines.join("\n")) as CompiledBlockChunk);
@@ -4326,7 +4670,7 @@ export class ArenaSimulator {
           }
         } else if (block.type === "system" && block.vars.length > 0) {
           // 5. For simultaneous algebraic systems (`m` variables), construct residual expressions `lhs - rhs`
-          //    and compile dedicated residual (`_compiledResiduals`) and Jacobian (`_compiledJacobian`) closures
+          //    and compile dedicated residual (`_compiledResiduals`) and sparse Jacobian (`_compiledJacobian`) closures
           const m = block.vars.length;
           const sysBlock = block as SystemExecutionBlock;
           const varIds = new Int32Array(m);
@@ -4341,25 +4685,49 @@ export class ArenaSimulator {
           sysBlock._varNameIds = varIds;
           sysBlock._resExprIds = resIds;
 
-          if (m <= 64) {
+          let anyResDependsOnCont = hasContinuousSideEffects;
+          if (!anyResDependsOnCont) {
+            for (let i = 0; i < m; i++) {
+              if (exprDependsOnVars(resIds[i] as number, continuousChangingIds)) {
+                anyResDependsOnCont = true;
+                break;
+              }
+            }
+          }
+
+          if (m <= 256) {
             // Detect whether the system is purely linear (affine) wrt block unknowns
+            // and whether its Jacobian depends only on parameters/discrete variables between events.
             const blockVarIdSet = new Set<number>();
-            const varEnvTokens: string[] = [];
             for (let k = 0; k < m; k++) {
               blockVarIdSet.add(varIds[k] as number);
-              varEnvTokens.push(`env[${varIds[k]}]`);
             }
             let isLinearSystem = true;
+            let isJacInvariant = !hasContinuousSideEffects;
 
-            const resLines: string[] = ["let maxR = 0;"];
+            const resEnvIds: Array<Set<number> | null> = new Array(m);
+            const resLines: string[] = ["let maxR = 0, v = 0, ar = 0;"];
             for (let i = 0; i < m; i++) {
               const resId = resIds[i] as number;
               const resJs = exprToJs(resId);
-              if (resJs.includes("helpers.") || !isExprLinearInVars(resId, blockVarIdSet)) {
+              if (resJs.includes("helpers.")) {
+                anyResDependsOnCont = true;
                 isLinearSystem = false;
+                resEnvIds[i] = null;
+              } else {
+                if (!isExprLinearInVars(resId, blockVarIdSet)) {
+                  isLinearSystem = false;
+                }
+                const refSet = new Set<number>();
+                envTokenRe.lastIndex = 0;
+                let rMatch: RegExpExecArray | null;
+                while ((rMatch = envTokenRe.exec(resJs)) !== null) {
+                  refSet.add(Number(rMatch[1]));
+                }
+                resEnvIds[i] = refSet;
               }
               resLines.push(
-                `{ const v = ${resJs}; if (Number.isFinite(v)) { R[${i}] = v; const ar = Math.abs(v); if (ar > maxR) maxR = ar; } else { R[${i}] = 1e10; maxR = Infinity; } }`,
+                `v = ${resJs}; if (Number.isFinite(v)) { R[${i}] = v; ar = Math.abs(v); if (ar > maxR) maxR = ar; } else { R[${i}] = 1e10; maxR = Infinity; }`,
               );
             }
             resLines.push("return maxR;");
@@ -4372,43 +4740,73 @@ export class ArenaSimulator {
             sysBlock._compiledResiduals = (env: Float64Array, x: Float64Array, R: Float64Array) =>
               rawResFn(env, x, R, helpers);
 
-            const jacLines: string[] = [];
+            const numericLiteralRe = /^\(?-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\)?$/;
+            const jacLines: string[] = [`J.fill(0.0, 0, ${m * m}); let d = 0;`];
             for (let j = 0; j < m; j++) {
               const nid = varIds[j] as number;
               for (let i = 0; i < m; i++) {
+                const refSet = resEnvIds[i];
+                if (refSet !== null && refSet !== undefined && !refSet.has(nid)) {
+                  continue;
+                }
                 const resId = resIds[i] as number;
                 const dJs = dualToJs(resId, nid);
-                const idx = i * m + j;
                 if (dJs === "0") {
-                  jacLines.push(`J[${idx}] = 0.0;`);
-                } else if (dJs !== null) {
-                  if (isLinearSystem) {
-                    for (let k = 0; k < m; k++) {
-                      if (dJs.includes(varEnvTokens[k]!)) {
+                  continue;
+                }
+                const idx = i * m + j;
+                if (dJs !== null) {
+                  if (numericLiteralRe.test(dJs)) {
+                    jacLines.push(`J[${idx}] = ${dJs};`);
+                    continue;
+                  }
+                  if (dJs.includes("helpers.")) {
+                    isJacInvariant = false;
+                  }
+                  if (isLinearSystem || isJacInvariant) {
+                    envTokenRe.lastIndex = 0;
+                    let match: RegExpExecArray | null;
+                    while ((match = envTokenRe.exec(dJs)) !== null) {
+                      const refId = Number(match[1]);
+                      if (blockVarIdSet.has(refId)) {
                         isLinearSystem = false;
+                        isJacInvariant = false;
                         break;
+                      }
+                      if (continuousChangingIds.has(refId)) {
+                        isJacInvariant = false;
                       }
                     }
                   }
                   jacLines.push(
-                    `{ const d = ${dJs}; J[${idx}] = Number.isFinite(d) ? d : helpers.evalDual(${resId}, ${nid}, env, x, R, ${i}, ${j}); }`,
+                    `d = ${dJs}; J[${idx}] = Number.isFinite(d) ? d : helpers.evalDual(${resId}, ${nid}, env, x, R, ${i}, ${j});`,
                   );
                 } else {
                   isLinearSystem = false;
+                  isJacInvariant = false;
                   jacLines.push(`J[${idx}] = helpers.evalDual(${resId}, ${nid}, env, x, R, ${i}, ${j});`);
                 }
               }
             }
-            const rawJacFn = createDynamicFunction("env", "x", "R", "J", "helpers", jacLines.join("\n")) as (
-              env: Float64Array,
-              x: Float64Array,
-              R: Float64Array,
-              J: Float64Array,
-              h: typeof helpers,
-            ) => void;
-            sysBlock._compiledJacobian = (env: Float64Array, x: Float64Array, R: Float64Array, J: Float64Array) =>
-              rawJacFn(env, x, R, J, helpers);
+            if (jacLines.length <= 3000) {
+              const rawJacFn = createDynamicFunction("env", "x", "R", "J", "helpers", jacLines.join("\n")) as (
+                env: Float64Array,
+                x: Float64Array,
+                R: Float64Array,
+                J: Float64Array,
+                h: typeof helpers,
+              ) => void;
+              sysBlock._compiledJacobian = (env: Float64Array, x: Float64Array, R: Float64Array, J: Float64Array) =>
+                rawJacFn(env, x, R, J, helpers);
+            }
             sysBlock._isLinearSystem = isLinearSystem;
+            sysBlock._isJacInvariantBetweenEvents = isLinearSystem && isJacInvariant;
+          }
+
+          if (anyResDependsOnCont) {
+            for (let k = 0; k < m; k++) {
+              continuousChangingIds.add(varIds[k] as number);
+            }
           }
 
           const sysIdx = systemBlocks.length;
@@ -5020,6 +5418,7 @@ export class ArenaSimulator {
         }
       }
       if (!anyFired) break;
+      this.discreteEventEpoch = nextDiscreteEventEpoch++;
       this.evaluateBlocks(valuesByStringId);
     }
     if (totalFired && this.preValuesByStringId && this.preValuesByStringId.length === valuesByStringId.length) {
@@ -5042,7 +5441,15 @@ export class ArenaSimulator {
     timeId: number,
   ): (t: number, y: number[]) => number[] {
     const n = stateStringIds.length;
+    let epochEvalCount = 0;
+    let seenEpoch = this.discreteEventEpoch;
     return (t: number, y: number[]): number[] => {
+      if (this.discreteEventEpoch !== seenEpoch) {
+        seenEpoch = this.discreteEventEpoch;
+        epochEvalCount = 0;
+      }
+      epochEvalCount++;
+
       // Write state into the environment
       valuesByStringId[timeId] = t;
       for (let i = 0; i < n; i++) {
@@ -5053,8 +5460,14 @@ export class ArenaSimulator {
       // they have memory (wasActive, activeState) that would be corrupted by
       // the intermediate trial-point evaluations of adaptive RK stages.
       // They are processed exclusively in the event callback.
+      this.inAdaptiveTrialStage = epochEvalCount > 1;
+      this.algebraicDivergedInTrialStage = false;
       this.evaluateBlocks(valuesByStringId);
       this.evaluateDerivativeEquations(valuesByStringId);
+      this.inAdaptiveTrialStage = false;
+      if (this.algebraicDivergedInTrialStage) {
+        return new Array<number>(n).fill(NaN);
+      }
       if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, t, 0);
       this.checkAssertions(valuesByStringId, t);
 
@@ -5165,6 +5578,7 @@ export class ArenaSimulator {
         this.preValuesByStringId.set(valuesByStringId);
       }
       this.executeStateMachines(valuesByStringId);
+      this.discreteEventEpoch = nextDiscreteEventEpoch++;
 
       // Discrete event limit handling:
       // When a zero-crossing indicator triggers, the solver root-finder has located
@@ -5174,7 +5588,8 @@ export class ArenaSimulator {
       // conditions at the zero-crossing boundary (|lhs - rhs| <= 1e-7) using the crossing direction `dir`.
       let triggeredClauseIndices: number[] | undefined;
       const triggeredClauseSet = new Set<number>();
-      const triggeredEi = eventIdx >= 0 && eventIdx < this.eventIndicators.length ? this.eventIndicators[eventIdx] : undefined;
+      const triggeredEi =
+        eventIdx >= 0 && eventIdx < this.eventIndicators.length ? this.eventIndicators[eventIdx] : undefined;
       if (triggeredEi) {
         triggeredClauseIndices = triggeredEi.clauseIndices;
         if (triggeredClauseIndices) {
@@ -5314,6 +5729,7 @@ export class ArenaSimulator {
           }
         }
         if (!anyFired) break;
+        this.discreteEventEpoch = nextDiscreteEventEpoch++;
         this.evaluateBlocks(valuesByStringId);
       }
 
@@ -5659,7 +6075,8 @@ export class ArenaSimulator {
         const numEi = this.eventIndicators.length;
         if (numEi > 0) {
           const envStart = new Float64Array(valuesByStringId);
-          const warmStart = new Map(this.algWarmStart);
+          const warmStartVals = new Float64Array(this.algWarmStartVals);
+          const warmStartValid = new Uint8Array(this.algWarmStartValid);
           const eiStart = new Float64Array(numEi);
           for (let k = 0; k < numEi; k++) {
             eiStart[k] = evaluateArenaRuntime(this.arena, this.eventIndicators[k]!.exprId, valuesByStringId);
@@ -5685,7 +6102,11 @@ export class ArenaSimulator {
             for (let b = 0; b < 16; b++) {
               const mid = 0.5 * (lo + hi);
               valuesByStringId.set(envStart);
-              this.algWarmStart = new Map(warmStart);
+              this.ensureWarmStartCapacity(warmStartVals.length);
+              this.algWarmStartVals.fill(0);
+              this.algWarmStartValid.fill(0);
+              this.algWarmStartVals.set(warmStartVals);
+              this.algWarmStartValid.set(warmStartValid);
               this.rk4Step(mid, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
               valuesByStringId[timeId] = currentTime + mid;
               this.evaluateBlocks(valuesByStringId);
@@ -5707,7 +6128,11 @@ export class ArenaSimulator {
 
             // Advance to hi (just past the event crossing), re-evaluate blocks & derivatives, then step remaining time
             valuesByStringId.set(envStart);
-            this.algWarmStart = new Map(warmStart);
+            this.ensureWarmStartCapacity(warmStartVals.length);
+            this.algWarmStartVals.fill(0);
+            this.algWarmStartValid.fill(0);
+            this.algWarmStartVals.set(warmStartVals);
+            this.algWarmStartValid.set(warmStartValid);
             this.rk4Step(hi, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
             valuesByStringId[timeId] = currentTime + hi;
             this.evaluateBlocks(valuesByStringId);
@@ -5915,18 +6340,30 @@ export class ArenaSimulator {
       y0[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
     }
 
+    const outIds = options?.outputStringIds ?? stateStringIds;
+    const stateIdToIdx = new Map<number, number>();
+    for (let i = 0; i < n; i++) {
+      const sid = stateStringIds[i];
+      if (sid !== undefined && sid >= 0) stateIdToIdx.set(sid, i);
+    }
+    const needsFullEnvReconstruction =
+      Boolean(options?.intervalBarrierCheck) ||
+      (outIds !== stateStringIds && outIds.some((oid) => !stateIdToIdx.has(oid)));
+
     const initEnvSnapshot = new Float64Array(valuesByStringId);
     const initPreEnvSnapshot = new Float64Array(this.preValuesByStringId ?? valuesByStringId);
     const initWhenWasActive = this.whenClauses.map((c) => c.wasActive);
     const initEiPrevValue = this.eventIndicators.map((ei) => ei.prevValue);
 
-    const envSnapshots: { t: number; env: Float64Array; preEnv: Float64Array }[] = [
-      {
-        t: startTime,
-        env: new Float64Array(initEnvSnapshot),
-        preEnv: new Float64Array(initPreEnvSnapshot),
-      },
-    ];
+    const envSnapshots: { t: number; env: Float64Array; preEnv: Float64Array }[] = needsFullEnvReconstruction
+      ? [
+          {
+            t: startTime,
+            env: new Float64Array(initEnvSnapshot),
+            preEnv: new Float64Array(initPreEnvSnapshot),
+          },
+        ]
+      : [];
 
     const resetAdaptiveState = () => {
       valuesByStringId.set(initEnvSnapshot);
@@ -5937,7 +6374,10 @@ export class ArenaSimulator {
       for (let i = 0; i < this.eventIndicators.length; i++) {
         this.eventIndicators[i]!.prevValue = initEiPrevValue[i]!;
       }
-      envSnapshots.length = 1;
+      this.discreteEventEpoch = nextDiscreteEventEpoch++;
+      if (needsFullEnvReconstruction) {
+        envSnapshots.length = 1;
+      }
     };
 
     // Build RHS function
@@ -5947,13 +6387,20 @@ export class ArenaSimulator {
     const eventFns = this.buildEventFunctions(valuesByStringId, stateStringIds, timeId);
     const eventCb =
       eventFns.length > 0
-        ? this.buildEventCallback(valuesByStringId, stateStringIds, timeId, (tEv) => {
-            envSnapshots.push({
-              t: tEv,
-              env: new Float64Array(valuesByStringId),
-              preEnv: new Float64Array(this.preValuesByStringId ?? valuesByStringId),
-            });
-          })
+        ? this.buildEventCallback(
+            valuesByStringId,
+            stateStringIds,
+            timeId,
+            needsFullEnvReconstruction
+              ? (tEv) => {
+                  envSnapshots.push({
+                    t: tEv,
+                    env: new Float64Array(valuesByStringId),
+                    preEnv: new Float64Array(this.preValuesByStringId ?? valuesByStringId),
+                  });
+                }
+              : undefined,
+          )
         : undefined;
     const eventDirs = this.eventIndicators.map((ei) => ei.direction);
 
@@ -6267,42 +6714,90 @@ export class ArenaSimulator {
     }
 
     // Convert to Float64Array output format
-    const outIds = options?.outputStringIds ?? stateStringIds;
     const t_out = rawResult.times;
-    let snapIdx = 0;
-    const y_out: Float64Array[] = rawResult.states.map((row, rowIdx) => {
-      const tSample = t_out[rowIdx] ?? startTime;
-      while (snapIdx + 1 < envSnapshots.length && envSnapshots[snapIdx + 1]!.t <= tSample + 1e-12) {
-        snapIdx++;
-      }
-      const activeSnap = envSnapshots[snapIdx];
-      if (activeSnap) {
-        valuesByStringId.set(activeSnap.env);
-        if (this.preValuesByStringId && this.preValuesByStringId.length === activeSnap.preEnv.length) {
-          this.preValuesByStringId.set(activeSnap.preEnv);
+    let y_out: Float64Array[];
+    if (!needsFullEnvReconstruction) {
+      const numRows = rawResult.states.length;
+      y_out = new Array(numRows);
+      if (outIds === stateStringIds) {
+        for (let rowIdx = 0; rowIdx < numRows; rowIdx++) {
+          const row = rawResult.states[rowIdx]!;
+          const fa = new Float64Array(n);
+          for (let i = 0; i < n; i++) {
+            fa[i] = row[i] ?? 0;
+          }
+          y_out[rowIdx] = fa;
+        }
+      } else {
+        const outLen = outIds.length;
+        const outStateIndices = new Int32Array(outLen);
+        for (let i = 0; i < outLen; i++) {
+          outStateIndices[i] = stateIdToIdx.get(outIds[i] ?? -1) ?? -1;
+        }
+        for (let rowIdx = 0; rowIdx < numRows; rowIdx++) {
+          const row = rawResult.states[rowIdx]!;
+          const fa = new Float64Array(outLen);
+          for (let i = 0; i < outLen; i++) {
+            const sIdx = outStateIndices[i]!;
+            fa[i] = sIdx >= 0 ? (row[sIdx] ?? 0) : 0;
+          }
+          y_out[rowIdx] = fa;
         }
       }
-
-      // First, load the states into the environment
-      for (let i = 0; i < n; i++) {
-        valuesByStringId[stateStringIds[i] ?? -1] = row[i] ?? 0;
+      // Sync environment once to the final state so post-simulation callers observe exact terminal values
+      if (numRows > 0) {
+        const lastRow = rawResult.states[numRows - 1]!;
+        for (let i = 0; i < n; i++) {
+          valuesByStringId[stateStringIds[i] ?? -1] = lastRow[i] ?? 0;
+        }
+        valuesByStringId[timeId] = t_out[numRows - 1] ?? stopTime;
+        this.evaluateBlocks(valuesByStringId);
+        this.evaluateDerivativeEquations(valuesByStringId);
+        for (let i = 0; i < n; i++) {
+          valuesByStringId[stateStringIds[i] ?? -1] = lastRow[i] ?? 0;
+        }
       }
-      // Set current sample time
-      valuesByStringId[timeId] = tSample;
+    } else {
+      let snapIdx = 0;
+      let loadedSnapIdx = -1;
+      y_out = rawResult.states.map((row, rowIdx) => {
+        const tSample = t_out[rowIdx] ?? startTime;
+        while (snapIdx + 1 < envSnapshots.length && envSnapshots[snapIdx + 1]!.t <= tSample + 1e-12) {
+          snapIdx++;
+        }
+        const activeSnap = envSnapshots[snapIdx];
+        if (activeSnap) {
+          valuesByStringId.set(activeSnap.env);
+          if (this.preValuesByStringId && this.preValuesByStringId.length === activeSnap.preEnv.length) {
+            this.preValuesByStringId.set(activeSnap.preEnv);
+          }
+          if (snapIdx !== loadedSnapIdx) {
+            loadedSnapIdx = snapIdx;
+            this.discreteEventEpoch = nextDiscreteEventEpoch++;
+          }
+        }
 
-      // Re-evaluate algebraic variables for the recorded state
-      this.evaluateBlocks(valuesByStringId);
-      this.evaluateDerivativeEquations(valuesByStringId);
-      for (let i = 0; i < n; i++) {
-        valuesByStringId[stateStringIds[i] ?? -1] = row[i] ?? 0;
-      }
+        // First, load the states into the environment
+        for (let i = 0; i < n; i++) {
+          valuesByStringId[stateStringIds[i] ?? -1] = row[i] ?? 0;
+        }
+        // Set current sample time
+        valuesByStringId[timeId] = tSample;
 
-      const fa = new Float64Array(outIds.length);
-      for (let i = 0; i < outIds.length; i++) {
-        fa[i] = valuesByStringId[outIds[i] ?? -1] ?? 0;
-      }
-      return fa;
-    });
+        // Re-evaluate algebraic variables for the recorded state
+        this.evaluateBlocks(valuesByStringId);
+        this.evaluateDerivativeEquations(valuesByStringId);
+        for (let i = 0; i < n; i++) {
+          valuesByStringId[stateStringIds[i] ?? -1] = row[i] ?? 0;
+        }
+
+        const fa = new Float64Array(outIds.length);
+        for (let i = 0; i < outIds.length; i++) {
+          fa[i] = valuesByStringId[outIds[i] ?? -1] ?? 0;
+        }
+        return fa;
+      });
+    }
 
     this.safetyViolations = [];
     this.intervalIssues = [];
@@ -7020,7 +7515,8 @@ export class ArenaSimulator {
         const numEi = this.eventIndicators.length;
         if (numEi > 0) {
           const envStart = new Float64Array(valuesByStringId);
-          const warmStart = new Map(this.algWarmStart);
+          const warmStartVals = new Float64Array(this.algWarmStartVals);
+          const warmStartValid = new Uint8Array(this.algWarmStartValid);
           const eiStart = new Float64Array(numEi);
           for (let k = 0; k < numEi; k++) {
             eiStart[k] = evaluateArenaRuntime(this.arena, this.eventIndicators[k]!.exprId, valuesByStringId);
@@ -7046,7 +7542,11 @@ export class ArenaSimulator {
             for (let b = 0; b < 16; b++) {
               const mid = 0.5 * (lo + hi);
               valuesByStringId.set(envStart);
-              this.algWarmStart = new Map(warmStart);
+              this.ensureWarmStartCapacity(warmStartVals.length);
+              this.algWarmStartVals.fill(0);
+              this.algWarmStartValid.fill(0);
+              this.algWarmStartVals.set(warmStartVals);
+              this.algWarmStartValid.set(warmStartValid);
               this.rk4Step(mid, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
               valuesByStringId[timeId] = currentTime + mid;
               this.evaluateBlocks(valuesByStringId);
@@ -7068,7 +7568,11 @@ export class ArenaSimulator {
 
             // Advance to hi (just past the event crossing), re-evaluate blocks & derivatives, then step remaining time
             valuesByStringId.set(envStart);
-            this.algWarmStart = new Map(warmStart);
+            this.ensureWarmStartCapacity(warmStartVals.length);
+            this.algWarmStartVals.fill(0);
+            this.algWarmStartValid.fill(0);
+            this.algWarmStartVals.set(warmStartVals);
+            this.algWarmStartValid.set(warmStartValid);
             this.rk4Step(hi, valuesByStringId, stateStringIds, derivStringIds, timeId, currentTime);
             valuesByStringId[timeId] = currentTime + hi;
             this.evaluateBlocks(valuesByStringId);

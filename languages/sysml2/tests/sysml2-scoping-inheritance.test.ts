@@ -44,7 +44,7 @@ describe("SysML v2 Scoping, Qualified Names & Inheritance Remediation (Phase 2)"
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await workspaceIndex.toUnifiedAsync();
+    const unified = await workspaceIndex.getIndexAsync();
     const queryEngine = createSysML2QueryEngine(unified);
     const db = queryEngine.toQueryDB();
 
@@ -100,7 +100,7 @@ describe("SysML v2 Scoping, Qualified Names & Inheritance Remediation (Phase 2)"
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await workspaceIndex.toUnifiedAsync();
+    const unified = await workspaceIndex.getIndexAsync();
     const queryEngine = createSysML2QueryEngine(unified);
     const db = queryEngine.toQueryDB();
 
@@ -141,7 +141,7 @@ describe("SysML v2 Scoping, Qualified Names & Inheritance Remediation (Phase 2)"
       return tree ? (tree.rootNode as any) : null;
     });
 
-    const unified = await workspaceIndex.toUnifiedAsync();
+    const unified = await workspaceIndex.getIndexAsync();
     const queryEngine = createSysML2QueryEngine(unified);
     const db = queryEngine.toQueryDB();
 

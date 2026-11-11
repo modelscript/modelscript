@@ -73,8 +73,6 @@ export function scheduleSmartCharging(
 
     // Case 2: Congested grid transformer -> Distribute power weighted by urgency/deficit
     const totalUrgency = activeSessions.reduce((sum, item) => sum + Math.max(item.urgency, 1.0), 0);
-    let remainingCapacity = st.gridLimitKW;
-
     // First pass: Assign proportional shares
     const allocations: number[] = [];
     for (let i = 0; i < activeSessions.length; i++) {
@@ -82,7 +80,6 @@ export function scheduleSmartCharging(
       const share = (Math.max(item.urgency, 1.0) / totalUrgency) * st.gridLimitKW;
       const clamped = Math.min(item.connMaxKW, Math.max(minPower, share));
       allocations.push(clamped);
-      remainingCapacity -= clamped;
     }
 
     // Second pass: Adjust to strictly adhere to st.gridLimitKW

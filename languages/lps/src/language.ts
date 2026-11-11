@@ -31,6 +31,77 @@ export const lpsLanguage = language({
       dark: "./assets/lps/icon-dark.png",
     },
   },
+  indexing: {
+    indexFile(ctx) {
+      const parsedModel = parseLps(ctx.text, ctx.uri);
+      ctx.setParsedModel(parsedModel);
+
+      const studyName = parsedModel.title || parsedModel.id || "PipelineStudy";
+      const rootId = ctx.addSymbol(
+        studyName,
+        "Class",
+        null,
+        0,
+        ctx.text.length,
+        {
+          type: parsedModel.type,
+          nPipes: parsedModel.pipes.length,
+          nNodes: parsedModel.nodes.length,
+          nCompressors: parsedModel.compressors.length,
+          nPumps: parsedModel.pumps.length,
+        },
+        {
+          ruleName: "lps_study",
+          namePath: studyName,
+        },
+      );
+
+      for (const node of parsedModel.nodes) {
+        ctx.addSymbol(
+          node.name,
+          "Field",
+          rootId,
+          0,
+          0,
+          { type: node.type, elevation: node.elevation, pressure: node.pressure },
+          { ruleName: "lps_component", namePath: `${studyName}.${node.name}` },
+        );
+      }
+      for (const pipe of parsedModel.pipes) {
+        ctx.addSymbol(
+          pipe.name,
+          "Variable",
+          rootId,
+          0,
+          0,
+          { length: pipe.length, diameter: pipe.diameter, maop: pipe.maop },
+          { ruleName: "lps_component", namePath: `${studyName}.${pipe.name}` },
+        );
+      }
+      for (const comp of parsedModel.compressors) {
+        ctx.addSymbol(
+          comp.name,
+          "Method",
+          rootId,
+          0,
+          0,
+          { type: comp.type, maxPower: comp.maxPower },
+          { ruleName: "lps_component", namePath: `${studyName}.${comp.name}` },
+        );
+      }
+      for (const pump of parsedModel.pumps) {
+        ctx.addSymbol(
+          pump.name,
+          "Method",
+          rootId,
+          0,
+          0,
+          { maxPower: pump.maxPower },
+          { ruleName: "lps_component", namePath: `${studyName}.${pump.name}` },
+        );
+      }
+    },
+  },
 
   actions: [
     {

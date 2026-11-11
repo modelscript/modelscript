@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseOcpp } from "../src/parser/ocpp-parser.js";
+import { getAllOcppStations, getOcppNetwork, ocppLanguage, parseOcpp } from "../src/index.js";
 
 const SAMPLE_DECLARATIVE = `
 station "Fleet_Depot_1" {
@@ -98,5 +99,17 @@ describe("OCPP Parser", () => {
     assert.strictEqual(cp.chargingProfilePurpose, "TxDefaultProfile");
     assert.strictEqual(cp.chargingSchedule.chargingSchedulePeriod.length, 2);
     assert.strictEqual(cp.chargingSchedule.chargingSchedulePeriod[0]?.limit, 120.0);
+  });
+
+  it("indexes OCPP documents in UnifiedWorkspace", () => {
+    const ws = new UnifiedWorkspace(ocppLanguage);
+    ws.setDocument("file:///depot1.ocpp", SAMPLE_DECLARATIVE);
+    ws.setDocument("file:///depot2.ocpp.json", SAMPLE_JSON_RPC);
+
+    const idx = ws.getIndex();
+    assert.ok(idx.byName.has("Fleet_Depot_1"));
+    assert.ok(idx.byName.has("Depot_DCFC_2"));
+    assert.strictEqual(getOcppNetwork(ws, "file:///depot1.ocpp")?.stations.length, 1);
+    assert.strictEqual(getAllOcppStations(ws).stations.length, 2);
   });
 });

@@ -111,7 +111,7 @@ export const Align: CommandModule<{}, AlignArgs> = {
             const ast = parser.parse(content)?.rootNode;
             if (ast) {
               mIdx.register(`file://${filePath}`, () => ast as never, content);
-              const unified = mIdx.toUnifiedAsync ? await mIdx.toUnifiedAsync() : mIdx.toUnified();
+              const unified = await mIdx.getIndexAsync();
               const cstElements: AlignmentElement[] = [];
               let idCounter = 1;
               for (const sym of unified.symbols.values()) {
@@ -181,7 +181,7 @@ export const Align: CommandModule<{}, AlignArgs> = {
             const ast = parser.parse(content)?.rootNode;
             if (ast) {
               sIdx.register(`file://${filePath}`, () => ast as never, content);
-              const unified = sIdx.toUnifiedAsync ? await sIdx.toUnifiedAsync() : sIdx.toUnified();
+              const unified = await sIdx.getIndexAsync();
               const cstElements: AlignmentElement[] = [];
               let idCounter = 1;
               for (const sym of unified.symbols.values()) {

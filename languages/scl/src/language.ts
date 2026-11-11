@@ -7,6 +7,7 @@
 import { language } from "@modelscript/dsl";
 import { validateGooseStreams } from "./analysis/goose-validator.js";
 import { lowerSclToDae } from "./dae/scl-to-dae.js";
+import { sclIndexing } from "./indexing.js";
 import { lintSclDocument } from "./lints/index.js";
 import { parseSclXml } from "./parser/scl-parser.js";
 import { sclToGridTopology } from "./projections/scl-to-grid.js";
@@ -15,6 +16,7 @@ export const sclLanguage = language({
   name: "scl",
   fileExtensions: [".scd", ".cid", ".icd", ".ssd", ".iid", ".scl"],
   maturity: "beta",
+  indexing: sclIndexing,
   lsp: {
     fileExtensions: [".scd", ".cid", ".icd", ".ssd", ".iid", ".scl"],
   },

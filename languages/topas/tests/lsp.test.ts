@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import {
@@ -8,12 +9,12 @@ import {
   getTopasDefinition,
   getTopasDocumentSymbols,
   getTopasHover,
+  resolveTopasInScope,
   topasLanguage,
-  TopasWorkspaceIndex,
   validateTopas,
 } from "../src/index.js";
 
-describe("TOPAS LSP Service & WorkspaceIndex", () => {
+describe("TOPAS LSP Service & UnifiedWorkspace", () => {
   const sampleText = `s:Ge/WaterPhantom/Type = "TsBox"
 s:Ge/WaterPhantom/Parent = "World"
 s:Ge/WaterPhantom/Material = "G4_WATER"
@@ -30,18 +31,18 @@ s:Sc/DoseScorer/Quantity = "DoseToWater"
 s:Sc/DoseScorer/Component = "WaterPhantom"
 `;
 
-  it("indexes symbols in TopasWorkspaceIndex and resolves across scope", () => {
-    const idx = new TopasWorkspaceIndex();
+  it("indexes symbols in UnifiedWorkspace and resolves across scope", () => {
+    const ws = new UnifiedWorkspace(topasLanguage);
     const uri = "file:///nozzle.topas";
-    idx.indexFile(uri, sampleText);
-    assert.strictEqual(idx.fileCount, 1);
-    assert(idx.has(uri));
+    ws.setDocument(uri, sampleText);
+    assert.strictEqual(ws.fileCount, 1);
+    assert(ws.hasDocument(uri));
 
-    const phantomSyms = idx.findByName("WaterPhantom");
+    const phantomSyms = ws.findSymbolsByName("WaterPhantom");
     assert.strictEqual(phantomSyms.length, 1);
     assert.strictEqual(phantomSyms[0]?.kind, "Component");
 
-    const resolved = idx.resolveInScope("ProtonBeam", null, uri);
+    const resolved = resolveTopasInScope(ws, "ProtonBeam", null, uri);
     assert(resolved !== null);
     assert.strictEqual(resolved?.namePath, "So/ProtonBeam");
   });

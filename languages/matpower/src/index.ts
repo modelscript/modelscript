@@ -14,4 +14,3 @@ export * from "./parser/matpower-writer.js";
 export * from "./projections/matpower-to-psse.js";
 export * from "./projections/psse-to-matpower.js";
 export * from "./types.js";
-export * from "./workspace-index.js";

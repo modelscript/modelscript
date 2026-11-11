@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { FebioWorkspaceIndex } from "../src/workspace-index.js";
+import { febioLanguage, resolveFebioInScope } from "../src/index.js";
 
 describe("FEBio & SOFA Multi-File Workspace Index", () => {
   it("indexes materials, node sets, boundary conditions, and SOFA nodes across files", () => {
-    const index = new FebioWorkspaceIndex();
+    const ws = new UnifiedWorkspace(febioLanguage);
     const febUri = "file:///heart.feb";
     const scnUri = "file:///liver.scn";
 
-    index.indexFile(
+    ws.setDocument(
       febUri,
       `
       FEBIO 4.0 title="Heart"
@@ -21,7 +22,7 @@ describe("FEBio & SOFA Multi-File Workspace Index", () => {
     `,
     );
 
-    index.indexFile(
+    ws.setDocument(
       scnUri,
       `<Node name="LiverScene">
   <Node name="Parenchyma">
@@ -32,23 +33,23 @@ describe("FEBio & SOFA Multi-File Workspace Index", () => {
 </Node>`,
     );
 
-    assert.strictEqual(index.fileCount, 2);
-    assert(index.has(febUri));
-    assert(index.has(scnUri));
+    assert.strictEqual(ws.fileCount, 2);
+    assert(ws.hasDocument(febUri));
+    assert(ws.hasDocument(scnUri));
 
-    const foundMat = index.findByName("Myocardium");
+    const foundMat = ws.findSymbolsByName("Myocardium");
     assert.strictEqual(foundMat.length, 1);
     assert.strictEqual(foundMat[0]?.ruleName, "febio_material");
 
-    const foundNode = index.findByName("Parenchyma");
+    const foundNode = ws.findSymbolsByName("Parenchyma");
     assert.strictEqual(foundNode.length, 1);
     const parentId = foundNode[0]!.id;
 
-    const childFf = index.resolveInScope("LiverFEM", parentId, scnUri);
+    const childFf = resolveFebioInScope(ws, "LiverFEM", parentId, scnUri);
     assert(childFf !== null);
     assert.strictEqual(childFf.ruleName, "sofa_forcefield");
 
-    index.clear();
-    assert.strictEqual(index.fileCount, 0);
+    ws.clear();
+    assert.strictEqual(ws.fileCount, 0);
   });
 });

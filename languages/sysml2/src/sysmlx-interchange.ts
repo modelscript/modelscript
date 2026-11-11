@@ -80,7 +80,7 @@ export class SysML2ModelInterchange {
       return (tree?.rootNode as unknown as ReturnType<NonNullable<Parameters<WorkspaceIndex["register"]>[1]>>) ?? null;
     });
 
-    const unified = await ws.toUnifiedAsync();
+    const unified = await ws.getIndexAsync();
     const qe = createSysML2QueryEngine(
       unified,
       parser.parse(sysmlSource) as unknown as Parameters<typeof createSysML2QueryEngine>[1],

@@ -21,6 +21,7 @@ import {
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/dsl";
+import { indexOlgaFile } from "./indexing.js";
 import { lintOlgaModel } from "./lints/index.js";
 import { parseOlga, serializeKeyDeck } from "./parser/index.js";
 import { olgaToSysml2 } from "./projections/olga-to-sysml2.js";
@@ -31,6 +32,22 @@ export const olgaLanguage = language({
   name: "olga",
   fileExtensions: [".opi", ".olga", ".key", ".genkey", ".inp"],
   maturity: "stable",
+  indexing: {
+    indexFile: indexOlgaFile,
+    canIndex: (uri, text) => {
+      const lower = uri.toLowerCase();
+      if (lower.endsWith(".opi") || lower.endsWith(".olga") || lower.endsWith(".key") || lower.endsWith(".genkey")) {
+        return true;
+      }
+      return Boolean(
+        text &&
+        (text.includes("<Flowpath") ||
+          text.includes("FLOWPATH") ||
+          text.includes("CASE TITLE") ||
+          text.includes("FILES TABLE")),
+      );
+    },
+  },
   lsp: {
     fileExtensions: [".opi", ".olga", ".key", ".genkey", ".inp"],
     icons: {

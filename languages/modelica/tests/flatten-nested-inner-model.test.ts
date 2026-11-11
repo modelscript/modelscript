@@ -28,7 +28,7 @@ end BouncingBall;`;
 
     const ws = createModelicaWorkspaceIndex();
     ws.indexDocument(uri, () => initialTree.rootNode);
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
 
     const cstWrapper = {
       getText: (startOffset: number, endOffset: number, entry?: any): string | null => {
@@ -64,7 +64,7 @@ end X;`;
     docTrees.set(uri, { text: newText, tree: newTree });
     ws.indexDocument(uri, () => newTree.rootNode);
 
-    const unified2 = ws.toUnified();
+    const unified2 = ws.getIndex({ eager: true });
     const xId = unified2.byName.get("X")?.[0];
     assert.ok(xId !== undefined, "Model X should be indexed");
 
@@ -112,7 +112,7 @@ end MiniRLC;`;
     const tree = parser.parse(code);
     const ws = createModelicaWorkspaceIndex();
     ws.indexDocument(uri, () => tree.rootNode);
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
     const queryEngine = createModelicaQueryEngine(unified, {
       getText: (s, e) => code.substring(s, e),
       getNode: (s, e) => tree.rootNode.descendantForIndex(s, Math.max(s, e)),

@@ -155,28 +155,23 @@ export function findCrossLanguageDefinition(
       }
     }
 
-    // Check CAD part name in STEP workspace index
-    const stepWs = validationService?.workspaceManager?.stepWorkspaceIndex;
-    if (stepWs && typeof stepWs.getFileIndex === "function") {
-      const indices = stepWs.fileIndices;
-      if (indices) {
-        for (const sUri of indices.keys()) {
-          const sIndex = stepWs.getFileIndex(sUri);
-          if (sIndex?.byName?.has(cand)) {
-            const symIds = sIndex.byName.get(cand);
-            if (symIds && symIds.length > 0) {
-              const sEntry = sIndex.symbols.get(symIds[0]);
-              if (
-                sEntry &&
-                sEntry.resourceId !== document.uri &&
-                (/\.(step|stp|p21)$/i.test(sEntry.resourceId) ||
-                  sEntry.kind === "Product" ||
-                  sEntry.ruleName?.includes("step"))
-              ) {
-                const loc = symbolEntryToLocation(sEntry, documentLSPBridges, documentTrees, documents);
-                if (loc) return loc as any;
-              }
-            }
+    // Check CAD part name in UnifiedWorkspace (STEP symbols)
+    const uIndex = validationService?.workspaceManager?.unifiedWorkspace?.getIndex?.();
+    if (uIndex?.byName?.has(cand)) {
+      const symIds = uIndex.byName.get(cand);
+      if (symIds && symIds.length > 0) {
+        for (const symId of symIds) {
+          const sEntry = uIndex.symbols.get(symId);
+          if (
+            sEntry &&
+            sEntry.resourceId &&
+            sEntry.resourceId !== document.uri &&
+            (/\.(step|stp|p21)$/i.test(sEntry.resourceId) ||
+              sEntry.kind === "Product" ||
+              sEntry.ruleName?.includes("step"))
+          ) {
+            const loc = symbolEntryToLocation(sEntry, documentLSPBridges, documentTrees, documents);
+            if (loc) return loc as any;
           }
         }
       }

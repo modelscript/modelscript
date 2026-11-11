@@ -10,6 +10,7 @@
 
 import { language } from "@modelscript/dsl";
 import { type CpsArchitectureComponent, auditCpsArchitectureCompliance } from "./cps-bridge/index.js";
+import { indexOscalFile } from "./indexing.js";
 import { lintOscalDocument } from "./lints/rules.js";
 import { parseOscal, serializeOscal } from "./parser/index.js";
 import { oscalToReqif, oscalToSysML2 } from "./projections/index.js";
@@ -17,8 +18,33 @@ import { resolveOscalProfile } from "./resolver/index.js";
 
 export const oscalLanguage = language({
   name: "oscal",
-  fileExtensions: [".oscal", ".oscal.json", ".oscal.yaml", ".oscal.yml", ".oscal.xml"],
+  fileExtensions: [
+    ".oscal",
+    ".oscal.json",
+    ".oscal.yaml",
+    ".oscal.yml",
+    ".oscal.xml",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".xml",
+  ],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexOscalFile,
+    canIndex: (uri, text) => {
+      const lower = uri.toLowerCase();
+      if (lower.endsWith(".oscal") || lower.includes(".oscal.")) return true;
+      return Boolean(
+        text &&
+        (text.includes("system-security-plan") ||
+          text.includes("component-definition") ||
+          text.includes("assessment-results") ||
+          text.includes("plan-of-action-and-milestones") ||
+          (text.includes("catalog") && text.includes("controls"))),
+      );
+    },
+  },
   lsp: {
     fileExtensions: [".oscal", ".oscal.json", ".oscal.yaml", ".oscal.yml", ".oscal.xml"],
   },

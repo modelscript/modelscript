@@ -1190,6 +1190,22 @@ function isClassIconStatic(ci: ModelicaClassInstance | null | undefined, visited
           }
         }
       }
+    } else if (typeof (ci as { annotation?: (name: string) => unknown } | null)?.annotation === "function") {
+      const metaIcon = (
+        ci as { annotation: (name: string) => { graphics?: Array<Record<string, unknown>> } | null }
+      ).annotation("Icon");
+      if (metaIcon && Array.isArray(metaIcon.graphics)) {
+        ownStatic = true;
+        for (const g of metaIcon.graphics) {
+          if (g["@type"] === "Text") {
+            const s = (g["string"] ?? g["textString"] ?? "") as unknown;
+            if (typeof s === "string" && s.includes("%")) {
+              ownStatic = false;
+              break;
+            }
+          }
+        }
+      }
     }
   }
 
@@ -2620,8 +2636,7 @@ export function getClassIconSvg(
     clsObj.entry?.fullName ??
     (clsObj.entry?.resourceId ? `${clsObj.entry.resourceId}#${cls.id ?? cls.name}` : null) ??
     (cls.id !== undefined ? `id:${cls.id}` : cls.name);
-  const identityKey =
-    !includePorts && !componentInstance && qualifiedName ? `${qualifiedName}:${size}` : null;
+  const identityKey = !includePorts && !componentInstance && qualifiedName ? `${qualifiedName}:${size}` : null;
 
   if (identityKey && standaloneIconSvgCache.has(identityKey)) {
     return standaloneIconSvgCache.get(identityKey);
@@ -3032,6 +3047,13 @@ export function buildComponentProperties(
         }
       }
       if (!value) {
+        const metaDefault =
+          element.declaration?.metadata?.defaultValue ?? (element as { defaultValue?: unknown }).defaultValue;
+        if (metaDefault !== undefined && metaDefault !== null && String(metaDefault) !== "") {
+          value = String(metaDefault);
+        }
+      }
+      if (!value) {
         value = "-";
       }
 
@@ -3039,8 +3061,11 @@ export function buildComponentProperties(
       let unit: string | undefined = undefined;
       const unitExpr = (element.classInstance?.modification as any)?.getModificationArgument?.("unit")?.expression;
       const rawUnit = formatPropertyValue(unitExpr)?.replace(/^"|"$/g, "");
+      const metaUnit = element.declaration?.metadata?.unit ?? (element as { unit?: unknown }).unit;
       if (rawUnit) {
         unit = formatUnit(rawUnit);
+      } else if (typeof metaUnit === "string" && metaUnit.length > 0) {
+        unit = formatUnit(metaUnit);
       } else {
         const typeSpec = element.declaration?.metadata?.typeSpecifier ?? element.classInstance?.name ?? "";
         if (typeSpec.includes("LinearTemperatureCoefficient")) unit = "1/K";

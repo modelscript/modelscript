@@ -12,7 +12,7 @@ test("SysML v2 Discrete Execution & Standard Library E2E Suite", async (t) => {
     const uri = loadEmbeddedKerMLStdlib(ws);
     assert.strictEqual(uri, "sysml2://stdlib/KerML.sysml");
 
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
     const names = Array.from(unified.symbols.values()).map((s) => s.name);
     assert.strictEqual(unified.symbols.size, 675);
 

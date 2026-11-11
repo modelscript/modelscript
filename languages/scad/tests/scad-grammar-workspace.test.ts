@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { SolidKind } from "@modelscript/cad";
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { compileScadToSolid, evaluateScad, getScadParser, lintScad, ScadWorkspaceIndex } from "../src/index.js";
+import { compileScadToSolid, evaluateScad, getScadParser, lintScad, scadLanguage } from "../src/index.js";
 
 describe("OpenSCAD WASM GLR Grammar & Cross-File Workspace Resolution", () => {
   it("parses hull, minkowski, rotate_extrude, multmatrix, offset, let, list comprehensions, operator modules, and include/use in WASM GLR parser", async () => {
@@ -53,10 +54,10 @@ multmatrix([[1, 0, 0, 10], [0, 1, 0, 5], [0, 0, 1, 0], [0, 0, 0, 1]])
     assert.equal(solid.kind, SolidKind.Union);
   });
 
-  it("evaluates cross-file include <...> and use <...> via ScadWorkspaceIndex", async () => {
-    const ws = new ScadWorkspaceIndex();
+  it("evaluates cross-file include <...> and use <...> via UnifiedWorkspace", async () => {
+    const ws = new UnifiedWorkspace(scadLanguage);
 
-    ws.indexFile(
+    ws.setDocument(
       "file:///workspace/defs/constants.scad",
       `
 wall_thickness = 4;
@@ -65,7 +66,7 @@ function bolt_circle(r) = r * 0.75;
 `,
     );
 
-    ws.indexFile(
+    ws.setDocument(
       "file:///workspace/lib/mounts.scad",
       `
 secret_internal_var = 999;
@@ -92,7 +93,7 @@ boss_ring(r = computed_r, h = wall_thickness)
 `;
 
     const evalRes = evaluateScad(mainSource, {
-      workspaceIndex: ws,
+      workspace: ws,
       uri: "file:///workspace/assemblies/main.scad",
     });
 
@@ -107,16 +108,16 @@ boss_ring(r = computed_r, h = wall_thickness)
     assert.ok(evalRes.solid, "Expected evaluated solid from cross-file module and included variables");
 
     const wasmSolid = await compileScadToSolid(mainSource, {
-      workspaceIndex: ws,
+      workspace: ws,
       uri: "file:///workspace/assemblies/main.scad",
     });
     assert.ok(wasmSolid, "Expected compileScadToSolid to resolve cross-file modules/functions/variables");
   });
 
   it("lints cross-file include/use symbols and LetExpression / ListComprehension scopes without false positives", async () => {
-    const ws = new ScadWorkspaceIndex();
+    const ws = new UnifiedWorkspace(scadLanguage);
 
-    ws.indexFile(
+    ws.setDocument(
       "file:///project/shared/config.scad",
       `
 plate_w = 40;
@@ -125,7 +126,7 @@ bad_thickness = -3;
 `,
     );
 
-    ws.indexFile(
+    ws.setDocument(
       "file:///project/shared/fasteners.scad",
       `
 private_fastener_scale = 2;

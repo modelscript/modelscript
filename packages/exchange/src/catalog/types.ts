@@ -29,7 +29,7 @@ export interface StdlibUpstream {
   sha256?: string | undefined;
   archiveType?: "zip" | "tar.gz" | "directory" | undefined;
   extractSubpath?: string | undefined;
-  repack?: "none" | "sysml-library-only" | undefined;
+  repack?: "none" | "sysml-library-only" | "openipsl-only" | undefined;
 }
 
 export interface StdlibEntry {

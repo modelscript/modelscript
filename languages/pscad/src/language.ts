@@ -10,6 +10,7 @@
 import { language } from "@modelscript/dsl";
 import { emtResultToComtrade, writeComtrade } from "./comtrade/comtrade-writer.js";
 import { writePscadOut, type PscadOutResult } from "./comtrade/pscad-out-writer.js";
+import { indexPscadDocument } from "./indexing.js";
 import { lintPscx } from "./lints/index.js";
 import { computeSimulationCoverage, type SimulationCoverage } from "./netlist/coverage.js";
 import { extractEmtNetlist, netlistToEmtCircuit } from "./netlist/emt-netlist.js";
@@ -296,6 +297,9 @@ export const pscadLanguage = language({
   },
   rules: {
     Root: () => "pscad",
+  },
+  indexing: {
+    indexFile: indexPscadDocument,
   },
 
   actions: [

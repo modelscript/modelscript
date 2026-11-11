@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  autosarLanguage,
-  AutosarWorkspaceIndex,
-  getAutosarDocumentSymbols,
-  getAutosarHover,
-  validateAutosar,
-} from "@modelscript/autosar";
+import { autosarLanguage, getAutosarDocumentSymbols, getAutosarHover, validateAutosar } from "@modelscript/autosar";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { globalLanguageRegistry } from "../src/registry/LanguageRegistry.js";
@@ -134,7 +128,6 @@ describe("AUTOSAR LSP Integration Suite (@modelscript/lsp)", () => {
       name: "AUTOSAR Classic & Adaptive",
       extensions: [".arxml"],
       languageDef: autosarLanguage,
-      workspaceIndex: new AutosarWorkspaceIndex(),
       customHandlers: {
         symbols: (text: string) => getAutosarDocumentSymbols(text),
         hover: (offset: number, text: string) => {

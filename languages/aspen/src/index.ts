@@ -2,6 +2,7 @@
 
 export * from "./dae/aspen-to-dae.js";
 export * from "./errors.js";
+export * from "./indexing.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";
@@ -9,4 +10,3 @@ export * from "./parser/aspen-parser.js";
 export * from "./projections/aspen-to-modelica.js";
 export * from "./solvers/flash-solver.js";
 export * from "./types.js";
-export * from "./workspace-index.js";

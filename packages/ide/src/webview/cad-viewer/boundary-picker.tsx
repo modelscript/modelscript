@@ -36,7 +36,13 @@ interface BoundaryPickerProps {
     displacements?: number[];
     safetyFactor?: number;
   };
-  clippingPlanes?: THREE.Plane[];
+  clippingPlanes?: THREE.Plane[] | undefined;
+  onCommitFaceTag?: (payload: {
+    portName: string;
+    portType: string;
+    normal?: [number, number, number] | undefined;
+    worldPos: [number, number, number];
+  }) => void;
 }
 
 export function BoundaryPicker({
@@ -48,6 +54,7 @@ export function BoundaryPicker({
   stressProbes,
   probeFields,
   clippingPlanes,
+  onCommitFaceTag,
 }: BoundaryPickerProps) {
   const [, setHoveredFace] = useState<number | null>(null);
   const [activeMenu, setActiveMenu] = useState<{
@@ -56,12 +63,15 @@ export function BoundaryPicker({
     nodeId: number;
     faceIndex: number;
     worldPos: [number, number, number];
+    normal?: [number, number, number] | undefined;
   } | null>(null);
 
   const [forceX, setForceX] = useState<string>("0");
   const [forceY, setForceY] = useState<string>("0");
   const [forceZ, setForceZ] = useState<string>("-1000");
   const [probeLabel, setProbeLabel] = useState<string>("");
+  const [portName, setPortName] = useState<string>("flange_1");
+  const [portType, setPortType] = useState<string>("mechanical_flange");
 
   const { geometry, markerRadius } = useMemo(() => {
     const geo = new THREE.BufferGeometry();
@@ -133,6 +143,7 @@ export function BoundaryPicker({
     const fIdx = e.faceIndex;
     const n0 = indices[fIdx * 3 + 0] ?? 0;
     const pt = e.point;
+    const norm = e.face?.normal;
 
     setProbeLabel(`Stress Pt #${(stressProbes?.length ?? 0) + 1} (N${n0 + 1})`);
     setActiveMenu({
@@ -141,6 +152,7 @@ export function BoundaryPicker({
       nodeId: n0,
       faceIndex: fIdx,
       worldPos: [pt.x, pt.y, pt.z],
+      normal: norm ? [norm.x, norm.y, norm.z] : undefined,
     });
   };
 
@@ -168,7 +180,7 @@ export function BoundaryPicker({
           transparent={true}
           opacity={0.01} // Invisible raycast proxy sitting directly on the surface
           side={THREE.DoubleSide}
-          clippingPlanes={clippingPlanes}
+          clippingPlanes={clippingPlanes ?? null}
         />
       </mesh>
 
@@ -388,6 +400,72 @@ export function BoundaryPicker({
                 }}
               >
                 🎯 Add Stress Probe Point
+              </button>
+            </div>
+
+            {/* Physical Port / Frame Tagging */}
+            <div
+              style={{
+                borderTop: "1px solid rgba(255,255,255,0.08)",
+                paddingTop: "6px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+              }}
+            >
+              <span style={{ fontSize: "10px", color: "#38bdf8", fontWeight: 600 }}>Tag Physical Port / Frame</span>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px" }}>
+                <div>
+                  <label style={{ fontSize: "9px", color: "#94a3b8" }}>Port Name</label>
+                  <input
+                    type="text"
+                    value={portName}
+                    onChange={(e) => setPortName(e.target.value)}
+                    placeholder="flange_1"
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "9px", color: "#94a3b8" }}>Port Type</label>
+                  <select
+                    value={portType}
+                    onChange={(e) => setPortType(e.target.value)}
+                    style={{
+                      ...inputStyle,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <option value="mechanical_flange">mechanical_flange</option>
+                    <option value="fixed_support">fixed_support</option>
+                    <option value="frame">frame</option>
+                    <option value="fluid">fluid</option>
+                    <option value="thermal">thermal</option>
+                  </select>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  const name = portName.trim() || "flange_1";
+                  onCommitFaceTag?.({
+                    portName: name,
+                    portType,
+                    normal: activeMenu.normal,
+                    worldPos: activeMenu.worldPos,
+                  });
+                  setActiveMenu(null);
+                }}
+                style={{
+                  background: "rgba(56, 189, 248, 0.22)",
+                  border: "1px solid rgba(56, 189, 248, 0.5)",
+                  borderRadius: "6px",
+                  padding: "5px 8px",
+                  color: "#38bdf8",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  fontSize: "10px",
+                }}
+              >
+                🏷️ Tag Port / Frame ({portName})
               </button>
             </div>
 

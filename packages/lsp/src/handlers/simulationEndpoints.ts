@@ -42,7 +42,7 @@ export function resolveTargetClass(
   uri: string,
   className?: string,
 ): { symbolId: number; className: string; classKind: string } | null {
-  const unifiedIndex = context.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.() ?? {
+  const unifiedIndex = context.workspaceManager?.unifiedWorkspace?.getIndex?.() ?? {
     symbols: new Map(),
     byName: new Map(),
     childrenOf: new Map(),

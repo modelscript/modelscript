@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./builtins.js";
 export * from "./dae/index.js";
 export * from "./errors.js";
 export { default, psseLanguage } from "./language.js";
@@ -40,4 +41,3 @@ export * from "./solver/small-signal.js";
 export * from "./solver/usr-dll-runner.js";
 export * from "./solver/webgpu-contingency-screener.js";
 export * from "./types.js";
-export * from "./workspace-index.js";

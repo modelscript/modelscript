@@ -12,7 +12,7 @@
 
 import { createWasmParser } from "@modelscript/dsl";
 import { QueryEngine, UnifiedWorkspace } from "@modelscript/runtime";
-import { StepWorkspaceIndex } from "@modelscript/step";
+import { indexStepDocument, stepLanguage } from "@modelscript/step";
 import {
   createSysML2WorkspaceIndex,
   loadEmbeddedKerMLStdlib,
@@ -277,9 +277,8 @@ process.on(
         if (queryEngineRef) {
           const qeWithIndex = queryEngineRef as unknown as { index: SymbolIndexType };
           unifiedWs.registerWorkspace("modelica", {
-            toSymbolIndex: () => qeWithIndex.index,
-
-            toUnified: () => qeWithIndex.index,
+            version: 1,
+            getIndex: () => qeWithIndex.index,
           });
         } else {
           // Fallback for polyglot packages with loose .mo files without a root package.mo
@@ -348,8 +347,8 @@ process.on(
           }
           const modelicaIndex = { symbols, byName, childrenOf } as unknown as SymbolIndexType;
           unifiedWs.registerWorkspace("modelica", {
-            toSymbolIndex: () => modelicaIndex,
-            toUnified: () => modelicaIndex,
+            version: 1,
+            getIndex: () => modelicaIndex,
           });
         }
       }
@@ -413,12 +412,12 @@ process.on(
       // 3. Process STEP CAD (if present)
       if (hasStep) {
         console.log(`[publish] ${name}@${version}: indexing ${stepFiles.length} STEP CAD files...`);
-        const stepWs = new StepWorkspaceIndex();
+        const stepWs = new UnifiedWorkspace(stepLanguage);
         for (const file of stepFiles) {
           try {
             const fileBuf = fs.readFileSync(file);
             const fileUri = "file://" + path.resolve(file);
-            await stepWs.parseStepFile(fileUri, fileBuf);
+            await indexStepDocument(stepWs, fileUri, fileBuf);
 
             // Pre-tessellate CAD WebGL mesh and store in cache
             const relPath = path.relative(libraryPath, file);
@@ -436,7 +435,7 @@ process.on(
         }
         unifiedWs.registerWorkspace("step", stepWs);
 
-        const stepIndex = stepWs.toSymbolIndex();
+        const stepIndex = stepWs.getIndex({ eager: true });
         for (const entry of stepIndex.symbols.values()) {
           if (entry.parentId === null || entry.parentId === 0) {
             if (!processedClassNames.has(entry.name)) {
@@ -491,7 +490,7 @@ process.on(
       }
 
       // 4. Build and export unified polyglot Salsa index and LSP bundle
-      const unifiedSymbolIndex = unifiedWs.toSymbolIndex();
+      const unifiedSymbolIndex = unifiedWs.getIndex({ eager: true });
       console.log(
         `[publish] ${name}@${version}: unified symbol index created with ${unifiedSymbolIndex.symbols.size} symbols.`,
       );

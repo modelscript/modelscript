@@ -9,4 +9,3 @@ export * from "./parser/index.js";
 export * from "./projections/index.js";
 export * from "./solvers/index.js";
 export * from "./types.js";
-export * from "./workspace-index.js";

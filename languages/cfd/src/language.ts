@@ -17,6 +17,7 @@ import {
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/dsl";
+import { canIndexCfd, indexCfdDocument } from "./indexing.js";
 import type { MaterializeOptions } from "./types.js";
 
 interface CfdActionContext extends ActionExecutionContext {
@@ -48,6 +49,10 @@ export const cfdLanguage = language({
   name: "cfd",
   fileExtensions: [".cfd", ".cfg", ".cfgt", ".su2", ".foam"],
   maturity: "beta",
+  indexing: {
+    indexFile: indexCfdDocument,
+    canIndex: canIndexCfd,
+  },
   lsp: {
     fileExtensions: [".cfd", ".cfg", ".cfgt", ".su2", ".foam"],
     icons: {

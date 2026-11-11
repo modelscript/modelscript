@@ -36,7 +36,7 @@ end BouncingBall;`;
   wsIndex.register(uri, () => tree.rootNode);
   wsIndex.getFileIndex(uri);
 
-  const queryEngine = createModelicaQueryEngine(wsIndex.toUnified(), {
+  const queryEngine = createModelicaQueryEngine(wsIndex.getIndex({ eager: true }), {
     getText: (s, e) => validMo.substring(s, e),
     getNode: (s, e) => tree.rootNode.descendantForIndex(s, e),
   });

@@ -43,6 +43,142 @@ export interface SymbolConfig<FieldName extends string = string> {
 }
 
 /**
+ * Symbol descriptor emitted by declarative `language({ indexing })` hooks into `UnifiedWorkspace`.
+ */
+export interface DslSymbolInput {
+  /** Local identifier of the symbol (e.g. 'GENROU', 'Pm_in', 'H', 'Bus_101'). */
+  name: string;
+  /** Canonical symbol kind ('Class', 'Package', 'Component', 'Function', 'Variable', etc.). */
+  kind: string;
+  /** Optional grammar rule or sub-kind tag (defaults to `kind`). */
+  ruleName?: string | undefined;
+  /** Optional qualified or canonical symbol path (defaults to `name`). */
+  namePath?: string | undefined;
+  /** Optional parent symbol ID (returned by `ctx.emitSymbol` / `ctx.addSymbol`) when emitting flat parent-child hierarchies. */
+  parentId?: number | null | undefined;
+  /** Optional nested child symbols (convenient for hierarchical declarations). */
+  children?: DslSymbolInput[] | undefined;
+  /** Start byte offset in source document (default: 0). */
+  startOffset?: number | undefined;
+  /** End byte offset in source document (default: 0). */
+  endOffset?: number | undefined;
+  /** Start line (0-indexed, default: 0). */
+  startLine?: number | undefined;
+  /** Start column (0-indexed, default: 0). */
+  startColumn?: number | undefined;
+  /** End line (0-indexed, default: 0). */
+  endLine?: number | undefined;
+  /** End column (0-indexed, default: 0). */
+  endColumn?: number | undefined;
+  /** Name token start offset (defaults to `startOffset`). */
+  nameStartOffset?: number | undefined;
+  /** Name token end offset (defaults to `endOffset`). */
+  nameEndOffset?: number | undefined;
+  /** Optional fine-grained sub-field byte ranges (e.g. `{ name: { startOffset, endOffset } }`). */
+  fieldRanges?: Record<string, { startOffset: number; endOffset: number }> | undefined;
+  /** Optional resource URI override (e.g. `'library-bundle:/PSSE-Standard-Dynamics@1.0.0'`). */
+  resourceId?: string | undefined;
+  /** Optional supertype / inheritance paths. */
+  inherits?: string[] | undefined;
+  /** Optional exported member names. */
+  exports?: string[] | undefined;
+  /** Optional additional lookup names registered in `SymbolIndex.byName` (e.g. plain bus number `'101'` for `'Bus_101'`). */
+  aliases?: string[] | undefined;
+  /** Arbitrary language/domain metadata (classPrefixes, classKind, iconSvg, iconAnnotation, placementAnnotation, typeSpecifier, variability, causality, defaultValue, unit, description, etc.). */
+  metadata?: Record<string, any> | undefined;
+}
+
+/**
+ * Optional extra attributes passed to `DslIndexFileContext.addSymbol`.
+ */
+export interface DslAddSymbolOptions {
+  ruleName?: string | undefined;
+  namePath?: string | undefined;
+  aliases?: string[] | undefined;
+  inherits?: string[] | undefined;
+  exports?: string[] | undefined;
+  resourceId?: string | undefined;
+  nameStartOffset?: number | undefined;
+  nameEndOffset?: number | undefined;
+  fieldRanges?: Record<string, { startOffset: number; endOffset: number }> | undefined;
+}
+
+/**
+ * Built-in library or standard-model symbol descriptor registered once per language in `UnifiedWorkspace`.
+ */
+export interface DslBuiltinSymbol extends DslSymbolInput {
+  /** Optional nested child symbols (packages, models, ports, parameters). */
+  children?: DslBuiltinSymbol[] | undefined;
+}
+
+/**
+ * Context passed to `LanguageIndexingConfig.indexFile` during `UnifiedWorkspace` document indexing.
+ */
+export interface DslIndexFileContext {
+  /** Document URI being indexed. */
+  readonly uri: string;
+  /** Raw source text of the document. */
+  readonly text: string;
+  /** Lowercase file extension including leading dot (e.g. '.raw', '.dyr'), or '' if none. */
+  readonly extension: string;
+  /** Language identifier (e.g. 'psse'). */
+  readonly language: string;
+  /** Optional parsed CST tree if a WASM parser is registered for this extension. */
+  readonly tree?: any;
+  /** Emit a symbol (and any nested `children`) into the file's `SymbolIndex`, returning its allocated `SymbolId`. */
+  emitSymbol(symbol: DslSymbolInput): number;
+  /** Imperative helper to emit a single symbol with an optional `parentId`, returning its allocated `SymbolId`. */
+  addSymbol(
+    name: string,
+    kind: string,
+    parentId?: number | null,
+    startOffset?: number,
+    endOffset?: number,
+    metadata?: Record<string, any>,
+    options?: DslAddSymbolOptions,
+  ): number;
+  /** Returns the mutable per-file `SymbolIndex` currently being populated for `uri`. */
+  getFileIndex(): any;
+  /** Store an arbitrary parsed domain model (e.g. `PsseCase`, `PsseDyrCase`) keyed by URI (and optional slot key) on `UnifiedWorkspace`. */
+  setParsedModel<T = unknown>(model: T, key?: string): void;
+  /** Retrieve a previously stored parsed domain model for any URI in the workspace. */
+  getParsedModel<T = unknown>(uri: string, key?: string): T | undefined;
+  /** Read raw source text of another document currently open/indexed in `UnifiedWorkspace`. */
+  getDocumentText(uri: string): string | undefined;
+  /** List all document URIs currently tracked in `UnifiedWorkspace` (optionally filtered by extension). */
+  listDocumentUris(extension?: string): string[];
+  /** Find a companion URI in the same directory or matching stem with one of the target extensions (e.g. `['.raw', '.dyr']`). */
+  findCompanionUri(extensions: string[]): string | undefined;
+}
+
+/**
+ * Declarative & custom workspace indexing configuration for `UnifiedWorkspace`.
+ * Eliminates standalone per-language `*WorkspaceIndex` classes and manual `toUnified*()` adapters.
+ */
+export interface LanguageIndexingConfig {
+  /**
+   * Built-in packages, connector interfaces, and standard library models materialized into `UnifiedWorkspace`.
+   */
+  builtins?: DslBuiltinSymbol[] | (() => DslBuiltinSymbol[]) | undefined;
+  /**
+   * Custom per-document indexing hook invoked automatically by `UnifiedWorkspace` on `setDocument` / `indexDocumentText`.
+   */
+  indexFile?: ((ctx: DslIndexFileContext) => void) | undefined;
+  /**
+   * Optional CST indexer hooks (`IndexerHook[]`) used when indexing WASM GLR parse trees.
+   */
+  indexerHooks?: any[] | (() => any[]) | undefined;
+  /**
+   * Whether directory paths imply nested package scopes (e.g. Modelica `package.mo`).
+   */
+  packageHierarchy?: boolean | undefined;
+  /**
+   * Optional content predicate used by `UnifiedWorkspace` to disambiguate shared extensions (e.g. `.inp`, `.dat`, `.xml`).
+   */
+  canIndex?: ((uri: string, text: string) => boolean) | undefined;
+}
+
+/**
  * Maturity classification for a ModelScript language package.
  * - "stable": Production-grade native WASM GLR parser, Salsa queries, and verification/simulation pipeline.
  * - "beta": Domain-complete parser, lowering, and IDE editor/diagram integration.
@@ -217,6 +353,9 @@ export interface LanguageOptions<
 
   /** Dedicated Declaration & Stub Symbol Schema for Tier 1 Workspace Indexing and fast F12 */
   symbols?: Partial<Record<RuleName, SymbolConfig<FieldName>>> | undefined;
+
+  /** Unified Workspace Indexing configuration (built-in standard libraries, custom document indexers, package hierarchy) */
+  indexing?: LanguageIndexingConfig | undefined;
 
   /** Built-in Language Server Protocol features */
   lsp?:

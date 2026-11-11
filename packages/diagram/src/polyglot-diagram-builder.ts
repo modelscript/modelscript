@@ -485,7 +485,7 @@ export function formatMathExpression(expr: string): string {
 /**
  * Builds an X6-compatible diagram from a SymbolIndex and a GraphicsConfig lookup.
  *
- * @param index        The unified symbol index (from WorkspaceIndex.toUnified()).
+ * @param index        The unified symbol index (from UnifiedWorkspace.getIndex()).
  * @param gfxConfig    Maps symbol kind → GraphicsConfig (from generated graphics_config.ts).
  * @param resourceId   Optional resource URI to limit scope to symbols from one document.
  * @param resolver     Optional ScopeResolver for resolving edge source/target via the scope graph.

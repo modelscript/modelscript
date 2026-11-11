@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   GenbankErrorCode,
-  GenbankWorkspaceIndex,
   analyzeGenbankSequence,
   computeCodonAdaptationIndex,
   discoverOrfs,
@@ -13,6 +13,7 @@ import {
   genbankLanguage,
   genbankToModelica,
   genbankToSbolXml,
+  getGenbankDocument,
   getGenbankDocumentSymbols,
   getGenbankHover,
   lintGenbank,
@@ -378,21 +379,20 @@ test("GenBank DAE Lowering & Projections: compiles to DAEBuilder, Modelica 3.x, 
   assert.ok(sbolXml.includes('role="SO:0000141"'));
 });
 
-test("GenBank WorkspaceIndex & LSP: indexes symbols, validates, hovers, completes, and executes actions", async () => {
-  const index = new GenbankWorkspaceIndex();
+test("GenBank UnifiedWorkspace & LSP: indexes symbols, validates, hovers, completes, and executes actions", async () => {
+  const ws = new UnifiedWorkspace(genbankLanguage);
   const uri = "file:///workspace/pGFP_Mini.gb";
-  index.register(uri);
-  assert.equal(index.has(uri), true);
+  ws.setDocument(uri, VALID_PLASMID_GB);
+  assert.equal(ws.hasDocument(uri), true);
+  assert.equal(ws.fileCount, 1);
+  assert.equal(getGenbankDocument(ws, uri)?.records[0]?.locus, "pGFP_Mini");
 
-  index.indexFile(uri, VALID_PLASMID_GB);
-  assert.equal(index.fileCount, 1);
-
-  const symbols = index.getSymbols(uri);
+  const symbols = ws.getSymbolsForUri(uri);
   assert.ok(symbols.length >= 6);
-  const gfpDef = index.findDefinition("gfp_mini");
-  assert.ok(gfpDef);
-  assert.equal(gfpDef.name, "gfp_mini");
-  assert.equal(index.findReferences("gfp_mini").length, 1);
+  const gfpMatches = ws.findSymbolsByName("gfp_mini");
+  assert.ok(gfpMatches.length >= 1);
+  assert.equal(gfpMatches[0]?.name, "gfp_mini");
+  assert.equal(gfpMatches.length, 1);
 
   const lspSyms = getGenbankDocumentSymbols(VALID_PLASMID_GB);
   assert.equal(lspSyms.length, 1);

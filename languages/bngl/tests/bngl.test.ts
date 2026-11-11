@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   BnglErrorCode,
-  BnglWorkspaceIndex,
   bnglLanguage,
   bnglToModelica,
   bnglToSbmlXml,
   executeBnglAction,
   generateBnglNetwork,
+  getBnglDocument,
   getBnglDocumentSymbols,
   getBnglHover,
   lintBngl,
@@ -439,18 +440,19 @@ test("BNGL Projections: exports valid Modelica 3.x and SBML Level 3 XML", () => 
   assert.ok(xml.includes('<reaction id="Rxn1"'));
 });
 
-test("BNGL WorkspaceIndex & LSP: indexes symbols, hover, completions, and actions", async () => {
-  const index = new BnglWorkspaceIndex();
+test("BNGL UnifiedWorkspace & LSP: indexes symbols, hover, completions, and actions", async () => {
+  const ws = new UnifiedWorkspace(bnglLanguage);
   const uri = "file:///workspace/receptor_signaling.bngl";
-  index.indexFile(uri, RECEPTOR_PHOSPHORYLATION_BNGL);
+  ws.setDocument(uri, RECEPTOR_PHOSPHORYLATION_BNGL);
 
-  assert.equal(index.fileCount, 1);
-  assert.ok(index.has(uri));
-  assert.ok(index.getSymbols(uri).length >= 10);
-  assert.equal(index.findDefinition("R")?.name, "R");
-  assert.equal(index.findDefinition("BoundR")?.name, "BoundR");
-  assert.equal(index.findDefinition("Bind")?.name, "Bind");
-  assert.ok(index.findReferences("R").length >= 1);
+  assert.equal(ws.fileCount, 1);
+  assert.ok(ws.hasDocument(uri));
+  assert.ok(getBnglDocument(ws, uri));
+  assert.ok(ws.getSymbolsForUri(uri).length >= 10);
+  assert.equal(ws.findSymbolsByName("R")[0]?.name, "R");
+  assert.equal(ws.findSymbolsByName("BoundR")[0]?.name, "BoundR");
+  assert.equal(ws.findSymbolsByName("Bind")[0]?.name, "Bind");
+  assert.ok(ws.findSymbolsByName("R").length >= 1);
 
   const diags = validateBngl(RECEPTOR_PHOSPHORYLATION_BNGL);
   assert.equal(diags.length, 0);

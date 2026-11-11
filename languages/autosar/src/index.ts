@@ -6,6 +6,7 @@
 
 export * from "./dae/index.js";
 export * from "./errors.js";
+export * from "./indexing.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";
@@ -15,4 +16,3 @@ export * from "./rte/index.js";
 export * from "./tgg/autosar-rules.js";
 export * from "./tgg/autosar-sync.js";
 export * from "./types.js";
-export * from "./workspace-index.js";

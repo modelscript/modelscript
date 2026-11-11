@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   SbmlErrorCode,
-  SbmlWorkspaceIndex,
   lintSbml,
   lowerSbmlToDae,
   parseSbml,
+  sbmlLanguage,
   sbmlToModelica,
   serializeSbml,
   simulateSbmlGillespie,
@@ -300,22 +301,22 @@ test("SBML Modelica Projection: generates syntactically valid Modelica 3.x pathw
   assert.ok(mo.includes("end MichaelisMentenPathway;"));
 });
 
-test("SBML Workspace Index: indexes multi-file symbols accurately", () => {
-  const index = new SbmlWorkspaceIndex();
-  index.indexFile("file:///bio/enzyme.sbml", VALID_SBML_MODEL);
+test("SBML UnifiedWorkspace: indexes multi-file symbols accurately", () => {
+  const ws = new UnifiedWorkspace(sbmlLanguage);
+  ws.setDocument("file:///bio/enzyme.sbml", VALID_SBML_MODEL);
 
-  assert.equal(index.fileCount, 1);
-  const symbols = index.getSymbols("file:///bio/enzyme.sbml");
+  assert.equal(ws.fileCount, 1);
+  const symbols = ws.getSymbolsForUri("file:///bio/enzyme.sbml");
   assert.ok(symbols.length >= 8);
 
-  const modelSym = index.findDefinition("EnzymeKinetics");
+  const modelSym = ws.findSymbolsByName("EnzymeKinetics")[0];
   assert.ok(modelSym);
 
-  const sSym = index.findDefinition("S");
+  const sSym = ws.findSymbolsByName("S")[0];
   assert.ok(sSym);
   assert.equal(sSym.name, "S");
 
-  const rSym = index.findDefinition("r1");
+  const rSym = ws.findSymbolsByName("r1")[0];
   assert.ok(rSym);
   assert.equal(rSym.name, "r1");
 });

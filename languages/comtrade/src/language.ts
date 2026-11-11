@@ -7,6 +7,7 @@
 import { language } from "@modelscript/dsl";
 import { extractPhasorAtTimestamp } from "./analysis/phasor-extractor.js";
 import { lowerComtradeToDae } from "./dae/comtrade-to-dae.js";
+import { canIndexComtrade, indexComtradeDocument } from "./indexing.js";
 import { lintComtradeRecord } from "./lints/index.js";
 import { parseComtradeCff, parseComtradeCfg } from "./parser/comtrade-reader.js";
 import { writeComtradeCff } from "./parser/comtrade-writer.js";
@@ -16,6 +17,10 @@ export const comtradeLanguage = language({
   name: "comtrade",
   fileExtensions: [".cfg", ".dat", ".cff"],
   maturity: "beta",
+  indexing: {
+    indexFile: indexComtradeDocument,
+    canIndex: canIndexComtrade,
+  },
   lsp: {
     fileExtensions: [".cfg", ".dat", ".cff"],
   },

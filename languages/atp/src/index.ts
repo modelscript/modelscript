@@ -9,10 +9,10 @@
 
 export * from "./analysis/transient-solver.js";
 export * from "./dae/atp-to-dae.js";
+export * from "./indexing.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";
 export * from "./parser/atp-parser.js";
 export * from "./parser/atp-writer.js";
 export * from "./types.js";
-export * from "./workspace-index.js";

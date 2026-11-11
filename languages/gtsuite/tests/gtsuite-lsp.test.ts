@@ -87,4 +87,17 @@ describe("@modelscript/gtsuite LSP service & DAE lowering suite", () => {
     assert.ok(resDae.varCount > 0);
     assert.ok(resDae.eqCount > 0);
   });
+
+  it("indexes GT-SUITE models in UnifiedWorkspace via gtsuiteLanguage", async () => {
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    const { gtsuiteLanguage } = await import("../src/index.js");
+    const ws = new UnifiedWorkspace(gtsuiteLanguage);
+    ws.setDocument("file:///engine.gtm", SAMPLE_GTM_MODEL);
+    const idx = ws.getIndex();
+    assert.ok(idx.byName.has("Test_Turbo_4Cyl"));
+    assert.ok(idx.byName.has("CYL1 [cylinder]"));
+    assert.ok(idx.byName.has("CYL1"));
+    const parsed = ws.getParsedModel<{ name: string }>("file:///engine.gtm");
+    assert.strictEqual(parsed?.name, "Test_Turbo_4Cyl");
+  });
 });

@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  getSpiceDocumentSymbols,
-  getSpiceHover,
-  spiceLanguage,
-  SpiceWorkspaceIndex,
-  validateSpice,
-} from "@modelscript/spice";
+import { getSpiceDocumentSymbols, getSpiceHover, spiceLanguage, validateSpice } from "@modelscript/spice";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { globalLanguageRegistry } from "../src/registry/LanguageRegistry.js";
@@ -28,7 +22,6 @@ describe("SPICE LSP Language Server Integration", () => {
       name: "SPICE",
       extensions: [".cir", ".sp", ".net", ".lib"],
       languageDef: spiceLanguage,
-      workspaceIndex: new SpiceWorkspaceIndex(),
       customHandlers: {
         symbols: (text: string) => getSpiceDocumentSymbols(text),
         hover: (offset: number, text: string) => {

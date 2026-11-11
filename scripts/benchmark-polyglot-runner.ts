@@ -123,7 +123,7 @@ end BatteryDynamics_${n};
   const workspace = new UnifiedWorkspace();
   workspace.registerWorkspace("modelica", mIdx, modelicaLangFallback);
   workspace.registerWorkspace("sysml2", sIdx, sysml2LangFallback);
-  await workspace.toUnifiedAsync();
+  await workspace.getIndexAsync();
   const coldParsingAndIndexingMs = performance.now() - tParseStart;
 
   // 1b. DAE Arena Lowering & Flattening

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, field, language, repeat, seq } from "@modelscript/dsl";
+import { simpackIndexing } from "./indexing.js";
 
 /**
  * DSL language specification for SIMPACK multibody models (.spck, .sim, .mbs).
@@ -9,6 +10,7 @@ export const simpackLanguage = language({
   name: "simpack",
   fileExtensions: [".spck", ".sim", ".mbs"],
   maturity: "beta",
+  indexing: simpackIndexing,
   lsp: {
     fileExtensions: [".spck", ".sim", ".mbs"],
   },

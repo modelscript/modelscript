@@ -80,7 +80,7 @@ describe("Polyglot SymbolId Partitioning and Collision-Free Merging", () => {
     };
 
     const wsM: any = {
-      toUnified: (): SymbolIndex => ({
+      getIndex: (): SymbolIndex => ({
         symbols: new Map([[1, modelicaEntry]]),
         byName: new Map([["ChassisModel", [1]]]),
         childrenOf: new Map([[null, [1]]]),
@@ -88,7 +88,7 @@ describe("Polyglot SymbolId Partitioning and Collision-Free Merging", () => {
     };
 
     const wsS: any = {
-      toUnified: (): SymbolIndex => ({
+      getIndex: (): SymbolIndex => ({
         symbols: new Map([[1, sysmlEntry]]),
         byName: new Map([["ChassisPart", [1]]]),
         childrenOf: new Map([[null, [1]]]),
@@ -98,7 +98,7 @@ describe("Polyglot SymbolId Partitioning and Collision-Free Merging", () => {
     ws.registerWorkspace("modelica", wsM);
     ws.registerWorkspace("sysml2", wsS);
 
-    const merged = ws.toSymbolIndex();
+    const merged = ws.getIndex({ eager: true });
 
     // Both symbols must exist (size 2, NOT 1)
     assert.equal(merged.symbols.size, 2, "Merged symbols must not clobber colliding IDs");
@@ -155,7 +155,7 @@ describe("Polyglot SymbolId Partitioning and Collision-Free Merging", () => {
     };
 
     const wsM: any = {
-      toUnified: (): SymbolIndex => ({
+      getIndex: (): SymbolIndex => ({
         symbols: new Map([[10, entryM]]),
         byName: new Map([["Inverter", [10]]]),
         childrenOf: new Map([[null, [10]]]),
@@ -163,7 +163,7 @@ describe("Polyglot SymbolId Partitioning and Collision-Free Merging", () => {
     };
 
     const wsS: any = {
-      toUnified: (): SymbolIndex => ({
+      getIndex: (): SymbolIndex => ({
         symbols: new Map([[20, entryS]]),
         byName: new Map([["InverterDef", [20]]]),
         childrenOf: new Map([[null, [20]]]),
@@ -173,7 +173,7 @@ describe("Polyglot SymbolId Partitioning and Collision-Free Merging", () => {
     ws.registerWorkspace("modelica", wsM);
     ws.registerWorkspace("sysml2", wsS);
 
-    const merged = ws.toSymbolIndex();
+    const merged = ws.getIndex({ eager: true });
     assert.equal(merged.symbols.size, 2);
 
     const partitionedMId = makePolyglotSymbolId(LanguageDomainId.Modelica, 10);

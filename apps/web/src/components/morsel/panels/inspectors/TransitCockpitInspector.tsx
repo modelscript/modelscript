@@ -28,7 +28,7 @@ interface TransitTrip {
 }
 
 export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = ({
-  code,
+  code: _code,
   lines,
   colorMode,
   onRevealLine,
@@ -51,7 +51,7 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
       { id: "STA_3", name: "University Campus", distanceKm: 14.5 },
       { id: "TERM", name: "Regional Airport Terminal", distanceKm: 22.0 },
     ],
-    []
+    [],
   );
 
   // Parse GTFS trips or synthesize scheduled bus runs
@@ -70,8 +70,8 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
           vehicleId: `BEB-${101 + idx}`,
           depTimeH: dep,
           arrTimeH: arr,
-          batteryStartSoc: 0.95 - (idx * 0.04) % 0.4,
-          batteryEndSoc: 0.78 - (idx * 0.04) % 0.4,
+          batteryStartSoc: 0.95 - ((idx * 0.04) % 0.4),
+          batteryEndSoc: 0.78 - ((idx * 0.04) % 0.4),
           energyKwh: 38.5,
           line: i + 1,
         });
@@ -80,7 +80,9 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
 
     if (list.length === 0) {
       // Default scheduled timetable runs across morning & afternoon peaks
-      const sampleDepartures = [6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.25, 10.0, 11.0, 12.5, 14.0, 15.5, 16.5, 17.0, 17.5, 18.25];
+      const sampleDepartures = [
+        6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.25, 10.0, 11.0, 12.5, 14.0, 15.5, 16.5, 17.0, 17.5, 18.25,
+      ];
       sampleDepartures.forEach((dep, idx) => {
         const duration = 0.75 + (idx % 3) * 0.05;
         list.push({
@@ -140,7 +142,15 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, color: textPrimary, fontSize: 13 }}>
       {/* Header & Sub-navigation */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 10, borderBottom: `1px solid ${borderCol}` }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          paddingBottom: 10,
+          borderBottom: `1px solid ${borderCol}`,
+        }}
+      >
         <div>
           <div style={{ fontWeight: 700, fontSize: 14, color: "#58a6ff" }}>
             Transit Electrification & Fleet Charging Cockpit
@@ -150,7 +160,15 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
           </div>
         </div>
 
-        <div style={{ display: "inline-flex", borderRadius: 6, border: `1px solid ${borderCol}`, overflow: "hidden", backgroundColor: isDark ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.8)" }}>
+        <div
+          style={{
+            display: "inline-flex",
+            borderRadius: 6,
+            border: `1px solid ${borderCol}`,
+            overflow: "hidden",
+            backgroundColor: isDark ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.8)",
+          }}
+        >
           {[
             { id: "marey", label: `Marey Stringline (${trips.length} Trips)` },
             { id: "charging", label: "Depot Grid & Load Profile" },
@@ -178,23 +196,38 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
 
       {/* KPI Ribbon */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10 }}>
-        <div style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}>
+        <div
+          style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}
+        >
           <div style={{ fontSize: 11, color: textMuted }}>Fleet Scheduled Trips</div>
           <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace" }}>{trips.length} runs</div>
         </div>
-        <div style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}>
+        <div
+          style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}
+        >
           <div style={{ fontSize: 11, color: textMuted }}>Total Fleet Energy</div>
           <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#58a6ff" }}>
             {totalDailyKwh.toFixed(1)} kWh
           </div>
         </div>
-        <div style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}>
+        <div
+          style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}
+        >
           <div style={{ fontSize: 11, color: textMuted }}>Peak Depot Demand</div>
-          <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: peakDepotKw > 1000 ? "#f0883e" : "#3fb950" }}>
+          <div
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              fontFamily: "monospace",
+              color: peakDepotKw > 1000 ? "#f0883e" : "#3fb950",
+            }}
+          >
             {peakDepotKw.toFixed(0)} kW
           </div>
         </div>
-        <div style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}>
+        <div
+          style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}
+        >
           <div style={{ fontSize: 11, color: textMuted }}>Transformer Headroom</div>
           <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#3fb950" }}>
             {(1500 - peakDepotKw).toFixed(0)} kW
@@ -220,7 +253,14 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
               const y = toDistSvgY(st.distanceKm);
               return (
                 <g key={st.id}>
-                  <line x1={mPadL} y1={y} x2={svgW - mPadR} y2={y} stroke={isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"} strokeDasharray="2 2" />
+                  <line
+                    x1={mPadL}
+                    y1={y}
+                    x2={svgW - mPadR}
+                    y2={y}
+                    stroke={isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"}
+                    strokeDasharray="2 2"
+                  />
                   <text x={mPadL - 8} y={y + 3} fill={textMuted} fontSize={10} textAnchor="end">
                     {st.name} ({st.distanceKm}km)
                   </text>
@@ -233,8 +273,22 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
               const x = toTimeSvgX(hour);
               return (
                 <g key={hour}>
-                  <line x1={x} y1={mPadT} x2={x} y2={svgH - mPadB} stroke={isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"} strokeDasharray="3 3" />
-                  <text x={x} y={svgH - mPadB + 14} fill={textMuted} fontSize={10} textAnchor="middle" fontFamily="monospace">
+                  <line
+                    x1={x}
+                    y1={mPadT}
+                    x2={x}
+                    y2={svgH - mPadB}
+                    stroke={isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}
+                    strokeDasharray="3 3"
+                  />
+                  <text
+                    x={x}
+                    y={svgH - mPadB + 14}
+                    fill={textMuted}
+                    fontSize={10}
+                    textAnchor="middle"
+                    fontFamily="monospace"
+                  >
                     {String(hour).padStart(2, "0")}:00
                   </text>
                 </g>
@@ -285,10 +339,12 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
             </div>
             <div style={{ display: "flex", gap: 14, fontSize: 11 }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                <span style={{ width: 12, height: 2, backgroundColor: "#f85149", borderTop: "2px dashed #f85149" }} /> 1500 kW Capacity Limit
+                <span style={{ width: 12, height: 2, backgroundColor: "#f85149", borderTop: "2px dashed #f85149" }} />{" "}
+                1500 kW Capacity Limit
               </span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                <span style={{ width: 10, height: 10, backgroundColor: "#58a6ff", borderRadius: 2 }} /> Aggregated EVSE Load
+                <span style={{ width: 10, height: 10, backgroundColor: "#58a6ff", borderRadius: 2 }} /> Aggregated EVSE
+                Load
               </span>
             </div>
           </div>
@@ -326,7 +382,13 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
         <div style={{ borderRadius: 8, border: `1px solid ${borderCol}`, overflow: "hidden", backgroundColor: cardBg }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
-              <tr style={{ borderBottom: `1px solid ${borderCol}`, backgroundColor: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)", textAlign: "left" }}>
+              <tr
+                style={{
+                  borderBottom: `1px solid ${borderCol}`,
+                  backgroundColor: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)",
+                  textAlign: "left",
+                }}
+              >
                 <th style={{ padding: "8px 12px" }}>Trip ID</th>
                 <th style={{ padding: "8px 12px" }}>Route</th>
                 <th style={{ padding: "8px 12px" }}>Vehicle ID</th>
@@ -344,7 +406,12 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
                   style={{
                     borderBottom: `1px solid ${borderCol}`,
                     cursor: "pointer",
-                    backgroundColor: selectedTripId === t.id ? (isDark ? "rgba(56, 139, 253, 0.15)" : "rgba(56, 139, 253, 0.1)") : "transparent",
+                    backgroundColor:
+                      selectedTripId === t.id
+                        ? isDark
+                          ? "rgba(56, 139, 253, 0.15)"
+                          : "rgba(56, 139, 253, 0.1)"
+                        : "transparent",
                   }}
                 >
                   <td style={{ padding: "8px 12px", fontFamily: "monospace", fontWeight: 600 }}>{t.id}</td>
@@ -358,7 +425,13 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
                   <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#3fb950" }}>
                     {Math.round(t.batteryStartSoc * 100)}%
                   </td>
-                  <td style={{ padding: "8px 12px", fontFamily: "monospace", color: t.batteryEndSoc < 0.3 ? "#f85149" : "#3fb950" }}>
+                  <td
+                    style={{
+                      padding: "8px 12px",
+                      fontFamily: "monospace",
+                      color: t.batteryEndSoc < 0.3 ? "#f85149" : "#3fb950",
+                    }}
+                  >
                     {Math.round(t.batteryEndSoc * 100)}%
                   </td>
                 </tr>

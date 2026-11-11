@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { selLanguage } from "../src/language.js";
+import { getSelWorkspaceModel, selLanguage } from "../src/index.js";
 import { formatSELDocument, getSELDiagnostics, getSELDocumentSymbols } from "../src/lsp.js";
-import { SelWorkspaceIndex } from "../src/workspace-index.js";
 
 const TEST_SEL_DOC = `
 RELAY="SEL-411L"
@@ -24,16 +24,17 @@ OUT101=TRIP
 `;
 
 describe("SEL Language Plugin & LSP Services", () => {
-  it("indexes SEL documents in workspace index", () => {
-    const index = new SelWorkspaceIndex();
-    index.indexDocument("file:///test.rcf", TEST_SEL_DOC);
+  it("indexes SEL documents in UnifiedWorkspace", () => {
+    const ws = new UnifiedWorkspace(selLanguage);
+    ws.setDocument("file:///test.rcf", TEST_SEL_DOC);
 
-    const model = index.getModel("file:///test.rcf");
+    const model = getSelWorkspaceModel(ws, "file:///test.rcf");
     assert.ok(model);
     assert.equal(model.relayId, "LINE_WEST_411");
     assert.equal(model.relayType, "SEL-411L");
     assert.equal(model.groupCount, 1);
     assert.ok(model.equationCount >= 3);
+    assert.ok(ws.findSymbolsByName("LINE_WEST_411").length > 0);
   });
 
   it("extracts hierarchical LSP document symbols", () => {

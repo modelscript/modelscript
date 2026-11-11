@@ -74,7 +74,7 @@ describe("Polyglot VFS Library Mount", () => {
     assert.equal(vfs.read("/lib/TestLib/package.mo"), "package TestLib\nend TestLib;");
 
     // Verify WorkspaceIndex was hydrated with the symbol
-    const unified = globalWorkspaceIndex.toUnified();
+    const unified = globalWorkspaceIndex.getIndex({ eager: true });
     const symId = unified.byName.get("TestLib")?.[0];
     assert.ok(symId, "TestLib should be resolvable in WorkspaceIndex");
     const sym = unified.symbols.get(symId);

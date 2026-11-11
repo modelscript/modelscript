@@ -15,6 +15,7 @@ function getAdmZipClass(): any {
   } catch (err) {
     throw new Error(
       `Excel (.xlsx) driver requires 'adm-zip'. Error: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
   }
 }
@@ -35,10 +36,7 @@ function colIndexToLetters(idx: number): string {
 /**
  * Reads row records from an Excel .xlsx workbook.
  */
-export function readExcelTableRows(
-  xlsxFilePath: string,
-  baseDir?: string,
-): Record<string, string | number>[] {
+export function readExcelTableRows(xlsxFilePath: string, baseDir?: string): Record<string, string | number>[] {
   const AdmZip = getAdmZipClass();
   const absPath = baseDir ? path.resolve(baseDir, xlsxFilePath) : path.resolve(xlsxFilePath);
   const zip = new AdmZip(absPath);

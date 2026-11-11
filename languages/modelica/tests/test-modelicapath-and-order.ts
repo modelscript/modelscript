@@ -101,7 +101,7 @@ C
     const orderContext = new Context(fs);
     await orderContext.addLibrary(orderTestDir);
 
-    const unifiedOrder = orderContext.workspaceIndex.toUnified();
+    const unifiedOrder = orderContext.workspaceIndex.getIndex({ eager: true });
     const packageEntry = Array.from(unifiedOrder.symbols.values()).find(
       (s) => s.name === "OrderPackage" && s.kind === "Class",
     );

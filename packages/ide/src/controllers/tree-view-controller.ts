@@ -6,6 +6,7 @@ import type { DiagramEditorProvider } from "../diagram-editor-provider.js";
 import { ExperimentsTreeProvider } from "../experiments-tree.js";
 import { type LibraryTreeItem, LibraryTreeProvider } from "../library-tree-provider.js";
 import { MqttTreeProvider } from "../mqtt-tree-provider.js";
+import { registerOpenModelHub } from "../open-model-hub.js";
 import { OWL2ClassHierarchyProvider } from "../owl2-class-hierarchy-provider.js";
 import { OWL2PropertyHierarchyProvider } from "../owl2-property-hierarchy-provider.js";
 import { registerRegistryView } from "../registry-tree-provider.js";
@@ -109,8 +110,9 @@ export class TreeViewController implements vscode.Disposable {
       console.warn("Could not register modelscript.experimentsView view:", e);
     }
 
-    // 4. Ansatz Package Commands (attached to Libraries view) and SCM Views
+    // 4. Ansatz Package Commands, Visual Open Model Hub, and SCM Views
     registerRegistryView(context, client);
+    this._disposables.push(...registerOpenModelHub(context, () => this.getClient()));
     registerScmTreeView(context, client);
 
     // 5. OWL2 Hierarchy Views

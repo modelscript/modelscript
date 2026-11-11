@@ -3,6 +3,7 @@
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerOpenDssToDae } from "./dae/opendss-to-dae.js";
 import { openDssGrammar } from "./grammar/opendss-grammar.js";
+import { indexOpenDssFile } from "./indexing.js";
 import { lintOpenDss } from "./lints/index.js";
 import { parseOpenDss } from "./parser/opendss-parser.js";
 import { openDssToModelica } from "./projections/opendss-to-modelica.js";
@@ -15,6 +16,9 @@ export const openDssLanguage = language({
   name: "opendss",
   fileExtensions: [".dss"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexOpenDssFile,
+  },
   lsp: {
     fileExtensions: [".dss"],
     icons: {

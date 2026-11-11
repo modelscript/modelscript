@@ -159,7 +159,7 @@ describe("Unified Libraries Panel & URL-Driven Stdlib/Package Preloading", () =>
     const mockDocManager: any = { documentTrees: new Map() };
     const mockWorkspaceManager: any = {
       getWorkspaceIndex: () => null,
-      unifiedWorkspace: { toUnifiedPartial: () => null },
+      unifiedWorkspace: { getIndex: () => null },
     };
     const mockDocuments: any = { all: () => [], get: () => undefined };
 
@@ -198,7 +198,7 @@ describe("Unified Libraries Panel & URL-Driven Stdlib/Package Preloading", () =>
     const mockDocManager: any = { documentTrees: new Map() };
     const mockWorkspaceManager: any = {
       getWorkspaceIndex: () => null,
-      unifiedWorkspace: { toUnifiedPartial: () => null },
+      unifiedWorkspace: { getIndex: () => null },
     };
     const mockDocuments: any = { all: () => [], get: () => undefined };
 

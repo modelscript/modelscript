@@ -97,7 +97,7 @@ describe("OWL2 Diagnostic Localization and Reasoner Explanations", () => {
 
     const mockWorkspaceManager = {
       unifiedWorkspace: {
-        toUnifiedPartial: () => ({
+        getIndex: () => ({
           symbols: new Map(),
           byName: new Map(),
           childrenOf: new Map(),
@@ -164,7 +164,7 @@ describe("OWL2 Diagnostic Localization and Reasoner Explanations", () => {
     };
 
     index.indexDocument("memfs:test.owl", () => mockTree);
-    const partial = index.toUnifiedPartial();
+    const partial = index.getIndex();
 
     assert.ok(partial.byName.has("mo:ElectricalDevice"), "Must have prefixed name");
     assert.ok(partial.byName.has("ElectricalDevice"), "Must have unqualified name");

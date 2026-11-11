@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { UrdfWorkspaceIndex } from "../src/workspace-index.js";
+import { urdfLanguage } from "../src/language.js";
 
 const ROBOT_A = `<?xml version="1.0"?>
 <robot name="robot_alpha">
@@ -14,19 +15,19 @@ const ROBOT_A = `<?xml version="1.0"?>
   </joint>
 </robot>`;
 
-describe("URDF Multi-File Workspace Indexer (@modelscript/urdf)", () => {
+describe("URDF Multi-File UnifiedWorkspace Indexer (@modelscript/urdf)", () => {
   it("should index and resolve robot links, joints, and symbols across workspace files", () => {
-    const index = new UrdfWorkspaceIndex();
-    index.indexFile("file:///workspace/robot_a.urdf", ROBOT_A);
+    const ws = new UnifiedWorkspace(urdfLanguage);
+    ws.setDocument("file:///workspace/robot_a.urdf", ROBOT_A);
 
-    const symbols = index.findSymbolsByName("robot_alpha");
+    const symbols = ws.findSymbolsByName("robot_alpha");
     assert.ok(symbols.length > 0);
     assert.equal(symbols[0]?.name, "robot_alpha");
 
-    const links = index.findSymbolsByName("base_link");
+    const links = ws.findSymbolsByName("base_link");
     assert.ok(links.length > 0);
 
-    const joints = index.findSymbolsByName("j1");
+    const joints = ws.findSymbolsByName("j1");
     assert.ok(joints.length > 0);
   });
 });

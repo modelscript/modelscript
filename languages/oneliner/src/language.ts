@@ -7,6 +7,7 @@
 import { language } from "@modelscript/dsl";
 import { calculateBusFaultCurrents, calculateOvercurrentTripTime } from "./analysis/fault-solver.js";
 import { lowerOneLinerToDae } from "./dae/oneliner-to-dae.js";
+import { indexOneLinerFile } from "./indexing.js";
 import { lintOneLinerCase } from "./lints/index.js";
 import { parseOneLiner } from "./parser/oneliner-parser.js";
 import { writeOneLinerDxt } from "./parser/oneliner-writer.js";
@@ -15,6 +16,9 @@ export const onelinerLanguage = language({
   name: "oneliner",
   fileExtensions: [".olx", ".dxt"],
   maturity: "beta",
+  indexing: {
+    indexFile: indexOneLinerFile,
+  },
   lsp: {
     fileExtensions: [".olx", ".dxt"],
   },

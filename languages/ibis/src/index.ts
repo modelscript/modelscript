@@ -10,4 +10,3 @@ export * from "./projections/ibis-to-modelica.js";
 export * from "./solvers/buffer-solver.js";
 export * from "./solvers/channel-solver.js";
 export * from "./types.js";
-export * from "./workspace-index.js";

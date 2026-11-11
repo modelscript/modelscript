@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  CanteraWorkspaceIndex,
   canteraLanguage,
   canteraToModelica,
   executeCanteraAction,
+  getCanteraDocument,
   getCanteraDocumentSymbols,
   getCanteraHover,
   lowerCanteraToDae,
@@ -134,7 +135,7 @@ test("Cantera DAE Lowering: compiles species concentrations and Arrhenius rates 
   assert.notEqual(dae.lookupVariable("q_R1"), -1);
 });
 
-test("Cantera Modelica Projection, WorkspaceIndex, and LSP Services", async () => {
+test("Cantera Modelica Projection, UnifiedWorkspace, and LSP Services", async () => {
   const doc = parseCantera(VALID_H2O2_YAML);
   const mo = canteraToModelica(doc, "H2O2Combustion");
   assert.ok(mo.includes("model H2O2Combustion"));
@@ -144,12 +145,13 @@ test("Cantera Modelica Projection, WorkspaceIndex, and LSP Services", async () =
   assert.ok(mo.includes("der(C_H2O) ="));
   assert.ok(mo.includes("end H2O2Combustion;"));
 
-  const index = new CanteraWorkspaceIndex();
-  index.indexFile("file:///chem/h2o2.yaml", VALID_H2O2_YAML);
-  assert.equal(index.fileCount, 1);
-  assert.ok(index.findDefinition("H2O"));
-  assert.ok(index.findDefinition("gas"));
-  assert.ok(index.findDefinition("R1"));
+  const ws = new UnifiedWorkspace(canteraLanguage);
+  ws.setDocument("file:///chem/h2o2.yaml", VALID_H2O2_YAML);
+  assert.equal(ws.fileCount, 1);
+  assert.ok(getCanteraDocument(ws, "file:///chem/h2o2.yaml"));
+  assert.ok(ws.findSymbolsByName("H2O")[0]);
+  assert.ok(ws.findSymbolsByName("gas")[0]);
+  assert.ok(ws.findSymbolsByName("R1")[0]);
 
   const lspDiags = validateCantera(VALID_H2O2_YAML);
   assert.equal(lspDiags.length, 0);

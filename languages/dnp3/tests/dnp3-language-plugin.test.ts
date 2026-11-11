@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { getAllDnp3Models, getDnp3Model } from "../src/indexing.js";
 import { dnp3Language } from "../src/language.js";
 import { getDnp3Diagnostics, getDnp3DocumentSymbols } from "../src/lsp.js";
-import { Dnp3WorkspaceIndex } from "../src/workspace-index.js";
 
 const SAMPLE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <DNP3DeviceProfile xmlns="http://www.dnp.org/DNP3/DeviceProfile/2010" id="SUB_RTU_PLUGIN">
@@ -34,11 +35,11 @@ const SAMPLE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 </DNP3DeviceProfile>`;
 
 describe("DNP3 Language Plugin & LSP Services", () => {
-  it("indexes DNP3 documents in workspace index", () => {
-    const index = new Dnp3WorkspaceIndex();
-    index.indexDocument("file:///test/rtu.xml", SAMPLE_XML);
+  it("indexes DNP3 documents in UnifiedWorkspace", () => {
+    const ws = new UnifiedWorkspace(dnp3Language);
+    ws.setDocument("file:///test/rtu.xml", SAMPLE_XML);
 
-    const model = index.getModel("file:///test/rtu.xml");
+    const model = getDnp3Model(ws, "file:///test/rtu.xml");
     assert.ok(model !== undefined);
     assert.equal(model?.deviceName, "GE D20 RTU");
     assert.equal(model?.vendor, "General Electric");
@@ -46,10 +47,11 @@ describe("DNP3 Language Plugin & LSP Services", () => {
     assert.equal(model?.binaryInputCount, 1);
     assert.equal(model?.analogInputCount, 1);
     assert.equal(model?.totalPointCount, 4);
+    assert.ok(ws.findSymbolsByName("BUS_FREQ_HZ").length >= 1);
 
-    assert.equal(index.getAllModels().length, 1);
-    index.clear();
-    assert.equal(index.getAllModels().length, 0);
+    assert.equal(getAllDnp3Models(ws).length, 1);
+    ws.clear();
+    assert.equal(getAllDnp3Models(ws).length, 0);
   });
 
   it("extracts hierarchical LSP document symbols", () => {

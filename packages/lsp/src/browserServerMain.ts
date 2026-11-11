@@ -315,8 +315,6 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
     }
   }
   (globalThis as any).serverDistBase = serverDistBase;
-  const stepWs = workspaceManager.getWorkspaceIndex("step");
-  if (stepWs) stepWs.serverDistBase = serverDistBase;
 
   try {
     await initBltWasm(`${serverDistBase}/release.wasm`);
@@ -550,11 +548,9 @@ documents.onDidOpen(async (event) => {
 documents.onDidSave(async (event) => {
   try {
     await validationService.validateTextDocument(event.document);
-    const progressReporter = await LspWorkDoneProgressReporter.create(
-      connection,
-      "ModelScript Formal Verification",
-      { message: "Verifying requirements & invariants..." },
-    );
+    const progressReporter = await LspWorkDoneProgressReporter.create(connection, "ModelScript Formal Verification", {
+      message: "Verifying requirements & invariants...",
+    });
     await validationService.runVerificationForUri(event.document.uri, progressReporter);
   } catch (e: any) {
     connection.console.warn(`[onDidSave] Error verifying ${event.document.uri}: ${e?.message}`);

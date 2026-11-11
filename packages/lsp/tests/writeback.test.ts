@@ -81,7 +81,7 @@ function createMockContext(uri: string, sourceText: string, symbols: Map<number,
   return {
     workspaceManager: {
       unifiedWorkspace: {
-        toUnifiedPartial: () => ({ symbols }),
+        getIndex: () => ({ symbols }),
       },
       getWorkspaceIndex: () => null,
     },

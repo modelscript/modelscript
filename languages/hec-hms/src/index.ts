@@ -15,4 +15,3 @@ export * from "./parser/hms-parser.js";
 export * from "./parser/hms-writer.js";
 export * from "./projections/hms-to-hecras.js";
 export * from "./types.js";
-export * from "./workspace-index.js";

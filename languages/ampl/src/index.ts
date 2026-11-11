@@ -2,6 +2,7 @@
 
 export * from "./dae/index.js";
 export * from "./errors.js";
+export * from "./indexing.js";
 export * from "./instantiator/index.js";
 export * from "./language.js";
 export * from "./lints/index.js";
@@ -16,4 +17,3 @@ export * from "./runtime/index.js";
 export * from "./solvers/index.js";
 export * from "./tables/index.js";
 export * from "./types.js";
-export * from "./workspace-index.js";

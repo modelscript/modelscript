@@ -19,6 +19,48 @@ export const hecHmsLanguage = language({
   lsp: {
     fileExtensions: [".basin", ".hms", ".met", ".control"],
   },
+  indexing: {
+    indexFile(ctx) {
+      if (ctx.text.includes("Basin:") || ctx.text.includes("Subbasin:") || ctx.text.includes("Reach:")) {
+        const basin = parseHmsBasin(ctx.text);
+        ctx.setParsedModel(basin);
+
+        const rootId = ctx.addSymbol(basin.name || "Basin", "Package", null, 0, ctx.text.length, {
+          unitSystem: basin.unitSystem,
+        });
+        for (const [name, sb] of basin.subbasins) {
+          ctx.addSymbol(name, "Component", rootId, 0, 0, {
+            elementKind: "subbasin",
+            area: sb.area,
+            downstream: sb.downstream,
+          });
+        }
+        for (const [name, reach] of basin.reaches) {
+          ctx.addSymbol(name, "Component", rootId, 0, 0, {
+            elementKind: "reach",
+            downstream: reach.downstream,
+          });
+        }
+        for (const [name, junc] of basin.junctions) {
+          ctx.addSymbol(name, "Component", rootId, 0, 0, {
+            elementKind: "junction",
+            downstream: junc.downstream,
+          });
+        }
+        for (const [name, res] of basin.reservoirs) {
+          ctx.addSymbol(name, "Component", rootId, 0, 0, {
+            elementKind: "reservoir",
+            downstream: res.downstream,
+          });
+        }
+        for (const [name] of basin.sinks) {
+          ctx.addSymbol(name, "Component", rootId, 0, 0, {
+            elementKind: "sink",
+          });
+        }
+      }
+    },
+  },
 
   actions: [
     {

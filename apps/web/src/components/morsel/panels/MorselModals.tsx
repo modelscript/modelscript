@@ -6,9 +6,9 @@ import React, { Suspense } from "react";
 import { createMorselShortLink } from "../../../api";
 import AddLibraryModal from "../AddLibraryModal";
 import { CloudDispatchModal } from "../CloudDispatchModal";
-import { detectLanguageFromFilename, getLanguageExtension } from "../constants";
-import OpenFileDropzone from "../OpenFileDropzone";
-import { didOpen, installDependency, loadLibraryFromBuffer } from "../util/lsp-bridge";
+import { getLanguageExtension } from "../constants";
+import OpenModelModal from "../OpenModelModal";
+import { didOpen, installDependency, loadLibraryFromBuffer, uninstallDependency } from "../util/lsp-bridge";
 import { compressMorselPayload } from "../util/permalink";
 
 const CodeEditor = React.lazy(() => import("../Code"));
@@ -17,6 +17,8 @@ export interface MorselModalsProps {
   dialect?: string | undefined;
   documentUri?: string | undefined;
   onSelectDialect?: ((dialect: string) => void) | undefined;
+  onSelectTreeClassName?: ((name: string | null) => void) | undefined;
+  onPlaceComponent?: ((snippet: string, className?: string) => void) | undefined;
   setLastLoadedContent?: ((v: string) => void) | undefined;
   parameterOverrides?: Map<string, number> | Record<string, number> | undefined;
   isShareDialogOpen: boolean;
@@ -56,6 +58,8 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
   dialect = "modelica",
   documentUri,
   onSelectDialect,
+  onSelectTreeClassName,
+  onPlaceComponent,
   setLastLoadedContent,
   parameterOverrides,
   isShareDialogOpen,
@@ -75,7 +79,7 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
   loadClass,
   isOpenFileDialogOpen,
   setIsOpenFileDialogOpen,
-  openFileButtonRef,
+  openFileButtonRef: _openFileButtonRef,
   loadingProgress,
   loadingMessage,
   isAddLibraryOpen,
@@ -193,7 +197,10 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
       {isDirtyDialogOpen && (
         <Dialog
           title={translations.unsavedChanges}
-          onClose={() => setDirtyDialogOpen(false)}
+          onClose={() => {
+            setDirtyDialogOpen(false);
+            setPendingSelection(null);
+          }}
           footerButtons={[
             {
               buttonType: "normal",
@@ -220,31 +227,45 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
         </Dialog>
       )}
 
-      {isOpenFileDialogOpen && (
-        <Dialog
-          title={translations.openFile}
-          onClose={() => setIsOpenFileDialogOpen(false)}
-          returnFocusRef={openFileButtonRef}
-        >
-          <OpenFileDropzone
-            translations={translations}
-            onFileContent={(newContent, filename) => {
-              const detectedDialect = (filename ? detectLanguageFromFilename(filename) : null) || dialect;
-              editor?.setValue(newContent);
-              setLastLoadedContent?.(newContent);
-              if (detectedDialect !== dialect) {
-                onSelectDialect?.(detectedDialect);
-              } else {
-                const targetUri = documentUri || `file:///document.${getLanguageExtension(detectedDialect)}`;
-                didOpen(targetUri, newContent, detectedDialect);
-                setContextVersion((v) => v + 1);
-              }
-              setIsOpenFileDialogOpen(false);
-            }}
-            colorMode={colorMode || "light"}
-          />
-        </Dialog>
-      )}
+      <OpenModelModal
+        isOpen={isOpenFileDialogOpen}
+        onClose={() => setIsOpenFileDialogOpen(false)}
+        colorMode={colorMode}
+        currentDialect={dialect}
+        currentDocumentUri={documentUri}
+        currentContent={editor?.getValue() ?? content}
+        documentModels={documentModels}
+        selectedTreeClassName={selectedTreeClassName}
+        onSelectWorkspaceClass={(clsName) => {
+          onSelectTreeClassName?.(clsName);
+        }}
+        onOpenLibraryHub={() => setIsAddLibraryOpen(true)}
+        toast={toast}
+        onOpenModel={(payload) => {
+          const targetDialect = payload.dialect || dialect;
+          editor?.setValue(payload.code);
+          setLastLoadedContent?.(payload.code);
+          if (payload.className) {
+            onSelectTreeClassName?.(payload.className);
+          }
+          if (targetDialect !== dialect) {
+            onSelectDialect?.(targetDialect);
+          } else {
+            const targetUri = documentUri || `file:///document.${getLanguageExtension(targetDialect)}`;
+            didOpen(targetUri, payload.code, targetDialect);
+            setContextVersion((v) => v + 1);
+          }
+          if (typeof window !== "undefined") {
+            const viewCmd =
+              payload.targetView === "diagram"
+                ? "view:diagram"
+                : payload.targetView === "code"
+                  ? "view:code"
+                  : "view:split";
+            window.dispatchEvent(new CustomEvent("modelscript:morsel-command", { detail: { action: viewCmd } }));
+          }
+        }}
+      />
 
       {loadingProgress < 100 && (
         <div
@@ -299,27 +320,29 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
           isOpen={isAddLibraryOpen}
           onDismiss={() => setIsAddLibraryOpen(false)}
           translations={translations}
+          documentUri={documentUri}
+          dialect={dialect}
+          colorMode={colorMode}
+          onPlaceComponent={onPlaceComponent}
           onInstallPackage={async (packageName, version) => {
+            await installDependency(packageName, version);
+            setContextVersion((v) => v + 1);
             try {
-              await installDependency(packageName, version);
-              setContextVersion((v) => v + 1);
-              try {
-                const channel = new BroadcastChannel("modelscript:host-bridge");
-                channel.postMessage({
-                  type: "MODELSCRIPT_INSTALL_PACKAGE",
-                  name: packageName,
-                  version: version || "latest",
-                  requestId: `morsel-${Date.now()}`,
-                });
-                channel.close();
-              } catch {
-                // ignore if BroadcastChannel unsupported
-              }
-              toast.success(`Added '${packageName}@${version}' to Libraries.`);
-            } catch (e) {
-              console.error("Failed to install package:", e);
-              toast.error("Failed to install package: " + (e instanceof Error ? e.message : String(e)));
+              const channel = new BroadcastChannel("modelscript:host-bridge");
+              channel.postMessage({
+                type: "MODELSCRIPT_INSTALL_PACKAGE",
+                name: packageName,
+                version: version || "latest",
+                requestId: `morsel-${Date.now()}`,
+              });
+              channel.close();
+            } catch {
+              // ignore if BroadcastChannel unsupported
             }
+          }}
+          onUninstallPackage={async (packageName) => {
+            await uninstallDependency(packageName);
+            setContextVersion((v) => v + 1);
           }}
           onAddLibrary={async (item, type) => {
             try {
@@ -342,6 +365,7 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
             } catch (error) {
               console.error(error);
               toast.error("Failed to add library: " + ((error as any)?.message ?? String(error)));
+              throw error;
             }
           }}
         />

@@ -10,13 +10,15 @@
  * AST token ranges.
  */
 
+import type { UnifiedWorkspace } from "@modelscript/runtime";
 import { ScadErrorCode } from "./errors.js";
 import { parseScadSource } from "./evaluator.js";
+import { resolveScadDependencyInfo } from "./indexing.js";
 import type { ScadCstNode } from "./patcher.js";
-import type { ScadWorkspaceIndex } from "./workspace-index.js";
 
 export interface ScadLintOptions {
-  workspaceIndex?: ScadWorkspaceIndex | undefined;
+  workspace?: UnifiedWorkspace | undefined;
+  workspaceIndex?: UnifiedWorkspace | undefined;
   uri?: string | undefined;
 }
 
@@ -378,16 +380,19 @@ function parseArgumentList(argListNode: ScadCstNode | null | undefined): {
 export function lintScadCst(
   rootNode: ScadCstNode | null | undefined,
   sourceText?: string,
-  options?: ScadLintOptions | ScadWorkspaceIndex,
+  options?: ScadLintOptions | UnifiedWorkspace,
 ): ScadDiagnostic[] {
   if (!rootNode) return [];
   const rawText = sourceText ?? rootNode.tree?.sourceCode ?? rootNode.text ?? "";
   const locator = new LineLocator(rawText);
   const diagnostics: ScadDiagnostic[] = [];
-  const workspaceIndex =
-    options && "resolveDependencyInfo" in options ? options : (options as ScadLintOptions | undefined)?.workspaceIndex;
-  const currentUri =
-    options && !("resolveDependencyInfo" in options) ? (options as ScadLintOptions | undefined)?.uri : undefined;
+  const isUnifiedWs = Boolean(
+    options && typeof options === "object" && "getParsedModel" in options && "getIndex" in options,
+  );
+  const workspace = isUnifiedWs
+    ? (options as UnifiedWorkspace)
+    : ((options as ScadLintOptions | undefined)?.workspace ?? (options as ScadLintOptions | undefined)?.workspaceIndex);
+  const currentUri = !isUnifiedWs ? (options as ScadLintOptions | undefined)?.uri : undefined;
   let suppressEmit = false;
 
   const emit = (
@@ -897,7 +902,7 @@ export function lintScadCst(
         const match = raw.match(/^(?:include|use)\s*<([^>]*)>/);
         const targetPath = match?.[1]?.trim() ?? "";
         const depInfo =
-          workspaceIndex && targetPath ? workspaceIndex.resolveDependencyInfo(targetPath, currentUri) : undefined;
+          workspace && targetPath ? resolveScadDependencyInfo(workspace, targetPath, currentUri) : undefined;
         if (!depInfo) {
           emit(
             stmt,
@@ -1266,8 +1271,7 @@ export function lintScadCst(
     rawStmt: ScadCstNode | null | undefined,
   ): { dim: "2d" | "3d"; name: string; node: ScadCstNode } | null => {
     if (!rawStmt) return null;
-    const stmt =
-      rawStmt.type === "Statement" || rawStmt.type === "OperatorChildStatement" ? rawStmt.child(0) : rawStmt;
+    const stmt = rawStmt.type === "Statement" || rawStmt.type === "OperatorChildStatement" ? rawStmt.child(0) : rawStmt;
     if (!stmt) return null;
 
     if (stmt.type === "PrefixSolid") {
@@ -1475,9 +1479,7 @@ export function lintScadCst(
         findChildByType(stmt, "BlockStatement");
       if (opNode?.type === "BooleanOp" && childStmt) {
         const blockNode =
-          childStmt.type === "BlockStatement"
-            ? childStmt
-            : findChildByType(childStmt, "BlockStatement");
+          childStmt.type === "BlockStatement" ? childStmt : findChildByType(childStmt, "BlockStatement");
         if (blockNode) {
           let first2d: { dim: "2d" | "3d"; name: string; node: ScadCstNode } | undefined;
           let first3d: { dim: "2d" | "3d"; name: string; node: ScadCstNode } | undefined;

@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  lintTough,
-  lowerToughToDae,
-  parseTough,
-  solveGeothermalWells,
-  ToughWorkspaceIndex,
-} from "../src/index.js";
+import { lintTough, lowerToughToDae, parseTough, solveGeothermalWells, toughLanguage } from "../src/index.js";
 
 const SAMPLE_TOUGH_DECK = `
 Geothermal Reservoir Model
@@ -62,8 +57,9 @@ test("TOUGH DAE Lowering — compiles grid blocks into DAEBuilder arena", () => 
   assert.ok(dae.variables().length >= 4);
 });
 
-test("TOUGH Workspace Index — indexes deck into symbol table", () => {
-  const indexer = new ToughWorkspaceIndex();
-  const idx = indexer.indexFile("file:///model.dat", SAMPLE_TOUGH_DECK);
+test("TOUGH UnifiedWorkspace — indexes deck into symbol table", () => {
+  const ws = new UnifiedWorkspace(toughLanguage);
+  ws.setDocument("file:///model.dat", SAMPLE_TOUGH_DECK);
+  const idx = ws.getIndex();
   assert.ok(idx.symbols.size > 0);
 });

@@ -17,6 +17,7 @@ import {
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/dsl";
+import { canIndexFea, indexFeaDocument } from "./indexing.js";
 import type { MaterializeOptions } from "./types.js";
 
 interface FeaActionContext extends ActionExecutionContext {
@@ -38,7 +39,7 @@ const PREC = {
 } as const;
 
 /**
- * Finite Element Analysis (`.fea`, `.inp`, `.inpt`, `.bdf`) language definition.
+ * Finite Element Analysis (`.fea`, `.inp`, `.inpt`, `.bdf`, `.dat`) language definition.
  *
  * Defines the GLR grammar for Abaqus/CalculiX keyword cards, data lines, and `{{ expr }}`
  * template bindings, 3D FEA viewer/materialization/simulation actions, and polyglot TGG rules
@@ -46,10 +47,14 @@ const PREC = {
  */
 export const feaLanguage = language({
   name: "fea",
-  fileExtensions: [".fea", ".inp", ".inpt", ".bdf"],
+  fileExtensions: [".fea", ".inp", ".inpt", ".bdf", ".dat"],
   maturity: "beta",
+  indexing: {
+    indexFile: indexFeaDocument,
+    canIndex: canIndexFea,
+  },
   lsp: {
-    fileExtensions: [".fea", ".inp", ".inpt", ".bdf"],
+    fileExtensions: [".fea", ".inp", ".inpt", ".bdf", ".dat"],
     icons: {
       light: "./assets/fea/icon-light.png",
       dark: "./assets/fea/icon-dark.png",

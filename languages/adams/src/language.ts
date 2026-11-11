@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, field, language, repeat, seq } from "@modelscript/dsl";
+import { indexAdamsDocument } from "./indexing.js";
 
 /**
  * DSL language specification for MSC Adams multibody models (.adm, .cmd, .acf).
@@ -9,6 +10,9 @@ export const adamsLanguage = language({
   name: "adams",
   fileExtensions: [".adm", ".cmd", ".acf"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexAdamsDocument,
+  },
   lsp: {
     fileExtensions: [".adm", ".cmd", ".acf"],
   },

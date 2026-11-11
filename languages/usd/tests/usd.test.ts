@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { assembly, box, compileAssemblyToUsd, compileAssemblyToUsdz, cylinder, part } from "@modelscript/cad";
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { lowerUsdToDae } from "../src/dae/index.js";
+import { findUsdPrim } from "../src/indexing.js";
+import { usdLanguage } from "../src/language.js";
 import { lintUsdStage } from "../src/lints/index.js";
 import { UsdLspService } from "../src/lsp.js";
 import { parseUsd } from "../src/parser/index.js";
-import { UsdWorkspaceIndex } from "../src/workspace-index.js";
 
 const VALID_ROBOT_STAGE = `#usda 1.0
 (
@@ -149,16 +151,16 @@ def Xform "BadRobot" {
     assert.ok(varNames.includes("link_1.z"));
   });
 
-  await t.test("UsdWorkspaceIndex: indexes and queries prims across multi-file workspace", () => {
-    const index = new UsdWorkspaceIndex();
-    index.indexDocument("models/arm.usda", VALID_ROBOT_STAGE);
+  await t.test("UnifiedWorkspace: indexes and queries prims across multi-file workspace", () => {
+    const ws = new UnifiedWorkspace(usdLanguage);
+    ws.setDocument("models/arm.usda", VALID_ROBOT_STAGE);
 
-    const hit = index.findPrim("/IndustrialArm/j1");
+    const hit = findUsdPrim(ws, "/IndustrialArm/j1");
     assert.ok(hit);
     assert.equal(hit.filePath, "models/arm.usda");
     assert.equal(hit.prim.typeName, "PhysicsRevoluteJoint");
 
-    const missing = index.findPrim("/NonExistent/Prim");
+    const missing = findUsdPrim(ws, "/NonExistent/Prim");
     assert.equal(missing, null);
   });
 

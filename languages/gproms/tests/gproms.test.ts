@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   GpromsErrorCode,
-  GpromsWorkspaceIndex,
   executeGpromsAction,
+  getGpromsDocument,
   getGpromsDocumentSymbols,
   getGpromsHover,
   gpromsLanguage,
@@ -309,7 +310,7 @@ test("gPROMS DAE Lowering: lowers lumped CSTR and discretized MOL PFR into squar
   assert.notEqual(pfrDae.lookupVariable("C"), -1);
 });
 
-test("gPROMS Modelica Projection, WorkspaceIndex, and LSP services", async () => {
+test("gPROMS Modelica Projection, UnifiedWorkspace, and LSP services", async () => {
   const doc = parseGproms(VALID_TUBULAR_PFR_GPROMS);
   const mo = gpromsToModelica(doc, "TubularReactorMo");
 
@@ -319,14 +320,15 @@ test("gPROMS Modelica Projection, WorkspaceIndex, and LSP services", async () =>
   assert.ok(mo.includes("der(C_1) ="));
   assert.ok(mo.includes("end TubularReactorMo;"));
 
-  // WorkspaceIndex
-  const index = new GpromsWorkspaceIndex();
-  index.indexFile("file:///proc/cstr.gproms", VALID_CSTR_GPROMS);
-  assert.equal(index.fileCount, 1);
-  assert.ok(index.findDefinition("IsothermalCSTR"));
-  assert.ok(index.findDefinition("Concentration"));
-  assert.ok(index.findDefinition("C_A"));
-  assert.ok(index.findDefinition("CstrSimulation"));
+  // UnifiedWorkspace
+  const ws = new UnifiedWorkspace(gpromsLanguage);
+  ws.setDocument("file:///proc/cstr.gproms", VALID_CSTR_GPROMS);
+  assert.equal(ws.fileCount, 1);
+  assert.ok(getGpromsDocument(ws, "file:///proc/cstr.gproms"));
+  assert.ok(ws.findSymbolsByName("IsothermalCSTR")[0]);
+  assert.ok(ws.findSymbolsByName("Concentration")[0]);
+  assert.ok(ws.findSymbolsByName("C_A")[0]);
+  assert.ok(ws.findSymbolsByName("CstrSimulation")[0]);
 
   // LSP validation, symbols, hover, completions, and actions
   const lspDiags = validateGproms(VALID_CSTR_GPROMS);

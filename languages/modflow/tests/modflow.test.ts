@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  getModflowDocumentSymbols,
   lintModflow,
   lowerModflowToDae,
+  modflowLanguage,
   parseModflow,
   solveAquiferBalance,
-  ModflowWorkspaceIndex,
   validateModflow,
-  getModflowDocumentSymbols,
 } from "../src/index.js";
 
 const SAMPLE_MODFLOW_DECK = `
@@ -130,9 +131,10 @@ test("MODFLOW DAE Lowering — lowers grid cells and Darcy flow equations to DAE
   assert.ok(eqs.length > 0);
 });
 
-test("MODFLOW Workspace Index — indexes grid and boundary symbols", () => {
-  const indexer = new ModflowWorkspaceIndex();
-  const idx = indexer.indexFile("file:///aquifer.dis", SAMPLE_MODFLOW_DECK);
+test("MODFLOW UnifiedWorkspace — indexes grid and boundary symbols", () => {
+  const ws = new UnifiedWorkspace(modflowLanguage);
+  ws.setDocument("file:///aquifer.dis", SAMPLE_MODFLOW_DECK);
+  const idx = ws.getIndex();
   assert.ok(idx.symbols.size > 0);
   assert.ok(idx.byName.has("MODFLOW_Aquifer"));
 });

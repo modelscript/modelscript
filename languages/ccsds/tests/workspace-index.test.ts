@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { CcsdsWorkspaceIndex } from "../src/workspace-index.js";
+import { ccsdsLanguage, findCcsdsSymbolsByType, getCcsdsDocument } from "../src/index.js";
 
 const FILE_OPM = `CCSDS_OPM_VERS = 2.0
 OBJECT_NAME = SAT_ALPHA
@@ -31,20 +32,22 @@ const FILE_XTCE = `<?xml version="1.0" encoding="UTF-8"?>
 </SpaceSystem>
 `;
 
-describe("CCSDS Multi-File Workspace Indexer", () => {
+describe("CCSDS Multi-File UnifiedWorkspace Indexer", () => {
   it("indexes multiple flight dynamics and telemetry files across workspace", () => {
-    const indexer = new CcsdsWorkspaceIndex();
+    const ws = new UnifiedWorkspace(ccsdsLanguage);
 
-    indexer.indexSource("file:///orbits/sat_alpha.opm", FILE_OPM);
-    indexer.indexSource("file:///telemetry/sat_alpha_tm.xtce", FILE_XTCE);
+    ws.setDocument("file:///orbits/sat_alpha.opm", FILE_OPM);
+    ws.setDocument("file:///telemetry/sat_alpha_tm.xtce", FILE_XTCE);
 
-    assert.strictEqual(indexer.fileCount, 2);
+    assert.strictEqual(ws.fileCount, 2);
+    assert(getCcsdsDocument(ws, "file:///orbits/sat_alpha.opm"));
+    assert(getCcsdsDocument(ws, "file:///telemetry/sat_alpha_tm.xtce"));
 
-    const alphaSyms = indexer.getSymbolsByName("SAT_ALPHA");
+    const alphaSyms = ws.findSymbolsByName("SAT_ALPHA");
     assert(alphaSyms.length >= 1);
     assert.strictEqual(alphaSyms[0]!.kind, "spacecraft");
 
-    const tmParams = indexer.findByType("telemetry_parameter");
+    const tmParams = findCcsdsSymbolsByType(ws, "telemetry_parameter");
     assert(tmParams.length >= 1);
     assert.strictEqual(tmParams[0]!.name, "SolarArrayCurrent");
   });

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { OpenDriveWorkspaceIndex } from "../src/workspace-index.js";
+import { getOpenDriveDocument, opendriveLanguage } from "../src/index.js";
 
 const xmlA = `<?xml version="1.0" encoding="UTF-8"?>
 <OpenDRIVE>
@@ -25,34 +26,34 @@ const xmlB = `<?xml version="1.0" encoding="UTF-8"?>
   </junction>
 </OpenDRIVE>`;
 
-describe("OpenDRIVE Multi-File Workspace Indexer", () => {
+describe("OpenDRIVE Multi-File UnifiedWorkspace Indexing", () => {
   it("indexes multiple road documents across workspace URIs", () => {
-    const index = new OpenDriveWorkspaceIndex();
-    index.indexFile("file:///roads/a.xodr", xmlA);
-    index.indexFile("file:///roads/b.xodr", xmlB);
+    const ws = new UnifiedWorkspace(opendriveLanguage);
+    ws.setDocument("file:///roads/a.xodr", xmlA);
+    ws.setDocument("file:///roads/b.xodr", xmlB);
 
-    assert.strictEqual(index.fileCount, 2);
-    assert(index.has("file:///roads/a.xodr"));
-    assert(index.has("file:///roads/b.xodr"));
+    assert.strictEqual(ws.fileCount, 2);
+    assert(ws.hasDocument("file:///roads/a.xodr"));
+    assert(ws.hasDocument("file:///roads/b.xodr"));
 
-    const docA = index.getDocument("file:///roads/a.xodr");
+    const docA = getOpenDriveDocument(ws, "file:///roads/a.xodr");
     assert.strictEqual(docA?.roads[0]?.id, "10");
 
-    const docB = index.getDocument("file:///roads/b.xodr");
+    const docB = getOpenDriveDocument(ws, "file:///roads/b.xodr");
     assert.strictEqual(docB?.roads[0]?.id, "20");
     assert.strictEqual(docB?.junctions[0]?.id, "5");
 
-    const fileIndexA = index.getFileIndex("file:///roads/a.xodr");
+    const fileIndexA = ws.getFileIndex("file:///roads/a.xodr");
     assert(fileIndexA !== undefined);
     assert(fileIndexA.byName.has("10"));
   });
 
   it("handles reindexing and version increment", () => {
-    const index = new OpenDriveWorkspaceIndex();
-    index.indexFile("file:///roads/a.xodr", xmlA);
-    const v1 = index.version;
+    const ws = new UnifiedWorkspace(opendriveLanguage);
+    ws.setDocument("file:///roads/a.xodr", xmlA);
+    const v1 = ws.version;
 
-    index.reindexDocument("file:///roads/a.xodr", () => xmlA);
-    assert(index.version > v1);
+    ws.setDocument("file:///roads/a.xodr", xmlA);
+    assert(ws.version > v1);
   });
 });

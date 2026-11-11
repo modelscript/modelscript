@@ -192,11 +192,15 @@ export {
 // CAD Annotation Serialization, Parsing & Modelica Patching
 export {
   parseCadBindings,
+  patchModelicaAssemblyJoint,
   patchModelicaCadAnnotation,
+  patchModelicaCadPortAnnotation,
   serializeCadAnnotation,
   serializeCadBinding,
+  type AssemblyJointSpec,
   type CadAnnotationConfig,
   type DynamicBindingConfig,
+  type MultiBodyJointType,
 } from "./binding-writer.js";
 
 // Large-Assembly Performance & Instancing

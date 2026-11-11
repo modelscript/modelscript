@@ -9,6 +9,7 @@
  */
 
 import { language } from "@modelscript/dsl";
+import { canIndexIgtl, indexIgtlFile } from "./indexing.js";
 import { lowerIgtlToDae, solveTransformChainAndPivot } from "./kinematics/index.js";
 import { lintIgtlDocument } from "./lints/rules.js";
 import { parseIgtl } from "./parser/index.js";
@@ -20,6 +21,10 @@ export const igtlLanguage = language({
   maturity: "experimental",
   lsp: {
     fileExtensions: [".igtl.json", ".igtl", ".plus.xml"],
+  },
+  indexing: {
+    canIndex: canIndexIgtl,
+    indexFile: indexIgtlFile,
   },
   rules: {
     Root: () => "igtl",

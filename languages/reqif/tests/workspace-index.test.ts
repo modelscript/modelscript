@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert";
 import { describe, it } from "node:test";
-import { ReqIfWorkspaceIndex } from "../src/index.js";
+import { findReqIfReferencesTo, findReqIfSymbols, reqifLanguage, resolveReqIfQualified } from "../src/index.js";
 
 const SAMPLE_REQIF = `<?xml version="1.0" encoding="UTF-8"?>
 <REQ-IF xmlns="http://www.omg.org/spec/ReqIF/20110401/reqif.xsd">
@@ -37,25 +38,26 @@ const SAMPLE_REQIF = `<?xml version="1.0" encoding="UTF-8"?>
   </CORE-CONTENT>
 </REQ-IF>`;
 
-describe("@modelscript/reqif workspace indexer", () => {
+describe("@modelscript/reqif UnifiedWorkspace indexer", () => {
   it("indexes ReqIF files and resolves symbols across workspace", () => {
-    const indexer = new ReqIfWorkspaceIndex();
+    const ws = new UnifiedWorkspace(reqifLanguage);
     const uri = "file:///workspace/chassis.reqif";
 
-    const index = indexer.indexFile(uri, SAMPLE_REQIF);
-    assert.strictEqual(indexer.fileCount, 1);
-    assert.ok(index.symbols.size >= 3); // Package + 2 requirements
+    ws.setDocument(uri, SAMPLE_REQIF);
+    const index = ws.getFileIndex(uri);
+    assert.strictEqual(ws.fileCount, 1);
+    assert.ok(index && index.symbols.size >= 3); // Package + 2 requirements
 
-    const found = indexer.findSymbols("Rigidity");
+    const found = findReqIfSymbols(ws, "Rigidity");
     assert.strictEqual(found.length, 1);
     assert.strictEqual(found[0]!.name, "REQ-STRUCT-01");
 
-    const resolved = indexer.resolveQualified("REQ-MASS-01");
+    const resolved = resolveReqIfQualified(ws, "REQ-MASS-01");
     assert.ok(resolved);
     assert.strictEqual(resolved.name, "REQ-MASS-01");
 
     // References to REQ-STRUCT-01 (target of REL-01)
-    const refs = indexer.referencesTo(found[0]!.id);
+    const refs = findReqIfReferencesTo(ws, found[0]!.id);
     assert.strictEqual(refs.length, 1);
     assert.strictEqual(refs[0]!.uri, uri);
   });

@@ -10,6 +10,7 @@
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerEnergyPlusToDae } from "./dae/energyplus-to-dae.js";
 import { energyPlusGrammar } from "./grammar/energyplus-grammar.js";
+import { canIndexEnergyPlus, indexEnergyPlusDocument } from "./indexing.js";
 import { lintEnergyPlus } from "./lints/rules.js";
 import { parseEnergyPlus } from "./parser/index.js";
 import { energyPlusToModelica } from "./projections/energyplus-to-modelica.js";
@@ -18,6 +19,10 @@ export const energyplusLanguage = language({
   name: "energyplus",
   fileExtensions: [".idf", ".epjson"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexEnergyPlusDocument,
+    canIndex: canIndexEnergyPlus,
+  },
   lsp: {
     fileExtensions: [".idf", ".epjson"],
     folding: energyPlusGrammar.lsp?.folding,

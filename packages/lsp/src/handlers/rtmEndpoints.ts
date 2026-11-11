@@ -36,7 +36,7 @@ export function registerRtmEndpoints(context: LspContext): void {
       filter?: string | undefined;
     }): Promise<RtmMatrixPayload> => {
       try {
-        const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+        const db = context.workspaceManager.unifiedWorkspace.getIndex();
         const rowDom = params.rowDomain ?? "sysml_logical";
         const colDom = params.colDomain ?? "requirement";
         const suspectMap = suspectTracker.getSuspectMap();
@@ -287,7 +287,7 @@ export function registerRtmEndpoints(context: LspContext): void {
       rowDomain?: RtmDomain | undefined;
       colDomain?: RtmDomain | undefined;
     }): Promise<{ csv: string; filename: string }> => {
-      const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+      const db = context.workspaceManager.unifiedWorkspace.getIndex();
       const matrix = RtmIndexEngine.buildMatrix(
         db,
         params.rowDomain ?? "sysml_logical",
@@ -342,7 +342,7 @@ export function registerRtmEndpoints(context: LspContext): void {
             );
           }
         }
-        const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+        const db = context.workspaceManager.unifiedWorkspace.getIndex();
         return ElementTableEngine.buildElementsTable(db, metaclass, params.uri);
       } catch (e) {
         console.error("[elementTable] Error building elements table:", e);
@@ -440,7 +440,7 @@ export function registerRtmEndpoints(context: LspContext): void {
             }));
           }
         }
-        const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+        const db = context.workspaceManager.unifiedWorkspace.getIndex();
         return ElementTableEngine.getTableCellCompletions(
           db,
           params.metaclass ?? "part",

@@ -36,4 +36,3 @@ export * from "./solver/transient/liquid-surge-dae.js";
 export * from "./solver/transient/slack-line-solver.js";
 export * from "./types.js";
 export * from "./verification/pipeline-verifier.js";
-export * from "./workspace-index.js";

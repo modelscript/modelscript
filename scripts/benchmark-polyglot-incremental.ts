@@ -112,7 +112,7 @@ async function runBenchmark() {
     console.log("    Indexing SysML...");
     const sysmlIndex0 = createSysML2WorkspaceIndex();
     sysmlIndex0.register(sysmlUri, () => sysmlTree0.rootNode);
-    const sysmlUnified0 = await sysmlIndex0.toUnifiedAsync();
+    const sysmlUnified0 = await sysmlIndex0.getIndexAsync();
     console.log("    Creating SysML engine...");
     createSysML2QueryEngine(sysmlUnified0, sysmlTree0 as unknown as Parameters<typeof createSysML2QueryEngine>[1]);
 

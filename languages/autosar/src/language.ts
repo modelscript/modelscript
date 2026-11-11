@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, language, repeat, seq } from "@modelscript/dsl";
+import { indexAutosarDocument } from "./indexing.js";
 
 /**
  * DSL language specification for AUTOSAR Classic and Adaptive XML files (.arxml).
@@ -9,6 +10,9 @@ export const autosarLanguage = language({
   name: "autosar",
   fileExtensions: [".arxml"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexAutosarDocument,
+  },
   lsp: {
     fileExtensions: [".arxml"],
   },

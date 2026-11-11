@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerBnglToDae } from "./dae/bngl-to-dae.js";
+import { indexBnglDocument } from "./indexing.js";
 import { lintBngl } from "./lints/index.js";
 import { parseBngl } from "./parser/bngl-parser.js";
 import { bnglToModelica, bnglToSbmlXml } from "./projections/bngl-projections.js";
@@ -14,6 +15,9 @@ export const bnglLanguage = language({
   name: "bngl",
   fileExtensions: [".bngl"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexBnglDocument,
+  },
   lsp: {
     fileExtensions: [".bngl"],
     icons: {

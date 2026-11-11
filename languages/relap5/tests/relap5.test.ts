@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   lintRelap5,
   lowerRelap5ToDae,
   parseRelap5,
+  relap5Language,
   relap5ToModelica,
-  Relap5WorkspaceIndex,
   serializeRelap5,
   solvePointKinetics,
 } from "../src/index.js";
@@ -243,21 +244,21 @@ test("RELAP5 Modelica Projection: generates syntactically valid Modelica 3.x cod
   assert.ok(mo.includes("end PwrPrimaryLoop;"));
 });
 
-test("RELAP5 Workspace Index: indexes multi-file symbols accurately", () => {
-  const index = new Relap5WorkspaceIndex();
-  index.indexFile("file:///nuclear/pwr.i", VALID_PWR_DECK);
+test("RELAP5 UnifiedWorkspace: indexes multi-file symbols accurately", () => {
+  const ws = new UnifiedWorkspace(relap5Language);
+  ws.setDocument("file:///nuclear/pwr.i", VALID_PWR_DECK);
 
-  assert.equal(index.fileCount, 1);
-  const symbols = index.getSymbols("file:///nuclear/pwr.i");
+  assert.equal(ws.fileCount, 1);
+  const symbols = ws.getSymbolsForUri("file:///nuclear/pwr.i");
   assert.ok(symbols.length >= 5);
 
-  const coreSym = index.findDefinition("CoreChannel");
+  const coreSym = ws.findSymbolsByName("CoreChannel")[0];
   assert.ok(coreSym);
   assert.equal(coreSym.name, "CoreChannel");
 
-  const juncSym = index.findDefinition("Junc_105");
+  const juncSym = ws.findSymbolsByName("Junc_105")[0];
   assert.ok(juncSym);
 
-  const pkeSym = index.findDefinition("ReactorPointKinetics");
+  const pkeSym = ws.findSymbolsByName("ReactorPointKinetics")[0];
   assert.ok(pkeSym);
 });

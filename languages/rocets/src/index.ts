@@ -19,6 +19,7 @@ export * from "./grammar/index.js";
 export { rocetsLanguage } from "./language.js";
 export { RocetsErrorCode, lintRocets, type RocetsDiagnostic } from "./lints/index.js";
 
+export * from "./indexing.js";
 export {
   executeRocetsAction,
   getRocetsDocumentSymbols,
@@ -61,4 +62,3 @@ export type {
   RocetsPerformanceMap,
   RocetsPort,
 } from "./types.js";
-export { RocetsWorkspaceIndex } from "./workspace-index.js";

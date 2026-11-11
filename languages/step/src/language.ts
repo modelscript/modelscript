@@ -14,9 +14,14 @@ import {
   tggEq,
   tggRule,
 } from "@modelscript/dsl";
-import type { SymbolIndex } from "@modelscript/runtime";
-import type { StepAssemblyModel } from "./physical-data.js";
-import type { OcctMesh } from "./workspace-index.js";
+import type { UnifiedWorkspace } from "@modelscript/runtime";
+import {
+  getStepAssemblyModel,
+  getStepMeshes,
+  indexStepDocument,
+  indexStepFileSync,
+  type OcctMesh,
+} from "./indexing.js";
 
 interface StepActionContext {
   uri?: string | undefined;
@@ -38,18 +43,7 @@ interface StepActionContext {
     | undefined;
   workspaceManager?:
     | {
-        stepWorkspaceIndex?:
-          | {
-              getMeshes(uri?: string): OcctMesh[];
-              getAssemblyModel?(uri?: string): StepAssemblyModel | undefined;
-              parseStepFile(uri: string, buffer: Uint8Array): Promise<SymbolIndex>;
-            }
-          | undefined;
-        unifiedWorkspace?:
-          | {
-              toUnifiedPartial?(): SymbolIndex | undefined;
-            }
-          | undefined;
+        unifiedWorkspace?: UnifiedWorkspace | undefined;
       }
     | undefined;
 }
@@ -72,6 +66,10 @@ export interface StepSerializedMesh {
 export const stepLanguage = language({
   name: "step",
   maturity: "stable",
+  fileExtensions: [".step", ".stp", ".p21"],
+  indexing: {
+    indexFile: indexStepFileSync,
+  },
 
   // Bi-directional source writeback for updating quoted string parameters in STEP entity records
   writeback: (ctx) => {
@@ -104,7 +102,7 @@ export const stepLanguage = language({
         params: { documentText?: string | undefined; uri?: string | undefined },
       ) => {
         const targetUri = params?.uri || ctx.uri;
-        const meshes = [...(ctx.workspaceManager?.stepWorkspaceIndex?.getMeshes(targetUri) || [])];
+        const meshes = [...getStepMeshes(ctx.workspaceManager?.unifiedWorkspace, targetUri)];
         return {
           success: true,
           uri: targetUri,
@@ -147,7 +145,7 @@ export const stepLanguage = language({
         const { extractStepAssembly } = await import("./assembly-extractor.js");
         const assembly =
           (stepText ? extractStepAssembly(stepText) : undefined) ??
-          ctx.workspaceManager?.stepWorkspaceIndex?.getAssemblyModel?.(targetUri);
+          getStepAssemblyModel(ctx.workspaceManager?.unifiedWorkspace, targetUri);
 
         const bodyLines: string[] = ["  inner Modelica.Mechanics.MultiBody.World world;"];
         const eqLines: string[] = [];
@@ -606,7 +604,7 @@ export const stepLanguage = language({
     handlers: {
       // LSP request handler that maps a STEP assembly into a Modelica MultiBody model
       "modelscript/generateMultiBody": async (ctx: StepActionContext, params: { uri: string }) => {
-        const model = ctx.workspaceManager?.stepWorkspaceIndex?.getAssemblyModel?.(params.uri);
+        const model = getStepAssemblyModel(ctx.workspaceManager?.unifiedWorkspace, params.uri);
         if (!model) {
           throw new Error(`No STEP assembly found for ${params.uri}`);
         }
@@ -627,9 +625,10 @@ export const stepLanguage = language({
         ctx: StepActionContext,
         params: { uri: string; documentText?: string | undefined },
       ): Promise<StepSerializedMesh[]> => {
+        const unifiedWs = ctx.workspaceManager?.unifiedWorkspace;
         let targetUri = params.uri;
         if (!/\.(step|stp|p21)$/i.test(targetUri)) {
-          const unifiedIdx = ctx.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
+          const unifiedIdx = unifiedWs?.getIndex?.();
           if (unifiedIdx) {
             for (const [, entry] of unifiedIdx.symbols) {
               if (
@@ -644,8 +643,8 @@ export const stepLanguage = language({
           }
         }
 
-        let meshes: OcctMesh[] = [...(ctx.workspaceManager?.stepWorkspaceIndex?.getMeshes(targetUri) || [])];
-        let unifiedIndex = ctx.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
+        let meshes: OcctMesh[] = [...getStepMeshes(unifiedWs, targetUri)];
+        let unifiedIndex = unifiedWs?.getIndex?.();
 
         let stepSourceText = params?.documentText || ctx.documentManager?.documentTrees?.get(targetUri)?.text;
         if (!stepSourceText && ctx.documents?.get) {
@@ -657,12 +656,11 @@ export const stepLanguage = language({
           } catch {}
         }
 
-        if (meshes.length === 0 && ctx.workspaceManager?.stepWorkspaceIndex && stepSourceText) {
+        if (meshes.length === 0 && unifiedWs && stepSourceText) {
           try {
-            const buffer = new TextEncoder().encode(stepSourceText);
-            await ctx.workspaceManager.stepWorkspaceIndex.parseStepFile(targetUri, buffer);
-            meshes = [...(ctx.workspaceManager.stepWorkspaceIndex.getMeshes(targetUri) || [])];
-            unifiedIndex = ctx.workspaceManager?.unifiedWorkspace?.toUnifiedPartial?.();
+            await indexStepDocument(unifiedWs, targetUri, stepSourceText);
+            meshes = [...getStepMeshes(unifiedWs, targetUri)];
+            unifiedIndex = unifiedWs.getIndex?.();
           } catch {}
         }
 

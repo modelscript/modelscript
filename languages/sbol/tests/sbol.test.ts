@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   SEQUENCE_ONTOLOGY,
   SbolErrorCode,
-  SbolWorkspaceIndex,
   executeSbolAction,
   getSbolDocumentSymbols,
   getSbolHover,
@@ -371,21 +371,20 @@ test("SBOL3 DAE Lowering & Projections: compiles to DAEBuilder, Modelica 3.x, an
   assert.ok(sbml.includes('<reaction id="deg_LacI"'));
 });
 
-test("SBOL3 WorkspaceIndex & LSP: indexes symbols, validates, hovers, completes, and executes actions", async () => {
-  const index = new SbolWorkspaceIndex();
+test("SBOL3 UnifiedWorkspace & LSP: indexes symbols, validates, hovers, completes, and executes actions", async () => {
+  const ws = new UnifiedWorkspace(sbolLanguage);
   const uri = "file:///workspace/toggle.ttl";
-  index.register(uri);
-  assert.equal(index.has(uri), true);
 
-  index.indexFile(uri, TOGGLE_SWITCH_TURTLE);
-  assert.equal(index.fileCount, 1);
+  ws.setDocument(uri, TOGGLE_SWITCH_TURTLE);
+  assert.equal(ws.hasDocument(uri), true);
+  assert.equal(ws.fileCount, 1);
 
-  const symbols = index.getSymbols(uri);
+  const symbols = ws.getSymbolsForUri(uri);
   assert.ok(symbols.length >= 5);
-  const lacDef = index.findDefinition("LacI");
+  const lacDef = ws.findSymbolsByName("LacI")[0];
   assert.ok(lacDef);
   assert.equal(lacDef.name, "LacI");
-  assert.equal(index.findReferences("LacI").length, 1);
+  assert.equal(ws.findSymbolsByName("LacI").length, 1);
 
   const lspSyms = getSbolDocumentSymbols(TOGGLE_SWITCH_TURTLE);
   assert.equal(lspSyms.length, 1);

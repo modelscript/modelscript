@@ -16,6 +16,7 @@ function getSqliteDatabaseClass(): any {
   } catch (err) {
     throw new Error(
       `Native SQLite table driver requires 'node:sqlite' (Node.js v22+). Error: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
   }
 }

@@ -81,4 +81,17 @@ describe("PipelineStudio LSP Services & DAE Lowering (@modelscript/lps)", () => 
     const steadyRes = await executeLpsAction("solve_steady", { content: SAMPLE_XML });
     assert.ok(steadyRes);
   });
+
+  it("indexes PipelineStudio network in UnifiedWorkspace via lpsLanguage", async () => {
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    const { lpsLanguage } = await import("../src/index.js");
+    const ws = new UnifiedWorkspace(lpsLanguage);
+    ws.setDocument("file:///trunkline.lps", SAMPLE_XML);
+    const idx = ws.getIndex();
+    assert.ok(idx.byName.has("Texas Gulf Coast Gas Trunkline"));
+    assert.ok(idx.byName.has("Hub_Supply"));
+    assert.ok(idx.byName.has("Line_101"));
+    assert.ok(idx.byName.has("Station_A"));
+    assert.ok(ws.getParsedModel("file:///trunkline.lps"));
+  });
 });

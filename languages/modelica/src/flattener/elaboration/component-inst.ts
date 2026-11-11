@@ -868,7 +868,10 @@ export function isClassType(flattener: ComponentFlattener, classId: SymbolId, vi
     .trim();
   if (metaPrefixes === "type" || /\btype\b/.test(metaPrefixes) || meta?.isType) return true;
   const cst = flattener.db.cstNode(classId) as any;
-  if (!cst) return false;
+  if (!cst) {
+    const baseType = meta?.baseType;
+    return typeof baseType === "string" && ["Real", "Integer", "Boolean", "String"].includes(baseType);
+  }
 
   const prefixes = Cst.ClassDefinition.classPrefixes(cst);
   const cleanPrefixes = (prefixes?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
@@ -908,6 +911,109 @@ export function isClassType(flattener: ComponentFlattener, classId: SymbolId, vi
   }
 
   return false;
+}
+
+function tryLowerForeignComponent(
+  flattener: ComponentFlattener,
+  classTarget: SymbolEntry | null | undefined,
+  instanceName: string,
+  dae: DAEBuilder,
+  subMod: any,
+  bindingScope: string,
+): boolean {
+  const lowerFn = (classTarget?.metadata as Record<string, unknown> | undefined)?.["lowerComponentToDae"];
+  if (typeof lowerFn !== "function") return false;
+
+  const paramOverrides: Record<string, { value?: number | undefined; exprId?: number | undefined }> = {};
+  const args: any[] = subMod?.args ?? [];
+  for (const arg of args) {
+    if (!arg?.name || arg.isBreak || arg.isRedeclaration) continue;
+    let exprId: number | undefined;
+    let numVal: number | undefined;
+
+    const valObj = arg.value;
+    const modScopeId =
+      valObj?.evaluationScopeId ??
+      arg.evaluationScopeId ??
+      arg.ownerClassId ??
+      flattener.currentClassId ??
+      flattener.currentRootClassId;
+    const modScopeSym = modScopeId != null ? flattener.db.symbol(modScopeId) : null;
+
+    if (valObj?.cstBytes && modScopeSym) {
+      const argCst = flattener.db.cstNodeRange(valObj.cstBytes[0], valObj.cstBytes[1], modScopeSym);
+      if (argCst) {
+        const prevClassId = flattener.currentClassId;
+        if (modScopeId) flattener.currentClassId = modScopeId;
+        try {
+          const lowered = flattener.lowerExpr(argCst, dae, bindingScope);
+          if (lowered >= 0) {
+            exprId = castToRealExpr(lowered, dae);
+          }
+        } finally {
+          flattener.currentClassId = prevClassId;
+        }
+      }
+    }
+
+    const rawText = typeof valObj?.text === "string" ? valObj.text.trim() : "";
+    if (exprId === undefined && rawText) {
+      const directNum = Number(rawText);
+      if (Number.isFinite(directNum)) {
+        numVal = directNum;
+        exprId = dae.addRealLiteral(directNum);
+      } else {
+        const scopedVar = bindingScope ? `${bindingScope}.${rawText}` : rawText;
+        const vIdx = dae.lookupVariable(scopedVar) >= 0 ? dae.lookupVariable(scopedVar) : dae.lookupVariable(rawText);
+        if (vIdx >= 0) {
+          exprId = dae.addNameExpr(dae.getVarName(vIdx));
+          const sv = dae.getVarExpression(vIdx);
+          const ev = sv !== undefined && sv >= 0 ? evalDaeExpr(sv, dae) : dae.getVarStartValue(vIdx);
+          if (typeof ev === "number" && Number.isFinite(ev)) numVal = ev;
+        } else {
+          const cstNum = evaluateCSTNumber(
+            rawText,
+            undefined,
+            modScopeId ?? undefined,
+            flattener.db,
+            dae,
+            bindingScope,
+          );
+          if (typeof cstNum === "number" && Number.isFinite(cstNum)) {
+            numVal = cstNum;
+            exprId = dae.addRealLiteral(cstNum);
+          }
+        }
+      }
+    }
+
+    if (numVal === undefined && exprId !== undefined && exprId >= 0) {
+      const ev = evalDaeExpr(exprId, dae);
+      if (typeof ev === "number" && Number.isFinite(ev)) {
+        numVal = ev;
+      }
+    }
+    if (numVal === undefined && typeof valObj?.value === "number" && Number.isFinite(valObj.value)) {
+      numVal = valObj.value;
+      if (exprId === undefined) exprId = dae.addRealLiteral(numVal!);
+    }
+
+    if (numVal !== undefined || exprId !== undefined) {
+      paramOverrides[arg.name] = { value: numVal, exprId };
+    }
+  }
+
+  const deferred = lowerFn(dae, instanceName, {
+    paramOverrides,
+    deferInputDefaults: true,
+  });
+  if (Array.isArray(deferred) && deferred.length > 0) {
+    const extMeta = dae.extensionMetadata as Record<string, unknown>;
+    const list = (extMeta["__pendingForeignInputDefaults"] as Array<{ varName: string; rhsExprId: number }>) ?? [];
+    list.push(...deferred);
+    extMeta["__pendingForeignInputDefaults"] = list;
+  }
+  return true;
 }
 
 /**
@@ -6106,6 +6212,9 @@ export function instantiateElements(
                 }
               }
               if (subElements && subElements.length > 0) {
+                if (tryLowerForeignComponent(flattener, classTarget, arrVarName, dae, elemSubMod, bindingScope)) {
+                  continue;
+                }
                 const prevImports = flattener.currentImports;
                 if (classTargetId) {
                   const compClassImports = flattener["collectClassImports"](classTargetId);
@@ -6172,6 +6281,9 @@ export function instantiateElements(
             }
             if (classTargetId && flattener["isFmuClass"]?.(classTargetId)) {
               flattener["fmuComponents"]?.set(name, classTargetId);
+            }
+            if (tryLowerForeignComponent(flattener, classTarget, name, dae, effectiveSubMod, bindingScope)) {
+              continue;
             }
             if (subElements && subElements.length > 0) {
               const prevImports = flattener.currentImports;

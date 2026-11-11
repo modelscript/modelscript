@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerOpenScenarioToDae } from "./dae/openscenario-to-dae.js";
+import { indexOpenScenarioFile } from "./indexing.js";
 import { lintOpenScenario } from "./lints/index.js";
 import { parseOpenScenario } from "./parser/openscenario-parser.js";
 import { openScenarioToModelica } from "./projections/openscenario-to-modelica.js";
@@ -12,8 +13,16 @@ import { simulateScenario, type OrchestratorOptions } from "./solvers/scenario-o
  */
 export const openScenarioLanguage = language({
   name: "openscenario",
-  fileExtensions: [".xosc", ".osc"],
+  fileExtensions: [".xosc", ".osc", ".xml"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexOpenScenarioFile,
+    canIndex: (uri, text) => {
+      const lower = uri.toLowerCase();
+      if (lower.endsWith(".xosc") || lower.endsWith(".osc")) return true;
+      return Boolean(text && text.includes("<OpenSCENARIO"));
+    },
+  },
   lsp: {
     fileExtensions: [".xosc", ".osc"],
     icons: {
@@ -102,3 +111,5 @@ export const openScenarioLanguage = language({
     },
   ],
 });
+
+export const openscenarioLanguage = openScenarioLanguage;

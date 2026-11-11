@@ -155,6 +155,8 @@ export class Context {
   #fileTexts = new Map<string, string>();
   /** Byte-length delta of the most recent edit per document URI for fast DAE patching. */
   #fileDeltas = new Map<string, number>();
+  /** Optional polyglot UnifiedWorkspace hosting registered foreign DSL language definitions and documents. */
+  #foreignWorkspace: UnifiedWorkspace | null = null;
 
   /**
    * Caches a parsed CST tree with LRU eviction to prevent unbounded memory growth.
@@ -606,7 +608,12 @@ export class Context {
       },
     };
 
-    const queryEngine = createModelicaQueryEngine(workspaceIndex.toUnified(), contextTree, cacheStore, maxMemos);
+    const queryEngine = createModelicaQueryEngine(
+      workspaceIndex.getIndex({ eager: true }),
+      contextTree,
+      cacheStore,
+      maxMemos,
+    );
 
     this.#fs = fs;
     this.#workspaceIndex = workspaceIndex;
@@ -890,7 +897,7 @@ export class Context {
 
     let unified: any;
     try {
-      unified = await this.#workspaceIndex.toUnifiedAsync();
+      unified = await this.#workspaceIndex.getIndexAsync();
     } finally {
       const docs = (this.#workspaceIndex as any).documents as Map<string, any> | undefined;
       if (docs) {
@@ -963,7 +970,7 @@ export class Context {
 
     let unified: any;
     try {
-      unified = await this.#workspaceIndex.toUnifiedAsync();
+      unified = await this.#workspaceIndex.getIndexAsync();
     } finally {
       const docs = (this.#workspaceIndex as any).documents as Map<string, any> | undefined;
       if (docs) {
@@ -1311,7 +1318,7 @@ export class Context {
     this.#cacheTree(uri, tree);
 
     this.#workspaceIndex.indexDocument(uri, () => tree.rootNode as any, undefined, editRanges, false);
-    const unified = this.#workspaceIndex.toUnified();
+    const unified = this.#workspaceIndex.getIndex({ eager: true });
     injectPredefinedTypes(unified);
     const changedInfo = this.#workspaceIndex.takeGlobalChangedIds();
     this.#queryEngine.updateIndex(unified, undefined, changedInfo?.changedIds, changedInfo?.structuralChangedIds);
@@ -1355,6 +1362,77 @@ export class Context {
    */
   addClass(classInstance: any): void {
     this.#classes.push(classInstance);
+  }
+
+  #syncForeignSymbolsToIndex(): void {
+    if (!this.#foreignWorkspace) return;
+    const foreignIdx = this.#foreignWorkspace.getIndex({ eager: true });
+    const byUri = new Map<string, any[]>();
+    for (const entry of foreignIdx.symbols.values()) {
+      const resUri = entry.resourceId ?? "foreign://builtins";
+      let bucket = byUri.get(resUri);
+      if (!bucket) {
+        bucket = [];
+        byUri.set(resUri, bucket);
+      }
+      bucket.push(entry);
+    }
+    for (const [resUri, entries] of byUri.entries()) {
+      this.#workspaceIndex.registerPrecompiledEntries(resUri, entries);
+    }
+    const unified = this.#workspaceIndex.getIndex({ eager: true });
+    injectPredefinedTypes(unified);
+    this.#queryEngine.updateIndex(unified);
+
+    const db = this.#queryEngine.toQueryDB();
+    for (const entry of foreignIdx.symbols.values()) {
+      if (
+        (entry.parentId === null || entry.parentId === 0 || entry.parentId === entry.id) &&
+        (entry.kind === "Class" || entry.kind === "Package")
+      ) {
+        if (!this.#classes.some((c) => c.id === entry.id)) {
+          this.#classes.push({
+            id: entry.id,
+            db,
+            entry,
+            name: entry.name ?? "",
+            kind: entry.kind,
+            classKind:
+              (entry.metadata as any)?.classKind ??
+              (entry.metadata as any)?.classPrefixes ??
+              (entry.kind === "Package" ? "package" : "class"),
+            compositeName: entry.name ?? "",
+            description: (entry.metadata as any)?.description ?? null,
+            isClassInstance: true,
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * Registers a foreign `@modelscript/dsl` `language(...)` definition (including `indexing.builtins`
+   * and `indexing.indexFile`) into this compiler context so Modelica classes can directly instantiate,
+   * connect, lint, flatten, and simulate components from that language.
+   */
+  registerLanguage(languageId: string, langDef: unknown): void {
+    if (!this.#foreignWorkspace) {
+      this.#foreignWorkspace = new UnifiedWorkspace();
+    }
+    this.#foreignWorkspace.registerLanguageDef(languageId, langDef);
+    this.#syncForeignSymbolsToIndex();
+  }
+
+  /**
+   * Parses/indexes a foreign-language document (e.g. `.raw`, `.dyr`) into this context's
+   * unified symbol table via the registered DSL `language({ indexing })` configuration.
+   */
+  loadForeignDocument(input: string, uri: string, languageId?: string): void {
+    if (!this.#foreignWorkspace) {
+      this.#foreignWorkspace = new UnifiedWorkspace();
+    }
+    this.#foreignWorkspace.indexDocumentText(uri, input, languageId);
+    this.#syncForeignSymbolsToIndex();
   }
 
   /**

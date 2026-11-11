@@ -1309,7 +1309,7 @@ export class SysML2OmgService {
 
     const ws = createSysML2WorkspaceIndex();
     const uri = loadEmbeddedKerMLStdlib(ws);
-    const unified = ws.toUnified();
+    const unified = ws.getIndex({ eager: true });
 
     const elementMap = new Map<string, OmgElement>();
     for (const [symId, entry] of unified.symbols.entries()) {

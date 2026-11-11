@@ -2,6 +2,7 @@
 
 import { language } from "@modelscript/dsl";
 import { gensysDeckGrammar } from "./grammar/gensys-grammar.js";
+import { indexGensysDocument } from "./indexing.js";
 
 /**
  * DSL language specification for GENSYS railway vehicle models and track geometry.
@@ -10,6 +11,9 @@ export const gensysLanguage = language({
   name: "gensys",
   fileExtensions: [".calc", ".run", ".sub", ".geom", ".trax", ".wheel"],
   maturity: "stable",
+  indexing: {
+    indexFile: indexGensysDocument,
+  },
   lsp: {
     fileExtensions: [".calc", ".run", ".sub", ".geom", ".trax", ".wheel"],
     folding: gensysDeckGrammar.lsp?.folding,

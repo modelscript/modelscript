@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -15,9 +16,9 @@ import {
   lowerPsseToDae,
   parseDyr,
   parseRaw,
+  psseLanguage,
   psseToEmtNetlist,
   psseToModelica,
-  PsseWorkspaceIndex,
   simulatePsseTransient,
   solvePowerFlow,
   writeDyr,
@@ -209,12 +210,13 @@ test("PSS/E Netlist: Constructs Ybus matrix and power injection vectors", () => 
   assert.ok(g11 !== undefined && g11 > 0);
 });
 
-test("PSS/E WorkspaceIndex: Indexes case and equipment symbols", () => {
-  const indexer = new PsseWorkspaceIndex();
+test("PSS/E UnifiedWorkspace: Indexes case and equipment symbols", () => {
+  const ws = new UnifiedWorkspace(psseLanguage);
   const uri = "file:///workspace/ieee14.raw";
-  const index = indexer.indexFile(uri, IEEE_14_RAW);
+  ws.setDocument(uri, IEEE_14_RAW);
+  const index = ws.getIndex();
 
-  assert.ok(indexer.has(uri));
+  assert.ok(ws.hasDocument(uri));
   assert.ok(index.symbols.size > 10);
 
   // Query bus symbol by name
@@ -694,12 +696,22 @@ test("PSS/E Small-Signal Stability: Arnoldi eigensolver matches QR on IEEE 14-bu
   const oscQr = modalQr.modes.filter((m) => m.frequencyHz > 0).sort((a, b) => a.frequencyHz - b.frequencyHz);
   const oscArnoldi = modalArnoldi.modes.filter((m) => m.frequencyHz > 0).sort((a, b) => a.frequencyHz - b.frequencyHz);
 
-  assert.strictEqual(oscArnoldi.length, oscQr.length, "Both solvers should detect identical number of oscillatory modes");
+  assert.strictEqual(
+    oscArnoldi.length,
+    oscQr.length,
+    "Both solvers should detect identical number of oscillatory modes",
+  );
   for (let i = 0; i < oscQr.length; i++) {
     const q = oscQr[i]!;
     const a = oscArnoldi[i]!;
-    assert.ok(Math.abs(q.frequencyHz - a.frequencyHz) < 1e-4, `Freq mismatch at mode ${i}: ${q.frequencyHz} vs ${a.frequencyHz}`);
-    assert.ok(Math.abs(q.dampingRatio - a.dampingRatio) < 1e-4, `Damping mismatch at mode ${i}: ${q.dampingRatio} vs ${a.dampingRatio}`);
+    assert.ok(
+      Math.abs(q.frequencyHz - a.frequencyHz) < 1e-4,
+      `Freq mismatch at mode ${i}: ${q.frequencyHz} vs ${a.frequencyHz}`,
+    );
+    assert.ok(
+      Math.abs(q.dampingRatio - a.dampingRatio) < 1e-4,
+      `Damping mismatch at mode ${i}: ${q.dampingRatio} vs ${a.dampingRatio}`,
+    );
     assert.ok(Math.abs(q.real - a.real) < 1e-4, `Real part mismatch at mode ${i}: ${q.real} vs ${a.real}`);
   }
 });

@@ -145,7 +145,7 @@ export async function computeWritebackEdit(
     return { success: false, error: "Missing target or newValue" };
   }
 
-  const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+  const db = context.workspaceManager.unifiedWorkspace.getIndex();
   let matchedEntry: any = null;
   const qualifiedTarget = target.trim();
 

@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerPdbToDae, type PdbDaeOptions } from "./dae/pdb-to-dae.js";
+import { indexPdbFile } from "./indexing.js";
 import { lintPdb } from "./lints/index.js";
 import { parsePdb } from "./parser/pdb-parser.js";
 import { pdbToModelica } from "./projections/pdb-to-modelica.js";
@@ -14,6 +15,9 @@ export const pdbLanguage = language({
   name: "pdb",
   fileExtensions: [".pdb", ".ent", ".cif", ".mmcif"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexPdbFile,
+  },
   lsp: {
     fileExtensions: [".pdb", ".ent", ".cif", ".mmcif"],
     icons: {

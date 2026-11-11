@@ -368,7 +368,7 @@ end RLC;
 `;
     ctx.workspaceIndex.register(rlcUri, () => parser.parse(rlcCode, null, 0, 0, 0, rlcUri).rootNode as any);
     const fileIndex = ctx.workspaceIndex.getFileIndex(rlcUri);
-    ctx.queryEngine.updateIndex(ctx.workspaceIndex.toUnifiedPartial());
+    ctx.queryEngine.updateIndex(ctx.workspaceIndex.getIndex());
 
     const fileIds = fileIndex ? new Set(fileIndex.symbols.keys()) : new Set<number>();
     const diags = await ctx.queryEngine.runAllLintsAsync(rlcUri, undefined, fileIds);

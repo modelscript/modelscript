@@ -122,7 +122,7 @@ export const Diff: CommandModule<{}, DiffArgs> = {
         file1Path,
         () => oldAst as unknown as ReturnType<NonNullable<Parameters<typeof oldWIdx.register>[1]>>,
       );
-      oldIndex = oldWIdx.toUnified();
+      oldIndex = oldWIdx.getIndex({ eager: true });
       oldDb = new QueryEngine(
         oldIndex,
         (modelicaLangFallback as { queryHooks?: Map<string, QueryHooks> | undefined }).queryHooks ?? new Map(),
@@ -133,7 +133,7 @@ export const Diff: CommandModule<{}, DiffArgs> = {
         file2Path,
         () => newAst as unknown as ReturnType<NonNullable<Parameters<typeof newWIdx.register>[1]>>,
       );
-      newIndex = newWIdx.toUnified();
+      newIndex = newWIdx.getIndex({ eager: true });
       newDb = new QueryEngine(
         newIndex,
         (modelicaLangFallback as { queryHooks?: Map<string, QueryHooks> | undefined }).queryHooks ?? new Map(),
@@ -157,7 +157,7 @@ export const Diff: CommandModule<{}, DiffArgs> = {
         file1Path,
         () => oldAst as unknown as ReturnType<NonNullable<Parameters<typeof oldWIdx.register>[1]>>,
       );
-      oldIndex = await oldWIdx.toUnifiedAsync();
+      oldIndex = await oldWIdx.getIndexAsync();
       oldDb = new QueryEngine(
         oldIndex,
         (sysml2LangFallback as { queryHooks?: Map<string, QueryHooks> | undefined }).queryHooks ?? new Map(),
@@ -168,7 +168,7 @@ export const Diff: CommandModule<{}, DiffArgs> = {
         file2Path,
         () => newAst as unknown as ReturnType<NonNullable<Parameters<typeof newWIdx.register>[1]>>,
       );
-      newIndex = await newWIdx.toUnifiedAsync();
+      newIndex = await newWIdx.getIndexAsync();
       newDb = new QueryEngine(
         newIndex,
         (sysml2LangFallback as { queryHooks?: Map<string, QueryHooks> | undefined }).queryHooks ?? new Map(),

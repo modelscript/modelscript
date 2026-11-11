@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getDocumentSymbols, lowerMatpowerToDae, matpowerLanguage, MatpowerWorkspaceIndex } from "../src/index.js";
+import { getDocumentSymbols, lowerMatpowerToDae, matpowerLanguage, type MatpowerCase } from "../src/index.js";
 
 const TEST_CASE = `function mpc = case_test
 mpc.version = '2';
@@ -84,7 +85,7 @@ test("MATPOWER DAE Lowering: compiles directly into linear memory DAEBuilder are
   assert.ok(arena.getEqCount() > 0, "DAEBuilder arena should contain balance equations");
 });
 
-test("MATPOWER LSP & Workspace Index: generates outline symbols and indexes documents", () => {
+test("MATPOWER LSP & UnifiedWorkspace: generates outline symbols and indexes documents", () => {
   const symbols = getDocumentSymbols(TEST_CASE);
   assert.equal(symbols.length, 3, "Should have 3 root categories: Buses, Generators, Branches");
 
@@ -92,11 +93,14 @@ test("MATPOWER LSP & Workspace Index: generates outline symbols and indexes docu
   assert.ok(busGroup);
   assert.equal(busGroup.children?.length, 2, "Should have 2 buses");
 
-  const index = new MatpowerWorkspaceIndex();
-  index.indexDocument("file:///case_test.m", TEST_CASE);
-  const model = index.getModel("file:///case_test.m");
-  assert.ok(model);
-  assert.equal(model.caseData.bus.length, 2);
+  const ws = new UnifiedWorkspace(matpowerLanguage);
+  ws.setDocument("file:///case_test.m", TEST_CASE);
+  const caseData = ws.getParsedModel<MatpowerCase>("file:///case_test.m");
+  assert.ok(caseData);
+  assert.equal(caseData.bus.length, 2);
+  const idx = ws.getIndex();
+  assert.ok(idx.byName.has("Bus_1"));
+  assert.ok(idx.byName.has("Bus_2"));
 });
 
 test("MATPOWER Language Plugin: executes language actions", async () => {

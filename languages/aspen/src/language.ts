@@ -2,6 +2,7 @@
 
 import { language } from "@modelscript/dsl";
 import { lowerAspenToDae } from "./dae/aspen-to-dae.js";
+import { canIndexAspen, indexAspenDocument } from "./indexing.js";
 import { lintAspen } from "./lints/index.js";
 import { parseAspen } from "./parser/aspen-parser.js";
 import { aspenToModelica } from "./projections/aspen-to-modelica.js";
@@ -12,10 +13,14 @@ import { solveFlashRachfordRice } from "./solvers/flash-solver.js";
  */
 export const aspenLanguage = language({
   name: "aspen",
-  fileExtensions: [".in", ".inp", ".bkp"],
+  fileExtensions: [".in", ".inp", ".bkp", ".aspen.inp"],
   maturity: "experimental",
+  indexing: {
+    indexFile: indexAspenDocument,
+    canIndex: canIndexAspen,
+  },
   lsp: {
-    fileExtensions: [".in", ".inp", ".bkp"],
+    fileExtensions: [".in", ".inp", ".bkp", ".aspen.inp"],
     icons: {
       light: "./assets/aspen/icon-light.png",
       dark: "./assets/aspen/icon-dark.png",

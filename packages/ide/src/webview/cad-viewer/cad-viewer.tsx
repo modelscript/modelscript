@@ -8,7 +8,7 @@
  * interactions via CADPort annotations.
  */
 
-import type { DynamicBindingConfig } from "@modelscript/cad";
+import type { AssemblyJointSpec, DynamicBindingConfig, Verification3DOverlayPayload } from "@modelscript/cad";
 import {
   ContactShadows,
   Environment,
@@ -23,21 +23,39 @@ import {
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import type { Verification3DOverlayPayload } from "@modelscript/cad";
 import type { AnimationController } from "./animation-controller";
 import { AnimationTimeline } from "./animation-timeline";
 import { BarrierShellOverlay } from "./barrier-shell-overlay";
+import { BoundaryPicker } from "./boundary-picker";
 import { CadBindingPickerModal } from "./cad-binding-picker-modal";
 import { CfdMeshRenderer, type CfdMeshPayload } from "./cfd-mesh-renderer";
+import {
+  CuttingPlaneVisualizer,
+  useCuttingPlane,
+  type CuttingPlaneAxis,
+  type CuttingPlaneOptions,
+} from "./cutting-plane-controller";
+import { DimensionHandles, type CommitDimensionPayload } from "./dimension-handles";
 import { DynamicClearanceVector } from "./dynamic-clearance-vector";
 import { FeaMeshRenderer, type FeaMeshPayload } from "./fea-mesh-renderer";
 import { InstancedCadAssembly } from "./instanced-cad-assembly";
+import { MateConnectorTool } from "./mate-connector-tool";
+import { MateModal, type MateFrameSelection } from "./mate-modal";
 import { ReachabilityTubeOverlay } from "./reachability-tube-overlay";
 import { RequirementVerdictCard, type RequirementVerdictPayload } from "./requirement-verdict-card";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type GizmoMode = "translate" | "rotate" | "scale";
+export type GizmoMode = "translate" | "rotate" | "scale" | "tag_face" | "mate";
+
+export interface CommitFaceTagPayload {
+  componentName: string;
+  portName: string;
+  portType: string;
+  normal?: [number, number, number] | undefined;
+  worldPos: [number, number, number];
+  sourceMetadata?: CadSourceMetadata | undefined;
+}
 
 export interface CadAnnotation {
   uri: string;
@@ -124,6 +142,12 @@ interface CadViewerProps {
   onSelect?: ((name: string | null) => void) | undefined;
   /** Callback when user drags and releases a 3D direct-manipulation transform/dimension gizmo */
   onCommitGizmoDelta?: ((payload: GizmoCommitPayload) => void) | undefined;
+  /** Callback when user drags and releases a direct parametric dimension handle */
+  onCommitDimensionDelta?: ((payload: CommitDimensionPayload) => void) | undefined;
+  /** Callback when user tags a 3D face as a physical port or boundary condition */
+  onCommitFaceTag?: ((payload: CommitFaceTagPayload) => void) | undefined;
+  /** Callback when user aligns and mates two parts with a kinematic joint */
+  onCommitAssemblyJoint?: ((spec: AssemblyJointSpec) => void) | undefined;
   /** Callback when user saves dynamic variable bindings from CadBindingPickerModal */
   onCommitCadBinding?:
     | ((payload: { componentName: string; bindings: DynamicBindingConfig[]; uri?: string | undefined }) => void)
@@ -241,7 +265,13 @@ function PortIndicator({
 }
 
 /** Procedural triangle mesh built directly from CSG evaluation arrays. */
-function ProceduralMeshObject({ mesh }: { mesh: ProceduralMeshData }) {
+function ProceduralMeshObject({
+  mesh,
+  clippingPlanes,
+}: {
+  mesh: ProceduralMeshData;
+  clippingPlanes?: THREE.Plane[] | undefined;
+}) {
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(mesh.vertices), 3));
@@ -269,15 +299,26 @@ function ProceduralMeshObject({ mesh }: { mesh: ProceduralMeshData }) {
         transparent={rgba[3] < 1.0}
         opacity={rgba[3]}
         side={THREE.DoubleSide}
+        clippingPlanes={clippingPlanes && clippingPlanes.length > 0 ? clippingPlanes : null}
       />
     </mesh>
   );
 }
 
 /** GLTF-loaded 3D mesh object. */
-function GltfMeshObject({ url }: { url: string }) {
+function GltfMeshObject({ url, clippingPlanes }: { url: string; clippingPlanes?: THREE.Plane[] | undefined }) {
   const { scene } = useGLTF(url);
-  const cloned = useMemo(() => scene.clone(true), [scene]);
+  const cloned = useMemo(() => {
+    const c = scene.clone(true);
+    c.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.material) {
+        child.material = child.material.clone();
+        child.material.clippingPlanes = clippingPlanes && clippingPlanes.length > 0 ? clippingPlanes : null;
+        child.material.clipShadows = true;
+      }
+    });
+    return c;
+  }, [scene, clippingPlanes]);
   return <primitive object={cloned} />;
 }
 
@@ -290,6 +331,9 @@ function CadModel({
   onSelect,
   animationController,
   onCommitGizmoDelta,
+  onCommitDimensionDelta,
+  onCommitFaceTag,
+  clippingPlanes,
   portRadius = 0.03,
 }: {
   component: CadComponent;
@@ -299,6 +343,9 @@ function CadModel({
   onSelect?: ((name: string | null) => void) | undefined;
   animationController?: AnimationController | null | undefined;
   onCommitGizmoDelta?: ((payload: GizmoCommitPayload) => void) | undefined;
+  onCommitDimensionDelta?: ((payload: CommitDimensionPayload) => void) | undefined;
+  onCommitFaceTag?: ((payload: CommitFaceTagPayload) => void) | undefined;
+  clippingPlanes?: THREE.Plane[] | undefined;
   portRadius?: number | undefined;
 }) {
   const url = useMemo(() => resolveModelicaUri(component.cad.uri, assetBaseUrl), [component.cad.uri, assetBaseUrl]);
@@ -522,9 +569,9 @@ function CadModel({
         onPointerOut={() => setHovered(false)}
       >
         {component.proceduralMesh ? (
-          <ProceduralMeshObject mesh={component.proceduralMesh} />
+          <ProceduralMeshObject mesh={component.proceduralMesh} clippingPlanes={clippingPlanes} />
         ) : (
-          <GltfMeshObject url={url} />
+          <GltfMeshObject url={url} clippingPlanes={clippingPlanes} />
         )}
 
         {showInspector && (
@@ -603,12 +650,47 @@ function CadModel({
       </group>
 
       {/* 3D Direct Manipulation Transform Gizmo attached to selected component */}
-      {selected && (!animationController || animationController.mode === "stopped") && (
-        <TransformControls
-          object={groupRef as React.RefObject<THREE.Object3D>}
-          mode={gizmoMode}
-          onObjectChange={handleGizmoChange}
-          onMouseUp={handleGizmoMouseUp}
+      {selected &&
+        gizmoMode !== "tag_face" &&
+        gizmoMode !== "mate" &&
+        (!animationController || animationController.mode === "stopped") && (
+          <TransformControls
+            object={groupRef as React.RefObject<THREE.Object3D>}
+            mode={gizmoMode}
+            onObjectChange={handleGizmoChange}
+            onMouseUp={handleGizmoMouseUp}
+          />
+        )}
+
+      {/* Direct Parametric Dimension Handles attached to selected component */}
+      {selected &&
+        gizmoMode !== "tag_face" &&
+        gizmoMode !== "mate" &&
+        (!animationController || animationController.mode === "stopped") && (
+          <DimensionHandles
+            component={component}
+            onCommitDimension={(payload) => onCommitDimensionDelta?.(payload)}
+            visible={Boolean(component.sourceMetadata?.dimensions)}
+          />
+        )}
+
+      {/* Interactive Face Patch & Port Tagging on selected component */}
+      {selected && gizmoMode === "tag_face" && component.proceduralMesh && (
+        <BoundaryPicker
+          positions={component.proceduralMesh.vertices}
+          indices={component.proceduralMesh.indices}
+          clippingPlanes={clippingPlanes}
+          onSelectBoundary={() => {}}
+          onCommitFaceTag={(payload) => {
+            onCommitFaceTag?.({
+              componentName: component.name,
+              portName: payload.portName,
+              portType: payload.portType,
+              normal: payload.normal,
+              worldPos: payload.worldPos,
+              sourceMetadata: component.sourceMetadata,
+            });
+          }}
         />
       )}
 
@@ -626,6 +708,10 @@ function SceneContents({
   gizmoMode,
   onSelect,
   onCommitGizmoDelta,
+  onCommitDimensionDelta,
+  onCommitFaceTag,
+  onSelectMatePair,
+  cuttingPlane,
   dark,
   animationController,
   cfdPayload,
@@ -641,6 +727,10 @@ function SceneContents({
   gizmoMode: GizmoMode;
   onSelect?: ((name: string | null) => void) | undefined;
   onCommitGizmoDelta?: ((payload: GizmoCommitPayload) => void) | undefined;
+  onCommitDimensionDelta?: ((payload: CommitDimensionPayload) => void) | undefined;
+  onCommitFaceTag?: ((payload: CommitFaceTagPayload) => void) | undefined;
+  onSelectMatePair?: ((frameA: MateFrameSelection, frameB: MateFrameSelection) => void) | undefined;
+  cuttingPlane?: CuttingPlaneOptions | undefined;
   dark?: boolean | undefined;
   animationController?: AnimationController | null | undefined;
   cfdPayload?: CfdMeshPayload | null | undefined;
@@ -653,6 +743,7 @@ function SceneContents({
   const { gl, camera } = useThree();
   const controlsRef = useRef<React.ComponentRef<typeof OrbitControls>>(null);
   const framedSignatureRef = useRef<string>("");
+  const clippingPlanes = useCuttingPlane(cuttingPlane ?? { enabled: false, axis: "none", offset: 0, inverted: false });
 
   // Compute scene bounding sphere across procedural meshes and component positions
   const sceneBounds = useMemo(() => {
@@ -793,6 +884,9 @@ function SceneContents({
               onSelect={onSelect}
               animationController={animationController}
               onCommitGizmoDelta={onCommitGizmoDelta}
+              onCommitDimensionDelta={onCommitDimensionDelta}
+              onCommitFaceTag={onCommitFaceTag}
+              clippingPlanes={clippingPlanes}
               portRadius={portRadius}
             />
           )}
@@ -825,6 +919,19 @@ function SceneContents({
       {showBarrier && verificationOverlay?.barrierShells && (
         <BarrierShellOverlay shells={verificationOverlay.barrierShells} />
       )}
+
+      {/* 3D Mate Connector Triads and Visual Kinematic Mating Tool */}
+      <MateConnectorTool
+        components={components}
+        active={gizmoMode === "mate"}
+        onSelectPair={(frameA, frameB) => {
+          onSelectMatePair?.(frameA, frameB);
+        }}
+        scale={portRadius * 2}
+      />
+
+      {/* 3D Dynamic Cross-Section Cutting Plane Visualization */}
+      <CuttingPlaneVisualizer options={cuttingPlane ?? { enabled: false, axis: "none", offset: 0, inverted: false }} />
 
       {/* Controls */}
       <OrbitControls ref={controlsRef} makeDefault enableDamping dampingFactor={0.1} />
@@ -940,6 +1047,9 @@ export default function CadViewer({
   selectedName,
   onSelect,
   onCommitGizmoDelta,
+  onCommitDimensionDelta,
+  onCommitFaceTag,
+  onCommitAssemblyJoint,
   onCommitCadBinding,
   dark = false,
   animationController = null,
@@ -954,6 +1064,13 @@ export default function CadViewer({
   const [isBindingPickerOpen, setIsBindingPickerOpen] = useState(false);
   const [showFlowpipe, setShowFlowpipe] = useState(true);
   const [showBarrier, setShowBarrier] = useState(true);
+  const [matePair, setMatePair] = useState<{ frameA: MateFrameSelection; frameB: MateFrameSelection } | null>(null);
+  const [cuttingPlane, setCuttingPlane] = useState<CuttingPlaneOptions>({
+    enabled: false,
+    axis: "none",
+    offset: 0,
+    inverted: false,
+  });
 
   const primaryVerdict: RequirementVerdictPayload | null = useMemo(() => {
     if (!verificationOverlay) return null;
@@ -991,7 +1108,7 @@ export default function CadViewer({
     [components, selectedName],
   );
 
-  // Hotkeys W (translate), E (rotate), R (scale)
+  // Hotkeys W (translate), E (rotate), R (scale), T (tag face), M (mate)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -1002,6 +1119,8 @@ export default function CadViewer({
       if (key === "w") setGizmoMode("translate");
       else if (key === "e") setGizmoMode("rotate");
       else if (key === "r") setGizmoMode("scale");
+      else if (key === "t") setGizmoMode("tag_face");
+      else if (key === "m") setGizmoMode("mate");
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -1105,6 +1224,94 @@ export default function CadViewer({
           >
             ⤢ Scale (R)
           </button>
+          <button
+            type="button"
+            onClick={() => setGizmoMode("tag_face")}
+            style={modeBtnStyle(gizmoMode === "tag_face")}
+            title="Tag Face / Port Tool (Hotkey: T)"
+          >
+            🏷️ Tag Face (T)
+          </button>
+          <button
+            type="button"
+            onClick={() => setGizmoMode("mate")}
+            style={modeBtnStyle(gizmoMode === "mate")}
+            title="Assembly Mating & Kinematic Joints (Hotkey: M)"
+          >
+            🔗 Mate (M)
+          </button>
+        </div>
+
+        {/* Section View Controls */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "4px 8px",
+            background: dark ? "rgba(22, 27, 34, 0.88)" : "rgba(255, 255, 255, 0.92)",
+            backdropFilter: "blur(12px)",
+            borderRadius: "8px",
+            border: `1px solid ${dark ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.12)"}`,
+            boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
+          }}
+        >
+          <span style={{ fontSize: "11px", fontWeight: 600, color: dark ? "#8b949e" : "#57606a", marginRight: 2 }}>
+            ✂️ Section:
+          </span>
+          {(["none", "x", "y", "z"] as CuttingPlaneAxis[]).map((ax) => (
+            <button
+              key={ax}
+              type="button"
+              onClick={() =>
+                setCuttingPlane((prev) => ({
+                  ...prev,
+                  enabled: ax !== "none",
+                  axis: ax,
+                }))
+              }
+              style={modeBtnStyle(cuttingPlane.axis === ax)}
+            >
+              {ax === "none" ? "OFF" : ax.toUpperCase()}
+            </button>
+          ))}
+
+          {cuttingPlane.enabled && cuttingPlane.axis !== "none" && (
+            <>
+              <input
+                type="range"
+                min="-2"
+                max="2"
+                step="0.05"
+                value={cuttingPlane.offset}
+                onChange={(e) =>
+                  setCuttingPlane((prev) => ({
+                    ...prev,
+                    offset: parseFloat(e.target.value),
+                  }))
+                }
+                style={{ width: "70px", marginLeft: 4, cursor: "pointer" }}
+                title={`Section Offset: ${cuttingPlane.offset.toFixed(2)}`}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setCuttingPlane((prev) => ({
+                    ...prev,
+                    inverted: !prev.inverted,
+                  }))
+                }
+                style={{
+                  ...modeBtnStyle(Boolean(cuttingPlane.inverted)),
+                  padding: "4px 6px",
+                  fontSize: "11px",
+                }}
+                title="Invert Section Direction"
+              >
+                ⇅ Flip
+              </button>
+            </>
+          )}
         </div>
 
         {selectedComponent && (
@@ -1229,6 +1436,12 @@ export default function CadViewer({
           gizmoMode={gizmoMode}
           onSelect={onSelect}
           onCommitGizmoDelta={onCommitGizmoDelta}
+          onCommitDimensionDelta={onCommitDimensionDelta}
+          onCommitFaceTag={onCommitFaceTag}
+          onSelectMatePair={(frameA, frameB) => {
+            setMatePair({ frameA, frameB });
+          }}
+          cuttingPlane={cuttingPlane}
           dark={dark}
           animationController={animationController}
           cfdPayload={cfdPayload}
@@ -1274,6 +1487,19 @@ export default function CadViewer({
           dark={dark}
         />
       )}
+
+      {/* Kinematic Assembly Joint Mating Modal */}
+      <MateModal
+        isOpen={Boolean(matePair)}
+        onClose={() => setMatePair(null)}
+        frameA={matePair?.frameA ?? null}
+        frameB={matePair?.frameB ?? null}
+        onCommitJoint={(spec) => {
+          onCommitAssemblyJoint?.(spec);
+          setMatePair(null);
+        }}
+        dark={dark}
+      />
     </div>
   );
 }

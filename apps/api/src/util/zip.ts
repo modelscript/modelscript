@@ -369,8 +369,23 @@ export function findLibraryRoot(dir: string, preferredName?: string): string | n
       const lower = e.name.toLowerCase();
       return lower === cleanPref || lower.startsWith(`${cleanPref} `) || lower.startsWith(`${cleanPref}-`);
     });
-    if (matchingDir && hasDirectManifestInDir(path.join(dir, matchingDir.name), preferredName)) {
-      return path.join(dir, matchingDir.name);
+    if (matchingDir) {
+      const matchPath = path.join(dir, matchingDir.name);
+      if (hasDirectManifestInDir(matchPath, preferredName)) {
+        return matchPath;
+      }
+      try {
+        const subEntries = fs.readdirSync(matchPath, { withFileTypes: true }).filter((e) => e.isDirectory());
+        const subMatch = subEntries.find((e) => {
+          const lower = e.name.toLowerCase();
+          return lower === cleanPref || lower.startsWith(`${cleanPref} `) || lower.startsWith(`${cleanPref}-`);
+        });
+        if (subMatch && hasDirectManifestInDir(path.join(matchPath, subMatch.name), preferredName)) {
+          return path.join(matchPath, subMatch.name);
+        }
+      } catch {
+        /* ignore */
+      }
     }
   }
 

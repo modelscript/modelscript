@@ -369,7 +369,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
     try {
       const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
       if (!context.state.dependenciesReady && (moIdx?.pendingFileCount ?? 0) > 0) {
-        const fullIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+        const fullIndex = context.workspaceManager.unifiedWorkspace.getIndex();
         injectPredefinedTypes(fullIndex);
         const langId = params.uri.endsWith(".sysml") ? "sysml2" : "modelica";
         const engine = context.workspaceManager.getQueryEngine(langId);
@@ -519,7 +519,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         }
         if (!queryDB && context.workspaceManager?.unifiedWorkspace) {
           try {
-            queryDB = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+            queryDB = context.workspaceManager.unifiedWorkspace.getIndex();
           } catch {}
         }
 
@@ -1993,7 +1993,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
   context.connection.onRequest("modelscript/getRequirements", (params: { uri: string }) => {
     try {
       context.connection.console.info(`[requirements] modelscript/getRequirements called for uri=${params.uri}`);
-      const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+      const db = context.workspaceManager.unifiedWorkspace.getIndex();
 
       const reqCount = getRequirements(db, undefined, []);
       context.connection.console.info(
@@ -2152,7 +2152,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const qEngine =
           context.workspaceManager?.getQueryEngine("modelica") || context.workspaceManager?.getQueryEngine("sysml2");
         if (qEngine && context.workspaceManager?.unifiedWorkspace) {
-          const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+          const db = context.workspaceManager.unifiedWorkspace.getIndex();
           for (const sym of db.symbols.values()) {
             if (sym.resourceId === params.uri) {
               if (sym.ruleName === "class_definition" || sym.ruleName === "ClassDefinition") {

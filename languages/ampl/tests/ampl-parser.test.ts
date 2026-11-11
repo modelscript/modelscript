@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { UnifiedWorkspace } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseAmplData, parseAmplModel } from "../src/index.js";
+import { amplLanguage, getAmplData, getAmplModel, parseAmplData, parseAmplModel } from "../src/index.js";
 
 test("AMPL Parser — parses standard model declarations (.mod)", () => {
   const modelSrc = `
@@ -112,4 +113,33 @@ test("AMPL Parser — parses nonlinear functions and double-sided constraints", 
   assert.strictEqual(model.constraints.size, 1);
   const c = model.constraints.get("CircleRange")!;
   assert.ok(c.rhsUpper !== undefined);
+});
+
+test("AMPL UnifiedWorkspace — indexes .mod and .dat documents", () => {
+  const ws = new UnifiedWorkspace(amplLanguage);
+  ws.setDocument(
+    "file:///project/transp.mod",
+    `
+    set ORIG;
+    param supply {ORIG} >= 0;
+    var Trans {ORIG} >= 0;
+    minimize Total_Cost: sum {i in ORIG} Trans[i];
+    subject to Supply {i in ORIG}: Trans[i] = supply[i];
+  `,
+  );
+  ws.setDocument(
+    "file:///project/transp.dat",
+    `
+    set ORIG := GARY CLEV ;
+    param supply := GARY 1400 CLEV 2600 ;
+  `,
+  );
+
+  const idx = ws.getIndex();
+  assert.ok(idx.byName.has("AMPL_Model"));
+  assert.ok(idx.byName.has("AMPL_Data"));
+  assert.ok(idx.byName.has("Trans"));
+  assert.ok(idx.byName.has("Total_Cost"));
+  assert.ok(getAmplModel(ws, "file:///project/transp.mod")?.vars.has("Trans"));
+  assert.deepStrictEqual(getAmplData(ws, "file:///project/transp.dat")?.sets.get("ORIG"), ["GARY", "CLEV"]);
 });

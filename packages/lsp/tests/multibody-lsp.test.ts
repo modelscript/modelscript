@@ -1,12 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { GensysWorkspaceIndex, getGensysDocumentSymbols, getGensysHover, validateGensys } from "@modelscript/gensys";
-import {
-  getSimpackDocumentSymbols,
-  getSimpackHover,
-  SimpackWorkspaceIndex,
-  validateSimpack,
-} from "@modelscript/simpack";
+import { getGensysDocumentSymbols, getGensysHover, validateGensys } from "@modelscript/gensys";
+import { UnifiedWorkspace } from "@modelscript/runtime";
+import { getSimpackDocumentSymbols, getSimpackHover, validateSimpack } from "@modelscript/simpack";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { globalLanguageRegistry } from "../src/registry/LanguageRegistry.js";
@@ -146,7 +142,7 @@ describe("LSP Multi-File Language Services for SIMPACK & GENSYS", () => {
     assert.equal(errDiags[0]!.source, "gensys");
   });
 
-  it("registers simpack and gensys plugins in LanguageRegistry with workspace indexing", async () => {
+  it("registers simpack and gensys plugins in LanguageRegistry with UnifiedWorkspace indexing", async () => {
     const { simpackLanguage } = await import("@modelscript/simpack");
     const { gensysLanguage } = await import("@modelscript/gensys");
 
@@ -155,7 +151,6 @@ describe("LSP Multi-File Language Services for SIMPACK & GENSYS", () => {
       name: "SIMPACK",
       extensions: [".spck", ".sim", ".mbs"],
       languageDef: simpackLanguage,
-      workspaceIndex: new SimpackWorkspaceIndex(),
       customHandlers: {
         symbols: (text: any) => getSimpackDocumentSymbols(typeof text === "string" ? text : (text?.text ?? "")),
         hover: (offset: number, text: string) => getSimpackHover(text, offset),
@@ -172,7 +167,6 @@ describe("LSP Multi-File Language Services for SIMPACK & GENSYS", () => {
       name: "GENSYS",
       extensions: [".calc", ".ins", ".run", ".sub", ".geom", ".trax", ".wheel"],
       languageDef: gensysLanguage,
-      workspaceIndex: new GensysWorkspaceIndex(),
       customHandlers: {
         symbols: (text: any) => getGensysDocumentSymbols(typeof text === "string" ? text : (text?.text ?? "")),
         hover: (offset: number, text: string) => getGensysHover(text, offset),
@@ -188,7 +182,7 @@ describe("LSP Multi-File Language Services for SIMPACK & GENSYS", () => {
     assert.ok(simpackPlugin, "SIMPACK plugin should be registered in globalLanguageRegistry");
     assert.ok(simpackPlugin.extensions.includes(".spck"));
     assert.ok(simpackPlugin.extensions.includes(".sim"));
-    assert.ok(simpackPlugin.workspaceIndex instanceof SimpackWorkspaceIndex);
+    assert.ok(typeof (simpackPlugin.languageDef as any)?.indexing?.indexFile === "function");
     assert.ok(typeof simpackPlugin.customHandlers?.symbols === "function");
     assert.ok(typeof simpackPlugin.customHandlers?.hover === "function");
 
@@ -200,12 +194,17 @@ describe("LSP Multi-File Language Services for SIMPACK & GENSYS", () => {
     assert.ok(gensysPlugin, "GENSYS plugin should be registered in globalLanguageRegistry");
     assert.ok(gensysPlugin.extensions.includes(".calc"));
     assert.ok(gensysPlugin.extensions.includes(".ins"));
-    assert.ok(gensysPlugin.workspaceIndex instanceof GensysWorkspaceIndex);
+    assert.ok(typeof (gensysPlugin.languageDef as any)?.indexing?.indexFile === "function");
     assert.ok(typeof gensysPlugin.customHandlers?.symbols === "function");
     assert.ok(typeof gensysPlugin.customHandlers?.hover === "function");
 
     // Action handlers
     assert.ok(typeof gensysPlugin.actionHandlers?.export_gensys_fmu === "function");
     assert.ok(typeof gensysPlugin.actionHandlers?.simulate_gensys === "function");
+
+    const uw = new UnifiedWorkspace([simpackLanguage, gensysLanguage]);
+    uw.setDocument("file:///vehicle/quarter_car.spck", sampleSpckXml);
+    uw.setDocument("file:///vehicle/manchester.calc", sampleGensysDeck);
+    assert.ok(uw.getIndex().symbols.size > 0);
   });
 });
