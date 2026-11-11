@@ -48,16 +48,16 @@ const stats = computed<StatItem[]>(() => [
     metaRight: "Pre-flight",
   },
   {
-    value: "10k+ Files",
-    badge: "Workspace Scale",
-    label: "Incremental Indexing",
-    description: "Unified workspace index and Salsa query caching scale across multi-thousand-file enterprise libraries with sub-second incremental updates.",
-    icon: "database",
-    link: "/architecture/salsa-queries",
-    actionText: "Queries",
+    value: "100k+",
+    badge: "Industrial",
+    label: "Coupled DAE Scale",
+    description: "Struct-of-Arrays linear memory and sparse BLT scale to 100,000+ coupled DAE equations without memory exhaustion.",
+    icon: "activity",
+    link: "/architecture/dae-arena",
+    actionText: "Arena",
     accent: "cyan",
-    metaLeft: "Unified WorkspaceIndex",
-    metaRight: "Fine-grained Salsa DAG",
+    metaLeft: "Tarjan BLT",
+    metaRight: "Zero-GC arena",
   },
   {
     value: "100%",
@@ -293,7 +293,7 @@ const stats = computed<StatItem[]>(() => [
 /* Metric Row */
 .bento-metric-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   margin-bottom: 8px;
 }
@@ -321,6 +321,8 @@ const stats = computed<StatItem[]>(() => [
   font-weight: 650;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
   color: var(--bento-accent);
   background: var(--bento-accent-bg);
   border: 1px solid var(--bento-accent-border);
@@ -381,14 +383,21 @@ const stats = computed<StatItem[]>(() => [
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   font-size: 11px;
   font-family: var(--ms-font-mono, monospace);
   color: var(--vp-c-text-3);
+  white-space: nowrap;
 }
 
 .bento-meta-left {
   color: var(--bento-accent);
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.bento-meta-right {
+  white-space: nowrap;
 }
 
 /* Licensing Sub-bar */

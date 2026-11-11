@@ -1287,14 +1287,16 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
   };
 
   const handleOpenPlayground = () => {
+    const targetDiagramType = diagramMode === "ibd" ? "IBD" : "BDD";
     const hash = compressMorselPayload({
       v: 1,
       lang: "sysml2" as any,
       code: sourceCode || `package ${systemName.replace(/\W+/g, "_")} {\n}\n`,
       title: systemName,
+      diagramType: targetDiagramType,
     });
-    const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-    navigate(`/morsel${fromArtifact}#m=${hash}`);
+    const fromArtifact = viewConfig.artifactId ? `&fromArtifact=${viewConfig.artifactId}` : "";
+    navigate(`/morsel?diagramType=${targetDiagramType}${fromArtifact}#m=${hash}`);
   };
 
   const filteredParts = useMemo(() => {

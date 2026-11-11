@@ -317,5 +317,66 @@ describe("66-Language Catalog & 2-Level Example Templates Suite", () => {
     } finally {
       (globalThis as any).localStorage = originalLocalStorage;
     }
+
+    // 11. Artifact with external library dependencies
+    const memFsDeps = new MemoryFsMock();
+    const wsDeps = { scheme: "memfs", path: "/artifact-999" } as any;
+    mountArtifactToMemFs(memFsDeps, wsDeps, {
+      artifactId: 999,
+      title: "ChilledWaterPlant.mo",
+      viewType: "modelica-code",
+      dependencies: [
+        { name: "Buildings", version: "11.0.0" },
+        { name: "PlanarMechanics", version: "1.6.1" },
+      ],
+      viewConfig: {
+        code: "model ChilledWaterPlant\n  Real x;\nequation\n  der(x) = 0;\nend ChilledWaterPlant;\n",
+      },
+    });
+
+    assert.ok(memFsDeps.files.has("/artifact-999/package.json"));
+    const pkgJson = JSON.parse(new TextDecoder().decode(memFsDeps.files.get("/artifact-999/package.json")!));
+    assert.deepStrictEqual(pkgJson.dependencies, {
+      Buildings: "11.0.0",
+      PlanarMechanics: "1.6.1",
+    });
+
+    const moCode = new TextDecoder().decode(memFsDeps.files.get("/artifact-999/ChilledWaterPlant.mo")!);
+    assert.ok(moCode.includes('Buildings(version = "11.0.0")'));
+    assert.ok(moCode.includes('PlanarMechanics(version = "1.6.1")'));
+
+    // 11b. SysML v2 Artifact with external library dependencies
+    const memFsSysmlDeps = new MemoryFsMock();
+    const wsSysmlDeps = { scheme: "memfs", path: "/artifact-1001" } as any;
+    mountArtifactToMemFs(memFsSysmlDeps, wsSysmlDeps, {
+      artifactId: 1001,
+      title: "AvionicsSubsystem.sysml",
+      viewType: "sysml2",
+      dependencies: [{ name: "Buildings", version: "11.0.0" }],
+      viewConfig: {
+        code: "package AvionicsSubsystem {\n  part def Controller;\n}\n",
+      },
+    });
+    assert.ok(memFsSysmlDeps.files.has("/artifact-1001/package.json"));
+    const sysmlCode = new TextDecoder().decode(memFsSysmlDeps.files.get("/artifact-1001/AvionicsSubsystem.sysml")!);
+    assert.ok(sysmlCode.includes("import Buildings::*;"));
+
+    // 11c. SPICE Artifact with external library dependencies
+    const memFsSpiceDeps = new MemoryFsMock();
+    const wsSpiceDeps = { scheme: "memfs", path: "/artifact-1002" } as any;
+    mountArtifactToMemFs(memFsSpiceDeps, wsSpiceDeps, {
+      artifactId: 1002,
+      title: "RlcFilter.cir",
+      viewType: "spice",
+      primaryFile: "RlcFilter.cir",
+      dependencies: [{ name: "SPICE-Standard", version: "1.0.0" }],
+      viewConfig: {
+        filename: "RlcFilter.cir",
+        code: "* Filter\nR1 1 2 100\n.end\n",
+      },
+    });
+    assert.ok(memFsSpiceDeps.files.has("/artifact-1002/package.json"));
+    const spiceCode = new TextDecoder().decode(memFsSpiceDeps.files.get("/artifact-1002/RlcFilter.cir")!);
+    assert.ok(spiceCode.includes('.include "SPICE-Standard.cir"'));
   });
 });

@@ -322,3 +322,6 @@ export const csvLanguage = language({
 });
 
 export default csvLanguage;
+
+/** Workspace indexing conventions for tabular CSV resources (consumed by language workspaces that index CSV files). */
+export { csvWorkspaceHooks } from "./workspace-hooks.js";

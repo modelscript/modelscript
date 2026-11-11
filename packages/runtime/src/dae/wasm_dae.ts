@@ -904,7 +904,8 @@ export class WasmDaeBridge implements IDaeBuilder {
       typeof wasmExportsOrInterner === "object" &&
       wasmExportsOrInterner !== null &&
       !("intern" in wasmExportsOrInterner) &&
-      ("dae_createBuilder" in wasmExportsOrInterner || "memory" in wasmExportsOrInterner)
+      ("dae_createBuilder" in wasmExportsOrInterner ||
+        (typeof nameOrPtr === "number" && nameOrPtr !== 0 && "dae_getStringPool" in wasmExportsOrInterner))
     ) {
       this.exports = wasmExportsOrInterner;
       this.ptr =
@@ -2375,10 +2376,11 @@ export class WasmDaeBridge implements IDaeBuilder {
     if (kind === ExprKind.Name) {
       const name = this.interner.resolve(this.getExprData1(exprId));
       if (name) {
-        out.add(name);
         const bracketIdx = name.indexOf("[");
         if (bracketIdx > 0) {
           out.add(name.slice(0, bracketIdx));
+        } else {
+          out.add(name);
         }
       }
       return out;
@@ -2431,9 +2433,33 @@ export class WasmDaeBridge implements IDaeBuilder {
       if (count > 0) {
         const redirect = this.getExprRight(exprId);
         const baseId = redirect >= 0 && redirect !== 0xffffffff ? redirect : exprId;
-        this.collectExprVarNames(this.getExprLeft(exprId), out, visited);
+        const firstLeft = this.getExprLeft(exprId);
+        if (firstLeft >= 0) {
+          const firstKind = this.getExprKind(firstLeft);
+          if (
+            firstKind === ExprKind.RealLiteral ||
+            firstKind === ExprKind.IntLiteral ||
+            firstKind === ExprKind.BoolLiteral
+          ) {
+            return out;
+          }
+          this.collectExprVarNames(firstLeft, out, visited);
+        }
+        let stableCount = 0;
+        let lastSize = out.size;
         for (let i = 1; i < count; i++) {
           this.collectExprVarNames(this.getExprLeft(baseId + i), out, visited);
+          if (count > 64) {
+            if (out.size === lastSize) {
+              stableCount++;
+              if (stableCount >= 16) {
+                break;
+              }
+            } else {
+              stableCount = 0;
+              lastSize = out.size;
+            }
+          }
         }
       }
     } else if (kind === ExprKind.Tuple) {

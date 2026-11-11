@@ -2,27 +2,41 @@
 
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { AcceleratorLatticeEditorProvider } from "../accelerator-lattice-panel.js";
 import { AmlEditorProvider } from "../aml-editor-provider.js";
 import { CfgEditorProvider } from "../cfg-editor-provider.js";
+import { ClimateRasterEditorProvider } from "../climate-raster-panel.js";
+import { CrystallographyEditorProvider } from "../crystallography-panel.js";
 import { DiagramEditorProvider } from "../diagram-editor-provider.js";
 import { Easy5EditorProvider } from "../easy5-editor-provider.js";
+import { NmodlEditorProvider } from "../electrophysiology-panel.js";
 import { ElementTableProvider } from "../element-table-provider.js";
+import { FitsImageViewerEditorProvider } from "../fits-image-panel.js";
 import { FMU_VIEW_SCHEME, FmuContentProvider, FmuEditorProvider } from "../fmu-document-provider.js";
 import { GCodeEditorProvider } from "../gcode-editor-provider.js";
 import { GtSuiteEditorProvider } from "../gtsuite-editor-provider.js";
+import { HepEventViewerEditorProvider } from "../hep-event-panel.js";
 import { InpEditorProvider } from "../inp-editor-provider.js";
 import { LpsEditorProvider } from "../lps-editor-provider.js";
 import { DicomRtEditorProvider, IgtlEditorProvider, OpenSimEditorProvider } from "../medical-editor-provider.js";
+import { PdbEditorProvider } from "../molstar-panel.js";
+import { NeuralSpikeViewerEditorProvider } from "../neural-spike-panel.js";
 import { OlgaEditorProvider } from "../olga-editor-provider.js";
+import { OpticalBenchEditorProvider } from "../optical-bench-panel.js";
 import { OscalEditorProvider } from "../oscal-editor-provider.js";
 import { PsoutEditorProvider } from "../psout-editor-provider.js";
 import { QifEditorProvider } from "../qif-editor-provider.js";
+import { QuantumChemistryEditorProvider } from "../quantum-chemistry-panel.js";
 import { RawEditorProvider } from "../raw-editor-provider.js";
+import { ReactionCoordinateEditorProvider } from "../reaction-coordinate-panel.js";
 import { RequirementsEditorProvider } from "../requirements-editor-provider.js";
 import { RocetsEditorProvider } from "../rocets-editor-provider.js";
+import { SeismicViewerEditorProvider } from "../seismic-viewer-panel.js";
 import { SimaEditorProvider } from "../sima-editor-provider.js";
 import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "../ssp-document-provider.js";
 import { StepEditorProvider } from "../step-editor-provider.js";
+import { TokamakEquilibriumEditorProvider } from "../tokamak-equilibrium-panel.js";
+import { WaterDiffEditorProvider } from "../water-diff-panel.js";
 
 export interface CustomEditorsControllerResult {
   fmuContentProvider: FmuContentProvider;
@@ -65,6 +79,8 @@ export function registerCustomEditors(
     "ibis.diagramEditor",
     "jsbsim.diagramEditor",
     "lps.diagramEditor",
+    "mlxtran.diagramEditor",
+    "nmodl.diagramEditor",
     "olga.diagramEditor",
     "opendrive.diagramEditor",
     "opendss.diagramEditor",
@@ -260,6 +276,104 @@ export function registerCustomEditors(
   const igtlEditor = new IgtlEditorProvider(context);
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(IgtlEditorProvider.viewType, igtlEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const pdbEditor = new PdbEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(PdbEditorProvider.viewType, pdbEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const nmodlEditor = new NmodlEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(NmodlEditorProvider.viewType, nmodlEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const reactionCoordinateEditor = new ReactionCoordinateEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(ReactionCoordinateEditorProvider.viewType, reactionCoordinateEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const climateRasterEditor = new ClimateRasterEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(ClimateRasterEditorProvider.viewType, climateRasterEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const seismicViewerEditor = new SeismicViewerEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(SeismicViewerEditorProvider.viewType, seismicViewerEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const waterDiffEditor = new WaterDiffEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(WaterDiffEditorProvider.viewType, waterDiffEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const crystallographyEditor = new CrystallographyEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(CrystallographyEditorProvider.viewType, crystallographyEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const tokamakEditor = new TokamakEquilibriumEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(TokamakEquilibriumEditorProvider.viewType, tokamakEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const fitsEditor = new FitsImageViewerEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(FitsImageViewerEditorProvider.viewType, fitsEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const acceleratorEditor = new AcceleratorLatticeEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(AcceleratorLatticeEditorProvider.viewType, acceleratorEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const hepEventEditor = new HepEventViewerEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(HepEventViewerEditorProvider.viewType, hepEventEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const qcEditor = new QuantumChemistryEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(QuantumChemistryEditorProvider.viewType, qcEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const neuralEditor = new NeuralSpikeViewerEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(NeuralSpikeViewerEditorProvider.viewType, neuralEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const optEditor = new OpticalBenchEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(OpticalBenchEditorProvider.viewType, optEditor, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
   );

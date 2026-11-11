@@ -332,7 +332,7 @@ export declare function cstKind(node: SyntaxNode | null | undefined): string;
     changed = false;
     for (const p of normalized.productions) {
       for (const rSym of p.right) {
-        if (rSym.startsWith("_")) {
+        if (rSym && rSym.startsWith("_")) {
           const synthFields = allRuleFields.get(rSym);
           if (synthFields && synthFields.size > 0) {
             let leftFields = allRuleFields.get(p.left);
@@ -394,10 +394,10 @@ export declare function cstKind(node: SyntaxNode | null | undefined): string;
         const camelField = toCamel(fieldName);
         if (!camelField) continue;
         cstNamespacesJs += `    ${camelField}(node) {\n`;
-        cstNamespacesJs += `      return node ? (node.childForFieldId(${fieldId}) || node.childForFieldName(${JSON.stringify(fieldName)})) : null;\n`;
+        cstNamespacesJs += `      return node ? node.childForFieldId(${fieldId}) : null;\n`;
         cstNamespacesJs += `    },\n`;
         cstNamespacesJs += `    ${camelField}List(node) {\n`;
-        cstNamespacesJs += `      return node ? node.childrenForFieldName(${JSON.stringify(fieldName)}) : [];\n`;
+        cstNamespacesJs += `      return node ? node.childrenForFieldId(${fieldId}) : [];\n`;
         cstNamespacesJs += `    },\n`;
 
         cstNamespacesDts += `    ${camelField}(node: SyntaxNode | null | undefined): SyntaxNode | null;\n`;

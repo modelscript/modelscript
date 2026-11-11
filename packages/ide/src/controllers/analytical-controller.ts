@@ -2,11 +2,25 @@
 
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser";
+import { AcceleratorLatticePanel } from "../accelerator-lattice-panel.js";
 import { AnalysisPanel } from "../analysis-panel.js";
 import { CadViewerPanel } from "../cad-viewer-panel.js";
+import { ClimateRasterPanel } from "../climate-raster-panel.js";
 import { ContractHierarchyPanel } from "../contract-hierarchy-panel.js";
+import { CrystallographyPanel } from "../crystallography-panel.js";
+import { ElectrophysiologyPanel } from "../electrophysiology-panel.js";
+import { FitsImageViewerPanel } from "../fits-image-panel.js";
+import { HepEventViewerPanel } from "../hep-event-panel.js";
+import { MolstarPanel } from "../molstar-panel.js";
+import { NeuralSpikeViewerPanel } from "../neural-spike-panel.js";
+import { OpticalBenchPanel } from "../optical-bench-panel.js";
+import { QuantumChemistryPanel } from "../quantum-chemistry-panel.js";
+import { ReactionCoordinatePanel } from "../reaction-coordinate-panel.js";
+import { SeismicViewerPanel } from "../seismic-viewer-panel.js";
 import { ThreadExplorerPanel } from "../thread-explorer-panel.js";
+import { TokamakEquilibriumPanel } from "../tokamak-equilibrium-panel.js";
 import { type ReplayTraceData, TraceReplayPanel } from "../trace-replay-panel.js";
+import { WaterDiffPanel } from "../water-diff-panel.js";
 
 export function registerAnalyticalCommands(
   context: vscode.ExtensionContext,
@@ -44,6 +58,62 @@ export function registerAnalyticalCommands(
 
     vscode.commands.registerCommand("modelscript.openTraceReplay", (trace?: ReplayTraceData) => {
       TraceReplayPanel.createOrShow(context.extensionUri, client, trace);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openMolstarViewer", (uri?: string) => {
+      MolstarPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openElectrophysiologyViewer", (uri?: string) => {
+      ElectrophysiologyPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openReactionCoordinateViewer", (uri?: string) => {
+      ReactionCoordinatePanel.createOrShow(context.extensionUri, client, uri);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openClimateRasterViewer", (uri?: string) => {
+      ClimateRasterPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openSeismicViewer", (uri?: string) => {
+      SeismicViewerPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openWaterDiffViewer", (uri?: string) => {
+      WaterDiffPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openCrystallographyViewer", (uri?: string) => {
+      CrystallographyPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openTokamakEquilibriumViewer", (uri?: string) => {
+      TokamakEquilibriumPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openFitsImageViewer", (uri?: string) => {
+      FitsImageViewerPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openAcceleratorLatticeViewer", (uri?: string) => {
+      AcceleratorLatticePanel.createOrShow(context.extensionUri, client, uri);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openHepEventViewer", (uri?: string) => {
+      HepEventViewerPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openQuantumChemistryViewer", (uri?: string) => {
+      QuantumChemistryPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openNeuralSpikeViewer", (uri?: string) => {
+      NeuralSpikeViewerPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openOpticalBenchViewer", (uri?: string) => {
+      OpticalBenchPanel.createOrShow(context.extensionUri, client, uri);
     }),
 
     vscode.commands.registerCommand("modelscript.runMcdcTests", async (uri?: string, actionName?: string) => {

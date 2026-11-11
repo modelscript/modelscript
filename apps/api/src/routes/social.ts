@@ -2125,6 +2125,12 @@ export function socialRouter(
             effectiveType,
             title || parsedTitle || "model",
             uploadDir,
+            {
+              primaryClass: typeof parsed["primaryClass"] === "string" ? parsed["primaryClass"] : undefined,
+              dependencies: Array.isArray(parsed["dependencies"])
+                ? (parsed["dependencies"] as Array<{ name: string; version: string }>)
+                : undefined,
+            },
           );
           if (preprocessed.viewConfigAdditions) {
             parsed = { ...preprocessed.viewConfigAdditions, ...parsed };

@@ -42,6 +42,7 @@ const repoRoot = path.resolve(__dirname, "../../..");
 export function linkMslPackageHierarchy(
   symbolIndex: { symbols: Map<number, any>; byName: Map<string, number[]>; childrenOf: Map<number, number[]> },
   mslDir: string,
+  rootPkgName: string = "Modelica",
 ): void {
   let nextId = 100000;
   for (const id of symbolIndex.symbols.keys()) {
@@ -63,9 +64,10 @@ export function linkMslPackageHierarchy(
           .split("/")
           .filter(Boolean);
         const isPkgMatch =
-          (parts.length === 0 && sym.name === "Modelica") || (parts.length > 0 && sym.name === parts[parts.length - 1]);
+          (parts.length === 0 && sym.name === rootPkgName) ||
+          (parts.length > 0 && sym.name === parts[parts.length - 1]);
         if (isPkgMatch) {
-          const fqn = ["Modelica", ...parts].join(".");
+          const fqn = [rootPkgName, ...parts].join(".");
           const list = symbolIndex.byName.get(fqn) || [];
           if (!list.includes(id)) {
             list.unshift(id);
@@ -101,7 +103,7 @@ export function linkMslPackageHierarchy(
       }
 
       if (symId !== undefined) {
-        if (currentFQN === "Modelica") {
+        if (currentFQN === rootPkgName) {
           const modSym = symbolIndex.symbols.get(symId);
           if (modSym) modSym.parentId = null;
         } else if (parentId !== null && symId !== parentId) {
@@ -159,20 +161,20 @@ export function linkMslPackageHierarchy(
       const dirParts = rel.replace(/\.mo$/, "").split(path.sep);
       let parentPkgFQN: string;
       if (dirParts[dirParts.length - 1] === sym.name) {
-        parentPkgFQN = ["Modelica", ...dirParts.slice(0, -1)].join(".");
+        parentPkgFQN = [rootPkgName, ...dirParts.slice(0, -1)].join(".");
       } else if (dirParts[dirParts.length - 1] === "package") {
         if (dirParts.length <= 1) {
           parentPkgFQN = "";
         } else {
           const pkgName = dirParts[dirParts.length - 2];
           if (sym.name === pkgName) {
-            parentPkgFQN = ["Modelica", ...dirParts.slice(0, -2)].join(".");
+            parentPkgFQN = [rootPkgName, ...dirParts.slice(0, -2)].join(".");
           } else {
-            parentPkgFQN = ["Modelica", ...dirParts.slice(0, -1)].join(".");
+            parentPkgFQN = [rootPkgName, ...dirParts.slice(0, -1)].join(".");
           }
         }
       } else {
-        parentPkgFQN = ["Modelica", ...dirParts].join(".");
+        parentPkgFQN = [rootPkgName, ...dirParts].join(".");
       }
 
       if (parentPkgFQN) {
@@ -329,6 +331,25 @@ sys.exit(res.returncode)`;
   }
 }
 
+function buildOmcExtraLoads(task: WorkerTask): string {
+  if (!task.extraLibraries || task.extraLibraries.length === 0) return "";
+  let loads = "";
+  for (const extra of task.extraLibraries) {
+    if (!fs.existsSync(extra.path)) continue;
+    const stat = fs.statSync(extra.path);
+    let pkgMo = extra.path;
+    if (stat.isDirectory()) {
+      const candidate1 = path.join(extra.path, "package.mo");
+      const candidate2 = path.join(extra.path, `${extra.name}.mo`);
+      pkgMo = fs.existsSync(candidate1) ? candidate1 : candidate2;
+    }
+    if (fs.existsSync(pkgMo)) {
+      loads += `loadFile("${pkgMo.replace(/\\/g, "/")}");\n`;
+    }
+  }
+  return loads;
+}
+
 function runOmcFlatten(task: WorkerTask): {
   success: boolean;
   cached: boolean;
@@ -364,8 +385,9 @@ function runOmcFlatten(task: WorkerTask): {
   }
 
   const pkgMo = path.join(task.mslDir, "package.mo");
+  const extraLoads = buildOmcExtraLoads(task);
   const mosScript = `
-loadFile("${pkgMo.replace(/\\/g, "/")}");
+${extraLoads}loadFile("${pkgMo.replace(/\\/g, "/")}");
 res := instantiateModel(${task.modelFqn});
 err := getErrorString();
 if res == "" then
@@ -471,8 +493,9 @@ function runOmcSimulate(
   const tmpDir = path.join(task.cacheDir, `tmp_sim_${process.pid}_${Date.now()}`);
   fs.mkdirSync(tmpDir, { recursive: true });
 
+  const extraLoads = buildOmcExtraLoads(task);
   const mosScript = `
-loadFile("${pkgMo.replace(/\\/g, "/")}");
+${extraLoads}loadFile("${pkgMo.replace(/\\/g, "/")}");
 res := simulate(${task.modelFqn}, startTime=${startTime}, stopTime=${stopTime}, numberOfIntervals=${intervals}, outputFormat="csv");
 err := getErrorString();
 if err <> "" then
@@ -548,9 +571,10 @@ function runOmcDiagram(
 
   const pkgMo = path.join(task.mslDir, "package.mo");
   const allClasses = [task.modelFqn, ...inheritedFqns];
+  const extraLoads = buildOmcExtraLoads(task);
 
   const mosScript = `
-loadFile("${pkgMo.replace(/\\/g, "/")}");
+${extraLoads}loadFile("${pkgMo.replace(/\\/g, "/")}");
 ${allClasses
   .map(
     (cls, idx) => `
@@ -1761,8 +1785,18 @@ async function getOrInitWorkerContext(task: WorkerTask): Promise<Context> {
     childrenOf: new Map<number, number[]>(rawIndex.childrenOf),
   };
 
-  linkMslPackageHierarchy(symbolIndex, task.mslDir);
+  const rootPkgName = task.library || task.modelFqn.split(".")[0] || "Modelica";
+  linkMslPackageHierarchy(symbolIndex, task.mslDir, rootPkgName);
   context.setSymbolIndex(symbolIndex);
+
+  if (task.extraLibraries && task.extraLibraries.length > 0) {
+    for (const extra of task.extraLibraries) {
+      if (fs.existsSync(extra.path)) {
+        await context.addLibrary(extra.path, { skipIndex: true });
+      }
+    }
+  }
+
   await context.addLibrary(task.mslDir, { skipIndex: true });
 
   cachedWorkerContext = {

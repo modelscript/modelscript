@@ -556,6 +556,185 @@ export async function searchAnsatzPackages(query: string, signal?: AbortSignal):
   throw lastError instanceof Error ? lastError : new Error(String(lastError ?? "Failed to reach Ansatz registry"));
 }
 
+export interface AnsatzStreamedComponentItem {
+  fqn: string;
+  name: string;
+  kind: string;
+  domain: string;
+  subpackage?: string | null | undefined;
+  packageName: string;
+  packageVersion: string;
+  description?: string | null | undefined;
+  language?: string | undefined;
+  hasIcon?: boolean | undefined;
+  iconSvg?: string | undefined;
+}
+
+export interface AnsatzStreamComponentsParams {
+  q?: string | undefined;
+  domain?: string | undefined;
+  packageName?: string | undefined;
+  subpackage?: string | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
+  includeSvg?: boolean | undefined;
+}
+
+export interface AnsatzStreamComponentsResult {
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  items: AnsatzStreamedComponentItem[];
+  availablePackages: { name: string; version: string; count: number }[];
+  availableSubpackages: { id: string; label: string; count: number }[];
+  packageDependencies: Record<string, Record<string, string>>;
+  fromRegistry: boolean;
+}
+
+const sessionRegistryDependencies = new Map<string, Record<string, string>>();
+
+export function registerSessionRegistryDependencies(deps: Record<string, Record<string, string>> | undefined): void {
+  if (!deps || typeof deps !== "object") return;
+  for (const [pkg, peerMap] of Object.entries(deps)) {
+    if (peerMap && typeof peerMap === "object") {
+      sessionRegistryDependencies.set(pkg.toLowerCase(), peerMap);
+    }
+  }
+}
+
+export function sanitizeHubSvg(rawSvg: string | undefined | null): string | undefined {
+  if (typeof rawSvg !== "string" || !rawSvg.includes("<svg")) return undefined;
+  const cleaned = rawSvg
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/(?:href|xlink:href)\s*=\s*(?:"\s*javascript:[^"]*"|'\s*javascript:[^']*')/gi, "")
+    .trim();
+  return cleaned.includes("<svg") ? cleaned : undefined;
+}
+
+function isBlockedByAirgap(baseUrl: string): boolean {
+  if (!isAirgapped()) return false;
+  try {
+    const parsed = new URL(baseUrl);
+    const h = parsed.hostname.toLowerCase();
+    return (
+      h === "api.modelscript.org" ||
+      h.endsWith(".modelscript.org") ||
+      h === "ansatz.social" ||
+      h.endsWith(".ansatz.social")
+    );
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Streams placeable schematic components + sanitized inline `iconSvg` across all published packages
+ * in the Ansatz registry (`GET /components?includeSvg=1`). Returns `fromRegistry: false` when offline/airgapped.
+ */
+export async function fetchAnsatzRegistryComponents(
+  params: AnsatzStreamComponentsParams = {},
+  signal?: AbortSignal,
+): Promise<AnsatzStreamComponentsResult> {
+  const limit = params.limit ?? 72;
+  const offset = params.offset ?? 0;
+  const baseUrl = getRegistryUrl().replace(/\/+$/, "");
+  if (isBlockedByAirgap(baseUrl)) {
+    return {
+      total: 0,
+      offset,
+      limit,
+      hasMore: false,
+      items: [],
+      availablePackages: [],
+      availableSubpackages: [],
+      packageDependencies: {},
+      fromRegistry: false,
+    };
+  }
+
+  const search = new URLSearchParams();
+  if (params.q && params.q.trim()) search.set("q", params.q.trim());
+  if (params.domain && params.domain !== "all") search.set("domain", params.domain);
+  if (params.packageName && params.packageName !== "all") search.set("package", params.packageName);
+  if (params.subpackage && params.subpackage !== "all") {
+    search.set("subpackage", params.subpackage.replace(/\s*[·›]\s*/g, "."));
+  }
+  search.set("limit", String(limit));
+  search.set("offset", String(offset));
+  if (params.includeSvg !== false) {
+    search.set("includeSvg", "1");
+  }
+
+  try {
+    const resp = await fetch(`${baseUrl}/components?${search.toString()}`, signal ? { signal } : undefined);
+    if (!resp.ok) {
+      return {
+        total: 0,
+        offset,
+        limit,
+        hasMore: false,
+        items: [],
+        availablePackages: [],
+        availableSubpackages: [],
+        packageDependencies: {},
+        fromRegistry: false,
+      };
+    }
+
+    const body = (await resp.json()) as {
+      total?: number | undefined;
+      offset?: number | undefined;
+      limit?: number | undefined;
+      hasMore?: boolean | undefined;
+      components?: AnsatzStreamedComponentItem[] | undefined;
+      items?: AnsatzStreamedComponentItem[] | undefined;
+      availablePackages?: { name: string; version: string; count: number }[] | undefined;
+      availableSubpackages?: { id: string; label: string; count: number }[] | undefined;
+      packageDependencies?: Record<string, Record<string, string>> | undefined;
+    };
+
+    const rawItems = Array.isArray(body.components) ? body.components : Array.isArray(body.items) ? body.items : [];
+    const items: AnsatzStreamedComponentItem[] = rawItems.map((entry) => ({
+      ...entry,
+      iconSvg: sanitizeHubSvg(entry.iconSvg),
+    }));
+
+    const deps =
+      body.packageDependencies && typeof body.packageDependencies === "object" ? body.packageDependencies : {};
+    registerSessionRegistryDependencies(deps);
+
+    return {
+      total: typeof body.total === "number" ? body.total : items.length,
+      offset: typeof body.offset === "number" ? body.offset : offset,
+      limit: typeof body.limit === "number" ? body.limit : limit,
+      hasMore: Boolean(body.hasMore),
+      items,
+      availablePackages: Array.isArray(body.availablePackages) ? body.availablePackages : [],
+      availableSubpackages: Array.isArray(body.availableSubpackages) ? body.availableSubpackages : [],
+      packageDependencies: deps,
+      fromRegistry: true,
+    };
+  } catch (err) {
+    if ((err as { name?: string })?.name === "AbortError") {
+      throw err;
+    }
+    return {
+      total: 0,
+      offset,
+      limit,
+      hasMore: false,
+      items: [],
+      availablePackages: [],
+      availableSubpackages: [],
+      packageDependencies: {},
+      fromRegistry: false,
+    };
+  }
+}
+
 function toQuickPickItem(pkg: AnsatzPackageSummary): PackageQuickPickItem {
   const version = pkg.latestVersion || pkg.versions?.[0] || "latest";
   const domainBadges = pkg.domains && pkg.domains.length > 0 ? ` · [${pkg.domains.join(", ")}]` : "";
@@ -1361,7 +1540,62 @@ async function postCatalogComponents(panel: vscode.WebviewPanel, lspClient?: Lsp
   }
 }
 
-async function ensureParentLibraryInstalled(
+async function postRemoteLibraries(panel: vscode.WebviewPanel): Promise<void> {
+  try {
+    const pkgs = await searchAnsatzPackages("");
+    if (Array.isArray(pkgs) && pkgs.length > 0) {
+      await panel.webview.postMessage({
+        command: "setRemotePackages",
+        packages: pkgs,
+      });
+    }
+  } catch {
+    // Offline / airgapped: curated + workspace packages remain active
+  }
+}
+
+async function postStreamedComponents(
+  panel: vscode.WebviewPanel,
+  params: AnsatzStreamComponentsParams,
+  reset: boolean,
+): Promise<void> {
+  const res = await fetchAnsatzRegistryComponents(params);
+  if (!res.fromRegistry) return;
+  const icons: Record<string, string> = {};
+  for (const item of res.items) {
+    if (item.iconSvg) {
+      icons[item.fqn] = item.iconSvg;
+    }
+  }
+  await panel.webview.postMessage({
+    command: "registryComponentsChunk",
+    items: res.items,
+    total: res.total,
+    hasMore: res.hasMore,
+    offset: res.offset,
+    reset,
+    availableSubpackages: res.availableSubpackages,
+    icons,
+  });
+}
+
+function compareSemverParts(a: string, b: string): number {
+  const pa = a
+    .replace(/^[^\d]*/, "")
+    .split(".")
+    .map((n) => Number.parseInt(n, 10) || 0);
+  const pb = b
+    .replace(/^[^\d]*/, "")
+    .split(".")
+    .map((n) => Number.parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+export async function ensureParentLibraryInstalled(
   packageName: string | undefined,
   packageVersion: string | undefined,
   lspClient?: LspClientLike,
@@ -1370,6 +1604,22 @@ async function ensureParentLibraryInstalled(
   const current = await getEffectiveInstalledDependencies(lspClient);
   const alreadyMounted = Object.keys(current).some((k) => k.toLowerCase() === packageName.toLowerCase());
   if (alreadyMounted) return false;
+
+  const curatedMeta = CURATED_LIBRARIES.find((lib) => lib.name.toLowerCase() === packageName.toLowerCase());
+  const peerDeps = curatedMeta?.dependencies ?? sessionRegistryDependencies.get(packageName.toLowerCase());
+  if (peerDeps) {
+    for (const [peerName, range] of Object.entries(peerDeps)) {
+      if (peerName === "Complex" || peerName === "ModelicaServices") continue;
+      const minVer = range.replace(/^[^\d]*/, "").trim();
+      if (!minVer) continue;
+      const mountedKey = Object.keys(current).find((k) => k.toLowerCase() === peerName.toLowerCase());
+      const mountedVer = mountedKey ? current[mountedKey] : undefined;
+      if (!mountedVer || compareSemverParts(mountedVer, minVer) < 0) {
+        await vscode.commands.executeCommand("modelscript.registry.install", peerName, minVer);
+      }
+    }
+  }
+
   await vscode.commands.executeCommand("modelscript.registry.install", packageName, packageVersion || "latest");
   return true;
 }
@@ -1491,6 +1741,8 @@ export function openAnsatzPackageHub(
     activePackageHubPanel.reveal(vscode.ViewColumn.One);
     void postInstalledPackages(activePackageHubPanel, lspClient);
     void postCatalogComponents(activePackageHubPanel, lspClient);
+    void postRemoteLibraries(activePackageHubPanel);
+    void postStreamedComponents(activePackageHubPanel, { limit: 72, offset: 0, includeSvg: true }, true);
     if (initialPackageName) {
       void activePackageHubPanel.webview.postMessage({
         command: "inspectPackage",
@@ -1517,7 +1769,7 @@ export function openAnsatzPackageHub(
   });
 
   // Render synchronously with session cache first so panel.webview.html is populated immediately,
-  // then hydrate live mounted libraries + full 1,350+ component catalog from LSP.
+  // then hydrate live mounted libraries, local LSP catalog, and live Ansatz Registry stream.
   const initialDeps: Record<string, string> = {};
   for (const [k, v] of sessionInstalledPackages.entries()) {
     initialDeps[k] = v;
@@ -1525,6 +1777,8 @@ export function openAnsatzPackageHub(
   panel.webview.html = renderPackageHubHtml(CURATED_LIBRARIES, HUB_GALLERY_COMPONENTS, initialDeps, initialPackageName);
   void postInstalledPackages(panel, lspClient);
   void postCatalogComponents(panel, lspClient);
+  void postRemoteLibraries(panel);
+  void postStreamedComponents(panel, { limit: 72, offset: 0, includeSvg: true }, true);
 
   panel.webview.onDidReceiveMessage(async (message: Record<string, unknown>) => {
     const cmd = typeof message["command"] === "string" ? message["command"] : "";
@@ -1725,8 +1979,35 @@ export function openAnsatzPackageHub(
         });
         break;
       }
+      case "streamRegistryComponents": {
+        const query = typeof message["query"] === "string" ? message["query"] : undefined;
+        const domain = typeof message["domain"] === "string" ? message["domain"] : undefined;
+        const packageName = typeof message["packageName"] === "string" ? message["packageName"] : undefined;
+        const subpackage = typeof message["subpackage"] === "string" ? message["subpackage"] : undefined;
+        const offset = typeof message["offset"] === "number" ? message["offset"] : 0;
+        const reset = message["reset"] !== false;
+        await postStreamedComponents(
+          panel,
+          {
+            q: query,
+            domain,
+            packageName: packageName || undefined,
+            subpackage: subpackage || undefined,
+            limit: 72,
+            offset,
+            includeSvg: true,
+          },
+          reset,
+        );
+        break;
+      }
       case "refresh": {
-        await Promise.all([postInstalledPackages(panel, lspClient), postCatalogComponents(panel, lspClient)]);
+        await Promise.all([
+          postInstalledPackages(panel, lspClient),
+          postCatalogComponents(panel, lspClient),
+          postRemoteLibraries(panel),
+          postStreamedComponents(panel, { limit: 72, offset: 0, includeSvg: true }, true),
+        ]);
         break;
       }
     }
@@ -2517,6 +2798,13 @@ export function renderPackageHubHtml(
 
       let installedDeps = ${safeJson(installedDeps)};
       let catalogClasses = [];
+      let remotePackages = [];
+      let streamedComponents = [];
+      let registryTotal = null;
+      let registryHasMore = false;
+      let registryOffset = 0;
+      let registrySubpackages = [];
+      let isStreamingRegistry = false;
       let livePackages = [];
       let liveClasses = [];
       let cachedAllComps = null;
@@ -2538,6 +2826,27 @@ export function renderPackageHubHtml(
       let copiedId = "";
       let toastTimer = null;
       let searchDebounce = null;
+      let streamDebounce = null;
+
+      function triggerRegistryStream(reset) {
+        if (mountedOnly) {
+          registryHasMore = false;
+          isStreamingRegistry = false;
+          return;
+        }
+        const q = (document.getElementById("search-input")?.value || "").trim();
+        const nextOffset = reset ? 0 : registryOffset;
+        isStreamingRegistry = true;
+        vscode.postMessage({
+          command: "streamRegistryComponents",
+          query: q,
+          domain: currentDomain,
+          packageName: packageFilter,
+          subpackage: subpackageFilter,
+          offset: nextOffset,
+          reset: Boolean(reset),
+        });
+      }
 
       function esc(str) {
         return String(str || "")
@@ -2631,7 +2940,7 @@ export function renderPackageHubHtml(
       function getAllPackages() {
         const seen = new Set();
         const merged = [];
-        for (const p of [...BASE_PACKAGES, ...livePackages]) {
+        for (const p of [...BASE_PACKAGES, ...remotePackages, ...livePackages]) {
           const key = p.name.toLowerCase();
           if (seen.has(key)) continue;
           seen.add(key);
@@ -2657,13 +2966,17 @@ export function renderPackageHubHtml(
 
       function getAllComponents() {
         if (cachedAllComps) return cachedAllComps;
-        const byFqn = new Set(BASE_COMPONENTS.map(c => c.fqn.toLowerCase()));
-        const extras = [];
+        const ordered = [];
+        const indexByFqn = new Map();
+
+        for (const base of BASE_COMPONENTS) {
+          indexByFqn.set(base.fqn.toLowerCase(), ordered.length);
+          ordered.push(base);
+        }
 
         for (const item of catalogClasses) {
           const fqn = item.fqn;
-          if (!fqn || byFqn.has(fqn.toLowerCase())) continue;
-          byFqn.add(fqn.toLowerCase());
+          if (!fqn || indexByFqn.has(fqn.toLowerCase())) continue;
           const kind = (item.kind || "model").toLowerCase();
           const rootPkg = item.packageName || fqn.split(".")[0] || "Modelica";
           const cat = inferDomain(fqn, item.language);
@@ -2672,7 +2985,8 @@ export function renderPackageHubHtml(
           const subPath = parts.length > 2 ? parts.slice(1, -1).join(" · ") : rootPkg;
           const baseIdent = shortName.replace(/[^A-Za-z0-9_]/g, "") || "comp";
           const instName = baseIdent.charAt(0).toLowerCase() + baseIdent.slice(1, 14) + "1";
-          extras.push({
+          indexByFqn.set(fqn.toLowerCase(), ordered.length);
+          ordered.push({
             id: "cat-" + fqn,
             shortName,
             fqn,
@@ -2688,17 +3002,61 @@ export function renderPackageHubHtml(
           });
         }
 
+        if (!mountedOnly) {
+          for (const reg of streamedComponents) {
+            const fqn = reg.fqn;
+            if (!fqn) continue;
+            const key = fqn.toLowerCase();
+            if (indexByFqn.has(key)) {
+              if (reg.packageName && String(reg.packageName).startsWith("@")) {
+                const idx = indexByFqn.get(key);
+                const prev = ordered[idx];
+                if (prev && !String(prev.packageName).startsWith("@")) {
+                  ordered[idx] = Object.assign({}, prev, {
+                    packageName: reg.packageName,
+                    packageVersion: reg.packageVersion || prev.packageVersion,
+                  });
+                }
+              }
+              continue;
+            }
+            const kind = (reg.kind || "model").toLowerCase();
+            const pkgName = reg.packageName || fqn.split(".")[0] || "Modelica";
+            const cat = DOMAINS.some(d => d.id === reg.domain) ? reg.domain : inferDomain(fqn, reg.language);
+            const shortName = reg.name || fqn.split(".").pop() || fqn;
+            const parts = fqn.split(".");
+            const subPath = parts.length > 2 ? parts.slice(1, -1).join(" · ") : pkgName;
+            const baseIdent = shortName.replace(/[^A-Za-z0-9_]/g, "") || "comp";
+            const instName = baseIdent.charAt(0).toLowerCase() + baseIdent.slice(1, 14) + "1";
+            indexByFqn.set(key, ordered.length);
+            ordered.push({
+              id: "reg-" + pkgName + "-" + fqn,
+              shortName,
+              fqn,
+              kind,
+              category: cat,
+              packageName: pkgName,
+              packageVersion: reg.packageVersion || getInstalledVersion(pkgName) || "1.0.0",
+              summary: reg.description || (subPath + " (" + kind + ")"),
+              portsAndParams: parts.length > 2 ? parts.slice(0, -1).join(".") : (kind + " · " + pkgName),
+              declarationSnippet: fqn + " " + instName + ";",
+              keywords: [shortName.toLowerCase(), fqn.toLowerCase(), pkgName.toLowerCase(), subPath.toLowerCase()],
+              schematicSvg: liveIcons[fqn] || buildFallbackSchematic(shortName, kind, cat),
+            });
+          }
+        }
+
         for (const cls of liveClasses) {
           const fqn = cls.compositeName || cls.name;
-          if (!fqn || byFqn.has(fqn.toLowerCase())) continue;
+          if (!fqn || indexByFqn.has(fqn.toLowerCase())) continue;
           const kind = (cls.classKind || "model").toLowerCase();
           if (kind === "package" || kind === "file" || kind === "folder") continue;
-          byFqn.add(fqn.toLowerCase());
+          indexByFqn.set(fqn.toLowerCase(), ordered.length);
           const rootPkg = fqn.split(".")[0] || "Workspace";
           const cat = inferDomain(fqn, cls.language);
           const shortName = cls.name || fqn.split(".").pop() || fqn;
           const instName = shortName.replace(/[^A-Za-z0-9_]/g, "").slice(0, 12).toLowerCase() + "1";
-          extras.push({
+          ordered.push({
             id: "live-" + fqn,
             shortName,
             fqn,
@@ -2714,7 +3072,7 @@ export function renderPackageHubHtml(
           });
         }
 
-        cachedAllComps = [...BASE_COMPONENTS, ...extras];
+        cachedAllComps = ordered;
         return cachedAllComps;
       }
 
@@ -2773,7 +3131,7 @@ export function renderPackageHubHtml(
       function requestMissingIcons(comps) {
         const toFetch = [];
         for (const c of comps) {
-          if (!requestedIcons.has(c.fqn) && (c.packageName === "Modelica" || getInstalledVersion(c.packageName))) {
+          if (!requestedIcons.has(c.fqn) && !liveIcons[c.fqn] && (c.packageName === "Modelica" || getInstalledVersion(c.packageName))) {
             requestedIcons.add(c.fqn);
             toFetch.push(c.fqn);
             if (toFetch.length >= 80) break;
@@ -2808,6 +3166,14 @@ export function renderPackageHubHtml(
           const g = extractSubpkg(c.fqn);
           if (g) counts.set(g, (counts.get(g) || 0) + 1);
         }
+        if (!mountedOnly && Array.isArray(registrySubpackages)) {
+          for (const rs of registrySubpackages) {
+            const lbl = String(rs.id || rs.label || "").replace(/\\./g, " · ");
+            if (lbl && typeof rs.count === "number" && rs.count > (counts.get(lbl) || 0)) {
+              counts.set(lbl, rs.count);
+            }
+          }
+        }
         const topGroups = Array.from(counts.entries())
           .sort((a, b) => b[1] - a[1])
           .slice(0, 10);
@@ -2830,7 +3196,11 @@ export function renderPackageHubHtml(
         const sumEl = document.getElementById("mounted-summary");
         if (sumEl) sumEl.textContent = mountedCount + " mounted";
 
-        document.getElementById("count-components").textContent = Number(filteredComps.length).toLocaleString();
+        const totalAvailable = Math.max(
+          filteredComps.length,
+          !mountedOnly && typeof registryTotal === "number" ? registryTotal : 0
+        );
+        document.getElementById("count-components").textContent = Number(totalAvailable).toLocaleString();
         document.getElementById("count-libraries").textContent = String(filteredPkgs.length);
 
         ["components", "libraries", "import"].forEach(m => {
@@ -2885,10 +3255,15 @@ export function renderPackageHubHtml(
         const visibleSlice = filteredComps.slice(0, visibleLimit);
         requestMissingIcons(visibleSlice);
 
-        const moreFooter = visibleSlice.length < filteredComps.length
+        const totalShownPool = Math.max(
+          filteredComps.length,
+          !mountedOnly && typeof registryTotal === "number" ? registryTotal : 0
+        );
+        const hasMoreItems = visibleSlice.length < filteredComps.length || (!mountedOnly && registryHasMore);
+        const moreFooter = hasMoreItems
           ? '<div style="margin-top: 14px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--muted);">' +
-              "<span>Showing <strong>" + visibleSlice.length.toLocaleString() + "</strong> of <strong>" + filteredComps.length.toLocaleString() + "</strong> schematic components</span>" +
-              '<button class="btn secondary" data-action="load-more-comps">Show more (+' + Math.min(PAGE_SIZE, filteredComps.length - visibleSlice.length) + ")</button>" +
+              "<span>Showing <strong>" + visibleSlice.length.toLocaleString() + "</strong> of <strong>" + totalShownPool.toLocaleString() + "</strong> schematic components</span>" +
+              '<button class="btn secondary" data-action="load-more-comps">' + (isStreamingRegistry ? "Streaming…" : "Show more (+" + Math.min(PAGE_SIZE, Math.max(PAGE_SIZE, totalShownPool - visibleSlice.length)) + ")") + "</button>" +
             "</div>"
           : "";
 
@@ -3178,10 +3553,14 @@ export function renderPackageHubHtml(
         scrollPane.addEventListener("scroll", () => {
           if (currentMode !== "components") return;
           const total = getFilteredComponents().length;
-          if (visibleLimit >= total) return;
-          if (scrollPane.scrollTop + scrollPane.clientHeight >= scrollPane.scrollHeight - 260) {
-            visibleLimit = Math.min(visibleLimit + PAGE_SIZE, total);
-            renderAll();
+          if (scrollPane.scrollTop + scrollPane.clientHeight >= scrollPane.scrollHeight - 300) {
+            if (visibleLimit < total) {
+              visibleLimit += PAGE_SIZE;
+              renderAll();
+            }
+            if (!mountedOnly && registryHasMore && visibleLimit >= total - 36 && !isStreamingRegistry) {
+              triggerRegistryStream(false);
+            }
           }
         });
       }
@@ -3200,13 +3579,19 @@ export function renderPackageHubHtml(
           subpackageFilter = "";
           resetVisibleWindow();
           renderAll();
+          triggerRegistryStream(true);
         } else if (action === "set-subpkg") {
           const nextSub = target.getAttribute("data-subpkg") || "";
           subpackageFilter = subpackageFilter === nextSub ? "" : nextSub;
           resetVisibleWindow();
           renderAll();
+          triggerRegistryStream(true);
         } else if (action === "load-more-comps") {
           visibleLimit += PAGE_SIZE;
+          const total = getFilteredComponents().length;
+          if (!mountedOnly && registryHasMore && visibleLimit >= total - 36 && !isStreamingRegistry) {
+            triggerRegistryStream(false);
+          }
           renderAll();
         } else if (action === "clear-search") {
           const inp = document.getElementById("search-input");
@@ -3215,17 +3600,20 @@ export function renderPackageHubHtml(
           cachedAllComps = null;
           resetVisibleWindow();
           renderAll();
+          triggerRegistryStream(true);
         } else if (action === "clear-pkg-filter") {
           packageFilter = "";
           subpackageFilter = "";
           resetVisibleWindow();
           renderAll();
+          triggerRegistryStream(true);
         } else if (action === "filter-to-pkg") {
           packageFilter = target.getAttribute("data-pkg") || "";
           subpackageFilter = "";
           currentMode = "components";
           resetVisibleWindow();
           renderAll();
+          triggerRegistryStream(true);
         } else if (action === "browse-pkg-comps") {
           packageFilter = target.getAttribute("data-pkg") || "";
           subpackageFilter = "";
@@ -3234,10 +3622,15 @@ export function renderPackageHubHtml(
           inspectingPkgName = "";
           resetVisibleWindow();
           renderAll();
+          triggerRegistryStream(true);
         } else if (action === "toggle-mounted-only") {
           mountedOnly = !mountedOnly;
+          cachedAllComps = null;
           resetVisibleWindow();
           renderAll();
+          if (!mountedOnly) {
+            triggerRegistryStream(true);
+          }
         } else if (action === "cycle-sort") {
           librarySort = librarySort === "popular" ? "name" : "popular";
           renderAll();
@@ -3248,8 +3641,10 @@ export function renderPackageHubHtml(
           mountedOnly = false;
           const inp = document.getElementById("search-input");
           if (inp) inp.value = "";
+          cachedAllComps = null;
           resetVisibleWindow();
           renderAll();
+          triggerRegistryStream(true);
         } else if (action === "select-comp") {
           selectedCompId = target.getAttribute("data-comp-id") || "";
           renderAll();
@@ -3330,6 +3725,10 @@ export function renderPackageHubHtml(
           renderAll();
           const q = searchInput.value.trim();
           if (searchDebounce) clearTimeout(searchDebounce);
+          if (streamDebounce) clearTimeout(streamDebounce);
+          streamDebounce = setTimeout(() => {
+            triggerRegistryStream(true);
+          }, 140);
           if (q.length >= 2) {
             searchDebounce = setTimeout(() => {
               vscode.postMessage({ command: "searchLive", query: q });
@@ -3392,6 +3791,41 @@ export function renderPackageHubHtml(
           renderAll();
         } else if (msg.command === "setCatalogComponents") {
           catalogClasses = Array.isArray(msg.components) ? msg.components : [];
+          cachedAllComps = null;
+          renderAll();
+        } else if (msg.command === "setRemotePackages") {
+          remotePackages = Array.isArray(msg.packages) ? msg.packages : [];
+          renderAll();
+        } else if (msg.command === "registryComponentsChunk") {
+          isStreamingRegistry = false;
+          const incoming = Array.isArray(msg.items) ? msg.items : [];
+          if (msg.icons && typeof msg.icons === "object") {
+            for (const [k, svg] of Object.entries(msg.icons)) {
+              const norm = normalizeLiveSvg(svg);
+              if (norm) liveIcons[k] = norm;
+            }
+          }
+          if (msg.reset) {
+            streamedComponents = incoming;
+            registryOffset = incoming.length;
+            if (Array.isArray(msg.availableSubpackages)) {
+              registrySubpackages = msg.availableSubpackages;
+            }
+          } else {
+            const seen = new Set(streamedComponents.map(x => String(x.fqn || "").toLowerCase()));
+            for (const item of incoming) {
+              const k = String(item.fqn || "").toLowerCase();
+              if (k && !seen.has(k)) {
+                seen.add(k);
+                streamedComponents.push(item);
+              }
+            }
+            registryOffset += incoming.length;
+          }
+          if (typeof msg.total === "number") {
+            registryTotal = msg.total;
+          }
+          registryHasMore = Boolean(msg.hasMore);
           cachedAllComps = null;
           renderAll();
         } else if (msg.command === "inspectPackage") {

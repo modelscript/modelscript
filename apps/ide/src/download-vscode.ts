@@ -85,13 +85,19 @@ function patchWebviewPreHtml(html: string): string {
   );
 
   // Recompute the SHA-256 CSP hash for the patched inline <script> block instead of weakening to 'unsafe-inline'
-  const scriptMatch = out.match(/<script\b[^>]*>([\s\S]*?)<\/script>/);
-  if (scriptMatch && scriptMatch[1]) {
-    const newHash = createHash("sha256").update(scriptMatch[1], "utf8").digest("base64");
-    out = out.replace(
-      /script-src (?:'sha256-[A-Za-z0-9+/=]+'|'unsafe-inline') 'self'(?: https:\/\/static\.cloudflareinsights\.com)?/g,
-      `script-src 'sha256-${newHash}' 'self'`,
-    );
+  const lowerHtml = out.toLowerCase();
+  const scriptStart = lowerHtml.indexOf("<script");
+  const scriptEnd = lowerHtml.indexOf("</script>", scriptStart);
+  if (scriptStart !== -1 && scriptEnd !== -1) {
+    const contentStart = out.indexOf(">", scriptStart) + 1;
+    const scriptContent = out.slice(contentStart, scriptEnd);
+    if (scriptContent) {
+      const newHash = createHash("sha256").update(scriptContent, "utf8").digest("base64");
+      out = out.replace(
+        /script-src (?:'sha256-[A-Za-z0-9+/=]+'|'unsafe-inline') 'self'(?: https:\/\/static\.cloudflareinsights\.com)?/g,
+        `script-src 'sha256-${newHash}' 'self'`,
+      );
+    }
   }
   return out;
 }

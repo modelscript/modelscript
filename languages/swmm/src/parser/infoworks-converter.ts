@@ -7,7 +7,6 @@
  * tables (hw_node, hw_conduit, hw_subcatchment, hw_weir, hw_pump) into a native SwmmDeck AST.
  */
 
-import { createRequire } from "node:module";
 import type {
   SwmmConduit,
   SwmmCrossSection,
@@ -21,7 +20,35 @@ import type {
   SwmmWeir,
 } from "../types.js";
 
-const req = createRequire(import.meta.url);
+interface SqliteDatabaseSyncInstance {
+  prepare(sql: string): { all(): Array<Record<string, unknown>> };
+  close(): void;
+}
+
+interface SqliteSyncModule {
+  DatabaseSync: new (path: string, options?: { readOnly?: boolean }) => SqliteDatabaseSyncInstance;
+}
+
+interface ProcessWithBuiltinModule {
+  getBuiltinModule?: (id: string) => unknown;
+}
+
+function getSqliteSync(): SqliteSyncModule {
+  if (typeof process !== "undefined") {
+    const proc = process as unknown as ProcessWithBuiltinModule;
+    if (typeof proc.getBuiltinModule === "function") {
+      const sqlite = proc.getBuiltinModule("node:sqlite") as SqliteSyncModule | undefined;
+      if (sqlite?.DatabaseSync) return sqlite;
+      const nm = proc.getBuiltinModule("node:module") as
+        | { createRequire?: (url: string) => (id: string) => SqliteSyncModule }
+        | undefined;
+      if (nm?.createRequire) {
+        return nm.createRequire(import.meta.url)("node:sqlite");
+      }
+    }
+  }
+  throw new Error("Reading an SQLite database from a file path is not supported in browser environments.");
+}
 
 export type InfoWorksTableRows = Record<string, Array<Record<string, unknown>>>;
 
@@ -68,7 +95,7 @@ export function parseInfoWorksDatabase(input: string | InfoWorksTableRows): Swmm
 
   if (typeof input === "string") {
     try {
-      const sqliteModule = req("node:sqlite");
+      const sqliteModule = getSqliteSync();
       const db = new sqliteModule.DatabaseSync(input, { readOnly: true });
 
       const tableListQuery = db.prepare("SELECT name FROM sqlite_master WHERE type='table';");

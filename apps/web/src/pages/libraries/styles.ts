@@ -333,6 +333,7 @@ export const DomainBadge = styled.span<{ $domain: string }>`
       case "cad":
       case "step":
       case "scad":
+      case "cad-structures":
         return "rgba(8, 145, 178, 0.12)";
       case "fmu":
       case "ssp":
@@ -342,6 +343,8 @@ export const DomainBadge = styled.span<{ $domain: string }>`
         return "rgba(37, 99, 235, 0.12)";
       case "power":
       case "pscad":
+      case "power-energy":
+      case "electrical-power":
         return "rgba(2, 132, 199, 0.12)";
       case "robotics":
       case "urdf":
@@ -349,6 +352,19 @@ export const DomainBadge = styled.span<{ $domain: string }>`
       case "hydraulics":
       case "epanet":
         return "rgba(14, 165, 233, 0.12)";
+      case "fluids-process":
+      case "process":
+        return "rgba(13, 148, 136, 0.12)";
+      case "mobility-auto":
+      case "mobility-systems":
+      case "automotive":
+        return "rgba(234, 88, 12, 0.12)";
+      case "life-sciences":
+      case "sbml":
+      case "biomodel":
+        return "rgba(16, 185, 129, 0.12)";
+      case "systems-physics":
+        return "rgba(139, 92, 246, 0.12)";
       case "verification":
         return "rgba(79, 70, 229, 0.12)";
       case "cfd":
@@ -368,6 +384,7 @@ export const DomainBadge = styled.span<{ $domain: string }>`
       case "cad":
       case "step":
       case "scad":
+      case "cad-structures":
         return "#0891b2";
       case "fmu":
       case "ssp":
@@ -377,6 +394,8 @@ export const DomainBadge = styled.span<{ $domain: string }>`
         return "#2563eb";
       case "power":
       case "pscad":
+      case "power-energy":
+      case "electrical-power":
         return "#0284c7";
       case "robotics":
       case "urdf":
@@ -384,6 +403,19 @@ export const DomainBadge = styled.span<{ $domain: string }>`
       case "hydraulics":
       case "epanet":
         return "#0284c7";
+      case "fluids-process":
+      case "process":
+        return "#0d9488";
+      case "mobility-auto":
+      case "mobility-systems":
+      case "automotive":
+        return "#ea580c";
+      case "life-sciences":
+      case "sbml":
+      case "biomodel":
+        return "#10b981";
+      case "systems-physics":
+        return "#8b5cf6";
       case "verification":
         return "#4f46e5";
       case "cfd":

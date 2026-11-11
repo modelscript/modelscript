@@ -248,7 +248,7 @@ function parseArithmeticExpression(str: string): ExprNode | undefined {
   if (parser) {
     try {
       const tree = parser.parse(`calc def __E { return ${trimmed}; }`);
-      if (tree?.rootNode && !tree.rootNode.hasError?.()) {
+      if (tree?.rootNode && !tree.rootNode.hasError) {
         const retNode =
           findFirstDescendant(tree.rootNode, "ReturnStatement") ||
           findFirstDescendant(tree.rootNode, "ResultExpressionMember");

@@ -1357,14 +1357,24 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
             (l) => l.packageName === name && (l.version === version || semver.satisfies(l.version, version)),
           );
         if (catalogLib) {
+          let author: string | undefined;
+          if (catalogLib.upstream?.url) {
+            try {
+              const parsed = new URL(catalogLib.upstream.url);
+              if (parsed.hostname === "github.com" || parsed.hostname === "www.github.com") {
+                author = parsed.pathname.split("/").filter(Boolean)[0];
+              }
+            } catch {
+              // ignore invalid URL
+            }
+          }
+
           res.json({
             name,
             version,
             description: catalogLib.description,
             license: catalogLib.license,
-            author: catalogLib.upstream?.url?.includes("github.com/")
-              ? catalogLib.upstream.url.split("github.com/")[1]?.split("/")[0]
-              : undefined,
+            author,
             profile: "engineering-package",
             modelicaVersion: version,
             domain: catalogLib.domain,
@@ -3067,10 +3077,40 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
       // 1. Check for custom package icon on disk (override)
       let svg = storage.readSvg(name, version, className, "icon");
+      if (svg && svg.includes("modelica://")) {
+        const extracted = storage.getExtractedPath(name, version);
+        if (extracted && fs.existsSync(extracted)) {
+          svg = svg.replace(
+            /(?:href|xlink:href)=["']modelica:\/\/([^/]+)\/([^"']+)["']/gi,
+            (match, libName, relPath) => {
+              const candidatePaths = [
+                path.join(extracted, relPath),
+                path.join(extracted, libName, relPath),
+                path.join(extracted, "Resources", relPath.replace(/^Resources\/?/i, "")),
+                path.join(extracted, "Resources", "images", path.basename(relPath)),
+              ];
+              for (const cand of candidatePaths) {
+                if (fs.existsSync(cand)) {
+                  try {
+                    const ext = path.extname(cand).slice(1).toLowerCase();
+                    const mime =
+                      ext === "svg" ? "image/svg+xml" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
+                    const b64 = fs.readFileSync(cand).toString("base64");
+                    return `href="data:${mime};base64,${b64}"`;
+                  } catch {}
+                }
+              }
+              return match;
+            },
+          );
+        }
+      }
+
       const hasDistinctVisual =
         svg &&
         !svg.includes('viewBox="0 0 120 80"') &&
-        (/<(line|circle|path|polygon|polyline|ellipse|image)\b/i.test(svg) ||
+        (/<(line|circle|path|polygon|polyline|ellipse)\b/i.test(svg) ||
+          /<image\b[^>]*\b(?:href|xlink:href)=["'](?!\s*["']|modelica:\/\/)/i.test(svg) ||
           /url\(#/i.test(svg) ||
           /<text\b[^>]*>(?:(?!<\/?text\b)[^<])+<\/text>/i.test(svg) ||
           /<rect\b[^>]*\b(?:rx="[^0]|ry="[^0]|fill="url\(#|width="(?!200(?:\.0+)?")[^"]+"|height="(?!200(?:\.0+)?")[^"]+)/i.test(
@@ -3093,10 +3133,23 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       const isRoot = className === name || className === name.split("/").pop() || className === "root";
       if (isRoot) {
         let domain = name;
+        const catalogLib =
+          getStdlibById(name) ??
+          getStdlibCatalog().libraries.find((l) => l.packageName.toLowerCase() === name.toLowerCase());
+        if (catalogLib?.language) {
+          domain = catalogLib.language;
+        }
         const pkgRecord = database.getPackage(name);
         if (pkgRecord) {
           const verRow = database.getPackageVersion(pkgRecord.id, version);
           if (verRow) {
+            if (verRow.manifest) {
+              try {
+                const parsedM = JSON.parse(verRow.manifest);
+                if (typeof parsedM.language === "string") domain = parsedM.language;
+                else if (typeof parsedM.modelscript?.language === "string") domain = parsedM.modelscript.language;
+              } catch {}
+            }
             const artifacts = database.getArtifacts(verRow.id);
             for (const a of artifacts) {
               const t = a.type.toLowerCase();
@@ -3114,6 +3167,22 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
               }
               if (t === "ssp") {
                 domain = "ssp";
+                break;
+              }
+              if (t === "urdf") {
+                domain = "urdf";
+                break;
+              }
+              if (t === "spice") {
+                domain = "spice";
+                break;
+              }
+              if (t === "epanet") {
+                domain = "epanet";
+                break;
+              }
+              if (t === "swmm") {
+                domain = "swmm";
                 break;
               }
             }

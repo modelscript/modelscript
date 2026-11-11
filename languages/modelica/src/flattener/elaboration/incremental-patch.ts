@@ -172,12 +172,8 @@ export function checkBalance(dae: DAEBuilder, db: QueryDB, rootClassId?: SymbolI
     for (const expr of [lhs, rhs]) {
       if (expr < 0) continue;
       let target = expr;
-      while (
-        target >= 0 &&
-        (dae.getExprKind(target) === ExprKind.Der || dae.getExprKind(target) === ExprKind.Negate)
-      ) {
-        target =
-          dae.getExprKind(target) === ExprKind.Der ? dae.getExprData1(target) : dae.getExprLeft(target);
+      while (target >= 0 && (dae.getExprKind(target) === ExprKind.Der || dae.getExprKind(target) === ExprKind.Negate)) {
+        target = dae.getExprKind(target) === ExprKind.Der ? dae.getExprData1(target) : dae.getExprLeft(target);
       }
       if (target < 0) continue;
       if (dae.getExprKind(target) === ExprKind.ArrayCtor) {
@@ -424,7 +420,10 @@ export function patchIncremental(
       if (kind === EqKind.Simple || kind === EqKind.InitialSimple) {
         const eqNode = findEquationNodeAt(rootCst, range.startOffset, range.endOffset);
         if (eqNode) {
-          const expressions = (eqNode.children || []).filter(isEquationExpr);
+          const leftNode = Cst.SimpleEquation.lhs(eqNode) ?? eqNode.childForFieldId?.(FieldId.lhs);
+          const rightNode = Cst.SimpleEquation.rhs(eqNode) ?? eqNode.childForFieldId?.(FieldId.rhs);
+          const expressions =
+            leftNode && rightNode ? [leftNode, rightNode] : (eqNode.children || []).filter(isEquationExpr);
           if (expressions.length >= 2) {
             let lhsExprId = lowerExpr(expressions[0], dae, "");
             const isTupleLhs = dae.getExprKind(lhsExprId) === ExprKind.Tuple;
@@ -478,7 +477,10 @@ export function patchIncremental(
     // 2. Check if range matches an inserted equation
     const insertedEqNode = findEquationNodeAt(rootCst, range.startOffset, range.endOffset);
     if (insertedEqNode) {
-      const expressions = (insertedEqNode.children || []).filter(isEquationExpr);
+      const leftNode = Cst.SimpleEquation.lhs(insertedEqNode) ?? insertedEqNode.childForFieldId?.(FieldId.lhs);
+      const rightNode = Cst.SimpleEquation.rhs(insertedEqNode) ?? insertedEqNode.childForFieldId?.(FieldId.rhs);
+      const expressions =
+        leftNode && rightNode ? [leftNode, rightNode] : (insertedEqNode.children || []).filter(isEquationExpr);
       if (expressions.length >= 2) {
         let lhsExprId = lowerExpr(expressions[0], dae, "");
         const isTupleLhs = dae.getExprKind(lhsExprId) === ExprKind.Tuple;

@@ -231,4 +231,40 @@ describe("Modelica edit-after-post", () => {
     assert.deepEqual(view_config, v.view_config);
     assert.equal(uploads.length, 0);
   });
+
+  it("detects external dependencies and renders dependencies step and persists in build", async () => {
+    const modelWithUses = `
+model ChilledWaterPlant
+  annotation(uses(Buildings(version = "11.0.0")));
+  Buildings.Fluid.Sources.Boundary_pT b;
+equation
+end ChilledWaterPlant;
+`;
+    const uploads: Upload[] = [];
+    const analysis = await modelicaAttachProfile.analyze(new File([modelWithUses], "plant.mo"), ctxWith(uploads));
+    assert.equal(analysis.draft.dependencies.length, 1);
+    assert.equal(analysis.draft.dependencies[0]!.name, "Buildings");
+    assert.equal(analysis.draft.dependencies[0]!.version, "11.0.0");
+    assert.ok(analysis.chips.some((c) => c.label.includes("external library")));
+
+    // Visible steps should include the dependencies step
+    const steps = visibleSteps(modelicaAttachProfile, analysis.draft);
+    assert.ok(steps.some((s) => s.id === "dependencies"));
+
+    // build() persists dependencies into view_config
+    const built = await modelicaAttachProfile.build(analysis.draft, ctxWith(uploads));
+    assert.ok(Array.isArray(built.view_config["dependencies"]));
+    assert.equal((built.view_config["dependencies"] as any[])[0].name, "Buildings");
+
+    // edit.open restores dependencies
+    const editAnalysis = await modelicaAttachProfile.edit!.open(
+      view({
+        code: modelWithUses,
+        dependencies: [{ name: "Buildings", version: "10.0.0" }],
+      }),
+      ctxWith(uploads),
+    );
+    assert.equal(editAnalysis.draft.dependencies.length, 1);
+    assert.equal(editAnalysis.draft.dependencies[0]!.version, "10.0.0");
+  });
 });

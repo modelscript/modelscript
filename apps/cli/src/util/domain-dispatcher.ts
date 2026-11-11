@@ -257,7 +257,11 @@ async function inspectCoreLanguageFile(
     const resolved = await LanguageResolver.resolve(absPath, langId);
     const { parser } = await resolved.loadParser();
     const tree = parser.parse(content);
-    summary["hasSyntaxErrors"] = Boolean(tree?.rootNode?.hasError?.());
+    summary["hasSyntaxErrors"] = Boolean(
+      typeof (tree?.rootNode as any)?.hasError === "function"
+        ? (tree?.rootNode as any).hasError()
+        : tree?.rootNode?.hasError,
+    );
   } catch {
     // Parser binary optional for lightweight inspection
   }

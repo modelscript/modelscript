@@ -299,7 +299,7 @@ export function infixArithmeticToSmt(expr: string): string {
   if (parser) {
     try {
       const tree = parser.parse(`calc def __E { return ${trimmed}; }`);
-      if (tree?.rootNode && !tree.rootNode.hasError?.()) {
+      if (tree?.rootNode && !tree.rootNode.hasError) {
         const retNode =
           findFirstDescendant(tree.rootNode, "ReturnStatement") ||
           findFirstDescendant(tree.rootNode, "ResultExpressionMember");
@@ -336,7 +336,7 @@ export function extractVariablesFromArithmetic(expr: string): string[] {
   if (parser) {
     try {
       const tree = parser.parse(`calc def __E { return ${expr.trim()}; }`);
-      if (tree?.rootNode && !tree.rootNode.hasError?.()) {
+      if (tree?.rootNode && !tree.rootNode.hasError) {
         const vars: string[] = [];
         const idents = findCstDescendants(tree.rootNode, "Identification") || [];
         for (const idNode of idents) {

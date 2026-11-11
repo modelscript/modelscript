@@ -102,6 +102,7 @@ export function transpileQuery(
    * right before the return.
    */
   const activeCursors: string[] = [];
+  let activeScopes = 0;
   const transformer: ts.TransformerFactory<ts.SourceFile> = (transformerContext) => {
     const visitInner: ts.Visitor = (node) => {
       if (context === "scanner") {
@@ -201,8 +202,43 @@ export function transpileQuery(
           ]);
         }
       }
-      // A `return` inside a cursor loop must release every enclosing cursor first.
-      if (ts.isReturnStatement(node) && activeCursors.length > 0) {
+      // A `return` inside a cursor loop or scope block must release every enclosing cursor and pop every scope first.
+      if (ts.isReturnStatement(node) && (activeCursors.length > 0 || activeScopes > 0)) {
+        const cleanups: ts.Statement[] = [];
+        for (let i = activeCursors.length - 1; i >= 0; i--) {
+          cleanups.push(
+            ts.factory.createExpressionStatement(
+              ts.factory.createCallExpression(
+                ts.factory.createPropertyAccessExpression(ts.factory.createIdentifier(activeCursors[i]!), "release"),
+                undefined,
+                [],
+              ),
+            ),
+          );
+        }
+        for (let i = 0; i < activeScopes; i++) {
+          cleanups.push(
+            ts.factory.createExpressionStatement(
+              ts.factory.createCallExpression(
+                ts.factory.createPropertyAccessExpression(
+                  ts.factory.createPropertyAccessExpression(
+                    ts.factory.createIdentifier("graph"),
+                    ts.factory.createIdentifier("scope"),
+                  ),
+                  ts.factory.createIdentifier("pop"),
+                ),
+                undefined,
+                [],
+              ),
+            ),
+          );
+        }
+        const visitedReturn = ts.visitEachChild(node, visit, transformerContext) as ts.Statement;
+        return ts.factory.createBlock([...cleanups, visitedReturn], true);
+      }
+
+      // A labeled break or continue jumping out of nested cursor loops must release enclosing cursors.
+      if ((ts.isBreakStatement(node) || ts.isContinueStatement(node)) && node.label && activeCursors.length > 0) {
         const releases = [...activeCursors]
           .reverse()
           .map((name) =>
@@ -214,8 +250,8 @@ export function transpileQuery(
               ),
             ),
           );
-        const visitedReturn = ts.visitEachChild(node, visit, transformerContext) as ts.Statement;
-        return ts.factory.createBlock([...releases, visitedReturn], true);
+        const visitedJump = ts.visitEachChild(node, visit, transformerContext) as ts.Statement;
+        return ts.factory.createBlock([...releases, visitedJump], true);
       }
 
       // 3. Syntax Sugar: for...of loops over cursors
@@ -364,13 +400,18 @@ export function transpileQuery(
             const prefixArg = call.arguments[0]!;
             const fnArg = call.arguments[1]!;
 
+            activeScopes++;
             let bodyStmts: ts.Statement[] = [];
-            if (ts.isArrowFunction(fnArg) || ts.isFunctionExpression(fnArg)) {
-              if (ts.isBlock(fnArg.body)) {
-                bodyStmts = fnArg.body.statements.map((s) => visitNode(s) as ts.Statement);
-              } else {
-                bodyStmts = [ts.factory.createExpressionStatement(visitNode(fnArg.body) as ts.Expression)];
+            try {
+              if (ts.isArrowFunction(fnArg) || ts.isFunctionExpression(fnArg)) {
+                if (ts.isBlock(fnArg.body)) {
+                  bodyStmts = fnArg.body.statements.map((s) => visitNode(s) as ts.Statement);
+                } else {
+                  bodyStmts = [ts.factory.createExpressionStatement(visitNode(fnArg.body) as ts.Expression)];
+                }
               }
+            } finally {
+              activeScopes--;
             }
 
             let prefixExpr: ts.Expression;
@@ -424,10 +465,13 @@ export function transpileQuery(
         const isExternal = opts.externals
           ? opts.externals instanceof Set
             ? opts.externals.has(rawName) || opts.externals.has(upper)
-            : (opts.externals as any).includes(rawName) || (opts.externals as any).includes(upper)
+            : Array.isArray(opts.externals)
+              ? (opts.externals as any).includes(rawName) || (opts.externals as any).includes(upper)
+              : false
           : false;
         const existsInRules = isExternal || (rules ? Boolean(rules[rawName] || rules[upper]) : true);
         if (rules && !existsInRules) {
+          console.warn(`[DSL Transpiler] Warning: Rule '${rawName}' not found in grammar rules or externals.`);
           return ts.factory.createTypeAssertion(
             ts.factory.createTypeReferenceNode("u16"),
             ts.factory.createNumericLiteral((getDJB2Hash(rawName) & 0xffff).toString()),
@@ -656,6 +700,9 @@ export function transpileQuery(
                 const fieldName = fieldArg.text;
                 const safeName = fieldName.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
                 const fieldExists = fieldToInt ? fieldToInt.has(fieldName) : true;
+                if (!fieldExists && fieldToInt) {
+                  console.warn(`[DSL Transpiler] Warning: Field '${fieldName}' not found in grammar fields.`);
+                }
                 const fieldExpr = fieldExists
                   ? ts.factory.createPropertyAccessExpression(
                       ts.factory.createIdentifier("FieldId"),

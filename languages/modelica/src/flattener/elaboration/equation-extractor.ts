@@ -477,6 +477,93 @@ export function emitFunctionCallEquation(
   }
 }
 
+function getSimpleEqBinOp(op: string | undefined): BinOp | null {
+  if (!op) return null;
+  switch (op) {
+    case "+":
+      return BinOp.Add;
+    case ".+":
+      return BinOp.ElemAdd;
+    case "-":
+      return BinOp.Sub;
+    case ".-":
+      return BinOp.ElemSub;
+    case "*":
+      return BinOp.Mul;
+    case ".*":
+      return BinOp.ElemMul;
+    case "/":
+      return BinOp.Div;
+    case "./":
+      return BinOp.ElemDiv;
+    case "^":
+      return BinOp.Pow;
+    case ".^":
+      return BinOp.ElemPow;
+    case "<":
+      return BinOp.Lt;
+    case "<=":
+      return BinOp.Lte;
+    case ">":
+      return BinOp.Gt;
+    case ">=":
+      return BinOp.Gte;
+    case "==":
+      return BinOp.Eq;
+    case "<>":
+      return BinOp.Neq;
+    case "and":
+      return BinOp.And;
+    case "or":
+      return BinOp.Or;
+    case ":":
+      return BinOp.Colon;
+    default:
+      return null;
+  }
+}
+
+function extractSimpleEquationSides(
+  n: any,
+  flattener: any,
+  dae: DAEBuilder,
+  prefix: string,
+  substitutions?: Map<string, number | string>,
+): { lhsExprId: number; rhsNode: any; isTupleLhs: boolean; lhsNode: any } | null {
+  const children: any[] = n.children || [];
+  const eqIdx = children.findIndex((c: any) => c.type === "=" || c.type === '"="' || c.text?.trim() === "=");
+  const lhsKids =
+    eqIdx >= 0 ? children.slice(0, eqIdx).filter((c: any) => c.type !== "comment" && c.type !== "description") : [];
+  const rhsKids =
+    eqIdx >= 0 ? children.slice(eqIdx + 1).filter((c: any) => c.type !== "comment" && c.type !== "description") : [];
+
+  if (lhsKids.length > 1 && rhsKids.length > 0) {
+    let lhsExprId = flattener.lowerExpr(lhsKids[0], dae, prefix, substitutions, false, true);
+    for (let k = 1; k < lhsKids.length; k += 2) {
+      const opText = lhsKids[k]?.text?.trim();
+      const nextKid = lhsKids[k + 1];
+      if (!nextKid) break;
+      const nextId = flattener.lowerExpr(nextKid, dae, prefix, substitutions, false, true);
+      const binOp = getSimpleEqBinOp(opText);
+      if (binOp !== null && lhsExprId >= 0 && nextId >= 0) {
+        lhsExprId = dae.addBinaryExpr(binOp, lhsExprId, nextId);
+      }
+    }
+    const isTuple = lhsExprId >= 0 && dae.getExprKind(lhsExprId) === ExprKind.Tuple;
+    return { lhsExprId, rhsNode: rhsKids[0], isTupleLhs: isTuple, lhsNode: lhsKids[0] };
+  }
+
+  const leftNode = lhsKids.length === 1 ? lhsKids[0] : (Cst.SimpleEquation.lhs(n) ?? n.childForFieldId?.(FieldId.lhs));
+  const rightNode = rhsKids.length === 1 ? rhsKids[0] : (Cst.SimpleEquation.rhs(n) ?? n.childForFieldId?.(FieldId.rhs));
+  const exprs = leftNode && rightNode ? [leftNode, rightNode] : children.filter(isEquationExpr);
+  if (exprs.length >= 2 && exprs[0] && exprs[1]) {
+    const lId = flattener.lowerExpr(exprs[0], dae, prefix, substitutions, false, true);
+    const isTuple = lId >= 0 && dae.getExprKind(lId) === ExprKind.Tuple;
+    return { lhsExprId: lId, rhsNode: exprs[1], isTupleLhs: isTuple, lhsNode: exprs[0] };
+  }
+  return null;
+}
+
 /**
  * Recursively extracts and lowers all equations, initial equations, connections, and
  * algorithm sections for `classId` (including its composite sub-components, short-class
@@ -1335,13 +1422,10 @@ export function extractClassEquations(
                   return [];
                 }
                 if (n.type === "simple_equation") {
-                  const leftNode = Cst.SimpleEquation.lhs(n) ?? n.childForFieldId?.(FieldId.lhs);
-                  const rightNode = Cst.SimpleEquation.rhs(n) ?? n.childForFieldId?.(FieldId.rhs);
-                  const exprs =
-                    leftNode && rightNode ? [leftNode, rightNode] : (n.children || []).filter(isEquationExpr);
-                  if (exprs.length >= 2) {
-                    const lId = flattener.lowerExpr(exprs[0], dae, prefix, substitutions, undefined, true);
-                    let rId = flattener.lowerExpr(exprs[1], dae, prefix, substitutions);
+                  const sides = extractSimpleEquationSides(n, flattener, dae, prefix, substitutions);
+                  if (sides) {
+                    let lId = sides.lhsExprId;
+                    let rId = flattener.lowerExpr(sides.rhsNode, dae, prefix, substitutions);
                     if (isRealExpr(lId, dae) && !isRealExpr(rId, dae)) {
                       rId = castToRealExpr(rId, dae);
                     }
@@ -1757,13 +1841,10 @@ export function extractClassEquations(
                   return [];
                 }
                 if (n.type === "simple_equation") {
-                  const leftNode = Cst.SimpleEquation.lhs(n) ?? n.childForFieldId?.(FieldId.lhs);
-                  const rightNode = Cst.SimpleEquation.rhs(n) ?? n.childForFieldId?.(FieldId.rhs);
-                  const exprs =
-                    leftNode && rightNode ? [leftNode, rightNode] : (n.children || []).filter(isEquationExpr);
-                  if (exprs.length >= 2) {
-                    const lId = flattener.lowerExpr(exprs[0], dae, prefix, substitutions);
-                    const rId = flattener.lowerExpr(exprs[1], dae, prefix, substitutions);
+                  const sides = extractSimpleEquationSides(n, flattener, dae, prefix, substitutions);
+                  if (sides) {
+                    const lId = sides.lhsExprId;
+                    const rId = flattener.lowerExpr(sides.rhsNode, dae, prefix, substitutions);
                     return scalarizeInlineSimpleEq(lId, rId);
                   }
                 }
@@ -1968,9 +2049,10 @@ export function extractClassEquations(
               }
             }
 
-            const expressions = (node.children || []).filter(isEquationExpr);
-            if (expressions.length >= 2) {
-              let lhsExprId = flattener.lowerExpr(expressions[0], dae, prefix, substitutions, false, true);
+            const sides = extractSimpleEquationSides(node, flattener, dae, prefix, substitutions);
+            if (sides) {
+              let lhsExprId = sides.lhsExprId;
+              const expressions = [sides.lhsNode, sides.rhsNode];
               if (
                 dae.extensionMetadata?.["isOldFrontend"] &&
                 lhsExprId >= 0 &&
@@ -3328,14 +3410,11 @@ export function extractClassEquations(
             const collectWhenBody = (n: any) => {
               if (!n || hasWhenLhsError) return;
               if (n.type === "simple_equation") {
-                const leftNode = Cst.SimpleEquation.lhs(n) ?? n.childForFieldId?.(FieldId.lhs);
-                const rightNode = Cst.SimpleEquation.rhs(n) ?? n.childForFieldId?.(FieldId.rhs);
-                const expressions =
-                  leftNode && rightNode ? [leftNode, rightNode] : (n.children || []).filter(isEquationExpr);
-                if (expressions.length >= 2) {
-                  let lhsId = flattener.lowerExpr(expressions[0], dae, prefix, substitutions);
-                  const isTupleLhs = dae.getExprKind(lhsId) === ExprKind.Tuple;
-                  let rhsId = flattener.lowerExpr(expressions[1], dae, prefix, substitutions, isTupleLhs);
+                const sides = extractSimpleEquationSides(n, flattener, dae, prefix, substitutions);
+                if (sides) {
+                  let lhsId = sides.lhsExprId;
+                  const isTupleLhs = sides.isTupleLhs;
+                  let rhsId = flattener.lowerExpr(sides.rhsNode, dae, prefix, substitutions, isTupleLhs);
                   if (isRealExpr(lhsId, dae) && !isRealExpr(rhsId, dae)) {
                     rhsId = castToRealExpr(rhsId, dae);
                   }

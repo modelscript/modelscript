@@ -134,18 +134,25 @@ export interface RouterNodeLike {
   getPorts?: (() => RouterPortConfig[] | null | undefined) | undefined;
 }
 
+export interface RouterTerminalRef {
+  cell?: string | undefined;
+  port?: string | undefined;
+  x?: number | undefined;
+  y?: number | undefined;
+}
+
 export interface RouterEdgeLike {
   id?: string | undefined;
-  source?: { cell?: string | undefined; port?: string | undefined } | undefined;
-  target?: { cell?: string | undefined; port?: string | undefined } | undefined;
+  source?: RouterTerminalRef | undefined;
+  target?: RouterTerminalRef | undefined;
   getSourceCellId?: (() => string | undefined) | undefined;
   getTargetCellId?: (() => string | undefined) | undefined;
   getSourcePortId?: (() => string | undefined) | undefined;
   getTargetPortId?: (() => string | undefined) | undefined;
   getSourceCell?: (() => RouterNodeLike | null | undefined) | undefined;
   getTargetCell?: (() => RouterNodeLike | null | undefined) | undefined;
-  getSource?: (() => { cell?: string | undefined; port?: string | undefined } | null | undefined) | undefined;
-  getTarget?: (() => { cell?: string | undefined; port?: string | undefined } | null | undefined) | undefined;
+  getSource?: (() => RouterTerminalRef | null | undefined) | undefined;
+  getTarget?: (() => RouterTerminalRef | null | undefined) | undefined;
   getSourcePoint?: (() => PointLike | null | undefined) | undefined;
   getTargetPoint?: (() => PointLike | null | undefined) | undefined;
   getVertices?: (() => PointLike[] | null | undefined) | undefined;
@@ -162,6 +169,8 @@ export interface RouterGraphLike {
 export interface RouterEdgeViewLike {
   sourcePoint?: PointLike | null | undefined;
   targetPoint?: PointLike | null | undefined;
+  sourceAnchor?: PointLike | null | undefined;
+  targetAnchor?: PointLike | null | undefined;
   graph?: RouterGraphLike | null | undefined;
   cell?: RouterEdgeLike | null | undefined;
 }
@@ -2859,21 +2868,50 @@ export function portOrthogonalRouter(
   args: RouterOptions & Record<string, unknown> = {},
   edgeView?: RouterEdgeViewLike,
 ): PointLike[] {
+  const isValidPt = (p?: PointLike | null): p is PointLike =>
+    typeof p?.x === "number" && !isNaN(p.x) && typeof p?.y === "number" && !isNaN(p.y);
+
+  const rawSource = (
+    typeof edgeView?.cell?.getSource === "function" ? edgeView.cell.getSource() : edgeView?.cell?.source
+  ) as RouterTerminalRef | undefined;
+  const rawTarget = (
+    typeof edgeView?.cell?.getTarget === "function" ? edgeView.cell.getTarget() : edgeView?.cell?.target
+  ) as RouterTerminalRef | undefined;
+
+  const source =
+    (isValidPt(edgeView?.sourceAnchor) ? edgeView.sourceAnchor : null) ??
+    (isValidPt(edgeView?.sourcePoint) ? edgeView.sourcePoint : null) ??
+    (rawSource &&
+    typeof rawSource.x === "number" &&
+    !isNaN(rawSource.x) &&
+    typeof rawSource.y === "number" &&
+    !isNaN(rawSource.y)
+      ? { x: rawSource.x, y: rawSource.y }
+      : null);
+
+  const target =
+    (isValidPt(edgeView?.targetAnchor) ? edgeView.targetAnchor : null) ??
+    (isValidPt(edgeView?.targetPoint) ? edgeView.targetPoint : null) ??
+    (rawTarget &&
+    typeof rawTarget.x === "number" &&
+    !isNaN(rawTarget.x) &&
+    typeof rawTarget.y === "number" &&
+    !isNaN(rawTarget.y)
+      ? { x: rawTarget.x, y: rawTarget.y }
+      : null);
+
   // If manual vertices are explicitly specified, preserve them while healing any terminal/interior orthogonality drift.
   // Never run obstacle-free loop pruning on explicit vertices (which would collapse intentional C-bends around components).
   if (vertices && vertices.length > 0) {
-    if (edgeView?.sourcePoint && edgeView?.targetPoint) {
-      const healed = healOrthogonalVertices(edgeView.sourcePoint, edgeView.targetPoint, vertices);
-      const simplifiedFull = simplifyCollinearPoints([edgeView.sourcePoint, ...healed, edgeView.targetPoint], 0.05);
+    if (source && target) {
+      const healed = healOrthogonalVertices(source, target, vertices);
+      const simplifiedFull = simplifyCollinearPoints([source, ...healed, target], 0.05);
       return simplifiedFull.length > 2 ? simplifiedFull.slice(1, -1) : [];
     }
     return simplifyCollinearPoints(vertices, 0.05);
   }
 
   if (!edgeView) return [];
-
-  const source = edgeView.sourcePoint;
-  const target = edgeView.targetPoint;
   if (!source || !target) return [];
 
   // Extract obstacle rectangles, port normals, and parallel edges from graph cells

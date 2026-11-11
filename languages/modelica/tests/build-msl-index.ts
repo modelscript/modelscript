@@ -18,23 +18,36 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Parse arguments
+let library = "Modelica";
 let version = "4.0.0";
 let force = false;
 
 for (const arg of process.argv.slice(2)) {
-  if (arg.startsWith("--version=")) {
+  if (arg.startsWith("--library=") || arg.startsWith("--lib=")) {
+    library = arg.split("=")[1].trim();
+  } else if (arg.startsWith("--version=")) {
     version = arg.split("=")[1].trim();
   } else if (arg === "--force" || arg === "-f") {
     force = true;
   }
 }
 
+const libNorm = library.toLowerCase();
+const isMsl = libNorm === "modelica" || libNorm === "msl";
+const isOpenIpsl = libNorm === "openipsl";
+const rootPkgName = isMsl ? "Modelica" : isOpenIpsl ? "OpenIPSL" : library;
+const libSlug = isMsl ? "msl" : isOpenIpsl ? "openipsl" : library.toLowerCase();
+
+if (isOpenIpsl && !process.argv.some((a) => a.startsWith("--version="))) {
+  version = "3.1.0";
+}
+
 const repoRoot = path.resolve(__dirname, "../../..");
 const cacheDir = path.join(repoRoot, ".cache");
 fs.mkdirSync(cacheDir, { recursive: true });
 
-const indexCachePath = path.join(cacheDir, `msl-${version}-symbol-index.json`);
-const modelsCachePath = path.join(cacheDir, `msl-${version}-models.json`);
+const indexCachePath = path.join(cacheDir, `${libSlug}-${version}-symbol-index.json`);
+const modelsCachePath = path.join(cacheDir, `${libSlug}-${version}-models.json`);
 
 export interface DiscoveredModel {
   fqn: string;
@@ -44,7 +57,11 @@ export interface DiscoveredModel {
   package: string;
 }
 
-export function discoverModelsFromIndex(rawSymbols: [number, any][], mslDir: string): DiscoveredModel[] {
+export function discoverModelsFromIndex(
+  rawSymbols: [number, any][],
+  libDir: string,
+  rootPkgName = "Modelica",
+): DiscoveredModel[] {
   const symMap = new Map<number, any>(rawSymbols);
 
   function getFullFQN(id: number): string {
@@ -66,7 +83,7 @@ export function discoverModelsFromIndex(rawSymbols: [number, any][], mslDir: str
       sym.kind === "Class" &&
       sym.ruleName === "class_definition" &&
       sym.resourceId &&
-      sym.resourceId.startsWith(mslDir)
+      sym.resourceId.startsWith(libDir)
     ) {
       const parent = sym.parentId != null ? symMap.get(sym.parentId) : null;
       const parentPrefix = parent?.metadata?.classPrefixes || parent?.metadata?.classKind;
@@ -76,7 +93,7 @@ export function discoverModelsFromIndex(rawSymbols: [number, any][], mslDir: str
       if (!parentIsPackage) continue;
 
       const fqn = getFullFQN(id);
-      if (!fqn.startsWith("Modelica.") && fqn !== "Modelica") continue;
+      if (!fqn.startsWith(`${rootPkgName}.`) && fqn !== rootPkgName) continue;
       if (seenFqns.has(fqn)) continue;
       seenFqns.add(fqn);
 
@@ -106,7 +123,7 @@ if (!force && fs.existsSync(indexCachePath) && fs.existsSync(modelsCachePath)) {
 if (!force && fs.existsSync(indexCachePath)) {
   console.log(`[build-msl-index] Loading cached SymbolIndex from ${indexCachePath}...`);
   const raw = JSON.parse(fs.readFileSync(indexCachePath, "utf-8"));
-  const discovered = discoverModelsFromIndex(raw.symbols, raw.mslDir);
+  const discovered = discoverModelsFromIndex(raw.symbols, raw.mslDir || raw.libDir, rootPkgName);
   const examplesCount = discovered.filter((m) => m.isExample).length;
   console.log(`[build-msl-index] Found ${discovered.length} models (${examplesCount} in Examples packages)`);
   fs.writeFileSync(modelsCachePath, JSON.stringify(discovered, null, 2), "utf-8");
@@ -115,23 +132,36 @@ if (!force && fs.existsSync(indexCachePath)) {
   process.exit(0);
 }
 
-// Locate MSL directory
-const candidatePaths = [
-  path.join(repoRoot, "scripts", "msl", `Modelica ${version}`),
-  path.join(process.env.HOME || "", `.openmodelica/libraries/Modelica ${version}+maint.om`),
-  path.join(process.env.HOME || "", `.openmodelica/libraries/Modelica ${version}`),
-];
+// Locate library directory
+const candidatePaths = isMsl
+  ? [
+      path.join(repoRoot, "scripts", "msl", `Modelica ${version}`),
+      path.join(repoRoot, "data", "libraries", "Modelica", version, "extracted", "Modelica"),
+      path.join(process.env.HOME || "", `.openmodelica/libraries/Modelica ${version}+maint.om`),
+      path.join(process.env.HOME || "", `.openmodelica/libraries/Modelica ${version}`),
+    ]
+  : [
+      path.join(repoRoot, "data", "libraries", rootPkgName, version, "extracted", rootPkgName),
+      path.join(repoRoot, "data", "libraries", rootPkgName, "extracted", rootPkgName),
+      path.join(process.env.HOME || "", `.openmodelica/libraries/${rootPkgName} ${version}`),
+      path.join(process.env.HOME || "", `.openmodelica/libraries/${rootPkgName}`),
+      path.join(process.env.MODELICAPATH || "", rootPkgName),
+    ];
 
-const mslDir = candidatePaths.find((p) => fs.existsSync(p) && fs.existsSync(path.join(p, "package.mo")));
+const libDir = candidatePaths.find((p) => p && fs.existsSync(p) && fs.existsSync(path.join(p, "package.mo")));
 
-if (!mslDir) {
-  console.error(`[build-msl-index] MSL ${version} directory not found! Checked:`);
-  for (const c of candidatePaths) console.error("  " + c);
-  console.error(`Please run: node scripts/download-msl.cjs --version=${version} --extract`);
+if (!libDir) {
+  console.error(`[build-msl-index] Library ${rootPkgName} ${version} directory not found! Checked:`);
+  for (const c of candidatePaths) if (c) console.error("  " + c);
+  if (isMsl) {
+    console.error(`Please run: node scripts/download-msl.cjs --version=${version} --extract`);
+  } else {
+    console.error(`Please run: npx tsx scripts/sync-stdlibs.ts --lang=modelica`);
+  }
   process.exit(1);
 }
 
-console.log(`[build-msl-index] Using MSL ${version} at: ${mslDir}`);
+console.log(`[build-msl-index] Using ${rootPkgName} ${version} at: ${libDir}`);
 
 // Initialize parser
 const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
@@ -180,8 +210,23 @@ context.workspaceIndex.register = function (uri: string, loader?: () => any, par
   return res;
 };
 
-console.log(`[build-msl-index] Indexing MSL package tree...`);
-await context.addLibrary(mslDir);
+if (!isMsl) {
+  const mslCandidates = [
+    path.join(repoRoot, "data", "libraries", "Modelica", "4.0.0", "extracted", "Modelica"),
+    path.join(repoRoot, "data", "libraries", "Modelica", "4.1.0", "extracted", "Modelica"),
+    path.join(process.env.HOME || "", ".openmodelica", "libraries", "Modelica 4.0.0+maint.om"),
+    path.join(process.env.HOME || "", ".openmodelica", "libraries", "Modelica 4.1.0+maint.om"),
+    path.join(repoRoot, "scripts", "msl", "Modelica 4.0.0"),
+  ];
+  const mslPath = mslCandidates.find((p) => p && fs.existsSync(p) && fs.existsSync(path.join(p, "package.mo")));
+  if (mslPath) {
+    console.log(`[build-msl-index] Pre-loading MSL dependency from: ${mslPath}`);
+    await context.addLibrary(mslPath, { skipIndex: true });
+  }
+}
+
+console.log(`[build-msl-index] Indexing ${rootPkgName} package tree...`);
+await context.addLibrary(libDir);
 console.log(`\n[build-msl-index] Indexed ${fileCount} files in ${((Date.now() - t0) / 1000).toFixed(2)}s`);
 
 const symbolIndex = context.queryEngine.index;
@@ -191,7 +236,9 @@ console.log(`[build-msl-index] Total symbols: ${symbolIndex.symbols.size}`);
 console.log(`[build-msl-index] Serializing SymbolIndex to ${indexCachePath}...`);
 const serialized = {
   version,
-  mslDir,
+  library: rootPkgName,
+  libDir,
+  mslDir: libDir, // for backward compatibility with existing tasks
   symbols: Array.from(symbolIndex.symbols.entries()),
   byName: Array.from(symbolIndex.byName.entries()),
   childrenOf: Array.from(symbolIndex.childrenOf.entries()),
@@ -203,9 +250,7 @@ console.log(
 
 // 2. Discover and classify all models
 console.log(`[build-msl-index] Discovering models...`);
-// 2. Discover and classify all models
-console.log(`[build-msl-index] Discovering models...`);
-const discoveredModels = discoverModelsFromIndex(serialized.symbols, mslDir);
+const discoveredModels = discoverModelsFromIndex(serialized.symbols, libDir, rootPkgName);
 const examplesCount = discoveredModels.filter((m) => m.isExample).length;
 console.log(`[build-msl-index] Found ${discoveredModels.length} models (${examplesCount} in Examples packages)`);
 

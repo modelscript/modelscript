@@ -89,6 +89,8 @@ export {
   verifyFortranSource,
 };
 
+export * from "./lsp.js";
+
 export type {
   CompiledFortranComponent,
   CompiledUserComponentStep,

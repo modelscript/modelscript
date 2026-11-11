@@ -53,13 +53,19 @@ for (const fileName of ["index.html", "index-no-csp.html"]) {
       /if \((?:hostname === "localhost" \|\| hostname === "127\.0\.0\.1" \|\| )?(?:location\.origin === parentOrigin \|\| )?hostname === parentOriginHash/g,
       'if (hostname === "localhost" || hostname === "127.0.0.1" || location.origin === parentOrigin || hostname === parentOriginHash',
     );
-    const scriptMatch = raw.match(/<script\b[^>]*>([\s\S]*?)<\/script>/);
-    if (scriptMatch && scriptMatch[1]) {
-      const newHash = createHash("sha256").update(scriptMatch[1], "utf8").digest("base64");
-      raw = raw.replace(
-        /script-src (?:'sha256-[A-Za-z0-9+/=]+'|'unsafe-inline') 'self'(?: https:\/\/static\.cloudflareinsights\.com; connect-src 'self' https:\/\/cloudflareinsights\.com https:\/\/\*\.cloudflareinsights\.com)?/g,
-        `script-src 'sha256-${newHash}' 'self'`,
-      );
+    const lowerRaw = raw.toLowerCase();
+    const scriptStart = lowerRaw.indexOf("<script");
+    const scriptEnd = lowerRaw.indexOf("</script>", scriptStart);
+    if (scriptStart !== -1 && scriptEnd !== -1) {
+      const contentStart = raw.indexOf(">", scriptStart) + 1;
+      const scriptContent = raw.slice(contentStart, scriptEnd);
+      if (scriptContent) {
+        const newHash = createHash("sha256").update(scriptContent, "utf8").digest("base64");
+        raw = raw.replace(
+          /script-src (?:'sha256-[A-Za-z0-9+/=]+'|'unsafe-inline') 'self'(?: https:\/\/static\.cloudflareinsights\.com; connect-src 'self' https:\/\/cloudflareinsights\.com https:\/\/\*\.cloudflareinsights\.com)?/g,
+          `script-src 'sha256-${newHash}' 'self'`,
+        );
+      }
     }
     writeFileSync(webviewPrePath, raw, "utf-8");
   }

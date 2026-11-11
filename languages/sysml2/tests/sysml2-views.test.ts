@@ -260,11 +260,11 @@ describe("SysML v2 9-View Complete Visual Parity & Swimlanes", () => {
     `;
 
     const tree = parser.parse(code);
-    assert.strictEqual(
-      tree.rootNode.hasError(),
-      false,
-      "VehicleSystem actors and use cases must parse with zero errors",
-    );
+    const hasErr =
+      typeof (tree.rootNode as any).hasError === "function"
+        ? (tree.rootNode as any).hasError()
+        : Boolean((tree.rootNode as any).hasError);
+    assert.strictEqual(hasErr, false, "VehicleSystem actors and use cases must parse with zero errors");
   });
 
   it("should render UseCaseDefinition as clean ellipse without rectangular headerBody and with bounded chords", () => {

@@ -518,12 +518,31 @@ export class NormalizedGrammar {
     }
 
     if (grammar.precedences) {
-      let precVal = grammar.precedences.length;
-      for (const group of grammar.precedences) {
-        for (const item of group) {
-          this.globalPrecedences.set(item, precVal);
+      const precDef =
+        typeof grammar.precedences === "function" ? (grammar.precedences as any)(dummy$ as any) : grammar.precedences;
+      if (Array.isArray(precDef)) {
+        let precVal = precDef.length;
+        for (const group of precDef) {
+          if (Array.isArray(group)) {
+            for (const rawItem of group) {
+              const item =
+                typeof rawItem === "object" && rawItem !== null && "value" in rawItem
+                  ? (rawItem as any).value
+                  : typeof rawItem === "object" && rawItem !== null && "name" in rawItem
+                    ? (rawItem as any).name
+                    : rawItem;
+              if (typeof item === "string") {
+                this.globalPrecedences.set(item, precVal);
+                if (item.startsWith('"') && item.endsWith('"')) {
+                  this.globalPrecedences.set(item.slice(1, -1), precVal);
+                } else {
+                  this.globalPrecedences.set(`"${item}"`, precVal);
+                }
+              }
+            }
+          }
+          precVal--;
         }
-        precVal--;
       }
     }
 
@@ -543,7 +562,12 @@ export class NormalizedGrammar {
       }
     }
 
-    this.inlineRules = grammar.inline || [];
+    if (typeof grammar.inline === "function") {
+      const dummy$ = new Proxy({}, { get: (_t, p: string) => p });
+      this.inlineRules = (grammar.inline as any)(dummy$ as any) || [];
+    } else {
+      this.inlineRules = grammar.inline || [];
+    }
     this.startSymbol = Object.keys(grammar.rules ?? {})[0]!; // First rule is start
 
     if (grammar.primitives && grammar.primitives.multiWordKeywords) {
@@ -568,19 +592,19 @@ export class NormalizedGrammar {
       const evalRule = toRule(grammar.rules[ruleName]!(dummy$ as any));
       this.evaluatedRules[ruleName] = evalRule;
       if (isTerminalRule(evalRule)) {
-        console.log(`grammar.ts: added ${ruleName} to terminals`);
         this.terminals.add(ruleName);
       } else {
-        console.log(`grammar.ts: added ${ruleName} to nonTerminals (type: ${evalRule.type})`);
         this.nonTerminals.add(ruleName);
       }
     }
 
     if (grammar.supertypes) {
-      const stRules = grammar.supertypes(dummy$ as any).map(toRule);
-      for (const stRule of stRules) {
-        if (stRule.type === "SYMBOL") {
-          const stName = stRule.value as string;
+      const rawSupertypes =
+        typeof grammar.supertypes === "function" ? (grammar.supertypes as any)(dummy$ as any) : grammar.supertypes;
+      const rawList = Array.isArray(rawSupertypes) ? rawSupertypes : [];
+      for (const item of rawList) {
+        const stName = typeof item === "string" ? item : item?.value || item?.name;
+        if (typeof stName === "string") {
           const targetRule = this.evaluatedRules[stName];
           if (targetRule && targetRule.type === "CHOICE") {
             const subTypes: string[] = [];
@@ -681,7 +705,9 @@ export class NormalizedGrammar {
 
     // Ensure symbols that have productions (nonTerminals) are not classified as terminals
     for (const nt of this.nonTerminals) {
-      this.terminals.delete(nt);
+      if (this.productions.some((p) => p.left === nt)) {
+        this.terminals.delete(nt);
+      }
     }
 
     // Build symToInt mapping
@@ -748,7 +774,9 @@ export class NormalizedGrammar {
     });
     this.nonTerminals.add(left);
     for (const a of aliases) {
-      this.nonTerminals.add(a.target);
+      if (!this.terminals.has(a.target)) {
+        this.nonTerminals.add(a.target);
+      }
     }
     for (const r of right) {
       const _sym = r.sym;
@@ -816,7 +844,8 @@ export class NormalizedGrammar {
     const t = rule.type.toUpperCase();
     if (t === "FIELD") return `field(${rule.value},${this.getRuleSignature(getChild(rule))})`;
     if (t === "ALIAS") return `alias(${rule.value},${this.getRuleSignature(getChild(rule))})`;
-    if (t === "SEMANTIC_TOKEN") return `sem(${rule.value?.type},${this.getRuleSignature(getChild(rule))})`;
+    if (t === "SEMANTIC" || t === "SEMANTIC_TOKEN")
+      return `sem(${rule.value?.type || rule.value},${this.getRuleSignature(getChild(rule))})`;
     if (t === "SEQ")
       return `(${getChildren(rule)
         .map((c: any) => this.getRuleSignature(c))
@@ -828,10 +857,12 @@ export class NormalizedGrammar {
     if (t === "REPEAT") return `${this.getRuleSignature(getChild(rule))}*`;
     if (t === "REPEAT1") return `${this.getRuleSignature(getChild(rule))}+`;
     if (t === "OPTIONAL") return `${this.getRuleSignature(getChild(rule))}?`;
-    if (t === "PREC" || t === "PREC_LEFT" || t === "PREC_RIGHT" || t === "PREC_DYNAMIC" || t === "SYNTAX_TOKEN") {
-      return this.getRuleSignature(getChild(rule));
-    }
-    if (t === "DEF_REF") return this.getRuleSignature(rule.rule || getChild(rule));
+    if (t === "PREC") return `prec(${rule.value},${this.getRuleSignature(getChild(rule))})`;
+    if (t === "PREC_LEFT") return `prec.left(${rule.value},${this.getRuleSignature(getChild(rule))})`;
+    if (t === "PREC_RIGHT") return `prec.right(${rule.value},${this.getRuleSignature(getChild(rule))})`;
+    if (t === "PREC_DYNAMIC") return `prec.dynamic(${rule.value},${this.getRuleSignature(getChild(rule))})`;
+    if (t === "SYNTAX_TOKEN") return this.getRuleSignature(getChild(rule));
+    if (t === "DEF" || t === "REF" || t === "DEF_REF") return this.getRuleSignature(rule.rule || getChild(rule));
     return this.getEBNF(rule);
   }
 

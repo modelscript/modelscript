@@ -613,7 +613,15 @@ describe("Diagram Port Centering and Ground Alignment Geometry", () => {
           },
           annotation: (name: string) =>
             name === "Placement"
-              ? { transformation: { origin: [0, 0], extent: [[-10, -10], [10, 10]] } }
+              ? {
+                  transformation: {
+                    origin: [0, 0],
+                    extent: [
+                      [-10, -10],
+                      [10, 10],
+                    ],
+                  },
+                }
               : null,
         },
       ],
@@ -891,5 +899,215 @@ describe("Diagram Port Centering and Ground Alignment Geometry", () => {
       "visible",
       "Line(visible=useHeatPort) on R_heated must be visible when useHeatPort=true",
     );
+  });
+
+  it("heals connection edges into AD_Converter and DA_Converter without diagonal micro-slants", async () => {
+    const pinClassInstance: any = {
+      name: "PositivePin",
+      classKind: ModelicaClassKind.CONNECTOR,
+      annotation: (name: string) =>
+        name === "Icon"
+          ? {
+              coordinateSystem: {
+                extent: [
+                  [-10, -10],
+                  [10, 10],
+                ],
+              },
+              graphics: [
+                {
+                  type: "Rectangle",
+                  extent: [
+                    [-10, -10],
+                    [10, 10],
+                  ],
+                  lineColor: [0, 0, 255],
+                },
+              ],
+            }
+          : null,
+    };
+
+    const adConverterClass: any = {
+      name: "AD_Converter",
+      classKind: ModelicaClassKind.MODEL,
+      components: [
+        {
+          name: "p",
+          classInstance: pinClassInstance,
+          annotation: (name: string) =>
+            name === "Placement"
+              ? {
+                  transformation: {
+                    extent: [
+                      [-110, 90],
+                      [-90, 110],
+                    ],
+                  },
+                  iconTransformation: {
+                    extent: [
+                      [-110, 90],
+                      [-90, 110],
+                    ],
+                  },
+                }
+              : null,
+        },
+      ],
+      annotation: (name: string) =>
+        name === "Icon"
+          ? {
+              coordinateSystem: {
+                extent: [
+                  [-100, -100],
+                  [100, 100],
+                ],
+              },
+              graphics: [
+                {
+                  type: "Rectangle",
+                  extent: [
+                    [-100, 100],
+                    [100, -100],
+                  ],
+                },
+              ],
+            }
+          : null,
+    };
+
+    const sineVoltageClass: any = {
+      name: "SineVoltage",
+      classKind: ModelicaClassKind.MODEL,
+      components: [
+        {
+          name: "p",
+          classInstance: pinClassInstance,
+          annotation: (name: string) =>
+            name === "Placement"
+              ? {
+                  transformation: {
+                    extent: [
+                      [-10, -10],
+                      [10, 10],
+                    ],
+                    origin: [0, 10],
+                  },
+                }
+              : null,
+        },
+      ],
+      annotation: (name: string) =>
+        name === "Icon"
+          ? {
+              coordinateSystem: {
+                extent: [
+                  [-10, -10],
+                  [10, 10],
+                ],
+              },
+              graphics: [
+                {
+                  type: "Rectangle",
+                  extent: [
+                    [-10, 10],
+                    [10, -10],
+                  ],
+                },
+              ],
+            }
+          : null,
+    };
+
+    const model: any = {
+      name: "AD_DA_Test",
+      classKind: ModelicaClassKind.MODEL,
+      components: [
+        {
+          name: "sineVoltage",
+          classInstance: sineVoltageClass,
+          annotation: (name: string) =>
+            name === "Placement"
+              ? {
+                  transformation: {
+                    origin: [-80, 4],
+                    extent: [
+                      [-10, -10],
+                      [10, 10],
+                    ],
+                    rotation: 270,
+                  },
+                }
+              : null,
+        },
+        {
+          name: "aD_Converter",
+          classInstance: adConverterClass,
+          annotation: (name: string) =>
+            name === "Placement"
+              ? {
+                  transformation: {
+                    extent: [
+                      [-14, -10],
+                      [12, 16],
+                    ],
+                  },
+                }
+              : null,
+        },
+      ],
+      connectEquations: [
+        {
+          lhs: "sineVoltage.p",
+          rhs: "aD_Converter.p",
+          annotation: (name: string) =>
+            name === "Line"
+              ? {
+                  points: [
+                    [-80, 14],
+                    [-38.5, 14],
+                    [-38.5, 12.1],
+                    [-10.1, 12.1],
+                  ],
+                  color: [0, 0, 255],
+                }
+              : null,
+        },
+      ],
+      annotation: (name: string) =>
+        name === "Diagram"
+          ? {
+              coordinateSystem: {
+                extent: [
+                  [-100, -100],
+                  [100, 100],
+                ],
+              },
+            }
+          : null,
+    };
+
+    const data = await buildDiagramData(model);
+    assert(data);
+    const edge = data.edges.find((e) => e.id === "sineVoltage.p-aD_Converter.p");
+    assert(edge, "Edge must exist");
+    assert(edge.vertices && edge.vertices.length >= 2, "Edge must have intermediate vertices");
+
+    // The target port aD_Converter.p is at (-14, -16) in SVG coords.
+    // The vertices must be healed so the last segment into the port is strictly horizontal (y = -16).
+    const lastVertex = edge.vertices[edge.vertices.length - 1]!;
+    assert.strictEqual(lastVertex.y, -16, "Last vertex must align with port Y (-16)");
+    assert.strictEqual(lastVertex.x, -38.5, "Last vertex must preserve the vertical trunk X (-38.5)");
+
+    // Verify all segments from source to target are strictly orthogonal
+    const fullPoly = [{ x: -80, y: -14 }, ...edge.vertices, { x: -14, y: -16 }];
+    for (let i = 1; i < fullPoly.length; i++) {
+      const dx = Math.abs(fullPoly[i].x - fullPoly[i - 1].x);
+      const dy = Math.abs(fullPoly[i].y - fullPoly[i - 1].y);
+      assert.ok(
+        dx <= 0.05 || dy <= 0.05,
+        `Segment ${i - 1}->${i} must be orthogonal: (${fullPoly[i - 1].x}, ${fullPoly[i - 1].y}) -> (${fullPoly[i].x}, ${fullPoly[i].y})`,
+      );
+    }
   });
 });

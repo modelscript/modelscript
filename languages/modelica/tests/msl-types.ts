@@ -28,6 +28,8 @@ export interface WorkerTask {
   simTolerance?: number;
   simIntervals?: number;
   simStopTime?: number;
+  library?: string;
+  extraLibraries?: { name: string; path: string }[];
 }
 
 export interface FlattenResult {
@@ -158,6 +160,7 @@ export interface WorkerResult {
 }
 
 export interface RunnerOptions {
+  library?: string;
   version: string;
   stage: MslStage;
   all: boolean;

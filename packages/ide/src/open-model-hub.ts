@@ -8,10 +8,207 @@ import {
   type HubOpenModelItem,
   inferHubModelDomain,
 } from "./open-model-catalog.js";
-import { getEffectiveInstalledDependencies, type LspClientLike } from "./registry-tree-provider.js";
+import {
+  ensureParentLibraryInstalled,
+  getEffectiveInstalledDependencies,
+  type LspClientLike,
+  registerSessionRegistryDependencies,
+  sanitizeHubSvg,
+} from "./registry-tree-provider.js";
+import { getRegistryUrl, isAirgapped } from "./utils/config.js";
 import { getNonce } from "./utils/nonce.js";
 
 export type OpenModelViewMode = "split" | "diagram" | "code";
+
+export interface AnsatzStreamedModelItem {
+  fqn: string;
+  name: string;
+  kind: string;
+  domain: string;
+  subpackage?: string | null | undefined;
+  packageName: string;
+  packageVersion: string;
+  description?: string | null | undefined;
+  language?: string | undefined;
+  hasDiagram?: boolean | undefined;
+  diagramSvg?: string | undefined;
+}
+
+export interface AnsatzStreamModelsParams {
+  q?: string | undefined;
+  domain?: string | undefined;
+  packageName?: string | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
+  includeSvg?: boolean | undefined;
+}
+
+export interface AnsatzStreamModelsResult {
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  items: AnsatzStreamedModelItem[];
+  availablePackages: { name: string; version: string; count: number }[];
+  packageDependencies: Record<string, Record<string, string>>;
+  fromRegistry: boolean;
+}
+
+function isBlockedByAirgap(baseUrl: string): boolean {
+  if (!isAirgapped()) return false;
+  try {
+    const parsed = new URL(baseUrl);
+    const h = parsed.hostname.toLowerCase();
+    return (
+      h === "api.modelscript.org" ||
+      h.endsWith(".modelscript.org") ||
+      h === "ansatz.social" ||
+      h.endsWith(".ansatz.social")
+    );
+  } catch {
+    return true;
+  }
+}
+
+function buildLibraryClassPath(packageName: string, packageVersion: string, fqn: string): string {
+  const encVer = encodeURIComponent(packageVersion);
+  const encFqn = encodeURIComponent(fqn);
+  if (packageName.startsWith("@") && packageName.includes("/")) {
+    const slashIdx = packageName.indexOf("/");
+    const scope = encodeURIComponent(packageName.slice(0, slashIdx));
+    const subName = encodeURIComponent(packageName.slice(slashIdx + 1));
+    return `/libraries/${scope}/${subName}/${encVer}/classes/${encFqn}`;
+  }
+  return `/libraries/${encodeURIComponent(packageName)}/${encVer}/classes/${encFqn}`;
+}
+
+/**
+ * Streams runnable models + sanitized inline `diagramSvg` schematics across all published packages
+ * in the Ansatz registry (`GET /models?includeSvg=1`). Returns `fromRegistry: false` when offline/airgapped.
+ */
+export async function fetchAnsatzRegistryModels(
+  params: AnsatzStreamModelsParams = {},
+  signal?: AbortSignal,
+): Promise<AnsatzStreamModelsResult> {
+  const limit = params.limit ?? 48;
+  const offset = params.offset ?? 0;
+  const baseUrl = getRegistryUrl().replace(/\/+$/, "");
+  if (isBlockedByAirgap(baseUrl)) {
+    return {
+      total: 0,
+      offset,
+      limit,
+      hasMore: false,
+      items: [],
+      availablePackages: [],
+      packageDependencies: {},
+      fromRegistry: false,
+    };
+  }
+
+  const search = new URLSearchParams();
+  if (params.q && params.q.trim()) search.set("q", params.q.trim());
+  if (params.domain && params.domain !== "all") search.set("domain", params.domain);
+  if (params.packageName && params.packageName !== "all") search.set("package", params.packageName);
+  search.set("limit", String(limit));
+  search.set("offset", String(offset));
+  if (params.includeSvg !== false) {
+    search.set("includeSvg", "1");
+  }
+
+  try {
+    const resp = await fetch(`${baseUrl}/models?${search.toString()}`, signal ? { signal } : undefined);
+    if (!resp.ok) {
+      return {
+        total: 0,
+        offset,
+        limit,
+        hasMore: false,
+        items: [],
+        availablePackages: [],
+        packageDependencies: {},
+        fromRegistry: false,
+      };
+    }
+
+    const body = (await resp.json()) as {
+      total?: number | undefined;
+      offset?: number | undefined;
+      limit?: number | undefined;
+      hasMore?: boolean | undefined;
+      models?: AnsatzStreamedModelItem[] | undefined;
+      items?: AnsatzStreamedModelItem[] | undefined;
+      availablePackages?: { name: string; version: string; count: number }[] | undefined;
+      packageDependencies?: Record<string, Record<string, string>> | undefined;
+    };
+
+    const rawItems = Array.isArray(body.models) ? body.models : Array.isArray(body.items) ? body.items : [];
+    const items: AnsatzStreamedModelItem[] = rawItems.map((entry) => ({
+      ...entry,
+      diagramSvg: sanitizeHubSvg(entry.diagramSvg),
+    }));
+
+    const deps =
+      body.packageDependencies && typeof body.packageDependencies === "object" ? body.packageDependencies : {};
+    registerSessionRegistryDependencies(deps);
+
+    return {
+      total: typeof body.total === "number" ? body.total : items.length,
+      offset: typeof body.offset === "number" ? body.offset : offset,
+      limit: typeof body.limit === "number" ? body.limit : limit,
+      hasMore: Boolean(body.hasMore),
+      items,
+      availablePackages: Array.isArray(body.availablePackages) ? body.availablePackages : [],
+      packageDependencies: deps,
+      fromRegistry: true,
+    };
+  } catch (err) {
+    if ((err as { name?: string })?.name === "AbortError") {
+      throw err;
+    }
+    return {
+      total: 0,
+      offset,
+      limit,
+      hasMore: false,
+      items: [],
+      availablePackages: [],
+      packageDependencies: {},
+      fromRegistry: false,
+    };
+  }
+}
+
+/**
+ * Fetches standalone source code for a published class directly from the Ansatz registry
+ * (`GET /libraries/:name/:version/classes/:fqn`) when local LSP extraction is still warming up.
+ */
+export async function fetchAnsatzRegistryClassSource(
+  packageName: string,
+  packageVersion: string,
+  fqn: string,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
+  if (!packageName || !fqn) return undefined;
+  const baseUrl = getRegistryUrl().replace(/\/+$/, "");
+  if (isBlockedByAirgap(baseUrl)) return undefined;
+  try {
+    const ver = packageVersion || "latest";
+    const resp = await fetch(
+      `${baseUrl}${buildLibraryClassPath(packageName, ver, fqn)}`,
+      signal ? { signal } : undefined,
+    );
+    if (!resp.ok) return undefined;
+    const body = (await resp.json()) as {
+      sourceCode?: string | null | undefined;
+      content?: string | null | undefined;
+    };
+    const code = typeof body.sourceCode === "string" ? body.sourceCode : body.content;
+    return typeof code === "string" && code.trim().length > 0 ? code : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 interface DiagramPreviewItemResult {
   svg: string;
@@ -711,6 +908,7 @@ export function renderOpenModelHubHtml(options: {
   <div id="gallery-toolbar" class="toolbar">
     <div class="search-row">
       <input id="search-input" class="search-input" type="text" placeholder="Search runnable models, circuits, mechanisms, or FQNs (e.g. Chua, PID, Hydronic, IEEE 13)..." />
+      <span id="stream-status" style="display:none;font-size:11px;font-weight:600;color:var(--hub-brand);align-self:center;padding:0 4px">Streaming…</span>
       <select id="package-select" class="pkg-select" aria-label="Filter by package">
         <option value="all">All Packages</option>
       </select>
@@ -737,12 +935,19 @@ export function renderOpenModelHubHtml(options: {
         installed: {},
         livePreviews: {},
         dynamicModels: [],
+        streamedModels: [],
+        registryPackages: [],
+        registryTotal: 0,
+        registryHasMore: false,
+        registryOffset: 0,
+        isStreamingModels: false,
         workspaceModels: [],
         busyId: null,
         stagedLocal: null,
       };
 
       const searchInput = document.getElementById("search-input");
+      const streamStatusEl = document.getElementById("stream-status");
       const packageSelect = document.getElementById("package-select");
       const domainPillsEl = document.getElementById("domain-pills");
       const galleryToolbar = document.getElementById("gallery-toolbar");
@@ -759,6 +964,23 @@ export function renderOpenModelHubHtml(options: {
           .replace(/"/g, "&quot;");
       }
 
+      function buildWebviewEquationFallbackSvg(title, fqn) {
+        const safeTitle = escapeHtml(String(title || "Model").slice(0, 26));
+        const safeFqn = escapeHtml(String(fqn || "").slice(0, 38));
+        return (
+          '<svg viewBox="0 0 240 132" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">' +
+            '<rect x="18" y="22" width="204" height="88" rx="10" fill="rgba(59,130,246,0.08)" stroke="rgba(59,130,246,0.38)" stroke-width="1.3"/>' +
+            '<circle cx="40" cy="46" r="4" fill="#3b82f6"/>' +
+            '<line x1="44" y1="46" x2="86" y2="46" stroke="#3b82f6" stroke-width="1.4"/>' +
+            '<rect x="86" y="34" width="68" height="24" rx="5" fill="rgba(59,130,246,0.16)" stroke="#3b82f6" stroke-width="1.2"/>' +
+            '<line x1="154" y1="46" x2="196" y2="46" stroke="#3b82f6" stroke-width="1.4"/>' +
+            '<circle cx="200" cy="46" r="4" fill="#10b981"/>' +
+            '<text x="120" y="80" text-anchor="middle" fill="currentColor" font-size="11.5" font-weight="700" font-family="system-ui,sans-serif">' + safeTitle + '</text>' +
+            '<text x="120" y="96" text-anchor="middle" fill="currentColor" opacity="0.62" font-size="9.5" font-family="ui-monospace,monospace">' + safeFqn + '</text>' +
+          '</svg>'
+        );
+      }
+
       function isPackageMounted(pkgName, bundledByDefault) {
         if (bundledByDefault) return true;
         const lower = String(pkgName || "").toLowerCase();
@@ -769,12 +991,29 @@ export function renderOpenModelHubHtml(options: {
         const pkgs = new Set();
         CATALOG.forEach((m) => pkgs.add(m.packageName));
         Object.keys(state.installed).forEach((k) => pkgs.add(k));
+        state.registryPackages.forEach((p) => {
+          if (p && p.name) pkgs.add(p.name);
+        });
         const sorted = Array.from(pkgs).sort((a, b) => a.localeCompare(b));
         const current = state.packageFilter;
         packageSelect.innerHTML =
           '<option value="all">All Packages (' + sorted.length + ')</option>' +
           sorted.map((p) => '<option value="' + escapeHtml(p) + '">' + escapeHtml(p) + '</option>').join("");
         packageSelect.value = sorted.includes(current) ? current : "all";
+      }
+
+      function triggerRegistryModelStream(reset) {
+        const nextOffset = reset ? 0 : state.registryOffset;
+        state.isStreamingModels = true;
+        if (streamStatusEl) streamStatusEl.style.display = "inline";
+        vscode.postMessage({
+          command: "streamRegistryModels",
+          query: state.query.trim(),
+          domain: state.domain,
+          packageName: state.packageFilter,
+          offset: nextOffset,
+          reset: Boolean(reset),
+        });
       }
 
       function renderDomainPills() {
@@ -800,7 +1039,30 @@ export function renderOpenModelHubHtml(options: {
         });
       }
 
+      function getFilteredStreamed(curated, dyn) {
+        const seenFqns = new Set();
+        CATALOG.forEach((m) => {
+          if (m.fqn) seenFqns.add(m.fqn.toLowerCase());
+        });
+        dyn.forEach((d) => {
+          if (d.fqn) seenFqns.add(d.fqn.toLowerCase());
+        });
+        const q = state.query.trim().toLowerCase();
+        return state.streamedModels.filter((s) => {
+          if (!s || !s.fqn) return false;
+          if (seenFqns.has(s.fqn.toLowerCase())) return false;
+          if (state.domain !== "all" && s.domain && s.domain !== state.domain) return false;
+          if (state.packageFilter !== "all" && String(s.packageName || "").toLowerCase() !== state.packageFilter.toLowerCase()) return false;
+          if (!q) return true;
+          const hay = (s.name + " " + s.fqn + " " + s.packageName + " " + (s.description || "") + " " + (s.subpackage || "")).toLowerCase();
+          return hay.indexOf(q) !== -1;
+        });
+      }
+
       function render() {
+        if (streamStatusEl) {
+          streamStatusEl.style.display = state.isStreamingModels ? "inline" : "none";
+        }
         document.querySelectorAll(".seg-btn").forEach((btn) => {
           btn.classList.toggle("active", btn.getAttribute("data-mode") === state.mode);
         });
@@ -831,11 +1093,14 @@ export function renderOpenModelHubHtml(options: {
           if (state.packageFilter !== "all" && d.packageName.toLowerCase() !== state.packageFilter.toLowerCase()) return false;
           return true;
         });
+        const streamed = getFilteredStreamed(curated, dyn);
 
-        if (curated.length === 0 && dyn.length === 0) {
+        if (curated.length === 0 && dyn.length === 0 && streamed.length === 0) {
           mainScroll.innerHTML =
             '<div class="empty-state">' +
-            '<div style="font-size:15px;font-weight:700;color:var(--hub-fg);margin-bottom:6px">No matching models found</div>' +
+            '<div style="font-size:15px;font-weight:700;color:var(--hub-fg);margin-bottom:6px">' +
+              (state.isStreamingModels ? "Streaming models from Ansatz registry…" : "No matching models found") +
+            '</div>' +
             '<div>Clear filters or switch to <strong>Workspace Files</strong> or <strong>Local File / Archive</strong>.</div>' +
             '</div>';
           inspectorBar.style.display = "none";
@@ -881,7 +1146,45 @@ export function renderOpenModelHubHtml(options: {
               '</div>' +
             '</div>'
           );
-        }).concat(dyn.map((item) => {
+        }).concat(streamed.map((item) => {
+          const cardId = "stream:" + item.fqn;
+          const mounted = isPackageMounted(item.packageName, false);
+          const selected = state.selectedId === cardId ? " selected" : "";
+          const busy = state.busyId === cardId;
+          const svg = item.diagramSvg || buildWebviewEquationFallbackSvg(item.name, item.fqn);
+          const dialectLabel = item.language || "Modelica";
+          const rightBadge = item.diagramSvg ? "Registry schematic" : (item.kind || "model");
+          const summary = item.description || (item.subpackage ? ("Runnable model in " + item.packageName + "." + item.subpackage) : ("Runnable model in " + item.packageName));
+          return (
+            '<div class="model-card' + selected + '" data-action="select-card" data-id="' + escapeHtml(cardId) + '">' +
+              '<div class="diagram-stage">' +
+                '<div class="diagram-stage-inner">' + svg + '</div>' +
+                '<span class="stage-pill top-left">' + escapeHtml(dialectLabel) + '</span>' +
+                '<span class="stage-pill bottom-right">' + escapeHtml(rightBadge) + '</span>' +
+              '</div>' +
+              '<div class="card-body">' +
+                '<div class="card-top">' +
+                  '<div class="card-title">' + escapeHtml(item.name) + '</div>' +
+                  '<span class="mount-badge' + (mounted ? " mounted" : "") + '">' +
+                    escapeHtml(mounted ? item.packageName + " ✓" : "+ " + item.packageName) +
+                  '</span>' +
+                '</div>' +
+                '<div class="card-summary">' + escapeHtml(summary) + '</div>' +
+                '<div class="card-footer">' +
+                  '<span class="card-fqn" title="' + escapeHtml(item.fqn) + '">' + escapeHtml(item.fqn) + '</span>' +
+                  '<div class="btn-row">' +
+                    '<button type="button" class="btn-secondary" data-action="open-streamed" data-id="' + escapeHtml(cardId) + '" data-fqn="' + escapeHtml(item.fqn) + '" data-title="' + escapeHtml(item.name) + '" data-dialect="' + escapeHtml(item.language || "modelica") + '" data-pkg="' + escapeHtml(item.packageName) + '" data-ver="' + escapeHtml(item.packageVersion || "latest") + '" data-view="diagram">' +
+                      'Diagram' +
+                    '</button>' +
+                    '<button type="button" class="btn-primary" data-action="open-streamed" data-id="' + escapeHtml(cardId) + '" data-fqn="' + escapeHtml(item.fqn) + '" data-title="' + escapeHtml(item.name) + '" data-dialect="' + escapeHtml(item.language || "modelica") + '" data-pkg="' + escapeHtml(item.packageName) + '" data-ver="' + escapeHtml(item.packageVersion || "latest") + '" data-view="split">' +
+                      (busy ? "Opening…" : "Open") +
+                    '</button>' +
+                  '</div>' +
+                '</div>' +
+              '</div>' +
+            '</div>'
+          );
+        })).concat(dyn.map((item) => {
           const live = state.livePreviews[item.id];
           const selected = state.selectedId === item.id ? " selected" : "";
           const svg = (live && live.svg) || item.previewSvg || "";
@@ -908,10 +1211,42 @@ export function renderOpenModelHubHtml(options: {
           );
         }));
 
-        mainScroll.innerHTML = '<div class="model-grid">' + cardsHtml.join("") + '</div>';
+        const loadMoreHtml = state.registryHasMore
+          ? '<div style="display:flex;justify-content:center;padding:18px 0 6px">' +
+              '<button type="button" class="btn-secondary" data-action="load-more-models">' +
+                (state.isStreamingModels
+                  ? "Streaming more models…"
+                  : "Load more models (showing " + state.streamedModels.length + " of " + state.registryTotal + ")") +
+              '</button>' +
+            '</div>'
+          : "";
 
-        const selCurated = CATALOG.find((c) => c.id === state.selectedId) || curated[0];
-        if (selCurated) {
+        mainScroll.innerHTML = '<div class="model-grid">' + cardsHtml.join("") + '</div>' + loadMoreHtml;
+
+        const selStreamed = state.streamedModels.find((s) => ("stream:" + s.fqn) === state.selectedId);
+        const selCurated = selStreamed ? null : (CATALOG.find((c) => c.id === state.selectedId) || curated[0]);
+        if (selStreamed) {
+          inspectorBar.style.display = "flex";
+          const sCardId = "stream:" + selStreamed.fqn;
+          const mounted = isPackageMounted(selStreamed.packageName, false);
+          const ver = selStreamed.packageVersion || "latest";
+          inspectorBar.innerHTML =
+            '<div>' +
+              '<div style="font-size:13px;font-weight:700">' + escapeHtml(selStreamed.name) + '</div>' +
+              '<div style="font-size:11.5px;color:var(--hub-muted)">' +
+                escapeHtml(
+                  mounted
+                    ? selStreamed.fqn + " · " + selStreamed.packageName + "@" + ver + " ready"
+                    : "Auto-installs Ansatz package " + selStreamed.packageName + "@" + ver + " before opening"
+                ) +
+              '</div>' +
+            '</div>' +
+            '<div class="btn-row">' +
+              '<button type="button" class="btn-secondary" data-action="open-streamed" data-id="' + escapeHtml(sCardId) + '" data-fqn="' + escapeHtml(selStreamed.fqn) + '" data-title="' + escapeHtml(selStreamed.name) + '" data-dialect="' + escapeHtml(selStreamed.language || "modelica") + '" data-pkg="' + escapeHtml(selStreamed.packageName) + '" data-ver="' + escapeHtml(ver) + '" data-view="code">Open Code Only</button>' +
+              '<button type="button" class="btn-secondary" data-action="open-streamed" data-id="' + escapeHtml(sCardId) + '" data-fqn="' + escapeHtml(selStreamed.fqn) + '" data-title="' + escapeHtml(selStreamed.name) + '" data-dialect="' + escapeHtml(selStreamed.language || "modelica") + '" data-pkg="' + escapeHtml(selStreamed.packageName) + '" data-ver="' + escapeHtml(ver) + '" data-view="diagram">Open Full Diagram</button>' +
+              '<button type="button" class="btn-primary" data-action="open-streamed" data-id="' + escapeHtml(sCardId) + '" data-fqn="' + escapeHtml(selStreamed.fqn) + '" data-title="' + escapeHtml(selStreamed.name) + '" data-dialect="' + escapeHtml(selStreamed.language || "modelica") + '" data-pkg="' + escapeHtml(selStreamed.packageName) + '" data-ver="' + escapeHtml(ver) + '" data-view="split">Open in Split View</button>' +
+            '</div>';
+        } else if (selCurated) {
           inspectorBar.style.display = "flex";
           const mounted = isPackageMounted(selCurated.packageName, selCurated.bundledByDefault);
           inspectorBar.innerHTML =
@@ -1035,6 +1370,7 @@ export function renderOpenModelHubHtml(options: {
         if (action === "set-domain") {
           state.domain = target.getAttribute("data-domain") || "all";
           render();
+          triggerRegistryModelStream(true);
           return;
         }
         if (action === "select-card") {
@@ -1049,6 +1385,36 @@ export function renderOpenModelHubHtml(options: {
           state.busyId = id;
           render();
           vscode.postMessage({ command: "openCuratedModel", id, viewMode });
+          return;
+        }
+        if (action === "open-streamed") {
+          ev.stopPropagation();
+          const id = target.getAttribute("data-id") || "";
+          const fqn = target.getAttribute("data-fqn") || "";
+          const title = target.getAttribute("data-title") || "";
+          const dialect = target.getAttribute("data-dialect") || "modelica";
+          const packageName = target.getAttribute("data-pkg") || "";
+          const packageVersion = target.getAttribute("data-ver") || "latest";
+          const viewMode = target.getAttribute("data-view") || "split";
+          state.busyId = id;
+          render();
+          vscode.postMessage({
+            command: "openStreamedModel",
+            id,
+            fqn,
+            title,
+            dialect,
+            packageName,
+            packageVersion,
+            viewMode,
+          });
+          return;
+        }
+        if (action === "load-more-models") {
+          ev.stopPropagation();
+          if (!state.isStreamingModels && state.registryHasMore) {
+            triggerRegistryModelStream(false);
+          }
           return;
         }
         if (action === "open-dynamic") {
@@ -1106,19 +1472,29 @@ export function renderOpenModelHubHtml(options: {
         render();
         if (searchTimer) clearTimeout(searchTimer);
         const trimmed = state.query.trim();
-        if (trimmed.length >= 2) {
-          searchTimer = setTimeout(() => {
-            vscode.postMessage({ command: "searchLibraryModels", query: trimmed });
-          }, 180);
-        } else {
+        if (trimmed.length < 2) {
           state.dynamicModels = [];
-          render();
         }
+        searchTimer = setTimeout(() => {
+          if (trimmed.length >= 2) {
+            vscode.postMessage({ command: "searchLibraryModels", query: trimmed });
+          }
+          triggerRegistryModelStream(true);
+        }, 180);
       });
 
       packageSelect.addEventListener("change", () => {
         state.packageFilter = packageSelect.value || "all";
         render();
+        triggerRegistryModelStream(true);
+      });
+
+      mainScroll.addEventListener("scroll", () => {
+        if (state.mode !== "gallery" || !state.registryHasMore || state.isStreamingModels) return;
+        const remaining = mainScroll.scrollHeight - mainScroll.scrollTop - mainScroll.clientHeight;
+        if (remaining < 240) {
+          triggerRegistryModelStream(false);
+        }
       });
 
       function stageDroppedOrPickedBrowserFile(file) {
@@ -1196,6 +1572,30 @@ export function renderOpenModelHubHtml(options: {
         } else if (msg.command === "setDiagramPreviews") {
           state.livePreviews = Object.assign({}, state.livePreviews, msg.previews || {});
           render();
+        } else if (msg.command === "setStreamedRegistryModels") {
+          const incoming = Array.isArray(msg.models) ? msg.models : [];
+          if (msg.reset) {
+            state.streamedModels = incoming;
+          } else {
+            const existingFqns = new Set(state.streamedModels.map((m) => String(m.fqn || "").toLowerCase()));
+            for (const item of incoming) {
+              if (!item || !item.fqn) continue;
+              const k = String(item.fqn).toLowerCase();
+              if (!existingFqns.has(k)) {
+                existingFqns.add(k);
+                state.streamedModels.push(item);
+              }
+            }
+          }
+          state.registryTotal = typeof msg.total === "number" ? msg.total : state.streamedModels.length;
+          state.registryHasMore = Boolean(msg.hasMore);
+          state.registryOffset = (typeof msg.offset === "number" ? msg.offset : 0) + incoming.length;
+          state.isStreamingModels = false;
+          if (Array.isArray(msg.availablePackages) && msg.availablePackages.length > 0) {
+            state.registryPackages = msg.availablePackages;
+            syncPackageDropdown();
+          }
+          render();
         } else if (msg.command === "setDynamicModels") {
           state.dynamicModels = msg.models || [];
           render();
@@ -1248,9 +1648,41 @@ export function openModelHub(
     initialMode,
   });
 
-  const syncHubState = async () => {
+  const streamModelsToWebview = async (params: AnsatzStreamModelsParams, reset: boolean) => {
+    const res = await fetchAnsatzRegistryModels({
+      ...params,
+      limit: params.limit ?? 48,
+      includeSvg: true,
+    });
+    if (!res.fromRegistry) {
+      await panel.webview.postMessage({
+        command: "setStreamedRegistryModels",
+        models: [],
+        total: 0,
+        hasMore: false,
+        offset: params.offset ?? 0,
+        reset: false,
+        availablePackages: [],
+      });
+      return;
+    }
+    await panel.webview.postMessage({
+      command: "setStreamedRegistryModels",
+      models: res.items,
+      total: res.total,
+      hasMore: res.hasMore,
+      offset: res.offset,
+      reset,
+      availablePackages: res.availablePackages,
+    });
+  };
+
+  const syncHubState = async (includeRegistryStream = false) => {
     const deps = await getEffectiveInstalledDependencies(lspClient);
     await panel.webview.postMessage({ command: "setInstalled", dependencies: deps });
+    if (includeRegistryStream) {
+      void streamModelsToWebview({ offset: 0, limit: 48 }, true);
+    }
     await hydrateCuratedModelPreviews(panel, lspClient);
     const wsModels = await discoverWorkspaceModels(lspClient);
     await panel.webview.postMessage({ command: "setWorkspaceModels", models: wsModels });
@@ -1271,6 +1703,13 @@ export function openModelHub(
       command?: string;
       id?: string;
       fqn?: string;
+      title?: string;
+      dialect?: string;
+      domain?: string;
+      packageName?: string;
+      packageVersion?: string;
+      offset?: number;
+      reset?: boolean;
       uri?: string;
       query?: string;
       viewMode?: OpenModelViewMode;
@@ -1280,7 +1719,21 @@ export function openModelHub(
     }) => {
       switch (msg.command) {
         case "ready": {
-          await syncHubState();
+          await syncHubState(true);
+          break;
+        }
+
+        case "streamRegistryModels": {
+          await streamModelsToWebview(
+            {
+              q: msg.query,
+              domain: msg.domain,
+              packageName: msg.packageName,
+              offset: typeof msg.offset === "number" ? msg.offset : 0,
+              limit: 48,
+            },
+            Boolean(msg.reset),
+          );
           break;
         }
 
@@ -1297,7 +1750,7 @@ export function openModelHub(
 
         case "importZipArchive": {
           await vscode.commands.executeCommand("modelscript.libraryView.importZip");
-          await syncHubState();
+          await syncHubState(true);
           break;
         }
 
@@ -1308,16 +1761,8 @@ export function openModelHub(
             return;
           }
           try {
-            const deps = await getEffectiveInstalledDependencies(lspClient);
-            const isMounted =
-              Boolean(item.bundledByDefault) ||
-              Object.keys(deps).some((k) => k.toLowerCase() === item.packageName.toLowerCase());
-            if (!isMounted) {
-              await vscode.commands.executeCommand(
-                "modelscript.registry.install",
-                item.packageName,
-                item.packageVersion,
-              );
+            if (!item.bundledByDefault) {
+              await ensureParentLibraryInstalled(item.packageName, item.packageVersion, lspClient);
             }
 
             let resolvedCode = item.fallbackCode;
@@ -1330,13 +1775,67 @@ export function openModelHub(
                   resolvedCode = src.content;
                 }
               } catch {
-                // fallbackCode is already runnable
+                // fallbackCode or registry class source below
+              }
+            }
+            if (resolvedCode === item.fallbackCode && item.fqn && item.packageName) {
+              const remoteSrc = await fetchAnsatzRegistryClassSource(item.packageName, item.packageVersion, item.fqn);
+              if (remoteSrc) {
+                resolvedCode = remoteSrc;
               }
             }
 
             const targetUri = await writeMaterializedModelUri(item.suggestedFilename, resolvedCode);
             await openUriInRequestedView(targetUri, msg.viewMode ?? "split");
-            await syncHubState();
+            await syncHubState(false);
+          } finally {
+            await panel.webview.postMessage({ command: "clearBusy" });
+          }
+          break;
+        }
+
+        case "openStreamedModel": {
+          const fqn = msg.fqn || "";
+          if (!fqn) {
+            await panel.webview.postMessage({ command: "clearBusy" });
+            return;
+          }
+          try {
+            await ensureParentLibraryInstalled(msg.packageName, msg.packageVersion, lspClient);
+
+            let resolvedCode: string | undefined;
+            let resolvedUriHint: string | undefined;
+            if (lspClient?.sendRequest) {
+              try {
+                const src = await lspClient.sendRequest<{
+                  content?: string | null | undefined;
+                  uri?: string | undefined;
+                }>("modelscript/getClassSource", {
+                  className: fqn,
+                });
+                if (src?.content && src.content.trim().length > 0) {
+                  resolvedCode = src.content;
+                  resolvedUriHint = src.uri;
+                }
+              } catch {
+                // Fall back to direct Ansatz registry class endpoint below
+              }
+            }
+
+            if (!resolvedCode && msg.packageName) {
+              resolvedCode = await fetchAnsatzRegistryClassSource(msg.packageName, msg.packageVersion || "latest", fqn);
+            }
+
+            if (resolvedCode) {
+              const shortName = (msg.title || fqn.split(".").pop() || "OpenedModel").replace(/[^A-Za-z0-9_-]/g, "_");
+              const dialectLower = (msg.dialect || "").toLowerCase();
+              const ext = resolvedUriHint?.endsWith(".sysml") || dialectLower.includes("sysml") ? "sysml" : "mo";
+              const targetUri = await writeMaterializedModelUri(`${shortName}.${ext}`, resolvedCode);
+              await openUriInRequestedView(targetUri, msg.viewMode ?? "split");
+              await syncHubState(false);
+            } else {
+              await openModelTarget(context, fqn, lspClient, msg.viewMode ?? "split");
+            }
           } finally {
             await panel.webview.postMessage({ command: "clearBusy" });
           }

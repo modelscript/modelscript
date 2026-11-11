@@ -146,7 +146,7 @@ export interface SysmlCstNode {
   child?(index: number): SysmlCstNode | null | undefined;
   childForFieldName?(name: string): SysmlCstNode | null | undefined;
   childrenForFieldName?(name: string): SysmlCstNode[];
-  hasError?(): boolean;
+  hasError?: boolean | (() => boolean) | undefined;
 }
 
 /**
@@ -1179,10 +1179,12 @@ export class SysML2CstFlattener {
   }
 
   private isDescendantOfError(node: SysmlCstNode, currentComp: SysmlCstNode): boolean {
-    if (node.type === "ERROR" || (typeof node.hasError === "function" && node.hasError())) return true;
+    const nodeHasError = (n: SysmlCstNode) =>
+      n.type === "ERROR" || (typeof n.hasError === "function" ? n.hasError() : Boolean(n.hasError));
+    if (nodeHasError(node)) return true;
     let p = node.parent;
     while (p && p !== currentComp) {
-      if (p.type === "ERROR" || (typeof p.hasError === "function" && p.hasError())) return true;
+      if (nodeHasError(p)) return true;
       p = p.parent;
     }
     return false;

@@ -10,13 +10,24 @@ import {
   type PropertyGroupConfig,
   type PropertyTabConfig,
 } from "@modelscript/diagram";
-import { ChevronRightIcon, SearchIcon, XIcon } from "@primer/octicons-react";
+import {
+  ChevronRightIcon,
+  CodeIcon,
+  CopyIcon,
+  InfoIcon,
+  LocationIcon,
+  RowsIcon,
+  SearchIcon,
+  TrashIcon,
+  XIcon,
+} from "@primer/octicons-react";
 import { Textarea, TextInput, ToggleSwitch, useTheme } from "@primer/react";
 import DOMPurify from "dompurify";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnsatzSketchIcon } from "../icons";
 import Spinner from "../Spinner";
 import { ComponentIcon } from "./ComponentList";
+import { formatChoiceLabel, isFormula, tryEvaluateFormula } from "./util/formula";
 import type { Translations } from "./util/i18n";
 import type { ComponentProperties, PropertyData } from "./util/lsp-bridge";
 
@@ -60,6 +71,10 @@ interface PropertiesWidgetProps {
   onParameterChange?: ((name: string, value: string) => void) | undefined;
   onClose?: (() => void) | undefined;
   translations: Translations;
+  onLocateComponent?: ((name: string) => void) | undefined;
+  onGoToSource?: ((name: string) => void) | undefined;
+  onDuplicateComponent?: ((name: string) => void) | undefined;
+  onDeleteComponent?: ((name: string) => void) | undefined;
 }
 
 function CollapsibleSection({
@@ -148,26 +163,170 @@ function CollapsibleSection({
   );
 }
 
+function ExpandedFormulaEditor({
+  fieldName,
+  value,
+  onChange,
+  onClose,
+  unit,
+  contextValues,
+}: {
+  fieldName: string;
+  value: string;
+  onChange: (val: string) => void;
+  onClose?: () => void;
+  unit?: string | undefined;
+  contextValues?: Record<string, any> | undefined;
+}) {
+  const evalResult = useMemo(() => {
+    return tryEvaluateFormula(value, contextValues);
+  }, [value, contextValues]);
+
+  const quickChips = [
+    { label: "π", insert: "Modelica.Constants.pi" },
+    { label: "sqrt()", insert: "sqrt(" },
+    { label: "^2", insert: "^2" },
+    { label: "if-then-else", insert: "if cond then a else b" },
+    { label: "sin()", insert: "sin(" },
+    { label: "cos()", insert: "cos(" },
+  ];
+
+  return (
+    <div
+      style={{
+        marginTop: 6,
+        padding: "8px 10px",
+        borderRadius: "var(--ms-radius-sm, 6px)",
+        background: "var(--color-canvas-subtle, var(--ms-bg-soft))",
+        border: "1px solid var(--color-border-subtle, var(--ms-border))",
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-fg-default)" }}>
+          Formula Editor <code style={{ fontSize: 10, color: "var(--ms-brand, #0891b2)" }}>{fieldName}</code>
+        </span>
+        {onClose && (
+          <button
+            type="button"
+            aria-label="Close formula editor"
+            onClick={onClose}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--color-fg-muted)",
+              cursor: "pointer",
+              padding: "1px 4px",
+              fontSize: 11,
+              lineHeight: 1,
+            }}
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      <textarea
+        rows={2}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Enter mathematical formula, e.g. 2*Modelica.Constants.pi*f"
+        style={{
+          width: "100%",
+          fontSize: 11,
+          fontFamily: "var(--ms-font-mono, monospace)",
+          padding: "4px 6px",
+          borderRadius: "var(--ms-radius-sm, 4px)",
+          border: "1px solid var(--color-border-default, var(--ms-border))",
+          background: "var(--color-canvas-default)",
+          color: "var(--color-fg-default)",
+          resize: "vertical",
+          boxSizing: "border-box",
+        }}
+      />
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+        <span style={{ fontSize: 10, color: "var(--color-fg-muted)", marginRight: 2 }}>Quick:</span>
+        {quickChips.map((chip) => (
+          <button
+            key={chip.label}
+            type="button"
+            onClick={() => {
+              const insert = chip.insert;
+              const next = value ? `${value} * ${insert}` : insert;
+              onChange(next);
+            }}
+            style={{
+              background: "transparent",
+              border: "1px dashed var(--color-border-default, var(--ms-border))",
+              borderRadius: 3,
+              fontSize: 10,
+              fontFamily: "var(--ms-font-mono, monospace)",
+              color: "var(--color-fg-muted)",
+              padding: "1px 5px",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor = "var(--ms-brand, #0891b2)";
+              (e.currentTarget as HTMLElement).style.color = "var(--ms-brand, #0891b2)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor = "var(--color-border-default, var(--ms-border))";
+              (e.currentTarget as HTMLElement).style.color = "var(--color-fg-muted)";
+            }}
+          >
+            +{chip.label}
+          </button>
+        ))}
+      </div>
+
+      {evalResult && (
+        <div style={{ fontSize: 11, fontFamily: "var(--ms-font-mono, monospace)", paddingTop: 2 }}>
+          {evalResult.success ? (
+            <span style={{ color: "var(--ms-brand, #0891b2)" }}>
+              = <strong>{evalResult.formatted}</strong> {unit ? formatUnit(unit) : ""}{" "}
+              <span style={{ fontSize: 10, opacity: 0.7 }}>(evaluated)</span>
+            </span>
+          ) : (
+            <span style={{ color: "var(--color-attention-fg, #d97706)" }}>⚠ {evalResult.error}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ParameterRow({
   parameter,
   onParameterChange,
+  contextValues,
+  density = "comfortable",
 }: {
   parameter: PropertyData;
   colorMode?: string | undefined;
   onParameterChange?: ((name: string, value: string) => void) | undefined;
+  contextValues?: Record<string, any> | undefined;
+  density?: "comfortable" | "compact" | undefined;
 }) {
   const { value, unit, isBoolean } = parameter;
   const [localValue, setLocalValue] = useState(value);
   const [isSaving, setIsSaving] = useState(false);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [isFormulaExpanded, setIsFormulaExpanded] = useState(false);
   const lastCommittedRef = useRef(value);
   const onParameterChangeRef = useRef(onParameterChange);
   onParameterChangeRef.current = onParameterChange;
 
   useEffect(() => {
-    setLocalValue(value);
-    lastCommittedRef.current = value;
-    setIsSaving(false);
+    if (value !== localValue && value !== lastCommittedRef.current) {
+      setLocalValue(value);
+      lastCommittedRef.current = value;
+      setIsSaving(false);
+    }
   }, [value, parameter.name]);
 
   useEffect(() => {
@@ -182,12 +341,20 @@ function ParameterRow({
       lastCommittedRef.current = localValue;
       onParameterChangeRef.current?.(parameter.name, localValue);
       setIsSaving(false);
-    }, 60);
+    }, 200);
 
     return () => clearTimeout(timeoutId);
   }, [localValue, parameter.name, isBoolean]);
 
   const isNumeric = !isBoolean && !isNaN(parseFloat(localValue));
+  const hasFormula = !isBoolean && isFormula(localValue);
+
+  const formulaResult = useMemo(() => {
+    if (hasFormula) {
+      return tryEvaluateFormula(localValue, contextValues);
+    }
+    return null;
+  }, [hasFormula, localValue, contextValues]);
 
   const handleLabelMouseDown = (e: React.MouseEvent) => {
     if (!isNumeric) return;
@@ -236,11 +403,11 @@ function ParameterRow({
       style={{
         display: "flex",
         flexDirection: "column",
-        padding: "6px 16px",
+        padding: density === "compact" ? "3px 16px" : "6px 16px",
         cursor: "default",
       }}
       onMouseDown={(e) => {
-        if (e.target instanceof HTMLInputElement) return;
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
         e.preventDefault();
       }}
     >
@@ -259,7 +426,7 @@ function ParameterRow({
           style={{
             flex: "1 1 auto",
             minWidth: 0,
-            fontSize: 12,
+            fontSize: density === "compact" ? 11 : 12,
             fontWeight: 500,
             color: isSaving || isScrubbing ? "var(--ms-brand, #0891b2)" : "var(--color-fg-muted)",
             whiteSpace: "nowrap",
@@ -268,13 +435,32 @@ function ParameterRow({
             transition: "color 0.15s ease",
             cursor: isNumeric ? "ew-resize" : "default",
             userSelect: isScrubbing ? "none" : undefined,
+            display: "flex",
+            alignItems: "center",
           }}
           title={
             (parameter.localizedName || parameter.description || parameter.name) +
             (isNumeric ? " (Drag horizontally to scrub value)" : "")
           }
         >
-          {parameter.localizedName || parameter.name}
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {parameter.localizedName || parameter.name}
+          </span>
+          {density === "compact" && parameter.localizedDescription && (
+            <span
+              title={parameter.localizedDescription}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                marginLeft: 4,
+                color: "var(--color-fg-muted)",
+                cursor: "help",
+                flexShrink: 0,
+              }}
+            >
+              <InfoIcon size={12} />
+            </span>
+          )}
           {isSaving && (
             <span
               style={{
@@ -307,63 +493,124 @@ function ParameterRow({
               }}
             />
           ) : (
-            <TextInput
-              size="small"
-              value={localValue}
-              onChange={(e) => {
-                e.stopPropagation();
-                setLocalValue(e.target.value);
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-              onMouseUp={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === "Enter") {
-                  (e.target as HTMLInputElement).blur();
-                } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-                  const num = parseFloat(localValue);
-                  if (!isNaN(num)) {
-                    e.preventDefault();
-                    const step = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
-                    const nextNum = e.key === "ArrowUp" ? num + step : num - step;
-                    const formatted = String(Math.round(nextNum * 1000) / 1000);
-                    setLocalValue(formatted);
+            <>
+              <button
+                type="button"
+                title={isFormulaExpanded ? "Close formula editor" : "Formula editor (𝑓(𝑥))"}
+                aria-label="Formula editor"
+                onClick={() => setIsFormulaExpanded(!isFormulaExpanded)}
+                style={{
+                  background:
+                    isFormulaExpanded || hasFormula ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))" : "transparent",
+                  border: `1px solid ${isFormulaExpanded || hasFormula ? "var(--ms-brand, #0891b2)" : "var(--color-border-default, var(--ms-border))"}`,
+                  borderRadius: "var(--ms-radius-sm, 4px)",
+                  color: isFormulaExpanded || hasFormula ? "var(--ms-brand, #0891b2)" : "var(--color-fg-muted)",
+                  cursor: "pointer",
+                  padding: "1px 4px",
+                  fontSize: 10,
+                  fontStyle: "italic",
+                  fontFamily: "var(--ms-font-mono, monospace)",
+                  fontWeight: 600,
+                  height: 24,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                𝑓(𝑥)
+              </button>
+              <TextInput
+                size="small"
+                value={localValue}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  setLocalValue(e.target.value);
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+                onMouseUp={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter") {
+                    (e.target as HTMLInputElement).blur();
+                  } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                    const num = parseFloat(localValue);
+                    if (!isNaN(num)) {
+                      e.preventDefault();
+                      const step = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+                      const nextNum = e.key === "ArrowUp" ? num + step : num - step;
+                      const formatted = String(Math.round(nextNum * 1000) / 1000);
+                      setLocalValue(formatted);
+                    }
                   }
+                }}
+                onKeyUp={(e) => e.stopPropagation()}
+                onBlur={() => {
+                  if (localValue !== value && localValue !== "-" && onParameterChange) {
+                    onParameterChange(parameter.name, localValue);
+                  }
+                }}
+                trailingVisual={
+                  unit
+                    ? () => (
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: "var(--color-fg-muted)",
+                            fontFamily: "var(--ms-font-mono, monospace)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {formatUnit(unit)}
+                        </span>
+                      )
+                    : undefined
                 }
-              }}
-              onKeyUp={(e) => e.stopPropagation()}
-              onBlur={() => {
-                if (localValue !== value && localValue !== "-" && onParameterChange) {
-                  onParameterChange(parameter.name, localValue);
-                }
-              }}
-              trailingVisual={
-                unit
-                  ? () => (
-                      <span
-                        style={{
-                          fontSize: 11,
-                          color: "var(--color-fg-muted)",
-                          fontFamily: "var(--ms-font-mono, monospace)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {formatUnit(unit)}
-                      </span>
-                    )
-                  : undefined
-              }
-              style={{
-                width: 120,
-                height: 26,
-                fontSize: 12,
-                fontFamily: "var(--ms-font-mono, monospace)",
-              }}
-            />
+                style={{
+                  width: 120,
+                  height: 26,
+                  fontSize: 12,
+                  fontFamily: "var(--ms-font-mono, monospace)",
+                }}
+              />
+            </>
           )}
         </div>
       </div>
-      {parameter.localizedDescription && (
+
+      {/* Evaluated formula preview badge */}
+      {!isFormulaExpanded && formulaResult?.success && (
+        <div
+          style={{
+            marginTop: 2,
+            fontSize: 11,
+            color: "var(--ms-brand, #0891b2)",
+            fontFamily: "var(--ms-font-mono, monospace)",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          <span style={{ opacity: 0.7 }}>=</span>
+          <strong>{formulaResult.formatted}</strong>
+          {unit && <span style={{ opacity: 0.75 }}>{formatUnit(unit)}</span>}
+          <span style={{ fontSize: 10, opacity: 0.65 }}>(evaluated)</span>
+        </div>
+      )}
+
+      {/* Expanded formula editor */}
+      {isFormulaExpanded && (
+        <ExpandedFormulaEditor
+          fieldName={parameter.localizedName || parameter.name}
+          value={localValue}
+          onChange={(newVal) => setLocalValue(newVal)}
+          onClose={() => setIsFormulaExpanded(false)}
+          unit={unit}
+          contextValues={contextValues}
+        />
+      )}
+
+      {density !== "compact" && parameter.localizedDescription && (
         <div
           style={{
             marginTop: 3,
@@ -388,6 +635,7 @@ function SchemaFieldRow({
   conflict,
   onParameterChange,
   onResolveConflict,
+  density = "comfortable",
 }: {
   field: any;
   currentValue: any;
@@ -395,20 +643,24 @@ function SchemaFieldRow({
   conflict?: PropertyConflict | null | undefined;
   onParameterChange?: ((name: string, value: string) => void) | undefined;
   onResolveConflict?: ((resolution: "keep_local" | "accept_remote") => void) | undefined;
+  density?: "comfortable" | "compact" | undefined;
 }) {
   const isEnabled = evaluatePropertyPredicate(field.enabledIf, contextValues) && !field.readOnly;
   const initialValStr = String(currentValue ?? field.defaultValue ?? "");
   const [localVal, setLocalVal] = useState<string>(initialValStr);
   const [isSaving, setIsSaving] = useState(false);
+  const [isFormulaExpanded, setIsFormulaExpanded] = useState(false);
   const lastCommittedRef = useRef<string>(initialValStr);
   const onParameterChangeRef = useRef(onParameterChange);
   onParameterChangeRef.current = onParameterChange;
 
   useEffect(() => {
     const nextVal = String(currentValue ?? field.defaultValue ?? "");
-    setLocalVal(nextVal);
-    lastCommittedRef.current = nextVal;
-    setIsSaving(false);
+    if (nextVal !== localVal && nextVal !== lastCommittedRef.current) {
+      setLocalVal(nextVal);
+      lastCommittedRef.current = nextVal;
+      setIsSaving(false);
+    }
   }, [currentValue, field.defaultValue]);
 
   useEffect(() => {
@@ -423,7 +675,7 @@ function SchemaFieldRow({
       lastCommittedRef.current = localVal;
       onParameterChangeRef.current?.(field.key, localVal);
       setIsSaving(false);
-    }, 60);
+    }, 200);
     return () => clearTimeout(timeout);
   }, [localVal, field.key, field.kind]);
 
@@ -435,6 +687,15 @@ function SchemaFieldRow({
 
   const isNumberField = field.kind === "number";
   const [isScrubbing, setIsScrubbing] = useState(false);
+
+  const canHaveFormula = field.kind !== "boolean" && field.kind !== "choice" && field.kind !== "color";
+  const hasFormula = canHaveFormula && isFormula(localVal);
+  const formulaResult = useMemo(() => {
+    if (hasFormula) {
+      return tryEvaluateFormula(localVal, contextValues);
+    }
+    return null;
+  }, [hasFormula, localVal, contextValues]);
 
   const handleLabelMouseDown = (e: React.MouseEvent) => {
     if (!isNumberField || !isEnabled) return;
@@ -487,7 +748,7 @@ function SchemaFieldRow({
       style={{
         display: "flex",
         flexDirection: "column",
-        padding: "6px 16px",
+        padding: density === "compact" ? "3px 16px" : "6px 16px",
         opacity: isEnabled ? 1 : 0.45,
       }}
     >
@@ -528,7 +789,7 @@ function SchemaFieldRow({
             id={`schema-field-${field.key}`}
             onMouseDown={handleLabelMouseDown}
             style={{
-              fontSize: 12,
+              fontSize: density === "compact" ? 11 : 12,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -542,13 +803,32 @@ function SchemaFieldRow({
               transition: "color 0.15s ease",
               cursor: isNumberField && isEnabled ? "ew-resize" : "default",
               userSelect: isScrubbing ? "none" : undefined,
+              display: "flex",
+              alignItems: "center",
             }}
             title={
               (field.description || field.label || field.key) +
               (isNumberField && isEnabled ? " (Drag horizontally to scrub value)" : "")
             }
           >
-            {field.label || field.key}
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {field.label || field.key}
+            </span>
+            {density === "compact" && field.description && (
+              <span
+                title={field.description}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  marginLeft: 4,
+                  color: "var(--color-fg-muted)",
+                  cursor: "help",
+                  flexShrink: 0,
+                }}
+              >
+                <InfoIcon size={12} />
+              </span>
+            )}
             {isSaving && (
               <span
                 style={{
@@ -624,9 +904,10 @@ function SchemaFieldRow({
             >
               {field.choices.map((c: PropertyChoice | string) => {
                 const val = typeof c === "string" ? c : c.value;
-                const lbl = typeof c === "string" ? c : c.label;
+                const rawLbl = typeof c === "string" ? c : c.label;
+                const lbl = formatChoiceLabel(rawLbl, val);
                 return (
-                  <option key={val} value={val}>
+                  <option key={val} value={val} title={val}>
                     {lbl}
                   </option>
                 );
@@ -669,54 +950,124 @@ function SchemaFieldRow({
               {localVal}
             </pre>
           ) : (
-            <TextInput
-              size="small"
-              type="text"
-              inputMode={field.kind === "number" ? "decimal" : undefined}
-              disabled={!isEnabled}
-              value={localVal}
-              onChange={(e) => setLocalVal(e.target.value)}
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                if (e.key === "Enter") {
-                  (e.target as HTMLInputElement).blur();
-                } else if (field.kind === "number" && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-                  const num = parseFloat(localVal);
-                  if (!isNaN(num)) {
-                    e.preventDefault();
-                    const step = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
-                    const nextNum = e.key === "ArrowUp" ? num + step : num - step;
-                    const formatted = String(Math.round(nextNum * 1000) / 1000);
-                    setLocalVal(formatted);
+            <>
+              {canHaveFormula && (
+                <button
+                  type="button"
+                  title={isFormulaExpanded ? "Close formula editor" : "Formula editor (𝑓(𝑥))"}
+                  aria-label="Formula editor"
+                  onClick={() => setIsFormulaExpanded(!isFormulaExpanded)}
+                  style={{
+                    background:
+                      isFormulaExpanded || hasFormula ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))" : "transparent",
+                    border: `1px solid ${isFormulaExpanded || hasFormula ? "var(--ms-brand, #0891b2)" : "var(--color-border-default, var(--ms-border))"}`,
+                    borderRadius: "var(--ms-radius-sm, 4px)",
+                    color: isFormulaExpanded || hasFormula ? "var(--ms-brand, #0891b2)" : "var(--color-fg-muted)",
+                    cursor: "pointer",
+                    padding: "1px 4px",
+                    fontSize: 10,
+                    fontStyle: "italic",
+                    fontFamily: "var(--ms-font-mono, monospace)",
+                    fontWeight: 600,
+                    height: 24,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  𝑓(𝑥)
+                </button>
+              )}
+              <TextInput
+                size="small"
+                type="text"
+                inputMode={field.kind === "number" ? "decimal" : undefined}
+                disabled={!isEnabled}
+                value={localVal}
+                onChange={(e) => setLocalVal(e.target.value)}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter") {
+                    (e.target as HTMLInputElement).blur();
+                  } else if (field.kind === "number" && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+                    const num = parseFloat(localVal);
+                    if (!isNaN(num)) {
+                      e.preventDefault();
+                      const step = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+                      const nextNum = e.key === "ArrowUp" ? num + step : num - step;
+                      const formatted = String(Math.round(nextNum * 1000) / 1000);
+                      setLocalVal(formatted);
+                    }
                   }
+                }}
+                onBlur={() => {
+                  if (localVal !== "-" && localVal !== lastCommittedRef.current) {
+                    lastCommittedRef.current = localVal;
+                    onParameterChangeRef.current?.(field.key, localVal);
+                    setIsSaving(false);
+                  }
+                }}
+                trailingVisual={
+                  unitStr
+                    ? () => (
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: "var(--color-fg-muted)",
+                            fontFamily: "var(--ms-font-mono, monospace)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {unitStr}
+                        </span>
+                      )
+                    : undefined
                 }
-              }}
-              trailingVisual={
-                unitStr
-                  ? () => (
-                      <span
-                        style={{
-                          fontSize: 11,
-                          color: "var(--color-fg-muted)",
-                          fontFamily: "var(--ms-font-mono, monospace)",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {unitStr}
-                      </span>
-                    )
-                  : undefined
-              }
-              style={{
-                width: 130,
-                height: 26,
-                fontSize: 12,
-                fontFamily: field.kind === "number" ? "var(--ms-font-mono, monospace)" : "inherit",
-              }}
-            />
+                style={{
+                  width: 130,
+                  height: 26,
+                  fontSize: 12,
+                  fontFamily: field.kind === "number" ? "var(--ms-font-mono, monospace)" : "inherit",
+                }}
+              />
+            </>
           )}
         </div>
       </div>
+
+      {/* Evaluated formula preview badge */}
+      {!isFormulaExpanded && formulaResult?.success && (
+        <div
+          style={{
+            marginTop: 2,
+            fontSize: 11,
+            color: "var(--ms-brand, #0891b2)",
+            fontFamily: "var(--ms-font-mono, monospace)",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          <span style={{ opacity: 0.7 }}>=</span>
+          <strong>{formulaResult.formatted}</strong>
+          {unitStr && <span style={{ opacity: 0.75 }}>{unitStr}</span>}
+          <span style={{ fontSize: 10, opacity: 0.65 }}>(evaluated)</span>
+        </div>
+      )}
+
+      {/* Expanded formula editor */}
+      {isFormulaExpanded && (
+        <ExpandedFormulaEditor
+          fieldName={field.label || field.key}
+          value={localVal}
+          onChange={(newVal) => setLocalVal(newVal)}
+          onClose={() => setIsFormulaExpanded(false)}
+          unit={unitStr}
+          contextValues={contextValues}
+        />
+      )}
+
       {conflict && (
         <div
           style={{
@@ -773,7 +1124,7 @@ function SchemaFieldRow({
       {validationErr && (
         <div style={{ color: "var(--ms-danger, #e11d48)", fontSize: 11, marginTop: 2 }}>{validationErr}</div>
       )}
-      {field.description && (
+      {density !== "compact" && field.description && (
         <div
           className="f6 color-fg-muted"
           style={{ marginTop: 2, fontSize: 11, lineHeight: 1.35, opacity: 0.75, wordBreak: "break-word" }}
@@ -795,6 +1146,27 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
     revisions: true,
   });
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+
+  type DensityMode = "comfortable" | "compact";
+  const [density, setDensity] = useState<DensityMode>(() => {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const saved = window.localStorage.getItem("ms-properties-density");
+      if (saved === "compact" || saved === "comfortable") return saved;
+    }
+    return "comfortable";
+  });
+
+  const toggleDensity = useCallback(() => {
+    setDensity((prev) => {
+      const next = prev === "comfortable" ? "compact" : "comfortable";
+      if (typeof window !== "undefined" && window.localStorage) {
+        window.localStorage.setItem("ms-properties-density", next);
+      }
+      return next;
+    });
+  }, []);
+
+  const [onlyModified, setOnlyModified] = useState(false);
 
   const [localName, setLocalName] = useState(properties?.name || "");
   const [localDescription, setLocalDescription] = useState(properties?.description || "");
@@ -842,17 +1214,35 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
   const [localValues, setLocalValues] = useState<Record<string, unknown>>(() => properties?.values || {});
   const [filterText, setFilterText] = useState("");
 
+  const isFieldModified = useCallback((fld: PropertyFieldConfig, values: Record<string, unknown>): boolean => {
+    const cur = values[fld.key];
+    if (cur === undefined || cur === null || cur === "") return false;
+    if (fld.defaultValue !== undefined && fld.defaultValue !== null) {
+      return String(cur) !== String(fld.defaultValue);
+    }
+    return true;
+  }, []);
+
+  const isParamModified = useCallback((param: PropertyData): boolean => {
+    return param.value !== undefined && param.value !== "" && param.value !== "-";
+  }, []);
+
   useEffect(() => {
     conflictMgrRef.current.reset(properties?.values || {});
     setConflictVersion(0);
   }, [properties?.name]);
 
+  const prevRemoteValuesRef = useRef<string>("");
   useEffect(() => {
     if (properties?.values) {
       const remote: Record<string, string> = {};
       for (const [k, v] of Object.entries(properties.values)) {
         remote[k] = String(v ?? "");
       }
+      const serialized = JSON.stringify(remote);
+      if (serialized === prevRemoteValuesRef.current) return;
+      prevRemoteValuesRef.current = serialized;
+
       conflictMgrRef.current.syncRemote(remote);
       setLocalValues({ ...conflictMgrRef.current.getLocalValues() });
       setConflictVersion((v) => v + 1);
@@ -886,7 +1276,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
       svg = svg.replace(nameRegex, `$1${localName}$2`);
     }
     return svg;
-  }, [properties, localValues, localName]);
+  }, [properties?.iconSvg, properties?.name, localValues, localName]);
 
   // Schema tabs management
   const schema = properties?.schema;
@@ -994,6 +1384,20 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
 
   const activeTab = visibleTabs.find((t: any) => t.id === activeTabId) || visibleTabs[0];
 
+  const quickActionBtnStyle: React.CSSProperties = {
+    background: "transparent",
+    border: "1px solid var(--color-border-default, var(--ms-border))",
+    borderRadius: "var(--ms-radius-sm, 4px)",
+    color: "var(--color-fg-muted)",
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "3px 8px",
+    fontSize: 11,
+    transition: "all 0.15s ease",
+  };
+
   return (
     <div
       className="height-full overflow-auto border-left"
@@ -1006,20 +1410,20 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
         onToggle={() => toggleSection("info")}
         className="mb-2"
         action={
-          props.onClose && (
+          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
             <button
               type="button"
-              aria-label="Close properties panel"
-              title="Close properties panel (Esc)"
+              title={`Density: ${density === "compact" ? "Compact (click for Comfortable)" : "Comfortable (click for Compact)"}`}
+              aria-label="Toggle density"
               onClick={(e) => {
-                e.preventDefault();
                 e.stopPropagation();
-                props.onClose?.();
+                toggleDensity();
               }}
               style={{
-                background: "transparent",
+                background:
+                  density === "compact" ? "var(--ms-surface-hover, rgba(125, 125, 125, 0.15))" : "transparent",
                 border: "none",
-                color: "var(--color-fg-muted)",
+                color: density === "compact" ? "var(--ms-brand, #0891b2)" : "var(--color-fg-muted)",
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
@@ -1029,20 +1433,47 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                 borderRadius: "var(--ms-radius-sm, 4px)",
                 transition: "all 0.15s ease",
               }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.backgroundColor =
-                  "var(--color-action-list-item-default-hover-bg, var(--ms-surface-hover, rgba(125, 125, 125, 0.1)))";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-              }}
             >
-              <XIcon size={14} />
+              <RowsIcon size={13} />
             </button>
-          )
+            {props.onClose && (
+              <button
+                type="button"
+                aria-label="Close properties panel"
+                title="Close properties panel (Esc)"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  props.onClose?.();
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--color-fg-muted)",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 24,
+                  height: 24,
+                  borderRadius: "var(--ms-radius-sm, 4px)",
+                  transition: "all 0.15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.backgroundColor =
+                    "var(--color-action-list-item-default-hover-bg, var(--ms-surface-hover, rgba(125, 125, 125, 0.1)))";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                }}
+              >
+                <XIcon size={14} />
+              </button>
+            )}
+          </div>
         }
       >
-        <div style={{ display: "flex", flexDirection: "column", padding: "8px 16px", gap: "12px" }}>
+        <div style={{ display: "flex", flexDirection: "column", padding: "8px 16px", gap: "10px" }}>
           <div style={{ display: "flex", flexDirection: "row", gap: "16px", alignItems: "center" }}>
             {(liveIconSvg || properties.iconSvg) && (
               <div
@@ -1121,6 +1552,103 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
               </div>
             </div>
           </div>
+
+          {/* Quick action buttons */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              paddingTop: 6,
+              borderTop: "1px solid var(--color-border-subtle, var(--ms-border))",
+              flexWrap: "wrap",
+            }}
+          >
+            {props.onLocateComponent && (
+              <button
+                type="button"
+                title="Locate component on schematic"
+                aria-label="Locate on schematic"
+                onClick={() => props.onLocateComponent?.(properties.name)}
+                style={quickActionBtnStyle}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-default)";
+                  (e.currentTarget as HTMLElement).style.backgroundColor =
+                    "var(--ms-surface-hover, rgba(125,125,125,0.08))";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-muted)";
+                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                }}
+              >
+                <LocationIcon size={13} />
+                <span>Locate</span>
+              </button>
+            )}
+            {props.onGoToSource && (
+              <button
+                type="button"
+                title="Go to declaration in Modelica source"
+                aria-label="Go to source"
+                onClick={() => props.onGoToSource?.(properties.name)}
+                style={quickActionBtnStyle}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-default)";
+                  (e.currentTarget as HTMLElement).style.backgroundColor =
+                    "var(--ms-surface-hover, rgba(125,125,125,0.08))";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-muted)";
+                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                }}
+              >
+                <CodeIcon size={13} />
+                <span>Source</span>
+              </button>
+            )}
+            {props.onDuplicateComponent && (
+              <button
+                type="button"
+                title="Duplicate component"
+                aria-label="Duplicate component"
+                onClick={() => props.onDuplicateComponent?.(properties.name)}
+                style={quickActionBtnStyle}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-default)";
+                  (e.currentTarget as HTMLElement).style.backgroundColor =
+                    "var(--ms-surface-hover, rgba(125,125,125,0.08))";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-muted)";
+                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                }}
+              >
+                <CopyIcon size={13} />
+                <span>Duplicate</span>
+              </button>
+            )}
+            {props.onDeleteComponent && (
+              <button
+                type="button"
+                title="Delete component"
+                aria-label="Delete component"
+                onClick={() => props.onDeleteComponent?.(properties.name)}
+                style={quickActionBtnStyle}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "var(--ms-danger, #e11d48)";
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--ms-danger, #e11d48)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-muted)";
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--color-border-default, var(--ms-border))";
+                }}
+              >
+                <TrashIcon size={13} />
+                <span>Delete</span>
+              </button>
+            )}
+          </div>
+
           {localDescription || descriptionEditing ? (
             <div>
               <div className="f6 color-fg-muted" style={{ fontSize: 11, marginBottom: 2 }}>
@@ -1141,7 +1669,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                     onDescriptionChange(localDescription);
                   }
                 }}
-                rows={4}
+                rows={3}
                 style={{
                   width: "100%",
                   fontSize: 12,
@@ -1151,7 +1679,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
               />
             </div>
           ) : (
-            <div style={{ display: "flex", justifyContent: "center", padding: "4px 0" }}>
+            <div style={{ display: "flex", justifyContent: "center", padding: "2px 0" }}>
               <button
                 type="button"
                 onClick={() => setDescriptionEditing(true)}
@@ -1159,7 +1687,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                   background: "transparent",
                   border: "1px dashed var(--color-border-default, var(--ms-border))",
                   borderRadius: "var(--ms-radius-sm, 6px)",
-                  padding: "6px 12px",
+                  padding: "4px 12px",
                   fontSize: 11,
                   color: "var(--color-fg-muted)",
                   cursor: "pointer",
@@ -1243,25 +1771,60 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                 return (
                   <>
                     {totalFieldsInActiveTab > 4 && (
-                      <div style={{ padding: "8px 16px 4px 16px" }}>
-                        <TextInput
-                          size="small"
-                          block
-                          leadingVisual={SearchIcon}
-                          placeholder="Filter parameters..."
-                          value={filterText}
-                          onChange={(e) => setFilterText(e.target.value)}
-                          trailingAction={
-                            filterText ? (
-                              <TextInput.Action
-                                icon={XIcon}
-                                aria-label="Clear filter"
-                                onClick={() => setFilterText("")}
-                              />
-                            ) : undefined
-                          }
-                          style={{ fontSize: 11, height: 26 }}
-                        />
+                      <div style={{ padding: "8px 16px 4px 16px", display: "flex", gap: 6, alignItems: "center" }}>
+                        <div style={{ flex: 1 }}>
+                          <TextInput
+                            size="small"
+                            block
+                            leadingVisual={SearchIcon}
+                            placeholder="Filter parameters..."
+                            value={filterText}
+                            onChange={(e) => setFilterText(e.target.value)}
+                            trailingAction={
+                              filterText ? (
+                                <TextInput.Action
+                                  icon={XIcon}
+                                  aria-label="Clear filter"
+                                  onClick={() => setFilterText("")}
+                                />
+                              ) : undefined
+                            }
+                            style={{ fontSize: 11, height: 26 }}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          aria-label="Filter modified parameters only"
+                          title={onlyModified ? "Show all parameters" : "Show modified parameters only"}
+                          onClick={() => setOnlyModified(!onlyModified)}
+                          style={{
+                            flexShrink: 0,
+                            height: 26,
+                            padding: "0 8px",
+                            fontSize: 11,
+                            fontWeight: onlyModified ? 600 : 500,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 5,
+                            borderRadius: "var(--ms-radius-sm, 6px)",
+                            border: `1px solid ${onlyModified ? "var(--ms-brand, #0891b2)" : "var(--color-border-default, var(--ms-border))"}`,
+                            background: onlyModified ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))" : "transparent",
+                            color: onlyModified ? "var(--ms-brand, #0891b2)" : "var(--color-fg-muted)",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          <span
+                            style={{
+                              display: "inline-block",
+                              width: 6,
+                              height: 6,
+                              borderRadius: "50%",
+                              backgroundColor: onlyModified ? "var(--ms-brand, #0891b2)" : "var(--color-fg-muted)",
+                            }}
+                          />
+                          <span>Modified</span>
+                        </button>
                       </div>
                     )}
 
@@ -1269,6 +1832,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                       const visibleFields = (grp.fields || [])
                         .filter((fld: PropertyFieldConfig) => evaluatePropertyPredicate(fld.visibleIf, localValues))
                         .filter((fld: PropertyFieldConfig) => {
+                          if (onlyModified && !isFieldModified(fld, localValues)) return false;
                           if (!filterText) return true;
                           const q = filterText.toLowerCase();
                           return (
@@ -1278,7 +1842,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                           );
                         });
 
-                      if (visibleFields.length === 0 && filterText) return null;
+                      if (visibleFields.length === 0 && (filterText || onlyModified)) return null;
 
                       const isGrpOpen = openGroups[grp.id] ?? true;
                       return (
@@ -1308,6 +1872,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                                   setConflictVersion((v) => v + 1);
                                   onParameterChange?.(fld.key, chosenValue);
                                 }}
+                                density={density}
                               />
                             ))}
                           </div>
@@ -1344,26 +1909,62 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
             }
           >
             {parameters.length > 4 && (
-              <div style={{ padding: "4px 16px 8px 16px" }}>
-                <TextInput
-                  size="small"
-                  block
-                  leadingVisual={SearchIcon}
-                  placeholder="Filter parameters..."
-                  value={filterText}
-                  onChange={(e) => setFilterText(e.target.value)}
-                  trailingAction={
-                    filterText ? (
-                      <TextInput.Action icon={XIcon} aria-label="Clear filter" onClick={() => setFilterText("")} />
-                    ) : undefined
-                  }
-                  style={{ fontSize: 11, height: 26 }}
-                />
+              <div style={{ padding: "4px 16px 8px 16px", display: "flex", gap: 6, alignItems: "center" }}>
+                <div style={{ flex: 1 }}>
+                  <TextInput
+                    size="small"
+                    block
+                    leadingVisual={SearchIcon}
+                    placeholder="Filter parameters..."
+                    value={filterText}
+                    onChange={(e) => setFilterText(e.target.value)}
+                    trailingAction={
+                      filterText ? (
+                        <TextInput.Action icon={XIcon} aria-label="Clear filter" onClick={() => setFilterText("")} />
+                      ) : undefined
+                    }
+                    style={{ fontSize: 11, height: 26 }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  aria-label="Filter modified parameters only"
+                  title={onlyModified ? "Show all parameters" : "Show modified parameters only"}
+                  onClick={() => setOnlyModified(!onlyModified)}
+                  style={{
+                    flexShrink: 0,
+                    height: 26,
+                    padding: "0 8px",
+                    fontSize: 11,
+                    fontWeight: onlyModified ? 600 : 500,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    borderRadius: "var(--ms-radius-sm, 6px)",
+                    border: `1px solid ${onlyModified ? "var(--ms-brand, #0891b2)" : "var(--color-border-default, var(--ms-border))"}`,
+                    background: onlyModified ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))" : "transparent",
+                    color: onlyModified ? "var(--ms-brand, #0891b2)" : "var(--color-fg-muted)",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      backgroundColor: onlyModified ? "var(--ms-brand, #0891b2)" : "var(--color-fg-muted)",
+                    }}
+                  />
+                  <span>Modified</span>
+                </button>
               </div>
             )}
             <div style={{ paddingBottom: 8 }}>
               {parameters
                 .filter((p) => {
+                  if (onlyModified && !isParamModified(p)) return false;
                   if (!filterText) return true;
                   const q = filterText.toLowerCase();
                   return (
@@ -1378,6 +1979,8 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                     parameter={parameter}
                     colorMode={colorMode}
                     onParameterChange={handleParameterChangeWrapper}
+                    contextValues={localValues}
+                    density={density}
                   />
                 ))}
             </div>

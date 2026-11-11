@@ -221,162 +221,223 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           </Link>
         )}
 
-        {/* Preset Example Picker & Inline Title Rename */}
-        <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", minWidth: 0, flexShrink: 1 }}>
-          {isEditingTitle ? (
-            <input
-              type="text"
-              value={draftTitle}
-              aria-label="Model title"
-              autoFocus
-              onChange={(e) => setDraftTitle(e.target.value)}
-              onBlur={commitTitleChange}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  commitTitleChange();
-                } else if (e.key === "Escape") {
-                  setDraftTitle(currentTitle);
-                  setIsEditingTitle(false);
-                }
-              }}
-              style={{
-                width: 180,
-                maxWidth: "38vw",
-                height: 28,
-                padding: "2px 8px",
-                fontSize: 13,
-                fontWeight: 600,
-                borderRadius: "var(--ms-radius-sm, 6px)",
-                border: "1px solid var(--ms-brand, #0891b2)",
-                boxShadow: "var(--ms-focus-ring, 0 0 0 3px rgba(8, 145, 178, 0.25))",
-                background: "var(--color-canvas-default)",
-                color: "var(--color-fg-default)",
-                outline: "none",
-                fontFamily: "inherit",
-              }}
-            />
-          ) : (
-            <ActionMenu>
-              <ActionMenu.Button
-                size="small"
-                title={
-                  onTitleChange
-                    ? `${currentTitle} — Click for model options & templates, double-click to rename`
-                    : currentTitle
-                }
-                onDoubleClick={(e) => {
-                  if (onTitleChange) {
-                    e.stopPropagation();
+        {/* Breadcrumb Hierarchy: Models / [CurrentModel] */}
+        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", minWidth: 0, flexShrink: 1 }}>
+          <span
+            className="nav-hide-sm"
+            style={{
+              fontSize: "12px",
+              fontWeight: 500,
+              color: "var(--ms-text-3, var(--color-fg-muted))",
+              userSelect: "none",
+            }}
+          >
+            Models
+          </span>
+          <span
+            className="nav-hide-sm"
+            style={{
+              fontSize: "12px",
+              color: "var(--ms-divider, rgba(255, 255, 255, 0.2))",
+              userSelect: "none",
+            }}
+          >
+            /
+          </span>
+
+          {/* Preset Example Picker & Inline Title Rename */}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+            {isEditingTitle ? (
+              <input
+                type="text"
+                value={draftTitle}
+                aria-label="Model title"
+                autoFocus
+                onChange={(e) => setDraftTitle(e.target.value)}
+                onBlur={commitTitleChange}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    commitTitleChange();
+                  } else if (e.key === "Escape") {
                     setDraftTitle(currentTitle);
-                    setIsEditingTitle(true);
+                    setIsEditingTitle(false);
                   }
                 }}
                 style={{
+                  width: 180,
+                  maxWidth: "38vw",
                   height: 28,
-                  borderRadius: 6,
+                  padding: "2px 8px",
+                  fontSize: 13,
                   fontWeight: 600,
-                  padding: "0 8px",
+                  borderRadius: "var(--ms-radius-sm, 6px)",
+                  border: "1px solid var(--ms-brand, #0891b2)",
+                  boxShadow: "var(--ms-focus-ring, 0 0 0 3px rgba(8, 145, 178, 0.25))",
+                  background: "var(--color-canvas-default)",
+                  color: "var(--color-fg-default)",
+                  outline: "none",
+                  fontFamily: "inherit",
                 }}
-              >
-                <span
+              />
+            ) : (
+              <ActionMenu>
+                <ActionMenu.Button
+                  size="small"
+                  title={
+                    onTitleChange
+                      ? `${currentTitle} — Click for model options & templates, double-click to rename`
+                      : currentTitle
+                  }
+                  onDoubleClick={(e) => {
+                    if (onTitleChange) {
+                      e.stopPropagation();
+                      setDraftTitle(currentTitle);
+                      setIsEditingTitle(true);
+                    }
+                  }}
                   style={{
-                    display: "inline-block",
-                    minWidth: 0,
-                    maxWidth: "clamp(110px, 18vw, 240px)",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    verticalAlign: "bottom",
+                    height: 28,
+                    borderRadius: "var(--ms-radius-pill, 999px)",
+                    fontWeight: 600,
+                    padding: "0 10px",
+                    background: "var(--ms-surface-hover, rgba(125, 125, 125, 0.06))",
+                    border: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
                   }}
                 >
-                  {displayTitle}
-                </span>
-                {isDirty && (
                   <span
-                    title="Unsaved changes"
-                    aria-label="Unsaved changes"
                     style={{
                       display: "inline-block",
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      backgroundColor: "var(--ms-warning, #d97706)",
-                      marginLeft: 6,
-                      verticalAlign: "middle",
-                      boxShadow: "0 0 4px var(--ms-warning, #d97706)",
+                      minWidth: 0,
+                      maxWidth: "clamp(110px, 18vw, 240px)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      verticalAlign: "bottom",
                     }}
-                  />
-                )}
-              </ActionMenu.Button>
-              <ActionMenu.Overlay width="large">
-                <ActionList>
-                  {onTitleChange && (
-                    <>
-                      <ActionList.Item
-                        onSelect={() => {
-                          setDraftTitle(currentTitle);
-                          setIsEditingTitle(true);
-                        }}
-                      >
-                        <ActionList.LeadingVisual>
-                          <PencilIcon />
-                        </ActionList.LeadingVisual>
-                        Rename Model…
-                      </ActionList.Item>
-                      <ActionList.Divider />
-                    </>
-                  )}
-                  <ActionList.Item
-                    onSelect={() =>
-                      onSelectExample({
-                        id: "untitled",
-                        title: "Untitled Model",
-                        category: "General",
-                        lang: currentLang,
-                        code: DEFAULT_EMPTY_MODELICA_CODE,
-                      })
-                    }
                   >
-                    <ActionList.LeadingVisual>
-                      <PlusIcon />
-                    </ActionList.LeadingVisual>
-                    New Blank Model
-                    <ActionList.Description variant="inline">Reset to empty canvas</ActionList.Description>
-                  </ActionList.Item>
-                  {onOpenTemplates && (
-                    <ActionList.Item onSelect={onOpenTemplates}>
-                      <ActionList.LeadingVisual>
-                        <CrossReferenceIcon />
-                      </ActionList.LeadingVisual>
-                      Browse Starter Templates…
-                      <ActionList.Description variant="inline">Explore multi-physics gallery</ActionList.Description>
-                    </ActionList.Item>
+                    {displayTitle}
+                  </span>
+                  {onTitleChange && (
+                    <PencilIcon
+                      size={11}
+                      style={{
+                        opacity: 0.5,
+                        flexShrink: 0,
+                      }}
+                    />
                   )}
-                  <ActionList.Divider />
-                  <ActionList.Group title="Curated Starter Models">
-                    {HERO_EXAMPLES.slice(0, 7).map((ex) => (
-                      <ActionList.Item key={ex.id} onSelect={() => onSelectExample(ex)}>
-                        <ActionList.LeadingVisual>
-                          <FileIcon />
-                        </ActionList.LeadingVisual>
-                        {ex.title}
-                        <ActionList.Description variant="inline">{ex.category}</ActionList.Description>
-                      </ActionList.Item>
-                    ))}
+                  {isDirty && (
+                    <span
+                      title="Unsaved changes"
+                      aria-label="Unsaved changes"
+                      style={{
+                        display: "inline-block",
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        backgroundColor: "var(--ms-warning, #d97706)",
+                        marginLeft: 2,
+                        verticalAlign: "middle",
+                        boxShadow: "0 0 4px var(--ms-warning, #d97706)",
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                </ActionMenu.Button>
+                <ActionMenu.Overlay width="large">
+                  <ActionList>
+                    {onTitleChange && (
+                      <>
+                        <ActionList.Item
+                          onSelect={() => {
+                            setDraftTitle(currentTitle);
+                            setIsEditingTitle(true);
+                          }}
+                        >
+                          <ActionList.LeadingVisual>
+                            <PencilIcon />
+                          </ActionList.LeadingVisual>
+                          Rename Model…
+                        </ActionList.Item>
+                        <ActionList.Divider />
+                      </>
+                    )}
+                    <ActionList.Item
+                      onSelect={() =>
+                        onSelectExample({
+                          id: "untitled",
+                          title: "Untitled Model",
+                          category: "General",
+                          lang: currentLang,
+                          code: DEFAULT_EMPTY_MODELICA_CODE,
+                        })
+                      }
+                    >
+                      <ActionList.LeadingVisual>
+                        <PlusIcon />
+                      </ActionList.LeadingVisual>
+                      New Blank Model
+                      <ActionList.Description variant="inline">Reset to empty canvas</ActionList.Description>
+                    </ActionList.Item>
                     {onOpenTemplates && (
                       <ActionList.Item onSelect={onOpenTemplates}>
                         <ActionList.LeadingVisual>
                           <CrossReferenceIcon />
                         </ActionList.LeadingVisual>
-                        <span style={{ color: "var(--ms-link, var(--color-accent-fg, #0891b2))", fontWeight: 600 }}>
-                          View all in template gallery →
-                        </span>
+                        Browse Starter Templates…
+                        <ActionList.Description variant="inline">Explore multi-physics gallery</ActionList.Description>
                       </ActionList.Item>
                     )}
-                  </ActionList.Group>
-                </ActionList>
-              </ActionMenu.Overlay>
-            </ActionMenu>
+                    <ActionList.Divider />
+                    <ActionList.Group title="Curated Starter Models">
+                      {HERO_EXAMPLES.slice(0, 7).map((ex) => (
+                        <ActionList.Item key={ex.id} onSelect={() => onSelectExample(ex)}>
+                          <ActionList.LeadingVisual>
+                            <FileIcon />
+                          </ActionList.LeadingVisual>
+                          {ex.title}
+                          <ActionList.Description variant="inline">{ex.category}</ActionList.Description>
+                        </ActionList.Item>
+                      ))}
+                      {onOpenTemplates && (
+                        <ActionList.Item onSelect={onOpenTemplates}>
+                          <ActionList.LeadingVisual>
+                            <CrossReferenceIcon />
+                          </ActionList.LeadingVisual>
+                          <span style={{ color: "var(--ms-link, var(--color-accent-fg, #0891b2))", fontWeight: 600 }}>
+                            View all in template gallery →
+                          </span>
+                        </ActionList.Item>
+                      )}
+                    </ActionList.Group>
+                  </ActionList>
+                </ActionMenu.Overlay>
+              </ActionMenu>
+            )}
+          </div>
+
+          {/* Saved state indicator */}
+          {!isDirty && (
+            <span
+              className="nav-hide-sm"
+              style={{
+                fontSize: 11,
+                fontWeight: 500,
+                color: "var(--ms-text-3, var(--color-fg-muted))",
+                opacity: 0.75,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+                marginLeft: 2,
+                userSelect: "none",
+              }}
+              title="All changes saved in local session"
+            >
+              Saved ✓
+            </span>
           )}
         </div>
 
@@ -390,7 +451,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
               style={{
                 height: 26,
                 padding: "0 8px",
-                borderRadius: 6,
+                borderRadius: "var(--ms-radius-pill, 999px)",
                 fontWeight: 600,
                 fontSize: 11,
                 color: "var(--ms-brand, #0891b2)",
@@ -575,21 +636,23 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             style={{
               fontWeight: 600,
               height: 30,
-              padding: "0 12px",
-              borderRadius: "var(--ms-radius-sm, 6px)",
+              padding: "0 13px",
+              borderRadius: "var(--ms-radius-pill, 999px)",
               background: isSimulating
                 ? "var(--color-neutral-muted, var(--ms-text-3, #4b5563))"
                 : "linear-gradient(180deg, var(--ms-accent-teal, #14b8a6) 0%, var(--ms-brand, #0e7490) 100%)",
               borderColor: isSimulating ? "transparent" : "var(--ms-brand-active, #155e75)",
-              boxShadow: isSimulating ? "none" : "0 1px 2px rgba(14, 116, 144, 0.25)",
+              boxShadow: isSimulating
+                ? "0 0 12px var(--ms-glow-cyan, rgba(6, 182, 212, 0.45))"
+                : "0 2px 8px rgba(14, 116, 144, 0.35)",
               color: "#ffffff",
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: 4,
+              gap: 6,
               transition: "all 0.15s cubic-bezier(0.16, 1, 0.3, 1)",
             }}
-            title={isSimulating ? "Simulation running…" : `Run Simulation (${isMac ? "⇧↵" : "F5"})`}
+            title={isSimulating ? "Simulation running…" : `Run Simulation (${isMac ? "⌘↵" : "F5"})`}
           >
             {isSimulating ? (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -607,7 +670,23 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                 Running…
               </span>
             ) : (
-              <span>Run</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span>Run</span>
+                <kbd
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 500,
+                    fontFamily: "var(--ms-font-mono, monospace)",
+                    opacity: 0.85,
+                    padding: "1px 5px",
+                    borderRadius: 4,
+                    background: "rgba(255, 255, 255, 0.2)",
+                    lineHeight: "12px",
+                  }}
+                >
+                  {isMac ? "⌘↵" : "F5"}
+                </kbd>
+              </span>
             )}
           </Button>
         )}

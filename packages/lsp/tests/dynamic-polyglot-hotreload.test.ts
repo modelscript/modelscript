@@ -70,7 +70,11 @@ motor baseMotor = 100;
     const tree = robotParser.parse(validCode);
     assert.ok(tree, "Parse tree must exist");
     assert.ok(tree.rootNode, "Root node must exist");
-    assert.strictEqual(tree.rootNode.hasError(), false, "Valid code must have zero syntax errors");
+    assert.strictEqual(
+      typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : tree.rootNode.hasError,
+      false,
+      "Valid code must have zero syntax errors",
+    );
 
     // Test invalid code parse (missing semicolon on joint)
     const invalidCode = `
@@ -79,7 +83,12 @@ robot Arm {
 }
 `;
     const invalidTree = robotParser.parse(invalidCode);
-    assert.ok(invalidTree.rootNode.hasError(), "Invalid code must report syntax error");
+    assert.ok(
+      typeof invalidTree.rootNode.hasError === "function"
+        ? invalidTree.rootNode.hasError()
+        : invalidTree.rootNode.hasError,
+      "Invalid code must report syntax error",
+    );
   });
 
   // ── 3. Dynamic Registry Management & URI Resolution ──────────────────────
@@ -118,7 +127,13 @@ robot Arm {
 
     // V1 parser should fail on 'gripper'
     const treeBefore = robotPlugin.parser.parse(v2Snippet);
-    assert.strictEqual(treeBefore.rootNode.hasError(), true, "V1 parser must flag 'gripper' as unexpected");
+    assert.strictEqual(
+      typeof treeBefore.rootNode.hasError === "function"
+        ? treeBefore.rootNode.hasError()
+        : treeBefore.rootNode.hasError,
+      true,
+      "V1 parser must flag 'gripper' as unexpected",
+    );
 
     // Version 2: grammar evolved to add 'gripper' inside robot body
     const robotDslV2 = language({
@@ -158,7 +173,11 @@ robot Arm {
 
     // V2 parser should now parse 'gripper' cleanly with zero errors
     const treeAfter = robotPlugin.parser.parse(v2Snippet);
-    assert.strictEqual(treeAfter.rootNode.hasError(), false, "V2 parser must accept 'gripper' without errors");
+    assert.strictEqual(
+      typeof treeAfter.rootNode.hasError === "function" ? treeAfter.rootNode.hasError() : treeAfter.rootNode.hasError,
+      false,
+      "V2 parser must accept 'gripper' without errors",
+    );
     assert.ok(robotPlugin.monarch?.keywords.includes("gripper"), "Monarch keywords must include 'gripper'");
   });
 

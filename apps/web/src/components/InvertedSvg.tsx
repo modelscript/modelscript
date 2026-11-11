@@ -53,7 +53,8 @@ function hasDistinctGraphics(svg: string): boolean {
     svg.includes("specializes ")
   )
     return false;
-  if (/<(line|circle|path|polygon|polyline|ellipse|image)\b/i.test(svg)) return true;
+  if (/<(line|circle|path|polygon|polyline|ellipse)\b/i.test(svg)) return true;
+  if (/<image\b[^>]*\b(?:href|xlink:href)=["'](?!\s*["']|modelica:\/\/)/i.test(svg)) return true;
   if (/url\(#/i.test(svg)) return true;
   const textMatches = svg.match(/<text\b[^>]*>([\s\S]*?)<\/text>/gi);
   if (textMatches && textMatches.some((t) => stripAllHtmlTags(t).trim().length > 0)) return true;

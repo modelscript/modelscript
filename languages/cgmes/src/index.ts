@@ -10,6 +10,7 @@
 
 export * from "./language.js";
 export * from "./lints/index.js";
+export * from "./lsp.js";
 export * from "./parser/cgmes-rdf-parser.js";
 export * from "./projections/cgmes-to-modelica.js";
 export * from "./projections/cgmes-to-psse.js";

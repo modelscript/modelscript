@@ -27,6 +27,10 @@
     "./dae": {
       "types": "./dist/src/dae/lowering.d.ts",
       "default": "./dist/src/dae/lowering.js"
+    },
+    "./lints": {
+      "types": "./dist/src/lints/index.d.ts",
+      "default": "./dist/src/lints/index.js"
     }
   },
   "files": [
@@ -49,7 +53,7 @@
     "typescript": "^5.9.3"
   },
   "modelscript": {
-    "tier": "beta",
+    "tier": "stable",
     "category": "language"
   }
 }

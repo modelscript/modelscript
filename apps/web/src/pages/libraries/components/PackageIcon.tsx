@@ -23,6 +23,8 @@ interface DomainThemeSpec {
 function getDomainTheme(primaryDomain: string): DomainThemeSpec {
   switch (primaryDomain) {
     case "power":
+    case "power-energy":
+    case "electrical-power":
     case "pscad":
       return {
         bg: "linear-gradient(135deg, rgba(2, 132, 199, 0.16) 0%, rgba(6, 182, 212, 0.08) 100%)",
@@ -44,6 +46,8 @@ function getDomainTheme(primaryDomain: string): DomainThemeSpec {
         ),
       };
     case "robotics":
+    case "mobility-auto":
+    case "mobility-systems":
     case "urdf":
       return {
         bg: "linear-gradient(135deg, rgba(5, 150, 105, 0.16) 0%, rgba(16, 185, 129, 0.08) 100%)",
@@ -70,7 +74,9 @@ function getDomainTheme(primaryDomain: string): DomainThemeSpec {
         ),
       };
     case "hydraulics":
+    case "fluids-process":
     case "epanet":
+    case "swmm":
       return {
         bg: "linear-gradient(135deg, rgba(14, 165, 233, 0.16) 0%, rgba(56, 189, 248, 0.08) 100%)",
         border: "rgba(14, 165, 233, 0.35)",
@@ -112,6 +118,7 @@ function getDomainTheme(primaryDomain: string): DomainThemeSpec {
         ),
       };
     case "cad":
+    case "cad-structures":
     case "step":
     case "scad":
       return {
@@ -206,6 +213,29 @@ function getDomainTheme(primaryDomain: string): DomainThemeSpec {
           </svg>
         ),
       };
+    case "life-sciences":
+    case "sbml":
+      return {
+        bg: "linear-gradient(135deg, rgba(16, 185, 129, 0.16) 0%, rgba(5, 150, 105, 0.08) 100%)",
+        border: "rgba(16, 185, 129, 0.35)",
+        color: "#10b981",
+        renderGlyph: (s) => (
+          <svg
+            width={s}
+            height={s}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 3" />
+          </svg>
+        ),
+      };
+    case "systems-physics":
     case "modelica":
     default:
       return {
@@ -256,16 +286,6 @@ export const PackageIcon: React.FC<PackageIconProps> = ({ name, version, domains
       {theme.renderGlyph(glyphSize)}
     </div>
   );
-
-  // Only attempt to load a Modelica root class icon.svg if the root class name is a valid Modelica identifier
-  // and the package is not a known non-Modelica stdlib (such as SysML).
-  const isModelicaIdentifier = /^[A-Za-z_][A-Za-z0-9_]*$/.test(rootClassName);
-  const canHaveModelicaIcon =
-    isModelicaIdentifier && name.toLowerCase() !== "sysml" && resolvedDomains.includes("modelica");
-
-  if (!canHaveModelicaIcon) {
-    return fallbackBox;
-  }
 
   const iconUrl = `/api/v1/libraries/${encodePackagePath(name)}/${encodeURIComponent(version)}/classes/${encodeURIComponent(rootClassName)}/icon.svg`;
 

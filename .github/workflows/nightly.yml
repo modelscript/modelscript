@@ -94,6 +94,66 @@ jobs:
           path: reports/msl-*
           retention-days: 14
 
+  community_library_conformance:
+    name: Open-Source Library Parity (${{ matrix.library }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        library: [openipsl]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - name: Install Dependencies
+        run: npm ci
+      - name: Cache MSL & Base Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            scripts/ModelicaStandardLibrary_v4.1.0.zip
+            data/libraries/Modelica/4.1.0/extracted
+            data/libraries/Complex
+            data/libraries/ModelicaServices
+          key: ${{ runner.os }}-msl-v4.1.0
+      - name: Download and Extract MSL
+        run: |
+          if [ ! -d "data/libraries/Modelica/4.1.0/extracted/Modelica" ]; then
+            node scripts/download-msl.cjs --version=4.1.0 --extract --outDir=data/libraries/Modelica/4.1.0/extracted
+          fi
+      - name: Cache Library Archives
+        uses: actions/cache@v4
+        with:
+          path: |
+            scripts/OpenIPSL_v3.1.0.zip
+            data/libraries/OpenIPSL
+          key: ${{ runner.os }}-lib-${{ matrix.library }}-v3.1.0
+      - name: Sync & Extract Library
+        run: |
+          if [ "${{ matrix.library }}" = "openipsl" ]; then
+            if [ ! -d "data/libraries/OpenIPSL/3.1.0/extracted/OpenIPSL" ]; then
+              npx tsx scripts/sync-stdlibs.ts --lang=modelica --verify
+              mkdir -p data/libraries/OpenIPSL/3.1.0/extracted
+              unzip -q -o scripts/OpenIPSL_v3.1.0.zip -d data/libraries/OpenIPSL/3.1.0/extracted/
+            fi
+          fi
+      - name: Build Core Compiler Chain
+        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica,@modelscript/simulate
+      - name: Run Library Conformance Benchmarks
+        run: |
+          mkdir -p reports
+          npm run test:lib -- --library=${{ matrix.library }} --stage=flatten --report-html=reports/${{ matrix.library }}-benchmarks.html --report-json=reports/${{ matrix.library }}-benchmarks.json || true
+      - name: Upload Library Benchmark Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-${{ matrix.library }}-reports
+          path: reports/${{ matrix.library }}-*
+          retention-days: 14
+
   cross_platform_audit:
     name: Cross-Platform Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

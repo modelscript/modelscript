@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerCanteraToDae } from "./dae/cantera-to-dae.js";
+import { canteraGrammar } from "./grammar/cantera-grammar.js";
 import { canIndexCantera, indexCanteraDocument } from "./indexing.js";
 import { lintCantera } from "./lints/index.js";
 import { parseCantera } from "./parser/cantera-parser.js";
@@ -14,13 +15,19 @@ import { solveCanteraReactor, type CanteraReactorOptions } from "./solvers/kinet
 export const canteraLanguage = language({
   name: "cantera",
   fileExtensions: [".yaml", ".yml", ".cti"],
-  maturity: "experimental",
+  maturity: "beta",
+  word: canteraGrammar.word,
+  extras: canteraGrammar.extras,
+  conflicts: canteraGrammar.conflicts,
+  rules: canteraGrammar.rules,
   indexing: {
     indexFile: indexCanteraDocument,
     canIndex: canIndexCantera,
   },
   lsp: {
     fileExtensions: [".yaml", ".yml", ".cti"],
+    folding: canteraGrammar.lsp?.folding,
+    outline: canteraGrammar.lsp?.outline,
     icons: {
       light: "./assets/cantera/icon-light.png",
       dark: "./assets/cantera/icon-dark.png",

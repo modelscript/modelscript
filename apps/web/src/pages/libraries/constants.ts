@@ -36,6 +36,7 @@ export function formatDomainLabel(domain: string): string {
     case "cad":
     case "step":
     case "scad":
+    case "cad-structures":
       return "3D CAD";
     case "fmu":
     case "ssp":
@@ -46,12 +47,28 @@ export function formatDomainLabel(domain: string): string {
     case "power":
     case "pscad":
       return "PSCAD / EMT";
+    case "power-energy":
+    case "electrical-power":
+      return "Power & Energy";
     case "robotics":
     case "urdf":
       return "Robotics / URDF";
     case "hydraulics":
     case "epanet":
       return "Hydraulics";
+    case "fluids-process":
+    case "process":
+      return "Fluids & Process";
+    case "mobility-auto":
+    case "mobility-systems":
+    case "automotive":
+      return "Mobility & Automotive";
+    case "life-sciences":
+    case "sbml":
+    case "biomodel":
+      return "Life Sciences";
+    case "systems-physics":
+      return "Systems & Physics";
     case "verification":
       return "Verification";
     case "cfd":
@@ -91,7 +108,13 @@ export function inferPackageDomains(pkg: {
     combined.includes("pscad") ||
     combined.includes("microgrid") ||
     combined.includes("ieee 2800") ||
-    combined.includes("emt")
+    combined.includes("emt") ||
+    combined.includes("openipsl") ||
+    combined.includes("power system") ||
+    combined.includes("power grid") ||
+    combined.includes("power-energy") ||
+    combined.includes("powerfactory") ||
+    combined.includes("psse")
   ) {
     set.add("power");
   }
@@ -108,7 +131,8 @@ export function inferPackageDomains(pkg: {
     combined.includes("step") ||
     combined.includes("openscad") ||
     combined.includes("chassis") ||
-    combined.includes("3d cad")
+    combined.includes("3d cad") ||
+    combined.includes("cad-structures")
   ) {
     set.add("cad");
   }
@@ -121,7 +145,12 @@ export function inferPackageDomains(pkg: {
   if (combined.includes("fmu") || combined.includes("ssp") || combined.includes("co-simulation")) {
     set.add("fmu");
   }
-  if (nameLower === "modelica" || combined.includes("modelica") || combined.includes("dae")) {
+  if (
+    nameLower === "modelica" ||
+    combined.includes("modelica") ||
+    combined.includes("dae") ||
+    nameLower === "openipsl"
+  ) {
     set.add("modelica");
   }
 

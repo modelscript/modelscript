@@ -55,7 +55,12 @@ end Cascade;`;
     const t0 = performance.now();
     const newTree = ctx.load(src2, uri);
     console.log("newTree:", (newTree.rootNode as any).toString());
-    console.log("newTree hasError:", (newTree.rootNode as any).hasError());
+    console.log(
+      "newTree hasError:",
+      typeof (newTree.rootNode as any).hasError === "function"
+        ? (newTree.rootNode as any).hasError()
+        : (newTree.rootNode as any).hasError,
+    );
     const dae2 = ctx.flattenArena("Cascade", undefined, uri);
     const elapsed = performance.now() - t0;
     console.log(`  -> Incremental re-flatten took: ${elapsed.toFixed(3)} ms`);

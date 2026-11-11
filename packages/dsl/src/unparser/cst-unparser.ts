@@ -245,7 +245,11 @@ export class CstUnparser {
     const separator = firstIns.separator ?? ", ";
 
     // Inspect target's named children or arguments
-    const namedKids = target.namedChildren ?? target.children.filter((c) => c.isNamed);
+    const namedKids =
+      target.namedChildren ??
+      target.children.filter((c) =>
+        typeof (c as any).isNamed === "function" ? (c as any).isNamed() : Boolean(c.isNamed),
+      );
 
     if (namedKids.length === 0) {
       // Empty parent node: look for opening delimiter like '(' or '{'

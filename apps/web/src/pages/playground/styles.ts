@@ -104,9 +104,9 @@ export const NavCenter = styled.div`
 
   /* Modernized, sleek engineering workbench segmented control */
   ul[data-size="small"] {
-    background: var(--color-canvas-subtle, var(--ms-bg-soft, rgba(0, 0, 0, 0.04)));
-    border: 1px solid var(--color-border-subtle, var(--ms-border, rgba(15, 23, 42, 0.1)));
-    border-radius: 8px;
+    background: var(--ms-surface-hover, var(--color-canvas-subtle, rgba(0, 0, 0, 0.04)));
+    border: 1px solid var(--ms-divider, var(--color-border-subtle, rgba(15, 23, 42, 0.1)));
+    border-radius: var(--ms-radius-pill, 999px);
     padding: 2px;
     gap: 2px;
     height: 30px;
@@ -127,10 +127,13 @@ export const NavCenter = styled.div`
   button {
     border: 1px solid transparent !important;
     outline: none !important;
-    border-radius: 6px !important;
+    border-radius: var(--ms-radius-pill, 999px) !important;
     font-size: 12px !important;
     font-weight: 500 !important;
-    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease !important;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease,
+      border-color 0.15s ease !important;
     height: 100% !important;
     padding: 0 10px !important;
     box-sizing: border-box !important;
@@ -168,11 +171,12 @@ export const NavCenter = styled.div`
   /* Active selected button styling matching ModelScript dialect chip background and brand blue border */
   button[aria-current="true"] {
     border: 1px solid var(--ms-brand, #0891b2) !important;
+    border-radius: var(--ms-radius-pill, 999px) !important;
     outline: none !important;
-    font-weight: 500 !important;
-    background-color: var(--ms-brand-soft, rgba(8, 145, 178, 0.08)) !important;
+    font-weight: 600 !important;
+    background-color: var(--ms-brand-soft, rgba(8, 145, 178, 0.12)) !important;
     color: var(--ms-brand, #0891b2) !important;
-    box-shadow: 0 1px 2px rgba(8, 145, 178, 0.12) !important;
+    box-shadow: 0 1px 4px var(--ms-glow-cyan, rgba(8, 145, 178, 0.2)) !important;
     padding: 0 10px !important;
   }
 

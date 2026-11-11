@@ -291,6 +291,39 @@ export const CardFooter: React.FC<CardFooterProps> = ({
               ⚡ {viewConfig.provenance.solver?.toUpperCase()} • {viewConfig.provenance.profile}
             </span>
           )}
+          {Array.isArray(viewConfig.dependencies) && viewConfig.dependencies.length > 0 && (
+            <span
+              className="card-footer-provenance"
+              style={{
+                fontSize: "11px",
+                lineHeight: "14px",
+                color: "#60a5fa",
+                background: "rgba(59, 130, 246, 0.12)",
+                border: "1px solid rgba(59, 130, 246, 0.25)",
+                padding: "1px 6px",
+                borderRadius: "4px",
+                fontFamily: "var(--font-mono)",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+                cursor: "pointer",
+              }}
+              title={`External dependencies: ${viewConfig.dependencies.map((d: any) => `${d.name}@${d.version}`).join(", ")}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (viewConfig.dependencies.length === 1) {
+                  const first = viewConfig.dependencies[0];
+                  navigate(`/packages/${encodeURIComponent(first.name)}/${encodeURIComponent(first.version)}`);
+                } else {
+                  navigate("/packages");
+                }
+              }}
+            >
+              📦{" "}
+              {viewConfig.dependencies.length === 1
+                ? `${viewConfig.dependencies[0].name}@${viewConfig.dependencies[0].version}`
+                : `${viewConfig.dependencies.length} packages`}
+            </span>
+          )}
         </div>
       </Box>
       <Box display="flex" alignItems="center" gap="2px" style={{ flexShrink: 0 }}>

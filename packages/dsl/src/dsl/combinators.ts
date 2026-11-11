@@ -81,7 +81,7 @@ export function repeat<F extends string = string>(rule: RuleLike<F>): Rule<F> {
  * Equivalent to Kleene plus in EBNF: `A+`
  */
 export function repeat1<F extends string = string>(rule: RuleLike<F>): Rule<F> {
-  return seq(rule, repeat(rule));
+  return { type: "REPEAT1", children: [toRule(rule)] };
 }
 
 /**

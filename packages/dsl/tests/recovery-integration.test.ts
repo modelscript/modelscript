@@ -359,6 +359,9 @@ describe("GLR Parser Error Recovery Integration", () => {
           it(`config: ${c.name}`, () => {
             activeFacade.setParserConfig(c.config[0], c.config[1], c.config[2], c.config[3]);
             const ast = activeFacade.parse(scenario.code);
+            if (scenario.name === "Missing Semicolon" && c.name === "All Branches Enabled") {
+              console.log("ALL BRANCHES AST:", activeFacade.getAstSExpr(ast, true));
+            }
             if (scenario.name === "Island Garbage" && c.name === "Only Island Mode") {
               console.log("ISLAND GARBAGE AST:", activeFacade.getAstSExpr(ast, true));
             }

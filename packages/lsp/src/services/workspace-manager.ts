@@ -282,7 +282,7 @@ export class WorkspaceManager {
       try {
         const hooks = extractIndexerHooks(plugin.languageDef);
         if (hooks && hooks.length > 0) {
-          const idx = new LanguageWorkspaceIndex(hooks);
+          const idx = new LanguageWorkspaceIndex(hooks, plugin.languageDef.indexing?.workspaceHooks);
           this.setWorkspaceIndex(norm, idx);
           return idx;
         }

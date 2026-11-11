@@ -822,7 +822,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     .x6-widget-transform {
       border: none !important;
     }
-    .x6-widget-transform > div {
+    .x6-widget-transform > div:not(.x6-widget-transform-rotate) {
       width: 10px !important;
       height: 10px !important;
       margin: -5px 0 0 -5px !important;
@@ -833,23 +833,47 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.12s ease;
       cursor: inherit;
     }
-    .x6-widget-transform > div::after {
+    .x6-widget-transform > div:not(.x6-widget-transform-rotate)::after {
       content: "";
       position: absolute;
       inset: -5px;
       cursor: inherit;
     }
-    .x6-widget-transform > div:hover {
+    .x6-widget-transform > div:not(.x6-widget-transform-rotate):hover {
       background-color: var(--vscode-focusBorder, #0284c7) !important;
       transform: scale(1.2);
     }
     .x6-widget-transform-rotate {
-      width: 10px !important;
-      height: 10px !important;
-      margin: -5px 0 0 -5px !important;
+      display: block !important;
+      position: absolute !important;
+      top: -26px !important;
+      left: 50% !important;
+      width: 12px !important;
+      height: 12px !important;
+      margin: -6px 0 0 -6px !important;
       background-color: var(--vscode-editor-background, #ffffff) !important;
       border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
       border-radius: 50% !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28) !important;
+      cursor: crosshair !important;
+      z-index: 10 !important;
+      pointer-events: auto !important;
+      transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.12s ease !important;
+    }
+    .x6-widget-transform-rotate::before {
+      content: "";
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      width: 1px;
+      height: 20px;
+      background-color: var(--vscode-focusBorder, #0284c7);
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+    .x6-widget-transform-rotate:hover {
+      background-color: var(--vscode-focusBorder, #0284c7) !important;
+      transform: scale(1.25);
     }
     /* Edge Selection and Vertex/Segment Handle Controls */
     @keyframes x6-edge-flow {

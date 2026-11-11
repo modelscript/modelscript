@@ -127,15 +127,15 @@ describe("100% Tree-sitter API Compatibility Suite", () => {
 
     expect(root).toBeDefined();
     expect(root.type).toBe("Program");
-    expect(root.isNamed()).toBe(true);
-    expect(root.hasError()).toBe(false);
+    expect(root.isNamed).toBe(true);
+    expect(root.hasError).toBe(false);
     expect(root.childCount).toBe(1);
     expect(root.namedChildCount).toBe(1);
 
     const modelDef = root.firstChild;
     expect(modelDef).toBeDefined();
     expect(modelDef.type).toBe("ModelDef");
-    expect(modelDef.isNamed()).toBe(true);
+    expect(modelDef.isNamed).toBe(true);
     expect(modelDef.parent.equals(root)).toBe(true);
 
     // Named children vs all children
@@ -303,5 +303,81 @@ describe("100% Tree-sitter API Compatibility Suite", () => {
     const tree = parser.parse(code);
     expect(tree).toBeDefined();
     expect(tree.rootNode.type).toBe("Program");
+  });
+
+  it("should accurately handle byte vs UTF-16 code unit conversions across ASCII and multi-byte UTF-8 texts", () => {
+    // 1. Pure ASCII: byte offsets and code unit offsets must match 1:1
+    const asciiCode = `model AsciiModel\n  Real x = 42;\nend AsciiModel;\n`;
+    const asciiTree = parseToTree(asciiCode);
+    const asciiRoot = asciiTree.rootNode;
+    expect(asciiRoot.startIndex).toBe(0);
+    expect(asciiRoot.startByte).toBe(0);
+    expect(asciiRoot.endIndex).toBe(asciiCode.trimEnd().length);
+    expect(asciiRoot.endByte).toBe(asciiRoot.endIndex);
+
+    const modelNode = asciiRoot.firstChild;
+    const nameNode = modelNode.childForFieldName("name");
+    expect(nameNode.text).toBe("AsciiModel");
+    expect(nameNode.startIndex).toBe(asciiCode.indexOf("AsciiModel"));
+    expect(nameNode.startByte).toBe(asciiCode.indexOf("AsciiModel"));
+    expect(asciiTree.offsetToByte(nameNode.startIndex)).toBe(nameNode.startByte);
+    expect(asciiTree.byteToOffset(nameNode.startByte)).toBe(nameNode.startIndex);
+
+    // 2. Non-ASCII string containing multi-byte UTF-8 and surrogate pairs:
+    // 'β' is 1 UTF-16 code unit but 2 UTF-8 bytes.
+    // '€' is 1 UTF-16 code unit but 3 UTF-8 bytes.
+    // '世' is 1 UTF-16 code unit but 3 UTF-8 bytes.
+    // '🚀' is 2 UTF-16 code units (surrogate pair) and 4 UTF-8 bytes.
+    const nonAsciiText = "Hello 🚀 β € 世 World!";
+    const testTree = new TreeClass(activeFacade, 0, nonAsciiText);
+
+    for (let i = 0; i <= nonAsciiText.length; i++) {
+      // Offsets between the two halves of a surrogate pair are not valid character boundaries.
+      const c = nonAsciiText.charCodeAt(i);
+      if (i > 0 && (c & 0xfc00) === 0xdc00 && (nonAsciiText.charCodeAt(i - 1) & 0xfc00) === 0xd800) continue;
+      const expectedByte = Buffer.from(nonAsciiText.slice(0, i), "utf8").length;
+      expect(testTree.offsetToByte(i)).toBe(expectedByte);
+      expect(testTree.byteToOffset(expectedByte)).toBe(i);
+    }
+    // A byte offset inside a multi-byte char rounds up to the next boundary, never mid-surrogate.
+    const rocket = nonAsciiText.indexOf("🚀");
+    const rocketByte = testTree.offsetToByte(rocket);
+    for (let b = rocketByte + 1; b <= rocketByte + 4; b++) {
+      expect(testTree.byteToOffset(b)).toBe(rocket + 2);
+    }
+  });
+
+  it("should harmonize Tree-sitter byte edits (startByte, oldEndByte, newEndByte) into UTF-16 code units", () => {
+    const parser = new TreeSitterParserClass();
+    parser.setLanguage(() => activeFacade);
+
+    const initialCode = `model EditModel\n  Real x = 10.0;\nend EditModel;\n`;
+    const initialTree = parser.parse(initialCode);
+    expect(initialTree).toBeDefined();
+
+    // Perform an edit providing ONLY byte offsets (standard Tree-sitter C style)
+    const oldText = "10.0";
+    const newText = "20.5";
+    const byteStart = Buffer.from(initialCode.slice(0, initialCode.indexOf(oldText)), "utf8").length;
+    const oldByteEnd = byteStart + Buffer.from(oldText, "utf8").length;
+    const newByteEnd = byteStart + Buffer.from(newText, "utf8").length;
+
+    initialTree.edit({
+      startByte: byteStart,
+      oldEndByte: oldByteEnd,
+      newEndByte: newByteEnd,
+      startPosition: { row: 1, column: 11 },
+      oldEndPosition: { row: 1, column: 15 },
+      newEndPosition: { row: 1, column: 15 },
+    });
+
+    // Verify lastEdit harmonized the fields
+    expect(initialTree.lastEdit.startIndex).toBe(initialCode.indexOf(oldText));
+    expect(initialTree.lastEdit.startByte).toBe(byteStart);
+
+    const newCode = `model EditModel\n  Real x = 20.5;\nend EditModel;\n`;
+    const updatedTree = parser.parse(newCode, initialTree);
+    expect(updatedTree).toBeDefined();
+    expect(updatedTree.rootNode.hasError).toBe(false);
   });
 });

@@ -54,6 +54,7 @@ import { publishRouter } from "./routes/publish.js";
 import { pushRouter } from "./routes/push.js";
 import { rdfRouter } from "./routes/rdf.js";
 import { referencesRouter } from "./routes/references.js";
+import { registryCatalogRouter } from "./routes/registry-catalog.js";
 import { reposRouter } from "./routes/repos.js";
 import { rfqRouter } from "./routes/rfq.js";
 import { scriptsRouter } from "./routes/scripts.js";
@@ -780,7 +781,11 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/storage", storageRouter());
   app.use("/", federationRouter(database, federationWorker));
 
-  // Mount the library routers
+  // Mount the library & cross-registry streaming catalog routers
+  const mountedRegistryCatalogRouter = registryCatalogRouter(libraryStorage, database);
+  app.use("/api/v1", mountedRegistryCatalogRouter);
+  app.use("/api/v1/registry", mountedRegistryCatalogRouter);
+  app.use("/registry", mountedRegistryCatalogRouter);
   app.use("/api/v1/libraries", rdfRouter(database));
   app.use("/api/v1/libraries", graphqlRouter(database));
   app.use("/api/v1/libraries", packagesRouter(libraryStorage, jobQueue, database));

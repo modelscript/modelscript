@@ -20,7 +20,7 @@ export function canIndexCellml(uri: string, text?: string): boolean {
   if (lower.endsWith(".cellml")) return true;
   if (lower.endsWith(".xml")) {
     if (!text) return true;
-    return text.includes("cellml.org") || (/<model\b/.test(text) && /<component\b/.test(text));
+    return text.includes("/cellml/") || (/<model\b/.test(text) && /<component\b/.test(text));
   }
   return false;
 }

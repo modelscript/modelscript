@@ -14,6 +14,7 @@ export interface SwimlaneConfig {
   nodePaddingX: number;
   topMargin: number;
   leftMargin: number;
+  isDark?: boolean | undefined;
 }
 
 const DEFAULT_SWIMLANE_CONFIG: SwimlaneConfig = {
@@ -98,8 +99,8 @@ export function applySwimlaneLayout(
         zIndex: -5,
         attrs: {
           body: {
-            fill: "#fafafa",
-            stroke: "#90a4ae",
+            fill: cfg.isDark ? "#1e293b" : "#fafafa",
+            stroke: cfg.isDark ? "#475569" : "#90a4ae",
             strokeWidth: 1.5,
             strokeDasharray: "4 4",
             rx: 6,
@@ -109,7 +110,7 @@ export function applySwimlaneLayout(
             text: partition.stereotype ? `«${partition.stereotype}»\n${partition.name}` : partition.name,
             fontSize: 13,
             fontWeight: "bold",
-            fill: "#37474f",
+            fill: cfg.isDark ? "#cbd5e1" : "#37474f",
             refY: 15,
           },
         },

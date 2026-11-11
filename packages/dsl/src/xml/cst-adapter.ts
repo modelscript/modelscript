@@ -81,6 +81,14 @@ export class XmlCstNode implements SyntaxNode {
     return this.element.end;
   }
 
+  get startByte(): number {
+    return this.tree.offsetToByte ? this.tree.offsetToByte(this.startIndex) : this.startIndex;
+  }
+
+  get endByte(): number {
+    return this.tree.offsetToByte ? this.tree.offsetToByte(this.endIndex) : this.endIndex;
+  }
+
   get startPosition(): Point {
     return offsetToPoint(this.lineStarts, this.element.start);
   }

@@ -215,6 +215,38 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
             {viewConfig.provenance?.profile || viewConfig.profile || "HPC Standard"}
           </span>
         )}
+        {Array.isArray(viewConfig?.dependencies) && viewConfig.dependencies.length > 0 && (
+          <Box display="flex" alignItems="center" gap={1} className="studio-hide-mobile" style={{ flexShrink: 0 }}>
+            {viewConfig.dependencies.map((dep: { name: string; version: string }) => (
+              <span
+                key={`${dep.name}-${dep.version}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/packages/${encodeURIComponent(dep.name)}/${encodeURIComponent(dep.version)}`);
+                }}
+                title={`Dependency: ${dep.name}@${dep.version} (Click to view package registry)`}
+                style={{
+                  fontSize: "10px",
+                  background: "rgba(59, 130, 246, 0.15)",
+                  color: "#60a5fa",
+                  border: "1px solid rgba(59, 130, 246, 0.3)",
+                  padding: "2px 8px",
+                  borderRadius: "6px",
+                  fontWeight: 600,
+                  fontFamily: "var(--font-mono, monospace)",
+                  whiteSpace: "nowrap",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  flexShrink: 0,
+                }}
+              >
+                📦 {dep.name} <span style={{ opacity: 0.7 }}>@{dep.version}</span>
+              </span>
+            ))}
+          </Box>
+        )}
         {resolvedForkedFromId && (
           <>
             <span

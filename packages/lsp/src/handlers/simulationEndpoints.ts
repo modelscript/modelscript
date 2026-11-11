@@ -9,6 +9,7 @@ import {
 } from "@modelscript/exchange/cosim";
 import { generateMultiModelWrapper } from "@modelscript/exchange/fmu";
 import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
+import { isSecondaryOutputName } from "@modelscript/modelica/factory";
 import { ArenaQueryFlattener } from "@modelscript/modelica/flattener";
 import {
   bindRequirementsToModelica,
@@ -627,7 +628,7 @@ export function registerSimulationEndpoints(context: LspContext) {
 
         context.connection.console.info(`[simulate] startTime=${startTime}, stopTime=${stopTime}, step=${step}`);
 
-        const outputStringIds = getArenaOutputStringIds(arena);
+        const outputStringIds = getArenaOutputStringIds(arena, { isSecondaryName: isSecondaryOutputName });
         const t0 = Date.now();
         if (params.sweepConfig) {
           const { parameterName, start, end, steps } = params.sweepConfig;
@@ -824,7 +825,7 @@ export function registerSimulationEndpoints(context: LspContext) {
           stopTime: params.time + stepSize,
           step: stepSize,
           solver: "euler",
-          outputStringIds: getArenaOutputStringIds(arena),
+          outputStringIds: getArenaOutputStringIds(arena, { isSecondaryName: isSecondaryOutputName }),
           parameterOverrides: overrides,
         });
 
@@ -1704,7 +1705,7 @@ export async function computeModelReachability(
     const startTime = params.startTime ?? exp.startTime ?? 0;
     const stopTime = params.stopTime ?? exp.stopTime ?? 10;
     const step = params.interval ?? exp.interval ?? (stopTime - startTime) / 500;
-    const outputStringIds = getArenaOutputStringIds(arena);
+    const outputStringIds = getArenaOutputStringIds(arena, { isSecondaryName: isSecondaryOutputName });
     const baseOverrides = params.parameterOverrides ? new Map(Object.entries(params.parameterOverrides)) : undefined;
 
     const t0 = Date.now();

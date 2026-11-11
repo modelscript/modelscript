@@ -1,0 +1,81 @@
+{
+  "name": "@modelscript/mlxtran",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./language": {
+      "types": "./dist/src/language.d.ts",
+      "default": "./dist/src/language.js"
+    },
+    "./types": {
+      "types": "./dist/src/types.d.ts",
+      "default": "./dist/src/types.js"
+    },
+    "./parser": {
+      "types": "./dist/src/parser/mlxtran-parser.d.ts",
+      "default": "./dist/src/parser/mlxtran-parser.js"
+    },
+    "./lints": {
+      "types": "./dist/src/lints/index.d.ts",
+      "default": "./dist/src/lints/index.js"
+    },
+    "./solvers": {
+      "types": "./dist/src/solvers/mlxtran-solver.d.ts",
+      "default": "./dist/src/solvers/mlxtran-solver.js"
+    },
+    "./dae": {
+      "types": "./dist/src/dae/mlxtran-to-dae.d.ts",
+      "default": "./dist/src/dae/mlxtran-to-dae.js"
+    },
+    "./projections": {
+      "types": "./dist/src/projections/mlxtran-to-modelica.d.ts",
+      "default": "./dist/src/projections/mlxtran-to-modelica.js"
+    },
+    "./lsp": {
+      "types": "./dist/src/lsp.d.ts",
+      "default": "./dist/src/lsp.js"
+    },
+    "./grammar": {
+      "types": "./dist/src/grammar/index.d.ts",
+      "default": "./dist/src/grammar/index.js"
+    },
+    "./wasm-parser": {
+      "types": "./src-gen/bindings.d.ts",
+      "default": "./src-gen/bindings.js"
+    },
+    "./parser.wasm": "./dist/parser.wasm",
+    "./dist/parser.wasm": "./dist/parser.wasm"
+  },
+  "files": [
+    "src/**",
+    "src-gen/**",
+    "as-gen/**",
+    "dist/**",
+    "assets/**"
+  ],
+  "scripts": {
+    "build": "node ../../scripts/build-language-parser.js && tsc",
+    "build:parser": "node ../../scripts/build-language-parser.js --force",
+    "clean": "rimraf dist src-gen as-gen *.wasm",
+    "lint": "eslint src tests --no-warn-ignored",
+    "test": "node ../../scripts/test-runner.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "*",
+    "@modelscript/runtime": "*"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  },
+  "modelscript": {
+    "tier": "beta",
+    "category": "language"
+  }
+}

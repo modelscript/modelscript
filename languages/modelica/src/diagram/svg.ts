@@ -3,7 +3,7 @@
 import { computeSolderDots, type EdgePath } from "@modelscript/diagram/solder-dots";
 import { ModelicaClassKind } from "../types.js";
 import { evaluateCondition } from "./annotation-evaluator.js";
-import { evaluateMacroExpression, inferModelicaDomainColor } from "./data.js";
+import { evaluateMacroExpression, inferModelicaDomainColor, resolveModelicaBitmapUri } from "./data.js";
 import {
   Arrow,
   EllipseClosure,
@@ -745,11 +745,15 @@ function renderGraphicItemString(
       const cx = x + width / 2;
       const cy = y + height / 2;
       const transformAttr = rot !== 0 ? ` transform="rotate(${rot}, ${cx}, ${cy})"` : "";
-      const hrefAttr = bmp.imageSource
-        ? ` href="data:image/png;base64,${escapeSvgXml(bmp.imageSource)}"`
-        : bmp.fileName
-          ? ` href="${escapeSvgXml(bmp.fileName)}"`
-          : "";
+      let href = bmp.imageSource ? `data:image/png;base64,${bmp.imageSource}` : "";
+      if (!href && bmp.fileName) {
+        const resolved = resolveModelicaBitmapUri(
+          bmp.fileName,
+          (classInstance as ModelicaClassInstance) ?? (componentInstance as any)?.classInstance,
+        );
+        href = resolved || bmp.fileName;
+      }
+      const hrefAttr = href ? ` href="${escapeSvgXml(href)}"` : "";
       return `<image width="${width}" height="${height}" x="${x}" y="${y}"${hrefAttr}${transformAttr}${visAttr}/>`;
     }
     default:

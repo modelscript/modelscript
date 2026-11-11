@@ -622,3 +622,109 @@ export function updateNodeVisualOnResize(
     }
   }
 }
+
+/**
+ * Patches the AntV X6 Transform plugin to support:
+ * 1. Proportional aspect-ratio preservation when holding the Shift key modifier during corner resize.
+ * 2. Continuous 1-degree rotation when holding Alt, or 15-degree angle snap by default.
+ * 3. Remembering initial proportions across the entire drag gesture.
+ */
+export function ensurePatchedTransformTool(x6Instance?: unknown): void {
+  const x6Mod =
+    x6Instance ||
+    (typeof globalThis !== "undefined" ? (globalThis as Record<string, unknown>)["x6"] : undefined) ||
+    (typeof window !== "undefined" ? (window as unknown as Record<string, unknown>)["x6"] : undefined);
+  if (!x6Mod || typeof x6Mod !== "object") return;
+
+  const anyX6 = x6Mod as {
+    Transform?: {
+      prototype: {
+        createTransform?(node: unknown): unknown;
+      };
+      __modelscript_patched?: boolean;
+    };
+  };
+
+  const TransformClass = anyX6.Transform;
+  if (!TransformClass || TransformClass.__modelscript_patched) return;
+
+  const patchProto = (proto: any) => {
+    if (!proto || proto.__modelscript_patched) return;
+
+    const origStartResizing = proto.startResizing;
+    if (typeof origStartResizing === "function") {
+      proto.startResizing = function (evt: unknown) {
+        const bbox = typeof this.node?.getBBox === "function" ? this.node.getBBox() : null;
+        if (bbox && bbox.width > 0 && bbox.height > 0) {
+          this.__initialBBox = { width: bbox.width, height: bbox.height };
+          this.__initialAspectRatio = bbox.width / bbox.height;
+        }
+        return origStartResizing.call(this, evt);
+      };
+    }
+
+    const origOnMouseMove = proto.onMouseMove;
+    if (typeof origOnMouseMove === "function") {
+      proto.onMouseMove = function (evt: unknown) {
+        const data = typeof this.getEventData === "function" ? this.getEventData(evt) : null;
+        const e = evt as MouseEvent | null;
+
+        if (this.options && data) {
+          if (data.action === "resizing") {
+            if (this.options.__basePreserveAspectRatio === undefined) {
+              this.options.__basePreserveAspectRatio = Boolean(this.options.preserveAspectRatio);
+            }
+            const isShift = Boolean(e?.shiftKey);
+            this.options.preserveAspectRatio = this.options.__basePreserveAspectRatio || isShift;
+          } else if (data.action === "rotating") {
+            if (this.options.__baseRotateGrid === undefined) {
+              this.options.__baseRotateGrid =
+                typeof this.options.rotateGrid === "number" ? this.options.rotateGrid : 15;
+            }
+            const isAlt = Boolean(e?.altKey);
+            this.options.rotateGrid = isAlt ? 0 : this.options.__baseRotateGrid;
+          }
+        }
+
+        const res = origOnMouseMove.call(this, evt);
+
+        // If Shift is active, ensure the final dimensions preserve the initial aspect ratio
+        if (data && data.action === "resizing" && (this.options?.preserveAspectRatio || e?.shiftKey)) {
+          const ratio = this.__initialAspectRatio;
+          if (
+            ratio &&
+            ratio > 0 &&
+            typeof this.node?.getSize === "function" &&
+            typeof this.node?.resize === "function"
+          ) {
+            const sz = this.node.getSize();
+            if (sz && sz.width > 0 && sz.height > 0) {
+              const curRatio = sz.width / sz.height;
+              if (Math.abs(curRatio - ratio) > 0.02) {
+                const adjH = Math.round((sz.width / ratio) * 10) / 10;
+                this.node.resize(sz.width, adjH, { ui: true, preserveAspectRatio: true });
+              }
+            }
+          }
+        }
+
+        return res;
+      };
+    }
+
+    proto.__modelscript_patched = true;
+  };
+
+  const origCreateTransform = TransformClass.prototype.createTransform;
+  if (typeof origCreateTransform === "function") {
+    TransformClass.prototype.createTransform = function (node: unknown) {
+      const widget = origCreateTransform.call(this, node);
+      if (widget) {
+        patchProto(Object.getPrototypeOf(widget));
+      }
+      return widget;
+    };
+  }
+
+  TransformClass.__modelscript_patched = true;
+}

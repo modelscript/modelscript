@@ -13,7 +13,14 @@ export const sbolIndexing: LanguageIndexingConfig = {
   canIndex(uri: string, text: string): boolean {
     const lower = uri.toLowerCase();
     if (lower.endsWith(".sbol")) return true;
-    return Boolean(text && (text.includes("sbol:") || text.includes("sbols.org") || text.includes("sbolns.org")));
+    return Boolean(
+      text &&
+      (text.includes("sbol:") ||
+        text.includes("xmlns:sbol") ||
+        text.includes("/sbols/") ||
+        text.includes("/sbolns/") ||
+        text.includes("<sbol:")),
+    );
   },
 
   indexFile(ctx: DslIndexFileContext): void {

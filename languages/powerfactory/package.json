@@ -43,6 +43,10 @@
     "./iec61850": {
       "types": "./dist/src/iec61850/index.d.ts",
       "default": "./dist/src/iec61850/index.js"
+    },
+    "./lsp": {
+      "types": "./dist/src/lsp.d.ts",
+      "default": "./dist/src/lsp.js"
     }
   },
   "files": [
@@ -68,7 +72,7 @@
     "typescript": "^5.9.3"
   },
   "modelscript": {
-    "tier": "beta",
+    "tier": "stable",
     "category": "language"
   }
 }

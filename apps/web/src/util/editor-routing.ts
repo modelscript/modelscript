@@ -629,12 +629,18 @@ export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): strin
 
   let hash = "";
   if (typeof code === "string" && code.trim().length > 0) {
+    const dependencies =
+      Array.isArray(parsedViewConfig.dependencies) && parsedViewConfig.dependencies.length > 0
+        ? parsedViewConfig.dependencies
+        : undefined;
+
     const encoded = encodeMorselPermalink({
       code,
       title: title || "Shared Model",
       dialect,
       isMultiFile: false,
       ...(artifactId !== undefined && artifactId !== null ? { artifactId: String(artifactId) } : {}),
+      ...(dependencies ? { dependencies } : {}),
     });
     hash = `#m=${encoded}`;
   }
@@ -731,6 +737,7 @@ export function openArtifactInVsCodeWindow(options: BuildEditorUrlOptions): void
         viewConfig: enrichedConfig,
         files: enrichedConfig.files,
         primaryFile: enrichedConfig.primaryFile || enrichedConfig.filename,
+        dependencies: enrichedConfig.dependencies,
       };
       sessionStorage.setItem("modelscript.artifact_scratch", JSON.stringify(artifactMeta));
       localStorage.setItem("modelscript.artifact_scratch", JSON.stringify(artifactMeta));

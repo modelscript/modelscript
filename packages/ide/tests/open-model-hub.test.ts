@@ -4,7 +4,14 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import * as vscode from "vscode";
 import { HUB_CURATED_OPEN_MODELS } from "../src/open-model-catalog.js";
-import { openModelHub, openModelTarget, registerOpenModelHub, renderOpenModelHubHtml } from "../src/open-model-hub.js";
+import {
+  fetchAnsatzRegistryClassSource,
+  fetchAnsatzRegistryModels,
+  openModelHub,
+  openModelTarget,
+  registerOpenModelHub,
+  renderOpenModelHubHtml,
+} from "../src/open-model-hub.js";
 import type { LspClientLike } from "../src/registry-tree-provider.js";
 
 describe("VS Code Visual Open Model Hub & modelscript.openModel Wiring", () => {
@@ -152,6 +159,7 @@ describe("VS Code Visual Open Model Hub & modelscript.openModel Wiring", () => {
     const origCreatePanel = vscode.window.createWebviewPanel;
     const origExecute = vscode.commands.executeCommand;
     const origWriteFile = vscode.workspace.fs.writeFile;
+    const origFetch = globalThis.fetch;
 
     vscode.window.createWebviewPanel = () =>
       ({
@@ -182,6 +190,7 @@ describe("VS Code Visual Open Model Hub & modelscript.openModel Wiring", () => {
       return undefined;
     };
     vscode.workspace.fs.writeFile = async () => {};
+    globalThis.fetch = (async () => new Response("Offline", { status: 503 })) as typeof fetch;
 
     try {
       const mockContext: any = { subscriptions: [] };
@@ -244,6 +253,173 @@ describe("VS Code Visual Open Model Hub & modelscript.openModel Wiring", () => {
       vscode.window.createWebviewPanel = origCreatePanel;
       vscode.commands.executeCommand = origExecute;
       vscode.workspace.fs.writeFile = origWriteFile;
+      globalThis.fetch = origFetch;
+    }
+  });
+
+  it("streams runnable models + sanitized diagramSvg from Ansatz registry and opens streamed models with peer-dep bump & source fallback", async () => {
+    const postedMessages: any[] = [];
+    const executedCommands: Array<{ id: string; args: any[] }> = [];
+    const writtenFiles: Array<{ uri: string; text: string }> = [];
+    let receiveMessageHandler: ((msg: any) => Promise<void>) | undefined;
+    let disposeListener: (() => void) | undefined;
+
+    const origCreatePanel = vscode.window.createWebviewPanel;
+    const origExecute = vscode.commands.executeCommand;
+    const origWriteFile = vscode.workspace.fs.writeFile;
+    const origFetch = globalThis.fetch;
+
+    vscode.window.createWebviewPanel = () =>
+      ({
+        webview: {
+          cspSource: "vscode-webview://test",
+          asWebviewUri: (u: any) => u,
+          postMessage: async (msg: any) => {
+            postedMessages.push(msg);
+            return true;
+          },
+          onDidReceiveMessage: (listener: any) => {
+            receiveMessageHandler = listener;
+            return new vscode.Disposable(() => {});
+          },
+          html: "",
+        },
+        onDidDispose: (listener: () => void) => {
+          disposeListener = listener;
+          return new vscode.Disposable(() => {});
+        },
+        reveal: () => {},
+        dispose: () => {
+          disposeListener?.();
+        },
+      }) as any;
+    (vscode.commands as any).executeCommand = async (id: string, ...args: any[]) => {
+      executedCommands.push({ id, args });
+      return undefined;
+    };
+    vscode.workspace.fs.writeFile = async (uri: any, content: Uint8Array) => {
+      writtenFiles.push({ uri: uri.toString(), text: new TextDecoder().decode(content) });
+    };
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/models?")) {
+        return new Response(
+          JSON.stringify({
+            total: 1,
+            offset: 0,
+            limit: 48,
+            hasMore: false,
+            models: [
+              {
+                fqn: "AcmeDrives.Examples.ServoDriveTest",
+                name: "ServoDriveTest",
+                kind: "model",
+                domain: "control",
+                packageName: "@acme/drives",
+                packageVersion: "2.4.0",
+                description: "Closed-loop servo testbench",
+                diagramSvg:
+                  '<svg viewBox="0 0 220 130" onload="evil()"><script>bad()</script><path d="M20 65H200"/></svg>',
+              },
+            ],
+            availablePackages: [{ name: "@acme/drives", version: "2.4.0", count: 1 }],
+            packageDependencies: {
+              "@acme/drives": { Modelica: ">=4.1.0" },
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/libraries/%40acme/drives/2.4.0/classes/AcmeDrives.Examples.ServoDriveTest")) {
+        return new Response(
+          JSON.stringify({
+            sourceCode: "model ServoDriveTest\n  Real speed = 100.0;\nequation\nend ServoDriveTest;\n",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      return new Response("Not Found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const directRes = await fetchAnsatzRegistryModels({ domain: "control" });
+      assert.equal(directRes.fromRegistry, true);
+      assert.equal(directRes.items.length, 1);
+      assert.ok(directRes.items[0]!.diagramSvg?.includes("<path"));
+      assert.equal(directRes.items[0]!.diagramSvg?.includes("<script"), false);
+      assert.equal(directRes.items[0]!.diagramSvg?.includes("onload"), false);
+
+      const directSrc = await fetchAnsatzRegistryClassSource(
+        "@acme/drives",
+        "2.4.0",
+        "AcmeDrives.Examples.ServoDriveTest",
+      );
+      assert.ok(directSrc?.includes("model ServoDriveTest"));
+
+      // Mounted Modelica is 3.2.3 (< 4.1.0 required by @acme/drives), and LSP getClassSource returns empty
+      // so openStreamedModel should bump Modelica -> 4.1.0, install @acme/drives@2.4.0, and fallback to registry sourceCode!
+      const mockContext: any = { subscriptions: [] };
+      const mockClient: LspClientLike = {
+        sendNotification: () => {},
+        sendRequest: async <T = unknown>(method: string): Promise<T> => {
+          if (method === "modelscript/getMountedLibraries") {
+            return { mounted: [{ name: "Modelica", version: "3.2.3" }], loading: [] } as T;
+          }
+          if (method === "modelscript/getClassSource") {
+            return { content: "" } as T;
+          }
+          return {} as T;
+        },
+      };
+
+      const panel = openModelHub(mockContext, mockClient, "gallery");
+      await receiveMessageHandler!({
+        command: "streamRegistryModels",
+        query: "servo",
+        domain: "control",
+        packageName: "all",
+        offset: 0,
+        reset: true,
+      });
+
+      const streamedMsg = postedMessages.find((m) => m.command === "setStreamedRegistryModels");
+      assert.ok(streamedMsg, "Expected setStreamedRegistryModels message posted to webview");
+      assert.equal(streamedMsg.models.length, 1);
+      assert.equal(streamedMsg.models[0].fqn, "AcmeDrives.Examples.ServoDriveTest");
+
+      await receiveMessageHandler!({
+        command: "openStreamedModel",
+        id: "stream:AcmeDrives.Examples.ServoDriveTest",
+        fqn: "AcmeDrives.Examples.ServoDriveTest",
+        title: "ServoDriveTest",
+        dialect: "modelica",
+        packageName: "@acme/drives",
+        packageVersion: "2.4.0",
+        viewMode: "split",
+      });
+
+      const installCalls = executedCommands.filter((c) => c.id === "modelscript.registry.install");
+      assert.deepEqual(
+        installCalls.map((c) => c.args),
+        [
+          ["Modelica", "4.1.0"],
+          ["@acme/drives", "2.4.0"],
+        ],
+        "Should bump peer dependency Modelica to 4.1.0 before installing @acme/drives@2.4.0",
+      );
+      assert.equal(writtenFiles.length, 1);
+      assert.ok(writtenFiles[0]!.uri.endsWith("ServoDriveTest.mo"));
+      assert.ok(writtenFiles[0]!.text.includes("model ServoDriveTest"));
+      assert.ok(executedCommands.some((c) => c.id === "modelscript.openDiagram"));
+      assert.ok(postedMessages.some((m) => m.command === "clearBusy"));
+
+      panel.dispose();
+    } finally {
+      vscode.window.createWebviewPanel = origCreatePanel;
+      vscode.commands.executeCommand = origExecute;
+      vscode.workspace.fs.writeFile = origWriteFile;
+      globalThis.fetch = origFetch;
     }
   });
 });

@@ -19,6 +19,11 @@ import {
   type ArrowKeyDirection,
   type SmartGuideLine,
 } from "./alignment.js";
+import {
+  autoLayoutDiagram as coreAutoLayoutDiagram,
+  autoLayoutDiagramAsync as coreAutoLayoutDiagramAsync,
+  type AutoLayoutOptions,
+} from "./auto-layout.js";
 import { adaptColorForDarkMode, adaptX6Markup } from "./color-inversion.js";
 import { hideContextMenu, showContextMenu } from "./context-menu.js";
 import {
@@ -61,6 +66,7 @@ import type { CoordinateSystem, ReactiveAnimationBinding } from "./protocol.js";
 import {
   alignNodeSelectionBox,
   ensurePatchedSegmentsTool,
+  ensurePatchedTransformTool,
   ensurePatchedVerticesTool,
   getEdgeToolConfig,
   resolveEdgeSelectionStyle,
@@ -783,7 +789,7 @@ function getConnectedEdges(
   });
 }
 
-export { ensurePatchedSegmentsTool, ensurePatchedVerticesTool };
+export { ensurePatchedSegmentsTool, ensurePatchedTransformTool, ensurePatchedVerticesTool };
 
 /**
  * Initializes (or reconfigures) the AntV X6 graph canvas, plugins, interaction handlers,
@@ -792,6 +798,7 @@ export { ensurePatchedSegmentsTool, ensurePatchedVerticesTool };
 export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph | null {
   ensurePatchedVerticesTool(x6);
   ensurePatchedSegmentsTool(x6);
+  ensurePatchedTransformTool(x6);
   ensureDiagramStyles();
   let container = targetContainer ?? currentOptions?.container;
   if (!container && typeof document !== "undefined") {
@@ -886,6 +893,8 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       return { nodeMovable: true, edgeMovable: true, edgeLabelMovable: true };
     },
     connecting: {
+      router: { name: "port-orthogonal-astar" },
+      connector: activeDefaultConnector ?? currentOptions?.defaultConnector ?? { name: "rounded", args: { radius: 8 } },
       snap: { radius: 24 },
       allowBlank: false,
       allowMulti: () => !isCurrentDiagramReadOnly,
@@ -1019,6 +1028,10 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
 
   g.on("node:change:angle", updateNodeBox);
   g.on("node:rotate", updateNodeBox);
+  g.on("node:rotating", () => {
+    updateNodeBox();
+    syncAlignmentToolbar();
+  });
   g.on("node:rotated", updateNodeBox);
   g.on("node:change:position", updateNodeBox);
   g.on(
@@ -2959,7 +2972,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
             if (opts?.onAutoLayout) {
               opts.onAutoLayout();
             } else {
-              postMessageToHost({ type: "autoLayout" }, g);
+              void autoLayoutDiagramAsync(g);
             }
           },
         },
@@ -4553,9 +4566,24 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
   if (data.diagramType === "Sequence") {
     applySequenceLayout(nodes, edges, isDark);
   } else if (data.partitions && data.partitions.length > 0) {
-    applySwimlaneLayout({ nodes, edges }, data.partitions);
+    applySwimlaneLayout({ nodes, edges }, data.partitions, { isDark });
   } else if (data.layout === "tsm-orthogonal" || data.layout === "orthogonal") {
-    applyTsmOrthogonalLayout({ nodes, edges });
+    const tsmResult = applyTsmOrthogonalLayout({ nodes, edges });
+    const posMap = new Map(tsmResult.nodes.map((n) => [n.id, n]));
+    for (const node of nodes) {
+      const pos = posMap.get(node.id);
+      if (pos && typeof pos.x === "number" && typeof pos.y === "number") {
+        node.x = pos.x;
+        node.y = pos.y;
+      }
+    }
+    const edgeVertMap = new Map(tsmResult.edges.map((e) => [e.id, e]));
+    for (const edge of edges) {
+      const e = edgeVertMap.get(edge.id);
+      if (e?.vertices) {
+        edge.vertices = e.vertices;
+      }
+    }
   } else {
     // ── Layout Strategy ──
     // The layout runs in 3 phases:
@@ -5003,22 +5031,16 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
       }
     });
 
-    const prevCachedProps = selectedNodeId ? propertyCache.get(selectedNodeId) : undefined;
-    // Clear property cache on re-render (model state may have changed)
-    propertyCache.clear();
-
-    // Restore property panel for previously selected node after re-render
+    // Restore property panel for previously selected node after re-render only if cached properties exist.
+    // In diff updates, existing DOM/cells are preserved in place; do not downgrade the property inspector
+    // to a skeleton or emit isLoading: true which causes UI flickering.
     if (selectedNodeId && !isEphemeralDiagramNode(selectedNodeId)) {
       const restoredNode = g.getCellById(selectedNodeId);
       if (restoredNode && restoredNode.isNode()) {
-        if (prevCachedProps) {
-          propertyCache.set(selectedNodeId, prevCachedProps);
-          showProperties({ id: restoredNode.id, properties: prevCachedProps, isLoading: false });
-        } else {
-          const data = restoredNode.getData();
-          showProperties({ id: restoredNode.id, properties: data?.properties, isLoading: true });
+        const cached = propertyCache.get(selectedNodeId);
+        if (cached) {
+          showProperties({ id: restoredNode.id, properties: cached, isLoading: false }, g);
         }
-        postMessageToHost({ type: "getProperties", componentName: restoredNode.id });
       }
     }
 
@@ -5039,8 +5061,14 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
   const prevZoom = isFirstRender || typeof g.zoom !== "function" ? null : g.zoom();
   const prevTrans = isFirstRender || typeof g.translate !== "function" ? null : g.translate();
 
-  // 2. Load the flat graph
-  g.fromJSON({ nodes, edges });
+  // 2. Load the flat graph with verified edge endpoints
+  const validNodeIds = new Set(nodes.map((n) => n.id));
+  const verifiedEdges = edges.filter((e) => {
+    const src = typeof e.source === "string" ? e.source : e.source?.cell;
+    const tgt = typeof e.target === "string" ? e.target : e.target?.cell;
+    return Boolean(src && tgt && validNodeIds.has(src) && validNodeIds.has(tgt));
+  });
+  g.fromJSON({ nodes, edges: verifiedEdges });
 
   for (const nodeData of nodes) {
     if (nodeData.data?.["flipX"] || nodeData.data?.["flipY"]) {
@@ -5159,23 +5187,19 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
     }
   }
 
-  const prevCachedProps = selectedNodeId ? propertyCache.get(selectedNodeId) : undefined;
-  // Clear property cache on re-render (model state may have changed)
-  propertyCache.clear();
-
   // Restore property panel for previously selected node after re-render
   if (selectedNodeId && !isEphemeralDiagramNode(selectedNodeId)) {
     const restoredNode = g.getCellById(selectedNodeId);
     if (restoredNode && restoredNode.isNode()) {
-      if (prevCachedProps) {
-        propertyCache.set(selectedNodeId, prevCachedProps);
-        showProperties({ id: restoredNode.id, properties: prevCachedProps, isLoading: false });
+      const cached = propertyCache.get(selectedNodeId);
+      if (cached) {
+        showProperties({ id: restoredNode.id, properties: cached, isLoading: false }, g);
       } else {
         const data = restoredNode.getData();
         // Show panel with lightweight data and re-request full properties
-        showProperties({ id: restoredNode.id, properties: data?.properties, isLoading: true });
+        showProperties({ id: restoredNode.id, properties: data?.properties, isLoading: true }, g);
+        postMessageToHost({ type: "getProperties", componentName: restoredNode.id }, g);
       }
-      postMessageToHost({ type: "getProperties", componentName: restoredNode.id });
     }
   }
 
@@ -5248,6 +5272,46 @@ if (typeof document !== "undefined") {
       postMessageToHost({ type: "changeDiagramType", diagramType: (e.target as HTMLSelectElement).value });
     });
   }
+}
+
+/**
+ * Automatically calculates and applies an optimal spatial layout for diagram components.
+ * Preserves the background coordinate system, axes, and non-component annotations.
+ *
+ * @param targetGraph Optional specific X6 Graph instance. Defaults to the active singleton graph.
+ * @param options Optional layout configuration overrides.
+ * @returns `true` if layout was computed and applied; `false` if skipped (e.g. no layoutable nodes).
+ */
+export function autoLayoutDiagram(targetGraph?: Graph | null, options?: AutoLayoutOptions): boolean {
+  const g = targetGraph ?? graph;
+  if (!g || g.disposed) return false;
+  return coreAutoLayoutDiagram(g as any, {
+    ...options,
+    onAction: (act) => enqueueDiagramAction(act, g),
+    updateSolderDots: (target) => updateSolderDots(target as Graph),
+  });
+}
+
+/**
+ * Asynchronously calculates and applies an optimal spatial layout for diagram components.
+ * For large models (>= 30 components), displays a progress indicator and yields to the
+ * browser paint loop.
+ *
+ * @param targetGraph Optional specific X6 Graph instance. Defaults to the active singleton graph.
+ * @param options Optional layout configuration overrides.
+ * @returns Promise resolving to `true` if layout was computed and applied; `false` if skipped.
+ */
+export async function autoLayoutDiagramAsync(
+  targetGraph?: Graph | null,
+  options?: AutoLayoutOptions,
+): Promise<boolean> {
+  const g = targetGraph ?? graph;
+  if (!g || g.disposed) return false;
+  return coreAutoLayoutDiagramAsync(g as any, {
+    ...options,
+    onAction: (act) => enqueueDiagramAction(act, g),
+    updateSolderDots: (target) => updateSolderDots(target as Graph),
+  });
 }
 
 // Listen for messages from the extension host
@@ -5351,54 +5415,7 @@ if (typeof window !== "undefined") {
 
       case "autoLayout": {
         if (!graph) return;
-        const nodes = graph.getNodes();
-        const edges = graph.getEdges();
-
-        const dagreLayout = new DagreLayout({
-          type: "dagre",
-          rankdir: "LR",
-          align: "UL",
-          ranksep: 100,
-          nodesep: 100,
-          begin: [-10, -10],
-          controlPoints: true,
-        });
-
-        const model = {
-          nodes: nodes.map((n: Node) => ({
-            id: n.id,
-            width: n.getSize().width,
-            height: n.getSize().height,
-          })),
-          edges: edges.map((e: Edge) => ({
-            source: e.getSourceCellId(),
-            target: e.getTargetCellId(),
-          })),
-        };
-
-        const newModel = dagreLayout.layout(model);
-        const g = graph;
-
-        g.batchUpdate("layout", () => {
-          newModel.nodes?.forEach((n: DagreLayoutResultNode) => {
-            const node = g.getCellById(n.id);
-            if (node && node.isNode()) {
-              node.setPosition(n.x, n.y);
-            }
-          });
-        });
-
-        // Let X6 handle bounds rescaling securely over position callbacks
-        setTimeout(() => {
-          if (graph) {
-            const containerW =
-              graph.container.clientWidth > 0 ? graph.container.clientWidth : graph.options?.width || 800;
-            const containerH =
-              graph.container.clientHeight > 0 ? graph.container.clientHeight : graph.options?.height || 600;
-            graph.zoomToFit({ padding: 20, viewportArea: { x: 0, y: 0, width: containerW, height: containerH } });
-            graph.centerContent();
-          }
-        }, 100);
+        void autoLayoutDiagramAsync(graph);
         break;
       }
 
@@ -5520,6 +5537,12 @@ function showProperties(
   nodeData: { id: string; properties?: unknown; isLoading?: boolean | undefined },
   g?: Graph | null,
 ) {
+  if (nodeData.id && nodeData.properties) {
+    const p = nodeData.properties as { schema?: unknown; parameters?: unknown };
+    if (p.schema || p.parameters) {
+      propertyCache.set(nodeData.id, nodeData.properties);
+    }
+  }
   const opts = getOptionsForGraph(g);
   if (opts?.onShowProperties) {
     opts.onShowProperties(nodeData.id, nodeData.properties, nodeData.isLoading);
@@ -6225,10 +6248,25 @@ export {
   type PsseSldDrawing,
 } from "./psse-sld-parser.js";
 
+export * from "./accelerator-lattice-builder.js";
+export * from "./auto-layout.js";
+export * from "./climate-raster-builder.js";
+export * from "./crystallography-builder.js";
+export * from "./fits-astro-builder.js";
+export * from "./hep-event-builder.js";
 export * from "./hydro-diagram-builder.js";
+export * from "./molecular-diagram-builder.js";
+export * from "./neural-spike-builder.js";
+export * from "./nmodl-diagram-builder.js";
+export * from "./optical-bench-builder.js";
+export * from "./pk-diagram-builder.js";
+export * from "./plasma-fusion-builder.js";
 export * from "./powerfactory-diagram-builder.js";
 export * from "./pq-diagram-builder.js";
+export * from "./quantum-chemistry-builder.js";
+export * from "./reaction-coordinate-diagram-builder.js";
 export * from "./rx-diagram-builder.js";
 export * from "./scl-diagram-builder.js";
+export * from "./segy-trace-builder.js";
 export * from "./tcc-diagram-builder.js";
 export * from "./water-network-diff.js";

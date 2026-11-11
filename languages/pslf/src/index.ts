@@ -9,6 +9,7 @@
 
 export { default, pslfLanguage } from "./language.js";
 export * from "./lints/index.js";
+export * from "./lsp.js";
 export * from "./parser/dyd-parser.js";
 export * from "./parser/dyd-writer.js";
 export * from "./parser/epc-parser.js";

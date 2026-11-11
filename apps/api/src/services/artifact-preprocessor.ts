@@ -15,6 +15,8 @@ export interface PreprocessResult {
 export interface PreprocessOptions {
   /** Modelica: the class to render when a file declares several. */
   primaryClass?: string | undefined;
+  /** Declared external library dependencies (e.g. from artifact view_config.dependencies). */
+  dependencies?: Array<{ name: string; version: string; [key: string]: unknown }> | undefined;
 }
 
 const DEFAULT_UPLOAD_DIR =
@@ -978,7 +980,10 @@ export async function pregenerateServerSvgThumbnail(
       case "morsel":
       case "polyglot-morsel": {
         const { preprocessModelicaArtifact } = await import("./modelica-artifact-renderer.js");
-        const moRes = await preprocessModelicaArtifact(content, baseTitle, { primaryClass: options.primaryClass });
+        const moRes = await preprocessModelicaArtifact(content, baseTitle, {
+          primaryClass: options.primaryClass,
+          dependencies: options.dependencies,
+        });
         result.svg = moRes.svg;
         result.metadata = moRes.metadata;
         result.viewConfigAdditions = {

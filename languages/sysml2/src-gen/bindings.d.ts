@@ -31,6 +31,17 @@ export interface EditRange {
   oldEndOffset: number;
   newEndOffset: number;
 }
+export interface Edit {
+  startIndex?: number;
+  oldEndIndex?: number;
+  newEndIndex?: number;
+  startPosition?: Point;
+  oldEndPosition?: Point;
+  newEndPosition?: Point;
+  startByte?: number;
+  oldEndByte?: number;
+  newEndByte?: number;
+}
 export interface SemanticTokensEdit {
   start: number;
   deleteCount: number;
@@ -48,6 +59,10 @@ export declare class WasmTreeCursor {
   private cursorPtr;
   private runtime;
   constructor(runtime: any, rootNode: number);
+  /** Releases the WASM-side cursor back to the pool. The cursor must not be used afterwards. */
+  dispose(): void;
+  /** Returns the cursor to the pool if it is garbage-collected without an explicit dispose(). */
+  private static _registry;
   reset(rootNode: number): void;
   currentNode(): number;
   currentOffset(): number;
@@ -226,13 +241,23 @@ export declare class LspFacade {
   getFieldNameById(id: number): string | null;
   extrasRegex: RegExp;
   private wasmMemory;
+  private _u32View;
+  /** Returns a Uint32Array over linear memory, reallocated only when `memory.grow` replaces the buffer. */
+  private _u32;
   exports: any;
   lastAstRoot: number;
   private _cachedLineStarts;
   private documentRoots;
   private documentVersions;
+  private _uriToFileId;
+  private _fileIdToUri;
+  private _nextFileId;
   private _idleTimer;
   private _maxMemoryQuotaBytes;
+  /**
+   * Retrieves or assigns a stable numeric fileId for a given URI.
+   */
+  getFileId(uri: string): number;
   /**
    * Returns true if a character matches the grammar's `extras` definition (whitespace/trivia).
    * Line breaks (\n, \r) are excluded so diagnostic ranges stay pinned to their line.
@@ -470,6 +495,8 @@ export declare class LspFacade {
   /** Hashes a string using FNV-1a algorithm matching WASM string hash. */
   hashString(str: string): number;
   allocMem(bytes: number): number;
+  private _strScratchPtr;
+  private _strScratchCapacity;
   allocStringInArena(str: string): number;
   /** Registers a declaration stub into the persistent Tier 1 index. */
   registerStub(
@@ -957,6 +984,10 @@ export declare class SyntaxNode {
   private _cachedNamedChildren;
   private _cachedText;
   _fieldId: number;
+  _nextSibling: SyntaxNode | null | undefined;
+  _prevSibling: SyntaxNode | null | undefined;
+  _nextNamedSibling: SyntaxNode | null | undefined;
+  _prevNamedSibling: SyntaxNode | null | undefined;
   constructor(
     tree: Tree,
     ptr: number,
@@ -993,14 +1024,22 @@ export declare class SyntaxNode {
   get startIndex(): number;
   /** The end character index of the node. Alias for {@link endOffset}. */
   get endIndex(): number;
+  /** The start byte offset of this node within the UTF-8 source text. */
+  get startByte(): number;
+  /** The end byte offset of this node within the UTF-8 source text. */
+  get endByte(): number;
   /**
    * Returns true if this node was inserted by the parser to recover from a syntax error.
    */
-  isMissing(): boolean;
+  get isMissing(): boolean;
   /** Returns true if this node is an extra token (comment/whitespace). */
-  isExtra(): boolean;
+  get isExtra(): boolean;
   /** Returns true if this node has been edited. */
-  hasChanges(): boolean;
+  get hasChanges(): boolean;
+  /** The parse state of the node. */
+  get parseState(): number;
+  /** The next parse state of the node. */
+  get nextParseState(): number;
   /** The line and column where this node starts. */
   get startPosition(): Point;
   /** The line and column where this node ends. */
@@ -1036,6 +1075,10 @@ export declare class SyntaxNode {
   child(index: number): SyntaxNode | null;
   /** Gets the named child at the specified index. */
   namedChild(index: number): SyntaxNode | null;
+  /** Finds the first child whose endIndex is greater than the given index. */
+  firstChildForIndex(index: number): SyntaxNode | null;
+  /** Finds the first named child whose endIndex is greater than the given index. */
+  firstNamedChildForIndex(index: number): SyntaxNode | null;
   /**
    * Helper that tests if this node or its WASM subtree contains targetPtr.
    */
@@ -1067,10 +1110,12 @@ export declare class SyntaxNode {
   /** Extracts the source code text for a specific child field. */
   childText(name: string): string;
   /** Returns true if the node is a named (non-anonymous) node. */
-  isNamed(): boolean;
+  get isNamed(): boolean;
   private _cachedHasError;
   /** Returns true if the node or any of its descendants represents a syntax error. */
-  hasError(): boolean;
+  get hasError(): boolean;
+  /** Returns true if this node itself represents a syntax error. */
+  get isError(): boolean;
   /** Finds the smallest syntax node covering the character range [start, end]. */
   descendantForIndex(
     start: number,
@@ -1095,6 +1140,13 @@ export declare class SyntaxNode {
   toString(): string;
   /** Returns true if this node is equal to other. */
   equals(other: SyntaxNode | null | undefined): boolean;
+  /** Gets the total count of all recursive descendant nodes. */
+  get descendantCount(): number;
+  /**
+   * Get the immediate child that contains the given descendant node.
+   * Note that this returns the descendant itself if it is an immediate child.
+   */
+  childWithDescendant(descendant: SyntaxNode): SyntaxNode | null;
   /** Creates a stateful TreeCursor for traversing the tree starting at this node. */
   walk(): TreeCursor;
 }
@@ -1109,6 +1161,8 @@ export declare class TreeCursor {
   get nodeTypeId(): number;
   get nodeIsNamed(): boolean;
   get nodeIsMissing(): boolean;
+  get nodeStateId(): number;
+  get currentDescendantIndex(): number;
   get nodeText(): string;
   get currentNode(): SyntaxNode;
   get startIndex(): number;
@@ -1118,14 +1172,17 @@ export declare class TreeCursor {
   get currentFieldName(): string | null;
   get currentFieldId(): number;
   get currentDepth(): number;
-  isMissing(): boolean;
+  get isMissing(): boolean;
+  reset(node: SyntaxNode): void;
+  resetTo(cursor: TreeCursor): void;
   gotoFirstChild(): boolean;
+  gotoLastChild(): boolean;
   gotoFirstChildForIndex(index: number): boolean;
   gotoFirstChildForPosition(position: Point): boolean;
   gotoNextSibling(): boolean;
   gotoPreviousSibling(): boolean;
   gotoParent(): boolean;
-  reset(node: SyntaxNode): void;
+  gotoDescendant(goalDescendantIndex: number): void;
 }
 /**
  * Represents the root of a parsed syntax tree.
@@ -1140,13 +1197,48 @@ export declare class Tree {
   private _mem32;
   get mem32(): Uint32Array;
   constructor(facade: LspFacade, rootPtr: number, sourceCode: string);
+  private _rootNode;
   /** Gets the root node of the syntax tree. */
   get rootNode(): SyntaxNode;
+  lastEdit: Edit | null;
+  private _lsTyped;
+  private _lsTypedSrc;
+  private _lineStartsTyped;
+  private _isPureAscii;
+  /** Lazily-built cumulative UTF-8 byte length per UTF-16 offset (length n+1); null when pure ASCII. */
+  private _utf8Prefix;
+  private _ensureUtf8Index;
+  /**
+   * Converts a linear UTF-16 code unit offset to a UTF-8 byte offset in O(1)
+   * (one-time O(n) index build for non-ASCII sources).
+   */
+  offsetToByte(charOffset: number): number;
+  /**
+   * Converts a UTF-8 byte offset to a linear UTF-16 code unit offset in O(log n).
+   * Offsets falling inside a multi-byte character round up to the next character boundary.
+   */
+  byteToOffset(byteOffset: number): number;
+  /**
+   * Applies an edit transaction record to the tree, storing the modified bounds
+   * for the next incremental parse call. Correctly harmonizes UTF-8 byte offsets
+   * and UTF-16 code unit indices.
+   *
+   * `startByte`/`oldEndByte` are resolved against this tree's (old) source. `newEndByte`
+   * can only be resolved against the NEW source, so it is deferred until `parse()` when
+   * no `newEndIndex` is supplied.
+   */
+  edit(edit: Edit): Tree;
+  rootNodeWithOffset(offsetBytes: number, offsetExtent: Point): SyntaxNode;
+  getChangedRanges(other: Tree): Range[];
+  getIncludedRanges(): Range[];
+  getText(node: SyntaxNode): string;
+  getEditedRange(): Range | null;
+  printDotGraph(fd?: number): void;
   /** Creates a stateful TreeCursor for traversing the tree starting at the root. */
   walk(): TreeCursor;
-  /** Converts a linear byte offset into a row and column Point. */
+  /** Converts a linear UTF-16 code unit offset into a row and column Point. */
   offsetToPoint(offset: number): Point;
-  /** Converts a row and column Point into a linear character offset. */
+  /** Converts a row and column Point into a linear UTF-16 character offset. */
   pointToOffset(point: Point): number;
   /** Releases any resources associated with this syntax tree wrapper. */
   delete(): void;
@@ -1610,25 +1702,25 @@ export declare enum SyntaxKind {
   QualifiedName = 461,
   START = 462,
   _START = 462,
-  MetaClassificationTestOperator = 644,
-  CastOperator = 645,
-  MetaCastOperator = 646,
-  LiteralInfinity = 690,
-  DECIMALVALUE = 695,
-  DECIMAL_VALUE = 695,
-  EXPVALUE = 696,
-  EXP_VALUE = 696,
-  ID = 697,
-  UNRESTRICTEDNAME = 698,
-  UNRESTRICTED_NAME = 698,
-  STRINGVALUE = 699,
-  STRING_VALUE = 699,
-  REGULARCOMMENT = 700,
-  REGULAR_COMMENT = 700,
-  MLNOTE = 701,
-  ML_NOTE = 701,
-  SLNOTE = 702,
-  SL_NOTE = 702,
+  MetaClassificationTestOperator = 648,
+  CastOperator = 649,
+  MetaCastOperator = 650,
+  LiteralInfinity = 696,
+  DECIMALVALUE = 701,
+  DECIMAL_VALUE = 701,
+  EXPVALUE = 702,
+  EXP_VALUE = 702,
+  ID = 703,
+  UNRESTRICTEDNAME = 704,
+  UNRESTRICTED_NAME = 704,
+  STRINGVALUE = 705,
+  STRING_VALUE = 705,
+  REGULARCOMMENT = 706,
+  REGULAR_COMMENT = 706,
+  MLNOTE = 707,
+  ML_NOTE = 707,
+  SLNOTE = 708,
+  SL_NOTE = 708,
   EOF = 1023,
 }
 
@@ -1677,124 +1769,130 @@ export declare enum FieldId {
   isOrdered = 21,
   IsNonunique = 22,
   isNonunique = 22,
-  LowerBound = 23,
-  lowerBound = 23,
-  UpperBound = 24,
-  upperBound = 24,
-  IsEnd = 25,
-  isEnd = 25,
-  Direction = 26,
-  direction = 26,
-  IsDerived = 27,
-  isDerived = 27,
-  IsAbstract = 28,
-  isAbstract = 28,
-  IsVariation = 29,
-  isVariation = 29,
-  IsConstant = 30,
-  isConstant = 30,
-  IsRef = 31,
-  isRef = 31,
-  IsRedefine = 32,
-  isRedefine = 32,
-  IsSubsetting = 33,
-  isSubsetting = 33,
-  IsInitial = 34,
-  isInitial = 34,
-  IsDefault = 35,
-  isDefault = 35,
-  ConjugatedPortDefinition = 36,
-  conjugatedPortDefinition = 36,
-  Guard = 37,
-  guard = 37,
-  Condition = 38,
-  condition = 38,
-  ThenBody = 39,
-  thenBody = 39,
-  ElseBody = 40,
-  elseBody = 40,
-  UntilCondition = 41,
-  untilCondition = 41,
-  Variable = 42,
-  variable = 42,
-  Range = 43,
-  range = 43,
-  SentItem = 44,
-  sentItem = 44,
-  Receiver = 45,
-  receiver = 45,
-  TargetFeature = 46,
-  targetFeature = 46,
-  AssignedValue = 47,
-  assignedValue = 47,
-  IsNegated = 48,
-  isNegated = 48,
-  ConstraintKind = 49,
-  constraintKind = 49,
-  SatisfyingFeature = 50,
-  satisfyingFeature = 50,
-  IsParallel = 51,
-  isParallel = 51,
-  Source = 52,
-  source = 52,
-  Trigger = 53,
-  trigger = 53,
-  Effect = 54,
-  effect = 54,
-  Operator = 55,
-  operator = 55,
-  Operand = 56,
-  operand = 56,
-  ThenOperand = 57,
-  thenOperand = 57,
-  ElseOperand = 58,
-  elseOperand = 58,
-  TypeReference = 59,
-  typeReference = 59,
-  TypeResult = 60,
-  typeResult = 60,
-  Base = 61,
-  base = 61,
-  Exponent = 62,
-  exponent = 62,
-  IndexOperand = 63,
-  indexOperand = 63,
-  FilterOperand = 64,
-  filterOperand = 64,
-  InvocationType = 65,
-  invocationType = 65,
-  FunctionRef = 66,
-  functionRef = 66,
-  Collect = 67,
-  collect = 67,
-  Select = 68,
-  select = 68,
-  FeatureChain = 69,
-  featureChain = 69,
-  Value = 70,
-  value = 70,
-  Unit = 71,
-  unit = 71,
-  Left = 72,
-  left = 72,
-  Right = 73,
-  right = 73,
-  Result = 74,
-  result = 74,
-  Chaining = 75,
-  chaining = 75,
-  ChainingFeature = 76,
-  chainingFeature = 76,
-  Argument = 77,
-  argument = 77,
-  NamedArgument = 78,
-  namedArgument = 78,
-  ParameterRedefinition = 79,
-  parameterRedefinition = 79,
-  RedefinedFeature = 80,
-  redefinedFeature = 80,
-  Name = 81,
-  name = 81,
+  SubsettedFeature = 23,
+  subsettedFeature = 23,
+  ReferencedFeature = 24,
+  referencedFeature = 24,
+  CrossedFeature = 25,
+  crossedFeature = 25,
+  RedefinedFeature = 26,
+  redefinedFeature = 26,
+  LowerBound = 27,
+  lowerBound = 27,
+  UpperBound = 28,
+  upperBound = 28,
+  IsEnd = 29,
+  isEnd = 29,
+  Direction = 30,
+  direction = 30,
+  IsDerived = 31,
+  isDerived = 31,
+  IsAbstract = 32,
+  isAbstract = 32,
+  IsVariation = 33,
+  isVariation = 33,
+  IsConstant = 34,
+  isConstant = 34,
+  IsRef = 35,
+  isRef = 35,
+  IsRedefine = 36,
+  isRedefine = 36,
+  IsSubsetting = 37,
+  isSubsetting = 37,
+  IsInitial = 38,
+  isInitial = 38,
+  IsDefault = 39,
+  isDefault = 39,
+  ConjugatedPortDefinition = 40,
+  conjugatedPortDefinition = 40,
+  Guard = 41,
+  guard = 41,
+  Condition = 42,
+  condition = 42,
+  ThenBody = 43,
+  thenBody = 43,
+  ElseBody = 44,
+  elseBody = 44,
+  UntilCondition = 45,
+  untilCondition = 45,
+  Variable = 46,
+  variable = 46,
+  Range = 47,
+  range = 47,
+  SentItem = 48,
+  sentItem = 48,
+  Receiver = 49,
+  receiver = 49,
+  TargetFeature = 50,
+  targetFeature = 50,
+  AssignedValue = 51,
+  assignedValue = 51,
+  IsNegated = 52,
+  isNegated = 52,
+  ConstraintKind = 53,
+  constraintKind = 53,
+  SatisfyingFeature = 54,
+  satisfyingFeature = 54,
+  IsParallel = 55,
+  isParallel = 55,
+  Source = 56,
+  source = 56,
+  Trigger = 57,
+  trigger = 57,
+  Effect = 58,
+  effect = 58,
+  Operator = 59,
+  operator = 59,
+  Operand = 60,
+  operand = 60,
+  ThenOperand = 61,
+  thenOperand = 61,
+  ElseOperand = 62,
+  elseOperand = 62,
+  TypeReference = 63,
+  typeReference = 63,
+  TypeResult = 64,
+  typeResult = 64,
+  Base = 65,
+  base = 65,
+  Exponent = 66,
+  exponent = 66,
+  IndexOperand = 67,
+  indexOperand = 67,
+  FilterOperand = 68,
+  filterOperand = 68,
+  InvocationType = 69,
+  invocationType = 69,
+  FunctionRef = 70,
+  functionRef = 70,
+  Collect = 71,
+  collect = 71,
+  Select = 72,
+  select = 72,
+  FeatureChain = 73,
+  featureChain = 73,
+  Value = 74,
+  value = 74,
+  Unit = 75,
+  unit = 75,
+  Left = 76,
+  left = 76,
+  Right = 77,
+  right = 77,
+  Result = 78,
+  result = 78,
+  Chaining = 79,
+  chaining = 79,
+  ChainingFeature = 80,
+  chainingFeature = 80,
+  Argument = 81,
+  argument = 81,
+  NamedArgument = 82,
+  namedArgument = 82,
+  ParameterRedefinition = 83,
+  parameterRedefinition = 83,
+  Name = 84,
+  name = 84,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -3102,8 +3200,8 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is OwnedSubsettingNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    subsettedFeature(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    subsettedFeatureList(node: SyntaxNode | null | undefined): SyntaxNode[];
     ownedRelatedElement(node: SyntaxNode | null | undefined): SyntaxNode | null;
     ownedRelatedElementList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
@@ -3111,8 +3209,8 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is OwnedReferenceSubsettingNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    referencedFeature(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    referencedFeatureList(node: SyntaxNode | null | undefined): SyntaxNode[];
     ownedRelatedElement(node: SyntaxNode | null | undefined): SyntaxNode | null;
     ownedRelatedElementList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
@@ -3120,8 +3218,8 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is OwnedCrossSubsettingNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    crossedFeature(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    crossedFeatureList(node: SyntaxNode | null | undefined): SyntaxNode[];
     ownedRelatedElement(node: SyntaxNode | null | undefined): SyntaxNode | null;
     ownedRelatedElementList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
@@ -3129,8 +3227,8 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is OwnedRedefinitionNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    redefinedFeature(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    redefinedFeatureList(node: SyntaxNode | null | undefined): SyntaxNode[];
     ownedRelatedElement(node: SyntaxNode | null | undefined): SyntaxNode | null;
     ownedRelatedElementList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
@@ -6037,8 +6135,8 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is FeatureChainMemberNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    memberElement(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    memberElementList(node: SyntaxNode | null | undefined): SyntaxNode[];
     ownedRelatedElement(node: SyntaxNode | null | undefined): SyntaxNode | null;
     ownedRelatedElementList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
@@ -6145,8 +6243,8 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is InstantiatedTypeMemberNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    memberElement(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    memberElementList(node: SyntaxNode | null | undefined): SyntaxNode[];
     ownedRelatedElement(node: SyntaxNode | null | undefined): SyntaxNode | null;
     ownedRelatedElementList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };

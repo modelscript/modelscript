@@ -6,7 +6,7 @@
       "tsComments": 0
     },
     "apps/cli": {
-      "explicitAny": 23,
+      "explicitAny": 28,
       "tsComments": 0
     },
     "apps/desktop": {
@@ -26,7 +26,7 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 875,
+      "explicitAny": 894,
       "tsComments": 0
     },
     "ee": {
@@ -74,7 +74,7 @@
       "tsComments": 0
     },
     "languages/cantera": {
-      "explicitAny": 0,
+      "explicitAny": 2,
       "tsComments": 0
     },
     "languages/ccsds": {
@@ -193,8 +193,12 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/mlxtran": {
+      "explicitAny": 1,
+      "tsComments": 0
+    },
     "languages/modelica": {
-      "explicitAny": 3310,
+      "explicitAny": 3328,
       "tsComments": 0
     },
     "languages/modelscript": {
@@ -209,8 +213,12 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/nmodl": {
+      "explicitAny": 1,
+      "tsComments": 0
+    },
     "languages/nmtran": {
-      "explicitAny": 0,
+      "explicitAny": 1,
       "tsComments": 0
     },
     "languages/ocpp": {
@@ -342,7 +350,7 @@
       "tsComments": 0
     },
     "languages/smiles": {
-      "explicitAny": 0,
+      "explicitAny": 1,
       "tsComments": 0
     },
     "languages/spice": {
@@ -406,11 +414,11 @@
       "tsComments": 0
     },
     "packages/diagram": {
-      "explicitAny": 40,
+      "explicitAny": 52,
       "tsComments": 0
     },
     "packages/dsl": {
-      "explicitAny": 752,
+      "explicitAny": 783,
       "tsComments": 0
     },
     "packages/embed": {
@@ -450,7 +458,7 @@
       "tsComments": 0
     },
     "packages/runtime": {
-      "explicitAny": 863,
+      "explicitAny": 858,
       "tsComments": 0
     },
     "packages/simulate": {

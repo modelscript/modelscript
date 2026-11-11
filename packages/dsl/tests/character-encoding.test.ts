@@ -231,7 +231,7 @@ describe("Character Encoding & Multi-Byte Subsystem", () => {
       const code = `model M\n  String s1 = "Hello 世界";\n  String s2 = "Rocket 🚀 launch";\nend M;`;
       const tree = parseToTree(code);
       expect(tree.rootNode).toBeDefined();
-      expect(tree.rootNode.hasError()).toBe(false);
+      expect(tree.rootNode.hasError).toBe(false);
 
       const s1Node = tree.rootNode.descendantsOfType("StringLiteral")[0];
       expect(s1Node).toBeDefined();
@@ -248,7 +248,7 @@ describe("Character Encoding & Multi-Byte Subsystem", () => {
       const codeWithBom = `\uFEFFmodel MBom\nend MBom;`;
       const tree = parseToTree(codeWithBom);
       expect(tree.rootNode).toBeDefined();
-      expect(tree.rootNode.hasError()).toBe(false);
+      expect(tree.rootNode.hasError).toBe(false);
     });
 
     it("correctly converts positions on lines containing multi-byte characters", () => {
@@ -265,13 +265,13 @@ describe("Character Encoding & Multi-Byte Subsystem", () => {
     it("handles incremental parse edits with 1:1 UTF-16 character offsets", () => {
       const code1 = `model M\n  String s1 = "Hello 世界";\n  Real x = 10;\nend M;`;
       const tree1 = parseToTree(code1);
-      expect(tree1.rootNode.hasError()).toBe(false);
+      expect(tree1.rootNode.hasError).toBe(false);
 
       const editPos = code1.indexOf("10");
       const code2 = code1.slice(0, editPos) + "42" + code1.slice(editPos + 2);
       activeFacade.parseIncremental("42", editPos, 2, code2.length);
       const tree2 = new TreeClass(activeFacade, activeFacade.lastAstRoot, code2);
-      expect(tree2.rootNode.hasError()).toBe(false);
+      expect(tree2.rootNode.hasError).toBe(false);
       const numNode = tree2.rootNode.descendantsOfType("Number")[0];
       expect(numNode).toBeDefined();
       expect(numNode.text).toBe("42");

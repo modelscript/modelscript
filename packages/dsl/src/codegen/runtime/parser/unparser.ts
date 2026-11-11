@@ -79,10 +79,15 @@ export function emitVerbatimNode(nodeId: u32): void {
     isUtf8 = (header & 0x80000000) != 0;
     step = isUtf8 ? 1 : 2;
   } else {
-    basePtr = getInputBuffer() + ((start as usize) << 1);
-    len = len << 1;
-    isUtf8 = false;
-    step = 2;
+    isUtf8 = inputEncoding == 0;
+    if (isUtf8) {
+      basePtr = getInputBuffer() + (start as usize);
+      step = 1;
+    } else {
+      basePtr = getInputBuffer() + ((start as usize) << 1);
+      len = len << 1;
+      step = 2;
+    }
   }
 
   if (isUtf8) {

@@ -67,6 +67,8 @@ export {
   verifyCRoutine,
 };
 
+export * from "./lsp.js";
+
 export type {
   CDaeLoweringResult,
   CDiagnostic,

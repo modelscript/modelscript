@@ -46,6 +46,12 @@ import {
   type CatalogComponentInfo,
   type MountedLibraryEntry,
 } from "./util/lsp-bridge";
+import {
+  fetchRegistryComponentIcon,
+  fetchRegistryPackagesList,
+  mergeLocalAndStreamedComponents,
+  streamRegistryComponents,
+} from "./util/registry-stream";
 import { invertSvgColors, normalizeSvgForIcon } from "./util/x6";
 
 export { CURATED_ANSATZ_PACKAGES as CURATED_STDLIB_PACKAGES };
@@ -230,12 +236,22 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
   const [visibleCount, setVisibleCount] = useState<number>(COMPONENT_PAGE_SIZE);
   const [iconRev, setIconRev] = useState(0);
 
-  // Authoritative mounted packages & full component catalog from LSP
+  // Authoritative mounted packages, local LSP fallback catalog & live Ansatz registry stream
   const [mountedMap, setMountedMap] = useState<Map<string, MountedLibraryEntry>>(new Map());
   const [catalogEntries, setCatalogEntries] = useState<CatalogComponentInfo[]>([]);
   const [remotePackages, setRemotePackages] = useState<RegistryPackage[]>([]);
   const [liveClassMatches, setLiveClassMatches] = useState<GalleryComponentItem[]>([]);
   const [isSearchingLive, setIsSearchingLive] = useState(false);
+
+  // Live Ansatz Registry component stream state
+  const [streamedRegistryItems, setStreamedRegistryItems] = useState<GalleryComponentItem[]>([]);
+  const [registryTotal, setRegistryTotal] = useState<number | null>(null);
+  const [registryHasMore, setRegistryHasMore] = useState(false);
+  const [registryOffset, setRegistryOffset] = useState(0);
+  const [isStreamingRegistry, setIsStreamingRegistry] = useState(false);
+  const [registryDepsMap, setRegistryDepsMap] = useState<Record<string, Record<string, string>>>({});
+  const [registrySubpackages, setRegistrySubpackages] = useState<Array<{ label: string; count: number }>>([]);
+  const loadingNextPageRef = useRef(false);
 
   // Per-package selected version & active install/uninstall state
   const [selectedVersions, setSelectedVersions] = useState<Record<string, string>>({});
@@ -270,6 +286,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
     if (!isOpen) return;
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const pkgAbort = new AbortController();
 
     void syncMountedState().then((count) => {
       // If LSP worker was still booting on initial cold open, retry once it finishes initializing
@@ -283,12 +300,10 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
     });
     setTimeout(() => searchInputRef.current?.focus(), 40);
 
-    fetch("/api/v1/packages?limit=40")
-      .then(async (r) => {
-        if (!r.ok) return;
-        const data = (await r.json()) as { packages?: RegistryPackage[] };
-        if (!cancelled && Array.isArray(data.packages)) {
-          setRemotePackages(data.packages);
+    fetchRegistryPackagesList(60, pkgAbort.signal)
+      .then((pkgs) => {
+        if (!cancelled && pkgs.length > 0) {
+          setRemotePackages(pkgs);
         }
       })
       .catch(() => {
@@ -297,9 +312,118 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
 
     return () => {
       cancelled = true;
+      pkgAbort.abort();
       if (retryTimer) clearTimeout(retryTimer);
     };
   }, [isOpen, syncMountedState]);
+
+  // Stream components live from the Ansatz Registry (/api/v1/components) when modal opens or filters change
+  useEffect(() => {
+    if (!isOpen || viewMode !== "components" || mountedOnlyFilter) {
+      if (mountedOnlyFilter) {
+        setRegistryHasMore(false);
+        setIsStreamingRegistry(false);
+      }
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+    const delay = searchQuery.trim().length > 0 ? 120 : 0;
+
+    setIsStreamingRegistry(true);
+    const timer = setTimeout(() => {
+      streamRegistryComponents(
+        {
+          q: searchQuery,
+          domain: selectedDomain,
+          packageName: packageFilter,
+          subpackage: subpackageFilter,
+          limit: COMPONENT_PAGE_SIZE,
+          offset: 0,
+          includeSvg: true,
+        },
+        controller.signal,
+      )
+        .then((res) => {
+          if (cancelled) return;
+          if (res.fromRegistry) {
+            setStreamedRegistryItems(res.items);
+            setRegistryTotal(res.total);
+            setRegistryHasMore(res.hasMore);
+            setRegistryOffset(res.items.length);
+            if (Object.keys(res.packageDependencies).length > 0) {
+              setRegistryDepsMap((prev) => ({ ...prev, ...res.packageDependencies }));
+            }
+            setRegistrySubpackages(
+              res.availableSubpackages.map((s) => ({
+                label: s.id.replace(/\./g, " · "),
+                count: s.count,
+              })),
+            );
+            if (res.items.length > 0) {
+              setIconRev((r) => r + 1);
+            }
+          } else {
+            setRegistryTotal(null);
+            setRegistryHasMore(false);
+          }
+          setIsStreamingRegistry(false);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setIsStreamingRegistry(false);
+          }
+        });
+    }, delay);
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [isOpen, viewMode, mountedOnlyFilter, searchQuery, selectedDomain, packageFilter, subpackageFilter]);
+
+  const loadMoreRegistryItems = useCallback(() => {
+    if (mountedOnlyFilter || !registryHasMore || loadingNextPageRef.current) return;
+    loadingNextPageRef.current = true;
+    setIsStreamingRegistry(true);
+    void streamRegistryComponents({
+      q: searchQuery,
+      domain: selectedDomain,
+      packageName: packageFilter,
+      subpackage: subpackageFilter,
+      limit: COMPONENT_PAGE_SIZE,
+      offset: registryOffset,
+      includeSvg: true,
+    })
+      .then((res) => {
+        if (res.fromRegistry && res.items.length > 0) {
+          setStreamedRegistryItems((prev) => mergeLocalAndStreamedComponents(prev, res.items));
+          setRegistryOffset((prev) => prev + res.items.length);
+          setRegistryHasMore(res.hasMore);
+          setRegistryTotal(res.total);
+          if (Object.keys(res.packageDependencies).length > 0) {
+            setRegistryDepsMap((prev) => ({ ...prev, ...res.packageDependencies }));
+          }
+          setIconRev((r) => r + 1);
+        } else {
+          setRegistryHasMore(false);
+        }
+      })
+      .finally(() => {
+        loadingNextPageRef.current = false;
+        setIsStreamingRegistry(false);
+      });
+  }, [
+    mountedOnlyFilter,
+    registryHasMore,
+    registryOffset,
+    searchQuery,
+    selectedDomain,
+    packageFilter,
+    subpackageFilter,
+  ]);
 
   // Reset subpackage filter when top-level domain or package filter changes
   useEffect(() => {
@@ -435,7 +559,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
     return Array.from(merged.values());
   }, [remotePackages, mountedMap]);
 
-  // Full merged Component Gallery (38 featured polyglot/MSL components + 1,330+ pre-baked MSL & mounted workspace components)
+  // Full merged Component Gallery (curated + pre-baked MSL & mounted workspace + live streamed Ansatz registry components)
   const allGalleryComponents = useMemo<GalleryComponentItem[]>(() => {
     const seen = new Set<string>();
     const out: GalleryComponentItem[] = [];
@@ -450,8 +574,11 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
       const mountedVer = mountedMap.get(entry.packageName.toLowerCase())?.version;
       out.push(catalogEntryToGalleryItem(entry, mountedVer));
     }
-    return out;
-  }, [catalogEntries, mountedMap]);
+    if (mountedOnlyFilter || streamedRegistryItems.length === 0) {
+      return out;
+    }
+    return mergeLocalAndStreamedComponents(out, streamedRegistryItems);
+  }, [catalogEntries, mountedMap, mountedOnlyFilter, streamedRegistryItems]);
 
   // Domain + package + search filtered components (before subpackage quick-pill refinement)
   const baseFilteredComponents = useMemo<GalleryComponentItem[]>(() => {
@@ -500,11 +627,19 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
         counts.set(grp, (counts.get(grp) ?? 0) + 1);
       }
     }
+    if (!mountedOnlyFilter && registrySubpackages.length > 0) {
+      for (const regSub of registrySubpackages) {
+        const cur = counts.get(regSub.label) ?? 0;
+        if (regSub.count > cur) {
+          counts.set(regSub.label, regSub.count);
+        }
+      }
+    }
     return Array.from(counts.entries())
       .map(([label, count]) => ({ label, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
-  }, [baseFilteredComponents, selectedDomain, packageFilter]);
+  }, [baseFilteredComponents, selectedDomain, packageFilter, mountedOnlyFilter, registrySubpackages]);
 
   // Final filtered Component Gallery items
   const filteredComponents = useMemo<GalleryComponentItem[]>(() => {
@@ -512,7 +647,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
     return baseFilteredComponents.filter((item) => extractSubpackageGroup(item.fqn) === subpackageFilter);
   }, [baseFilteredComponents, subpackageFilter]);
 
-  // Progressive visible slice for 60fps scrolling + batched official MSL SVG hydration
+  // Progressive visible slice for 60fps scrolling + batched official MSL & Ansatz Registry SVG hydration
   const visibleComponents = useMemo<GalleryComponentItem[]>(
     () => filteredComponents.slice(0, visibleCount),
     [filteredComponents, visibleCount],
@@ -520,28 +655,50 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
 
   useEffect(() => {
     if (!isOpen || viewMode !== "components" || visibleComponents.length === 0) return;
-    const missing: string[] = [];
+    const missingLocal: string[] = [];
+    const missingRemote: GalleryComponentItem[] = [];
     for (const comp of visibleComponents) {
       if (globalClassIconCache.has(comp.fqn)) continue;
       if (attemptedIconFqnsRef.current.has(comp.fqn)) continue;
-      const canFetch = comp.packageName === "Modelica" || mountedMap.has(comp.packageName.toLowerCase());
-      if (canFetch) {
+      const canFetchLocal = comp.packageName === "Modelica" || mountedMap.has(comp.packageName.toLowerCase());
+      if (canFetchLocal) {
         attemptedIconFqnsRef.current.add(comp.fqn);
-        missing.push(comp.fqn);
+        missingLocal.push(comp.fqn);
+      } else if (missingRemote.length < 16) {
+        attemptedIconFqnsRef.current.add(comp.fqn);
+        missingRemote.push(comp);
       }
     }
-    if (missing.length === 0) return;
+    if (missingLocal.length === 0 && missingRemote.length === 0) return;
 
     let cancelled = false;
-    void getClassIcons(missing.slice(0, 80)).then((icons) => {
-      if (cancelled) return;
-      if (Object.keys(icons).length > 0) {
-        setIconRev((r) => r + 1);
-      }
-    });
+    const remoteAbort = new AbortController();
+
+    if (missingLocal.length > 0) {
+      void getClassIcons(missingLocal.slice(0, 80)).then((icons) => {
+        if (cancelled) return;
+        if (Object.keys(icons).length > 0) {
+          setIconRev((r) => r + 1);
+        }
+      });
+    }
+
+    if (missingRemote.length > 0) {
+      void Promise.all(
+        missingRemote.map((comp) =>
+          fetchRegistryComponentIcon(comp.packageName, comp.packageVersion, comp.fqn, remoteAbort.signal),
+        ),
+      ).then((results) => {
+        if (cancelled) return;
+        if (results.some((svg) => svg !== null)) {
+          setIconRev((r) => r + 1);
+        }
+      });
+    }
 
     return () => {
       cancelled = true;
+      remoteAbort.abort();
     };
   }, [isOpen, viewMode, visibleComponents, mountedMap]);
 
@@ -591,22 +748,43 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
     return list;
   }, [allPackages, allGalleryComponents, searchQuery, selectedDomain, installedOnlyLibraries, mountedMap, sortBy]);
 
-  // Install package (with automatic peer-dependency version bump per user preference)
+  // Install package (with automatic peer-dependency install & version bump per user preference)
   const executeInstallPackage = useCallback(
     async (pkgName: string, requestedVer?: string, silentToast = false): Promise<boolean> => {
       const pkgMeta = allPackages.find((p) => p.name.toLowerCase() === pkgName.toLowerCase());
       const targetVersion =
         requestedVer || selectedVersions[pkgName] || pkgMeta?.versions?.[0] || pkgMeta?.version || "1.0.0";
+      const deps = pkgMeta?.dependencies ?? registryDepsMap[pkgName];
+
+      const compareVer = (a: string, b: string): number => {
+        const pa = a
+          .replace(/^[^\d]*/, "")
+          .split(".")
+          .map((n) => Number.parseInt(n, 10) || 0);
+        const pb = b
+          .replace(/^[^\d]*/, "")
+          .split(".")
+          .map((n) => Number.parseInt(n, 10) || 0);
+        for (let i = 0; i < 3; i++) {
+          const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+          if (diff !== 0) return diff;
+        }
+        return 0;
+      };
 
       setBusyPackage(pkgName);
       try {
-        // Automatic peer-dependency version bump if required
-        if (pkgMeta?.dependencies) {
-          for (const [peerName, range] of Object.entries(pkgMeta.dependencies)) {
+        // Automatic peer-dependency install or version bump if required
+        if (deps) {
+          for (const [peerName, range] of Object.entries(deps)) {
             if (peerName === "Complex" || peerName === "ModelicaServices") continue;
             const reqClean = range.replace(/^[>=~^]+/, "").trim();
+            if (!reqClean) continue;
             const currentPeer = mountedMap.get(peerName.toLowerCase());
-            if (currentPeer && reqClean && currentPeer.version < reqClean) {
+            if (!currentPeer) {
+              await installDependency(peerName, reqClean);
+              toast.info(`Auto-installed peer '${peerName}@${reqClean}' for '${pkgName}'.`);
+            } else if (compareVer(currentPeer.version, reqClean) < 0) {
               await installDependency(peerName, reqClean);
               toast.info(`Auto-bumped '${peerName}' to v${reqClean} for '${pkgName}'.`);
             }
@@ -632,7 +810,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
         setBusyPackage(null);
       }
     },
-    [allPackages, selectedVersions, mountedMap, onInstallPackage, syncMountedState, toast],
+    [allPackages, selectedVersions, registryDepsMap, mountedMap, onInstallPackage, syncMountedState, toast],
   );
 
   const executeUninstallPackage = useCallback(
@@ -883,7 +1061,14 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
           >
             {(
               [
-                { id: "components", label: "Components", badge: filteredComponents.length.toLocaleString() },
+                {
+                  id: "components",
+                  label: "Components",
+                  badge: Math.max(
+                    filteredComponents.length,
+                    !mountedOnlyFilter && registryTotal !== null ? registryTotal : 0,
+                  ).toLocaleString(),
+                },
                 { id: "libraries", label: "Libraries", badge: `${mountedVisibleCount}/${allPackages.length}` },
                 { id: "import", label: "Import", badge: null },
               ] as const
@@ -1037,8 +1222,10 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                     minWidth: 100,
                   }}
                 />
-                {isSearchingLive && (
-                  <span style={{ fontSize: 11, color: palette.muted, whiteSpace: "nowrap" }}>Indexing…</span>
+                {(isStreamingRegistry || isSearchingLive) && (
+                  <span style={{ fontSize: 11, color: palette.muted, whiteSpace: "nowrap" }}>
+                    {isStreamingRegistry ? "Streaming…" : "Indexing…"}
+                  </span>
                 )}
                 {searchQuery && (
                   <button
@@ -1191,10 +1378,19 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
         <div
           ref={scrollViewportRef}
           onScroll={(e) => {
-            if (viewMode !== "components" || visibleCount >= filteredComponents.length) return;
+            if (viewMode !== "components") return;
             const el = e.currentTarget;
-            if (el.scrollTop + el.clientHeight >= el.scrollHeight - 280) {
-              setVisibleCount((prev) => Math.min(prev + COMPONENT_PAGE_SIZE, filteredComponents.length));
+            if (el.scrollTop + el.clientHeight >= el.scrollHeight - 320) {
+              if (visibleCount < filteredComponents.length) {
+                setVisibleCount((prev) => prev + COMPONENT_PAGE_SIZE);
+              }
+              if (
+                !mountedOnlyFilter &&
+                registryHasMore &&
+                visibleCount + COMPONENT_PAGE_SIZE >= filteredComponents.length - 36
+              ) {
+                loadMoreRegistryItems();
+              }
             }
           }}
           style={{
@@ -1463,7 +1659,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                     })}
                   </div>
 
-                  {visibleCount < filteredComponents.length && (
+                  {(visibleCount < filteredComponents.length || (!mountedOnlyFilter && registryHasMore)) && (
                     <div
                       style={{
                         marginTop: 16,
@@ -1481,13 +1677,27 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                     >
                       <span>
                         Showing <strong>{visibleComponents.length.toLocaleString()}</strong> of{" "}
-                        <strong>{filteredComponents.length.toLocaleString()}</strong> schematic components
+                        <strong>
+                          {Math.max(
+                            filteredComponents.length,
+                            !mountedOnlyFilter && registryTotal !== null ? registryTotal : 0,
+                          ).toLocaleString()}
+                        </strong>{" "}
+                        schematic components
                       </span>
                       <button
                         type="button"
-                        onClick={() =>
-                          setVisibleCount((prev) => Math.min(prev + COMPONENT_PAGE_SIZE, filteredComponents.length))
-                        }
+                        disabled={isStreamingRegistry}
+                        onClick={() => {
+                          setVisibleCount((prev) => prev + COMPONENT_PAGE_SIZE);
+                          if (
+                            !mountedOnlyFilter &&
+                            registryHasMore &&
+                            visibleCount + COMPONENT_PAGE_SIZE >= filteredComponents.length - 36
+                          ) {
+                            loadMoreRegistryItems();
+                          }
+                        }}
                         style={{
                           padding: "5px 12px",
                           borderRadius: 7,
@@ -1496,10 +1706,20 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                           color: palette.fg,
                           fontSize: 12,
                           fontWeight: 600,
-                          cursor: "pointer",
+                          cursor: isStreamingRegistry ? "wait" : "pointer",
                         }}
                       >
-                        Show more (+{Math.min(COMPONENT_PAGE_SIZE, filteredComponents.length - visibleCount)})
+                        {isStreamingRegistry
+                          ? "Streaming…"
+                          : `Show more (+${Math.min(
+                              COMPONENT_PAGE_SIZE,
+                              Math.max(
+                                filteredComponents.length - visibleCount,
+                                !mountedOnlyFilter && registryTotal !== null
+                                  ? registryTotal - visibleCount
+                                  : COMPONENT_PAGE_SIZE,
+                              ),
+                            )})`}
                       </button>
                     </div>
                   )}

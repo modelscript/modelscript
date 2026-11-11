@@ -434,20 +434,9 @@ export class DiagramService {
               "Parametric",
               "Sequence",
               "Package",
-            ];
-            const diagramType = validTypes.includes(diagramTypeRaw)
-              ? (diagramTypeRaw as
-                  | "All"
-                  | "BDD"
-                  | "IBD"
-                  | "StateMachine"
-                  | "Activity"
-                  | "UseCase"
-                  | "Requirement"
-                  | "Parametric"
-                  | "Sequence"
-                  | "Package")
-              : "All";
+            ] as const;
+            const matchedType = validTypes.find((t) => t.toLowerCase() === diagramTypeRaw.toLowerCase());
+            const diagramType = matchedType ?? "All";
             const data = sysmlOps.buildSysML2DiagramData
               ? sysmlOps.buildSysML2DiagramData(unified, params.uri, undefined, diagramType)
               : null;

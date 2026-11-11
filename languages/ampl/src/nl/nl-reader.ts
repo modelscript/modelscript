@@ -26,8 +26,8 @@ export function readSolResult(
   }
 
   const message = lines[0] ?? "";
-  const options: Record<string, string> = {};
-  const suffixes: Record<string, Record<number, number>> = {};
+  const options: Record<string, string> = Object.create(null);
+  const suffixes: Record<string, Record<number, number>> = Object.create(null);
   const numbers: number[] = [];
 
   let idx = 1;
@@ -51,21 +51,28 @@ export function readSolResult(
       const parts = line.split(/\s+/);
       const count = Number(parts[1] ?? 0);
       const sufName = parts[2] ?? "";
-      if (!suffixes[sufName]) suffixes[sufName] = {};
+      if (sufName === "__proto__" || sufName === "constructor" || sufName === "prototype" || !sufName) {
+        idx += count + 1;
+        continue;
+      }
+      if (!suffixes[sufName]) suffixes[sufName] = Object.create(null);
+      const sufMap = suffixes[sufName]!;
       idx++;
       for (let k = 0; k < count && idx < lines.length; k++, idx++) {
         const [idStr, valStr] = lines[idx]!.split(/\s+/);
         const id = Number(idStr);
         const val = Number(valStr);
         if (!Number.isNaN(id) && !Number.isNaN(val)) {
-          suffixes[sufName][id] = val;
+          sufMap[id] = val;
         }
       }
       continue;
     }
 
     if (line.startsWith("objno") || line.startsWith("suffix")) {
-      options[line] = line;
+      if (line !== "__proto__" && line !== "constructor" && line !== "prototype") {
+        options[line] = line;
+      }
       idx++;
       continue;
     }
@@ -76,12 +83,7 @@ export function readSolResult(
     idx++;
   }
 
-  if (
-    nVars !== undefined &&
-    nConstraints !== undefined &&
-    nConstraints > 0 &&
-    numbers.length >= nConstraints + nVars
-  ) {
+  if (nVars !== undefined && nConstraints !== undefined && nConstraints > 0 && numbers.length >= nConstraints + nVars) {
     // In ASL .sol files, dual multipliers (m) precede primal variables (n)
     const offset = numbers.length - (nConstraints + nVars);
     const dualValues = numbers.slice(offset, offset + nConstraints);

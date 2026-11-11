@@ -17,13 +17,7 @@ import { readSolResult } from "../nl/nl-reader.js";
 import { writeNlProblem } from "../nl/nl-writer.js";
 import type { AmplSolverResult, InstantiatedProblem } from "../types.js";
 
-export type SupportedExternalSolver =
-  | "cplex"
-  | "highs"
-  | "cbc"
-  | "scip"
-  | "ipopt"
-  | "couenne";
+export type SupportedExternalSolver = "cplex" | "highs" | "cbc" | "scip" | "ipopt" | "couenne";
 
 const SOLVER_BINARIES: Record<SupportedExternalSolver, string[]> = {
   cplex: ["cplexamp", "cplex"],
@@ -38,12 +32,24 @@ const SOLVER_BINARIES: Record<SupportedExternalSolver, string[]> = {
  * Finds the binary path for an external solver if installed on the host system.
  */
 export function findExternalSolverBinary(solver: SupportedExternalSolver): string | undefined {
-  const candidates = SOLVER_BINARIES[solver] || [solver];
+  if (!Object.prototype.hasOwnProperty.call(SOLVER_BINARIES, solver)) {
+    return undefined;
+  }
+  const candidates = SOLVER_BINARIES[solver];
+  if (!candidates) return undefined;
+
   for (const bin of candidates) {
+    if (!/^[a-zA-Z0-9_-]+$/.test(bin)) {
+      continue;
+    }
     try {
-      const cmd = process.platform === "win32" ? `where ${bin}` : `which ${bin}`;
-      const out = childProcess.execSync(cmd, { stdio: ["ignore", "pipe", "ignore"], encoding: "utf-8" });
-      const found = out.split(/\r?\n/)[0]?.trim();
+      const checkTool = process.platform === "win32" ? "where" : "which";
+      const out = childProcess.spawnSync(checkTool, [bin], {
+        stdio: ["ignore", "pipe", "ignore"],
+        encoding: "utf-8",
+        shell: false,
+      });
+      const found = out.stdout?.split(/\r?\n/)[0]?.trim();
       if (found && fs.existsSync(found)) {
         return found;
       }
@@ -161,12 +167,7 @@ export async function solveWithExternalSolver(
       } else if (/unbounded/i.test(stdout)) {
         status = "UNBOUNDED";
       }
-      message =
-        (stdout.trim() || stderr.trim())
-          .split(/\r?\n/)
-          .slice(0, 3)
-          .join(" ")
-          .trim() || message;
+      message = (stdout.trim() || stderr.trim()).split(/\r?\n/).slice(0, 3).join(" ").trim() || message;
     }
 
     return {

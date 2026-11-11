@@ -10,6 +10,7 @@ import { parseInp } from "@modelscript/epanet";
 import { parseSwmm } from "@modelscript/swmm";
 import { DiffIcon, DownloadIcon, EyeIcon, TableIcon, XIcon } from "@primer/octicons-react";
 import { Button, IconButton, SegmentedControl, Text } from "@primer/react";
+import DOMPurify from "dompurify";
 import React, { useMemo, useState } from "react";
 import styled from "styled-components";
 import { useThemeTokens } from "../../theme-tokens";
@@ -166,6 +167,15 @@ export const WaterDiffViewer: React.FC<WaterDiffViewerProps> = ({
     });
   }, [diffResult, isDark]);
 
+  const cleanSvg = useMemo(() => {
+    if (!diffSvg) return "";
+    return DOMPurify.sanitize(diffSvg, {
+      USE_PROFILES: { svg: true, svgFilters: true },
+      ADD_TAGS: ["filter", "feDropShadow"],
+      ADD_ATTR: ["style", "class", "id", "xmlns", "viewBox", "filter", "dx", "dy", "stdDeviation", "flood-opacity"],
+    });
+  }, [diffSvg]);
+
   const handleDownloadSvg = () => {
     if (!diffSvg) return;
     const blob = new Blob([diffSvg], { type: "image/svg+xml;charset=utf-8" });
@@ -267,7 +277,7 @@ export const WaterDiffViewer: React.FC<WaterDiffViewerProps> = ({
 
       <ViewportArea>
         {viewMode === "diff" ? (
-          <SvgCanvasWrapper dangerouslySetInnerHTML={{ __html: diffSvg }} />
+          <SvgCanvasWrapper dangerouslySetInnerHTML={{ __html: cleanSvg }} />
         ) : (
           <TableContainer>
             <Table>

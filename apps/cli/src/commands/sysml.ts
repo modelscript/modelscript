@@ -43,7 +43,7 @@ interface SysMLAstNode {
   id?: number | undefined;
   ptr?: number | undefined;
   tree?: { facade?: SysMLParserFacade | undefined } | undefined;
-  hasError?: (() => boolean) | undefined;
+  hasError?: boolean | (() => boolean) | undefined;
   descendantForIndex?: ((start: number, end: number) => unknown) | undefined;
 }
 
@@ -305,7 +305,7 @@ export const SysMLCheckCommand: CommandModule<{}, SysMLCheckArgs> = {
               });
             }
           }
-        } else if (ast.hasError && ast.hasError()) {
+        } else if (ast.hasError && (typeof ast.hasError === "function" ? ast.hasError() : Boolean(ast.hasError))) {
           pushUniqueDiagnostic({
             file: relPath,
             line: 1,

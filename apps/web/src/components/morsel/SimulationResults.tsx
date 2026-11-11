@@ -7,16 +7,13 @@ import { useTheme } from "../../theme";
 import { downloadParquetFile } from "../../util/binary-export";
 import Spinner from "../Spinner";
 import { SIMULATION_COLORS } from "./constants";
-import {
-  Ieee2800VerificationCard,
-  InteractiveLegend,
-  MeasurementHud,
-  type SimulationResultsProps,
-  SimulationToolbar,
-  StatisticsDrawer,
-  TrajectoryChart,
-  type VariableStatEntry,
-} from "./simulation-results";
+import { Ieee2800VerificationCard } from "./simulation-results/components/Ieee2800VerificationCard";
+import { InteractiveLegend } from "./simulation-results/components/InteractiveLegend";
+import { MeasurementHud } from "./simulation-results/components/MeasurementHud";
+import { SimulationToolbar } from "./simulation-results/components/SimulationToolbar";
+import { StatisticsDrawer } from "./simulation-results/components/StatisticsDrawer";
+import { TrajectoryChart } from "./simulation-results/components/TrajectoryChart";
+import type { SimulationResultsProps, VariableStatEntry } from "./simulation-results/types";
 
 export type { SimulationResultsProps };
 

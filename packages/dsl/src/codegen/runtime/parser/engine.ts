@@ -70,6 +70,7 @@ import {
   is_extra_token,
   invokeLexer,
   MAX_TERMINAL_ID,
+  START_SYMBOL_ID,
   MAX_FIELD_CURSOR_DEPTH,
   lexLen,
   lexPos,
@@ -716,6 +717,8 @@ export const MODE_GLR: i32 = 1;
 export let currentParserMode: i32 = 0;
 export let configEnableBranchA1: boolean = true;
 export let configEnableBranchB: boolean = true;
+export let configEnableBranchC: boolean = true;
+export let configEnableIslandMode: boolean = true;
 export let configEnableMultiFile: boolean = false;
 
 export function lsp_setConfigEnableMultiFile(val: boolean): void {
@@ -725,6 +728,7 @@ export function lsp_setConfigEnableMultiFile(val: boolean): void {
 export let t_lrStateStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 export let t_lrNodeStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 export let t_lrScannerStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
+export let t_lrBalanceStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 export let lrStackDepth: i32 = 0;
 export const MAX_LR_STACK_DEPTH: i32 = 65536;
 export let tempActions: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
@@ -894,7 +898,30 @@ export class FieldCursor {
       store<i32>(base + 12, ptr);
       store<u32>(base + 16, this.currentChild);
       store<i32>(base + 20, this.currentChildIdx);
+      store<u32>(base + 24, 0); // 0 = synthetic frame
       this.frameDepth++;
+    }
+  }
+
+  /** Pushes a list container onto the frame stack to iterate through all of its elements. */
+  @inline
+  pushListFrame(listNode: u32): void {
+    if (this.frameDepth < MAX_FIELD_CURSOR_DEPTH) {
+      let base = this.stackPtr + ((this.frameDepth as usize) << 5);
+      store<u32>(base, this.node);
+      store<i32>(base + 4, this.offset);
+      store<i32>(base + 8, this.indexCount);
+      store<i32>(base + 12, this.currentIdxPtr);
+      store<u32>(base + 16, this.currentChild);
+      store<i32>(base + 20, this.currentChildIdx);
+      store<u32>(base + 24, 1); // 1 = list frame
+      this.frameDepth++;
+
+      this.node = listNode;
+      this.offset = -1;
+      this.indexCount = -1; // -1 marks list iteration mode
+      this.currentChild = getNodeFirstChild(listNode);
+      this.currentChildIdx = 0;
     }
   }
 
@@ -999,6 +1026,42 @@ export class FieldCursor {
    */
   private _advance(): u32 {
     while (true) {
+      // List frame iteration: step through children of list container
+      if (this.indexCount == -1) {
+        if (this.currentChild == 0) {
+          this.popFrame();
+          continue;
+        }
+        let child = this.currentChild;
+        this.currentChild = getNodeNextSibling(this.currentChild);
+        this.currentChildIdx++;
+
+        let childType = getNodeType(child);
+        if (childType == NODE_TYPE_ERROR || childType == 0) {
+          continue;
+        }
+
+        // If this child is another nested list chunk (FLAG_IS_LIST), push another list frame
+        if ((getNodeFlags(child) & FLAG_IS_LIST) != 0) {
+          this.pushListFrame(child);
+          continue;
+        }
+
+        // Unwrap any invisible synthetic wrapper node down to the real child
+        while (child != 0 && (getNodeFlags(child) & FLAG_INVISIBLE) != 0 && (getNodeFlags(child) & FLAG_IS_INSERTED) == 0) {
+          let first = getNodeFirstChild(child);
+          if (first != 0) {
+            child = first;
+          } else {
+            break;
+          }
+        }
+        if (child != 0 && (getNodeFlags(child) & FLAG_IS_INSERTED) == 0 && getNodeByteLength(child) == 0 && getNodeFirstChild(child) == 0) {
+          continue;
+        }
+        return child;
+      }
+
       if (this.indexCount == 0) {
         if (this.frameDepth > 0) {
           this.popFrame();
@@ -1050,16 +1113,9 @@ export class FieldCursor {
       if (child == 0) continue;
 
       let rawChildType = getNodeType(child);
-      if (!isSyntheticField) {
-        // Unwrap flattened list-spine containers (`FLAG_IS_LIST`) to their first element
-        while (child != 0 && ((getNodeFlags(child) & FLAG_IS_LIST) != 0 || getNodeType(child) == 0)) {
-          let first = getNodeFirstChild(child);
-          if (first != 0 && getNodeType(first) != NODE_TYPE_ERROR) {
-            child = first;
-          } else {
-            break;
-          }
-        }
+      if (!isSyntheticField && (getNodeFlags(child) & FLAG_IS_LIST) != 0) {
+        this.pushListFrame(child);
+        continue;
       }
 
       // If `0x8000` is set, push the current frame and descend into `child`'s field table
@@ -1756,8 +1812,10 @@ export function getPathTokens(node: u32): DescendantCursor {
 }
 
 
-import { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMINAL_ID, logInt } from "../parser";
-export { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMINAL_ID, getNodeLeadingPad };
+import { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMINAL_ID, START_SYMBOL_ID, logInt } from "../parser";
+export { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMINAL_ID, START_SYMBOL_ID, getNodeLeadingPad };
+
+
 
 export function lsp_setInputLength(len: u32): void {
   setInputLength(len);

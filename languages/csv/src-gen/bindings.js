@@ -9,6 +9,27 @@ export var InputEncoding;
   InputEncoding[(InputEncoding["UTF32LE"] = 3)] = "UTF32LE";
   InputEncoding[(InputEncoding["UTF32BE"] = 4)] = "UTF32BE";
 })(InputEncoding || (InputEncoding = {}));
+const _regexTokenNameCache = new Map();
+/**
+ * Produces a human-readable category for a regex token (as spelled "/pattern/") by testing what
+ * the pattern actually accepts, rather than pattern-text sniffing. Language-agnostic.
+ */
+function describeRegexToken(spelled) {
+  const cached = _regexTokenNameCache.get(spelled);
+  if (cached !== undefined) return cached;
+  let result = "token";
+  try {
+    const re = new RegExp("^(?:" + spelled.slice(1, -1) + ")$");
+    if (re.test('"a"')) result = "string";
+    else if (re.test("x") || re.test("_")) result = "identifier";
+    else if (re.test("1.5")) result = "number";
+    else if (re.test("1")) result = "integer";
+  } catch {
+    // Pattern uses syntax JS cannot compile; fall back to the generic category.
+  }
+  _regexTokenNameCache.set(spelled, result);
+  return result;
+}
 /**
  * Value-Type Tree Cursor for zero-allocation, re-entrant tree traversals.
  */
@@ -21,10 +42,38 @@ export class WasmTreeCursor {
     if (exports && exports.treeCursorAlloc) {
       this.cursorPtr = exports.treeCursorAlloc();
       exports.treeCursorReset(this.cursorPtr, rootNode);
+      if (exports.treeCursorFree) {
+        WasmTreeCursor._registry?.register(
+          this,
+          { exports, ptr: this.cursorPtr },
+          this,
+        );
+      }
     } else {
       this.cursorPtr = 0;
     }
   }
+  /** Releases the WASM-side cursor back to the pool. The cursor must not be used afterwards. */
+  dispose() {
+    if (!this.cursorPtr) return;
+    const exports =
+      this.runtime.exports || this.runtime.wasmExports || this.runtime;
+    WasmTreeCursor._registry?.unregister(this);
+    if (exports && exports.treeCursorFree)
+      exports.treeCursorFree(this.cursorPtr);
+    this.cursorPtr = 0;
+  }
+  /** Returns the cursor to the pool if it is garbage-collected without an explicit dispose(). */
+  static _registry =
+    typeof FinalizationRegistry !== "undefined"
+      ? new FinalizationRegistry(({ exports, ptr }) => {
+          try {
+            exports.treeCursorFree(ptr);
+          } catch {
+            // Instance already torn down.
+          }
+        })
+      : null;
   reset(rootNode) {
     const exports =
       this.runtime.exports || this.runtime.wasmExports || this.runtime;
@@ -100,7 +149,7 @@ export class ASTNode {
   getTypeId() {
     return this.runtime.getNodeType
       ? this.runtime.getNodeType(this.ptr)
-      : this.runtime.readU32(this.ptr) & 0x03ff;
+      : this.runtime.readU32(this.ptr) & 0xffff;
   }
   /** Gets the first child of this node in the AST. */
   getFirstChild() {
@@ -158,16 +207,18 @@ export class Parser {
         this.runtime.nativeAddon.setInputLength(str.length);
       }
       const oldTreePtr = oldTree ? oldTree.getPtr() : 0;
-      let startOff = editStart;
-      let oldEndOff = editOldEnd;
-      let newEndOff = editNewEnd > 0 ? editNewEnd : str.length;
-      if (
-        oldTreePtr === 0 ||
-        (startOff === 0 && oldEndOff === 0 && newEndOff === 0)
-      ) {
-        startOff = 0;
-        oldEndOff = 0;
-        newEndOff = str.length;
+      const hasEdit =
+        arguments.length > 2 ||
+        editStart !== 0 ||
+        editOldEnd !== 0 ||
+        editNewEnd !== 0;
+      let startOff = 0;
+      let oldEndOff = 0;
+      let newEndOff = str.length;
+      if (oldTreePtr !== 0 && hasEdit) {
+        startOff = editStart;
+        oldEndOff = editOldEnd;
+        newEndOff = editNewEnd;
       }
       const astRoot = this.runtime.parse(
         oldTreePtr,
@@ -300,17 +351,18 @@ export class Parser {
       return utf8Bytes;
     };
     const oldTreePtr = oldTree ? oldTree.getPtr() : 0;
-    let editStartByte = charToByteOffset(editStart);
-    let editOldEndByte = charToByteOffset(editOldEnd);
-    let editNewEndByte =
-      editNewEnd > 0 ? charToByteOffset(editNewEnd) : view.length;
-    if (
-      oldTreePtr === 0 ||
-      (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
-    ) {
-      editStartByte = 0;
-      editOldEndByte = 0;
-      editNewEndByte = view.length;
+    const hasEdit =
+      arguments.length > 2 ||
+      editStart !== 0 ||
+      editOldEnd !== 0 ||
+      editNewEnd !== 0;
+    let editStartByte = 0;
+    let editOldEndByte = 0;
+    let editNewEndByte = view.length;
+    if (oldTreePtr !== 0 && hasEdit) {
+      editStartByte = charToByteOffset(editStart);
+      editOldEndByte = charToByteOffset(editOldEnd);
+      editNewEndByte = charToByteOffset(editNewEnd);
     }
     const astRoot = this.runtime.parse(
       oldTreePtr,
@@ -409,7 +461,7 @@ export class WasmRuntime {
   }
   getNodeType(ptr) {
     this.ensureMemory();
-    return this.mem32[ptr / 4] & 0x03ff;
+    return this.mem32[ptr / 4] & 0xffff;
   }
   /** Gets the imports needed to instantiate the compiled WASM module. */
   static getWasmImports(onTextEdit, getMemory) {
@@ -481,7 +533,7 @@ export class NativeRuntime {
   getNodeType(ptr) {
     return this.nativeAddon.getNodeType
       ? this.nativeAddon.getNodeType(ptr)
-      : this.readU32(ptr) & 0x03ff;
+      : this.readU32(ptr) & 0xffff;
   }
 }
 export const SYNTAX_NAMES =
@@ -557,13 +609,37 @@ export class LspFacade {
     "u",
   );
   wasmMemory;
+  _u32View = null;
+  /** Returns a Uint32Array over linear memory, reallocated only when `memory.grow` replaces the buffer. */
+  _u32() {
+    const buf = this.wasmMemory.buffer;
+    if (this._u32View === null || this._u32View.buffer !== buf) {
+      this._u32View = new Uint32Array(buf);
+    }
+    return this._u32View;
+  }
   exports;
   lastAstRoot = 0;
   _cachedLineStarts = null;
   documentRoots = new Map();
   documentVersions = new Map();
+  _uriToFileId = new Map();
+  _fileIdToUri = new Map();
+  _nextFileId = 1;
   _idleTimer = null;
   _maxMemoryQuotaBytes = 32 * 1024 * 1024; // 32MB threshold
+  /**
+   * Retrieves or assigns a stable numeric fileId for a given URI.
+   */
+  getFileId(uri) {
+    let id = this._uriToFileId.get(uri);
+    if (id === undefined) {
+      id = this._nextFileId++;
+      this._uriToFileId.set(uri, id);
+      this._fileIdToUri.set(id, uri);
+    }
+    return id;
+  }
   /**
    * Returns true if a character matches the grammar's `extras` definition (whitespace/trivia).
    * Line breaks (\n, \r) are excluded so diagnostic ranges stay pinned to their line.
@@ -667,6 +743,12 @@ export class LspFacade {
    * Closes a document, unregistering its root from GC and triggering compaction.
    */
   removeDocument(uri) {
+    const fileId = this._uriToFileId.get(uri);
+    if (fileId !== undefined) {
+      this.evictDocumentAst(fileId);
+      this._uriToFileId.delete(uri);
+      this._fileIdToUri.delete(fileId);
+    }
     const root = this.documentRoots.get(uri);
     if (root && this.exports.dropRoot) {
       this.exports.dropRoot(root);
@@ -880,12 +962,23 @@ export class LspFacade {
       editOldEnd = 0;
       editNewEnd = 0;
     }
-    let newAstRoot = this.exports.parse(
-      baseRoot,
-      editStart,
-      editOldEnd,
-      editNewEnd,
-    );
+    const fileId = uri ? this.getFileId(uri) : 0;
+    if (fileId !== 0 && this.exports.setAllocDocument) {
+      this.exports.setAllocDocument(fileId);
+    }
+    let newAstRoot = 0;
+    try {
+      newAstRoot = this.exports.parse(
+        baseRoot,
+        editStart,
+        editOldEnd,
+        editNewEnd,
+      );
+    } finally {
+      if (fileId !== 0 && this.exports.setAllocDocument) {
+        this.exports.setAllocDocument(0);
+      }
+    }
     if (this.astListeners && this.astListeners.length > 0) {
       for (const listener of this.astListeners) {
         this.walkAstDiff(prevAstRoot, newAstRoot, listener);
@@ -910,13 +1003,13 @@ export class LspFacade {
   }
   _hasTopLevelErrors(astRoot) {
     if (astRoot === 0) return false;
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const rootW0 = mem32[astRoot >>> 2];
-    const rootFlags = (rootW0 >>> 10) & 0x0fff;
+    const rootFlags = rootW0 >>> 16;
     if ((rootFlags & (128 | 256)) !== 0) return true;
     let childPtr = mem32[(astRoot + 12) >>> 2];
     while (childPtr !== 0) {
-      const cFlags = (mem32[childPtr >>> 2] >>> 10) & 0x0fff;
+      const cFlags = mem32[childPtr >>> 2] >>> 16;
       if ((cFlags & (128 | 256)) !== 0) return true;
       childPtr = mem32[(childPtr + 16) >>> 2];
     }
@@ -1031,12 +1124,23 @@ export class LspFacade {
       editOldEndByte = 0;
       editNewEndByte = 0;
     }
-    const newAstRoot = this.exports.parse(
-      baseRoot,
-      editStartByte,
-      editOldEndByte,
-      editNewEndByte,
-    );
+    const fileId = uri ? this.getFileId(uri) : 0;
+    if (fileId !== 0 && this.exports.setAllocDocument) {
+      this.exports.setAllocDocument(fileId);
+    }
+    let newAstRoot = 0;
+    try {
+      newAstRoot = this.exports.parse(
+        baseRoot,
+        editStartByte,
+        editOldEndByte,
+        editNewEndByte,
+      );
+    } finally {
+      if (fileId !== 0 && this.exports.setAllocDocument) {
+        this.exports.setAllocDocument(0);
+      }
+    }
     if (this.astListeners && this.astListeners.length > 0) {
       for (const listener of this.astListeners) {
         this.walkAstDiff(prevAstRoot, newAstRoot, listener);
@@ -1349,7 +1453,7 @@ export class LspFacade {
         : this.exports.lsp_getDiagnostics(astRoot);
     const diags = [];
     if (numElements === 0 || !this.exports.lsp_getBinaryBuffer) return diags;
-    let memory = new Uint32Array(this.wasmMemory.buffer);
+    let memory = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const extractTokenText = (start, end) => {
       const lenUnits = this.exports.inputLength
@@ -1432,19 +1536,10 @@ export class LspFacade {
         if (this.exports.getNodeLeadingPad) {
           return this.exports.getNodeLeadingPad(ptr);
         }
-        const typeFlags = memory[ptr / 4];
-        const envHashPadding = memory[(ptr + 4) / 4];
-        const rawPad = typeFlags >>> 22;
-        const isFat = ((envHashPadding >>> 23) & 1) === 1;
-        return isFat
-          ? memory[(ptr + 28) >>> 2] ||
-              (this.exports.getFatPaddingPtr
-                ? memory[this.exports.getFatPaddingPtr(rawPad) >>> 2]
-                : rawPad)
-          : rawPad;
+        return memory[(ptr + 8) / 4];
       };
       const getNodeLen = (ptr) => {
-        return memory[(ptr + 4) / 4] & 0x007fffff;
+        return memory[(ptr + 4) / 4];
       };
       stackPtrs[0] = astRoot;
       stackOffsets[0] = getNodePad(astRoot);
@@ -1502,14 +1597,17 @@ export class LspFacade {
         }
       }
     }
-    for (let i = 0; i < numElements * 7; i += 7) {
-      let startByte = memory[(dirPtr >> 2) + i];
-      let endByte = memory[(dirPtr >> 2) + i + 1];
-      const lintId = memory[(dirPtr >> 2) + i + 2];
-      const arg0 = memory[(dirPtr >> 2) + i + 3];
-      const arg1 = memory[(dirPtr >> 2) + i + 4];
-      const arg2 = memory[(dirPtr >> 2) + i + 5];
-      const arg3 = memory[(dirPtr >> 2) + i + 6];
+    const numWords = numElements * 7;
+    const diagRecords = new Uint32Array(numWords);
+    diagRecords.set(new Uint32Array(this.wasmMemory.buffer, dirPtr, numWords));
+    for (let i = 0; i < numWords; i += 7) {
+      let startByte = diagRecords[i];
+      let endByte = diagRecords[i + 1];
+      const lintId = diagRecords[i + 2];
+      const arg0 = diagRecords[i + 3];
+      const arg1 = diagRecords[i + 4];
+      const arg2 = diagRecords[i + 5];
+      const arg3 = diagRecords[i + 6];
       if (lintId > 0 && startByte === 0 && endByte === 0 && arg0 > 0) {
         let nodeStart = offsetCache.get(arg0);
         if (nodeStart === undefined && this.exports.lsp_findNodeOffset) {
@@ -1523,7 +1621,8 @@ export class LspFacade {
         }
         if (nodeStart !== undefined) {
           startByte = nodeStart;
-          const nodeLen = memory[(arg0 + 4) / 4] & 0x007fffff;
+          const mem32 = this._u32();
+          const nodeLen = mem32[(arg0 + 4) >>> 2];
           endByte = startByte + (nodeLen > 0 ? nodeLen : encStep);
         }
       }
@@ -1553,11 +1652,7 @@ export class LspFacade {
             name = name.substring(1, name.length - 1);
           }
           if (name.startsWith("/") && name.endsWith("/")) {
-            if (name.includes('^"\\\\') || name.includes('"')) return "string";
-            if (name.includes("a-zA-Z")) return "identifier";
-            if (name.includes("\\d+\\.\\d")) return "number";
-            if (name.includes("\\d+")) return "integer";
-            return "token";
+            return describeRegexToken(name);
           }
           if (name.startsWith("token_")) return "token";
           return name;
@@ -1813,7 +1908,7 @@ export class LspFacade {
               } else if (this.exports.lsp_findNodeOffset) {
                 try {
                   const off = this.exports.lsp_findNodeOffset(astRoot, ptr, 0);
-                  memory = new Uint32Array(this.wasmMemory.buffer);
+                  memory = this._u32();
                   if (off >= 0) {
                     actualStart = off;
                     offsetCache.set(ptr, off);
@@ -1822,8 +1917,8 @@ export class LspFacade {
               }
               if (actualStart < 0) return null;
               const typeFlags = memory[ptr / 4];
-              const typeId = typeFlags & 0x03ff;
-              const len = memory[(ptr + 4) / 4] & 0x007fffff;
+              const typeId = typeFlags & 0xffff;
+              const len = memory[(ptr + 4) / 4];
               return new SyntaxNode(
                 dummyTree,
                 ptr,
@@ -2050,7 +2145,7 @@ export class LspFacade {
       return new Uint32Array();
     const numElements = this.exports.lsp_semanticTokens_full(astRoot);
     if (numElements === 0) return new Uint32Array();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const result = new Uint32Array(numElements * 4);
     result.set(mem32.subarray(dirPtr >>> 2, (dirPtr >>> 2) + numElements * 4));
@@ -2076,7 +2171,7 @@ export class LspFacade {
     if (numEdits === 0) {
       return { resultId, fullTokens: this.getSemanticTokens(astRoot) };
     }
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const edits = [];
     let idx = dirPtr >>> 2;
@@ -2102,7 +2197,7 @@ export class LspFacade {
     const ranges = [];
     if (count === 0) return ranges;
     const div = this.getEncodingDiv();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < count * 2; i += 2) {
       const rawStart = mem32[(dirPtr >>> 2) + i];
@@ -2132,7 +2227,7 @@ export class LspFacade {
     const numElements = this.exports.lsp_getFoldingRanges(astRoot);
     const ranges = [];
     if (numElements === 0) return ranges;
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < numElements * 2; i += 2) {
       ranges.push({
@@ -2154,7 +2249,7 @@ export class LspFacade {
     const symbols = [];
     if (numElements === 0) return symbols;
     const div = this.getEncodingDiv();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < numElements * 4; i += 4) {
       const rawStart = mem32[(dirPtr >>> 2) + i];
@@ -2194,7 +2289,7 @@ export class LspFacade {
       targetOffset * div,
     );
     if (numElements < 2) return null;
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     if (numElements >= 3) {
       return {
@@ -2220,7 +2315,7 @@ export class LspFacade {
     );
     const references = [];
     if (numElements === 0) return references;
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < numElements * 3; i += 3) {
       references.push({
@@ -2249,7 +2344,7 @@ export class LspFacade {
     );
     if (count < 4) return null;
     const dirPtr = this.exports.lsp_getBinaryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const targetStart = mem32[(dirPtr >>> 2) + 0];
     const targetEnd = mem32[(dirPtr >>> 2) + 1];
     const replaceStart = mem32[(dirPtr >>> 2) + 2];
@@ -2299,7 +2394,7 @@ export class LspFacade {
     }
     const numRecords = this.exports.lsp_getDiagramData(astRoot);
     if (numRecords === 0) return { nodes, edges };
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const lineStarts = this.getLineStarts();
     const inputBufPtr = this.exports.getInputBuffer
@@ -2403,7 +2498,7 @@ export class LspFacade {
     const actionBufferBytes = actions.length * 32;
     const actionPtr = this.allocMem(actionBufferBytes);
     if (actionPtr === 0) return { text: "", edits: [] };
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     let offset = actionPtr >>> 2;
     for (const action of actions) {
       if (action.type === "move" || action.type === "resize") {
@@ -2489,11 +2584,19 @@ export class LspFacade {
     const fn = this.exports.arena_alloc || this.exports.atomicChunkAlloc;
     return fn ? fn(bytes) : 0;
   }
+  _strScratchPtr = 0;
+  _strScratchCapacity = 0;
   allocStringInArena(str) {
     if (!str || !this.exports.arena_allocStringBytes) return 0;
     const lenBytes = str.length * 2;
-    const ptr = this.allocMem(lenBytes);
-    if (ptr === 0) return 0;
+    if (this._strScratchCapacity < lenBytes) {
+      const capacity = Math.max(256, lenBytes * 2);
+      const fresh = this.allocMem(capacity);
+      if (fresh === 0) return 0;
+      this._strScratchPtr = fresh;
+      this._strScratchCapacity = capacity;
+    }
+    const ptr = this._strScratchPtr;
     const memBuffer = this.wasmMemory
       ? this.wasmMemory.buffer
       : this.exports.memory
@@ -2577,7 +2680,7 @@ export class LspFacade {
     const hash = this.hashString(name);
     const numStubs = this.exports.stub_findByName(hash);
     if (numStubs === 0) return [];
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.stub_getBinaryBuffer();
     const stride = 12;
     const results = [];
@@ -2613,7 +2716,7 @@ export class LspFacade {
       preferredFileId,
     );
     if (numStubs === 0) return [];
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.stub_getBinaryBuffer();
     const stride = 12;
     const results = [];
@@ -2642,7 +2745,7 @@ export class LspFacade {
       return [];
     const numStubs = this.exports.stub_getFileSymbols(fileId);
     if (numStubs === 0) return [];
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.stub_getBinaryBuffer();
     const stride = 12;
     const results = [];
@@ -2671,7 +2774,7 @@ export class LspFacade {
       return [];
     const numStubs = this.exports.stub_getChildren(parentSymbolId);
     if (numStubs === 0) return [];
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.stub_getBinaryBuffer();
     const stride = 12;
     const results = [];
@@ -2730,7 +2833,7 @@ export class LspFacade {
     if (!this.exports.stub_bulkRegister || payload.byteLength === 0) return 0;
     const ptr = this.allocMem(payload.byteLength);
     if (ptr === 0) return 0;
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     mem32.set(payload, ptr >>> 2);
     return this.exports.stub_bulkRegister(ptr, payload.length);
   }
@@ -2933,7 +3036,7 @@ export class LspFacade {
     const ptr = this.mcpGetOutputBuffer();
     const len = this.mcpGetOutputLength();
     if (ptr === 0 || len === 0) return "";
-    const bytes = new Uint8Array(this.memory.buffer, ptr, len);
+    const bytes = new Uint8Array(this.wasmMemory.buffer, ptr, len);
     return new TextDecoder().decode(bytes);
   }
   /** Adds an OWL 2 axiom to the indexed WASM ontology store. */
@@ -3008,7 +3111,7 @@ export class LspFacade {
     const count = this.exports.ontology_getTransitiveClosure(pHash, sHash);
     if (count === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const results = [];
     for (let i = 0; i < count; i++) {
       results.push(mem32[(dirPtr >>> 2) + i]);
@@ -3031,7 +3134,7 @@ export class LspFacade {
     );
     if (count === 0) return { reachable: [], path: [] };
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     let offset = dirPtr >>> 2;
     const reachableCount = mem32[offset++];
     const reachable = [];
@@ -3059,7 +3162,7 @@ export class LspFacade {
     const count = this.exports.ontology_explainSubsumption(subHash, superHash);
     if (count === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const stride = 6;
     const results = [];
     for (let i = 0; i < count * stride; i += stride) {
@@ -3086,7 +3189,7 @@ export class LspFacade {
     const count = this.exports.ontology_checkConsistency();
     if (count === 0) return { isConsistent: true, conflictingAxioms: [] };
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const stride = 6;
     const conflictingAxioms = [];
     for (let i = 0; i < count * stride; i += stride) {
@@ -3118,7 +3221,7 @@ export class LspFacade {
     const wordCount = this.exports.ontology_classifyIndividual(indHash);
     if (wordCount === 0) return { directTypes: [], allTypes: [] };
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     let offset = dirPtr >>> 2;
     const directCount = mem32[offset++];
     const directTypes = [];
@@ -3142,7 +3245,7 @@ export class LspFacade {
     const classCount = this.exports.ontology_getTaxonomy();
     if (classCount === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     let offset = dirPtr >>> 2;
     const totalClasses = mem32[offset++];
     const nodes = [];
@@ -3195,7 +3298,7 @@ export class LspFacade {
     );
     if (count === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const offset = dirPtr >>> 2;
     const result = [];
     for (let i = 0; i < count; i++) {
@@ -3228,7 +3331,7 @@ export class LspFacade {
     const count = this.exports.ontology_queryTriples(sPat, pPat, oPat);
     if (count === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const stride = 6;
     const results = [];
     for (let i = 0; i < count * stride; i += stride) {
@@ -3322,7 +3425,7 @@ export class LspFacade {
     const count = this.exports.ontology_quickXplain();
     if (count === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const stride = 6;
     const results = [];
     // First word is count
@@ -3347,7 +3450,7 @@ export class LspFacade {
     const coreCount = this.exports.ontology_allMus(maxCores);
     if (coreCount === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const offset = dirPtr >>> 2;
     const totalCores = mem32[offset];
     let ptr = offset + 1;
@@ -3384,7 +3487,7 @@ export class LspFacade {
     const count = this.exports.ontology_validateAdvancedConstraints();
     if (count === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const offset = dirPtr >>> 2;
     const results = [];
     for (let i = 0; i < count; i++) {
@@ -3626,7 +3729,7 @@ export class LspFacade {
   /** Reads a WASM-allocated length-prefixed UTF-16 string into a JavaScript string. */
   readWasmString(ptr) {
     if (ptr === 0) return "";
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const lenBytes = mem32[(ptr - 4) >>> 2] || 0;
     const lenChars = lenBytes >>> 1;
     if (lenChars <= 0) return "";
@@ -3644,7 +3747,7 @@ export class LspFacade {
       return [];
     const numElements = this.exports.lsp_getPipelinesInfo();
     if (numElements === 0) return [];
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const pipelines = [];
     for (let i = 0; i < numElements * 3; i += 3) {
@@ -3908,7 +4011,7 @@ export class LspFacade {
     const errorRanges = [];
     if (!this.exports.lsp_getBinaryBuffer || this._lastDiagBinaryLength === 0)
       return errorRanges;
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < this._lastDiagBinaryLength; i += 7) {
       errorRanges.push({
@@ -3925,7 +4028,7 @@ export class LspFacade {
   getAstSExpr(astRoot, verbose = false) {
     if (!astRoot) return "";
     const lineStarts = this.getLineStarts();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     // Reuse cached error ranges from the last getDiagnostics() call
     // instead of calling lsp_getDiagnostics again (avoids triple traversal)
     const _errorRanges = this.readCachedErrorRanges();
@@ -3934,27 +4037,20 @@ export class LspFacade {
       if (depth > 100) return { strs: ["(...)"], nextOffset: currentOffset };
       if (!ptr) return { strs: [], nextOffset: currentOffset };
       const typeFlags = mem32[ptr / 4];
-      const typeId = typeFlags & 0x03ff;
+      const typeId = typeFlags & 0xffff;
       let typeName =
         (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
-      const envHashPadding = mem32[(ptr + 4) / 4];
-      const rawPad = typeFlags >>> 22;
-      const isFat = (envHashPadding >>> 23) & 1;
-      const pad = isFat
-        ? mem32[(ptr + 28) >>> 2] ||
-          (this.exports.getFatPaddingPtr
-            ? mem32[this.exports.getFatPaddingPtr(rawPad) >>> 2]
-            : rawPad)
-        : rawPad;
-      const len = envHashPadding & 0x007fffff;
+      const pad = mem32[(ptr + 8) / 4];
+      const len = mem32[(ptr + 4) / 4];
       const startOffset = currentOffset + pad;
       const endOffset = startOffset + len;
       const startPos = this.offsetToPos(startOffset, lineStarts);
       const endPos = this.offsetToPos(endOffset, lineStarts);
       const posStr = `[${startPos.line}, ${startPos.character}] - [${endPos.line}, ${endPos.character}]`;
       const indent = "  ".repeat(depth);
-      const isInvisible = (typeFlags & (1 << 14)) !== 0;
+      const flags = typeFlags >>> 16;
+      const isInvisible = (flags & 4) !== 0;
       const shouldPrint =
         verbose ||
         (!typeName.startsWith("_") &&
@@ -3987,7 +4083,6 @@ export class LspFacade {
       if (!shouldPrint) {
         return { strs: childStrs, nextOffset: endOffset };
       }
-      let flags = (typeFlags >> 10) & 0x0fff;
       let flagStr = "";
       if (flags & 256) flagStr += " (I)";
       if (flags & 128) flagStr += " (E)";
@@ -4011,7 +4106,7 @@ export class LspFacade {
   getAstHtml(astRoot) {
     if (!astRoot) return [];
     const lineStarts = this.getLineStarts();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     // Reuse cached error ranges from the last getDiagnostics() call
     const _errorRanges = this.readCachedErrorRanges();
     const _printedErrors = new Set();
@@ -4037,26 +4132,19 @@ export class LspFacade {
       }
       if (!ptr) return currentOffset;
       const typeFlags = mem32[ptr / 4];
-      const typeId = typeFlags & 0x03ff;
+      const typeId = typeFlags & 0xffff;
       let typeName =
         (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
-      const envHashPadding = mem32[(ptr + 4) / 4];
-      const rawPad = typeFlags >>> 22;
-      const isFat = (envHashPadding >>> 23) & 1;
-      const pad = isFat
-        ? mem32[(ptr + 28) >>> 2] ||
-          (this.exports.getFatPaddingPtr
-            ? mem32[this.exports.getFatPaddingPtr(rawPad) >>> 2]
-            : rawPad)
-        : rawPad;
-      const len = envHashPadding & 0x007fffff;
+      const pad = mem32[(ptr + 8) / 4];
+      const len = mem32[(ptr + 4) / 4];
       const startOffset = currentOffset + pad;
       const endOffset = startOffset + len;
       const startPos = this.offsetToPos(startOffset, lineStarts);
       const endPos = this.offsetToPos(endOffset, lineStarts);
       const posStr = `<span style="color: #6e7781;">[${startPos.line}, ${startPos.character}] - [${endPos.line}, ${endPos.character}]</span>`;
-      const _isInvisible = (typeFlags & (1 << 14)) !== 0;
+      const flags = typeFlags >>> 16;
+      const _isInvisible = (flags & 4) !== 0;
       const shouldPrint = true; // Debug: print all nodes
       let renderedChildren = 0;
       let childOffset = startOffset;
@@ -4119,7 +4207,7 @@ export class LspFacade {
    */
   appendChild(parentPtr, childPtr) {
     if (!parentPtr || !childPtr) return;
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const lastChild = this._childTailCache.get(parentPtr);
     if (lastChild !== undefined) {
       // Wire nextSibling of the cached tail → new child
@@ -4188,63 +4276,70 @@ export class LspFacade {
           : prevAstRoot !== 0
             ? prevAstRoot
             : 0;
-    if (baseRoot !== 0 && baseRoot !== this.lastAstRoot) {
-      baseRoot = 0;
+    const fileId = uri ? this.getFileId(uri) : 0;
+    if (fileId !== 0 && this.exports.setAllocDocument) {
+      this.exports.setAllocDocument(fileId);
     }
     let newAstRoot = 0;
-    if (Array.isArray(editStartOrEdits)) {
-      const edits = editStartOrEdits;
-      if (
-        baseRoot !== 0 &&
-        edits.length > 0 &&
-        this.exports.parseWithEdits &&
-        this.exports.atomicChunkAlloc
-      ) {
-        // Reuse a scratch buffer: atomicChunkAlloc memory is never freed, so allocating
-        // per call leaked 12 bytes per edit on every keystroke.
-        if (this._editsScratchCapacity < edits.length) {
-          this._editsScratchCapacity = Math.max(16, edits.length * 2);
-          this._editsScratchPtr = this.exports.atomicChunkAlloc(
-            this._editsScratchCapacity * 12,
+    try {
+      if (Array.isArray(editStartOrEdits)) {
+        const edits = editStartOrEdits;
+        if (
+          baseRoot !== 0 &&
+          edits.length > 0 &&
+          this.exports.parseWithEdits &&
+          this.exports.atomicChunkAlloc
+        ) {
+          // Reuse a scratch buffer: atomicChunkAlloc memory is never freed, so allocating
+          // per call leaked 12 bytes per edit on every keystroke.
+          if (this._editsScratchCapacity < edits.length) {
+            this._editsScratchCapacity = Math.max(16, edits.length * 2);
+            this._editsScratchPtr = this.exports.atomicChunkAlloc(
+              this._editsScratchCapacity * 12,
+            );
+          }
+          const editsPtr = this._editsScratchPtr;
+          const mem32 = this._u32();
+          for (let i = 0; i < edits.length; i++) {
+            const base = (editsPtr >>> 2) + i * 3;
+            mem32[base] = edits[i].startOffset * div;
+            mem32[base + 1] = edits[i].oldEndOffset * div;
+            mem32[base + 2] = edits[i].newEndOffset * div;
+          }
+          newAstRoot = this.exports.parseWithEdits(
+            baseRoot,
+            editsPtr,
+            edits.length,
           );
+        } else {
+          newAstRoot = this.exports.parse(0, 0, 0, inputLen);
         }
-        const editsPtr = this._editsScratchPtr;
-        const mem32 = new Uint32Array(this.wasmMemory.buffer);
-        for (let i = 0; i < edits.length; i++) {
-          const base = (editsPtr >>> 2) + i * 3;
-          mem32[base] = edits[i].startOffset * div;
-          mem32[base + 1] = edits[i].oldEndOffset * div;
-          mem32[base + 2] = edits[i].newEndOffset * div;
-        }
-        newAstRoot = this.exports.parseWithEdits(
-          baseRoot,
-          editsPtr,
-          edits.length,
-        );
       } else {
-        newAstRoot = this.exports.parse(0, 0, 0, inputLen);
+        let editStart =
+          typeof editStartOrEdits === "number" ? editStartOrEdits : 0;
+        let editStartByte = editStart * div;
+        let editOldEndByte = editOldEnd * div;
+        let editNewEndByte = editNewEnd * div;
+        if (
+          baseRoot === 0 ||
+          (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
+        ) {
+          editNewEndByte = inputLen;
+          baseRoot = 0;
+          editStartByte = 0;
+          editOldEndByte = 0;
+        }
+        newAstRoot = this.exports.parse(
+          baseRoot,
+          editStartByte,
+          editOldEndByte,
+          editNewEndByte,
+        );
       }
-    } else {
-      let editStart =
-        typeof editStartOrEdits === "number" ? editStartOrEdits : 0;
-      let editStartByte = editStart * div;
-      let editOldEndByte = editOldEnd * div;
-      let editNewEndByte = editNewEnd * div;
-      if (
-        baseRoot === 0 ||
-        (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
-      ) {
-        editNewEndByte = inputLen;
-        baseRoot = 0;
-        editStartByte = 0;
-        editOldEndByte = 0;
+    } finally {
+      if (fileId !== 0 && this.exports.setAllocDocument) {
+        this.exports.setAllocDocument(0);
       }
-      newAstRoot = this.exports.parse(
-        baseRoot,
-        editStartByte,
-        editOldEndByte,
-        editNewEndByte,
-      );
     }
     if (this.astListeners.length > 0) {
       if (prevAstRoot !== 0) {
@@ -4282,10 +4377,10 @@ export class LspFacade {
    * what semantic nodes changed.
    */
   walkAstDiff(oldRoot, newRoot, listener) {
-    let mem32 = new Uint32Array(this.wasmMemory.buffer);
+    let mem32 = this._u32();
     const getMem32 = () => {
       if (mem32.buffer !== this.wasmMemory.buffer || mem32.byteLength === 0) {
-        mem32 = new Uint32Array(this.wasmMemory.buffer);
+        mem32 = this._u32();
       }
       return mem32;
     };
@@ -4301,7 +4396,7 @@ export class LspFacade {
       const firstChild = mem32[(ptr + 12) / 4];
       let curr = firstChild;
       const typeFlags = mem32[ptr / 4];
-      const parentTypeId = typeFlags & 0x03ff;
+      const parentTypeId = typeFlags & 0xffff;
       let childIndex = 0;
       let slow = curr;
       let step = 0;
@@ -4311,7 +4406,7 @@ export class LspFacade {
         let fieldId = -1;
         if (this.exports.getFieldIdForChild) {
           try {
-            const currType = mem32[curr / 4] & 0x03ff;
+            const currType = mem32[curr / 4] & 0xffff;
             fieldId = this.exports.getFieldIdForChild(
               parentTypeId,
               childIndex,
@@ -4351,12 +4446,12 @@ export class LspFacade {
           }
           const mem32 = getMem32();
           const cTypeFlags = mem32[childPtr / 4];
-          const typeId = cTypeFlags & 0x03ff;
+          const typeId = cTypeFlags & 0xffff;
+          const cFlags = cTypeFlags >>> 16;
           let typeName =
             (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
-          const isInvisible =
-            (cTypeFlags & (1 << 14)) !== 0 || typeName.startsWith("_");
-          const parentTypeId = mem32[nodePtr / 4] & 0x03ff;
+          const isInvisible = (cFlags & 4) !== 0 || typeName.startsWith("_");
+          const parentTypeId = mem32[nodePtr / 4] & 0xffff;
           let fieldId = -1;
           if (this.exports.getFieldIdForChild) {
             try {
@@ -4376,16 +4471,8 @@ export class LspFacade {
               : isInvisible
                 ? parentField
                 : null;
-          const childEnvHashPadding = mem32[(childPtr + 4) / 4];
-          const childRawPad = cTypeFlags >>> 22;
-          const childIsFat = (childEnvHashPadding >>> 23) & 1;
-          const childPad = childIsFat
-            ? mem32[(childPtr + 28) >>> 2] ||
-              (this.exports.getFatPaddingPtr
-                ? mem32[this.exports.getFatPaddingPtr(childRawPad) >>> 2]
-                : childRawPad)
-            : childRawPad;
-          const childLen = childEnvHashPadding & 0x007fffff;
+          const childPad = mem32[(childPtr + 8) / 4];
+          const childLen = mem32[(childPtr + 4) / 4];
           const hasChildren = mem32[(childPtr + 12) / 4] !== 0;
           if (isInvisible) {
             if (hasChildren) {
@@ -4445,23 +4532,15 @@ export class LspFacade {
         if (!ptr) continue;
         const mem32 = getMem32();
         const typeFlags = mem32[ptr / 4];
-        const typeId = typeFlags & 0x03ff;
+        const typeId = typeFlags & 0xffff;
         let typeName =
           (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
         if (typeName.startsWith("T_")) typeName = typeName.substring(2);
-        const envHashPadding = mem32[(ptr + 4) / 4];
-        const rawPad = typeFlags >>> 22;
-        const isFat = (envHashPadding >>> 23) & 1;
-        let pad = isFat
-          ? mem32[(ptr + 28) >>> 2] ||
-            (this.exports.getFatPaddingPtr
-              ? mem32[this.exports.getFatPaddingPtr(rawPad) >>> 2]
-              : rawPad)
-          : rawPad;
-        const len = envHashPadding & 0x007fffff;
+        let pad = mem32[(ptr + 8) / 4];
+        const len = mem32[(ptr + 4) / 4];
         const children = getFlattenedChildren(ptr);
         pad += item.invisiblePad;
-        const flags = (typeFlags >> 10) & 0x0fff;
+        const flags = typeFlags >>> 16;
         listener.onNodeInserted(
           ptr,
           typeId,
@@ -4505,7 +4584,7 @@ export class LspFacade {
       if (oldPtr === newPtr && oldInvisiblePad === newInvisiblePad) {
         if (oldPtr !== oldRoot) {
           const mem32r = getMem32();
-          const retFlags = (mem32r[newPtr / 4] >> 10) & 0x0fff;
+          const retFlags = mem32r[newPtr / 4] >>> 16;
           listener.onNodeRetained(newPtr, retFlags);
           return;
         }
@@ -4513,22 +4592,14 @@ export class LspFacade {
       if (oldPtr === newPtr && oldInvisiblePad !== newInvisiblePad) {
         const mem32 = getMem32();
         const newTypeFlags = mem32[newPtr / 4];
-        const newTypeId = newTypeFlags & 0x03ff;
+        const newTypeId = newTypeFlags & 0xffff;
         let typeName =
           (this.syntaxNames && this.syntaxNames[newTypeId]) ||
           `node_${newTypeId}`;
         if (typeName.startsWith("T_")) typeName = typeName.substring(2);
-        const envHashPadding = mem32[(newPtr + 4) / 4];
-        const rawPad = newTypeFlags >>> 22;
-        const isFat = (envHashPadding >>> 23) & 1;
-        let pad = isFat
-          ? mem32[(newPtr + 28) >>> 2] ||
-            (this.exports.getFatPaddingPtr
-              ? mem32[this.exports.getFatPaddingPtr(rawPad) >>> 2]
-              : rawPad)
-          : rawPad;
-        const len = envHashPadding & 0x007fffff;
-        const flags = (newTypeFlags >> 10) & 0x0fff;
+        let pad = mem32[(newPtr + 8) / 4];
+        const len = mem32[(newPtr + 4) / 4];
+        const flags = newTypeFlags >>> 16;
         const newCh = getFlattenedChildren(newPtr);
         pad += newInvisiblePad;
         listener.onNodeUpdated(
@@ -4553,8 +4624,8 @@ export class LspFacade {
         return;
       }
       const mem32 = getMem32();
-      const oldTypeId = mem32[oldPtr / 4] & 0x03ff;
-      const newTypeId = mem32[newPtr / 4] & 0x03ff;
+      const oldTypeId = mem32[oldPtr / 4] & 0xffff;
+      const newTypeId = mem32[newPtr / 4] & 0xffff;
       if (oldTypeId !== newTypeId) {
         buildDeletions(oldPtr);
         buildInsertions(newPtr, newInvisiblePad);
@@ -4565,20 +4636,12 @@ export class LspFacade {
         (this.syntaxNames && this.syntaxNames[newTypeId]) ||
         `node_${newTypeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
-      const envHashPadding = mem32[(newPtr + 4) / 4];
-      const rawPad = newTypeFlags >>> 22;
-      const isFat = (envHashPadding >>> 23) & 1;
-      let pad = isFat
-        ? mem32[(newPtr + 28) >>> 2] ||
-          (this.exports.getFatPaddingPtr
-            ? mem32[this.exports.getFatPaddingPtr(rawPad) >>> 2]
-            : rawPad)
-        : rawPad;
-      const len = envHashPadding & 0x007fffff;
+      let pad = mem32[(newPtr + 8) / 4];
+      const len = mem32[(newPtr + 4) / 4];
       const oldCh = getFlattenedChildren(oldPtr);
       const newCh = getFlattenedChildren(newPtr);
       pad += newInvisiblePad;
-      const flags = (newTypeFlags >> 10) & 0x0fff;
+      const flags = newTypeFlags >>> 16;
       listener.onNodeUpdated(
         newPtr,
         oldPtr,
@@ -4598,7 +4661,7 @@ export class LspFacade {
       ) {
         if (oldCh[start].invisiblePad !== newCh[start].invisiblePad) break;
         const mem32s = getMem32();
-        const sFlags = (mem32s[newCh[start].ptr / 4] >> 10) & 0x0fff;
+        const sFlags = mem32s[newCh[start].ptr / 4] >>> 16;
         listener.onNodeRetained(newCh[start].ptr, sFlags);
         start++;
       }
@@ -4637,7 +4700,7 @@ export class LspFacade {
       }
       for (let i = newEnd + 1; i < newCh.length; i++) {
         const mem32e = getMem32();
-        const eFlags = (mem32e[newCh[i].ptr / 4] >> 10) & 0x0fff;
+        const eFlags = mem32e[newCh[i].ptr / 4] >>> 16;
         listener.onNodeRetained(newCh[i].ptr, eFlags);
       }
     };
@@ -4685,6 +4748,10 @@ export class SyntaxNode {
   _cachedNamedChildren = null;
   _cachedText = null;
   _fieldId = -1;
+  _nextSibling = undefined;
+  _prevSibling = undefined;
+  _nextNamedSibling = undefined;
+  _prevNamedSibling = undefined;
   constructor(
     tree,
     ptr,
@@ -4813,22 +4880,42 @@ export class SyntaxNode {
   get endIndex() {
     return this.endOffset;
   }
+  /** The start byte offset of this node within the UTF-8 source text. */
+  get startByte() {
+    return this.tree.offsetToByte
+      ? this.tree.offsetToByte(this.startIndex)
+      : this.startIndex;
+  }
+  /** The end byte offset of this node within the UTF-8 source text. */
+  get endByte() {
+    return this.tree.offsetToByte
+      ? this.tree.offsetToByte(this.endIndex)
+      : this.endIndex;
+  }
   /**
    * Returns true if this node was inserted by the parser to recover from a syntax error.
    */
-  isMissing() {
+  get isMissing() {
     if (this.ptr === 0) return false;
     const typeFlags = this.tree.mem32[this.ptr / 4];
-    const flags = (typeFlags >>> 10) & 0x0fff;
+    const flags = typeFlags >>> 16;
     return (flags & 256) !== 0;
   }
   /** Returns true if this node is an extra token (comment/whitespace). */
-  isExtra() {
+  get isExtra() {
     return false;
   }
   /** Returns true if this node has been edited. */
-  hasChanges() {
+  get hasChanges() {
     return false;
+  }
+  /** The parse state of the node. */
+  get parseState() {
+    return 0;
+  }
+  /** The next parse state of the node. */
+  get nextParseState() {
+    return 0;
   }
   /** The line and column where this node starts. */
   get startPosition() {
@@ -4860,23 +4947,16 @@ export class SyntaxNode {
     while (true) {
       if (currentChildPtr !== 0) {
         const typeFlags = mem32[currentChildPtr / 4];
-        const typeId = typeFlags & 0x03ff;
+        const typeId = typeFlags & 0xffff;
+        const flags = typeFlags >>> 16;
         const name =
           (this.tree.facade?.syntaxNames &&
             this.tree.facade.syntaxNames[typeId]) ||
           (SYNTAX_NAMES && SYNTAX_NAMES[typeId]) ||
           `node_${typeId}`;
-        const envHashPadding = mem32[(currentChildPtr + 4) / 4];
-        const rawPad = typeFlags >>> 22;
-        const isFat = (envHashPadding >>> 23) & 1;
-        const pad = isFat
-          ? mem32[(currentChildPtr + 28) >>> 2] ||
-            (exports?.getFatPaddingPtr
-              ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]
-              : rawPad)
-          : rawPad;
-        const len = envHashPadding & 0x007fffff;
-        const isInvisible = (typeFlags & (1 << 14)) !== 0;
+        const pad = mem32[(currentChildPtr + 8) / 4];
+        const len = mem32[(currentChildPtr + 4) / 4];
+        const isInvisible = (flags & 4) !== 0;
         let directFieldId = -1;
         if (exports?.getFieldIdForChild && parentTypeId > 0) {
           try {
@@ -4940,6 +5020,10 @@ export class SyntaxNode {
         inheritedFieldId = state.inheritedFieldId;
       }
     }
+    for (let i = 0; i < kids.length; i++) {
+      kids[i]._prevSibling = i > 0 ? kids[i - 1] : null;
+      kids[i]._nextSibling = i < kids.length - 1 ? kids[i + 1] : null;
+    }
     this._cachedChildren = kids;
     return kids;
   }
@@ -4948,7 +5032,12 @@ export class SyntaxNode {
     if (this._cachedNamedChildren !== null) {
       return this._cachedNamedChildren;
     }
-    this._cachedNamedChildren = this.children.filter((k) => k.isNamed());
+    const named = this.children.filter((k) => k.isNamed);
+    for (let i = 0; i < named.length; i++) {
+      named[i]._prevNamedSibling = i > 0 ? named[i - 1] : null;
+      named[i]._nextNamedSibling = i < named.length - 1 ? named[i + 1] : null;
+    }
+    this._cachedNamedChildren = named;
     return this._cachedNamedChildren;
   }
   /** Gets the number of children the node has. */
@@ -4981,51 +5070,39 @@ export class SyntaxNode {
   }
   /** Gets the next sibling of the node. */
   get nextSibling() {
-    if (!this.parent) return null;
-    const siblings = this.parent.children;
-    const idx = siblings.findIndex(
-      (s) => s.ptr === this.ptr && s.startIndex === this.startIndex,
-    );
-    if (idx >= 0 && idx < siblings.length - 1) {
-      return siblings[idx + 1];
+    if (this._nextSibling !== undefined) {
+      return this._nextSibling;
     }
-    return null;
+    if (!this.parent) return null;
+    this.parent.children;
+    return this._nextSibling ?? null;
   }
   /** Gets the previous sibling of the node. */
   get previousSibling() {
-    if (!this.parent) return null;
-    const siblings = this.parent.children;
-    const idx = siblings.findIndex(
-      (s) => s.ptr === this.ptr && s.startIndex === this.startIndex,
-    );
-    if (idx > 0) {
-      return siblings[idx - 1];
+    if (this._prevSibling !== undefined) {
+      return this._prevSibling;
     }
-    return null;
+    if (!this.parent) return null;
+    this.parent.children;
+    return this._prevSibling ?? null;
   }
   /** Gets the next named sibling of the node. */
   get nextNamedSibling() {
-    if (!this.parent) return null;
-    const siblings = this.parent.namedChildren;
-    const idx = siblings.findIndex(
-      (s) => s.ptr === this.ptr && s.startIndex === this.startIndex,
-    );
-    if (idx >= 0 && idx < siblings.length - 1) {
-      return siblings[idx + 1];
+    if (this._nextNamedSibling !== undefined) {
+      return this._nextNamedSibling;
     }
-    return null;
+    if (!this.parent) return null;
+    this.parent.namedChildren;
+    return this._nextNamedSibling ?? null;
   }
   /** Gets the previous named sibling of the node. */
   get previousNamedSibling() {
-    if (!this.parent) return null;
-    const siblings = this.parent.namedChildren;
-    const idx = siblings.findIndex(
-      (s) => s.ptr === this.ptr && s.startIndex === this.startIndex,
-    );
-    if (idx > 0) {
-      return siblings[idx - 1];
+    if (this._prevNamedSibling !== undefined) {
+      return this._prevNamedSibling;
     }
-    return null;
+    if (!this.parent) return null;
+    this.parent.namedChildren;
+    return this._prevNamedSibling ?? null;
   }
   /** Gets the child at the specified index. */
   child(index) {
@@ -5037,6 +5114,20 @@ export class SyntaxNode {
   namedChild(index) {
     const named = this.namedChildren;
     if (index >= 0 && index < named.length) return named[index];
+    return null;
+  }
+  /** Finds the first child whose endIndex is greater than the given index. */
+  firstChildForIndex(index) {
+    for (const child of this.children) {
+      if (child.endIndex > index) return child;
+    }
+    return null;
+  }
+  /** Finds the first named child whose endIndex is greater than the given index. */
+  firstNamedChildForIndex(index) {
+    for (const child of this.namedChildren) {
+      if (child.endIndex > index) return child;
+    }
     return null;
   }
   /**
@@ -5086,21 +5177,14 @@ export class SyntaxNode {
     const camel = name.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
     const fieldId = fieldNames[name] ?? fieldNames[snake] ?? fieldNames[camel];
     if (fieldId !== undefined) {
-      const node = this.childForFieldId(fieldId);
-      if (node) return node;
+      // The grammar declares this field: an absent optional field must yield null,
+      // never an unrelated sibling that happens to share the rule name.
+      return this.childForFieldId(fieldId);
     }
-    // Fallback: match by child node type name (snake_case or camelCase) or condition alias
+    // Undeclared field name: treat it as a child-type lookup (snake_case or camelCase).
     for (const kid of this.children) {
       const kt = kid.type;
-      if (
-        kt === name ||
-        kt === snake ||
-        kt === camel ||
-        (name === "condition" &&
-          (kt === "expression" || kt === "simple_expression"))
-      ) {
-        return kid;
-      }
+      if (kt === name || kt === snake || kt === camel) return kid;
     }
     return null;
   }
@@ -5157,11 +5241,8 @@ export class SyntaxNode {
     const snake = name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
     const camel = name.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
     const fieldId = fieldNames[name] ?? fieldNames[snake] ?? fieldNames[camel];
-    if (fieldId !== undefined) {
-      const byId = this.childrenForFieldId(fieldId);
-      if (byId.length > 0) return byId;
-    }
-    // Fallback: match by child node type name (snake_case or camelCase)
+    if (fieldId !== undefined) return this.childrenForFieldId(fieldId);
+    // Undeclared field name: treat it as a child-type lookup (snake_case or camelCase).
     const matches = [];
     for (const kid of this.children) {
       const kt = kid.type;
@@ -5206,25 +5287,35 @@ export class SyntaxNode {
     return child ? child.text : "";
   }
   /** Returns true if the node is a named (non-anonymous) node. */
-  isNamed() {
+  get isNamed() {
     if (this._cachedTypeId === 0) return true; // ERROR nodes are named in Tree-sitter
     const t = this.type;
     return !t.startsWith('"') && !t.startsWith("/") && !t.startsWith("_");
   }
   _cachedHasError = undefined;
   /** Returns true if the node or any of its descendants represents a syntax error. */
-  hasError() {
+  get hasError() {
     if (this._cachedHasError !== undefined) return this._cachedHasError;
     if (this._cachedTypeId === 0) {
       return (this._cachedHasError = true);
     }
     if (this.ptr !== 0) {
       const typeFlags = this.tree.mem32[this.ptr / 4];
-      if ((typeFlags & 0x03ff) === 0 || ((typeFlags >>> 10) & 128) !== 0) {
+      if (
+        (typeFlags & 0xffff) === 0 ||
+        ((typeFlags >>> 16) & (128 | 256)) !== 0
+      ) {
         return (this._cachedHasError = true);
       }
     }
     return (this._cachedHasError = false);
+  }
+  /** Returns true if this node itself represents a syntax error. */
+  get isError() {
+    return (
+      this._cachedTypeId === 0 ||
+      (this.ptr !== 0 && (this.tree.mem32[this.ptr / 4] & 0xffff) === 0)
+    );
   }
   /** Finds the smallest syntax node covering the character range [start, end]. */
   descendantForIndex(start, end = start, visited) {
@@ -5261,23 +5352,16 @@ export class SyntaxNode {
     while (true) {
       if (currentChildPtr !== 0) {
         const typeFlags = mem32[currentChildPtr >>> 2];
-        const envHashPadding = mem32[(currentChildPtr + 4) >>> 2];
-        const rawPad = typeFlags >>> 22;
-        const isFat = (envHashPadding >>> 23) & 1;
-        const pad = isFat
-          ? mem32[(currentChildPtr + 28) >>> 2] ||
-            (exports?.getFatPaddingPtr
-              ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]
-              : rawPad)
-          : rawPad;
-        const len = envHashPadding & 0x007fffff;
+        const pad = mem32[(currentChildPtr + 8) >>> 2];
+        const len = mem32[(currentChildPtr + 4) >>> 2];
         const childRawStart = currentOffset + pad;
         const childRawEnd = childRawStart + len;
         const nextChildPtr = mem32[(currentChildPtr + 16) >>> 2];
         const nextOffset = childRawEnd;
         if (rawStart >= childRawStart && rawEnd <= childRawEnd) {
-          const typeId = typeFlags & 0x03ff;
-          const isInvisible = (typeFlags & (1 << 14)) !== 0;
+          const typeId = typeFlags & 0xffff;
+          const flags = typeFlags >>> 16;
+          const isInvisible = (flags & 4) !== 0;
           const name = (syntaxNames && syntaxNames[typeId]) || `node_${typeId}`;
           if (isInvisible || name.startsWith("_")) {
             stack.push({ nextChildPtr, nextOffset });
@@ -5316,7 +5400,7 @@ export class SyntaxNode {
   namedDescendantForIndex(start, end = start) {
     const node = this.descendantForIndex(start, end);
     let curr = node;
-    while (curr && !curr.isNamed()) {
+    while (curr && !curr.isNamed) {
       curr = curr.parent;
     }
     return curr;
@@ -5331,7 +5415,7 @@ export class SyntaxNode {
   namedDescendantForPosition(start, end = start) {
     const node = this.descendantForPosition(start, end);
     let curr = node;
-    while (curr && !curr.isNamed()) {
+    while (curr && !curr.isNamed) {
       curr = curr.parent;
     }
     return curr;
@@ -5375,10 +5459,10 @@ export class SyntaxNode {
   }
   /** Generates the canonical S-expression string representation for this node. */
   toString() {
-    if (this.isMissing()) {
+    if (this.isMissing) {
       return `(MISSING ${this.type})`;
     }
-    if (!this.isNamed() && this.children.length === 0) {
+    if (!this.isNamed && this.children.length === 0) {
       return `"${this.text}"`;
     }
     if (this.children.length === 0) {
@@ -5402,6 +5486,41 @@ export class SyntaxNode {
       this.endIndex === other.endIndex
     );
   }
+  /** Gets the total count of all recursive descendant nodes. */
+  get descendantCount() {
+    let count = 0;
+    const stack = [...this.children];
+    while (stack.length > 0) {
+      const n = stack.pop();
+      count++;
+      const kids = n.children;
+      for (let i = kids.length - 1; i >= 0; i--) {
+        stack.push(kids[i]);
+      }
+    }
+    return count;
+  }
+  /**
+   * Get the immediate child that contains the given descendant node.
+   * Note that this returns the descendant itself if it is an immediate child.
+   */
+  childWithDescendant(descendant) {
+    if (!descendant || descendant === this) return null;
+    let curr = descendant;
+    while (curr && curr.parent) {
+      if (curr.parent === this) return curr;
+      curr = curr.parent;
+    }
+    for (const child of this.children) {
+      if (
+        child.startIndex <= descendant.startIndex &&
+        descendant.endIndex <= child.endIndex
+      ) {
+        return child;
+      }
+    }
+    return null;
+  }
   /** Creates a stateful TreeCursor for traversing the tree starting at this node. */
   walk() {
     return new TreeCursor(this);
@@ -5423,10 +5542,16 @@ export class TreeCursor {
     return this.current.typeId;
   }
   get nodeIsNamed() {
-    return this.current.isNamed();
+    return this.current.isNamed;
   }
   get nodeIsMissing() {
-    return this.current.isMissing();
+    return this.current.isMissing;
+  }
+  get nodeStateId() {
+    return 0;
+  }
+  get currentDescendantIndex() {
+    return 0;
   }
   get nodeText() {
     return this.current.text;
@@ -5459,14 +5584,29 @@ export class TreeCursor {
   get currentDepth() {
     return this.stack.length;
   }
-  isMissing() {
-    return this.current.isMissing();
+  get isMissing() {
+    return this.current.isMissing;
+  }
+  reset(node) {
+    this.current = node;
+    this.stack = [];
+  }
+  resetTo(cursor) {
+    this.current = cursor.currentNode;
+    this.stack = cursor.stack ? [...cursor.stack] : [];
   }
   gotoFirstChild() {
     const kids = this.current.children;
     if (kids.length === 0) return false;
     this.stack.push({ node: this.current, childIndex: 0 });
     this.current = kids[0];
+    return true;
+  }
+  gotoLastChild() {
+    const kids = this.current.children;
+    if (kids.length === 0) return false;
+    this.stack.push({ node: this.current, childIndex: kids.length - 1 });
+    this.current = kids[kids.length - 1];
     return true;
   }
   gotoFirstChildForIndex(index) {
@@ -5512,9 +5652,23 @@ export class TreeCursor {
     this.current = parentFrame.node;
     return true;
   }
-  reset(node) {
-    this.current = node;
-    this.stack = [];
+  gotoDescendant(goalDescendantIndex) {
+    if (goalDescendantIndex === 0) return;
+    let idx = 0;
+    const walk = (node) => {
+      if (idx === goalDescendantIndex) {
+        this.current = node;
+        return true;
+      }
+      idx++;
+      for (let i = 0; i < node.children.length; i++) {
+        this.stack.push({ node, childIndex: i });
+        if (walk(node.children[i])) return true;
+        this.stack.pop();
+      }
+      return false;
+    };
+    walk(this.current);
   }
 }
 /**
@@ -5643,23 +5797,19 @@ export class Tree {
       }
     }
   }
+  _rootNode = null;
   /** Gets the root node of the syntax tree. */
   get rootNode() {
+    if (this._rootNode !== null) {
+      return this._rootNode;
+    }
     if (!this.rootPtr) throw new Error("Null root pointer");
     const mem32 = this.mem32;
     const typeFlags = mem32[this.rootPtr / 4];
-    const typeId = typeFlags & 0x03ff;
-    const envHashPadding = mem32[(this.rootPtr + 4) / 4];
-    const rawPad = typeFlags >>> 22;
-    const isFat = (envHashPadding >>> 23) & 1;
-    const pad = isFat
-      ? mem32[(this.rootPtr + 28) >>> 2] ||
-        (this.facade.exports.getFatPaddingPtr
-          ? mem32[this.facade.exports.getFatPaddingPtr(rawPad) >>> 2]
-          : rawPad)
-      : rawPad;
-    const len = envHashPadding & 0x007fffff;
-    return new SyntaxNode(
+    const typeId = typeFlags & 0xffff;
+    const pad = mem32[(this.rootPtr + 8) / 4];
+    const len = mem32[(this.rootPtr + 4) / 4];
+    this._rootNode = new SyntaxNode(
       this,
       this.rootPtr,
       0,
@@ -5668,22 +5818,184 @@ export class Tree {
       len > 0 ? len : this.sourceCode.length * this._encMult,
       typeId,
     );
+    return this._rootNode;
   }
+  lastEdit = null;
+  _lsTyped = null;
+  _lsTypedSrc = null;
+  _lineStartsTyped() {
+    if (this._lsTyped === null || this._lsTypedSrc !== this.lineStarts) {
+      this._lsTyped = new Uint32Array(this.lineStarts);
+      this._lsTypedSrc = this.lineStarts;
+    }
+    return this._lsTyped;
+  }
+  _isPureAscii = null;
+  /** Lazily-built cumulative UTF-8 byte length per UTF-16 offset (length n+1); null when pure ASCII. */
+  _utf8Prefix = null;
+  _ensureUtf8Index() {
+    if (this._isPureAscii !== null) return;
+    const src = this.sourceCode;
+    // Native regex scan is far faster than a JS charCodeAt loop for the common ASCII case.
+    if (/^[\x00-\x7f]*$/.test(src)) {
+      this._isPureAscii = true;
+      return;
+    }
+    this._isPureAscii = false;
+    const n = src.length;
+    const prefix = new Uint32Array(n + 1);
+    let bytes = 0;
+    for (let i = 0; i < n; i++) {
+      const c = src.charCodeAt(i);
+      if (c < 0x80) {
+        bytes += 1;
+      } else if (c < 0x800) {
+        bytes += 2;
+      } else if (
+        c >= 0xd800 &&
+        c <= 0xdbff &&
+        i + 1 < n &&
+        (src.charCodeAt(i + 1) & 0xfc00) === 0xdc00
+      ) {
+        // Valid surrogate pair: 4 bytes charged to the high surrogate, 0 to the low surrogate.
+        bytes += 4;
+        prefix[i + 1] = bytes;
+        prefix[i + 2] = bytes;
+        i++;
+        continue;
+      } else {
+        bytes += 3; // BMP (or lone surrogate encoded as U+FFFD)
+      }
+      prefix[i + 1] = bytes;
+    }
+    this._utf8Prefix = prefix;
+  }
+  /**
+   * Converts a linear UTF-16 code unit offset to a UTF-8 byte offset in O(1)
+   * (one-time O(n) index build for non-ASCII sources).
+   */
+  offsetToByte(charOffset) {
+    if (charOffset <= 0) return 0;
+    this._ensureUtf8Index();
+    const clamped = Math.min(charOffset, this.sourceCode.length);
+    return this._utf8Prefix === null ? clamped : this._utf8Prefix[clamped];
+  }
+  /**
+   * Converts a UTF-8 byte offset to a linear UTF-16 code unit offset in O(log n).
+   * Offsets falling inside a multi-byte character round up to the next character boundary.
+   */
+  byteToOffset(byteOffset) {
+    if (byteOffset <= 0) return 0;
+    this._ensureUtf8Index();
+    const src = this.sourceCode;
+    const prefix = this._utf8Prefix;
+    if (prefix === null) return Math.min(byteOffset, src.length);
+    let low = 0;
+    let high = src.length;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if (prefix[mid] < byteOffset) low = mid + 1;
+      else high = mid;
+    }
+    // Never land between the halves of a surrogate pair.
+    if (
+      low > 0 &&
+      low < src.length &&
+      (src.charCodeAt(low - 1) & 0xfc00) === 0xd800 &&
+      (src.charCodeAt(low) & 0xfc00) === 0xdc00
+    ) {
+      low++;
+    }
+    return low;
+  }
+  /**
+   * Applies an edit transaction record to the tree, storing the modified bounds
+   * for the next incremental parse call. Correctly harmonizes UTF-8 byte offsets
+   * and UTF-16 code unit indices.
+   *
+   * `startByte`/`oldEndByte` are resolved against this tree's (old) source. `newEndByte`
+   * can only be resolved against the NEW source, so it is deferred until `parse()` when
+   * no `newEndIndex` is supplied.
+   */
+  edit(edit) {
+    const e = { ...edit };
+    if (e.startIndex === undefined && typeof e.startByte === "number") {
+      e.startIndex = this.byteToOffset(e.startByte);
+    }
+    if (e.oldEndIndex === undefined && typeof e.oldEndByte === "number") {
+      e.oldEndIndex = this.byteToOffset(e.oldEndByte);
+    }
+    if (e.startByte === undefined && typeof e.startIndex === "number") {
+      e.startByte = this.offsetToByte(e.startIndex);
+    }
+    if (e.oldEndByte === undefined && typeof e.oldEndIndex === "number") {
+      e.oldEndByte = this.offsetToByte(e.oldEndIndex);
+    }
+    // newEndIndex <-> newEndByte: only the new text can resolve a byte delta; deferred to parse().
+    this.lastEdit = e;
+    this._rootNode = null;
+    return this;
+  }
+  rootNodeWithOffset(offsetBytes, offsetExtent) {
+    return this.rootNode;
+  }
+  getChangedRanges(other) {
+    const facade = this.facade;
+    if (
+      !facade ||
+      typeof facade.getChangedRanges !== "function" ||
+      !this.rootPtr ||
+      !other.rootPtr
+    )
+      return [];
+    // `this` is the old tree, `other` is the new tree (Tree-sitter: oldTree.getChangedRanges(newTree)).
+    const raw = facade.getChangedRanges(this.rootPtr, other.rootPtr);
+    return raw.map((r) => ({
+      startIndex: r.start,
+      endIndex: r.end,
+      startPosition: other.offsetToPoint(r.start),
+      endPosition: other.offsetToPoint(r.end),
+    }));
+  }
+  getIncludedRanges() {
+    return [
+      {
+        startIndex: 0,
+        endIndex: this.sourceCode.length,
+        startPosition: { row: 0, column: 0 },
+        endPosition: this.offsetToPoint(this.sourceCode.length),
+      },
+    ];
+  }
+  getText(node) {
+    return node.text;
+  }
+  getEditedRange() {
+    if (!this.lastEdit) return null;
+    return {
+      startIndex: this.lastEdit.startIndex,
+      endIndex: this.lastEdit.newEndIndex,
+      startPosition:
+        this.lastEdit.startPosition ??
+        this.offsetToPoint(this.lastEdit.startIndex),
+      endPosition:
+        this.lastEdit.newEndPosition ??
+        this.offsetToPoint(this.lastEdit.newEndIndex),
+    };
+  }
+  printDotGraph(fd) {}
   /** Creates a stateful TreeCursor for traversing the tree starting at the root. */
   walk() {
     return this.rootNode.walk();
   }
-  /** Converts a linear byte offset into a row and column Point. */
+  /** Converts a linear UTF-16 code unit offset into a row and column Point. */
   offsetToPoint(offset) {
     if (
       this._encoding === 0 &&
       this.facade &&
       typeof this.facade.offsetToPos === "function"
     ) {
-      const pos = this.facade.offsetToPos(
-        offset,
-        new Uint32Array(this.lineStarts),
-      );
+      const pos = this.facade.offsetToPos(offset, this._lineStartsTyped());
       return { row: pos.line, column: pos.character };
     }
     const mult = this._encMult;
@@ -5708,7 +6020,7 @@ export class Tree {
     }
     return { row: 0, column: Math.floor(offset / mult) };
   }
-  /** Converts a row and column Point into a linear character offset. */
+  /** Converts a row and column Point into a linear UTF-16 character offset. */
   pointToOffset(point) {
     if (point.row < 0) return 0;
     if (point.row >= this.lineStarts.length) return this.sourceCode.length;
@@ -5718,8 +6030,9 @@ export class Tree {
       typeof this.facade.posToOffset === "function"
     ) {
       const byteOff = this.facade.posToOffset(
-        { line: point.row, character: point.column },
-        new Uint32Array(this.lineStarts),
+        point.row,
+        point.column,
+        this._lineStartsTyped(),
       );
       return Math.min(this.sourceCode.length, byteOff);
     }
@@ -5728,7 +6041,19 @@ export class Tree {
   }
   /** Releases any resources associated with this syntax tree wrapper. */
   delete() {
+    const registry = this.facade?.rootSourceCode;
+    // Only drop the entry if it still belongs to this tree's source (the root pointer may be reused).
+    if (
+      registry &&
+      typeof registry.get === "function" &&
+      registry.get(this.rootPtr) === this.sourceCode
+    ) {
+      registry.delete(this.rootPtr);
+    }
     this._mem32 = null;
+    this._rootNode = null;
+    this._lsTyped = null;
+    this._utf8Prefix = null;
   }
 }
 /**
@@ -5765,6 +6090,58 @@ export class TreeSitterParser {
     }
     const code =
       typeof source === "string" ? source : new TextDecoder().decode(source);
+    if (
+      oldTree &&
+      oldTree.lastEdit &&
+      editStart === 0 &&
+      editOldEnd === 0 &&
+      editNewEnd === 0
+    ) {
+      const e = oldTree.lastEdit;
+      const old = oldTree;
+      editStart =
+        typeof e.startIndex === "number"
+          ? e.startIndex
+          : typeof e.startByte === "number"
+            ? old.byteToOffset(e.startByte)
+            : 0;
+      editOldEnd =
+        typeof e.oldEndIndex === "number"
+          ? e.oldEndIndex
+          : typeof e.oldEndByte === "number"
+            ? old.byteToOffset(e.oldEndByte)
+            : editStart;
+      if (typeof e.newEndIndex === "number") {
+        editNewEnd = e.newEndIndex;
+      } else if (typeof e.newEndByte === "number") {
+        // Resolve the byte delta against the NEW source: advance (newEndByte - startByte) UTF-8 bytes from editStart.
+        const startByte =
+          typeof e.startByte === "number"
+            ? e.startByte
+            : old.offsetToByte(editStart);
+        let remaining = e.newEndByte - startByte;
+        let i = editStart;
+        while (remaining > 0 && i < code.length) {
+          const c = code.charCodeAt(i);
+          if (c < 0x80) remaining -= 1;
+          else if (c < 0x800) remaining -= 2;
+          else if (
+            (c & 0xfc00) === 0xd800 &&
+            i + 1 < code.length &&
+            (code.charCodeAt(i + 1) & 0xfc00) === 0xdc00
+          ) {
+            remaining -= 4;
+            i++;
+          } else remaining -= 3;
+          i++;
+        }
+        editNewEnd = i;
+      } else {
+        editNewEnd = editStart;
+      }
+      // Consume the edit: it describes a single old->new transition and must not be replayed.
+      old.lastEdit = null;
+    }
     const oldRoot = oldTree
       ? (oldTree.rootPtr ?? oldTree.rootNode?.id ?? oldTree.rootNode?.ptr ?? 0)
       : 0;
@@ -6247,10 +6624,10 @@ export const Cst = {
     type: "SourceFile",
     is(node) { return node != null && node.typeId === 9; },
     rows(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("rows")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     rowsList(node) {
-      return node ? node.childrenForFieldName("rows") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
   },
   Row: {
@@ -6258,10 +6635,10 @@ export const Cst = {
     type: "Row",
     is(node) { return node != null && node.typeId === 10; },
     cells(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("cells")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     cellsList(node) {
-      return node ? node.childrenForFieldName("cells") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
   },
   Cell: {

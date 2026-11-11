@@ -13,6 +13,7 @@
 
 import type { EpanetModelLike } from "./epanet-diagram-builder.js";
 import type { SwmmModelLike } from "./swmm-diagram-builder.js";
+export type { EpanetModelLike, SwmmModelLike };
 
 export type DiffElementStatus = "added" | "deleted" | "modified" | "unchanged";
 
@@ -27,8 +28,26 @@ export interface NodeDiffItem {
   id: string;
   type: "junction" | "reservoir" | "tank" | "outfall";
   status: DiffElementStatus;
-  baseNode?: { elevation: number; demand?: number | undefined; pressure?: number | undefined; head?: number | undefined; x?: number | undefined; y?: number | undefined } | undefined;
-  targetNode?: { elevation: number; demand?: number | undefined; pressure?: number | undefined; head?: number | undefined; x?: number | undefined; y?: number | undefined } | undefined;
+  baseNode?:
+    | {
+        elevation: number;
+        demand?: number | undefined;
+        pressure?: number | undefined;
+        head?: number | undefined;
+        x?: number | undefined;
+        y?: number | undefined;
+      }
+    | undefined;
+  targetNode?:
+    | {
+        elevation: number;
+        demand?: number | undefined;
+        pressure?: number | undefined;
+        head?: number | undefined;
+        x?: number | undefined;
+        y?: number | undefined;
+      }
+    | undefined;
   propertyDeltas: PropertyDelta[];
 }
 
@@ -38,8 +57,24 @@ export interface LinkDiffItem {
   status: DiffElementStatus;
   node1: string;
   node2: string;
-  baseLink?: { diameter: number; length: number; roughness?: number | undefined; flow?: number | undefined; velocity?: number | undefined } | undefined;
-  targetLink?: { diameter: number; length: number; roughness?: number | undefined; flow?: number | undefined; velocity?: number | undefined } | undefined;
+  baseLink?:
+    | {
+        diameter: number;
+        length: number;
+        roughness?: number | undefined;
+        flow?: number | undefined;
+        velocity?: number | undefined;
+      }
+    | undefined;
+  targetLink?:
+    | {
+        diameter: number;
+        length: number;
+        roughness?: number | undefined;
+        flow?: number | undefined;
+        velocity?: number | undefined;
+      }
+    | undefined;
   propertyDeltas: PropertyDelta[];
 }
 
@@ -115,10 +150,20 @@ export function diffEpanetNetworks(base: EpanetModelLike, target: EpanetModelLik
     } else {
       const deltas: PropertyDelta[] = [];
       if (Math.abs(tj.elevation - bj.elevation) > 1e-3) {
-        deltas.push({ property: "elevation", baseValue: bj.elevation, targetValue: tj.elevation, delta: tj.elevation - bj.elevation });
+        deltas.push({
+          property: "elevation",
+          baseValue: bj.elevation,
+          targetValue: tj.elevation,
+          delta: tj.elevation - bj.elevation,
+        });
       }
       if (Math.abs((tj.demand ?? 0) - (bj.demand ?? 0)) > 1e-3) {
-        deltas.push({ property: "demand", baseValue: bj.demand ?? 0, targetValue: tj.demand ?? 0, delta: (tj.demand ?? 0) - (bj.demand ?? 0) });
+        deltas.push({
+          property: "demand",
+          baseValue: bj.demand ?? 0,
+          targetValue: tj.demand ?? 0,
+          delta: (tj.demand ?? 0) - (bj.demand ?? 0),
+        });
       }
       if (tj.pressure !== undefined && bj.pressure !== undefined) {
         const pDelta = tj.pressure - bj.pressure;
@@ -173,7 +218,12 @@ export function diffEpanetNetworks(base: EpanetModelLike, target: EpanetModelLik
     } else {
       const deltas: PropertyDelta[] = [];
       if (Math.abs(tp.diameter - bp.diameter) > 1e-3) {
-        deltas.push({ property: "diameter", baseValue: bp.diameter, targetValue: tp.diameter, delta: tp.diameter - bp.diameter });
+        deltas.push({
+          property: "diameter",
+          baseValue: bp.diameter,
+          targetValue: tp.diameter,
+          delta: tp.diameter - bp.diameter,
+        });
       }
       if (Math.abs(tp.length - bp.length) > 1e-3) {
         deltas.push({ property: "length", baseValue: bp.length, targetValue: tp.length, delta: tp.length - bp.length });
@@ -280,7 +330,12 @@ export function diffSwmmNetworks(base: SwmmModelLike, target: SwmmModelLike): Sw
     } else {
       const deltas: PropertyDelta[] = [];
       if (Math.abs(tj.elevation - bj.elevation) > 1e-3) {
-        deltas.push({ property: "elevation", baseValue: bj.elevation, targetValue: tj.elevation, delta: tj.elevation - bj.elevation });
+        deltas.push({
+          property: "elevation",
+          baseValue: bj.elevation,
+          targetValue: tj.elevation,
+          delta: tj.elevation - bj.elevation,
+        });
       }
       nodeDiffs.set(id, {
         id,
@@ -408,6 +463,25 @@ export function diffSwmmNetworks(base: SwmmModelLike, target: SwmmModelLike): Sw
   };
 }
 
+function escapeXml(unsafe: unknown): string {
+  return String(unsafe ?? "").replace(/[<>&'"]/g, (c) => {
+    switch (c) {
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case "&":
+        return "&amp;";
+      case "'":
+        return "&apos;";
+      case '"':
+        return "&quot;";
+      default:
+        return c;
+    }
+  });
+}
+
 /**
  * Renders a visual schematic SVG highlighting hydraulic network diffs with Git tokens.
  */
@@ -529,9 +603,17 @@ export function renderEpanetDiffSvg(
 
     nodesSvg.push(
       `<circle cx="${p.x}" cy="${p.y}" r="${radius}" fill="${fillColor}" stroke="${bg}" stroke-width="2" />
-      <text x="${p.x}" y="${p.y - 10}" font-family="sans-serif" font-size="10" font-weight="600" fill="${textPrimary}" text-anchor="middle">${n.id}</text>`,
+      <text x="${p.x}" y="${p.y - 10}" font-family="sans-serif" font-size="10" font-weight="600" fill="${textPrimary}" text-anchor="middle">${escapeXml(n.id)}</text>`,
     );
   }
+
+  const addedLinks = Number(diff.stats.addedLinks) || 0;
+  const deletedLinks = Number(diff.stats.deletedLinks) || 0;
+  const modifiedLinks = Number(diff.stats.modifiedLinks) || 0;
+  const addedNodes = Number(diff.stats.addedNodes) || 0;
+  const deletedNodes = Number(diff.stats.deletedNodes) || 0;
+  const modifiedNodes = Number(diff.stats.modifiedNodes) || 0;
+  const maxPressureDeltaM = Number(diff.stats.maxPressureDeltaM) || 0;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%" style="background: ${bg}; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
   <defs>
@@ -544,13 +626,13 @@ export function renderEpanetDiffSvg(
   <rect x="16" y="16" width="340" height="90" rx="8" fill="${bg}" stroke="${border}" filter="url(#shadow)" />
   <text x="30" y="40" font-size="13" font-weight="700" fill="${textPrimary}">Visual PR Diff: Water Network</text>
   <text x="30" y="60" font-size="11" fill="${textMuted}">
-    Pipes: +${diff.stats.addedLinks} added, -${diff.stats.deletedLinks} deleted, ~${diff.stats.modifiedLinks} modified
+    Pipes: +${addedLinks} added, -${deletedLinks} deleted, ~${modifiedLinks} modified
   </text>
   <text x="30" y="78" font-size="11" fill="${textMuted}">
-    Nodes: +${diff.stats.addedNodes} added, -${diff.stats.deletedNodes} deleted, ~${diff.stats.modifiedNodes} modified
+    Nodes: +${addedNodes} added, -${deletedNodes} deleted, ~${modifiedNodes} modified
   </text>
-  <text x="30" y="94" font-size="10" font-weight="600" fill="${diff.stats.maxPressureDeltaM < -5 ? colorDeleted : colorAdded}">
-    Max Pressure Impact: ${diff.stats.maxPressureDeltaM >= 0 ? "+" : ""}${diff.stats.maxPressureDeltaM.toFixed(1)} m head
+  <text x="30" y="94" font-size="10" font-weight="600" fill="${maxPressureDeltaM < -5 ? colorDeleted : colorAdded}">
+    Max Pressure Impact: ${maxPressureDeltaM >= 0 ? "+" : ""}${maxPressureDeltaM.toFixed(1)} m head
   </text>
 
   <!-- Legend -->

@@ -109,6 +109,62 @@
       "types": "./dist/water-network-diff.d.ts",
       "default": "./dist/water-network-diff.js"
     },
+    "./reaction-coordinate": {
+      "types": "./dist/reaction-coordinate-diagram-builder.d.ts",
+      "default": "./dist/reaction-coordinate-diagram-builder.js"
+    },
+    "./molecular": {
+      "types": "./dist/molecular-diagram-builder.d.ts",
+      "default": "./dist/molecular-diagram-builder.js"
+    },
+    "./climate-raster": {
+      "types": "./dist/climate-raster-builder.d.ts",
+      "default": "./dist/climate-raster-builder.js"
+    },
+    "./segy-trace": {
+      "types": "./dist/segy-trace-builder.d.ts",
+      "default": "./dist/segy-trace-builder.js"
+    },
+    "./crystallography": {
+      "types": "./dist/crystallography-builder.d.ts",
+      "default": "./dist/crystallography-builder.js"
+    },
+    "./plasma-fusion": {
+      "types": "./dist/plasma-fusion-builder.d.ts",
+      "default": "./dist/plasma-fusion-builder.js"
+    },
+    "./fits-astro": {
+      "types": "./dist/fits-astro-builder.d.ts",
+      "default": "./dist/fits-astro-builder.js"
+    },
+    "./accelerator-lattice": {
+      "types": "./dist/accelerator-lattice-builder.d.ts",
+      "default": "./dist/accelerator-lattice-builder.js"
+    },
+    "./hep-event": {
+      "types": "./dist/hep-event-builder.d.ts",
+      "default": "./dist/hep-event-builder.js"
+    },
+    "./quantum-chemistry": {
+      "types": "./dist/quantum-chemistry-builder.d.ts",
+      "default": "./dist/quantum-chemistry-builder.js"
+    },
+    "./neural-spike": {
+      "types": "./dist/neural-spike-builder.d.ts",
+      "default": "./dist/neural-spike-builder.js"
+    },
+    "./optical-bench": {
+      "types": "./dist/optical-bench-builder.d.ts",
+      "default": "./dist/optical-bench-builder.js"
+    },
+    "./nmodl": {
+      "types": "./dist/nmodl-diagram-builder.d.ts",
+      "default": "./dist/nmodl-diagram-builder.js"
+    },
+    "./pk": {
+      "types": "./dist/pk-diagram-builder.d.ts",
+      "default": "./dist/pk-diagram-builder.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "default": "./dist/*.js"

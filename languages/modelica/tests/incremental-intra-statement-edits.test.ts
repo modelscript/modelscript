@@ -96,7 +96,10 @@ end BouncingBall;`,
       const tree = ctx.load(code, uri);
       const rootPtr = (tree.rootNode as any).id ?? (tree.rootNode as any).ptr ?? 0;
       const diags = facade.getDiagnostics(rootPtr);
-      const hasErr = (tree.rootNode as any).hasError();
+      const hasErr =
+        typeof (tree.rootNode as any).hasError === "function"
+          ? (tree.rootNode as any).hasError()
+          : (tree.rootNode as any).hasError;
 
       expect(hasErr).toBe(false);
       expect(diags).toHaveLength(0);
@@ -138,7 +141,11 @@ end BouncingBall;`,
     const finalTree = ctx.getTree(uri)!;
     const finalRootPtr = (finalTree.rootNode as any).id ?? (finalTree.rootNode as any).ptr ?? 0;
     const finalDiags = facade.getDiagnostics(finalRootPtr);
-    expect((finalTree.rootNode as any).hasError()).toBe(false);
+    const finalHasErr =
+      typeof (finalTree.rootNode as any).hasError === "function"
+        ? (finalTree.rootNode as any).hasError()
+        : (finalTree.rootNode as any).hasError;
+    expect(finalHasErr).toBe(false);
     expect(finalDiags).toHaveLength(0);
   });
 });

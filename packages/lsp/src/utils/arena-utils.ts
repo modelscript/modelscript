@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArenaDAEPrinter, DAEBuilder, ExprKind, VarType, Variability } from "@modelscript/runtime";
+import { ArenaDAEPrinter, DAEBuilder, ExprKind, UnaryOp, VarType, Variability } from "@modelscript/runtime";
 
 function resolveAttrString(arena: DAEBuilder, varIdx: number, attrName: string): string | undefined {
   const exprId = arena.getVarAttrExprId(varIdx, attrName);
@@ -30,6 +30,9 @@ export function getArenaParameterInfo(arena: DAEBuilder): any[] {
     } else if (varType === VarType.Integer) {
       type = "integer";
       step = 1;
+    } else if (varType === VarType.Enumeration) {
+      type = "enumeration";
+      step = 1;
     }
     const unit = resolveAttrString(arena, i, "displayUnit") ?? resolveAttrString(arena, i, "unit");
     const description = arena.getVarDescription(i);
@@ -49,7 +52,16 @@ export function getArenaParameterInfo(arena: DAEBuilder): any[] {
   return infos;
 }
 
-export function getArenaOutputStringIds(arena: DAEBuilder): number[] | undefined {
+export interface ArenaOutputOptions {
+  /**
+   * Language/library policy: names for which this returns true are plotted after the primary variables
+   * (tier 2) rather than among them (tier 1). Defaults to treating no variable as secondary.
+   */
+  isSecondaryName?: ((name: string) => boolean) | undefined;
+}
+
+export function getArenaOutputStringIds(arena: DAEBuilder, options: ArenaOutputOptions = {}): number[] | undefined {
+  const isSecondaryName = options.isSecondaryName;
   const tier0Ids: number[] = [];
   const tier1Ids: number[] = [];
   const tier2Ids: number[] = [];
@@ -67,12 +79,7 @@ export function getArenaOutputStringIds(arena: DAEBuilder): number[] | undefined
     seen.add(nameId);
     if (arena.isVarFixed(i)) {
       tier0Ids.push(nameId);
-    } else if (
-      name.split(".").length <= 2 &&
-      !name.startsWith("ground.") &&
-      !name.endsWith(".T_heatPort") &&
-      !name.endsWith(".R_actual")
-    ) {
+    } else if (name.split(".").length <= 2 && !(isSecondaryName?.(name) ?? false)) {
       tier1Ids.push(nameId);
     } else {
       tier2Ids.push(nameId);
@@ -156,6 +163,10 @@ export function evaluateArenaExprToNum(arena: DAEBuilder, exprId: number | undef
   }
   if (kind === ExprKind.IntLiteral) {
     return arena.getExprData1(exprId);
+  }
+  if (kind === ExprKind.Negate || (kind === ExprKind.Unary && arena.getExprData1(exprId) === UnaryOp.Negate)) {
+    const operand = evaluateArenaExprToNum(arena, arena.getExprLeft(exprId));
+    return operand === null ? null : -operand;
   }
   return null;
 }

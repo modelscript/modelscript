@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerSmilesToDae, type SmilesDaeOptions } from "./dae/smiles-to-dae.js";
+import { smilesGrammar } from "./grammar/index.js";
 import { indexSmilesFile } from "./indexing.js";
 import { lintSmiles } from "./lints/index.js";
 import { parseSmilesDocument } from "./parser/smiles-parser.js";
@@ -14,7 +15,11 @@ import { solveMolecularProperties } from "./solvers/property-estimator.js";
 export const smilesLanguage = language({
   name: "smiles",
   fileExtensions: [".smi", ".smarts", ".mol", ".sdf"],
-  maturity: "experimental",
+  maturity: "beta",
+  word: smilesGrammar.word,
+  extras: smilesGrammar.extras,
+  conflicts: smilesGrammar.conflicts,
+  rules: smilesGrammar.rules,
   indexing: {
     indexFile: indexSmilesFile,
   },

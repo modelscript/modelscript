@@ -197,6 +197,7 @@ export interface PolyglotDiagramNode {
   /** Properties for the side panel. */
   properties?:
     | {
+        name?: string | undefined;
         className: string;
         description: string;
         parameters: { name: string; value: string }[];
@@ -536,7 +537,17 @@ export function buildPolyglotDiagram(
   const DEFAULT_SYSML_PROJECTIONS: Record<string, PolyglotProjectionConfig> = {
     BDD: {
       label: "Block Definition Diagram",
-      excludeRules: ["PartUsage", "PortUsage", "StateDefinition", "StateUsage", "ExhibitStateUsage", "TransitionUsage"],
+      excludeRules: [
+        "PartUsage",
+        "PortUsage",
+        "ConnectionUsage",
+        "FlowConnectionUsage",
+        "BindingConnectorAsUsage",
+        "StateDefinition",
+        "StateUsage",
+        "ExhibitStateUsage",
+        "TransitionUsage",
+      ],
       filter: (sym: SymbolEntry) => !sym.ruleName?.startsWith("State") && !sym.ruleName?.startsWith("Transition"),
     },
     IBD: {
@@ -544,11 +555,24 @@ export function buildPolyglotDiagram(
       excludeRules: [
         "Package",
         "LibraryPackage",
+        "AttributeDefinition",
+        "PortDefinition",
+        "ItemDefinition",
+        "RequirementDefinition",
+        "ConstraintDefinition",
+        "CalculationDefinition",
+        "InterfaceDefinition",
+        "AllocationDefinition",
+        "FlowDefinition",
+        "EnumerationDefinition",
+        "ViewDefinition",
+        "ViewpointDefinition",
         "StateDefinition",
         "StateUsage",
         "ExhibitStateUsage",
         "TransitionUsage",
       ],
+      groupRules: ["PartDefinition"],
       filter: (sym: SymbolEntry) => !sym.ruleName?.startsWith("State") && !sym.ruleName?.startsWith("Transition"),
     },
     StateMachine: {
@@ -644,12 +668,32 @@ export function buildPolyglotDiagram(
 
   const nodes: PolyglotDiagramNode[] = [];
   const edges: PolyglotDiagramEdge[] = [];
-  const activeProjection = projectionsMap[diagramType] ?? DEFAULT_SYSML_PROJECTIONS[diagramType];
+  const normalizedDiagramType =
+    Object.keys(projectionsMap).find((k) => k.toLowerCase() === diagramType.toLowerCase()) ??
+    Object.keys(DEFAULT_SYSML_PROJECTIONS).find((k) => k.toLowerCase() === diagramType.toLowerCase()) ??
+    diagramType;
+  const activeProjection = projectionsMap[normalizedDiagramType] ?? DEFAULT_SYSML_PROJECTIONS[normalizedDiagramType];
+
+  // In IBD view, check if there are composite PartDefinitions containing PartUsage children
+  const hasCompositePartDefs =
+    normalizedDiagramType.toUpperCase() === "IBD" &&
+    Array.from(index.symbols.values()).some((s) => {
+      if (s.ruleName !== "PartDefinition") return false;
+      const childIds = index.childrenOf.get(s.id) ?? [];
+      return childIds.some((cid) => index.symbols.get(cid)?.ruleName === "PartUsage");
+    });
 
   // Collect all symbols, optionally filtered to one document
   const allSymbols: SymbolEntry[] = [];
   for (const sym of index.symbols.values()) {
     if (resourceId && sym.resourceId && sym.resourceId !== resourceId) continue;
+
+    // In IBD view with composite parts, exclude leaf PartDefinitions that have no PartUsages
+    if (hasCompositePartDefs && sym.ruleName === "PartDefinition") {
+      const childIds = index.childrenOf.get(sym.id) ?? [];
+      const hasPartUsages = childIds.some((cid) => index.symbols.get(cid)?.ruleName === "PartUsage");
+      if (!hasPartUsages) continue;
+    }
 
     // DSL-Declared Projection Filtering
     if (activeProjection) {
@@ -1184,9 +1228,15 @@ export function buildPolyglotDiagram(
         shape: "rect",
         ports: { groups: {}, items: [] },
         properties: {
+          name: sym.name ?? "",
           className: sym.ruleName,
           description: sym.name ?? "",
           parameters,
+        },
+        data: {
+          name: sym.name ?? "",
+          label: sym.name ?? "",
+          ruleName: sym.ruleName,
         },
         autoLayout: true,
       };
@@ -1313,9 +1363,15 @@ export function buildPolyglotDiagram(
         shape: "rect",
         ports: { groups: {}, items: [] },
         properties: {
+          name: sym.name ?? "",
           className: sym.ruleName,
           description: sym.name ?? "",
           parameters,
+        },
+        data: {
+          name: sym.name ?? "",
+          label: sym.name ?? "",
+          ruleName: sym.ruleName,
         },
         autoLayout: true,
       };
@@ -1414,9 +1470,15 @@ export function buildPolyglotDiagram(
         shape: "rect",
         ports: { groups: {}, items: [] },
         properties: {
+          name: sym.name ?? "",
           className: sym.ruleName,
           description: sym.name ?? "",
           parameters,
+        },
+        data: {
+          name: sym.name ?? "",
+          label: sym.name ?? "",
+          ruleName: sym.ruleName,
         },
         autoLayout: true,
       };
@@ -1757,12 +1819,15 @@ export function buildPolyglotDiagram(
           items: [...(nodeConfig.ports?.items ?? [])],
         },
         properties: {
+          name: sym.name ?? "",
           className: sym.ruleName,
           description: sym.name ?? "",
           parameters,
         },
         compartments: sections,
         data: {
+          name: sym.name ?? "",
+          label: sym.name ?? "",
           ruleName: sym.ruleName,
           sections,
           multiplicity: sym.metadata?.["multiplicity"] ?? (sym.name?.includes("[") ? 2 : 1),
@@ -1878,11 +1943,14 @@ export function buildPolyglotDiagram(
         items: [...(nodeConfig.ports?.items ?? [])],
       },
       properties: {
+        name: sym.name ?? "",
         className: sym.ruleName,
         description: sym.name ?? "",
         parameters,
       },
       data: {
+        name: sym.name ?? "",
+        label: sym.name ?? "",
         ruleName: sym.ruleName,
         sections,
         multiplicity: sym.metadata?.["multiplicity"] ?? (sym.name?.includes("[") ? 2 : 1),
@@ -1914,6 +1982,28 @@ export function buildPolyglotDiagram(
     actualNodeIds.add(node.id);
     nodes.push(node);
   }
+
+  // Build a parentId → ref-entry children map by scanning ALL symbols
+  const refChildrenByParent = new Map<SymbolId, SymbolEntry[]>();
+  for (const entry of index.symbols.values()) {
+    if (entry.parentId === null) continue;
+    if (resolver && resolver.isDeclaration(entry)) continue;
+    const list = refChildrenByParent.get(entry.parentId) ?? [];
+    list.push(entry);
+    refChildrenByParent.set(entry.parentId, list);
+  }
+
+  const resolveEntryTargets = (refEntry: SymbolEntry): SymbolEntry[] => {
+    if (resolver) return resolver.resolve(refEntry);
+    if (!refEntry.name) return [];
+    const res: SymbolEntry[] = [];
+    for (const s of index.symbols.values()) {
+      if ((s.name === refEntry.name || s.id === refEntry.name) && s.id !== refEntry.id) {
+        res.push(s);
+      }
+    }
+    return res;
+  };
 
   // ── Create X6 port items for child port symbols ──
   // Ports are shown on the border of their parent node, not as compartment text.
@@ -2154,6 +2244,154 @@ export function buildPolyglotDiagram(
     symbolIdToNodeId.set(sym.id, `${parentNodeId}.${portName}`);
   }
 
+  // ── Inherit ports from type definitions for PartUsage nodes ──
+  for (const sym of allSymbols) {
+    if (sym.ruleName !== "PartUsage") continue;
+    const usageNodeId = symbolIdToNodeId.get(sym.id);
+    if (!usageNodeId) continue;
+    const usageNode = nodes.find((n) => n.id === usageNodeId);
+    if (!usageNode) continue;
+
+    if (!usageNode.ports) {
+      usageNode.ports = { groups: {}, items: [] };
+    }
+    const groups = usageNode.ports.groups!;
+    if (!groups["in"]) {
+      groups["in"] = {
+        position: "left",
+        attrs: {
+          rect: { width: 10, height: 10, x: -5, y: -5, fill: "#ffffff", stroke: "#ea580c", strokeWidth: 1.5 },
+          circle: { r: 5, fill: "#ffffff", stroke: "#ea580c", strokeWidth: 1.5 },
+          text: { fontSize: 10, fill: "#334155" },
+        },
+        label: { position: { name: "left", args: { y: -10 } } },
+      };
+    }
+    if (!groups["out"]) {
+      groups["out"] = {
+        position: "right",
+        attrs: {
+          rect: { width: 10, height: 10, x: -5, y: -5, fill: "#ffffff", stroke: "#ea580c", strokeWidth: 1.5 },
+          circle: { r: 5, fill: "#ffffff", stroke: "#ea580c", strokeWidth: 1.5 },
+          text: { fontSize: 10, fill: "#334155" },
+        },
+        label: { position: { name: "right", args: { y: -10 } } },
+      };
+    }
+
+    const refChildren = refChildrenByParent.get(sym.id) ?? [];
+    for (const refEntry of refChildren) {
+      const resolved = resolveEntryTargets(refEntry);
+      for (const defSym of resolved) {
+        const defChildIds = index.childrenOf.get(defSym.id) ?? [];
+        for (const childId of defChildIds) {
+          const portSym = index.symbols.get(childId);
+          if (!portSym || (!PORT_KINDS.has(portSym.ruleName) && gfxConfig[portSym.ruleName]?.role !== "port")) continue;
+
+          const portName = portSym.name ?? `port_${portSym.id}`;
+          const portItems = usageNode.ports.items ?? [];
+          if (portItems.some((p) => p.id === portName)) continue;
+
+          const rawCausality =
+            portSym.metadata?.["causality"] ??
+            portSym.attributes?.["causality"] ??
+            portSym.metadata?.["direction"] ??
+            portSym.attributes?.["direction"];
+          let causalityStr = "";
+          if (typeof rawCausality === "string") {
+            causalityStr = rawCausality.toLowerCase().trim();
+          } else if (typeof rawCausality === "number") {
+            causalityStr = rawCausality === 1 ? "input" : rawCausality === 2 ? "output" : "";
+          }
+
+          const portRefKids = index.childrenOf.get(portSym.id) ?? [];
+          const isConjugated = Boolean(
+            portSym.metadata?.["isConjugated"] ||
+            portSym.attributes?.["isConjugated"] ||
+            portName.startsWith("~") ||
+            portSym.ruleName === "ConjugatedPortTyping" ||
+            portRefKids.some((k) => index.symbols.get(k)?.ruleName === "ConjugatedPortTyping"),
+          );
+
+          let group: string;
+          if (causalityStr === "in" || causalityStr === "input") {
+            group = isConjugated ? "out" : "in";
+          } else if (causalityStr === "out" || causalityStr === "output") {
+            group = isConjugated ? "in" : "out";
+          } else if (/(?:^|[a-z0-9_])(?:in|input)$/i.test(portName) || /^in(?:[A-Z0-9_]|$)/.test(portName)) {
+            group = isConjugated ? "out" : "in";
+          } else if (/(?:^|[a-z0-9_])(?:out|output)$/i.test(portName) || /^out(?:[A-Z0-9_]|$)/.test(portName)) {
+            group = isConjugated ? "in" : "out";
+          } else {
+            group = isConjugated ? "in" : "out";
+          }
+
+          const groupDef = groups[group];
+          const groupPos = typeof groupDef?.position === "string" ? groupDef.position : groupDef?.position?.name;
+          const labelSide =
+            groupPos === "right" || group === "out"
+              ? "right"
+              : groupPos === "top"
+                ? "top"
+                : groupPos === "bottom"
+                  ? "bottom"
+                  : "left";
+
+          portItems.push({
+            id: portName,
+            group,
+            direction: causalityStr || undefined,
+            isConjugated,
+            attrs: {
+              text: { text: portName },
+              rect: {
+                width: 10,
+                height: 10,
+                x: -5,
+                y: -5,
+                fill: isConjugated ? "#ea580c" : "#ffffff",
+                stroke: "#ea580c",
+                strokeWidth: 1.5,
+              },
+              circle: {
+                r: 5,
+                fill: isConjugated ? "#ea580c" : "#ffffff",
+                stroke: "#ea580c",
+                strokeWidth: 1.5,
+              },
+              portBody: {
+                width: 10,
+                height: 10,
+                x: -5,
+                y: -5,
+                fill: isConjugated ? "#ea580c" : "#ffffff",
+                stroke: "#ea580c",
+                strokeWidth: 1.5,
+              },
+            },
+            label: {
+              position: { name: labelSide, args: { y: labelSide === "bottom" ? 10 : -10 } },
+              attrs: {
+                text: {
+                  text: isConjugated && !portName.startsWith("~") ? `~${portName}` : portName,
+                  fontSize: 10,
+                  fill: "#334155",
+                  fontWeight: "500",
+                },
+              },
+            },
+          });
+          usageNode.ports.items = portItems;
+
+          symbolIdToNodeId.set(`${sym.id}.${portName}`, `${usageNodeId}.${portName}`);
+          if (sym.name) {
+            symbolIdToNodeId.set(`${sym.name}.${portName}`, `${usageNodeId}.${portName}`);
+          }
+        }
+      }
+    }
+  }
+
   // Second pass: create edges
   for (const sym of allSymbols) {
     const config = gfxConfig[sym.ruleName];
@@ -2380,28 +2618,6 @@ export function buildPolyglotDiagram(
   // so it can't be found via childrenOf — we must scan symbols directly,
   // mirroring ScopeResolver.findRefChildren).
   const addedTypingEdges = new Set<string>();
-
-  // Build a parentId → ref-entry children map by scanning ALL symbols
-  const refChildrenByParent = new Map<SymbolId, SymbolEntry[]>();
-  for (const entry of index.symbols.values()) {
-    if (entry.parentId === null) continue;
-    if (resolver && resolver.isDeclaration(entry)) continue;
-    const list = refChildrenByParent.get(entry.parentId) ?? [];
-    list.push(entry);
-    refChildrenByParent.set(entry.parentId, list);
-  }
-
-  const resolveEntryTargets = (refEntry: SymbolEntry): SymbolEntry[] => {
-    if (resolver) return resolver.resolve(refEntry);
-    if (!refEntry.name) return [];
-    const res: SymbolEntry[] = [];
-    for (const s of index.symbols.values()) {
-      if ((s.name === refEntry.name || s.id === refEntry.name) && s.id !== refEntry.id) {
-        res.push(s);
-      }
-    }
-    return res;
-  };
 
   for (const sym of allSymbols) {
     if (!USAGE_KINDS.has(sym.ruleName)) continue;
@@ -2874,9 +3090,100 @@ export function buildPolyglotDiagram(
     }
   }
 
+  // Strict edge sanitization: verify both source and target cell IDs exist in nodes
+  const validNodeIdSet = new Set(nodes.map((n) => n.id));
+  const sanitizedEdges: PolyglotDiagramEdge[] = [];
+
+  for (const edge of edges) {
+    if (typeof edge.source === "string" && edge.source.includes(".")) {
+      const parts = edge.source.split(".");
+      const p = parts.pop()!;
+      const c = parts.join(".");
+      edge.source = { cell: c, port: p };
+    } else if (typeof edge.source === "object" && edge.source?.cell && edge.source.cell.includes(".")) {
+      const parts = edge.source.cell.split(".");
+      const p = edge.source.port || parts.pop()!;
+      const c = parts.join(".");
+      edge.source = { cell: c, port: p };
+    }
+
+    if (typeof edge.target === "string" && edge.target.includes(".")) {
+      const parts = edge.target.split(".");
+      const p = parts.pop()!;
+      const c = parts.join(".");
+      edge.target = { cell: c, port: p };
+    } else if (typeof edge.target === "object" && edge.target?.cell && edge.target.cell.includes(".")) {
+      const parts = edge.target.cell.split(".");
+      const p = edge.target.port || parts.pop()!;
+      const c = parts.join(".");
+      edge.target = { cell: c, port: p };
+    }
+
+    let srcCell = typeof edge.source === "string" ? edge.source : edge.source?.cell;
+    let tgtCell = typeof edge.target === "string" ? edge.target : edge.target?.cell;
+
+    if (srcCell && !validNodeIdSet.has(srcCell)) {
+      const numId = srcCell.startsWith("n_") ? srcCell.slice(2) : srcCell;
+      const sym = index.symbols.get(numId);
+      if (sym?.parentId) {
+        const parentNodeId = `n_${sym.parentId}`;
+        if (validNodeIdSet.has(parentNodeId)) {
+          srcCell = parentNodeId;
+          if (typeof edge.source === "object") {
+            edge.source.cell = parentNodeId;
+          } else {
+            edge.source = parentNodeId;
+          }
+        }
+      }
+    }
+    if (tgtCell && !validNodeIdSet.has(tgtCell)) {
+      const numId = tgtCell.startsWith("n_") ? tgtCell.slice(2) : tgtCell;
+      const sym = index.symbols.get(numId);
+      if (sym?.parentId) {
+        const parentNodeId = `n_${sym.parentId}`;
+        if (validNodeIdSet.has(parentNodeId)) {
+          tgtCell = parentNodeId;
+          if (typeof edge.target === "object") {
+            edge.target.cell = parentNodeId;
+          } else {
+            edge.target = parentNodeId;
+          }
+        }
+      }
+    }
+
+    // Drop accidental self-loops from remapping (unless intentional state transition)
+    if (srcCell === tgtCell && !edge.id.startsWith("TransitionUsage") && !edge.id.startsWith("Transition_")) {
+      continue;
+    }
+
+    if (srcCell && tgtCell && validNodeIdSet.has(srcCell) && validNodeIdSet.has(tgtCell)) {
+      if (typeof edge.source === "object" && edge.source?.port) {
+        const srcNode = nodes.find((n) => n.id === srcCell);
+        const hasPort = srcNode?.ports?.items?.some((p) => p.id === (edge.source as any).port);
+        if (!hasPort && srcNode) {
+          if (!srcNode.ports) srcNode.ports = { groups: {}, items: [] };
+          if (!srcNode.ports.items) srcNode.ports.items = [];
+          srcNode.ports.items.push({ id: (edge.source as any).port, group: "out" });
+        }
+      }
+      if (typeof edge.target === "object" && edge.target?.port) {
+        const tgtNode = nodes.find((n) => n.id === tgtCell);
+        const hasPort = tgtNode?.ports?.items?.some((p) => p.id === (edge.target as any).port);
+        if (!hasPort && tgtNode) {
+          if (!tgtNode.ports) tgtNode.ports = { groups: {}, items: [] };
+          if (!tgtNode.ports.items) tgtNode.ports.items = [];
+          tgtNode.ports.items.push({ id: (edge.target as any).port, group: "in" });
+        }
+      }
+      sanitizedEdges.push(edge);
+    }
+  }
+
   return {
     nodes,
-    edges,
+    edges: sanitizedEdges,
     coordinateSystem: {
       x: -csWidth / 2,
       y: -csHeight / 2,
@@ -2971,6 +3278,73 @@ function resolveEdgeEndpoints(
     sourceId = findNodeIdByPathOrName(rawSrc, index, symbolIdToNodeId, edgeSym.parentId);
     targetId = findNodeIdByPathOrName(rawTgt, index, symbolIdToNodeId, edgeSym.parentId);
     if (sourceId && targetId) return { sourceId, targetId };
+  }
+
+  // Strategy 0.5: SysML v2 ConnectionUsage / FlowConnectionUsage endpoint chaining
+  if (
+    edgeSym.ruleName === "ConnectionUsage" ||
+    edgeSym.ruleName === "FlowConnectionUsage" ||
+    edgeSym.ruleName === "BindingConnectorAsUsage"
+  ) {
+    const connKids = index.childrenOf.get(edgeSym.id) ?? [];
+    const endpointPaths: string[] = [];
+    for (const kidId of connKids) {
+      const grandKids = index.childrenOf.get(kidId) ?? [];
+      const chainNames = grandKids.map((gkId) => index.symbols.get(gkId)?.name).filter((n): n is string => Boolean(n));
+      if (chainNames.length > 0) {
+        endpointPaths.push(chainNames.join("."));
+      } else {
+        const kidSym = index.symbols.get(kidId);
+        if (kidSym?.name && kidSym.name !== "OwnedReferenceSubsetting") {
+          endpointPaths.push(kidSym.name);
+        }
+      }
+    }
+    if (endpointPaths.length >= 2) {
+      sourceId = findNodeIdByPathOrName(endpointPaths[0]!, index, symbolIdToNodeId, edgeSym.parentId);
+      targetId = findNodeIdByPathOrName(endpointPaths[1]!, index, symbolIdToNodeId, edgeSym.parentId);
+      if (sourceId && targetId) return { sourceId, targetId };
+    }
+  }
+
+  // Strategy 0.6: SysML v2 TransitionUsage endpoint resolution (first -> then)
+  if (edgeSym.ruleName === "TransitionUsage") {
+    const srcState = edgeSym.metadata?.["first"] ?? edgeSym.metadata?.["source"] ?? edgeSym.name;
+    const transKids = index.childrenOf.get(edgeSym.id) ?? [];
+    let tgtState = edgeSym.metadata?.["then"] ?? edgeSym.metadata?.["target"];
+    if (!tgtState) {
+      for (const kidId of transKids) {
+        const kid = index.symbols.get(kidId);
+        if (kid && (kid.ruleName === "OwnedReferenceSubsetting" || kid.ruleName === "StateUsage")) {
+          tgtState = kid.name;
+          break;
+        }
+      }
+    }
+    if (srcState && tgtState) {
+      sourceId = findNodeIdByPathOrName(String(srcState), index, symbolIdToNodeId, edgeSym.parentId);
+      targetId = findNodeIdByPathOrName(String(tgtState), index, symbolIdToNodeId, edgeSym.parentId);
+      if (sourceId && targetId) return { sourceId, targetId };
+    }
+  }
+
+  // Strategy 0.7: SysML v2 SatisfyRequirementUsage / VerifyRequirementUsage
+  if (edgeSym.ruleName === "SatisfyRequirementUsage" || edgeSym.ruleName === "VerifyRequirementUsage") {
+    const reqName = edgeSym.name;
+    const kids = index.childrenOf.get(edgeSym.id) ?? [];
+    let partName: string | undefined;
+    for (const kidId of kids) {
+      const kid = index.symbols.get(kidId);
+      if (kid?.name) {
+        partName = kid.name;
+        break;
+      }
+    }
+    if (reqName && partName) {
+      sourceId = findNodeIdByPathOrName(partName, index, symbolIdToNodeId, edgeSym.parentId);
+      targetId = findNodeIdByPathOrName(reqName, index, symbolIdToNodeId, edgeSym.parentId);
+      if (sourceId && targetId) return { sourceId, targetId };
+    }
   }
 
   // Strategy 1: Scope graph resolution
@@ -3425,9 +3799,15 @@ export function buildDiagramFromDSL(
         },
       ],
       properties: {
+        name: containerName,
         className: ruleName,
         description: containerName,
         parameters: [],
+        ruleName,
+      },
+      data: {
+        name: containerName,
+        label: containerName,
         ruleName,
       },
     };
@@ -3603,9 +3983,15 @@ export function buildDiagramFromDSL(
       ],
       ports: portItems.length > 0 ? { groups: portGroups, items: portItems } : undefined,
       properties: {
+        name: label,
         className: ruleName,
         description: label,
         parameters: [],
+        ruleName,
+      },
+      data: {
+        name: label,
+        label,
         ruleName,
       },
     };

@@ -7,6 +7,7 @@ import {
   createChunkedUint8Array, createChunkedUint32Array, createChunkedFloat64Array, createChunkedInt32Array, atomicChunkAlloc
 } from "./core/array";
 export { atomicChunkAlloc };
+import { UnmanagedMap64 } from "./core/hashmap";
 import { inputEncoding } from "./parser";
 export { inputEncoding };
 
@@ -27,63 +28,55 @@ const GLOBAL_BUMP_PTR: usize = 0;
  * Syntax Tree nodes. Each node occupies a fixed size of 32 bytes (`NODE_SIZE = 32`).
  *
  * Node Memory Layout (32 bytes, 8-byte aligned):
- * - `offset + 0`  (`word0`): `type` (10 bits) | `flags` low 12 bits (bits 10..21) | `paddingLength` (10 bits, bits 22..31)
- * - `offset + 4`  (`word1`): `byteLength` (23 bits) | `isFatPadding` (1 bit, bit 23) | `envHash` (8 bits, bits 24..31)
- * - `offset + 8`  (`startState`): LR state (16 bits) | reduction lookahead (15 bits) | `FLAG_FRAGILE` (bit 31)
- * - `offset + 12` (`firstChild`): arena pointer to first child node (or `freeListNext` when on the free list)
+ * - `offset + 0`  (`word0`): `type` (16 bits, bits 0..15) | `flags` (16 bits, bits 16..31)
+ * - `offset + 4`  (`byteLength`): full 32-bit source text span length (up to 4 GB)
+ * - `offset + 8`  (`paddingLength`): full 32-bit leading trivia/whitespace byte length
+ * - `offset + 12` (`firstChild`): arena pointer to first child node (or `freeListNext` when on free list)
  * - `offset + 16` (`nextSibling`): arena pointer to next sibling node
- * - `offset + 20` (`merkleLow`): lower 32 bits of the 64-bit structural Merkle hash
- * - `offset + 24` (`merkleHigh`): upper 32 bits of the 64-bit structural Merkle hash
- * - `offset + 28` (`fatPadding`): full 32-bit leading trivia length when `isFatPadding` is set (`paddingLength >= 1024`)
- *
- * The logical `flags` value is 13 bits wide: bits 0–11 live in `word0` and bit 12
- * (`FLAG_FRAGILE`) is stored in bit 31 of `startState`, because `word0` has no spare bits.
+ * - `offset + 20` (`word5`): LR start state (16 bits, bits 0..15) | `envHash` (8 bits, bits 16..23) | reduction lookahead (8 bits, bits 24..31)
+ * - `offset + 24` (`merkleLow`): lower 32 bits of 64-bit structural + token Merkle hash
+ * - `offset + 28` (`merkleHigh`): upper 32 bits of 64-bit structural + token Merkle hash
  */
 @unmanaged
 export class ASTNode {
-  /** Packed word 0: `type` (bits 0..9), `flags[0..11]` (bits 10..21), inline `paddingLength` (bits 22..31). */
+  /** Packed word 0: `type` (bits 0..15), `flags` (bits 16..31). */
   word0: u32;
-  /** Packed word 1: `byteLength` (bits 0..22), `isFatPadding` (bit 23), `envHash` (bits 24..31). */
-  word1: u32;
-  /** Packed word 2: parser LR entry state (bits 0..15), reduction lookahead (bits 16..30), `FLAG_FRAGILE` (bit 31). */
-  startState: u32;
+  /** Full 32-bit source text span length. */
+  byteLength: u32;
+  /** Full 32-bit leading trivia/whitespace byte length. */
+  paddingLength: u32;
   /** Byte offset in the arena to the first child node (0 if leaf), or next free node when recycled. */
   firstChild: u32;
   /** Byte offset in the arena to the next sibling node (0 if last child). */
   nextSibling: u32;
+  /** Packed word 5: LR start state (bits 0..15), envHash (bits 16..23), reduction lookahead (bits 24..31). */
+  word5: u32;
   /** Lower 32 bits of the node's 64-bit structural + token Merkle hash. */
   merkleLow: u32;
   /** Upper 32 bits of the node's 64-bit structural + token Merkle hash. */
   merkleHigh: u32;
-  /** Overflow 32-bit leading whitespace/comment byte length used when `isFatPadding` is true. */
-  fatPadding: u32;
 
   // --- Core Bitfield Accessors ---
-  @inline get type(): u16 { return (this.word0 & 0x03ff) as u16; }
-  @inline set type(t: u16) { this.word0 = (this.word0 & ~0x03ff) | (t as u32 & 0x03ff); }
+  @inline get type(): u16 { return (this.word0 & 0xffff) as u16; }
+  @inline set type(t: u16) { this.word0 = (this.word0 & 0xffff0000) | (t as u32 & 0xffff); }
 
-  @inline get flags(): u16 {
-    return (((this.word0 >> 10) & 0x0fff) | ((this.startState >>> 31) << 12)) as u16;
-  }
-  @inline set flags(f: u16) {
-    this.word0 = (this.word0 & ~(0x0fff << 10)) | ((f as u32 & 0x0fff) << 10);
-    this.startState = (this.startState & 0x7fffffff) | (((f as u32 >> 12) & 1) << 31);
-  }
+  @inline get flags(): u16 { return (this.word0 >>> 16) as u16; }
+  @inline set flags(f: u16) { this.word0 = (this.word0 & 0x0000ffff) | ((f as u32) << 16); }
 
-  @inline get paddingLength(): u32 { return this.word0 >> 22; }
-  @inline set paddingLength(pad: u32) { this.word0 = (this.word0 & 0x003fffff) | (pad << 22); }
+  @inline get startState(): u16 { return (this.word5 & 0xffff) as u16; }
+  @inline set startState(s: u16) { this.word5 = (this.word5 & 0xffff0000) | (s as u32 & 0xffff); }
 
-  @inline get byteLength(): u32 { return this.word1 & 0x007fffff; }
-  @inline set byteLength(len: u32) { this.word1 = (this.word1 & 0xff800000) | (len & 0x007fffff); }
+  @inline get envHash(): u32 { return (this.word5 >> 16) & 0xff; }
+  @inline set envHash(hash: u32) { this.word5 = (this.word5 & ~(0xff << 16)) | ((hash & 0xff) << 16); }
 
-  @inline get isFatPadding(): boolean { return ((this.word1 >> 23) & 1) == 1; }
-  @inline set isFatPadding(val: boolean) {
-    if (val) this.word1 |= (1 << 23);
-    else this.word1 &= ~(1 << 23);
-  }
+  @inline get reductionLookahead(): u8 { return (this.word5 >>> 24) as u8; }
+  @inline set reductionLookahead(rl: u8) { this.word5 = (this.word5 & 0x00ffffff) | ((rl as u32) << 24); }
 
-  @inline get envHash(): u32 { return this.word1 >> 24; }
-  @inline set envHash(hash: u32) { this.word1 = (this.word1 & ~(0xff << 24)) | ((hash & 0xff) << 24); }
+  @inline get isFatPadding(): boolean { return false; }
+  @inline set isFatPadding(val: boolean) {}
+
+  @inline get fatPadding(): u32 { return this.paddingLength; }
+  @inline set fatPadding(val: u32) { this.paddingLength = val; }
 
   // --- Bitwise Flag Helpers ---
   @inline hasFlag(flag: u16): boolean { return (this.flags & flag) != 0; }
@@ -611,20 +604,83 @@ export function initArena(sizeBytes: u32): void {
  * @param envHash A structural hash used for rapid comparison and deduplication.
  * @returns A physical memory pointer (u32) to the newly allocated 32-byte node.
  */
+let freeChunkHead: u32 = 0;
+let freeChunkCount: u32 = 0;
+
+let currentDocFileId: u32 = 0;
+let docActiveChunk: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
+let docActiveOffset: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
+let docChunkHead: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
+
+function ensureDocMaps(): void {
+  if (changetype<usize>(docActiveChunk) == 0) {
+    docActiveChunk = changetype<UnmanagedMap64>(UnmanagedMap64.create());
+    docActiveOffset = changetype<UnmanagedMap64>(UnmanagedMap64.create());
+    docChunkHead = changetype<UnmanagedMap64>(UnmanagedMap64.create());
+  }
+}
+
+export function setAllocDocument(fileId: u32): void {
+  currentDocFileId = fileId;
+}
+
+export function getAllocDocument(): u32 {
+  return currentDocFileId;
+}
+
+export function evictDocumentArena(fileId: u32): void {
+  if (fileId == 0 || changetype<usize>(docChunkHead) == 0) return;
+  let chunk = docChunkHead.get(fileId as u64);
+  while (chunk != 0) {
+    let next = load<u32>(chunk as usize);
+    store<u32>(chunk as usize, freeChunkHead);
+    freeChunkHead = chunk;
+    freeChunkCount++;
+    chunk = next;
+  }
+  docChunkHead.set(fileId as u64, 0);
+  docActiveChunk.set(fileId as u64, 0);
+  docActiveOffset.set(fileId as u64, 0);
+}
+
 export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHash: u32, isTainted: boolean = false, startState: u32 = 0): u32 {
   let s = S();
   s.allocCount++;
   let ptr: u32 = 0;
 
-  let flags: u32 = type == 0 ? FLAG_HAS_ERROR : 0;
-  // Perform atomic bump allocation in the currently active generation (Immutable Append-Only)
-  let endLimit = s.activeGeneration == 0 ? s.gen0_endLimit : (s.activeGeneration == 1 ? s.gen1_endLimit : s.gen2_endLimit);
+  if (currentDocFileId != 0) {
+    ensureDocMaps();
+    let chunk = docActiveChunk.get(currentDocFileId as u64);
+    let offset = docActiveOffset.get(currentDocFileId as u64);
+    if (chunk == 0 || offset + NODE_SIZE > chunk + AST_CHUNK_SIZE) {
+      let newChunk: u32 = 0;
+      if (freeChunkHead != 0) {
+        newChunk = freeChunkHead;
+        freeChunkHead = load<u32>(newChunk as usize);
+        freeChunkCount--;
+      } else {
+        newChunk = allocAlignedAstChunk();
+      }
+      let headChunk = docChunkHead.get(currentDocFileId as u64);
+      store<u32>(newChunk as usize, headChunk);
+      store<u32>((newChunk + 4) as usize, currentDocFileId);
+      docChunkHead.set(currentDocFileId as u64, newChunk);
 
-  // Atomically claim a 32-byte slot (8-byte aligned)
-  ptr = s.atomicAddOffset(NODE_SIZE);
+      chunk = newChunk;
+      offset = chunk + 32;
+      docActiveChunk.set(currentDocFileId as u64, chunk);
+    }
+    ptr = offset;
+    docActiveOffset.set(currentDocFileId as u64, offset + NODE_SIZE);
+  } else {
+    // Perform atomic bump allocation in the currently active generation (Immutable Append-Only)
+    let endLimit = s.activeGeneration == 0 ? s.gen0_endLimit : (s.activeGeneration == 1 ? s.gen1_endLimit : s.gen2_endLimit);
 
-  // Request a new chunk if the claimed slot exceeds the current chunk boundary
-  if (ptr + NODE_SIZE > endLimit) {
+    // Atomically claim a 32-byte slot (8-byte aligned)
+    ptr = s.atomicAddOffset(NODE_SIZE);
+
+    // Request a new chunk if the claimed slot exceeds the current chunk boundary
+    if (ptr + NODE_SIZE > endLimit) {
       let isGen0 = s.activeGeneration == 0;
       let isGen2 = s.activeGeneration == 2;
       // 3.1 Acquire spinlock to safely handle the rollover and prevent data corruption
@@ -678,7 +734,6 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
         ptr = newChunk;
       } else {
         // 3.3 Another thread already rolled over the chunk while we were spinning.
-        // The old `ptrLoc` is now pointing safely inside the NEW chunk. Claim a slot from it.
         ptr = s.atomicAddOffset(NODE_SIZE);
       }
       
@@ -689,39 +744,26 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
     if (s.activeGeneration == 1) {
       s.arenaOffset = ptr + NODE_SIZE;
     }
-
-  // 4. Handle values that exceed the 10-bit inline padding limit (0x03ff = 1023)
-  let fatFlag: u32 = 0;
-  let fullPadding = paddingLength;
-  if (paddingLength >= 0x03ff) {
-    fatFlag = 1;
-    paddingLength = 0;
   }
 
-  // 5. Clamp lengths to fit within bit-packed limits
-  if (byteLength > 0x007fffff) byteLength = 0x007fffff;
-  if (envHash > 255) envHash = 255;
-
-  // 6. Assemble using the unmanaged wrapper
-  let initialFlags: u32 = 0;
-  let typ = type & 0x03ff;
-  
-  if (typ == 0) { // 0 is NODE_TYPE_ERROR
-    initialFlags |= (FLAG_HAS_ERROR as u32) << 10;
+  // Assemble node using clean 32-byte layout
+  let initialFlags: u16 = 0;
+  if (type == 0) { // 0 is NODE_TYPE_ERROR
+    initialFlags |= FLAG_HAS_ERROR;
   }
   if (isTainted) {
-    initialFlags |= (FLAG_IS_TAINED as u32) << 10;
+    initialFlags |= FLAG_IS_TAINED;
   }
 
   let node = changetype<ASTNode>(ptr);
-  node.word0 = (typ as u32 & 0x03ff) | initialFlags | (paddingLength << 22);
-  node.word1 = byteLength | (fatFlag << 23) | (envHash << 24);
-  node.startState = startState & 0xffff;
+  node.word0 = (type as u32 & 0xffff) | ((initialFlags as u32) << 16);
+  node.byteLength = byteLength;
+  node.paddingLength = paddingLength;
   node.firstChild = 0;
   node.nextSibling = 0;
+  node.word5 = (startState & 0xffff) | ((envHash & 0xff) << 16);
   node.merkleLow = 0;
   node.merkleHigh = 0;
-  node.fatPadding = fatFlag != 0 ? fullPadding : 0;
 
   return ptr;
 }
@@ -765,10 +807,18 @@ export function computeNodeMerkleHashAt(nodeId: u32, absoluteStart: u32): u64 {
           h = h * 0x100000001b3;
         }
       } else if (inBuf != 0) {
-        let basePtr = inBuf + (ptr << 1);
-        for (let i: u32 = 0; i < len; i++) {
-          h ^= load<u16>(basePtr + ((i as usize) << 1)) as u64;
-          h = h * 0x100000001b3;
+        if (inputEncoding == 0) {
+          let basePtr = inBuf + ptr;
+          for (let i: u32 = 0; i < len; i++) {
+            h ^= load<u8>(basePtr + i) as u64;
+            h = h * 0x100000001b3;
+          }
+        } else {
+          let basePtr = inBuf + (ptr << 1);
+          for (let i: u32 = 0; i < len; i++) {
+            h ^= load<u16>(basePtr + ((i as usize) << 1)) as u64;
+            h = h * 0x100000001b3;
+          }
         }
       }
     }
@@ -800,14 +850,15 @@ export function computeNodeMerkleHashAt(nodeId: u32, absoluteStart: u32): u64 {
 }
 
 export function computeNodeMerkleHash(nodeId: u32): u64 {
-  return computeNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
+  if (nodeId == 0) return 0;
+  return computeNodeMerkleHashAt(nodeId, getNodeLeadingPad(nodeId));
 }
 
 export function getNodeMerkleLow(nodeId: u32): u32 {
   if (nodeId == 0) return 0;
   let node = changetype<ASTNode>(nodeId);
   if (node.merkleLow == 0 && node.merkleHigh == 0) {
-    computeNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
+    computeNodeMerkleHashAt(nodeId, getNodeLeadingPad(nodeId));
   }
   return node.merkleLow;
 }
@@ -816,7 +867,7 @@ export function getNodeMerkleHigh(nodeId: u32): u32 {
   if (nodeId == 0) return 0;
   let node = changetype<ASTNode>(nodeId);
   if (node.merkleLow == 0 && node.merkleHigh == 0) {
-    computeNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
+    computeNodeMerkleHashAt(nodeId, getNodeLeadingPad(nodeId));
   }
   return node.merkleHigh;
 }
@@ -831,7 +882,8 @@ export function getNodeMerkleHashAt(nodeId: u32, absoluteStart: u32): u64 {
 }
 
 export function getNodeMerkleHash(nodeId: u32): u64 {
-  return getNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
+  if (nodeId == 0) return 0;
+  return getNodeMerkleHashAt(nodeId, getNodeLeadingPad(nodeId));
 }
 
 export function setNodeMerkleHash(nodeId: u32, low: u32, high: u32): void {
@@ -843,31 +895,29 @@ export function setNodeMerkleHash(nodeId: u32, low: u32, high: u32): void {
 
 @inline
 export function getNodeStartState(ptr: u32): u32 {
-  return changetype<ASTNode>(ptr).startState & 0xffff;
+  return changetype<ASTNode>(ptr).startState;
 }
 
 @inline
 export function getNodeReductionLookahead(ptr: u32): u32 {
-  return (changetype<ASTNode>(ptr).startState >> 16) & 0x7fff;
+  return changetype<ASTNode>(ptr).reductionLookahead;
 }
 
 @inline
 export function setNodeStartState(ptr: u32, state: u32): void {
-  let node = changetype<ASTNode>(ptr);
-  node.startState = (node.startState & 0xffff0000) | (state & 0xffff);
+  changetype<ASTNode>(ptr).startState = state as u16;
 }
 
 @inline
 export function setNodeReductionLookahead(ptr: u32, lookahead: u32): void {
-  let node = changetype<ASTNode>(ptr);
-  node.startState = (node.startState & 0x8000ffff) | ((lookahead & 0x7fff) << 16);
+  changetype<ASTNode>(ptr).reductionLookahead = lookahead as u8;
 }
 
 @inline
 export function setNodeReductionInfo(ptr: u32, state: u32, lookahead: u32): void {
   let node = changetype<ASTNode>(ptr);
-  // Preserve bit 31 (FLAG_FRAGILE storage).
-  node.startState = (node.startState & 0x80000000) | (state & 0xffff) | ((lookahead & 0x7fff) << 16);
+  node.startState = state as u16;
+  node.reductionLookahead = lookahead as u8;
 }
 
 // ----------------------------------------------------------------------------
@@ -992,10 +1042,25 @@ export class TreeCursor {
   }
 }
 
+/** Head of the per-instance free list of released tree cursors (the next link lives in the cursor's first word). */
+let treeCursorFreeHead: usize = 0;
+
 export function treeCursorAlloc(): usize {
-  let ptr = atomicChunkAlloc(TREE_CURSOR_SIZE);
+  let ptr = treeCursorFreeHead;
+  if (ptr != 0) {
+    treeCursorFreeHead = load<usize>(ptr);
+  } else {
+    ptr = atomicChunkAlloc(TREE_CURSOR_SIZE);
+  }
   treeCursorReset(ptr, 0);
   return ptr;
+}
+
+/** Returns a cursor obtained from `treeCursorAlloc` to the pool for reuse. */
+export function treeCursorFree(cursorPtr: usize): void {
+  if (cursorPtr == 0) return;
+  store<usize>(cursorPtr, treeCursorFreeHead);
+  treeCursorFreeHead = cursorPtr;
 }
 
 export function treeCursorReset(cursorPtr: usize, rootPtr: u32): void {
@@ -1247,41 +1312,40 @@ export function setNodeType(ptr: u32, t: u16): void {
   changetype<ASTNode>(ptr).type = t;
 }
 
+@inline
 export function getNodePadding(ptr: u32): u32 {
-  let node = changetype<ASTNode>(ptr);
-  if (node.isFatPadding) return node.fatPadding;
-  return node.paddingLength;
+  return changetype<ASTNode>(ptr).paddingLength;
 }
 
+@inline
 export function setNodePadding(ptr: u32, pad: u32): void {
-  let node = changetype<ASTNode>(ptr);
-  if (pad >= 0x03ff) {
-    node.paddingLength = 0;
-    node.fatPadding = pad;
-    node.isFatPadding = true;
-  } else {
-    node.paddingLength = pad;
-    node.fatPadding = 0;
-    node.isFatPadding = false;
-  }
+  changetype<ASTNode>(ptr).paddingLength = pad;
 }
 
 export function propagateFirstChildPadding(ptr: u32, pad: u32): void {
   if (ptr != 0) {
-    setNodePadding(ptr, pad);
+    changetype<ASTNode>(ptr).paddingLength = pad;
   }
 }
 
+@inline
 export function getNodeByteLength(ptr: u32): u32 {
   return changetype<ASTNode>(ptr).byteLength;
 }
 
+@inline
 export function setNodeByteLength(ptr: u32, len: u32): void {
   changetype<ASTNode>(ptr).byteLength = len;
 }
 
+@inline
 export function getNodeEnvHash(ptr: u32): u32 {
   return changetype<ASTNode>(ptr).envHash;
+}
+
+@inline
+export function setNodeEnvHash(ptr: u32, envHash: u32): void {
+  changetype<ASTNode>(ptr).envHash = envHash;
 }
 
 export function getNodeFirstChild(ptr: u32): u32 {
@@ -1315,7 +1379,7 @@ export function getNodeNextSibling(ptr: u32): u32 {
 
 export function getNodeFieldId(ptr: u32): u16 {
   if (ptr == 0) return 0;
-  return ((changetype<ASTNode>(ptr).word0 >> 10) & 0x0fff) as u16;
+  return changetype<ASTNode>(ptr).flags;
 }
 
 export function getNodeField(ptr: u32, fieldId: u16): u32 {

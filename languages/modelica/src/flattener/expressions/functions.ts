@@ -78,7 +78,19 @@ export function getSymbolQualifiedName(db: QueryDB, symId: SymbolId): string {
 export function isEquationExpr(c: any): boolean {
   if (!c) return false;
   const t = c.type;
-  return t === "expression" || t === "Expression" || t === "lhs_expression" || t === "LhsExpression";
+  if (t === "=" || t === '"="' || t === "comment" || t === "description" || t === ";" || t === '";"') {
+    return false;
+  }
+  return (
+    t === "expression" ||
+    t === "Expression" ||
+    t === "lhs_expression" ||
+    t === "LhsExpression" ||
+    t === "component_reference" ||
+    t === "primary" ||
+    t === "output_expression_list" ||
+    !c.isTerminal
+  );
 }
 
 export function isOuterFunctionSymbol(db: any, sym: any): boolean {

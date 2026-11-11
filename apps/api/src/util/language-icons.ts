@@ -32,6 +32,22 @@ const FALLBACK_LANGS: Record<string, FallbackSpec> = {
   qif: { name: "QIF 3.0", short: "QIF", color: "#0284c7" },
   oscal: { name: "NIST OSCAL", short: "OSC", color: "#7c3aed" },
   automationml: { name: "AutomationML", short: "AML", color: "#0d9488" },
+  epanet: { name: "EPANET", short: "EPA", color: "#0284c7" },
+  opendss: { name: "OpenDSS", short: "DSS", color: "#059669" },
+  psse: { name: "PSS/E", short: "PSSE", color: "#b45309" },
+  swmm: { name: "SWMM", short: "SWMM", color: "#0891b2" },
+  "hec-ras": { name: "HEC-RAS", short: "RAS", color: "#0284c7" },
+  modflow: { name: "MODFLOW", short: "FLOW", color: "#0d9488" },
+  landgem: { name: "LandGEM", short: "LGEM", color: "#15803d" },
+  gtfs: { name: "GTFS", short: "GTFS", color: "#e11d48" },
+  openadr: { name: "OpenADR", short: "ADR", color: "#d97706" },
+  cantera: { name: "Cantera", short: "CT", color: "#dc2626" },
+  smiles: { name: "SMILES", short: "SMI", color: "#059669" },
+  sbol: { name: "SBOL", short: "SBOL", color: "#16a34a" },
+  bngl: { name: "BNGL", short: "BNG", color: "#0d9488" },
+  sedml: { name: "SED-ML", short: "SED", color: "#4f46e5" },
+  antimony: { name: "Antimony", short: "SB", color: "#16a34a" },
+  ampl: { name: "AMPL", short: "AMPL", color: "#ea580c" },
 };
 
 /**
@@ -45,18 +61,29 @@ export function getLanguageIconSvg(languageOrPkgName: string): string | null {
   if (norm.includes("sysml") || norm.includes("kerml")) lang = "sysml2";
   else if (norm.includes("step") || norm.includes("cad") || norm.includes("iso10303")) lang = "step";
   else if (norm.includes("scad") || norm.includes("openscad")) lang = "scad";
-  else if (norm.includes("ssp")) lang = "ssp";
+  else if (norm.includes("ssp") || norm.includes("fmu") || norm.includes("fmi")) lang = "ssp";
   else if (norm.includes("cfd") || norm.includes("su2")) lang = "cfd";
   else if (norm.includes("fea") || norm.includes("nastran")) lang = "fea";
   else if (norm.includes("owl") || norm.includes("rdf") || norm.includes("ontology")) lang = "owl2";
   else if (norm.includes("csv") || norm.includes("dataset")) lang = "csv";
   else if (norm === "c" || norm.startsWith("clang") || norm.includes("embeddedc")) lang = "c";
+  else if (norm.includes("robot") || norm.includes("urdf") || norm.includes("kinematic")) lang = "urdf";
+  else if (norm.includes("epanet") || norm.includes("waterflow") || norm.includes("hydraulic")) lang = "epanet";
+  else if (norm.includes("opendss") || norm.includes("feeder")) lang = "opendss";
+  else if (norm.includes("psse") || norm.includes("raw") || norm.includes("dyr")) lang = "psse";
+  else if (norm.includes("swmm") || norm.includes("stormwater") || norm.includes("runoff")) lang = "swmm";
+  else if (norm.includes("hecras") || norm.includes("river")) lang = "hec-ras";
+  else if (norm.includes("modflow") || norm.includes("aquifer") || norm.includes("groundwater")) lang = "modflow";
+  else if (norm.includes("landgem") || norm.includes("biogas")) lang = "landgem";
+  else if (norm.includes("gtfs") || norm.includes("transit")) lang = "gtfs";
+  else if (norm.includes("openadr") || norm.includes("flexalert") || norm.includes("demandresponse")) lang = "openadr";
+  else if (norm.includes("biomodel") || norm.includes("sbml")) lang = "sbml";
   else if (norm.includes("modelscript") || norm.includes("msx")) lang = "modelscript";
   else if (norm.includes("modelica") || norm.includes("msl")) lang = "modelica";
   else {
     // Check known polyglot fallbacks
     for (const [key] of Object.entries(FALLBACK_LANGS)) {
-      if (norm.includes(key)) {
+      if (norm.includes(key.replace(/[^a-z0-9]/g, ""))) {
         lang = key;
         break;
       }

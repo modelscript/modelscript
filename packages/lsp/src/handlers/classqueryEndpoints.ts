@@ -425,7 +425,9 @@ export function registerClassQueryEndpoints(context: LspContext) {
           const classPrefix =
             (entry.metadata as any)?.classPrefixes ?? (entry.kind === "Package" ? "package" : "model");
           const desc = (entry.metadata as any)?.description
-            ? ` "${String((entry.metadata as any).description).replace(/"/g, '\\"')}"`
+            ? ` "${String((entry.metadata as any).description)
+                .replace(/\\/g, "\\\\")
+                .replace(/"/g, '\\"')}"`
             : "";
           const childIds = unifiedIndex.childrenOf.get(entry.id) ?? [];
           const bodyLines: string[] = [];
@@ -444,7 +446,9 @@ export function registerClassQueryEndpoints(context: LspContext) {
                       : "";
               const tSpec = String(m["typeSpecifier"] ?? "Real");
               const defVal = m["defaultValue"] !== undefined ? ` = ${m["defaultValue"]}` : "";
-              const chDesc = m["description"] ? ` "${String(m["description"]).replace(/"/g, '\\"')}"` : "";
+              const chDesc = m["description"]
+                ? ` "${String(m["description"]).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
+                : "";
               bodyLines.push(`  ${prefix}${tSpec} ${ch.name}${defVal}${chDesc};`);
             }
           }

@@ -53,7 +53,7 @@ function doHide(): void {
   isCurrentlyShown = false;
   shownAtTimestamp = 0;
   clearSafetyTimer();
-  const el = document.getElementById("spinner");
+  const el = typeof document !== "undefined" ? document.getElementById("spinner") : null;
   if (el) {
     el.style.display = "none";
   }
@@ -61,6 +61,7 @@ function doHide(): void {
 
 /** Show the spinner overlay with debounce and safety timeout. */
 export function show(): void {
+  if (typeof document === "undefined") return;
   if (hideTimer) {
     clearTimeout(hideTimer);
     hideTimer = null;
@@ -77,7 +78,7 @@ export function show(): void {
 
   showTimer = setTimeout(() => {
     showTimer = null;
-    const el = document.getElementById("spinner");
+    const el = typeof document !== "undefined" ? document.getElementById("spinner") : null;
     if (el) {
       el.style.display = "block";
     }
@@ -97,7 +98,7 @@ export function hide(): void {
 
   // If spinner never became visible, ensure it's hidden and return immediately
   if (!isCurrentlyShown) {
-    const el = document.getElementById("spinner");
+    const el = typeof document !== "undefined" ? document.getElementById("spinner") : null;
     if (el) el.style.display = "none";
     clearSafetyTimer();
     return;

@@ -102,7 +102,13 @@ end Untitled;
 
     // Verify native GLR parser parses the resulting code with zero syntax errors
     const parsed = parser.parse(code);
-    assert.strictEqual(parsed.rootNode.hasError(), false, `Generated Modelica code had parse errors:\n${code}`);
+    assert.strictEqual(
+      typeof (parsed.rootNode as any).hasError === "function"
+        ? (parsed.rootNode as any).hasError()
+        : (parsed.rootNode as any).hasError,
+      false,
+      `Generated Modelica code had parse errors:\n${code}`,
+    );
   });
 
   it("auto-heals an already-broken model where class annotation(...) was stranded at the top above components and equations", () => {
@@ -128,7 +134,13 @@ end Untitled;
     assert.ok(idxEnd > idxClassAnn);
 
     const parsed = parser.parse(healed);
-    assert.strictEqual(parsed.rootNode.hasError(), false, `Healed Modelica code must parse cleanly:\n${healed}`);
+    assert.strictEqual(
+      typeof (parsed.rootNode as any).hasError === "function"
+        ? (parsed.rootNode as any).hasError()
+        : (parsed.rootNode as any).hasError,
+      false,
+      `Healed Modelica code must parse cleanly:\n${healed}`,
+    );
   });
 
   it("updates multi-line component declarations with shifted CST lines without truncating modifiers or duplicating Placement", () => {
@@ -191,7 +203,12 @@ end MultiLineShift;`;
     );
     assert.strictEqual((updated.match(/\bPlacement\s*\(/g) ?? []).length, 1, "Must have exactly 1 Placement(...)");
     assert.ok(updated.includes("origin={50,50}"), `Expected updated origin in:\n${updated}`);
-    assert.strictEqual(parser.parse(updated).rootNode.hasError(), false);
+    assert.strictEqual(
+      typeof (parser.parse(updated).rootNode as any).hasError === "function"
+        ? (parser.parse(updated).rootNode as any).hasError()
+        : (parser.parse(updated).rootNode as any).hasError,
+      false,
+    );
   });
 
   it("computeCoordinateSystemEdits never injects Diagram(...) inside a connect Line(...) annotation or comment/string", () => {
@@ -227,7 +244,12 @@ end CoordSysSafety;`;
       ),
       `Expected clean class-level Diagram annotation before end:\n${updated}`,
     );
-    assert.strictEqual(parser.parse(updated).rootNode.hasError(), false);
+    assert.strictEqual(
+      typeof (parser.parse(updated).rootNode as any).hasError === "function"
+        ? (parser.parse(updated).rootNode as any).hasError()
+        : (parser.parse(updated).rootNode as any).hasError,
+      false,
+    );
   });
 
   it("computeNameEdit renames both the component declaration and all matching connect(...) endpoints", () => {
@@ -247,7 +269,12 @@ end RenameTest;`;
     assert.ok(updated.includes("connect(FilterMain.y, CD2.u)"));
     assert.ok(updated.includes("connect(CD2.y, FilterMain.u);"));
     assert.ok(!/\bCD1\b/.test(updated), `Old component name CD1 should be completely renamed:\n${updated}`);
-    assert.strictEqual(parser.parse(updated).rootNode.hasError(), false);
+    assert.strictEqual(
+      typeof (parser.parse(updated).rootNode as any).hasError === "function"
+        ? (parser.parse(updated).rootNode as any).hasError()
+        : (parser.parse(updated).rootNode as any).hasError,
+      false,
+    );
   });
 
   it("handles multi-declarator component deletion cleanly without deleting sibling declarators", () => {
@@ -264,7 +291,12 @@ end MultiDecl;`;
 
     assert.ok(updated.includes("Resistor R1, R3;"), `Sibling declarators R1 and R3 must survive:\n${updated}`);
     assert.ok(!updated.includes("R2"), `R2 and its connections must be removed:\n${updated}`);
-    assert.strictEqual(parser.parse(updated).rootNode.hasError(), false);
+    assert.strictEqual(
+      typeof (parser.parse(updated).rootNode as any).hasError === "function"
+        ? (parser.parse(updated).rootNode as any).hasError()
+        : (parser.parse(updated).rootNode as any).hasError,
+      false,
+    );
   });
 
   it("succeeds on all diagram edits even when the Modelica file has active syntax errors", () => {

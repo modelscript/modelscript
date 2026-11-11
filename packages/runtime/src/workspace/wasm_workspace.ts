@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { SyntheticSymbolSpec, WorkspaceIndexingHooks } from "@modelscript/dsl";
 import { PolyglotTransformer, type PolyglotNode } from "../interop/polyglot-transformer.js";
 import { WasmOntologyStore } from "../ontology/wasm_ontology.js";
 import {
@@ -275,7 +276,11 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
    * Creates a new `LanguageWorkspaceIndex` from either an array of grammar `IndexerHook`s
    * or a low-level `WasmLanguageInstance`.
    */
-  constructor(instanceOrHooks: WasmLanguageInstance | IndexerHook[] | any = {}) {
+  constructor(
+    instanceOrHooks: WasmLanguageInstance | IndexerHook[] | any = {},
+    workspaceHooks?: WorkspaceIndexingHooks,
+  ) {
+    if (workspaceHooks) this.wsHooks = workspaceHooks;
     if (Array.isArray(instanceOrHooks)) {
       for (const hook of instanceOrHooks) {
         if (hook && hook.ruleName) {
@@ -286,6 +291,14 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     } else {
       this.instance = instanceOrHooks || {};
     }
+  }
+
+  /** Language-specific conventions (package layout, declared scopes, synthetic symbols). */
+  private wsHooks: WorkspaceIndexingHooks = {};
+
+  /** Replaces the language-specific indexing hooks (affects subsequent indexing only). */
+  setWorkspaceHooks(hooks: WorkspaceIndexingHooks): void {
+    this.wsHooks = hooks;
   }
 
   /** Current workspace mutation version counter. */
@@ -361,8 +374,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       this.fileDirtyRanges.set(uri, editRanges);
     }
     const rawFilename = uri.split("/").pop();
-    const filename = rawFilename?.replace(/\.(mo|sysml|csv|step)$/i, "");
-    if (filename === "package") {
+    const filename = rawFilename?.replace(/\.[^./]+$/, "");
+    if (filename && this.wsHooks.isPackageEntryFile?.(filename)) {
       const parts = uri.split("/");
       const pkgDirRaw = parts.length >= 2 ? decodeURIComponent(parts[parts.length - 2]!).split(" ")[0] : "";
       if (pkgDirRaw) {
@@ -451,13 +464,8 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
             }
           }
         }
-        if (!uri && (prefix === "Modelica.Icons" || prefix.endsWith(".Icons") || prefix === "Icons")) {
-          for (const fUri of this.fileLoaders.keys()) {
-            if (fUri.endsWith("/Icons.mo") || fUri.endsWith("Icons.mo")) {
-              uri = fUri;
-              break;
-            }
-          }
+        if (!uri && this.wsHooks.fallbackUriForFQN) {
+          uri = this.wsHooks.fallbackUriForFQN(prefix, this.fileLoaders.keys());
         }
         if (uri) {
           this.ensureIndexed(uri);
@@ -479,10 +487,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     const norm = !parentFQN || parentFQN === "" ? "" : parentFQN;
     for (const [uri, entry] of Array.from(this.fileLoaders.entries())) {
       const entryParent = !entry.parentFQN || entry.parentFQN === "" ? "" : entry.parentFQN;
-      if (
-        entryParent === norm ||
-        (norm === "Modelica" && !entryParent && (uri.endsWith("/Icons.mo") || uri.endsWith("Icons.mo")))
-      ) {
+      if (entryParent === norm || (this.wsHooks.adoptsPendingChild?.(norm, entryParent, uri) ?? false)) {
         this.ensureIndexed(uri);
       }
     }
@@ -590,51 +595,6 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   }
 
   /**
-   * Extracts the enclosing package FQN declared by a top-level `within <package>;` clause
-   * from `rootNode`, returning `""` for root `within;` or `null` if no `within` clause is present.
-   */
-  private extractDeclaredWithin(rootNode: any): string | null {
-    if (!rootNode) return null;
-    const findInNode = (n: any): string | null => {
-      if (!n) return null;
-      if (n.type === "within_clause" || n.type === "WithinDirective") {
-        const nameChild = n.children?.find(
-          (c: any) => c.type === "name" || c.type === "name_list" || c.type === "identifier" || c.type === "IDENT",
-        );
-        if (nameChild && nameChild.text) {
-          return nameChild.text.trim();
-        }
-        const t = n.text || "";
-        const m = t.match(/^\s*within(?:\s+([a-zA-Z0-9_.]+))?\s*;/m);
-        return m ? m[1]?.trim() || "" : "";
-      }
-      for (const child of n.children || []) {
-        if (child.type === "within_clause" || child.type === "WithinDirective") {
-          const nameChild = child.children?.find(
-            (c: any) => c.type === "name" || c.type === "name_list" || c.type === "identifier" || c.type === "IDENT",
-          );
-          if (nameChild && nameChild.text) {
-            return nameChild.text.trim();
-          }
-          const t = child.text || "";
-          const m = t.match(/^\s*within(?:\s+([a-zA-Z0-9_.]+))?\s*;/m);
-          return m ? m[1]?.trim() || "" : "";
-        }
-        if (child.type === "stored_definition" || child.type === "program") {
-          const res = findInNode(child);
-          if (res !== null) return res;
-        }
-      }
-      if (typeof n.text === "string" && n.text.length > 0) {
-        const m = n.text.slice(0, 1000).match(/^\s*within\s*([a-zA-Z0-9_.]*)\s*;/m);
-        if (m) return m[1]?.trim() || "";
-      }
-      return null;
-    };
-    return findInNode(rootNode);
-  }
-
-  /**
    * @deprecated Backwards-compatible alias for reindexDocument. Use `reindexDocument` instead.
    */
   markDirty(uri: string, loader?: () => any, editRanges?: any, totalDelta?: number): void {
@@ -685,20 +645,20 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
    *
    * @param uri Document resource URI being indexed.
    * @param rootNode Root CST node produced by the WASM GLR parser.
-   * @param _parentFQN Optional enclosing package FQN (inferred from `within` clause if omitted).
+   * @param _parentFQN Optional enclosing package FQN (a language hook may override it from a scope the file declares).
    */
   private indexCst(uri: string, rootNode: any, _parentFQN?: string): void {
-    // Step 1: Resolve enclosing package scope from top-level `within <package>;` declaration.
+    // Step 1: Resolve the enclosing package scope the file itself declares (language hook), if any.
     if (rootNode) {
       this.documents.set(uri, {
         uri,
         tree: rootNode.tree ?? { rootNode },
       });
-      const declared = this.extractDeclaredWithin(rootNode);
+      const declared = this.wsHooks.extractDeclaredScope?.(rootNode) ?? null;
       if (declared !== null) {
         if (declared.length > 0) {
           _parentFQN = declared;
-        } else if (!uri.endsWith("/package.mo") && !uri.endsWith("package.mo")) {
+        } else if (!this.wsHooks.keepsDirectoryScopeAtRoot?.(uri)) {
           _parentFQN = undefined;
         }
       }
@@ -803,34 +763,25 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
 
     const newIds: SymbolId[] = [];
 
-    // Step 4: Special-case tabular `.csv` resources by synthesizing a package-like root Class symbol
-    // and virtual Component symbols (`numRows`, `numCols`, `values`, and per-column arrays).
-    if (uri.endsWith(".csv")) {
-      const filename = uri.split(/[/\\]/).pop() || "";
-      const basename = filename.replace(/\.csv$/i, "");
-      const normalizedName = basename.replace(/[^a-zA-Z0-9_]/g, "_");
-
-      let parentId: SymbolId | null = null;
-      if (_parentFQN) {
-        const parentEntries = this.unifiedIndex.byName.get(_parentFQN);
-        if (parentEntries && parentEntries.length > 0) {
-          parentId = parentEntries[0]!;
-        }
-      }
-
+    // Shared emitter for symbols a language hook describes declaratively (see `SyntheticSymbolSpec`).
+    // Reuses stable SymbolIds across re-indexes and only reports a symbol as changed when its span
+    // moved (or the spec is flagged `dirty`), so Salsa early-cutoff still works for unchanged symbols.
+    const emitSynthetic = (
+      spec: SyntheticSymbolSpec,
+      parentId: SymbolId | null,
+      fqnPrefix: string | undefined,
+    ): SymbolId => {
       const parentKey = parentId === null ? "root" : String(parentId);
-      const matchKey = `${parentKey}:Class:${normalizedName}:SourceFile`;
+      const matchKey = `${parentKey}:${spec.kind}:${spec.name}:${spec.ruleName}`;
+      // A symbol previously indexed before its parent package existed was keyed under `root`.
+      const existing =
+        oldEntriesByKey.get(matchKey) ??
+        (parentId !== null ? oldEntriesByKey.get(`root:${spec.kind}:${spec.name}:${spec.ruleName}`) : undefined);
       let symId: SymbolId;
-      const existingEntry =
-        oldEntriesByKey.get(matchKey) ?? oldEntriesByKey.get(`root:Class:${normalizedName}:SourceFile`);
-      const rootStart = rootNode.startOffset ?? rootNode.startIndex ?? 0;
-      const rootEnd = rootNode.endOffset ?? rootNode.endIndex ?? 0;
-      if (existingEntry && oldSymbolsToDelete.has(existingEntry.id)) {
-        symId = existingEntry.id;
+      if (existing && oldSymbolsToDelete.has(existing.id)) {
+        symId = existing.id;
         oldSymbolsToDelete.delete(symId);
-        const prevStart = existingEntry.startOffset;
-        const prevEnd = existingEntry.endOffset;
-        if (prevStart !== rootStart || prevEnd !== rootEnd) {
+        if (spec.dirty || existing.startOffset !== spec.startOffset || existing.endOffset !== spec.endOffset) {
           this.globalChangedIds.add(symId);
           this.globalStructuralChangedIds.add(symId);
           if (parentId !== null) {
@@ -849,103 +800,56 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       }
       newIds.push(symId);
 
-      const rootEntry: SymbolEntry = {
+      const entry: SymbolEntry = {
         id: symId,
-        kind: "Class",
-        name: normalizedName,
-        ruleName: "SourceFile",
-        namePath: "",
+        kind: spec.kind,
+        name: spec.name,
+        ruleName: spec.ruleName,
+        namePath: spec.namePath ?? "",
         fieldName: null,
         parentId,
         resourceId: uri,
-        startOffset: rootStart,
-        endOffset: rootEnd,
+        startOffset: spec.startOffset,
+        endOffset: spec.endOffset,
         exports: [],
         inherits: [],
-        metadata: {
-          classPrefixes: "package",
-        },
+        metadata: { ...(spec.metadata ?? {}) },
       };
-      this.unifiedIndex.symbols.set(symId, rootEntry);
+      this.unifiedIndex.symbols.set(symId, entry);
 
-      const nameList = this.unifiedIndex.byName.get(normalizedName) || [];
+      const nameList = this.unifiedIndex.byName.get(spec.name) || [];
       if (!nameList.includes(symId)) nameList.push(symId);
-      this.unifiedIndex.byName.set(normalizedName, nameList);
+      this.unifiedIndex.byName.set(spec.name, nameList);
 
-      if (_parentFQN) {
-        const fqn = `${_parentFQN}.${normalizedName}`;
+      if (fqnPrefix) {
+        const fqn = `${fqnPrefix}.${spec.name}`;
         const fqnList = this.unifiedIndex.byName.get(fqn) || [];
         if (!fqnList.includes(symId)) fqnList.push(symId);
         this.unifiedIndex.byName.set(fqn, fqnList);
       }
 
-      const parentChildList = this.unifiedIndex.childrenOf.get(parentId ?? 0) || [];
-      if (!parentChildList.includes(symId)) parentChildList.push(symId);
-      this.unifiedIndex.childrenOf.set(parentId ?? 0, parentChildList);
+      const siblings = this.unifiedIndex.childrenOf.get(parentId ?? 0) || [];
+      if (!siblings.includes(symId)) siblings.push(symId);
+      this.unifiedIndex.childrenOf.set(parentId ?? 0, siblings);
 
-      const rootNodeText = typeof rootNode.text === "string" ? rootNode.text : "";
-      const lines = rootNodeText.split(/\r?\n/).filter((l: string) => l.trim().length > 0);
-      if (lines.length > 0) {
-        const headerLine = lines[0] as string;
-        const delimiter = headerLine.includes("\t") ? "\t" : headerLine.includes(";") ? ";" : ",";
-        const headers = headerLine.split(delimiter).map((h) => h.trim().replace(/[^a-zA-Z0-9_]/g, "_"));
-        const numCols = headers.length;
+      for (const child of spec.children ?? []) {
+        emitSynthetic(child, symId, undefined);
+      }
+      return symId;
+    };
 
-        const data: number[][] = [];
-        for (let i = 1; i < lines.length; i++) {
-          const parts = (lines[i] as string).split(delimiter);
-          const row = parts.map((p) => parseFloat(p.trim()));
-          if (row.length === numCols && !row.some(isNaN)) {
-            data.push(row);
-          }
-        }
-        const numRows = data.length;
-
-        const addVirtualSymbol = (name: string, typeSpecifier: string, csvValue: any, arrayDimensions?: number[]) => {
-          const childId = this.nextSymbolId++;
-          newIds.push(childId);
-          const virtualEntry: SymbolEntry = {
-            id: childId,
-            kind: "Component",
-            name,
-            ruleName: "CSVVirtualComponent",
-            namePath: "",
-            fieldName: null,
-            startOffset: 0,
-            endOffset: 0,
-            parentId: symId,
-            exports: [],
-            inherits: [],
-            metadata: {
-              typeSpecifier,
-              csvValue,
-              _className: "CSVVirtualComponent",
-              ...(arrayDimensions ? { arrayDimensions } : {}),
-            },
-            resourceId: uri,
-          };
-          this.unifiedIndex.symbols.set(childId, virtualEntry);
-
-          const list = this.unifiedIndex.byName.get(name) || [];
-          if (!list.includes(childId)) list.push(childId);
-          this.unifiedIndex.byName.set(name, list);
-
-          const childList = this.unifiedIndex.childrenOf.get(symId) || [];
-          if (!childList.includes(childId)) childList.push(childId);
-          this.unifiedIndex.childrenOf.set(symId, childList);
-        };
-
-        addVirtualSymbol("numRows", "Integer", numRows);
-        addVirtualSymbol("numCols", "Integer", numCols);
-        addVirtualSymbol("values", "Real", data, [numRows, numCols]);
-
-        for (let c = 0; c < numCols; c++) {
-          const colName = headers[c] || `col${c}`;
-          const colData = data.map((row) => row[c]);
-          addVirtualSymbol(colName, "Real", colData, [numRows]);
+    // Step 4: Whole-resource indexing for non-grammar resources (e.g. tabular data files), driven by
+    // the language's `indexResource` hook.
+    const resourceSpec = this.wsHooks.indexResource?.(uri, rootNode, _parentFQN);
+    if (resourceSpec) {
+      let resourceParentId: SymbolId | null = null;
+      if (_parentFQN) {
+        const parentEntries = this.unifiedIndex.byName.get(_parentFQN);
+        if (parentEntries && parentEntries.length > 0) {
+          resourceParentId = parentEntries[0]!;
         }
       }
-
+      emitSynthetic(resourceSpec, resourceParentId, _parentFQN);
       cleanupDeletedSymbols();
       this.fileSymbols.set(uri, newIds);
       this._version++;
@@ -959,82 +863,12 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       let currentId = parentId;
       const hook = this.hookMap.get(node.type);
 
-      // Step 5a: Handle `class extends <Name>` (long_class_specifier with leading `extends` keyword)
-      // by synthesizing an implicit `Extends` symbol entry attached to the enclosing class.
-      if (node.type === "long_class_specifier" || node.type === "LongClassSpecifier") {
-        const firstChild = (node.children || [])[0];
-        const isExtends =
-          firstChild &&
-          (firstChild.text === "extends" || firstChild.type === '"extends"' || firstChild.type === "extends");
-        if (isExtends && parentId !== null) {
-          const identChild = (node.children || []).find((c: any) => c.type === "identifier" || c.type === "IDENT");
-          const extName = identChild ? getNodeText(identChild) : "";
-          if (extName) {
-            const extHook: IndexerHook = {
-              ruleName: "extends_clause",
-              kind: "Extends",
-              namePath: "name",
-              exportPaths: [],
-              inheritPaths: [],
-              metadataFieldPaths: {
-                typeSpecifier: "name",
-              },
-            };
-            const parentKey = String(parentId);
-            const matchKey = `${parentKey}:${extHook.kind}:${extName}:${extHook.ruleName}`;
-            let extSymId: SymbolId;
-            const existingEntry = oldEntriesByKey.get(matchKey);
-            const modChild = (node.children || []).find(
-              (c: any) => c.type === "class_modification" || c.type === "ClassModification",
-            );
-            const extEnd = modChild
-              ? (modChild.endOffset ?? modChild.endIndex ?? 0)
-              : (identChild.endOffset ?? identChild.endIndex ?? 0);
-            const extStart =
-              firstChild.startOffset ?? firstChild.startIndex ?? node.startOffset ?? node.startIndex ?? 0;
-            if (existingEntry && oldSymbolsToDelete.has(existingEntry.id)) {
-              extSymId = existingEntry.id;
-              oldSymbolsToDelete.delete(extSymId);
-              this.globalChangedIds.add(extSymId);
-              this.globalStructuralChangedIds.add(extSymId);
-              if (parentId !== null) {
-                this.globalChangedIds.add(parentId);
-                this.globalStructuralChangedIds.add(parentId);
-              }
-            } else {
-              extSymId = this.nextSymbolId++;
-              this.globalChangedIds.add(extSymId);
-              this.globalStructuralChangedIds.add(extSymId);
-              this.globalChangedIds.add(parentId);
-              this.globalStructuralChangedIds.add(parentId);
-            }
-            newIds.push(extSymId);
-            const extEntry: SymbolEntry = {
-              id: extSymId,
-              kind: "Extends",
-              name: extName,
-              ruleName: "extends_clause",
-              namePath: "name",
-              fieldName: null,
-              parentId,
-              resourceId: uri,
-              startOffset: extStart,
-              endOffset: extEnd,
-              exports: [],
-              inherits: [],
-              metadata: {
-                typeSpecifier: extName,
-              },
-            };
-            this.unifiedIndex.symbols.set(extSymId, extEntry);
-            const list = this.unifiedIndex.byName.get(extName) || [];
-            if (!list.includes(extSymId)) list.push(extSymId);
-            this.unifiedIndex.byName.set(extName, list);
-
-            const childList = this.unifiedIndex.childrenOf.get(parentId) || [];
-            if (!childList.includes(extSymId)) childList.push(extSymId);
-            this.unifiedIndex.childrenOf.set(parentId, childList);
-          }
+      // Step 5a: Register any extra symbols the language implies for this node
+      // (for example, an implicit Extends symbol for a class-extends declaration), via the language hook.
+      if (this.wsHooks.synthesizeSymbols) {
+        const extras = this.wsHooks.synthesizeSymbols(node, parentId !== null);
+        if (extras) {
+          for (const spec of extras) emitSynthetic(spec, parentId, undefined);
         }
       }
 
@@ -1185,16 +1019,9 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         this.unifiedIndex.childrenOf.set(parentId ?? 0, childList);
       }
 
-      // Step 5d: Prune CST subtrees that cannot contain structural symbol declarations
-      // (expressions, algorithm statements, comments, annotations are lowered directly during flattening).
-      if (
-        node.type === "expression" ||
-        node.type === "array_arguments" ||
-        node.type === "expression_list" ||
-        node.type === "algorithm_section" ||
-        node.type === "comment" ||
-        node.type === "annotation"
-      ) {
+      // Step 5d: Prune CST subtrees that the language declares can never contain structural symbol
+      // declarations (expressions, statements, comments, annotations are lowered directly during flattening).
+      if (this.wsHooks.skipNodeTypes?.has(node.type)) {
         return;
       }
 
@@ -1304,13 +1131,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       if (!rawEntry || typeof rawEntry.name !== "string") return true;
       const n = rawEntry.name;
       if (/[\r\n]/.test(n) || n.startsWith("/") || /^\s/.test(n)) return true;
-      if (
-        (rawEntry.kind === "Component" && n === "component_declaration") ||
-        (rawEntry.kind === "Class" && n === "class_definition")
-      ) {
-        return true;
-      }
-      return false;
+      return this.wsHooks.isCorruptedStub?.(rawEntry) ?? false;
     };
 
     const idMap = new Map<number, number>();
@@ -1469,9 +1290,9 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     return this.getIndex({ eager: true });
   }
 
-  /** Returns the workspace skeleton `SymbolIndex` (delegating to `getIndex({ eager: true })`). */
+  /** Returns the workspace skeleton `SymbolIndex`: the already-indexed symbols, without running pending lazy loaders. */
   getSkeletonIndex(): SymbolIndex {
-    return this.getIndex({ eager: true });
+    return this.getIndex({ eager: false });
   }
 
   /**
@@ -1896,10 +1717,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
       const entry = idx.symbols.get(id);
       if (!entry) return null;
       const lang = entry.language ?? (entry.resourceId ? this.detectLanguage(entry.resourceId) : undefined);
-      const engine =
-        (lang ? this.queryEngines.get(lang) : undefined) ??
-        this.queryEngines.get("modelica") ??
-        this.queryEngines.values().next().value;
+      const engine = (lang ? this.queryEngines.get(lang) : undefined) ?? this.queryEngines.values().next().value;
       return engine?.query ? engine.query(queryName, id) : null;
     };
 
@@ -2027,11 +1845,28 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
         this.getParser(ext) ?? (ext.includes(".") ? this.getParser(ext.slice(ext.lastIndexOf("."))) : undefined);
       if (parser) {
         try {
-          tree = this.parse(uri, text, options?.oldTree ?? prev?.tree, options?.editBounds);
+          const firstEdit = editRanges[0];
+          const editBounds =
+            options?.editBounds ??
+            (prev && firstEdit
+              ? {
+                  editStart: firstEdit.startOffset,
+                  editOldEnd: firstEdit.endOffset,
+                  editNewEnd: firstEdit.endOffset + delta,
+                  uri,
+                }
+              : undefined);
+          tree = this.parse(uri, text, options?.oldTree ?? prev?.tree, editBounds);
         } catch {
           // ignore or keep previous
         }
       }
+    }
+
+    if (prev?.tree && prev.tree !== tree && typeof prev.tree.delete === "function") {
+      try {
+        prev.tree.delete();
+      } catch {}
     }
 
     const lang = options?.language?.toLowerCase() ?? this.detectLanguage(uri, text);
@@ -2098,8 +1933,13 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
 
   /** Removes `uri` from the document store and clears its indexed symbols from the owning language workspace. */
   deleteDocument(uri: string): boolean {
-    const lang =
-      this.documents.get(uri)?.language ?? this.nativeFileIndices.get(uri)?.language ?? this.detectLanguage(uri);
+    const doc = this.documents.get(uri);
+    if (doc?.tree && typeof doc.tree.delete === "function") {
+      try {
+        doc.tree.delete();
+      } catch {}
+    }
+    const lang = doc?.language ?? this.nativeFileIndices.get(uri)?.language ?? this.detectLanguage(uri);
     const existed = this.documents.delete(uri);
     const ws = lang ? this.workspaces.get(lang) : undefined;
     if (ws && !this.isDelegatedSelf(ws) && typeof ws.clear === "function") {
@@ -2108,6 +1948,14 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     const oldNative = this.nativeFileIndices.get(uri);
     this.nativeFileIndices.delete(uri);
     this.parsedModels.delete(uri);
+    const ext = UnifiedWorkspace.extractExtension(uri);
+    const parser =
+      this.getParser(ext) ?? (ext.includes(".") ? this.getParser(ext.slice(ext.lastIndexOf("."))) : undefined);
+    if (parser && typeof (parser as any).removeDocument === "function") {
+      try {
+        (parser as any).removeDocument(uri);
+      } catch {}
+    }
     if (existed || oldNative) {
       this._version++;
       if (oldNative && oldNative.index.symbols.size > 0) {
@@ -2580,7 +2428,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     if (hooksCfg && !this.workspaces.has(normLang)) {
       const hooks = typeof hooksCfg === "function" ? hooksCfg() : hooksCfg;
       if (Array.isArray(hooks) && hooks.length > 0) {
-        this.workspaces.set(normLang, new LanguageWorkspaceIndex(hooks));
+        this.workspaces.set(normLang, new LanguageWorkspaceIndex(hooks, langDef.indexing?.workspaceHooks));
       }
     }
 

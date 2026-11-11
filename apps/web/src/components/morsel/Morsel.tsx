@@ -48,6 +48,7 @@ export interface MorselEditorProps {
   initialDialect?: string | undefined;
   initialLanguage?: string | undefined;
   initialView?: string | undefined;
+  initialDiagramType?: string | undefined;
   /** Modelica: class to select initially (otherwise the file's primary class). */
   initialClassName?: string | undefined;
   initialAnchor?:
@@ -81,7 +82,25 @@ export default function MorselEditor(props: MorselEditorProps) {
   const resolvedInitialDialect = props.initialDialect ?? props.initialLanguage;
   const initialLangInfo = getLanguageInfo(resolvedInitialDialect);
   const [dialect, setDialectState] = useState<string>(initialLangInfo.id);
-  const [diagramType, setDiagramType] = useState<string>(initialLangInfo.diagramTypes?.[0]?.id ?? "diagram");
+  const [diagramType, setDiagramType] = useState<string>(() => {
+    if (props.initialDiagramType) {
+      const match = initialLangInfo.diagramTypes?.find(
+        (dt) => dt.id.toLowerCase() === props.initialDiagramType!.toLowerCase(),
+      );
+      if (match) return match.id;
+      return props.initialDiagramType;
+    }
+    return initialLangInfo.diagramTypes?.[0]?.id ?? "diagram";
+  });
+
+  useEffect(() => {
+    if (props.initialDiagramType) {
+      const match = initialLangInfo.diagramTypes?.find(
+        (dt) => dt.id.toLowerCase() === props.initialDiagramType!.toLowerCase(),
+      );
+      setDiagramType(match ? match.id : props.initialDiagramType);
+    }
+  }, [props.initialDiagramType, initialLangInfo.diagramTypes]);
   const [sidecarContent, setSidecarContent] = useState<string | undefined>(undefined);
   const instanceDocPrefix = useMemo(
     () => (props.embed ? `file:///embed_${nextEmbedMorselId++}_document` : "file:///document"),
@@ -153,6 +172,10 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [pendingSelection, setPendingSelection] = useState<string | null>(props.initialAnchor?.elementId ?? null);
   const [selectedComponent, setSelectedComponent] = useState<string | null>(props.initialAnchor?.elementId ?? null);
   const [selectedComponentProperties, setSelectedComponentProperties] = useState<any | null>(null);
+  const selectedComponentRef = useRef<string | null>(selectedComponent);
+  selectedComponentRef.current = selectedComponent;
+  const selectedComponentPropertiesRef = useRef<any | null>(selectedComponentProperties);
+  selectedComponentPropertiesRef.current = selectedComponentProperties;
   const [isPropertiesLoading, setIsPropertiesLoading] = useState(false);
   const [diagramData, setDiagramData] = useState<any>(null);
   const [selectedTreeClassName, setSelectedTreeClassName] = useState<string | null>(() =>
@@ -273,7 +296,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const isNarrow = windowWidth < NARROW_BREAKPOINT;
 
   const handleSelectComponent = useCallback(
-    (name: string | null, cachedProps?: any[], isLoading?: boolean) => {
+    (name: string | null, cachedProps?: any, isLoading?: boolean) => {
       if (!name || name === "__diagram_background__" || name === "__diagram_axes__") {
         setSelectedComponent(null);
         setSelectedComponentProperties(null);
@@ -283,20 +306,49 @@ export default function MorselEditor(props: MorselEditorProps) {
       setSelectedComponent(name);
       props.onAnchorClick?.({ elementId: name, kind: "component" });
 
-      if (cachedProps !== undefined) {
-        setSelectedComponentProperties(cachedProps);
-        setIsPropertiesLoading(Boolean(isLoading));
+      const isSameComponent = selectedComponentRef.current === name;
+      const currentProps = selectedComponentPropertiesRef.current;
+      const hasRichProps = Boolean(
+        currentProps && (currentProps.schema || currentProps.parameters || currentProps.values),
+      );
+      const isSkeleton = Boolean(cachedProps && !cachedProps.schema && !cachedProps.parameters);
+
+      // Prevent skeleton downgrades from diagram re-renders when the same component is already loaded
+      if (isSameComponent && hasRichProps && (cachedProps === undefined || isSkeleton)) {
+        // Silently refresh in the background without clearing properties or flashing the loading spinner
+        getComponentProperties(documentUri, selectedTreeClassName || undefined, name)
+          .then((freshProps) => {
+            if (freshProps && selectedComponentRef.current === name) {
+              setSelectedComponentProperties((prev: any) => {
+                if (!prev || prev.name !== name) return freshProps;
+                return {
+                  ...freshProps,
+                  values: {
+                    ...(freshProps.values || {}),
+                    ...(prev.values || {}),
+                  },
+                };
+              });
+            }
+          })
+          .catch(() => {});
         return;
       }
 
-      // Show lightweight properties immediately while full schema loads
-      const initialProps = diagramData?.nodes?.find((n: any) => n.id === name)?.properties ?? null;
-      setSelectedComponentProperties(initialProps);
-      setIsPropertiesLoading(true);
+      if (cachedProps !== undefined && (!isSkeleton || !hasRichProps)) {
+        setSelectedComponentProperties(cachedProps);
+        setIsPropertiesLoading(Boolean(isLoading));
+        if (!isLoading) return;
+      } else if (!hasRichProps) {
+        // Show lightweight properties immediately while full schema loads
+        const initialProps = diagramData?.nodes?.find((n: any) => n.id === name)?.properties ?? null;
+        setSelectedComponentProperties(initialProps);
+        setIsPropertiesLoading(true);
+      }
 
       getComponentProperties(documentUri, selectedTreeClassName || undefined, name)
         .then((props) => {
-          if (props) {
+          if (props && selectedComponentRef.current === name) {
             setSelectedComponentProperties(props);
           }
         })
@@ -304,7 +356,9 @@ export default function MorselEditor(props: MorselEditorProps) {
           console.error("[morsel] Error fetching component properties:", e);
         })
         .finally(() => {
-          setIsPropertiesLoading(false);
+          if (selectedComponentRef.current === name) {
+            setIsPropertiesLoading(false);
+          }
         });
     },
     [diagramData, documentUri, selectedTreeClassName, props.onAnchorClick],
@@ -438,6 +492,10 @@ export default function MorselEditor(props: MorselEditorProps) {
           if (!prev || prev.name !== action.name) return prev;
           return {
             ...prev,
+            values: {
+              ...(prev.values || {}),
+              [paramKey]: action.value,
+            },
             parameters: Array.isArray(prev.parameters)
               ? prev.parameters.map((p: any) => (p.name === paramKey ? { ...p, value: paramVal } : p))
               : prev.parameters,
@@ -1206,10 +1264,12 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   };
 
-  const handleAutoLayout = useCallback(() => {
-    diagramEditorRef.current?.layout();
-    const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/i.test(navigator.platform);
-    toast.info(`Auto-layout applied (${isMac ? "⌘Z" : "Ctrl+Z"} to undo)`);
+  const handleAutoLayout = useCallback(async () => {
+    const applied = await diagramEditorRef.current?.layout();
+    if (applied) {
+      const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/i.test(navigator.platform);
+      toast.info(`Auto-layout applied (${isMac ? "⌘Z" : "Ctrl+Z"} to undo)`);
+    }
   }, [toast]);
 
   const handleNewModel = useCallback(

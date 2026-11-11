@@ -515,14 +515,14 @@ export function fastBetterVersionExists(candidate: ParseHead, s: FrontierSummary
   // 2. Both in error: Tree-sitter relative cost comparison
   if (candidate.inErrorState && s.inErrorCount > 0) {
     let diff = candidate.errorCost - s.minInErrorCost;
-    if (diff > 0 && diff * (1 + (s.maxInErrorNodeCount as i32)) > MAX_COST_DIFFERENCE) {
+    if (diff > 0 && (diff as i64) * (1 + (s.maxInErrorNodeCount as i64)) > (MAX_COST_DIFFERENCE as i64)) {
       let n = s.paretoErrCount;
       for (let i: u32 = 0; i < n; i++) {
         let eCost = s.getParetoErrCost(i as i32);
         if (eCost < candidate.errorCost) {
           let costDiff = candidate.errorCost - eCost;
-          let progress = 1 + (s.getParetoErrNodes(i as i32) as i32);
-          if (costDiff * progress > MAX_COST_DIFFERENCE) {
+          let progress = 1 + (s.getParetoErrNodes(i as i32) as i64);
+          if ((costDiff as i64) * progress > (MAX_COST_DIFFERENCE as i64)) {
             return true;
           }
         }
@@ -533,14 +533,14 @@ export function fastBetterVersionExists(candidate: ParseHead, s: FrontierSummary
   // 3. Both healthy: relative error cost pruning
   if (!candidate.inErrorState && s.healthyCount > 0) {
     let diff = candidate.errorCost - s.minHealthyCost;
-    if (diff > 0 && diff * (1 + (s.maxHealthyNodeCount as i32)) > MAX_COST_DIFFERENCE) {
+    if (diff > 0 && (diff as i64) * (1 + (s.maxHealthyNodeCount as i64)) > (MAX_COST_DIFFERENCE as i64)) {
       let n = s.paretoHealthyCount;
       for (let i: u32 = 0; i < n; i++) {
         let eCost = s.getParetoHealthyCost(i as i32);
         if (eCost < candidate.errorCost) {
           let costDiff = candidate.errorCost - eCost;
-          let progress = 1 + (s.getParetoHealthyNodes(i as i32) as i32);
-          if (costDiff * progress > MAX_COST_DIFFERENCE) {
+          let progress = 1 + (s.getParetoHealthyNodes(i as i32) as i64);
+          if ((costDiff as i64) * progress > (MAX_COST_DIFFERENCE as i64)) {
             return true;
           }
         }
@@ -575,8 +575,8 @@ function slowBetterVersionExists(candidate: ParseHead, frontier: UnmanagedUint32
     if (candidate.inErrorState && existing.inErrorState) {
       if (existing.errorCost < candidate.errorCost) {
         let costDiff = candidate.errorCost - existing.errorCost;
-        let progress = 1 + (existing.nodeCount as i32);
-        if (costDiff * progress > MAX_COST_DIFFERENCE) {
+        let progress = 1 + (existing.nodeCount as i64);
+        if ((costDiff as i64) * progress > (MAX_COST_DIFFERENCE as i64)) {
           return true;
         }
       }
@@ -586,8 +586,8 @@ function slowBetterVersionExists(candidate: ParseHead, frontier: UnmanagedUint32
     if (!candidate.inErrorState && !existing.inErrorState) {
       if (existing.errorCost < candidate.errorCost) {
         let costDiff = candidate.errorCost - existing.errorCost;
-        let progress = 1 + (existing.nodeCount as i32);
-        if (costDiff * progress > MAX_COST_DIFFERENCE) {
+        let progress = 1 + (existing.nodeCount as i64);
+        if ((costDiff as i64) * progress > (MAX_COST_DIFFERENCE as i64)) {
           return true;
         }
       }
@@ -657,8 +657,8 @@ export function pruneDominatedHeads(newHead: ParseHead, frontier: UnmanagedUint3
     if (newHead.inErrorState && existing.inErrorState) {
       if (newHead.errorCost < existing.errorCost) {
         let costDiff = existing.errorCost - newHead.errorCost;
-        let progress = 1 + (newHead.nodeCount as i32);
-        if (costDiff * progress > MAX_COST_DIFFERENCE) {
+        let progress = 1 + (newHead.nodeCount as i64);
+        if ((costDiff as i64) * progress > (MAX_COST_DIFFERENCE as i64)) {
           dominated = true;
         }
       }
@@ -668,8 +668,8 @@ export function pruneDominatedHeads(newHead: ParseHead, frontier: UnmanagedUint3
     if (!newHead.inErrorState && !existing.inErrorState) {
       if (newHead.errorCost < existing.errorCost) {
         let costDiff = existing.errorCost - newHead.errorCost;
-        let progress = 1 + (newHead.nodeCount as i32);
-        if (costDiff * progress > MAX_COST_DIFFERENCE) {
+        let progress = 1 + (newHead.nodeCount as i64);
+        if ((costDiff as i64) * progress > (MAX_COST_DIFFERENCE as i64)) {
           dominated = true;
         }
       }

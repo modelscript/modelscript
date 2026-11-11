@@ -13,6 +13,7 @@ export * from "./dsl/dsl-transpiler.js";
 export * from "./iec61850/index.js";
 export { default, powerFactoryLanguage } from "./language.js";
 export * from "./lints/index.js";
+export * from "./lsp.js";
 export * from "./parser/powerfactory-parser.js";
 export * from "./powerfactory-shim.js";
 export * from "./projections/powerfactory-to-modelica.js";

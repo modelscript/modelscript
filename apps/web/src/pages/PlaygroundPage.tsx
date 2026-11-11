@@ -11,7 +11,7 @@ import { ComposeContext } from "../components/ComposeContext";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { getLanguageInfo } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
-import { extractPrimaryModelicaClassName } from "../components/morsel/util/lsp-bridge";
+import { extractPrimaryModelicaClassName, installDependency } from "../components/morsel/util/lsp-bridge";
 import {
   compressMorselPayload,
   decompressMorselPayload,
@@ -41,6 +41,17 @@ import {
   PlaygroundShareModal,
   TemplateGalleryModal,
 } from "./playground";
+
+function mountArtifactDependencies(deps?: unknown): void {
+  if (!Array.isArray(deps) || deps.length === 0) return;
+  for (const dep of deps) {
+    if (dep && typeof dep.name === "string" && typeof dep.version === "string") {
+      installDependency(dep.name, dep.version).catch((err) => {
+        console.warn(`[PlaygroundPage] Failed to auto-mount dependency ${dep.name}@${dep.version}:`, err);
+      });
+    }
+  }
+}
 
 const TEMPLATE_ALIASES: Record<string, string> = {
   rlc: "rlc-circuit",
@@ -88,6 +99,7 @@ export const PlaygroundPage: React.FC = () => {
   const titleParam = searchParams.get("title");
   const editPostIdParam = searchParams.get("editPostId");
   const replyToPostIdParam = searchParams.get("replyToPostId");
+  const diagramTypeParam = searchParams.get("diagramType");
 
   const editPostId = editPostIdParam || undefined;
   const replyToPostId = replyToPostIdParam || undefined;
@@ -425,6 +437,9 @@ export const PlaygroundPage: React.FC = () => {
           if (p.title || titleParam) {
             setCurrentTitle((p.title || titleParam)!);
           }
+          if (p.dependencies) {
+            mountArtifactDependencies(p.dependencies);
+          }
           return;
         }
       }
@@ -577,6 +592,11 @@ export const PlaygroundPage: React.FC = () => {
             setIsDirty(false);
             setCurrentCode(code);
             const isMulti = Boolean(filesMap && Object.keys(filesMap).length > 1);
+            const rawDeps = cfg.dependencies || art.dependencies;
+            const dependencies = Array.isArray(rawDeps) && rawDeps.length > 0 ? rawDeps : undefined;
+            if (dependencies) {
+              mountArtifactDependencies(dependencies);
+            }
             setPayload({
               v: 1,
               lang: detectedLang,
@@ -586,6 +606,7 @@ export const PlaygroundPage: React.FC = () => {
                 : {}),
               ...(viewParam ? { view: viewParam } : {}),
               title: resolvedTitle,
+              ...(dependencies ? { dependencies } : {}),
             });
             const hash = compressMorselPayload({
               v: 1,
@@ -597,6 +618,7 @@ export const PlaygroundPage: React.FC = () => {
               ...(viewParam ? { view: viewParam } : {}),
               title: resolvedTitle,
               artifactId: String(effectiveArtifactId),
+              ...(dependencies ? { dependencies } : {}),
             });
             window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
           } else {
@@ -1437,6 +1459,7 @@ export const PlaygroundPage: React.FC = () => {
               hideCenterFloatingToolbar={true}
               initialDialect={currentLang}
               initialView={currentView}
+              initialDiagramType={diagramTypeParam || (payload as any)?.diagramType || undefined}
               initialClassName={extractPrimaryModelicaClassName(currentCode) || undefined}
               initialAnchor={payload?.anchor}
               externalParams={payload?.params}

@@ -417,7 +417,7 @@ export const modelicaLanguage = language({
   ],
 
   // Grammar non-terminals inlined during CST construction to minimize tree depth
-  inline: ["element_list", "component_list", "statement_or_procedure", "lhs_expression", "lhs_primary"],
+  inline: ["element_list", "component_list", "statement_or_procedure"],
 
   primitives: {
     nestedComment: { open: "/*", close: "*/" },

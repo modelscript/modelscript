@@ -49,8 +49,13 @@ interface CstRootLike {
   id?: number | undefined;
   ptr?: number | undefined;
   text?: string | undefined;
-  hasError?: (() => boolean) | undefined;
+  hasError?: boolean | (() => boolean) | undefined;
   descendantForIndex?: ((startIndex: number, endIndex: number) => unknown) | undefined;
+}
+
+function nodeHasError(node: { hasError?: boolean | (() => boolean) | undefined } | null | undefined): boolean {
+  if (!node || !node.hasError) return false;
+  return typeof node.hasError === "function" ? (node.hasError as () => boolean)() : Boolean(node.hasError);
 }
 
 /**
@@ -660,7 +665,7 @@ export const Lint: CommandModule<{}, LintArgs> = {
                 });
               }
             }
-          } else if (ast?.hasError && ast.hasError()) {
+          } else if (nodeHasError(ast)) {
             sysmlCstDiagnostics.push({
               severity: "error",
               lintName: "parse-error",
@@ -907,7 +912,7 @@ export const Lint: CommandModule<{}, LintArgs> = {
           const { parser } = await lang.loadParser();
           const tree = parser.parse(item.text);
           if (tree?.rootNode) {
-            if (tree.rootNode.hasError && tree.rootNode.hasError()) {
+            if (nodeHasError(tree.rootNode)) {
               diagnostics.push({
                 severity: "error",
                 lintName: "syntax-error",
@@ -1179,7 +1184,7 @@ export const Lint: CommandModule<{}, LintArgs> = {
             const lang = await LanguageResolver.resolve(item.uri);
             const { parser } = await lang.loadParser();
             const tree = parser.parse(item.text);
-            if (tree?.rootNode?.hasError && tree.rootNode.hasError()) {
+            if (nodeHasError(tree?.rootNode)) {
               diagnostics.push({
                 severity: "error",
                 lintName: "syntax-error",
@@ -1507,7 +1512,7 @@ export const Lint: CommandModule<{}, LintArgs> = {
         const lang = await LanguageResolver.resolve(item.uri, args.language);
         const { parser } = await lang.loadParser();
         const tree = parser.parse(item.text);
-        if (tree?.rootNode?.hasError && tree.rootNode.hasError()) {
+        if (nodeHasError(tree?.rootNode)) {
           diagnostics.push({
             severity: "error",
             lintName: "syntax-error",

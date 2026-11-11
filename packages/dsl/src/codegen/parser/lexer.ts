@@ -135,6 +135,19 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
     // Inject generic word pattern only if wordName is not already a rule in the grammar
     regexTokens.set(wordName, "/[_a-zA-Z][_a-zA-Z0-9]*/");
   }
+
+  /** Returns the key of the first regex token whose pattern fully accepts `probe`. */
+  const findRegexTokenAccepting = (probe: string): string | undefined => {
+    for (const [key, val] of regexTokens.entries()) {
+      const body = val.startsWith("/") && val.lastIndexOf("/") > 0 ? val.substring(1, val.lastIndexOf("/")) : val;
+      try {
+        if (new RegExp("^(?:" + body + ")$").test(probe)) return key;
+      } catch {
+        // Not compilable by the JS engine; skip.
+      }
+    }
+    return undefined;
+  };
   let lexerGlobals = `// DFA Lexer State Machine\n`;
   lexerGlobals += `// Extracted ${stringTokens.size} string literals and ${regexTokens.size} regex patterns\n\n`;
 
@@ -284,10 +297,19 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   // Inject External Scanner Custom State/Functions
   if (grammar.scanner) {
     lexerCode += `  // --- External Scanner --- \n`;
+    lexerCode += `  scanMarkedEnd = false;\n`;
     lexerCode += `  let extToken = scanExternal(lexPos, currentScannerState);\n`;
     lexerCode += `  if (extToken != 0) {\n`;
-    lexerCode += `    if (srcLexLen > 0) {\n      lexLen = srcLexLen;\n      lexPos = srcLexPos + lexLen;\n    }\n`;
+    lexerCode += `    lexLen = srcLexLen;\n`;
+    lexerCode += `    lexPos = srcLexPos + lexLen;\n`;
+    lexerCode += `    scanMarkedEnd = false;\n`;
     lexerCode += `    return extToken;\n`;
+    lexerCode += `  } else {\n`;
+    lexerCode += `    lexPos = pos;\n`;
+    lexerCode += `    srcLexPos = pos;\n`;
+    lexerCode += `    lexLen = 0;\n`;
+    lexerCode += `    srcLexLen = 0;\n`;
+    lexerCode += `    scanMarkedEnd = false;\n`;
     lexerCode += `  }\n\n`;
   }
 
@@ -385,26 +407,27 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     lexerCode += `  // Escaped identifier: ${ei.quote}...${ei.quote}\n`;
     lexerCode += `  if (char0 == ${q}) {\n`;
     lexerCode += `    let peek = lexPos + char0Len;\n`;
+    lexerCode += `    let hasClosingQuote: bool = false;\n`;
     lexerCode += `    while (peek < inputLength) {\n`;
     lexerCode += `      let ch = peekChar(peek);\n`;
     lexerCode += `      let chLen = peekCharLen(peek);\n`;
+    lexerCode += `      if (ch == 10 || ch == 13) break;\n`;
     if (esc >= 0) {
       lexerCode += `      if (ch == ${esc} && peek + chLen < inputLength) { peek += chLen + peekCharLen(peek + chLen); continue; }\n`;
     }
-    lexerCode += `      if (ch == ${q}) { peek += chLen; break; }\n`;
+    lexerCode += `      if (ch == ${q}) { peek += chLen; hasClosingQuote = true; break; }\n`;
     lexerCode += `      peek += chLen;\n`;
     lexerCode += `    }\n`;
-    lexerCode += `    lexLen = peek - lexPos;\n`;
-    lexerCode += `    srcLexLen = lexLen;\n`;
+    lexerCode += `    if (hasClosingQuote) {\n`;
+    lexerCode += `      lexLen = peek - lexPos;\n`;
+    lexerCode += `      srcLexLen = lexLen;\n`;
     // Emit as IDENT token type — find it from existing regex tokens
     let identTokenStr = "ERROR";
-    for (const [key, val] of regexTokens.entries()) {
-      if (val.includes("[a-zA-Z")) {
-        identTokenStr = "T_" + normalized.symToInt.get(key);
-        break;
-      }
-    }
-    lexerCode += `    return SyntaxType.${identTokenStr}; // escaped identifier\n`;
+    const wordKey = wordName ? [...regexTokens.keys()].find((k) => k === wordName) : undefined;
+    const identKey = wordKey ?? findRegexTokenAccepting("x");
+    if (identKey !== undefined) identTokenStr = "T_" + normalized.symToInt.get(identKey);
+    lexerCode += `      return SyntaxType.${identTokenStr}; // escaped identifier\n`;
+    lexerCode += `    }\n`;
     lexerCode += `  }\n`;
   }
 
@@ -425,12 +448,8 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     lexerCode += `    lexLen = peek - lexPos;\n`;
     lexerCode += `    srcLexLen = lexLen;\n`;
     let strTokenStr = "ERROR";
-    for (const [key, val] of regexTokens.entries()) {
-      if (val.includes('"[^"]*"')) {
-        strTokenStr = "T_" + normalized.symToInt.get(key);
-        break;
-      }
-    }
+    const strKey = findRegexTokenAccepting(`${sl.delim}a${sl.delim}`);
+    if (strKey !== undefined) strTokenStr = "T_" + normalized.symToInt.get(strKey);
     // Fallback: if there is a 'string' token, use it
     if (strTokenStr === "ERROR" && normalized.symToInt.has("string")) {
       strTokenStr = "T_" + normalized.symToInt.get("string");
@@ -439,10 +458,10 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     lexerCode += `  }\n`;
   }
 
-  // 1. String Literals (existing)
-  // 1. String Literals (existing)
-  // 1. String Literals (existing)
+  // 1. String Literals
   lexerCode += `  // --- String Literals ---\n`;
+  lexerCode += `  let literalToken: i32 = 0;\n`;
+  lexerCode += `  let literalLen: u32 = 0;\n`;
   const keywordTokens = new Map<string, string>();
   const stringEntries = Array.from(stringTokens.entries());
   stringEntries.sort((a, b) => b[1].length - a[1].length);
@@ -485,14 +504,28 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
             }
         }
         if (isBoundary) {
-            lexLen = cPos - lexPos;
-            return SyntaxType.${safeName};
+            let matchLen: u32 = <u32>(cPos - lexPos);
+            if (expected_tokens == 0 || load<u8>(expected_tokens + <u32>SyntaxType.${safeName}) == 1) {
+                literalToken = SyntaxType.${safeName};
+                literalLen = matchLen;
+                break;
+            } else if (literalToken == 0) {
+                literalToken = SyntaxType.${safeName};
+                literalLen = matchLen;
+            }
         }
       `;
     } else {
       wordBoundaryCheck = `
-        lexLen = cPos - lexPos;
-        return SyntaxType.${safeName};
+        let matchLen: u32 = <u32>(cPos - lexPos);
+        if (expected_tokens == 0 || load<u8>(expected_tokens + <u32>SyntaxType.${safeName}) == 1) {
+            literalToken = SyntaxType.${safeName};
+            literalLen = matchLen;
+            break;
+        } else if (literalToken == 0) {
+            literalToken = SyntaxType.${safeName};
+            literalLen = matchLen;
+        }
       `;
     }
 
@@ -501,45 +534,10 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
 
     let branchCode = "";
     if (cps.length === 1) {
-      if (val === "/") {
-        branchCode += `      if (!(lexPos + char0Len < inputLength && (peekChar(lexPos + char0Len) == 42 || peekChar(lexPos + char0Len) == 47))) {\n`;
-        branchCode += `        let cPos = lexPos + char0Len;\n`;
-        branchCode += wordBoundaryCheck;
-        branchCode += `      }\n`;
-      } else if (val === "'") {
-        branchCode += `      {\n`;
-        branchCode += `        let hasClosingQuote: bool = false;\n`;
-        branchCode += `        let scanPos: u32 = lexPos + char0Len;\n`;
-        branchCode += `        while (scanPos < inputLength) {\n`;
-        branchCode += `          let sc: i32 = peekChar(scanPos);\n`;
-        branchCode += `          if (sc == 92) {\n`;
-        branchCode += `            scanPos += peekCharLen(scanPos);\n`;
-        branchCode += `            if (scanPos < inputLength) scanPos += peekCharLen(scanPos);\n`;
-        branchCode += `            continue;\n`;
-        branchCode += `          }\n`;
-        branchCode += `          if (sc == 39) { hasClosingQuote = true; break; }\n`;
-        branchCode += `          if (sc == 10 || sc == 13 || sc == 59) break;\n`;
-        branchCode += `          scanPos += peekCharLen(scanPos);\n`;
-        branchCode += `        }\n`;
-        branchCode += `        if (!hasClosingQuote) {\n`;
-        branchCode += `          let cPos = lexPos + char0Len;\n`;
-        branchCode += wordBoundaryCheck;
-        branchCode += `        }\n`;
-        branchCode += `      }\n`;
-      } else if (
-        val === "." &&
-        Array.from(regexTokens.values()).some((r) => r.includes("\\.\\d") || r.includes("\\.[0-9]"))
-      ) {
-        branchCode += `      if (!(lexPos + char0Len < inputLength && peekChar(lexPos + char0Len) >= 48 && peekChar(lexPos + char0Len) <= 57)) {\n`;
-        branchCode += `        let cPos = lexPos + char0Len;\n`;
-        branchCode += wordBoundaryCheck;
-        branchCode += `      }\n`;
-      } else {
-        branchCode += `      {\n`;
-        branchCode += `        let cPos = lexPos + char0Len;\n`;
-        branchCode += wordBoundaryCheck;
-        branchCode += `      }\n`;
-      }
+      branchCode += `      {\n`;
+      branchCode += `        let cPos = lexPos + char0Len;\n`;
+      branchCode += wordBoundaryCheck;
+      branchCode += `      }\n`;
     } else {
       branchCode += `      {\n`;
       branchCode += `        let cPos = lexPos + char0Len;\n`;
@@ -611,9 +609,9 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     const dfa = compileRegexToDFA(regexList);
 
     lexerCode += `  let dfaState = 0;\n`;
-    lexerCode += `  let dfaLexLen = 0;\n`;
+    lexerCode += `  let dfaLexLen: u32 = 0;\n`;
     lexerCode += `  let lastAcceptingState = -1;\n`;
-    lexerCode += `  let lastAcceptingLen = 0;\n`;
+    lexerCode += `  let lastAcceptingLen: u32 = 0;\n`;
 
     lexerGlobals += `  // DFA Transitions\n`;
     lexerGlobals += `  const classRangesS: StaticArray<i32> = [${(dfa as any).classRanges.map((r: any) => r.s).join(",")}];\n`;
@@ -658,8 +656,35 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     lexerCode += `  }\n`;
 
     lexerCode += `  // console.log("Final lastAcceptingState " + lastAcceptingState.toString() + " len " + lastAcceptingLen.toString());\n`;
+    lexerCode += `  // --- Decision: String Literal vs Regex DFA Maximal Munch ---\n`;
+    lexerCode += `  if (literalLen > 0 && literalLen >= lastAcceptingLen) {\n`;
+    lexerCode += `    let preferRegex = false;\n`;
+    lexerCode += `    if (literalLen == lastAcceptingLen && expected_tokens != 0) {\n`;
+    lexerCode += `      if (load<u8>(expected_tokens + <u32>literalToken) == 0 && lastAcceptingState != -1) {\n`;
+    lexerCode += `        switch (lastAcceptingState) {\n`;
+    for (let s = 0; s < dfa.numStates; s++) {
+      if (dfa.accepts[s]) {
+        const tokenNames = dfa.accepts[s]!;
+        const conds = tokenNames
+          .map((tName) => `load<u8>(expected_tokens + <u32>SyntaxType.${tName}) == 1`)
+          .join(" || ");
+        lexerCode += `          case ${s}:\n`;
+        lexerCode += `            if (${conds}) preferRegex = true;\n`;
+        lexerCode += `            break;\n`;
+      }
+    }
+    lexerCode += `        }\n`;
+    lexerCode += `      }\n`;
+    lexerCode += `    }\n`;
+    lexerCode += `    if (!preferRegex) {\n`;
+    lexerCode += `      lexLen = literalLen;\n`;
+    lexerCode += `      srcLexLen = lexLen;\n`;
+    lexerCode += `      return literalToken;\n`;
+    lexerCode += `    }\n`;
+    lexerCode += `  }\n\n`;
     lexerCode += `  if (lastAcceptingState !== -1) {\n`;
     lexerCode += `    lexLen = lastAcceptingLen;\n`;
+    lexerCode += `    srcLexLen = lexLen;\n`;
     lexerCode += `    switch(lastAcceptingState) {\n`;
     for (let s = 0; s < dfa.numStates; s++) {
       if (dfa.accepts[s]) {
@@ -739,8 +764,12 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
                   lexerCode += `              if (kwMatch && peekChar(cPos) == ${kwCps[i]}) { cPos += peekCharLen(cPos); } else { kwMatch = false; }\n`;
                 }
                 lexerCode += `              if (kwMatch && (cPos - lexPos == lexLen)) {\n`;
-                lexerCode += `                if (load<u8>(expected_tokens + <u32>SyntaxType.T_${kwTokenInt}) == 1) return SyntaxType.T_${kwTokenInt};\n`;
-                lexerCode += `                if (load<u8>(expected_tokens + <u32>SyntaxType.${tokenName}) == 0) return SyntaxType.T_${kwTokenInt};\n`;
+                lexerCode += `                if (expected_tokens != 0) {\n`;
+                lexerCode += `                  if (load<u8>(expected_tokens + <u32>SyntaxType.T_${kwTokenInt}) == 1) return SyntaxType.T_${kwTokenInt};\n`;
+                lexerCode += `                  if (load<u8>(expected_tokens + <u32>SyntaxType.${tokenName}) == 0) return SyntaxType.T_${kwTokenInt};\n`;
+                lexerCode += `                } else {\n`;
+                lexerCode += `                  return SyntaxType.T_${kwTokenInt};\n`;
+                lexerCode += `                }\n`;
                 lexerCode += `              }\n`;
                 lexerCode += `            }\n`;
               }
@@ -754,7 +783,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
         if (tokenNames.length > 1) {
           lexerCode += `        // Lexical tie-breaking\n`;
           for (const tName of tokenNames) {
-            lexerCode += `        if (load<u8>(expected_tokens + <u32>SyntaxType.${tName}) == 1) return SyntaxType.${tName};\n`;
+            lexerCode += `        if (expected_tokens != 0 && load<u8>(expected_tokens + <u32>SyntaxType.${tName}) == 1) return SyntaxType.${tName};\n`;
           }
         }
 
@@ -817,6 +846,12 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     lexerCode += `  }\n`;
   }
 
+  lexerCode += `  if (literalLen > 0) {\n`;
+  lexerCode += `    lexLen = literalLen;\n`;
+  lexerCode += `    srcLexLen = lexLen;\n`;
+  lexerCode += `    return literalToken;\n`;
+  lexerCode += `  }\n`;
+
   // Task 1.6: Multi-word keyword speculative lookahead
   // After identifier matching, check if ident + space + next word forms a multi-word keyword
   let helpers = "";
@@ -868,6 +903,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
       helpers += `        let afterCh = rPos < inputLength ? peekChar(rPos) : 0;\n`;
       helpers += `        if (afterCh == 0 || !((afterCh >= 65 && afterCh <= 90) || (afterCh >= 97 && afterCh <= 122) || afterCh == 95 || (afterCh >= 48 && afterCh <= 57))) {\n`;
       helpers += `          lexLen = <u32>(rPos - startPos);\n`;
+      helpers += `          srcLexLen = lexLen;\n`;
       helpers += `          return SyntaxType.T_${tokenInt};\n`;
       helpers += `        }\n`;
       helpers += `      }\n`;
@@ -880,6 +916,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   lexerCode += `
   lexLen = peekCharLen(lexPos);
   if (lexLen == 0) lexLen = 1; // Fail-safe
+  srcLexLen = lexLen;
   return SyntaxType.ERROR;
 }
 `;
@@ -888,6 +925,8 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   if (grammar.scanner) {
     lexerCode += `
 // --- External Scanner Helper Primitives ---
+export let scanMarkedEnd: bool = false;
+
 export function scanAdvance(skip: boolean = false): void {
   let chLen = peekCharLen(lexPos);
   lexPos += chLen;
@@ -895,14 +934,18 @@ export function scanAdvance(skip: boolean = false): void {
     srcLexPos = lexPos;
     lexLen = 0;
     srcLexLen = 0;
+    scanMarkedEnd = false;
   } else {
     lexLen += chLen;
-    srcLexLen = lexLen;
+    if (!scanMarkedEnd) {
+      srcLexLen = lexLen;
+    }
   }
 }
 
 export function scanMarkEnd(): void {
   srcLexLen = lexLen;
+  scanMarkedEnd = true;
 }
 
 export function scanSkipWhitespace(): void {
@@ -917,10 +960,12 @@ export function scanSkipWhitespace(): void {
   srcLexPos = lexPos;
   lexLen = 0;
   srcLexLen = 0;
+  scanMarkedEnd = false;
 }
 
 export function scanIsExpected(tok: u32): boolean {
   if (tok > (MAX_TERMINAL_ID as u32)) return false;
+  if (expected_tokens == 0) return true;
   return load<u8>(expected_tokens + tok) == 1;
 }
 

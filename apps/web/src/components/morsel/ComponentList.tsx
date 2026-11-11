@@ -22,6 +22,7 @@ import { invertSvgColors, normalizeSvgForIcon } from "./util/x6";
 interface ComponentListProps {
   components: DiagramNode[] | null;
   onSelect: (name: string) => void;
+  onHighlight?: (name: string | null) => void;
   selectedName?: string | null | undefined;
   language?: string | null | undefined;
   translations?: Translations | undefined;
@@ -78,6 +79,81 @@ export function getSemanticKindIcon(kind: string | undefined, size = 16): React.
     default:
       return <PackageIcon size={size} style={{ color: "var(--fgColor-muted, #64748b)", flexShrink: 0 }} />;
   }
+}
+
+export interface ComponentDomainInfo {
+  domain: string;
+  color: string;
+}
+
+export function getComponentDomain(className = "", classKind = ""): ComponentDomainInfo {
+  const combined = `${className} ${classKind}`.toLowerCase();
+  if (
+    combined.includes("analog") ||
+    combined.includes("electrical") ||
+    combined.includes("resistor") ||
+    combined.includes("capacitor") ||
+    combined.includes("inductor") ||
+    combined.includes("voltage") ||
+    combined.includes("ground") ||
+    combined.includes("diode") ||
+    combined.includes("transistor") ||
+    combined.includes("opamp") ||
+    combined.includes("spice") ||
+    combined.includes("circuit")
+  ) {
+    return { domain: "Electrical", color: "#06b6d4" };
+  }
+  if (
+    combined.includes("mechanic") ||
+    combined.includes("multibody") ||
+    combined.includes("rotational") ||
+    combined.includes("translational") ||
+    combined.includes("joint") ||
+    combined.includes("inertia") ||
+    combined.includes("spring") ||
+    combined.includes("damper") ||
+    combined.includes("mass") ||
+    combined.includes("gear")
+  ) {
+    return { domain: "Mechanics", color: "#f59e0b" };
+  }
+  if (
+    combined.includes("thermal") ||
+    combined.includes("heattransfer") ||
+    combined.includes("heat") ||
+    combined.includes("temperature") ||
+    combined.includes("conduction") ||
+    combined.includes("radiation")
+  ) {
+    return { domain: "Thermal", color: "#f43f5e" };
+  }
+  if (
+    combined.includes("block") ||
+    combined.includes("continuous") ||
+    combined.includes("discrete") ||
+    combined.includes("logical") ||
+    combined.includes("math") ||
+    combined.includes("control") ||
+    combined.includes("gain") ||
+    combined.includes("integrator") ||
+    combined.includes("limiter") ||
+    combined.includes("pid")
+  ) {
+    return { domain: "Controls", color: "#a855f7" };
+  }
+  if (
+    combined.includes("fluid") ||
+    combined.includes("pipe") ||
+    combined.includes("hydraulic") ||
+    combined.includes("valve") ||
+    combined.includes("tank") ||
+    combined.includes("flow") ||
+    combined.includes("pump")
+  ) {
+    return { domain: "Fluid", color: "#3b82f6" };
+  }
+  return { domain: "System", color: "#10b981" };
 }
 
 export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentIconProps) {
@@ -152,7 +228,7 @@ export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentI
 });
 
 const ComponentList = React.memo(function ComponentList(props: ComponentListProps) {
-  const { components, onSelect, selectedName } = props;
+  const { components, onSelect, onHighlight, selectedName } = props;
   const { colorMode } = useTheme();
   const isDark = colorMode === "dark";
 
@@ -186,9 +262,14 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
     <NavList className="height-full overflow-auto" style={{ flex: 1 }}>
       {validComponents.map((component) => {
         const rawKind = component.properties?.classKind || component.properties?.className || "component";
-        const displayName = component.properties?.name || component.id;
+        const displayName =
+          component.properties?.name ||
+          component.properties?.description ||
+          (component as any).data?.label ||
+          component.id;
         const badgeStyle = getKindBadgeStyle(rawKind, true);
         const rawClassName = component.properties?.className || "";
+        const domainInfo = getComponentDomain(rawClassName, rawKind);
         const shortTypeName = rawClassName.includes(".")
           ? rawClassName.split(".").pop()
           : rawClassName.toLowerCase() !== rawKind.toLowerCase()
@@ -200,15 +281,42 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
             key={component.id}
             aria-current={selectedName === component.id ? "page" : undefined}
             onClick={() => component.id && onSelect(component.id)}
+            onMouseEnter={() => {
+              if (component.id) onHighlight?.(component.id);
+            }}
+            onMouseLeave={() => {
+              onHighlight?.(null);
+            }}
+            style={{
+              borderRadius: 6,
+              margin: "1px 6px",
+              transition: "background-color 0.12s ease",
+            }}
           >
             <NavList.LeadingVisual>
-              <ComponentIcon
-                iconSvg={component.properties?.iconSvg}
-                className={rawClassName || component.properties?.className}
-                kind={rawKind}
-                darkMode={isDark}
-                uri={props.uri}
-              />
+              <div
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.03)",
+                  border: isDark ? "1px solid rgba(255, 255, 255, 0.08)" : "1px solid rgba(0, 0, 0, 0.06)",
+                  borderLeft: `2.5px solid ${domainInfo.color}`,
+                  overflow: "hidden",
+                }}
+              >
+                <ComponentIcon
+                  iconSvg={component.properties?.iconSvg}
+                  className={rawClassName || component.properties?.className}
+                  kind={rawKind}
+                  darkMode={isDark}
+                  uri={props.uri}
+                  size={16}
+                />
+              </div>
             </NavList.LeadingVisual>
             <div
               style={{
@@ -226,20 +334,40 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
-                  fontWeight: 500,
-                  fontSize: 13,
+                  fontWeight: 600,
+                  fontSize: 12.5,
+                  color: "var(--ms-text-1, var(--color-fg-default))",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
                 }}
                 title={component.id ?? undefined}
               >
-                {displayName}
+                <span
+                  style={{
+                    width: 5,
+                    height: 5,
+                    borderRadius: "50%",
+                    backgroundColor: domainInfo.color,
+                    flexShrink: 0,
+                    boxShadow: `0 0 5px ${domainInfo.color}80`,
+                  }}
+                  title={`Domain: ${domainInfo.domain}`}
+                />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {displayName}
+                </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                 {shortTypeName && (
                   <span
                     style={{
-                      fontSize: 11,
+                      fontSize: 10,
                       fontFamily: "var(--ms-font-mono, monospace)",
-                      opacity: 0.65,
+                      color: "var(--ms-text-2, var(--color-fg-muted))",
+                      background: isDark ? "rgba(255, 255, 255, 0.06)" : "rgba(0, 0, 0, 0.04)",
+                      padding: "1px 5px",
+                      borderRadius: 4,
                       maxWidth: 96,
                       overflow: "hidden",
                       textOverflow: "ellipsis",

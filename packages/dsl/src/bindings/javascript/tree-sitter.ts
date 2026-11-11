@@ -6,4 +6,4 @@
  */
 
 export { SyntaxNode, Tree, TreeCursor, TreeSitterParser } from "./bindings.js";
-export type { Point } from "./bindings.js";
+export type { Edit, Point, Range } from "./bindings.js";

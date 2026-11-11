@@ -9,6 +9,27 @@ export var InputEncoding;
   InputEncoding[(InputEncoding["UTF32LE"] = 3)] = "UTF32LE";
   InputEncoding[(InputEncoding["UTF32BE"] = 4)] = "UTF32BE";
 })(InputEncoding || (InputEncoding = {}));
+const _regexTokenNameCache = new Map();
+/**
+ * Produces a human-readable category for a regex token (as spelled "/pattern/") by testing what
+ * the pattern actually accepts, rather than pattern-text sniffing. Language-agnostic.
+ */
+function describeRegexToken(spelled) {
+  const cached = _regexTokenNameCache.get(spelled);
+  if (cached !== undefined) return cached;
+  let result = "token";
+  try {
+    const re = new RegExp("^(?:" + spelled.slice(1, -1) + ")$");
+    if (re.test('"a"')) result = "string";
+    else if (re.test("x") || re.test("_")) result = "identifier";
+    else if (re.test("1.5")) result = "number";
+    else if (re.test("1")) result = "integer";
+  } catch {
+    // Pattern uses syntax JS cannot compile; fall back to the generic category.
+  }
+  _regexTokenNameCache.set(spelled, result);
+  return result;
+}
 /**
  * Value-Type Tree Cursor for zero-allocation, re-entrant tree traversals.
  */
@@ -21,10 +42,38 @@ export class WasmTreeCursor {
     if (exports && exports.treeCursorAlloc) {
       this.cursorPtr = exports.treeCursorAlloc();
       exports.treeCursorReset(this.cursorPtr, rootNode);
+      if (exports.treeCursorFree) {
+        WasmTreeCursor._registry?.register(
+          this,
+          { exports, ptr: this.cursorPtr },
+          this,
+        );
+      }
     } else {
       this.cursorPtr = 0;
     }
   }
+  /** Releases the WASM-side cursor back to the pool. The cursor must not be used afterwards. */
+  dispose() {
+    if (!this.cursorPtr) return;
+    const exports =
+      this.runtime.exports || this.runtime.wasmExports || this.runtime;
+    WasmTreeCursor._registry?.unregister(this);
+    if (exports && exports.treeCursorFree)
+      exports.treeCursorFree(this.cursorPtr);
+    this.cursorPtr = 0;
+  }
+  /** Returns the cursor to the pool if it is garbage-collected without an explicit dispose(). */
+  static _registry =
+    typeof FinalizationRegistry !== "undefined"
+      ? new FinalizationRegistry(({ exports, ptr }) => {
+          try {
+            exports.treeCursorFree(ptr);
+          } catch {
+            // Instance already torn down.
+          }
+        })
+      : null;
   reset(rootNode) {
     const exports =
       this.runtime.exports || this.runtime.wasmExports || this.runtime;
@@ -100,7 +149,7 @@ export class ASTNode {
   getTypeId() {
     return this.runtime.getNodeType
       ? this.runtime.getNodeType(this.ptr)
-      : this.runtime.readU32(this.ptr) & 0x03ff;
+      : this.runtime.readU32(this.ptr) & 0xffff;
   }
   /** Gets the first child of this node in the AST. */
   getFirstChild() {
@@ -158,16 +207,18 @@ export class Parser {
         this.runtime.nativeAddon.setInputLength(str.length);
       }
       const oldTreePtr = oldTree ? oldTree.getPtr() : 0;
-      let startOff = editStart;
-      let oldEndOff = editOldEnd;
-      let newEndOff = editNewEnd > 0 ? editNewEnd : str.length;
-      if (
-        oldTreePtr === 0 ||
-        (startOff === 0 && oldEndOff === 0 && newEndOff === 0)
-      ) {
-        startOff = 0;
-        oldEndOff = 0;
-        newEndOff = str.length;
+      const hasEdit =
+        arguments.length > 2 ||
+        editStart !== 0 ||
+        editOldEnd !== 0 ||
+        editNewEnd !== 0;
+      let startOff = 0;
+      let oldEndOff = 0;
+      let newEndOff = str.length;
+      if (oldTreePtr !== 0 && hasEdit) {
+        startOff = editStart;
+        oldEndOff = editOldEnd;
+        newEndOff = editNewEnd;
       }
       const astRoot = this.runtime.parse(
         oldTreePtr,
@@ -300,17 +351,18 @@ export class Parser {
       return utf8Bytes;
     };
     const oldTreePtr = oldTree ? oldTree.getPtr() : 0;
-    let editStartByte = charToByteOffset(editStart);
-    let editOldEndByte = charToByteOffset(editOldEnd);
-    let editNewEndByte =
-      editNewEnd > 0 ? charToByteOffset(editNewEnd) : view.length;
-    if (
-      oldTreePtr === 0 ||
-      (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
-    ) {
-      editStartByte = 0;
-      editOldEndByte = 0;
-      editNewEndByte = view.length;
+    const hasEdit =
+      arguments.length > 2 ||
+      editStart !== 0 ||
+      editOldEnd !== 0 ||
+      editNewEnd !== 0;
+    let editStartByte = 0;
+    let editOldEndByte = 0;
+    let editNewEndByte = view.length;
+    if (oldTreePtr !== 0 && hasEdit) {
+      editStartByte = charToByteOffset(editStart);
+      editOldEndByte = charToByteOffset(editOldEnd);
+      editNewEndByte = charToByteOffset(editNewEnd);
     }
     const astRoot = this.runtime.parse(
       oldTreePtr,
@@ -409,7 +461,7 @@ export class WasmRuntime {
   }
   getNodeType(ptr) {
     this.ensureMemory();
-    return this.mem32[ptr / 4] & 0x03ff;
+    return this.mem32[ptr / 4] & 0xffff;
   }
   /** Gets the imports needed to instantiate the compiled WASM module. */
   static getWasmImports(onTextEdit, getMemory) {
@@ -481,12 +533,12 @@ export class NativeRuntime {
   getNodeType(ptr) {
     return this.nativeAddon.getNodeType
       ? this.nativeAddon.getNodeType(ptr)
-      : this.readU32(ptr) & 0x03ff;
+      : this.readU32(ptr) & 0xffff;
   }
 }
 export const SYNTAX_NAMES =
-  typeof ["ERROR","/\\s/","\"<\"","\">\"","\";\"","\"{\"","\"}\"","\"public\"","\"private\"","\"protected\"","\"dependency\"","\"from\"","\",\"","\"to\"","\"comment\"","\"about\"","\"locale\"","\"doc\"","\"rep\"","\"language\"","\"#\"","\"metadata\"","\"@\"","\":\"","\"defined\"","\"by\"","\"ref\"","\":>>\"","\"redefines\"","\"def\"","\"package\"","\"standard\"","\"library\"","\"filter\"","\"alias\"","\"for\"","\"import\"","\"all\"","\"::\"","\"**\"","\"*\"","\"[\"","\"]\"","\":>\"","\"specializes\"","\"ordered\"","\"nonunique\"","\"subsets\"","\"subset\"","\"::>\"","\"references\"","\"reference\"","\"=>\"","\"crosses\"","\"redefine\"","\"..\"","\"variant\"","\"end\"","\"in\"","\"out\"","\"inout\"","\"derived\"","\"abstract\"","\"variation\"","\"constant\"","\"individual\"","\"snapshot\"","\"timeslice\"","\"=\"","\":=\"","\"default\"","\"attribute\"","\"enum\"","\"occurrence\"","\"item\"","\"part\"","\"port\"","\"~\"","\"connection\"","\"connect\"","\"(\"","\")\"","\"binding\"","\"bind\"","\"succession\"","\"first\"","\"then\"","\"if\"","\"interface\"","\"allocation\"","\"allocate\"","\"flow\"","\"of\"","\".\"","\"action\"","\"else\"","\"while\"","\"loop\"","\"until\"","\"merge\"","\"decide\"","\"join\"","\"fork\"","\"accept\"","\"via\"","\"send\"","\"assign\"","\"=:\"","\"perform\"","\"calc\"","\"return\"","\"constraint\"","\"assert\"","\"not\"","\"requirement\"","\"subject\"","\"assume\"","\"require\"","\"actor\"","\"stakeholder\"","\"satisfy\"","\"concern\"","\"case\"","\"analysis\"","\"verification\"","\"verify\"","\"objective\"","\"use\"","\"include\"","\"state\"","\"parallel\"","\"entry\"","\"do\"","\"exit\"","\"exhibit\"","\"transition\"","\"view\"","\"viewpoint\"","\"rendering\"","\"?\"","\"??\"","\"implies\"","\"|\"","\"or\"","\"xor\"","\"&\"","\"and\"","\"==\"","\"!=\"","\"===\"","\"!==\"","\"hastype\"","\"istype\"","\"@@\"","\"as\"","\"meta\"","\"<=\"","\">=\"","\"+\"","\"-\"","\"/\"","\"%\"","\"^\"","\"->\"","\".?\"","\"new\"","\"null\"","\"true\"","\"false\"","\"$\"","/[0-9]+/","/[0-9]+[eE][+-]?[0-9]+/","/[a-zA-Z_][a-zA-Z_0-9\\u00B2\\u00B3\\u00B9\\u2070-\\u2079]*/","/'(?:[^'\\\\]|\\\\.)*'/","/\"(?:[^\"\\\\]|\\\\.)*\"/","/\\/\\*[^*]*\\*+([^/*][^*]*\\*+)*\\//","/\\/\\/[^\\r\\n]*/","RootNamespace","_PackageBodyElement","_Identification","_RelationshipBody","VisibilityIndicator","Dependency","Annotation","OwnedAnnotation","AnnotatingMember","_AnnotatingElement","Comment","Documentation","TextualRepresentation","PrefixMetadataAnnotation","PrefixMetadataMember","PrefixMetadataUsage","MetadataUsage","MetadataTyping","_MetadataBody","MetadataBodyUsageMember","MetadataBodyUsage","MetadataDefinition","Package","LibraryPackage","_PackageBody","PackageMember","ElementFilterMember","AliasMember","_ImportPrefix","Import","MembershipImport","_ImportedMembership","NamespaceImport","_ImportedNamespace","FilterPackage","FilterPackageImport","FilterPackageMembershipImport","FilterPackageNamespaceImport","FilterPackageMember","_DefinitionElement","_UsageElement","_NonOccurrenceUsageElement","_OccurrenceUsageElement","_StructureUsageElement","_BehaviorUsageElement","_SubclassificationPart","OwnedSubclassification","_FeatureDeclaration","_FeatureSpecializationPart","_MultiplicityPart","_FeatureSpecialization","_Typings","_Subsettings","_References","_Crosses","_Redefinitions","FeatureTyping","OwnedFeatureTyping","OwnedSubsetting","OwnedReferenceSubsetting","OwnedCrossSubsetting","OwnedRedefinition","OwnedMultiplicity","MultiplicityRange","MultiplicityExpressionMember","_Definition","_DefinitionBody","_DefinitionBodyItem","DefinitionMember","VariantUsageMember","NonOccurrenceUsageMember","OccurrenceUsageMember","_usage_modifier","_UsageDeclaration","_UsageCompletion","_Usage","_ValuePart","FeatureValue","DefaultReferenceUsage","ReferenceUsage","AttributeDefinition","AttributeUsage","EnumerationDefinition","_EnumerationBody","EnumerationUsageMember","EnumeratedValue","EnumerationUsage","OccurrenceDefinition","OccurrenceUsage","ItemDefinition","ItemUsage","PartDefinition","PartUsage","PortDefinition","PortUsage","ConjugatedPortTyping","ConnectorEndMember","ConnectorEnd","ConnectionDefinition","ConnectionUsage","_ConnectorPart","_BinaryConnectorPart","_NaryConnectorPart","BindingConnectorAsUsage","SuccessionAsUsage","InterfaceDefinition","InterfaceUsage","AllocationDefinition","AllocationUsage","FlowDefinition","FlowUsage","SuccessionFlowUsage","PayloadFeatureMember","PayloadFeature","FlowEndMember","FlowEnd","FlowFeatureMember","FlowFeature","ActionDefinition","_ActionBody","_ActionBodyItem","EmptySuccessionMember","MultiplicitySourceEnd","ActionNodeMember","_ActionNode","IfNode","ActionBodyParameter","WhileLoopNode","ForLoopNode","ForVariableDeclaration","ControlNode","MergeNode","DecisionNode","JoinNode","ForkNode","ActionUsage","AcceptActionNode","SendActionNode","AssignActionNode","PerformActionUsage","CalculationDefinition","_CalculationBody","_ParameterList","ParameterMember","ReturnParameterMember","ResultExpressionMember","CalculationUsage","ConstraintDefinition","ConstraintUsage","AssertConstraintUsage","RequirementDefinition","_RequirementBody","_RequirementBodyItem","SubjectMember","SubjectUsage","RequirementConstraintMember","RequirementConstraintUsage","ActorMember","ActorUsage","StakeholderMember","StakeholderUsage","RequirementUsage","SatisfyRequirementUsage","ConcernDefinition","ConcernUsage","CaseDefinition","_CaseBody","CaseUsage","AnalysisCaseDefinition","AnalysisCaseUsage","VerificationCaseDefinition","VerificationCaseUsage","_VerificationBody","_VerificationBodyItem","VerifyRequirementUsageMember","VerifyRequirementUsage","ObjectiveMember","ObjectiveRequirementUsage","UseCaseDefinition","UseCaseUsage","IncludeUseCaseUsage","StateDefinition","_StateBodyItem","EntryActionMember","DoActionMember","ExitActionMember","StateActionUsage","StateUsage","ExhibitStateUsage","TransitionUsageMember","TransitionUsage","ViewDefinition","ViewUsage","ViewpointDefinition","ViewpointUsage","RenderingDefinition","RenderingUsage","OwnedExpressionMember","OwnedExpression","_Expression","OwnedExpressionReference","ConditionalExpression","NullCoalescingExpression","ImpliesExpressionReference","ImpliesExpressionMember","ImpliesExpression","OrExpressionReference","OrExpressionMember","OrExpression","XorExpressionReference","XorExpressionMember","XorExpression","AndExpression","EqualityExpressionReference","EqualityExpressionMember","EqualityExpression","EqualityOperator","ClassificationExpression","ClassificationTestOperator","MetadataReference","TypeReferenceMember","TypeResultMember","TypeReference","ReferenceTyping","RelationalExpression","RelationalOperator","RangeExpression","AdditiveExpression","AdditiveOperator","MultiplicativeExpression","MultiplicativeOperator","ExponentiationExpression","ExponentiationOperator","UnaryExpression","UnaryOperator","ExtentExpression","_postfix_operation","MeasurementExpression","_UnitExpression","UnitBinaryExpression","UnitExponentExpression","_UnitPrimaryExpression","PrimaryExpression","FunctionReferenceExpression","FunctionReferenceMember","FunctionReference","FeatureChainMember","OwnedFeatureChain","_BaseExpression","BodyExpression","ExpressionBodyMember","ExpressionBody","SequenceExpression","FeatureReferenceExpression","FeatureReferenceMember","MetadataAccessExpression","ElementReferenceMember","InvocationExpression","ConstructorExpression","ConstructorResultMember","ConstructorResult","InstantiatedTypeMember","_FeatureChain","OwnedFeatureChaining","_ArgumentList","_PositionalArgumentList","ArgumentMember","Argument","_NamedArgumentList","NamedArgumentMember","NamedArgument","ParameterRedefinition","ArgumentValue","NullExpression","_LiteralExpression","LiteralBoolean","BooleanValue","LiteralString","LiteralInteger","LiteralReal","RealValue","Name","GlobalQualification","Qualification","QualifiedName","_START","__PackageBodyElement*","_(PackageMember | ElementFilterMember | AliasMember | Import | AnnotatingMember)","_Name?","_((\"<\" Name \">\" Name?) | Name)","_(\";\" | (\"{\" OwnedAnnotation* \"}\"))","_OwnedAnnotation*","_(\"public\" | \"private\" | \"protected\")","_PrefixMetadataAnnotation*","__Identification?","_(_Identification? \"from\")?","_(\",\" QualifiedName)*","_(\",\" QualifiedName)*_1","_(Comment | Documentation | TextualRepresentation | MetadataUsage)","_(\",\" Annotation)*","_(\"about\" Annotation (\",\" Annotation)*)?","_(\"locale\" STRING_VALUE)?","_(REGULAR_COMMENT | STRING_VALUE)","_(REGULAR_COMMENT | STRING_VALUE)?","_((\"comment\" _Identification? (\"about\" Annotation (\",\" Annotation)*)? (\"locale\" STRING_VALUE)? (REGULAR_COMMENT | STRING_VALUE)?) | ((\"locale\" STRING_VALUE)? (REGULAR_COMMENT | STRING_VALUE)))","_\";\"?","_((\"doc\" _Identification? (\"locale\" STRING_VALUE)? (REGULAR_COMMENT | STRING_VALUE)) | (\"doc\" (\"<\" Name \">\")? (\"locale\" STRING_VALUE)?))","_(\"<\" Name \">\")?","_(\"rep\" _Identification?)?","_PrefixMetadataMember*","_(\"metadata\" | \"@\")","_(\":\" | (\"defined\" \"by\"))","_((\":\" | (\"defined\" \"by\")))?","_(_Identification? ((\":\" | (\"defined\" \"by\")))?)?","_(\";\" | (\"{\" (DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)* \"}\"))","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)*","_\"ref\"?","_(\":>>\" | \"redefines\")","_(\":>>\" | \"redefines\")?","__FeatureSpecializationPart?","__ValuePart?","__usage_modifier*","_\"standard\"?","_(\";\" | (\"{\" _PackageBodyElement* \"}\"))","_VisibilityIndicator?","_(_DefinitionElement | _UsageElement)","_(\"<\" Name \">\")?_1","_Name?_1","_\"all\"?","_(MembershipImport | NamespaceImport)","_(\"::\" \"**\")?","_(_ImportedNamespace | FilterPackage)","_FilterPackageMember*","_(FilterPackageMembershipImport | FilterPackageNamespaceImport)","_(Package | LibraryPackage | Dependency | AttributeDefinition | EnumerationDefinition | OccurrenceDefinition | ItemDefinition | MetadataDefinition | PartDefinition | ConnectionDefinition | FlowDefinition | InterfaceDefinition | AllocationDefinition | PortDefinition | ActionDefinition | CalculationDefinition | StateDefinition | ConstraintDefinition | RequirementDefinition | ConcernDefinition | CaseDefinition | AnalysisCaseDefinition | VerificationCaseDefinition | UseCaseDefinition | ViewDefinition | ViewpointDefinition | RenderingDefinition)","_(_NonOccurrenceUsageElement | _OccurrenceUsageElement)","_(DefaultReferenceUsage | ReferenceUsage | AttributeUsage | EnumerationUsage | BindingConnectorAsUsage | SuccessionAsUsage)","_(_StructureUsageElement | _BehaviorUsageElement)","_(OccurrenceUsage | ItemUsage | PartUsage | PortUsage | ConnectionUsage | InterfaceUsage | AllocationUsage | FlowUsage | SuccessionFlowUsage | ViewUsage | RenderingUsage)","_(ActionUsage | CalculationUsage | StateUsage | ConstraintUsage | RequirementUsage | ConcernUsage | CaseUsage | AnalysisCaseUsage | VerificationCaseUsage | UseCaseUsage | ViewpointUsage | PerformActionUsage | ExhibitStateUsage | IncludeUseCaseUsage | AssertConstraintUsage | SatisfyRequirementUsage)","_(\":>\" | \"specializes\")","_(\",\" OwnedSubclassification)*","_((_Identification _FeatureSpecializationPart?) | _FeatureSpecializationPart)","_(_FeatureSpecialization | _MultiplicityPart)","_(_FeatureSpecialization | _MultiplicityPart)*","_(OwnedMultiplicity | (OwnedMultiplicity? ((\"ordered\" \"nonunique\"?) | (\"nonunique\" \"ordered\"?))))","_OwnedMultiplicity?","_\"nonunique\"?","_((\"ordered\" \"nonunique\"?) | (\"nonunique\" \"ordered\"?))","_\"ordered\"?","_(_Typings | _Subsettings | _References | _Crosses | _Redefinitions)","_(\",\" FeatureTyping)*","_(\":>\" | \"subsets\" | \"subset\")","_(\",\" OwnedSubsetting)*","_(\"::>\" | \"references\" | \"reference\")","_(\"=>\" | \"crosses\")","_(\":>>\" | \"redefines\" | \"redefine\")","_(\",\" OwnedRedefinition)*","_(OwnedFeatureTyping | ConjugatedPortTyping)","_(QualifiedName | OwnedFeatureChain)","_(\"..\" MultiplicityExpressionMember)?","_(_LiteralExpression | FeatureReferenceExpression)","__SubclassificationPart?","_(\";\" | (\"{\" _DefinitionBodyItem* \"}\"))","__DefinitionBodyItem*","_(DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | (EmptySuccessionMember? OccurrenceUsageMember) | AliasMember | Import | AnnotatingMember)","_EmptySuccessionMember?","_(\"end\" | \"in\" | \"out\" | \"inout\" | \"derived\" | \"abstract\" | \"variation\" | \"constant\" | \"ref\" | \"redefine\" | \"redefines\" | \"subset\" | \"subsets\" | \"individual\" | \"snapshot\" | \"timeslice\" | PrefixMetadataMember)","__UsageDeclaration?","_(\"=\" | \":=\" | (\"default\" (\"=\" | \":=\")?))","_(\"=\" | \":=\")","_(\"=\" | \":=\")?","_(\";\" | (\"{\" (AnnotatingMember | EnumerationUsageMember)* \"}\"))","_(AnnotatingMember | EnumerationUsageMember)","_(AnnotatingMember | EnumerationUsageMember)*","_\"enum\"?","_OwnedMultiplicity?_1","_(\"::>\" | \"references\")","_(Name (\"::>\" | \"references\"))?","_(\"connect\" _ConnectorPart)?","_((\"connection\" _UsageDeclaration? _ValuePart? (\"connect\" _ConnectorPart)?) | (\"connect\" _ConnectorPart))","_(_BinaryConnectorPart | _NaryConnectorPart)","_(\",\" ConnectorEndMember)*","_(\"binding\" _UsageDeclaration?)?","_(\"succession\" _UsageDeclaration?)?","_\"first\"?","_(\"if\" OwnedExpression)?","_(\"allocate\" _ConnectorPart)?","_((\"allocation\" _UsageDeclaration? (\"allocate\" _ConnectorPart)?) | (\"allocate\" _ConnectorPart))","_((FlowEndMember \"to\" FlowEndMember) | (_UsageDeclaration? _ValuePart? (\"of\" PayloadFeatureMember)? (\"from\" FlowEndMember \"to\" FlowEndMember)?))","_(\"of\" PayloadFeatureMember)?","_(\"from\" FlowEndMember \"to\" FlowEndMember)?","_((_Identification? _FeatureSpecializationPart _ValuePart?) | (_Identification? _ValuePart) | (OwnedFeatureTyping OwnedMultiplicity?) | (OwnedMultiplicity OwnedFeatureTyping))","_(OwnedReferenceSubsetting \".\")?","__ParameterList?","_(\";\" | (\"{\" _ActionBodyItem* \"}\"))","__ActionBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | OccurrenceUsageMember | (EmptySuccessionMember? _OccurrenceUsageElement) | ActionNodeMember | ReturnParameterMember | AnnotatingMember)","_(IfNode | WhileLoopNode | ForLoopNode | ControlNode | AcceptActionNode | SendActionNode | AssignActionNode)","_(\"action\" _UsageDeclaration?)?","_(ActionBodyParameter | IfNode)","_(\"else\" (ActionBodyParameter | IfNode))?","_((\"while\" OwnedExpression) | \"loop\")","_(\"until\" OwnedExpression \";\")?","_(MergeNode | DecisionNode | JoinNode | ForkNode)","_(\"via\" OwnedReferenceSubsetting)?","_(\"to\" OwnedExpression)?","_((OwnedExpression \":=\" OwnedExpression) | (OwnedExpression \"=:\" OwnedExpression))","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"action\" _UsageDeclaration?))","_(\";\" | (\"{\" (_ActionBodyItem | ReturnParameterMember)* ResultExpressionMember? \"}\"))","_(_ActionBodyItem | ReturnParameterMember)","_(_ActionBodyItem | ReturnParameterMember)*","_ResultExpressionMember?","_(\",\" ParameterMember)*","_(ParameterMember (\",\" ParameterMember)*)?","_\"not\"?","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"constraint\" _UsageDeclaration? _ValuePart?))","_(\";\" | (\"{\" _RequirementBodyItem* \"}\"))","__RequirementBodyItem*","_(_DefinitionBodyItem | SubjectMember | RequirementConstraintMember | ActorMember | StakeholderMember)","_(\"assume\" | \"require\")","__FeatureSpecialization*","_((OwnedReferenceSubsetting _FeatureSpecialization* _CalculationBody) | (_usage_modifier* \"constraint\"? _UsageDeclaration? _ValuePart? _CalculationBody))","_\"constraint\"?","_\"assert\"?","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"requirement\" _UsageDeclaration?))","_(\"by\" OwnedReferenceSubsetting)?","_(\";\" | (\"{\" (_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)* ResultExpressionMember? \"}\"))","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)*","_(\";\" | (\"{\" _VerificationBodyItem* ResultExpressionMember? \"}\"))","__VerificationBodyItem*","_(_ActionBodyItem | VerifyRequirementUsageMember | ObjectiveMember | AnnotatingMember)","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"use\" \"case\" _UsageDeclaration?))","_(\";\" | (\"parallel\"? \"{\" _StateBodyItem* \"}\"))","_\"parallel\"?","__StateBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | OccurrenceUsageMember | (EmptySuccessionMember? _OccurrenceUsageElement) | TransitionUsageMember | EntryActionMember | DoActionMember | ExitActionMember | AnnotatingMember)","_(\";\" | (_UsageDeclaration? _ValuePart? _ActionBody))","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"state\" _UsageDeclaration?))","_(_UsageDeclaration? \"first\")?","_(\"accept\" PayloadFeatureMember)?","_(\"do\" StateActionUsage)?","_(\";\" | (\"{\" (_DefinitionBodyItem | ElementFilterMember)* \"}\"))","_(_DefinitionBodyItem | ElementFilterMember)","_(_DefinitionBodyItem | ElementFilterMember)*","_(ConditionalExpression | NullCoalescingExpression | ImpliesExpression | OrExpression | XorExpression | AndExpression | EqualityExpression | ClassificationExpression | RelationalExpression | RangeExpression | AdditiveExpression | MultiplicativeExpression | ExponentiationExpression | UnaryExpression | ExtentExpression | MeasurementExpression | PrimaryExpression | _BaseExpression)","_(\"if\" _Expression \"?\" OwnedExpressionReference \"else\" OwnedExpressionReference)","_(\"??\" ImpliesExpressionReference)*","_(_Expression ((\"??\" ImpliesExpressionReference) (\"??\" ImpliesExpressionReference)*))","_(\"implies\" ImpliesExpressionReference)*","_(_Expression ((\"implies\" ImpliesExpressionReference) (\"implies\" ImpliesExpressionReference)*))","_((\"|\" _Expression) | (\"or\" XorExpressionReference))","_((\"|\" _Expression) | (\"or\" XorExpressionReference))*","_(_Expression (((\"|\" _Expression) | (\"or\" XorExpressionReference)) ((\"|\" _Expression) | (\"or\" XorExpressionReference))*))","_(\"xor\" _Expression)*","_(_Expression ((\"xor\" _Expression) (\"xor\" _Expression)*))","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))*","_(_Expression (((\"&\" _Expression) | (\"and\" EqualityExpressionReference)) ((\"&\" _Expression) | (\"and\" EqualityExpressionReference))*))","_(EqualityOperator _Expression)*","_(_Expression ((EqualityOperator _Expression) (EqualityOperator _Expression)*))","_(\"==\" | \"!=\" | \"===\" | \"!==\")","_((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))","_((_Expression ((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))) | (ClassificationTestOperator TypeReferenceMember) | (MetadataReference MetaClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember) | (MetadataReference MetaCastOperator TypeResultMember))","_(\"hastype\" | \"istype\" | \"@\")","MetaClassificationTestOperator","CastOperator","MetaCastOperator","_(RelationalOperator _Expression)*","_(_Expression ((RelationalOperator _Expression) (RelationalOperator _Expression)*))","_(\"<\" | \">\" | \"<=\" | \">=\")","_(_Expression \"..\" _Expression)","_(AdditiveOperator _Expression)*","_(_Expression ((AdditiveOperator _Expression) (AdditiveOperator _Expression)*))","_(\"+\" | \"-\")","_(MultiplicativeOperator _Expression)*","_(_Expression ((MultiplicativeOperator _Expression) (MultiplicativeOperator _Expression)*))","_(\"*\" | \"/\" | \"%\")","_(_Expression ExponentiationOperator _Expression)","_(\"**\" | \"^\")","_(UnaryOperator _Expression)","_(\"+\" | \"-\" | \"~\" | \"not\")","_(\"all\" TypeResultMember)","_((\"#\" \"(\" SequenceExpression \")\") | (\"[\" SequenceExpression \"]\") | (\"->\" InstantiatedTypeMember (BodyExpression | FunctionReferenceExpression | _ArgumentList)) | (\".\" BodyExpression) | (\".?\" BodyExpression))","_(BodyExpression | FunctionReferenceExpression | _ArgumentList)","_(\".\" FeatureChainMember)?","_(_LiteralExpression | FeatureReferenceExpression)_1","_((_LiteralExpression | FeatureReferenceExpression) \"[\" _UnitExpression \"]\")","_(UnitBinaryExpression | UnitExponentExpression | _UnitPrimaryExpression)","_(\"*\" | \"/\")","_(_UnitExpression (\"*\" | \"/\") _UnitExpression)","_(\"^\" | \"**\")","_(LiteralInteger | (\"-\" LiteralInteger))","_(_UnitPrimaryExpression (\"^\" | \"**\") (LiteralInteger | (\"-\" LiteralInteger)))","_(FeatureReferenceExpression | (\"(\" _UnitExpression \")\"))","__postfix_operation*","_((_BaseExpression (\".\" FeatureChainMember) _postfix_operation*) | (_BaseExpression (_postfix_operation _postfix_operation*)))","_(NullExpression | _LiteralExpression | FeatureReferenceExpression | MetadataAccessExpression | InvocationExpression | ConstructorExpression | BodyExpression | (\"(\" SequenceExpression \")\"))","_(\",\" | (\",\" SequenceExpression))","_(\",\" | (\",\" SequenceExpression))?","_(\".\" OwnedFeatureChaining)*","_(_PositionalArgumentList | _NamedArgumentList)","_(_PositionalArgumentList | _NamedArgumentList)?","_(\",\" ArgumentMember)*","_(\",\" NamedArgumentMember)*","_(\"null\" | (\"(\" \")\"))","_(LiteralBoolean | LiteralString | LiteralInteger | LiteralReal | LiteralInfinity)","_(\"true\" | \"false\")","_DECIMAL_VALUE?","_(DECIMAL_VALUE | EXP_VALUE)","_((DECIMAL_VALUE? \".\" (DECIMAL_VALUE | EXP_VALUE)) | EXP_VALUE)","LiteralInfinity","_(ID | UNRESTRICTED_NAME)","_GlobalQualification?","_((GlobalQualification? Name) | (QualifiedName \"::\" Name))","_(QualifiedName \"::\" Name)","DECIMAL_VALUE","EXP_VALUE","ID","UNRESTRICTED_NAME","STRING_VALUE","REGULAR_COMMENT","ML_NOTE","SL_NOTE","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"] !== "undefined"
-    ? ["ERROR","/\\s/","\"<\"","\">\"","\";\"","\"{\"","\"}\"","\"public\"","\"private\"","\"protected\"","\"dependency\"","\"from\"","\",\"","\"to\"","\"comment\"","\"about\"","\"locale\"","\"doc\"","\"rep\"","\"language\"","\"#\"","\"metadata\"","\"@\"","\":\"","\"defined\"","\"by\"","\"ref\"","\":>>\"","\"redefines\"","\"def\"","\"package\"","\"standard\"","\"library\"","\"filter\"","\"alias\"","\"for\"","\"import\"","\"all\"","\"::\"","\"**\"","\"*\"","\"[\"","\"]\"","\":>\"","\"specializes\"","\"ordered\"","\"nonunique\"","\"subsets\"","\"subset\"","\"::>\"","\"references\"","\"reference\"","\"=>\"","\"crosses\"","\"redefine\"","\"..\"","\"variant\"","\"end\"","\"in\"","\"out\"","\"inout\"","\"derived\"","\"abstract\"","\"variation\"","\"constant\"","\"individual\"","\"snapshot\"","\"timeslice\"","\"=\"","\":=\"","\"default\"","\"attribute\"","\"enum\"","\"occurrence\"","\"item\"","\"part\"","\"port\"","\"~\"","\"connection\"","\"connect\"","\"(\"","\")\"","\"binding\"","\"bind\"","\"succession\"","\"first\"","\"then\"","\"if\"","\"interface\"","\"allocation\"","\"allocate\"","\"flow\"","\"of\"","\".\"","\"action\"","\"else\"","\"while\"","\"loop\"","\"until\"","\"merge\"","\"decide\"","\"join\"","\"fork\"","\"accept\"","\"via\"","\"send\"","\"assign\"","\"=:\"","\"perform\"","\"calc\"","\"return\"","\"constraint\"","\"assert\"","\"not\"","\"requirement\"","\"subject\"","\"assume\"","\"require\"","\"actor\"","\"stakeholder\"","\"satisfy\"","\"concern\"","\"case\"","\"analysis\"","\"verification\"","\"verify\"","\"objective\"","\"use\"","\"include\"","\"state\"","\"parallel\"","\"entry\"","\"do\"","\"exit\"","\"exhibit\"","\"transition\"","\"view\"","\"viewpoint\"","\"rendering\"","\"?\"","\"??\"","\"implies\"","\"|\"","\"or\"","\"xor\"","\"&\"","\"and\"","\"==\"","\"!=\"","\"===\"","\"!==\"","\"hastype\"","\"istype\"","\"@@\"","\"as\"","\"meta\"","\"<=\"","\">=\"","\"+\"","\"-\"","\"/\"","\"%\"","\"^\"","\"->\"","\".?\"","\"new\"","\"null\"","\"true\"","\"false\"","\"$\"","/[0-9]+/","/[0-9]+[eE][+-]?[0-9]+/","/[a-zA-Z_][a-zA-Z_0-9\\u00B2\\u00B3\\u00B9\\u2070-\\u2079]*/","/'(?:[^'\\\\]|\\\\.)*'/","/\"(?:[^\"\\\\]|\\\\.)*\"/","/\\/\\*[^*]*\\*+([^/*][^*]*\\*+)*\\//","/\\/\\/[^\\r\\n]*/","RootNamespace","_PackageBodyElement","_Identification","_RelationshipBody","VisibilityIndicator","Dependency","Annotation","OwnedAnnotation","AnnotatingMember","_AnnotatingElement","Comment","Documentation","TextualRepresentation","PrefixMetadataAnnotation","PrefixMetadataMember","PrefixMetadataUsage","MetadataUsage","MetadataTyping","_MetadataBody","MetadataBodyUsageMember","MetadataBodyUsage","MetadataDefinition","Package","LibraryPackage","_PackageBody","PackageMember","ElementFilterMember","AliasMember","_ImportPrefix","Import","MembershipImport","_ImportedMembership","NamespaceImport","_ImportedNamespace","FilterPackage","FilterPackageImport","FilterPackageMembershipImport","FilterPackageNamespaceImport","FilterPackageMember","_DefinitionElement","_UsageElement","_NonOccurrenceUsageElement","_OccurrenceUsageElement","_StructureUsageElement","_BehaviorUsageElement","_SubclassificationPart","OwnedSubclassification","_FeatureDeclaration","_FeatureSpecializationPart","_MultiplicityPart","_FeatureSpecialization","_Typings","_Subsettings","_References","_Crosses","_Redefinitions","FeatureTyping","OwnedFeatureTyping","OwnedSubsetting","OwnedReferenceSubsetting","OwnedCrossSubsetting","OwnedRedefinition","OwnedMultiplicity","MultiplicityRange","MultiplicityExpressionMember","_Definition","_DefinitionBody","_DefinitionBodyItem","DefinitionMember","VariantUsageMember","NonOccurrenceUsageMember","OccurrenceUsageMember","_usage_modifier","_UsageDeclaration","_UsageCompletion","_Usage","_ValuePart","FeatureValue","DefaultReferenceUsage","ReferenceUsage","AttributeDefinition","AttributeUsage","EnumerationDefinition","_EnumerationBody","EnumerationUsageMember","EnumeratedValue","EnumerationUsage","OccurrenceDefinition","OccurrenceUsage","ItemDefinition","ItemUsage","PartDefinition","PartUsage","PortDefinition","PortUsage","ConjugatedPortTyping","ConnectorEndMember","ConnectorEnd","ConnectionDefinition","ConnectionUsage","_ConnectorPart","_BinaryConnectorPart","_NaryConnectorPart","BindingConnectorAsUsage","SuccessionAsUsage","InterfaceDefinition","InterfaceUsage","AllocationDefinition","AllocationUsage","FlowDefinition","FlowUsage","SuccessionFlowUsage","PayloadFeatureMember","PayloadFeature","FlowEndMember","FlowEnd","FlowFeatureMember","FlowFeature","ActionDefinition","_ActionBody","_ActionBodyItem","EmptySuccessionMember","MultiplicitySourceEnd","ActionNodeMember","_ActionNode","IfNode","ActionBodyParameter","WhileLoopNode","ForLoopNode","ForVariableDeclaration","ControlNode","MergeNode","DecisionNode","JoinNode","ForkNode","ActionUsage","AcceptActionNode","SendActionNode","AssignActionNode","PerformActionUsage","CalculationDefinition","_CalculationBody","_ParameterList","ParameterMember","ReturnParameterMember","ResultExpressionMember","CalculationUsage","ConstraintDefinition","ConstraintUsage","AssertConstraintUsage","RequirementDefinition","_RequirementBody","_RequirementBodyItem","SubjectMember","SubjectUsage","RequirementConstraintMember","RequirementConstraintUsage","ActorMember","ActorUsage","StakeholderMember","StakeholderUsage","RequirementUsage","SatisfyRequirementUsage","ConcernDefinition","ConcernUsage","CaseDefinition","_CaseBody","CaseUsage","AnalysisCaseDefinition","AnalysisCaseUsage","VerificationCaseDefinition","VerificationCaseUsage","_VerificationBody","_VerificationBodyItem","VerifyRequirementUsageMember","VerifyRequirementUsage","ObjectiveMember","ObjectiveRequirementUsage","UseCaseDefinition","UseCaseUsage","IncludeUseCaseUsage","StateDefinition","_StateBodyItem","EntryActionMember","DoActionMember","ExitActionMember","StateActionUsage","StateUsage","ExhibitStateUsage","TransitionUsageMember","TransitionUsage","ViewDefinition","ViewUsage","ViewpointDefinition","ViewpointUsage","RenderingDefinition","RenderingUsage","OwnedExpressionMember","OwnedExpression","_Expression","OwnedExpressionReference","ConditionalExpression","NullCoalescingExpression","ImpliesExpressionReference","ImpliesExpressionMember","ImpliesExpression","OrExpressionReference","OrExpressionMember","OrExpression","XorExpressionReference","XorExpressionMember","XorExpression","AndExpression","EqualityExpressionReference","EqualityExpressionMember","EqualityExpression","EqualityOperator","ClassificationExpression","ClassificationTestOperator","MetadataReference","TypeReferenceMember","TypeResultMember","TypeReference","ReferenceTyping","RelationalExpression","RelationalOperator","RangeExpression","AdditiveExpression","AdditiveOperator","MultiplicativeExpression","MultiplicativeOperator","ExponentiationExpression","ExponentiationOperator","UnaryExpression","UnaryOperator","ExtentExpression","_postfix_operation","MeasurementExpression","_UnitExpression","UnitBinaryExpression","UnitExponentExpression","_UnitPrimaryExpression","PrimaryExpression","FunctionReferenceExpression","FunctionReferenceMember","FunctionReference","FeatureChainMember","OwnedFeatureChain","_BaseExpression","BodyExpression","ExpressionBodyMember","ExpressionBody","SequenceExpression","FeatureReferenceExpression","FeatureReferenceMember","MetadataAccessExpression","ElementReferenceMember","InvocationExpression","ConstructorExpression","ConstructorResultMember","ConstructorResult","InstantiatedTypeMember","_FeatureChain","OwnedFeatureChaining","_ArgumentList","_PositionalArgumentList","ArgumentMember","Argument","_NamedArgumentList","NamedArgumentMember","NamedArgument","ParameterRedefinition","ArgumentValue","NullExpression","_LiteralExpression","LiteralBoolean","BooleanValue","LiteralString","LiteralInteger","LiteralReal","RealValue","Name","GlobalQualification","Qualification","QualifiedName","_START","__PackageBodyElement*","_(PackageMember | ElementFilterMember | AliasMember | Import | AnnotatingMember)","_Name?","_((\"<\" Name \">\" Name?) | Name)","_(\";\" | (\"{\" OwnedAnnotation* \"}\"))","_OwnedAnnotation*","_(\"public\" | \"private\" | \"protected\")","_PrefixMetadataAnnotation*","__Identification?","_(_Identification? \"from\")?","_(\",\" QualifiedName)*","_(\",\" QualifiedName)*_1","_(Comment | Documentation | TextualRepresentation | MetadataUsage)","_(\",\" Annotation)*","_(\"about\" Annotation (\",\" Annotation)*)?","_(\"locale\" STRING_VALUE)?","_(REGULAR_COMMENT | STRING_VALUE)","_(REGULAR_COMMENT | STRING_VALUE)?","_((\"comment\" _Identification? (\"about\" Annotation (\",\" Annotation)*)? (\"locale\" STRING_VALUE)? (REGULAR_COMMENT | STRING_VALUE)?) | ((\"locale\" STRING_VALUE)? (REGULAR_COMMENT | STRING_VALUE)))","_\";\"?","_((\"doc\" _Identification? (\"locale\" STRING_VALUE)? (REGULAR_COMMENT | STRING_VALUE)) | (\"doc\" (\"<\" Name \">\")? (\"locale\" STRING_VALUE)?))","_(\"<\" Name \">\")?","_(\"rep\" _Identification?)?","_PrefixMetadataMember*","_(\"metadata\" | \"@\")","_(\":\" | (\"defined\" \"by\"))","_((\":\" | (\"defined\" \"by\")))?","_(_Identification? ((\":\" | (\"defined\" \"by\")))?)?","_(\";\" | (\"{\" (DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)* \"}\"))","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)*","_\"ref\"?","_(\":>>\" | \"redefines\")","_(\":>>\" | \"redefines\")?","__FeatureSpecializationPart?","__ValuePart?","__usage_modifier*","_\"standard\"?","_(\";\" | (\"{\" _PackageBodyElement* \"}\"))","_VisibilityIndicator?","_(_DefinitionElement | _UsageElement)","_(\"<\" Name \">\")?_1","_Name?_1","_\"all\"?","_(MembershipImport | NamespaceImport)","_(\"::\" \"**\")?","_(_ImportedNamespace | FilterPackage)","_FilterPackageMember*","_(FilterPackageMembershipImport | FilterPackageNamespaceImport)","_(Package | LibraryPackage | Dependency | AttributeDefinition | EnumerationDefinition | OccurrenceDefinition | ItemDefinition | MetadataDefinition | PartDefinition | ConnectionDefinition | FlowDefinition | InterfaceDefinition | AllocationDefinition | PortDefinition | ActionDefinition | CalculationDefinition | StateDefinition | ConstraintDefinition | RequirementDefinition | ConcernDefinition | CaseDefinition | AnalysisCaseDefinition | VerificationCaseDefinition | UseCaseDefinition | ViewDefinition | ViewpointDefinition | RenderingDefinition)","_(_NonOccurrenceUsageElement | _OccurrenceUsageElement)","_(DefaultReferenceUsage | ReferenceUsage | AttributeUsage | EnumerationUsage | BindingConnectorAsUsage | SuccessionAsUsage)","_(_StructureUsageElement | _BehaviorUsageElement)","_(OccurrenceUsage | ItemUsage | PartUsage | PortUsage | ConnectionUsage | InterfaceUsage | AllocationUsage | FlowUsage | SuccessionFlowUsage | ViewUsage | RenderingUsage)","_(ActionUsage | CalculationUsage | StateUsage | ConstraintUsage | RequirementUsage | ConcernUsage | CaseUsage | AnalysisCaseUsage | VerificationCaseUsage | UseCaseUsage | ViewpointUsage | PerformActionUsage | ExhibitStateUsage | IncludeUseCaseUsage | AssertConstraintUsage | SatisfyRequirementUsage)","_(\":>\" | \"specializes\")","_(\",\" OwnedSubclassification)*","_((_Identification _FeatureSpecializationPart?) | _FeatureSpecializationPart)","_(_FeatureSpecialization | _MultiplicityPart)","_(_FeatureSpecialization | _MultiplicityPart)*","_(OwnedMultiplicity | (OwnedMultiplicity? ((\"ordered\" \"nonunique\"?) | (\"nonunique\" \"ordered\"?))))","_OwnedMultiplicity?","_\"nonunique\"?","_((\"ordered\" \"nonunique\"?) | (\"nonunique\" \"ordered\"?))","_\"ordered\"?","_(_Typings | _Subsettings | _References | _Crosses | _Redefinitions)","_(\",\" FeatureTyping)*","_(\":>\" | \"subsets\" | \"subset\")","_(\",\" OwnedSubsetting)*","_(\"::>\" | \"references\" | \"reference\")","_(\"=>\" | \"crosses\")","_(\":>>\" | \"redefines\" | \"redefine\")","_(\",\" OwnedRedefinition)*","_(OwnedFeatureTyping | ConjugatedPortTyping)","_(QualifiedName | OwnedFeatureChain)","_(\"..\" MultiplicityExpressionMember)?","_(_LiteralExpression | FeatureReferenceExpression)","__SubclassificationPart?","_(\";\" | (\"{\" _DefinitionBodyItem* \"}\"))","__DefinitionBodyItem*","_(DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | (EmptySuccessionMember? OccurrenceUsageMember) | AliasMember | Import | AnnotatingMember)","_EmptySuccessionMember?","_(\"end\" | \"in\" | \"out\" | \"inout\" | \"derived\" | \"abstract\" | \"variation\" | \"constant\" | \"ref\" | \"redefine\" | \"redefines\" | \"subset\" | \"subsets\" | \"individual\" | \"snapshot\" | \"timeslice\" | PrefixMetadataMember)","__UsageDeclaration?","_(\"=\" | \":=\" | (\"default\" (\"=\" | \":=\")?))","_(\"=\" | \":=\")","_(\"=\" | \":=\")?","_(\";\" | (\"{\" (AnnotatingMember | EnumerationUsageMember)* \"}\"))","_(AnnotatingMember | EnumerationUsageMember)","_(AnnotatingMember | EnumerationUsageMember)*","_\"enum\"?","_OwnedMultiplicity?_1","_(\"::>\" | \"references\")","_(Name (\"::>\" | \"references\"))?","_(\"connect\" _ConnectorPart)?","_((\"connection\" _UsageDeclaration? _ValuePart? (\"connect\" _ConnectorPart)?) | (\"connect\" _ConnectorPart))","_(_BinaryConnectorPart | _NaryConnectorPart)","_(\",\" ConnectorEndMember)*","_(\"binding\" _UsageDeclaration?)?","_(\"succession\" _UsageDeclaration?)?","_\"first\"?","_(\"if\" OwnedExpression)?","_(\"allocate\" _ConnectorPart)?","_((\"allocation\" _UsageDeclaration? (\"allocate\" _ConnectorPart)?) | (\"allocate\" _ConnectorPart))","_((FlowEndMember \"to\" FlowEndMember) | (_UsageDeclaration? _ValuePart? (\"of\" PayloadFeatureMember)? (\"from\" FlowEndMember \"to\" FlowEndMember)?))","_(\"of\" PayloadFeatureMember)?","_(\"from\" FlowEndMember \"to\" FlowEndMember)?","_((_Identification? _FeatureSpecializationPart _ValuePart?) | (_Identification? _ValuePart) | (OwnedFeatureTyping OwnedMultiplicity?) | (OwnedMultiplicity OwnedFeatureTyping))","_(OwnedReferenceSubsetting \".\")?","__ParameterList?","_(\";\" | (\"{\" _ActionBodyItem* \"}\"))","__ActionBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | OccurrenceUsageMember | (EmptySuccessionMember? _OccurrenceUsageElement) | ActionNodeMember | ReturnParameterMember | AnnotatingMember)","_(IfNode | WhileLoopNode | ForLoopNode | ControlNode | AcceptActionNode | SendActionNode | AssignActionNode)","_(\"action\" _UsageDeclaration?)?","_(ActionBodyParameter | IfNode)","_(\"else\" (ActionBodyParameter | IfNode))?","_((\"while\" OwnedExpression) | \"loop\")","_(\"until\" OwnedExpression \";\")?","_(MergeNode | DecisionNode | JoinNode | ForkNode)","_(\"via\" OwnedReferenceSubsetting)?","_(\"to\" OwnedExpression)?","_((OwnedExpression \":=\" OwnedExpression) | (OwnedExpression \"=:\" OwnedExpression))","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"action\" _UsageDeclaration?))","_(\";\" | (\"{\" (_ActionBodyItem | ReturnParameterMember)* ResultExpressionMember? \"}\"))","_(_ActionBodyItem | ReturnParameterMember)","_(_ActionBodyItem | ReturnParameterMember)*","_ResultExpressionMember?","_(\",\" ParameterMember)*","_(ParameterMember (\",\" ParameterMember)*)?","_\"not\"?","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"constraint\" _UsageDeclaration? _ValuePart?))","_(\";\" | (\"{\" _RequirementBodyItem* \"}\"))","__RequirementBodyItem*","_(_DefinitionBodyItem | SubjectMember | RequirementConstraintMember | ActorMember | StakeholderMember)","_(\"assume\" | \"require\")","__FeatureSpecialization*","_((OwnedReferenceSubsetting _FeatureSpecialization* _CalculationBody) | (_usage_modifier* \"constraint\"? _UsageDeclaration? _ValuePart? _CalculationBody))","_\"constraint\"?","_\"assert\"?","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"requirement\" _UsageDeclaration?))","_(\"by\" OwnedReferenceSubsetting)?","_(\";\" | (\"{\" (_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)* ResultExpressionMember? \"}\"))","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)*","_(\";\" | (\"{\" _VerificationBodyItem* ResultExpressionMember? \"}\"))","__VerificationBodyItem*","_(_ActionBodyItem | VerifyRequirementUsageMember | ObjectiveMember | AnnotatingMember)","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"use\" \"case\" _UsageDeclaration?))","_(\";\" | (\"parallel\"? \"{\" _StateBodyItem* \"}\"))","_\"parallel\"?","__StateBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | OccurrenceUsageMember | (EmptySuccessionMember? _OccurrenceUsageElement) | TransitionUsageMember | EntryActionMember | DoActionMember | ExitActionMember | AnnotatingMember)","_(\";\" | (_UsageDeclaration? _ValuePart? _ActionBody))","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"state\" _UsageDeclaration?))","_(_UsageDeclaration? \"first\")?","_(\"accept\" PayloadFeatureMember)?","_(\"do\" StateActionUsage)?","_(\";\" | (\"{\" (_DefinitionBodyItem | ElementFilterMember)* \"}\"))","_(_DefinitionBodyItem | ElementFilterMember)","_(_DefinitionBodyItem | ElementFilterMember)*","_(ConditionalExpression | NullCoalescingExpression | ImpliesExpression | OrExpression | XorExpression | AndExpression | EqualityExpression | ClassificationExpression | RelationalExpression | RangeExpression | AdditiveExpression | MultiplicativeExpression | ExponentiationExpression | UnaryExpression | ExtentExpression | MeasurementExpression | PrimaryExpression | _BaseExpression)","_(\"if\" _Expression \"?\" OwnedExpressionReference \"else\" OwnedExpressionReference)","_(\"??\" ImpliesExpressionReference)*","_(_Expression ((\"??\" ImpliesExpressionReference) (\"??\" ImpliesExpressionReference)*))","_(\"implies\" ImpliesExpressionReference)*","_(_Expression ((\"implies\" ImpliesExpressionReference) (\"implies\" ImpliesExpressionReference)*))","_((\"|\" _Expression) | (\"or\" XorExpressionReference))","_((\"|\" _Expression) | (\"or\" XorExpressionReference))*","_(_Expression (((\"|\" _Expression) | (\"or\" XorExpressionReference)) ((\"|\" _Expression) | (\"or\" XorExpressionReference))*))","_(\"xor\" _Expression)*","_(_Expression ((\"xor\" _Expression) (\"xor\" _Expression)*))","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))*","_(_Expression (((\"&\" _Expression) | (\"and\" EqualityExpressionReference)) ((\"&\" _Expression) | (\"and\" EqualityExpressionReference))*))","_(EqualityOperator _Expression)*","_(_Expression ((EqualityOperator _Expression) (EqualityOperator _Expression)*))","_(\"==\" | \"!=\" | \"===\" | \"!==\")","_((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))","_((_Expression ((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))) | (ClassificationTestOperator TypeReferenceMember) | (MetadataReference MetaClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember) | (MetadataReference MetaCastOperator TypeResultMember))","_(\"hastype\" | \"istype\" | \"@\")","MetaClassificationTestOperator","CastOperator","MetaCastOperator","_(RelationalOperator _Expression)*","_(_Expression ((RelationalOperator _Expression) (RelationalOperator _Expression)*))","_(\"<\" | \">\" | \"<=\" | \">=\")","_(_Expression \"..\" _Expression)","_(AdditiveOperator _Expression)*","_(_Expression ((AdditiveOperator _Expression) (AdditiveOperator _Expression)*))","_(\"+\" | \"-\")","_(MultiplicativeOperator _Expression)*","_(_Expression ((MultiplicativeOperator _Expression) (MultiplicativeOperator _Expression)*))","_(\"*\" | \"/\" | \"%\")","_(_Expression ExponentiationOperator _Expression)","_(\"**\" | \"^\")","_(UnaryOperator _Expression)","_(\"+\" | \"-\" | \"~\" | \"not\")","_(\"all\" TypeResultMember)","_((\"#\" \"(\" SequenceExpression \")\") | (\"[\" SequenceExpression \"]\") | (\"->\" InstantiatedTypeMember (BodyExpression | FunctionReferenceExpression | _ArgumentList)) | (\".\" BodyExpression) | (\".?\" BodyExpression))","_(BodyExpression | FunctionReferenceExpression | _ArgumentList)","_(\".\" FeatureChainMember)?","_(_LiteralExpression | FeatureReferenceExpression)_1","_((_LiteralExpression | FeatureReferenceExpression) \"[\" _UnitExpression \"]\")","_(UnitBinaryExpression | UnitExponentExpression | _UnitPrimaryExpression)","_(\"*\" | \"/\")","_(_UnitExpression (\"*\" | \"/\") _UnitExpression)","_(\"^\" | \"**\")","_(LiteralInteger | (\"-\" LiteralInteger))","_(_UnitPrimaryExpression (\"^\" | \"**\") (LiteralInteger | (\"-\" LiteralInteger)))","_(FeatureReferenceExpression | (\"(\" _UnitExpression \")\"))","__postfix_operation*","_((_BaseExpression (\".\" FeatureChainMember) _postfix_operation*) | (_BaseExpression (_postfix_operation _postfix_operation*)))","_(NullExpression | _LiteralExpression | FeatureReferenceExpression | MetadataAccessExpression | InvocationExpression | ConstructorExpression | BodyExpression | (\"(\" SequenceExpression \")\"))","_(\",\" | (\",\" SequenceExpression))","_(\",\" | (\",\" SequenceExpression))?","_(\".\" OwnedFeatureChaining)*","_(_PositionalArgumentList | _NamedArgumentList)","_(_PositionalArgumentList | _NamedArgumentList)?","_(\",\" ArgumentMember)*","_(\",\" NamedArgumentMember)*","_(\"null\" | (\"(\" \")\"))","_(LiteralBoolean | LiteralString | LiteralInteger | LiteralReal | LiteralInfinity)","_(\"true\" | \"false\")","_DECIMAL_VALUE?","_(DECIMAL_VALUE | EXP_VALUE)","_((DECIMAL_VALUE? \".\" (DECIMAL_VALUE | EXP_VALUE)) | EXP_VALUE)","LiteralInfinity","_(ID | UNRESTRICTED_NAME)","_GlobalQualification?","_((GlobalQualification? Name) | (QualifiedName \"::\" Name))","_(QualifiedName \"::\" Name)","DECIMAL_VALUE","EXP_VALUE","ID","UNRESTRICTED_NAME","STRING_VALUE","REGULAR_COMMENT","ML_NOTE","SL_NOTE","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
+  typeof ["ERROR","/\\s/","\"<\"","\">\"","\";\"","\"{\"","\"}\"","\"public\"","\"private\"","\"protected\"","\"dependency\"","\"from\"","\",\"","\"to\"","\"comment\"","\"about\"","\"locale\"","\"doc\"","\"rep\"","\"language\"","\"#\"","\"metadata\"","\"@\"","\":\"","\"defined\"","\"by\"","\"ref\"","\":>>\"","\"redefines\"","\"def\"","\"package\"","\"standard\"","\"library\"","\"filter\"","\"alias\"","\"for\"","\"import\"","\"all\"","\"::\"","\"**\"","\"*\"","\"[\"","\"]\"","\":>\"","\"specializes\"","\"ordered\"","\"nonunique\"","\"subsets\"","\"subset\"","\"::>\"","\"references\"","\"reference\"","\"=>\"","\"crosses\"","\"redefine\"","\"..\"","\"variant\"","\"end\"","\"in\"","\"out\"","\"inout\"","\"derived\"","\"abstract\"","\"variation\"","\"constant\"","\"individual\"","\"snapshot\"","\"timeslice\"","\"=\"","\":=\"","\"default\"","\"attribute\"","\"enum\"","\"occurrence\"","\"item\"","\"part\"","\"port\"","\"~\"","\"connection\"","\"connect\"","\"(\"","\")\"","\"binding\"","\"bind\"","\"succession\"","\"first\"","\"then\"","\"if\"","\"interface\"","\"allocation\"","\"allocate\"","\"flow\"","\"of\"","\".\"","\"action\"","\"else\"","\"while\"","\"loop\"","\"until\"","\"merge\"","\"decide\"","\"join\"","\"fork\"","\"accept\"","\"via\"","\"send\"","\"assign\"","\"=:\"","\"perform\"","\"calc\"","\"return\"","\"constraint\"","\"assert\"","\"not\"","\"requirement\"","\"subject\"","\"assume\"","\"require\"","\"actor\"","\"stakeholder\"","\"satisfy\"","\"concern\"","\"case\"","\"analysis\"","\"verification\"","\"verify\"","\"objective\"","\"use\"","\"include\"","\"state\"","\"parallel\"","\"entry\"","\"do\"","\"exit\"","\"exhibit\"","\"transition\"","\"view\"","\"viewpoint\"","\"rendering\"","\"?\"","\"??\"","\"implies\"","\"|\"","\"or\"","\"xor\"","\"&\"","\"and\"","\"==\"","\"!=\"","\"===\"","\"!==\"","\"hastype\"","\"istype\"","\"@@\"","\"as\"","\"meta\"","\"<=\"","\">=\"","\"+\"","\"-\"","\"/\"","\"%\"","\"^\"","\"->\"","\".?\"","\"new\"","\"null\"","\"true\"","\"false\"","\"$\"","/[0-9]+/","/[0-9]+[eE][+-]?[0-9]+/","/[a-zA-Z_][a-zA-Z_0-9\\u00B2\\u00B3\\u00B9\\u2070-\\u2079]*/","/'(?:[^'\\\\]|\\\\.)*'/","/\"(?:[^\"\\\\]|\\\\.)*\"/","/\\/\\*[^*]*\\*+([^/*][^*]*\\*+)*\\//","/\\/\\/[^\\r\\n]*/","RootNamespace","_PackageBodyElement","_Identification","_RelationshipBody","VisibilityIndicator","Dependency","Annotation","OwnedAnnotation","AnnotatingMember","_AnnotatingElement","Comment","Documentation","TextualRepresentation","PrefixMetadataAnnotation","PrefixMetadataMember","PrefixMetadataUsage","MetadataUsage","MetadataTyping","_MetadataBody","MetadataBodyUsageMember","MetadataBodyUsage","MetadataDefinition","Package","LibraryPackage","_PackageBody","PackageMember","ElementFilterMember","AliasMember","_ImportPrefix","Import","MembershipImport","_ImportedMembership","NamespaceImport","_ImportedNamespace","FilterPackage","FilterPackageImport","FilterPackageMembershipImport","FilterPackageNamespaceImport","FilterPackageMember","_DefinitionElement","_UsageElement","_NonOccurrenceUsageElement","_OccurrenceUsageElement","_StructureUsageElement","_BehaviorUsageElement","_SubclassificationPart","OwnedSubclassification","_FeatureDeclaration","_FeatureSpecializationPart","_MultiplicityPart","_FeatureSpecialization","_Typings","_Subsettings","_References","_Crosses","_Redefinitions","FeatureTyping","OwnedFeatureTyping","OwnedSubsetting","OwnedReferenceSubsetting","OwnedCrossSubsetting","OwnedRedefinition","OwnedMultiplicity","MultiplicityRange","MultiplicityExpressionMember","_Definition","_DefinitionBody","_DefinitionBodyItem","DefinitionMember","VariantUsageMember","NonOccurrenceUsageMember","OccurrenceUsageMember","_usage_modifier","_UsageDeclaration","_UsageCompletion","_Usage","_ValuePart","FeatureValue","DefaultReferenceUsage","ReferenceUsage","AttributeDefinition","AttributeUsage","EnumerationDefinition","_EnumerationBody","EnumerationUsageMember","EnumeratedValue","EnumerationUsage","OccurrenceDefinition","OccurrenceUsage","ItemDefinition","ItemUsage","PartDefinition","PartUsage","PortDefinition","PortUsage","ConjugatedPortTyping","ConnectorEndMember","ConnectorEnd","ConnectionDefinition","ConnectionUsage","_ConnectorPart","_BinaryConnectorPart","_NaryConnectorPart","BindingConnectorAsUsage","SuccessionAsUsage","InterfaceDefinition","InterfaceUsage","AllocationDefinition","AllocationUsage","FlowDefinition","FlowUsage","SuccessionFlowUsage","PayloadFeatureMember","PayloadFeature","FlowEndMember","FlowEnd","FlowFeatureMember","FlowFeature","ActionDefinition","_ActionBody","_ActionBodyItem","EmptySuccessionMember","MultiplicitySourceEnd","ActionNodeMember","_ActionNode","IfNode","ActionBodyParameter","WhileLoopNode","ForLoopNode","ForVariableDeclaration","ControlNode","MergeNode","DecisionNode","JoinNode","ForkNode","ActionUsage","AcceptActionNode","SendActionNode","AssignActionNode","PerformActionUsage","CalculationDefinition","_CalculationBody","_ParameterList","ParameterMember","ReturnParameterMember","ResultExpressionMember","CalculationUsage","ConstraintDefinition","ConstraintUsage","AssertConstraintUsage","RequirementDefinition","_RequirementBody","_RequirementBodyItem","SubjectMember","SubjectUsage","RequirementConstraintMember","RequirementConstraintUsage","ActorMember","ActorUsage","StakeholderMember","StakeholderUsage","RequirementUsage","SatisfyRequirementUsage","ConcernDefinition","ConcernUsage","CaseDefinition","_CaseBody","CaseUsage","AnalysisCaseDefinition","AnalysisCaseUsage","VerificationCaseDefinition","VerificationCaseUsage","_VerificationBody","_VerificationBodyItem","VerifyRequirementUsageMember","VerifyRequirementUsage","ObjectiveMember","ObjectiveRequirementUsage","UseCaseDefinition","UseCaseUsage","IncludeUseCaseUsage","StateDefinition","_StateBodyItem","EntryActionMember","DoActionMember","ExitActionMember","StateActionUsage","StateUsage","ExhibitStateUsage","TransitionUsageMember","TransitionUsage","ViewDefinition","ViewUsage","ViewpointDefinition","ViewpointUsage","RenderingDefinition","RenderingUsage","OwnedExpressionMember","OwnedExpression","_Expression","OwnedExpressionReference","ConditionalExpression","NullCoalescingExpression","ImpliesExpressionReference","ImpliesExpressionMember","ImpliesExpression","OrExpressionReference","OrExpressionMember","OrExpression","XorExpressionReference","XorExpressionMember","XorExpression","AndExpression","EqualityExpressionReference","EqualityExpressionMember","EqualityExpression","EqualityOperator","ClassificationExpression","ClassificationTestOperator","MetadataReference","TypeReferenceMember","TypeResultMember","TypeReference","ReferenceTyping","RelationalExpression","RelationalOperator","RangeExpression","AdditiveExpression","AdditiveOperator","MultiplicativeExpression","MultiplicativeOperator","ExponentiationExpression","ExponentiationOperator","UnaryExpression","UnaryOperator","ExtentExpression","_postfix_operation","MeasurementExpression","_UnitExpression","UnitBinaryExpression","UnitExponentExpression","_UnitPrimaryExpression","PrimaryExpression","FunctionReferenceExpression","FunctionReferenceMember","FunctionReference","FeatureChainMember","OwnedFeatureChain","_BaseExpression","BodyExpression","ExpressionBodyMember","ExpressionBody","SequenceExpression","FeatureReferenceExpression","FeatureReferenceMember","MetadataAccessExpression","ElementReferenceMember","InvocationExpression","ConstructorExpression","ConstructorResultMember","ConstructorResult","InstantiatedTypeMember","_FeatureChain","OwnedFeatureChaining","_ArgumentList","_PositionalArgumentList","ArgumentMember","Argument","_NamedArgumentList","NamedArgumentMember","NamedArgument","ParameterRedefinition","ArgumentValue","NullExpression","_LiteralExpression","LiteralBoolean","BooleanValue","LiteralString","LiteralInteger","LiteralReal","RealValue","Name","GlobalQualification","Qualification","QualifiedName","_START","__PackageBodyElement*","_(PackageMember | ElementFilterMember | AliasMember | Import | AnnotatingMember)","_Name?","_((\"<\" Name \">\" Name?) | Name)","_(\";\" | (\"{\" OwnedAnnotation* \"}\"))","_OwnedAnnotation*","_(\"public\" | \"private\" | \"protected\")","_PrefixMetadataAnnotation*","__Identification?","_(_Identification? \"from\")?","_(\",\" QualifiedName)*","_(\",\" QualifiedName)*_1","_(Comment | Documentation | TextualRepresentation | MetadataUsage)","_(\",\" Annotation)*","_(\"about\" Annotation (\",\" Annotation)*)?","_(\"locale\" STRING_VALUE)?","_(REGULAR_COMMENT | STRING_VALUE)","_(REGULAR_COMMENT | STRING_VALUE)?","_((\"comment\" _Identification? (\"about\" Annotation (\",\" Annotation)*)? (\"locale\" STRING_VALUE)? (REGULAR_COMMENT | STRING_VALUE)?) | ((\"locale\" STRING_VALUE)? (REGULAR_COMMENT | STRING_VALUE)))","_\";\"?","_((\"doc\" _Identification? (\"locale\" STRING_VALUE)? (REGULAR_COMMENT | STRING_VALUE)) | (\"doc\" (\"<\" Name \">\")? (\"locale\" STRING_VALUE)?))","_(\"<\" Name \">\")?","_(\"rep\" _Identification?)?","_PrefixMetadataMember*","_(\"metadata\" | \"@\")","_(\":\" | (\"defined\" \"by\"))","_((\":\" | (\"defined\" \"by\")))?","_(_Identification? ((\":\" | (\"defined\" \"by\")))?)?","_(\";\" | (\"{\" (DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)* \"}\"))","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)*","_\"ref\"?","_(\":>>\" | \"redefines\")","_(\":>>\" | \"redefines\")?","__FeatureSpecializationPart?","__ValuePart?","__usage_modifier*","_\"standard\"?","_(\";\" | (\"{\" _PackageBodyElement* \"}\"))","_VisibilityIndicator?","_(_DefinitionElement | _UsageElement)","_(\"<\" Name \">\")?_1","_Name?_1","_\"all\"?","_(MembershipImport | NamespaceImport)","_(\"::\" \"**\")?","_(_ImportedNamespace | FilterPackage)","_FilterPackageMember+","_(FilterPackageMembershipImport | FilterPackageNamespaceImport)","_(Package | LibraryPackage | Dependency | AttributeDefinition | EnumerationDefinition | OccurrenceDefinition | ItemDefinition | MetadataDefinition | PartDefinition | ConnectionDefinition | FlowDefinition | InterfaceDefinition | AllocationDefinition | PortDefinition | ActionDefinition | CalculationDefinition | StateDefinition | ConstraintDefinition | RequirementDefinition | ConcernDefinition | CaseDefinition | AnalysisCaseDefinition | VerificationCaseDefinition | UseCaseDefinition | ViewDefinition | ViewpointDefinition | RenderingDefinition)","_(_NonOccurrenceUsageElement | _OccurrenceUsageElement)","_(DefaultReferenceUsage | ReferenceUsage | AttributeUsage | EnumerationUsage | BindingConnectorAsUsage | SuccessionAsUsage)","_(_StructureUsageElement | _BehaviorUsageElement)","_(OccurrenceUsage | ItemUsage | PartUsage | PortUsage | ConnectionUsage | InterfaceUsage | AllocationUsage | FlowUsage | SuccessionFlowUsage | ViewUsage | RenderingUsage)","_(ActionUsage | CalculationUsage | StateUsage | ConstraintUsage | RequirementUsage | ConcernUsage | CaseUsage | AnalysisCaseUsage | VerificationCaseUsage | UseCaseUsage | ViewpointUsage | PerformActionUsage | ExhibitStateUsage | IncludeUseCaseUsage | AssertConstraintUsage | SatisfyRequirementUsage)","_(\":>\" | \"specializes\")","_(\",\" OwnedSubclassification)*","_((_Identification _FeatureSpecializationPart?) | _FeatureSpecializationPart)","_(_FeatureSpecialization | _MultiplicityPart)","_(_FeatureSpecialization | _MultiplicityPart)+","_(OwnedMultiplicity | (OwnedMultiplicity? ((\"ordered\" \"nonunique\"?) | (\"nonunique\" \"ordered\"?))))","_OwnedMultiplicity?","_\"nonunique\"?","_((\"ordered\" \"nonunique\"?) | (\"nonunique\" \"ordered\"?))","_\"ordered\"?","_(_Typings | _Subsettings | _References | _Crosses | _Redefinitions)","_(\",\" FeatureTyping)*","_(\":>\" | \"subsets\" | \"subset\")","_(\",\" OwnedSubsetting)*","_(\"::>\" | \"references\" | \"reference\")","_(\"=>\" | \"crosses\")","_(\":>>\" | \"redefines\" | \"redefine\")","_(\",\" OwnedRedefinition)*","_(OwnedFeatureTyping | ConjugatedPortTyping)","_(QualifiedName | OwnedFeatureChain)","_(QualifiedName | OwnedFeatureChain)_1","_(QualifiedName | OwnedFeatureChain)_2","_(QualifiedName | OwnedFeatureChain)_3","_(QualifiedName | OwnedFeatureChain)_4","_(\"..\" MultiplicityExpressionMember)?","_(_LiteralExpression | FeatureReferenceExpression)","__SubclassificationPart?","_(\";\" | (\"{\" _DefinitionBodyItem* \"}\"))","__DefinitionBodyItem*","_(DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | (EmptySuccessionMember? OccurrenceUsageMember) | AliasMember | Import | AnnotatingMember)","_EmptySuccessionMember?","_(\"end\" | \"in\" | \"out\" | \"inout\" | \"derived\" | \"abstract\" | \"variation\" | \"constant\" | \"ref\" | \"redefine\" | \"redefines\" | \"subset\" | \"subsets\" | \"individual\" | \"snapshot\" | \"timeslice\" | PrefixMetadataMember)","__UsageDeclaration?","_(\"=\" | \":=\" | (\"default\" (\"=\" | \":=\")?))","_(\"=\" | \":=\")","_(\"=\" | \":=\")?","_(\";\" | (\"{\" (AnnotatingMember | EnumerationUsageMember)* \"}\"))","_(AnnotatingMember | EnumerationUsageMember)","_(AnnotatingMember | EnumerationUsageMember)*","_\"enum\"?","_OwnedMultiplicity?_1","_(\"::>\" | \"references\")","_(Name (\"::>\" | \"references\"))?","_(\"connect\" _ConnectorPart)?","_((\"connection\" _UsageDeclaration? _ValuePart? (\"connect\" _ConnectorPart)?) | (\"connect\" _ConnectorPart))","_(_BinaryConnectorPart | _NaryConnectorPart)","_(\",\" ConnectorEndMember)*","_(\"binding\" _UsageDeclaration?)?","_(\"succession\" _UsageDeclaration?)?","_\"first\"?","_(\"if\" OwnedExpression)?","_(\"allocate\" _ConnectorPart)?","_((\"allocation\" _UsageDeclaration? (\"allocate\" _ConnectorPart)?) | (\"allocate\" _ConnectorPart))","_((FlowEndMember \"to\" FlowEndMember) | (_UsageDeclaration? _ValuePart? (\"of\" PayloadFeatureMember)? (\"from\" FlowEndMember \"to\" FlowEndMember)?))","_(\"of\" PayloadFeatureMember)?","_(\"from\" FlowEndMember \"to\" FlowEndMember)?","_((_Identification? _FeatureSpecializationPart _ValuePart?) | (_Identification? _ValuePart) | (OwnedFeatureTyping OwnedMultiplicity?) | (OwnedMultiplicity OwnedFeatureTyping))","_(OwnedReferenceSubsetting \".\")?","__ParameterList?","_(\";\" | (\"{\" _ActionBodyItem* \"}\"))","__ActionBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | OccurrenceUsageMember | (EmptySuccessionMember? _OccurrenceUsageElement) | ActionNodeMember | ReturnParameterMember | AnnotatingMember)","_(IfNode | WhileLoopNode | ForLoopNode | ControlNode | AcceptActionNode | SendActionNode | AssignActionNode)","_(\"action\" _UsageDeclaration?)?","_(ActionBodyParameter | IfNode)","_(\"else\" (ActionBodyParameter | IfNode))?","_((\"while\" OwnedExpression) | \"loop\")","_(\"until\" OwnedExpression \";\")?","_(MergeNode | DecisionNode | JoinNode | ForkNode)","_(\"via\" OwnedReferenceSubsetting)?","_(\"to\" OwnedExpression)?","_((OwnedExpression \":=\" OwnedExpression) | (OwnedExpression \"=:\" OwnedExpression))","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"action\" _UsageDeclaration?))","_(\";\" | (\"{\" (_ActionBodyItem | ReturnParameterMember)* ResultExpressionMember? \"}\"))","_(_ActionBodyItem | ReturnParameterMember)","_(_ActionBodyItem | ReturnParameterMember)*","_ResultExpressionMember?","_(\",\" ParameterMember)*","_(ParameterMember (\",\" ParameterMember)*)?","_\"not\"?","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"constraint\" _UsageDeclaration? _ValuePart?))","_(\";\" | (\"{\" _RequirementBodyItem* \"}\"))","__RequirementBodyItem*","_(_DefinitionBodyItem | SubjectMember | RequirementConstraintMember | ActorMember | StakeholderMember)","_(\"assume\" | \"require\")","__FeatureSpecialization*","_((OwnedReferenceSubsetting _FeatureSpecialization* _CalculationBody) | (_usage_modifier* \"constraint\"? _UsageDeclaration? _ValuePart? _CalculationBody))","_\"constraint\"?","_\"assert\"?","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"requirement\" _UsageDeclaration?))","_(\"by\" OwnedReferenceSubsetting)?","_(\";\" | (\"{\" (_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)* ResultExpressionMember? \"}\"))","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)*","_(\";\" | (\"{\" _VerificationBodyItem* ResultExpressionMember? \"}\"))","__VerificationBodyItem*","_(_ActionBodyItem | VerifyRequirementUsageMember | ObjectiveMember | AnnotatingMember)","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"use\" \"case\" _UsageDeclaration?))","_(\";\" | (\"parallel\"? \"{\" _StateBodyItem* \"}\"))","_\"parallel\"?","__StateBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | OccurrenceUsageMember | (EmptySuccessionMember? _OccurrenceUsageElement) | TransitionUsageMember | EntryActionMember | DoActionMember | ExitActionMember | AnnotatingMember)","_(\";\" | (_UsageDeclaration? _ValuePart? _ActionBody))","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"state\" _UsageDeclaration?))","_(_UsageDeclaration? \"first\")?","_(\"accept\" PayloadFeatureMember)?","_(\"do\" StateActionUsage)?","_(\";\" | (\"{\" (_DefinitionBodyItem | ElementFilterMember)* \"}\"))","_(_DefinitionBodyItem | ElementFilterMember)","_(_DefinitionBodyItem | ElementFilterMember)*","_(ConditionalExpression | NullCoalescingExpression | ImpliesExpression | OrExpression | XorExpression | AndExpression | EqualityExpression | ClassificationExpression | RelationalExpression | RangeExpression | AdditiveExpression | MultiplicativeExpression | ExponentiationExpression | UnaryExpression | ExtentExpression | MeasurementExpression | PrimaryExpression | _BaseExpression)","_(\"if\" _Expression \"?\" OwnedExpressionReference \"else\" OwnedExpressionReference)","_(\"??\" ImpliesExpressionReference)+","_(_Expression (\"??\" ImpliesExpressionReference)+)","_(\"implies\" ImpliesExpressionReference)+","_(_Expression (\"implies\" ImpliesExpressionReference)+)","_((\"|\" _Expression) | (\"or\" XorExpressionReference))","_((\"|\" _Expression) | (\"or\" XorExpressionReference))+","_(_Expression ((\"|\" _Expression) | (\"or\" XorExpressionReference))+)","_(\"xor\" _Expression)+","_(_Expression (\"xor\" _Expression)+)","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))+","_(_Expression ((\"&\" _Expression) | (\"and\" EqualityExpressionReference))+)","_(EqualityOperator _Expression)+","_(_Expression (EqualityOperator _Expression)+)","_(\"==\" | \"!=\" | \"===\" | \"!==\")","_((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))","_((_Expression ((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))) | (ClassificationTestOperator TypeReferenceMember) | (MetadataReference MetaClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember) | (MetadataReference MetaCastOperator TypeResultMember))","_(\"hastype\" | \"istype\" | \"@\")","MetaClassificationTestOperator","CastOperator","MetaCastOperator","_(RelationalOperator _Expression)+","_(_Expression (RelationalOperator _Expression)+)","_(\"<\" | \">\" | \"<=\" | \">=\")","_(_Expression \"..\" _Expression)","_(AdditiveOperator _Expression)+","_(_Expression (AdditiveOperator _Expression)+)","_(\"+\" | \"-\")","_(MultiplicativeOperator _Expression)+","_(_Expression (MultiplicativeOperator _Expression)+)","_(\"*\" | \"/\" | \"%\")","_(_Expression ExponentiationOperator _Expression)","_(\"**\" | \"^\")","_(UnaryOperator _Expression)","_(\"+\" | \"-\" | \"~\" | \"not\")","_(\"all\" TypeResultMember)","_((\"#\" \"(\" SequenceExpression \")\") | (\"[\" SequenceExpression \"]\") | (\"->\" InstantiatedTypeMember (BodyExpression | FunctionReferenceExpression | _ArgumentList)) | (\".\" BodyExpression) | (\".?\" BodyExpression))","_(BodyExpression | FunctionReferenceExpression | _ArgumentList)","_(\".\" FeatureChainMember)?","_(_LiteralExpression | FeatureReferenceExpression)_1","_((_LiteralExpression | FeatureReferenceExpression) \"[\" _UnitExpression \"]\")","_(UnitBinaryExpression | UnitExponentExpression | _UnitPrimaryExpression)","_(\"*\" | \"/\")","_(_UnitExpression (\"*\" | \"/\") _UnitExpression)","_(\"^\" | \"**\")","_(LiteralInteger | (\"-\" LiteralInteger))","_(_UnitPrimaryExpression (\"^\" | \"**\") (LiteralInteger | (\"-\" LiteralInteger)))","_(FeatureReferenceExpression | (\"(\" _UnitExpression \")\"))","__postfix_operation*","_((_BaseExpression (\".\" FeatureChainMember) _postfix_operation*) | (_BaseExpression _postfix_operation+))","__postfix_operation+","_(QualifiedName | OwnedFeatureChain)_5","_(NullExpression | _LiteralExpression | FeatureReferenceExpression | MetadataAccessExpression | InvocationExpression | ConstructorExpression | BodyExpression | (\"(\" SequenceExpression \")\"))","_(\",\" | (\",\" SequenceExpression))","_(\",\" | (\",\" SequenceExpression))?","_(\".\" OwnedFeatureChaining)+","_(_PositionalArgumentList | _NamedArgumentList)","_(_PositionalArgumentList | _NamedArgumentList)?","_(\",\" ArgumentMember)*","_(\",\" NamedArgumentMember)*","_(\"null\" | (\"(\" \")\"))","_(LiteralBoolean | LiteralString | LiteralInteger | LiteralReal | LiteralInfinity)","_(\"true\" | \"false\")","_DECIMAL_VALUE?","_(DECIMAL_VALUE | EXP_VALUE)","_((DECIMAL_VALUE? \".\" (DECIMAL_VALUE | EXP_VALUE)) | EXP_VALUE)","LiteralInfinity","_(ID | UNRESTRICTED_NAME)","_GlobalQualification?","_((GlobalQualification? Name) | (QualifiedName \"::\" Name))","_(QualifiedName \"::\" Name)","DECIMAL_VALUE","EXP_VALUE","ID","UNRESTRICTED_NAME","STRING_VALUE","REGULAR_COMMENT","ML_NOTE","SL_NOTE","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"] !== "undefined"
+    ? ["ERROR","/\\s/","\"<\"","\">\"","\";\"","\"{\"","\"}\"","\"public\"","\"private\"","\"protected\"","\"dependency\"","\"from\"","\",\"","\"to\"","\"comment\"","\"about\"","\"locale\"","\"doc\"","\"rep\"","\"language\"","\"#\"","\"metadata\"","\"@\"","\":\"","\"defined\"","\"by\"","\"ref\"","\":>>\"","\"redefines\"","\"def\"","\"package\"","\"standard\"","\"library\"","\"filter\"","\"alias\"","\"for\"","\"import\"","\"all\"","\"::\"","\"**\"","\"*\"","\"[\"","\"]\"","\":>\"","\"specializes\"","\"ordered\"","\"nonunique\"","\"subsets\"","\"subset\"","\"::>\"","\"references\"","\"reference\"","\"=>\"","\"crosses\"","\"redefine\"","\"..\"","\"variant\"","\"end\"","\"in\"","\"out\"","\"inout\"","\"derived\"","\"abstract\"","\"variation\"","\"constant\"","\"individual\"","\"snapshot\"","\"timeslice\"","\"=\"","\":=\"","\"default\"","\"attribute\"","\"enum\"","\"occurrence\"","\"item\"","\"part\"","\"port\"","\"~\"","\"connection\"","\"connect\"","\"(\"","\")\"","\"binding\"","\"bind\"","\"succession\"","\"first\"","\"then\"","\"if\"","\"interface\"","\"allocation\"","\"allocate\"","\"flow\"","\"of\"","\".\"","\"action\"","\"else\"","\"while\"","\"loop\"","\"until\"","\"merge\"","\"decide\"","\"join\"","\"fork\"","\"accept\"","\"via\"","\"send\"","\"assign\"","\"=:\"","\"perform\"","\"calc\"","\"return\"","\"constraint\"","\"assert\"","\"not\"","\"requirement\"","\"subject\"","\"assume\"","\"require\"","\"actor\"","\"stakeholder\"","\"satisfy\"","\"concern\"","\"case\"","\"analysis\"","\"verification\"","\"verify\"","\"objective\"","\"use\"","\"include\"","\"state\"","\"parallel\"","\"entry\"","\"do\"","\"exit\"","\"exhibit\"","\"transition\"","\"view\"","\"viewpoint\"","\"rendering\"","\"?\"","\"??\"","\"implies\"","\"|\"","\"or\"","\"xor\"","\"&\"","\"and\"","\"==\"","\"!=\"","\"===\"","\"!==\"","\"hastype\"","\"istype\"","\"@@\"","\"as\"","\"meta\"","\"<=\"","\">=\"","\"+\"","\"-\"","\"/\"","\"%\"","\"^\"","\"->\"","\".?\"","\"new\"","\"null\"","\"true\"","\"false\"","\"$\"","/[0-9]+/","/[0-9]+[eE][+-]?[0-9]+/","/[a-zA-Z_][a-zA-Z_0-9\\u00B2\\u00B3\\u00B9\\u2070-\\u2079]*/","/'(?:[^'\\\\]|\\\\.)*'/","/\"(?:[^\"\\\\]|\\\\.)*\"/","/\\/\\*[^*]*\\*+([^/*][^*]*\\*+)*\\//","/\\/\\/[^\\r\\n]*/","RootNamespace","_PackageBodyElement","_Identification","_RelationshipBody","VisibilityIndicator","Dependency","Annotation","OwnedAnnotation","AnnotatingMember","_AnnotatingElement","Comment","Documentation","TextualRepresentation","PrefixMetadataAnnotation","PrefixMetadataMember","PrefixMetadataUsage","MetadataUsage","MetadataTyping","_MetadataBody","MetadataBodyUsageMember","MetadataBodyUsage","MetadataDefinition","Package","LibraryPackage","_PackageBody","PackageMember","ElementFilterMember","AliasMember","_ImportPrefix","Import","MembershipImport","_ImportedMembership","NamespaceImport","_ImportedNamespace","FilterPackage","FilterPackageImport","FilterPackageMembershipImport","FilterPackageNamespaceImport","FilterPackageMember","_DefinitionElement","_UsageElement","_NonOccurrenceUsageElement","_OccurrenceUsageElement","_StructureUsageElement","_BehaviorUsageElement","_SubclassificationPart","OwnedSubclassification","_FeatureDeclaration","_FeatureSpecializationPart","_MultiplicityPart","_FeatureSpecialization","_Typings","_Subsettings","_References","_Crosses","_Redefinitions","FeatureTyping","OwnedFeatureTyping","OwnedSubsetting","OwnedReferenceSubsetting","OwnedCrossSubsetting","OwnedRedefinition","OwnedMultiplicity","MultiplicityRange","MultiplicityExpressionMember","_Definition","_DefinitionBody","_DefinitionBodyItem","DefinitionMember","VariantUsageMember","NonOccurrenceUsageMember","OccurrenceUsageMember","_usage_modifier","_UsageDeclaration","_UsageCompletion","_Usage","_ValuePart","FeatureValue","DefaultReferenceUsage","ReferenceUsage","AttributeDefinition","AttributeUsage","EnumerationDefinition","_EnumerationBody","EnumerationUsageMember","EnumeratedValue","EnumerationUsage","OccurrenceDefinition","OccurrenceUsage","ItemDefinition","ItemUsage","PartDefinition","PartUsage","PortDefinition","PortUsage","ConjugatedPortTyping","ConnectorEndMember","ConnectorEnd","ConnectionDefinition","ConnectionUsage","_ConnectorPart","_BinaryConnectorPart","_NaryConnectorPart","BindingConnectorAsUsage","SuccessionAsUsage","InterfaceDefinition","InterfaceUsage","AllocationDefinition","AllocationUsage","FlowDefinition","FlowUsage","SuccessionFlowUsage","PayloadFeatureMember","PayloadFeature","FlowEndMember","FlowEnd","FlowFeatureMember","FlowFeature","ActionDefinition","_ActionBody","_ActionBodyItem","EmptySuccessionMember","MultiplicitySourceEnd","ActionNodeMember","_ActionNode","IfNode","ActionBodyParameter","WhileLoopNode","ForLoopNode","ForVariableDeclaration","ControlNode","MergeNode","DecisionNode","JoinNode","ForkNode","ActionUsage","AcceptActionNode","SendActionNode","AssignActionNode","PerformActionUsage","CalculationDefinition","_CalculationBody","_ParameterList","ParameterMember","ReturnParameterMember","ResultExpressionMember","CalculationUsage","ConstraintDefinition","ConstraintUsage","AssertConstraintUsage","RequirementDefinition","_RequirementBody","_RequirementBodyItem","SubjectMember","SubjectUsage","RequirementConstraintMember","RequirementConstraintUsage","ActorMember","ActorUsage","StakeholderMember","StakeholderUsage","RequirementUsage","SatisfyRequirementUsage","ConcernDefinition","ConcernUsage","CaseDefinition","_CaseBody","CaseUsage","AnalysisCaseDefinition","AnalysisCaseUsage","VerificationCaseDefinition","VerificationCaseUsage","_VerificationBody","_VerificationBodyItem","VerifyRequirementUsageMember","VerifyRequirementUsage","ObjectiveMember","ObjectiveRequirementUsage","UseCaseDefinition","UseCaseUsage","IncludeUseCaseUsage","StateDefinition","_StateBodyItem","EntryActionMember","DoActionMember","ExitActionMember","StateActionUsage","StateUsage","ExhibitStateUsage","TransitionUsageMember","TransitionUsage","ViewDefinition","ViewUsage","ViewpointDefinition","ViewpointUsage","RenderingDefinition","RenderingUsage","OwnedExpressionMember","OwnedExpression","_Expression","OwnedExpressionReference","ConditionalExpression","NullCoalescingExpression","ImpliesExpressionReference","ImpliesExpressionMember","ImpliesExpression","OrExpressionReference","OrExpressionMember","OrExpression","XorExpressionReference","XorExpressionMember","XorExpression","AndExpression","EqualityExpressionReference","EqualityExpressionMember","EqualityExpression","EqualityOperator","ClassificationExpression","ClassificationTestOperator","MetadataReference","TypeReferenceMember","TypeResultMember","TypeReference","ReferenceTyping","RelationalExpression","RelationalOperator","RangeExpression","AdditiveExpression","AdditiveOperator","MultiplicativeExpression","MultiplicativeOperator","ExponentiationExpression","ExponentiationOperator","UnaryExpression","UnaryOperator","ExtentExpression","_postfix_operation","MeasurementExpression","_UnitExpression","UnitBinaryExpression","UnitExponentExpression","_UnitPrimaryExpression","PrimaryExpression","FunctionReferenceExpression","FunctionReferenceMember","FunctionReference","FeatureChainMember","OwnedFeatureChain","_BaseExpression","BodyExpression","ExpressionBodyMember","ExpressionBody","SequenceExpression","FeatureReferenceExpression","FeatureReferenceMember","MetadataAccessExpression","ElementReferenceMember","InvocationExpression","ConstructorExpression","ConstructorResultMember","ConstructorResult","InstantiatedTypeMember","_FeatureChain","OwnedFeatureChaining","_ArgumentList","_PositionalArgumentList","ArgumentMember","Argument","_NamedArgumentList","NamedArgumentMember","NamedArgument","ParameterRedefinition","ArgumentValue","NullExpression","_LiteralExpression","LiteralBoolean","BooleanValue","LiteralString","LiteralInteger","LiteralReal","RealValue","Name","GlobalQualification","Qualification","QualifiedName","_START","__PackageBodyElement*","_(PackageMember | ElementFilterMember | AliasMember | Import | AnnotatingMember)","_Name?","_((\"<\" Name \">\" Name?) | Name)","_(\";\" | (\"{\" OwnedAnnotation* \"}\"))","_OwnedAnnotation*","_(\"public\" | \"private\" | \"protected\")","_PrefixMetadataAnnotation*","__Identification?","_(_Identification? \"from\")?","_(\",\" QualifiedName)*","_(\",\" QualifiedName)*_1","_(Comment | Documentation | TextualRepresentation | MetadataUsage)","_(\",\" Annotation)*","_(\"about\" Annotation (\",\" Annotation)*)?","_(\"locale\" STRING_VALUE)?","_(REGULAR_COMMENT | STRING_VALUE)","_(REGULAR_COMMENT | STRING_VALUE)?","_((\"comment\" _Identification? (\"about\" Annotation (\",\" Annotation)*)? (\"locale\" STRING_VALUE)? (REGULAR_COMMENT | STRING_VALUE)?) | ((\"locale\" STRING_VALUE)? (REGULAR_COMMENT | STRING_VALUE)))","_\";\"?","_((\"doc\" _Identification? (\"locale\" STRING_VALUE)? (REGULAR_COMMENT | STRING_VALUE)) | (\"doc\" (\"<\" Name \">\")? (\"locale\" STRING_VALUE)?))","_(\"<\" Name \">\")?","_(\"rep\" _Identification?)?","_PrefixMetadataMember*","_(\"metadata\" | \"@\")","_(\":\" | (\"defined\" \"by\"))","_((\":\" | (\"defined\" \"by\")))?","_(_Identification? ((\":\" | (\"defined\" \"by\")))?)?","_(\";\" | (\"{\" (DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)* \"}\"))","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)","_(DefinitionMember | MetadataBodyUsageMember | AliasMember | Import)*","_\"ref\"?","_(\":>>\" | \"redefines\")","_(\":>>\" | \"redefines\")?","__FeatureSpecializationPart?","__ValuePart?","__usage_modifier*","_\"standard\"?","_(\";\" | (\"{\" _PackageBodyElement* \"}\"))","_VisibilityIndicator?","_(_DefinitionElement | _UsageElement)","_(\"<\" Name \">\")?_1","_Name?_1","_\"all\"?","_(MembershipImport | NamespaceImport)","_(\"::\" \"**\")?","_(_ImportedNamespace | FilterPackage)","_FilterPackageMember+","_(FilterPackageMembershipImport | FilterPackageNamespaceImport)","_(Package | LibraryPackage | Dependency | AttributeDefinition | EnumerationDefinition | OccurrenceDefinition | ItemDefinition | MetadataDefinition | PartDefinition | ConnectionDefinition | FlowDefinition | InterfaceDefinition | AllocationDefinition | PortDefinition | ActionDefinition | CalculationDefinition | StateDefinition | ConstraintDefinition | RequirementDefinition | ConcernDefinition | CaseDefinition | AnalysisCaseDefinition | VerificationCaseDefinition | UseCaseDefinition | ViewDefinition | ViewpointDefinition | RenderingDefinition)","_(_NonOccurrenceUsageElement | _OccurrenceUsageElement)","_(DefaultReferenceUsage | ReferenceUsage | AttributeUsage | EnumerationUsage | BindingConnectorAsUsage | SuccessionAsUsage)","_(_StructureUsageElement | _BehaviorUsageElement)","_(OccurrenceUsage | ItemUsage | PartUsage | PortUsage | ConnectionUsage | InterfaceUsage | AllocationUsage | FlowUsage | SuccessionFlowUsage | ViewUsage | RenderingUsage)","_(ActionUsage | CalculationUsage | StateUsage | ConstraintUsage | RequirementUsage | ConcernUsage | CaseUsage | AnalysisCaseUsage | VerificationCaseUsage | UseCaseUsage | ViewpointUsage | PerformActionUsage | ExhibitStateUsage | IncludeUseCaseUsage | AssertConstraintUsage | SatisfyRequirementUsage)","_(\":>\" | \"specializes\")","_(\",\" OwnedSubclassification)*","_((_Identification _FeatureSpecializationPart?) | _FeatureSpecializationPart)","_(_FeatureSpecialization | _MultiplicityPart)","_(_FeatureSpecialization | _MultiplicityPart)+","_(OwnedMultiplicity | (OwnedMultiplicity? ((\"ordered\" \"nonunique\"?) | (\"nonunique\" \"ordered\"?))))","_OwnedMultiplicity?","_\"nonunique\"?","_((\"ordered\" \"nonunique\"?) | (\"nonunique\" \"ordered\"?))","_\"ordered\"?","_(_Typings | _Subsettings | _References | _Crosses | _Redefinitions)","_(\",\" FeatureTyping)*","_(\":>\" | \"subsets\" | \"subset\")","_(\",\" OwnedSubsetting)*","_(\"::>\" | \"references\" | \"reference\")","_(\"=>\" | \"crosses\")","_(\":>>\" | \"redefines\" | \"redefine\")","_(\",\" OwnedRedefinition)*","_(OwnedFeatureTyping | ConjugatedPortTyping)","_(QualifiedName | OwnedFeatureChain)","_(QualifiedName | OwnedFeatureChain)_1","_(QualifiedName | OwnedFeatureChain)_2","_(QualifiedName | OwnedFeatureChain)_3","_(QualifiedName | OwnedFeatureChain)_4","_(\"..\" MultiplicityExpressionMember)?","_(_LiteralExpression | FeatureReferenceExpression)","__SubclassificationPart?","_(\";\" | (\"{\" _DefinitionBodyItem* \"}\"))","__DefinitionBodyItem*","_(DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | (EmptySuccessionMember? OccurrenceUsageMember) | AliasMember | Import | AnnotatingMember)","_EmptySuccessionMember?","_(\"end\" | \"in\" | \"out\" | \"inout\" | \"derived\" | \"abstract\" | \"variation\" | \"constant\" | \"ref\" | \"redefine\" | \"redefines\" | \"subset\" | \"subsets\" | \"individual\" | \"snapshot\" | \"timeslice\" | PrefixMetadataMember)","__UsageDeclaration?","_(\"=\" | \":=\" | (\"default\" (\"=\" | \":=\")?))","_(\"=\" | \":=\")","_(\"=\" | \":=\")?","_(\";\" | (\"{\" (AnnotatingMember | EnumerationUsageMember)* \"}\"))","_(AnnotatingMember | EnumerationUsageMember)","_(AnnotatingMember | EnumerationUsageMember)*","_\"enum\"?","_OwnedMultiplicity?_1","_(\"::>\" | \"references\")","_(Name (\"::>\" | \"references\"))?","_(\"connect\" _ConnectorPart)?","_((\"connection\" _UsageDeclaration? _ValuePart? (\"connect\" _ConnectorPart)?) | (\"connect\" _ConnectorPart))","_(_BinaryConnectorPart | _NaryConnectorPart)","_(\",\" ConnectorEndMember)*","_(\"binding\" _UsageDeclaration?)?","_(\"succession\" _UsageDeclaration?)?","_\"first\"?","_(\"if\" OwnedExpression)?","_(\"allocate\" _ConnectorPart)?","_((\"allocation\" _UsageDeclaration? (\"allocate\" _ConnectorPart)?) | (\"allocate\" _ConnectorPart))","_((FlowEndMember \"to\" FlowEndMember) | (_UsageDeclaration? _ValuePart? (\"of\" PayloadFeatureMember)? (\"from\" FlowEndMember \"to\" FlowEndMember)?))","_(\"of\" PayloadFeatureMember)?","_(\"from\" FlowEndMember \"to\" FlowEndMember)?","_((_Identification? _FeatureSpecializationPart _ValuePart?) | (_Identification? _ValuePart) | (OwnedFeatureTyping OwnedMultiplicity?) | (OwnedMultiplicity OwnedFeatureTyping))","_(OwnedReferenceSubsetting \".\")?","__ParameterList?","_(\";\" | (\"{\" _ActionBodyItem* \"}\"))","__ActionBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | OccurrenceUsageMember | (EmptySuccessionMember? _OccurrenceUsageElement) | ActionNodeMember | ReturnParameterMember | AnnotatingMember)","_(IfNode | WhileLoopNode | ForLoopNode | ControlNode | AcceptActionNode | SendActionNode | AssignActionNode)","_(\"action\" _UsageDeclaration?)?","_(ActionBodyParameter | IfNode)","_(\"else\" (ActionBodyParameter | IfNode))?","_((\"while\" OwnedExpression) | \"loop\")","_(\"until\" OwnedExpression \";\")?","_(MergeNode | DecisionNode | JoinNode | ForkNode)","_(\"via\" OwnedReferenceSubsetting)?","_(\"to\" OwnedExpression)?","_((OwnedExpression \":=\" OwnedExpression) | (OwnedExpression \"=:\" OwnedExpression))","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"action\" _UsageDeclaration?))","_(\";\" | (\"{\" (_ActionBodyItem | ReturnParameterMember)* ResultExpressionMember? \"}\"))","_(_ActionBodyItem | ReturnParameterMember)","_(_ActionBodyItem | ReturnParameterMember)*","_ResultExpressionMember?","_(\",\" ParameterMember)*","_(ParameterMember (\",\" ParameterMember)*)?","_\"not\"?","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"constraint\" _UsageDeclaration? _ValuePart?))","_(\";\" | (\"{\" _RequirementBodyItem* \"}\"))","__RequirementBodyItem*","_(_DefinitionBodyItem | SubjectMember | RequirementConstraintMember | ActorMember | StakeholderMember)","_(\"assume\" | \"require\")","__FeatureSpecialization*","_((OwnedReferenceSubsetting _FeatureSpecialization* _CalculationBody) | (_usage_modifier* \"constraint\"? _UsageDeclaration? _ValuePart? _CalculationBody))","_\"constraint\"?","_\"assert\"?","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"requirement\" _UsageDeclaration?))","_(\"by\" OwnedReferenceSubsetting)?","_(\";\" | (\"{\" (_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)* ResultExpressionMember? \"}\"))","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)","_(_ActionBodyItem | SubjectMember | ActorMember | StakeholderMember | ObjectiveMember)*","_(\";\" | (\"{\" _VerificationBodyItem* ResultExpressionMember? \"}\"))","__VerificationBodyItem*","_(_ActionBodyItem | VerifyRequirementUsageMember | ObjectiveMember | AnnotatingMember)","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"use\" \"case\" _UsageDeclaration?))","_(\";\" | (\"parallel\"? \"{\" _StateBodyItem* \"}\"))","_\"parallel\"?","__StateBodyItem*","_(Import | AliasMember | DefinitionMember | VariantUsageMember | NonOccurrenceUsageMember | OccurrenceUsageMember | (EmptySuccessionMember? _OccurrenceUsageElement) | TransitionUsageMember | EntryActionMember | DoActionMember | ExitActionMember | AnnotatingMember)","_(\";\" | (_UsageDeclaration? _ValuePart? _ActionBody))","_((OwnedReferenceSubsetting _FeatureSpecializationPart?) | (\"state\" _UsageDeclaration?))","_(_UsageDeclaration? \"first\")?","_(\"accept\" PayloadFeatureMember)?","_(\"do\" StateActionUsage)?","_(\";\" | (\"{\" (_DefinitionBodyItem | ElementFilterMember)* \"}\"))","_(_DefinitionBodyItem | ElementFilterMember)","_(_DefinitionBodyItem | ElementFilterMember)*","_(ConditionalExpression | NullCoalescingExpression | ImpliesExpression | OrExpression | XorExpression | AndExpression | EqualityExpression | ClassificationExpression | RelationalExpression | RangeExpression | AdditiveExpression | MultiplicativeExpression | ExponentiationExpression | UnaryExpression | ExtentExpression | MeasurementExpression | PrimaryExpression | _BaseExpression)","_(\"if\" _Expression \"?\" OwnedExpressionReference \"else\" OwnedExpressionReference)","_(\"??\" ImpliesExpressionReference)+","_(_Expression (\"??\" ImpliesExpressionReference)+)","_(\"implies\" ImpliesExpressionReference)+","_(_Expression (\"implies\" ImpliesExpressionReference)+)","_((\"|\" _Expression) | (\"or\" XorExpressionReference))","_((\"|\" _Expression) | (\"or\" XorExpressionReference))+","_(_Expression ((\"|\" _Expression) | (\"or\" XorExpressionReference))+)","_(\"xor\" _Expression)+","_(_Expression (\"xor\" _Expression)+)","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))","_((\"&\" _Expression) | (\"and\" EqualityExpressionReference))+","_(_Expression ((\"&\" _Expression) | (\"and\" EqualityExpressionReference))+)","_(EqualityOperator _Expression)+","_(_Expression (EqualityOperator _Expression)+)","_(\"==\" | \"!=\" | \"===\" | \"!==\")","_((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))","_((_Expression ((ClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember))) | (ClassificationTestOperator TypeReferenceMember) | (MetadataReference MetaClassificationTestOperator TypeReferenceMember) | (CastOperator TypeResultMember) | (MetadataReference MetaCastOperator TypeResultMember))","_(\"hastype\" | \"istype\" | \"@\")","MetaClassificationTestOperator","CastOperator","MetaCastOperator","_(RelationalOperator _Expression)+","_(_Expression (RelationalOperator _Expression)+)","_(\"<\" | \">\" | \"<=\" | \">=\")","_(_Expression \"..\" _Expression)","_(AdditiveOperator _Expression)+","_(_Expression (AdditiveOperator _Expression)+)","_(\"+\" | \"-\")","_(MultiplicativeOperator _Expression)+","_(_Expression (MultiplicativeOperator _Expression)+)","_(\"*\" | \"/\" | \"%\")","_(_Expression ExponentiationOperator _Expression)","_(\"**\" | \"^\")","_(UnaryOperator _Expression)","_(\"+\" | \"-\" | \"~\" | \"not\")","_(\"all\" TypeResultMember)","_((\"#\" \"(\" SequenceExpression \")\") | (\"[\" SequenceExpression \"]\") | (\"->\" InstantiatedTypeMember (BodyExpression | FunctionReferenceExpression | _ArgumentList)) | (\".\" BodyExpression) | (\".?\" BodyExpression))","_(BodyExpression | FunctionReferenceExpression | _ArgumentList)","_(\".\" FeatureChainMember)?","_(_LiteralExpression | FeatureReferenceExpression)_1","_((_LiteralExpression | FeatureReferenceExpression) \"[\" _UnitExpression \"]\")","_(UnitBinaryExpression | UnitExponentExpression | _UnitPrimaryExpression)","_(\"*\" | \"/\")","_(_UnitExpression (\"*\" | \"/\") _UnitExpression)","_(\"^\" | \"**\")","_(LiteralInteger | (\"-\" LiteralInteger))","_(_UnitPrimaryExpression (\"^\" | \"**\") (LiteralInteger | (\"-\" LiteralInteger)))","_(FeatureReferenceExpression | (\"(\" _UnitExpression \")\"))","__postfix_operation*","_((_BaseExpression (\".\" FeatureChainMember) _postfix_operation*) | (_BaseExpression _postfix_operation+))","__postfix_operation+","_(QualifiedName | OwnedFeatureChain)_5","_(NullExpression | _LiteralExpression | FeatureReferenceExpression | MetadataAccessExpression | InvocationExpression | ConstructorExpression | BodyExpression | (\"(\" SequenceExpression \")\"))","_(\",\" | (\",\" SequenceExpression))","_(\",\" | (\",\" SequenceExpression))?","_(\".\" OwnedFeatureChaining)+","_(_PositionalArgumentList | _NamedArgumentList)","_(_PositionalArgumentList | _NamedArgumentList)?","_(\",\" ArgumentMember)*","_(\",\" NamedArgumentMember)*","_(\"null\" | (\"(\" \")\"))","_(LiteralBoolean | LiteralString | LiteralInteger | LiteralReal | LiteralInfinity)","_(\"true\" | \"false\")","_DECIMAL_VALUE?","_(DECIMAL_VALUE | EXP_VALUE)","_((DECIMAL_VALUE? \".\" (DECIMAL_VALUE | EXP_VALUE)) | EXP_VALUE)","LiteralInfinity","_(ID | UNRESTRICTED_NAME)","_GlobalQualification?","_((GlobalQualification? Name) | (QualifiedName \"::\" Name))","_(QualifiedName \"::\" Name)","DECIMAL_VALUE","EXP_VALUE","ID","UNRESTRICTED_NAME","STRING_VALUE","REGULAR_COMMENT","ML_NOTE","SL_NOTE","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
     : [];
 export const LINT_MESSAGES =
   typeof {} !== "undefined"
@@ -500,7 +552,7 @@ export const LINT_CODES =
   typeof {} !== "undefined" ? {} : {};
 export const EXTRAS_PATTERN = "\\s";
 export const FIELD_NAMES =
-  typeof {"declaredShortName":1,"declaredName":2,"client":3,"supplier":4,"annotatedElement":5,"ownedRelatedElement":6,"locale":7,"body":8,"language":9,"ownedRelationship":10,"type":11,"isStandard":12,"memberShortName":13,"memberName":14,"memberElement":15,"isImportAll":16,"importedMembership":17,"isRecursive":18,"importedNamespace":19,"superclassifier":20,"isOrdered":21,"isNonunique":22,"lowerBound":23,"upperBound":24,"isEnd":25,"direction":26,"isDerived":27,"isAbstract":28,"isVariation":29,"isConstant":30,"isRef":31,"isRedefine":32,"isSubsetting":33,"isInitial":34,"isDefault":35,"conjugatedPortDefinition":36,"guard":37,"condition":38,"thenBody":39,"elseBody":40,"untilCondition":41,"variable":42,"range":43,"sentItem":44,"receiver":45,"targetFeature":46,"assignedValue":47,"isNegated":48,"constraintKind":49,"satisfyingFeature":50,"isParallel":51,"source":52,"trigger":53,"effect":54,"operator":55,"operand":56,"thenOperand":57,"elseOperand":58,"typeReference":59,"typeResult":60,"base":61,"exponent":62,"indexOperand":63,"filterOperand":64,"invocationType":65,"functionRef":66,"collect":67,"select":68,"featureChain":69,"value":70,"unit":71,"left":72,"right":73,"result":74,"chaining":75,"chainingFeature":76,"argument":77,"namedArgument":78,"parameterRedefinition":79,"redefinedFeature":80,"name":81} !== "undefined" ? {"declaredShortName":1,"declaredName":2,"client":3,"supplier":4,"annotatedElement":5,"ownedRelatedElement":6,"locale":7,"body":8,"language":9,"ownedRelationship":10,"type":11,"isStandard":12,"memberShortName":13,"memberName":14,"memberElement":15,"isImportAll":16,"importedMembership":17,"isRecursive":18,"importedNamespace":19,"superclassifier":20,"isOrdered":21,"isNonunique":22,"lowerBound":23,"upperBound":24,"isEnd":25,"direction":26,"isDerived":27,"isAbstract":28,"isVariation":29,"isConstant":30,"isRef":31,"isRedefine":32,"isSubsetting":33,"isInitial":34,"isDefault":35,"conjugatedPortDefinition":36,"guard":37,"condition":38,"thenBody":39,"elseBody":40,"untilCondition":41,"variable":42,"range":43,"sentItem":44,"receiver":45,"targetFeature":46,"assignedValue":47,"isNegated":48,"constraintKind":49,"satisfyingFeature":50,"isParallel":51,"source":52,"trigger":53,"effect":54,"operator":55,"operand":56,"thenOperand":57,"elseOperand":58,"typeReference":59,"typeResult":60,"base":61,"exponent":62,"indexOperand":63,"filterOperand":64,"invocationType":65,"functionRef":66,"collect":67,"select":68,"featureChain":69,"value":70,"unit":71,"left":72,"right":73,"result":74,"chaining":75,"chainingFeature":76,"argument":77,"namedArgument":78,"parameterRedefinition":79,"redefinedFeature":80,"name":81} : {};
+  typeof {"declaredShortName":1,"declaredName":2,"client":3,"supplier":4,"annotatedElement":5,"ownedRelatedElement":6,"locale":7,"body":8,"language":9,"ownedRelationship":10,"type":11,"isStandard":12,"memberShortName":13,"memberName":14,"memberElement":15,"isImportAll":16,"importedMembership":17,"isRecursive":18,"importedNamespace":19,"superclassifier":20,"isOrdered":21,"isNonunique":22,"subsettedFeature":23,"referencedFeature":24,"crossedFeature":25,"redefinedFeature":26,"lowerBound":27,"upperBound":28,"isEnd":29,"direction":30,"isDerived":31,"isAbstract":32,"isVariation":33,"isConstant":34,"isRef":35,"isRedefine":36,"isSubsetting":37,"isInitial":38,"isDefault":39,"conjugatedPortDefinition":40,"guard":41,"condition":42,"thenBody":43,"elseBody":44,"untilCondition":45,"variable":46,"range":47,"sentItem":48,"receiver":49,"targetFeature":50,"assignedValue":51,"isNegated":52,"constraintKind":53,"satisfyingFeature":54,"isParallel":55,"source":56,"trigger":57,"effect":58,"operator":59,"operand":60,"thenOperand":61,"elseOperand":62,"typeReference":63,"typeResult":64,"base":65,"exponent":66,"indexOperand":67,"filterOperand":68,"invocationType":69,"functionRef":70,"collect":71,"select":72,"featureChain":73,"value":74,"unit":75,"left":76,"right":77,"result":78,"chaining":79,"chainingFeature":80,"argument":81,"namedArgument":82,"parameterRedefinition":83,"name":84} !== "undefined" ? {"declaredShortName":1,"declaredName":2,"client":3,"supplier":4,"annotatedElement":5,"ownedRelatedElement":6,"locale":7,"body":8,"language":9,"ownedRelationship":10,"type":11,"isStandard":12,"memberShortName":13,"memberName":14,"memberElement":15,"isImportAll":16,"importedMembership":17,"isRecursive":18,"importedNamespace":19,"superclassifier":20,"isOrdered":21,"isNonunique":22,"subsettedFeature":23,"referencedFeature":24,"crossedFeature":25,"redefinedFeature":26,"lowerBound":27,"upperBound":28,"isEnd":29,"direction":30,"isDerived":31,"isAbstract":32,"isVariation":33,"isConstant":34,"isRef":35,"isRedefine":36,"isSubsetting":37,"isInitial":38,"isDefault":39,"conjugatedPortDefinition":40,"guard":41,"condition":42,"thenBody":43,"elseBody":44,"untilCondition":45,"variable":46,"range":47,"sentItem":48,"receiver":49,"targetFeature":50,"assignedValue":51,"isNegated":52,"constraintKind":53,"satisfyingFeature":54,"isParallel":55,"source":56,"trigger":57,"effect":58,"operator":59,"operand":60,"thenOperand":61,"elseOperand":62,"typeReference":63,"typeResult":64,"base":65,"exponent":66,"indexOperand":67,"filterOperand":68,"invocationType":69,"functionRef":70,"collect":71,"select":72,"featureChain":73,"value":74,"unit":75,"left":76,"right":77,"result":78,"chaining":79,"chainingFeature":80,"argument":81,"namedArgument":82,"parameterRedefinition":83,"name":84} : {};
 let ID_TO_FIELD_NAME = null;
 export function getFieldNameById(id) {
   if (ID_TO_FIELD_NAME === null) {
@@ -557,13 +609,37 @@ export class LspFacade {
     "u",
   );
   wasmMemory;
+  _u32View = null;
+  /** Returns a Uint32Array over linear memory, reallocated only when `memory.grow` replaces the buffer. */
+  _u32() {
+    const buf = this.wasmMemory.buffer;
+    if (this._u32View === null || this._u32View.buffer !== buf) {
+      this._u32View = new Uint32Array(buf);
+    }
+    return this._u32View;
+  }
   exports;
   lastAstRoot = 0;
   _cachedLineStarts = null;
   documentRoots = new Map();
   documentVersions = new Map();
+  _uriToFileId = new Map();
+  _fileIdToUri = new Map();
+  _nextFileId = 1;
   _idleTimer = null;
   _maxMemoryQuotaBytes = 32 * 1024 * 1024; // 32MB threshold
+  /**
+   * Retrieves or assigns a stable numeric fileId for a given URI.
+   */
+  getFileId(uri) {
+    let id = this._uriToFileId.get(uri);
+    if (id === undefined) {
+      id = this._nextFileId++;
+      this._uriToFileId.set(uri, id);
+      this._fileIdToUri.set(id, uri);
+    }
+    return id;
+  }
   /**
    * Returns true if a character matches the grammar's `extras` definition (whitespace/trivia).
    * Line breaks (\n, \r) are excluded so diagnostic ranges stay pinned to their line.
@@ -667,6 +743,12 @@ export class LspFacade {
    * Closes a document, unregistering its root from GC and triggering compaction.
    */
   removeDocument(uri) {
+    const fileId = this._uriToFileId.get(uri);
+    if (fileId !== undefined) {
+      this.evictDocumentAst(fileId);
+      this._uriToFileId.delete(uri);
+      this._fileIdToUri.delete(fileId);
+    }
     const root = this.documentRoots.get(uri);
     if (root && this.exports.dropRoot) {
       this.exports.dropRoot(root);
@@ -880,12 +962,23 @@ export class LspFacade {
       editOldEnd = 0;
       editNewEnd = 0;
     }
-    let newAstRoot = this.exports.parse(
-      baseRoot,
-      editStart,
-      editOldEnd,
-      editNewEnd,
-    );
+    const fileId = uri ? this.getFileId(uri) : 0;
+    if (fileId !== 0 && this.exports.setAllocDocument) {
+      this.exports.setAllocDocument(fileId);
+    }
+    let newAstRoot = 0;
+    try {
+      newAstRoot = this.exports.parse(
+        baseRoot,
+        editStart,
+        editOldEnd,
+        editNewEnd,
+      );
+    } finally {
+      if (fileId !== 0 && this.exports.setAllocDocument) {
+        this.exports.setAllocDocument(0);
+      }
+    }
     if (this.astListeners && this.astListeners.length > 0) {
       for (const listener of this.astListeners) {
         this.walkAstDiff(prevAstRoot, newAstRoot, listener);
@@ -910,13 +1003,13 @@ export class LspFacade {
   }
   _hasTopLevelErrors(astRoot) {
     if (astRoot === 0) return false;
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const rootW0 = mem32[astRoot >>> 2];
-    const rootFlags = (rootW0 >>> 10) & 0x0fff;
+    const rootFlags = rootW0 >>> 16;
     if ((rootFlags & (128 | 256)) !== 0) return true;
     let childPtr = mem32[(astRoot + 12) >>> 2];
     while (childPtr !== 0) {
-      const cFlags = (mem32[childPtr >>> 2] >>> 10) & 0x0fff;
+      const cFlags = mem32[childPtr >>> 2] >>> 16;
       if ((cFlags & (128 | 256)) !== 0) return true;
       childPtr = mem32[(childPtr + 16) >>> 2];
     }
@@ -1031,12 +1124,23 @@ export class LspFacade {
       editOldEndByte = 0;
       editNewEndByte = 0;
     }
-    const newAstRoot = this.exports.parse(
-      baseRoot,
-      editStartByte,
-      editOldEndByte,
-      editNewEndByte,
-    );
+    const fileId = uri ? this.getFileId(uri) : 0;
+    if (fileId !== 0 && this.exports.setAllocDocument) {
+      this.exports.setAllocDocument(fileId);
+    }
+    let newAstRoot = 0;
+    try {
+      newAstRoot = this.exports.parse(
+        baseRoot,
+        editStartByte,
+        editOldEndByte,
+        editNewEndByte,
+      );
+    } finally {
+      if (fileId !== 0 && this.exports.setAllocDocument) {
+        this.exports.setAllocDocument(0);
+      }
+    }
     if (this.astListeners && this.astListeners.length > 0) {
       for (const listener of this.astListeners) {
         this.walkAstDiff(prevAstRoot, newAstRoot, listener);
@@ -1349,7 +1453,7 @@ export class LspFacade {
         : this.exports.lsp_getDiagnostics(astRoot);
     const diags = [];
     if (numElements === 0 || !this.exports.lsp_getBinaryBuffer) return diags;
-    let memory = new Uint32Array(this.wasmMemory.buffer);
+    let memory = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const extractTokenText = (start, end) => {
       const lenUnits = this.exports.inputLength
@@ -1432,19 +1536,10 @@ export class LspFacade {
         if (this.exports.getNodeLeadingPad) {
           return this.exports.getNodeLeadingPad(ptr);
         }
-        const typeFlags = memory[ptr / 4];
-        const envHashPadding = memory[(ptr + 4) / 4];
-        const rawPad = typeFlags >>> 22;
-        const isFat = ((envHashPadding >>> 23) & 1) === 1;
-        return isFat
-          ? memory[(ptr + 28) >>> 2] ||
-              (this.exports.getFatPaddingPtr
-                ? memory[this.exports.getFatPaddingPtr(rawPad) >>> 2]
-                : rawPad)
-          : rawPad;
+        return memory[(ptr + 8) / 4];
       };
       const getNodeLen = (ptr) => {
-        return memory[(ptr + 4) / 4] & 0x007fffff;
+        return memory[(ptr + 4) / 4];
       };
       stackPtrs[0] = astRoot;
       stackOffsets[0] = getNodePad(astRoot);
@@ -1502,14 +1597,17 @@ export class LspFacade {
         }
       }
     }
-    for (let i = 0; i < numElements * 7; i += 7) {
-      let startByte = memory[(dirPtr >> 2) + i];
-      let endByte = memory[(dirPtr >> 2) + i + 1];
-      const lintId = memory[(dirPtr >> 2) + i + 2];
-      const arg0 = memory[(dirPtr >> 2) + i + 3];
-      const arg1 = memory[(dirPtr >> 2) + i + 4];
-      const arg2 = memory[(dirPtr >> 2) + i + 5];
-      const arg3 = memory[(dirPtr >> 2) + i + 6];
+    const numWords = numElements * 7;
+    const diagRecords = new Uint32Array(numWords);
+    diagRecords.set(new Uint32Array(this.wasmMemory.buffer, dirPtr, numWords));
+    for (let i = 0; i < numWords; i += 7) {
+      let startByte = diagRecords[i];
+      let endByte = diagRecords[i + 1];
+      const lintId = diagRecords[i + 2];
+      const arg0 = diagRecords[i + 3];
+      const arg1 = diagRecords[i + 4];
+      const arg2 = diagRecords[i + 5];
+      const arg3 = diagRecords[i + 6];
       if (lintId > 0 && startByte === 0 && endByte === 0 && arg0 > 0) {
         let nodeStart = offsetCache.get(arg0);
         if (nodeStart === undefined && this.exports.lsp_findNodeOffset) {
@@ -1523,7 +1621,8 @@ export class LspFacade {
         }
         if (nodeStart !== undefined) {
           startByte = nodeStart;
-          const nodeLen = memory[(arg0 + 4) / 4] & 0x007fffff;
+          const mem32 = this._u32();
+          const nodeLen = mem32[(arg0 + 4) >>> 2];
           endByte = startByte + (nodeLen > 0 ? nodeLen : encStep);
         }
       }
@@ -1553,11 +1652,7 @@ export class LspFacade {
             name = name.substring(1, name.length - 1);
           }
           if (name.startsWith("/") && name.endsWith("/")) {
-            if (name.includes('^"\\\\') || name.includes('"')) return "string";
-            if (name.includes("a-zA-Z")) return "identifier";
-            if (name.includes("\\d+\\.\\d")) return "number";
-            if (name.includes("\\d+")) return "integer";
-            return "token";
+            return describeRegexToken(name);
           }
           if (name.startsWith("token_")) return "token";
           return name;
@@ -1813,7 +1908,7 @@ export class LspFacade {
               } else if (this.exports.lsp_findNodeOffset) {
                 try {
                   const off = this.exports.lsp_findNodeOffset(astRoot, ptr, 0);
-                  memory = new Uint32Array(this.wasmMemory.buffer);
+                  memory = this._u32();
                   if (off >= 0) {
                     actualStart = off;
                     offsetCache.set(ptr, off);
@@ -1822,8 +1917,8 @@ export class LspFacade {
               }
               if (actualStart < 0) return null;
               const typeFlags = memory[ptr / 4];
-              const typeId = typeFlags & 0x03ff;
-              const len = memory[(ptr + 4) / 4] & 0x007fffff;
+              const typeId = typeFlags & 0xffff;
+              const len = memory[(ptr + 4) / 4];
               return new SyntaxNode(
                 dummyTree,
                 ptr,
@@ -2050,7 +2145,7 @@ export class LspFacade {
       return new Uint32Array();
     const numElements = this.exports.lsp_semanticTokens_full(astRoot);
     if (numElements === 0) return new Uint32Array();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const result = new Uint32Array(numElements * 4);
     result.set(mem32.subarray(dirPtr >>> 2, (dirPtr >>> 2) + numElements * 4));
@@ -2076,7 +2171,7 @@ export class LspFacade {
     if (numEdits === 0) {
       return { resultId, fullTokens: this.getSemanticTokens(astRoot) };
     }
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const edits = [];
     let idx = dirPtr >>> 2;
@@ -2102,7 +2197,7 @@ export class LspFacade {
     const ranges = [];
     if (count === 0) return ranges;
     const div = this.getEncodingDiv();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < count * 2; i += 2) {
       const rawStart = mem32[(dirPtr >>> 2) + i];
@@ -2132,7 +2227,7 @@ export class LspFacade {
     const numElements = this.exports.lsp_getFoldingRanges(astRoot);
     const ranges = [];
     if (numElements === 0) return ranges;
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < numElements * 2; i += 2) {
       ranges.push({
@@ -2154,7 +2249,7 @@ export class LspFacade {
     const symbols = [];
     if (numElements === 0) return symbols;
     const div = this.getEncodingDiv();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < numElements * 4; i += 4) {
       const rawStart = mem32[(dirPtr >>> 2) + i];
@@ -2194,7 +2289,7 @@ export class LspFacade {
       targetOffset * div,
     );
     if (numElements < 2) return null;
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     if (numElements >= 3) {
       return {
@@ -2220,7 +2315,7 @@ export class LspFacade {
     );
     const references = [];
     if (numElements === 0) return references;
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < numElements * 3; i += 3) {
       references.push({
@@ -2249,7 +2344,7 @@ export class LspFacade {
     );
     if (count < 4) return null;
     const dirPtr = this.exports.lsp_getBinaryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const targetStart = mem32[(dirPtr >>> 2) + 0];
     const targetEnd = mem32[(dirPtr >>> 2) + 1];
     const replaceStart = mem32[(dirPtr >>> 2) + 2];
@@ -2299,7 +2394,7 @@ export class LspFacade {
     }
     const numRecords = this.exports.lsp_getDiagramData(astRoot);
     if (numRecords === 0) return { nodes, edges };
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const lineStarts = this.getLineStarts();
     const inputBufPtr = this.exports.getInputBuffer
@@ -2403,7 +2498,7 @@ export class LspFacade {
     const actionBufferBytes = actions.length * 32;
     const actionPtr = this.allocMem(actionBufferBytes);
     if (actionPtr === 0) return { text: "", edits: [] };
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     let offset = actionPtr >>> 2;
     for (const action of actions) {
       if (action.type === "move" || action.type === "resize") {
@@ -2489,11 +2584,19 @@ export class LspFacade {
     const fn = this.exports.arena_alloc || this.exports.atomicChunkAlloc;
     return fn ? fn(bytes) : 0;
   }
+  _strScratchPtr = 0;
+  _strScratchCapacity = 0;
   allocStringInArena(str) {
     if (!str || !this.exports.arena_allocStringBytes) return 0;
     const lenBytes = str.length * 2;
-    const ptr = this.allocMem(lenBytes);
-    if (ptr === 0) return 0;
+    if (this._strScratchCapacity < lenBytes) {
+      const capacity = Math.max(256, lenBytes * 2);
+      const fresh = this.allocMem(capacity);
+      if (fresh === 0) return 0;
+      this._strScratchPtr = fresh;
+      this._strScratchCapacity = capacity;
+    }
+    const ptr = this._strScratchPtr;
     const memBuffer = this.wasmMemory
       ? this.wasmMemory.buffer
       : this.exports.memory
@@ -2577,7 +2680,7 @@ export class LspFacade {
     const hash = this.hashString(name);
     const numStubs = this.exports.stub_findByName(hash);
     if (numStubs === 0) return [];
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.stub_getBinaryBuffer();
     const stride = 12;
     const results = [];
@@ -2613,7 +2716,7 @@ export class LspFacade {
       preferredFileId,
     );
     if (numStubs === 0) return [];
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.stub_getBinaryBuffer();
     const stride = 12;
     const results = [];
@@ -2642,7 +2745,7 @@ export class LspFacade {
       return [];
     const numStubs = this.exports.stub_getFileSymbols(fileId);
     if (numStubs === 0) return [];
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.stub_getBinaryBuffer();
     const stride = 12;
     const results = [];
@@ -2671,7 +2774,7 @@ export class LspFacade {
       return [];
     const numStubs = this.exports.stub_getChildren(parentSymbolId);
     if (numStubs === 0) return [];
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.stub_getBinaryBuffer();
     const stride = 12;
     const results = [];
@@ -2730,7 +2833,7 @@ export class LspFacade {
     if (!this.exports.stub_bulkRegister || payload.byteLength === 0) return 0;
     const ptr = this.allocMem(payload.byteLength);
     if (ptr === 0) return 0;
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     mem32.set(payload, ptr >>> 2);
     return this.exports.stub_bulkRegister(ptr, payload.length);
   }
@@ -2933,7 +3036,7 @@ export class LspFacade {
     const ptr = this.mcpGetOutputBuffer();
     const len = this.mcpGetOutputLength();
     if (ptr === 0 || len === 0) return "";
-    const bytes = new Uint8Array(this.memory.buffer, ptr, len);
+    const bytes = new Uint8Array(this.wasmMemory.buffer, ptr, len);
     return new TextDecoder().decode(bytes);
   }
   /** Adds an OWL 2 axiom to the indexed WASM ontology store. */
@@ -3008,7 +3111,7 @@ export class LspFacade {
     const count = this.exports.ontology_getTransitiveClosure(pHash, sHash);
     if (count === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const results = [];
     for (let i = 0; i < count; i++) {
       results.push(mem32[(dirPtr >>> 2) + i]);
@@ -3031,7 +3134,7 @@ export class LspFacade {
     );
     if (count === 0) return { reachable: [], path: [] };
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     let offset = dirPtr >>> 2;
     const reachableCount = mem32[offset++];
     const reachable = [];
@@ -3059,7 +3162,7 @@ export class LspFacade {
     const count = this.exports.ontology_explainSubsumption(subHash, superHash);
     if (count === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const stride = 6;
     const results = [];
     for (let i = 0; i < count * stride; i += stride) {
@@ -3086,7 +3189,7 @@ export class LspFacade {
     const count = this.exports.ontology_checkConsistency();
     if (count === 0) return { isConsistent: true, conflictingAxioms: [] };
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const stride = 6;
     const conflictingAxioms = [];
     for (let i = 0; i < count * stride; i += stride) {
@@ -3118,7 +3221,7 @@ export class LspFacade {
     const wordCount = this.exports.ontology_classifyIndividual(indHash);
     if (wordCount === 0) return { directTypes: [], allTypes: [] };
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     let offset = dirPtr >>> 2;
     const directCount = mem32[offset++];
     const directTypes = [];
@@ -3142,7 +3245,7 @@ export class LspFacade {
     const classCount = this.exports.ontology_getTaxonomy();
     if (classCount === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     let offset = dirPtr >>> 2;
     const totalClasses = mem32[offset++];
     const nodes = [];
@@ -3195,7 +3298,7 @@ export class LspFacade {
     );
     if (count === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const offset = dirPtr >>> 2;
     const result = [];
     for (let i = 0; i < count; i++) {
@@ -3228,7 +3331,7 @@ export class LspFacade {
     const count = this.exports.ontology_queryTriples(sPat, pPat, oPat);
     if (count === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const stride = 6;
     const results = [];
     for (let i = 0; i < count * stride; i += stride) {
@@ -3322,7 +3425,7 @@ export class LspFacade {
     const count = this.exports.ontology_quickXplain();
     if (count === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const stride = 6;
     const results = [];
     // First word is count
@@ -3347,7 +3450,7 @@ export class LspFacade {
     const coreCount = this.exports.ontology_allMus(maxCores);
     if (coreCount === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const offset = dirPtr >>> 2;
     const totalCores = mem32[offset];
     let ptr = offset + 1;
@@ -3384,7 +3487,7 @@ export class LspFacade {
     const count = this.exports.ontology_validateAdvancedConstraints();
     if (count === 0) return [];
     const dirPtr = this.exports.ontology_getQueryBuffer();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const offset = dirPtr >>> 2;
     const results = [];
     for (let i = 0; i < count; i++) {
@@ -3626,7 +3729,7 @@ export class LspFacade {
   /** Reads a WASM-allocated length-prefixed UTF-16 string into a JavaScript string. */
   readWasmString(ptr) {
     if (ptr === 0) return "";
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const lenBytes = mem32[(ptr - 4) >>> 2] || 0;
     const lenChars = lenBytes >>> 1;
     if (lenChars <= 0) return "";
@@ -3644,7 +3747,7 @@ export class LspFacade {
       return [];
     const numElements = this.exports.lsp_getPipelinesInfo();
     if (numElements === 0) return [];
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const pipelines = [];
     for (let i = 0; i < numElements * 3; i += 3) {
@@ -3908,7 +4011,7 @@ export class LspFacade {
     const errorRanges = [];
     if (!this.exports.lsp_getBinaryBuffer || this._lastDiagBinaryLength === 0)
       return errorRanges;
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < this._lastDiagBinaryLength; i += 7) {
       errorRanges.push({
@@ -3925,7 +4028,7 @@ export class LspFacade {
   getAstSExpr(astRoot, verbose = false) {
     if (!astRoot) return "";
     const lineStarts = this.getLineStarts();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     // Reuse cached error ranges from the last getDiagnostics() call
     // instead of calling lsp_getDiagnostics again (avoids triple traversal)
     const _errorRanges = this.readCachedErrorRanges();
@@ -3934,27 +4037,20 @@ export class LspFacade {
       if (depth > 100) return { strs: ["(...)"], nextOffset: currentOffset };
       if (!ptr) return { strs: [], nextOffset: currentOffset };
       const typeFlags = mem32[ptr / 4];
-      const typeId = typeFlags & 0x03ff;
+      const typeId = typeFlags & 0xffff;
       let typeName =
         (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
-      const envHashPadding = mem32[(ptr + 4) / 4];
-      const rawPad = typeFlags >>> 22;
-      const isFat = (envHashPadding >>> 23) & 1;
-      const pad = isFat
-        ? mem32[(ptr + 28) >>> 2] ||
-          (this.exports.getFatPaddingPtr
-            ? mem32[this.exports.getFatPaddingPtr(rawPad) >>> 2]
-            : rawPad)
-        : rawPad;
-      const len = envHashPadding & 0x007fffff;
+      const pad = mem32[(ptr + 8) / 4];
+      const len = mem32[(ptr + 4) / 4];
       const startOffset = currentOffset + pad;
       const endOffset = startOffset + len;
       const startPos = this.offsetToPos(startOffset, lineStarts);
       const endPos = this.offsetToPos(endOffset, lineStarts);
       const posStr = `[${startPos.line}, ${startPos.character}] - [${endPos.line}, ${endPos.character}]`;
       const indent = "  ".repeat(depth);
-      const isInvisible = (typeFlags & (1 << 14)) !== 0;
+      const flags = typeFlags >>> 16;
+      const isInvisible = (flags & 4) !== 0;
       const shouldPrint =
         verbose ||
         (!typeName.startsWith("_") &&
@@ -3987,7 +4083,6 @@ export class LspFacade {
       if (!shouldPrint) {
         return { strs: childStrs, nextOffset: endOffset };
       }
-      let flags = (typeFlags >> 10) & 0x0fff;
       let flagStr = "";
       if (flags & 256) flagStr += " (I)";
       if (flags & 128) flagStr += " (E)";
@@ -4011,7 +4106,7 @@ export class LspFacade {
   getAstHtml(astRoot) {
     if (!astRoot) return [];
     const lineStarts = this.getLineStarts();
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     // Reuse cached error ranges from the last getDiagnostics() call
     const _errorRanges = this.readCachedErrorRanges();
     const _printedErrors = new Set();
@@ -4037,26 +4132,19 @@ export class LspFacade {
       }
       if (!ptr) return currentOffset;
       const typeFlags = mem32[ptr / 4];
-      const typeId = typeFlags & 0x03ff;
+      const typeId = typeFlags & 0xffff;
       let typeName =
         (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
-      const envHashPadding = mem32[(ptr + 4) / 4];
-      const rawPad = typeFlags >>> 22;
-      const isFat = (envHashPadding >>> 23) & 1;
-      const pad = isFat
-        ? mem32[(ptr + 28) >>> 2] ||
-          (this.exports.getFatPaddingPtr
-            ? mem32[this.exports.getFatPaddingPtr(rawPad) >>> 2]
-            : rawPad)
-        : rawPad;
-      const len = envHashPadding & 0x007fffff;
+      const pad = mem32[(ptr + 8) / 4];
+      const len = mem32[(ptr + 4) / 4];
       const startOffset = currentOffset + pad;
       const endOffset = startOffset + len;
       const startPos = this.offsetToPos(startOffset, lineStarts);
       const endPos = this.offsetToPos(endOffset, lineStarts);
       const posStr = `<span style="color: #6e7781;">[${startPos.line}, ${startPos.character}] - [${endPos.line}, ${endPos.character}]</span>`;
-      const _isInvisible = (typeFlags & (1 << 14)) !== 0;
+      const flags = typeFlags >>> 16;
+      const _isInvisible = (flags & 4) !== 0;
       const shouldPrint = true; // Debug: print all nodes
       let renderedChildren = 0;
       let childOffset = startOffset;
@@ -4119,7 +4207,7 @@ export class LspFacade {
    */
   appendChild(parentPtr, childPtr) {
     if (!parentPtr || !childPtr) return;
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const mem32 = this._u32();
     const lastChild = this._childTailCache.get(parentPtr);
     if (lastChild !== undefined) {
       // Wire nextSibling of the cached tail → new child
@@ -4188,63 +4276,70 @@ export class LspFacade {
           : prevAstRoot !== 0
             ? prevAstRoot
             : 0;
-    if (baseRoot !== 0 && baseRoot !== this.lastAstRoot) {
-      baseRoot = 0;
+    const fileId = uri ? this.getFileId(uri) : 0;
+    if (fileId !== 0 && this.exports.setAllocDocument) {
+      this.exports.setAllocDocument(fileId);
     }
     let newAstRoot = 0;
-    if (Array.isArray(editStartOrEdits)) {
-      const edits = editStartOrEdits;
-      if (
-        baseRoot !== 0 &&
-        edits.length > 0 &&
-        this.exports.parseWithEdits &&
-        this.exports.atomicChunkAlloc
-      ) {
-        // Reuse a scratch buffer: atomicChunkAlloc memory is never freed, so allocating
-        // per call leaked 12 bytes per edit on every keystroke.
-        if (this._editsScratchCapacity < edits.length) {
-          this._editsScratchCapacity = Math.max(16, edits.length * 2);
-          this._editsScratchPtr = this.exports.atomicChunkAlloc(
-            this._editsScratchCapacity * 12,
+    try {
+      if (Array.isArray(editStartOrEdits)) {
+        const edits = editStartOrEdits;
+        if (
+          baseRoot !== 0 &&
+          edits.length > 0 &&
+          this.exports.parseWithEdits &&
+          this.exports.atomicChunkAlloc
+        ) {
+          // Reuse a scratch buffer: atomicChunkAlloc memory is never freed, so allocating
+          // per call leaked 12 bytes per edit on every keystroke.
+          if (this._editsScratchCapacity < edits.length) {
+            this._editsScratchCapacity = Math.max(16, edits.length * 2);
+            this._editsScratchPtr = this.exports.atomicChunkAlloc(
+              this._editsScratchCapacity * 12,
+            );
+          }
+          const editsPtr = this._editsScratchPtr;
+          const mem32 = this._u32();
+          for (let i = 0; i < edits.length; i++) {
+            const base = (editsPtr >>> 2) + i * 3;
+            mem32[base] = edits[i].startOffset * div;
+            mem32[base + 1] = edits[i].oldEndOffset * div;
+            mem32[base + 2] = edits[i].newEndOffset * div;
+          }
+          newAstRoot = this.exports.parseWithEdits(
+            baseRoot,
+            editsPtr,
+            edits.length,
           );
+        } else {
+          newAstRoot = this.exports.parse(0, 0, 0, inputLen);
         }
-        const editsPtr = this._editsScratchPtr;
-        const mem32 = new Uint32Array(this.wasmMemory.buffer);
-        for (let i = 0; i < edits.length; i++) {
-          const base = (editsPtr >>> 2) + i * 3;
-          mem32[base] = edits[i].startOffset * div;
-          mem32[base + 1] = edits[i].oldEndOffset * div;
-          mem32[base + 2] = edits[i].newEndOffset * div;
-        }
-        newAstRoot = this.exports.parseWithEdits(
-          baseRoot,
-          editsPtr,
-          edits.length,
-        );
       } else {
-        newAstRoot = this.exports.parse(0, 0, 0, inputLen);
+        let editStart =
+          typeof editStartOrEdits === "number" ? editStartOrEdits : 0;
+        let editStartByte = editStart * div;
+        let editOldEndByte = editOldEnd * div;
+        let editNewEndByte = editNewEnd * div;
+        if (
+          baseRoot === 0 ||
+          (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
+        ) {
+          editNewEndByte = inputLen;
+          baseRoot = 0;
+          editStartByte = 0;
+          editOldEndByte = 0;
+        }
+        newAstRoot = this.exports.parse(
+          baseRoot,
+          editStartByte,
+          editOldEndByte,
+          editNewEndByte,
+        );
       }
-    } else {
-      let editStart =
-        typeof editStartOrEdits === "number" ? editStartOrEdits : 0;
-      let editStartByte = editStart * div;
-      let editOldEndByte = editOldEnd * div;
-      let editNewEndByte = editNewEnd * div;
-      if (
-        baseRoot === 0 ||
-        (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)
-      ) {
-        editNewEndByte = inputLen;
-        baseRoot = 0;
-        editStartByte = 0;
-        editOldEndByte = 0;
+    } finally {
+      if (fileId !== 0 && this.exports.setAllocDocument) {
+        this.exports.setAllocDocument(0);
       }
-      newAstRoot = this.exports.parse(
-        baseRoot,
-        editStartByte,
-        editOldEndByte,
-        editNewEndByte,
-      );
     }
     if (this.astListeners.length > 0) {
       if (prevAstRoot !== 0) {
@@ -4282,10 +4377,10 @@ export class LspFacade {
    * what semantic nodes changed.
    */
   walkAstDiff(oldRoot, newRoot, listener) {
-    let mem32 = new Uint32Array(this.wasmMemory.buffer);
+    let mem32 = this._u32();
     const getMem32 = () => {
       if (mem32.buffer !== this.wasmMemory.buffer || mem32.byteLength === 0) {
-        mem32 = new Uint32Array(this.wasmMemory.buffer);
+        mem32 = this._u32();
       }
       return mem32;
     };
@@ -4301,7 +4396,7 @@ export class LspFacade {
       const firstChild = mem32[(ptr + 12) / 4];
       let curr = firstChild;
       const typeFlags = mem32[ptr / 4];
-      const parentTypeId = typeFlags & 0x03ff;
+      const parentTypeId = typeFlags & 0xffff;
       let childIndex = 0;
       let slow = curr;
       let step = 0;
@@ -4311,7 +4406,7 @@ export class LspFacade {
         let fieldId = -1;
         if (this.exports.getFieldIdForChild) {
           try {
-            const currType = mem32[curr / 4] & 0x03ff;
+            const currType = mem32[curr / 4] & 0xffff;
             fieldId = this.exports.getFieldIdForChild(
               parentTypeId,
               childIndex,
@@ -4351,12 +4446,12 @@ export class LspFacade {
           }
           const mem32 = getMem32();
           const cTypeFlags = mem32[childPtr / 4];
-          const typeId = cTypeFlags & 0x03ff;
+          const typeId = cTypeFlags & 0xffff;
+          const cFlags = cTypeFlags >>> 16;
           let typeName =
             (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
-          const isInvisible =
-            (cTypeFlags & (1 << 14)) !== 0 || typeName.startsWith("_");
-          const parentTypeId = mem32[nodePtr / 4] & 0x03ff;
+          const isInvisible = (cFlags & 4) !== 0 || typeName.startsWith("_");
+          const parentTypeId = mem32[nodePtr / 4] & 0xffff;
           let fieldId = -1;
           if (this.exports.getFieldIdForChild) {
             try {
@@ -4376,16 +4471,8 @@ export class LspFacade {
               : isInvisible
                 ? parentField
                 : null;
-          const childEnvHashPadding = mem32[(childPtr + 4) / 4];
-          const childRawPad = cTypeFlags >>> 22;
-          const childIsFat = (childEnvHashPadding >>> 23) & 1;
-          const childPad = childIsFat
-            ? mem32[(childPtr + 28) >>> 2] ||
-              (this.exports.getFatPaddingPtr
-                ? mem32[this.exports.getFatPaddingPtr(childRawPad) >>> 2]
-                : childRawPad)
-            : childRawPad;
-          const childLen = childEnvHashPadding & 0x007fffff;
+          const childPad = mem32[(childPtr + 8) / 4];
+          const childLen = mem32[(childPtr + 4) / 4];
           const hasChildren = mem32[(childPtr + 12) / 4] !== 0;
           if (isInvisible) {
             if (hasChildren) {
@@ -4445,23 +4532,15 @@ export class LspFacade {
         if (!ptr) continue;
         const mem32 = getMem32();
         const typeFlags = mem32[ptr / 4];
-        const typeId = typeFlags & 0x03ff;
+        const typeId = typeFlags & 0xffff;
         let typeName =
           (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
         if (typeName.startsWith("T_")) typeName = typeName.substring(2);
-        const envHashPadding = mem32[(ptr + 4) / 4];
-        const rawPad = typeFlags >>> 22;
-        const isFat = (envHashPadding >>> 23) & 1;
-        let pad = isFat
-          ? mem32[(ptr + 28) >>> 2] ||
-            (this.exports.getFatPaddingPtr
-              ? mem32[this.exports.getFatPaddingPtr(rawPad) >>> 2]
-              : rawPad)
-          : rawPad;
-        const len = envHashPadding & 0x007fffff;
+        let pad = mem32[(ptr + 8) / 4];
+        const len = mem32[(ptr + 4) / 4];
         const children = getFlattenedChildren(ptr);
         pad += item.invisiblePad;
-        const flags = (typeFlags >> 10) & 0x0fff;
+        const flags = typeFlags >>> 16;
         listener.onNodeInserted(
           ptr,
           typeId,
@@ -4505,7 +4584,7 @@ export class LspFacade {
       if (oldPtr === newPtr && oldInvisiblePad === newInvisiblePad) {
         if (oldPtr !== oldRoot) {
           const mem32r = getMem32();
-          const retFlags = (mem32r[newPtr / 4] >> 10) & 0x0fff;
+          const retFlags = mem32r[newPtr / 4] >>> 16;
           listener.onNodeRetained(newPtr, retFlags);
           return;
         }
@@ -4513,22 +4592,14 @@ export class LspFacade {
       if (oldPtr === newPtr && oldInvisiblePad !== newInvisiblePad) {
         const mem32 = getMem32();
         const newTypeFlags = mem32[newPtr / 4];
-        const newTypeId = newTypeFlags & 0x03ff;
+        const newTypeId = newTypeFlags & 0xffff;
         let typeName =
           (this.syntaxNames && this.syntaxNames[newTypeId]) ||
           `node_${newTypeId}`;
         if (typeName.startsWith("T_")) typeName = typeName.substring(2);
-        const envHashPadding = mem32[(newPtr + 4) / 4];
-        const rawPad = newTypeFlags >>> 22;
-        const isFat = (envHashPadding >>> 23) & 1;
-        let pad = isFat
-          ? mem32[(newPtr + 28) >>> 2] ||
-            (this.exports.getFatPaddingPtr
-              ? mem32[this.exports.getFatPaddingPtr(rawPad) >>> 2]
-              : rawPad)
-          : rawPad;
-        const len = envHashPadding & 0x007fffff;
-        const flags = (newTypeFlags >> 10) & 0x0fff;
+        let pad = mem32[(newPtr + 8) / 4];
+        const len = mem32[(newPtr + 4) / 4];
+        const flags = newTypeFlags >>> 16;
         const newCh = getFlattenedChildren(newPtr);
         pad += newInvisiblePad;
         listener.onNodeUpdated(
@@ -4553,8 +4624,8 @@ export class LspFacade {
         return;
       }
       const mem32 = getMem32();
-      const oldTypeId = mem32[oldPtr / 4] & 0x03ff;
-      const newTypeId = mem32[newPtr / 4] & 0x03ff;
+      const oldTypeId = mem32[oldPtr / 4] & 0xffff;
+      const newTypeId = mem32[newPtr / 4] & 0xffff;
       if (oldTypeId !== newTypeId) {
         buildDeletions(oldPtr);
         buildInsertions(newPtr, newInvisiblePad);
@@ -4565,20 +4636,12 @@ export class LspFacade {
         (this.syntaxNames && this.syntaxNames[newTypeId]) ||
         `node_${newTypeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
-      const envHashPadding = mem32[(newPtr + 4) / 4];
-      const rawPad = newTypeFlags >>> 22;
-      const isFat = (envHashPadding >>> 23) & 1;
-      let pad = isFat
-        ? mem32[(newPtr + 28) >>> 2] ||
-          (this.exports.getFatPaddingPtr
-            ? mem32[this.exports.getFatPaddingPtr(rawPad) >>> 2]
-            : rawPad)
-        : rawPad;
-      const len = envHashPadding & 0x007fffff;
+      let pad = mem32[(newPtr + 8) / 4];
+      const len = mem32[(newPtr + 4) / 4];
       const oldCh = getFlattenedChildren(oldPtr);
       const newCh = getFlattenedChildren(newPtr);
       pad += newInvisiblePad;
-      const flags = (newTypeFlags >> 10) & 0x0fff;
+      const flags = newTypeFlags >>> 16;
       listener.onNodeUpdated(
         newPtr,
         oldPtr,
@@ -4598,7 +4661,7 @@ export class LspFacade {
       ) {
         if (oldCh[start].invisiblePad !== newCh[start].invisiblePad) break;
         const mem32s = getMem32();
-        const sFlags = (mem32s[newCh[start].ptr / 4] >> 10) & 0x0fff;
+        const sFlags = mem32s[newCh[start].ptr / 4] >>> 16;
         listener.onNodeRetained(newCh[start].ptr, sFlags);
         start++;
       }
@@ -4637,7 +4700,7 @@ export class LspFacade {
       }
       for (let i = newEnd + 1; i < newCh.length; i++) {
         const mem32e = getMem32();
-        const eFlags = (mem32e[newCh[i].ptr / 4] >> 10) & 0x0fff;
+        const eFlags = mem32e[newCh[i].ptr / 4] >>> 16;
         listener.onNodeRetained(newCh[i].ptr, eFlags);
       }
     };
@@ -4685,6 +4748,10 @@ export class SyntaxNode {
   _cachedNamedChildren = null;
   _cachedText = null;
   _fieldId = -1;
+  _nextSibling = undefined;
+  _prevSibling = undefined;
+  _nextNamedSibling = undefined;
+  _prevNamedSibling = undefined;
   constructor(
     tree,
     ptr,
@@ -4813,22 +4880,42 @@ export class SyntaxNode {
   get endIndex() {
     return this.endOffset;
   }
+  /** The start byte offset of this node within the UTF-8 source text. */
+  get startByte() {
+    return this.tree.offsetToByte
+      ? this.tree.offsetToByte(this.startIndex)
+      : this.startIndex;
+  }
+  /** The end byte offset of this node within the UTF-8 source text. */
+  get endByte() {
+    return this.tree.offsetToByte
+      ? this.tree.offsetToByte(this.endIndex)
+      : this.endIndex;
+  }
   /**
    * Returns true if this node was inserted by the parser to recover from a syntax error.
    */
-  isMissing() {
+  get isMissing() {
     if (this.ptr === 0) return false;
     const typeFlags = this.tree.mem32[this.ptr / 4];
-    const flags = (typeFlags >>> 10) & 0x0fff;
+    const flags = typeFlags >>> 16;
     return (flags & 256) !== 0;
   }
   /** Returns true if this node is an extra token (comment/whitespace). */
-  isExtra() {
+  get isExtra() {
     return false;
   }
   /** Returns true if this node has been edited. */
-  hasChanges() {
+  get hasChanges() {
     return false;
+  }
+  /** The parse state of the node. */
+  get parseState() {
+    return 0;
+  }
+  /** The next parse state of the node. */
+  get nextParseState() {
+    return 0;
   }
   /** The line and column where this node starts. */
   get startPosition() {
@@ -4860,23 +4947,16 @@ export class SyntaxNode {
     while (true) {
       if (currentChildPtr !== 0) {
         const typeFlags = mem32[currentChildPtr / 4];
-        const typeId = typeFlags & 0x03ff;
+        const typeId = typeFlags & 0xffff;
+        const flags = typeFlags >>> 16;
         const name =
           (this.tree.facade?.syntaxNames &&
             this.tree.facade.syntaxNames[typeId]) ||
           (SYNTAX_NAMES && SYNTAX_NAMES[typeId]) ||
           `node_${typeId}`;
-        const envHashPadding = mem32[(currentChildPtr + 4) / 4];
-        const rawPad = typeFlags >>> 22;
-        const isFat = (envHashPadding >>> 23) & 1;
-        const pad = isFat
-          ? mem32[(currentChildPtr + 28) >>> 2] ||
-            (exports?.getFatPaddingPtr
-              ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]
-              : rawPad)
-          : rawPad;
-        const len = envHashPadding & 0x007fffff;
-        const isInvisible = (typeFlags & (1 << 14)) !== 0;
+        const pad = mem32[(currentChildPtr + 8) / 4];
+        const len = mem32[(currentChildPtr + 4) / 4];
+        const isInvisible = (flags & 4) !== 0;
         let directFieldId = -1;
         if (exports?.getFieldIdForChild && parentTypeId > 0) {
           try {
@@ -4940,6 +5020,10 @@ export class SyntaxNode {
         inheritedFieldId = state.inheritedFieldId;
       }
     }
+    for (let i = 0; i < kids.length; i++) {
+      kids[i]._prevSibling = i > 0 ? kids[i - 1] : null;
+      kids[i]._nextSibling = i < kids.length - 1 ? kids[i + 1] : null;
+    }
     this._cachedChildren = kids;
     return kids;
   }
@@ -4948,7 +5032,12 @@ export class SyntaxNode {
     if (this._cachedNamedChildren !== null) {
       return this._cachedNamedChildren;
     }
-    this._cachedNamedChildren = this.children.filter((k) => k.isNamed());
+    const named = this.children.filter((k) => k.isNamed);
+    for (let i = 0; i < named.length; i++) {
+      named[i]._prevNamedSibling = i > 0 ? named[i - 1] : null;
+      named[i]._nextNamedSibling = i < named.length - 1 ? named[i + 1] : null;
+    }
+    this._cachedNamedChildren = named;
     return this._cachedNamedChildren;
   }
   /** Gets the number of children the node has. */
@@ -4981,51 +5070,39 @@ export class SyntaxNode {
   }
   /** Gets the next sibling of the node. */
   get nextSibling() {
-    if (!this.parent) return null;
-    const siblings = this.parent.children;
-    const idx = siblings.findIndex(
-      (s) => s.ptr === this.ptr && s.startIndex === this.startIndex,
-    );
-    if (idx >= 0 && idx < siblings.length - 1) {
-      return siblings[idx + 1];
+    if (this._nextSibling !== undefined) {
+      return this._nextSibling;
     }
-    return null;
+    if (!this.parent) return null;
+    this.parent.children;
+    return this._nextSibling ?? null;
   }
   /** Gets the previous sibling of the node. */
   get previousSibling() {
-    if (!this.parent) return null;
-    const siblings = this.parent.children;
-    const idx = siblings.findIndex(
-      (s) => s.ptr === this.ptr && s.startIndex === this.startIndex,
-    );
-    if (idx > 0) {
-      return siblings[idx - 1];
+    if (this._prevSibling !== undefined) {
+      return this._prevSibling;
     }
-    return null;
+    if (!this.parent) return null;
+    this.parent.children;
+    return this._prevSibling ?? null;
   }
   /** Gets the next named sibling of the node. */
   get nextNamedSibling() {
-    if (!this.parent) return null;
-    const siblings = this.parent.namedChildren;
-    const idx = siblings.findIndex(
-      (s) => s.ptr === this.ptr && s.startIndex === this.startIndex,
-    );
-    if (idx >= 0 && idx < siblings.length - 1) {
-      return siblings[idx + 1];
+    if (this._nextNamedSibling !== undefined) {
+      return this._nextNamedSibling;
     }
-    return null;
+    if (!this.parent) return null;
+    this.parent.namedChildren;
+    return this._nextNamedSibling ?? null;
   }
   /** Gets the previous named sibling of the node. */
   get previousNamedSibling() {
-    if (!this.parent) return null;
-    const siblings = this.parent.namedChildren;
-    const idx = siblings.findIndex(
-      (s) => s.ptr === this.ptr && s.startIndex === this.startIndex,
-    );
-    if (idx > 0) {
-      return siblings[idx - 1];
+    if (this._prevNamedSibling !== undefined) {
+      return this._prevNamedSibling;
     }
-    return null;
+    if (!this.parent) return null;
+    this.parent.namedChildren;
+    return this._prevNamedSibling ?? null;
   }
   /** Gets the child at the specified index. */
   child(index) {
@@ -5037,6 +5114,20 @@ export class SyntaxNode {
   namedChild(index) {
     const named = this.namedChildren;
     if (index >= 0 && index < named.length) return named[index];
+    return null;
+  }
+  /** Finds the first child whose endIndex is greater than the given index. */
+  firstChildForIndex(index) {
+    for (const child of this.children) {
+      if (child.endIndex > index) return child;
+    }
+    return null;
+  }
+  /** Finds the first named child whose endIndex is greater than the given index. */
+  firstNamedChildForIndex(index) {
+    for (const child of this.namedChildren) {
+      if (child.endIndex > index) return child;
+    }
     return null;
   }
   /**
@@ -5086,21 +5177,14 @@ export class SyntaxNode {
     const camel = name.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
     const fieldId = fieldNames[name] ?? fieldNames[snake] ?? fieldNames[camel];
     if (fieldId !== undefined) {
-      const node = this.childForFieldId(fieldId);
-      if (node) return node;
+      // The grammar declares this field: an absent optional field must yield null,
+      // never an unrelated sibling that happens to share the rule name.
+      return this.childForFieldId(fieldId);
     }
-    // Fallback: match by child node type name (snake_case or camelCase) or condition alias
+    // Undeclared field name: treat it as a child-type lookup (snake_case or camelCase).
     for (const kid of this.children) {
       const kt = kid.type;
-      if (
-        kt === name ||
-        kt === snake ||
-        kt === camel ||
-        (name === "condition" &&
-          (kt === "expression" || kt === "simple_expression"))
-      ) {
-        return kid;
-      }
+      if (kt === name || kt === snake || kt === camel) return kid;
     }
     return null;
   }
@@ -5157,11 +5241,8 @@ export class SyntaxNode {
     const snake = name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
     const camel = name.replace(/_([a-z])/g, (_, g) => g.toUpperCase());
     const fieldId = fieldNames[name] ?? fieldNames[snake] ?? fieldNames[camel];
-    if (fieldId !== undefined) {
-      const byId = this.childrenForFieldId(fieldId);
-      if (byId.length > 0) return byId;
-    }
-    // Fallback: match by child node type name (snake_case or camelCase)
+    if (fieldId !== undefined) return this.childrenForFieldId(fieldId);
+    // Undeclared field name: treat it as a child-type lookup (snake_case or camelCase).
     const matches = [];
     for (const kid of this.children) {
       const kt = kid.type;
@@ -5206,25 +5287,35 @@ export class SyntaxNode {
     return child ? child.text : "";
   }
   /** Returns true if the node is a named (non-anonymous) node. */
-  isNamed() {
+  get isNamed() {
     if (this._cachedTypeId === 0) return true; // ERROR nodes are named in Tree-sitter
     const t = this.type;
     return !t.startsWith('"') && !t.startsWith("/") && !t.startsWith("_");
   }
   _cachedHasError = undefined;
   /** Returns true if the node or any of its descendants represents a syntax error. */
-  hasError() {
+  get hasError() {
     if (this._cachedHasError !== undefined) return this._cachedHasError;
     if (this._cachedTypeId === 0) {
       return (this._cachedHasError = true);
     }
     if (this.ptr !== 0) {
       const typeFlags = this.tree.mem32[this.ptr / 4];
-      if ((typeFlags & 0x03ff) === 0 || ((typeFlags >>> 10) & 128) !== 0) {
+      if (
+        (typeFlags & 0xffff) === 0 ||
+        ((typeFlags >>> 16) & (128 | 256)) !== 0
+      ) {
         return (this._cachedHasError = true);
       }
     }
     return (this._cachedHasError = false);
+  }
+  /** Returns true if this node itself represents a syntax error. */
+  get isError() {
+    return (
+      this._cachedTypeId === 0 ||
+      (this.ptr !== 0 && (this.tree.mem32[this.ptr / 4] & 0xffff) === 0)
+    );
   }
   /** Finds the smallest syntax node covering the character range [start, end]. */
   descendantForIndex(start, end = start, visited) {
@@ -5261,23 +5352,16 @@ export class SyntaxNode {
     while (true) {
       if (currentChildPtr !== 0) {
         const typeFlags = mem32[currentChildPtr >>> 2];
-        const envHashPadding = mem32[(currentChildPtr + 4) >>> 2];
-        const rawPad = typeFlags >>> 22;
-        const isFat = (envHashPadding >>> 23) & 1;
-        const pad = isFat
-          ? mem32[(currentChildPtr + 28) >>> 2] ||
-            (exports?.getFatPaddingPtr
-              ? mem32[exports.getFatPaddingPtr(rawPad) >>> 2]
-              : rawPad)
-          : rawPad;
-        const len = envHashPadding & 0x007fffff;
+        const pad = mem32[(currentChildPtr + 8) >>> 2];
+        const len = mem32[(currentChildPtr + 4) >>> 2];
         const childRawStart = currentOffset + pad;
         const childRawEnd = childRawStart + len;
         const nextChildPtr = mem32[(currentChildPtr + 16) >>> 2];
         const nextOffset = childRawEnd;
         if (rawStart >= childRawStart && rawEnd <= childRawEnd) {
-          const typeId = typeFlags & 0x03ff;
-          const isInvisible = (typeFlags & (1 << 14)) !== 0;
+          const typeId = typeFlags & 0xffff;
+          const flags = typeFlags >>> 16;
+          const isInvisible = (flags & 4) !== 0;
           const name = (syntaxNames && syntaxNames[typeId]) || `node_${typeId}`;
           if (isInvisible || name.startsWith("_")) {
             stack.push({ nextChildPtr, nextOffset });
@@ -5316,7 +5400,7 @@ export class SyntaxNode {
   namedDescendantForIndex(start, end = start) {
     const node = this.descendantForIndex(start, end);
     let curr = node;
-    while (curr && !curr.isNamed()) {
+    while (curr && !curr.isNamed) {
       curr = curr.parent;
     }
     return curr;
@@ -5331,7 +5415,7 @@ export class SyntaxNode {
   namedDescendantForPosition(start, end = start) {
     const node = this.descendantForPosition(start, end);
     let curr = node;
-    while (curr && !curr.isNamed()) {
+    while (curr && !curr.isNamed) {
       curr = curr.parent;
     }
     return curr;
@@ -5375,10 +5459,10 @@ export class SyntaxNode {
   }
   /** Generates the canonical S-expression string representation for this node. */
   toString() {
-    if (this.isMissing()) {
+    if (this.isMissing) {
       return `(MISSING ${this.type})`;
     }
-    if (!this.isNamed() && this.children.length === 0) {
+    if (!this.isNamed && this.children.length === 0) {
       return `"${this.text}"`;
     }
     if (this.children.length === 0) {
@@ -5402,6 +5486,41 @@ export class SyntaxNode {
       this.endIndex === other.endIndex
     );
   }
+  /** Gets the total count of all recursive descendant nodes. */
+  get descendantCount() {
+    let count = 0;
+    const stack = [...this.children];
+    while (stack.length > 0) {
+      const n = stack.pop();
+      count++;
+      const kids = n.children;
+      for (let i = kids.length - 1; i >= 0; i--) {
+        stack.push(kids[i]);
+      }
+    }
+    return count;
+  }
+  /**
+   * Get the immediate child that contains the given descendant node.
+   * Note that this returns the descendant itself if it is an immediate child.
+   */
+  childWithDescendant(descendant) {
+    if (!descendant || descendant === this) return null;
+    let curr = descendant;
+    while (curr && curr.parent) {
+      if (curr.parent === this) return curr;
+      curr = curr.parent;
+    }
+    for (const child of this.children) {
+      if (
+        child.startIndex <= descendant.startIndex &&
+        descendant.endIndex <= child.endIndex
+      ) {
+        return child;
+      }
+    }
+    return null;
+  }
   /** Creates a stateful TreeCursor for traversing the tree starting at this node. */
   walk() {
     return new TreeCursor(this);
@@ -5423,10 +5542,16 @@ export class TreeCursor {
     return this.current.typeId;
   }
   get nodeIsNamed() {
-    return this.current.isNamed();
+    return this.current.isNamed;
   }
   get nodeIsMissing() {
-    return this.current.isMissing();
+    return this.current.isMissing;
+  }
+  get nodeStateId() {
+    return 0;
+  }
+  get currentDescendantIndex() {
+    return 0;
   }
   get nodeText() {
     return this.current.text;
@@ -5459,14 +5584,29 @@ export class TreeCursor {
   get currentDepth() {
     return this.stack.length;
   }
-  isMissing() {
-    return this.current.isMissing();
+  get isMissing() {
+    return this.current.isMissing;
+  }
+  reset(node) {
+    this.current = node;
+    this.stack = [];
+  }
+  resetTo(cursor) {
+    this.current = cursor.currentNode;
+    this.stack = cursor.stack ? [...cursor.stack] : [];
   }
   gotoFirstChild() {
     const kids = this.current.children;
     if (kids.length === 0) return false;
     this.stack.push({ node: this.current, childIndex: 0 });
     this.current = kids[0];
+    return true;
+  }
+  gotoLastChild() {
+    const kids = this.current.children;
+    if (kids.length === 0) return false;
+    this.stack.push({ node: this.current, childIndex: kids.length - 1 });
+    this.current = kids[kids.length - 1];
     return true;
   }
   gotoFirstChildForIndex(index) {
@@ -5512,9 +5652,23 @@ export class TreeCursor {
     this.current = parentFrame.node;
     return true;
   }
-  reset(node) {
-    this.current = node;
-    this.stack = [];
+  gotoDescendant(goalDescendantIndex) {
+    if (goalDescendantIndex === 0) return;
+    let idx = 0;
+    const walk = (node) => {
+      if (idx === goalDescendantIndex) {
+        this.current = node;
+        return true;
+      }
+      idx++;
+      for (let i = 0; i < node.children.length; i++) {
+        this.stack.push({ node, childIndex: i });
+        if (walk(node.children[i])) return true;
+        this.stack.pop();
+      }
+      return false;
+    };
+    walk(this.current);
   }
 }
 /**
@@ -5643,23 +5797,19 @@ export class Tree {
       }
     }
   }
+  _rootNode = null;
   /** Gets the root node of the syntax tree. */
   get rootNode() {
+    if (this._rootNode !== null) {
+      return this._rootNode;
+    }
     if (!this.rootPtr) throw new Error("Null root pointer");
     const mem32 = this.mem32;
     const typeFlags = mem32[this.rootPtr / 4];
-    const typeId = typeFlags & 0x03ff;
-    const envHashPadding = mem32[(this.rootPtr + 4) / 4];
-    const rawPad = typeFlags >>> 22;
-    const isFat = (envHashPadding >>> 23) & 1;
-    const pad = isFat
-      ? mem32[(this.rootPtr + 28) >>> 2] ||
-        (this.facade.exports.getFatPaddingPtr
-          ? mem32[this.facade.exports.getFatPaddingPtr(rawPad) >>> 2]
-          : rawPad)
-      : rawPad;
-    const len = envHashPadding & 0x007fffff;
-    return new SyntaxNode(
+    const typeId = typeFlags & 0xffff;
+    const pad = mem32[(this.rootPtr + 8) / 4];
+    const len = mem32[(this.rootPtr + 4) / 4];
+    this._rootNode = new SyntaxNode(
       this,
       this.rootPtr,
       0,
@@ -5668,22 +5818,184 @@ export class Tree {
       len > 0 ? len : this.sourceCode.length * this._encMult,
       typeId,
     );
+    return this._rootNode;
   }
+  lastEdit = null;
+  _lsTyped = null;
+  _lsTypedSrc = null;
+  _lineStartsTyped() {
+    if (this._lsTyped === null || this._lsTypedSrc !== this.lineStarts) {
+      this._lsTyped = new Uint32Array(this.lineStarts);
+      this._lsTypedSrc = this.lineStarts;
+    }
+    return this._lsTyped;
+  }
+  _isPureAscii = null;
+  /** Lazily-built cumulative UTF-8 byte length per UTF-16 offset (length n+1); null when pure ASCII. */
+  _utf8Prefix = null;
+  _ensureUtf8Index() {
+    if (this._isPureAscii !== null) return;
+    const src = this.sourceCode;
+    // Native regex scan is far faster than a JS charCodeAt loop for the common ASCII case.
+    if (/^[\x00-\x7f]*$/.test(src)) {
+      this._isPureAscii = true;
+      return;
+    }
+    this._isPureAscii = false;
+    const n = src.length;
+    const prefix = new Uint32Array(n + 1);
+    let bytes = 0;
+    for (let i = 0; i < n; i++) {
+      const c = src.charCodeAt(i);
+      if (c < 0x80) {
+        bytes += 1;
+      } else if (c < 0x800) {
+        bytes += 2;
+      } else if (
+        c >= 0xd800 &&
+        c <= 0xdbff &&
+        i + 1 < n &&
+        (src.charCodeAt(i + 1) & 0xfc00) === 0xdc00
+      ) {
+        // Valid surrogate pair: 4 bytes charged to the high surrogate, 0 to the low surrogate.
+        bytes += 4;
+        prefix[i + 1] = bytes;
+        prefix[i + 2] = bytes;
+        i++;
+        continue;
+      } else {
+        bytes += 3; // BMP (or lone surrogate encoded as U+FFFD)
+      }
+      prefix[i + 1] = bytes;
+    }
+    this._utf8Prefix = prefix;
+  }
+  /**
+   * Converts a linear UTF-16 code unit offset to a UTF-8 byte offset in O(1)
+   * (one-time O(n) index build for non-ASCII sources).
+   */
+  offsetToByte(charOffset) {
+    if (charOffset <= 0) return 0;
+    this._ensureUtf8Index();
+    const clamped = Math.min(charOffset, this.sourceCode.length);
+    return this._utf8Prefix === null ? clamped : this._utf8Prefix[clamped];
+  }
+  /**
+   * Converts a UTF-8 byte offset to a linear UTF-16 code unit offset in O(log n).
+   * Offsets falling inside a multi-byte character round up to the next character boundary.
+   */
+  byteToOffset(byteOffset) {
+    if (byteOffset <= 0) return 0;
+    this._ensureUtf8Index();
+    const src = this.sourceCode;
+    const prefix = this._utf8Prefix;
+    if (prefix === null) return Math.min(byteOffset, src.length);
+    let low = 0;
+    let high = src.length;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if (prefix[mid] < byteOffset) low = mid + 1;
+      else high = mid;
+    }
+    // Never land between the halves of a surrogate pair.
+    if (
+      low > 0 &&
+      low < src.length &&
+      (src.charCodeAt(low - 1) & 0xfc00) === 0xd800 &&
+      (src.charCodeAt(low) & 0xfc00) === 0xdc00
+    ) {
+      low++;
+    }
+    return low;
+  }
+  /**
+   * Applies an edit transaction record to the tree, storing the modified bounds
+   * for the next incremental parse call. Correctly harmonizes UTF-8 byte offsets
+   * and UTF-16 code unit indices.
+   *
+   * `startByte`/`oldEndByte` are resolved against this tree's (old) source. `newEndByte`
+   * can only be resolved against the NEW source, so it is deferred until `parse()` when
+   * no `newEndIndex` is supplied.
+   */
+  edit(edit) {
+    const e = { ...edit };
+    if (e.startIndex === undefined && typeof e.startByte === "number") {
+      e.startIndex = this.byteToOffset(e.startByte);
+    }
+    if (e.oldEndIndex === undefined && typeof e.oldEndByte === "number") {
+      e.oldEndIndex = this.byteToOffset(e.oldEndByte);
+    }
+    if (e.startByte === undefined && typeof e.startIndex === "number") {
+      e.startByte = this.offsetToByte(e.startIndex);
+    }
+    if (e.oldEndByte === undefined && typeof e.oldEndIndex === "number") {
+      e.oldEndByte = this.offsetToByte(e.oldEndIndex);
+    }
+    // newEndIndex <-> newEndByte: only the new text can resolve a byte delta; deferred to parse().
+    this.lastEdit = e;
+    this._rootNode = null;
+    return this;
+  }
+  rootNodeWithOffset(offsetBytes, offsetExtent) {
+    return this.rootNode;
+  }
+  getChangedRanges(other) {
+    const facade = this.facade;
+    if (
+      !facade ||
+      typeof facade.getChangedRanges !== "function" ||
+      !this.rootPtr ||
+      !other.rootPtr
+    )
+      return [];
+    // `this` is the old tree, `other` is the new tree (Tree-sitter: oldTree.getChangedRanges(newTree)).
+    const raw = facade.getChangedRanges(this.rootPtr, other.rootPtr);
+    return raw.map((r) => ({
+      startIndex: r.start,
+      endIndex: r.end,
+      startPosition: other.offsetToPoint(r.start),
+      endPosition: other.offsetToPoint(r.end),
+    }));
+  }
+  getIncludedRanges() {
+    return [
+      {
+        startIndex: 0,
+        endIndex: this.sourceCode.length,
+        startPosition: { row: 0, column: 0 },
+        endPosition: this.offsetToPoint(this.sourceCode.length),
+      },
+    ];
+  }
+  getText(node) {
+    return node.text;
+  }
+  getEditedRange() {
+    if (!this.lastEdit) return null;
+    return {
+      startIndex: this.lastEdit.startIndex,
+      endIndex: this.lastEdit.newEndIndex,
+      startPosition:
+        this.lastEdit.startPosition ??
+        this.offsetToPoint(this.lastEdit.startIndex),
+      endPosition:
+        this.lastEdit.newEndPosition ??
+        this.offsetToPoint(this.lastEdit.newEndIndex),
+    };
+  }
+  printDotGraph(fd) {}
   /** Creates a stateful TreeCursor for traversing the tree starting at the root. */
   walk() {
     return this.rootNode.walk();
   }
-  /** Converts a linear byte offset into a row and column Point. */
+  /** Converts a linear UTF-16 code unit offset into a row and column Point. */
   offsetToPoint(offset) {
     if (
       this._encoding === 0 &&
       this.facade &&
       typeof this.facade.offsetToPos === "function"
     ) {
-      const pos = this.facade.offsetToPos(
-        offset,
-        new Uint32Array(this.lineStarts),
-      );
+      const pos = this.facade.offsetToPos(offset, this._lineStartsTyped());
       return { row: pos.line, column: pos.character };
     }
     const mult = this._encMult;
@@ -5708,7 +6020,7 @@ export class Tree {
     }
     return { row: 0, column: Math.floor(offset / mult) };
   }
-  /** Converts a row and column Point into a linear character offset. */
+  /** Converts a row and column Point into a linear UTF-16 character offset. */
   pointToOffset(point) {
     if (point.row < 0) return 0;
     if (point.row >= this.lineStarts.length) return this.sourceCode.length;
@@ -5718,8 +6030,9 @@ export class Tree {
       typeof this.facade.posToOffset === "function"
     ) {
       const byteOff = this.facade.posToOffset(
-        { line: point.row, character: point.column },
-        new Uint32Array(this.lineStarts),
+        point.row,
+        point.column,
+        this._lineStartsTyped(),
       );
       return Math.min(this.sourceCode.length, byteOff);
     }
@@ -5728,7 +6041,19 @@ export class Tree {
   }
   /** Releases any resources associated with this syntax tree wrapper. */
   delete() {
+    const registry = this.facade?.rootSourceCode;
+    // Only drop the entry if it still belongs to this tree's source (the root pointer may be reused).
+    if (
+      registry &&
+      typeof registry.get === "function" &&
+      registry.get(this.rootPtr) === this.sourceCode
+    ) {
+      registry.delete(this.rootPtr);
+    }
     this._mem32 = null;
+    this._rootNode = null;
+    this._lsTyped = null;
+    this._utf8Prefix = null;
   }
 }
 /**
@@ -5765,6 +6090,58 @@ export class TreeSitterParser {
     }
     const code =
       typeof source === "string" ? source : new TextDecoder().decode(source);
+    if (
+      oldTree &&
+      oldTree.lastEdit &&
+      editStart === 0 &&
+      editOldEnd === 0 &&
+      editNewEnd === 0
+    ) {
+      const e = oldTree.lastEdit;
+      const old = oldTree;
+      editStart =
+        typeof e.startIndex === "number"
+          ? e.startIndex
+          : typeof e.startByte === "number"
+            ? old.byteToOffset(e.startByte)
+            : 0;
+      editOldEnd =
+        typeof e.oldEndIndex === "number"
+          ? e.oldEndIndex
+          : typeof e.oldEndByte === "number"
+            ? old.byteToOffset(e.oldEndByte)
+            : editStart;
+      if (typeof e.newEndIndex === "number") {
+        editNewEnd = e.newEndIndex;
+      } else if (typeof e.newEndByte === "number") {
+        // Resolve the byte delta against the NEW source: advance (newEndByte - startByte) UTF-8 bytes from editStart.
+        const startByte =
+          typeof e.startByte === "number"
+            ? e.startByte
+            : old.offsetToByte(editStart);
+        let remaining = e.newEndByte - startByte;
+        let i = editStart;
+        while (remaining > 0 && i < code.length) {
+          const c = code.charCodeAt(i);
+          if (c < 0x80) remaining -= 1;
+          else if (c < 0x800) remaining -= 2;
+          else if (
+            (c & 0xfc00) === 0xd800 &&
+            i + 1 < code.length &&
+            (code.charCodeAt(i + 1) & 0xfc00) === 0xdc00
+          ) {
+            remaining -= 4;
+            i++;
+          } else remaining -= 3;
+          i++;
+        }
+        editNewEnd = i;
+      } else {
+        editNewEnd = editStart;
+      }
+      // Consume the edit: it describes a single old->new transition and must not be replayed.
+      old.lastEdit = null;
+    }
     const oldRoot = oldTree
       ? (oldTree.rootPtr ?? oldTree.rootNode?.id ?? oldTree.rootNode?.ptr ?? 0)
       : 0;
@@ -6534,25 +6911,25 @@ export const SyntaxKind = {
   QualifiedName: 461,
   START: 462,
   _START: 462,
-  MetaClassificationTestOperator: 644,
-  CastOperator: 645,
-  MetaCastOperator: 646,
-  LiteralInfinity: 690,
-  DECIMALVALUE: 695,
-  DECIMAL_VALUE: 695,
-  EXPVALUE: 696,
-  EXP_VALUE: 696,
-  ID: 697,
-  UNRESTRICTEDNAME: 698,
-  UNRESTRICTED_NAME: 698,
-  STRINGVALUE: 699,
-  STRING_VALUE: 699,
-  REGULARCOMMENT: 700,
-  REGULAR_COMMENT: 700,
-  MLNOTE: 701,
-  ML_NOTE: 701,
-  SLNOTE: 702,
-  SL_NOTE: 702,
+  MetaClassificationTestOperator: 648,
+  CastOperator: 649,
+  MetaCastOperator: 650,
+  LiteralInfinity: 696,
+  DECIMALVALUE: 701,
+  DECIMAL_VALUE: 701,
+  EXPVALUE: 702,
+  EXP_VALUE: 702,
+  ID: 703,
+  UNRESTRICTEDNAME: 704,
+  UNRESTRICTED_NAME: 704,
+  STRINGVALUE: 705,
+  STRING_VALUE: 705,
+  REGULARCOMMENT: 706,
+  REGULAR_COMMENT: 706,
+  MLNOTE: 707,
+  ML_NOTE: 707,
+  SLNOTE: 708,
+  SL_NOTE: 708,
   EOF: 1023,
 };
 
@@ -6601,124 +6978,130 @@ export const FieldId = {
   isOrdered: 21,
   IsNonunique: 22,
   isNonunique: 22,
-  LowerBound: 23,
-  lowerBound: 23,
-  UpperBound: 24,
-  upperBound: 24,
-  IsEnd: 25,
-  isEnd: 25,
-  Direction: 26,
-  direction: 26,
-  IsDerived: 27,
-  isDerived: 27,
-  IsAbstract: 28,
-  isAbstract: 28,
-  IsVariation: 29,
-  isVariation: 29,
-  IsConstant: 30,
-  isConstant: 30,
-  IsRef: 31,
-  isRef: 31,
-  IsRedefine: 32,
-  isRedefine: 32,
-  IsSubsetting: 33,
-  isSubsetting: 33,
-  IsInitial: 34,
-  isInitial: 34,
-  IsDefault: 35,
-  isDefault: 35,
-  ConjugatedPortDefinition: 36,
-  conjugatedPortDefinition: 36,
-  Guard: 37,
-  guard: 37,
-  Condition: 38,
-  condition: 38,
-  ThenBody: 39,
-  thenBody: 39,
-  ElseBody: 40,
-  elseBody: 40,
-  UntilCondition: 41,
-  untilCondition: 41,
-  Variable: 42,
-  variable: 42,
-  Range: 43,
-  range: 43,
-  SentItem: 44,
-  sentItem: 44,
-  Receiver: 45,
-  receiver: 45,
-  TargetFeature: 46,
-  targetFeature: 46,
-  AssignedValue: 47,
-  assignedValue: 47,
-  IsNegated: 48,
-  isNegated: 48,
-  ConstraintKind: 49,
-  constraintKind: 49,
-  SatisfyingFeature: 50,
-  satisfyingFeature: 50,
-  IsParallel: 51,
-  isParallel: 51,
-  Source: 52,
-  source: 52,
-  Trigger: 53,
-  trigger: 53,
-  Effect: 54,
-  effect: 54,
-  Operator: 55,
-  operator: 55,
-  Operand: 56,
-  operand: 56,
-  ThenOperand: 57,
-  thenOperand: 57,
-  ElseOperand: 58,
-  elseOperand: 58,
-  TypeReference: 59,
-  typeReference: 59,
-  TypeResult: 60,
-  typeResult: 60,
-  Base: 61,
-  base: 61,
-  Exponent: 62,
-  exponent: 62,
-  IndexOperand: 63,
-  indexOperand: 63,
-  FilterOperand: 64,
-  filterOperand: 64,
-  InvocationType: 65,
-  invocationType: 65,
-  FunctionRef: 66,
-  functionRef: 66,
-  Collect: 67,
-  collect: 67,
-  Select: 68,
-  select: 68,
-  FeatureChain: 69,
-  featureChain: 69,
-  Value: 70,
-  value: 70,
-  Unit: 71,
-  unit: 71,
-  Left: 72,
-  left: 72,
-  Right: 73,
-  right: 73,
-  Result: 74,
-  result: 74,
-  Chaining: 75,
-  chaining: 75,
-  ChainingFeature: 76,
-  chainingFeature: 76,
-  Argument: 77,
-  argument: 77,
-  NamedArgument: 78,
-  namedArgument: 78,
-  ParameterRedefinition: 79,
-  parameterRedefinition: 79,
-  RedefinedFeature: 80,
-  redefinedFeature: 80,
-  Name: 81,
-  name: 81,
+  SubsettedFeature: 23,
+  subsettedFeature: 23,
+  ReferencedFeature: 24,
+  referencedFeature: 24,
+  CrossedFeature: 25,
+  crossedFeature: 25,
+  RedefinedFeature: 26,
+  redefinedFeature: 26,
+  LowerBound: 27,
+  lowerBound: 27,
+  UpperBound: 28,
+  upperBound: 28,
+  IsEnd: 29,
+  isEnd: 29,
+  Direction: 30,
+  direction: 30,
+  IsDerived: 31,
+  isDerived: 31,
+  IsAbstract: 32,
+  isAbstract: 32,
+  IsVariation: 33,
+  isVariation: 33,
+  IsConstant: 34,
+  isConstant: 34,
+  IsRef: 35,
+  isRef: 35,
+  IsRedefine: 36,
+  isRedefine: 36,
+  IsSubsetting: 37,
+  isSubsetting: 37,
+  IsInitial: 38,
+  isInitial: 38,
+  IsDefault: 39,
+  isDefault: 39,
+  ConjugatedPortDefinition: 40,
+  conjugatedPortDefinition: 40,
+  Guard: 41,
+  guard: 41,
+  Condition: 42,
+  condition: 42,
+  ThenBody: 43,
+  thenBody: 43,
+  ElseBody: 44,
+  elseBody: 44,
+  UntilCondition: 45,
+  untilCondition: 45,
+  Variable: 46,
+  variable: 46,
+  Range: 47,
+  range: 47,
+  SentItem: 48,
+  sentItem: 48,
+  Receiver: 49,
+  receiver: 49,
+  TargetFeature: 50,
+  targetFeature: 50,
+  AssignedValue: 51,
+  assignedValue: 51,
+  IsNegated: 52,
+  isNegated: 52,
+  ConstraintKind: 53,
+  constraintKind: 53,
+  SatisfyingFeature: 54,
+  satisfyingFeature: 54,
+  IsParallel: 55,
+  isParallel: 55,
+  Source: 56,
+  source: 56,
+  Trigger: 57,
+  trigger: 57,
+  Effect: 58,
+  effect: 58,
+  Operator: 59,
+  operator: 59,
+  Operand: 60,
+  operand: 60,
+  ThenOperand: 61,
+  thenOperand: 61,
+  ElseOperand: 62,
+  elseOperand: 62,
+  TypeReference: 63,
+  typeReference: 63,
+  TypeResult: 64,
+  typeResult: 64,
+  Base: 65,
+  base: 65,
+  Exponent: 66,
+  exponent: 66,
+  IndexOperand: 67,
+  indexOperand: 67,
+  FilterOperand: 68,
+  filterOperand: 68,
+  InvocationType: 69,
+  invocationType: 69,
+  FunctionRef: 70,
+  functionRef: 70,
+  Collect: 71,
+  collect: 71,
+  Select: 72,
+  select: 72,
+  FeatureChain: 73,
+  featureChain: 73,
+  Value: 74,
+  value: 74,
+  Unit: 75,
+  unit: 75,
+  Left: 76,
+  left: 76,
+  Right: 77,
+  right: 77,
+  Result: 78,
+  result: 78,
+  Chaining: 79,
+  chaining: 79,
+  ChainingFeature: 80,
+  chainingFeature: 80,
+  Argument: 81,
+  argument: 81,
+  NamedArgument: 82,
+  namedArgument: 82,
+  ParameterRedefinition: 83,
+  parameterRedefinition: 83,
+  Name: 84,
+  name: 84,
 };
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -7415,40 +7798,40 @@ export function isQualifiedName(node) {
   return node != null && node.typeId === 461;
 }
 export function isMetaClassificationTestOperator(node) {
-  return node != null && node.typeId === 644;
+  return node != null && node.typeId === 648;
 }
 export function isCastOperator(node) {
-  return node != null && node.typeId === 645;
+  return node != null && node.typeId === 649;
 }
 export function isMetaCastOperator(node) {
-  return node != null && node.typeId === 646;
+  return node != null && node.typeId === 650;
 }
 export function isLiteralInfinity(node) {
-  return node != null && node.typeId === 690;
-}
-export function isDECIMALVALUE(node) {
-  return node != null && node.typeId === 695;
-}
-export function isEXPVALUE(node) {
   return node != null && node.typeId === 696;
 }
-export function isID(node) {
-  return node != null && node.typeId === 697;
-}
-export function isUNRESTRICTEDNAME(node) {
-  return node != null && node.typeId === 698;
-}
-export function isSTRINGVALUE(node) {
-  return node != null && node.typeId === 699;
-}
-export function isREGULARCOMMENT(node) {
-  return node != null && node.typeId === 700;
-}
-export function isMLNOTE(node) {
+export function isDECIMALVALUE(node) {
   return node != null && node.typeId === 701;
 }
-export function isSLNOTE(node) {
+export function isEXPVALUE(node) {
   return node != null && node.typeId === 702;
+}
+export function isID(node) {
+  return node != null && node.typeId === 703;
+}
+export function isUNRESTRICTEDNAME(node) {
+  return node != null && node.typeId === 704;
+}
+export function isSTRINGVALUE(node) {
+  return node != null && node.typeId === 705;
+}
+export function isREGULARCOMMENT(node) {
+  return node != null && node.typeId === 706;
+}
+export function isMLNOTE(node) {
+  return node != null && node.typeId === 707;
+}
+export function isSLNOTE(node) {
+  return node != null && node.typeId === 708;
 }
 export const Cst = {
   kind: cstKind,
@@ -7468,28 +7851,28 @@ export const Cst = {
     type: "Dependency",
     is(node) { return node != null && node.typeId === 182; },
     client(node) {
-      return node ? (node.childForFieldId(3) || node.childForFieldName("client")) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     clientList(node) {
-      return node ? node.childrenForFieldName("client") : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
     supplier(node) {
-      return node ? (node.childForFieldId(4) || node.childForFieldName("supplier")) : null;
+      return node ? node.childForFieldId(4) : null;
     },
     supplierList(node) {
-      return node ? node.childrenForFieldName("supplier") : [];
+      return node ? node.childrenForFieldId(4) : [];
     },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
   },
   Annotation: {
@@ -7497,10 +7880,10 @@ export const Cst = {
     type: "Annotation",
     is(node) { return node != null && node.typeId === 183; },
     annotatedElement(node) {
-      return node ? (node.childForFieldId(5) || node.childForFieldName("annotatedElement")) : null;
+      return node ? node.childForFieldId(5) : null;
     },
     annotatedElementList(node) {
-      return node ? node.childrenForFieldName("annotatedElement") : [];
+      return node ? node.childrenForFieldId(5) : [];
     },
   },
   OwnedAnnotation: {
@@ -7508,10 +7891,10 @@ export const Cst = {
     type: "OwnedAnnotation",
     is(node) { return node != null && node.typeId === 184; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   AnnotatingMember: {
@@ -7519,10 +7902,10 @@ export const Cst = {
     type: "AnnotatingMember",
     is(node) { return node != null && node.typeId === 185; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   Comment: {
@@ -7530,28 +7913,28 @@ export const Cst = {
     type: "Comment",
     is(node) { return node != null && node.typeId === 187; },
     body(node) {
-      return node ? (node.childForFieldId(8) || node.childForFieldName("body")) : null;
+      return node ? node.childForFieldId(8) : null;
     },
     bodyList(node) {
-      return node ? node.childrenForFieldName("body") : [];
+      return node ? node.childrenForFieldId(8) : [];
     },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     locale(node) {
-      return node ? (node.childForFieldId(7) || node.childForFieldName("locale")) : null;
+      return node ? node.childForFieldId(7) : null;
     },
     localeList(node) {
-      return node ? node.childrenForFieldName("locale") : [];
+      return node ? node.childrenForFieldId(7) : [];
     },
   },
   Documentation: {
@@ -7559,28 +7942,28 @@ export const Cst = {
     type: "Documentation",
     is(node) { return node != null && node.typeId === 188; },
     body(node) {
-      return node ? (node.childForFieldId(8) || node.childForFieldName("body")) : null;
+      return node ? node.childForFieldId(8) : null;
     },
     bodyList(node) {
-      return node ? node.childrenForFieldName("body") : [];
+      return node ? node.childrenForFieldId(8) : [];
     },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     locale(node) {
-      return node ? (node.childForFieldId(7) || node.childForFieldName("locale")) : null;
+      return node ? node.childForFieldId(7) : null;
     },
     localeList(node) {
-      return node ? node.childrenForFieldName("locale") : [];
+      return node ? node.childrenForFieldId(7) : [];
     },
   },
   TextualRepresentation: {
@@ -7588,28 +7971,28 @@ export const Cst = {
     type: "TextualRepresentation",
     is(node) { return node != null && node.typeId === 189; },
     language(node) {
-      return node ? (node.childForFieldId(9) || node.childForFieldName("language")) : null;
+      return node ? node.childForFieldId(9) : null;
     },
     languageList(node) {
-      return node ? node.childrenForFieldName("language") : [];
+      return node ? node.childrenForFieldId(9) : [];
     },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     body(node) {
-      return node ? (node.childForFieldId(8) || node.childForFieldName("body")) : null;
+      return node ? node.childForFieldId(8) : null;
     },
     bodyList(node) {
-      return node ? node.childrenForFieldName("body") : [];
+      return node ? node.childrenForFieldId(8) : [];
     },
   },
   PrefixMetadataAnnotation: {
@@ -7617,10 +8000,10 @@ export const Cst = {
     type: "PrefixMetadataAnnotation",
     is(node) { return node != null && node.typeId === 190; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   PrefixMetadataMember: {
@@ -7628,10 +8011,10 @@ export const Cst = {
     type: "PrefixMetadataMember",
     is(node) { return node != null && node.typeId === 191; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   PrefixMetadataUsage: {
@@ -7639,10 +8022,10 @@ export const Cst = {
     type: "PrefixMetadataUsage",
     is(node) { return node != null && node.typeId === 192; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   MetadataUsage: {
@@ -7650,22 +8033,22 @@ export const Cst = {
     type: "MetadataUsage",
     is(node) { return node != null && node.typeId === 193; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
   },
   MetadataTyping: {
@@ -7673,10 +8056,10 @@ export const Cst = {
     type: "MetadataTyping",
     is(node) { return node != null && node.typeId === 194; },
     type(node) {
-      return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
+      return node ? node.childForFieldId(11) : null;
     },
     typeList(node) {
-      return node ? node.childrenForFieldName("type") : [];
+      return node ? node.childrenForFieldId(11) : [];
     },
   },
   MetadataBodyUsageMember: {
@@ -7684,10 +8067,10 @@ export const Cst = {
     type: "MetadataBodyUsageMember",
     is(node) { return node != null && node.typeId === 196; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   MetadataBodyUsage: {
@@ -7695,22 +8078,22 @@ export const Cst = {
     type: "MetadataBodyUsage",
     is(node) { return node != null && node.typeId === 197; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   MetadataDefinition: {
@@ -7718,70 +8101,70 @@ export const Cst = {
     type: "MetadataDefinition",
     is(node) { return node != null && node.typeId === 198; },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
   },
   Package: {
@@ -7789,76 +8172,76 @@ export const Cst = {
     type: "Package",
     is(node) { return node != null && node.typeId === 199; },
     body(node) {
-      return node ? (node.childForFieldId(8) || node.childForFieldName("body")) : null;
+      return node ? node.childForFieldId(8) : null;
     },
     bodyList(node) {
-      return node ? node.childrenForFieldName("body") : [];
+      return node ? node.childrenForFieldId(8) : [];
     },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   LibraryPackage: {
@@ -7866,82 +8249,82 @@ export const Cst = {
     type: "LibraryPackage",
     is(node) { return node != null && node.typeId === 200; },
     body(node) {
-      return node ? (node.childForFieldId(8) || node.childForFieldName("body")) : null;
+      return node ? node.childForFieldId(8) : null;
     },
     bodyList(node) {
-      return node ? node.childrenForFieldName("body") : [];
+      return node ? node.childrenForFieldId(8) : [];
     },
     isStandard(node) {
-      return node ? (node.childForFieldId(12) || node.childForFieldName("isStandard")) : null;
+      return node ? node.childForFieldId(12) : null;
     },
     isStandardList(node) {
-      return node ? node.childrenForFieldName("isStandard") : [];
+      return node ? node.childrenForFieldId(12) : [];
     },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   PackageMember: {
@@ -7949,10 +8332,10 @@ export const Cst = {
     type: "PackageMember",
     is(node) { return node != null && node.typeId === 202; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   ElementFilterMember: {
@@ -7960,10 +8343,10 @@ export const Cst = {
     type: "ElementFilterMember",
     is(node) { return node != null && node.typeId === 203; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   AliasMember: {
@@ -7971,22 +8354,22 @@ export const Cst = {
     type: "AliasMember",
     is(node) { return node != null && node.typeId === 204; },
     memberElement(node) {
-      return node ? (node.childForFieldId(15) || node.childForFieldName("memberElement")) : null;
+      return node ? node.childForFieldId(15) : null;
     },
     memberElementList(node) {
-      return node ? node.childrenForFieldName("memberElement") : [];
+      return node ? node.childrenForFieldId(15) : [];
     },
     memberShortName(node) {
-      return node ? (node.childForFieldId(13) || node.childForFieldName("memberShortName")) : null;
+      return node ? node.childForFieldId(13) : null;
     },
     memberShortNameList(node) {
-      return node ? node.childrenForFieldName("memberShortName") : [];
+      return node ? node.childrenForFieldId(13) : [];
     },
     memberName(node) {
-      return node ? (node.childForFieldId(14) || node.childForFieldName("memberName")) : null;
+      return node ? node.childForFieldId(14) : null;
     },
     memberNameList(node) {
-      return node ? node.childrenForFieldName("memberName") : [];
+      return node ? node.childrenForFieldId(14) : [];
     },
   },
   Import: {
@@ -7999,22 +8382,22 @@ export const Cst = {
     type: "MembershipImport",
     is(node) { return node != null && node.typeId === 207; },
     isImportAll(node) {
-      return node ? (node.childForFieldId(16) || node.childForFieldName("isImportAll")) : null;
+      return node ? node.childForFieldId(16) : null;
     },
     isImportAllList(node) {
-      return node ? node.childrenForFieldName("isImportAll") : [];
+      return node ? node.childrenForFieldId(16) : [];
     },
     importedMembership(node) {
-      return node ? (node.childForFieldId(17) || node.childForFieldName("importedMembership")) : null;
+      return node ? node.childForFieldId(17) : null;
     },
     importedMembershipList(node) {
-      return node ? node.childrenForFieldName("importedMembership") : [];
+      return node ? node.childrenForFieldId(17) : [];
     },
     isRecursive(node) {
-      return node ? (node.childForFieldId(18) || node.childForFieldName("isRecursive")) : null;
+      return node ? node.childForFieldId(18) : null;
     },
     isRecursiveList(node) {
-      return node ? node.childrenForFieldName("isRecursive") : [];
+      return node ? node.childrenForFieldId(18) : [];
     },
   },
   NamespaceImport: {
@@ -8022,28 +8405,28 @@ export const Cst = {
     type: "NamespaceImport",
     is(node) { return node != null && node.typeId === 209; },
     isImportAll(node) {
-      return node ? (node.childForFieldId(16) || node.childForFieldName("isImportAll")) : null;
+      return node ? node.childForFieldId(16) : null;
     },
     isImportAllList(node) {
-      return node ? node.childrenForFieldName("isImportAll") : [];
+      return node ? node.childrenForFieldId(16) : [];
     },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
     importedNamespace(node) {
-      return node ? (node.childForFieldId(19) || node.childForFieldName("importedNamespace")) : null;
+      return node ? node.childForFieldId(19) : null;
     },
     importedNamespaceList(node) {
-      return node ? node.childrenForFieldName("importedNamespace") : [];
+      return node ? node.childrenForFieldId(19) : [];
     },
     isRecursive(node) {
-      return node ? (node.childForFieldId(18) || node.childForFieldName("isRecursive")) : null;
+      return node ? node.childForFieldId(18) : null;
     },
     isRecursiveList(node) {
-      return node ? node.childrenForFieldName("isRecursive") : [];
+      return node ? node.childrenForFieldId(18) : [];
     },
   },
   FilterPackage: {
@@ -8061,16 +8444,16 @@ export const Cst = {
     type: "FilterPackageMembershipImport",
     is(node) { return node != null && node.typeId === 213; },
     importedMembership(node) {
-      return node ? (node.childForFieldId(17) || node.childForFieldName("importedMembership")) : null;
+      return node ? node.childForFieldId(17) : null;
     },
     importedMembershipList(node) {
-      return node ? node.childrenForFieldName("importedMembership") : [];
+      return node ? node.childrenForFieldId(17) : [];
     },
     isRecursive(node) {
-      return node ? (node.childForFieldId(18) || node.childForFieldName("isRecursive")) : null;
+      return node ? node.childForFieldId(18) : null;
     },
     isRecursiveList(node) {
-      return node ? node.childrenForFieldName("isRecursive") : [];
+      return node ? node.childrenForFieldId(18) : [];
     },
   },
   FilterPackageNamespaceImport: {
@@ -8078,16 +8461,16 @@ export const Cst = {
     type: "FilterPackageNamespaceImport",
     is(node) { return node != null && node.typeId === 214; },
     importedNamespace(node) {
-      return node ? (node.childForFieldId(19) || node.childForFieldName("importedNamespace")) : null;
+      return node ? node.childForFieldId(19) : null;
     },
     importedNamespaceList(node) {
-      return node ? node.childrenForFieldName("importedNamespace") : [];
+      return node ? node.childrenForFieldId(19) : [];
     },
     isRecursive(node) {
-      return node ? (node.childForFieldId(18) || node.childForFieldName("isRecursive")) : null;
+      return node ? node.childForFieldId(18) : null;
     },
     isRecursiveList(node) {
-      return node ? node.childrenForFieldName("isRecursive") : [];
+      return node ? node.childrenForFieldId(18) : [];
     },
   },
   FilterPackageMember: {
@@ -8095,10 +8478,10 @@ export const Cst = {
     type: "FilterPackageMember",
     is(node) { return node != null && node.typeId === 215; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   OwnedSubclassification: {
@@ -8106,10 +8489,10 @@ export const Cst = {
     type: "OwnedSubclassification",
     is(node) { return node != null && node.typeId === 223; },
     superclassifier(node) {
-      return node ? (node.childForFieldId(20) || node.childForFieldName("superclassifier")) : null;
+      return node ? node.childForFieldId(20) : null;
     },
     superclassifierList(node) {
-      return node ? node.childrenForFieldName("superclassifier") : [];
+      return node ? node.childrenForFieldId(20) : [];
     },
   },
   FeatureTyping: {
@@ -8122,84 +8505,84 @@ export const Cst = {
     type: "OwnedFeatureTyping",
     is(node) { return node != null && node.typeId === 234; },
     type(node) {
-      return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
+      return node ? node.childForFieldId(11) : null;
     },
     typeList(node) {
-      return node ? node.childrenForFieldName("type") : [];
+      return node ? node.childrenForFieldId(11) : [];
     },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   OwnedSubsetting: {
     typeId: 235,
     type: "OwnedSubsetting",
     is(node) { return node != null && node.typeId === 235; },
-    type(node) {
-      return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
+    subsettedFeature(node) {
+      return node ? node.childForFieldId(23) : null;
     },
-    typeList(node) {
-      return node ? node.childrenForFieldName("type") : [];
+    subsettedFeatureList(node) {
+      return node ? node.childrenForFieldId(23) : [];
     },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   OwnedReferenceSubsetting: {
     typeId: 236,
     type: "OwnedReferenceSubsetting",
     is(node) { return node != null && node.typeId === 236; },
-    type(node) {
-      return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
+    referencedFeature(node) {
+      return node ? node.childForFieldId(24) : null;
     },
-    typeList(node) {
-      return node ? node.childrenForFieldName("type") : [];
+    referencedFeatureList(node) {
+      return node ? node.childrenForFieldId(24) : [];
     },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   OwnedCrossSubsetting: {
     typeId: 237,
     type: "OwnedCrossSubsetting",
     is(node) { return node != null && node.typeId === 237; },
-    type(node) {
-      return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
+    crossedFeature(node) {
+      return node ? node.childForFieldId(25) : null;
     },
-    typeList(node) {
-      return node ? node.childrenForFieldName("type") : [];
+    crossedFeatureList(node) {
+      return node ? node.childrenForFieldId(25) : [];
     },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   OwnedRedefinition: {
     typeId: 238,
     type: "OwnedRedefinition",
     is(node) { return node != null && node.typeId === 238; },
-    type(node) {
-      return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
+    redefinedFeature(node) {
+      return node ? node.childForFieldId(26) : null;
     },
-    typeList(node) {
-      return node ? node.childrenForFieldName("type") : [];
+    redefinedFeatureList(node) {
+      return node ? node.childrenForFieldId(26) : [];
     },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   OwnedMultiplicity: {
@@ -8207,10 +8590,10 @@ export const Cst = {
     type: "OwnedMultiplicity",
     is(node) { return node != null && node.typeId === 239; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   MultiplicityRange: {
@@ -8218,16 +8601,16 @@ export const Cst = {
     type: "MultiplicityRange",
     is(node) { return node != null && node.typeId === 240; },
     lowerBound(node) {
-      return node ? (node.childForFieldId(23) || node.childForFieldName("lowerBound")) : null;
+      return node ? node.childForFieldId(27) : null;
     },
     lowerBoundList(node) {
-      return node ? node.childrenForFieldName("lowerBound") : [];
+      return node ? node.childrenForFieldId(27) : [];
     },
     upperBound(node) {
-      return node ? (node.childForFieldId(24) || node.childForFieldName("upperBound")) : null;
+      return node ? node.childForFieldId(28) : null;
     },
     upperBoundList(node) {
-      return node ? node.childrenForFieldName("upperBound") : [];
+      return node ? node.childrenForFieldId(28) : [];
     },
   },
   MultiplicityExpressionMember: {
@@ -8235,10 +8618,10 @@ export const Cst = {
     type: "MultiplicityExpressionMember",
     is(node) { return node != null && node.typeId === 241; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   DefinitionMember: {
@@ -8246,10 +8629,10 @@ export const Cst = {
     type: "DefinitionMember",
     is(node) { return node != null && node.typeId === 245; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   VariantUsageMember: {
@@ -8257,10 +8640,10 @@ export const Cst = {
     type: "VariantUsageMember",
     is(node) { return node != null && node.typeId === 246; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   NonOccurrenceUsageMember: {
@@ -8268,10 +8651,10 @@ export const Cst = {
     type: "NonOccurrenceUsageMember",
     is(node) { return node != null && node.typeId === 247; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   OccurrenceUsageMember: {
@@ -8279,10 +8662,10 @@ export const Cst = {
     type: "OccurrenceUsageMember",
     is(node) { return node != null && node.typeId === 248; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   FeatureValue: {
@@ -8290,22 +8673,22 @@ export const Cst = {
     type: "FeatureValue",
     is(node) { return node != null && node.typeId === 254; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
     isInitial(node) {
-      return node ? (node.childForFieldId(34) || node.childForFieldName("isInitial")) : null;
+      return node ? node.childForFieldId(38) : null;
     },
     isInitialList(node) {
-      return node ? node.childrenForFieldName("isInitial") : [];
+      return node ? node.childrenForFieldId(38) : [];
     },
     isDefault(node) {
-      return node ? (node.childForFieldId(35) || node.childForFieldName("isDefault")) : null;
+      return node ? node.childForFieldId(39) : null;
     },
     isDefaultList(node) {
-      return node ? node.childrenForFieldName("isDefault") : [];
+      return node ? node.childrenForFieldId(39) : [];
     },
   },
   DefaultReferenceUsage: {
@@ -8313,82 +8696,82 @@ export const Cst = {
     type: "DefaultReferenceUsage",
     is(node) { return node != null && node.typeId === 255; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ReferenceUsage: {
@@ -8396,82 +8779,82 @@ export const Cst = {
     type: "ReferenceUsage",
     is(node) { return node != null && node.typeId === 256; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   AttributeDefinition: {
@@ -8479,70 +8862,70 @@ export const Cst = {
     type: "AttributeDefinition",
     is(node) { return node != null && node.typeId === 257; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   AttributeUsage: {
@@ -8550,82 +8933,82 @@ export const Cst = {
     type: "AttributeUsage",
     is(node) { return node != null && node.typeId === 258; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   EnumerationDefinition: {
@@ -8633,76 +9016,76 @@ export const Cst = {
     type: "EnumerationDefinition",
     is(node) { return node != null && node.typeId === 259; },
     body(node) {
-      return node ? (node.childForFieldId(8) || node.childForFieldName("body")) : null;
+      return node ? node.childForFieldId(8) : null;
     },
     bodyList(node) {
-      return node ? node.childrenForFieldName("body") : [];
+      return node ? node.childrenForFieldId(8) : [];
     },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   EnumerationUsageMember: {
@@ -8710,10 +9093,10 @@ export const Cst = {
     type: "EnumerationUsageMember",
     is(node) { return node != null && node.typeId === 261; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   EnumeratedValue: {
@@ -8721,82 +9104,82 @@ export const Cst = {
     type: "EnumeratedValue",
     is(node) { return node != null && node.typeId === 262; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   EnumerationUsage: {
@@ -8804,82 +9187,82 @@ export const Cst = {
     type: "EnumerationUsage",
     is(node) { return node != null && node.typeId === 263; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   OccurrenceDefinition: {
@@ -8887,70 +9270,70 @@ export const Cst = {
     type: "OccurrenceDefinition",
     is(node) { return node != null && node.typeId === 264; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   OccurrenceUsage: {
@@ -8958,82 +9341,82 @@ export const Cst = {
     type: "OccurrenceUsage",
     is(node) { return node != null && node.typeId === 265; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ItemDefinition: {
@@ -9041,70 +9424,70 @@ export const Cst = {
     type: "ItemDefinition",
     is(node) { return node != null && node.typeId === 266; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   ItemUsage: {
@@ -9112,82 +9495,82 @@ export const Cst = {
     type: "ItemUsage",
     is(node) { return node != null && node.typeId === 267; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   PartDefinition: {
@@ -9195,70 +9578,70 @@ export const Cst = {
     type: "PartDefinition",
     is(node) { return node != null && node.typeId === 268; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   PartUsage: {
@@ -9266,82 +9649,82 @@ export const Cst = {
     type: "PartUsage",
     is(node) { return node != null && node.typeId === 269; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   PortDefinition: {
@@ -9349,70 +9732,70 @@ export const Cst = {
     type: "PortDefinition",
     is(node) { return node != null && node.typeId === 270; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   PortUsage: {
@@ -9420,82 +9803,82 @@ export const Cst = {
     type: "PortUsage",
     is(node) { return node != null && node.typeId === 271; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ConjugatedPortTyping: {
@@ -9503,10 +9886,10 @@ export const Cst = {
     type: "ConjugatedPortTyping",
     is(node) { return node != null && node.typeId === 272; },
     conjugatedPortDefinition(node) {
-      return node ? (node.childForFieldId(36) || node.childForFieldName("conjugatedPortDefinition")) : null;
+      return node ? node.childForFieldId(40) : null;
     },
     conjugatedPortDefinitionList(node) {
-      return node ? node.childrenForFieldName("conjugatedPortDefinition") : [];
+      return node ? node.childrenForFieldId(40) : [];
     },
   },
   ConnectorEndMember: {
@@ -9514,10 +9897,10 @@ export const Cst = {
     type: "ConnectorEndMember",
     is(node) { return node != null && node.typeId === 273; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   ConnectorEnd: {
@@ -9525,16 +9908,16 @@ export const Cst = {
     type: "ConnectorEnd",
     is(node) { return node != null && node.typeId === 274; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
   },
   ConnectionDefinition: {
@@ -9542,70 +9925,70 @@ export const Cst = {
     type: "ConnectionDefinition",
     is(node) { return node != null && node.typeId === 275; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   ConnectionUsage: {
@@ -9613,82 +9996,82 @@ export const Cst = {
     type: "ConnectionUsage",
     is(node) { return node != null && node.typeId === 276; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   BindingConnectorAsUsage: {
@@ -9696,82 +10079,82 @@ export const Cst = {
     type: "BindingConnectorAsUsage",
     is(node) { return node != null && node.typeId === 280; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   SuccessionAsUsage: {
@@ -9779,88 +10162,88 @@ export const Cst = {
     type: "SuccessionAsUsage",
     is(node) { return node != null && node.typeId === 281; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     guard(node) {
-      return node ? (node.childForFieldId(37) || node.childForFieldName("guard")) : null;
+      return node ? node.childForFieldId(41) : null;
     },
     guardList(node) {
-      return node ? node.childrenForFieldName("guard") : [];
+      return node ? node.childrenForFieldId(41) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   InterfaceDefinition: {
@@ -9868,70 +10251,70 @@ export const Cst = {
     type: "InterfaceDefinition",
     is(node) { return node != null && node.typeId === 282; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   InterfaceUsage: {
@@ -9939,82 +10322,82 @@ export const Cst = {
     type: "InterfaceUsage",
     is(node) { return node != null && node.typeId === 283; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   AllocationDefinition: {
@@ -10022,70 +10405,70 @@ export const Cst = {
     type: "AllocationDefinition",
     is(node) { return node != null && node.typeId === 284; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   AllocationUsage: {
@@ -10093,82 +10476,82 @@ export const Cst = {
     type: "AllocationUsage",
     is(node) { return node != null && node.typeId === 285; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   FlowDefinition: {
@@ -10176,70 +10559,70 @@ export const Cst = {
     type: "FlowDefinition",
     is(node) { return node != null && node.typeId === 286; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   FlowUsage: {
@@ -10247,82 +10630,82 @@ export const Cst = {
     type: "FlowUsage",
     is(node) { return node != null && node.typeId === 287; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   SuccessionFlowUsage: {
@@ -10330,82 +10713,82 @@ export const Cst = {
     type: "SuccessionFlowUsage",
     is(node) { return node != null && node.typeId === 288; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   PayloadFeatureMember: {
@@ -10413,10 +10796,10 @@ export const Cst = {
     type: "PayloadFeatureMember",
     is(node) { return node != null && node.typeId === 289; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   PayloadFeature: {
@@ -10424,28 +10807,28 @@ export const Cst = {
     type: "PayloadFeature",
     is(node) { return node != null && node.typeId === 290; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   FlowEndMember: {
@@ -10453,10 +10836,10 @@ export const Cst = {
     type: "FlowEndMember",
     is(node) { return node != null && node.typeId === 291; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   FlowEnd: {
@@ -10464,10 +10847,10 @@ export const Cst = {
     type: "FlowEnd",
     is(node) { return node != null && node.typeId === 292; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   FlowFeatureMember: {
@@ -10475,10 +10858,10 @@ export const Cst = {
     type: "FlowFeatureMember",
     is(node) { return node != null && node.typeId === 293; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   FlowFeature: {
@@ -10486,10 +10869,10 @@ export const Cst = {
     type: "FlowFeature",
     is(node) { return node != null && node.typeId === 294; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   ActionDefinition: {
@@ -10497,70 +10880,70 @@ export const Cst = {
     type: "ActionDefinition",
     is(node) { return node != null && node.typeId === 295; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   EmptySuccessionMember: {
@@ -10568,10 +10951,10 @@ export const Cst = {
     type: "EmptySuccessionMember",
     is(node) { return node != null && node.typeId === 298; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   MultiplicitySourceEnd: {
@@ -10579,10 +10962,10 @@ export const Cst = {
     type: "MultiplicitySourceEnd",
     is(node) { return node != null && node.typeId === 299; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   ActionNodeMember: {
@@ -10590,10 +10973,10 @@ export const Cst = {
     type: "ActionNodeMember",
     is(node) { return node != null && node.typeId === 300; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   IfNode: {
@@ -10601,100 +10984,100 @@ export const Cst = {
     type: "IfNode",
     is(node) { return node != null && node.typeId === 302; },
     condition(node) {
-      return node ? (node.childForFieldId(38) || node.childForFieldName("condition")) : null;
+      return node ? node.childForFieldId(42) : null;
     },
     conditionList(node) {
-      return node ? node.childrenForFieldName("condition") : [];
+      return node ? node.childrenForFieldId(42) : [];
     },
     thenBody(node) {
-      return node ? (node.childForFieldId(39) || node.childForFieldName("thenBody")) : null;
+      return node ? node.childForFieldId(43) : null;
     },
     thenBodyList(node) {
-      return node ? node.childrenForFieldName("thenBody") : [];
+      return node ? node.childrenForFieldId(43) : [];
     },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     elseBody(node) {
-      return node ? (node.childForFieldId(40) || node.childForFieldName("elseBody")) : null;
+      return node ? node.childForFieldId(44) : null;
     },
     elseBodyList(node) {
-      return node ? node.childrenForFieldName("elseBody") : [];
+      return node ? node.childrenForFieldId(44) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ActionBodyParameter: {
@@ -10702,28 +11085,28 @@ export const Cst = {
     type: "ActionBodyParameter",
     is(node) { return node != null && node.typeId === 303; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   WhileLoopNode: {
@@ -10731,94 +11114,94 @@ export const Cst = {
     type: "WhileLoopNode",
     is(node) { return node != null && node.typeId === 304; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     condition(node) {
-      return node ? (node.childForFieldId(38) || node.childForFieldName("condition")) : null;
+      return node ? node.childForFieldId(42) : null;
     },
     conditionList(node) {
-      return node ? node.childrenForFieldName("condition") : [];
+      return node ? node.childrenForFieldId(42) : [];
     },
     untilCondition(node) {
-      return node ? (node.childForFieldId(41) || node.childForFieldName("untilCondition")) : null;
+      return node ? node.childForFieldId(45) : null;
     },
     untilConditionList(node) {
-      return node ? node.childrenForFieldName("untilCondition") : [];
+      return node ? node.childrenForFieldId(45) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ForLoopNode: {
@@ -10826,94 +11209,94 @@ export const Cst = {
     type: "ForLoopNode",
     is(node) { return node != null && node.typeId === 305; },
     variable(node) {
-      return node ? (node.childForFieldId(42) || node.childForFieldName("variable")) : null;
+      return node ? node.childForFieldId(46) : null;
     },
     variableList(node) {
-      return node ? node.childrenForFieldName("variable") : [];
+      return node ? node.childrenForFieldId(46) : [];
     },
     range(node) {
-      return node ? (node.childForFieldId(43) || node.childForFieldName("range")) : null;
+      return node ? node.childForFieldId(47) : null;
     },
     rangeList(node) {
-      return node ? node.childrenForFieldName("range") : [];
+      return node ? node.childrenForFieldId(47) : [];
     },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ForVariableDeclaration: {
@@ -10921,28 +11304,28 @@ export const Cst = {
     type: "ForVariableDeclaration",
     is(node) { return node != null && node.typeId === 306; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ControlNode: {
@@ -10955,82 +11338,82 @@ export const Cst = {
     type: "MergeNode",
     is(node) { return node != null && node.typeId === 308; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   DecisionNode: {
@@ -11038,82 +11421,82 @@ export const Cst = {
     type: "DecisionNode",
     is(node) { return node != null && node.typeId === 309; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   JoinNode: {
@@ -11121,82 +11504,82 @@ export const Cst = {
     type: "JoinNode",
     is(node) { return node != null && node.typeId === 310; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ForkNode: {
@@ -11204,82 +11587,82 @@ export const Cst = {
     type: "ForkNode",
     is(node) { return node != null && node.typeId === 311; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ActionUsage: {
@@ -11287,82 +11670,82 @@ export const Cst = {
     type: "ActionUsage",
     is(node) { return node != null && node.typeId === 312; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   AcceptActionNode: {
@@ -11370,82 +11753,82 @@ export const Cst = {
     type: "AcceptActionNode",
     is(node) { return node != null && node.typeId === 313; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   SendActionNode: {
@@ -11453,94 +11836,94 @@ export const Cst = {
     type: "SendActionNode",
     is(node) { return node != null && node.typeId === 314; },
     sentItem(node) {
-      return node ? (node.childForFieldId(44) || node.childForFieldName("sentItem")) : null;
+      return node ? node.childForFieldId(48) : null;
     },
     sentItemList(node) {
-      return node ? node.childrenForFieldName("sentItem") : [];
+      return node ? node.childrenForFieldId(48) : [];
     },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     receiver(node) {
-      return node ? (node.childForFieldId(45) || node.childForFieldName("receiver")) : null;
+      return node ? node.childForFieldId(49) : null;
     },
     receiverList(node) {
-      return node ? node.childrenForFieldName("receiver") : [];
+      return node ? node.childrenForFieldId(49) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   AssignActionNode: {
@@ -11548,94 +11931,94 @@ export const Cst = {
     type: "AssignActionNode",
     is(node) { return node != null && node.typeId === 315; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     targetFeature(node) {
-      return node ? (node.childForFieldId(46) || node.childForFieldName("targetFeature")) : null;
+      return node ? node.childForFieldId(50) : null;
     },
     targetFeatureList(node) {
-      return node ? node.childrenForFieldName("targetFeature") : [];
+      return node ? node.childrenForFieldId(50) : [];
     },
     assignedValue(node) {
-      return node ? (node.childForFieldId(47) || node.childForFieldName("assignedValue")) : null;
+      return node ? node.childForFieldId(51) : null;
     },
     assignedValueList(node) {
-      return node ? node.childrenForFieldName("assignedValue") : [];
+      return node ? node.childrenForFieldId(51) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   PerformActionUsage: {
@@ -11643,82 +12026,82 @@ export const Cst = {
     type: "PerformActionUsage",
     is(node) { return node != null && node.typeId === 316; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   CalculationDefinition: {
@@ -11726,70 +12109,70 @@ export const Cst = {
     type: "CalculationDefinition",
     is(node) { return node != null && node.typeId === 317; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   ParameterMember: {
@@ -11797,10 +12180,10 @@ export const Cst = {
     type: "ParameterMember",
     is(node) { return node != null && node.typeId === 320; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   ReturnParameterMember: {
@@ -11808,10 +12191,10 @@ export const Cst = {
     type: "ReturnParameterMember",
     is(node) { return node != null && node.typeId === 321; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   ResultExpressionMember: {
@@ -11819,10 +12202,10 @@ export const Cst = {
     type: "ResultExpressionMember",
     is(node) { return node != null && node.typeId === 322; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   CalculationUsage: {
@@ -11830,82 +12213,82 @@ export const Cst = {
     type: "CalculationUsage",
     is(node) { return node != null && node.typeId === 323; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ConstraintDefinition: {
@@ -11913,70 +12296,70 @@ export const Cst = {
     type: "ConstraintDefinition",
     is(node) { return node != null && node.typeId === 324; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   ConstraintUsage: {
@@ -11984,82 +12367,82 @@ export const Cst = {
     type: "ConstraintUsage",
     is(node) { return node != null && node.typeId === 325; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   AssertConstraintUsage: {
@@ -12067,88 +12450,88 @@ export const Cst = {
     type: "AssertConstraintUsage",
     is(node) { return node != null && node.typeId === 326; },
     isNegated(node) {
-      return node ? (node.childForFieldId(48) || node.childForFieldName("isNegated")) : null;
+      return node ? node.childForFieldId(52) : null;
     },
     isNegatedList(node) {
-      return node ? node.childrenForFieldName("isNegated") : [];
+      return node ? node.childrenForFieldId(52) : [];
     },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   RequirementDefinition: {
@@ -12156,70 +12539,70 @@ export const Cst = {
     type: "RequirementDefinition",
     is(node) { return node != null && node.typeId === 327; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   SubjectMember: {
@@ -12227,10 +12610,10 @@ export const Cst = {
     type: "SubjectMember",
     is(node) { return node != null && node.typeId === 330; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   SubjectUsage: {
@@ -12238,82 +12621,82 @@ export const Cst = {
     type: "SubjectUsage",
     is(node) { return node != null && node.typeId === 331; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   RequirementConstraintMember: {
@@ -12321,16 +12704,16 @@ export const Cst = {
     type: "RequirementConstraintMember",
     is(node) { return node != null && node.typeId === 332; },
     constraintKind(node) {
-      return node ? (node.childForFieldId(49) || node.childForFieldName("constraintKind")) : null;
+      return node ? node.childForFieldId(53) : null;
     },
     constraintKindList(node) {
-      return node ? node.childrenForFieldName("constraintKind") : [];
+      return node ? node.childrenForFieldId(53) : [];
     },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   RequirementConstraintUsage: {
@@ -12338,82 +12721,82 @@ export const Cst = {
     type: "RequirementConstraintUsage",
     is(node) { return node != null && node.typeId === 333; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ActorMember: {
@@ -12421,10 +12804,10 @@ export const Cst = {
     type: "ActorMember",
     is(node) { return node != null && node.typeId === 334; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   ActorUsage: {
@@ -12432,82 +12815,82 @@ export const Cst = {
     type: "ActorUsage",
     is(node) { return node != null && node.typeId === 335; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   StakeholderMember: {
@@ -12515,10 +12898,10 @@ export const Cst = {
     type: "StakeholderMember",
     is(node) { return node != null && node.typeId === 336; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   StakeholderUsage: {
@@ -12526,82 +12909,82 @@ export const Cst = {
     type: "StakeholderUsage",
     is(node) { return node != null && node.typeId === 337; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   RequirementUsage: {
@@ -12609,82 +12992,82 @@ export const Cst = {
     type: "RequirementUsage",
     is(node) { return node != null && node.typeId === 338; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   SatisfyRequirementUsage: {
@@ -12692,94 +13075,94 @@ export const Cst = {
     type: "SatisfyRequirementUsage",
     is(node) { return node != null && node.typeId === 339; },
     isNegated(node) {
-      return node ? (node.childForFieldId(48) || node.childForFieldName("isNegated")) : null;
+      return node ? node.childForFieldId(52) : null;
     },
     isNegatedList(node) {
-      return node ? node.childrenForFieldName("isNegated") : [];
+      return node ? node.childrenForFieldId(52) : [];
     },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     satisfyingFeature(node) {
-      return node ? (node.childForFieldId(50) || node.childForFieldName("satisfyingFeature")) : null;
+      return node ? node.childForFieldId(54) : null;
     },
     satisfyingFeatureList(node) {
-      return node ? node.childrenForFieldName("satisfyingFeature") : [];
+      return node ? node.childrenForFieldId(54) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ConcernDefinition: {
@@ -12787,70 +13170,70 @@ export const Cst = {
     type: "ConcernDefinition",
     is(node) { return node != null && node.typeId === 340; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   ConcernUsage: {
@@ -12858,82 +13241,82 @@ export const Cst = {
     type: "ConcernUsage",
     is(node) { return node != null && node.typeId === 341; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   CaseDefinition: {
@@ -12941,70 +13324,70 @@ export const Cst = {
     type: "CaseDefinition",
     is(node) { return node != null && node.typeId === 342; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   CaseUsage: {
@@ -13012,82 +13395,82 @@ export const Cst = {
     type: "CaseUsage",
     is(node) { return node != null && node.typeId === 344; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   AnalysisCaseDefinition: {
@@ -13095,70 +13478,70 @@ export const Cst = {
     type: "AnalysisCaseDefinition",
     is(node) { return node != null && node.typeId === 345; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   AnalysisCaseUsage: {
@@ -13166,82 +13549,82 @@ export const Cst = {
     type: "AnalysisCaseUsage",
     is(node) { return node != null && node.typeId === 346; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   VerificationCaseDefinition: {
@@ -13249,70 +13632,70 @@ export const Cst = {
     type: "VerificationCaseDefinition",
     is(node) { return node != null && node.typeId === 347; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   VerificationCaseUsage: {
@@ -13320,82 +13703,82 @@ export const Cst = {
     type: "VerificationCaseUsage",
     is(node) { return node != null && node.typeId === 348; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   VerifyRequirementUsageMember: {
@@ -13403,10 +13786,10 @@ export const Cst = {
     type: "VerifyRequirementUsageMember",
     is(node) { return node != null && node.typeId === 351; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   VerifyRequirementUsage: {
@@ -13414,82 +13797,82 @@ export const Cst = {
     type: "VerifyRequirementUsage",
     is(node) { return node != null && node.typeId === 352; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ObjectiveMember: {
@@ -13497,10 +13880,10 @@ export const Cst = {
     type: "ObjectiveMember",
     is(node) { return node != null && node.typeId === 353; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   ObjectiveRequirementUsage: {
@@ -13508,82 +13891,82 @@ export const Cst = {
     type: "ObjectiveRequirementUsage",
     is(node) { return node != null && node.typeId === 354; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   UseCaseDefinition: {
@@ -13591,70 +13974,70 @@ export const Cst = {
     type: "UseCaseDefinition",
     is(node) { return node != null && node.typeId === 355; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   UseCaseUsage: {
@@ -13662,82 +14045,82 @@ export const Cst = {
     type: "UseCaseUsage",
     is(node) { return node != null && node.typeId === 356; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   IncludeUseCaseUsage: {
@@ -13745,82 +14128,82 @@ export const Cst = {
     type: "IncludeUseCaseUsage",
     is(node) { return node != null && node.typeId === 357; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   StateDefinition: {
@@ -13828,76 +14211,76 @@ export const Cst = {
     type: "StateDefinition",
     is(node) { return node != null && node.typeId === 358; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isParallel(node) {
-      return node ? (node.childForFieldId(51) || node.childForFieldName("isParallel")) : null;
+      return node ? node.childForFieldId(55) : null;
     },
     isParallelList(node) {
-      return node ? node.childrenForFieldName("isParallel") : [];
+      return node ? node.childrenForFieldId(55) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   EntryActionMember: {
@@ -13905,10 +14288,10 @@ export const Cst = {
     type: "EntryActionMember",
     is(node) { return node != null && node.typeId === 360; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   DoActionMember: {
@@ -13916,10 +14299,10 @@ export const Cst = {
     type: "DoActionMember",
     is(node) { return node != null && node.typeId === 361; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   ExitActionMember: {
@@ -13927,10 +14310,10 @@ export const Cst = {
     type: "ExitActionMember",
     is(node) { return node != null && node.typeId === 362; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   StateActionUsage: {
@@ -13938,28 +14321,28 @@ export const Cst = {
     type: "StateActionUsage",
     is(node) { return node != null && node.typeId === 363; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   StateUsage: {
@@ -13967,88 +14350,88 @@ export const Cst = {
     type: "StateUsage",
     is(node) { return node != null && node.typeId === 364; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isParallel(node) {
-      return node ? (node.childForFieldId(51) || node.childForFieldName("isParallel")) : null;
+      return node ? node.childForFieldId(55) : null;
     },
     isParallelList(node) {
-      return node ? node.childrenForFieldName("isParallel") : [];
+      return node ? node.childrenForFieldId(55) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ExhibitStateUsage: {
@@ -14056,88 +14439,88 @@ export const Cst = {
     type: "ExhibitStateUsage",
     is(node) { return node != null && node.typeId === 365; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isParallel(node) {
-      return node ? (node.childForFieldId(51) || node.childForFieldName("isParallel")) : null;
+      return node ? node.childForFieldId(55) : null;
     },
     isParallelList(node) {
-      return node ? node.childrenForFieldName("isParallel") : [];
+      return node ? node.childrenForFieldId(55) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   TransitionUsageMember: {
@@ -14145,10 +14528,10 @@ export const Cst = {
     type: "TransitionUsageMember",
     is(node) { return node != null && node.typeId === 366; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   TransitionUsage: {
@@ -14156,52 +14539,52 @@ export const Cst = {
     type: "TransitionUsage",
     is(node) { return node != null && node.typeId === 367; },
     source(node) {
-      return node ? (node.childForFieldId(52) || node.childForFieldName("source")) : null;
+      return node ? node.childForFieldId(56) : null;
     },
     sourceList(node) {
-      return node ? node.childrenForFieldName("source") : [];
+      return node ? node.childrenForFieldId(56) : [];
     },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     trigger(node) {
-      return node ? (node.childForFieldId(53) || node.childForFieldName("trigger")) : null;
+      return node ? node.childForFieldId(57) : null;
     },
     triggerList(node) {
-      return node ? node.childrenForFieldName("trigger") : [];
+      return node ? node.childrenForFieldId(57) : [];
     },
     guard(node) {
-      return node ? (node.childForFieldId(37) || node.childForFieldName("guard")) : null;
+      return node ? node.childForFieldId(41) : null;
     },
     guardList(node) {
-      return node ? node.childrenForFieldName("guard") : [];
+      return node ? node.childrenForFieldId(41) : [];
     },
     effect(node) {
-      return node ? (node.childForFieldId(54) || node.childForFieldName("effect")) : null;
+      return node ? node.childForFieldId(58) : null;
     },
     effectList(node) {
-      return node ? node.childrenForFieldName("effect") : [];
+      return node ? node.childrenForFieldId(58) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ViewDefinition: {
@@ -14209,70 +14592,70 @@ export const Cst = {
     type: "ViewDefinition",
     is(node) { return node != null && node.typeId === 368; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   ViewUsage: {
@@ -14280,82 +14663,82 @@ export const Cst = {
     type: "ViewUsage",
     is(node) { return node != null && node.typeId === 369; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   ViewpointDefinition: {
@@ -14363,70 +14746,70 @@ export const Cst = {
     type: "ViewpointDefinition",
     is(node) { return node != null && node.typeId === 370; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   ViewpointUsage: {
@@ -14434,82 +14817,82 @@ export const Cst = {
     type: "ViewpointUsage",
     is(node) { return node != null && node.typeId === 371; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   RenderingDefinition: {
@@ -14517,70 +14900,70 @@ export const Cst = {
     type: "RenderingDefinition",
     is(node) { return node != null && node.typeId === 372; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
   },
   RenderingUsage: {
@@ -14588,82 +14971,82 @@ export const Cst = {
     type: "RenderingUsage",
     is(node) { return node != null && node.typeId === 373; },
     declaredShortName(node) {
-      return node ? (node.childForFieldId(1) || node.childForFieldName("declaredShortName")) : null;
+      return node ? node.childForFieldId(1) : null;
     },
     declaredShortNameList(node) {
-      return node ? node.childrenForFieldName("declaredShortName") : [];
+      return node ? node.childrenForFieldId(1) : [];
     },
     declaredName(node) {
-      return node ? (node.childForFieldId(2) || node.childForFieldName("declaredName")) : null;
+      return node ? node.childForFieldId(2) : null;
     },
     declaredNameList(node) {
-      return node ? node.childrenForFieldName("declaredName") : [];
+      return node ? node.childrenForFieldId(2) : [];
     },
     isEnd(node) {
-      return node ? (node.childForFieldId(25) || node.childForFieldName("isEnd")) : null;
+      return node ? node.childForFieldId(29) : null;
     },
     isEndList(node) {
-      return node ? node.childrenForFieldName("isEnd") : [];
+      return node ? node.childrenForFieldId(29) : [];
     },
     direction(node) {
-      return node ? (node.childForFieldId(26) || node.childForFieldName("direction")) : null;
+      return node ? node.childForFieldId(30) : null;
     },
     directionList(node) {
-      return node ? node.childrenForFieldName("direction") : [];
+      return node ? node.childrenForFieldId(30) : [];
     },
     isDerived(node) {
-      return node ? (node.childForFieldId(27) || node.childForFieldName("isDerived")) : null;
+      return node ? node.childForFieldId(31) : null;
     },
     isDerivedList(node) {
-      return node ? node.childrenForFieldName("isDerived") : [];
+      return node ? node.childrenForFieldId(31) : [];
     },
     isAbstract(node) {
-      return node ? (node.childForFieldId(28) || node.childForFieldName("isAbstract")) : null;
+      return node ? node.childForFieldId(32) : null;
     },
     isAbstractList(node) {
-      return node ? node.childrenForFieldName("isAbstract") : [];
+      return node ? node.childrenForFieldId(32) : [];
     },
     isVariation(node) {
-      return node ? (node.childForFieldId(29) || node.childForFieldName("isVariation")) : null;
+      return node ? node.childForFieldId(33) : null;
     },
     isVariationList(node) {
-      return node ? node.childrenForFieldName("isVariation") : [];
+      return node ? node.childrenForFieldId(33) : [];
     },
     isConstant(node) {
-      return node ? (node.childForFieldId(30) || node.childForFieldName("isConstant")) : null;
+      return node ? node.childForFieldId(34) : null;
     },
     isConstantList(node) {
-      return node ? node.childrenForFieldName("isConstant") : [];
+      return node ? node.childrenForFieldId(34) : [];
     },
     isRef(node) {
-      return node ? (node.childForFieldId(31) || node.childForFieldName("isRef")) : null;
+      return node ? node.childForFieldId(35) : null;
     },
     isRefList(node) {
-      return node ? node.childrenForFieldName("isRef") : [];
+      return node ? node.childrenForFieldId(35) : [];
     },
     isRedefine(node) {
-      return node ? (node.childForFieldId(32) || node.childForFieldName("isRedefine")) : null;
+      return node ? node.childForFieldId(36) : null;
     },
     isRedefineList(node) {
-      return node ? node.childrenForFieldName("isRedefine") : [];
+      return node ? node.childrenForFieldId(36) : [];
     },
     isSubsetting(node) {
-      return node ? (node.childForFieldId(33) || node.childForFieldName("isSubsetting")) : null;
+      return node ? node.childForFieldId(37) : null;
     },
     isSubsettingList(node) {
-      return node ? node.childrenForFieldName("isSubsetting") : [];
+      return node ? node.childrenForFieldId(37) : [];
     },
     isOrdered(node) {
-      return node ? (node.childForFieldId(21) || node.childForFieldName("isOrdered")) : null;
+      return node ? node.childForFieldId(21) : null;
     },
     isOrderedList(node) {
-      return node ? node.childrenForFieldName("isOrdered") : [];
+      return node ? node.childrenForFieldId(21) : [];
     },
     isNonunique(node) {
-      return node ? (node.childForFieldId(22) || node.childForFieldName("isNonunique")) : null;
+      return node ? node.childForFieldId(22) : null;
     },
     isNonuniqueList(node) {
-      return node ? node.childrenForFieldName("isNonunique") : [];
+      return node ? node.childrenForFieldId(22) : [];
     },
   },
   OwnedExpressionMember: {
@@ -14671,10 +15054,10 @@ export const Cst = {
     type: "OwnedExpressionMember",
     is(node) { return node != null && node.typeId === 374; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   OwnedExpression: {
@@ -14687,10 +15070,10 @@ export const Cst = {
     type: "OwnedExpressionReference",
     is(node) { return node != null && node.typeId === 377; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   ConditionalExpression: {
@@ -14698,28 +15081,28 @@ export const Cst = {
     type: "ConditionalExpression",
     is(node) { return node != null && node.typeId === 378; },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
     operand(node) {
-      return node ? (node.childForFieldId(56) || node.childForFieldName("operand")) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldName("operand") : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
     thenOperand(node) {
-      return node ? (node.childForFieldId(57) || node.childForFieldName("thenOperand")) : null;
+      return node ? node.childForFieldId(61) : null;
     },
     thenOperandList(node) {
-      return node ? node.childrenForFieldName("thenOperand") : [];
+      return node ? node.childrenForFieldId(61) : [];
     },
     elseOperand(node) {
-      return node ? (node.childForFieldId(58) || node.childForFieldName("elseOperand")) : null;
+      return node ? node.childForFieldId(62) : null;
     },
     elseOperandList(node) {
-      return node ? node.childrenForFieldName("elseOperand") : [];
+      return node ? node.childrenForFieldId(62) : [];
     },
   },
   NullCoalescingExpression: {
@@ -14727,16 +15110,16 @@ export const Cst = {
     type: "NullCoalescingExpression",
     is(node) { return node != null && node.typeId === 379; },
     operand(node) {
-      return node ? (node.childForFieldId(56) || node.childForFieldName("operand")) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldName("operand") : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
   },
   ImpliesExpressionReference: {
@@ -14744,10 +15127,10 @@ export const Cst = {
     type: "ImpliesExpressionReference",
     is(node) { return node != null && node.typeId === 380; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   ImpliesExpressionMember: {
@@ -14755,10 +15138,10 @@ export const Cst = {
     type: "ImpliesExpressionMember",
     is(node) { return node != null && node.typeId === 381; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   ImpliesExpression: {
@@ -14766,16 +15149,16 @@ export const Cst = {
     type: "ImpliesExpression",
     is(node) { return node != null && node.typeId === 382; },
     operand(node) {
-      return node ? (node.childForFieldId(56) || node.childForFieldName("operand")) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldName("operand") : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
   },
   OrExpressionReference: {
@@ -14783,10 +15166,10 @@ export const Cst = {
     type: "OrExpressionReference",
     is(node) { return node != null && node.typeId === 383; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   OrExpressionMember: {
@@ -14794,10 +15177,10 @@ export const Cst = {
     type: "OrExpressionMember",
     is(node) { return node != null && node.typeId === 384; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   OrExpression: {
@@ -14805,16 +15188,16 @@ export const Cst = {
     type: "OrExpression",
     is(node) { return node != null && node.typeId === 385; },
     operand(node) {
-      return node ? (node.childForFieldId(56) || node.childForFieldName("operand")) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldName("operand") : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
   },
   XorExpressionReference: {
@@ -14822,10 +15205,10 @@ export const Cst = {
     type: "XorExpressionReference",
     is(node) { return node != null && node.typeId === 386; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   XorExpressionMember: {
@@ -14833,10 +15216,10 @@ export const Cst = {
     type: "XorExpressionMember",
     is(node) { return node != null && node.typeId === 387; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   XorExpression: {
@@ -14844,16 +15227,16 @@ export const Cst = {
     type: "XorExpression",
     is(node) { return node != null && node.typeId === 388; },
     operand(node) {
-      return node ? (node.childForFieldId(56) || node.childForFieldName("operand")) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldName("operand") : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
   },
   AndExpression: {
@@ -14861,16 +15244,16 @@ export const Cst = {
     type: "AndExpression",
     is(node) { return node != null && node.typeId === 389; },
     operand(node) {
-      return node ? (node.childForFieldId(56) || node.childForFieldName("operand")) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldName("operand") : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
   },
   EqualityExpressionReference: {
@@ -14878,10 +15261,10 @@ export const Cst = {
     type: "EqualityExpressionReference",
     is(node) { return node != null && node.typeId === 390; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   EqualityExpressionMember: {
@@ -14889,10 +15272,10 @@ export const Cst = {
     type: "EqualityExpressionMember",
     is(node) { return node != null && node.typeId === 391; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   EqualityExpression: {
@@ -14900,16 +15283,16 @@ export const Cst = {
     type: "EqualityExpression",
     is(node) { return node != null && node.typeId === 392; },
     operand(node) {
-      return node ? (node.childForFieldId(56) || node.childForFieldName("operand")) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldName("operand") : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
   },
   EqualityOperator: {
@@ -14922,28 +15305,28 @@ export const Cst = {
     type: "ClassificationExpression",
     is(node) { return node != null && node.typeId === 394; },
     operand(node) {
-      return node ? (node.childForFieldId(56) || node.childForFieldName("operand")) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldName("operand") : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
     typeReference(node) {
-      return node ? (node.childForFieldId(59) || node.childForFieldName("typeReference")) : null;
+      return node ? node.childForFieldId(63) : null;
     },
     typeReferenceList(node) {
-      return node ? node.childrenForFieldName("typeReference") : [];
+      return node ? node.childrenForFieldId(63) : [];
     },
     typeResult(node) {
-      return node ? (node.childForFieldId(60) || node.childForFieldName("typeResult")) : null;
+      return node ? node.childForFieldId(64) : null;
     },
     typeResultList(node) {
-      return node ? node.childrenForFieldName("typeResult") : [];
+      return node ? node.childrenForFieldId(64) : [];
     },
   },
   ClassificationTestOperator: {
@@ -14956,10 +15339,10 @@ export const Cst = {
     type: "MetadataReference",
     is(node) { return node != null && node.typeId === 396; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   TypeReferenceMember: {
@@ -14967,10 +15350,10 @@ export const Cst = {
     type: "TypeReferenceMember",
     is(node) { return node != null && node.typeId === 397; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   TypeResultMember: {
@@ -14978,10 +15361,10 @@ export const Cst = {
     type: "TypeResultMember",
     is(node) { return node != null && node.typeId === 398; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   TypeReference: {
@@ -14989,10 +15372,10 @@ export const Cst = {
     type: "TypeReference",
     is(node) { return node != null && node.typeId === 399; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   ReferenceTyping: {
@@ -15000,10 +15383,10 @@ export const Cst = {
     type: "ReferenceTyping",
     is(node) { return node != null && node.typeId === 400; },
     type(node) {
-      return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
+      return node ? node.childForFieldId(11) : null;
     },
     typeList(node) {
-      return node ? node.childrenForFieldName("type") : [];
+      return node ? node.childrenForFieldId(11) : [];
     },
   },
   RelationalExpression: {
@@ -15011,16 +15394,16 @@ export const Cst = {
     type: "RelationalExpression",
     is(node) { return node != null && node.typeId === 401; },
     operand(node) {
-      return node ? (node.childForFieldId(56) || node.childForFieldName("operand")) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldName("operand") : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
   },
   RelationalOperator: {
@@ -15033,16 +15416,16 @@ export const Cst = {
     type: "RangeExpression",
     is(node) { return node != null && node.typeId === 403; },
     operand(node) {
-      return node ? (node.childForFieldId(56) || node.childForFieldName("operand")) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldName("operand") : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
   },
   AdditiveExpression: {
@@ -15050,16 +15433,16 @@ export const Cst = {
     type: "AdditiveExpression",
     is(node) { return node != null && node.typeId === 404; },
     operand(node) {
-      return node ? (node.childForFieldId(56) || node.childForFieldName("operand")) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldName("operand") : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
   },
   AdditiveOperator: {
@@ -15072,16 +15455,16 @@ export const Cst = {
     type: "MultiplicativeExpression",
     is(node) { return node != null && node.typeId === 406; },
     operand(node) {
-      return node ? (node.childForFieldId(56) || node.childForFieldName("operand")) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldName("operand") : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
   },
   MultiplicativeOperator: {
@@ -15094,22 +15477,22 @@ export const Cst = {
     type: "ExponentiationExpression",
     is(node) { return node != null && node.typeId === 408; },
     base(node) {
-      return node ? (node.childForFieldId(61) || node.childForFieldName("base")) : null;
+      return node ? node.childForFieldId(65) : null;
     },
     baseList(node) {
-      return node ? node.childrenForFieldName("base") : [];
+      return node ? node.childrenForFieldId(65) : [];
     },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
     exponent(node) {
-      return node ? (node.childForFieldId(62) || node.childForFieldName("exponent")) : null;
+      return node ? node.childForFieldId(66) : null;
     },
     exponentList(node) {
-      return node ? node.childrenForFieldName("exponent") : [];
+      return node ? node.childrenForFieldId(66) : [];
     },
   },
   ExponentiationOperator: {
@@ -15122,16 +15505,16 @@ export const Cst = {
     type: "UnaryExpression",
     is(node) { return node != null && node.typeId === 410; },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
     operand(node) {
-      return node ? (node.childForFieldId(56) || node.childForFieldName("operand")) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldName("operand") : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
   },
   UnaryOperator: {
@@ -15144,16 +15527,16 @@ export const Cst = {
     type: "ExtentExpression",
     is(node) { return node != null && node.typeId === 412; },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
     typeResult(node) {
-      return node ? (node.childForFieldId(60) || node.childForFieldName("typeResult")) : null;
+      return node ? node.childForFieldId(64) : null;
     },
     typeResultList(node) {
-      return node ? node.childrenForFieldName("typeResult") : [];
+      return node ? node.childrenForFieldId(64) : [];
     },
   },
   MeasurementExpression: {
@@ -15161,16 +15544,16 @@ export const Cst = {
     type: "MeasurementExpression",
     is(node) { return node != null && node.typeId === 414; },
     value(node) {
-      return node ? (node.childForFieldId(70) || node.childForFieldName("value")) : null;
+      return node ? node.childForFieldId(74) : null;
     },
     valueList(node) {
-      return node ? node.childrenForFieldName("value") : [];
+      return node ? node.childrenForFieldId(74) : [];
     },
     unit(node) {
-      return node ? (node.childForFieldId(71) || node.childForFieldName("unit")) : null;
+      return node ? node.childForFieldId(75) : null;
     },
     unitList(node) {
-      return node ? node.childrenForFieldName("unit") : [];
+      return node ? node.childrenForFieldId(75) : [];
     },
   },
   UnitBinaryExpression: {
@@ -15178,22 +15561,22 @@ export const Cst = {
     type: "UnitBinaryExpression",
     is(node) { return node != null && node.typeId === 416; },
     left(node) {
-      return node ? (node.childForFieldId(72) || node.childForFieldName("left")) : null;
+      return node ? node.childForFieldId(76) : null;
     },
     leftList(node) {
-      return node ? node.childrenForFieldName("left") : [];
+      return node ? node.childrenForFieldId(76) : [];
     },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
     right(node) {
-      return node ? (node.childForFieldId(73) || node.childForFieldName("right")) : null;
+      return node ? node.childForFieldId(77) : null;
     },
     rightList(node) {
-      return node ? node.childrenForFieldName("right") : [];
+      return node ? node.childrenForFieldId(77) : [];
     },
   },
   UnitExponentExpression: {
@@ -15201,22 +15584,22 @@ export const Cst = {
     type: "UnitExponentExpression",
     is(node) { return node != null && node.typeId === 417; },
     base(node) {
-      return node ? (node.childForFieldId(61) || node.childForFieldName("base")) : null;
+      return node ? node.childForFieldId(65) : null;
     },
     baseList(node) {
-      return node ? node.childrenForFieldName("base") : [];
+      return node ? node.childrenForFieldId(65) : [];
     },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
     exponent(node) {
-      return node ? (node.childForFieldId(62) || node.childForFieldName("exponent")) : null;
+      return node ? node.childForFieldId(66) : null;
     },
     exponentList(node) {
-      return node ? node.childrenForFieldName("exponent") : [];
+      return node ? node.childrenForFieldId(66) : [];
     },
   },
   PrimaryExpression: {
@@ -15224,76 +15607,76 @@ export const Cst = {
     type: "PrimaryExpression",
     is(node) { return node != null && node.typeId === 419; },
     base(node) {
-      return node ? (node.childForFieldId(61) || node.childForFieldName("base")) : null;
+      return node ? node.childForFieldId(65) : null;
     },
     baseList(node) {
-      return node ? node.childrenForFieldName("base") : [];
+      return node ? node.childrenForFieldId(65) : [];
     },
     featureChain(node) {
-      return node ? (node.childForFieldId(69) || node.childForFieldName("featureChain")) : null;
+      return node ? node.childForFieldId(73) : null;
     },
     featureChainList(node) {
-      return node ? node.childrenForFieldName("featureChain") : [];
+      return node ? node.childrenForFieldId(73) : [];
     },
     indexOperand(node) {
-      return node ? (node.childForFieldId(63) || node.childForFieldName("indexOperand")) : null;
+      return node ? node.childForFieldId(67) : null;
     },
     indexOperandList(node) {
-      return node ? node.childrenForFieldName("indexOperand") : [];
+      return node ? node.childrenForFieldId(67) : [];
     },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
     filterOperand(node) {
-      return node ? (node.childForFieldId(64) || node.childForFieldName("filterOperand")) : null;
+      return node ? node.childForFieldId(68) : null;
     },
     filterOperandList(node) {
-      return node ? node.childrenForFieldName("filterOperand") : [];
+      return node ? node.childrenForFieldId(68) : [];
     },
     invocationType(node) {
-      return node ? (node.childForFieldId(65) || node.childForFieldName("invocationType")) : null;
+      return node ? node.childForFieldId(69) : null;
     },
     invocationTypeList(node) {
-      return node ? node.childrenForFieldName("invocationType") : [];
+      return node ? node.childrenForFieldId(69) : [];
     },
     collect(node) {
-      return node ? (node.childForFieldId(67) || node.childForFieldName("collect")) : null;
+      return node ? node.childForFieldId(71) : null;
     },
     collectList(node) {
-      return node ? node.childrenForFieldName("collect") : [];
+      return node ? node.childrenForFieldId(71) : [];
     },
     select(node) {
-      return node ? (node.childForFieldId(68) || node.childForFieldName("select")) : null;
+      return node ? node.childForFieldId(72) : null;
     },
     selectList(node) {
-      return node ? node.childrenForFieldName("select") : [];
+      return node ? node.childrenForFieldId(72) : [];
     },
     body(node) {
-      return node ? (node.childForFieldId(8) || node.childForFieldName("body")) : null;
+      return node ? node.childForFieldId(8) : null;
     },
     bodyList(node) {
-      return node ? node.childrenForFieldName("body") : [];
+      return node ? node.childrenForFieldId(8) : [];
     },
     functionRef(node) {
-      return node ? (node.childForFieldId(66) || node.childForFieldName("functionRef")) : null;
+      return node ? node.childForFieldId(70) : null;
     },
     functionRefList(node) {
-      return node ? node.childrenForFieldName("functionRef") : [];
+      return node ? node.childrenForFieldId(70) : [];
     },
     argument(node) {
-      return node ? (node.childForFieldId(77) || node.childForFieldName("argument")) : null;
+      return node ? node.childForFieldId(81) : null;
     },
     argumentList(node) {
-      return node ? node.childrenForFieldName("argument") : [];
+      return node ? node.childrenForFieldId(81) : [];
     },
     namedArgument(node) {
-      return node ? (node.childForFieldId(78) || node.childForFieldName("namedArgument")) : null;
+      return node ? node.childForFieldId(82) : null;
     },
     namedArgumentList(node) {
-      return node ? node.childrenForFieldName("namedArgument") : [];
+      return node ? node.childrenForFieldId(82) : [];
     },
   },
   FunctionReferenceExpression: {
@@ -15301,10 +15684,10 @@ export const Cst = {
     type: "FunctionReferenceExpression",
     is(node) { return node != null && node.typeId === 420; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   FunctionReferenceMember: {
@@ -15312,10 +15695,10 @@ export const Cst = {
     type: "FunctionReferenceMember",
     is(node) { return node != null && node.typeId === 421; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   FunctionReference: {
@@ -15323,27 +15706,27 @@ export const Cst = {
     type: "FunctionReference",
     is(node) { return node != null && node.typeId === 422; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   FeatureChainMember: {
     typeId: 423,
     type: "FeatureChainMember",
     is(node) { return node != null && node.typeId === 423; },
-    type(node) {
-      return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
+    memberElement(node) {
+      return node ? node.childForFieldId(15) : null;
     },
-    typeList(node) {
-      return node ? node.childrenForFieldName("type") : [];
+    memberElementList(node) {
+      return node ? node.childrenForFieldId(15) : [];
     },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   OwnedFeatureChain: {
@@ -15351,10 +15734,10 @@ export const Cst = {
     type: "OwnedFeatureChain",
     is(node) { return node != null && node.typeId === 424; },
     chaining(node) {
-      return node ? (node.childForFieldId(75) || node.childForFieldName("chaining")) : null;
+      return node ? node.childForFieldId(79) : null;
     },
     chainingList(node) {
-      return node ? node.childrenForFieldName("chaining") : [];
+      return node ? node.childrenForFieldId(79) : [];
     },
   },
   BodyExpression: {
@@ -15362,10 +15745,10 @@ export const Cst = {
     type: "BodyExpression",
     is(node) { return node != null && node.typeId === 426; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   ExpressionBodyMember: {
@@ -15373,10 +15756,10 @@ export const Cst = {
     type: "ExpressionBodyMember",
     is(node) { return node != null && node.typeId === 427; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   ExpressionBody: {
@@ -15389,16 +15772,16 @@ export const Cst = {
     type: "SequenceExpression",
     is(node) { return node != null && node.typeId === 429; },
     operator(node) {
-      return node ? (node.childForFieldId(55) || node.childForFieldName("operator")) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldName("operator") : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
     operand(node) {
-      return node ? (node.childForFieldId(56) || node.childForFieldName("operand")) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldName("operand") : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
   },
   FeatureReferenceExpression: {
@@ -15406,10 +15789,10 @@ export const Cst = {
     type: "FeatureReferenceExpression",
     is(node) { return node != null && node.typeId === 430; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   FeatureReferenceMember: {
@@ -15417,10 +15800,10 @@ export const Cst = {
     type: "FeatureReferenceMember",
     is(node) { return node != null && node.typeId === 431; },
     memberElement(node) {
-      return node ? (node.childForFieldId(15) || node.childForFieldName("memberElement")) : null;
+      return node ? node.childForFieldId(15) : null;
     },
     memberElementList(node) {
-      return node ? node.childrenForFieldName("memberElement") : [];
+      return node ? node.childrenForFieldId(15) : [];
     },
   },
   MetadataAccessExpression: {
@@ -15428,10 +15811,10 @@ export const Cst = {
     type: "MetadataAccessExpression",
     is(node) { return node != null && node.typeId === 432; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   ElementReferenceMember: {
@@ -15439,10 +15822,10 @@ export const Cst = {
     type: "ElementReferenceMember",
     is(node) { return node != null && node.typeId === 433; },
     memberElement(node) {
-      return node ? (node.childForFieldId(15) || node.childForFieldName("memberElement")) : null;
+      return node ? node.childForFieldId(15) : null;
     },
     memberElementList(node) {
-      return node ? node.childrenForFieldName("memberElement") : [];
+      return node ? node.childrenForFieldId(15) : [];
     },
   },
   InvocationExpression: {
@@ -15450,22 +15833,22 @@ export const Cst = {
     type: "InvocationExpression",
     is(node) { return node != null && node.typeId === 434; },
     type(node) {
-      return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
+      return node ? node.childForFieldId(11) : null;
     },
     typeList(node) {
-      return node ? node.childrenForFieldName("type") : [];
+      return node ? node.childrenForFieldId(11) : [];
     },
     argument(node) {
-      return node ? (node.childForFieldId(77) || node.childForFieldName("argument")) : null;
+      return node ? node.childForFieldId(81) : null;
     },
     argumentList(node) {
-      return node ? node.childrenForFieldName("argument") : [];
+      return node ? node.childrenForFieldId(81) : [];
     },
     namedArgument(node) {
-      return node ? (node.childForFieldId(78) || node.childForFieldName("namedArgument")) : null;
+      return node ? node.childForFieldId(82) : null;
     },
     namedArgumentList(node) {
-      return node ? node.childrenForFieldName("namedArgument") : [];
+      return node ? node.childrenForFieldId(82) : [];
     },
   },
   ConstructorExpression: {
@@ -15473,16 +15856,16 @@ export const Cst = {
     type: "ConstructorExpression",
     is(node) { return node != null && node.typeId === 435; },
     type(node) {
-      return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
+      return node ? node.childForFieldId(11) : null;
     },
     typeList(node) {
-      return node ? node.childrenForFieldName("type") : [];
+      return node ? node.childrenForFieldId(11) : [];
     },
     result(node) {
-      return node ? (node.childForFieldId(74) || node.childForFieldName("result")) : null;
+      return node ? node.childForFieldId(78) : null;
     },
     resultList(node) {
-      return node ? node.childrenForFieldName("result") : [];
+      return node ? node.childrenForFieldId(78) : [];
     },
   },
   ConstructorResultMember: {
@@ -15490,10 +15873,10 @@ export const Cst = {
     type: "ConstructorResultMember",
     is(node) { return node != null && node.typeId === 436; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   ConstructorResult: {
@@ -15501,33 +15884,33 @@ export const Cst = {
     type: "ConstructorResult",
     is(node) { return node != null && node.typeId === 437; },
     argument(node) {
-      return node ? (node.childForFieldId(77) || node.childForFieldName("argument")) : null;
+      return node ? node.childForFieldId(81) : null;
     },
     argumentList(node) {
-      return node ? node.childrenForFieldName("argument") : [];
+      return node ? node.childrenForFieldId(81) : [];
     },
     namedArgument(node) {
-      return node ? (node.childForFieldId(78) || node.childForFieldName("namedArgument")) : null;
+      return node ? node.childForFieldId(82) : null;
     },
     namedArgumentList(node) {
-      return node ? node.childrenForFieldName("namedArgument") : [];
+      return node ? node.childrenForFieldId(82) : [];
     },
   },
   InstantiatedTypeMember: {
     typeId: 438,
     type: "InstantiatedTypeMember",
     is(node) { return node != null && node.typeId === 438; },
-    type(node) {
-      return node ? (node.childForFieldId(11) || node.childForFieldName("type")) : null;
+    memberElement(node) {
+      return node ? node.childForFieldId(15) : null;
     },
-    typeList(node) {
-      return node ? node.childrenForFieldName("type") : [];
+    memberElementList(node) {
+      return node ? node.childrenForFieldId(15) : [];
     },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   OwnedFeatureChaining: {
@@ -15535,10 +15918,10 @@ export const Cst = {
     type: "OwnedFeatureChaining",
     is(node) { return node != null && node.typeId === 440; },
     chainingFeature(node) {
-      return node ? (node.childForFieldId(76) || node.childForFieldName("chainingFeature")) : null;
+      return node ? node.childForFieldId(80) : null;
     },
     chainingFeatureList(node) {
-      return node ? node.childrenForFieldName("chainingFeature") : [];
+      return node ? node.childrenForFieldId(80) : [];
     },
   },
   ArgumentMember: {
@@ -15546,10 +15929,10 @@ export const Cst = {
     type: "ArgumentMember",
     is(node) { return node != null && node.typeId === 443; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   Argument: {
@@ -15557,10 +15940,10 @@ export const Cst = {
     type: "Argument",
     is(node) { return node != null && node.typeId === 444; },
     ownedRelationship(node) {
-      return node ? (node.childForFieldId(10) || node.childForFieldName("ownedRelationship")) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     ownedRelationshipList(node) {
-      return node ? node.childrenForFieldName("ownedRelationship") : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
   },
   NamedArgumentMember: {
@@ -15568,10 +15951,10 @@ export const Cst = {
     type: "NamedArgumentMember",
     is(node) { return node != null && node.typeId === 446; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   NamedArgument: {
@@ -15579,16 +15962,16 @@ export const Cst = {
     type: "NamedArgument",
     is(node) { return node != null && node.typeId === 447; },
     parameterRedefinition(node) {
-      return node ? (node.childForFieldId(79) || node.childForFieldName("parameterRedefinition")) : null;
+      return node ? node.childForFieldId(83) : null;
     },
     parameterRedefinitionList(node) {
-      return node ? node.childrenForFieldName("parameterRedefinition") : [];
+      return node ? node.childrenForFieldId(83) : [];
     },
     value(node) {
-      return node ? (node.childForFieldId(70) || node.childForFieldName("value")) : null;
+      return node ? node.childForFieldId(74) : null;
     },
     valueList(node) {
-      return node ? node.childrenForFieldName("value") : [];
+      return node ? node.childrenForFieldId(74) : [];
     },
   },
   ParameterRedefinition: {
@@ -15596,10 +15979,10 @@ export const Cst = {
     type: "ParameterRedefinition",
     is(node) { return node != null && node.typeId === 448; },
     redefinedFeature(node) {
-      return node ? (node.childForFieldId(80) || node.childForFieldName("redefinedFeature")) : null;
+      return node ? node.childForFieldId(26) : null;
     },
     redefinedFeatureList(node) {
-      return node ? node.childrenForFieldName("redefinedFeature") : [];
+      return node ? node.childrenForFieldId(26) : [];
     },
   },
   ArgumentValue: {
@@ -15607,10 +15990,10 @@ export const Cst = {
     type: "ArgumentValue",
     is(node) { return node != null && node.typeId === 449; },
     ownedRelatedElement(node) {
-      return node ? (node.childForFieldId(6) || node.childForFieldName("ownedRelatedElement")) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     ownedRelatedElementList(node) {
-      return node ? node.childrenForFieldName("ownedRelatedElement") : [];
+      return node ? node.childrenForFieldId(6) : [];
     },
   },
   NullExpression: {
@@ -15623,10 +16006,10 @@ export const Cst = {
     type: "LiteralBoolean",
     is(node) { return node != null && node.typeId === 452; },
     value(node) {
-      return node ? (node.childForFieldId(70) || node.childForFieldName("value")) : null;
+      return node ? node.childForFieldId(74) : null;
     },
     valueList(node) {
-      return node ? node.childrenForFieldName("value") : [];
+      return node ? node.childrenForFieldId(74) : [];
     },
   },
   BooleanValue: {
@@ -15639,10 +16022,10 @@ export const Cst = {
     type: "LiteralString",
     is(node) { return node != null && node.typeId === 454; },
     value(node) {
-      return node ? (node.childForFieldId(70) || node.childForFieldName("value")) : null;
+      return node ? node.childForFieldId(74) : null;
     },
     valueList(node) {
-      return node ? node.childrenForFieldName("value") : [];
+      return node ? node.childrenForFieldId(74) : [];
     },
   },
   LiteralInteger: {
@@ -15650,10 +16033,10 @@ export const Cst = {
     type: "LiteralInteger",
     is(node) { return node != null && node.typeId === 455; },
     value(node) {
-      return node ? (node.childForFieldId(70) || node.childForFieldName("value")) : null;
+      return node ? node.childForFieldId(74) : null;
     },
     valueList(node) {
-      return node ? node.childrenForFieldName("value") : [];
+      return node ? node.childrenForFieldId(74) : [];
     },
   },
   LiteralReal: {
@@ -15661,10 +16044,10 @@ export const Cst = {
     type: "LiteralReal",
     is(node) { return node != null && node.typeId === 456; },
     value(node) {
-      return node ? (node.childForFieldId(70) || node.childForFieldName("value")) : null;
+      return node ? node.childForFieldId(74) : null;
     },
     valueList(node) {
-      return node ? node.childrenForFieldName("value") : [];
+      return node ? node.childrenForFieldId(74) : [];
     },
   },
   RealValue: {
@@ -15692,70 +16075,70 @@ export const Cst = {
     type: "QualifiedName",
     is(node) { return node != null && node.typeId === 461; },
     name(node) {
-      return node ? (node.childForFieldId(81) || node.childForFieldName("name")) : null;
+      return node ? node.childForFieldId(84) : null;
     },
     nameList(node) {
-      return node ? node.childrenForFieldName("name") : [];
+      return node ? node.childrenForFieldId(84) : [];
     },
   },
   MetaClassificationTestOperator: {
-    typeId: 644,
+    typeId: 648,
     type: "MetaClassificationTestOperator",
-    is(node) { return node != null && node.typeId === 644; },
+    is(node) { return node != null && node.typeId === 648; },
   },
   CastOperator: {
-    typeId: 645,
+    typeId: 649,
     type: "CastOperator",
-    is(node) { return node != null && node.typeId === 645; },
+    is(node) { return node != null && node.typeId === 649; },
   },
   MetaCastOperator: {
-    typeId: 646,
+    typeId: 650,
     type: "MetaCastOperator",
-    is(node) { return node != null && node.typeId === 646; },
+    is(node) { return node != null && node.typeId === 650; },
   },
   LiteralInfinity: {
-    typeId: 690,
-    type: "LiteralInfinity",
-    is(node) { return node != null && node.typeId === 690; },
-  },
-  DECIMALVALUE: {
-    typeId: 695,
-    type: "DECIMAL_VALUE",
-    is(node) { return node != null && node.typeId === 695; },
-  },
-  EXPVALUE: {
     typeId: 696,
-    type: "EXP_VALUE",
+    type: "LiteralInfinity",
     is(node) { return node != null && node.typeId === 696; },
   },
-  ID: {
-    typeId: 697,
-    type: "ID",
-    is(node) { return node != null && node.typeId === 697; },
-  },
-  UNRESTRICTEDNAME: {
-    typeId: 698,
-    type: "UNRESTRICTED_NAME",
-    is(node) { return node != null && node.typeId === 698; },
-  },
-  STRINGVALUE: {
-    typeId: 699,
-    type: "STRING_VALUE",
-    is(node) { return node != null && node.typeId === 699; },
-  },
-  REGULARCOMMENT: {
-    typeId: 700,
-    type: "REGULAR_COMMENT",
-    is(node) { return node != null && node.typeId === 700; },
-  },
-  MLNOTE: {
+  DECIMALVALUE: {
     typeId: 701,
-    type: "ML_NOTE",
+    type: "DECIMAL_VALUE",
     is(node) { return node != null && node.typeId === 701; },
   },
-  SLNOTE: {
+  EXPVALUE: {
     typeId: 702,
-    type: "SL_NOTE",
+    type: "EXP_VALUE",
     is(node) { return node != null && node.typeId === 702; },
+  },
+  ID: {
+    typeId: 703,
+    type: "ID",
+    is(node) { return node != null && node.typeId === 703; },
+  },
+  UNRESTRICTEDNAME: {
+    typeId: 704,
+    type: "UNRESTRICTED_NAME",
+    is(node) { return node != null && node.typeId === 704; },
+  },
+  STRINGVALUE: {
+    typeId: 705,
+    type: "STRING_VALUE",
+    is(node) { return node != null && node.typeId === 705; },
+  },
+  REGULARCOMMENT: {
+    typeId: 706,
+    type: "REGULAR_COMMENT",
+    is(node) { return node != null && node.typeId === 706; },
+  },
+  MLNOTE: {
+    typeId: 707,
+    type: "ML_NOTE",
+    is(node) { return node != null && node.typeId === 707; },
+  },
+  SLNOTE: {
+    typeId: 708,
+    type: "SL_NOTE",
+    is(node) { return node != null && node.typeId === 708; },
   },
 };

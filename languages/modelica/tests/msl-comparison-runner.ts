@@ -43,6 +43,7 @@ const repoRoot = path.resolve(__dirname, "../../..");
 
 function parseArgs(): RunnerOptions {
   const opts: RunnerOptions = {
+    library: "Modelica",
     version: "4.0.0",
     stage: "flatten",
     all: false,
@@ -55,7 +56,9 @@ function parseArgs(): RunnerOptions {
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg.startsWith("--version=")) {
+    if (arg.startsWith("--library=") || arg.startsWith("--lib=")) {
+      opts.library = arg.split("=")[1].trim();
+    } else if (arg.startsWith("--version=")) {
       opts.version = arg.split("=")[1].trim();
     } else if (arg.startsWith("--stage=")) {
       opts.stage = arg.split("=")[1].trim() as MslStage;
@@ -96,15 +99,28 @@ function parseArgs(): RunnerOptions {
     } else if (arg.startsWith("--report-ctrf=")) {
       opts.reportCtrf = path.resolve(arg.split("=")[1].trim());
     } else if (arg === "--report-ctrf") {
-      opts.reportCtrf = path.resolve(repoRoot, "languages/modelica/ctrf", `ctrf-msl-${opts.stage}-report.json`);
+      const libSlug = opts.library?.toLowerCase() === "openipsl" ? "openipsl" : "msl";
+      opts.reportCtrf = path.resolve(repoRoot, "languages/modelica/ctrf", `ctrf-${libSlug}-${opts.stage}-report.json`);
     }
   }
 
+  const libArg = opts.library || "Modelica";
+  const libNorm = libArg.toLowerCase();
+  const isMsl = libNorm === "modelica" || libNorm === "msl";
+  const isOpenIpsl = libNorm === "openipsl";
+  const rootPkgName = isMsl ? "Modelica" : isOpenIpsl ? "OpenIPSL" : libArg;
+  opts.library = rootPkgName;
+
+  if (isOpenIpsl && !args.some((a) => a.startsWith("--version="))) {
+    opts.version = "3.1.0";
+  }
+
   if (!opts.reportCtrf && (process.env.CTRF_OUTPUT_PATH || process.env.CTRF_OUTPUT_DIR)) {
+    const libSlug = rootPkgName === "OpenIPSL" ? "openipsl" : "msl";
     if (process.env.CTRF_OUTPUT_PATH) {
       opts.reportCtrf = path.resolve(process.env.CTRF_OUTPUT_PATH);
     } else if (process.env.CTRF_OUTPUT_DIR) {
-      opts.reportCtrf = path.resolve(process.env.CTRF_OUTPUT_DIR, `ctrf-msl-${opts.stage}-report.json`);
+      opts.reportCtrf = path.resolve(process.env.CTRF_OUTPUT_DIR, `ctrf-${libSlug}-${opts.stage}-report.json`);
     }
   }
 
@@ -784,29 +800,84 @@ function generateHtmlReport(
 
 async function main() {
   const options = parseArgs();
-  const cacheDir = path.join(repoRoot, ".cache");
-  const indexCachePath = path.join(cacheDir, `msl-${options.version}-symbol-index.json`);
-  const modelsCachePath = path.join(cacheDir, `msl-${options.version}-models.json`);
+  const libArg = options.library || "Modelica";
+  const libNorm = libArg.toLowerCase();
+  const isMsl = libNorm === "modelica" || libNorm === "msl";
+  const isOpenIpsl = libNorm === "openipsl";
+  const rootPkgName = isMsl ? "Modelica" : isOpenIpsl ? "OpenIPSL" : libArg;
+  const libSlug = isMsl ? "msl" : isOpenIpsl ? "openipsl" : libArg.toLowerCase();
 
-  // Locate MSL directory
-  const candidatePaths = [
-    path.join(repoRoot, "scripts", "msl", `Modelica ${options.version}`),
-    path.join(process.env.HOME || "", `.openmodelica/libraries/Modelica ${options.version}+maint.om`),
-    path.join(process.env.HOME || "", `.openmodelica/libraries/Modelica ${options.version}`),
-  ];
-  const mslDir = candidatePaths.find((p) => fs.existsSync(p) && fs.existsSync(path.join(p, "package.mo")));
-  if (!mslDir) {
-    console.error(`[msl-runner] MSL ${options.version} directory not found!`);
-    console.error(`Run: node scripts/download-msl.cjs --version=${options.version} --extract`);
+  const cacheDir = path.join(repoRoot, ".cache");
+  const indexCachePath = path.join(cacheDir, `${libSlug}-${options.version}-symbol-index.json`);
+  const modelsCachePath = path.join(cacheDir, `${libSlug}-${options.version}-models.json`);
+
+  // Locate library directory
+  const candidatePaths = isMsl
+    ? [
+        path.join(repoRoot, "scripts", "msl", `Modelica ${options.version}`),
+        path.join(repoRoot, "data", "libraries", "Modelica", options.version, "extracted", "Modelica"),
+        path.join(process.env.HOME || "", `.openmodelica/libraries/Modelica ${options.version}+maint.om`),
+        path.join(process.env.HOME || "", `.openmodelica/libraries/Modelica ${options.version}`),
+      ]
+    : [
+        path.join(repoRoot, "data", "libraries", rootPkgName, options.version, "extracted", rootPkgName),
+        path.join(repoRoot, "data", "libraries", rootPkgName, "extracted", rootPkgName),
+        path.join(process.env.HOME || "", `.openmodelica/libraries/${rootPkgName} ${options.version}`),
+        path.join(process.env.HOME || "", `.openmodelica/libraries/${rootPkgName}`),
+        path.join(process.env.MODELICAPATH || "", rootPkgName),
+      ];
+
+  const targetLibDir = candidatePaths.find((p) => p && fs.existsSync(p) && fs.existsSync(path.join(p, "package.mo")));
+  if (!targetLibDir) {
+    console.error(`[lib-runner] Library ${rootPkgName} ${options.version} directory not found! Checked:`);
+    for (const c of candidatePaths) if (c) console.error("  " + c);
+    if (isMsl) {
+      console.error(`Run: node scripts/download-msl.cjs --version=${options.version} --extract`);
+    } else {
+      console.error(`Run: npx tsx scripts/sync-stdlibs.ts --lang=modelica`);
+    }
     process.exit(1);
+  }
+
+  // Resolve dependencies
+  const extraLibraries: { name: string; path: string }[] = [];
+  if (!isMsl) {
+    const mslCandidates = [
+      path.join(repoRoot, "data", "libraries", "Modelica", "4.0.0", "extracted", "Modelica"),
+      path.join(repoRoot, "data", "libraries", "Modelica", "4.1.0", "extracted", "Modelica"),
+      path.join(process.env.HOME || "", ".openmodelica", "libraries", "Modelica 4.0.0+maint.om"),
+      path.join(process.env.HOME || "", ".openmodelica", "libraries", "Modelica 4.1.0+maint.om"),
+      path.join(repoRoot, "scripts", "msl", "Modelica 4.0.0"),
+    ];
+    const mslPath = mslCandidates.find((p) => p && fs.existsSync(p) && fs.existsSync(path.join(p, "package.mo")));
+
+    const complexCandidates = [
+      path.join(repoRoot, "data", "libraries", "Complex", "4.0.0", "extracted", "Complex"),
+      path.join(process.env.HOME || "", ".openmodelica", "libraries", "Complex 4.0.0+maint.om"),
+      path.join(process.env.HOME || "", ".openmodelica", "libraries", "Complex 4.1.0+maint.om"),
+      path.join(repoRoot, "scripts", "msl", "Complex.mo"),
+    ];
+    const complexPath = complexCandidates.find((p) => p && fs.existsSync(p));
+
+    const servicesCandidates = [
+      path.join(repoRoot, "data", "libraries", "ModelicaServices", "4.0.0", "extracted", "ModelicaServices"),
+      path.join(process.env.HOME || "", ".openmodelica", "libraries", "ModelicaServices 4.0.0+maint.om"),
+      path.join(process.env.HOME || "", ".openmodelica", "libraries", "ModelicaServices 4.1.0+maint.om"),
+      path.join(repoRoot, "scripts", "msl", "ModelicaServices 4.0.0"),
+    ];
+    const servicesPath = servicesCandidates.find((p) => p && fs.existsSync(p));
+
+    if (complexPath) extraLibraries.push({ name: "Complex", path: complexPath });
+    if (servicesPath) extraLibraries.push({ name: "ModelicaServices", path: servicesPath });
+    if (mslPath) extraLibraries.push({ name: "Modelica", path: mslPath });
   }
 
   // Check or build cache
   if (!fs.existsSync(indexCachePath) || !fs.existsSync(modelsCachePath)) {
-    console.log(`[msl-runner] Precomputed index not found at ${indexCachePath}`);
-    console.log(`[msl-runner] Generating index cache now (this is done once per MSL version)...`);
+    console.log(`[lib-runner] Precomputed index not found at ${indexCachePath}`);
+    console.log(`[lib-runner] Generating index cache now for ${rootPkgName}...`);
     const buildIndexScript = path.resolve(__dirname, "build-msl-index.ts");
-    execSync(`npx tsx "${buildIndexScript}" --version=${options.version}`, {
+    execSync(`npx tsx "${buildIndexScript}" --library=${rootPkgName} --version=${options.version}`, {
       stdio: "inherit",
       cwd: repoRoot,
     });
@@ -835,12 +906,12 @@ async function main() {
   }
 
   if (selectedModels.length === 0) {
-    console.log(`[msl-runner] No models matched the given filters.`);
+    console.log(`[lib-runner] No models matched the given filters.`);
     process.exit(0);
   }
 
   console.log(`================================================================================`);
-  console.log(`ModelScript vs OpenModelica Verification Suite (MSL ${options.version})`);
+  console.log(`ModelScript vs OpenModelica Verification Suite (${rootPkgName} ${options.version})`);
   console.log(`================================================================================`);
   console.log(`Stage:           ${options.stage.toUpperCase()}`);
   console.log(`Models selected: ${selectedModels.length}`);
@@ -867,13 +938,15 @@ async function main() {
         if (!model) break;
         const task: WorkerTask = {
           modelFqn: model.fqn,
-          mslDir,
+          mslDir: targetLibDir,
           version: options.version,
           cacheDir,
           indexCachePath,
           stage: options.stage,
           forceOmc: options.forceOmc,
           simTolerance: options.tolerance,
+          library: rootPkgName,
+          extraLibraries,
         };
 
         const result = await worker.runTask(task, options.timeoutMs);
@@ -954,7 +1027,7 @@ async function main() {
   const timeouts = results.filter((r) => r.status === "TIMEOUT").length;
 
   console.log(`\n================================================================================`);
-  console.log(`SUMMARY RESULTS (MSL ${options.version} - Stage: ${options.stage.toUpperCase()})`);
+  console.log(`SUMMARY RESULTS (${rootPkgName} ${options.version} - Stage: ${options.stage.toUpperCase()})`);
   console.log(`================================================================================`);
   console.log(`Total Models:   ${results.length}`);
   console.log(`MATCH:          ${matches.toString().padStart(5)} (${((matches / results.length) * 100).toFixed(1)}%)`);

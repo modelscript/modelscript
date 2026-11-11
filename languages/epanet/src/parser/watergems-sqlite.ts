@@ -8,7 +8,6 @@
  * with complete support for HAMMER transient protection devices and zero third-party license dependencies.
  */
 
-import { createRequire } from "node:module";
 import type {
   EpanetCurve,
   EpanetFlowUnits,
@@ -24,7 +23,35 @@ import type {
   EpanetValve,
 } from "../types.js";
 
-const req = createRequire(import.meta.url);
+interface SqliteDatabaseSyncInstance {
+  prepare(sql: string): { all(): Array<Record<string, unknown>> };
+  close(): void;
+}
+
+interface SqliteSyncModule {
+  DatabaseSync: new (path: string, options?: { readOnly?: boolean }) => SqliteDatabaseSyncInstance;
+}
+
+interface ProcessWithBuiltinModule {
+  getBuiltinModule?: (id: string) => unknown;
+}
+
+function getSqliteSync(): SqliteSyncModule {
+  if (typeof process !== "undefined") {
+    const proc = process as unknown as ProcessWithBuiltinModule;
+    if (typeof proc.getBuiltinModule === "function") {
+      const sqlite = proc.getBuiltinModule("node:sqlite") as SqliteSyncModule | undefined;
+      if (sqlite?.DatabaseSync) return sqlite;
+      const nm = proc.getBuiltinModule("node:module") as
+        | { createRequire?: (url: string) => (id: string) => SqliteSyncModule }
+        | undefined;
+      if (nm?.createRequire) {
+        return nm.createRequire(import.meta.url)("node:sqlite");
+      }
+    }
+  }
+  throw new Error("Reading an SQLite database from a file path is not supported in browser environments.");
+}
 
 export interface WaterGemsImportOptions {
   flowUnits?: EpanetFlowUnits | undefined; // Default: "GPM" (US) or "LPS" (Metric)
@@ -81,8 +108,7 @@ export function parseWaterGemsDatabase(
   if (typeof input === "string") {
     // Open SQLite database file via Node.js built-in node:sqlite
     try {
-      // Dynamic require via createRequire to keep module portable across environments
-      const sqliteModule = req("node:sqlite");
+      const sqliteModule = getSqliteSync();
       const db = new sqliteModule.DatabaseSync(input, { readOnly: true });
 
       const tableListQuery = db.prepare("SELECT name FROM sqlite_master WHERE type='table';");

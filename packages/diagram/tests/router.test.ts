@@ -1497,4 +1497,54 @@ describe("Port-Aware Orthogonal Router with Obstacle Avoidance", () => {
       "Existing straight connection on distinct ports (u->y vs y->u) must stay straight with 0 bends",
     );
   });
+
+  it("produces strictly orthogonal waypoints with zero crooked/diagonal segments during live connection dragging", () => {
+    const srcPortPoint = { x: 280, y: 230 };
+    const staleTargetPoint = { x: 240, y: 560 }; // Previous frame mouse position
+    const currentMousePoint = { x: 350, y: 760 }; // Current frame mouse position
+
+    const mockSourceNode: any = {
+      id: "PartialCompositeStep1",
+      getBBox: () => ({ x: 280, y: 180, width: 100, height: 100 }),
+      getPorts: () => [{ id: "in", args: { x: 0, y: 50 } }],
+      getSize: () => ({ width: 100, height: 100 }),
+      getPosition: () => ({ x: 280, y: 180 }),
+    };
+
+    const mockGraph: any = {
+      getNodes: () => [mockSourceNode],
+      getEdges: () => [],
+      getCellById: (id: string) => (id === "PartialCompositeStep1" ? mockSourceNode : null),
+    };
+
+    const edgeViewLiveDrag: any = {
+      sourceAnchor: srcPortPoint,
+      targetAnchor: currentMousePoint,
+      sourcePoint: srcPortPoint,
+      targetPoint: staleTargetPoint, // Stale point from previous render frame
+      graph: mockGraph,
+      cell: {
+        getSource: () => ({ cell: "PartialCompositeStep1", port: "in" }),
+        getTarget: () => currentMousePoint,
+        getSourceCell: () => mockSourceNode,
+        getTargetCell: () => null,
+      },
+    };
+
+    const waypoints = portOrthogonalRouter([], {}, edgeViewLiveDrag);
+    const full = [srcPortPoint, ...waypoints, currentMousePoint];
+
+    // Verify all consecutive segments are strictly horizontal or vertical
+    assert.ok(full.length >= 2, "Path must contain at least source and target");
+    for (let i = 0; i < full.length - 1; i++) {
+      const p1 = full[i]!;
+      const p2 = full[i + 1]!;
+      const isHorizontal = Math.abs(p1.y - p2.y) < 0.1;
+      const isVertical = Math.abs(p1.x - p2.x) < 0.1;
+      assert.ok(
+        isHorizontal || isVertical,
+        `Segment ${i} from (${p1.x}, ${p1.y}) to (${p2.x}, ${p2.y}) is crooked/diagonal! Must be strictly 0° or 90°`,
+      );
+    }
+  });
 });

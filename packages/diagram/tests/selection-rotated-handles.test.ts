@@ -2,9 +2,11 @@
 
 import assert from "node:assert";
 import { describe, it } from "node:test";
+import { showAlignmentToolbar, type AlignableNode } from "../src/alignment.js";
 import {
   alignNodeSelectionBox,
   ensurePatchedSegmentsTool,
+  ensurePatchedTransformTool,
   ensurePatchedVerticesTool,
   getEdgeToolConfig,
   resolveEdgeSelectionStyle,
@@ -755,6 +757,175 @@ describe("Diagram Selection Handles and Box Rotation", () => {
       assert.strictEqual(markup.children[0].attrs.width, 70);
       assert.strictEqual(markup.children[0].attrs.height, 90);
       assert.strictEqual(markup.children[1].attrs.transform, "translate(70, 0) scale(-1, 1)");
+    });
+  });
+
+  describe("ensurePatchedTransformTool (Proportional Resize & Free Rotation)", () => {
+    class MockTransformWidget {
+      node: any;
+      graph: any;
+      options: Record<string, any>;
+      __initialAspectRatio?: number;
+
+      constructor(options: any, node: any, graph: any) {
+        this.options = { ...options };
+        this.node = node;
+        this.graph = graph;
+      }
+
+      getEventData(_evt: any) {
+        return { action: "resizing" };
+      }
+
+      startResizing(_evt: any) {}
+
+      onMouseMove(_evt: any) {
+        // Simulates unpatched X6 behavior
+        if (this.options.preserveAspectRatio) {
+          const ratio = 2.0; // initial aspect ratio
+          const newW = 120;
+          const newH = newW / ratio; // 60
+          this.node.resize(newW, newH);
+        } else {
+          this.node.resize(120, 90); // free/distorted resize
+        }
+      }
+    }
+
+    class MockTransformPlugin {
+      createTransform(node: any) {
+        return new MockTransformWidget({ resizable: true, rotatable: true }, node, {});
+      }
+    }
+
+    it("enables proportional aspect-ratio preservation when Shift is held during corner resize", () => {
+      let resizedW = 0;
+      let resizedH = 0;
+
+      const mockNode: any = {
+        getBBox: () => ({ x: 100, y: 100, width: 80, height: 40 }), // 2:1 aspect ratio
+        getSize: () => ({ width: resizedW || 80, height: resizedH || 40 }),
+        resize: (w: number, h: number) => {
+          resizedW = w;
+          resizedH = h;
+        },
+      };
+
+      const mockX6 = {
+        Transform: MockTransformPlugin,
+      };
+
+      ensurePatchedTransformTool(mockX6);
+
+      const plugin = new MockTransformPlugin();
+      const widget = plugin.createTransform(mockNode) as any;
+
+      // 1. Mouse move WITHOUT Shift -> distorted resize (120x90, aspect ratio 1.33)
+      widget.startResizing({});
+      widget.onMouseMove({ shiftKey: false });
+      assert.strictEqual(resizedW, 120);
+      assert.strictEqual(resizedH, 90);
+      assert.strictEqual(widget.options.preserveAspectRatio, false);
+
+      // 2. Mouse move WITH Shift held -> locks proportions to 2:1 (120x60)
+      widget.onMouseMove({ shiftKey: true });
+      assert.strictEqual(
+        widget.options.preserveAspectRatio,
+        true,
+        "Must enable preserveAspectRatio when Shift is held",
+      );
+      assert.strictEqual(resizedW, 120);
+      assert.strictEqual(resizedH, 60, "Must preserve 2:1 aspect ratio when Shift is held");
+      assert.strictEqual(resizedW / resizedH, 2.0, "Proportions must be preserved");
+
+      // 3. Releasing Shift -> returns to free resize
+      widget.onMouseMove({ shiftKey: false });
+      assert.strictEqual(
+        widget.options.preserveAspectRatio,
+        false,
+        "Must disable preserveAspectRatio when Shift is released",
+      );
+    });
+
+    it("switches to unconstrained 1-degree rotation when Alt is pressed", () => {
+      class MockRotateWidget {
+        options: Record<string, any> = { rotateGrid: 15 };
+        getEventData(_evt: any) {
+          return { action: "rotating" };
+        }
+        onMouseMove(_evt: any) {}
+      }
+
+      class MockRotatePlugin {
+        createTransform(_node: any) {
+          return new MockRotateWidget();
+        }
+      }
+
+      const mockX6 = {
+        Transform: MockRotatePlugin,
+      };
+
+      ensurePatchedTransformTool(mockX6);
+
+      const plugin = new MockRotatePlugin();
+      const widget = plugin.createTransform({}) as any;
+
+      // Default rotation: 15 degree grid snap
+      widget.onMouseMove({ altKey: false });
+      assert.strictEqual(widget.options.rotateGrid, 15, "Default rotation must snap to 15 degrees");
+
+      // Holding Alt: 0 (free continuous unconstrained rotation)
+      widget.onMouseMove({ altKey: true });
+      assert.strictEqual(widget.options.rotateGrid, 0, "Alt key must enable free unconstrained rotation");
+
+      // Releasing Alt: restores 15 degree grid snap
+      widget.onMouseMove({ altKey: false });
+      assert.strictEqual(widget.options.rotateGrid, 15, "Releasing Alt must restore 15 degree grid snap");
+    });
+
+    it("positions floating toolbar with 46px clearance above single node to leave room for free rotation handle", () => {
+      const mockToolbar = {
+        style: {} as Record<string, string>,
+        classList: { add: () => {} },
+      } as unknown as HTMLElement;
+
+      const mockContainer = {
+        clientWidth: 1000,
+        clientHeight: 800,
+      } as HTMLElement;
+
+      const singleNode: AlignableNode = {
+        id: "resistor1",
+        x: 300,
+        y: 200,
+        width: 100,
+        height: 100,
+      };
+
+      // 1. Single node selected -> toolbar must sit 46px above node top (y = 200 - 46 = 154px)
+      showAlignmentToolbar(mockToolbar, mockContainer, [singleNode], { sx: 1, sy: 1 }, { tx: 0, ty: 0 });
+      assert.strictEqual(
+        mockToolbar.style.top,
+        "154px",
+        "Single-node toolbar must provide 46px clearance for the top-center rotation handle",
+      );
+      assert.strictEqual(mockToolbar.style.transform, "translate(-50%, -100%)");
+
+      // 2. Multi-node selection (2 nodes) -> toolbar can sit compactly 14px above top (y = 200 - 14 = 186px)
+      const secondNode: AlignableNode = {
+        id: "capacitor1",
+        x: 500,
+        y: 200,
+        width: 100,
+        height: 100,
+      };
+      showAlignmentToolbar(mockToolbar, mockContainer, [singleNode, secondNode], { sx: 1, sy: 1 }, { tx: 0, ty: 0 });
+      assert.strictEqual(
+        mockToolbar.style.top,
+        "186px",
+        "Multi-node toolbar without rotate handles must maintain compact 14px clearance",
+      );
     });
   });
 });

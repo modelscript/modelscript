@@ -32,6 +32,9 @@ import {
   stringArenaPtr,
   stringArenaCapacity,
   S,
+  evictDocumentArena,
+  setAllocDocument,
+  getAllocDocument,
 } from "../arena";
 import { NODE_TYPE_ERROR, errorCount, t_errorStarts, t_errorEnds, t_errorArg0, t_errorArg1, t_errorArg2, t_errorArg3, getExpectedTokensPoolPtr, getExpectedTokensPoolLen, resetExpectedTokensPool, setAncestorCacheEnabled } from "./engine";
 import { inputLength, inputEncoding, HAS_COMPILED_LINTS } from "../parser";
@@ -122,6 +125,7 @@ export function lsp_evictDocumentAst(fileId: u32): void {
       t_documentRoots.set(fileId as u64, 0 as u64);
     }
   }
+  evictDocumentArena(fileId);
   lsp_invalidateCache();
 }
 
@@ -949,6 +953,82 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
   return t_lspBinaryBuffer.length / 7;
 }
 
+function emitSemanticTokensForNode(targetNode: u32, offset: u32, tokenTypeId: i32, bitmask: i32, inputLength: u32): void {
+  let flags = getNodeFlags(targetNode);
+  if ((flags & FLAG_IS_INSERTED) != 0) return;
+
+  if ((flags & FLAG_IS_LIST) != 0) {
+    let curr = getNodeFirstChild(targetNode);
+    let currOffset = offset;
+    let idx = 0;
+    while (curr != 0) {
+      let cPad = getNodePadding(curr);
+      let cLen = getNodeByteLength(curr);
+      if (idx > 0) currOffset += cPad;
+      let start = currOffset;
+      emitSemanticTokensForNode(curr, start, tokenTypeId, bitmask, inputLength);
+      currOffset = start + cLen;
+      idx++;
+      curr = getNodeNextSibling(curr);
+    }
+    return;
+  }
+
+  while ((flags & FLAG_INVISIBLE) != 0) {
+    let inner = getNodeFirstChild(targetNode);
+    if (inner == 0) break;
+    targetNode = inner;
+    flags = getNodeFlags(targetNode);
+    if ((flags & FLAG_IS_INSERTED) != 0) return;
+    if ((flags & FLAG_IS_LIST) != 0) {
+      emitSemanticTokensForNode(targetNode, offset, tokenTypeId, bitmask, inputLength);
+      return;
+    }
+  }
+
+  let cLen = getNodeByteLength(targetNode);
+  if (cLen > 0) {
+    if (offset > inputLength) return;
+    if (cLen > inputLength || offset + cLen > inputLength || offset + cLen < offset) {
+      cLen = inputLength - offset;
+    }
+
+    let segStart: u32 = offset;
+    let segLen: u32 = 0;
+    let i: u32 = 0;
+    while (i < cLen) {
+      let c = peekChar(offset + i);
+      let chLen = peekCharLen(offset + i);
+      if (chLen == 0) chLen = 1;
+      if (c == 10 || c == 13) {
+        if (segLen > 0) {
+          t_lspBinaryBuffer.push(segStart);
+          t_lspBinaryBuffer.push(segLen);
+          t_lspBinaryBuffer.push(tokenTypeId);
+          t_lspBinaryBuffer.push(bitmask);
+        }
+        if (c == 13 && i + chLen < cLen && peekChar(offset + i + chLen) == 10) {
+          let nextLen = peekCharLen(offset + i + chLen);
+          i += chLen + (nextLen > 0 ? nextLen : 1);
+        } else {
+          i += chLen;
+        }
+        segStart = offset + i;
+        segLen = 0;
+      } else {
+        segLen += chLen;
+        i += chLen;
+      }
+    }
+    if (segLen > 0) {
+      t_lspBinaryBuffer.push(segStart);
+      t_lspBinaryBuffer.push(segLen);
+      t_lspBinaryBuffer.push(tokenTypeId);
+      t_lspBinaryBuffer.push(bitmask);
+    }
+  }
+}
+
 /**
  * Extracts and serializes Semantic Tokens for syntax highlighting.
  * Operates purely on the unmanaged heap to format tokens strictly ordered by byte offset.
@@ -1036,57 +1116,7 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
         }
 
         if (targetChild != 0) {
-          let targetFlags = getNodeFlags(targetChild);
-          if ((targetFlags & FLAG_IS_INSERTED) != 0) continue;
-          
-          while ((targetFlags & FLAG_INVISIBLE) != 0 && (targetFlags & FLAG_IS_LIST) != 0) {
-            let inner = getNodeFirstChild(targetChild);
-            if (inner == 0) break;
-            targetChild = inner;
-            targetFlags = getNodeFlags(targetChild);
-          }
-          let cLen = getNodeByteLength(targetChild);
-          if (cLen > 0) {
-            if (childOffset > inputLength) continue;
-            if (cLen > inputLength || childOffset + cLen > inputLength || childOffset + cLen < childOffset) {
-              cLen = inputLength - childOffset;
-            }
-            
-            // LSP4 fix: split multi-line tokens into line-by-line segments instead of truncating/skipping
-            let segStart: u32 = childOffset;
-            let segLen: u32 = 0;
-            let i: u32 = 0;
-            while (i < cLen) {
-              let c = peekChar(childOffset + i);
-              let chLen = peekCharLen(childOffset + i);
-              if (chLen == 0) chLen = 1;
-              if (c == 10 || c == 13) {
-                if (segLen > 0) {
-                  t_lspBinaryBuffer.push(segStart);
-                  t_lspBinaryBuffer.push(segLen);
-                  t_lspBinaryBuffer.push(tokenTypeId);
-                  t_lspBinaryBuffer.push(bitmask);
-                }
-                if (c == 13 && i + chLen < cLen && peekChar(childOffset + i + chLen) == 10) {
-                  let nextLen = peekCharLen(childOffset + i + chLen);
-                  i += chLen + (nextLen > 0 ? nextLen : 1);
-                } else {
-                  i += chLen;
-                }
-                segStart = childOffset + i;
-                segLen = 0;
-              } else {
-                segLen += chLen;
-                i += chLen;
-              }
-            }
-            if (segLen > 0) {
-              t_lspBinaryBuffer.push(segStart);
-              t_lspBinaryBuffer.push(segLen);
-              t_lspBinaryBuffer.push(tokenTypeId);
-              t_lspBinaryBuffer.push(bitmask);
-            }
-          }
+          emitSemanticTokensForNode(targetChild, childOffset, tokenTypeId, bitmask, inputLength);
         }
       }
     }

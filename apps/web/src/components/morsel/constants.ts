@@ -162,10 +162,10 @@ end Oscillator;
     supportsSimulation: true,
     supports3d: false,
     diagramTypes: [
-      { id: "bdd", label: "BDD" },
-      { id: "ibd", label: "IBD" },
-      { id: "stateMachine", label: "State" },
-      { id: "requirement", label: "Requirements" },
+      { id: "BDD", label: "BDD" },
+      { id: "IBD", label: "IBD" },
+      { id: "StateMachine", label: "State" },
+      { id: "Requirement", label: "Requirements" },
     ],
   },
   {

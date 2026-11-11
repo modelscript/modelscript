@@ -31,6 +31,17 @@ export interface EditRange {
   oldEndOffset: number;
   newEndOffset: number;
 }
+export interface Edit {
+  startIndex?: number;
+  oldEndIndex?: number;
+  newEndIndex?: number;
+  startPosition?: Point;
+  oldEndPosition?: Point;
+  newEndPosition?: Point;
+  startByte?: number;
+  oldEndByte?: number;
+  newEndByte?: number;
+}
 export interface SemanticTokensEdit {
   start: number;
   deleteCount: number;
@@ -48,6 +59,10 @@ export declare class WasmTreeCursor {
   private cursorPtr;
   private runtime;
   constructor(runtime: any, rootNode: number);
+  /** Releases the WASM-side cursor back to the pool. The cursor must not be used afterwards. */
+  dispose(): void;
+  /** Returns the cursor to the pool if it is garbage-collected without an explicit dispose(). */
+  private static _registry;
   reset(rootNode: number): void;
   currentNode(): number;
   currentOffset(): number;
@@ -226,13 +241,23 @@ export declare class LspFacade {
   getFieldNameById(id: number): string | null;
   extrasRegex: RegExp;
   private wasmMemory;
+  private _u32View;
+  /** Returns a Uint32Array over linear memory, reallocated only when `memory.grow` replaces the buffer. */
+  private _u32;
   exports: any;
   lastAstRoot: number;
   private _cachedLineStarts;
   private documentRoots;
   private documentVersions;
+  private _uriToFileId;
+  private _fileIdToUri;
+  private _nextFileId;
   private _idleTimer;
   private _maxMemoryQuotaBytes;
+  /**
+   * Retrieves or assigns a stable numeric fileId for a given URI.
+   */
+  getFileId(uri: string): number;
   /**
    * Returns true if a character matches the grammar's `extras` definition (whitespace/trivia).
    * Line breaks (\n, \r) are excluded so diagnostic ranges stay pinned to their line.
@@ -470,6 +495,8 @@ export declare class LspFacade {
   /** Hashes a string using FNV-1a algorithm matching WASM string hash. */
   hashString(str: string): number;
   allocMem(bytes: number): number;
+  private _strScratchPtr;
+  private _strScratchCapacity;
   allocStringInArena(str: string): number;
   /** Registers a declaration stub into the persistent Tier 1 index. */
   registerStub(
@@ -957,6 +984,10 @@ export declare class SyntaxNode {
   private _cachedNamedChildren;
   private _cachedText;
   _fieldId: number;
+  _nextSibling: SyntaxNode | null | undefined;
+  _prevSibling: SyntaxNode | null | undefined;
+  _nextNamedSibling: SyntaxNode | null | undefined;
+  _prevNamedSibling: SyntaxNode | null | undefined;
   constructor(
     tree: Tree,
     ptr: number,
@@ -993,14 +1024,22 @@ export declare class SyntaxNode {
   get startIndex(): number;
   /** The end character index of the node. Alias for {@link endOffset}. */
   get endIndex(): number;
+  /** The start byte offset of this node within the UTF-8 source text. */
+  get startByte(): number;
+  /** The end byte offset of this node within the UTF-8 source text. */
+  get endByte(): number;
   /**
    * Returns true if this node was inserted by the parser to recover from a syntax error.
    */
-  isMissing(): boolean;
+  get isMissing(): boolean;
   /** Returns true if this node is an extra token (comment/whitespace). */
-  isExtra(): boolean;
+  get isExtra(): boolean;
   /** Returns true if this node has been edited. */
-  hasChanges(): boolean;
+  get hasChanges(): boolean;
+  /** The parse state of the node. */
+  get parseState(): number;
+  /** The next parse state of the node. */
+  get nextParseState(): number;
   /** The line and column where this node starts. */
   get startPosition(): Point;
   /** The line and column where this node ends. */
@@ -1036,6 +1075,10 @@ export declare class SyntaxNode {
   child(index: number): SyntaxNode | null;
   /** Gets the named child at the specified index. */
   namedChild(index: number): SyntaxNode | null;
+  /** Finds the first child whose endIndex is greater than the given index. */
+  firstChildForIndex(index: number): SyntaxNode | null;
+  /** Finds the first named child whose endIndex is greater than the given index. */
+  firstNamedChildForIndex(index: number): SyntaxNode | null;
   /**
    * Helper that tests if this node or its WASM subtree contains targetPtr.
    */
@@ -1067,10 +1110,12 @@ export declare class SyntaxNode {
   /** Extracts the source code text for a specific child field. */
   childText(name: string): string;
   /** Returns true if the node is a named (non-anonymous) node. */
-  isNamed(): boolean;
+  get isNamed(): boolean;
   private _cachedHasError;
   /** Returns true if the node or any of its descendants represents a syntax error. */
-  hasError(): boolean;
+  get hasError(): boolean;
+  /** Returns true if this node itself represents a syntax error. */
+  get isError(): boolean;
   /** Finds the smallest syntax node covering the character range [start, end]. */
   descendantForIndex(
     start: number,
@@ -1095,6 +1140,13 @@ export declare class SyntaxNode {
   toString(): string;
   /** Returns true if this node is equal to other. */
   equals(other: SyntaxNode | null | undefined): boolean;
+  /** Gets the total count of all recursive descendant nodes. */
+  get descendantCount(): number;
+  /**
+   * Get the immediate child that contains the given descendant node.
+   * Note that this returns the descendant itself if it is an immediate child.
+   */
+  childWithDescendant(descendant: SyntaxNode): SyntaxNode | null;
   /** Creates a stateful TreeCursor for traversing the tree starting at this node. */
   walk(): TreeCursor;
 }
@@ -1109,6 +1161,8 @@ export declare class TreeCursor {
   get nodeTypeId(): number;
   get nodeIsNamed(): boolean;
   get nodeIsMissing(): boolean;
+  get nodeStateId(): number;
+  get currentDescendantIndex(): number;
   get nodeText(): string;
   get currentNode(): SyntaxNode;
   get startIndex(): number;
@@ -1118,14 +1172,17 @@ export declare class TreeCursor {
   get currentFieldName(): string | null;
   get currentFieldId(): number;
   get currentDepth(): number;
-  isMissing(): boolean;
+  get isMissing(): boolean;
+  reset(node: SyntaxNode): void;
+  resetTo(cursor: TreeCursor): void;
   gotoFirstChild(): boolean;
+  gotoLastChild(): boolean;
   gotoFirstChildForIndex(index: number): boolean;
   gotoFirstChildForPosition(position: Point): boolean;
   gotoNextSibling(): boolean;
   gotoPreviousSibling(): boolean;
   gotoParent(): boolean;
-  reset(node: SyntaxNode): void;
+  gotoDescendant(goalDescendantIndex: number): void;
 }
 /**
  * Represents the root of a parsed syntax tree.
@@ -1140,13 +1197,48 @@ export declare class Tree {
   private _mem32;
   get mem32(): Uint32Array;
   constructor(facade: LspFacade, rootPtr: number, sourceCode: string);
+  private _rootNode;
   /** Gets the root node of the syntax tree. */
   get rootNode(): SyntaxNode;
+  lastEdit: Edit | null;
+  private _lsTyped;
+  private _lsTypedSrc;
+  private _lineStartsTyped;
+  private _isPureAscii;
+  /** Lazily-built cumulative UTF-8 byte length per UTF-16 offset (length n+1); null when pure ASCII. */
+  private _utf8Prefix;
+  private _ensureUtf8Index;
+  /**
+   * Converts a linear UTF-16 code unit offset to a UTF-8 byte offset in O(1)
+   * (one-time O(n) index build for non-ASCII sources).
+   */
+  offsetToByte(charOffset: number): number;
+  /**
+   * Converts a UTF-8 byte offset to a linear UTF-16 code unit offset in O(log n).
+   * Offsets falling inside a multi-byte character round up to the next character boundary.
+   */
+  byteToOffset(byteOffset: number): number;
+  /**
+   * Applies an edit transaction record to the tree, storing the modified bounds
+   * for the next incremental parse call. Correctly harmonizes UTF-8 byte offsets
+   * and UTF-16 code unit indices.
+   *
+   * `startByte`/`oldEndByte` are resolved against this tree's (old) source. `newEndByte`
+   * can only be resolved against the NEW source, so it is deferred until `parse()` when
+   * no `newEndIndex` is supplied.
+   */
+  edit(edit: Edit): Tree;
+  rootNodeWithOffset(offsetBytes: number, offsetExtent: Point): SyntaxNode;
+  getChangedRanges(other: Tree): Range[];
+  getIncludedRanges(): Range[];
+  getText(node: SyntaxNode): string;
+  getEditedRange(): Range | null;
+  printDotGraph(fd?: number): void;
   /** Creates a stateful TreeCursor for traversing the tree starting at the root. */
   walk(): TreeCursor;
-  /** Converts a linear byte offset into a row and column Point. */
+  /** Converts a linear UTF-16 code unit offset into a row and column Point. */
   offsetToPoint(offset: number): Point;
-  /** Converts a row and column Point into a linear character offset. */
+  /** Converts a row and column Point into a linear UTF-16 character offset. */
   pointToOffset(point: Point): number;
   /** Releases any resources associated with this syntax tree wrapper. */
   delete(): void;

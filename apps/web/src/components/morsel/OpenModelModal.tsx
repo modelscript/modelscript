@@ -22,6 +22,7 @@ import {
   searchClasses,
 } from "./util/lsp-bridge";
 import { decompressMorselPayload, resolveMorselShortlink } from "./util/permalink";
+import { fetchRegistryClassSource, type StreamedRegistryModelItem, streamRegistryModels } from "./util/registry-stream";
 
 export type OpenModelModalMode = "gallery" | "workspace" | "local";
 export type OpenModelTargetView = "split" | "diagram" | "code";
@@ -117,7 +118,14 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
   const [livePreviews, setLivePreviews] = useState<Record<string, DiagramPreviewResultItem>>({});
   const [workspacePreviews, setWorkspacePreviews] = useState<Record<string, DiagramPreviewResultItem>>({});
   const [dynamicModels, setDynamicModels] = useState<DynamicSearchModel[]>([]);
+  const [streamedModels, setStreamedModels] = useState<StreamedRegistryModelItem[]>([]);
+  const [registryModelPackages, setRegistryModelPackages] = useState<string[]>([]);
+  const [registryModelDeps, setRegistryModelDeps] = useState<Record<string, Record<string, string>>>({});
+  const [registryHasMore, setRegistryHasMore] = useState(false);
+  const [registryOffset, setRegistryOffset] = useState(0);
+  const [isStreamingModels, setIsStreamingModels] = useState(false);
   const [busyModelId, setBusyModelId] = useState<string | null>(null);
+  const loadingNextModelsRef = useRef(false);
 
   // Local file & URL staging state
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -293,6 +301,113 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
     };
   }, [isOpen, mode, documentModels, currentContent, currentDocumentUri, currentDialect, isDark]);
 
+  // Stream runnable models + connected diagram.svg previews live from the Ansatz Registry (/api/v1/models)
+  useEffect(() => {
+    if (!isOpen || mode !== "gallery") return;
+    let cancelled = false;
+    const controller = new AbortController();
+    const delay = query.trim().length > 0 ? 120 : 0;
+
+    setIsStreamingModels(true);
+    const timer = setTimeout(() => {
+      streamRegistryModels(
+        {
+          q: query,
+          domain,
+          packageName: packageFilter === "all" ? undefined : packageFilter,
+          limit: 48,
+          offset: 0,
+          includeSvg: true,
+        },
+        controller.signal,
+      )
+        .then((res) => {
+          if (cancelled) return;
+          if (res.fromRegistry) {
+            setStreamedModels(res.models);
+            setRegistryHasMore(res.hasMore);
+            setRegistryOffset(res.models.length);
+            if (res.availablePackages.length > 0) {
+              setRegistryModelPackages((prev) => {
+                const merged = new Set(prev);
+                for (const p of res.availablePackages) merged.add(p.name);
+                return Array.from(merged);
+              });
+            }
+            if (Object.keys(res.packageDependencies).length > 0) {
+              setRegistryModelDeps((prev) => ({ ...prev, ...res.packageDependencies }));
+            }
+            const seededPreviews: Record<string, DiagramPreviewResultItem> = {};
+            for (const m of res.models) {
+              if (m.diagramSvg) {
+                seededPreviews[m.id] = { svg: m.diagramSvg, nodeCount: 0, edgeCount: 0 };
+              }
+            }
+            if (Object.keys(seededPreviews).length > 0) {
+              setLivePreviews((prev) => ({ ...seededPreviews, ...prev }));
+            }
+          } else {
+            setRegistryHasMore(false);
+          }
+          setIsStreamingModels(false);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setIsStreamingModels(false);
+          }
+        });
+    }, delay);
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [isOpen, mode, query, domain, packageFilter]);
+
+  const loadMoreRegistryModels = useCallback(() => {
+    if (!registryHasMore || loadingNextModelsRef.current) return;
+    loadingNextModelsRef.current = true;
+    setIsStreamingModels(true);
+    void streamRegistryModels({
+      q: query,
+      domain,
+      packageName: packageFilter === "all" ? undefined : packageFilter,
+      limit: 48,
+      offset: registryOffset,
+      includeSvg: true,
+    })
+      .then((res) => {
+        if (res.fromRegistry && res.models.length > 0) {
+          setStreamedModels((prev) => {
+            const seen = new Set(prev.map((m) => m.fqn.toLowerCase()));
+            const additions = res.models.filter((m) => !seen.has(m.fqn.toLowerCase()));
+            return additions.length > 0 ? [...prev, ...additions] : prev;
+          });
+          setRegistryOffset((prev) => prev + res.models.length);
+          setRegistryHasMore(res.hasMore);
+          if (Object.keys(res.packageDependencies).length > 0) {
+            setRegistryModelDeps((prev) => ({ ...prev, ...res.packageDependencies }));
+          }
+          const seededPreviews: Record<string, DiagramPreviewResultItem> = {};
+          for (const m of res.models) {
+            if (m.diagramSvg) {
+              seededPreviews[m.id] = { svg: m.diagramSvg, nodeCount: 0, edgeCount: 0 };
+            }
+          }
+          if (Object.keys(seededPreviews).length > 0) {
+            setLivePreviews((prev) => ({ ...seededPreviews, ...prev }));
+          }
+        } else {
+          setRegistryHasMore(false);
+        }
+      })
+      .finally(() => {
+        loadingNextModelsRef.current = false;
+        setIsStreamingModels(false);
+      });
+  }, [registryHasMore, query, domain, packageFilter, registryOffset]);
+
   const availablePackages = useMemo(() => {
     const pkgs = new Set<string>();
     for (const m of CURATED_OPEN_MODELS) {
@@ -301,8 +416,11 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
     for (const m of mountedLibs) {
       pkgs.add(m.name);
     }
+    for (const pkgName of registryModelPackages) {
+      pkgs.add(pkgName);
+    }
     return Array.from(pkgs).sort((a, b) => a.localeCompare(b));
-  }, [mountedLibs]);
+  }, [mountedLibs, registryModelPackages]);
 
   const filteredCurated = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -316,20 +434,43 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
     });
   }, [domain, packageFilter, query]);
 
+  const filteredStreamed = useMemo(() => {
+    const curatedFqns = new Set(CURATED_OPEN_MODELS.map((c) => (c.fqn || "").toLowerCase()).filter(Boolean));
+    const q = query.trim().toLowerCase();
+    return streamedModels.filter((item) => {
+      if (curatedFqns.has(item.fqn.toLowerCase())) return false;
+      if (domain !== "all" && item.category !== domain) return false;
+      if (packageFilter !== "all" && item.packageName.toLowerCase() !== packageFilter.toLowerCase()) return false;
+      if (!q) return true;
+      const haystack = `${item.title} ${item.fqn} ${item.packageName} ${item.summary}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [streamedModels, domain, packageFilter, query]);
+
   const filteredDynamic = useMemo(() => {
+    const seenFqns = new Set<string>();
+    for (const c of CURATED_OPEN_MODELS) {
+      if (c.fqn) seenFqns.add(c.fqn.toLowerCase());
+    }
+    for (const s of filteredStreamed) {
+      seenFqns.add(s.fqn.toLowerCase());
+    }
     return dynamicModels.filter((item) => {
+      if (seenFqns.has(item.fqn.toLowerCase())) return false;
       if (domain !== "all" && item.category !== domain) return false;
       if (packageFilter !== "all" && item.packageName.toLowerCase() !== packageFilter.toLowerCase()) return false;
       return true;
     });
-  }, [dynamicModels, domain, packageFilter]);
+  }, [dynamicModels, filteredStreamed, domain, packageFilter]);
 
   const ensurePackageAndPeersMounted = useCallback(
     async (pkgName: string, pkgVersion: string, bundledByDefault?: boolean) => {
       if (isPackageMounted(pkgName, bundledByDefault)) return;
       const catalogEntry = CURATED_PACKAGES.find((p) => p.name.toLowerCase() === pkgName.toLowerCase());
-      if (catalogEntry?.dependencies) {
-        for (const [depName, reqRange] of Object.entries(catalogEntry.dependencies)) {
+      const deps = catalogEntry?.dependencies ?? registryModelDeps[pkgName];
+      if (deps) {
+        for (const [depName, reqRange] of Object.entries(deps)) {
+          if (depName === "Complex" || depName === "ModelicaServices") continue;
           const minVer = reqRange.replace(/^[^\d]*/, "");
           const currentVer = mountedSet.get(depName.toLowerCase());
           if (!currentVer || (minVer && compareSemverSimple(currentVer, minVer) < 0)) {
@@ -346,7 +487,7 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
       }
       toast?.success?.(`Mounted ${pkgName}@${pkgVersion}`);
     },
-    [isPackageMounted, mountedSet, refreshMounted, toast],
+    [isPackageMounted, mountedSet, registryModelDeps, refreshMounted, toast],
   );
 
   const handleOpenCuratedModel = useCallback(
@@ -371,6 +512,46 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
           title: item.title,
           className: item.fqn?.split(".").pop(),
           filename: item.suggestedFilename,
+          targetView,
+        });
+        onClose();
+      } catch (err) {
+        toast?.error?.(`Could not open ${item.title}: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setBusyModelId(null);
+      }
+    },
+    [ensurePackageAndPeersMounted, onOpenModel, onClose, toast],
+  );
+
+  const handleOpenStreamedModel = useCallback(
+    async (item: StreamedRegistryModelItem, targetView: OpenModelTargetView = "split") => {
+      setBusyModelId(item.id);
+      try {
+        await ensurePackageAndPeersMounted(item.packageName, item.packageVersion);
+        let resolvedCode: string | null = null;
+        try {
+          const { content } = await getClassSource(item.fqn);
+          if (content && content.trim().length > 0) {
+            resolvedCode = content;
+          }
+        } catch {
+          // fall through to direct registry class source endpoint
+        }
+        if (!resolvedCode) {
+          resolvedCode = await fetchRegistryClassSource(item.packageName, item.packageVersion, item.fqn);
+        }
+        if (!resolvedCode) {
+          toast?.error?.(`Source unavailable for '${item.fqn}'.`);
+          return;
+        }
+        const ext = getLanguageExtension(item.dialect || "modelica");
+        onOpenModel({
+          code: resolvedCode,
+          dialect: item.dialect || "modelica",
+          title: item.title,
+          className: item.title,
+          filename: `${item.title}.${ext}`,
           targetView,
         });
         onClose();
@@ -550,13 +731,20 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
     }
   }, [shareUrlInput, stageOrOpenLocalText]);
 
-  const selectedCurated = useMemo(
-    () => CURATED_OPEN_MODELS.find((m) => m.id === selectedId) ?? filteredCurated[0] ?? CURATED_OPEN_MODELS[0],
-    [selectedId, filteredCurated],
+  const selectedStreamed = useMemo(
+    () => filteredStreamed.find((m) => m.id === selectedId) ?? null,
+    [filteredStreamed, selectedId],
   );
   const selectedDynamic = useMemo(
     () => dynamicModels.find((m) => m.id === selectedId) ?? null,
     [dynamicModels, selectedId],
+  );
+  const selectedCurated = useMemo(
+    () =>
+      selectedStreamed || selectedDynamic
+        ? null
+        : (CURATED_OPEN_MODELS.find((m) => m.id === selectedId) ?? filteredCurated[0] ?? null),
+    [selectedId, filteredCurated, selectedStreamed, selectedDynamic],
   );
 
   if (!isOpen || typeof document === "undefined") return null;
@@ -888,13 +1076,20 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
 
             {/* Wide Connected-Diagram Card Grid */}
             <div
+              onScroll={(e) => {
+                if (!registryHasMore || isStreamingModels) return;
+                const el = e.currentTarget;
+                if (el.scrollTop + el.clientHeight >= el.scrollHeight - 280) {
+                  loadMoreRegistryModels();
+                }
+              }}
               style={{
                 flex: 1,
                 overflowY: "auto",
                 padding: "18px 22px",
               }}
             >
-              {filteredCurated.length === 0 && filteredDynamic.length === 0 ? (
+              {filteredCurated.length === 0 && filteredStreamed.length === 0 && filteredDynamic.length === 0 ? (
                 <div
                   style={{
                     padding: "56px 20px",
@@ -1135,6 +1330,218 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                     );
                   })}
 
+                  {/* Live Streamed Ansatz Registry Models (with pre-rendered diagram.svg) */}
+                  {filteredStreamed.map((reg) => {
+                    const live = livePreviews[reg.id];
+                    const mounted = isPackageMounted(reg.packageName);
+                    const isSelected = selectedId === reg.id;
+                    const isBusy = busyModelId === reg.id;
+                    const previewMarkup =
+                      live?.svg || reg.diagramSvg || buildEquationFallbackPreviewSvg(reg.title, reg.fqn, isDark);
+
+                    return (
+                      <div
+                        key={reg.id}
+                        onClick={() => setSelectedId(reg.id)}
+                        onDoubleClick={() => void handleOpenStreamedModel(reg, "split")}
+                        style={{
+                          borderRadius: 12,
+                          border: `1.5px solid ${isSelected ? brand : borderCol}`,
+                          backgroundColor: cardBg,
+                          display: "flex",
+                          flexDirection: "column",
+                          overflow: "hidden",
+                          cursor: "pointer",
+                          boxShadow: isSelected
+                            ? "0 0 0 3px rgba(37, 99, 235, 0.18)"
+                            : isDark
+                              ? "0 4px 14px rgba(0,0,0,0.22)"
+                              : "0 2px 8px rgba(15,23,42,0.05)",
+                          transition: "border-color 0.14s ease, box-shadow 0.14s ease",
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: "relative",
+                            height: 146,
+                            backgroundColor: stageBg,
+                            backgroundImage: isDark
+                              ? "radial-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px)"
+                              : "radial-gradient(rgba(15, 23, 42, 0.09) 1px, transparent 1px)",
+                            backgroundSize: "14px 14px",
+                            borderBottom: `1px solid ${borderCol}`,
+                            padding: "8px 10px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{ width: "100%", height: "100%", display: "flex", alignItems: "center" }}
+                            dangerouslySetInnerHTML={{ __html: previewMarkup }}
+                          />
+                          <span
+                            style={{
+                              position: "absolute",
+                              top: 8,
+                              left: 8,
+                              padding: "2px 7px",
+                              borderRadius: 6,
+                              fontSize: 10.5,
+                              fontWeight: 700,
+                              backgroundColor: isDark ? "rgba(15, 23, 42, 0.86)" : "rgba(255, 255, 255, 0.92)",
+                              border: `1px solid ${borderCol}`,
+                              color: textPrimary,
+                            }}
+                          >
+                            {reg.kind}
+                          </span>
+                          <span
+                            style={{
+                              position: "absolute",
+                              bottom: 7,
+                              right: 8,
+                              padding: "2px 7px",
+                              borderRadius: 6,
+                              fontSize: 10,
+                              fontWeight: 600,
+                              backgroundColor: isDark ? "rgba(15, 23, 42, 0.84)" : "rgba(255, 255, 255, 0.9)",
+                              border: `1px solid ${borderCol}`,
+                              color: textMuted,
+                            }}
+                          >
+                            {live?.svg || reg.diagramSvg ? "Ansatz Diagram" : "Ansatz Model"}
+                          </span>
+                        </div>
+
+                        <div
+                          style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, flex: 1 }}
+                        >
+                          <div
+                            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}
+                          >
+                            <div
+                              style={{
+                                fontSize: 13.5,
+                                fontWeight: 700,
+                                color: textPrimary,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {reg.title}
+                            </div>
+                            <span
+                              style={{
+                                fontSize: 10.5,
+                                fontWeight: 600,
+                                padding: "2px 7px",
+                                borderRadius: 999,
+                                flexShrink: 0,
+                                backgroundColor: mounted
+                                  ? isDark
+                                    ? "rgba(16, 185, 129, 0.15)"
+                                    : "rgba(16, 185, 129, 0.12)"
+                                  : isDark
+                                    ? "rgba(59, 130, 246, 0.16)"
+                                    : "rgba(37, 99, 235, 0.09)",
+                                color: mounted ? (isDark ? "#34d399" : "#059669") : isDark ? "#93c5fd" : "#2563eb",
+                              }}
+                            >
+                              {mounted ? `${reg.packageName} ✓` : `+ ${reg.packageName}`}
+                            </span>
+                          </div>
+
+                          <div
+                            style={{
+                              fontSize: 11.5,
+                              color: textMuted,
+                              lineHeight: 1.42,
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                              minHeight: 32,
+                            }}
+                          >
+                            {reg.summary}
+                          </div>
+
+                          <div
+                            style={{
+                              marginTop: "auto",
+                              paddingTop: 8,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 8,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 11,
+                                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                                color: textMuted,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                              title={reg.fqn}
+                            >
+                              {reg.fqn}
+                            </span>
+
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleOpenStreamedModel(reg, "diagram");
+                                }}
+                                style={{
+                                  border: `1px solid ${borderCol}`,
+                                  backgroundColor: "transparent",
+                                  color: textPrimary,
+                                  borderRadius: 7,
+                                  padding: "5px 9px",
+                                  fontSize: 11.5,
+                                  fontWeight: 600,
+                                  cursor: isBusy ? "wait" : "pointer",
+                                }}
+                                title="Open in full-canvas Diagram view"
+                              >
+                                Diagram
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleOpenStreamedModel(reg, "split");
+                                }}
+                                style={{
+                                  border: "none",
+                                  backgroundColor: brand,
+                                  color: "#ffffff",
+                                  borderRadius: 7,
+                                  padding: "5px 11px",
+                                  fontSize: 11.5,
+                                  fontWeight: 600,
+                                  cursor: isBusy ? "wait" : "pointer",
+                                }}
+                              >
+                                {isBusy ? "Opening…" : "Open"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
                   {/* Dynamic Indexed Library Search Results */}
                   {filteredDynamic.map((dyn) => {
                     const live = livePreviews[dyn.id];
@@ -1260,10 +1667,32 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                   })}
                 </div>
               )}
+
+              {(registryHasMore || isStreamingModels) && (
+                <div style={{ marginTop: 16, display: "flex", justifyContent: "center" }}>
+                  <button
+                    type="button"
+                    disabled={isStreamingModels}
+                    onClick={() => loadMoreRegistryModels()}
+                    style={{
+                      padding: "7px 16px",
+                      borderRadius: 8,
+                      border: `1px solid ${borderCol}`,
+                      backgroundColor: cardBg,
+                      color: textPrimary,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: isStreamingModels ? "wait" : "pointer",
+                    }}
+                  >
+                    {isStreamingModels ? "Streaming models from Ansatz Registry…" : "Load more models"}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Selected Model Bottom Inspector Bar */}
-            {(selectedDynamic || selectedCurated) && (
+            {(selectedStreamed || selectedDynamic || selectedCurated) && (
               <div
                 style={{
                   padding: "12px 22px",
@@ -1289,15 +1718,23 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                       padding: 2,
                     }}
                     dangerouslySetInnerHTML={{
-                      __html: selectedDynamic
-                        ? livePreviews[selectedDynamic.id]?.svg ||
-                          buildEquationFallbackPreviewSvg(selectedDynamic.title, selectedDynamic.fqn, isDark)
-                        : livePreviews[selectedCurated!.id]?.svg || selectedCurated!.diagramSvg,
+                      __html: selectedStreamed
+                        ? livePreviews[selectedStreamed.id]?.svg ||
+                          selectedStreamed.diagramSvg ||
+                          buildEquationFallbackPreviewSvg(selectedStreamed.title, selectedStreamed.fqn, isDark)
+                        : selectedDynamic
+                          ? livePreviews[selectedDynamic.id]?.svg ||
+                            buildEquationFallbackPreviewSvg(selectedDynamic.title, selectedDynamic.fqn, isDark)
+                          : livePreviews[selectedCurated!.id]?.svg || selectedCurated!.diagramSvg,
                     }}
                   />
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: textPrimary }}>
-                      {selectedDynamic ? selectedDynamic.title : selectedCurated!.title}
+                      {selectedStreamed
+                        ? selectedStreamed.title
+                        : selectedDynamic
+                          ? selectedDynamic.title
+                          : selectedCurated!.title}
                     </div>
                     <div
                       style={{
@@ -1308,11 +1745,15 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {selectedDynamic
-                        ? `${selectedDynamic.fqn} · Mounted in ${selectedDynamic.packageName}`
-                        : isPackageMounted(selectedCurated!.packageName, selectedCurated!.bundledByDefault)
-                          ? `${selectedCurated!.fqn || selectedCurated!.suggestedFilename} · ${selectedCurated!.packageName}@${selectedCurated!.packageVersion} ready`
-                          : `Auto-mounts Ansatz package ${selectedCurated!.packageName}@${selectedCurated!.packageVersion} before opening`}
+                      {selectedStreamed
+                        ? isPackageMounted(selectedStreamed.packageName)
+                          ? `${selectedStreamed.fqn} · ${selectedStreamed.packageName}@${selectedStreamed.packageVersion} ready`
+                          : `Auto-mounts Ansatz package ${selectedStreamed.packageName}@${selectedStreamed.packageVersion} before opening`
+                        : selectedDynamic
+                          ? `${selectedDynamic.fqn} · Mounted in ${selectedDynamic.packageName}`
+                          : isPackageMounted(selectedCurated!.packageName, selectedCurated!.bundledByDefault)
+                            ? `${selectedCurated!.fqn || selectedCurated!.suggestedFilename} · ${selectedCurated!.packageName}@${selectedCurated!.packageVersion} ready`
+                            : `Auto-mounts Ansatz package ${selectedCurated!.packageName}@${selectedCurated!.packageVersion} before opening`}
                     </div>
                   </div>
                 </div>
@@ -1321,7 +1762,8 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      if (selectedDynamic) void handleOpenDynamicModel(selectedDynamic, "code");
+                      if (selectedStreamed) void handleOpenStreamedModel(selectedStreamed, "code");
+                      else if (selectedDynamic) void handleOpenDynamicModel(selectedDynamic, "code");
                       else if (selectedCurated) void handleOpenCuratedModel(selectedCurated, "code");
                     }}
                     style={{
@@ -1341,7 +1783,8 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      if (selectedDynamic) void handleOpenDynamicModel(selectedDynamic, "diagram");
+                      if (selectedStreamed) void handleOpenStreamedModel(selectedStreamed, "diagram");
+                      else if (selectedDynamic) void handleOpenDynamicModel(selectedDynamic, "diagram");
                       else if (selectedCurated) void handleOpenCuratedModel(selectedCurated, "diagram");
                     }}
                     style={{
@@ -1361,7 +1804,8 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      if (selectedDynamic) void handleOpenDynamicModel(selectedDynamic, "split");
+                      if (selectedStreamed) void handleOpenStreamedModel(selectedStreamed, "split");
+                      else if (selectedDynamic) void handleOpenDynamicModel(selectedDynamic, "split");
                       else if (selectedCurated) void handleOpenCuratedModel(selectedCurated, "split");
                     }}
                     style={{

@@ -667,12 +667,12 @@ export class GLRTable {
 
         const ruleMatchesEntry = (rule: string, g: string): boolean => {
           if (g === rule) return true;
-          if (rule.includes(g) || g.includes(rule)) return true;
+          if (rule === `_${g}` || rule.startsWith(`_${g}_`)) return true;
           const origins = this.grammar.syntheticOrigins?.get(rule);
           if (origins) {
             if (origins.has(g)) return true;
             for (const o of origins) {
-              if (o === g || o.includes(g) || g.includes(o)) return true;
+              if (o === g || o === `_${g}` || o.startsWith(`_${g}_`)) return true;
             }
           }
           return false;
@@ -851,9 +851,9 @@ export class GLRTable {
     // Precedence resolution for Shift vs Reduce
     for (let i = 0; i < list.length; i++) {
       const exist = list[i]!;
-      if (action.prec !== undefined || exist.prec !== undefined) {
-        const actionPrec = action.prec ?? 0;
-        const existPrec = exist.prec ?? 0;
+      if (action.prec !== undefined && exist.prec !== undefined) {
+        const actionPrec = action.prec;
+        const existPrec = exist.prec;
 
         if (action.type === ActionType.REDUCE && exist.type === ActionType.SHIFT) {
           if (actionPrec > existPrec) {
@@ -864,14 +864,16 @@ export class GLRTable {
           if (actionPrec < existPrec) {
             return;
           } // Shift wins
-          if (action.assoc === "left") {
-            list.splice(i, 1);
-            i--;
-            continue;
-          } // Left assoc -> Reduce wins
-          if (action.assoc === "right") {
-            return;
-          } // Right assoc -> Shift wins
+          if (actionPrec === existPrec) {
+            if (action.assoc === "left") {
+              list.splice(i, 1);
+              i--;
+              continue;
+            } // Left assoc -> Reduce wins
+            if (action.assoc === "right") {
+              return;
+            } // Right assoc -> Shift wins
+          }
         } else if (action.type === ActionType.SHIFT && exist.type === ActionType.REDUCE) {
           if (actionPrec > existPrec) {
             list.splice(i, 1);
@@ -881,14 +883,16 @@ export class GLRTable {
           if (actionPrec < existPrec) {
             return;
           } // Reduce wins
-          if (exist.assoc === "left") {
-            return;
-          } // Left assoc -> Reduce wins
-          if (exist.assoc === "right") {
-            list.splice(i, 1);
-            i--;
-            continue;
-          } // Right assoc -> Shift wins
+          if (actionPrec === existPrec) {
+            if (exist.assoc === "left") {
+              return;
+            } // Left assoc -> Reduce wins
+            if (exist.assoc === "right") {
+              list.splice(i, 1);
+              i--;
+              continue;
+            } // Right assoc -> Shift wins
+          }
         } else if (action.type === ActionType.REDUCE && exist.type === ActionType.REDUCE) {
           if (actionPrec > existPrec) {
             list.splice(i, 1);

@@ -537,27 +537,55 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     // Build ports
     const ports: DiagramPort[] = [];
     if (isUnresolved) {
-      const referencedPorts = new Set<string>();
+      const referencedPorts = new Map<string, { x?: number; y?: number }>();
       for (const eq of connectEquations) {
         const p1 =
           eq.lhs ?? eq.componentReference1?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "").join(".");
         const p2 =
           eq.rhs ?? eq.componentReference2?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "").join(".");
+        const line: ILine | null = typeof eq.annotation === "function" ? (eq.annotation("Line") as ILine | null) : null;
+        const linePoints = line?.points;
         if (typeof p1 === "string" && p1.startsWith(`${component.name}.`)) {
-          referencedPorts.add(p1.substring(component.name.length + 1).split(".")[0]!);
+          const portName = p1.substring(component.name.length + 1).split(".")[0]!;
+          if (!referencedPorts.has(portName)) {
+            let hint: { x?: number; y?: number } = {};
+            if (linePoints && linePoints.length > 0) {
+              const [px, py] = convertPoint(linePoints[0]!);
+              hint = { x: px, y: py };
+            }
+            referencedPorts.set(portName, hint);
+          }
         }
         if (typeof p2 === "string" && p2.startsWith(`${component.name}.`)) {
-          referencedPorts.add(p2.substring(component.name.length + 1).split(".")[0]!);
+          const portName = p2.substring(component.name.length + 1).split(".")[0]!;
+          if (!referencedPorts.has(portName)) {
+            let hint: { x?: number; y?: number } = {};
+            if (linePoints && linePoints.length > 0) {
+              const [px, py] = convertPoint(linePoints[linePoints.length - 1]!);
+              hint = { x: px, y: py };
+            }
+            referencedPorts.set(portName, hint);
+          }
         }
       }
       if (referencedPorts.size === 0) {
-        referencedPorts.add("p");
-        referencedPorts.add("n");
+        referencedPorts.set("p", {});
+        referencedPorts.set("n", {});
       }
+      const nodeX = componentTransform.translateX;
+      const nodeY = componentTransform.translateY;
       let idx = 0;
-      for (const portName of referencedPorts) {
-        const portX = idx % 2 === 0 ? 0 : absWidth;
-        const portY = absHeight / 2;
+      for (const [portName, hint] of referencedPorts.entries()) {
+        let portX = idx % 2 === 0 ? 0 : absWidth;
+        let portY = absHeight / 2;
+        if (typeof hint.x === "number" && typeof hint.y === "number") {
+          const relX = hint.x - nodeX;
+          const relY = hint.y - nodeY;
+          if (relX >= -5 && relX <= absWidth + 5 && relY >= -5 && relY <= absHeight + 5) {
+            portX = Math.max(0, Math.min(absWidth, relX));
+            portY = Math.max(0, Math.min(absHeight, relY));
+          }
+        }
         ports.push({
           id: portName,
           group: "absolute",
@@ -952,8 +980,8 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     const explicitPts = (edge as any).data?.points as { x: number; y: number }[] | undefined;
     const p0 = explicitPts && explicitPts.length >= 2 ? explicitPts[0]! : null;
     const pN = explicitPts && explicitPts.length >= 2 ? explicitPts[explicitPts.length - 1]! : null;
-    const healSrc = srcPt && (!p0 || Math.hypot(srcPt.x - p0.x, srcPt.y - p0.y) <= 4) ? srcPt : (p0 ?? srcPt);
-    const healTgt = tgtPt && (!pN || Math.hypot(tgtPt.x - pN.x, tgtPt.y - pN.y) <= 4) ? tgtPt : (pN ?? tgtPt);
+    const healSrc = srcPt ?? p0;
+    const healTgt = tgtPt ?? pN;
 
     // If an explicit 2-point Line(points={{x1,y1},{x2,y2}}) is a clean, non-degenerate, axis-aligned wire
     // matching its ports and not impaling any component interior, lock it as author-committed geometry
@@ -966,8 +994,8 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
       healSrc &&
       healTgt &&
       Math.hypot(p0.x - pN.x, p0.y - pN.y) > 1 &&
-      (!srcPt || Math.hypot(srcPt.x - p0.x, srcPt.y - p0.y) <= 6) &&
-      (!tgtPt || Math.hypot(tgtPt.x - pN.x, tgtPt.y - pN.y) <= 6) &&
+      (!srcPt || Math.hypot(srcPt.x - p0.x, srcPt.y - p0.y) <= 8) &&
+      (!tgtPt || Math.hypot(tgtPt.x - pN.x, tgtPt.y - pN.y) <= 8) &&
       (Math.abs(healSrc.x - healTgt.x) <= 2 || Math.abs(healSrc.y - healTgt.y) <= 2) &&
       !segmentImpalesAnyComponent(healSrc, healTgt)
     ) {
@@ -2783,10 +2811,24 @@ const bitmapDataUriCache = new Map<string, string | null>();
  * Resolves a `modelica://` URI into a base64 data URI for bitmaps/images.
  */
 export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaClassInstance): string | null {
-  if (!uri || !uri.startsWith("modelica://")) return null;
+  if (!uri) return null;
+  if (uri.startsWith("data:")) return uri;
   if (bitmapDataUriCache.has(uri)) return bitmapDataUriCache.get(uri) ?? null;
 
-  const match = uri.match(/^modelica:\/\/([^/]+)\/(.*)$/);
+  let normalizedUri = uri;
+  if (
+    !normalizedUri.startsWith("modelica://") &&
+    !normalizedUri.startsWith("http://") &&
+    !normalizedUri.startsWith("https://")
+  ) {
+    const rawLib = (classInstance as any)?.compositeName || classInstance?.name || "";
+    const libName = rawLib.split(".")[0];
+    if (libName) {
+      normalizedUri = `modelica://${libName}/${uri.replace(/^\.?\//, "")}`;
+    }
+  }
+
+  const match = normalizedUri.match(/^modelica:\/\/([^/]+)\/(.*)$/);
   if (!match) {
     bitmapDataUriCache.set(uri, null);
     return null;
@@ -2795,9 +2837,10 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
 
   // 1. Try classInstance.context or classInstance.db?.context
   const ctx = (classInstance as any)?.context ?? (classInstance as any)?.db?.context;
-  if (typeof ctx?.resolveURI === "function" && typeof ctx?.fs?.readBinary === "function") {
-    const resolved = ctx.resolveURI(uri);
-    if (resolved) {
+  let resolved: string | null = null;
+  if (typeof ctx?.resolveURI === "function") {
+    resolved = ctx.resolveURI(normalizedUri) ?? null;
+    if (resolved && typeof ctx?.fs?.readBinary === "function") {
       try {
         const binary = ctx.fs.readBinary(resolved);
         if (binary && binary.length > 0) {
@@ -2827,6 +2870,9 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
     }
     if (nodeFs && nodePath) {
       const candidates: string[] = [];
+      if (resolved) {
+        candidates.push(resolved);
+      }
 
       if (classInstance?.id && classInstance.db?.symbol) {
         const sym = classInstance.db.symbol(classInstance.id);
@@ -2847,6 +2893,10 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
       if (cwd) {
         candidates.push(nodePath.join(cwd, "scripts", "msl", `${libraryName} 4.0.0`, relativePath));
         candidates.push(nodePath.join(cwd, "scripts", "msl", libraryName, relativePath));
+        candidates.push(nodePath.join(cwd, "scripts", libraryName, relativePath));
+        candidates.push(nodePath.join(cwd, "scripts", relativePath));
+        candidates.push(nodePath.join(cwd, ".cache", "test-openipsl", libraryName, relativePath));
+        candidates.push(nodePath.join(cwd, "data", libraryName, relativePath));
       }
       const home = (globalThis as any).process?.env?.HOME;
       if (home) {
@@ -3199,6 +3249,30 @@ export function buildComponentProperties(
           );
         } else if (rawChoices !== undefined) {
           choices = [String(rawChoices)];
+        }
+      }
+
+      if (!choices) {
+        const typeSpec = element.declaration?.metadata?.typeSpecifier ?? element.classInstance?.name ?? "";
+        if (
+          typeSpec.endsWith("Blocks.Types.Init") ||
+          (typeSpec.endsWith(".Init") && element.name === "initType") ||
+          (typeSpec === "Init" && element.name === "initType")
+        ) {
+          choices = [
+            "Modelica.Blocks.Types.Init.NoInit",
+            "Modelica.Blocks.Types.Init.SteadyState",
+            "Modelica.Blocks.Types.Init.InitialState",
+            "Modelica.Blocks.Types.Init.InitialOutput",
+          ];
+        } else if (typeSpec.endsWith("Blocks.Types.InitPID")) {
+          choices = [
+            "Modelica.Blocks.Types.InitPID.NoInit",
+            "Modelica.Blocks.Types.InitPID.SteadyState",
+            "Modelica.Blocks.Types.InitPID.InitialState",
+            "Modelica.Blocks.Types.InitPID.InitialOutput",
+            "Modelica.Blocks.Types.InitPID.DoNotUse_InitialIntegratorState",
+          ];
         }
       }
 

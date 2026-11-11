@@ -678,6 +678,11 @@ export async function initWorkspaceAndTree(
                 files: parsed.files,
                 remoteFiles: parsed.remoteFiles,
                 primaryFile: parsed.primaryFile,
+                dependencies:
+                  parsed.dependencies ||
+                  (Array.isArray(parsed.viewConfig?.["dependencies"])
+                    ? (parsed.viewConfig?.["dependencies"] as Array<{ name: string; version: string }>)
+                    : undefined),
               };
             }
           }
@@ -700,6 +705,9 @@ export async function initWorkspaceAndTree(
                   viewConfig: config,
                   files: config.files,
                   primaryFile: config.primaryFile || config.filename,
+                  dependencies: Array.isArray(config.dependencies)
+                    ? (config.dependencies as Array<{ name: string; version: string }>)
+                    : undefined,
                 };
               }
             }
@@ -780,6 +788,14 @@ export async function initWorkspaceAndTree(
         }
       } catch {
         // ignore
+      }
+
+      // Pre-open package.json if present to notify LSP to sync dependencies
+      try {
+        const pkgUri = Uri.joinPath(workspaceUri, "package.json");
+        await workspace.openTextDocument(pkgUri);
+      } catch {
+        // ignore if no package.json
       }
 
       if (primaryFile && fileUri) {

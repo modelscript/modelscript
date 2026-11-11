@@ -57,6 +57,7 @@ export interface ArtifactWorkspaceDescriptor {
   files?: Record<string, string> | undefined;
   remoteFiles?: RemoteFileEntry[] | undefined;
   primaryFile?: string | undefined;
+  dependencies?: Array<{ name: string; version: string; [key: string]: unknown }> | undefined;
 }
 
 export interface GeneratedWorkspace {
@@ -5211,6 +5212,102 @@ export function generatePackageWorkspaceFiles(
   return { files, primaryFile };
 }
 
+export function injectArtifactDependencies(
+  result: GeneratedWorkspace,
+  descriptor: ArtifactWorkspaceDescriptor,
+): GeneratedWorkspace {
+  const config = descriptor.viewConfig || {};
+  const rawDeps =
+    descriptor.dependencies ||
+    (Array.isArray(config["dependencies"])
+      ? (config["dependencies"] as Array<{ name: string; version: string }>)
+      : undefined);
+
+  if (Array.isArray(rawDeps) && rawDeps.length > 0) {
+    const depMap: Record<string, string> = {};
+    for (const d of rawDeps) {
+      if (d && typeof d.name === "string" && typeof d.version === "string") {
+        depMap[d.name] = d.version;
+      }
+    }
+    if (Object.keys(depMap).length > 0) {
+      if (!result.files["package.json"] && !result.files["modelscript.json"]) {
+        const pkgName = sanitizeModelicaIdentifier(descriptor.title, `artifact-${descriptor.artifactId}`).toLowerCase();
+        result.files["package.json"] =
+          JSON.stringify(
+            {
+              name: pkgName,
+              version: "1.0.0",
+              description: descriptor.title || `ModelScript artifact workspace #${descriptor.artifactId}`,
+              dependencies: depMap,
+            },
+            null,
+            2,
+          ) + "\n";
+      }
+
+      // If primary file is a Modelica file and doesn't already contain uses(...), inject annotation(uses(...))
+      const primary = result.primaryFile;
+      if (primary && primary.endsWith(".mo") && result.files[primary] && !result.files[primary]!.includes("uses(")) {
+        const usesClauses = Object.entries(depMap)
+          .map(([name, ver]) => `${name}(version = "${ver}")`)
+          .join(", ");
+        const usesAnnotation = `annotation(uses(${usesClauses}));\n`;
+        const code = result.files[primary]!;
+        const endMatch = /\bend\s+[A-Za-z0-9_]+\s*;[\s\S]*$/.exec(code);
+        if (endMatch) {
+          const insertIdx = endMatch.index;
+          result.files[primary] = `${code.slice(0, insertIdx)}  ${usesAnnotation}${code.slice(insertIdx)}`;
+        } else {
+          result.files[primary] = `${code}\n${usesAnnotation}`;
+        }
+      }
+
+      // If primary file is a SysML v2 file (.sysml), inject import clauses if missing
+      if (primary && (primary.endsWith(".sysml") || primary.endsWith(".sysml2")) && result.files[primary]) {
+        const code = result.files[primary]!;
+        const neededImports: string[] = [];
+        for (const depName of Object.keys(depMap)) {
+          const impRegex = new RegExp(`\\bimport\\s+${depName}\\b`, "i");
+          if (!impRegex.test(code)) {
+            neededImports.push(`  import ${depName}::*;`);
+          }
+        }
+        if (neededImports.length > 0) {
+          const pkgOpenMatch = /\bpackage\s+[A-Za-z0-9_]+\s*\{/.exec(code);
+          if (pkgOpenMatch) {
+            const insertIdx = pkgOpenMatch.index + pkgOpenMatch[0].length;
+            result.files[primary] = `${code.slice(0, insertIdx)}\n${neededImports.join("\n")}${code.slice(insertIdx)}`;
+          } else {
+            result.files[primary] = `${neededImports.join("\n")}\n\n${code}`;
+          }
+        }
+      }
+
+      // If primary file is a SPICE file (.cir, .sp, .spice), inject .include directives if missing
+      if (
+        primary &&
+        (primary.endsWith(".cir") || primary.endsWith(".sp") || primary.endsWith(".spice")) &&
+        result.files[primary]
+      ) {
+        const code = result.files[primary]!;
+        const neededIncludes: string[] = [];
+        for (const depName of Object.keys(depMap)) {
+          const incRegex = new RegExp(`\\.(?:include|lib)\\s+["']?${depName}(?:\\.[a-z0-9]+)?["']?`, "i");
+          if (!incRegex.test(code)) {
+            neededIncludes.push(`.include "${depName}.cir"`);
+          }
+        }
+        if (neededIncludes.length > 0) {
+          result.files[primary] = `* External library dependencies\n${neededIncludes.join("\n")}\n\n${code}`;
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
 export function mountArtifactToMemFs(
   memFs: IMemoryFileSystemProvider,
   workspaceUri: vscode.Uri,
@@ -5218,7 +5315,8 @@ export function mountArtifactToMemFs(
 ): { files: Record<string, string>; primaryFile: string } {
   registerArtifactDescriptor(descriptor);
   const encoder = new TextEncoder();
-  const { files, primaryFile } = generateArtifactWorkspaceFiles(descriptor);
+  const rawGenerated = generateArtifactWorkspaceFiles(descriptor);
+  const { files, primaryFile } = injectArtifactDependencies(rawGenerated, descriptor);
   descriptor.primaryFile = primaryFile;
   registerArtifactDescriptor(descriptor);
 

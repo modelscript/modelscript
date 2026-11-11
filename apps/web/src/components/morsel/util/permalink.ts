@@ -36,6 +36,8 @@ export interface CompressedMorselPayload {
     | undefined;
   isMultiFile?: boolean | undefined;
   artifactId?: string | number | undefined;
+  diagramType?: string | undefined;
+  dependencies?: Array<{ name: string; version: string; [key: string]: unknown }> | undefined;
 }
 
 /**

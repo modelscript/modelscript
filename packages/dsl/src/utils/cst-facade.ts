@@ -14,6 +14,9 @@ export interface Edit {
   startPosition: Point;
   oldEndPosition: Point;
   newEndPosition: Point;
+  startByte?: number;
+  oldEndByte?: number;
+  newEndByte?: number;
 }
 
 export interface Parser {
@@ -54,6 +57,8 @@ export interface SyntaxNode {
   endPosition: Point;
   startIndex: number;
   endIndex: number;
+  startByte: number;
+  endByte: number;
   parent: SyntaxNode | null;
   children: SyntaxNode[];
   namedChildren: SyntaxNode[];
@@ -115,8 +120,12 @@ export interface Tree {
   getChangedRanges(other: Tree): Range[];
   getIncludedRanges(): Range[];
   getText(node: SyntaxNode): string;
-  getEditedRange(): Range;
+  getEditedRange(): Range | null;
   printDotGraph(fd?: number): void;
+  offsetToPoint(offset: number): Point;
+  pointToOffset(point: Point): number;
+  offsetToByte?(offset: number): number;
+  byteToOffset?(byteOffset: number): number;
 }
 
 export interface TreeCursor {

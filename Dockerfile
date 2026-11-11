@@ -87,8 +87,10 @@ COPY languages/lps/package.json languages/lps/
 COPY languages/modelica/package.json languages/modelica/
 COPY languages/modelscript/package.json languages/modelscript/
 COPY languages/matpower/package.json languages/matpower/
+COPY languages/mlxtran/package.json languages/mlxtran/
 COPY languages/modflow/package.json languages/modflow/
 COPY languages/nifti/package.json languages/nifti/
+COPY languages/nmodl/package.json languages/nmodl/
 COPY languages/nmtran/package.json languages/nmtran/
 COPY languages/ocpp/package.json languages/ocpp/
 COPY languages/olga/package.json languages/olga/

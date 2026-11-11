@@ -216,6 +216,42 @@ export interface ComponentMetadata {
   modifiers: { name: string; value: string | null }[];
 }
 
+export interface RegistryCatalogItem {
+  fqn: string;
+  name: string;
+  kind: string;
+  domain: string;
+  subpackage: string | null;
+  packageName: string;
+  packageVersion: string;
+  description: string | null;
+  language: string;
+  hasIcon: boolean;
+  hasDiagram: boolean;
+}
+
+export interface RegistryCatalogQueryOptions {
+  mode: "components" | "models";
+  q?: string | undefined;
+  domain?: string | undefined;
+  packageName?: string | undefined;
+  subpackage?: string | undefined;
+  kind?: string | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
+}
+
+export interface RegistryCatalogQueryResult {
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  items: RegistryCatalogItem[];
+  availablePackages: { name: string; version: string; count: number }[];
+  availableSubpackages: { id: string; label: string; count: number }[];
+  packageDependencies: Record<string, Record<string, string>>;
+}
+
 export interface TrendingTopicRow {
   id: number;
   concept: string;
@@ -678,6 +714,12 @@ export class LibraryDatabase {
       dependentsCountByName: Map<string, number>;
     };
   } | null = null;
+  #registryCatalogCache: {
+    expiresAt: number;
+    components: RegistryCatalogItem[];
+    models: RegistryCatalogItem[];
+    dependenciesByPackage: Map<string, Record<string, string>>;
+  } | null = null;
   readonly referrals: ReferralRepository;
   readonly users: UserRepository;
   readonly packages: PackageRepository;
@@ -687,6 +729,7 @@ export class LibraryDatabase {
 
   invalidateLibraryDiscoveryCache(): void {
     this.#libraryDiscoveryBaseCache = null;
+    this.#registryCatalogCache = null;
   }
 
   get webPushService(): WebPushService {
@@ -11978,15 +12021,14 @@ export class LibraryDatabase {
     this.#db
       .prepare(`DELETE FROM classes WHERE library_name = ? AND library_version = ?`)
       .run(libraryName, libraryVersion);
+    this.#registryCatalogCache = null;
   }
 
-  /**
-   * Store all metadata for a library version inside a transaction.
-   */
   /**
    * Store metadata for a single class. This should be run inside a transaction for performance.
    */
   storeClassMetadata(libraryName: string, libraryVersion: string, cls: ClassMetadata): void {
+    this.#registryCatalogCache = null;
     const result = this.#db
       .prepare(
         `INSERT OR REPLACE INTO classes (library_name, library_version, class_name, class_kind, description, documentation, icon_hash, diagram_hash)
@@ -12048,6 +12090,7 @@ export class LibraryDatabase {
     });
 
     transaction();
+    this.#registryCatalogCache = null;
   }
 
   /**
@@ -12062,6 +12105,7 @@ export class LibraryDatabase {
     });
 
     transaction();
+    this.#registryCatalogCache = null;
   }
 
   /**
@@ -12089,6 +12133,455 @@ export class LibraryDatabase {
     sql += ` ORDER BY class_name`;
 
     return this.#db.prepare(sql).all(...params) as Omit<ClassRow, "id">[];
+  }
+
+  #getRegistryCatalogIndex(): {
+    components: RegistryCatalogItem[];
+    models: RegistryCatalogItem[];
+    dependenciesByPackage: Map<string, Record<string, string>>;
+  } {
+    const now = Date.now();
+    if (this.#registryCatalogCache && this.#registryCatalogCache.expiresAt > now) {
+      return this.#registryCatalogCache;
+    }
+
+    const distinctLibVersions = this.#db
+      .prepare(`SELECT library_name, library_version FROM classes GROUP BY library_name, library_version`)
+      .all() as { library_name: string; library_version: string }[];
+
+    const yankedRows = this.#db
+      .prepare(`SELECT library_name, library_version FROM library_releases WHERE is_yanked = 1`)
+      .all() as { library_name: string; library_version: string }[];
+    const yankedSet = new Set(yankedRows.map((r) => `${r.library_name}@${r.library_version}`));
+
+    const distTagRows = this.#db
+      .prepare(
+        `SELECT p.name AS library_name, dt.version AS latest_version
+         FROM dist_tags dt
+         JOIN packages p ON p.id = dt.package_id
+         WHERE dt.tag = 'latest'`,
+      )
+      .all() as { library_name: string; latest_version: string }[];
+    const distTagMap = new Map<string, string>();
+    for (const dt of distTagRows) {
+      distTagMap.set(dt.library_name, dt.latest_version);
+    }
+
+    const versionsByPkg = new Map<string, string[]>();
+    for (const row of distinctLibVersions) {
+      if (yankedSet.has(`${row.library_name}@${row.library_version}`)) continue;
+      let list = versionsByPkg.get(row.library_name);
+      if (!list) {
+        list = [];
+        versionsByPkg.set(row.library_name, list);
+      }
+      list.push(row.library_version);
+    }
+
+    const activePkgVersions: { libraryName: string; libraryVersion: string }[] = [];
+    for (const [libName, versions] of versionsByPkg.entries()) {
+      versions.sort((a, b) => {
+        if (semver.valid(a) && semver.valid(b)) return semver.rcompare(a, b);
+        return b.localeCompare(a);
+      });
+      const tagged = distTagMap.get(libName);
+      const chosen = tagged && versions.includes(tagged) ? tagged : versions[0];
+      if (chosen) {
+        activePkgVersions.push({ libraryName: libName, libraryVersion: chosen });
+      }
+    }
+    activePkgVersions.sort((a, b) => a.libraryName.localeCompare(b.libraryName));
+
+    const dependenciesByPackage = new Map<string, Record<string, string>>();
+    const manifestStmt = this.#db.prepare(
+      `SELECT pv.manifest
+       FROM package_versions pv
+       JOIN packages p ON p.id = pv.package_id
+       WHERE p.name = ? AND pv.version = ?`,
+    );
+
+    const nonComponentKinds = new Set([
+      "package",
+      "function",
+      "operator",
+      "operator function",
+      "type",
+      "enumeration",
+      "sysml_package",
+      "sysml_requirement_def",
+    ]);
+    const nonModelKinds = new Set([
+      "package",
+      "connector",
+      "expandable connector",
+      "record",
+      "operator record",
+      "function",
+      "operator",
+      "operator function",
+      "type",
+      "enumeration",
+      "sysml_package",
+      "sysml_port_def",
+      "sysml_item_def",
+      "sysml_attribute_def",
+      "sysml_requirement_def",
+    ]);
+    const primitiveSubpkgRe =
+      /\.(?:Basic|Components|Sources|Sensors|Actuators|Parts|Joints|Movers|Fittings|HeatExchangers|Volumes|MixingVolumes|Interfaces|Icons|BaseClasses|Internal|Types|Choices|UsersGuide)\./;
+    const excludedComponentSegmentRe =
+      /\.(?:Examples|Icons|Interfaces|Internal|UsersGuide|BaseClasses|Types|Choices)(?:\.|$)/;
+
+    const inferLanguage = (kindLower: string, libName: string): string => {
+      if (kindLower.startsWith("sysml") || libName.toLowerCase().includes("sysml")) return "sysml2";
+      if (kindLower.startsWith("pscad") || libName.toLowerCase().includes("pscad")) return "pscad";
+      if (kindLower.startsWith("spice") || libName.toLowerCase().includes("spice")) return "spice";
+      if (kindLower.startsWith("urdf") || libName.toLowerCase().includes("urdf")) return "urdf";
+      if (kindLower.startsWith("step") || kindLower === "cad") return "step";
+      if (kindLower.startsWith("scad")) return "scad";
+      return "modelica";
+    };
+
+    const inferDomain = (fqn: string, kindLower: string, libName: string): string => {
+      const hay = `${libName} ${fqn} ${kindLower}`.toLowerCase();
+      if (
+        kindLower.startsWith("sysml") ||
+        /\b(sysml|kerml|reqif|ssp|oscal|requirement|architecture|autosar|owl)\b/.test(hay)
+      ) {
+        return "systems";
+      }
+      if (
+        kindLower.startsWith("step") ||
+        kindLower.startsWith("scad") ||
+        kindLower.startsWith("urdf") ||
+        /\b(cad|step|scad|urdf|robot|fea|cfd|geometry|chassis|mesh|fastener)\b/.test(hay)
+      ) {
+        return "robotics-cad";
+      }
+      if (
+        kindLower.startsWith("pscad") ||
+        kindLower.startsWith("psse") ||
+        /\b(pscad|psse|opendss|ieee|powergrid|power_grid|powersystems|transmission|substation|busbar)\b/.test(hay)
+      ) {
+        return "power-grids";
+      }
+      if (
+        fqn.includes(".Electrical.") ||
+        fqn.includes(".Magnetic.") ||
+        /\b(electrical|magnetic|electronic|spice|semiconductor|inverter|battery|circuit|motor|drive)\b/.test(hay)
+      ) {
+        return "electrical";
+      }
+      if (
+        fqn.includes(".Fluid.") ||
+        fqn.includes(".Thermal.") ||
+        /\b(fluid|thermal|heat|media|buildings|hvac|thermopower|aixlib|swmm|epanet|olga|relap5|pump|valve|pipe|boiler)\b/.test(
+          hay,
+        )
+      ) {
+        return "fluids-thermal";
+      }
+      if (
+        fqn.includes(".Mechanics.") ||
+        libName.toLowerCase().includes("mechanics") ||
+        /\b(mechanic|rotational|translational|multibody|planar|joint|gear|spring|damper|pendulum|kinematic|adams|simpack)\b/.test(
+          hay,
+        )
+      ) {
+        return "mechanics";
+      }
+      if (
+        fqn.includes(".Blocks.") ||
+        fqn.includes(".Clocked.") ||
+        fqn.includes(".StateGraph.") ||
+        /\b(block|control|pid|clocked|stategraph|synchronous|signal|filter|transfer|sensor|source)\b/.test(hay)
+      ) {
+        return "control";
+      }
+      return "systems";
+    };
+
+    const components: RegistryCatalogItem[] = [];
+    const models: RegistryCatalogItem[] = [];
+
+    const selectClassesStmt = this.#db.prepare(
+      `SELECT class_name, class_kind, description, icon_hash, diagram_hash
+       FROM classes
+       WHERE library_name = ? AND library_version = ?
+       ORDER BY class_name`,
+    );
+
+    for (const { libraryName, libraryVersion } of activePkgVersions) {
+      const mRow = manifestStmt.get(libraryName, libraryVersion) as { manifest?: string | null } | undefined;
+      if (mRow?.manifest) {
+        try {
+          const parsed = JSON.parse(mRow.manifest) as Record<string, unknown>;
+          const msx =
+            parsed["modelscript"] && typeof parsed["modelscript"] === "object"
+              ? (parsed["modelscript"] as Record<string, unknown>)
+              : undefined;
+          const rawDeps = {
+            ...(parsed["dependencies"] && typeof parsed["dependencies"] === "object"
+              ? (parsed["dependencies"] as Record<string, unknown>)
+              : {}),
+            ...(msx?.["dependencies"] && typeof msx["dependencies"] === "object"
+              ? (msx["dependencies"] as Record<string, unknown>)
+              : {}),
+          };
+          const cleanDeps: Record<string, string> = {};
+          for (const [depKey, depVal] of Object.entries(rawDeps)) {
+            if (typeof depVal === "string" && depVal.trim().length > 0) {
+              cleanDeps[depKey] = depVal.trim();
+            }
+          }
+          if (Object.keys(cleanDeps).length > 0) {
+            dependenciesByPackage.set(libraryName, cleanDeps);
+          }
+        } catch {
+          // ignore invalid manifest JSON
+        }
+      }
+
+      const rows = selectClassesStmt.all(libraryName, libraryVersion) as {
+        class_name: string;
+        class_kind: string;
+        description: string | null;
+        icon_hash: string | null;
+        diagram_hash: string | null;
+      }[];
+
+      const parentPrefixes = new Set<string>();
+      for (const r of rows) {
+        const parts = r.class_name.split(".");
+        for (let i = 1; i < parts.length; i++) {
+          parentPrefixes.add(parts.slice(0, i).join("."));
+        }
+      }
+
+      const barePkgName = libraryName.startsWith("@") ? (libraryName.split("/")[1] ?? libraryName) : libraryName;
+
+      for (const r of rows) {
+        const fqn = r.class_name;
+        if (!fqn || fqn === libraryName || fqn === barePkgName || parentPrefixes.has(fqn)) {
+          continue;
+        }
+        const parts = fqn.split(".");
+        const shortName = parts[parts.length - 1] || fqn;
+        if (shortName.startsWith("Partial")) {
+          continue;
+        }
+
+        const kindLower = (r.class_kind || "class").toLowerCase();
+        const language = inferLanguage(kindLower, libraryName);
+        const domain = inferDomain(fqn, kindLower, libraryName);
+        const subpackage = parts.length >= 3 ? parts.slice(1, Math.min(3, parts.length - 1)).join(".") : null;
+        const hasIcon = Boolean(r.icon_hash);
+        const hasDiagram = Boolean(r.diagram_hash);
+
+        const isExcludedFromComponents =
+          nonComponentKinds.has(kindLower) ||
+          excludedComponentSegmentRe.test(fqn) ||
+          fqn.startsWith("Modelica.Media.") ||
+          fqn.startsWith("Modelica.Math.") ||
+          fqn.startsWith("Modelica.Utilities.") ||
+          fqn.startsWith("Modelica.Icons.") ||
+          fqn.startsWith("Modelica.UsersGuide.") ||
+          fqn === "Modelica.Constants";
+
+        if (!isExcludedFromComponents) {
+          components.push({
+            fqn,
+            name: shortName,
+            kind: kindLower,
+            domain,
+            subpackage,
+            packageName: libraryName,
+            packageVersion: libraryVersion,
+            description: r.description ?? null,
+            language,
+            hasIcon,
+            hasDiagram,
+          });
+        }
+
+        const isExampleOrValidation =
+          fqn.includes(".Examples.") || fqn.includes(".Validation.") || fqn.includes(".Benchmarks.");
+        const isInternalOrBase =
+          /\.(?:Icons|Interfaces|Internal|UsersGuide|BaseClasses|Types|Choices)(?:\.|$)/.test(fqn) ||
+          fqn.startsWith("Modelica.Media.") ||
+          fqn.startsWith("Modelica.Math.") ||
+          fqn.startsWith("Modelica.Utilities.");
+        const isStandaloneCustomModel =
+          libraryName !== "Modelica" && !primitiveSubpkgRe.test(fqn) && (parts.length <= 2 || hasDiagram);
+
+        if (!nonModelKinds.has(kindLower) && !isInternalOrBase && (isExampleOrValidation || isStandaloneCustomModel)) {
+          models.push({
+            fqn,
+            name: shortName,
+            kind: kindLower,
+            domain,
+            subpackage,
+            packageName: libraryName,
+            packageVersion: libraryVersion,
+            description: r.description ?? null,
+            language,
+            hasIcon,
+            hasDiagram,
+          });
+        }
+      }
+    }
+
+    this.#registryCatalogCache = {
+      expiresAt: now + 30_000,
+      components,
+      models,
+      dependenciesByPackage,
+    };
+    return this.#registryCatalogCache;
+  }
+
+  /**
+   * Paginated cross-registry catalog query for streaming placeable schematic components
+   * (`mode: "components"`) or runnable schematic models (`mode: "models"`).
+   */
+  queryRegistryCatalog(opts: RegistryCatalogQueryOptions): RegistryCatalogQueryResult {
+    const index = this.#getRegistryCatalogIndex();
+    const source = opts.mode === "models" ? index.models : index.components;
+
+    const rawDom = opts.domain && opts.domain !== "all" ? opts.domain.trim().toLowerCase() : null;
+    const domainFilter =
+      rawDom === "controls"
+        ? "control"
+        : rawDom === "cad" || rawDom === "robotics"
+          ? "robotics-cad"
+          : rawDom === "power"
+            ? "power-grids"
+            : rawDom;
+    const pkgFilter = opts.packageName && opts.packageName !== "all" ? opts.packageName.trim().toLowerCase() : null;
+    const subpkgFilter = opts.subpackage && opts.subpackage !== "all" ? opts.subpackage.trim().toLowerCase() : null;
+    const kindFilter = opts.kind && opts.kind !== "all" ? opts.kind.trim().toLowerCase() : null;
+    const queryTokens = (opts.q ?? "").trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 8);
+    const queryJoined = queryTokens.join(" ");
+
+    // Compute available packages (respecting domain + query, before package/subpackage narrowing)
+    const pkgCounts = new Map<string, { name: string; version: string; count: number }>();
+    // Compute available subpackages (respecting domain + package + query, before subpackage narrowing)
+    const subpkgCounts = new Map<string, { id: string; label: string; count: number }>();
+
+    const matched: { item: RegistryCatalogItem; score: number }[] = [];
+
+    for (const item of source) {
+      if (domainFilter && item.domain.toLowerCase() !== domainFilter) continue;
+      if (kindFilter && item.kind !== kindFilter) continue;
+
+      let queryScore = 0;
+      if (queryTokens.length > 0) {
+        const nameLower = item.name.toLowerCase();
+        const fqnLower = item.fqn.toLowerCase();
+        const pkgLower = item.packageName.toLowerCase();
+        const descLower = (item.description ?? "").toLowerCase();
+        const domLower = item.domain.toLowerCase();
+
+        let allMatch = true;
+        for (const tok of queryTokens) {
+          if (
+            !nameLower.includes(tok) &&
+            !fqnLower.includes(tok) &&
+            !pkgLower.includes(tok) &&
+            !descLower.includes(tok) &&
+            !domLower.includes(tok)
+          ) {
+            allMatch = false;
+            break;
+          }
+        }
+        if (!allMatch) continue;
+
+        if (nameLower === queryJoined) queryScore += 500;
+        else if (nameLower.startsWith(queryJoined)) queryScore += 260;
+        else if (fqnLower === queryJoined) queryScore += 420;
+        else if (fqnLower.includes(queryJoined)) queryScore += 120;
+        else if (pkgLower === queryJoined) queryScore += 90;
+      }
+
+      const existingPkg = pkgCounts.get(item.packageName);
+      if (existingPkg) {
+        existingPkg.count += 1;
+      } else {
+        pkgCounts.set(item.packageName, {
+          name: item.packageName,
+          version: item.packageVersion,
+          count: 1,
+        });
+      }
+
+      if (pkgFilter && item.packageName.toLowerCase() !== pkgFilter) continue;
+
+      if (item.subpackage) {
+        const subKey = item.subpackage.toLowerCase();
+        const existingSub = subpkgCounts.get(subKey);
+        if (existingSub) {
+          existingSub.count += 1;
+        } else {
+          subpkgCounts.set(subKey, {
+            id: item.subpackage,
+            label: item.subpackage.replace(/\./g, " › "),
+            count: 1,
+          });
+        }
+      }
+
+      if (subpkgFilter) {
+        const itemSub = (item.subpackage ?? "").toLowerCase();
+        if (itemSub !== subpkgFilter && !itemSub.startsWith(`${subpkgFilter}.`)) {
+          continue;
+        }
+      }
+
+      let baseScore = queryScore;
+      if (opts.mode === "models") {
+        if (item.hasDiagram) baseScore += 60;
+        if (item.fqn.includes(".Examples.")) baseScore += 40;
+      } else {
+        if (item.hasIcon) baseScore += 35;
+      }
+      matched.push({ item, score: baseScore });
+    }
+
+    matched.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.item.fqn.localeCompare(b.item.fqn);
+    });
+
+    const limit = Math.max(1, Math.min(200, Math.floor(opts.limit ?? 72)));
+    const offset = Math.max(0, Math.floor(opts.offset ?? 0));
+    const total = matched.length;
+    const sliced = matched.slice(offset, offset + limit).map((m) => m.item);
+
+    const packageDependencies: Record<string, Record<string, string>> = {};
+    for (const entry of sliced) {
+      const deps = index.dependenciesByPackage.get(entry.packageName);
+      if (deps && !packageDependencies[entry.packageName]) {
+        packageDependencies[entry.packageName] = deps;
+      }
+    }
+
+    const availablePackages = Array.from(pkgCounts.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const availableSubpackages = Array.from(subpkgCounts.values())
+      .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id))
+      .slice(0, 24);
+
+    return {
+      total,
+      offset,
+      limit,
+      hasMore: offset + sliced.length < total,
+      items: sliced,
+      availablePackages,
+      availableSubpackages,
+      packageDependencies,
+    };
   }
 
   /**

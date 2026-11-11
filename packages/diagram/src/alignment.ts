@@ -260,11 +260,7 @@ const TOOLBAR_ICONS = {
 };
 
 function escapeAttr(val: string): string {
-  return val
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  return val.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function renderToolbarButtonHtml(btn: {
@@ -356,15 +352,8 @@ function populateSingleNodeToolbar(
   wireToolbarDelegation(bar, onAction);
 }
 
-function populateMultiNodeToolbar(
-  bar: HTMLElement,
-  count: number,
-  onAction: (type: AlignmentType) => void,
-): void {
-  const parts: string[] = [
-    `<span class="align-badge-count">${count} selected</span>`,
-    '<div class="align-sep"></div>',
-  ];
+function populateMultiNodeToolbar(bar: HTMLElement, count: number, onAction: (type: AlignmentType) => void): void {
+  const parts: string[] = [`<span class="align-badge-count">${count} selected</span>`, '<div class="align-sep"></div>'];
 
   const buttons: { type: AlignmentType; title: string; svg: string; danger?: boolean; sepBefore?: boolean }[] = [
     { type: "align-left", title: "Align Left (Alt+L)", svg: TOOLBAR_ICONS.alignLeft },
@@ -481,7 +470,9 @@ export function showAlignmentToolbar(
     const onAction = (t: AlignmentType) => toolbarCallbacks.get(toolbar)?.(t);
     if (nodes.length === 1) {
       const singleNode = nodes[0]!;
-      const paramStr = singleNode.primaryParam?.name ? `${singleNode.primaryParam.name}=${singleNode.primaryParam.value}` : "";
+      const paramStr = singleNode.primaryParam?.name
+        ? `${singleNode.primaryParam.name}=${singleNode.primaryParam.value}`
+        : "";
       const modeKey = `single:${singleNode.name ?? singleNode.id}:${paramStr}`;
       if (toolbar.getAttribute?.("data-mode-key") !== modeKey) {
         populateSingleNodeToolbar(toolbar, singleNode, onAction);
@@ -505,7 +496,9 @@ export function showAlignmentToolbar(
 
   // Graph space to container pixel space
   const screenCenterX = ((minX + maxX) / 2) * scale.sx + translate.tx;
-  const screenTopY = minY * scale.sy + translate.ty - 14;
+  // For a single selected node, provide clearance for the free rotation handle and stalk (top: -26px)
+  const topClearance = nodes.length === 1 ? 46 : 14;
+  const screenTopY = minY * scale.sy + translate.ty - topClearance;
   const screenBottomY = maxY * scale.sy + translate.ty + 14;
 
   const containerW = container.clientWidth > 0 ? container.clientWidth : 800;
@@ -515,11 +508,12 @@ export function showAlignmentToolbar(
   toolbar.style.left = `${Math.max(halfBarW, Math.min(containerW - halfBarW, screenCenterX))}px`;
 
   // Flip below the component if it is too close to the top of the viewport
-  if (screenTopY < 48) {
+  const minTopThreshold = nodes.length === 1 ? 76 : 48;
+  if (screenTopY < minTopThreshold) {
     toolbar.style.top = `${Math.min(containerH - 44, Math.max(12, screenBottomY))}px`;
     toolbar.style.transform = "translate(-50%, 0%)";
   } else {
-    toolbar.style.top = `${Math.max(40, screenTopY)}px`;
+    toolbar.style.top = `${Math.max(nodes.length === 1 ? 52 : 40, screenTopY)}px`;
     toolbar.style.transform = "translate(-50%, -100%)";
   }
 
@@ -713,9 +707,7 @@ export function applyNodeFlipVisuals(
   const ty = flipY ? height : 0;
 
   const view =
-    targetGraph && typeof targetGraph.findViewByCell === "function"
-      ? (targetGraph.findViewByCell(node) as any)
-      : null;
+    targetGraph && typeof targetGraph.findViewByCell === "function" ? (targetGraph.findViewByCell(node) as any) : null;
   const container = (view?.container || node.container) as SVGElement | HTMLElement | undefined;
   if (!container) return;
 
@@ -806,4 +798,3 @@ export function applyNodeFlipVisuals(
     }
   }
 }
-

@@ -6,6 +6,7 @@ export * from "./catalog/tia-598.js";
 export * from "./dae/lowering.js";
 export * from "./indexing.js";
 export * from "./language.js";
+export * from "./lints/index.js";
 export * from "./parser/fiber-gis-parser.js";
 export * from "./spatial/h3-bdc-engine.js";
 export * from "./structural/csa-loading.js";

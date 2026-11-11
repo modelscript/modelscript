@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerPdbToDae, type PdbDaeOptions } from "./dae/pdb-to-dae.js";
+import { pdbGrammar } from "./grammar/pdb-grammar.js";
 import { indexPdbFile } from "./indexing.js";
 import { lintPdb } from "./lints/index.js";
 import { parsePdb } from "./parser/pdb-parser.js";
@@ -14,12 +15,18 @@ import { solveProteinBiophysics, type ProteinBiophysicsOptions } from "./solvers
 export const pdbLanguage = language({
   name: "pdb",
   fileExtensions: [".pdb", ".ent", ".cif", ".mmcif"],
-  maturity: "experimental",
+  maturity: "beta",
+  word: pdbGrammar.word,
+  extras: pdbGrammar.extras,
+  conflicts: pdbGrammar.conflicts,
+  rules: pdbGrammar.rules,
   indexing: {
     indexFile: indexPdbFile,
   },
   lsp: {
     fileExtensions: [".pdb", ".ent", ".cif", ".mmcif"],
+    folding: pdbGrammar.lsp?.folding,
+    outline: pdbGrammar.lsp?.outline,
     icons: {
       light: "./assets/pdb/icon-light.png",
       dark: "./assets/pdb/icon-dark.png",

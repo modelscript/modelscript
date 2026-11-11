@@ -115,16 +115,19 @@ export function ensureXmlParser(): void {
 }
 
 function collectErrors(n: SyntaxNode, out: { start: number; end: number }[]): void {
-  if (n.type === "ERROR" || n.isMissing()) {
+  const isMissing = typeof (n as any).isMissing === "function" ? (n as any).isMissing() : n.isMissing;
+  if (n.type === "ERROR" || isMissing) {
     out.push({ start: n.startOffset, end: n.endOffset });
     return;
   }
-  if (!n.hasError()) return;
+  const hasError = typeof (n as any).hasError === "function" ? (n as any).hasError() : n.hasError;
+  if (!hasError) return;
   for (const c of n.children) collectErrors(c, out);
 }
 
 function convert(n: SyntaxNode, source: string, parent: XmlElement | null): XmlElement | null {
-  if (n.type === "ERROR" || n.isMissing()) return null;
+  const isMissing = typeof (n as any).isMissing === "function" ? (n as any).isMissing() : n.isMissing;
+  if (n.type === "ERROR" || isMissing) return null;
 
   const openNode = n.childForFieldName("open");
   if (!openNode) return null;

@@ -157,17 +157,105 @@ function resolveReferencedMslFiles(content: string, mslDir: string): string[] {
   return Array.from(files);
 }
 
-function linkMslHierarchyInContext(context: {
-  queryEngine: {
-    index: {
-      symbols: Map<number, Record<string, unknown>>;
-      byName: Map<string, number[]>;
-      childrenOf: Map<number | null, number[]>;
+function findLibraryDir(depName: string, depVersion?: string): string | null {
+  const safeName = depName.replace(/[^a-zA-Z0-9_.-]/g, "_");
+  const baseDirs = [
+    process.env["STORAGE_DIR"],
+    process.env["DATA_DIR"] ? path.join(process.env["DATA_DIR"], "libraries") : undefined,
+    path.resolve(process.cwd(), "data/libraries"),
+    path.resolve(process.cwd(), "../../data/libraries"),
+  ].filter(Boolean) as string[];
+
+  for (const base of baseDirs) {
+    if (depVersion) {
+      const vCand = path.join(base, safeName, depVersion, "extracted", safeName);
+      if (fs.existsSync(vCand)) return vCand;
+      const vCand2 = path.join(base, safeName, depVersion, "extracted");
+      if (fs.existsSync(vCand2)) return vCand2;
+      const vCand3 = path.join(base, safeName, depVersion);
+      if (fs.existsSync(vCand3)) return vCand3;
+    }
+    const pkgDir = path.join(base, safeName);
+    if (fs.existsSync(pkgDir)) {
+      try {
+        const versions = fs.readdirSync(pkgDir, { withFileTypes: true });
+        for (const v of versions) {
+          if (v.isDirectory()) {
+            const extDir = path.join(pkgDir, v.name, "extracted", safeName);
+            if (fs.existsSync(extDir)) return extDir;
+            const extDir2 = path.join(pkgDir, v.name, "extracted");
+            if (fs.existsSync(extDir2)) return extDir2;
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  const repoCandidates = [
+    path.resolve(process.cwd(), "packages", "examples", safeName),
+    path.resolve(process.cwd(), "../../packages", "examples", safeName),
+  ];
+  for (const c of repoCandidates) {
+    if (fs.existsSync(c)) return c;
+  }
+
+  return null;
+}
+
+function resolveReferencedLibraryFiles(content: string, depName: string, libDir: string): string[] {
+  const files = new Set<string>();
+  if (libDir.endsWith(".mo") && fs.existsSync(libDir)) {
+    files.add(libDir);
+    return Array.from(files);
+  }
+
+  const rootPkgMo = path.join(libDir, "package.mo");
+  if (fs.existsSync(rootPkgMo)) files.add(rootPkgMo);
+
+  const escaped = depName.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+  const refRe = new RegExp(`\\b${escaped}(?:\\.[A-Za-z_][A-Za-z0-9_]*)+`, "g");
+  let m: RegExpExecArray | null;
+  while ((m = refRe.exec(content)) !== null) {
+    const parts = m[0].split(".").slice(1);
+    if (parts.length === 0) continue;
+    for (let len = parts.length; len >= 1; len--) {
+      const subParts = parts.slice(0, len);
+      const directFile = path.join(libDir, ...subParts) + ".mo";
+      if (fs.existsSync(directFile)) {
+        files.add(directFile);
+        const parentDir = path.dirname(directFile);
+        const ifaceFile = path.join(parentDir, "Interfaces.mo");
+        if (fs.existsSync(ifaceFile)) files.add(ifaceFile);
+        const pkgFile = path.join(parentDir, "package.mo");
+        if (fs.existsSync(pkgFile)) files.add(pkgFile);
+        break;
+      }
+      const pkgFile = path.join(libDir, ...subParts, "package.mo");
+      if (fs.existsSync(pkgFile)) {
+        files.add(pkgFile);
+      }
+    }
+  }
+
+  return Array.from(files);
+}
+
+function linkPackageHierarchyInContext(
+  context: {
+    queryEngine: {
+      index: {
+        symbols: Map<number, Record<string, unknown>>;
+        byName: Map<string, number[]>;
+        childrenOf: Map<number | null, number[]>;
+      };
     };
-  };
-}): void {
+  },
+  rootPackageName: string = "Modelica",
+): void {
   const index = context.queryEngine.index;
-  let nextSyntheticId = 900_000;
+  let nextSyntheticId = 900_000 + Math.floor(Math.random() * 50_000);
 
   const ensurePackageSymbol = (fqn: string): number => {
     const parts = fqn.split(".");
@@ -193,7 +281,7 @@ function linkMslHierarchyInContext(context: {
           qualifiedName: currentFqn,
           kind: "Class",
           parentId,
-          resourceId: "synthetic://msl",
+          resourceId: `synthetic://${rootPackageName.toLowerCase()}`,
           startOffset: 0,
           endOffset: 0,
           metadata: { classKind: "package", classPrefixes: "package" },
@@ -214,25 +302,27 @@ function linkMslHierarchyInContext(context: {
     return parentId!;
   };
 
+  const escapedRoot = rootPackageName.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+  const regex = new RegExp(`[/\\\\]${escapedRoot}[/\\\\](.+)\\.mo$`, "i");
+
   for (const [id, sym] of Array.from(index.symbols.entries())) {
     if (sym["kind"] !== "Class") continue;
     const resId = typeof sym["resourceId"] === "string" ? sym["resourceId"] : "";
-    if (!resId || resId === "/__virtual__/artifact.mo" || resId === "synthetic://msl") continue;
+    if (!resId || resId === "/__virtual__/artifact.mo" || resId.startsWith("synthetic://")) continue;
     if (sym["parentId"] !== null && sym["parentId"] !== undefined && sym["parentId"] !== id) continue;
 
     const normalized = resId.replace(/\\/g, "/");
-    const m = normalized.match(/\/Modelica\/(.+)\.mo$/);
+    const m = normalized.match(regex);
     if (!m || !m[1]) continue;
     const relParts = m[1].split("/").filter(Boolean);
     if (relParts[relParts.length - 1] === "package") {
       relParts.pop();
     }
-    // Check if the root symbol is already the file's top-level package/class
     const symName = String(sym["name"] || "");
     if (relParts[relParts.length - 1] === symName) {
       relParts.pop();
     }
-    const parentFqn = ["Modelica", ...relParts].join(".");
+    const parentFqn = [rootPackageName, ...relParts].join(".");
     const pkgId = ensurePackageSymbol(parentFqn);
     if (pkgId !== id) {
       sym["parentId"] = pkgId;
@@ -243,6 +333,18 @@ function linkMslHierarchyInContext(context: {
       }
     }
   }
+}
+
+function linkMslHierarchyInContext(context: {
+  queryEngine: {
+    index: {
+      symbols: Map<number, Record<string, unknown>>;
+      byName: Map<string, number[]>;
+      childrenOf: Map<number | null, number[]>;
+    };
+  };
+}): void {
+  linkPackageHierarchyInContext(context, "Modelica");
 }
 
 function resolveSymbolIdByName(
@@ -1066,6 +1168,8 @@ function parseExperimentFromSource(content: string): {
 export interface ModelicaPreprocessOptions {
   /** Class to render (simple or dotted name; the last segment is matched). Defaults to the first class in the file. */
   primaryClass?: string | undefined;
+  /** Declared external library dependencies (e.g. from artifact view_config.dependencies). */
+  dependencies?: Array<{ name: string; version: string; [key: string]: unknown }> | undefined;
 }
 
 export async function preprocessModelicaArtifact(
@@ -1107,6 +1211,29 @@ export async function preprocessModelicaArtifact(
         }
       }
       linkMslHierarchyInContext(context as unknown as Parameters<typeof linkMslHierarchyInContext>[0]);
+    }
+
+    // Load declared external library dependencies on demand
+    if (Array.isArray(options.dependencies)) {
+      for (const dep of options.dependencies) {
+        if (!dep || typeof dep.name !== "string" || !dep.name) continue;
+        const libDir = findLibraryDir(dep.name, String(dep.version || ""));
+        if (libDir) {
+          const libFiles = resolveReferencedLibraryFiles(content, dep.name, libDir);
+          for (const f of libFiles) {
+            try {
+              const text = fs.readFileSync(f, "utf-8");
+              context.load(text, f);
+            } catch {
+              // ignore individual library file parse issue
+            }
+          }
+          linkPackageHierarchyInContext(
+            context as unknown as Parameters<typeof linkPackageHierarchyInContext>[0],
+            dep.name,
+          );
+        }
+      }
     }
 
     context.load(content, virtualPath);

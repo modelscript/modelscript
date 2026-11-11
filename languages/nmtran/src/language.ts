@@ -2,6 +2,7 @@
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerNmtranToDae } from "./dae/nmtran-to-dae.js";
+import { nmtranGrammar } from "./grammar/nmtran-grammar.js";
 import { lintNmtran } from "./lints/index.js";
 import { parseNmtran } from "./parser/nmtran-parser.js";
 import { nmtranToModelica } from "./projections/nmtran-to-modelica.js";
@@ -13,9 +14,15 @@ import { solveNmtranPkPd, type PkPdSolverOptions } from "./solvers/pkpd-solver.j
 export const nmtranLanguage = language({
   name: "nmtran",
   fileExtensions: [".ctl", ".mod"],
-  maturity: "experimental",
+  maturity: "beta",
+  word: nmtranGrammar.word,
+  extras: nmtranGrammar.extras,
+  conflicts: nmtranGrammar.conflicts,
+  rules: nmtranGrammar.rules,
   lsp: {
     fileExtensions: [".ctl", ".mod"],
+    folding: nmtranGrammar.lsp?.folding,
+    outline: nmtranGrammar.lsp?.outline,
     icons: {
       light: "./assets/nmtran/icon-light.png",
       dark: "./assets/nmtran/icon-dark.png",
@@ -51,8 +58,10 @@ export const nmtranLanguage = language({
             thetaCount: cs.thetas.length,
             omegaCount: cs.omegas.length,
             compartmentCount: cs.compartments.length,
+            doc,
+            rawSource: ctx.text,
           },
-          { ruleName: "nmtran_symbol" },
+          { ruleName: "nmtran_model" },
         );
 
         for (const c of cs.compartments) {

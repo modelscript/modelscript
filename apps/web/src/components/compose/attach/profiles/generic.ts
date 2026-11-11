@@ -2,11 +2,13 @@
 
 import { parseBinaryHdf5Buffer } from "../../../../util/tabular-data-parser";
 import type { AttachProfile } from "../types";
+import { type ArtifactLibraryDependency, detectPolyglotDependencies } from "./dependency-detector";
 
 export interface GenericAttachDraft {
   file: File;
   textSnippet?: string | undefined;
   hdf5Rows?: Record<string, unknown>[] | undefined;
+  dependencies?: ArtifactLibraryDependency[] | undefined;
 }
 
 const TEXT_DATASET_EXTENSIONS = [".csv", ".tsv", ".json", ".yaml", ".yml", ".xml"];
@@ -86,9 +88,11 @@ export const genericAttachProfile: AttachProfile<GenericAttachDraft> = {
     const lowerName = file.name.toLowerCase();
     const isTextDataset = TEXT_DATASET_EXTENSIONS.some((e) => lowerName.endsWith(e));
     const isHdf5 = HDF5_EXTENSIONS.some((e) => lowerName.endsWith(e));
+    const POLYGLOT_CODE_EXTS = [".sysml", ".sysml2", ".kerml", ".cir", ".sp", ".spice", ".va", ".mo", ".mos"];
+    const isPolyglotCode = POLYGLOT_CODE_EXTS.some((e) => lowerName.endsWith(e));
     const draft: GenericAttachDraft = { file };
 
-    if (isTextDataset && file.size <= 1_500_000 && typeof file.text === "function") {
+    if ((isTextDataset || isPolyglotCode) && file.size <= 1_500_000 && typeof file.text === "function") {
       try {
         draft.textSnippet = await file.text();
       } catch {
@@ -102,7 +106,25 @@ export const genericAttachProfile: AttachProfile<GenericAttachDraft> = {
         draft.hdf5Rows = undefined;
       }
     }
-    return { draft, chips: [], issues: [] };
+
+    const chips: Array<{ label: string; tone?: "neutral" | "success" | "warning" | "error" }> = [];
+    if (draft.textSnippet && isPolyglotCode) {
+      try {
+        const ext = lowerName.slice(lowerName.lastIndexOf("."));
+        const deps = await detectPolyglotDependencies(draft.textSnippet, ext);
+        if (deps.length > 0) {
+          draft.dependencies = deps;
+          chips.push({
+            label: `${deps.length} external ${deps.length === 1 ? "library" : "libraries"}`,
+            tone: "neutral",
+          });
+        }
+      } catch {
+        // Non-blocking dependency detection
+      }
+    }
+
+    return { draft, chips, issues: [] };
   },
 
   steps: [],
@@ -128,6 +150,7 @@ export const genericAttachProfile: AttachProfile<GenericAttachDraft> = {
         url: uploadData.url,
         ...(draft.textSnippet ? { rawData: draft.textSnippet, data: draft.textSnippet } : {}),
         ...(draft.hdf5Rows ? { data: draft.hdf5Rows, format: "hdf5" } : {}),
+        ...(draft.dependencies && draft.dependencies.length > 0 ? { dependencies: draft.dependencies } : {}),
         ...(uploadData.svg ? { svg: uploadData.svg } : {}),
         ...(uploadData.thumbnail_url ? { thumbnailUrl: uploadData.thumbnail_url } : {}),
         ...(uploadData.view_config_additions || {}),

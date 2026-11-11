@@ -31,11 +31,34 @@ if (!fs.existsSync(uploadDir)) {
 const CLASS_HINT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
 
 function preprocessOptionsFromBody(body: unknown): PreprocessOptions {
-  const raw = body && typeof body === "object" ? (body as Record<string, unknown>)["primary_class"] : undefined;
-  if (typeof raw === "string" && raw.length <= 200 && CLASS_HINT_PATTERN.test(raw)) {
-    return { primaryClass: raw };
+  const obj = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const raw = obj["primary_class"];
+  const primaryClass = typeof raw === "string" && raw.length <= 200 && CLASS_HINT_PATTERN.test(raw) ? raw : undefined;
+
+  let dependencies: Array<{ name: string; version: string; [key: string]: unknown }> | undefined;
+  let rawDeps = obj["dependencies"];
+  if (typeof rawDeps === "string") {
+    try {
+      rawDeps = JSON.parse(rawDeps);
+    } catch {
+      // ignore
+    }
   }
-  return {};
+  if (!rawDeps && typeof obj["view_config"] === "string") {
+    try {
+      const parsedVc = JSON.parse(obj["view_config"]) as Record<string, unknown>;
+      rawDeps = parsedVc["dependencies"];
+    } catch {
+      // ignore
+    }
+  }
+  if (Array.isArray(rawDeps)) {
+    dependencies = rawDeps.filter(
+      (d) => d && typeof d === "object" && typeof d.name === "string" && typeof d.version === "string",
+    ) as Array<{ name: string; version: string; [key: string]: unknown }>;
+  }
+
+  return { primaryClass, ...(dependencies && dependencies.length > 0 ? { dependencies } : {}) };
 }
 
 const storage = multer.diskStorage({

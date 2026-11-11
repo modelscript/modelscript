@@ -175,7 +175,7 @@ describe("CAD Interactive Minimap HUD", () => {
     assert.match(svg.innerHTML, /<rect x="20" y="30"/);
     assert.match(svg.innerHTML, /<rect x="150" y="120"/);
     assert.match(svg.innerHTML, /<line x1="80" y1="50" x2="150" y2="140"/);
-    assert.match(svg.innerHTML, /rgba\(56, 189, 248, 0\.2\)/); // Viewfinder rect
+    assert.match(svg.innerHTML, /rgba\((56, 189, 248, 0\.2|6, 182, 212, 0\.16)\)/); // Viewfinder rect
   });
 
   it("renders multi-segment path for edges with intermediate vertices", () => {

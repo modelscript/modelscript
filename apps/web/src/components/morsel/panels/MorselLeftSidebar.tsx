@@ -230,12 +230,12 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
         {showLibrariesSection && (
           <>
             <div
-              className="text-bold px-3 border-bottom bg-canvas-subtle d-flex flex-items-center flex-justify-between"
+              className="px-3 d-flex flex-items-center flex-justify-between"
               style={{
                 height: 36,
                 gap: 6,
-                backgroundColor: "var(--color-canvas-subtle)",
-                borderBottom: "1px solid var(--color-border-subtle, var(--ms-border, rgba(15, 23, 42, 0.1)))",
+                backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.04))",
+                borderBottom: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
                 boxSizing: "border-box",
               }}
             >
@@ -243,10 +243,11 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                 className="d-flex flex-items-center"
                 style={{
                   display: isSearchExpanded || libraryFilter ? "none" : "flex",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  letterSpacing: "-0.01em",
-                  color: "var(--color-fg-default)",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  color: "var(--ms-text-2, var(--color-fg-muted))",
                 }}
               >
                 {translations.libraries}
@@ -364,8 +365,22 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
         {(showComponentsSection || showVariablesSection) && (
           <>
             {!isNarrow && (
-              <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">
-                {showVariablesSection ? "Simulation Variables" : translations.components}
+              <div
+                className="px-3 d-flex flex-items-center flex-justify-between"
+                style={{
+                  height: 34,
+                  borderTop: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
+                  borderBottom: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
+                  backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.04))",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  color: "var(--ms-text-2, var(--color-fg-muted))",
+                  userSelect: "none",
+                }}
+              >
+                <span>{showVariablesSection ? "Simulation Variables" : translations.components}</span>
               </div>
             )}
             <div style={{ flex: 1, overflow: "auto", minHeight: 0, paddingBottom: isNarrow ? 72 : 0 }}>
@@ -373,6 +388,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                 <ComponentList
                   components={diagramData?.nodes ?? null}
                   onSelect={onSelectComponent}
+                  onHighlight={onTreeHighlight}
                   selectedName={selectedComponent}
                   language={language}
                   translations={translations}
@@ -392,7 +408,23 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
         {showParametersSection && (
           <>
             {!isNarrow && (
-              <div className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle">Simulation Parameters</div>
+              <div
+                className="px-3 d-flex flex-items-center"
+                style={{
+                  height: 34,
+                  borderTop: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
+                  borderBottom: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
+                  backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.04))",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  color: "var(--ms-text-2, var(--color-fg-muted))",
+                  userSelect: "none",
+                }}
+              >
+                <span>Simulation Parameters</span>
+              </div>
             )}
             <div style={{ flex: 1, overflow: "auto", minHeight: 0, paddingBottom: isNarrow ? 72 : 0 }}>
               {simulationParameters.length > 0 ? (
@@ -433,19 +465,27 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                 type="button"
                 onClick={() => setIsSettingsExpanded((prev) => !prev)}
                 aria-expanded={isSettingsExpanded}
-                className="text-bold px-3 py-2 border-top border-bottom bg-canvas-subtle d-flex flex-items-center flex-justify-between"
+                className="d-flex flex-items-center flex-justify-between px-3"
                 style={{
                   width: "100%",
+                  height: 34,
                   borderLeft: "none",
                   borderRight: "none",
+                  borderTop: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
+                  borderBottom: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
+                  backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.04))",
                   cursor: "pointer",
                   textAlign: "left",
-                  color: "inherit",
-                  fontSize: "inherit",
+                  color: "var(--ms-text-2, var(--color-fg-muted))",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  userSelect: "none",
                 }}
               >
                 <span>Simulation Settings</span>
-                {isSettingsExpanded ? <ChevronDownIcon size={16} /> : <ChevronRightIcon size={16} />}
+                {isSettingsExpanded ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
               </button>
             )}
             <div style={{ padding: "0" }}>

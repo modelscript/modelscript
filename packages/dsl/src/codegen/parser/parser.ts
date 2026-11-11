@@ -173,9 +173,9 @@ export function generateParserTables(
       maxSymbolId = id;
     }
   }
-  if (maxSymbolId > 1023) {
+  if (maxSymbolId >= 1023) {
     throw new Error(
-      `Grammar '${originalGrammar.name}' exceeds maximum supported symbol count of 1023 (has ${maxSymbolId}). AST node type is packed into 10 bits.`,
+      `Grammar '${originalGrammar.name}' exceeds maximum supported symbol count of 1022 (has ${maxSymbolId}). AST node type is packed into 10 bits and ID 1023 is reserved for EOF.`,
     );
   }
   const startSymName = Object.keys(originalGrammar.rules ?? {})[0] || "Program";
@@ -192,6 +192,8 @@ export function generateParserTables(
   const actionEntryOffsets: number[] = [];
   const actionEntryData: number[] = [];
 
+  const prodById = new Map<number, (typeof grammar.productions)[0]>(grammar.productions.map((p) => [p.id, p]));
+
   for (let stateId = 0; stateId < table.actionTable.size; stateId++) {
     actionOffsets.push(actionData.length);
     actionEntryOffsets.push(actionEntryData.length);
@@ -200,12 +202,17 @@ export function generateParserTables(
     const entries: { symId: number; acts: any[] }[] = [];
     for (const [sym, acts] of actions.entries()) {
       const sortedActs = [...acts].sort((a, b) => {
-        if (a.type !== 1 || b.type !== 1) return 0; // 1 is ActionType.REDUCE
-        const prodA = grammar.productions.find((p) => p.id === a.target);
-        const prodB = grammar.productions.find((p) => p.id === b.target);
-        const precDiff = (prodB?.dynamicPrec || 0) - (prodA?.dynamicPrec || 0);
-        if (precDiff !== 0) return precDiff;
-        return (b.target || 0) - (a.target || 0);
+        if (a.type !== b.type) return a.type - b.type;
+        if (a.type === 1) {
+          // ActionType.REDUCE
+          const prodA = a.target !== undefined ? prodById.get(a.target) : undefined;
+          const prodB = b.target !== undefined ? prodById.get(b.target) : undefined;
+          const precDiff = (prodB?.dynamicPrec || 0) - (prodA?.dynamicPrec || 0);
+          if (precDiff !== 0) return precDiff;
+          return (b.target || 0) - (a.target || 0);
+        }
+
+        return (a.target || 0) - (b.target || 0);
       });
       entries.push({
         symId: symToInt.get(sym) ?? 0,
@@ -288,13 +295,23 @@ export function generateParserTables(
   const mrd = table.automaton.computeMRD().map((v) => Math.min(255, v));
   code += generateStaticByteArray(mrd, "mrd_data");
 
-  const termList = Array.from(grammar.terminals);
-  const tokenInsertCosts: number[] = new Array(termList.length + 5).fill(1);
+  let maxTerminalId = 0;
+  for (const term of grammar.terminals) {
+    if (term !== "EOF" && term !== "ERROR") {
+      const id = symToInt.get(term);
+      if (id !== undefined && id > maxTerminalId) {
+        maxTerminalId = id;
+      }
+    }
+  }
 
-  for (let i = 0; i < termList.length; i++) {
-    const sym = termList[i]!;
-    const symId = symToInt.get(sym) ?? i;
-    const cleanSym = sym.replace(/^"|"$/g, "");
+  const tokenInsertCosts: number[] = new Array(maxTerminalId + 1).fill(50);
+  tokenInsertCosts[0] = 255; // ERROR token (0) forbidden from insertion
+
+  for (const term of grammar.terminals) {
+    const symId = symToInt.get(term);
+    if (symId === undefined || symId > maxTerminalId) continue;
+    const cleanSym = term.replace(/^"|"$/g, "");
 
     if (cleanSym === ";" || cleanSym === "," || cleanSym === ":") {
       tokenInsertCosts[symId] = 1; // Low cost strictly for structural punctuation and list separators ; , :
@@ -318,16 +335,6 @@ export function generateParserTables(
     }
   }
   code += generateStaticByteArray(tokenIsWord, "token_is_word");
-
-  let maxTerminalId = 0;
-  for (const term of grammar.terminals) {
-    if (term !== "EOF" && term !== "ERROR") {
-      const id = symToInt.get(term);
-      if (id !== undefined && id > maxTerminalId) {
-        maxTerminalId = id;
-      }
-    }
-  }
 
   // Precompute Minimal Yield Terminal Sequences (needed to weight GOTO transitions in reachability_matrix)
   const minYieldMap = new Map<string, number[]>();
@@ -665,7 +672,9 @@ export function generateParserTables(
   }
 
   // 2. Generate tokenDeleteCosts
-  const tokenDeleteCosts: number[] = new Array(maxSymbolId + 1).fill(10);
+  const eofId = symToInt.get("EOF");
+  const maxAllocId = Math.max(maxSymbolId, eofId ?? 0);
+  const tokenDeleteCosts: number[] = new Array(maxAllocId + 1).fill(10);
   for (const [sym, id] of symToInt.entries()) {
     let cost = 10;
     if (listSeparators.has(sym)) {
@@ -677,7 +686,6 @@ export function generateParserTables(
     tokenDeleteCosts[id] = cost;
   }
 
-  const eofId = symToInt.get("EOF");
   if (eofId !== undefined) {
     tokenDeleteCosts[eofId] = 5000;
   }
@@ -781,18 +789,22 @@ export function generateParserTables(
               list = [];
               map.set(f.fieldId, list);
             }
-            const childSym = p.right[f.index]!;
-            const expectedType = symToInt.get(childSym) || 0;
+            const alias = p.aliases?.find((a) => a.index === f.index);
+            const childSym = alias ? alias.target : p.right[f.index];
+            const expectedType = (childSym && symToInt.get(childSym)) || 0;
             if (!list.some((e) => e.index === f.index && e.expectedType === expectedType)) {
               list.push({ index: f.index, expectedType });
             }
           }
         }
-        // 2. Indirect fields nested inside synthetic (`_`-prefixed) child non-terminals:
+        // 2. Indirect fields nested inside synthetic (`_`-prefixed) or inline child non-terminals:
         // tag the child index with `0x8000` so `FieldCursor._advance` descends into child `i`.
         for (let i = 0; i < p.right.length; i++) {
-          const childSym = p.right[i]!;
-          if (childSym.startsWith("_")) {
+          const childSym = p.right[i];
+          if (
+            childSym &&
+            (childSym.startsWith("_") || (grammar.inlineRules && grammar.inlineRules.includes(childSym)))
+          ) {
             const childFields = getFieldsForSymbol(childSym, depth + 1);
             const expectedType = symToInt.get(childSym) || 0;
             for (const fieldId of childFields.keys()) {
@@ -1066,6 +1078,8 @@ export function generateParserTables(
       "type_is_list",
       "expected_tokens",
       "MAX_TERMINAL_ID",
+      "MAX_SYMBOL_ID",
+      "START_SYMBOL_ID",
       "inputLength",
       "setInputLength",
       "inputEncoding",
@@ -1113,6 +1127,21 @@ export function generateParserTables(
     return "";
   };
 
+  const hasDaeOrSim = Boolean(
+    (originalGrammar as any).simulation ||
+    (originalGrammar as any).dae ||
+    (originalGrammar as any).domains?.dae ||
+    (originalGrammar as any).domains?.simulation ||
+    originalGrammar.pipelines ||
+    originalGrammar.connectors ||
+    (originalGrammar as any).solvers ||
+    originalGrammar.classes ||
+    originalGrammar.functions ||
+    (originalGrammar.runtimeFiles &&
+      originalGrammar.runtimeFiles.some((f: any) => f.filename && f.filename.includes("flattener"))),
+  );
+  const hasPolyglot = Boolean(originalGrammar.polyglot);
+
   code += "\n";
   code += extractExports(engineCode, "./parser/engine");
   code += extractExports(lspCode, "./parser/lsp");
@@ -1121,12 +1150,18 @@ export function generateParserTables(
   code += extractExports(parserLoopCode, "./parser/parser-loop");
   code += extractExports(gssCode, "./parser/gss");
   code += extractExports(recoveryCode, "./parser/recovery");
-  code += extractExports(bltCode, "./structural/blt");
-  code += extractExports(correspondenceCode, "./indexing/correspondence");
-  code += extractExports(polyglot_arenaCode, "./polyglot/polyglot_arena");
-  code += extractExports(tgg_reconcilerCode, "./polyglot/tgg_reconciler");
-  code += extractExports(groebnerCode, "./solvers/groebner");
-  code += extractExports(linalgCode, "./solvers/linalg");
+
+  if (hasDaeOrSim) {
+    code += extractExports(bltCode, "./structural/blt");
+    code += extractExports(groebnerCode, "./solvers/groebner");
+    code += extractExports(linalgCode, "./solvers/linalg");
+  }
+
+  if (hasPolyglot) {
+    code += extractExports(correspondenceCode, "./indexing/correspondence");
+    code += extractExports(polyglot_arenaCode, "./polyglot/polyglot_arena");
+    code += extractExports(tgg_reconcilerCode, "./polyglot/tgg_reconciler");
+  }
 
   if (originalGrammar.typeSystem) {
     const tsCode = generateTypeSystem(originalGrammar, originalGrammar.typeSystem.customCode || "");
@@ -1149,7 +1184,7 @@ export function generateParserTables(
     const tggOutput = compileTGGRules(originalGrammar.polyglot);
     code += "\n" + extractExports(tggOutput.sourceCode, "./tgg");
   } else {
-    code += `\nexport function tgg_forward_dispatch(sourceNodeTypeHash: u32, sourceNodeId: u32, corr: CorrespondenceIndex, arena: PolyglotArena): u32 { return 0; }\nexport function tgg_backward_dispatch(targetNodeTypeHash: u32, targetNodeId: u32, corr: CorrespondenceIndex, arena: PolyglotArena): u32 { return 0; }\nexport function tgg_propagate_all_stale(corr: CorrespondenceIndex): u32 { return 0; }\n`;
+    code += `\nexport function tgg_forward_dispatch(sourceNodeTypeHash: u32, sourceNodeId: u32, corr: u32, arena: u32): u32 { return 0; }\nexport function tgg_backward_dispatch(targetNodeTypeHash: u32, targetNodeId: u32, corr: u32, arena: u32): u32 { return 0; }\nexport function tgg_propagate_all_stale(corr: u32): u32 { return 0; }\n`;
   }
 
   if (originalGrammar.mcp) {
@@ -1313,48 +1348,54 @@ export function generateParserTables(
     });
   }
 
-  code += extractExports(daeBuilderCode, "./dae/builder");
-  code += extractExports(daeTypesCode, "./dae/types");
-  code += extractExports(daeAccessorsCode, "./dae/accessors");
-  code += extractExports(aliasCode, "./dae/alias");
-  code += extractExports(evalCode, "./dae/eval");
-  code += extractExports(eventsCode, "./simulation/events");
-  code += extractExports(integratorsCode, "./solvers/integrators");
-  code += extractExports(matrixCode, "./solvers/matrix");
+  if (hasDaeOrSim) {
+    code += extractExports(daeBuilderCode, "./dae/builder");
+    code += extractExports(daeTypesCode, "./dae/types");
+    code += extractExports(daeAccessorsCode, "./dae/accessors");
+    code += extractExports(aliasCode, "./dae/alias");
+    code += extractExports(evalCode, "./dae/eval");
+    code += extractExports(eventsCode, "./simulation/events");
+    code += extractExports(integratorsCode, "./solvers/integrators");
+    code += extractExports(matrixCode, "./solvers/matrix");
+    code += extractExports(builtins_mathCode, "./dae/builtins_math");
+    code += extractExports(casCode, "./dae/cas");
+    code += extractExports(tapeCode, "./autodiff/tape");
+    code += extractExports(foldCode, "./dae/fold");
+    code += extractExports(tearingCode, "./structural/tearing");
+    code += extractExports(pantelidesCode, "./structural/pantelides");
+    code += extractExports(isolationCode, "./optimization/isolation");
+    code += extractExports(scalarizeCode, "./dae/scalarize");
+    code += extractExports(cseCode, "./cse");
+    code += extractExports(coloringCode, "./autodiff/coloring");
+    code += extractExports(sparse_luCode, "./solvers/sparse_lu");
+    code += extractExports(sparse_choleskyCode, "./solvers/sparse_cholesky");
+    code += extractExports(bdfCode, "./solvers/bdf");
+    code += extractExports(homotopyCode, "./simulation/homotopy");
+    code += extractExports(delayCode, "./simulation/delay");
+    code += extractExports(fmi2_wasmCode, "./fmi/fmi2_wasm");
+    code += extractExports(fmi3_wasmCode, "./fmi/fmi3_wasm");
+    code += extractExports(vmapCode, "./simulation/vmap");
+    code += extractExports(integrateCode, "./solvers/integrate");
+    code += extractExports(intervalCode, "./autodiff/interval");
+    code += extractExports(mccormickCode, "./autodiff/mccormick");
+    code += extractExports(branch_and_boundCode, "./optimization/branch_and_bound");
+    code += extractExports(dualCode, "./autodiff/dual");
+    code += extractExports(monte_carloCode, "./simulation/monte_carlo");
+    code += extractExports(doeCode, "./simulation/doe");
+    code += extractExports(statementsCode, "./dae/statements");
+    code += extractExports(verifierCode, "./simulation/verifier");
+  }
+
   code += extractExports(stubCode, "./indexing/stub");
   code += extractExports(trigramCode, "./indexing/trigram");
-  code += extractExports(ontologyCode, "./ontology_module/ontology");
-  code += extractExports(ontology_projectionCode, "./ontology_module/ontology_projection");
-  code += extractExports(builtins_mathCode, "./dae/builtins_math");
   code += extractExports(scope_stackCode, "./core/scope_stack");
   code += extractExports(string_poolCode, "./core/string_pool");
   code += extractExports(hashmapCode, "./core/hashmap");
-  code += extractExports(casCode, "./dae/cas");
-  code += extractExports(tapeCode, "./autodiff/tape");
-  code += extractExports(foldCode, "./dae/fold");
-  code += extractExports(tearingCode, "./structural/tearing");
-  code += extractExports(pantelidesCode, "./structural/pantelides");
-  code += extractExports(isolationCode, "./optimization/isolation");
-  code += extractExports(scalarizeCode, "./dae/scalarize");
-  code += extractExports(cseCode, "./cse");
-  code += extractExports(coloringCode, "./autodiff/coloring");
-  code += extractExports(sparse_luCode, "./solvers/sparse_lu");
-  code += extractExports(sparse_choleskyCode, "./solvers/sparse_cholesky");
-  code += extractExports(bdfCode, "./solvers/bdf");
-  code += extractExports(homotopyCode, "./simulation/homotopy");
-  code += extractExports(delayCode, "./simulation/delay");
-  code += extractExports(fmi2_wasmCode, "./fmi/fmi2_wasm");
-  code += extractExports(fmi3_wasmCode, "./fmi/fmi3_wasm");
-  code += extractExports(vmapCode, "./simulation/vmap");
-  code += extractExports(integrateCode, "./solvers/integrate");
-  code += extractExports(intervalCode, "./autodiff/interval");
-  code += extractExports(mccormickCode, "./autodiff/mccormick");
-  code += extractExports(branch_and_boundCode, "./optimization/branch_and_bound");
-  code += extractExports(dualCode, "./autodiff/dual");
-  code += extractExports(monte_carloCode, "./simulation/monte_carlo");
-  code += extractExports(doeCode, "./simulation/doe");
-  code += extractExports(statementsCode, "./dae/statements");
-  code += extractExports(verifierCode, "./simulation/verifier");
+
+  if ((originalGrammar as any).ontology) {
+    code += extractExports(ontologyCode, "./ontology_module/ontology");
+    code += extractExports(ontology_projectionCode, "./ontology_module/ontology_projection");
+  }
 
   // Section 11: Abstract Interpretation, CFG/SSA, and Custom Runtime Transpilation
   if (originalGrammar.cfgNodes || originalGrammar.analysis || Boolean(originalGrammar.domains?.["bounds"])) {

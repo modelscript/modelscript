@@ -176,6 +176,58 @@ export interface LanguageIndexingConfig {
    * Optional content predicate used by `UnifiedWorkspace` to disambiguate shared extensions (e.g. `.inp`, `.dat`, `.xml`).
    */
   canIndex?: ((uri: string, text: string) => boolean) | undefined;
+  /**
+   * Language-specific conventions for the generic multi-file workspace indexer.
+   */
+  workspaceHooks?: WorkspaceIndexingHooks | undefined;
+}
+
+/**
+ * A symbol the workspace indexer should register on behalf of a language hook, without the hook
+ * needing to know about `SymbolId` allocation, stable-id reuse, or Salsa change tracking.
+ */
+export interface SyntheticSymbolSpec {
+  kind: string;
+  name: string;
+  ruleName: string;
+  namePath?: string | undefined;
+  startOffset: number;
+  endOffset: number;
+  metadata?: Record<string, unknown> | undefined;
+  /** Force the symbol to be reported as changed even when its span is unchanged (content-derived symbols). */
+  dirty?: boolean | undefined;
+  /** Symbols nested directly under this one. */
+  children?: SyntheticSymbolSpec[] | undefined;
+}
+
+/**
+ * Hooks that let a language customise the generic `LanguageWorkspaceIndex` without the runtime
+ * hard-coding any language's file layout or CST rule names.
+ */
+export interface WorkspaceIndexingHooks {
+  /** True if `basename` (extension stripped) is a directory-package entry file (e.g. Modelica `package`). */
+  isPackageEntryFile?: ((basename: string) => boolean) | undefined;
+  /**
+   * Reads the enclosing scope FQN declared inside a file (e.g. Modelica `within A.B;`).
+   * Returns `""` for an explicit root scope, or `null` when the file declares none.
+   */
+  extractDeclaredScope?: ((rootNode: any) => string | null) | undefined;
+  /** True when a file whose declared scope is the root should keep its directory-derived parent (e.g. `package.mo`). */
+  keepsDirectoryScopeAtRoot?: ((uri: string) => boolean) | undefined;
+  /** Resolves a pending lazily-registered file for an FQN that has no direct file mapping. */
+  fallbackUriForFQN?: ((fqn: string, pendingUris: Iterable<string>) => string | undefined) | undefined;
+  /** True if a pending file with `entryParentFQN` should be indexed when children of `parentFQN` are requested. */
+  adoptsPendingChild?: ((parentFQN: string, entryParentFQN: string, uri: string) => boolean) | undefined;
+  /** CST node types whose subtrees can never contain declarations and are skipped by the walker. */
+  skipNodeTypes?: ReadonlySet<string> | undefined;
+  /** Indexes a whole non-grammar resource (e.g. a tabular data file). Return `undefined` when not handled. */
+  indexResource?:
+    | ((uri: string, rootNode: any, parentFQN: string | undefined) => SyntheticSymbolSpec | undefined)
+    | undefined;
+  /** Extra symbols implied by a CST node beyond the registered `indexerHooks` (e.g. `class extends X`). */
+  synthesizeSymbols?: ((node: any, hasEnclosingSymbol: boolean) => SyntheticSymbolSpec[] | undefined) | undefined;
+  /** True if a hydrated stub symbol is an un-named placeholder that must be discarded. */
+  isCorruptedStub?: ((entry: { kind?: string; name: string }) => boolean) | undefined;
 }
 
 /**
@@ -273,7 +325,10 @@ export interface LanguageOptions<
    * Tree-sitter Parity: Rules that serve as supertypes (interfaces/abstract classes)
    * in the generated AST. Useful for aliases and unifying node queries.
    */
-  supertypes?: (($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => Rule<any>[]) | undefined;
+  supertypes?:
+    | (($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => (string | Rule<any>)[])
+    | (string | Rule<any>)[]
+    | undefined;
 
   /** Rules that should be inlined directly into their parents during codegen to reduce AST depth. */
   inline?: NoInfer<RuleName>[] | undefined;
@@ -288,7 +343,10 @@ export interface LanguageOptions<
   strictConflicts?: boolean | undefined;
 
   /** Default precedence/associativity matrices for conflict resolution. */
-  precedences?: string[][] | undefined;
+  precedences?:
+    | (($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => (string | RuleLike<any>)[][])
+    | (string | RuleLike<any>)[][]
+    | undefined;
 
   /**
    * Declarative bracket pairs for delimiter tracking, indentation, and AST balance hash.

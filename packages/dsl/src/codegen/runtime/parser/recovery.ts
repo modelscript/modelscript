@@ -48,6 +48,7 @@ import {
   ast_appendChild,
   getNodeType,
   allocNode,
+  setNodeByteLength,
   FLAG_IS_INSERTED,
   FLAG_HAS_ERROR,
   FLAG_IS_LIST,
@@ -344,7 +345,7 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
           0,
           0
         );
-        pushActiveHead(changetype<u32>(errHead));
+        pushNextHead(changetype<u32>(errHead));
         forkCount++;
         if (forkCount >= MAX_FORKS) return true;
       }
@@ -742,9 +743,9 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
           let canAcceptAfterSubst = stateCanAccept(resolvedHead, resolvedHead.state, nextTok, 0, 0);
           if (canAcceptAfterSubst > 0) {
             let confirmed = true;
-            if (matchCount == 0) {
+            if (matchCount == 0 || curTLen <= 2) {
               // If the input word shares zero characters with the keyword (e.g. "some" vs "let"),
-              // require lookahead confirmation on the second token.
+              // or is a short incomplete prefix (e.g. "le"), require lookahead confirmation on the second token.
               confirmed = false;
               if (canAcceptAfterSubst >= 1) {
                 let shiftedState = canAcceptAfterSubst - 1;

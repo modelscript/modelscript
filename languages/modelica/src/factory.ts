@@ -8,11 +8,17 @@
 // exports map. The .d.ts files export UPPER_CASE names but TSC resolves
 // camelCase aliases.
 
-import { extractIndexerHooks, extractQueryHooksMap, extractRefHooks } from "@modelscript/dsl";
+import {
+  extractIndexerHooks,
+  extractQueryHooksMap,
+  extractRefHooks,
+  type WorkspaceIndexingHooks,
+} from "@modelscript/dsl";
 import { QueryEngine, WorkspaceIndex } from "@modelscript/runtime";
 
-import csvLangDef from "@modelscript/csv/language";
+import csvLangDef, { csvWorkspaceHooks } from "@modelscript/csv/language";
 import modelicaLangDef from "./language.js";
+import { modelicaWorkspaceHooks } from "./workspace-hooks.js";
 
 const INDEXER_HOOKS = extractIndexerHooks(modelicaLangDef);
 const QUERY_HOOKS = extractQueryHooksMap(modelicaLangDef);
@@ -217,10 +223,19 @@ const allIndexerHooks = [
 import { injectPredefinedTypes } from "./predefined-types.js";
 
 /**
+ * Language conventions for the Modelica workspace index. The Modelica index also hosts `.csv` table
+ * resources (exposed as parameter packages), so the CSV resource indexer is merged in here.
+ */
+export const modelicaIndexingHooks: WorkspaceIndexingHooks = {
+  ...modelicaWorkspaceHooks,
+  indexResource: csvWorkspaceHooks.indexResource,
+};
+
+/**
  * Creates a configured WorkspaceIndex for Modelica.
  */
 export function createModelicaWorkspaceIndex(): WorkspaceIndex {
-  return new WorkspaceIndex(allIndexerHooks);
+  return new WorkspaceIndex(allIndexerHooks, modelicaIndexingHooks);
 }
 
 /**
@@ -253,3 +268,12 @@ export function createModelicaQueryEngine(
 
 export { Context } from "./context.js";
 export { injectPredefinedTypes, QueryEngine, WorkspaceIndex };
+
+/**
+ * Modelica Standard Library display conventions: variables whose names mark them as auxiliary
+ * (ground references, conditional heat-port temperatures, actual-resistance diagnostics) are
+ * plotted after the primary simulation outputs.
+ */
+export function isSecondaryOutputName(name: string): boolean {
+  return name.startsWith("ground.") || name.endsWith(".T_heatPort") || name.endsWith(".R_actual");
+}

@@ -3,6 +3,8 @@
 import { buildParser, choice, field, language, optional, prec, repeat, semanticToken, seq } from "@modelscript/dsl";
 import * as childProcess from "child_process";
 import * as fs from "fs";
+import assert from "node:assert";
+import { after, before, describe, it } from "node:test";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -49,7 +51,7 @@ describe("Modelica Playground Model Parsing", () => {
   let facade;
   let tmpDir;
 
-  beforeAll(async () => {
+  before(async () => {
     const result = buildParser(modelicaLikeGrammar);
     tmpDir = path.join(__dirname, "scratch_modelica_full_test");
     if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -117,7 +119,7 @@ describe("Modelica Playground Model Parsing", () => {
     facade.syntaxNames = result.syntaxNames;
   }, 120000);
 
-  afterAll(() => {
+  after(() => {
     if (fs.existsSync(tmpDir)) {
       try {
         fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -139,7 +141,7 @@ describe("Modelica Playground Model Parsing", () => {
     const diags2 = facade.getDiagnostics(root2);
     console.log("Diags after inserting ' 1;':", diags2);
 
-    expect(diags2.length).toBe(0);
+    assert.strictEqual(diags2.length, 0);
   }, 120000);
 
   it("should parse correctly after typing x. and then deleting equation x.", () => {
@@ -155,6 +157,6 @@ describe("Modelica Playground Model Parsing", () => {
     const diags2 = facade.getDiagnostics(root2);
     console.log("Diags 2 (after delete):", diags2);
 
-    expect(diags2.length).toBe(0);
+    assert.strictEqual(diags2.length, 0);
   }, 120000);
 });

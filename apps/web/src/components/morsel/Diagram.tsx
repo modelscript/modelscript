@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  autoLayoutDiagramAsync,
   disposeDiagram,
   dropComponentGhost,
   flipSelectedNodes,
@@ -23,7 +24,7 @@ import { movePlacementGhost } from "./placement";
 
 export interface DiagramEditorHandle {
   fitContent: () => void;
-  layout: () => void;
+  layout: () => Promise<boolean>;
   zoomIn: (factor?: number) => number;
   zoomOut: (factor?: number) => number;
   zoomTo: (scale: number) => void;
@@ -36,6 +37,7 @@ export interface DiagramEditorHandle {
   isMinimapOpen: () => boolean;
   setGridMode: (mode: DiagramGridMode) => void;
   setSnapToGrid: (enabled: boolean) => void;
+  centerCell?: (cellId: string) => void;
 }
 
 interface DiagramEditorProps {
@@ -233,10 +235,16 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         }
       }
     },
-    layout: () => {
-      if (typeof window !== "undefined") {
+    layout: async () => {
+      const container = containerRef.current;
+      const g = (getGraph(container) ?? getGraph()) as any;
+      if (g) {
+        return autoLayoutDiagramAsync(g);
+      } else if (typeof window !== "undefined") {
         window.postMessage({ type: "autoLayout" }, "*");
+        return true;
       }
+      return false;
     },
     zoomIn: (factor = 0.15) => {
       const container = containerRef.current;
@@ -358,6 +366,25 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     },
     setSnapToGrid: (enabled: boolean) => {
       setDiagramSnap(enabled, (getGraph(containerRef.current) ?? getGraph()) as any);
+    },
+    centerCell: (cellId: string) => {
+      const g = (getGraph(containerRef.current) ?? getGraph()) as any;
+      if (!g || !cellId) return;
+      const cell = g.getCellById?.(cellId);
+      if (cell) {
+        try {
+          const cellView = g.findViewByCell(cell);
+          if (cellView?.container) {
+            cellView.container.classList.add("modelscript-anchor-halo");
+            setTimeout(() => {
+              cellView.container?.classList.remove("modelscript-anchor-halo");
+            }, 3000);
+          }
+          g.centerCell?.(cell, { animation: { duration: 300 } });
+        } catch {
+          // fallback if animation unsupported
+        }
+      }
     },
   }));
 
@@ -495,6 +522,43 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     };
     window.addEventListener("morsel:time-scrub", handleTimeScrub);
     return () => window.removeEventListener("morsel:time-scrub", handleTimeScrub);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let currentHighlightedContainer: HTMLElement | null = null;
+
+    const handleHighlight = (e: Event) => {
+      const detail = (e as CustomEvent<{ name?: string | null }>).detail;
+      const targetName = detail?.name;
+
+      if (currentHighlightedContainer) {
+        currentHighlightedContainer.classList.remove("modelscript-hover-halo");
+        currentHighlightedContainer = null;
+      }
+
+      if (targetName && containerRef.current) {
+        const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
+        if (g) {
+          const cell = g.getCellById(targetName);
+          if (cell) {
+            const cellView = g.findViewByCell(cell);
+            if (cellView?.container) {
+              cellView.container.classList.add("modelscript-hover-halo");
+              currentHighlightedContainer = cellView.container;
+            }
+          }
+        }
+      }
+    };
+
+    window.addEventListener("morsel:highlight-component", handleHighlight);
+    return () => {
+      if (currentHighlightedContainer) {
+        currentHighlightedContainer.classList.remove("modelscript-hover-halo");
+      }
+      window.removeEventListener("morsel:highlight-component", handleHighlight);
+    };
   }, []);
 
   return (

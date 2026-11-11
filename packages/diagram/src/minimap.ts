@@ -63,51 +63,84 @@ export function ensureMinimapHud(
   hud.className = "modelscript-minimap-hud";
   hud.style.position = "absolute";
   hud.style.right = "16px";
-  hud.style.bottom = "36px";
+  hud.style.bottom = "68px";
   hud.style.width = "180px";
   hud.style.height = "120px";
   hud.style.background = "var(--ms-surface-glass, rgba(22, 27, 34, 0.85))";
   hud.style.backdropFilter = "blur(12px)";
-  hud.style.border = "1px solid var(--ms-border, rgba(255, 255, 255, 0.12))";
-  hud.style.borderRadius = "8px";
-  hud.style.boxShadow = "0 8px 32px rgba(0, 0, 0, 0.35)";
+  (hud.style as unknown as Record<string, string>)["webkitBackdropFilter"] = "blur(12px)";
+  hud.style.border = "1px solid var(--ms-divider, rgba(255, 255, 255, 0.12))";
+  hud.style.borderRadius = "12px";
+  hud.style.boxShadow = "var(--ms-shadow-card, 0 12px 32px -4px rgba(0, 0, 0, 0.35))";
   hud.style.zIndex = "990";
   hud.style.overflow = "hidden";
   hud.style.display = initiallyVisible ? "flex" : "none";
   hud.style.flexDirection = "column";
   hud.style.userSelect = "none";
+  hud.style.transition = "opacity 0.15s ease, transform 0.15s ease";
 
-  // Minimap Header
+  // Minimap Floating Header / Overlay Badge
   const header = document.createElement("div");
   header.className = "minimap-header";
+  header.style.position = "absolute";
+  header.style.top = "0";
+  header.style.left = "0";
+  header.style.right = "0";
   header.style.display = "flex";
   header.style.alignItems = "center";
   header.style.justifyContent = "space-between";
-  header.style.padding = "4px 8px";
-  header.style.fontSize = "10px";
-  header.style.fontWeight = "600";
-  header.style.color = "var(--ms-text-2, #94a3b8)";
-  header.style.borderBottom = "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))";
+  header.style.padding = "6px 8px";
+  header.style.zIndex = "2";
+  header.style.pointerEvents = "none";
 
   const title = document.createElement("span");
-  title.textContent = "Minimap (M)";
+  title.textContent = "Radar";
+  title.style.fontSize = "9px";
+  title.style.fontWeight = "700";
+  title.style.letterSpacing = "0.06em";
+  title.style.textTransform = "uppercase";
+  title.style.color = "var(--ms-text-3, rgba(148, 163, 184, 0.75))";
   header.appendChild(title);
 
   const closeBtn = document.createElement("button");
   closeBtn.type = "button";
-  closeBtn.textContent = "×";
-  closeBtn.style.background = "transparent";
+  closeBtn.setAttribute("aria-label", "Close Minimap");
+  closeBtn.title = "Close Minimap (M)";
+  closeBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>`;
+  closeBtn.style.pointerEvents = "auto";
+  closeBtn.style.background = "rgba(0, 0, 0, 0.25)";
   closeBtn.style.border = "none";
+  closeBtn.style.borderRadius = "999px";
+  closeBtn.style.width = "18px";
+  closeBtn.style.height = "18px";
+  closeBtn.style.display = "flex";
+  closeBtn.style.alignItems = "center";
+  closeBtn.style.justifyContent = "center";
   closeBtn.style.color = "var(--ms-text-2, #94a3b8)";
-  closeBtn.style.fontSize = "14px";
   closeBtn.style.cursor = "pointer";
-  closeBtn.style.padding = "0 4px";
+  closeBtn.style.opacity = "0";
+  closeBtn.style.transition = "opacity 0.15s ease, background 0.15s ease, color 0.15s ease";
+  closeBtn.onmouseenter = () => {
+    closeBtn.style.background = "rgba(0, 0, 0, 0.55)";
+    closeBtn.style.color = "var(--ms-text-1, #ffffff)";
+  };
+  closeBtn.onmouseleave = () => {
+    closeBtn.style.background = "rgba(0, 0, 0, 0.25)";
+    closeBtn.style.color = "var(--ms-text-2, #94a3b8)";
+  };
   closeBtn.onclick = (e) => {
     e.stopPropagation();
     hud!.style.display = "none";
   };
   header.appendChild(closeBtn);
   hud.appendChild(header);
+
+  hud.onmouseenter = () => {
+    closeBtn.style.opacity = "1";
+  };
+  hud.onmouseleave = () => {
+    closeBtn.style.opacity = "0";
+  };
 
   // SVG Thumbnail Canvas
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -340,11 +373,11 @@ export function updateMinimapHud(hud: HTMLElement | null, g: MinimapGraph): void
     const size = n.getSize?.();
     if (!pos || !size) continue;
     const stroke = (n.attr?.("body/stroke") as string) || "#38bdf8";
-    svgContent += `<rect x="${pos.x}" y="${pos.y}" width="${size.width}" height="${size.height}" rx="2" ry="2" fill="#334155" stroke="${stroke}" stroke-width="1" opacity="0.8"/>`;
+    svgContent += `<rect x="${pos.x}" y="${pos.y}" width="${size.width}" height="${size.height}" rx="3" ry="3" fill="#1e293b" stroke="${stroke}" stroke-width="1.2" opacity="0.9"/>`;
   }
 
   // 3. Render camera viewfinder
-  svgContent += `<rect x="${viewX}" y="${viewY}" width="${viewW}" height="${viewH}" fill="rgba(56, 189, 248, 0.2)" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="3 2"/>`;
+  svgContent += `<rect x="${viewX}" y="${viewY}" width="${viewW}" height="${viewH}" rx="3" ry="3" fill="rgba(6, 182, 212, 0.16)" stroke="#06b6d4" stroke-width="1.5"/>`;
 
   svg.innerHTML = svgContent;
 }
