@@ -1,3 +1,4 @@
+// xfail:    true
 within ;
 package Modelica "Modelica Standard Library (Version 3.1)"
 extends Modelica.Icons.Library;

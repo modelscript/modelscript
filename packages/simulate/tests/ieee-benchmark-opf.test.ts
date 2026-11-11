@@ -118,7 +118,8 @@ test("IEEE 118-Bus System: Solves Tier 2 Direct DC-OPF on large transmission gri
   assert.equal(sol.status, "OPTIMAL");
   assert.equal(sol.buses.length, 118);
   assert.ok(Math.abs(sol.totalGenMw - sol.totalLoadMw) < 1.0, "Total generation matches demand");
-  assert.ok(dt < 250.0, `IEEE 118 DC-OPF solved in ${dt.toFixed(2)}ms`);
+  const maxIeee118Dt = process.env.CI ? 2500.0 : 250.0;
+  assert.ok(dt < maxIeee118Dt, `IEEE 118 DC-OPF solved in ${dt.toFixed(2)}ms (threshold: ${maxIeee118Dt}ms)`);
 });
 
 test("MATPOWER Round-Trip Serialization: Converts IEEE 14-bus case to .m and parses back losslessly", async () => {
@@ -212,7 +213,8 @@ test("IEEE 300-Bus System: Solves Tier 2 Direct DC-OPF with 69 generators across
   assert.equal(sol.buses.length, 300);
   assert.ok(Math.abs(sol.totalGenMw - sol.totalLoadMw) < 5.0, "Total generation matches demand");
   assert.ok(sol.averageLmp > 0, "LMP is positive");
-  assert.ok(dt < 3000.0, `IEEE 300 DC-OPF solved in ${dt.toFixed(2)}ms`);
+  const maxIeee300Dt = process.env.CI ? 15000.0 : 3000.0;
+  assert.ok(dt < maxIeee300Dt, `IEEE 300 DC-OPF solved in ${dt.toFixed(2)}ms (threshold: ${maxIeee300Dt}ms)`);
 });
 
 test("PEGASE 1,354-Bus European System: High-Voltage Transmission OPF scalability benchmark", async () => {
@@ -229,5 +231,6 @@ test("PEGASE 1,354-Bus European System: High-Voltage Transmission OPF scalabilit
   assert.equal(sol.buses.length, 1354);
   assert.ok(Math.abs(sol.totalGenMw - sol.totalLoadMw) < 10.0, "Total generation matches demand on 1354-bus grid");
   assert.ok(sol.totalGenMw > 50000.0, "Substantial generation dispatch on European grid");
-  assert.ok(dt < 45000.0, `PEGASE 1,354 DC-OPF solved in ${dt.toFixed(2)}ms`);
+  const maxPegaseDt = process.env.CI ? 300000.0 : 45000.0;
+  assert.ok(dt < maxPegaseDt, `PEGASE 1,354 DC-OPF solved in ${dt.toFixed(2)}ms (threshold: ${maxPegaseDt}ms)`);
 });

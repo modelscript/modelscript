@@ -202,7 +202,7 @@ export class ModelicaDiagramBackend implements DiagramBackend {
       docText = this.deps.getDocumentText(params.uri);
     }
 
-    if (!docText) {
+    if (docText === undefined) {
       return { seq: params.seq, edits: [], renderHint: "none" };
     }
 
@@ -3636,6 +3636,7 @@ export function processDiagramEditBatch(
       case "reconnect":
       case "addComponent":
       case "deleteComponents":
+      case "resize":
         needsRender = "immediate";
         break;
       case "updateName":

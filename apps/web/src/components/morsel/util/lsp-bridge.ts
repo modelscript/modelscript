@@ -342,6 +342,63 @@ export async function getClassIcon(className: string, uri?: string): Promise<str
   return req;
 }
 
+export async function getClassIcons(classNames: string[], uri?: string): Promise<Record<string, string>> {
+  const missing: string[] = [];
+  const out: Record<string, string> = {};
+  for (const raw of classNames) {
+    const clean = raw.startsWith("__LIB__:") ? raw.slice("__LIB__:".length) : raw;
+    const cached = globalClassIconCache.get(clean);
+    if (cached !== undefined) {
+      if (cached) out[raw] = cached;
+    } else if (clean) {
+      missing.push(clean);
+    }
+  }
+  if (missing.length === 0) return out;
+
+  try {
+    const batch = await (
+      await lsp()
+    ).sendRequest<Record<string, string | null>>("modelscript/getClassIcons", {
+      classNames: missing,
+      ...(uri ? { uri } : {}),
+    });
+    if (batch && typeof batch === "object") {
+      for (const [cls, svg] of Object.entries(batch)) {
+        globalClassIconCache.set(cls, svg ?? null);
+        if (typeof svg === "string" && svg.includes("<svg")) {
+          out[cls] = svg;
+        }
+      }
+    }
+  } catch {
+    // Fall back silently if worker is still starting
+  }
+  return out;
+}
+
+export interface CatalogComponentInfo {
+  fqn: string;
+  name: string;
+  kind: string;
+  packageName: string;
+  subpackage: string;
+  description?: string | undefined;
+  language?: string | undefined;
+  hasLiveIcon: boolean;
+}
+
+export async function getComponentCatalog(): Promise<CatalogComponentInfo[]> {
+  try {
+    const res = await (
+      await lsp()
+    ).sendRequest<{ components?: CatalogComponentInfo[] }>("modelscript/getComponentCatalog", {});
+    return Array.isArray(res?.components) ? res.components : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function searchClasses(query: string, limit = 50): Promise<{ results: TreeNodeInfo[] }> {
   return (await lsp()).sendRequest("modelscript/searchClasses", { query, limit });
 }

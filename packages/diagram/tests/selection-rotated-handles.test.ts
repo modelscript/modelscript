@@ -9,6 +9,7 @@ import {
   getEdgeToolConfig,
   resolveEdgeSelectionStyle,
   syncAllNodeSelectionBoxes,
+  updateNodeVisualOnResize,
   type GraphLike,
   type NodeLike,
 } from "../src/selection-handles.js";
@@ -148,7 +149,7 @@ describe("Diagram Selection Handles and Box Rotation", () => {
     assert.strictEqual(vertTool.args.attrs.strokeWidth, 1.5);
     // At zoom 3.0, radius should be scaled down to prevent oversized handles
     const r = vertTool.args.attrs.r as number;
-    assert.ok(r <= 1.5, `Radius at zoom 3.0 should be <= 1.5, got ${r}`);
+    assert.ok(r <= 2.2, `Radius at zoom 3.0 should be <= 2.2, got ${r}`);
 
     const segTool = toolsLight.find((t) => t.name === "segments");
     assert.ok(segTool, "Segments tool must be configured");
@@ -239,6 +240,7 @@ describe("Diagram Selection Handles and Box Rotation", () => {
     const vertTool = tools.find((t) => t.name === "vertices");
     assert.ok(vertTool);
     assert.strictEqual(vertTool.args.stopPropagation, true);
+    assert.deepStrictEqual((vertTool.args as any).modifiers, ["alt", "ctrl", "meta"]);
     assert.strictEqual(typeof vertTool.args.processHandle, "function");
 
     // Test processHandle delegates contextmenu to emit remove
@@ -280,23 +282,23 @@ describe("Diagram Selection Handles and Box Rotation", () => {
   });
 
   it("clamps dynamically scaled vertex radius within bounds across extreme zoom levels", () => {
-    // Very zoomed in (e.g. 10x): radius should clamp to lower bound 0.35
+    // Very zoomed in (e.g. 10x): radius should clamp to lower bound 0.6
     const mockGraphZoom10 = { zoom: () => 10.0 } as unknown as GraphLike;
     const toolsZoom10 = getEdgeToolConfig({} as any, mockGraphZoom10, false) as {
       name: string;
       args: { attrs: { r: number } };
     }[];
     const r10 = toolsZoom10.find((t) => t.name === "vertices")!.args.attrs.r;
-    assert.ok(r10 >= 0.3 && r10 <= 0.4, `Expected clamped lower bound ~0.35, got ${r10}`);
+    assert.ok(r10 >= 0.55 && r10 <= 0.65, `Expected clamped lower bound ~0.6, got ${r10}`);
 
-    // Very zoomed out (e.g. 0.1x): radius should clamp to upper bound 3.5
+    // Very zoomed out (e.g. 0.1x): radius should clamp to upper bound 6.0
     const mockGraphZoom01 = { zoom: () => 0.1 } as unknown as GraphLike;
     const toolsZoom01 = getEdgeToolConfig({} as any, mockGraphZoom01, false) as {
       name: string;
       args: { attrs: { r: number } };
     }[];
     const r01 = toolsZoom01.find((t) => t.name === "vertices")!.args.attrs.r;
-    assert.strictEqual(r01, 3.5, `Expected clamped upper bound 3.5, got ${r01}`);
+    assert.strictEqual(r01, 6.0, `Expected clamped upper bound 6.0, got ${r01}`);
   });
 
   it("ensurePatchedVerticesTool patches Vertices onPathMouseDown to reuse nearby handles and avoid duplicate vertices", () => {
@@ -422,6 +424,101 @@ describe("Diagram Selection Handles and Box Rotation", () => {
     assert.strictEqual(stoppedBatchName, "add-vertex", "Must stop batch to prevent freezing diagram canvas");
   });
 
+  it("ensurePatchedVerticesTool requires modifier key (Alt/Ctrl/Meta) to insert new vertices on edge path", () => {
+    let insertedVertexCount = 0;
+    let startedBatchName: string | null = null;
+    let existingHandleMouseDownCalled = false;
+
+    class MockVerticesWithModifiers {
+      cid = "tool-mod";
+      options = {
+        modifiers: ["alt", "ctrl", "meta"],
+        addable: true,
+      };
+      handles: any[] = [
+        {
+          onMouseDown: () => {
+            existingHandleMouseDownCalled = true;
+          },
+        },
+      ];
+      cellView = {
+        cell: {
+          getVertices: () => [{ x: 50, y: 50 }],
+          startBatch: (name: string) => {
+            startedBatchName = name;
+          },
+          insertVertex: () => {
+            insertedVertexCount++;
+          },
+          stopBatch: () => {},
+        },
+        getVertexIndex: () => 1,
+      };
+      graph = {
+        snapToGrid: (x: number, y: number) => ({
+          toJSON: () => ({ x, y }),
+        }),
+      };
+      allowAddVertex(e: any) {
+        return Boolean(e.altKey || e.ctrlKey || e.metaKey);
+      }
+      normalizeEvent(e: any) {
+        return e;
+      }
+      snapVertex() {}
+      render() {
+        this.handles.push({ onMouseDown: () => {} });
+      }
+      eventData() {}
+    }
+
+    const mockX6 = {
+      Registry: {
+        EdgeTool: {
+          presets: {
+            vertices: MockVerticesWithModifiers,
+          },
+        },
+      },
+    };
+
+    ensurePatchedVerticesTool(mockX6);
+
+    const instance = new MockVerticesWithModifiers() as any;
+
+    // 1. Plain click on wire (no modifier) at (200, 200) -> MUST NOT insert vertex
+    instance.onPathMouseDown({ clientX: 200, clientY: 200, stopPropagation: () => {}, preventDefault: () => {} });
+    assert.strictEqual(insertedVertexCount, 0, "Must not insert vertex when clicking edge without Alt/Ctrl");
+    assert.strictEqual(startedBatchName, null, "Must not start batch without modifier");
+
+    // 2. Click near existing vertex (52, 52) without modifier -> MUST reuse existing handle
+    instance.onPathMouseDown({ clientX: 52, clientY: 52, stopPropagation: () => {}, preventDefault: () => {} });
+    assert.strictEqual(insertedVertexCount, 0, "Must not insert duplicate vertex near existing handle");
+    assert.strictEqual(existingHandleMouseDownCalled, true, "Must delegate to existing handle onMouseDown");
+
+    // 3. Click with altKey: true at (200, 200) -> MUST insert vertex
+    instance.onPathMouseDown({
+      clientX: 200,
+      clientY: 200,
+      altKey: true,
+      stopPropagation: () => {},
+      preventDefault: () => {},
+    });
+    assert.strictEqual(insertedVertexCount, 1, "Must insert vertex when Alt is held");
+    assert.strictEqual(startedBatchName, "add-vertex");
+
+    // 4. Click with ctrlKey: true at (300, 300) -> MUST insert vertex
+    instance.onPathMouseDown({
+      clientX: 300,
+      clientY: 300,
+      ctrlKey: true,
+      stopPropagation: () => {},
+      preventDefault: () => {},
+    });
+    assert.strictEqual(insertedVertexCount, 2, "Must insert vertex when Ctrl is held");
+  });
+
   it("ensurePatchedSegmentsTool preserves pinned port anchors and heals orthogonal vertices after segment drag", () => {
     let removedPropPath: string[] | null = null;
     let setVerticesCalledWith: any = null;
@@ -486,5 +583,178 @@ describe("Diagram Selection Handles and Box Rotation", () => {
       ],
       "Must heal and regularize vertices to strict Manhattan coordinates",
     );
+  });
+
+  describe("updateNodeVisualOnResize", () => {
+    class MockElement {
+      tagName: string;
+      attrs: Record<string, string>;
+      children: MockElement[];
+
+      constructor(tagName: string, attrs: Record<string, string> = {}, children: MockElement[] = []) {
+        this.tagName = tagName;
+        this.attrs = { ...attrs };
+        this.children = [...children];
+      }
+
+      getAttribute(name: string): string | null {
+        return this.attrs[name] ?? null;
+      }
+
+      setAttribute(name: string, value: string): void {
+        this.attrs[name] = value;
+      }
+
+      querySelector(tag: string): MockElement | null {
+        const targetTag = tag.toLowerCase();
+        for (const child of this.children) {
+          if (child.tagName.toLowerCase() === targetTag) return child;
+          const found = child.querySelector(tag);
+          if (found) return found;
+        }
+        return null;
+      }
+    }
+
+    it("scales root SVG and direct hitbox/background rects to new dimensions", () => {
+      const hitbox = new MockElement("rect", { width: "20", height: "40", style: "fill: transparent" });
+      const innerIconSvg = new MockElement("svg", {
+        width: "100%",
+        height: "100%",
+        viewBox: "-100 -100 200 200",
+      });
+      const rootSvg = new MockElement("svg", { width: "20", height: "40" }, [hitbox, innerIconSvg]);
+      const container = new MockElement("g", { class: "x6-cell x6-node" }, [rootSvg]);
+
+      const mockNode: any = {
+        isNode: () => true,
+        getPorts: () => [],
+        getData: () => ({}),
+        setData: () => {},
+        getSize: () => ({ width: 60, height: 120 }),
+      };
+
+      const mockGraph: any = {
+        findViewByCell: () => ({ container }),
+      };
+
+      updateNodeVisualOnResize(mockNode, mockGraph, 60, 120, 20, 40);
+
+      assert.strictEqual(rootSvg.getAttribute("width"), "60", "Root SVG width must scale to 60");
+      assert.strictEqual(rootSvg.getAttribute("height"), "120", "Root SVG height must scale to 120");
+      assert.strictEqual(hitbox.getAttribute("width"), "60", "Hitbox rect width must scale to 60");
+      assert.strictEqual(hitbox.getAttribute("height"), "120", "Hitbox rect height must scale to 120");
+      // Inner icon SVG retains 100% width and height so its viewBox naturally scales
+      assert.strictEqual(innerIconSvg.getAttribute("width"), "100%");
+      assert.strictEqual(innerIconSvg.getAttribute("height"), "100%");
+      assert.strictEqual(innerIconSvg.getAttribute("viewBox"), "-100 -100 200 200");
+    });
+
+    it("proportionally updates port coordinates across resize aspect ratios", () => {
+      const hitbox = new MockElement("rect", { width: "20", height: "40" });
+      const rootSvg = new MockElement("svg", { width: "20", height: "40" }, [hitbox]);
+      const container = new MockElement("g", {}, [rootSvg]);
+
+      let nodeData: any = {};
+      const updatedPortProps: Record<string, any> = {};
+
+      const mockNode: any = {
+        isNode: () => true,
+        getPorts: () => [
+          { id: "p", args: { x: 10, y: 0 } },
+          { id: "n", args: { x: 10, y: 40 } },
+        ],
+        getData: () => nodeData,
+        setData: (d: any) => {
+          nodeData = d;
+        },
+        setPortProp: (id: string, prop: string, val: any) => {
+          if (prop === "args") updatedPortProps[id] = val;
+        },
+        getSize: () => ({ width: 50, height: 100 }),
+      };
+
+      const mockGraph: any = {
+        findViewByCell: () => ({ container }),
+      };
+
+      // Resize from 20x40 to 50x100
+      updateNodeVisualOnResize(mockNode, mockGraph, 50, 100, 20, 40);
+
+      // Port p: initial (10, 0) => rx=0.5, ry=0 => scaled: (25, 0)
+      // Port n: initial (10, 40) => rx=0.5, ry=1 => scaled: (25, 100)
+      assert.ok(updatedPortProps["p"], "Port p args must be updated");
+      assert.strictEqual(updatedPortProps["p"].x, 25, "Port p x must be 25");
+      assert.strictEqual(updatedPortProps["p"].y, 0, "Port p y must be 0");
+
+      assert.ok(updatedPortProps["n"], "Port n args must be updated");
+      assert.strictEqual(updatedPortProps["n"].x, 25, "Port n x must be 25");
+      assert.strictEqual(updatedPortProps["n"].y, 100, "Port n y must be 100");
+
+      // Verify cached port ratios in node data
+      assert.ok(nodeData.__portRatios, "__portRatios must be saved in node data");
+      assert.strictEqual(nodeData.__portRatios["p"].rx, 0.5);
+      assert.strictEqual(nodeData.__portRatios["p"].ry, 0);
+      assert.strictEqual(nodeData.__portRatios["n"].rx, 0.5);
+      assert.strictEqual(nodeData.__portRatios["n"].ry, 1);
+    });
+
+    it("updates flip transforms when component is mirrored", () => {
+      const flipGroup = new MockElement("g", { transform: "translate(20, 0) scale(-1, 1)" });
+      const rootSvg = new MockElement("svg", { width: "20", height: "40" }, [flipGroup]);
+      const container = new MockElement("g", {}, [rootSvg]);
+
+      const mockNode: any = {
+        isNode: () => true,
+        getPorts: () => [],
+        getData: () => ({}),
+        setData: () => {},
+        getSize: () => ({ width: 80, height: 100 }),
+      };
+
+      const mockGraph: any = {
+        findViewByCell: () => ({ container }),
+      };
+
+      updateNodeVisualOnResize(mockNode, mockGraph, 80, 100, 20, 40);
+
+      assert.strictEqual(
+        flipGroup.getAttribute("transform"),
+        "translate(80, 0) scale(-1, 1)",
+        "Horizontal flip transform must update translate offset to new width",
+      );
+    });
+
+    it("updates stored node markup attributes to stay synchronized", () => {
+      const markup = {
+        tagName: "svg",
+        attrs: { width: 20, height: 40 },
+        children: [
+          { tagName: "rect", attrs: { width: 20, height: 40 } },
+          { tagName: "g", attrs: { transform: "translate(20, 0) scale(-1, 1)" } },
+        ],
+      };
+
+      const mockNode: any = {
+        isNode: () => true,
+        getPorts: () => [],
+        getData: () => ({}),
+        setData: () => {},
+        getMarkup: () => markup,
+        getSize: () => ({ width: 70, height: 90 }),
+      };
+
+      const mockGraph: any = {
+        findViewByCell: () => null,
+      };
+
+      updateNodeVisualOnResize(mockNode, mockGraph, 70, 90, 20, 40);
+
+      assert.strictEqual(markup.attrs.width, 70);
+      assert.strictEqual(markup.attrs.height, 90);
+      assert.strictEqual(markup.children[0].attrs.width, 70);
+      assert.strictEqual(markup.children[0].attrs.height, 90);
+      assert.strictEqual(markup.children[1].attrs.transform, "translate(70, 0) scale(-1, 1)");
+    });
   });
 });

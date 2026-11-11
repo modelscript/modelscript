@@ -36,12 +36,14 @@ import {
 import { startPlacement } from "./placement";
 import type { Translations } from "./util/i18n";
 import {
-  getClassIcon,
+  getClassIcons,
+  getComponentCatalog,
   getMountedLibraries,
   globalClassIconCache,
   installDependency,
   searchClasses,
   uninstallDependency,
+  type CatalogComponentInfo,
   type MountedLibraryEntry,
 } from "./util/lsp-bridge";
 import { invertSvgColors, normalizeSvgForIcon } from "./util/x6";
@@ -50,6 +52,39 @@ export { CURATED_ANSATZ_PACKAGES as CURATED_STDLIB_PACKAGES };
 export type { PackageComponentSummary, RegistryPackage };
 
 type HubViewMode = "components" | "libraries" | "import";
+
+const COMPONENT_PAGE_SIZE = 72;
+
+function extractSubpackageGroup(fqn: string): string | null {
+  const parts = fqn.split(".");
+  if (parts.length < 3) return null;
+  if (parts[0] === "Modelica" && parts.length >= 4) {
+    return `${parts[1]} · ${parts[2]}`;
+  }
+  return `${parts[0]} · ${parts[1]}`;
+}
+
+function catalogEntryToGalleryItem(entry: CatalogComponentInfo, mountedVer?: string): GalleryComponentItem {
+  const domain = inferDomainForFqn(entry.fqn, entry.language);
+  const parts = entry.fqn.split(".");
+  const subPath = parts.length > 2 ? parts.slice(1, -1).join(" · ") : entry.packageName;
+  const baseIdent = entry.name.replace(/[^A-Za-z0-9_]/g, "") || "comp";
+  const instIdent = `${baseIdent.charAt(0).toLowerCase()}${baseIdent.slice(1)}1`;
+  return {
+    id: `cat:${entry.fqn}`,
+    shortName: entry.name,
+    fqn: entry.fqn,
+    kind: entry.kind || "model",
+    category: domain,
+    packageName: entry.packageName,
+    packageVersion: mountedVer || (entry.packageName === "Modelica" ? "4.1.0" : "1.0.0"),
+    summary: entry.description || `${subPath} (${entry.kind || "model"})`,
+    portsAndParams: parts.length > 2 ? parts.slice(0, -1).join(".") : `${entry.kind} · ${entry.packageName}`,
+    declarationSnippet: `${entry.fqn} ${instIdent};`,
+    keywords: [entry.name.toLowerCase(), entry.fqn.toLowerCase(), subPath.toLowerCase()],
+    schematicSvg: buildGenericSchematicSvg(entry.name, entry.kind || "model", domain),
+  };
+}
 
 export interface AddLibraryModalProps {
   isOpen: boolean;
@@ -122,55 +157,26 @@ function setComponentDragPreview(e: React.DragEvent, svgMarkup: string, shortNam
 
 /**
  * Renders a crisp engineering schematic SVG for a component card.
- * Automatically upgrades to the official LSP/MSL `Icon(...)` SVG when mounted,
+ * Uses batch-hydrated official LSP/MSL `Icon(...)` SVGs from `globalClassIconCache`
  * and falls back seamlessly to the curated schematic vector symbol.
  */
 const SchematicPreview: React.FC<{
   fqn: string;
+  cachedSvg: string | null;
   fallbackSvg: string;
   isDark: boolean;
-  isPackageMounted: boolean;
-}> = React.memo(function SchematicPreview({ fqn, fallbackSvg, isDark, isPackageMounted }) {
-  const [liveSvg, setLiveSvg] = useState<string | null>(() => globalClassIconCache.get(fqn) ?? null);
-  const fetchedRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    const cached = globalClassIconCache.get(fqn);
-    if (cached) {
-      setLiveSvg(cached);
-      return;
-    }
-    if (!isPackageMounted) return;
-    if (fetchedRef.current === `${fqn}:mounted`) return;
-    fetchedRef.current = `${fqn}:mounted`;
-
-    let cancelled = false;
-    getClassIcon(fqn)
-      .then((res) => {
-        if (cancelled) return;
-        if (res && res.includes("<svg")) {
-          globalClassIconCache.set(fqn, res);
-          setLiveSvg(res);
-        }
-      })
-      .catch(() => {
-        // keep curated schematic SVG
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [fqn, isPackageMounted]);
+}> = React.memo(function SchematicPreview({ fqn, cachedSvg, fallbackSvg, isDark }) {
+  const activeSvg = cachedSvg ?? globalClassIconCache.get(fqn) ?? null;
 
   const sanitizedHtml = useMemo(() => {
-    if (liveSvg && liveSvg.includes("<svg")) {
-      const adapted = normalizeSvgForIcon(invertSvgColors(liveSvg, isDark));
+    if (activeSvg && activeSvg.includes("<svg")) {
+      const adapted = normalizeSvgForIcon(invertSvgColors(activeSvg, isDark));
       return DOMPurify.sanitize(adapted, { USE_PROFILES: { svg: true, svgFilters: true } });
     }
     return DOMPurify.sanitize(fallbackSvg, { USE_PROFILES: { svg: true, svgFilters: true } });
-  }, [liveSvg, fallbackSvg, isDark]);
+  }, [activeSvg, fallbackSvg, isDark]);
 
-  const isUsingLiveMsl = Boolean(liveSvg && liveSvg.includes("<svg"));
+  const isUsingLiveMsl = Boolean(activeSvg && activeSvg.includes("<svg"));
 
   return (
     <div
@@ -217,12 +223,16 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDomain, setSelectedDomain] = useState<EngineeringDomainId>("all");
   const [packageFilter, setPackageFilter] = useState<string | null>(null);
+  const [subpackageFilter, setSubpackageFilter] = useState<string | null>(null);
   const [mountedOnlyFilter, setMountedOnlyFilter] = useState(false);
   const [installedOnlyLibraries, setInstalledOnlyLibraries] = useState(false);
   const [sortBy, setSortBy] = useState<"popular" | "name">("popular");
+  const [visibleCount, setVisibleCount] = useState<number>(COMPONENT_PAGE_SIZE);
+  const [iconRev, setIconRev] = useState(0);
 
-  // Authoritative mounted packages from LSP
+  // Authoritative mounted packages & full component catalog from LSP
   const [mountedMap, setMountedMap] = useState<Map<string, MountedLibraryEntry>>(new Map());
+  const [catalogEntries, setCatalogEntries] = useState<CatalogComponentInfo[]>([]);
   const [remotePackages, setRemotePackages] = useState<RegistryPackage[]>([]);
   const [liveClassMatches, setLiveClassMatches] = useState<GalleryComponentItem[]>([]);
   const [isSearchingLive, setIsSearchingLive] = useState(false);
@@ -239,23 +249,40 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
   const [importError, setImportError] = useState<string | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const scrollViewportRef = useRef<HTMLDivElement | null>(null);
+  const attemptedIconFqnsRef = useRef<Set<string>>(new Set());
 
-  const syncMountedState = useCallback(async () => {
-    const res = await getMountedLibraries();
+  const syncMountedState = useCallback(async (): Promise<number> => {
+    const [res, catalog] = await Promise.all([getMountedLibraries(), getComponentCatalog()]);
     const next = new Map<string, MountedLibraryEntry>();
     for (const item of res.mounted) {
       next.set(item.name.toLowerCase(), item);
     }
     setMountedMap(next);
+    if (catalog.length > 0) {
+      setCatalogEntries(catalog);
+    }
+    return catalog.length;
   }, []);
 
-  // Refresh mounted libraries & remote catalog when modal opens
+  // Refresh mounted libraries, full MSL/workspace component catalog & remote packages when modal opens
   useEffect(() => {
     if (!isOpen) return;
-    void syncMountedState();
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    void syncMountedState().then((count) => {
+      // If LSP worker was still booting on initial cold open, retry once it finishes initializing
+      if (!cancelled && count === 0) {
+        retryTimer = setTimeout(() => {
+          if (!cancelled) {
+            void syncMountedState();
+          }
+        }, 650);
+      }
+    });
     setTimeout(() => searchInputRef.current?.focus(), 40);
 
-    let cancelled = false;
     fetch("/api/v1/packages?limit=40")
       .then(async (r) => {
         if (!r.ok) return;
@@ -270,8 +297,22 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
 
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [isOpen, syncMountedState]);
+
+  // Reset subpackage filter when top-level domain or package filter changes
+  useEffect(() => {
+    setSubpackageFilter(null);
+  }, [selectedDomain, packageFilter]);
+
+  // Reset progressive render window & scroll position when filters or query change
+  useEffect(() => {
+    setVisibleCount(COMPONENT_PAGE_SIZE);
+    if (scrollViewportRef.current) {
+      scrollViewportRef.current.scrollTop = 0;
+    }
+  }, [searchQuery, selectedDomain, packageFilter, subpackageFilter, mountedOnlyFilter, viewMode]);
 
   // Escape key closes modal
   useEffect(() => {
@@ -302,19 +343,21 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
     let cancelled = false;
     setIsSearchingLive(true);
     const timer = setTimeout(() => {
-      searchClasses(q, 40)
+      searchClasses(q, 60)
         .then((res) => {
           if (cancelled) return;
-          const curatedFqns = new Set(GALLERY_COMPONENTS.map((c) => c.fqn.toLowerCase()));
           const dynamicItems: GalleryComponentItem[] = [];
           for (const node of res.results) {
             const fqn = node.compositeName || node.name;
-            if (!fqn || fqn.startsWith("__LIB__:") || curatedFqns.has(fqn.toLowerCase())) continue;
+            if (!fqn || fqn.startsWith("__LIB__:")) continue;
             const kind = (node.classKind || "class").toLowerCase();
             if (kind === "package") continue;
             const rootPkg = fqn.split(".")[0] || "Workspace";
             const domain = inferDomainForFqn(fqn, node.language);
             const mountedVer = mountedMap.get(rootPkg.toLowerCase())?.version || "1.0.0";
+            if (node.iconSvg && node.iconSvg.includes("<svg")) {
+              globalClassIconCache.set(fqn, node.iconSvg);
+            }
             dynamicItems.push({
               id: `live:${fqn}`,
               shortName: node.name,
@@ -329,7 +372,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
               keywords: [node.name.toLowerCase(), fqn.toLowerCase()],
               schematicSvg: node.iconSvg || buildGenericSchematicSvg(node.name, kind, domain),
             });
-            if (dynamicItems.length >= 24) break;
+            if (dynamicItems.length >= 40) break;
           }
           setLiveClassMatches(dynamicItems);
           setIsSearchingLive(false);
@@ -392,10 +435,35 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
     return Array.from(merged.values());
   }, [remotePackages, mountedMap]);
 
-  // Filtered Component Gallery items (NEVER resets to full list when search matches 0!)
-  const filteredComponents = useMemo<GalleryComponentItem[]>(() => {
+  // Full merged Component Gallery (38 featured polyglot/MSL components + 1,330+ pre-baked MSL & mounted workspace components)
+  const allGalleryComponents = useMemo<GalleryComponentItem[]>(() => {
+    const seen = new Set<string>();
+    const out: GalleryComponentItem[] = [];
+    for (const item of GALLERY_COMPONENTS) {
+      seen.add(item.fqn.toLowerCase());
+      out.push(item);
+    }
+    for (const entry of catalogEntries) {
+      const key = entry.fqn.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const mountedVer = mountedMap.get(entry.packageName.toLowerCase())?.version;
+      out.push(catalogEntryToGalleryItem(entry, mountedVer));
+    }
+    return out;
+  }, [catalogEntries, mountedMap]);
+
+  // Domain + package + search filtered components (before subpackage quick-pill refinement)
+  const baseFilteredComponents = useMemo<GalleryComponentItem[]>(() => {
     const q = searchQuery.trim().toLowerCase();
-    const combined = q.length >= 2 ? [...GALLERY_COMPONENTS, ...liveClassMatches] : GALLERY_COMPONENTS;
+    let combined = allGalleryComponents;
+    if (q.length >= 2 && liveClassMatches.length > 0) {
+      const seen = new Set(allGalleryComponents.map((c) => c.fqn.toLowerCase()));
+      const extras = liveClassMatches.filter((m) => !seen.has(m.fqn.toLowerCase()));
+      if (extras.length > 0) {
+        combined = [...allGalleryComponents, ...extras];
+      }
+    }
 
     return combined.filter((item) => {
       if (selectedDomain !== "all" && item.category !== selectedDomain) return false;
@@ -412,14 +480,87 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
         item.keywords.some((kw) => kw.includes(q))
       );
     });
-  }, [searchQuery, selectedDomain, packageFilter, mountedOnlyFilter, mountedMap, liveClassMatches]);
+  }, [
+    allGalleryComponents,
+    searchQuery,
+    selectedDomain,
+    packageFilter,
+    mountedOnlyFilter,
+    mountedMap,
+    liveClassMatches,
+  ]);
+
+  // Top subpackage pills when exploring a domain or package (e.g. "Electrical · Analog", "Blocks · Continuous")
+  const availableSubpackages = useMemo<Array<{ label: string; count: number }>>(() => {
+    if (selectedDomain === "all" && !packageFilter) return [];
+    const counts = new Map<string, number>();
+    for (const item of baseFilteredComponents) {
+      const grp = extractSubpackageGroup(item.fqn);
+      if (grp) {
+        counts.set(grp, (counts.get(grp) ?? 0) + 1);
+      }
+    }
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [baseFilteredComponents, selectedDomain, packageFilter]);
+
+  // Final filtered Component Gallery items
+  const filteredComponents = useMemo<GalleryComponentItem[]>(() => {
+    if (!subpackageFilter) return baseFilteredComponents;
+    return baseFilteredComponents.filter((item) => extractSubpackageGroup(item.fqn) === subpackageFilter);
+  }, [baseFilteredComponents, subpackageFilter]);
+
+  // Progressive visible slice for 60fps scrolling + batched official MSL SVG hydration
+  const visibleComponents = useMemo<GalleryComponentItem[]>(
+    () => filteredComponents.slice(0, visibleCount),
+    [filteredComponents, visibleCount],
+  );
+
+  useEffect(() => {
+    if (!isOpen || viewMode !== "components" || visibleComponents.length === 0) return;
+    const missing: string[] = [];
+    for (const comp of visibleComponents) {
+      if (globalClassIconCache.has(comp.fqn)) continue;
+      if (attemptedIconFqnsRef.current.has(comp.fqn)) continue;
+      const canFetch = comp.packageName === "Modelica" || mountedMap.has(comp.packageName.toLowerCase());
+      if (canFetch) {
+        attemptedIconFqnsRef.current.add(comp.fqn);
+        missing.push(comp.fqn);
+      }
+    }
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+    void getClassIcons(missing.slice(0, 80)).then((icons) => {
+      if (cancelled) return;
+      if (Object.keys(icons).length > 0) {
+        setIconRev((r) => r + 1);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, viewMode, visibleComponents, mountedMap]);
+
+  // Pre-computed component counts per package for the Libraries tab
+  const packageComponentCounts = useMemo<Map<string, number>>(() => {
+    const counts = new Map<string, number>();
+    for (const comp of allGalleryComponents) {
+      const key = comp.packageName.toLowerCase();
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [allGalleryComponents]);
 
   // Filtered Ansatz Library cards (matches library name, description, language, AND its component names!)
   const filteredPackages = useMemo<RegistryPackage[]>(() => {
     const q = searchQuery.trim().toLowerCase();
     const matchingPkgFromComponents = new Set<string>();
     if (q) {
-      for (const comp of GALLERY_COMPONENTS) {
+      for (const comp of allGalleryComponents) {
         if (
           comp.shortName.toLowerCase().includes(q) ||
           comp.fqn.toLowerCase().includes(q) ||
@@ -448,7 +589,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
       return (b.downloads ?? 0) - (a.downloads ?? 0);
     });
     return list;
-  }, [allPackages, searchQuery, selectedDomain, installedOnlyLibraries, mountedMap, sortBy]);
+  }, [allPackages, allGalleryComponents, searchQuery, selectedDomain, installedOnlyLibraries, mountedMap, sortBy]);
 
   // Install package (with automatic peer-dependency version bump per user preference)
   const executeInstallPackage = useCallback(
@@ -742,7 +883,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
           >
             {(
               [
-                { id: "components", label: "Components", badge: String(filteredComponents.length) },
+                { id: "components", label: "Components", badge: filteredComponents.length.toLocaleString() },
                 { id: "libraries", label: "Libraries", badge: `${mountedVisibleCount}/${allPackages.length}` },
                 { id: "import", label: "Import", badge: null },
               ] as const
@@ -883,7 +1024,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={
                     viewMode === "components"
-                      ? "Search schematic components (resistor, capacitor, PID, pump, gear, MOSFET, UR5)..."
+                      ? "Search 1,350+ schematic components (resistor, opamp, PID, gear, fluxtube, MOSFET, pump, UR5)..."
                       : "Search Ansatz libraries by name, domain, language, or included component..."
                   }
                   style={{
@@ -1009,11 +1150,53 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                 );
               })}
             </div>
+
+            {/* Subpackage Quick-Filter Pills (when exploring a specific domain or package) */}
+            {viewMode === "components" && availableSubpackages.length > 1 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                {availableSubpackages.map((grp) => {
+                  const active = subpackageFilter === grp.label;
+                  return (
+                    <button
+                      key={grp.label}
+                      type="button"
+                      onClick={() => setSubpackageFilter(active ? null : grp.label)}
+                      style={{
+                        border: `1px solid ${active ? palette.accent : palette.subtleBorder}`,
+                        backgroundColor: active ? palette.accentSoft : palette.subtleBg,
+                        color: active ? (isDark ? "#60a5fa" : "#2563eb") : palette.muted,
+                        borderRadius: 6,
+                        padding: "2px 8px",
+                        fontSize: 11,
+                        fontWeight: active ? 600 : 500,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span>{grp.label}</span>
+                      <span style={{ opacity: 0.72, fontFamily: "var(--ms-font-mono, monospace)", fontSize: 10 }}>
+                        {grp.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
         {/* ── Main Scrollable Viewport ── */}
         <div
+          ref={scrollViewportRef}
+          onScroll={(e) => {
+            if (viewMode !== "components" || visibleCount >= filteredComponents.length) return;
+            const el = e.currentTarget;
+            if (el.scrollTop + el.clientHeight >= el.scrollHeight - 280) {
+              setVisibleCount((prev) => Math.min(prev + COMPONENT_PAGE_SIZE, filteredComponents.length));
+            }
+          }}
           style={{
             flex: 1,
             minHeight: 0,
@@ -1038,8 +1221,8 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                 >
                   <div style={{ fontSize: 15, fontWeight: 600 }}>No matching schematic components</div>
                   <div style={{ fontSize: 13, color: palette.muted, maxWidth: 420 }}>
-                    No components matched &ldquo;{searchQuery || selectedDomain}&rdquo;. Try clearing active filters or
-                    check Ansatz Libraries to mount additional domain packages.
+                    No components matched &ldquo;{searchQuery || subpackageFilter || selectedDomain}&rdquo;. Try
+                    clearing active filters or check Ansatz Libraries to mount additional domain packages.
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
                     <button
@@ -1048,6 +1231,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                         setSearchQuery("");
                         setSelectedDomain("all");
                         setPackageFilter(null);
+                        setSubpackageFilter(null);
                         setMountedOnlyFilter(false);
                       }}
                       style={{
@@ -1082,199 +1266,244 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                   </div>
                 </div>
               ) : (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(215px, 1fr))",
-                    gap: 12,
-                  }}
-                >
-                  {filteredComponents.map((comp) => {
-                    const isPkgMounted = mountedMap.has(comp.packageName.toLowerCase());
-                    const isBusy = busyComponentId === comp.id;
-                    const isSelected = inspectedComponent?.id === comp.id;
+                <>
+                  <div
+                    data-icon-rev={iconRev}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(215px, 1fr))",
+                      gap: 12,
+                    }}
+                  >
+                    {visibleComponents.map((comp) => {
+                      const isPkgMounted = mountedMap.has(comp.packageName.toLowerCase());
+                      const isBusy = busyComponentId === comp.id;
+                      const isSelected = inspectedComponent?.id === comp.id;
+                      const cachedSvg = globalClassIconCache.get(comp.fqn) ?? null;
 
-                    return (
-                      <div
-                        key={comp.id}
-                        draggable
-                        onDragStart={(e) => handleComponentDragStart(e, comp)}
-                        onClick={() => setInspectedComponent((prev) => (prev?.id === comp.id ? null : comp))}
-                        title={`${comp.fqn}\nDrag onto schematic canvas or click Place`}
-                        style={{
-                          border: `1px solid ${isSelected ? palette.accent : palette.border}`,
-                          borderRadius: 12,
-                          backgroundColor: palette.cardBg,
-                          display: "flex",
-                          flexDirection: "column",
-                          overflow: "hidden",
-                          cursor: "grab",
-                          transition: "border-color 0.14s ease, transform 0.14s ease, box-shadow 0.14s ease",
-                          boxShadow: isSelected ? `0 0 0 2px ${palette.accentSoft}` : "none",
-                        }}
-                      >
-                        {/* Graphical Schematic Blueprint Stage */}
+                      return (
                         <div
+                          key={comp.id}
+                          draggable
+                          onDragStart={(e) => handleComponentDragStart(e, comp)}
+                          onClick={() => setInspectedComponent((prev) => (prev?.id === comp.id ? null : comp))}
+                          title={`${comp.fqn}\nDrag onto schematic canvas or click Place`}
                           style={{
-                            height: 82,
-                            backgroundColor: palette.stageBg,
-                            backgroundImage: isDark
-                              ? "radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px)"
-                              : "radial-gradient(rgba(15,23,42,0.08) 1px, transparent 1px)",
-                            backgroundSize: "12px 12px",
-                            borderBottom: `1px solid ${palette.subtleBorder}`,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            position: "relative",
-                            padding: "6px 12px",
-                          }}
-                        >
-                          <SchematicPreview
-                            fqn={comp.fqn}
-                            fallbackSvg={comp.schematicSvg}
-                            isDark={isDark}
-                            isPackageMounted={isPkgMounted}
-                          />
-                          <span
-                            style={{
-                              position: "absolute",
-                              top: 6,
-                              right: 7,
-                              fontSize: 9.5,
-                              fontWeight: 600,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.03em",
-                              padding: "1px 5px",
-                              borderRadius: 4,
-                              backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.05)",
-                              color: palette.muted,
-                              fontFamily: "var(--ms-font-mono, monospace)",
-                            }}
-                          >
-                            {comp.kind}
-                          </span>
-                        </div>
-
-                        {/* Component Metadata + Place Button */}
-                        <div
-                          style={{
-                            padding: "10px 12px",
+                            border: `1px solid ${isSelected ? palette.accent : palette.border}`,
+                            borderRadius: 12,
+                            backgroundColor: palette.cardBg,
                             display: "flex",
                             flexDirection: "column",
-                            gap: 5,
-                            flex: 1,
+                            overflow: "hidden",
+                            cursor: "grab",
+                            transition: "border-color 0.14s ease, transform 0.14s ease, box-shadow 0.14s ease",
+                            boxShadow: isSelected ? `0 0 0 2px ${palette.accentSoft}` : "none",
                           }}
                         >
+                          {/* Graphical Schematic Blueprint Stage */}
                           <div
                             style={{
-                              fontSize: 13.5,
-                              fontWeight: 650,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {comp.shortName}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 11.5,
-                              color: palette.muted,
-                              lineHeight: 1.35,
-                              display: "-webkit-box",
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: "vertical",
-                              overflow: "hidden",
-                              minHeight: 31,
-                            }}
-                          >
-                            {comp.summary}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 10.5,
-                              color: isDark ? "#79c0ff" : "#0969da",
-                              fontFamily: "var(--ms-font-mono, monospace)",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {comp.portsAndParams}
-                          </div>
-
-                          <div
-                            style={{
-                              marginTop: "auto",
-                              paddingTop: 7,
-                              borderTop: `1px solid ${palette.subtleBorder}`,
+                              height: 82,
+                              backgroundColor: palette.stageBg,
+                              backgroundImage: isDark
+                                ? "radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px)"
+                                : "radial-gradient(rgba(15,23,42,0.08) 1px, transparent 1px)",
+                              backgroundSize: "12px 12px",
+                              borderBottom: `1px solid ${palette.subtleBorder}`,
                               display: "flex",
                               alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 6,
+                              justifyContent: "center",
+                              position: "relative",
+                              padding: "6px 12px",
                             }}
                           >
+                            <SchematicPreview
+                              fqn={comp.fqn}
+                              cachedSvg={cachedSvg}
+                              fallbackSvg={comp.schematicSvg}
+                              isDark={isDark}
+                            />
                             <span
                               style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 5,
-                                fontSize: 11,
+                                position: "absolute",
+                                top: 6,
+                                right: 7,
+                                fontSize: 9.5,
+                                fontWeight: 600,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.03em",
+                                padding: "1px 5px",
+                                borderRadius: 4,
+                                backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.05)",
                                 color: palette.muted,
+                                fontFamily: "var(--ms-font-mono, monospace)",
+                              }}
+                            >
+                              {comp.kind}
+                            </span>
+                          </div>
+
+                          {/* Component Metadata + Place Button */}
+                          <div
+                            style={{
+                              padding: "10px 12px",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 5,
+                              flex: 1,
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: 13.5,
+                                fontWeight: 650,
                                 overflow: "hidden",
                                 textOverflow: "ellipsis",
                                 whiteSpace: "nowrap",
                               }}
-                              title={
-                                isPkgMounted
-                                  ? `${comp.packageName} (mounted)`
-                                  : `${comp.packageName} (auto-installs on place)`
-                              }
+                            >
+                              {comp.shortName}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 11.5,
+                                color: palette.muted,
+                                lineHeight: 1.35,
+                                display: "-webkit-box",
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical",
+                                overflow: "hidden",
+                                minHeight: 31,
+                              }}
+                            >
+                              {comp.summary}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 10.5,
+                                color: isDark ? "#79c0ff" : "#0969da",
+                                fontFamily: "var(--ms-font-mono, monospace)",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {comp.portsAndParams}
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: "auto",
+                                paddingTop: 7,
+                                borderTop: `1px solid ${palette.subtleBorder}`,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 6,
+                              }}
                             >
                               <span
                                 style={{
-                                  width: 6,
-                                  height: 6,
-                                  borderRadius: "50%",
-                                  backgroundColor: isPkgMounted ? palette.success : "#f59e0b",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 5,
+                                  fontSize: 11,
+                                  color: palette.muted,
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                                title={
+                                  isPkgMounted
+                                    ? `${comp.packageName} (mounted)`
+                                    : `${comp.packageName} (auto-installs on place)`
+                                }
+                              >
+                                <span
+                                  style={{
+                                    width: 6,
+                                    height: 6,
+                                    borderRadius: "50%",
+                                    backgroundColor: isPkgMounted ? palette.success : "#f59e0b",
+                                    flexShrink: 0,
+                                  }}
+                                />
+                                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{comp.packageName}</span>
+                              </span>
+
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handlePlaceComponent(comp);
+                                }}
+                                style={{
+                                  border: "none",
+                                  borderRadius: 6,
+                                  padding: "4px 10px",
+                                  fontSize: 11.5,
+                                  fontWeight: 600,
+                                  backgroundColor: palette.accent,
+                                  color: "#ffffff",
+                                  cursor: isBusy ? "wait" : "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
                                   flexShrink: 0,
                                 }}
-                              />
-                              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{comp.packageName}</span>
-                            </span>
-
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handlePlaceComponent(comp);
-                              }}
-                              style={{
-                                border: "none",
-                                borderRadius: 6,
-                                padding: "4px 10px",
-                                fontSize: 11.5,
-                                fontWeight: 600,
-                                backgroundColor: palette.accent,
-                                color: "#ffffff",
-                                cursor: isBusy ? "wait" : "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 4,
-                                flexShrink: 0,
-                              }}
-                            >
-                              <PlusIcon size={12} />
-                              <span>{isBusy ? "Adding…" : "Place"}</span>
-                            </button>
+                              >
+                                <PlusIcon size={12} />
+                                <span>{isBusy ? "Adding…" : "Place"}</span>
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+
+                  {visibleCount < filteredComponents.length && (
+                    <div
+                      style={{
+                        marginTop: 16,
+                        padding: "10px 14px",
+                        borderRadius: 10,
+                        border: `1px solid ${palette.subtleBorder}`,
+                        backgroundColor: palette.subtleBg,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        fontSize: 12,
+                        color: palette.muted,
+                      }}
+                    >
+                      <span>
+                        Showing <strong>{visibleComponents.length.toLocaleString()}</strong> of{" "}
+                        <strong>{filteredComponents.length.toLocaleString()}</strong> schematic components
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setVisibleCount((prev) => Math.min(prev + COMPONENT_PAGE_SIZE, filteredComponents.length))
+                        }
+                        style={{
+                          padding: "5px 12px",
+                          borderRadius: 7,
+                          border: `1px solid ${palette.border}`,
+                          backgroundColor: palette.cardBg,
+                          color: palette.fg,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Show more (+{Math.min(COMPONENT_PAGE_SIZE, filteredComponents.length - visibleCount)})
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}
@@ -1298,8 +1527,8 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                   }}
                 >
                   <span>
-                    Found <strong>{filteredComponents.length}</strong> visual schematic components matching &ldquo;
-                    {searchQuery.trim()}&rdquo;
+                    Found <strong>{filteredComponents.length.toLocaleString()}</strong> visual schematic components
+                    matching &ldquo;{searchQuery.trim()}&rdquo;
                   </span>
                   <button
                     type="button"
@@ -1364,9 +1593,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                     const isBusy = busyPackage === pkg.name;
 
                     const domMeta = DOMAIN_FILTERS.find((d) => d.id === pkg.domain) || DOMAIN_FILTERS[0]!;
-                    const pkgCompCount = GALLERY_COMPONENTS.filter(
-                      (c) => c.packageName.toLowerCase() === pkg.name.toLowerCase(),
-                    ).length;
+                    const pkgCompCount = packageComponentCounts.get(pkg.name.toLowerCase()) ?? 0;
 
                     return (
                       <div
@@ -1505,7 +1732,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                                 cursor: "pointer",
                               }}
                             >
-                              Browse {pkgCompCount} showcase components →
+                              Browse {pkgCompCount.toLocaleString()} components →
                             </button>
                           ) : (
                             <span style={{ fontSize: 11.5, color: palette.muted }}>

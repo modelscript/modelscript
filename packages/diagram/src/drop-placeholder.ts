@@ -242,18 +242,27 @@ export function ensureDiagramStyles(): void {
 
     /* Corner-only precision resize handles (Figma / Linear / KiCad grade) */
     .x6-widget-transform > div {
-      width: 7px !important;
-      height: 7px !important;
+      width: 10px !important;
+      height: 10px !important;
+      margin: -5px 0 0 -5px !important;
       background-color: var(--vscode-editor-background, #ffffff) !important;
       border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
       border-radius: 2px !important;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
       transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.12s ease;
+      cursor: inherit;
+    }
+
+    .x6-widget-transform > div::after {
+      content: "";
+      position: absolute;
+      inset: -5px;
+      cursor: inherit;
     }
 
     .x6-widget-transform > div:hover {
       background-color: var(--vscode-focusBorder, #0284c7) !important;
-      transform: scale(1.25);
+      transform: scale(1.2);
     }
 
     /* Edge Selection and Vertex/Segment Handle Controls */

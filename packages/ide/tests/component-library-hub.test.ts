@@ -126,6 +126,19 @@ describe("VS Code Component & Library Hub", () => {
             mountedMap.set(params.name, params.version);
             return { ok: true, name: params.name, version: params.version } as unknown as R;
           }
+          if (method === "modelscript/getComponentCatalog") {
+            return {
+              components: [
+                {
+                  fqn: "Modelica.Electrical.Analog.Semiconductors.Thyristor",
+                  name: "Thyristor",
+                  kind: "model",
+                  packageName: "Modelica",
+                  hasLiveIcon: true,
+                },
+              ],
+            } as unknown as R;
+          }
           if (method === "modelscript/diagram.applyEdits") {
             diagramApplyCalls.push(params);
             return {
@@ -146,6 +159,8 @@ describe("VS Code Component & Library Hub", () => {
 
       const panel = openAnsatzPackageHub(fakeContext, mockLsp);
       assert.ok(panel.webview.html.includes("Component &amp; Library Hub"));
+      assert.ok(panel.webview.html.includes('id="subpkg-bar"'), "Should include subpackage filter bar");
+      assert.ok(panel.webview.html.includes("const PAGE_SIZE = 72;"), "Should paginate component cards progressively");
       assert.ok(messageHandler, "Webview message listener should be attached");
 
       // Placing a component from PlanarMechanics when neither Modelica nor PlanarMechanics is mounted
@@ -174,6 +189,10 @@ describe("VS Code Component & Library Hub", () => {
       assert.equal(diagramApplyCalls.length, 1, "Should invoke modelscript/diagram.applyEdits for .mo model");
       assert.equal(appliedEdits.length, 1, "Should apply WorkspaceEdit to target document");
       assert.ok(libraryRefreshCount >= 1, "Should refresh Libraries tree view after mounting");
+      assert.ok(
+        postedMessages.some((m) => m.command === "setCatalogComponents" && Array.isArray(m.components)),
+        "Should hydrate full component catalog into webview via setCatalogComponents",
+      );
       assert.ok(
         postedMessages.some((m) => m.command === "actionComplete" && m.requestId === "req-1" && m.ok === true),
         "Should notify webview of action completion",

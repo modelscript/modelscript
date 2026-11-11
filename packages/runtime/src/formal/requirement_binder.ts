@@ -51,13 +51,28 @@ export function registerRequirementBinderParsers(parsers: {
 
 function loadWasmLanguageParserNodeSync(langDirName: "sysml2" | "modelica"): TreeSitterParser | null {
   try {
-    const wasmUrl = new URL(`../../../../languages/${langDirName}/dist/parser.wasm`, import.meta.url);
+    const candidateRels = [
+      `../../../../languages/${langDirName}/dist/parser.wasm`,
+      `../../../../languages/${langDirName}/.cache/parser.wasm`,
+      `../../../../languages/${langDirName}/parser.wasm`,
+    ];
+    let wasmPath = decodeURIComponent(new URL(candidateRels[0]!, import.meta.url).pathname);
     const bindingsUrl = new URL(`../../../../languages/${langDirName}/src-gen/bindings.js`, import.meta.url);
-    const wasmPath = decodeURIComponent(wasmUrl.pathname);
     const bindingsPath = decodeURIComponent(bindingsUrl.pathname);
 
     if (typeof process !== "undefined" && typeof (process as any).getBuiltinModule === "function") {
       try {
+        const fsMod = (process as any).getBuiltinModule("node:fs");
+        if (fsMod && typeof fsMod.existsSync === "function") {
+          for (const rel of candidateRels) {
+            const p = decodeURIComponent(new URL(rel, import.meta.url).pathname);
+            if (fsMod.existsSync(p)) {
+              wasmPath = p;
+              break;
+            }
+          }
+        }
+
         const modBuiltin = (process as any).getBuiltinModule("node:module");
         if (modBuiltin && typeof modBuiltin.createRequire === "function") {
           const req = modBuiltin.createRequire(import.meta.url);
@@ -288,6 +303,141 @@ function collectAttributeUsagesFromCst(scopeNode: SyntaxNode, attrMap: Map<strin
   }
 }
 
+function evaluateSimpleSysmlArithmetic(expr: string, attrMap: Map<string, number>): number {
+  const trimmed = expr.trim();
+  const direct = Number(trimmed);
+  if (Number.isFinite(direct)) return direct;
+  if (attrMap.has(trimmed)) return attrMap.get(trimmed)!;
+
+  const binMatch = trimmed.match(/^([a-zA-Z0-9_.]+|\d+(?:\.\d+)?)\s*([+\-*/])\s*([a-zA-Z0-9_.]+|\d+(?:\.\d+)?)$/);
+  if (binMatch) {
+    const lhs = evaluateSimpleSysmlArithmetic(binMatch[1]!, attrMap);
+    const op = binMatch[2]!;
+    const rhs = evaluateSimpleSysmlArithmetic(binMatch[3]!, attrMap);
+    if (!Number.isNaN(lhs) && !Number.isNaN(rhs)) {
+      if (op === "+") return lhs + rhs;
+      if (op === "-") return lhs - rhs;
+      if (op === "*") return lhs * rhs;
+      if (op === "/") return rhs !== 0 ? lhs / rhs : NaN;
+    }
+  }
+  return NaN;
+}
+
+function extractRequirementBlocksFromText(
+  sysmlText: string,
+): { shortId?: string | undefined; id: string; body: string }[] {
+  const blocks: { shortId?: string | undefined; id: string; body: string }[] = [];
+  const reqStartRegex = /requirement\s+(?:def\s+)?(?:<['"]?([^'">]+)['"]?>\s*)?([a-zA-Z0-9_]+)\s*\{/g;
+  let match: RegExpExecArray | null;
+  while ((match = reqStartRegex.exec(sysmlText)) !== null) {
+    const shortId = match[1];
+    const id = match[2]!;
+    const startIndex = match.index + match[0].length;
+    let depth = 1;
+    let endIndex = startIndex;
+    for (let i = startIndex; i < sysmlText.length; i++) {
+      if (sysmlText[i] === "{") depth++;
+      else if (sysmlText[i] === "}") {
+        depth--;
+        if (depth === 0) {
+          endIndex = i;
+          break;
+        }
+      }
+    }
+    const body = sysmlText.slice(startIndex, endIndex);
+    blocks.push({ shortId, id, body });
+  }
+  return blocks;
+}
+
+function parseSysmlRequirementsFallback(sysmlText: string): SysmlRequirement[] {
+  const pkgMatch = sysmlText.match(/package\s+([a-zA-Z0-9_]+)/);
+  const packageName = pkgMatch ? pkgMatch[1] : undefined;
+
+  const globalAttrs = new Map<string, number>();
+  const attrRegex = /attribute\s+([a-zA-Z0-9_]+)\s*(?::\s*[^=;\n]+)?=\s*([^;\n]+);/g;
+  let attrMatch: RegExpExecArray | null;
+  while ((attrMatch = attrRegex.exec(sysmlText)) !== null) {
+    const name = attrMatch[1]!;
+    const val = evaluateSimpleSysmlArithmetic(attrMatch[2]!, globalAttrs);
+    if (!Number.isNaN(val)) {
+      globalAttrs.set(name, val);
+    }
+  }
+
+  const blocks = extractRequirementBlocksFromText(sysmlText);
+  const results: SysmlRequirement[] = [];
+
+  for (const block of blocks) {
+    const { shortId, id: reqId, body } = block;
+
+    const localAttrs = new Map<string, number>(globalAttrs);
+    const localAttrRegex = /attribute\s+([a-zA-Z0-9_]+)\s*(?::\s*[^=;\n]+)?=\s*([^;\n]+);/g;
+    let laMatch: RegExpExecArray | null;
+    while ((laMatch = localAttrRegex.exec(body)) !== null) {
+      const name = laMatch[1]!;
+      const val = evaluateSimpleSysmlArithmetic(laMatch[2]!, localAttrs);
+      if (!Number.isNaN(val)) {
+        localAttrs.set(name, val);
+      }
+    }
+
+    let subjectName: string | undefined;
+    let subjectVarName: string | undefined;
+    const subjMatch = body.match(/subject\s+([a-zA-Z0-9_]+)\s*:\s*([a-zA-Z0-9_]+)/);
+    if (subjMatch) {
+      subjectVarName = subjMatch[1];
+      subjectName = subjMatch[2];
+    }
+
+    const constraintBlockMatch = body.match(/require\s+constraint\s*\{([\s\S]*?)\}/);
+    if (constraintBlockMatch) {
+      const constraintText = constraintBlockMatch[1]!;
+      const clauses = constraintText
+        .split(/\band\b|[;\n]/)
+        .map((c) => c.trim())
+        .filter(Boolean);
+
+      for (const clause of clauses) {
+        const relMatch = clause.match(/([a-zA-Z0-9_.]+)\s*(<=|>=|<|>)\s*([a-zA-Z0-9_.]+)/);
+        if (relMatch) {
+          const rawLhs = relMatch[1]!;
+          const op = relMatch[2]! as "<=" | ">=" | "<" | ">";
+          const rawRhs = relMatch[3]!;
+
+          const lhsParts = rawLhs.split(".");
+          const targetAttribute = lhsParts[lhsParts.length - 1]!;
+          const explicitVar = lhsParts.length > 1 ? lhsParts[0] : undefined;
+
+          const limitValue = evaluateSimpleSysmlArithmetic(rawRhs, localAttrs);
+          if (!Number.isNaN(limitValue)) {
+            const attrObj: Record<string, number> = {};
+            for (const [k, v] of localAttrs.entries()) {
+              if (!k.includes(".")) attrObj[k] = v;
+            }
+
+            results.push({
+              id: reqId,
+              shortId,
+              packageName,
+              subjectName,
+              subjectVarName: subjectVarName ?? explicitVar,
+              targetAttribute,
+              operator: op,
+              limitValue,
+              attributes: attrObj,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
 /**
  * Parses formal SysML v2 `requirement def` and `requirement` blocks using the
  * native WebAssembly GLR parser (`languages/sysml2/dist/parser.wasm`) to extract
@@ -296,7 +446,7 @@ function collectAttributeUsagesFromCst(scopeNode: SyntaxNode, attrMap: Map<strin
 export function parseSysmlRequirements(sysmlText: string, cstRoot?: SyntaxNode | null): SysmlRequirement[] {
   const rootNode = cstRoot ?? getSysmlWasmParser()?.parse(sysmlText)?.rootNode ?? null;
   if (!rootNode) {
-    return [];
+    return parseSysmlRequirementsFallback(sysmlText);
   }
 
   const requirements: SysmlRequirement[] = [];
@@ -427,7 +577,10 @@ export function parseSysmlRequirements(sysmlText: string, cstRoot?: SyntaxNode |
 
         // Handle dotted feature chains (`subject.attr <= expr`) where LR shifts `subject.attr` into OwnedFeatureChain
         if (cur.type === "OwnedFeatureChain") {
-          const parentErr = cur.parent?.parent;
+          let parentErr: SyntaxNode | null = cur.parent;
+          while (parentErr && parentErr.type !== "ERROR") {
+            parentErr = parentErr.parent;
+          }
           if (!parentErr || parentErr.type !== "ERROR") continue;
           const opTokenNode = parentErr.children.find((c: SyntaxNode) => {
             const t = c.text.trim();
@@ -485,7 +638,7 @@ export function parseSysmlRequirements(sysmlText: string, cstRoot?: SyntaxNode |
     }
   }
 
-  return requirements;
+  return requirements.length > 0 ? requirements : parseSysmlRequirementsFallback(sysmlText);
 }
 
 /**

@@ -13,7 +13,78 @@ import {
   getCompositeName,
   hasClassChildren,
   isTreeVisible,
+  mountedLibraryMetadata,
 } from "../utils/hierarchy-utils.js";
+import { loadPrebakedMslIcons } from "../utils/msl-icons-loader.js";
+import { iconCache } from "./treeHandler.js";
+
+export interface CatalogComponentInfo {
+  fqn: string;
+  name: string;
+  kind: string;
+  packageName: string;
+  subpackage: string;
+  description?: string | undefined;
+  language?: string | undefined;
+  hasLiveIcon: boolean;
+}
+
+const SKIP_CATALOG_SEGMENTS = new Set([
+  "Internal",
+  "Icons",
+  "Interfaces",
+  "UsersGuide",
+  "Examples",
+  "BaseClasses",
+  "Types",
+  "Constants",
+  "Units",
+  "Utilities",
+  "Choices",
+  "Common",
+  "Frames",
+]);
+
+const ROOT_NAMESPACE_TO_PACKAGE: Record<string, string> = {
+  SPICE: "SPICE-Standard",
+  IEEEFeeders: "IEEE-Test-Feeders",
+};
+
+let cachedComponentCatalogKey = "";
+let cachedComponentCatalog: CatalogComponentInfo[] = [];
+
+function humanizeIdentifier(ident: string): string {
+  return ident
+    .replace(/_/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .trim();
+}
+
+function inferIconEntryKind(fqn: string, hasChildren: boolean): string {
+  if (hasChildren) return "package";
+  if (
+    fqn.startsWith("Modelica.Blocks.") ||
+    fqn.startsWith("Modelica.ComplexBlocks.") ||
+    fqn.startsWith("Modelica.Clocked.") ||
+    fqn.startsWith("Modelica.StateGraph.")
+  ) {
+    return "block";
+  }
+  return "model";
+}
+
+function buildParentPrefixSet(keys: Iterable<string>): Set<string> {
+  const prefixes = new Set<string>();
+  for (const key of keys) {
+    let dot = key.indexOf(".");
+    while (dot !== -1) {
+      prefixes.add(key.slice(0, dot));
+      dot = key.indexOf(".", dot + 1);
+    }
+  }
+  return prefixes;
+}
 
 export function registerClassQueryEndpoints(context: LspContext) {
   context.connection.onRequest(
@@ -101,27 +172,60 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/searchClasses",
-    (params: { query: string; limit?: number | undefined }): { results: TreeNodeInfo[] } => {
-      const query = (params.query ?? "").toLowerCase();
+    async (params: { query: string; limit?: number | undefined }): Promise<{ results: TreeNodeInfo[] }> => {
+      const query = (params.query ?? "").trim().toLowerCase();
       if (!query) return { results: [] };
 
-      const limit = params.limit ?? 50;
-      const unifiedIndex = context.workspaceManager.unifiedWorkspace.getIndex();
-      if (!unifiedIndex) return { results: [] };
+      const limit = params.limit ?? 60;
+      try {
+        const distBase = (globalThis as any).serverDistBase ?? context.parserService?.getServerDistBase?.();
+        await loadPrebakedMslIcons(distBase);
+      } catch {
+        // Prebaked icon index optional in minimal unit-test harnesses
+      }
 
+      const unifiedIndex = context.workspaceManager.unifiedWorkspace?.getIndex?.();
       const results: TreeNodeInfo[] = [];
+      const seenFqns = new Set<string>();
 
-      for (const [id, entry] of unifiedIndex.symbols) {
-        if (!isTreeVisible(entry)) continue;
-        const compositeName = getCompositeName(entry, unifiedIndex);
-        if (compositeName.toLowerCase().includes(query)) {
+      if (unifiedIndex?.symbols) {
+        for (const [id, entry] of unifiedIndex.symbols) {
+          if (!isTreeVisible(entry)) continue;
+          const compositeName = getCompositeName(entry, unifiedIndex);
+          if (!compositeName || seenFqns.has(compositeName)) continue;
+          if (compositeName.toLowerCase().includes(query)) {
+            seenFqns.add(compositeName);
+            results.push({
+              id: compositeName,
+              name: entry.name,
+              compositeName,
+              classKind: classKindFromEntry(entry),
+              hasChildren: hasClassChildren(unifiedIndex, id),
+              language: entry.language,
+            });
+            if (results.length >= limit) break;
+          }
+        }
+      }
+
+      // Also search prebaked MSL / mounted library icon keys so lazy-unparsed MSL classes & examples match immediately
+      if (results.length < limit && iconCache.size > 0) {
+        const prefixes = buildParentPrefixSet(iconCache.keys());
+        for (const fqn of iconCache.keys()) {
+          if (seenFqns.has(fqn) || !fqn.toLowerCase().includes(query)) continue;
+          const parts = fqn.split(".");
+          if (parts.some((p) => p === "Internal" || p === "UsersGuide")) continue;
+          const leaf = parts[parts.length - 1] || fqn;
+          if (!/^[A-Z]/.test(leaf)) continue;
+          const hasChildren = prefixes.has(fqn);
+          seenFqns.add(fqn);
           results.push({
-            id: compositeName,
-            name: entry.name,
-            compositeName,
-            classKind: classKindFromEntry(entry),
-            hasChildren: hasClassChildren(unifiedIndex, id),
-            language: entry.language,
+            id: fqn,
+            name: leaf,
+            compositeName: fqn,
+            classKind: inferIconEntryKind(fqn, hasChildren) as any,
+            hasChildren,
+            language: "modelica",
           });
           if (results.length >= limit) break;
         }
@@ -129,6 +233,132 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
       results.sort((a, b) => (a.compositeName ?? "").localeCompare(b.compositeName ?? ""));
       return { results };
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/getComponentCatalog",
+    async (): Promise<{ components: CatalogComponentInfo[] }> => {
+      try {
+        const distBase = (globalThis as any).serverDistBase ?? context.parserService?.getServerDistBase?.();
+        await loadPrebakedMslIcons(distBase);
+      } catch {
+        // Prebaked icon index optional in minimal unit-test harnesses
+      }
+
+      // Eager-index small custom mounted packages (< 25 files) so newly installed packages appear in the gallery
+      const moIdx = context.workspaceManager?.getWorkspaceIndex?.("modelica") as any;
+      if (moIdx?.fileLoaders instanceof Map) {
+        const customUris: string[] = [];
+        for (const uri of moIdx.fileLoaders.keys()) {
+          if (typeof uri === "string" && (uri.includes("/packages/") || uri.includes("/modelscript_registry/"))) {
+            customUris.push(uri);
+          }
+        }
+        if (customUris.length > 0 && customUris.length <= 40) {
+          for (const uri of customUris) {
+            try {
+              moIdx.ensureIndexed?.(uri);
+            } catch {
+              // ignore unparseable auxiliary files
+            }
+          }
+        }
+      }
+
+      const unifiedIndex = context.workspaceManager?.unifiedWorkspace?.getIndex?.();
+      const mountedKeys = Array.from(mountedLibraryMetadata.keys()).sort().join(",");
+      const cacheKey = `${iconCache.size}|${unifiedIndex?.symbols?.size ?? 0}|${mountedKeys}`;
+      if (cacheKey === cachedComponentCatalogKey && cachedComponentCatalog.length > 0) {
+        return { components: cachedComponentCatalog };
+      }
+
+      const byFqn = new Map<string, CatalogComponentInfo>();
+
+      // 1. All leaf schematic components from prebaked MSL & package icon index (~1,333 MSL components)
+      if (iconCache.size > 0) {
+        const prefixes = buildParentPrefixSet(iconCache.keys());
+        for (const [fqn, svgVal] of iconCache.entries()) {
+          if (!svgVal || prefixes.has(fqn)) continue;
+          if (fqn.startsWith("Modelica.Media.") || fqn.startsWith("Modelica.Math.")) continue;
+          const parts = fqn.split(".");
+          if (parts.length < 2) continue;
+          if (parts.some((seg) => SKIP_CATALOG_SEGMENTS.has(seg))) continue;
+          const leaf = parts[parts.length - 1]!;
+          if (!/^[A-Z]/.test(leaf)) continue;
+
+          const rawRoot = parts[0]!;
+          const packageName = ROOT_NAMESPACE_TO_PACKAGE[rawRoot] ?? rawRoot;
+          const subpackage = parts.slice(1, -1).join(" · ") || packageName;
+          const kind = inferIconEntryKind(fqn, false);
+
+          byFqn.set(fqn, {
+            fqn,
+            name: leaf,
+            kind,
+            packageName,
+            subpackage,
+            description: `${humanizeIdentifier(leaf)} (${subpackage})`,
+            language: "modelica",
+            hasLiveIcon: true,
+          });
+        }
+      }
+
+      // 2. Enrich & augment from indexed symbols across all mounted libraries (Buildings, PlanarMechanics, .zip imports, SysML, etc.)
+      if (unifiedIndex?.symbols) {
+        for (const [id, entry] of unifiedIndex.symbols) {
+          if (!isTreeVisible(entry)) continue;
+          const resId = String(entry.resourceId ?? "");
+          if (
+            resId.startsWith("builtin://") ||
+            resId.startsWith("memfs:") ||
+            resId.startsWith("inmemory:") ||
+            resId.endsWith("/document.mo")
+          ) {
+            continue;
+          }
+          const kind = classKindFromEntry(entry);
+          if (kind !== "model" && kind !== "block" && kind !== "part") continue;
+          if (hasClassChildren(unifiedIndex, id)) continue;
+
+          const fqn = getCompositeName(entry, unifiedIndex);
+          if (!fqn || !fqn.includes(".")) continue;
+          if (fqn.startsWith("Modelica.Media.") || fqn.startsWith("Modelica.Math.")) continue;
+          const parts = fqn.split(".");
+          if (parts.some((seg) => SKIP_CATALOG_SEGMENTS.has(seg))) continue;
+
+          const rawDesc =
+            typeof (entry.metadata as any)?.description === "string"
+              ? String((entry.metadata as any).description).trim()
+              : "";
+          const existing = byFqn.get(fqn);
+          if (existing) {
+            existing.kind = kind;
+            if (rawDesc) existing.description = rawDesc;
+            if (entry.language) existing.language = entry.language;
+          } else {
+            const rawRoot = parts[0]!;
+            const packageName = ROOT_NAMESPACE_TO_PACKAGE[rawRoot] ?? rawRoot;
+            const subpackage = parts.slice(1, -1).join(" · ") || packageName;
+            byFqn.set(fqn, {
+              fqn,
+              name: entry.name,
+              kind,
+              packageName,
+              subpackage,
+              description: rawDesc || `${humanizeIdentifier(entry.name)} (${subpackage})`,
+              language: entry.language || "modelica",
+              hasLiveIcon: Boolean(iconCache.get(fqn) || (entry.metadata as any)?.iconSvg),
+            });
+          }
+        }
+      }
+
+      const components = Array.from(byFqn.values()).sort((a, b) => a.fqn.localeCompare(b.fqn));
+      cachedComponentCatalogKey = cacheKey;
+      cachedComponentCatalog = components;
+      return { components };
     },
   );
 

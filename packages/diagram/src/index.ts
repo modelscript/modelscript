@@ -65,6 +65,7 @@ import {
   getEdgeToolConfig,
   resolveEdgeSelectionStyle,
   syncAllNodeSelectionBoxes,
+  updateNodeVisualOnResize,
   type EdgeSelectionStyle,
   type ResolvedEdgeSelectionStyle,
 } from "./selection-handles.js";
@@ -1020,7 +1021,29 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
   g.on("node:rotate", updateNodeBox);
   g.on("node:rotated", updateNodeBox);
   g.on("node:change:position", updateNodeBox);
-  g.on("node:change:size", updateNodeBox);
+  g.on(
+    "node:change:size",
+    (args: {
+      node?: Node;
+      cell?: Cell;
+      current?: { width: number; height: number };
+      previous?: { width: number; height: number };
+    }) => {
+      const n = (args?.node || args?.cell) as Node | undefined;
+      if (n && typeof n.isNode === "function" && n.isNode() && !isEphemeralDiagramNode(n.id)) {
+        const cur = args?.current ?? n.getSize();
+        updateNodeVisualOnResize(n, g, cur.width, cur.height, args?.previous?.width, args?.previous?.height);
+      }
+      updateNodeBox(args);
+    },
+  );
+  g.on("node:resizing", ({ node }: { node: Node }) => {
+    if (node && typeof node.isNode === "function" && node.isNode() && !isEphemeralDiagramNode(node.id)) {
+      const s = node.getSize();
+      updateNodeVisualOnResize(node, g, s.width, s.height);
+      updateNodeBox({ node });
+    }
+  });
 
   g.use(
     new Transform({
@@ -2207,6 +2230,8 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     const p = node.getPosition();
     const s = node.getSize();
     const r = node.getAngle();
+    updateNodeVisualOnResize(node, g, s.width, s.height);
+    scheduleUpdateSolderDots(g);
     const edges = getConnectedEdges(g, node);
     enqueueDiagramAction(
       {
@@ -4853,8 +4878,11 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
 
         // Update size if changed
         const size = cell.getSize();
-        if (Math.abs(size.width - nodeData.width) > 0.5 || Math.abs(size.height - nodeData.height) > 0.5) {
+        const sizeChanged =
+          Math.abs(size.width - nodeData.width) > 0.5 || Math.abs(size.height - nodeData.height) > 0.5;
+        if (sizeChanged) {
           cell.setSize(nodeData.width, nodeData.height);
+          updateNodeVisualOnResize(cell, g, nodeData.width, nodeData.height, size.width, size.height);
         }
 
         // Update angle if changed
@@ -4907,6 +4935,10 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
           .map((p) => `${p.id || p.name}:${p.args?.x ?? ""},${p.args?.y ?? ""},${p.args?.angle ?? ""}`)
           .join(";");
         if (currentSig !== newSig) {
+          const cellData = (cell.getData?.() || {}) as { __portRatios?: unknown };
+          if (cellData.__portRatios) {
+            delete cellData.__portRatios;
+          }
           cell.prop?.("ports", nodeData.ports ?? { items: [], groups: {} }, { rewrite: true });
         }
       }
@@ -6137,6 +6169,7 @@ export { resolveWireCrossingStyle, type WireCrossingStyle } from "./solder-dots.
 
 export {
   resolveEdgeSelectionStyle,
+  updateNodeVisualOnResize,
   type EdgeSelectionStyle,
   type ResolvedEdgeSelectionStyle,
 } from "./selection-handles.js";

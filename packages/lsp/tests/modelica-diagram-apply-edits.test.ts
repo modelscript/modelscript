@@ -224,35 +224,78 @@ end RLCCircuit;`;
           name: "Vb",
           annotation: (name: string) =>
             name === "Placement"
-              ? { transformation: { origin: [-70, 0], extent: [[-10, -10], [10, 10]], rotation: 270 } }
+              ? {
+                  transformation: {
+                    origin: [-70, 0],
+                    extent: [
+                      [-10, -10],
+                      [10, 10],
+                    ],
+                    rotation: 270,
+                  },
+                }
               : null,
         },
         {
           name: "L",
           annotation: (name: string) =>
             name === "Placement"
-              ? { transformation: { origin: [0, 40], extent: [[-10, -10], [10, 10]] } }
+              ? {
+                  transformation: {
+                    origin: [0, 40],
+                    extent: [
+                      [-10, -10],
+                      [10, 10],
+                    ],
+                  },
+                }
               : null,
         },
         {
           name: "C",
           annotation: (name: string) =>
             name === "Placement"
-              ? { transformation: { origin: [20, 0], extent: [[-10, -10], [10, 10]], rotation: 270 } }
+              ? {
+                  transformation: {
+                    origin: [20, 0],
+                    extent: [
+                      [-10, -10],
+                      [10, 10],
+                    ],
+                    rotation: 270,
+                  },
+                }
               : null,
         },
         {
           name: "R",
           annotation: (name: string) =>
             name === "Placement"
-              ? { transformation: { origin: [60, 0], extent: [[-10, -10], [10, 10]], rotation: 270 } }
+              ? {
+                  transformation: {
+                    origin: [60, 0],
+                    extent: [
+                      [-10, -10],
+                      [10, 10],
+                    ],
+                    rotation: 270,
+                  },
+                }
               : null,
         },
         {
           name: "ground",
           annotation: (name: string) =>
             name === "Placement"
-              ? { transformation: { origin: [-70, -40], extent: [[-10, -10], [10, 10]] } }
+              ? {
+                  transformation: {
+                    origin: [-70, -40],
+                    extent: [
+                      [-10, -10],
+                      [10, 10],
+                    ],
+                  },
+                }
               : null,
         },
       ],
@@ -266,7 +309,15 @@ end RLCCircuit;`;
       ],
       annotation: (name: string) =>
         name === "Diagram"
-          ? { coordinateSystem: { preserveAspectRatio: false, extent: [[-100, -100], [100, 100]] } }
+          ? {
+              coordinateSystem: {
+                preserveAspectRatio: false,
+                extent: [
+                  [-100, -100],
+                  [100, 100],
+                ],
+              },
+            }
           : null,
     };
 
@@ -284,11 +335,42 @@ end RLCCircuit;`;
 
     const compNodes = data.nodes.filter((n: any) => !n.id.startsWith("solder_dot_"));
     assert.strictEqual(compNodes.length, 5, "Must contain all 5 circuit components (Vb, L, C, R, ground)");
-    assert.deepStrictEqual(
-      compNodes.map((n: any) => n.id).sort(),
-      ["C", "L", "R", "Vb", "ground"],
-    );
+    assert.deepStrictEqual(compNodes.map((n: any) => n.id).sort(), ["C", "L", "R", "Vb", "ground"]);
     assert.ok(data.edges.length >= 6, "Must contain at least 6 connection edges");
   });
-});
 
+  it("applies resize edits with renderHint: immediate and updates component extent", async () => {
+    const backend = new ModelicaDiagramBackend({
+      getDocumentInstances: (u) => (u === uri ? [mockClassInstance] : undefined),
+      getDocumentText: (u) => (u === uri ? sourceText : undefined),
+      resolveClassInstance: () => mockClassInstance,
+      flushValidation: async () => {},
+    });
+
+    const res = await backend.applyEdits({
+      uri,
+      seq: 2,
+      actions: [
+        {
+          type: "resize",
+          item: {
+            name: "R1",
+            x: -20,
+            y: -30,
+            width: 40,
+            height: 60,
+            rotation: 0,
+          },
+        },
+      ],
+    });
+
+    assert.strictEqual(res.renderHint, "immediate", "Resize must return renderHint: immediate");
+    assert.strictEqual(res.edits.length, 1);
+    // w=40, h=60 => extent={{-20,-30},{20,30}}, origin={0,0}
+    assert.ok(
+      res.edits[0].newText.includes("extent={{-20,-30},{20,30}}"),
+      `Expected newText to contain extent={{-20,-30},{20,30}}, got: ${res.edits[0].newText}`,
+    );
+  });
+});

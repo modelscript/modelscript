@@ -151,11 +151,11 @@ export function getEdgeToolConfig(
   style?: ResolvedEdgeSelectionStyle,
 ): unknown[] {
   const curZoom = typeof graph.zoom === "function" ? graph.zoom() : 1;
-  // Scale handles dynamically to maintain a crisp, refined size on screen (~3px radius, 6px diameter)
+  // Scale handles dynamically to maintain a crisp, refined size on screen (~5.5px radius, 11px diameter)
   // across both close-in zoom and wide-view diagram zoom levels.
-  const vertexRadius = Math.max(0.3, Math.min(3.5, 3.5 / (curZoom || 1)));
-  const segW = Math.max(1.5, Math.min(10, 8 / (curZoom || 1)));
-  const segH = Math.max(0.6, Math.min(3, 2.5 / (curZoom || 1)));
+  const vertexRadius = Math.max(0.6, Math.min(6.0, 5.5 / (curZoom || 1)));
+  const segW = Math.max(4.0, Math.min(18.0, 16.0 / (curZoom || 1)));
+  const segH = Math.max(1.5, Math.min(7.0, 6.0 / (curZoom || 1)));
 
   const tools: unknown[] = [
     {
@@ -167,9 +167,10 @@ export function getEdgeToolConfig(
           strokeWidth: 1.5,
           r: vertexRadius,
         },
-        snapRadius: 10,
+        snapRadius: 12,
         removeRedundancies: true,
         stopPropagation: true,
+        modifiers: ["alt", "ctrl", "meta"],
         processHandle: (handle: {
           delegateEvents?: (events: Record<string, unknown>) => void;
           emit?: (evt: string, args: unknown) => void;
@@ -266,6 +267,10 @@ export function ensurePatchedVerticesTool(x6Instance?: unknown): void {
     graph?: {
       snapToGrid?(x: number, y: number): { toJSON?(): { x: number; y: number } };
     };
+    options?: {
+      modifiers?: unknown;
+      addable?: boolean;
+    };
     handles?: Array<{ onMouseDown?(evt: unknown): void } | undefined>;
     allowAddVertex?(evt: unknown): boolean;
     normalizeEvent?(evt: unknown): { clientX: number; clientY: number };
@@ -278,34 +283,47 @@ export function ensurePatchedVerticesTool(x6Instance?: unknown): void {
 
   VerticesClass.prototype.onPathMouseDown = function (this: VerticesToolContext, evt: unknown) {
     const edgeView = this.cellView;
-    if (typeof this.allowAddVertex === "function" && !this.allowAddVertex(evt)) return;
-    const evtObj = evt as { stopPropagation?: () => void; preventDefault?: () => void } | null;
-    if (evtObj && typeof evtObj.stopPropagation === "function") evtObj.stopPropagation();
-    if (evtObj && typeof evtObj.preventDefault === "function") evtObj.preventDefault();
     const e =
       typeof this.normalizeEvent === "function"
         ? this.normalizeEvent(evt)
         : (evt as { clientX: number; clientY: number });
     const vertex = this.graph?.snapToGrid?.(e.clientX, e.clientY)?.toJSON?.() || { x: e.clientX, y: e.clientY };
 
-    // Prevent duplicate vertex proliferation if clicking near an existing vertex (<= 8px)
+    // Prevent duplicate vertex proliferation if clicking near an existing vertex (<= 12px).
+    // Dragging an existing vertex handle should never require holding a modifier key.
     const existingVertices = edgeView.cell?.getVertices?.() || [];
     let nearbyIndex = -1;
     for (let i = 0; i < existingVertices.length; i++) {
       const v = existingVertices[i];
-      if (v && Math.hypot(v.x - vertex.x, v.y - vertex.y) <= 8) {
+      if (v && Math.hypot(v.x - vertex.x, v.y - vertex.y) <= 12) {
         nearbyIndex = i;
         break;
       }
     }
 
     if (nearbyIndex >= 0) {
+      const evtObj = evt as { stopPropagation?: () => void; preventDefault?: () => void } | null;
+      if (evtObj && typeof evtObj.stopPropagation === "function") evtObj.stopPropagation();
+      if (evtObj && typeof evtObj.preventDefault === "function") evtObj.preventDefault();
       const existingHandle = this.handles?.[nearbyIndex];
       if (existingHandle && typeof existingHandle.onMouseDown === "function") {
         existingHandle.onMouseDown(e);
         return;
       }
     }
+
+    // Adding a new vertex requires passing allowAddVertex (e.g. holding Alt/Ctrl modifier)
+    if (typeof this.allowAddVertex === "function") {
+      if (!this.allowAddVertex(evt)) return;
+    } else if (this.options?.modifiers) {
+      const evtAny = evt as { altKey?: boolean; ctrlKey?: boolean; metaKey?: boolean };
+      const hasMod = Boolean(evtAny.altKey || evtAny.ctrlKey || evtAny.metaKey);
+      if (!hasMod) return;
+    }
+
+    const evtObj = evt as { stopPropagation?: () => void; preventDefault?: () => void } | null;
+    if (evtObj && typeof evtObj.stopPropagation === "function") evtObj.stopPropagation();
+    if (evtObj && typeof evtObj.preventDefault === "function") evtObj.preventDefault();
 
     try {
       edgeView.cell?.startBatch?.("add-vertex", { ui: true, toolId: this.cid });
@@ -440,4 +458,167 @@ export function ensurePatchedSegmentsTool(x6Instance?: unknown): void {
   }
 
   SegmentsClass.__modelscript_patched = true;
+}
+
+/**
+ * Scales and updates a node's visual SVG elements, viewBox boundaries, background/hitbox rects,
+ * and connection ports in real-time when the node is resized by the user or layout engine.
+ */
+export function updateNodeVisualOnResize(
+  node: unknown,
+  graph: unknown,
+  newWidth: number,
+  newHeight: number,
+  prevWidth?: number,
+  prevHeight?: number,
+): void {
+  if (!node || !graph || newWidth <= 0 || newHeight <= 0) return;
+  const anyNode = node as any;
+  const anyGraph = graph as any;
+
+  if (typeof anyNode.isNode === "function" && !anyNode.isNode()) return;
+
+  const view = typeof anyGraph.findViewByCell === "function" ? anyGraph.findViewByCell(anyNode) : null;
+  const container: HTMLElement | SVGElement | null | undefined = view?.container;
+
+  // Find the root SVG element inside the node's DOM container
+  let rootSvg: SVGSVGElement | null = null;
+  if (container) {
+    rootSvg =
+      container.tagName?.toLowerCase() === "svg"
+        ? (container as SVGSVGElement)
+        : (container.querySelector("svg") as SVGSVGElement | null);
+  }
+
+  // Update ports proportionally
+  const ports = typeof anyNode.getPorts === "function" ? anyNode.getPorts() : [];
+  if (Array.isArray(ports) && ports.length > 0) {
+    const data = typeof anyNode.getData === "function" ? anyNode.getData() || {} : {};
+    let portRatios = data.__portRatios as Record<string, { rx: number; ry: number }> | undefined;
+
+    if (!portRatios) {
+      portRatios = {};
+      let baseW = prevWidth && prevWidth > 0 ? prevWidth : 0;
+      let baseH = prevHeight && prevHeight > 0 ? prevHeight : 0;
+
+      if (baseW <= 0 && rootSvg) {
+        const svgW = parseFloat(rootSvg.getAttribute("width") || "");
+        if (!isNaN(svgW) && svgW > 0) baseW = svgW;
+      }
+      if (baseH <= 0 && rootSvg) {
+        const svgH = parseFloat(rootSvg.getAttribute("height") || "");
+        if (!isNaN(svgH) && svgH > 0) baseH = svgH;
+      }
+      if (baseW <= 0) {
+        baseW =
+          (typeof data.origWidth === "number" ? data.origWidth : 0) ||
+          (typeof anyNode.getSize === "function" ? anyNode.getSize()?.width : 0) ||
+          newWidth;
+      }
+      if (baseH <= 0) {
+        baseH =
+          (typeof data.origHeight === "number" ? data.origHeight : 0) ||
+          (typeof anyNode.getSize === "function" ? anyNode.getSize()?.height : 0) ||
+          newHeight;
+      }
+
+      for (const p of ports) {
+        if (!p?.id) continue;
+        const curArgs = p.args || {};
+        const px = typeof curArgs.x === "number" ? curArgs.x : 0;
+        const py = typeof curArgs.y === "number" ? curArgs.y : 0;
+        portRatios[p.id] = {
+          rx: baseW > 0 ? px / baseW : 0.5,
+          ry: baseH > 0 ? py / baseH : 0.5,
+        };
+      }
+
+      if (typeof anyNode.setData === "function") {
+        anyNode.setData({ ...data, __portRatios: portRatios }, { silent: true });
+      }
+    }
+
+    for (const p of ports) {
+      if (!p?.id) continue;
+      const ratio = portRatios[p.id];
+      if (ratio && typeof anyNode.setPortProp === "function") {
+        const portX = Math.round(ratio.rx * newWidth * 10) / 10;
+        const portY = Math.round(ratio.ry * newHeight * 10) / 10;
+        anyNode.setPortProp(p.id, "args", {
+          ...(p.args || {}),
+          x: portX,
+          y: portY,
+        });
+      }
+    }
+  }
+
+  // Update root SVG and structural DOM elements
+  if (rootSvg) {
+    rootSvg.setAttribute("width", String(newWidth));
+    rootSvg.setAttribute("height", String(newHeight));
+
+    const updateSvgSubtree = (parent: Element, w: number, h: number) => {
+      for (const child of Array.from(parent.children) as (HTMLElement | SVGElement)[]) {
+        const tag = child.tagName?.toLowerCase();
+        if (tag === "rect") {
+          child.setAttribute("width", String(w));
+          child.setAttribute("height", String(h));
+        } else if (tag === "g") {
+          const transform = child.getAttribute("transform") || "";
+          const scaleMatch = transform.match(/scale\s*\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)/);
+          if (scaleMatch) {
+            const sx = parseFloat(scaleMatch[1]!);
+            const sy = parseFloat(scaleMatch[2]!);
+            const tx = sx < 0 ? w : 0;
+            const ty = sy < 0 ? h : 0;
+            child.setAttribute("transform", `translate(${tx}, ${ty}) scale(${sx}, ${sy})`);
+          }
+          // Recurse into nested <g> (stops if child is <svg> so inner icon graphics are preserved)
+          updateSvgSubtree(child, w, h);
+        } else if (tag === "text") {
+          if (child.getAttribute("text-anchor") === "middle") {
+            child.setAttribute("x", String(w / 2));
+            child.setAttribute("y", String(h / 2 + 3));
+          }
+        }
+      }
+    };
+
+    updateSvgSubtree(rootSvg, newWidth, newHeight);
+  }
+
+  // Keep stored markup attributes in sync if markup is attached
+  const curMarkup = typeof anyNode.getMarkup === "function" ? anyNode.getMarkup() : null;
+  if (curMarkup && typeof curMarkup === "object" && (curMarkup as any).attrs) {
+    const m = curMarkup as any;
+    m.attrs.width = newWidth;
+    m.attrs.height = newHeight;
+    const updateMarkupSubtree = (item: any) => {
+      if (!item) return;
+      if (item.tagName === "rect" && item.attrs) {
+        item.attrs.width = newWidth;
+        item.attrs.height = newHeight;
+      } else if (item.tagName === "g") {
+        if (item.attrs?.transform) {
+          const scaleMatch = String(item.attrs.transform).match(/scale\s*\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)/);
+          if (scaleMatch) {
+            const sx = parseFloat(scaleMatch[1]!);
+            const sy = parseFloat(scaleMatch[2]!);
+            const tx = sx < 0 ? newWidth : 0;
+            const ty = sy < 0 ? newHeight : 0;
+            item.attrs.transform = `translate(${tx}, ${ty}) scale(${sx}, ${sy})`;
+          }
+        }
+        if (Array.isArray(item.children)) {
+          for (const c of item.children) updateMarkupSubtree(c);
+        }
+      }
+    };
+    if (Array.isArray(m.children)) {
+      for (const child of m.children) {
+        updateMarkupSubtree(child);
+      }
+    }
+  }
 }

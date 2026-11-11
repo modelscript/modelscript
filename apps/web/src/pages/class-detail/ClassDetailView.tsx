@@ -23,6 +23,7 @@ import { ClassEquationsTab, ClassSourceTab } from "./components/ClassCodeTabs";
 import { ClassDetailHeader } from "./components/ClassDetailHeader";
 import { ClassOverviewTab } from "./components/ClassOverviewTab";
 import { ClassParametersSection } from "./components/ClassParametersSection";
+import { ClassSimulationTab } from "./components/ClassSimulationTab";
 import { ContentWrap, GlassCard, TypeLink, TypeMono } from "./styles";
 import type { ClassTabId } from "./types";
 
@@ -60,8 +61,6 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
   const [allClasses, setAllClasses] = useState<ClassSummary[]>(propAllClasses || []);
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get("tab") as ClassTabId | null;
-  const validTabs = useMemo<ClassTabId[]>(() => ["overview", "parameters", "equations", "studies", "source"], []);
-  const activeTab: ClassTabId = rawTab && validTabs.includes(rawTab) ? rawTab : "overview";
 
   const setActiveTab = useCallback(
     (tab: ClassTabId) => {
@@ -144,6 +143,40 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
     }
     return [];
   }, [cls]);
+
+  const isSimulatable = useMemo(() => {
+    if (!cls) return false;
+    const kind = (cls.classKind || "").toLowerCase();
+    if (kind !== "model" && kind !== "block" && kind !== "class") return false;
+    if (kind.includes("partial")) return false;
+
+    const hasExperimentAnnotation = Boolean(cls.sourceCode && /\bexperiment\s*\(/i.test(cls.sourceCode));
+
+    const isExamplePackage = Boolean(
+      className.includes(".Examples.") ||
+      className.includes(".Tests.") ||
+      className.includes(".Test.") ||
+      className.endsWith("Example") ||
+      className.endsWith("Test"),
+    );
+
+    const hasEquations = (equations && equations.length > 0) || (cls.components && cls.components.length > 0);
+
+    if (categorized.connectors.length > 0 && !hasExperimentAnnotation && !isExamplePackage) {
+      return false;
+    }
+
+    return (hasExperimentAnnotation || isExamplePackage || categorized.connectors.length === 0) && hasEquations;
+  }, [cls, className, equations, categorized.connectors.length]);
+
+  const validTabs = useMemo<ClassTabId[]>(
+    () =>
+      isSimulatable
+        ? ["overview", "parameters", "equations", "simulation", "studies", "source"]
+        : ["overview", "parameters", "equations", "studies", "source"],
+    [isSimulatable],
+  );
+  const activeTab: ClassTabId = rawTab && validTabs.includes(rawTab) ? rawTab : "overview";
 
   const fetchClassDetail = useCallback(async () => {
     if (!name || !version || !className) return;
@@ -327,6 +360,7 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
         }}
         hasCae={hasCae}
         equationsCount={equations.length}
+        isSimulatable={isSimulatable}
         studiesCount={
           (linkedStudies.bundledStudies?.length || 0) +
           (linkedStudies.linkedTemplates?.length || 0) +
@@ -386,6 +420,17 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
 
         {activeTab === "equations" && (
           <ClassEquationsTab equations={equations} className={className} components={cls.components} cls={cls} />
+        )}
+
+        {isSimulatable && activeTab === "simulation" && (
+          <ClassSimulationTab
+            libraryName={name}
+            version={version}
+            className={className}
+            cls={cls}
+            hasCae={hasCae}
+            onOpenCloudStudies={hasCae ? () => setActiveTab("studies") : undefined}
+          />
         )}
 
         {hasCae && activeTab === "studies" && (

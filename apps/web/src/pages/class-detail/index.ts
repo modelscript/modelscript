@@ -7,6 +7,7 @@ export * from "./components/ClassDetailHeader";
 export * from "./components/ClassOverviewTab";
 export * from "./components/ClassParametersSection";
 export * from "./components/ClassRightSidebar";
+export * from "./components/ClassSimulationTab";
 export * from "./components/ClassTreeSidebar";
 export * from "./styles";
 export type * from "./types";

@@ -68,31 +68,31 @@ export function seedPolyglotInbox(
   };
 
   // Discover showcase posts in the DB to attach to social notifications & bookmarks
-  let showcasePosts: { id: number; author_id: number; title?: string | null }[] = [];
+  let showcasePosts: { id: string | number; author_id: number; title?: string | null }[] = [];
   try {
     showcasePosts = db.db
       .prepare(
-        `SELECT p.id, p.author_id, a.title
+        `SELECT CAST(p.id AS TEXT) as id, p.author_id, a.title
          FROM posts p
          LEFT JOIN artifact_views a ON p.artifact_view_id = a.id
          WHERE p.reply_to_id IS NULL
          ORDER BY CASE WHEN a.title LIKE 'ElectroHydrostaticActuator%' THEN 0 ELSE 1 END, p.id ASC
          LIMIT 12`,
       )
-      .all() as { id: number; author_id: number; title?: string | null }[];
+      .all() as { id: string | number; author_id: number; title?: string | null }[];
   } catch {}
 
-  let replyPosts: { id: number; author_id: number; reply_to_id: number }[] = [];
+  let replyPosts: { id: string | number; author_id: number; reply_to_id: string | number }[] = [];
   try {
     replyPosts = db.db
       .prepare(
-        `SELECT id, author_id, reply_to_id
+        `SELECT CAST(id AS TEXT) as id, author_id, CAST(reply_to_id AS TEXT) as reply_to_id
          FROM posts
          WHERE reply_to_id IS NOT NULL
          ORDER BY id ASC
          LIMIT 8`,
       )
-      .all() as { id: number; author_id: number; reply_to_id: number }[];
+      .all() as { id: string | number; author_id: number; reply_to_id: string | number }[];
   } catch {}
 
   const primaryPostId = showcasePosts[0]?.id ?? null;
@@ -243,7 +243,7 @@ export function seedPolyglotInbox(
       seedKey: string;
       actorId: number;
       type: string;
-      postId: number | null;
+      postId: string | number | null;
       metadata: Record<string, unknown> | null;
       read: 0 | 1;
       archived: 0 | 1;

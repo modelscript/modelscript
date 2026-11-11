@@ -1325,12 +1325,40 @@ export async function getEffectiveInstalledDependencies(lspClient?: LspClientLik
   return merged;
 }
 
+interface CatalogComponentSnapshot {
+  fqn: string;
+  name: string;
+  kind: string;
+  packageName: string;
+  description?: string | undefined;
+  language?: string | undefined;
+  hasIcon?: boolean | undefined;
+}
+
 async function postInstalledPackages(panel: vscode.WebviewPanel, lspClient?: LspClientLike): Promise<void> {
   const deps = await getEffectiveInstalledDependencies(lspClient);
   await panel.webview.postMessage({
     command: "setInstalled",
     dependencies: deps,
   });
+}
+
+async function postCatalogComponents(panel: vscode.WebviewPanel, lspClient?: LspClientLike): Promise<void> {
+  if (!lspClient?.sendRequest) return;
+  try {
+    const resp = await lspClient.sendRequest<
+      { components?: CatalogComponentSnapshot[] | undefined } | CatalogComponentSnapshot[]
+    >("modelscript/getComponentCatalog", {});
+    const components = Array.isArray(resp) ? resp : Array.isArray(resp?.components) ? resp.components : [];
+    if (components.length > 0) {
+      await panel.webview.postMessage({
+        command: "setCatalogComponents",
+        components,
+      });
+    }
+  } catch {
+    // Curated catalog remains active if LSP is still starting
+  }
 }
 
 async function ensureParentLibraryInstalled(
@@ -1462,6 +1490,7 @@ export function openAnsatzPackageHub(
   if (activePackageHubPanel) {
     activePackageHubPanel.reveal(vscode.ViewColumn.One);
     void postInstalledPackages(activePackageHubPanel, lspClient);
+    void postCatalogComponents(activePackageHubPanel, lspClient);
     if (initialPackageName) {
       void activePackageHubPanel.webview.postMessage({
         command: "inspectPackage",
@@ -1488,13 +1517,14 @@ export function openAnsatzPackageHub(
   });
 
   // Render synchronously with session cache first so panel.webview.html is populated immediately,
-  // then hydrate live mounted libraries from LSP + workspace package.json.
+  // then hydrate live mounted libraries + full 1,350+ component catalog from LSP.
   const initialDeps: Record<string, string> = {};
   for (const [k, v] of sessionInstalledPackages.entries()) {
     initialDeps[k] = v;
   }
   panel.webview.html = renderPackageHubHtml(CURATED_LIBRARIES, HUB_GALLERY_COMPONENTS, initialDeps, initialPackageName);
   void postInstalledPackages(panel, lspClient);
+  void postCatalogComponents(panel, lspClient);
 
   panel.webview.onDidReceiveMessage(async (message: Record<string, unknown>) => {
     const cmd = typeof message["command"] === "string" ? message["command"] : "";
@@ -1505,7 +1535,7 @@ export function openAnsatzPackageHub(
         const name = typeof message["name"] === "string" ? message["name"] : "";
         const version = typeof message["version"] === "string" ? message["version"] : "latest";
         const ok = await vscode.commands.executeCommand<boolean>("modelscript.registry.install", name, version);
-        await postInstalledPackages(panel, lspClient);
+        await Promise.all([postInstalledPackages(panel, lspClient), postCatalogComponents(panel, lspClient)]);
         await panel.webview.postMessage({
           command: "actionComplete",
           requestId: reqId,
@@ -1517,7 +1547,7 @@ export function openAnsatzPackageHub(
       case "switchVersion": {
         const name = typeof message["name"] === "string" ? message["name"] : "";
         await vscode.commands.executeCommand("modelscript.libraryView.switchVersion", name);
-        await postInstalledPackages(panel, lspClient);
+        await Promise.all([postInstalledPackages(panel, lspClient), postCatalogComponents(panel, lspClient)]);
         await panel.webview.postMessage({
           command: "actionComplete",
           requestId: reqId,
@@ -1528,7 +1558,7 @@ export function openAnsatzPackageHub(
       case "uninstall": {
         const name = typeof message["name"] === "string" ? message["name"] : "";
         await vscode.commands.executeCommand("modelscript.libraryView.removePackage", name);
-        await postInstalledPackages(panel, lspClient);
+        await Promise.all([postInstalledPackages(panel, lspClient), postCatalogComponents(panel, lspClient)]);
         await panel.webview.postMessage({
           command: "actionComplete",
           requestId: reqId,
@@ -1550,7 +1580,7 @@ export function openAnsatzPackageHub(
           { fqn, shortName, kind, declarationSnippet, packageName, packageVersion },
           lspClient,
         );
-        await postInstalledPackages(panel, lspClient);
+        await Promise.all([postInstalledPackages(panel, lspClient), postCatalogComponents(panel, lspClient)]);
         await panel.webview.postMessage({
           command: "actionComplete",
           requestId: reqId,
@@ -1570,6 +1600,7 @@ export function openAnsatzPackageHub(
           void ensureParentLibraryInstalled(packageName, packageVersion, lspClient).then((installed) => {
             if (installed) {
               void postInstalledPackages(panel, lspClient);
+              void postCatalogComponents(panel, lspClient);
             }
           });
         }
@@ -1594,7 +1625,7 @@ export function openAnsatzPackageHub(
         const icons: Record<string, string> = {};
         try {
           const batch = await lspClient.sendRequest<Record<string, string | null>>("modelscript/getClassIcons", {
-            classNames: classNames.slice(0, 40),
+            classNames: classNames.slice(0, 80),
           });
           if (batch && typeof batch === "object") {
             for (const [k, v] of Object.entries(batch)) {
@@ -1605,7 +1636,7 @@ export function openAnsatzPackageHub(
           }
         } catch {
           await Promise.all(
-            classNames.slice(0, 20).map(async (cls) => {
+            classNames.slice(0, 24).map(async (cls) => {
               try {
                 const svg = await lspClient.sendRequest!<string | null>("modelscript/getClassIcon", {
                   className: cls,
@@ -1630,26 +1661,33 @@ export function openAnsatzPackageHub(
       case "searchLive": {
         const query = typeof message["query"] === "string" ? message["query"].trim() : "";
         if (query.length < 2) break;
-        const [liveClasses, livePackages] = await Promise.all([
+        type LiveClassItem = {
+          name: string;
+          compositeName: string;
+          classKind: string;
+          description?: string | undefined;
+          language?: string | undefined;
+        };
+        const [liveClassesResp, livePackages] = await Promise.all([
           lspClient?.sendRequest
             ? lspClient
-                .sendRequest<
-                  Array<{
-                    name: string;
-                    compositeName: string;
-                    classKind: string;
-                    description?: string | undefined;
-                    language?: string | undefined;
-                  }>
-                >("modelscript/searchClasses", { query, limit: 32 })
+                .sendRequest<{ results?: LiveClassItem[] | undefined } | LiveClassItem[]>("modelscript/searchClasses", {
+                  query,
+                  limit: 48,
+                })
                 .catch(() => [])
             : Promise.resolve([]),
           searchAnsatzPackages(query).catch(() => []),
         ]);
+        const liveClasses = Array.isArray(liveClassesResp)
+          ? liveClassesResp
+          : Array.isArray(liveClassesResp?.results)
+            ? liveClassesResp.results
+            : [];
         await panel.webview.postMessage({
           command: "liveSearchResults",
           query,
-          classes: Array.isArray(liveClasses) ? liveClasses : [],
+          classes: liveClasses,
           packages: Array.isArray(livePackages) ? livePackages : [],
         });
         break;
@@ -1665,7 +1703,7 @@ export function openAnsatzPackageHub(
       }
       case "importZip": {
         await vscode.commands.executeCommand("modelscript.libraryView.importZip");
-        await postInstalledPackages(panel, lspClient);
+        await Promise.all([postInstalledPackages(panel, lspClient), postCatalogComponents(panel, lspClient)]);
         break;
       }
       case "openModelHub": {
@@ -1679,7 +1717,7 @@ export function openAnsatzPackageHub(
         } else {
           await vscode.commands.executeCommand("modelscript.libraryView.importUrl");
         }
-        await postInstalledPackages(panel, lspClient);
+        await Promise.all([postInstalledPackages(panel, lspClient), postCatalogComponents(panel, lspClient)]);
         await panel.webview.postMessage({
           command: "actionComplete",
           requestId: reqId,
@@ -1688,7 +1726,7 @@ export function openAnsatzPackageHub(
         break;
       }
       case "refresh": {
-        await postInstalledPackages(panel, lspClient);
+        await Promise.all([postInstalledPackages(panel, lspClient), postCatalogComponents(panel, lspClient)]);
         break;
       }
     }
@@ -2442,6 +2480,7 @@ export function renderPackageHubHtml(
     </div>
 
     <div class="domain-bar" id="domain-bar"></div>
+    <div class="domain-bar" id="subpkg-bar" style="display: none; padding-top: 4px;"></div>
   </header>
 
   <div class="workspace-body">
@@ -2474,18 +2513,23 @@ export function renderPackageHubHtml(
       const BASE_COMPONENTS = ${safeJson(components)};
       const BASE_PACKAGES = ${safeJson(packages)};
       const INITIAL_PKG = ${safeJson(initialPackageName || "")};
+      const PAGE_SIZE = 72;
 
       let installedDeps = ${safeJson(installedDeps)};
+      let catalogClasses = [];
       let livePackages = [];
       let liveClasses = [];
+      let cachedAllComps = null;
       let liveIcons = {};
       let requestedIcons = new Set();
 
       let currentMode = INITIAL_PKG ? "libraries" : "components";
       let currentDomain = "all";
       let packageFilter = "";
+      let subpackageFilter = "";
       let mountedOnly = false;
       let librarySort = "popular";
+      let visibleLimit = PAGE_SIZE;
       let selectedCompId = BASE_COMPONENTS[0] ? BASE_COMPONENTS[0].id : "";
       let inspectingPkgName = INITIAL_PKG || "";
       let drawerTab = "components";
@@ -2522,6 +2566,12 @@ export function renderPackageHubHtml(
         return "";
       }
 
+      function resetVisibleWindow() {
+        visibleLimit = PAGE_SIZE;
+        const pane = document.getElementById("scroll-pane");
+        if (pane) pane.scrollTop = 0;
+      }
+
       function normalizeLiveSvg(svg) {
         if (!svg || !svg.includes("<svg")) return "";
         let out = svg;
@@ -2548,13 +2598,22 @@ export function renderPackageHubHtml(
 
       function inferDomain(fqn, lang) {
         const s = (fqn + " " + (lang || "")).toLowerCase();
-        if (s.includes("electrical") || s.includes("spice") || s.includes("analog")) return "electrical";
+        if (s.includes("electrical") || s.includes("magnetic") || s.includes("spice") || s.includes("analog")) return "electrical";
         if (s.includes("mechanics") || s.includes("rotational") || s.includes("translational") || s.includes("planar")) return "mechanics";
         if (s.includes("fluid") || s.includes("thermal") || s.includes("heat") || s.includes("buildings") || s.includes("epanet") || s.includes("swmm")) return "fluids-thermal";
-        if (s.includes("blocks") || s.includes("control") || s.includes("pid")) return "control";
+        if (s.includes("blocks") || s.includes("complexblocks") || s.includes("stategraph") || s.includes("control") || s.includes("pid")) return "control";
         if (s.includes("ieee") || s.includes("psse") || s.includes("opendss") || s.includes("grid")) return "power-grids";
         if (s.includes("robot") || s.includes("urdf") || s.includes("step")) return "robotics-cad";
         return "systems";
+      }
+
+      function extractSubpkg(fqn) {
+        const parts = String(fqn || "").split(".");
+        if (parts.length < 3) return "";
+        if (parts[0] === "Modelica" && parts.length >= 4) {
+          return parts[1] + " · " + parts[2];
+        }
+        return parts[0] + " · " + parts[1];
       }
 
       function buildFallbackSchematic(shortName, kind, category) {
@@ -2597,8 +2656,38 @@ export function renderPackageHubHtml(
       }
 
       function getAllComponents() {
+        if (cachedAllComps) return cachedAllComps;
         const byFqn = new Set(BASE_COMPONENTS.map(c => c.fqn.toLowerCase()));
         const extras = [];
+
+        for (const item of catalogClasses) {
+          const fqn = item.fqn;
+          if (!fqn || byFqn.has(fqn.toLowerCase())) continue;
+          byFqn.add(fqn.toLowerCase());
+          const kind = (item.kind || "model").toLowerCase();
+          const rootPkg = item.packageName || fqn.split(".")[0] || "Modelica";
+          const cat = inferDomain(fqn, item.language);
+          const shortName = item.name || fqn.split(".").pop() || fqn;
+          const parts = fqn.split(".");
+          const subPath = parts.length > 2 ? parts.slice(1, -1).join(" · ") : rootPkg;
+          const baseIdent = shortName.replace(/[^A-Za-z0-9_]/g, "") || "comp";
+          const instName = baseIdent.charAt(0).toLowerCase() + baseIdent.slice(1, 14) + "1";
+          extras.push({
+            id: "cat-" + fqn,
+            shortName,
+            fqn,
+            kind,
+            category: cat,
+            packageName: rootPkg,
+            packageVersion: getInstalledVersion(rootPkg) || (rootPkg === "Modelica" ? "4.1.0" : "latest"),
+            summary: item.description || (subPath + " (" + kind + ")"),
+            portsAndParams: parts.length > 2 ? parts.slice(0, -1).join(".") : fqn,
+            declarationSnippet: fqn + " " + instName + ";",
+            keywords: [shortName.toLowerCase(), fqn.toLowerCase(), subPath.toLowerCase()],
+            schematicSvg: buildFallbackSchematic(shortName, kind, cat),
+          });
+        }
+
         for (const cls of liveClasses) {
           const fqn = cls.compositeName || cls.name;
           if (!fqn || byFqn.has(fqn.toLowerCase())) continue;
@@ -2624,10 +2713,12 @@ export function renderPackageHubHtml(
             schematicSvg: buildFallbackSchematic(shortName, kind, cat),
           });
         }
-        return [...BASE_COMPONENTS, ...extras];
+
+        cachedAllComps = [...BASE_COMPONENTS, ...extras];
+        return cachedAllComps;
       }
 
-      function getFilteredComponents() {
+      function getBaseFilteredComponents() {
         const q = (document.getElementById("search-input")?.value || "").trim().toLowerCase();
         return getAllComponents().filter(c => {
           if (packageFilter && c.packageName.toLowerCase() !== packageFilter.toLowerCase()) return false;
@@ -2641,8 +2732,22 @@ export function renderPackageHubHtml(
         });
       }
 
+      function getFilteredComponents(baseComps) {
+        const list = baseComps || getBaseFilteredComponents();
+        if (!subpackageFilter) return list;
+        return list.filter(c => extractSubpkg(c.fqn) === subpackageFilter);
+      }
+
       function getFilteredPackages() {
         const q = (document.getElementById("search-input")?.value || "").trim().toLowerCase();
+        const matchingPkgFromComps = new Set();
+        if (q) {
+          for (const c of getAllComponents()) {
+            if (c.shortName.toLowerCase().includes(q) || c.fqn.toLowerCase().includes(q)) {
+              matchingPkgFromComps.add(c.packageName.toLowerCase());
+            }
+          }
+        }
         const list = getAllPackages().filter(p => {
           if (mountedOnly && !getInstalledVersion(p.name)) return false;
           if (currentDomain !== "all") {
@@ -2652,7 +2757,7 @@ export function renderPackageHubHtml(
           if (q) {
             const compNames = (p.components || []).map(c => c.name).join(" ");
             const hay = (p.name + " " + (p.description || "") + " " + (p.language || "") + " " + compNames).toLowerCase();
-            if (!hay.includes(q)) return false;
+            if (!hay.includes(q) && !matchingPkgFromComps.has(p.name.toLowerCase())) return false;
           }
           return true;
         });
@@ -2668,24 +2773,54 @@ export function renderPackageHubHtml(
       function requestMissingIcons(comps) {
         const toFetch = [];
         for (const c of comps) {
-          if (!requestedIcons.has(c.fqn) && getInstalledVersion(c.packageName)) {
+          if (!requestedIcons.has(c.fqn) && (c.packageName === "Modelica" || getInstalledVersion(c.packageName))) {
             requestedIcons.add(c.fqn);
             toFetch.push(c.fqn);
+            if (toFetch.length >= 80) break;
           }
         }
         if (toFetch.length > 0) {
-          vscode.postMessage({ command: "fetchIcons", classNames: toFetch.slice(0, 32) });
+          vscode.postMessage({ command: "fetchIcons", classNames: toFetch });
         }
       }
 
-      function renderDomainBar() {
+      function renderDomainBar(baseComps) {
         const bar = document.getElementById("domain-bar");
-        if (!bar) return;
-        bar.style.display = currentMode === "import" ? "none" : "flex";
-        bar.innerHTML = DOMAINS.map(d =>
-          '<button class="domain-pill ' + (currentDomain === d.id ? "active" : "") + '" data-action="set-domain" data-domain="' + esc(d.id) + '">' +
-            '<svg viewBox="0 0 16 16" fill="none">' + d.svgInner + "</svg>" +
-            "<span>" + esc(d.label) + "</span>" +
+        if (bar) {
+          bar.style.display = currentMode === "import" ? "none" : "flex";
+          bar.innerHTML = DOMAINS.map(d =>
+            '<button class="domain-pill ' + (currentDomain === d.id ? "active" : "") + '" data-action="set-domain" data-domain="' + esc(d.id) + '">' +
+              '<svg viewBox="0 0 16 16" fill="none">' + d.svgInner + "</svg>" +
+              "<span>" + esc(d.label) + "</span>" +
+            "</button>"
+          ).join("");
+        }
+
+        const subBar = document.getElementById("subpkg-bar");
+        if (!subBar) return;
+        if (currentMode !== "components" || (currentDomain === "all" && !packageFilter)) {
+          subBar.style.display = "none";
+          subBar.innerHTML = "";
+          return;
+        }
+        const counts = new Map();
+        for (const c of baseComps) {
+          const g = extractSubpkg(c.fqn);
+          if (g) counts.set(g, (counts.get(g) || 0) + 1);
+        }
+        const topGroups = Array.from(counts.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10);
+        if (topGroups.length <= 1) {
+          subBar.style.display = "none";
+          subBar.innerHTML = "";
+          return;
+        }
+        subBar.style.display = "flex";
+        subBar.innerHTML = topGroups.map(([label, cnt]) =>
+          '<button class="domain-pill ' + (subpackageFilter === label ? "active" : "") + '" data-action="set-subpkg" data-subpkg="' + esc(label) + '" style="font-size: 11px; padding: 3px 9px;">' +
+            "<span>" + esc(label) + "</span>" +
+            '<span style="opacity: 0.7; font-family: monospace; font-size: 10px;">' + cnt + "</span>" +
           "</button>"
         ).join("");
       }
@@ -2695,7 +2830,7 @@ export function renderPackageHubHtml(
         const sumEl = document.getElementById("mounted-summary");
         if (sumEl) sumEl.textContent = mountedCount + " mounted";
 
-        document.getElementById("count-components").textContent = String(filteredComps.length);
+        document.getElementById("count-components").textContent = Number(filteredComps.length).toLocaleString();
         document.getElementById("count-libraries").textContent = String(filteredPkgs.length);
 
         ["components", "libraries", "import"].forEach(m => {
@@ -2747,9 +2882,17 @@ export function renderPackageHubHtml(
           return;
         }
 
-        requestMissingIcons(filteredComps);
+        const visibleSlice = filteredComps.slice(0, visibleLimit);
+        requestMissingIcons(visibleSlice);
 
-        pane.innerHTML = '<div class="comp-grid">' + filteredComps.map(c => {
+        const moreFooter = visibleSlice.length < filteredComps.length
+          ? '<div style="margin-top: 14px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--muted);">' +
+              "<span>Showing <strong>" + visibleSlice.length.toLocaleString() + "</strong> of <strong>" + filteredComps.length.toLocaleString() + "</strong> schematic components</span>" +
+              '<button class="btn secondary" data-action="load-more-comps">Show more (+' + Math.min(PAGE_SIZE, filteredComps.length - visibleSlice.length) + ")</button>" +
+            "</div>"
+          : "";
+
+        pane.innerHTML = '<div class="comp-grid">' + visibleSlice.map(c => {
           const mountedVer = getInstalledVersion(c.packageName);
           const svgMarkup = liveIcons[c.fqn] || c.schematicSvg;
           const isSelected = selectedCompId === c.id;
@@ -2779,7 +2922,7 @@ export function renderPackageHubHtml(
               "</div>" +
             "</div>"
           );
-        }).join("") + "</div>";
+        }).join("") + "</div>" + moreFooter;
       }
 
       function renderLibrariesPane(filteredPkgs) {
@@ -2800,6 +2943,12 @@ export function renderPackageHubHtml(
         }
 
         const allComps = getAllComponents();
+        const pkgCounts = new Map();
+        for (const c of allComps) {
+          const key = c.packageName.toLowerCase();
+          pkgCounts.set(key, (pkgCounts.get(key) || 0) + 1);
+        }
+
         pane.innerHTML = '<div class="lib-grid">' + filteredPkgs.map(pkg => {
           const installedVer = getInstalledVersion(pkg.name);
           const versions = Array.isArray(pkg.versions) && pkg.versions.length > 0
@@ -2807,7 +2956,7 @@ export function renderPackageHubHtml(
             : [pkg.latestVersion || installedVer || "1.0.0"];
           const chosenVer = selectedVersions[pkg.name] || installedVer || versions[0];
           const isBusy = busyRequests.has("pkg:" + pkg.name);
-          const showcaseCount = allComps.filter(c => c.packageName.toLowerCase() === pkg.name.toLowerCase()).length;
+          const showcaseCount = pkgCounts.get(pkg.name.toLowerCase()) || 0;
 
           const verOptions = versions.map((v, idx) =>
             '<option value="' + esc(v) + '" ' + (v === chosenVer ? "selected" : "") + ">v" + esc(v) + (idx === 0 ? " (latest)" : "") + "</option>"
@@ -2851,7 +3000,7 @@ export function renderPackageHubHtml(
                 "</span>" +
                 '<div style="display: flex; align-items: center; gap: 12px;">' +
                   (showcaseCount > 0
-                    ? '<button class="link-btn" data-action="browse-pkg-comps" data-pkg="' + esc(pkg.name) + '">Browse ' + showcaseCount + " components →</button>"
+                    ? '<button class="link-btn" data-action="browse-pkg-comps" data-pkg="' + esc(pkg.name) + '">Browse ' + showcaseCount.toLocaleString() + " components →</button>"
                     : "") +
                   '<button class="link-btn" data-action="open-drawer" data-pkg="' + esc(pkg.name) + '">Details</button>' +
                 "</div>" +
@@ -2959,7 +3108,11 @@ export function renderPackageHubHtml(
             return;
           }
           if (galleryMatches.length > 0) {
-            body.innerHTML = galleryMatches.map(c =>
+            const previewRows = galleryMatches.slice(0, 80);
+            const moreBtn = galleryMatches.length > 80
+              ? '<button class="btn secondary" data-action="browse-pkg-comps" data-pkg="' + esc(pkg.name) + '" style="margin-top: 6px; width: 100%;">Browse all ' + galleryMatches.length.toLocaleString() + " components in gallery →</button>"
+              : "";
+            body.innerHTML = previewRows.map(c =>
               '<div class="drawer-comp-row">' +
                 '<div style="min-width: 0;">' +
                   '<div style="font-size: 12px; font-weight: 600;">' + esc(c.shortName) + "</div>" +
@@ -2967,7 +3120,7 @@ export function renderPackageHubHtml(
                 "</div>" +
                 '<button class="btn secondary" data-action="place-comp" data-comp-id="' + esc(c.id) + '">Place</button>' +
               "</div>"
-            ).join("");
+            ).join("") + moreBtn;
           } else {
             body.innerHTML = summaryList.map(c =>
               '<div class="drawer-comp-row">' +
@@ -2997,9 +3150,10 @@ export function renderPackageHubHtml(
       }
 
       function renderAll() {
-        const filteredComps = getFilteredComponents();
+        const baseComps = getBaseFilteredComponents();
+        const filteredComps = getFilteredComponents(baseComps);
         const filteredPkgs = getFilteredPackages();
-        renderDomainBar();
+        renderDomainBar(baseComps);
         renderHeaderMeta(filteredComps, filteredPkgs);
         if (currentMode === "components") {
           renderComponentsPane(filteredComps);
@@ -3019,6 +3173,19 @@ export function renderPackageHubHtml(
         vscode.postMessage(Object.assign({}, payload, { requestId }));
       }
 
+      const scrollPane = document.getElementById("scroll-pane");
+      if (scrollPane) {
+        scrollPane.addEventListener("scroll", () => {
+          if (currentMode !== "components") return;
+          const total = getFilteredComponents().length;
+          if (visibleLimit >= total) return;
+          if (scrollPane.scrollTop + scrollPane.clientHeight >= scrollPane.scrollHeight - 260) {
+            visibleLimit = Math.min(visibleLimit + PAGE_SIZE, total);
+            renderAll();
+          }
+        });
+      }
+
       // Delegated Click Handler (strictly CSP-safe, zero inline onclick attributes)
       document.addEventListener("click", (e) => {
         const target = e.target instanceof Element ? e.target.closest("[data-action]") : null;
@@ -3030,26 +3197,46 @@ export function renderPackageHubHtml(
           renderAll();
         } else if (action === "set-domain") {
           currentDomain = target.getAttribute("data-domain") || "all";
+          subpackageFilter = "";
+          resetVisibleWindow();
+          renderAll();
+        } else if (action === "set-subpkg") {
+          const nextSub = target.getAttribute("data-subpkg") || "";
+          subpackageFilter = subpackageFilter === nextSub ? "" : nextSub;
+          resetVisibleWindow();
+          renderAll();
+        } else if (action === "load-more-comps") {
+          visibleLimit += PAGE_SIZE;
           renderAll();
         } else if (action === "clear-search") {
           const inp = document.getElementById("search-input");
           if (inp) { inp.value = ""; inp.focus(); }
           liveClasses = [];
+          cachedAllComps = null;
+          resetVisibleWindow();
           renderAll();
         } else if (action === "clear-pkg-filter") {
           packageFilter = "";
+          subpackageFilter = "";
+          resetVisibleWindow();
           renderAll();
         } else if (action === "filter-to-pkg") {
           packageFilter = target.getAttribute("data-pkg") || "";
+          subpackageFilter = "";
           currentMode = "components";
+          resetVisibleWindow();
           renderAll();
         } else if (action === "browse-pkg-comps") {
           packageFilter = target.getAttribute("data-pkg") || "";
+          subpackageFilter = "";
           currentDomain = "all";
           currentMode = "components";
+          inspectingPkgName = "";
+          resetVisibleWindow();
           renderAll();
         } else if (action === "toggle-mounted-only") {
           mountedOnly = !mountedOnly;
+          resetVisibleWindow();
           renderAll();
         } else if (action === "cycle-sort") {
           librarySort = librarySort === "popular" ? "name" : "popular";
@@ -3057,9 +3244,11 @@ export function renderPackageHubHtml(
         } else if (action === "reset-filters") {
           currentDomain = "all";
           packageFilter = "";
+          subpackageFilter = "";
           mountedOnly = false;
           const inp = document.getElementById("search-input");
           if (inp) inp.value = "";
+          resetVisibleWindow();
           renderAll();
         } else if (action === "select-comp") {
           selectedCompId = target.getAttribute("data-comp-id") || "";
@@ -3137,6 +3326,7 @@ export function renderPackageHubHtml(
       const searchInput = document.getElementById("search-input");
       if (searchInput) {
         searchInput.addEventListener("input", () => {
+          resetVisibleWindow();
           renderAll();
           const q = searchInput.value.trim();
           if (searchDebounce) clearTimeout(searchDebounce);
@@ -3146,6 +3336,7 @@ export function renderPackageHubHtml(
             }, 180);
           } else {
             liveClasses = [];
+            cachedAllComps = null;
           }
         });
       }
@@ -3197,6 +3388,11 @@ export function renderPackageHubHtml(
         const msg = event.data || {};
         if (msg.command === "setInstalled") {
           installedDeps = msg.dependencies || {};
+          cachedAllComps = null;
+          renderAll();
+        } else if (msg.command === "setCatalogComponents") {
+          catalogClasses = Array.isArray(msg.components) ? msg.components : [];
+          cachedAllComps = null;
           renderAll();
         } else if (msg.command === "inspectPackage") {
           inspectingPkgName = msg.name || "";
@@ -3213,6 +3409,7 @@ export function renderPackageHubHtml(
           if (curQ && msg.query === curQ) {
             liveClasses = Array.isArray(msg.classes) ? msg.classes : [];
             livePackages = Array.isArray(msg.packages) ? msg.packages : [];
+            cachedAllComps = null;
             renderAll();
           }
         } else if (msg.command === "actionComplete") {

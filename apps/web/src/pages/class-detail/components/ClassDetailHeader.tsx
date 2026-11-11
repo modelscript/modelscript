@@ -5,6 +5,7 @@ import {
   BookIcon,
   FileCodeIcon,
   PackageIcon,
+  PulseIcon,
   SidebarExpandIcon,
   SlidersIcon,
   WorkflowIcon,
@@ -147,6 +148,7 @@ export interface ClassDetailHeaderProps {
   activeTab: ClassTabId;
   setActiveTab: (tab: ClassTabId) => void;
   equationsCount: number;
+  isSimulatable?: boolean | undefined;
   studiesCount?: number | undefined;
   hasCae?: boolean | undefined;
   treeCollapsed?: boolean | undefined;
@@ -164,6 +166,7 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
   activeTab,
   setActiveTab,
   equationsCount,
+  isSimulatable = false,
   studiesCount = 0,
   hasCae,
   treeCollapsed,
@@ -339,6 +342,18 @@ export const ClassDetailHeader: React.FC<ClassDetailHeaderProps> = ({
             <WorkflowIcon size={15} />
             Equations
             <TabCountBadge $active={activeTab === "equations"}>{equationsCount}</TabCountBadge>
+          </TabButton>
+        )}
+        {isSimulatable && (
+          <TabButton
+            role="tab"
+            aria-selected={activeTab === "simulation"}
+            $active={activeTab === "simulation"}
+            onClick={() => setActiveTab("simulation")}
+          >
+            <PulseIcon size={15} />
+            Simulation
+            <TabCountBadge $active={activeTab === "simulation"}>WASM ⚡</TabCountBadge>
           </TabButton>
         )}
         {showStudies && (

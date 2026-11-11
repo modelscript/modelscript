@@ -838,6 +838,7 @@ export function inferDomainForFqn(fqn: string, language?: string): Exclude<Engin
   const lang = (language || "").toLowerCase();
   if (
     lower.includes("electrical") ||
+    lower.includes("magnetic") ||
     lower.includes("spice") ||
     lower.includes("semiconductor") ||
     lower.includes("analog") ||
@@ -865,7 +866,14 @@ export function inferDomainForFqn(fqn: string, language?: string): Exclude<Engin
   ) {
     return "fluids-thermal";
   }
-  if (lower.includes("blocks") || lower.includes("control") || lower.includes("math") || lower.includes("clocked")) {
+  if (
+    lower.includes("blocks") ||
+    lower.includes("complexblocks") ||
+    lower.includes("stategraph") ||
+    lower.includes("control") ||
+    lower.includes("math") ||
+    lower.includes("clocked")
+  ) {
     return "control";
   }
   if (

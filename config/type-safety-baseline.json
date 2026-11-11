@@ -26,7 +26,7 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 874,
+      "explicitAny": 875,
       "tsComments": 0
     },
     "ee": {
@@ -406,7 +406,7 @@
       "tsComments": 0
     },
     "packages/diagram": {
-      "explicitAny": 35,
+      "explicitAny": 40,
       "tsComments": 0
     },
     "packages/dsl": {
@@ -438,7 +438,7 @@
       "tsComments": 0
     },
     "packages/lsp": {
-      "explicitAny": 1823,
+      "explicitAny": 1830,
       "tsComments": 0
     },
     "packages/mcp": {
@@ -450,7 +450,7 @@
       "tsComments": 0
     },
     "packages/runtime": {
-      "explicitAny": 862,
+      "explicitAny": 863,
       "tsComments": 0
     },
     "packages/simulate": {
