@@ -631,8 +631,11 @@ jobs:
   deploy_production:
     name: Deploy Stack to modelscript.org & ansatz.social
     environment: production
-    needs: [docker_build, test, ci_status_gate]
+    needs: [docker_build, ci_status_gate]
     if: >-
+      !cancelled() &&
+      needs.docker_build.result == 'success' &&
+      needs.ci_status_gate.result == 'success' &&
       github.ref == 'refs/heads/main' &&
       github.event_name != 'pull_request' &&
       github.actor != 'nektos/act' &&
