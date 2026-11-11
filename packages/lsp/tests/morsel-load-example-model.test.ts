@@ -10,9 +10,11 @@ import {
 } from "@modelscript/modelica/factory";
 import { FIELD_NAMES as modelicaFieldNames, SYNTAX_NAMES as modelicaSyntaxNames } from "@modelscript/modelica/parser";
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { registerClassQueryEndpoints } from "../src/handlers/classqueryEndpoints.js";
 import { registerMiscEndpoints } from "../src/handlers/miscEndpoints.js";
@@ -147,7 +149,27 @@ test("Morsel double-click example simulation model: fast standalone extraction, 
   const syntheticRes = await getClassSource({ className: "__LIB__:Modelica" });
   assert.strictEqual(syntheticRes.content, null);
 
-  const scriptsDir = path.resolve(process.cwd(), "scripts");
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+  let scriptsDir =
+    [
+      path.resolve(process.cwd(), "scripts"),
+      path.resolve(repoRoot, "scripts"),
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../scripts"),
+    ].find((d) => fs.existsSync(path.join(d, "ModelicaStandardLibrary_v4.1.0.zip"))) ??
+    path.resolve(repoRoot, "scripts");
+
+  if (!fs.existsSync(path.join(scriptsDir, "ModelicaStandardLibrary_v4.1.0.zip"))) {
+    try {
+      const { execSync } = await import("node:child_process");
+      execSync("node scripts/download-msl.cjs --version=4.1.0", { cwd: repoRoot, stdio: "pipe" });
+      if (fs.existsSync(path.join(repoRoot, "scripts/ModelicaStandardLibrary_v4.1.0.zip"))) {
+        scriptsDir = path.resolve(repoRoot, "scripts");
+      }
+    } catch {
+      // non-fatal, loadMSL handles missing zip
+    }
+  }
+
   await loadMSL(scriptsDir, loaderCtx, "4.1.0");
   validationService.markDependencyLoaded("Modelica", "4.1.0");
 

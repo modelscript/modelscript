@@ -44,10 +44,10 @@
         "description": "Nodal voltage magnitude and angle error < 0.5% relative to OpenDSS COM solution"
       },
       "upstream": {
-        "url": "https://github.com/electric-power/OpenDSS/archive/refs/tags/v9.6.1.1.zip",
-        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/opendss/opendss-ieee-feeders-9.6.1.zip",
+        "url": "https://github.com/tshort/OpenDSS/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/tshort/OpenDSS/master/Distrib/IEEETestCases/13Bus/IEEE13Nodeckt.dss",
         "archiveType": "zip",
-        "extractSubpath": "OpenDSS-9.6.1.1/Distrib/IEEETestCases"
+        "extractSubpath": "OpenDSS-master/Distrib/IEEETestCases/13Bus"
       },
       "minExpectedCases": 15
     },
@@ -192,10 +192,10 @@
         "description": "Joint coordinate trajectories and muscle activation forces RMSE < 0.5%"
       },
       "upstream": {
-        "url": "https://github.com/opensim-org/opensim-models/archive/refs/tags/v4.5.zip",
-        "fallbackUrl": "https://raw.githubusercontent.com/modelscript/benchmarks-mirror/main/opensim/opensim-models-4.5.0.zip",
+        "url": "https://github.com/opensim-org/opensim-models/archive/refs/heads/master.zip",
+        "fallbackUrl": "https://raw.githubusercontent.com/opensim-org/opensim-models/master/Models/Gait2392_Simbody/gait2392_thelen2003muscle.osim",
         "archiveType": "zip",
-        "extractSubpath": "opensim-models-4.5/Models"
+        "extractSubpath": "opensim-models-master/Models/Gait2392_Simbody"
       },
       "minExpectedCases": 8
     },
