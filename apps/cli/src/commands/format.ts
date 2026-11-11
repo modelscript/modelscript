@@ -12,6 +12,10 @@ export interface FormatArgs {
   language?: string | undefined;
   indentSize?: number | undefined;
   preserveFormatting?: boolean | undefined;
+  structural?: boolean | undefined;
+  oneOfEachSection?: boolean | undefined;
+  importsFirst?: boolean | undefined;
+  declarationOrder?: boolean | undefined;
 }
 
 function expandFiles(entries: string[], languageOverride?: string): string[] {
@@ -88,6 +92,26 @@ export const Format: CommandModule<{}, FormatArgs> = {
         description: "Preserve original token layout where grammar permits",
         type: "boolean",
         default: false,
+      })
+      .option("structural", {
+        description: "Reorganize sections structurally (merge duplicate equation sections, canonical ordering)",
+        type: "boolean",
+        default: false,
+      })
+      .option("one-of-each-section", {
+        description: "Enforce a single equation/algorithm section by merging duplicate sections",
+        type: "boolean",
+        default: false,
+      })
+      .option("imports-first", {
+        description: "Hoist import statements to the very top of each class",
+        type: "boolean",
+        default: false,
+      })
+      .option("declaration-order", {
+        description: "Order declarations: parameters/constants first, then components, then inner classes",
+        type: "boolean",
+        default: false,
       }) as unknown as Argv<FormatArgs>;
   },
   handler: async (args) => {
@@ -108,6 +132,10 @@ export const Format: CommandModule<{}, FormatArgs> = {
         const formatted = await lang.format(original, {
           indentSize: args.indentSize,
           preserveFormatting: args.preserveFormatting,
+          structural: args.structural,
+          oneOfEachSection: args.oneOfEachSection,
+          importsFirst: args.importsFirst,
+          declarationOrder: args.declarationOrder,
         });
 
         if (isSingleFileStdout) {

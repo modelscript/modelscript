@@ -1555,8 +1555,7 @@ export const ModelicaErrorCode = {
     code: 4125,
     rule: "stream-mixed-with-flow",
     severity: "error",
-    message: (varName: string) =>
-      `Variable '${varName}' cannot have both 'stream' and 'flow' prefixes.`,
+    message: (varName: string) => `Variable '${varName}' cannot have both 'stream' and 'flow' prefixes.`,
   },
   INNER_OUTER_CAUSALITY_MISMATCH: {
     code: 4126,
@@ -1604,6 +1603,50 @@ export const ModelicaErrorCode = {
     rule: "unused-protected-parameter",
     severity: "warning",
     message: (paramName: string) => `Protected parameter '${paramName}' is declared but never referenced.`,
+  },
+  CLASS_MISSING_DESCRIPTION: {
+    code: 4130,
+    rule: "class-missing-description",
+    severity: "warning",
+    message: (className: string) => `Class '${className}' is missing a description string.`,
+  },
+  PARAMETER_MISSING_DESCRIPTION: {
+    code: 4131,
+    rule: "parameter-missing-description",
+    severity: "warning",
+    message: (paramName: string) => `Public parameter '${paramName}' is missing a description string.`,
+  },
+  CONSTANT_MISSING_DESCRIPTION: {
+    code: 4132,
+    rule: "constant-missing-description",
+    severity: "info",
+    message: (constName: string) => `Public constant '${constName}' is missing a description string.`,
+  },
+  CLASS_MISSING_ICON: {
+    code: 4133,
+    rule: "class-missing-icon",
+    severity: "info",
+    message: (className: string) => `Class '${className}' is missing an icon annotation and does not inherit one.`,
+  },
+  BROKEN_MODELICA_URI: {
+    code: 4134,
+    rule: "broken-modelica-uri",
+    severity: "error",
+    message: (uri: string) =>
+      `Broken 'modelica://' reference: '${uri}' does not resolve to an existing class or model.`,
+  },
+  RESOURCE_MISSING: {
+    code: 4135,
+    rule: "resource-missing",
+    severity: "error",
+    message: (res: string) => `Referenced resource file '${res}' does not exist on disk.`,
+  },
+  RESOURCE_ABSOLUTE_PATH: {
+    code: 4136,
+    rule: "resource-absolute-path",
+    severity: "warning",
+    message: (pathStr: string) =>
+      `Resource reference '${pathStr}' uses an absolute filesystem path; use a relative path or 'modelica://' URI instead.`,
   },
 } as const satisfies Record<string, ErrorCodeDef>;
 

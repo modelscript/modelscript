@@ -42,6 +42,15 @@ describe("Package Header World-Class UI/UX Suite", () => {
       assert.ok(headerSrc.includes("<CodeIcon size={14} />"), "Must include CodeIcon in OpenIdeButton");
     });
 
+    it("links Open in Studio directly to the VS Code workbench in a new tab", () => {
+      assert.ok(
+        headerSrc.includes("buildVsCodeWorkbenchUrlForPackage"),
+        "Must use buildVsCodeWorkbenchUrlForPackage to target workbench",
+      );
+      assert.ok(headerSrc.includes('target="_blank"'), "Must open workbench in a new tab or window");
+      assert.ok(headerSrc.includes('rel="noopener noreferrer"'), "Must have safe link opener attributes");
+    });
+
     it("renders Source (.zip) and Cite secondary actions with matching 32px height", () => {
       assert.ok(headerSrc.includes("Source (.zip)"), "Must render Source (.zip) download link");
       assert.ok(headerSrc.includes("<CiteButton"), "Must render CiteButton");

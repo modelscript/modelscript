@@ -487,18 +487,6 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           if (!isInternal) {
             g.cleanSelection?.();
             g.select?.(cell);
-            try {
-              const cellView = g.findViewByCell(cell);
-              if (cellView?.container) {
-                cellView.container.classList.add("modelscript-anchor-halo");
-                setTimeout(() => {
-                  cellView.container?.classList.remove("modelscript-anchor-halo");
-                }, 5400);
-              }
-              g.centerCell?.(cell, { animation: { duration: 300 } });
-            } catch {
-              // fallback if animation unsupported
-            }
           }
         }
       }

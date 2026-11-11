@@ -15,6 +15,7 @@ import {
   PlusIcon,
   RepoForkedIcon,
   RepoIcon,
+  RowsIcon,
   SearchIcon,
   ShareIcon,
   SidebarCollapseIcon,
@@ -50,6 +51,7 @@ import {
   NavRight,
   NavText,
   PlaygroundNavbar as NavbarContainer,
+  SplitToggleButton,
 } from "../styles";
 
 export interface PlaygroundNavbarProps {
@@ -57,6 +59,10 @@ export interface PlaygroundNavbarProps {
   currentTitle: string;
   currentLang?: string;
   currentView?: string;
+  isSplit?: boolean;
+  canSplit?: boolean;
+  splitOrientation?: "horizontal" | "vertical";
+  onToggleSplit?: () => void;
   isDirty?: boolean;
   isSimulating?: boolean;
   publishLabel?: string;
@@ -88,6 +94,10 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   currentTitle,
   currentLang = "modelica",
   currentView = "diagram",
+  isSplit = false,
+  canSplit = true,
+  splitOrientation = "horizontal",
+  onToggleSplit,
   isDirty = false,
   isSimulating = false,
   runStatus,
@@ -178,7 +188,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             data-testid="morsel-brand-icon"
           />
           {Boolean(customLogoSrc) && (
-            <Badge data-testid="playground-brand-badge" title="Ansatz Morsel">
+            <Badge data-testid="playground-brand-badge" title="Ansatz Morsel" className="nav-hide-xl">
               <MorselIcon size={13} style={{ marginRight: "3px" }} />
               <span>Morsel</span>
             </Badge>
@@ -192,7 +202,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           aria-label="Back to Ansatz Platform"
         >
           <ArrowLeftIcon size={12} />
-          <span className="nav-hide-md">Ansatz</span>
+          <span className="nav-hide-lg">Ansatz</span>
         </NavBackLink>
 
         <NavDivider />
@@ -224,7 +234,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
         {/* Breadcrumb Hierarchy: Models / [CurrentModel] */}
         <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", minWidth: 0, flexShrink: 1 }}>
           <span
-            className="nav-hide-sm"
+            className="nav-hide-lg"
             style={{
               fontSize: "12px",
               fontWeight: 500,
@@ -235,7 +245,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             Models
           </span>
           <span
-            className="nav-hide-sm"
+            className="nav-hide-lg"
             style={{
               fontSize: "12px",
               color: "var(--ms-divider, rgba(255, 255, 255, 0.2))",
@@ -311,7 +321,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                     style={{
                       display: "inline-block",
                       minWidth: 0,
-                      maxWidth: "clamp(110px, 18vw, 240px)",
+                      maxWidth: "clamp(80px, 12vw, 180px)",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
@@ -422,7 +432,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           {/* Saved state indicator */}
           {!isDirty && (
             <span
-              className="nav-hide-sm"
+              className="nav-hide-lg"
               style={{
                 fontSize: 11,
                 fontWeight: 500,
@@ -457,13 +467,14 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                 color: "var(--ms-brand, #0891b2)",
                 background: "var(--ms-brand-soft, rgba(8, 145, 178, 0.08))",
                 borderColor: "color-mix(in srgb, var(--ms-brand, #0891b2) 24%, transparent)",
-                flexShrink: 0,
+                flexShrink: 1,
+                minWidth: 0,
               }}
             >
               <span
                 style={{
                   display: "inline-block",
-                  maxWidth: "clamp(56px, 12vw, 110px)",
+                  maxWidth: "clamp(48px, 8vw, 84px)",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -503,7 +514,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             langInfo?.id === "owl2" ? "Reasoner" : langInfo?.id === "sysml2" ? "Requirements" : "Inspector";
 
           const viewTabs: Array<{
-            id: "diagram" | "3d" | "simulation" | "inspector" | "code" | "split";
+            id: "diagram" | "3d" | "simulation" | "inspector" | "code";
             label: string;
             icon: any;
             title: string;
@@ -551,20 +562,42 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             title: "Source code editor (⌥5)",
             onClick: () => onViewChange("code"),
           });
-          viewTabs.push({
-            id: "split",
-            label: "Split",
-            icon: ColumnsIcon,
-            title: "Side-by-side diagram & code split (⌥6)",
-            onClick: () => onViewChange("split"),
-          });
+
+          const isCodeSelected = currentView === "code";
+          const effectiveIsSplit =
+            Boolean(isSplit) ||
+            currentView === "split" ||
+            currentView === "split-columns" ||
+            currentView === "split-rows";
+
+          const handleSplitClick = () => {
+            if (isCodeSelected || !canSplit) return;
+            if (onToggleSplit) {
+              onToggleSplit();
+            } else if (onViewChange) {
+              onViewChange("split");
+            }
+          };
 
           const selectedIndex = viewTabs.findIndex(
             (t) =>
               t.id === currentView ||
               (t.id === "simulation" && currentView === "plot") ||
-              (t.id === "split" && (currentView === "split-columns" || currentView === "split-rows")),
+              (t.id === "diagram" &&
+                (currentView === "split" || currentView === "split-columns" || currentView === "split-rows")),
           );
+
+          const isSplitActive = effectiveIsSplit && !isCodeSelected && canSplit;
+          const SplitIcon = splitOrientation === "vertical" ? RowsIcon : ColumnsIcon;
+          const splitTitle = !canSplit
+            ? "Split view unavailable: window too small"
+            : isCodeSelected
+              ? "Split view is unavailable when Code tab is full"
+              : isSplitActive
+                ? "Close split view (⌥6)"
+                : splitOrientation === "vertical"
+                  ? "Split view: Code on top, selected view on bottom (⌥6)"
+                  : "Split view: Code on left, selected view on right (⌥6)";
 
           return (
             <NavCenter>
@@ -591,6 +624,24 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                   </SegmentedControl.Button>
                 ))}
               </SegmentedControl>
+
+              <SplitToggleButton
+                type="button"
+                role="button"
+                aria-pressed={isSplitActive}
+                aria-label={
+                  splitOrientation === "vertical"
+                    ? "Split view (Code on top, visualizer on bottom)"
+                    : "Split view (Code on left, visualizer on right)"
+                }
+                disabled={isCodeSelected || !canSplit}
+                $active={isSplitActive}
+                onClick={handleSplitClick}
+                title={splitTitle}
+              >
+                <SplitIcon size={14} />
+                <span>Split</span>
+              </SplitToggleButton>
             </NavCenter>
           );
         })()}
@@ -673,6 +724,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <span>Run</span>
                 <kbd
+                  className="nav-hide-lg"
                   style={{
                     fontSize: 10,
                     fontWeight: 500,
@@ -839,7 +891,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           </div>
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-            <Link to="/login" style={{ textDecoration: "none" }} className="nav-hide-sm">
+            <Link to="/login" style={{ textDecoration: "none" }} className="nav-hide-lg">
               <Button size="small" variant="invisible" style={{ height: 30, borderRadius: 6 }}>
                 Sign In
               </Button>

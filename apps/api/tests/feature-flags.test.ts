@@ -82,6 +82,10 @@ test("Feature Flag System & Launch Readiness Matrix Verification", async (t) => 
     assert.strictEqual(guestRes.body.composer_ai_polish, false);
     assert.strictEqual(guestRes.body.feeds_page, false);
     assert.strictEqual(guestRes.body.rss_feeds, false);
+    assert.strictEqual(guestRes.body.spaces_hub, false);
+    assert.strictEqual(guestRes.body.spaces, false);
+    assert.strictEqual(guestRes.body.space_chat, false);
+    assert.strictEqual(guestRes.body.chat, false);
 
     // Regular user evaluation
     const userRes = await request(app).get("/api/v1/flags").set("Authorization", `Bearer ${regularToken}`).expect(200);
@@ -92,6 +96,10 @@ test("Feature Flag System & Launch Readiness Matrix Verification", async (t) => 
     assert.strictEqual(userRes.body.composer_ai_polish, false);
     assert.strictEqual(userRes.body.feeds_page, false);
     assert.strictEqual(userRes.body.rss_feeds, false);
+    assert.strictEqual(userRes.body.spaces_hub, false);
+    assert.strictEqual(userRes.body.spaces, false);
+    assert.strictEqual(userRes.body.space_chat, false);
+    assert.strictEqual(userRes.body.chat, false);
 
     // Admin user evaluation (default-disabled flags must be false for everyone including admin)
     const adminRes = await request(app).get("/api/v1/flags").set("Authorization", `Bearer ${adminToken}`).expect(200);
@@ -101,6 +109,10 @@ test("Feature Flag System & Launch Readiness Matrix Verification", async (t) => 
     assert.strictEqual(adminRes.body.billing_stripe_live, false);
     assert.strictEqual(adminRes.body.feeds_page, false);
     assert.strictEqual(adminRes.body.rss_feeds, false);
+    assert.strictEqual(adminRes.body.spaces_hub, false);
+    assert.strictEqual(adminRes.body.spaces, false);
+    assert.strictEqual(adminRes.body.space_chat, false);
+    assert.strictEqual(adminRes.body.chat, false);
   });
 
   await t.test("Gated endpoints return 404 when disabled (including for admin)", async () => {

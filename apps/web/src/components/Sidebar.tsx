@@ -789,71 +789,62 @@ const ProfileFooterContainer = styled.div`
 
 const SplitPostButtonContainer = styled.div`
   display: flex;
-  align-items: stretch;
+  flex-direction: column;
+  gap: 8px;
   width: 100%;
-  height: 40px;
-  background: var(--ms-brand);
-  border-radius: 10px;
-  box-shadow: var(--ms-brand-shadow);
-  overflow: hidden;
   box-sizing: border-box;
-  border: 1px solid var(--color-accent-blue-border, transparent);
-  transition:
-    box-shadow 0.16s ease,
-    transform 0.12s ease;
-
-  &:hover {
-    box-shadow: 0 10px 28px -6px color-mix(in srgb, var(--ms-brand) 55%, transparent);
-  }
 
   @media (max-width: 1280px) {
-    flex-direction: column;
-    width: 44px;
-    height: auto;
-    border-radius: 12px;
+    align-items: center;
+    gap: 8px;
   }
 `;
 
 const SplitPostButtonAction = styled.button`
-  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  height: 100%;
-  padding: 0 8px;
-  background: transparent;
-  border: none;
+  gap: 8px;
+  width: 100%;
+  height: 44px;
+  padding: 0 16px;
+  background-color: var(--ms-brand);
+  border: 1px solid transparent;
+  border-radius: 9999px;
   color: var(--ms-brand-contrast, #ffffff);
   font-family: inherit;
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 700;
   line-height: 1;
   letter-spacing: -0.01em;
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
+  box-sizing: border-box;
+  box-shadow: 0 2px 10px -1px color-mix(in srgb, var(--ms-brand) 38%, transparent);
   transition:
     background-color 0.16s ease,
-    color 0.16s ease;
+    box-shadow 0.16s ease,
+    transform 0.12s ease;
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.15);
-    color: var(--ms-brand-contrast, #ffffff);
+    background-color: color-mix(in srgb, var(--ms-brand) 90%, #000000);
+    box-shadow: 0 6px 18px -2px color-mix(in srgb, var(--ms-brand) 50%, transparent);
   }
 
   &:active {
-    background-color: rgba(0, 0, 0, 0.12);
+    transform: scale(0.985);
+    background-color: color-mix(in srgb, var(--ms-brand) 82%, #000000);
   }
 
   &:focus-visible {
-    outline: 2px solid #ffffff;
-    outline-offset: -2px;
+    outline: 2px solid var(--ms-brand);
+    outline-offset: 2px;
     z-index: 2;
   }
 
   @media (max-width: 1280px) {
-    width: 44px;
+    width: 42px;
     height: 42px;
     padding: 0;
     gap: 0;
@@ -861,47 +852,111 @@ const SplitPostButtonAction = styled.button`
 `;
 
 const SplitMorselButtonLink = styled(Link)`
-  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  height: 100%;
-  padding: 0 8px;
-  background: transparent;
-  border: none;
-  color: var(--ms-brand-contrast, #ffffff);
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  padding: 0 16px;
+  background-color: var(--color-canvas-default, #ffffff);
+  border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.2));
+  border-radius: 9999px;
+  color: var(--color-text-primary, #0f1419);
   font-family: inherit;
-  font-size: 15px;
-  font-weight: 650;
+  font-size: 14.5px;
+  font-weight: 700;
   line-height: 1;
   letter-spacing: -0.01em;
   white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
   user-select: none;
+  box-sizing: border-box;
   transition:
     background-color 0.16s ease,
-    color 0.16s ease;
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.12s ease;
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.15);
-    color: var(--ms-brand-contrast, #ffffff);
+    background-color: var(--surface-row-hover, rgba(255, 255, 255, 0.08));
+    border-color: var(--color-border-hover, var(--color-accent-blue-border));
+    color: var(--color-text-heading, #ffffff);
     text-decoration: none;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
   }
 
   &:active {
-    background-color: rgba(0, 0, 0, 0.12);
+    transform: scale(0.985);
+    background-color: var(--surface-selected, rgba(255, 255, 255, 0.12));
   }
 
   &:focus-visible {
-    outline: 2px solid #ffffff;
-    outline-offset: -2px;
+    outline: 2px solid var(--color-accent-blue, var(--ms-brand));
+    outline-offset: 2px;
     z-index: 2;
   }
 
   @media (max-width: 1280px) {
-    width: 44px;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    gap: 0;
+  }
+`;
+
+const SplitStudioButtonLink = styled(Link)`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  padding: 0 16px;
+  background-color: var(--color-canvas-default, #ffffff);
+  border: 1px solid var(--color-border-default, rgba(255, 255, 255, 0.2));
+  border-radius: 9999px;
+  color: var(--color-text-primary, #0f1419);
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.12s ease;
+
+  &:hover {
+    background-color: var(--surface-row-hover, rgba(255, 255, 255, 0.08));
+    border-color: var(--color-border-hover, var(--color-accent-blue-border));
+    color: var(--color-text-heading, #ffffff);
+    text-decoration: none;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  }
+
+  &:active {
+    transform: scale(0.985);
+    background-color: var(--surface-selected, rgba(255, 255, 255, 0.12));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent-blue, var(--ms-brand));
+    outline-offset: 2px;
+    z-index: 2;
+  }
+
+  @media (max-width: 1280px) {
+    width: 42px;
     height: 42px;
     padding: 0;
     gap: 0;
@@ -909,36 +964,26 @@ const SplitMorselButtonLink = styled(Link)`
 `;
 
 const SplitPostButtonDivider = styled.div`
-  width: 1px;
-  height: 22px;
-  align-self: center;
-  background-color: rgba(255, 255, 255, 0.28);
-  flex-shrink: 0;
-
-  @media (max-width: 1280px) {
-    width: 26px;
-    height: 1px;
-    margin: 0 auto;
-  }
+  display: none;
 `;
 
 const GuestMorselButtonLink = styled(Link)`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
-  height: 40px;
-  background: var(--ms-brand);
-  border-radius: 10px;
-  box-shadow: var(--ms-brand-shadow);
-  overflow: hidden;
+  height: 44px;
+  padding: 0 16px;
+  background-color: var(--ms-brand);
+  border-radius: 9999px;
+  box-shadow: 0 2px 10px -1px color-mix(in srgb, var(--ms-brand) 38%, transparent);
   box-sizing: border-box;
-  border: 1px solid var(--color-accent-blue-border, transparent);
+  border: 1px solid transparent;
   color: var(--ms-brand-contrast, #ffffff);
   font-family: inherit;
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 700;
   line-height: 1;
   letter-spacing: -0.01em;
   white-space: nowrap;
@@ -951,28 +996,27 @@ const GuestMorselButtonLink = styled(Link)`
     transform 0.12s ease;
 
   &:hover {
-    background-color: color-mix(in srgb, var(--ms-brand) 88%, #ffffff);
-    box-shadow: 0 10px 28px -6px color-mix(in srgb, var(--ms-brand) 55%, transparent);
+    background-color: color-mix(in srgb, var(--ms-brand) 90%, #000000);
+    box-shadow: 0 6px 18px -2px color-mix(in srgb, var(--ms-brand) 50%, transparent);
     color: var(--ms-brand-contrast, #ffffff);
     text-decoration: none;
   }
 
   &:active {
-    background-color: color-mix(in srgb, var(--ms-brand) 88%, #000000);
+    transform: scale(0.985);
+    background-color: color-mix(in srgb, var(--ms-brand) 82%, #000000);
   }
 
   &:focus-visible {
-    outline: 2px solid #ffffff;
-    outline-offset: -2px;
-    z-index: 2;
+    outline: 2px solid var(--ms-brand);
+    outline-offset: 2px;
   }
 
   @media (max-width: 1280px) {
-    width: 44px;
+    width: 42px;
     height: 42px;
     padding: 0;
     gap: 0;
-    border-radius: 12px;
   }
 `;
 
@@ -1100,8 +1144,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
   const hasPackages = useFeatureFlag("package_browser");
   const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
   const hasReferences = useFeatureFlag(["references", "scientific_references"]);
-  const hasSpaces = useFeatureFlag("spaces_hub");
-  const hasSpaceChat = useFeatureFlag("space_chat");
+  const hasSpaces = useFeatureFlag(["spaces_hub", "spaces"]);
+  const hasSpaceChat = useFeatureFlag(["space_chat", "chat"]);
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const hasFeeds = useFeatureFlag("feeds_page") || useFeatureFlag("rss_feeds");
   const branding = useInstanceBranding();
@@ -1255,12 +1299,15 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
     );
   };
 
+  const brandDisplayName =
+    !branding.instanceName || branding.instanceName === "Ansatz" ? "Ansatz Network" : branding.instanceName;
+
   return (
     <SidebarContainer>
       <BrandRow>
         <BrandHeader
           to={user ? "/home" : "/explore"}
-          title={branding.instanceTagline || branding.instanceName}
+          title={branding.instanceTagline || brandDisplayName}
           onClick={() => {
             const homeTarget = user ? "/home" : "/explore";
             if (location.pathname === homeTarget) {
@@ -1274,13 +1321,13 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
             <AnsatzMark
               size={34}
               logoUrl={customLogoSrc}
-              alt={branding.instanceName || "Ansatz"}
+              alt={brandDisplayName}
               accentColor={branding.brandAccentColor}
             />
           </div>
           <BrandTitle className="nav-label" data-testid="sidebar-brand-title">
             <div className="brand-top-row">
-              <span className="brand-name">{branding.instanceName || "Ansatz"}</span>
+              <span className="brand-name">{brandDisplayName}</span>
               <span className="brand-badge" data-testid="sidebar-brand-badge">
                 {branding.instanceBadge?.trim() || "Beta"}
               </span>
@@ -1338,21 +1385,43 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
                 <MorselIcon size={16} color="currentColor" className="post-split-icon post-split-morsel-icon" />
                 <span className="post-text">Morsel</span>
               </SplitMorselButtonLink>
+              <SplitStudioButtonLink
+                to="/studio"
+                className="post-split-btn post-split-btn-studio"
+                aria-label="Studio"
+                title="Ansatz Studio"
+                data-testid="sidebar-studio-button"
+              >
+                <CodeIcon size={16} className="post-split-icon" />
+                <span className="post-text">Studio</span>
+              </SplitStudioButtonLink>
             </SplitPostButtonContainer>
           </Box>
         ) : (
           <Box mt={2} width="100%" px={1} className="post-btn-container">
-            <GuestMorselButtonLink
-              to="/morsel"
-              onClick={handleMorselClick}
-              className="post-split-btn-morsel"
-              aria-label="Morsel"
-              title="Ansatz Morsel"
-              data-testid="sidebar-guest-morsel-button"
-            >
-              <MorselIcon size={16} color="currentColor" className="post-split-icon" />
-              <span className="post-text">Morsel</span>
-            </GuestMorselButtonLink>
+            <SplitPostButtonContainer className="post-split-btn-group">
+              <GuestMorselButtonLink
+                to="/morsel"
+                onClick={handleMorselClick}
+                className="post-split-btn post-split-btn-morsel"
+                aria-label="Morsel"
+                title="Ansatz Morsel"
+                data-testid="sidebar-guest-morsel-button"
+              >
+                <MorselIcon size={16} color="currentColor" className="post-split-icon" />
+                <span className="post-text">Morsel</span>
+              </GuestMorselButtonLink>
+              <SplitStudioButtonLink
+                to="/studio"
+                className="post-split-btn post-split-btn-studio"
+                aria-label="Studio"
+                title="Ansatz Studio"
+                data-testid="sidebar-guest-studio-button"
+              >
+                <CodeIcon size={16} className="post-split-icon" />
+                <span className="post-text">Studio</span>
+              </SplitStudioButtonLink>
+            </SplitPostButtonContainer>
           </Box>
         )}
       </Box>
@@ -1510,10 +1579,10 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
                   <AnsatzMark
                     size={26}
                     logoUrl={customLogoSrc}
-                    alt={branding.instanceName || "Ansatz"}
+                    alt={brandDisplayName}
                     accentColor={branding.brandAccentColor}
                   />
-                  <span className="popover-title">Join {branding.instanceName || "Ansatz"}</span>
+                  <span className="popover-title">Join {brandDisplayName}</span>
                 </div>
                 <p className="popover-subtitle">
                   Simulate physical systems, publish packages, and collaborate with engineers.

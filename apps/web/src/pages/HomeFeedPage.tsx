@@ -34,7 +34,8 @@ const HomeFeedPage: React.FC = () => {
   const { user, token } = useAuth();
   const { theme } = useTheme();
   const branding = useInstanceBranding();
-  const brandName = branding.instanceName || "Ansatz";
+  const brandName =
+    !branding.instanceName || branding.instanceName === "Ansatz" ? "Ansatz Network" : branding.instanceName;
   const customLogoSrc = theme === "dark" ? branding.brandLogoDarkUrl || branding.brandLogoUrl : branding.brandLogoUrl;
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

@@ -176,6 +176,18 @@ export interface RouterEdgeViewLike {
 }
 
 /**
+ * Detect whether a diagram node represents a container/compartment that
+ * should not act as an obstacle for internal wire routing.
+ */
+export function isContainerDiagramNode(node: unknown): boolean {
+  if (!node || typeof node !== "object") return false;
+  const accessor = node as { getData?: () => { isContainer?: boolean; compartmentId?: unknown } | undefined };
+  if (typeof accessor.getData !== "function") return false;
+  const data = accessor.getData();
+  return Boolean(data?.isContainer || data?.compartmentId !== undefined);
+}
+
+/**
  * Extracts the axis-aligned bounding box of an X6 node or node-like object, if available,
  * correctly computing the rotated bounds when the node has a non-zero rotation angle.
  */
@@ -1163,7 +1175,10 @@ export function extractEdgePruneOptions(
         node.id.startsWith("__seq_stem_") ||
         node.id.startsWith("__alignment_guide_") ||
         node.id === "__diagram_background__" ||
-        node.id === "__diagram_axes__"
+        node.id === "__diagram_axes__" ||
+        node.id.startsWith("comp_") ||
+        node.id.startsWith("__diagram_group_") ||
+        isContainerDiagramNode(node)
       ) {
         continue;
       }
@@ -2968,7 +2983,10 @@ export function portOrthogonalRouter(
         node.id.startsWith("__seq_stem_") ||
         node.id.startsWith("__alignment_guide_") ||
         node.id === "__diagram_background__" ||
-        node.id === "__diagram_axes__"
+        node.id === "__diagram_axes__" ||
+        node.id.startsWith("comp_") ||
+        node.id.startsWith("__diagram_group_") ||
+        isContainerDiagramNode(node)
       ) {
         continue;
       }

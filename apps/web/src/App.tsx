@@ -566,8 +566,8 @@ function App() {
   const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
   const hasReferences = useFeatureFlag(["references", "scientific_references"]);
   const hasFeeds = useFeatureFlag(["feeds_page", "rss_feeds"]);
-  const hasSpaces = useFeatureFlag("spaces_hub");
-  const hasSpaceChat = useFeatureFlag("space_chat");
+  const hasSpaces = useFeatureFlag(["spaces_hub", "spaces"]);
+  const hasSpaceChat = useFeatureFlag(["space_chat", "chat"]);
 
   return (
     <ThemeProvider colorMode={theme === "dark" ? "night" : "day"}>
@@ -647,7 +647,7 @@ function App() {
                             <SpaceChatPage />
                           </RequireAuth>
                         ) : (
-                          <Navigate to="/spaces" replace />
+                          <Navigate to={hasSpaces ? "/spaces" : "/explore"} replace />
                         )
                       }
                     />

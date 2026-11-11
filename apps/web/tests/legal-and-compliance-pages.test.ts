@@ -260,8 +260,8 @@ describe("Mastodon-Grade Legal, Privacy & Cookies Pages + Admin Studio Suite", (
       "RightPanel version link must point to https://github.com/modelscript/modelscript",
     );
     assert.ok(
-      src.includes('{branding.instanceName || "Ansatz"} v{version}'),
-      "RightPanel footer must display the Ansatz version",
+      src.includes("ModelScript v{version}") || src.includes('{branding.instanceName || "Ansatz"} v{version}'),
+      "RightPanel footer must display the ModelScript version",
     );
   });
 });

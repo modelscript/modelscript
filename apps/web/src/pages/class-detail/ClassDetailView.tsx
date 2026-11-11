@@ -235,7 +235,7 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
       try {
         const status = await getJobStatus(name, version);
         setJobStatusState((prev) => {
-          if (status.status === "completed" && (prev === "pending" || prev === "processing")) {
+          if (status.status === "completed" && (prev === "pending" || prev === "processing" || prev === "running")) {
             fetchClassDetail();
           }
           return status.status;
@@ -243,7 +243,7 @@ export const ClassDetailView: React.FC<ClassDetailViewProps> = ({
       } catch (err: unknown) {
         const errorObj = err as { response?: { status?: number | undefined } | undefined };
         if (errorObj?.response?.status === 404) {
-          setJobStatusState("failed");
+          setJobStatusState((prev) => (cls ? "completed" : prev === "processing" ? "failed" : null));
         } else {
           console.error("Failed to check job status", err);
         }

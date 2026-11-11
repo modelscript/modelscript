@@ -86,7 +86,7 @@ import { SysML2OmgService } from "./services/sysml2-omg-service.js";
 import { LibraryStorage } from "./storage.js";
 import { SANCTIONED_COUNTRIES, SANCTIONED_REGIONS } from "./util/compliance.js";
 import { seedInitialAdmin } from "./util/seed-admin.js";
-import { seedExamplePackages, seedPrepackagedLibraries } from "./util/seed-examples.js";
+import { seedPrepackagedLibraries } from "./util/seed-examples.js";
 import { injectSeoIntoHtml, resolveSeoMetadata } from "./util/seo-injector.js";
 import { isFederationDisabled, isStrictAirgapEnv, resolveTierPreset } from "./util/tier-presets.js";
 
@@ -209,7 +209,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   // 1. DigitalOcean flagship deployment (isFlagship) ALWAYS — ensures flagship never has missing packages even after a database reset
   // 2. Airgapped production appliances
   // 3. Any production/staging node when SEED_STDLIB_ON_BOOT=true, when target standard libraries are missing, or when database has 0 packages
-  const defaultStdlibPacks = isFlagship ? "modelica" : "all";
+  const defaultStdlibPacks = "modelica";
   const requestedStdlibPacks = (process.env["STDLIB_PACKS"] || defaultStdlibPacks)
     .split(",")
     .map((p) => p.trim())
@@ -290,7 +290,6 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       try {
         await seedPolyglotSocialData(database);
         if (isExplicitDevSeed) {
-          await seedExamplePackages(libraryStorage, database, jobQueue);
           if (!isTestEnv) {
             await seedPrepackagedLibraries(libraryStorage, database, jobQueue);
           }
@@ -330,7 +329,6 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
         seedPolyglotUsers(database);
 
         await seedPolyglotSocialData(database, { force: true });
-        await seedExamplePackages(libraryStorage, database, jobQueue);
         await seedPrepackagedLibraries(libraryStorage, database, jobQueue);
         res.json({ success: true });
       } catch (err) {

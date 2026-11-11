@@ -422,7 +422,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
         return saved;
       }
     }
-    return "dot";
+    return "doubleMesh";
   });
   const [isSnapActive, setIsSnapActive] = useState(() => {
     if (typeof window !== "undefined" && window.localStorage) {
@@ -755,11 +755,15 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
         width: isNarrow
           ? "100%"
           : isSplit(view) && view === MorselView.SPLIT_COLUMNS
-            ? `${splitRatio * 100}%`
+            ? `${(1 - splitRatio) * 100}%`
             : isSplit(view)
               ? undefined
               : "100%",
-        height: isNarrow ? "100%" : isSplit(view) && view === MorselView.SPLIT_ROWS ? `${splitRatio * 100}%` : "100%",
+        height: isNarrow
+          ? "100%"
+          : isSplit(view) && view === MorselView.SPLIT_ROWS
+            ? `${(1 - splitRatio) * 100}%`
+            : "100%",
         flexDirection: "column",
         minWidth: 0,
         minHeight: 0,

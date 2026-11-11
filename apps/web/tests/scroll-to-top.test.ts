@@ -319,9 +319,10 @@ describe("Page Scroll Restoration & Navigation Scroll-to-Top", () => {
       "utf-8",
     );
     assert.ok(
-      authPromptCard.includes('Join {branding.instanceName || "Ansatz"}') &&
+      (authPromptCard.includes("Join {brandName}") ||
+        authPromptCard.includes('Join {branding.instanceName || "Ansatz Network"}')) &&
         !authPromptCard.includes("Engineering Platform"),
-      "AuthPromptCard must display 'Join Ansatz' instead of 'Engineering Platform'",
+      "AuthPromptCard must display 'Join Ansatz Network' instead of 'Engineering Platform'",
     );
 
     const stickyFiles = [

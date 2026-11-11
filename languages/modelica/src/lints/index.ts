@@ -10,6 +10,7 @@
 
 import type { CompilerLint } from "@modelscript/dsl";
 import { modelicaConnectionLints } from "./connections-streams.js";
+import { modelicaDocResourceLints } from "./documentation-resources.js";
 import { modelicaHierarchyLints } from "./hierarchy-variability.js";
 import { modelicaSyncLints } from "./synchronous-clocks.js";
 import { modelicaSyntaxLints } from "./syntax-placement.js";
@@ -46,6 +47,7 @@ export {
   isExpandableConnector,
   isTypeCompatible,
   modelicaConnectionLints,
+  modelicaDocResourceLints,
   modelicaHierarchyLints,
   modelicaSyncLints,
   modelicaSyntaxLints,
@@ -59,7 +61,7 @@ export { deriveSimplification, findNonlinearTermsInCst, type NonlinearTermInfo }
 /**
  * Combined registry of all linear-memory CST `CompilerLint` rules for Modelica 3.x,
  * merging syntax/placement, type/expression, hierarchy/variability, connection/stream,
- * and synchronous clock rules.
+ * documentation/resource, and synchronous clock rules.
  */
 export const allModelicaLints: Record<string, CompilerLint> = {
   ...modelicaSyntaxLints,
@@ -67,4 +69,5 @@ export const allModelicaLints: Record<string, CompilerLint> = {
   ...modelicaHierarchyLints,
   ...modelicaConnectionLints,
   ...modelicaSyncLints,
+  ...modelicaDocResourceLints,
 };

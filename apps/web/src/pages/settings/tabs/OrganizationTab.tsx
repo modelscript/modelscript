@@ -30,6 +30,7 @@ import {
 import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
 import Spinner from "../../../components/Spinner";
+import { useFeatureFlag } from "../../../FeatureFlagContext";
 import { DetailSubtitle, DetailTitle, Header } from "../settingsStyles";
 
 const OrgCard = styled.div`
@@ -194,6 +195,7 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({
   setActiveTab: setActiveTabProp,
 }) => {
   const setActiveTab = setActiveTabProp ?? onNavigateTab;
+  const hasBilling = useFeatureFlag(["billing", "billing_stripe_live"]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
@@ -613,16 +615,18 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({
                         <span>{isEditingProfile ? "Cancel Edit" : "Edit Organization Profile"}</span>
                       </SecondaryButton>
                     )}
-                    <SecondaryButton
-                      type="button"
-                      style={{ fontSize: "12px", padding: "4px 10px" }}
-                      onClick={() => {
-                        sessionStorage.setItem("ms_billing_org_id", String(selectedOrg.id));
-                        setActiveTab?.("billing");
-                      }}
-                    >
-                      Manage Org Billing &amp; Credits
-                    </SecondaryButton>
+                    {hasBilling && (
+                      <SecondaryButton
+                        type="button"
+                        style={{ fontSize: "12px", padding: "4px 10px" }}
+                        onClick={() => {
+                          sessionStorage.setItem("ms_billing_org_id", String(selectedOrg.id));
+                          setActiveTab?.("billing");
+                        }}
+                      >
+                        Manage Org Billing &amp; Credits
+                      </SecondaryButton>
+                    )}
                   </Box>
                 </Box>
               </Box>

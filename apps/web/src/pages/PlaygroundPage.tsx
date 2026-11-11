@@ -1180,15 +1180,14 @@ export const PlaygroundPage: React.FC = () => {
   };
 
   type PlaygroundView = "diagram" | "code" | "split" | "simulation" | "3d" | "inspector";
-  const [currentView, setCurrentView] = useState<PlaygroundView>(
-    viewParam === "code" ||
-      viewParam === "simulation" ||
-      viewParam === "split" ||
-      viewParam === "3d" ||
-      viewParam === "inspector"
-      ? (viewParam as PlaygroundView)
-      : "diagram",
-  );
+  const [isSplit, setIsSplit] = useState<boolean>(() => viewParam === "split" || searchParams.get("split") === "1");
+  const [currentView, setCurrentView] = useState<PlaygroundView>(() => {
+    if (viewParam === "code") return "code";
+    if (viewParam === "simulation" || subviewParam === "simulation") return "simulation";
+    if (viewParam === "3d" || subviewParam === "3d") return "3d";
+    if (viewParam === "inspector" || subviewParam === "inspector") return "inspector";
+    return "diagram";
+  });
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   useEffect(() => {
@@ -1208,6 +1207,33 @@ export const PlaygroundPage: React.FC = () => {
       window.dispatchEvent(new CustomEvent("morsel:toggle-sidebar"));
     }
   }, []);
+
+  const [windowDimensions, setWindowDimensions] = useState(() => ({
+    width: typeof window !== "undefined" ? window.innerWidth : 1200,
+    height: typeof window !== "undefined" ? window.innerHeight : 800,
+  }));
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const isNarrowForHorizontal = windowDimensions.width < 960;
+  const hasEnoughVerticalSpace = windowDimensions.height >= 560;
+  const canSplit = windowDimensions.width >= 640 && (!isNarrowForHorizontal || hasEnoughVerticalSpace);
+  const splitOrientation: "horizontal" | "vertical" =
+    isNarrowForHorizontal && hasEnoughVerticalSpace ? "vertical" : "horizontal";
+
+  const handleToggleSplit = useCallback(() => {
+    if (currentView === "code" || !canSplit) return;
+    setIsSplit((prev) => !prev);
+  }, [currentView, canSplit, setIsSplit]);
   const [simulateTriggerCount, setSimulateTriggerCount] = useState<number>(() => (autoSimulateParam === "1" ? 1 : 0));
   const [isSimulating, setIsSimulating] = useState(false);
 
@@ -1228,7 +1254,12 @@ export const PlaygroundPage: React.FC = () => {
 
   const handleActiveViewChange = useCallback(
     (nextView: "diagram" | "simulation" | "3d" | "inspector" | "code" | "split") => {
-      setCurrentView((prev) => (prev === nextView ? prev : (nextView as any)));
+      if (nextView === "split") {
+        setIsSplit(true);
+        setCurrentView((prev) => (prev === "code" || prev === "split" ? "diagram" : prev));
+      } else {
+        setCurrentView((prev) => (prev === nextView ? prev : nextView));
+      }
       setPayload((prev) => {
         if (prev?.view === nextView) return prev;
         return {
@@ -1240,18 +1271,22 @@ export const PlaygroundPage: React.FC = () => {
         };
       });
     },
-    [setCurrentView, currentLang, currentCode, currentTitle],
+    [setIsSplit, setCurrentView, currentLang, currentCode, currentTitle],
   );
 
   const handleViewChange = useCallback(
     (nextView: "diagram" | "code" | "split" | "simulation" | "3d" | "inspector") => {
-      handleActiveViewChange(nextView);
+      if (nextView === "split") {
+        handleToggleSplit();
+      } else {
+        handleActiveViewChange(nextView);
+      }
     },
-    [handleActiveViewChange],
+    [handleActiveViewChange, handleToggleSplit],
   );
 
   const handleRunSimulation = useCallback(() => {
-    if (currentView !== "simulation" && currentView !== "split") {
+    if (currentView !== "simulation") {
       setCurrentView("simulation");
       handleActiveViewChange("simulation");
     }
@@ -1348,6 +1383,10 @@ export const PlaygroundPage: React.FC = () => {
         currentTitle={currentTitle}
         currentLang={currentLang}
         currentView={currentView}
+        isSplit={isSplit && canSplit}
+        canSplit={canSplit}
+        splitOrientation={splitOrientation}
+        onToggleSplit={handleToggleSplit}
         isDirty={isDirty}
         isSimulating={isSimulating}
         runStatus={{
@@ -1527,13 +1566,20 @@ export const PlaygroundPage: React.FC = () => {
               hideCenterFloatingToolbar={true}
               initialDialect={currentLang}
               initialView={currentView}
+              isSplit={isSplit && canSplit && currentView !== "code"}
+              splitOrientation={splitOrientation === "vertical" ? "rows" : "columns"}
               initialVisualizerSubview={
-                subviewParam === "simulation" ||
-                subviewParam === "3d" ||
-                subviewParam === "inspector" ||
-                subviewParam === "diagram"
-                  ? subviewParam
-                  : undefined
+                currentView === "simulation" ||
+                currentView === "3d" ||
+                currentView === "inspector" ||
+                currentView === "diagram"
+                  ? currentView
+                  : subviewParam === "simulation" ||
+                      subviewParam === "3d" ||
+                      subviewParam === "inspector" ||
+                      subviewParam === "diagram"
+                    ? subviewParam
+                    : undefined
               }
               initialSimulationVariables={initialSimVars}
               initialStartTime={initialStartTime}

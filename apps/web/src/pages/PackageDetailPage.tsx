@@ -398,7 +398,12 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
   return (
     <PageWrap>
       {/* ── Left Sidebar (Classes or Polyglot Artifacts) ── */}
-      {(pkg.tree.length > 0 || (hasArtifactsTab && pkg.artifactViewers.length > 0)) && (
+      {(pkg.tree.length > 0 ||
+        pkg.loading ||
+        pkg.jobStatus === "pending" ||
+        pkg.jobStatus === "processing" ||
+        pkg.jobStatus === "running" ||
+        (hasArtifactsTab && pkg.artifactViewers.length > 0)) && (
         <PackageTreeSidebar
           name={name!}
           version={version!}
@@ -423,6 +428,10 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
           collapsed={treeCollapsed}
           onToggleCollapse={() => setTreeCollapsed((p) => !p)}
           totalClassesCount={pkg.classes.length}
+          loading={pkg.loading}
+          jobStatus={pkg.jobStatus}
+          classesProcessed={pkg.jobInfo?.classesProcessed}
+          onOpenLogs={() => setLogsModalOpen(true)}
         />
       )}
 

@@ -12,7 +12,7 @@ import Spinner from "../../components/Spinner";
 import VirtualPostList from "../../components/VirtualPostList";
 import { safeCssImageUrl } from "../../util/url";
 import { PackageIcon } from "../libraries/components/PackageIcon";
-import { formatDomainLabel, inferPackageDomains, splitScopedPackageName } from "../libraries/constants";
+import { getPackageLanguageBadge, inferPackageDomains, splitScopedPackageName } from "../libraries/constants";
 import { DomainBadge } from "../libraries/styles";
 import { GitlabSvgIcon, inferRepoDomainTags, RepoAvatarBadge } from "../RepositoryListPage";
 import type { PackageData, PersonData, PostData, RepoData } from "./constants";
@@ -314,11 +314,10 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                               <Label variant="secondary" style={{ fontSize: 11, fontFamily: "var(--font-mono)" }}>
                                 v{latestVer}
                               </Label>
-                              {domains.map((dom) => (
-                                <DomainBadge key={dom} $domain={dom}>
-                                  {formatDomainLabel(dom)}
-                                </DomainBadge>
-                              ))}
+                              {(() => {
+                                const langBadge = getPackageLanguageBadge(pkg);
+                                return <DomainBadge $domain={langBadge.id}>{langBadge.label}</DomainBadge>;
+                              })()}
                             </Box>
                             <Text
                               as="p"

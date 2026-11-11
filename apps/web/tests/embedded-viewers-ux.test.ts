@@ -9,7 +9,7 @@ import { renderKinematicDiagramSvg } from "@modelscript/diagram/kinematic-diagra
 import { renderOlgaSchematicSvg } from "@modelscript/diagram/olga-diagram-builder";
 import { renderPscadSvg } from "@modelscript/diagram/pscad-diagram-builder";
 import { renderPsseSldSvg } from "@modelscript/diagram/psse-diagram-builder";
-import { renderQifMbdHeatmapSvg } from "@modelscript/diagram/qif-diagram-builder";
+import { renderQif3dIsometricSvg, renderQifMbdHeatmapSvg } from "@modelscript/diagram/qif-diagram-builder";
 import {
   buildSimulinkDiagram,
   parseSimulinkTextToSystem,
@@ -1137,6 +1137,92 @@ end DoublePendulum3D;
       assert.ok(svg.includes("STEP #118"), "Must render STEP AP242 entity #118 badge in FCF panel");
       assert.ok(svg.includes("#101 · Datum A"), "Must render compact radial callout badge for Datum A");
       assert.ok(svg.includes("#108 · Datum B"), "Must render compact radial callout badge for Datum B");
+    });
+
+    it("renders faithful 3D isometric CAD solid, DRF origin triad, and GD&T callouts in renderQif3dIsometricSvg", () => {
+      const doc = {
+        qpId: "9f8e7d6c-5b4a-4f3e-8d2c-1a0b9c8d7e6f",
+        datumDefinitions: [
+          { id: "DAT_A", label: "A", featureId: "FEAT_DATUM_A" },
+          { id: "DAT_B", label: "B", featureId: "FEAT_BORE_B" },
+          { id: "DAT_C", label: "C", featureId: "FEAT_SLOT_C" },
+        ],
+        features: [
+          {
+            id: "FEAT_DATUM_A",
+            name: "FirTreePlatformDatumPlaneA",
+            featureType: "Plane",
+            stepEntityId: 101,
+            location: [0, 0, 0] as [number, number, number],
+            normal: [0, 0, 1] as [number, number, number],
+          },
+          {
+            id: "FEAT_BORE_B",
+            name: "RootInternalCoolingBoreB",
+            featureType: "Cylinder",
+            stepEntityId: 108,
+            location: [12.5, 0, 15] as [number, number, number],
+            normal: [0, 0, 1] as [number, number, number],
+            nominalSize: 8.5,
+          },
+        ],
+        characteristics: [
+          {
+            id: "CHAR_FLAT_A",
+            name: "Platform Flatness",
+            gdtType: "Flatness",
+            featureIds: ["FEAT_DATUM_A"],
+            toleranceZone: 0.025,
+            datumReferences: [{ datumLabel: "A" }],
+          },
+          {
+            id: "CHAR_POS_PIN",
+            name: "Bore True Position",
+            gdtType: "Position",
+            featureIds: ["FEAT_BORE_B"],
+            toleranceZone: 0.05,
+            isDiametrical: true,
+            materialCondition: "MMC" as const,
+            datumReferences: [
+              { datumLabel: "A" },
+              { datumLabel: "B", materialCondition: "MMC" as const },
+              { datumLabel: "C" },
+            ],
+          },
+        ],
+        actuals: [
+          { id: "ACT_1", characteristicId: "CHAR_FLAT_A", measuredValue: 0.0031, status: "PASS" as const },
+          {
+            id: "ACT_2",
+            characteristicId: "CHAR_POS_PIN",
+            measuredValue: 0.011,
+            deviationVector: [0.005, 0.008, 0] as [number, number, number],
+            status: "PASS" as const,
+          },
+        ],
+      };
+
+      const svg = renderQif3dIsometricSvg(doc);
+      assert.ok(svg.includes('data-qif-3d="true"'), "Must include data-qif-3d attribute for thumbnail preservation");
+      assert.ok(svg.includes("3D Datum Reference Frame Origin Triad"), "Must render 3D DRF origin triad");
+      assert.ok(
+        svg.includes(">X<") && svg.includes(">Y<") && svg.includes(">Z<"),
+        "Must render X, Y, Z coordinate labels",
+      );
+      assert.ok(svg.includes("3D CMM Touch Probes"), "Must render 3D CMM touch probe hits");
+      assert.ok(svg.includes("ASME Y14.5 Feature Control Frames"), "Must render ASME Y14.5 FCF callouts");
+      assert.ok(svg.includes("⏥") && svg.includes("⌖"), "Must render Flatness and Position GD&T symbols");
+
+      // Verify resolveThumbnailUrls preserves 3D QIF SVG
+      const res = resolveThumbnailUrls({
+        svg,
+        thumbnailUrl: "/thumbnails/artifact_45_thumb_123456.webp",
+      });
+      assert.ok(
+        res.resolvedThumbnailUrl?.startsWith("data:image/svg+xml;utf8,"),
+        "Must prioritize clean 3D QIF SVG data URI over stale /thumbnails/artifact_ raster capture",
+      );
+      assert.ok(res.resolvedThumbnailUrl.includes("data-qif-3d"), "Data URI must encode data-qif-3d");
     });
 
     it("dispatches qif artifacts to dedicated 3D MBD QifViewer with STEP AP242 B-Rep pairing", () => {

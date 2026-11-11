@@ -48,6 +48,8 @@ export interface MorselEditorProps {
   initialDialect?: string | undefined;
   initialLanguage?: string | undefined;
   initialView?: string | undefined;
+  isSplit?: boolean | undefined;
+  splitOrientation?: "columns" | "rows" | undefined;
   initialVisualizerSubview?: "diagram" | "simulation" | "3d" | "inspector" | undefined;
   initialSimulationVariables?: string[] | undefined;
   initialStartTime?: number | undefined;
@@ -142,31 +144,39 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [editor, setEditor] = useState<editor.ICodeEditor | null>(null);
 
   const isSplitInit =
-    props.initialView === "split" || props.initialView === "split-columns" || props.initialView === "split-rows";
+    Boolean(props.isSplit) ||
+    props.initialView === "split" ||
+    props.initialView === "split-columns" ||
+    props.initialView === "split-rows";
 
   const initialIsCad =
     props.initialView === "cad-only" ||
     props.initialView === "cad" ||
     props.initialView === "3d" ||
-    (isSplitInit && props.initialVisualizerSubview === "3d") ||
+    (isSplitInit && (props.initialVisualizerSubview === "3d" || props.initialView === "3d")) ||
     (initialLangInfo.supports3d && !initialLangInfo.supportsDiagram);
   const initialIsPlot =
     props.initialView === "plot-only" ||
     props.initialView === "plot" ||
     props.initialView === "simulation" ||
-    (isSplitInit && props.initialVisualizerSubview === "simulation");
+    (isSplitInit && (props.initialVisualizerSubview === "simulation" || props.initialView === "simulation"));
   const initialIsInspector =
-    props.initialView === "inspector" || (isSplitInit && props.initialVisualizerSubview === "inspector");
+    props.initialView === "inspector" ||
+    (isSplitInit && (props.initialVisualizerSubview === "inspector" || props.initialView === "inspector"));
   const initialViewMode =
     props.initialView === "code-only" || props.initialView === "code"
       ? View.CODE
-      : props.initialView === "diagram-only" ||
-          props.initialView === "diagram" ||
-          (!isSplitInit && (initialIsCad || initialIsPlot || initialIsInspector))
-        ? View.DIAGRAM
-        : props.initialView === "split-rows"
+      : isSplitInit
+        ? props.initialView === "split-rows"
           ? View.SPLIT_ROWS
-          : View.SPLIT_COLUMNS;
+          : View.SPLIT_COLUMNS
+        : props.initialView === "diagram-only" ||
+            props.initialView === "diagram" ||
+            (!isSplitInit && (initialIsCad || initialIsPlot || initialIsInspector))
+          ? View.DIAGRAM
+          : props.initialView === "split-rows"
+            ? View.SPLIT_ROWS
+            : View.SPLIT_COLUMNS;
 
   const [view, setView] = useState<View>(initialViewMode);
   const [showResultsView, setShowResultsView] = useState(initialIsPlot);
@@ -205,6 +215,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [isDiagramLoading, setIsDiagramLoading] = useState(false);
   const [treeVisible, setTreeVisible] = useState(!props.embed);
   const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
+  const [windowHeight, setWindowHeight] = useState(typeof window !== "undefined" ? window.innerHeight : 800);
   const [splitRatio, setSplitRatio] = useState(0.5);
   const [contextVersion, setContextVersion] = useState(0);
 
@@ -223,34 +234,41 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, []);
 
   const applyViewMode = useCallback(
-    (targetView: string) => {
+    (targetView: string, splitOverride?: boolean) => {
+      const activeSplit = splitOverride !== undefined ? splitOverride : Boolean(props.isSplit);
+      const splitMode =
+        props.splitOrientation === "rows" ||
+        (props.splitOrientation !== "columns" && windowWidth < 960 && windowHeight >= 560)
+          ? View.SPLIT_ROWS
+          : View.SPLIT_COLUMNS;
+
       if (targetView === "code-only" || targetView === "code") {
         setView(View.CODE);
         setShowCadView(false);
         setShowResultsView(false);
         setShowAnalysisView(false);
       } else if (targetView === "diagram-only" || targetView === "diagram") {
-        setView(View.DIAGRAM);
+        setView(activeSplit ? splitMode : View.DIAGRAM);
         setShowCadView(false);
         setShowResultsView(false);
         setShowAnalysisView(false);
       } else if (targetView === "cad-only" || targetView === "cad" || targetView === "3d") {
-        setView(View.DIAGRAM);
+        setView(activeSplit ? splitMode : View.DIAGRAM);
         setShowCadView(true);
         setShowResultsView(false);
         setShowAnalysisView(false);
       } else if (targetView === "plot-only" || targetView === "plot" || targetView === "simulation") {
-        setView(View.DIAGRAM);
+        setView(activeSplit ? splitMode : View.DIAGRAM);
         setShowCadView(false);
         setShowResultsView(true);
         setShowAnalysisView(false);
       } else if (targetView === "inspector") {
-        setView(View.DIAGRAM);
+        setView(activeSplit ? splitMode : View.DIAGRAM);
         setShowCadView(false);
         setShowResultsView(false);
         setShowAnalysisView(true);
       } else if (targetView === "split" || targetView === "split-columns") {
-        setView(View.SPLIT_COLUMNS);
+        setView(targetView === "split" ? splitMode : View.SPLIT_COLUMNS);
         setShowCadView(props.initialVisualizerSubview === "3d");
         setShowResultsView(props.initialVisualizerSubview === "simulation");
         setShowAnalysisView(props.initialVisualizerSubview === "inspector");
@@ -261,13 +279,28 @@ export default function MorselEditor(props: MorselEditorProps) {
         setShowAnalysisView(props.initialVisualizerSubview === "inspector");
       }
     },
-    [props.initialVisualizerSubview],
+    [props.isSplit, props.splitOrientation, props.initialVisualizerSubview, windowWidth, windowHeight],
   );
 
   useEffect(() => {
-    if (!props.initialView) return;
-    applyViewMode(props.initialView);
-  }, [props.initialView, applyViewMode]);
+    if (!props.initialView && props.isSplit === undefined && props.splitOrientation === undefined) return;
+    const effectiveView =
+      props.initialView ||
+      (showCadView ? "3d" : showResultsView ? "simulation" : showAnalysisView ? "inspector" : "diagram");
+    applyViewMode(effectiveView, props.isSplit);
+  }, [props.initialView, props.isSplit, props.splitOrientation, applyViewMode]);
+
+  useEffect(() => {
+    if (!isSplit(view)) return;
+    const targetSplitMode =
+      props.splitOrientation === "rows" ||
+      (props.splitOrientation !== "columns" && windowWidth < 960 && windowHeight >= 560)
+        ? View.SPLIT_ROWS
+        : View.SPLIT_COLUMNS;
+    if (view !== targetSplitMode) {
+      setView(targetSplitMode);
+    }
+  }, [view, props.splitOrientation, windowWidth, windowHeight]);
 
   useEffect(() => {
     if (props.initialAnchor?.elementId) {
@@ -888,7 +921,10 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, [libraryFilter]);
 
   useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth);
+      setWindowHeight(window.innerHeight);
+    };
     const handleOpenShareModal = () => setShareDialogOpen(true);
     const handleMorselCommand = (ev: Event) => {
       const detail = (ev as CustomEvent<{ action?: string } | undefined>).detail;
@@ -1445,76 +1481,40 @@ export default function MorselEditor(props: MorselEditorProps) {
               position: "relative",
             }}
           >
-            <MorselVisualizerPane
-              view={view}
-              isNarrow={isNarrow}
-              mobileTab={mobileTab}
-              splitRatio={splitRatio}
-              nestedModels={nestedModels}
-              selectedModelIndex={selectedModelIndex}
-              setSelectedModelIndex={setSelectedModelIndex}
-              setSelectedTreeClassName={setSelectedTreeClassName}
-              colorMode={colorMode}
-              translations={translations}
-              dialect={dialect}
-              diagramType={diagramType}
-              setDiagramType={setDiagramType}
-              vtkBuffer={vtkBuffer}
-              editorValue={editorValue}
-              drillDownPath={drillDownPath}
-              onDrillUp={handleDrillUp}
-              onDrillRoot={handleDrillRoot}
-              onNodeDoubleClick={handleNodeDoubleClick}
-              onRevealLine={handleRevealLine}
-              onInsertStencilSnippet={handleInsertStencilSnippet}
-              showResultsView={showResultsView}
-              setShowResultsView={setShowResultsView}
-              showCadView={showCadView}
-              setShowCadView={setShowCadView}
-              cadComponents={cadComponents}
-              animationMode={animationMode}
-              animationControllerRef={animationControllerRef}
-              diagramEditorRef={diagramEditorRef}
-              diagramData={diagramData}
-              selectedTreeClassName={selectedTreeClassName}
-              selectedComponent={selectedComponent ?? highlightedComponent}
-              setSelectedComponent={setSelectedComponent}
-              isDiagramLoading={isDiagramLoading}
-              setIsDiagramLoading={setIsDiagramLoading}
-              handleSelectComponent={handleSelectComponent}
-              enqueueDiagramAction={enqueueDiagramAction}
-              editor={editor}
-              editorRef={editorRef}
-              isSpatialEditPending={isSpatialEditPending}
-              propertiesWidth={propertiesWidth}
-              setPropertiesWidth={setPropertiesWidth}
-              selectedComponentProperties={selectedComponentProperties}
-              isPropertiesLoading={isPropertiesLoading}
-              expectedComponentNameRef={expectedComponentNameRef}
-              handleSaveCadBindings={handleSaveCadBindings}
-              simulationVariables={simulationVariables || []}
-              selectedSimulationVariables={selectedSimulationVariables}
-              cosimDataSource={cosimDataSource}
-              setCosimDataSource={setCosimDataSource}
-              handleReplaySession={handleReplaySession}
-              localSimulationData={localSimulationData}
-              sweepResults={sweepResults}
-              simulationStatus={simulationStatus}
-              handleVariablesLoaded={handleVariablesLoaded}
-              treeVisible={treeVisible}
-              setTreeVisible={setTreeVisible}
-              setView={setView}
-              onAutoLayout={handleAutoLayout}
-              onSimulate={handleSimulate}
-              onOpenCloudModal={() => setIsCloudModalOpen(true)}
-              onFlatten={handleFlatten}
-              hideCenterFloatingToolbar={props.hideCenterFloatingToolbar}
-              showAnalysisView={showAnalysisView}
-              setShowAnalysisView={setShowAnalysisView}
-              documentUri={documentUri}
-              loadingProgress={loadingProgress}
-              onLoadStarterExample={handleLoadStarterExample}
-            />
+            {/* Code Editor (on the left in split view) */}
+            <div
+              style={{
+                display: (view === View.CODE || isSplit(view)) && (!isNarrow || mobileTab === "code") ? "flex" : "none",
+                flex: isNarrow ? 1 : isSplit(view) ? "none" : 1,
+                width: isNarrow
+                  ? "100%"
+                  : isSplit(view) && view === View.SPLIT_COLUMNS
+                    ? `${splitRatio * 100}%`
+                    : isSplit(view)
+                      ? undefined
+                      : "100%",
+                height: isNarrow ? "100%" : isSplit(view) && view === View.SPLIT_ROWS ? `${splitRatio * 100}%` : "100%",
+                flexDirection: "column",
+                minWidth: 0,
+                minHeight: 0,
+              }}
+            >
+              <Suspense fallback={null}>
+                <CodeEditor
+                  uri={documentUri}
+                  languageId={dialect}
+                  ref={codeEditorRef}
+                  embed={props.embed ?? false}
+                  setEditor={setEditor}
+                  content={content}
+                  onChange={props.onCodeChange}
+                  theme={colorMode === "dark" ? "vs-dark" : "light"}
+                  externalErrors={
+                    simulationStatus?.status === "failed" && simulationStatus.error ? [simulationStatus.error] : []
+                  }
+                />
+              </Suspense>
+            </div>
 
             {/* Split Resizer */}
             {isSplit(view) && !isNarrow && (
@@ -1662,44 +1662,77 @@ export default function MorselEditor(props: MorselEditorProps) {
               </div>
             )}
 
-            {/* Code Editor */}
-            <div
-              style={{
-                display: (view === View.CODE || isSplit(view)) && (!isNarrow || mobileTab === "code") ? "flex" : "none",
-                flex: isNarrow ? 1 : isSplit(view) ? "none" : 1,
-                width: isNarrow
-                  ? "100%"
-                  : isSplit(view) && view === View.SPLIT_COLUMNS
-                    ? `${(1 - splitRatio) * 100}%`
-                    : isSplit(view)
-                      ? undefined
-                      : "100%",
-                height: isNarrow
-                  ? "100%"
-                  : isSplit(view) && view === View.SPLIT_ROWS
-                    ? `${(1 - splitRatio) * 100}%`
-                    : "100%",
-                flexDirection: "column",
-                minWidth: 0,
-                minHeight: 0,
-              }}
-            >
-              <Suspense fallback={null}>
-                <CodeEditor
-                  uri={documentUri}
-                  languageId={dialect}
-                  ref={codeEditorRef}
-                  embed={props.embed ?? false}
-                  setEditor={setEditor}
-                  content={content}
-                  onChange={props.onCodeChange}
-                  theme={colorMode === "dark" ? "vs-dark" : "light"}
-                  externalErrors={
-                    simulationStatus?.status === "failed" && simulationStatus.error ? [simulationStatus.error] : []
-                  }
-                />
-              </Suspense>
-            </div>
+            {/* Visualizer Pane (Diagram / 3D / Simulation / Inspector on the right) */}
+            <MorselVisualizerPane
+              view={view}
+              isNarrow={isNarrow}
+              mobileTab={mobileTab}
+              splitRatio={splitRatio}
+              nestedModels={nestedModels}
+              selectedModelIndex={selectedModelIndex}
+              setSelectedModelIndex={setSelectedModelIndex}
+              setSelectedTreeClassName={setSelectedTreeClassName}
+              colorMode={colorMode}
+              translations={translations}
+              dialect={dialect}
+              diagramType={diagramType}
+              setDiagramType={setDiagramType}
+              vtkBuffer={vtkBuffer}
+              editorValue={editorValue}
+              drillDownPath={drillDownPath}
+              onDrillUp={handleDrillUp}
+              onDrillRoot={handleDrillRoot}
+              onNodeDoubleClick={handleNodeDoubleClick}
+              onRevealLine={handleRevealLine}
+              onInsertStencilSnippet={handleInsertStencilSnippet}
+              showResultsView={showResultsView}
+              setShowResultsView={setShowResultsView}
+              showCadView={showCadView}
+              setShowCadView={setShowCadView}
+              cadComponents={cadComponents}
+              animationMode={animationMode}
+              animationControllerRef={animationControllerRef}
+              diagramEditorRef={diagramEditorRef}
+              diagramData={diagramData}
+              selectedTreeClassName={selectedTreeClassName}
+              selectedComponent={selectedComponent ?? highlightedComponent}
+              setSelectedComponent={setSelectedComponent}
+              isDiagramLoading={isDiagramLoading}
+              setIsDiagramLoading={setIsDiagramLoading}
+              handleSelectComponent={handleSelectComponent}
+              enqueueDiagramAction={enqueueDiagramAction}
+              editor={editor}
+              editorRef={editorRef}
+              isSpatialEditPending={isSpatialEditPending}
+              propertiesWidth={propertiesWidth}
+              setPropertiesWidth={setPropertiesWidth}
+              selectedComponentProperties={selectedComponentProperties}
+              isPropertiesLoading={isPropertiesLoading}
+              expectedComponentNameRef={expectedComponentNameRef}
+              handleSaveCadBindings={handleSaveCadBindings}
+              simulationVariables={simulationVariables || []}
+              selectedSimulationVariables={selectedSimulationVariables}
+              cosimDataSource={cosimDataSource}
+              setCosimDataSource={setCosimDataSource}
+              handleReplaySession={handleReplaySession}
+              localSimulationData={localSimulationData}
+              sweepResults={sweepResults}
+              simulationStatus={simulationStatus}
+              handleVariablesLoaded={handleVariablesLoaded}
+              treeVisible={treeVisible}
+              setTreeVisible={setTreeVisible}
+              setView={setView}
+              onAutoLayout={handleAutoLayout}
+              onSimulate={handleSimulate}
+              onOpenCloudModal={() => setIsCloudModalOpen(true)}
+              onFlatten={handleFlatten}
+              hideCenterFloatingToolbar={props.hideCenterFloatingToolbar}
+              showAnalysisView={showAnalysisView}
+              setShowAnalysisView={setShowAnalysisView}
+              documentUri={documentUri}
+              loadingProgress={loadingProgress}
+              onLoadStarterExample={handleLoadStarterExample}
+            />
           </div>
         </div>
 

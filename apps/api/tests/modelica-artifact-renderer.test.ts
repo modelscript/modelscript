@@ -175,6 +175,42 @@ Q`;
       const pssePregen = await pregenerateServerSvgThumbnail(psseFile, "psse", "test.raw", tmpDir);
       assert.ok(pssePregen.svg?.includes("<svg"));
       assert.strictEqual(pssePregen.metadata?.["busCount"], 2);
+
+      // Verify QIF 3D isometric SVG pregeneration
+      const qifFile = path.join(tmpDir, "TurbineBladeRoot.qif");
+      const qifXml = `<?xml version="1.0" encoding="UTF-8"?>
+<QIFDocument versionQIF="3.0.0" qpId="11111111-2222-3333-4444-555555555555">
+  <DatumDefinitions>
+    <DatumDefinition id="D_A"><DatumLabel>A</DatumLabel><FeatureNominalIds><Id>F1</Id></FeatureNominalIds></DatumDefinition>
+  </DatumDefinitions>
+  <FeatureNominals>
+    <PlaneFeatureNominal id="F1"><Location>0 0 0</Location><Normal>0 0 1</Normal><StepEntityId>#101</StepEntityId></PlaneFeatureNominal>
+    <CylinderFeatureNominal id="F2"><Location>15 0 10</Location><Normal>0 0 1</Normal><Diameter>10.0</Diameter><StepEntityId>#108</StepEntityId></CylinderFeatureNominal>
+  </FeatureNominals>
+  <Characteristics>
+    <CharacteristicNominal id="C1">
+      <FlatnessCharacteristicNominal id="C1_F"><ToleranceValue>0.025</ToleranceValue></FlatnessCharacteristicNominal>
+    </CharacteristicNominal>
+  </Characteristics>
+  <CharacteristicItems>
+    <CharacteristicItem id="CI1">
+      <CharacteristicNominalId>C1</CharacteristicNominalId>
+      <FeatureItemIds><Id>F1</Id></FeatureItemIds>
+    </CharacteristicItem>
+  </CharacteristicItems>
+</QIFDocument>`;
+      fs.writeFileSync(qifFile, qifXml, "utf-8");
+      const qifPregen = await pregenerateServerSvgThumbnail(qifFile, "qif", "TurbineBladeRoot.qif", tmpDir);
+      assert.ok(qifPregen.svg?.includes("<svg"));
+      assert.ok(
+        qifPregen.svg?.includes('data-qif-3d="true"'),
+        "Must render 3D QIF isometric thumbnail with data-qif-3d",
+      );
+      assert.ok(qifPregen.svg?.includes("3D Datum Reference Frame Origin Triad"), "Must render 3D DRF origin triad");
+      assert.ok(
+        qifPregen.viewConfigAdditions?.["heatmapSvg"],
+        "Must preserve 2D SPC heatmapSvg in viewConfigAdditions",
+      );
     } finally {
       try {
         db.db.close();

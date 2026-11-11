@@ -264,7 +264,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
   const { isAdmin, user, logout } = useAuth();
   const { theme, toggleTheme, isOverridden, clearThemeOverride } = useTheme();
   const branding = useInstanceBranding();
-  const brandName = branding.instanceName || "Ansatz";
+  const brandName =
+    !branding.instanceName || branding.instanceName === "Ansatz" ? "Ansatz Network" : branding.instanceName;
   const hasIde = useFeatureFlag("heavy_vscode_ide");
   const hasCae = useFeatureFlag("cae_cloud_solver");
   const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);

@@ -89,6 +89,9 @@ export async function seedExamplePackages(
   database: LibraryDatabase,
   jobQueue: JobQueue,
 ): Promise<void> {
+  if (process.env["SEED_TOY_EXAMPLES"] !== "true") {
+    return;
+  }
   const thisDir = path.dirname(fileURLToPath(import.meta.url));
   const examplesDirCandidates = [
     path.resolve(thisDir, "../../../../packages/examples"),
@@ -226,11 +229,7 @@ export async function seedPrepackagedLibraries(
   database: LibraryDatabase,
   jobQueue: JobQueue,
 ): Promise<void> {
-  const isFlagship =
-    process.env["DEPLOYMENT_PRESET"] === "tier3_flagship" ||
-    process.env["ANSATZ_TIER"] === "tier3_flagship" ||
-    process.env["MSX_SETUP_PRESET"] === "tier3_flagship";
-  const defaultPacks = isFlagship ? "modelica" : "all";
+  const defaultPacks = "modelica";
   const requestedPacks = (process.env["STDLIB_PACKS"] || defaultPacks)
     .split(",")
     .map((p) => p.trim())
@@ -414,7 +413,33 @@ export async function seedPrepackagedLibraries(
 
     if (!zipBuffer || !resolvedZipPath) {
       if (pkg.tier === "tier3_ondemand") {
-        console.log(`[Seed] Skipping on-demand library ${pkg.name}@${pkg.version} (not bundled on disk).`);
+        // Register open-source catalog package in database so it is deployed and discoverable
+        const { id: packageId } = database.getOrCreatePackage(pkg.name);
+        if (!database.getPackageVersion(packageId, pkg.version)) {
+          database.storePackageVersion(
+            packageId,
+            pkg.version,
+            pkg.upstream?.url || `catalog://${pkg.name}/${pkg.version}`,
+            "",
+            null,
+            0,
+            JSON.stringify({
+              name: pkg.name,
+              version: pkg.version,
+              description: pkg.description,
+              license: pkg.license,
+              language: "modelica",
+              modelscript: { domains: ["modelica"] },
+            }),
+            null,
+            null,
+          );
+          database.setDistTag(packageId, "latest", pkg.version);
+          database.updatePackageMeta(packageId, {
+            description: pkg.description,
+            license: pkg.license,
+          });
+        }
         continue;
       }
       if (pkg.upstream?.url) {

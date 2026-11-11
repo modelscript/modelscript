@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { Verification3DOverlayPayload } from "@modelscript/cad";
 import type {
   DigitalTwinClearanceResult,
   DigitalTwinEnvironmentAsset,
   DigitalTwinToolpathTrace,
   UrdfVisualPose3D,
 } from "@modelscript/urdf";
-import type { Verification3DOverlayPayload } from "@modelscript/cad";
 import { GizmoHelper, GizmoViewport, Grid } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
 import React, { useEffect, useMemo, useRef } from "react";
@@ -275,8 +275,10 @@ const SceneContent: React.FC<{
   }, [showColliders, clearance]);
 
   const verificationClearanceSegment = useMemo(() => {
-    if (!showColliders || !verificationOverlay?.clearanceHistory || verificationOverlay.clearanceHistory.length === 0) return null;
-    const worst = verificationOverlay.clearanceHistory.find((c) => c.isViolation) ?? verificationOverlay.clearanceHistory[0]!;
+    if (!showColliders || !verificationOverlay?.clearanceHistory || verificationOverlay.clearanceHistory.length === 0)
+      return null;
+    const worst =
+      verificationOverlay.clearanceHistory.find((c) => c.isViolation) ?? verificationOverlay.clearanceHistory[0]!;
     return computeSegmentTransform(worst.pointA, worst.pointB, 0.0035);
   }, [showColliders, verificationOverlay]);
 
@@ -564,6 +566,7 @@ export const MultibodyViewport3D: React.FC<MultibodyViewport3DProps> = ({
   toolpath,
   toolpaths,
   clearance,
+  verificationOverlay,
   tcpPosition,
   gripperOpeningMm,
   isFullScreen,

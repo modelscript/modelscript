@@ -279,7 +279,7 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
     assert.ok(
       alignContent.includes('b.setAttribute("aria-label", btn.title)') ||
         alignContent.includes('aria-label="${title}"') ||
-        alignContent.includes('aria-label='),
+        alignContent.includes("aria-label="),
       "Alignment toolbar buttons must include accessible aria-label attributes",
     );
     assert.ok(
@@ -505,6 +505,10 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
         paneContent.includes("Canvas Grid Style") &&
         paneContent.includes("Snap to Grid"),
       "MorselVisualizerPane must provide canvas grid and snapping popover controls",
+    );
+    assert.ok(
+      paneContent.includes('return "doubleMesh";'),
+      "MorselVisualizerPane must default to doubleMesh (graph paper lines) on initial load",
     );
   });
 });

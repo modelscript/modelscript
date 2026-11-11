@@ -209,21 +209,25 @@ export function resolveThumbnailUrls(viewConfig: any): {
   }
 
   // If a pre-generated vector SVG is available in viewConfig and the thumbnail is either missing,
-  // a stale auto-captured raster snapshot (/thumbnails/artifact_), or a 3D URDF isometric scene,
+  // a stale auto-captured raster snapshot (/thumbnails/artifact_), or a 3D isometric scene (URDF/QIF),
   // prioritize the pristine vector SVG.
   const hasInlineSvg = typeof viewConfig?.svg === "string" && viewConfig.svg.trim().startsWith("<svg");
   const isUrdf3dSvg =
     hasInlineSvg && (viewConfig.svg.includes('data-urdf-3d="true"') || viewConfig.svg.includes("3D FK Pose"));
+  const isQif3dSvg =
+    hasInlineSvg &&
+    (viewConfig.svg.includes('data-qif-3d="true"') || viewConfig.svg.includes('data-testid="qif-3d-svg"'));
+  const is3dSceneSvg = isUrdf3dSvg || isQif3dSvg;
   const isStaleRaster = !resolvedThumbnailUrl || resolvedThumbnailUrl.includes("/thumbnails/artifact_");
-  if (hasInlineSvg && (isStaleRaster || isUrdf3dSvg)) {
+  if (hasInlineSvg && (isStaleRaster || is3dSceneSvg)) {
     const dataUri = `data:image/svg+xml;utf8,${encodeURIComponent(viewConfig.svg.trim())}`;
     resolvedThumbnailUrl = dataUri;
     resolvedThumbnailUrlLight =
-      !isUrdf3dSvg && resolvedThumbnailUrlLight && !resolvedThumbnailUrlLight.includes("/thumbnails/artifact_")
+      !is3dSceneSvg && resolvedThumbnailUrlLight && !resolvedThumbnailUrlLight.includes("/thumbnails/artifact_")
         ? resolvedThumbnailUrlLight
         : dataUri;
     resolvedThumbnailUrlDark =
-      !isUrdf3dSvg && resolvedThumbnailUrlDark && !resolvedThumbnailUrlDark.includes("/thumbnails/artifact_")
+      !is3dSceneSvg && resolvedThumbnailUrlDark && !resolvedThumbnailUrlDark.includes("/thumbnails/artifact_")
         ? resolvedThumbnailUrlDark
         : dataUri;
   }

@@ -1073,7 +1073,8 @@ export async function pregenerateServerSvgThumbnail(
 
       case "qif": {
         const { parseQif, evaluateQifSpc } = await import("@modelscript/qif");
-        const { renderQifMbdHeatmapSvg } = await import("@modelscript/diagram/qif-diagram-builder");
+        const { renderQif3dIsometricSvg, renderQifMbdHeatmapSvg } =
+          await import("@modelscript/diagram/qif-diagram-builder");
         const doc = parseQif(content, originalFilename);
         const spc = evaluateQifSpc(doc);
         const cpks = spc.characteristics.map((c) => c.cpk).filter((v) => Number.isFinite(v));
@@ -1098,7 +1099,30 @@ export async function pregenerateServerSvgThumbnail(
             sampleCount: c.sampleCount,
           })),
         };
-        result.svg = renderQifMbdHeatmapSvg(doc, spcSummaryLike);
+
+        // Check for paired STEP CAD file in upload directory
+        let stepContent: string | undefined;
+        try {
+          const stepBase = originalFilename.replace(/\.qif$/i, "");
+          const candidateNames = [`${stepBase}.step`, `${stepBase}.stp`, "TurbineBladeRoot.step"];
+          for (const cand of candidateNames) {
+            const candPath = path.resolve(resolvedDir, cand);
+            if (fs.existsSync(candPath)) {
+              stepContent = fs.readFileSync(candPath, "utf-8");
+              break;
+            }
+          }
+        } catch {}
+
+        if (!stepContent) {
+          try {
+            const { synthesizeStepAp242FromQif } = await import("@modelscript/qif/step-bridge");
+            stepContent = synthesizeStepAp242FromQif(doc);
+          } catch {}
+        }
+
+        const heatmapSvg = renderQifMbdHeatmapSvg(doc, spcSummaryLike);
+        result.svg = renderQif3dIsometricSvg(doc, { stepContent, fallbackTitle: baseTitle });
         result.metadata = {
           dialect: "qif",
           qpId: doc.qpId,
@@ -1120,6 +1144,8 @@ export async function pregenerateServerSvgThumbnail(
           overallPassRate: spc.overallPassRate,
           minCpk,
           meanCpk,
+          heatmapSvg,
+          ...(stepContent ? { stepCode: stepContent } : {}),
         };
         break;
       }

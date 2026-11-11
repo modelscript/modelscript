@@ -183,11 +183,26 @@ export function ensureDiagramStyles(): void {
     }
 
     .modelscript-hover-halo {
-      filter: drop-shadow(0 0 10px rgba(6, 182, 212, 0.85)) !important;
-      outline: 2px solid rgba(6, 182, 212, 0.75) !important;
-      outline-offset: 3px !important;
-      border-radius: 4px;
-      transition: filter 0.15s ease, outline 0.15s ease;
+      outline: none !important;
+    }
+
+    .modelscript-hover-halo text,
+    .modelscript-hover-halo tspan,
+    .modelscript-hover-halo .x6-port,
+    .modelscript-hover-halo g[class*="port"] {
+      filter: none !important;
+      outline: none !important;
+    }
+
+    .modelscript-hover-halo > svg,
+    .modelscript-hover-halo > image,
+    .modelscript-hover-halo > rect:not([class*="port"]),
+    .modelscript-hover-halo > circle:not([class*="port"]),
+    .modelscript-hover-halo > polygon,
+    .modelscript-hover-halo > path:not([class*="port"]),
+    .modelscript-hover-halo [selector="body"] {
+      filter: drop-shadow(0 0 5px rgba(14, 165, 233, 0.7)) drop-shadow(0 0 1.5px rgba(14, 165, 233, 0.85)) !important;
+      transition: filter 0.15s ease;
     }
 
     [data-cell-id="__drop_placeholder__"],
@@ -215,9 +230,9 @@ export function ensureDiagramStyles(): void {
     .x6-widget-selection-box,
     .x6-widget-selection-inner {
       border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
-      box-shadow: 0 0 0 1px rgba(2, 132, 199, 0.18), 0 4px 12px rgba(2, 132, 199, 0.1) !important;
+      box-shadow: 0 0 0 1px rgba(2, 132, 199, 0.18), 0 4px 12px rgba(2, 132, 199, 0.08) !important;
       border-radius: 4px;
-      background-color: rgba(2, 132, 199, 0.04);
+      background-color: transparent !important;
     }
 
     .x6-widget-selection-box-node {

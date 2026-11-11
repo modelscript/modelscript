@@ -39,6 +39,7 @@ import {
 import type { LinkedStudyJobItemPayload, StudyDefinitionPayload } from "../../../api/compute";
 import { CiteButton } from "../../../components/citations/CiteButton";
 import { buildCitationFromPackage } from "../../../util/citations";
+import { buildVsCodeWorkbenchUrlForPackage } from "../../../util/editor-routing";
 import {
   DependentBadge,
   InstallBox,
@@ -83,7 +84,7 @@ const SidebarCardTitle = styled.h3`
   gap: 6px;
 `;
 
-const ActionPrimaryLink = styled(Link)`
+const ActionPrimaryLink = styled.a`
   display: flex;
   align-items: center;
   justify-content: center;
@@ -407,7 +408,9 @@ export const PackageRightSidebar: React.FC<PackageRightSidebarProps> = ({
           )}
 
           <ActionPrimaryLink
-            to={`/studio#memfs:package-${name || "model"}?libs=${encodeURIComponent(`${name}@${version || "latest"}`)}`}
+            href={buildVsCodeWorkbenchUrlForPackage(name || "", version)}
+            target="_blank"
+            rel="noopener noreferrer"
             style={
               activeIdeTitle || addedToIde
                 ? {

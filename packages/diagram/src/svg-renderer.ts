@@ -420,7 +420,10 @@ export function renderPolyglotDiagramToSvg(diagram: DiagramData, options: SvgExp
               n.id !== tgtId &&
               !n.id.startsWith("solder_dot_") &&
               !n.id.startsWith("wire_crossing_") &&
-              !n.id.startsWith("__"),
+              !n.id.startsWith("__") &&
+              !n.id.startsWith("comp_") &&
+              !n.data?.["compartmentId"] &&
+              !n.data?.["isContainer"],
           )
           .map((n) => ({ x: n.x ?? 0, y: n.y ?? 0, width: n.width ?? 120, height: n.height ?? 60 }));
         const sourceBox = srcNode

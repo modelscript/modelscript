@@ -269,7 +269,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
         <Link to="/cookies">Cookies</Link>
         <span>·</span>
         <a href="https://github.com/modelscript/modelscript" target="_blank" rel="noopener noreferrer">
-          {branding.instanceName || "Ansatz"} v{version}
+          ModelScript v{version}
         </a>
       </PanelFooter>
 

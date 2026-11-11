@@ -435,7 +435,8 @@ const AppShell: React.FC = () => {
   const hasReferences = useFeatureFlag(["references", "scientific_references"]);
   const hasFeeds = useFeatureFlag(["feeds_page", "rss_feeds"]);
   const branding = useInstanceBranding();
-  const brandName = branding.instanceName || "Ansatz";
+  const brandName =
+    !branding.instanceName || branding.instanceName === "Ansatz" ? "Ansatz Network" : branding.instanceName;
 
   const handleToggleDevHeader = React.useCallback((next?: boolean) => {
     setIsDevHeaderVisible((prev) => {

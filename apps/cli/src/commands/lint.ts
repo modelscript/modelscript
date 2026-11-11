@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import type { Argv, CommandModule } from "yargs";
 
 import { LanguageResolver } from "../util/language-registry.js";
+import { buildSarifLog } from "../util/sarif.js";
 
 const require = createRequire(import.meta.url);
 const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
@@ -25,8 +26,13 @@ interface LintArgs {
   paths: string[] | undefined;
   /** Optional language ID filter (`"modelica"`, `"sysml2"`, `"owl2"`, `"scad"`, `"ssp"`, `"cfd"`, `"fea"`, `"pscad"`, `"fortran"`, `"easy5"`, `"rocets"`, `"lps"`, `"sima"`, `"gtsuite"`). */
   language?: string | undefined;
-  /** Diagnostic output format (`"terminal"` or `"json"`). */
-  format?: "terminal" | "json" | undefined;
+  /** Diagnostic output format (`"terminal"`, `"json"`, or `"sarif"`). */
+  format?: "terminal" | "json" | "sarif" | undefined;
+  /** Base directory to relativize artifact URIs against in SARIF output. */
+  sarifBase?: string | undefined;
+  "sarif-base"?: string | undefined;
+  /** File path to write diagnostic report to instead of stdout. */
+  out?: string | undefined;
   /** OWL 2 ontology profile to validate against (`"DL"` or `"EL"`). */
   profile?: "DL" | "EL" | undefined;
   /** Whether to treat warnings as fatal errors with non-zero exit code. */
@@ -509,10 +515,19 @@ export const Lint: CommandModule<{}, LintArgs> = {
       })
       .option("format", {
         alias: "f",
-        description: "Output format: terminal or json",
+        description: "Output format: terminal, json, or sarif",
         type: "string",
-        choices: ["terminal", "json"],
+        choices: ["terminal", "json", "sarif"],
         default: "terminal",
+      })
+      .option("sarif-base", {
+        description: "Base directory to relativize artifact URIs against in SARIF output",
+        type: "string",
+      })
+      .option("out", {
+        alias: "o",
+        description: "File path to write diagnostic report to instead of stdout",
+        type: "string",
       })
       .option("profile", {
         description: "OWL 2 ontology profile to validate against (DL or EL)",
@@ -1536,11 +1551,24 @@ export const Lint: CommandModule<{}, LintArgs> = {
       }
     }
 
-    if (diagnostics.length === 0) {
-      if (args.format === "json") {
-        console.log("[]");
+    const writeOutput = (content: string) => {
+      if (args.out) {
+        const outPath = path.resolve(process.cwd(), args.out);
+        fs.mkdirSync(path.dirname(outPath), { recursive: true });
+        fs.writeFileSync(outPath, content, "utf-8");
       } else {
-        console.log("No diagnostics found.");
+        console.log(content);
+      }
+    };
+
+    if (diagnostics.length === 0) {
+      if (args.format === "sarif") {
+        const sarifBase = path.resolve(process.cwd(), args.sarifBase || args["sarif-base"] || ".");
+        writeOutput(JSON.stringify(buildSarifLog([], sarifBase), null, 2));
+      } else if (args.format === "json") {
+        writeOutput("[]");
+      } else {
+        writeOutput("No diagnostics found.");
       }
       return;
     }
@@ -1590,20 +1618,26 @@ export const Lint: CommandModule<{}, LintArgs> = {
       return true;
     });
 
-    if (args.format === "json") {
-      console.log(JSON.stringify(formattedDiags, null, 2));
+    if (args.format === "sarif") {
+      const sarifBase = path.resolve(process.cwd(), args.sarifBase || args["sarif-base"] || ".");
+      const sarifDoc = buildSarifLog(formattedDiags, sarifBase);
+      writeOutput(JSON.stringify(sarifDoc, null, 2));
+    } else if (args.format === "json") {
+      writeOutput(JSON.stringify(formattedDiags, null, 2));
     } else {
+      const outputLines: string[] = [];
       for (const d of formattedDiags) {
         const badge = d.code && d.code !== d.lintName ? `${d.code}/${d.lintName}` : d.lintName;
-        console.log(`[${d.resource}:${d.line}:${d.col}] ${d.severity}: [${badge}] ${d.message}`);
+        outputLines.push(`[${d.resource}:${d.line}:${d.col}] ${d.severity}: [${badge}] ${d.message}`);
       }
 
       const errors = formattedDiags.filter((d) => d.severity === "error").length;
       const warnings = formattedDiags.filter((d) => d.severity !== "error").length;
 
       if (errors > 0 || warnings > 0) {
-        console.log(`\n${errors} error(s), ${warnings} warning(s) found.`);
+        outputLines.push(`\n${errors} error(s), ${warnings} warning(s) found.`);
       }
+      writeOutput(outputLines.join("\n"));
     }
 
     const errorCount = formattedDiags.filter((d) => d.severity === "error").length;

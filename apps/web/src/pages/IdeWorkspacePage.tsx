@@ -547,6 +547,13 @@ export const IdeWorkspacePage: React.FC = () => {
     }
   }, [token]);
 
+  // When navigated to /studio with a package handoff hash, redirect directly to VS Code workbench
+  useEffect(() => {
+    if (packageNameFromHash && typeof window !== "undefined") {
+      window.location.replace(workbenchUrl);
+    }
+  }, [packageNameFromHash, workbenchUrl]);
+
   const broadcastSyncState = useCallback(() => {
     try {
       if (token) {
@@ -713,25 +720,31 @@ export const IdeWorkspacePage: React.FC = () => {
         try {
           const targetOrigin = new URL(url, window.location.origin).origin;
           if (token && user) {
-            newWin.postMessage({
-              type: "MODELSCRIPT_AUTH_SYNC",
-              token,
-              user: {
-                id: user.id,
-                username: user.username,
-                displayName: user.display_name,
-                email: user.email,
+            newWin.postMessage(
+              {
+                type: "MODELSCRIPT_AUTH_SYNC",
+                token,
+                user: {
+                  id: user.id,
+                  username: user.username,
+                  displayName: user.display_name,
+                  email: user.email,
+                },
               },
-            }, targetOrigin);
+              targetOrigin,
+            );
           }
           if (artifactMetadata) {
-            newWin.postMessage({
-              type: "MODELSCRIPT_MOUNT_ARTIFACT",
-              artifactId: artifactMetadata.id,
-              title: artifactMetadata.title,
-              viewType: artifactMetadata.viewType,
-              viewConfig: artifactMetadata.viewConfig,
-            }, targetOrigin);
+            newWin.postMessage(
+              {
+                type: "MODELSCRIPT_MOUNT_ARTIFACT",
+                artifactId: artifactMetadata.id,
+                title: artifactMetadata.title,
+                viewType: artifactMetadata.viewType,
+                viewConfig: artifactMetadata.viewConfig,
+              },
+              targetOrigin,
+            );
           }
         } catch {
           // ignore cross-origin access limitations

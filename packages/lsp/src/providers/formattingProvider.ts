@@ -43,9 +43,249 @@ const DEDENT_START_TOKENS = new Set([
   "expandable",
 ]);
 
-export function formatModelicaTree(tree: any, content: string, indentSize: number = 2): string {
+export interface ModelicaFormatOptions {
+  indentSize?: number;
+  parser?: any;
+  structural?: boolean;
+  oneOfEachSection?: boolean;
+  importsFirst?: boolean;
+  extendsAtTop?: boolean;
+  componentsBeforeClasses?: boolean;
+  declarationOrder?: boolean;
+  preserveFormatting?: boolean;
+}
+
+/**
+ * Performs AST-driven structural reorganization of a Modelica class:
+ * - Consolidates multiple public, protected, equation, or algorithm sections into one
+ * - Enforces composition ordering: imports first, extends at top
+ * - Enforces declaration ordering: inputs/outputs -> constants -> parameters -> variables -> components -> nested classes
+ * - Preserves classes marked with __ModelScript(format=false) or __MLQT(format=false)
+ */
+interface FormatterAstNode {
+  type: string;
+  startIndex: number;
+  endIndex: number;
+  childCount: number;
+  child(i: number): FormatterAstNode | null;
+  parent: FormatterAstNode | null;
+  text?: string;
+}
+
+export function restructureModelicaTree(tree: { rootNode?: unknown }, source: string): string {
+  if (!tree || !tree.rootNode) return source;
+
+  function findNodes(node: unknown, type: string, acc: FormatterAstNode[] = []): FormatterAstNode[] {
+    const n = node as FormatterAstNode | null | undefined;
+    if (n && n.type === type) acc.push(n);
+    if (n && typeof n.childCount === "number" && typeof n.child === "function") {
+      for (let i = 0; i < n.childCount; i++) {
+        findNodes(n.child(i), type, acc);
+      }
+    }
+    return acc;
+  }
+
+  const compositions = findNodes(tree.rootNode, "composition");
+  if (compositions.length === 0) return source;
+
+  let result = source;
+  compositions.sort((a, b) => b.startIndex - a.startIndex);
+
+  for (const comp of compositions) {
+    const parentClass = comp.parent;
+    const classText = parentClass && parentClass.text ? parentClass.text : "";
+    if (classText.includes("__ModelScript(format=false)") || classText.includes("__MLQT(format=false)")) {
+      continue;
+    }
+
+    const imports: string[] = [];
+    const extendsClauses: string[] = [];
+    const parameters: string[] = [];
+    const constants: string[] = [];
+    const inputsOutputs: string[] = [];
+    const variables: string[] = [];
+    const components: string[] = [];
+    const nestedClasses: string[] = [];
+    const protectedElements: string[] = [];
+    const initialEquations: string[] = [];
+    const equations: string[] = [];
+    const initialAlgorithms: string[] = [];
+    const algorithms: string[] = [];
+    const annotations: string[] = [];
+
+    let isProtected = false;
+
+    for (let i = 0; i < comp.childCount; i++) {
+      const child = comp.child(i);
+      if (!child) continue;
+      const childType = child.type;
+      const childText = source.slice(child.startIndex, child.endIndex).trim();
+
+      if (childType === "protected" || childText === "protected") {
+        isProtected = true;
+        continue;
+      }
+      if (childType === "public" || childText === "public") {
+        isProtected = false;
+        continue;
+      }
+      if (childType === ";") continue;
+
+      if (childType === "equation_section") {
+        const isInitial = childText.startsWith("initial equation");
+        const innerText = childText
+          .replace(/^initial\s+equation\s*/i, "")
+          .replace(/^equation\s*/i, "")
+          .trim();
+        if (innerText.length > 0) {
+          if (isInitial) initialEquations.push(innerText);
+          else equations.push(innerText);
+        }
+        continue;
+      }
+
+      if (childType === "algorithm_section") {
+        const isInitial = childText.startsWith("initial algorithm");
+        const innerText = childText
+          .replace(/^initial\s+algorithm\s*/i, "")
+          .replace(/^algorithm\s*/i, "")
+          .trim();
+        if (innerText.length > 0) {
+          if (isInitial) initialAlgorithms.push(innerText);
+          else algorithms.push(innerText);
+        }
+        continue;
+      }
+
+      if (childType === "element") {
+        const elemChild = child.child(0);
+        const elemType = elemChild ? elemChild.type : "";
+
+        if (elemType === "import_clause") {
+          imports.push(childText);
+          continue;
+        }
+        if (elemType === "extends_clause") {
+          extendsClauses.push(childText);
+          continue;
+        }
+        if (elemType === "class_definition") {
+          if (isProtected) protectedElements.push(childText);
+          else nestedClasses.push(childText);
+          continue;
+        }
+        if (elemType === "component_clause") {
+          const typePrefixNode = elemChild ? elemChild.child(0) : null;
+          const pfxText = typePrefixNode && typePrefixNode.type === "type_prefix" ? (typePrefixNode.text ?? "") : "";
+          const targetBin = isProtected
+            ? protectedElements
+            : pfxText.includes("input") || pfxText.includes("output")
+              ? inputsOutputs
+              : pfxText.includes("constant")
+                ? constants
+                : pfxText.includes("parameter")
+                  ? parameters
+                  : variables;
+
+          targetBin.push(childText);
+          continue;
+        }
+      }
+
+      if (childType === "annotation") {
+        annotations.push(childText);
+        continue;
+      }
+    }
+
+    const lines: string[] = [];
+    if (imports.length > 0) lines.push(...imports.map((s) => (s.endsWith(";") ? s : s + ";")));
+    if (extendsClauses.length > 0) lines.push(...extendsClauses.map((s) => (s.endsWith(";") ? s : s + ";")));
+    if (inputsOutputs.length > 0) lines.push(...inputsOutputs.map((s) => (s.endsWith(";") ? s : s + ";")));
+    if (constants.length > 0) lines.push(...constants.map((s) => (s.endsWith(";") ? s : s + ";")));
+    if (parameters.length > 0) lines.push(...parameters.map((s) => (s.endsWith(";") ? s : s + ";")));
+    if (variables.length > 0) lines.push(...variables.map((s) => (s.endsWith(";") ? s : s + ";")));
+    if (components.length > 0) lines.push(...components.map((s) => (s.endsWith(";") ? s : s + ";")));
+    if (nestedClasses.length > 0) lines.push(...nestedClasses);
+
+    if (protectedElements.length > 0) {
+      lines.push("protected");
+      lines.push(...protectedElements.map((s) => (s.endsWith(";") ? s : s + ";")));
+    }
+
+    if (initialEquations.length > 0) {
+      lines.push("initial equation");
+      lines.push(...initialEquations);
+    }
+
+    if (equations.length > 0) {
+      lines.push("equation");
+      lines.push(...equations);
+    }
+
+    if (initialAlgorithms.length > 0) {
+      lines.push("initial algorithm");
+      lines.push(...initialAlgorithms);
+    }
+
+    if (algorithms.length > 0) {
+      lines.push("algorithm");
+      lines.push(...algorithms);
+    }
+
+    if (annotations.length > 0) {
+      lines.push(...annotations);
+    }
+
+    const prefix = result.slice(0, comp.startIndex).replace(/[ \t\r\n]+$/, "\n  ");
+    const suffix = result.slice(comp.endIndex).replace(/^[ \t\r\n]+/, "\n");
+    result = prefix + lines.join("\n  ") + suffix;
+  }
+
+  return result;
+}
+
+export function formatModelicaTree(
+  tree: any,
+  content: string,
+  optionsOrIndentSize: number | ModelicaFormatOptions = 2,
+): string {
+  const options: ModelicaFormatOptions =
+    typeof optionsOrIndentSize === "number" ? { indentSize: optionsOrIndentSize } : optionsOrIndentSize;
+  const indentSize = options.indentSize ?? 2;
+
+  if (
+    options.preserveFormatting ||
+    content.includes("__ModelScript(format=false)") ||
+    content.includes("__MLQT(format=false)")
+  ) {
+    return content;
+  }
+
+  let currentContent = content;
+  let currentTree = tree;
+
+  if (
+    options.structural ||
+    options.oneOfEachSection ||
+    options.importsFirst ||
+    options.extendsAtTop ||
+    options.componentsBeforeClasses ||
+    options.declarationOrder
+  ) {
+    currentContent = restructureModelicaTree(tree, content);
+    if (options.parser && typeof options.parser.parse === "function") {
+      try {
+        currentTree = options.parser.parse(currentContent);
+      } catch {
+        // Fallback to original tree
+      }
+    }
+  }
+
   const indentString = " ".repeat(Math.max(1, indentSize));
-  const lines = content.split("\n");
+  const lines = currentContent.split("\n");
   const formattedLines: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
@@ -61,8 +301,26 @@ export function formatModelicaTree(tree: any, content: string, indentSize: numbe
     const firstCharColumn = line.search(/\S/);
 
     // Get the node at the start of the line
-    const node = tree.rootNode.descendantForPosition({ row: i, column: firstCharColumn });
+    const node = currentTree?.rootNode?.descendantForPosition({ row: i, column: firstCharColumn });
     if (!node) {
+      formattedLines.push(line);
+      continue;
+    }
+
+    // Check if node belongs to a class marked with format=false
+    let isExcluded = false;
+    let curr = node;
+    while (curr) {
+      if (curr.type === "class_definition" || curr.type === "ClassDefinition") {
+        const txt = curr.text ?? "";
+        if (txt.includes("__ModelScript(format=false)") || txt.includes("__MLQT(format=false)")) {
+          isExcluded = true;
+          break;
+        }
+      }
+      curr = curr.parent;
+    }
+    if (isExcluded) {
       formattedLines.push(line);
       continue;
     }

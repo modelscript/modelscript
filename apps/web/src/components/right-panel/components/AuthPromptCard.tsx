@@ -11,11 +11,13 @@ import { Card, CardHeader, CardTitle, ProviderButton } from "../styles";
 export const AuthPromptCard: React.FC = () => {
   const navigate = useNavigate();
   const branding = useInstanceBranding();
+  const brandName =
+    !branding.instanceName || branding.instanceName === "Ansatz" ? "Ansatz Network" : branding.instanceName;
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Join {branding.instanceName || "Ansatz"}</CardTitle>
+        <CardTitle>Join {brandName}</CardTitle>
       </CardHeader>
       <Text
         as="p"

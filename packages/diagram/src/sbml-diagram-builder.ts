@@ -4,10 +4,11 @@
  * @modelscript/diagram — SBML Systems Biology & Biochemical Reaction Pathway Diagram Builder.
  *
  * Translates SBML Level 2/3 XML models into AntV X6 graph structures and standalone SVGs:
- * 1. Cellular compartments as nested boundaries.
- * 2. SBGN (Systems Biology Graphical Notation) process description glyphs for macromolecule species.
- * 3. Reaction transition nodes with reversible/irreversible status and stoichiometry multipliers.
- * 4. Catalytic activation (circle-headed) and enzymatic inhibition (T-bar) regulatory arcs.
+ * 1. Cellular compartments as nested boundaries with harmonized sizing.
+ * 2. SBGN (Systems Biology Graphical Notation) process description glyphs for macromolecule species with dynamically sized labels.
+ * 3. Linear & cascading reaction pathways with alternating species and reaction hub layout.
+ * 4. Membrane transport reactions positioned cleanly in inter-compartment channels without node collisions.
+ * 5. Clean non-looping orthogonal / direct vector arcs with stoichiometry multipliers and regulatory modifiers.
  */
 
 export interface SbmlCompartmentLike {
@@ -51,6 +52,8 @@ export interface SbmlDiagramCell {
   label?: string | undefined;
   source?: { cell: string } | { x: number; y: number } | undefined;
   target?: { cell: string } | { x: number; y: number } | undefined;
+  router?: { name: string; args?: Record<string, unknown> | undefined } | string | undefined;
+  connector?: { name: string; args?: Record<string, unknown> | undefined } | string | undefined;
   attrs?: Record<string, unknown> | undefined;
   data?: Record<string, unknown> | undefined;
 }
@@ -66,9 +69,6 @@ export interface SbmlRenderOptions {
   height?: number | undefined;
 }
 
-/**
- * Builds an interactive AntV X6 graph model for an SBML reaction network.
- */
 export interface SbmlCompartmentBounds {
   id: string;
   name?: string | undefined;
@@ -94,12 +94,60 @@ export interface SbmlLayoutResult {
   totalHeight: number;
 }
 
+function estimateSpeciesWidth(nameOrId: string): number {
+  const charCount = nameOrId.length;
+  return Math.max(160, Math.min(260, Math.round(charCount * 7.0 + 32)));
+}
+
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function getRectConnection(from: SbmlNodeCoord, to: SbmlNodeCoord): { x1: number; y1: number; x2: number; y2: number } {
+  const c1x = from.x + from.width / 2;
+  const c1y = from.y + from.height / 2;
+  const c2x = to.x + to.width / 2;
+  const c2y = to.y + to.height / 2;
+  const dx = c2x - c1x;
+  const dy = c2y - c1y;
+
+  let x1 = c1x;
+  let y1 = c1y;
+  let x2 = c2x;
+  let y2 = c2y;
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    if (dx > 0) {
+      x1 = from.x + from.width;
+      x2 = to.x;
+    } else {
+      x1 = from.x;
+      x2 = to.x + to.width;
+    }
+  } else {
+    if (dy > 0) {
+      y1 = from.y + from.height;
+      y2 = to.y;
+    } else {
+      y1 = from.y;
+      y2 = to.y + to.height;
+    }
+  }
+  return { x1, y1, x2, y2 };
+}
+
 /**
  * Computes domain-aware geometric layout for SBML models:
  * 1. Groups species by cellular compartment.
- * 2. Positions species and intra-compartment reactions locally.
- * 3. Computes dynamic bounding boxes with padding for each compartment.
- * 4. Arranges compartments side-by-side and places transport reactions across boundaries.
+ * 2. Structures reaction cascades horizontally within compartments: Reactant -> Reaction Hub -> Product.
+ * 3. Places shared co-substrates / donors (e.g. UDP-Galactose, ATP) in a dedicated top tier.
+ * 4. Stacks non-reacting pool species neatly in non-overlapping columns.
+ * 5. Positions inter-compartment membrane transport reactions cleanly in inter-compartmental channels.
  */
 export function computeSbmlLayout(model: SbmlModelLike, options?: SbmlRenderOptions): SbmlLayoutResult {
   const speciesList: SbmlSpeciesLike[] = Array.isArray(model.species)
@@ -177,67 +225,195 @@ export function computeSbmlLayout(model: SbmlModelLike, options?: SbmlRenderOpti
 
   let curCompX = 60;
   const compY = 80;
-  let maxCompHeight = 300;
+  let maxCompHeight = 220;
+
+  const specH = 40;
+  const rxnDim = 24;
+  const padX = 40;
+  const padTop = 50;
+  const padBottom = 40;
+  const gapX = 40;
+  const gapY = 30;
 
   for (const c of parsedComps) {
     const memberSpecies = speciesByComp.get(c.id) ?? [];
     const memberRxns = intraRxnsByComp.get(c.id) ?? [];
 
-    const padX = 35;
-    const padTop = 50;
-    const padBottom = 35;
-    const specW = 95;
-    const specH = 36;
-    const gapX = 45;
-    const gapY = 30;
-
     let localMaxX = 0;
     let localMaxY = 0;
 
-    // Layout species in rows within the compartment (up to 3 per row)
-    const cols = Math.min(3, Math.max(1, memberSpecies.length));
-    const localSpeciesPos = new Map<string, { x: number; y: number }>();
-
-    for (let i = 0; i < memberSpecies.length; i++) {
-      const s = memberSpecies[i]!;
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const lx = col * (specW + gapX);
-      const ly = row * (specH + gapY);
-      localSpeciesPos.set(s.id, { x: lx, y: ly });
-
-      if (lx + specW > localMaxX) localMaxX = lx + specW;
-      if (ly + specH > localMaxY) localMaxY = ly + specH;
-    }
-
-    // Place intra-compartment reactions below species
-    const rxnY = localMaxY > 0 ? localMaxY + 35 : 0;
-    let rxnX = 40;
-    for (let i = 0; i < memberRxns.length; i++) {
-      const r = memberRxns[i]!;
-      let targetX = rxnX;
-      // Align reaction x under its reactants if possible
-      const reactantPos = r.reactants.map((re) => localSpeciesPos.get(re.species)).filter(Boolean);
-      if (reactantPos.length > 0) {
-        const avgReactX = reactantPos.reduce((sum, p) => sum + (p!.x + specW / 2), 0) / reactantPos.length;
-        targetX = Math.max(0, avgReactX - 12);
+    if (memberRxns.length > 0) {
+      // Compartment contains an internal reaction cascade (e.g. Golgi galactosylation or cytosolic glycolysis)
+      const consumptionCount = new Map<string, number>();
+      const productionCount = new Map<string, number>();
+      for (const r of memberRxns) {
+        for (const re of r.reactants) {
+          consumptionCount.set(re.species, (consumptionCount.get(re.species) ?? 0) + 1);
+        }
+        for (const pr of r.products) {
+          productionCount.set(pr.species, (productionCount.get(pr.species) ?? 0) + 1);
+        }
       }
 
-      reactionCoords.set(r.id, {
-        x: curCompX + padX + targetX,
-        y: compY + padTop + rxnY,
-        width: 24,
-        height: 24,
+      // Shared cofactors / donors: consumed multiple times without being produced
+      const cofactors = new Set<string>();
+      for (const s of memberSpecies) {
+        const consumed = consumptionCount.get(s.id) ?? 0;
+        const produced = productionCount.get(s.id) ?? 0;
+        if (consumed > 1 && produced === 0) {
+          cofactors.add(s.id);
+        }
+      }
+
+      // Place cofactors in top row (row 0)
+      const cofactorList = memberSpecies.filter((s) => cofactors.has(s.id));
+      const nonCofactorSpecies = memberSpecies.filter((s) => !cofactors.has(s.id));
+
+      const cofactorRowY = 0;
+      let curCofactorX = 0;
+      for (const s of cofactorList) {
+        const w = estimateSpeciesWidth(s.name ?? s.id);
+        speciesCoords.set(s.id, {
+          x: curCompX + padX + curCofactorX,
+          y: compY + padTop + cofactorRowY,
+          width: w,
+          height: specH,
+        });
+        if (curCofactorX + w > localMaxX) localMaxX = curCofactorX + w;
+        curCofactorX += w + gapX;
+      }
+      if (cofactorList.length > 0) {
+        localMaxY = Math.max(localMaxY, specH + gapY);
+      }
+
+      // Layout reaction cascade: order reactions and alternating species horizontally
+      const pathwayY = cofactorList.length > 0 ? specH + 45 : 0;
+      let curPathX = 0;
+
+      const placedSpecies = new Set<string>(cofactors);
+      const placedRxns = new Set<string>();
+
+      // Find root species (no intra-reaction produces them)
+      const rootSpecies = nonCofactorSpecies.filter((s) => (productionCount.get(s.id) ?? 0) === 0);
+      const queueSpecies = rootSpecies.length > 0 ? [...rootSpecies] : [nonCofactorSpecies[0]!].filter(Boolean);
+
+      while (queueSpecies.length > 0 || placedRxns.size < memberRxns.length) {
+        if (queueSpecies.length > 0) {
+          const s = queueSpecies.shift()!;
+          if (placedSpecies.has(s.id)) continue;
+          placedSpecies.add(s.id);
+
+          const w = estimateSpeciesWidth(s.name ?? s.id);
+          speciesCoords.set(s.id, {
+            x: curCompX + padX + curPathX,
+            y: compY + padTop + pathwayY,
+            width: w,
+            height: specH,
+          });
+          curPathX += w + gapX;
+          if (curPathX > localMaxX) localMaxX = curPathX;
+          if (pathwayY + specH > localMaxY) localMaxY = pathwayY + specH;
+
+          // Find reactions that consume this species
+          for (const r of memberRxns) {
+            if (!placedRxns.has(r.id) && r.reactants.some((re) => re.species === s.id)) {
+              placedRxns.add(r.id);
+              reactionCoords.set(r.id, {
+                x: curCompX + padX + curPathX,
+                y: compY + padTop + pathwayY + (specH - rxnDim) / 2,
+                width: rxnDim,
+                height: rxnDim,
+              });
+              curPathX += rxnDim + gapX;
+              if (curPathX > localMaxX) localMaxX = curPathX;
+
+              // Enqueue products
+              for (const prod of r.products) {
+                const prodSpec = nonCofactorSpecies.find((sp) => sp.id === prod.species);
+                if (prodSpec && !placedSpecies.has(prodSpec.id)) {
+                  queueSpecies.push(prodSpec);
+                }
+              }
+            }
+          }
+        } else {
+          // Any remaining unplaced reactions
+          const nextRxn = memberRxns.find((r) => !placedRxns.has(r.id));
+          if (!nextRxn) break;
+          placedRxns.add(nextRxn.id);
+          reactionCoords.set(nextRxn.id, {
+            x: curCompX + padX + curPathX,
+            y: compY + padTop + pathwayY + (specH - rxnDim) / 2,
+            width: rxnDim,
+            height: rxnDim,
+          });
+          curPathX += rxnDim + gapX;
+          for (const prod of nextRxn.products) {
+            const prodSpec = nonCofactorSpecies.find((sp) => sp.id === prod.species);
+            if (prodSpec && !placedSpecies.has(prodSpec.id)) {
+              queueSpecies.push(prodSpec);
+            }
+          }
+        }
+      }
+
+      // Any remaining species
+      for (const s of nonCofactorSpecies) {
+        if (!placedSpecies.has(s.id)) {
+          placedSpecies.add(s.id);
+          const w = estimateSpeciesWidth(s.name ?? s.id);
+          speciesCoords.set(s.id, {
+            x: curCompX + padX + curPathX,
+            y: compY + padTop + pathwayY,
+            width: w,
+            height: specH,
+          });
+          curPathX += w + gapX;
+          if (curPathX > localMaxX) localMaxX = curPathX;
+        }
+      }
+
+      // Center cofactor over the pathway line
+      if (cofactorList.length === 1 && curPathX > 0) {
+        const cof = cofactorList[0]!;
+        const cCoord = speciesCoords.get(cof.id);
+        if (cCoord) {
+          cCoord.x = curCompX + padX + Math.max(0, (curPathX - cCoord.width) / 2);
+        }
+      }
+    } else {
+      // Compartment without intra-reactions: arrange species in a neat vertical stack
+      // Prioritize species involved in inter-compartment transport
+      const interReactingSpecies = new Set<string>();
+      for (const r of interRxns) {
+        for (const re of r.reactants) interReactingSpecies.add(re.species);
+        for (const pr of r.products) interReactingSpecies.add(pr.species);
+      }
+
+      const sortedSpecies = [...memberSpecies].sort((a, b) => {
+        const aActive = interReactingSpecies.has(a.id) ? 0 : 1;
+        const bActive = interReactingSpecies.has(b.id) ? 0 : 1;
+        return aActive - bActive;
       });
 
-      if (targetX + 24 > localMaxX) localMaxX = targetX + 24;
-      if (rxnY + 24 > localMaxY) localMaxY = rxnY + 24;
-
-      rxnX += 140;
+      let curY = 0;
+      for (let i = 0; i < sortedSpecies.length; i++) {
+        const s = sortedSpecies[i]!;
+        const w = estimateSpeciesWidth(s.name ?? s.id);
+        speciesCoords.set(s.id, {
+          x: curCompX + padX,
+          y: compY + padTop + curY,
+          width: w,
+          height: specH,
+        });
+        if (w > localMaxX) localMaxX = w;
+        curY += specH + gapY;
+      }
+      localMaxY = Math.max(localMaxY, curY - gapY);
     }
 
     const compW = Math.max(260, localMaxX + 2 * padX);
-    const compH = Math.max(160, localMaxY + padTop + padBottom);
+    const compH = Math.max(170, localMaxY + padTop + padBottom);
     if (compH > maxCompHeight) maxCompHeight = compH;
 
     compartmentBounds.set(c.id, {
@@ -250,45 +426,82 @@ export function computeSbmlLayout(model: SbmlModelLike, options?: SbmlRenderOpti
       height: compH,
     });
 
-    // Assign global coordinates to member species
-    for (const s of memberSpecies) {
-      const lpos = localSpeciesPos.get(s.id) ?? { x: 0, y: 0 };
-      speciesCoords.set(s.id, {
-        x: curCompX + padX + lpos.x,
-        y: compY + padTop + lpos.y,
-        width: specW,
-        height: specH,
-      });
-    }
-
-    curCompX += compW + 60;
+    // Space between compartments (leave 100px for membrane transport reactions)
+    curCompX += compW + (interRxns.length > 0 ? 100 : 60);
   }
 
-  // Position inter-compartment reactions at midpoints between participating species
+  // Harmonize compartment heights for visual balance
+  const uniformCompHeight = Math.max(180, maxCompHeight);
+  for (const c of compartmentBounds.values()) {
+    c.height = uniformCompHeight;
+  }
+
+  // Position inter-compartment reactions in the membrane channel between participating compartments
+  const rxnsByPair = new Map<string, SbmlReactionLike[]>();
   for (const r of interRxns) {
-    const coords: { x: number; y: number }[] = [];
+    const partComps = new Set<string>();
     for (const react of r.reactants) {
-      const sp = speciesCoords.get(react.species);
-      if (sp) coords.push({ x: sp.x + sp.width / 2, y: sp.y + sp.height / 2 });
+      const c = speciesCompMap.get(react.species);
+      if (c) partComps.add(c);
     }
     for (const prod of r.products) {
-      const sp = speciesCoords.get(prod.species);
-      if (sp) coords.push({ x: sp.x + sp.width / 2, y: sp.y + sp.height / 2 });
+      const c = speciesCompMap.get(prod.species);
+      if (c) partComps.add(c);
+    }
+    const pairKey = Array.from(partComps).sort().join("__");
+    let list = rxnsByPair.get(pairKey);
+    if (!list) {
+      list = [];
+      rxnsByPair.set(pairKey, list);
+    }
+    list.push(r);
+  }
+
+  for (const [pairKey, rxnList] of rxnsByPair.entries()) {
+    const compIds = pairKey.split("__");
+    const b1 = compIds[0] ? compartmentBounds.get(compIds[0]) : undefined;
+    const b2 = compIds[1] ? compartmentBounds.get(compIds[1]) : undefined;
+
+    let channelX: number;
+    if (b1 && b2) {
+      const leftB = b1.x < b2.x ? b1 : b2;
+      const rightB = b1.x < b2.x ? b2 : b1;
+      channelX = (leftB.x + leftB.width + rightB.x) / 2 - rxnDim / 2;
+    } else {
+      channelX = curCompX / 2 - rxnDim / 2;
     }
 
-    const midX = coords.length > 0 ? coords.reduce((acc, c) => acc + c.x, 0) / coords.length : curCompX / 2;
-    const midY = coords.length > 0 ? coords.reduce((acc, c) => acc + c.y, 0) / coords.length : compY + 80;
+    // Stagger inter-compartment reactions vertically, aligning with participating species if possible
+    let lastY = compY + padTop + (specH - rxnDim) / 2;
+    for (let i = 0; i < rxnList.length; i++) {
+      const r = rxnList[i]!;
+      const partSpeciesY: number[] = [];
+      for (const re of r.reactants) {
+        const sc = speciesCoords.get(re.species);
+        if (sc) partSpeciesY.push(sc.y + (sc.height - rxnDim) / 2);
+      }
+      for (const pr of r.products) {
+        const sc = speciesCoords.get(pr.species);
+        if (sc) partSpeciesY.push(sc.y + (sc.height - rxnDim) / 2);
+      }
 
-    reactionCoords.set(r.id, {
-      x: midX - 12,
-      y: midY - 12,
-      width: 24,
-      height: 24,
-    });
+      let targetY = partSpeciesY.length > 0 ? partSpeciesY.reduce((a, b) => a + b, 0) / partSpeciesY.length : lastY;
+      if (i > 0 && targetY <= lastY) {
+        targetY = lastY + 50;
+      }
+      lastY = targetY;
+
+      reactionCoords.set(r.id, {
+        x: channelX,
+        y: targetY,
+        width: rxnDim,
+        height: rxnDim,
+      });
+    }
   }
 
   const totalWidth = Math.max(options?.width ?? 760, curCompX + 40);
-  const totalHeight = Math.max(options?.height ?? 440, compY + maxCompHeight + 80);
+  const totalHeight = Math.max(options?.height ?? 440, compY + uniformCompHeight + 80);
 
   return {
     compartmentBounds,
@@ -325,29 +538,29 @@ export function buildSbmlDiagram(model: SbmlModelLike): SbmlDiagramGraph {
       label: `Compartment: ${c.name ?? c.id}`,
       attrs: {
         body: {
-          fill: "rgba(30, 41, 59, 0.4)",
+          fill: "rgba(30, 41, 59, 0.35)",
           stroke: "#475569",
           strokeWidth: 2,
-          strokeDasharray: "4,4",
+          strokeDasharray: "5,5",
           rx: 16,
           ry: 16,
         },
         label: {
           fill: "#94a3b8",
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: "600",
           refX: 16,
           refY: 16,
           textAnchor: "start",
         },
       },
-      data: { compartmentId: c.id, size: c.size },
+      data: { compartmentId: c.id, isContainer: true, size: c.size },
     });
   }
 
   // 2. Species Macromolecules
   for (const s of speciesList) {
-    const coord = layout.speciesCoords.get(s.id) ?? { x: 100, y: 160, width: 95, height: 36 };
+    const coord = layout.speciesCoords.get(s.id) ?? { x: 100, y: 160, width: 180, height: 40 };
 
     cells.push({
       id: `species_${s.id}`,
@@ -365,7 +578,15 @@ export function buildSbmlDiagram(model: SbmlModelLike): SbmlDiagramGraph {
           rx: 12,
           ry: 12,
         },
-        label: { fill: "#f8fafc", fontSize: 9, fontWeight: "600" },
+        label: {
+          fill: "#f8fafc",
+          fontSize: 10,
+          fontWeight: "600",
+          textWrap: {
+            width: -12,
+            ellipsis: true,
+          },
+        },
       },
       data: { speciesId: s.id, compartment: s.compartment, concentration: s.initialConcentration },
     });
@@ -373,7 +594,7 @@ export function buildSbmlDiagram(model: SbmlModelLike): SbmlDiagramGraph {
 
   // 3. Reaction Nodes and Stoichiometry Arcs
   for (const r of reactionsList) {
-    const coord = layout.reactionCoords.get(r.id) ?? { x: 180, y: 230, width: 22, height: 22 };
+    const coord = layout.reactionCoords.get(r.id) ?? { x: 180, y: 230, width: 24, height: 24 };
     const rCellId = `rxn_${r.id}`;
 
     cells.push({
@@ -385,7 +606,7 @@ export function buildSbmlDiagram(model: SbmlModelLike): SbmlDiagramGraph {
       height: coord.height,
       label: r.reversible ? "↔" : "→",
       attrs: {
-        body: { fill: "#1e1b4b", stroke: "#818cf8", strokeWidth: 2, rx: 3, ry: 3 },
+        body: { fill: "#1e1b4b", stroke: "#818cf8", strokeWidth: 2, rx: 4, ry: 4 },
         label: { fill: "#c7d2fe", fontSize: 11, fontWeight: "bold" },
       },
       data: { reactionId: r.id, reversible: r.reversible },
@@ -400,7 +621,15 @@ export function buildSbmlDiagram(model: SbmlModelLike): SbmlDiagramGraph {
           source: { cell: `species_${react.species}` },
           target: { cell: rCellId },
           label: react.stoichiometry > 1 ? `${react.stoichiometry}` : undefined,
-          attrs: { line: { stroke: "#38bdf8", strokeWidth: 1.5 } },
+          router: { name: "normal" },
+          connector: { name: "rounded", args: { radius: 8 } },
+          attrs: {
+            line: {
+              stroke: "#38bdf8",
+              strokeWidth: 1.5,
+            },
+            label: { fill: "#38bdf8", fontSize: 10, fontWeight: "bold" },
+          },
         });
       }
     }
@@ -414,11 +643,41 @@ export function buildSbmlDiagram(model: SbmlModelLike): SbmlDiagramGraph {
           source: { cell: rCellId },
           target: { cell: `species_${prod.species}` },
           label: prod.stoichiometry > 1 ? `${prod.stoichiometry}` : undefined,
+          router: { name: "normal" },
+          connector: { name: "rounded", args: { radius: 8 } },
           attrs: {
             line: {
               stroke: "#10b981",
               strokeWidth: 2,
-              targetMarker: { name: "classic", width: 6, height: 5 },
+              targetMarker: { name: "classic", width: 7, height: 6 },
+            },
+            label: { fill: "#10b981", fontSize: 10, fontWeight: "bold" },
+          },
+        });
+      }
+    }
+
+    // Catalytic and inhibitory regulatory modifiers
+    for (const mod of r.modifiers ?? []) {
+      if (layout.speciesCoords.has(mod.species)) {
+        const isInhibition = mod.type === "inhibition";
+        cells.push({
+          id: `arc_${mod.species}_mod_${r.id}`,
+          shape: "edge",
+          source: { cell: `species_${mod.species}` },
+          target: { cell: rCellId },
+          router: { name: "normal" },
+          connector: { name: "rounded", args: { radius: 8 } },
+          attrs: {
+            line: {
+              stroke: isInhibition ? "#ef4444" : "#f59e0b",
+              strokeWidth: 1.5,
+              strokeDasharray: "4,4",
+              targetMarker: {
+                name: isInhibition ? "path" : "circle",
+                r: isInhibition ? undefined : 4,
+                d: isInhibition ? "M 0 -5 L 0 5" : undefined,
+              },
             },
           },
         });
@@ -457,16 +716,22 @@ export function renderSbmlSvg(model: SbmlModelLike, options?: SbmlRenderOptions)
   svg += `    <marker id="sbgn-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">\n`;
   svg += `      <path d="M 0 1 L 10 5 L 0 9 z" fill="#10b981" />\n`;
   svg += `    </marker>\n`;
+  svg += `    <marker id="sbgn-catalysis" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">\n`;
+  svg += `      <circle cx="5" cy="5" r="3.5" fill="#0b0f19" stroke="#f59e0b" stroke-width="1.5" />\n`;
+  svg += `    </marker>\n`;
+  svg += `    <marker id="sbgn-inhibition" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">\n`;
+  svg += `      <line x1="5" y1="1" x2="5" y2="9" stroke="#ef4444" stroke-width="2" />\n`;
+  svg += `    </marker>\n`;
   svg += `  </defs>\n`;
 
   // Title Banner
-  svg += `  <text x="50" y="36" fill="${textColor}" font-size="16" font-weight="700">${model.name ?? model.id ?? "Biochemical Reaction Network"}</text>\n`;
+  svg += `  <text x="50" y="36" fill="${textColor}" font-size="16" font-weight="700">${escapeXml(model.name ?? model.id ?? "Biochemical Reaction Network")}</text>\n`;
   svg += `  <text x="50" y="52" fill="${subTextColor}" font-size="10">SBGN Process Description: Compartments, Macromolecules &amp; Stoichiometry</text>\n`;
 
   // 1. Dynamic Compartment Outlines
   for (const c of layout.compartmentBounds.values()) {
-    svg += `  <rect x="${c.x}" y="${c.y}" width="${c.width}" height="${c.height}" rx="16" ry="16" fill="${isDark ? "rgba(30, 41, 59, 0.4)" : "#f1f5f9"}" stroke="#475569" stroke-width="2" stroke-dasharray="6,4" />\n`;
-    svg += `  <text x="${c.x + 20}" y="${c.y + 25}" fill="${subTextColor}" font-size="11" font-weight="700">${c.name ?? c.id} (Volume: ${c.size ?? 1.0} L)</text>\n`;
+    svg += `  <rect x="${c.x}" y="${c.y}" width="${c.width}" height="${c.height}" rx="16" ry="16" fill="${isDark ? "rgba(30, 41, 59, 0.35)" : "#f1f5f9"}" stroke="#475569" stroke-width="2" stroke-dasharray="6,4" />\n`;
+    svg += `  <text x="${c.x + 20}" y="${c.y + 25}" fill="${subTextColor}" font-size="11" font-weight="700">${escapeXml(c.name ?? c.id)} (Volume: ${c.size ?? 1.0} L)</text>\n`;
   }
 
   // 2. Draw Reactions & Arcs
@@ -477,15 +742,17 @@ export function renderSbmlSvg(model: SbmlModelLike, options?: SbmlRenderOptions)
     const midRxX = rx.x + rx.width / 2;
     const midRxY = rx.y + rx.height / 2;
 
-    svg += `  <rect x="${rx.x}" y="${rx.y}" width="${rx.width}" height="${rx.height}" rx="3" ry="3" fill="${isDark ? "#1e1b4b" : "#e0e7ff"}" stroke="#818cf8" stroke-width="2" />\n`;
-    svg += `  <text x="${midRxX}" y="${midRxY + 4}" fill="#818cf8" font-size="11" font-weight="bold" text-anchor="middle">${r.reversible ? "↔" : "→"}</text>\n`;
-    svg += `  <text x="${midRxX}" y="${rx.y + rx.height + 12}" fill="${subTextColor}" font-size="8" text-anchor="middle">${r.id}</text>\n`;
-
     // Reactant consumption
     for (const react of r.reactants) {
       const p = layout.speciesCoords.get(react.species);
       if (p) {
-        svg += `  <line x1="${p.x + p.width / 2}" y1="${p.y + p.height}" x2="${midRxX}" y2="${rx.y}" stroke="#38bdf8" stroke-width="1.5" />\n`;
+        const conn = getRectConnection(p, rx);
+        svg += `  <line x1="${conn.x1}" y1="${conn.y1}" x2="${conn.x2}" y2="${conn.y2}" stroke="#38bdf8" stroke-width="1.5" />\n`;
+        if (react.stoichiometry > 1) {
+          const midX = (conn.x1 + conn.x2) / 2;
+          const midY = (conn.y1 + conn.y2) / 2 - 4;
+          svg += `  <text x="${midX}" y="${midY}" fill="#38bdf8" font-size="9" font-weight="bold">${react.stoichiometry}</text>\n`;
+        }
       }
     }
 
@@ -493,9 +760,32 @@ export function renderSbmlSvg(model: SbmlModelLike, options?: SbmlRenderOptions)
     for (const prod of r.products) {
       const p = layout.speciesCoords.get(prod.species);
       if (p) {
-        svg += `  <line x1="${midRxX}" y1="${rx.y + rx.height}" x2="${p.x + p.width / 2}" y2="${p.y}" stroke="#10b981" stroke-width="2" marker-end="url(#sbgn-arrow)" />\n`;
+        const conn = getRectConnection(rx, p);
+        svg += `  <line x1="${conn.x1}" y1="${conn.y1}" x2="${conn.x2}" y2="${conn.y2}" stroke="#10b981" stroke-width="2" marker-end="url(#sbgn-arrow)" />\n`;
+        if (prod.stoichiometry > 1) {
+          const midX = (conn.x1 + conn.x2) / 2;
+          const midY = (conn.y1 + conn.y2) / 2 - 4;
+          svg += `  <text x="${midX}" y="${midY}" fill="#10b981" font-size="9" font-weight="bold">${prod.stoichiometry}</text>\n`;
+        }
       }
     }
+
+    // Catalytic / inhibitory modifiers
+    for (const mod of r.modifiers ?? []) {
+      const p = layout.speciesCoords.get(mod.species);
+      if (p) {
+        const conn = getRectConnection(p, rx);
+        const isInhibition = mod.type === "inhibition";
+        const marker = isInhibition ? "url(#sbgn-inhibition)" : "url(#sbgn-catalysis)";
+        const stroke = isInhibition ? "#ef4444" : "#f59e0b";
+        svg += `  <line x1="${conn.x1}" y1="${conn.y1}" x2="${conn.x2}" y2="${conn.y2}" stroke="${stroke}" stroke-width="1.5" stroke-dasharray="4,4" marker-end="${marker}" />\n`;
+      }
+    }
+
+    // Reaction hub glyph
+    svg += `  <rect x="${rx.x}" y="${rx.y}" width="${rx.width}" height="${rx.height}" rx="4" ry="4" fill="${isDark ? "#1e1b4b" : "#e0e7ff"}" stroke="#818cf8" stroke-width="2" />\n`;
+    svg += `  <text x="${midRxX}" y="${midRxY + 4}" fill="#818cf8" font-size="11" font-weight="bold" text-anchor="middle">${r.reversible ? "↔" : "→"}</text>\n`;
+    svg += `  <text x="${midRxX}" y="${rx.y + rx.height + 12}" fill="${subTextColor}" font-size="8" text-anchor="middle">${escapeXml(r.id)}</text>\n`;
   }
 
   // 3. Draw Species Macromolecules
@@ -503,10 +793,15 @@ export function renderSbmlSvg(model: SbmlModelLike, options?: SbmlRenderOptions)
     const p = layout.speciesCoords.get(s.id);
     if (!p) continue;
     const stroke = s.boundaryCondition ? "#f59e0b" : "#38bdf8";
+    const label = s.name ?? s.id;
+    const maxChars = Math.floor(p.width / 7.0);
+    const displayLabel = label.length > maxChars ? label.slice(0, maxChars - 1) + "…" : label;
 
     svg += `  <rect x="${p.x}" y="${p.y}" width="${p.width}" height="${p.height}" rx="12" ry="12" fill="${isDark ? "#0f172a" : "#ffffff"}" stroke="${stroke}" stroke-width="2" />\n`;
-    svg += `  <text x="${p.x + p.width / 2}" y="${p.y + 16}" fill="${textColor}" font-size="9" font-weight="600" text-anchor="middle">${s.name ?? s.id}</text>\n`;
-    svg += `  <text x="${p.x + p.width / 2}" y="${p.y + 28}" fill="${subTextColor}" font-size="7.5" text-anchor="middle">[${s.initialConcentration ?? 0} mM]</text>\n`;
+    svg += `  <text x="${p.x + p.width / 2}" y="${p.y + 18}" fill="${textColor}" font-size="10" font-weight="600" text-anchor="middle">${escapeXml(displayLabel)}</text>\n`;
+    if (s.initialConcentration !== undefined) {
+      svg += `  <text x="${p.x + p.width / 2}" y="${p.y + 30}" fill="${subTextColor}" font-size="8" text-anchor="middle">[${s.initialConcentration} mM]</text>\n`;
+    }
   }
 
   // 4. Legend
@@ -518,6 +813,8 @@ export function renderSbmlSvg(model: SbmlModelLike, options?: SbmlRenderOptions)
   svg += `    <text x="145" y="0" fill="${subTextColor}" font-size="9">Reaction</text>\n`;
   svg += `    <line x1="210" y1="-3" x2="225" y2="-3" stroke="#10b981" stroke-width="2" marker-end="url(#sbgn-arrow)" />\n`;
   svg += `    <text x="232" y="0" fill="${subTextColor}" font-size="9">Product Flow</text>\n`;
+  svg += `    <line x1="315" y1="-3" x2="330" y2="-3" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#sbgn-catalysis)" />\n`;
+  svg += `    <text x="337" y="0" fill="${subTextColor}" font-size="9">Catalysis</text>\n`;
   svg += `  </g>\n`;
 
   svg += `</svg>\n`;

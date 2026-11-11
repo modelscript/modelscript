@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  AlertIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -10,12 +11,15 @@ import {
   FileIcon,
   PackageIcon,
   SearchIcon,
+  SyncIcon,
+  TerminalIcon,
   WorkflowIcon,
   XIcon,
 } from "@primer/octicons-react";
 import { Button, Label, Text, TextInput } from "@primer/react";
 import React from "react";
-import type { ArtifactViewerInfo } from "../../../api";
+import styledImport from "styled-components";
+import type { ArtifactViewerInfo, JobStatus } from "../../../api";
 import Box from "../../../components/Box";
 import { ClassTreeNode } from "../../../components/ClassTree";
 import type { TreeNode } from "../../../components/classTreeUtils";
@@ -30,6 +34,21 @@ import {
   TreeSidebar,
   type PolyglotDomain,
 } from "../types";
+
+const styled: typeof styledImport =
+  (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
+
+const SpinSyncIcon = styled(SyncIcon)`
+  animation: spin 1.4s linear infinite;
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+`;
 
 export interface PackageTreeSidebarProps {
   name: string;
@@ -59,6 +78,10 @@ export interface PackageTreeSidebarProps {
   collapsed?: boolean | undefined;
   onToggleCollapse?: (() => void) | undefined;
   totalClassesCount?: number | undefined;
+  loading?: boolean | undefined;
+  jobStatus?: JobStatus | undefined;
+  classesProcessed?: number | undefined;
+  onOpenLogs?: (() => void) | undefined;
 }
 
 function countTreeNodes(nodes: TreeNode[]): number {
@@ -90,7 +113,14 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
   collapsed,
   onToggleCollapse,
   totalClassesCount,
+  loading,
+  jobStatus,
+  classesProcessed,
+  onOpenLogs,
 }) => {
+  const isProcessing = Boolean(
+    loading || jobStatus === "pending" || jobStatus === "processing" || jobStatus === "running",
+  );
   const totalClassCount = countTreeNodes(filteredTree);
   const displayClassCount = !treeSearchFilter.trim() && totalClassesCount ? totalClassesCount : totalClassCount;
   const modelingDomainsCount = availableDomains.filter((d) =>
@@ -146,9 +176,26 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
             >
               Symbol Explorer
             </Text>
-            <Label variant="secondary" style={{ fontSize: 10, padding: "0 6px", lineHeight: "16px" }}>
-              {displayClassCount.toLocaleString()}
-            </Label>
+            {isProcessing ? (
+              <Label
+                variant="accent"
+                style={{
+                  fontSize: 10,
+                  padding: "0 6px",
+                  lineHeight: "16px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <SpinSyncIcon size={10} />
+                <span>Indexing</span>
+              </Label>
+            ) : (
+              <Label variant="secondary" style={{ fontSize: 10, padding: "0 6px", lineHeight: "16px" }}>
+                {displayClassCount.toLocaleString()}
+              </Label>
+            )}
             {isMultiDomain && (
               <Label variant="accent" style={{ fontSize: 9, padding: "0 4px", lineHeight: "14px" }}>
                 Polyglot
@@ -448,13 +495,94 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
             </>
           )}
 
-          {/* Empty State */}
+          {/* Empty or Processing State */}
           {filteredTree.length === 0 &&
             filteredSysml.length === 0 &&
             filteredCad.length === 0 &&
             filteredDatasets.length === 0 &&
             filteredFmu.length === 0 &&
-            filteredOther.length === 0 && (
+            filteredOther.length === 0 &&
+            (isProcessing ? (
+              <Box
+                data-testid="package-tree-processing"
+                style={{
+                  padding: "28px 16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  textAlign: "center",
+                  gap: 12,
+                }}
+              >
+                <SpinSyncIcon size={24} fill="var(--ms-brand, var(--color-accent-cyan, #06b6d4))" />
+                <Box>
+                  <Text style={{ fontWeight: 600, fontSize: 13, display: "block", color: "var(--color-text-primary)" }}>
+                    {jobStatus === "pending" ? "Queued for Indexing" : "Indexing Package Contents…"}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: "var(--color-text-muted)", display: "block", marginTop: 4 }}>
+                    {classesProcessed && classesProcessed > 0
+                      ? `${classesProcessed.toLocaleString()} classes indexed so far`
+                      : "Parsing Modelica AST and extracting symbols…"}
+                  </Text>
+                </Box>
+                <Box style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                  <div className="skeleton" style={{ width: "70%", height: 14, borderRadius: 4 }} />
+                  <div className="skeleton" style={{ width: "85%", height: 14, borderRadius: 4, marginLeft: 12 }} />
+                  <div className="skeleton" style={{ width: "60%", height: 14, borderRadius: 4, marginLeft: 12 }} />
+                  <div className="skeleton" style={{ width: "75%", height: 14, borderRadius: 4 }} />
+                  <div className="skeleton" style={{ width: "65%", height: 14, borderRadius: 4, marginLeft: 12 }} />
+                </Box>
+                {onOpenLogs && (
+                  <Button
+                    size="small"
+                    variant="invisible"
+                    leadingVisual={TerminalIcon}
+                    onClick={onOpenLogs}
+                    style={{ marginTop: 6, fontSize: 11 }}
+                  >
+                    View Live Logs
+                  </Button>
+                )}
+              </Box>
+            ) : jobStatus === "failed" ? (
+              <Box
+                data-testid="package-tree-failed"
+                style={{
+                  padding: "24px 14px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  textAlign: "center",
+                  gap: 10,
+                }}
+              >
+                <AlertIcon size={22} fill="var(--color-danger-fg, #cf222e)" />
+                <Box>
+                  <Text style={{ fontWeight: 600, fontSize: 13, display: "block", color: "var(--color-text-primary)" }}>
+                    Indexing Incomplete
+                  </Text>
+                  <Text style={{ fontSize: 11, color: "var(--color-text-muted)", display: "block", marginTop: 4 }}>
+                    Background symbol indexing reported errors for this release.
+                  </Text>
+                </Box>
+                {onOpenLogs && (
+                  <Button
+                    size="small"
+                    variant="invisible"
+                    leadingVisual={TerminalIcon}
+                    onClick={onOpenLogs}
+                    style={{
+                      color: "var(--color-danger-fg, #cf222e)",
+                      border: "1px solid rgba(207, 34, 46, 0.4)",
+                      borderRadius: 6,
+                      fontSize: 11,
+                    }}
+                  >
+                    View Ingestion Logs
+                  </Button>
+                )}
+              </Box>
+            ) : (
               <Box
                 style={{ padding: "24px 12px", textAlign: "center", color: "var(--color-text-muted)", fontSize: 12 }}
               >
@@ -467,7 +595,7 @@ export const PackageTreeSidebar: React.FC<PackageTreeSidebarProps> = ({
                   </Button>
                 )}
               </Box>
-            )}
+            ))}
         </TreeScrollArea>
       </TreeSidebar>
     </>

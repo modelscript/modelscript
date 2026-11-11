@@ -26,6 +26,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import { useFeatureFlag } from "../FeatureFlagContext";
 import { usePageTitle } from "../util/title";
 
 // Extracted Tab Subcomponents
@@ -869,11 +870,36 @@ const SettingsPage: React.FC = () => {
   const querySuccess = searchParams.get("success");
   const queryError = searchParams.get("error");
 
+  const { isAdmin, user } = useAuth();
+  const isUserAdmin = Boolean(
+    user && (isAdmin || user.account_type === "admin" || user.role === "admin" || user.isAdmin === true),
+  );
+  const navigate = useNavigate();
+  usePageTitle("Settings");
+
+  const hasBots = useFeatureFlag(["bot_accounts", "ai_bots", "bots"]);
+  const hasBilling = useFeatureFlag(["billing", "billing_stripe_live"]);
+  const hasOrganizations = useFeatureFlag(["organizations", "orgs"]);
+  const hasInvites = useFeatureFlag(["invites", "user_invites"]);
+
+  const isTabAvailable = useCallback(
+    (tab: TabType): boolean => {
+      if (tab === "bots") return hasBots;
+      if (tab === "billing") return hasBilling;
+      if (tab === "organizations") return hasOrganizations;
+      if (tab === "invites") return hasInvites;
+      return true;
+    },
+    [hasBots, hasBilling, hasOrganizations, hasInvites],
+  );
+
   const effectiveRawTab = pathTab || queryTab;
   const initialResolved = resolveTabAndSubView(effectiveRawTab, querySubView);
+  const initialSafeTab = isTabAvailable(initialResolved.tab) ? initialResolved.tab : "account";
+  const initialSafeSubView = isTabAvailable(initialResolved.tab) ? initialResolved.subView : "main";
 
-  const [activeTab, setActiveTab] = useState<TabType>(initialResolved.tab);
-  const [subView, setSubView] = useState<SubViewType>(initialResolved.subView);
+  const [activeTab, setActiveTab] = useState<TabType>(initialSafeTab);
+  const [subView, setSubView] = useState<SubViewType>(initialSafeSubView);
   const [originTab, setOriginTab] = useState<TabType | null>(null);
   const [mobileShowMenu, setMobileShowMenu] = useState<boolean>(!effectiveRawTab && !querySubView);
   const [searchQuery, setSearchQuery] = useState("");
@@ -882,19 +908,60 @@ const SettingsPage: React.FC = () => {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const detailColumnRef = useRef<HTMLDivElement | null>(null);
 
-  const { isAdmin } = useAuth();
-  const navigate = useNavigate();
-  usePageTitle("Settings");
+  const syncUrl = useCallback(
+    (nextTab: TabType, nextSubView: SubViewType = "main") => {
+      if (pathTab) {
+        const suffix = nextSubView !== "main" ? `?subView=${encodeURIComponent(nextSubView)}` : "";
+        navigate(`/settings/${encodeURIComponent(nextTab)}${suffix}`);
+      } else {
+        const nextParams: Record<string, string> = { tab: nextTab };
+        if (nextSubView !== "main") {
+          nextParams.subView = nextSubView;
+        }
+        setSearchParams(nextParams);
+      }
+    },
+    [navigate, pathTab, setSearchParams],
+  );
 
   // Synchronize state when URL path or query parameters change
   useEffect(() => {
     if (effectiveRawTab || querySubView) {
       const resolved = resolveTabAndSubView(effectiveRawTab, querySubView);
+      if (!isTabAvailable(resolved.tab)) {
+        setActiveTab("account");
+        setSubView("main");
+        setMobileShowMenu(false);
+        syncUrl("account", "main");
+        return;
+      }
       setActiveTab(resolved.tab);
       setSubView(resolved.subView);
       setMobileShowMenu(false);
     }
-  }, [effectiveRawTab, querySubView]);
+  }, [effectiveRawTab, querySubView, isTabAvailable, syncUrl]);
+
+  // If currently active tab becomes unavailable due to feature flag updates, fallback to account
+  useEffect(() => {
+    if (!isTabAvailable(activeTab)) {
+      setActiveTab("account");
+      setSubView("main");
+      syncUrl("account", "main");
+    }
+  }, [activeTab, isTabAvailable, syncUrl]);
+
+  // Handle direct navigation to /settings/admin
+  useEffect(() => {
+    if (effectiveRawTab === "admin") {
+      if (isUserAdmin) {
+        navigate("/admin");
+      } else {
+        setActiveTab("account");
+        setSubView("main");
+        syncUrl("account", "main");
+      }
+    }
+  }, [effectiveRawTab, isUserAdmin, navigate, syncUrl]);
 
   // Global keyboard shortcut (`/` or `Cmd/Ctrl+K`) to focus settings search when on SettingsPage
   useEffect(() => {
@@ -918,37 +985,23 @@ const SettingsPage: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  const syncUrl = useCallback(
-    (nextTab: TabType, nextSubView: SubViewType = "main") => {
-      if (pathTab) {
-        const suffix = nextSubView !== "main" ? `?subView=${encodeURIComponent(nextSubView)}` : "";
-        navigate(`/settings/${encodeURIComponent(nextTab)}${suffix}`);
-      } else {
-        const nextParams: Record<string, string> = { tab: nextTab };
-        if (nextSubView !== "main") {
-          nextParams.subView = nextSubView;
-        }
-        setSearchParams(nextParams);
-      }
-    },
-    [navigate, pathTab, setSearchParams],
-  );
-
   // Clicking a top-level item directly in the sidebar
   const handleSidebarTabSelect = useCallback(
     (tab: TabType) => {
+      if (!isTabAvailable(tab)) return;
       setOriginTab(null);
       setSubView("main");
       setActiveTab(tab);
       setMobileShowMenu(false);
       syncUrl(tab, "main");
     },
-    [syncUrl],
+    [isTabAvailable, syncUrl],
   );
 
   // Navigating from inside a tab component (e.g., AccountTab -> connectedAccounts / dataArchive / deleteAccount / changePassword)
   const handleTabNavigate = useCallback(
     (target: TabType) => {
+      if (!isTabAvailable(target)) return;
       if (target === "accountInfo" || target === "changePassword") {
         setOriginTab("account");
         setActiveTab("account");
@@ -1008,13 +1061,14 @@ const SettingsPage: React.FC = () => {
       }
 
       const resolved = resolveTabAndSubView(target, "main");
+      if (!isTabAvailable(resolved.tab)) return;
       setOriginTab(null);
       setActiveTab(resolved.tab);
       setSubView(resolved.subView);
       setMobileShowMenu(false);
       syncUrl(resolved.tab, resolved.subView);
     },
-    [activeTab, originTab, subView, syncUrl],
+    [activeTab, isTabAvailable, originTab, subView, syncUrl],
   );
 
   const handleMobileOrAccountBack = useCallback(() => {
@@ -1053,6 +1107,7 @@ const SettingsPage: React.FC = () => {
 
   const handleSelectDeepSetting = useCallback(
     (entry: DeepSettingEntry) => {
+      if (!isTabAvailable(entry.tab)) return;
       const nextSubView: SubViewType = entry.subView || "main";
       setOriginTab(entry.originTab || (nextSubView !== "main" ? entry.tab : null));
       setActiveTab(entry.tab);
@@ -1064,7 +1119,7 @@ const SettingsPage: React.FC = () => {
         detailColumnRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 40);
     },
-    [syncUrl],
+    [isTabAvailable, syncUrl],
   );
 
   const categories: SidebarCategoryConfig[] = useMemo(
@@ -1100,7 +1155,7 @@ const SettingsPage: React.FC = () => {
             keywords: "connected accounts github gitlab oidc sso twitter x oauth link",
             isActive: activeTab === "connectedAccounts",
           },
-          ...(isAdmin
+          ...(isUserAdmin
             ? [
                 {
                   id: "admin",
@@ -1182,48 +1237,68 @@ const SettingsPage: React.FC = () => {
             keywords: "api tokens pat keys access personal scopes cicd registry publish cli",
             isActive: activeTab === "tokens",
           },
-          {
-            id: "bots",
-            label: "AI Bots & Agents",
-            tab: "bots",
-            icon: DependabotIcon,
-            keywords: "ai bots developer tokens webhook agents autonomous llm rotation",
-            isActive: activeTab === "bots",
-          },
+          ...(hasBots
+            ? [
+                {
+                  id: "bots",
+                  label: "AI Bots & Agents",
+                  tab: "bots",
+                  icon: DependabotIcon,
+                  keywords: "ai bots developer tokens webhook agents autonomous llm rotation",
+                  isActive: activeTab === "bots",
+                },
+              ]
+            : []),
         ],
       },
-      {
-        category: "Billing & Teams",
-        items: [
-          {
-            id: "organizations",
-            label: "Organizations",
-            tab: "organizations",
-            icon: OrganizationIcon,
-            keywords: "team organization organizations company seats members invite roles rbac collaborate",
-            isActive: activeTab === "organizations",
-          },
-          {
-            id: "billing",
-            label: "Billing & Compute Credits",
-            tab: "billing",
-            icon: CreditCardIcon,
-            keywords:
-              "billing quota compute credits invoice payment usage subscription commercial license plan tier wallet",
-            isActive: activeTab === "billing",
-          },
-          {
-            id: "invites",
-            label: "Invites & Referrals",
-            tab: "invites",
-            icon: GiftIcon,
-            keywords: "invites invite golden tickets referrals share access team friend pass code",
-            isActive: activeTab === "invites",
-          },
-        ],
-      },
+      ...(hasOrganizations || hasBilling || hasInvites
+        ? [
+            {
+              category: "Billing & Teams",
+              items: [
+                ...(hasOrganizations
+                  ? [
+                      {
+                        id: "organizations",
+                        label: "Organizations",
+                        tab: "organizations",
+                        icon: OrganizationIcon,
+                        keywords: "team organization organizations company seats members invite roles rbac collaborate",
+                        isActive: activeTab === "organizations",
+                      },
+                    ]
+                  : []),
+                ...(hasBilling
+                  ? [
+                      {
+                        id: "billing",
+                        label: "Billing & Compute Credits",
+                        tab: "billing",
+                        icon: CreditCardIcon,
+                        keywords:
+                          "billing quota compute credits invoice payment usage subscription commercial license plan tier wallet",
+                        isActive: activeTab === "billing",
+                      },
+                    ]
+                  : []),
+                ...(hasInvites
+                  ? [
+                      {
+                        id: "invites",
+                        label: "Invites & Referrals",
+                        tab: "invites",
+                        icon: GiftIcon,
+                        keywords: "invites invite golden tickets referrals share access team friend pass code",
+                        isActive: activeTab === "invites",
+                      },
+                    ]
+                  : []),
+              ],
+            },
+          ]
+        : []),
     ],
-    [activeTab, isAdmin, navigate, originTab],
+    [activeTab, isUserAdmin, navigate, originTab, hasBots, hasOrganizations, hasBilling, hasInvites],
   );
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -1232,10 +1307,14 @@ const SettingsPage: React.FC = () => {
     if (!normalizedQuery) return [];
     const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
     return DEEP_SETTINGS_INDEX.filter((entry) => {
+      if (entry.tab === "bots" && !hasBots) return false;
+      if (entry.tab === "billing" && !hasBilling) return false;
+      if (entry.tab === "organizations" && !hasOrganizations) return false;
+      if (entry.tab === "invites" && !hasInvites) return false;
       const haystack = `${entry.title} ${entry.description} ${entry.tabLabel} ${entry.keywords}`.toLowerCase();
       return tokens.every((tok) => haystack.includes(tok));
     });
-  }, [normalizedQuery]);
+  }, [normalizedQuery, hasBots, hasBilling, hasOrganizations, hasInvites]);
 
   const filteredCategories = useMemo(() => {
     if (!normalizedQuery) return categories;
@@ -1483,18 +1562,18 @@ const SettingsPage: React.FC = () => {
 
         {activeTab === "dataArchive" && <DataArchiveTab onBack={handleMobileOrAccountBack} />}
 
-        {activeTab === "billing" && <BillingTab onBack={handleMobileOrAccountBack} />}
+        {hasBilling && activeTab === "billing" && <BillingTab onBack={handleMobileOrAccountBack} />}
 
-        {activeTab === "organizations" && (
+        {hasOrganizations && activeTab === "organizations" && (
           <OrganizationTab
             onBack={handleMobileOrAccountBack}
             onNavigateTab={(tab) => handleTabNavigate(tab as TabType)}
           />
         )}
 
-        {activeTab === "invites" && <InvitesTab onBack={handleMobileOrAccountBack} />}
+        {hasInvites && activeTab === "invites" && <InvitesTab onBack={handleMobileOrAccountBack} />}
 
-        {activeTab === "bots" && <BotsTab onBack={handleMobileOrAccountBack} />}
+        {hasBots && activeTab === "bots" && <BotsTab onBack={handleMobileOrAccountBack} />}
 
         {activeTab === "tokens" && <TokensTab onBack={handleMobileOrAccountBack} />}
 

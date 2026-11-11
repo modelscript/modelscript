@@ -19,8 +19,12 @@ import Box from "../../components/Box";
 import { scrollToTop } from "../../components/ScrollToTop";
 import Spinner from "../../components/Spinner";
 import VirtualPostList from "../../components/VirtualPostList";
-import { PackageIcon } from "../libraries/components/PackageIcon";
-import { formatDomainLabel, formatTimeAgo, inferPackageDomains, splitScopedPackageName } from "../libraries/constants";
+import {
+  formatTimeAgo,
+  getPackageLanguageBadge,
+  inferPackageDomains,
+  splitScopedPackageName,
+} from "../libraries/constants";
 import { DomainBadge } from "../libraries/styles";
 import { GitlabSvgIcon, inferRepoDomainTags, RepoAvatarBadge } from "../RepositoryListPage";
 import type { ExploreLandingTab, PackageData, PostData, RepoData, TopicData } from "./constants";
@@ -410,11 +414,10 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
                             <Label variant="secondary" style={{ fontSize: 11, fontFamily: "var(--font-mono)" }}>
                               v{latestVer}
                             </Label>
-                            {domains.map((dom) => (
-                              <DomainBadge key={dom} $domain={dom}>
-                                {formatDomainLabel(dom)}
-                              </DomainBadge>
-                            ))}
+                            {(() => {
+                              const langBadge = getPackageLanguageBadge(pkg);
+                              return <DomainBadge $domain={langBadge.id}>{langBadge.label}</DomainBadge>;
+                            })()}
                           </Box>
 
                           <Text

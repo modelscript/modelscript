@@ -808,7 +808,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       border: 1.5px solid var(--vscode-focusBorder, #0284c7) !important;
       box-shadow: none !important;
       border-radius: 4px;
-      background-color: rgba(2, 132, 199, 0.05);
+      background-color: transparent !important;
     }
     .x6-widget-selection-box-node {
       margin: -5px 0 0 -5px !important;

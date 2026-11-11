@@ -79,18 +79,25 @@ export function getOntologyRootNodes(workspace: any, store?: any): TreeNodeInfo[
     }
   }
 
-  // 3. Fallback: if axioms exist in owl2Store but no specific document was found
+  // 3. Fallback: if user axioms exist in owl2Store but no specific document was found
   if (nodes.length === 0 && store?.axioms && store.axioms.length > 0) {
-    const fallbackId = "__ONTOLOGY__:workspace-ontology";
-    nodes.push({
-      id: fallbackId,
-      name: "Workspace Ontology",
-      compositeName: "workspace-ontology",
-      classKind: "ontology",
-      icon: "symbol-namespace",
-      hasChildren: true,
-      language: "owl2",
-    });
+    let hasUserAxioms = true;
+    if (store.axiomsBySource instanceof Map) {
+      const nonBfo = Array.from(store.axiomsBySource.keys()).filter((k: any) => k !== "bfo-core" && k !== "bfo");
+      hasUserAxioms = nonBfo.length > 0 && nonBfo.some((k: any) => (store.axiomsBySource.get(k)?.length ?? 0) > 0);
+    }
+    if (hasUserAxioms) {
+      const fallbackId = "__ONTOLOGY__:workspace-ontology";
+      nodes.push({
+        id: fallbackId,
+        name: "Workspace Ontology",
+        compositeName: "workspace-ontology",
+        classKind: "ontology",
+        icon: "symbol-namespace",
+        hasChildren: true,
+        language: "owl2",
+      });
+    }
   }
 
   return nodes;

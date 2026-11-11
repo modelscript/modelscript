@@ -334,13 +334,13 @@ export async function seedPolyglotSocialData(
       const isStaleRasterThumb =
         typeof existingArtifact.thumbnail_url === "string" &&
         existingArtifact.thumbnail_url.startsWith("/thumbnails/artifact_");
-      const forceUrdf3dThumbRefresh = spec.viewType === "urdf";
+      const force3dThumbRefresh = spec.viewType === "urdf" || spec.viewType === "qif";
 
       let pre: Awaited<ReturnType<typeof pregenerateServerSvgThumbnail>> | null = null;
-      if (!existingArtifact.thumbnail_url || isStaleRasterThumb || forceUrdf3dThumbRefresh) {
+      if (!existingArtifact.thumbnail_url || isStaleRasterThumb || force3dThumbRefresh) {
         try {
           const filePath = path.join(uploadDir, spec.filename);
-          if (!fs.existsSync(filePath) || forceUrdf3dThumbRefresh) {
+          if (!fs.existsSync(filePath) || force3dThumbRefresh) {
             fs.writeFileSync(filePath, spec.code, "utf8");
           }
           pre = await pregenerateServerSvgThumbnail(filePath, spec.viewType, spec.filename, uploadDir);

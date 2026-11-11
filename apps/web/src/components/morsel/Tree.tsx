@@ -629,11 +629,11 @@ function isLanguageCompatible(nodeLanguage: string | undefined, nodeName: string
   const normNodeLang = (nodeLanguage || "").toLowerCase();
   const normNodeName = nodeName.toLowerCase();
 
-  // Modelica / ModelScript family (accepts native Modelica + polyglot DAE component languages)
+  // Modelica / ModelScript family
   if (normActive === "modelica" || normActive === "modelscript") {
     if (normNodeName === "sysml" || normNodeName === "kerml") return false;
     if (normNodeName === "modelica" || normNodeName === "complex" || normNodeName === "modelicaservices") return true;
-    if (POLYGLOT_MODELICA_COMPONENT_LANGUAGES.has(normNodeLang)) return true;
+    if (normNodeLang === "modelica" || normNodeLang === "modelscript") return true;
     return false;
   }
 
@@ -717,8 +717,13 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
   if (filter) {
     // Search results
     for (const node of searchState.results) {
-      if (effectiveLanguage && node.language && !isLanguageCompatible(node.language, node.name, effectiveLanguage)) {
-        continue;
+      if (effectiveLanguage && node.language) {
+        const isPolyglot =
+          (effectiveLanguage === "modelica" || effectiveLanguage === "modelscript") &&
+          POLYGLOT_MODELICA_COMPONENT_LANGUAGES.has(node.language.toLowerCase());
+        if (!isPolyglot && !isLanguageCompatible(node.language, node.name, effectiveLanguage)) {
+          continue;
+        }
       }
       elements.push(
         <TreeNode
@@ -798,7 +803,13 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
   } else {
     // Root tree nodes
     for (const node of rootNodes) {
-      if (effectiveLanguage && node.id.startsWith("__LIB__:")) {
+      const isContainer =
+        node.id.startsWith("__LIB__:") ||
+        node.id.startsWith("__ONTOLOGY__:") ||
+        node.id.startsWith("__LOADING__:") ||
+        node.classKind === "ontology";
+
+      if (effectiveLanguage && isContainer) {
         if (
           !explicitlyInstalledNames.has(node.name.toLowerCase()) &&
           !isLanguageCompatible(node.language, node.name, effectiveLanguage)

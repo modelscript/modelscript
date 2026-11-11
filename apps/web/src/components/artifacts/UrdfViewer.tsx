@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { Verification3DOverlayPayload } from "@modelscript/cad";
 import {
   computeForwardKinematics,
   computeInverseDynamicsRnea,
@@ -51,6 +52,7 @@ export interface UrdfViewerProps {
     programSteps?: DigitalTwinProgramStep[] | undefined;
     environment?: DigitalTwinEnvironmentAsset[] | undefined;
     toolpaths?: DigitalTwinToolpathTrace[] | undefined;
+    verificationOverlay?: Verification3DOverlayPayload | undefined;
     [key: string]: unknown;
   };
   artifactId?: string | number | undefined;
@@ -1461,6 +1463,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
                   toolpath={toolpathTrace}
                   toolpaths={allToolpaths}
                   clearance={liveTelemetry.clearance}
+                  verificationOverlay={viewConfig.verificationOverlay}
                   tcpPosition={tcpPosition}
                   gripperOpeningMm={liveTelemetry.hasGripper !== false ? liveTelemetry.gripperOpeningMm : undefined}
                   isFullScreen={isFullScreen}
@@ -1641,6 +1644,7 @@ const UrdfViewer: React.FC<UrdfViewerProps> = ({ viewConfig, artifactId, isFullS
                 environment={viewConfig.environment || []}
                 toolpath={toolpathTrace}
                 toolpaths={allToolpaths}
+                verificationOverlay={viewConfig.verificationOverlay}
                 gripperOpeningMm={liveTelemetry.hasGripper !== false ? liveTelemetry.gripperOpeningMm : undefined}
                 isFullScreen={isFullScreen}
                 showPaths={showPaths}

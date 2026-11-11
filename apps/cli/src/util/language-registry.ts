@@ -27,6 +27,12 @@ export interface FormatOptions {
   check?: boolean | undefined;
   indentSize?: number | undefined;
   preserveFormatting?: boolean | undefined;
+  structural?: boolean | undefined;
+  oneOfEachSection?: boolean | undefined;
+  importsFirst?: boolean | undefined;
+  extendsAtTop?: boolean | undefined;
+  componentsBeforeClasses?: boolean | undefined;
+  declarationOrder?: boolean | undefined;
 }
 
 export interface ResolvedLanguage {
@@ -125,11 +131,21 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
     isBuiltIn: true,
   },
   { id: "gtfs", name: "GTFS", extensions: [".gtfs", ".gtfs.txt", ".gtfs-rt"], isBuiltIn: true },
-  { id: "hec-ras", name: "HEC-RAS", extensions: [".g01", ".g02", ".g03", ".rasgeo", ".u01", ".f01", ".prj"], isBuiltIn: true },
+  {
+    id: "hec-ras",
+    name: "HEC-RAS",
+    extensions: [".g01", ".g02", ".g03", ".rasgeo", ".u01", ".f01", ".prj"],
+    isBuiltIn: true,
+  },
   { id: "ibis", name: "IBIS", extensions: [".ibs", ".ebd", ".pkg"], isBuiltIn: true },
   { id: "jsbsim", name: "JSBSim", extensions: [".jsbsim", ".xml", ".jsbsim.xml"], isBuiltIn: true },
   { id: "landgem", name: "LandGEM", extensions: [".landgem", ".lfg", ".biogas"], isBuiltIn: true },
-  { id: "modflow", name: "MODFLOW", extensions: [".dis", ".dis6", ".npf", ".npf6", ".wel", ".wel6", ".riv", ".riv6", ".chd", ".chd6"], isBuiltIn: true },
+  {
+    id: "modflow",
+    name: "MODFLOW",
+    extensions: [".dis", ".dis6", ".npf", ".npf6", ".wel", ".wel6", ".riv", ".riv6", ".chd", ".chd6"],
+    isBuiltIn: true,
+  },
   { id: "ocpp", name: "OCPP", extensions: [".ocpp", ".ocpp.json", ".cpo", ".evse"], isBuiltIn: true },
   { id: "openadr", name: "OpenADR", extensions: [".oadr", ".oadr.xml", ".oadr.json", ".oadr.yaml"], isBuiltIn: true },
   { id: "opendrive", name: "OpenDRIVE", extensions: [".xodr", ".opendrive.xml"], isBuiltIn: true },
@@ -659,7 +675,11 @@ function tryResolveLocalDirectory(cwd: string): LanguageManifest | undefined {
  * Creates the ResolvedLanguage instance containing parser loading, formatting, and unparsing routines.
  */
 function createResolvedLanguage(manifest: LanguageManifest): ResolvedLanguage {
-  let cachedParserPromise: Promise<{ parser: TreeSitterParser; facade?: LspFacade | undefined; binding?: unknown }> | null = null;
+  let cachedParserPromise: Promise<{
+    parser: TreeSitterParser;
+    facade?: LspFacade | undefined;
+    binding?: unknown;
+  }> | null = null;
   return {
     manifest,
 
@@ -695,7 +715,16 @@ function createResolvedLanguage(manifest: LanguageManifest): ResolvedLanguage {
         if (!tree) return content;
         try {
           const { formatModelicaTree } = await import("@modelscript/lsp/providers/formattingProvider.js");
-          return formatModelicaTree(tree, content, indentSize);
+          const fmtOpts: Record<string, unknown> = { indentSize, parser };
+          if (options?.preserveFormatting !== undefined) fmtOpts["preserveFormatting"] = options.preserveFormatting;
+          if (options?.structural !== undefined) fmtOpts["structural"] = options.structural;
+          if (options?.oneOfEachSection !== undefined) fmtOpts["oneOfEachSection"] = options.oneOfEachSection;
+          if (options?.importsFirst !== undefined) fmtOpts["importsFirst"] = options.importsFirst;
+          if (options?.extendsAtTop !== undefined) fmtOpts["extendsAtTop"] = options.extendsAtTop;
+          if (options?.componentsBeforeClasses !== undefined)
+            fmtOpts["componentsBeforeClasses"] = options.componentsBeforeClasses;
+          if (options?.declarationOrder !== undefined) fmtOpts["declarationOrder"] = options.declarationOrder;
+          return formatModelicaTree(tree, content, fmtOpts as unknown as Parameters<typeof formatModelicaTree>[2]);
         } catch {
           // Fallback below
         }

@@ -610,3 +610,508 @@ export function renderQifSpcChartSvg(spc: QifSpcSummaryLike): string {
   parts.push(`</svg>`);
   return parts.join("\n");
 }
+
+export interface Qif3dIsometricOptions {
+  stepContent?: string | undefined;
+  fallbackTitle?: string | undefined;
+  showAnnotations?: boolean | undefined;
+  showProbes?: boolean | undefined;
+  whiskerScale?: number | undefined;
+}
+
+/**
+ * Renders a faithful 3D-projected isometric STEP AP242 CAD B-Rep solid with
+ * ASME Y14.5 Feature Control Frames, Datum Reference Frames (DRF), and
+ * 3D CMM Touch-Probe hits with deviation whiskers.
+ *
+ * Produces a transparent-background vector SVG matching the Three.js viewport
+ * in QifViewer, ensuring seamless transition between thumbnail and interactive 3D scene.
+ */
+export function renderQif3dIsometricSvg(doc: QifDocumentLike, options: Qif3dIsometricOptions = {}): string {
+  const width = 800;
+  const height = 450;
+  const showAnnotations = options.showAnnotations ?? true;
+  const showProbes = options.showProbes ?? true;
+  const whiskerScale = options.whiskerScale ?? 22.0;
+
+  const dist3 = (a: [number, number, number], b: [number, number, number]): number =>
+    Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+  const pushUniquePt = (arr: [number, number, number][], p: [number, number, number]) => {
+    if (arr.length > 0) {
+      const last = arr[arr.length - 1]!;
+      if (dist3(last, p) < 1e-6) return;
+    }
+    arr.push(p);
+  };
+
+  const faces: [number, number, number][][] = [];
+  const edgeCurvesList: [[number, number, number], [number, number, number]][] = [];
+  const allPts: [number, number, number][] = [];
+
+  // 1. Extract B-Rep faces from STEP if provided
+  if (options.stepContent && options.stepContent.length > 0) {
+    const stepContent = options.stepContent;
+    const cartesianPoints = new Map<number, [number, number, number]>();
+    const ptRe =
+      /#(\d+)\s*=\s*CARTESIAN_POINT\s*\([^,]*,\s*\(\s*([-+0-9.eE]+)\s*,\s*([-+0-9.eE]+)\s*,\s*([-+0-9.eE]+)\s*\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = ptRe.exec(stepContent)) !== null) {
+      const id = Number(m[1]);
+      const x = Number(m[2]);
+      const y = Number(m[3]);
+      const z = Number(m[4]);
+      if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+        cartesianPoints.set(id, [x, y, z]);
+      }
+    }
+
+    const vertexPoints = new Map<number, [number, number, number]>();
+    const vpRe = /#(\d+)\s*=\s*VERTEX_POINT\s*\([^,]*,\s*#(\d+)\s*\)/g;
+    while ((m = vpRe.exec(stepContent)) !== null) {
+      const vid = Number(m[1]);
+      const pid = Number(m[2]);
+      const pt = cartesianPoints.get(pid);
+      if (pt) vertexPoints.set(vid, pt);
+    }
+
+    const edgeCurves = new Map<number, [[number, number, number], [number, number, number]]>();
+    const ecRe = /#(\d+)\s*=\s*EDGE_CURVE\s*\([^,]*,\s*#(\d+)\s*,\s*#(\d+)/g;
+    while ((m = ecRe.exec(stepContent)) !== null) {
+      const eid = Number(m[1]);
+      const v1 = vertexPoints.get(Number(m[2])) ?? cartesianPoints.get(Number(m[2]));
+      const v2 = vertexPoints.get(Number(m[3])) ?? cartesianPoints.get(Number(m[3]));
+      if (v1 && v2) edgeCurves.set(eid, [v1, v2]);
+    }
+
+    const orientedEdges = new Map<number, { edgeId: number; forward: boolean }>();
+    const oeRe = /#(\d+)\s*=\s*ORIENTED_EDGE\s*\([^,]*,[^,]*,[^,]*,\s*#(\d+)\s*,\s*\.(T|F)\./g;
+    while ((m = oeRe.exec(stepContent)) !== null) {
+      orientedEdges.set(Number(m[1]), { edgeId: Number(m[2]), forward: m[3] === "T" });
+    }
+
+    const elRe = /#(\d+)\s*=\s*EDGE_LOOP\s*\([^,]*,\s*\(([^)]+)\)\s*\)/g;
+    while ((m = elRe.exec(stepContent)) !== null) {
+      const refs = m[2]!.match(/#(\d+)/g);
+      if (!refs || refs.length < 3) continue;
+      const segs: [[number, number, number], [number, number, number]][] = [];
+      for (const ref of refs) {
+        const refId = Number(ref.slice(1));
+        const oe = orientedEdges.get(refId);
+        if (oe) {
+          const curve = edgeCurves.get(oe.edgeId);
+          if (curve) segs.push(oe.forward ? [curve[0], curve[1]] : [curve[1], curve[0]]);
+        } else {
+          const curve = edgeCurves.get(refId);
+          if (curve) segs.push([curve[0], curve[1]]);
+        }
+      }
+      if (segs.length < 2) continue;
+
+      const poly: [number, number, number][] = [];
+      let firstSeg = segs[0]!;
+      const secondSeg = segs[1]!;
+      const dEnd = Math.min(dist3(firstSeg[1], secondSeg[0]), dist3(firstSeg[1], secondSeg[1]));
+      const dStart = Math.min(dist3(firstSeg[0], secondSeg[0]), dist3(firstSeg[0], secondSeg[1]));
+      if (dStart + 1e-6 < dEnd) firstSeg = [firstSeg[1], firstSeg[0]];
+      pushUniquePt(poly, firstSeg[0]);
+      pushUniquePt(poly, firstSeg[1]);
+
+      for (let i = 1; i < segs.length; i++) {
+        let seg = segs[i]!;
+        const lastPt = poly[poly.length - 1]!;
+        if (dist3(lastPt, seg[1]) + 1e-6 < dist3(lastPt, seg[0])) seg = [seg[1], seg[0]];
+        pushUniquePt(poly, seg[0]);
+        pushUniquePt(poly, seg[1]);
+      }
+
+      if (poly.length >= 2 && dist3(poly[0]!, poly[poly.length - 1]!) < 1e-5) poly.pop();
+      if (poly.length >= 3) {
+        faces.push(poly);
+        for (const p of poly) allPts.push(p);
+      }
+    }
+
+    for (const ec of edgeCurves.values()) {
+      edgeCurvesList.push(ec);
+      allPts.push(ec[0], ec[1]);
+    }
+  }
+
+  // 2. Synthesize feature 3D solids if no STEP faces were extracted
+  if (faces.length === 0) {
+    doc.features.forEach((feat, idx) => {
+      const loc = feat.location ?? [((idx % 3) - 1) * 28, (Math.floor(idx / 3) - 0.5) * 22, 12];
+      const r = (feat.nominalSize ?? 14) * 0.5;
+      const h = 18;
+      allPts.push(loc);
+
+      if (feat.featureType === "Cylinder" || feat.featureType === "Circle") {
+        const segs = 12;
+        const topPts: [number, number, number][] = [];
+        const botPts: [number, number, number][] = [];
+        for (let s = 0; s < segs; s++) {
+          const ang = (s / segs) * Math.PI * 2;
+          const x = loc[0] + Math.cos(ang) * r;
+          const y = loc[1] + Math.sin(ang) * r;
+          topPts.push([x, y, loc[2] + h / 2]);
+          botPts.push([x, y, loc[2] - h / 2]);
+        }
+        for (let s = 0; s < segs; s++) {
+          const next = (s + 1) % segs;
+          faces.push([botPts[s]!, botPts[next]!, topPts[next]!, topPts[s]!]);
+        }
+        faces.push(topPts);
+        faces.push(botPts.slice().reverse());
+        for (const p of [...topPts, ...botPts]) allPts.push(p);
+      } else {
+        const dx = r * 1.8;
+        const dy = r * 1.5;
+        const dz = h * 0.6;
+        const c0 = [loc[0] - dx, loc[1] - dy, loc[2] - dz] as [number, number, number];
+        const c1 = [loc[0] + dx, loc[1] + dy, loc[2] + dz] as [number, number, number];
+        const b000: [number, number, number] = [c0[0], c0[1], c0[2]];
+        const b100: [number, number, number] = [c1[0], c0[1], c0[2]];
+        const b110: [number, number, number] = [c1[0], c1[1], c0[2]];
+        const b010: [number, number, number] = [c0[0], c1[1], c0[2]];
+        const t001: [number, number, number] = [c0[0], c0[1], c1[2]];
+        const t101: [number, number, number] = [c1[0], c0[1], c1[2]];
+        const t111: [number, number, number] = [c1[0], c1[1], c1[2]];
+        const t011: [number, number, number] = [c0[0], c1[1], c1[2]];
+
+        faces.push([b000, b100, t101, t001]); // Front
+        faces.push([b100, b110, t111, t101]); // Right
+        faces.push([b110, b010, t011, t111]); // Back
+        faces.push([b010, b000, t001, t011]); // Left
+        faces.push([t001, t101, t111, t011]); // Top
+        faces.push([b000, b010, b110, b100]); // Bottom
+        for (const p of [b000, b100, b110, b010, t001, t101, t111, t011]) allPts.push(p);
+      }
+    });
+  }
+
+  // Add origin point for DRF triad
+  allPts.push([0, 0, 0]);
+
+  // Compute 3D bounding box
+  let minX = Infinity,
+    maxX = -Infinity,
+    minY = Infinity,
+    maxY = -Infinity,
+    minZ = Infinity,
+    maxZ = -Infinity;
+  for (const pt of allPts) {
+    if (pt[0] < minX) minX = pt[0];
+    if (pt[0] > maxX) maxX = pt[0];
+    if (pt[1] < minY) minY = pt[1];
+    if (pt[1] > maxY) maxY = pt[1];
+    if (pt[2] < minZ) minZ = pt[2];
+    if (pt[2] > maxZ) maxZ = pt[2];
+  }
+  if (!Number.isFinite(minX)) {
+    minX = -30;
+    maxX = 50;
+    minY = -22;
+    maxY = 22;
+    minZ = 0;
+    maxZ = 22;
+  }
+  const midX = (minX + maxX) * 0.5;
+  const midY = (minY + maxY) * 0.5;
+  const midZ = (minZ + maxZ) * 0.5;
+
+  // Axonometric isometric projection matching QifViewer Three.js camera ([36, -38, 28], Z-up)
+  const cos30 = 0.86602540378;
+  const sin30 = 0.5;
+  const isoProjectRaw = (p: [number, number, number]): [number, number, number] => {
+    const dx = p[0] - midX;
+    const dy = p[1] - midY;
+    const dz = p[2] - midZ;
+    const px = (dx - dy) * cos30;
+    const py = (dx + dy) * sin30 * 0.7071 - dz * 0.95;
+    const depth = (dx + dy) * 0.7071 + dz * 0.5;
+    return [px, py, depth];
+  };
+
+  let pMinX = Infinity,
+    pMaxX = -Infinity,
+    pMinY = Infinity,
+    pMaxY = -Infinity;
+  for (const pt of allPts) {
+    const [px, py] = isoProjectRaw(pt);
+    if (px < pMinX) pMinX = px;
+    if (px > pMaxX) pMaxX = px;
+    if (py < pMinY) pMinY = py;
+    if (py > pMaxY) pMaxY = py;
+  }
+
+  const pSpanX = Math.max(1e-5, pMaxX - pMinX);
+  const pSpanY = Math.max(1e-5, pMaxY - pMinY);
+  const padX = 140; // Room for GD&T callout badges on sides
+  const padY = 90;
+  const scale = Math.min((width - padX * 2) / pSpanX, (height - padY * 2) / pSpanY);
+  const midPX = (pMinX + pMaxX) * 0.5;
+  const midPY = (pMinY + pMaxY) * 0.5;
+
+  const projectScreen = (p: [number, number, number]): [number, number, number] => {
+    const [rx, ry, depth] = isoProjectRaw(p);
+    return [
+      +(width * 0.5 + (rx - midPX) * scale).toFixed(1),
+      +(height * 0.52 + (ry - midPY) * scale).toFixed(1),
+      depth,
+    ];
+  };
+
+  const renderedElements: string[] = [];
+
+  // 3. Render 3D CAD B-Rep faces with lighting & depth sorting
+  interface ProjectedFace {
+    pts2d: [number, number][];
+    depth: number;
+    fill: string;
+    stroke: string;
+  }
+  const projFaces: ProjectedFace[] = [];
+  for (const poly of faces.slice(0, 1600)) {
+    const proj = poly.map(projectScreen);
+    let sumDepth = 0;
+    for (const p of proj) sumDepth += p[2];
+    const avgDepth = sumDepth / proj.length;
+
+    const p0 = poly[0]!;
+    const p1 = poly[1]!;
+    const p2 = poly[2]!;
+    const ux = p1[0] - p0[0],
+      uy = p1[1] - p0[1],
+      uz = p1[2] - p0[2];
+    const vx = p2[0] - p0[0],
+      vy = p2[1] - p0[1],
+      vz = p2[2] - p0[2];
+    let nx = uy * vz - uz * vy;
+    let ny = uz * vx - ux * vz;
+    let nz = ux * vy - uy * vx;
+    const nLen = Math.hypot(nx, ny, nz) || 1;
+    nx /= nLen;
+    ny /= nLen;
+    nz /= nLen;
+
+    const lightDot = Math.abs(nx * 0.45 + ny * 0.72 + nz * 0.52);
+    const intensity = Math.min(1, Math.max(0.2, 0.22 + lightDot * 0.78));
+    const r = Math.round(56 + intensity * 68);
+    const g = Math.round(82 + intensity * 86);
+    const b = Math.round(112 + intensity * 98);
+
+    projFaces.push({
+      pts2d: proj.map((p) => [p[0], p[1]]),
+      depth: avgDepth,
+      fill: `rgba(${r}, ${g}, ${b}, 0.92)`,
+      stroke: `rgba(30, 41, 59, ${+(0.3 + intensity * 0.25).toFixed(2)})`,
+    });
+  }
+
+  projFaces.sort((a, b) => a.depth - b.depth);
+  for (const f of projFaces) {
+    renderedElements.push(
+      `<polygon points="${f.pts2d.map((p) => `${p[0]},${p[1]}`).join(" ")}" fill="${f.fill}" stroke="${f.stroke}" stroke-width="0.85" stroke-linejoin="round"/>`,
+    );
+  }
+
+  // 4. Render Origin Coordinate Datum Reference Frame (DRF) Triad
+  const origin3d: [number, number, number] = [0, 0, 0];
+  const originSc = projectScreen(origin3d);
+  const triadLen = Math.max(14, (maxX - minX) * 0.16);
+  const xSc = projectScreen([origin3d[0] + triadLen, origin3d[1], origin3d[2]]);
+  const ySc = projectScreen([origin3d[0], origin3d[1] + triadLen, origin3d[2]]);
+  const zSc = projectScreen([origin3d[0], origin3d[1], origin3d[2] + triadLen]);
+
+  renderedElements.push(`<!-- 3D Datum Reference Frame Origin Triad -->
+    <line x1="${originSc[0]}" y1="${originSc[1]}" x2="${xSc[0]}" y2="${xSc[1]}" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
+    <text x="${xSc[0] + 6}" y="${xSc[1] + 3}" fill="#f87171" font-size="10" font-weight="700" font-family="'JetBrains Mono', monospace">X</text>
+    <line x1="${originSc[0]}" y1="${originSc[1]}" x2="${ySc[0]}" y2="${ySc[1]}" stroke="#22c55e" stroke-width="2.2" stroke-linecap="round"/>
+    <text x="${ySc[0] - 12}" y="${ySc[1] + 5}" fill="#4ade80" font-size="10" font-weight="700" font-family="'JetBrains Mono', monospace">Y</text>
+    <line x1="${originSc[0]}" y1="${originSc[1]}" x2="${zSc[0]}" y2="${zSc[1]}" stroke="#3b82f6" stroke-width="2.2" stroke-linecap="round"/>
+    <text x="${zSc[0]}" y="${zSc[1] - 6}" fill="#60a5fa" font-size="10" font-weight="700" font-family="'JetBrains Mono', monospace" text-anchor="middle">Z</text>`);
+
+  // Map characteristics by ID & Feature
+  const charById = new Map<string, QifCharacteristicLike>();
+  for (const c of doc.characteristics) charById.set(c.id, c);
+
+  const actualsByChar = new Map<string, QifActualLike[]>();
+  for (const a of doc.actuals ?? []) {
+    const list = actualsByChar.get(a.characteristicId) ?? [];
+    list.push(a);
+    actualsByChar.set(a.characteristicId, list);
+  }
+
+  // 5. Render 3D CMM Touch-Probe Hits & Whisker Vectors
+  if (showProbes) {
+    const probeElements: string[] = [];
+    doc.features.forEach((feat, idx) => {
+      const featLoc = feat.location ?? [((idx % 3) - 1) * 28, (Math.floor(idx / 3) - 0.5) * 22, 12];
+      const featNorm = feat.normal ?? [0, 0, 1];
+      const linkedChars = doc.characteristics.filter((c) => c.featureIds.includes(feat.id));
+      const acts: QifActualLike[] = [];
+      for (const lc of linkedChars) {
+        acts.push(...(actualsByChar.get(lc.id) ?? []));
+      }
+
+      const numPoints =
+        typeof feat.probingPoints === "number"
+          ? Math.min(feat.probingPoints, 8)
+          : Array.isArray(feat.probingPoints)
+            ? feat.probingPoints.length
+            : Math.max(3, acts.length || 4);
+
+      for (let pIdx = 0; pIdx < numPoints; pIdx++) {
+        let pPos: [number, number, number];
+        let pDev: [number, number, number] = [0, 0, 0];
+        let pStatus: "PASS" | "FAIL" | "REWORK" = "PASS";
+
+        if (pIdx < acts.length && acts[pIdx]) {
+          const act = acts[pIdx]!;
+          pStatus = act.status;
+          pDev = act.deviationVector ?? [featNorm[0] * 0.02, featNorm[1] * 0.02, featNorm[2] * 0.02];
+        }
+
+        if (Array.isArray(feat.probingPoints) && feat.probingPoints[pIdx]) {
+          pPos = feat.probingPoints[pIdx]!;
+        } else if (feat.featureType === "Cylinder" || feat.featureType === "Circle") {
+          const ang = (pIdx / numPoints) * Math.PI * 2;
+          const r = (feat.nominalSize ?? 12) * 0.5;
+          pPos = [featLoc[0] + Math.cos(ang) * r, featLoc[1] + Math.sin(ang) * r, featLoc[2]];
+        } else {
+          const u = ((pIdx % 3) - 1) * 6;
+          const v = (Math.floor(pIdx / 3) - 0.5) * 6;
+          pPos = [featLoc[0] + u, featLoc[1] + v, featLoc[2]];
+        }
+
+        const scPt = projectScreen(pPos);
+        const statusColor = pStatus === "FAIL" ? "#ef4444" : pStatus === "REWORK" ? "#f59e0b" : "#22c55e";
+
+        // 3D Sphere Highlight
+        probeElements.push(
+          `<circle cx="${scPt[0]}" cy="${scPt[1]}" r="4" fill="${statusColor}" stroke="#0f172a" stroke-width="1.2"/>`,
+        );
+
+        // Deviation whisker vector
+        const devMag = Math.hypot(pDev[0], pDev[1], pDev[2]);
+        if (devMag > 1e-4) {
+          const tipPos: [number, number, number] = [
+            pPos[0] + pDev[0] * whiskerScale,
+            pPos[1] + pDev[1] * whiskerScale,
+            pPos[2] + pDev[2] * whiskerScale,
+          ];
+          const scTip = projectScreen(tipPos);
+          const whiskerColor = pStatus === "FAIL" ? "#ef4444" : "#38bdf8";
+          probeElements.push(
+            `<line x1="${scPt[0]}" y1="${scPt[1]}" x2="${scTip[0]}" y2="${scTip[1]}" stroke="${whiskerColor}" stroke-width="1.4" stroke-dasharray="2,2"/>`,
+            `<circle cx="${scTip[0]}" cy="${scTip[1]}" r="2" fill="${whiskerColor}"/>`,
+          );
+        }
+      }
+    });
+
+    if (probeElements.length > 0) {
+      renderedElements.push(`<!-- 3D CMM Touch Probes & Deviation Whiskers -->\n    ${probeElements.join("\n    ")}`);
+    }
+  }
+
+  // 6. Render ASME Y14.5 Feature Control Frame (FCF) Callouts
+  if (showAnnotations && doc.characteristics.length > 0) {
+    const fcfElements: string[] = [];
+    // Offset directions to distribute callout badges cleanly around the 3D model
+    const offsets: [number, number][] = [
+      [80, -45],
+      [-95, -55],
+      [90, 40],
+      [-100, 35],
+      [0, -75],
+    ];
+
+    const datumByFeat = new Map<string, string>();
+    for (const d of doc.datumDefinitions ?? []) {
+      if (d.featureId) datumByFeat.set(d.featureId, d.label);
+    }
+
+    const renderedChars = doc.characteristics.slice(0, 4);
+    renderedChars.forEach((char, cIdx) => {
+      const featId = char.featureIds[0];
+      const feat = doc.features.find((f) => f.id === featId);
+      const featLoc: [number, number, number] = feat?.location ?? [0, 0, 10];
+      const scFeat = projectScreen(featLoc);
+      const off = offsets[cIdx % offsets.length]!;
+      const badgeX = Math.max(16, Math.min(width - 150, scFeat[0] + off[0]));
+      const badgeY = Math.max(20, Math.min(height - 40, scFeat[1] + off[1]));
+
+      const symbol = getGdtSymbol(char.gdtType);
+      const acts = actualsByChar.get(char.id) ?? [];
+      const hasFail = acts.some((a) => a.status === "FAIL");
+      const statusColor = hasFail ? "#ef4444" : "#38bdf8";
+
+      // Leader line
+      fcfElements.push(
+        `<line x1="${scFeat[0]}" y1="${scFeat[1]}" x2="${badgeX + (off[0] < 0 ? 100 : 0)}" y2="${badgeY + 11}" stroke="${statusColor}" stroke-width="1.2" stroke-opacity="0.75"/>`,
+        `<circle cx="${scFeat[0]}" cy="${scFeat[1]}" r="2.5" fill="${statusColor}"/>`,
+      );
+
+      // Feature Control Frame Box
+      const symWidth = 22;
+      const tolStr = `${char.isDiametrical ? "⌀" : ""}${char.toleranceZone.toFixed(3)}${getMaterialModifierSymbol(char.materialCondition)}`;
+      const tolWidth = Math.max(38, tolStr.length * 7.5 + 8);
+      const datums = char.datumReferences ?? [];
+      const datumWidths = datums.map((d) => (d.datumLabel.length + (d.materialCondition ? 1 : 0)) * 8 + 10);
+      const totalWidth = symWidth + tolWidth + datumWidths.reduce((a, b) => a + b, 0);
+      const frameHeight = 22;
+
+      let curX = badgeX;
+      fcfElements.push(
+        `<g transform="translate(${badgeX}, ${badgeY})">`,
+        `<rect x="0" y="0" width="${totalWidth}" height="${frameHeight}" rx="2" fill="rgba(15, 23, 42, 0.94)" stroke="${statusColor}" stroke-width="1.4"/>`,
+      );
+
+      // Symbol
+      fcfElements.push(
+        `<rect x="0" y="0" width="${symWidth}" height="${frameHeight}" fill="rgba(56, 189, 248, 0.12)" stroke="${statusColor}" stroke-width="1"/>`,
+        `<text x="${symWidth / 2}" y="15" fill="#38bdf8" font-size="12" font-weight="700" text-anchor="middle" font-family="'JetBrains Mono', monospace">${symbol}</text>`,
+      );
+      curX = symWidth;
+
+      // Tolerance
+      fcfElements.push(
+        `<line x1="${curX}" y1="0" x2="${curX}" y2="${frameHeight}" stroke="${statusColor}" stroke-width="1"/>`,
+        `<text x="${curX + tolWidth / 2}" y="15" fill="#f8fafc" font-size="10.5" font-weight="600" text-anchor="middle" font-family="'JetBrains Mono', monospace">${escapeXml(tolStr)}</text>`,
+      );
+      curX += tolWidth;
+
+      // Datums
+      datums.forEach((d, dIdx) => {
+        const dw = datumWidths[dIdx]!;
+        const modStr = getMaterialModifierSymbol(d.materialCondition);
+        fcfElements.push(
+          `<line x1="${curX}" y1="0" x2="${curX}" y2="${frameHeight}" stroke="${statusColor}" stroke-width="1"/>`,
+          `<text x="${curX + dw / 2}" y="15" fill="#e2e8f0" font-size="10.5" font-weight="700" text-anchor="middle" font-family="'JetBrains Mono', monospace">${escapeXml(d.datumLabel)}${modStr}</text>`,
+        );
+        curX += dw;
+      });
+
+      fcfElements.push(`</g>`);
+    });
+
+    if (fcfElements.length > 0) {
+      renderedElements.push(`<!-- ASME Y14.5 Feature Control Frames -->\n    ${fcfElements.join("\n    ")}`);
+    }
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%" data-qif-3d="true" data-testid="qif-3d-svg">
+  <defs>
+    <radialGradient id="qifSphereShade" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.4"/>
+    </radialGradient>
+  </defs>
+  <!-- 3D Projected CAD Solid, GD&T Tolerances & Metrology Scene -->
+  <g>
+    ${renderedElements.join("\n    ")}
+  </g>
+</svg>`;
+}

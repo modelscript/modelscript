@@ -136,6 +136,10 @@ export interface JobInfo {
   status: JobStatus;
   error?: string | undefined;
   logs?: string[] | undefined;
+  classesProcessed?: number | undefined;
+  totalClasses?: number | undefined;
+  currentClass?: string | undefined;
+  progress?: number | undefined;
 }
 
 export interface ClassDetail {
@@ -203,8 +207,26 @@ export const getLibraries = async (q?: string, sort?: string, author?: string) =
   }
 
   // Fallback to local standard libraries from catalog in development
+  const isToy = (name: string) =>
+    name.startsWith("@modelscript/example-") ||
+    name.startsWith("@examples/") ||
+    name === "EPANET-Benchmark-Networks" ||
+    name === "Standard-Robots" ||
+    name === "SysML" ||
+    name === "USGS-Groundwater-Aquifers" ||
+    name === "SPICE-Standard" ||
+    name === "AUTOSAR-Metamodels" ||
+    name === "STEP-Fasteners" ||
+    name === "BioModels-Curated-Core";
+
   const groupedLibs = new Map<string, LibraryListItem>();
   for (const lib of getStdlibCatalog().libraries) {
+    if (lib.language?.toLowerCase() !== "modelica" && lib.packageName.toLowerCase() !== "modelica") {
+      continue;
+    }
+    if (isToy(lib.packageName)) {
+      continue;
+    }
     const existing = groupedLibs.get(lib.packageName);
     if (!existing) {
       groupedLibs.set(lib.packageName, {
@@ -213,7 +235,8 @@ export const getLibraries = async (q?: string, sort?: string, author?: string) =
         latestVersion: lib.version,
         description: lib.description,
         license: lib.license,
-        domains: [lib.domain],
+        language: "modelica",
+        domains: ["modelica"],
       });
     } else {
       if (!existing.versions.includes(lib.version)) {

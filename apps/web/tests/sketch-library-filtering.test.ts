@@ -59,5 +59,13 @@ describe("Sketch / Playground Single-File Library Filtering & Lazy Loading", () 
       content.includes('node.id.startsWith("__LIB__:")'),
       "Tree.tsx must filter root library nodes by active language",
     );
+    assert.ok(
+      content.includes('node.id.startsWith("__ONTOLOGY__:")'),
+      "Tree.tsx must filter ontology container nodes by active language",
+    );
+    assert.ok(
+      content.includes('node.classKind === "ontology"'),
+      "Tree.tsx must treat ontology class kinds as containers subject to language filtering",
+    );
   });
 });

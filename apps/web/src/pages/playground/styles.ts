@@ -25,6 +25,7 @@ export const PlaygroundNavbar = styled.header`
   gap: 8px;
   z-index: 20;
   container-type: inline-size;
+  overflow: hidden;
 
   @media (max-width: 768px) {
     padding: 0 8px;
@@ -32,6 +33,9 @@ export const PlaygroundNavbar = styled.header`
   }
 
   @container (max-width: 1400px) {
+    .nav-hide-xl {
+      display: none !important;
+    }
     .nav-icon-only-xl [data-component="text"],
     .nav-icon-only-xl span {
       display: none !important;
@@ -39,43 +43,46 @@ export const PlaygroundNavbar = styled.header`
   }
 
   @media (max-width: 1400px) {
+    .nav-hide-xl {
+      display: none !important;
+    }
     .nav-icon-only-xl [data-component="text"],
     .nav-icon-only-xl span {
       display: none !important;
     }
   }
 
-  @container (max-width: 1200px) {
+  @container (max-width: 1240px) {
     .nav-hide-lg {
       display: none !important;
     }
   }
 
-  @media (max-width: 1200px) {
+  @media (max-width: 1240px) {
     .nav-hide-lg {
       display: none !important;
     }
   }
 
-  @container (max-width: 900px) {
+  @container (max-width: 960px) {
     .nav-hide-md {
       display: none !important;
     }
   }
 
-  @media (max-width: 900px) {
+  @media (max-width: 960px) {
     .nav-hide-md {
       display: none !important;
     }
   }
 
-  @container (max-width: 680px) {
+  @container (max-width: 768px) {
     .nav-hide-sm {
       display: none !important;
     }
   }
 
-  @media (max-width: 680px) {
+  @media (max-width: 768px) {
     .nav-hide-sm {
       display: none !important;
     }
@@ -85,13 +92,14 @@ export const PlaygroundNavbar = styled.header`
 export const NavLeft = styled.div`
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   overflow: hidden;
+  white-space: nowrap;
 
   @media (max-width: 768px) {
-    gap: 6px;
+    gap: 4px;
   }
 `;
 
@@ -101,6 +109,7 @@ export const NavCenter = styled.div`
   justify-content: center;
   flex: 0 0 auto;
   min-width: 0;
+  gap: 6px;
 
   /* Modernized, sleek engineering workbench segmented control */
   ul[data-size="small"] {
@@ -124,7 +133,8 @@ export const NavCenter = styled.div`
   }
 
   /* Button styling */
-  button {
+  ul[data-size="small"] button,
+  li button {
     border: 1px solid transparent !important;
     outline: none !important;
     border-radius: var(--ms-radius-pill, 999px) !important;
@@ -140,16 +150,16 @@ export const NavCenter = styled.div`
   }
 
   /* Remove any inner borders from Primer's internal content wrapper and neutralize differing padding */
-  button span,
-  button [class*="Content"],
-  button [class*="Content"] * {
+  ul[data-size="small"] button span,
+  ul[data-size="small"] button [class*="Content"],
+  ul[data-size="small"] button [class*="Content"] * {
     border: none !important;
     border-color: transparent !important;
     outline: none !important;
     box-shadow: none !important;
   }
 
-  button [class*="Content"] {
+  ul[data-size="small"] button [class*="Content"] {
     padding: 0 !important;
   }
 
@@ -160,7 +170,8 @@ export const NavCenter = styled.div`
   }
 
   /* Inactive button hover */
-  button:not([aria-current="true"]):hover {
+  ul[data-size="small"] button:not([aria-current="true"]):hover,
+  li button:not([aria-current="true"]):hover {
     background-color: var(
       --color-action-list-item-default-hover-bg,
       var(--ms-surface-hover, rgba(125, 125, 125, 0.08))
@@ -169,7 +180,8 @@ export const NavCenter = styled.div`
   }
 
   /* Active selected button styling matching ModelScript dialect chip background and brand blue border */
-  button[aria-current="true"] {
+  ul[data-size="small"] button[aria-current="true"],
+  li button[aria-current="true"] {
     border: 1px solid var(--ms-brand, #0891b2) !important;
     border-radius: var(--ms-radius-pill, 999px) !important;
     outline: none !important;
@@ -180,7 +192,8 @@ export const NavCenter = styled.div`
     padding: 0 10px !important;
   }
 
-  button[aria-current="true"] [class*="Content"] {
+  ul[data-size="small"] button[aria-current="true"] [class*="Content"],
+  li button[aria-current="true"] [class*="Content"] {
     border: none !important;
     border-color: transparent !important;
     background: transparent !important;
@@ -188,14 +201,16 @@ export const NavCenter = styled.div`
     padding: 0 !important;
   }
 
-  button[aria-current="true"] svg {
+  ul[data-size="small"] button[aria-current="true"] svg,
+  li button[aria-current="true"] svg {
     color: var(--ms-brand, #0891b2) !important;
     fill: var(--ms-brand, #0891b2) !important;
   }
 
-  /* Responsive label collapse: between 600px and 1160px, collapse button text so all 6 tabs fit comfortably */
-  @container (max-width: 1160px) {
-    button {
+  /* Responsive label collapse: at <= 1280px, collapse button text so tabs fit comfortably without crowding */
+  @container (max-width: 1280px) {
+    ul[data-size="small"] button,
+    li button {
       padding: 0 8px !important;
     }
     .segmentedControl-text {
@@ -203,8 +218,9 @@ export const NavCenter = styled.div`
     }
   }
 
-  @media (max-width: 1160px) {
-    button {
+  @media (max-width: 1280px) {
+    ul[data-size="small"] button,
+    li button {
       padding: 0 8px !important;
     }
     /* Primer renders span.segmentedControl-content > (icon div, div.segmentedControl-text).
@@ -214,20 +230,93 @@ export const NavCenter = styled.div`
     }
   }
 
-  @container (max-width: 600px) {
+  @container (max-width: 640px) {
     display: none;
   }
 
-  @media (max-width: 600px) {
+  @media (max-width: 640px) {
     display: none;
+  }
+`;
+
+export const SplitToggleButton = styled.button<{ $active?: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--ms-radius-pill, 999px);
+  font-size: 12px;
+  font-weight: ${(props) => (props.$active ? 600 : 500)};
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+  user-select: none;
+  outline: none;
+  flex-shrink: 0;
+  background: ${(props) =>
+    props.$active
+      ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))"
+      : "var(--ms-surface-hover, var(--color-canvas-subtle, rgba(0, 0, 0, 0.04)))"};
+  border: 1px solid
+    ${(props) =>
+      props.$active
+        ? "var(--ms-brand, #0891b2)"
+        : "var(--ms-divider, var(--color-border-subtle, rgba(15, 23, 42, 0.1)))"};
+  color: ${(props) => (props.$active ? "var(--ms-brand, #0891b2)" : "var(--ms-text-2, var(--color-fg-muted))")};
+  box-shadow: ${(props) =>
+    props.$active ? "0 1px 4px var(--ms-glow-cyan, rgba(8, 145, 178, 0.2))" : "inset 0 1px 2px rgba(0, 0, 0, 0.03)"};
+
+  svg {
+    color: ${(props) => (props.$active ? "var(--ms-brand, #0891b2)" : "currentColor")};
+    fill: ${(props) => (props.$active ? "var(--ms-brand, #0891b2)" : "currentColor")};
+    flex-shrink: 0;
+  }
+
+  &:hover:not(:disabled) {
+    background: ${(props) =>
+      props.$active
+        ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.18))"
+        : "var(--color-action-list-item-default-hover-bg, var(--ms-surface-hover, rgba(125, 125, 125, 0.08)))"};
+    color: ${(props) => (props.$active ? "var(--ms-brand, #0891b2)" : "var(--color-fg-default)")};
+    border-color: ${(props) => (props.$active ? "var(--ms-brand, #0891b2)" : "var(--color-border-default)")};
+  }
+
+  &:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+    background: var(--ms-surface-hover, var(--color-canvas-subtle, rgba(0, 0, 0, 0.04)));
+    border: 1px solid var(--ms-divider, var(--color-border-subtle, rgba(15, 23, 42, 0.06)));
+    color: var(--ms-text-3, var(--color-fg-muted));
+    box-shadow: none;
+  }
+
+  @container (max-width: 1280px) {
+    padding: 0 8px;
+    span {
+      display: none !important;
+    }
+  }
+
+  @media (max-width: 1280px) {
+    padding: 0 8px;
+    span {
+      display: none !important;
+    }
   }
 `;
 
 export const NavRight = styled.div`
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
+  min-width: 0;
+  flex: 0 1 auto;
   flex-shrink: 0;
+  white-space: nowrap;
 
   @media (max-width: 768px) {
     gap: 4px;

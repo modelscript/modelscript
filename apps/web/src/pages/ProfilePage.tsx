@@ -27,7 +27,7 @@ const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const { user, token } = useAuth();
   const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
-  const hasSpaces = useFeatureFlag("spaces_hub");
+  const hasSpaces = useFeatureFlag(["spaces_hub", "spaces"]);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isOrgContainer, setIsOrgContainer] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);

@@ -47,6 +47,11 @@ const FLAG_METADATA: Record<string, FlagMetadata> = {
     category: "Core",
     description: "Enables credit wallet top-up modals, Stripe checkout sessions, and compute invoices.",
   },
+  billing: {
+    title: "Billing & Compute Credits [Alias]",
+    category: "Core",
+    description: "Alias for billing_stripe_live — enable billing ledger, subscriptions, and compute credits.",
+  },
   digital_twins: {
     title: "Digital Twins & Telemetry",
     category: "Simulation",
@@ -160,6 +165,36 @@ const FLAG_METADATA: Record<string, FlagMetadata> = {
     title: "Simulation Bot Accounts",
     category: "Community & Federation",
     description: "Automated simulation benchmark runners and verification bot accounts.",
+  },
+  ai_bots: {
+    title: "AI Bots & Agents [Alias]",
+    category: "Community & Federation",
+    description: "Alias for bot_accounts — enable autonomous AI bot accounts and agent tokens.",
+  },
+  bots: {
+    title: "Bots [Alias]",
+    category: "Community & Federation",
+    description: "Alias for bot_accounts — enable autonomous bot tokens and agents.",
+  },
+  organizations: {
+    title: "Organizations & Teams",
+    category: "Community & Federation",
+    description: "Enables organization workspaces, RBAC member roles, and multi-tenant management.",
+  },
+  orgs: {
+    title: "Organizations [Alias]",
+    category: "Community & Federation",
+    description: "Alias for organizations — enable organization workspaces and team management.",
+  },
+  invites: {
+    title: "Invites & Referrals",
+    category: "Community & Federation",
+    description: "Enables user invite code generation and Golden Ticket referral sharing.",
+  },
+  user_invites: {
+    title: "User Invites [Alias]",
+    category: "Community & Federation",
+    description: "Alias for invites — enable peer invite codes and referral links.",
   },
   sparql_rdf_endpoints: {
     title: "SPARQL / RDF Semantic Endpoints",

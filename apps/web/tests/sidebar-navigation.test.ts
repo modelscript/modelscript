@@ -78,7 +78,8 @@ describe("Sidebar Navigation Structure & Workbench Placement", () => {
       "Sidebar.tsx must provide data-testid='sidebar-post-button' for the Post action",
     );
     assert.ok(
-      content.includes('data-testid="sidebar-morsel-button"') || content.includes('data-testid="sidebar-sketch-button"'),
+      content.includes('data-testid="sidebar-morsel-button"') ||
+        content.includes('data-testid="sidebar-sketch-button"'),
       "Sidebar.tsx must provide data-testid='sidebar-morsel-button' for the Morsel action",
     );
     assert.ok(
@@ -98,6 +99,19 @@ describe("Sidebar Navigation Structure & Workbench Placement", () => {
     assert.ok(
       content.includes("onMorselClick") || content.includes("onSketchClick"),
       "SidebarProps must accept optional onMorselClick handler",
+    );
+  });
+
+  it("verifies Twitter/X-style action buttons stack renders Post with brand bg, plus Morsel and Studio as white/bordered buttons", () => {
+    assert.ok(
+      content.includes('data-testid="sidebar-studio-button"'),
+      "Sidebar.tsx must render a Studio action button with data-testid='sidebar-studio-button'",
+    );
+    assert.ok(content.includes('to="/studio"'), "Sidebar.tsx Studio button must link to /studio");
+    assert.ok(content.includes("CodeIcon"), "Sidebar.tsx Studio button must render CodeIcon");
+    assert.ok(
+      content.includes("border-radius: 9999px;"),
+      "Sidebar.tsx action buttons must use Twitter/X 9999px pill rounded rectangles",
     );
   });
 

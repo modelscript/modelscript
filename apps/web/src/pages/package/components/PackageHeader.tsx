@@ -34,12 +34,26 @@ import Box from "../../../components/Box";
 import Breadcrumbs from "../../../components/Breadcrumbs";
 import { CiteButton } from "../../../components/citations/CiteButton";
 import InvertedSvg from "../../../components/InvertedSvg";
+import { useFeatureFlag } from "../../../FeatureFlagContext";
 import { buildCitationFromPackage } from "../../../util/citations";
+import { buildVsCodeWorkbenchUrlForPackage } from "../../../util/editor-routing";
 import { HeaderBar, timeAgo } from "../types";
 import type { ManageModalType } from "./PackageManageModals";
 
 const styled: typeof styledImport =
   (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
+
+const SpinSyncIcon = styled(SyncIcon)`
+  animation: spin 1.4s linear infinite;
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+`;
 
 /* ─── Top Utility Strip: Navigation on Left, Action Toolbar on Right ─── */
 
@@ -102,7 +116,7 @@ const ActionToolbar = styled.div`
   }
 `;
 
-const OpenIdeButton = styled(Link)`
+const OpenIdeButton = styled.a`
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -114,6 +128,8 @@ const OpenIdeButton = styled(Link)`
   font-size: 12.5px;
   font-weight: 600;
   text-decoration: none;
+  cursor: pointer;
+  box-sizing: border-box;
   box-shadow: 0 2px 6px color-mix(in srgb, var(--ms-brand) 30%, transparent);
   transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
@@ -615,6 +631,7 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
   vulnerabilities: _vulnerabilities,
 }) => {
   const navigate = useNavigate();
+  const showQualityScorecard = useFeatureFlag("package_quality_scorecard");
   const effectiveLatest = latestVersion || (versionList && versionList.length > 0 ? versionList[0] : null);
   const isLatestVersion = Boolean(effectiveLatest && effectiveLatest === version);
 
@@ -704,7 +721,9 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
 
           <ActionToolbar>
             <OpenIdeButton
-              to={`/studio#memfs:package-${name || "model"}?libs=${encodeURIComponent(`${name}@${version || "latest"}`)}`}
+              href={buildVsCodeWorkbenchUrlForPackage(name || "", version)}
+              target="_blank"
+              rel="noopener noreferrer"
               title="Open interactive Studio workspace with this package"
             >
               <CodeIcon size={14} />
@@ -1076,84 +1095,86 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
         </UtilityRow>
 
         {/* ── Engineering Quality Scorecard ── */}
-        <ScorecardContainer data-testid="engineering-quality-scorecard">
-          <ScorecardTitle>
-            <ShieldCheckIcon size={14} fill="var(--ms-brand, var(--color-accent-cyan, #06b6d4))" />
-            <span>Quality Scorecard</span>
-          </ScorecardTitle>
+        {showQualityScorecard && (
+          <ScorecardContainer data-testid="engineering-quality-scorecard">
+            <ScorecardTitle>
+              <ShieldCheckIcon size={14} fill="var(--ms-brand, var(--color-accent-cyan, #06b6d4))" />
+              <span>Quality Scorecard</span>
+            </ScorecardTitle>
 
-          <ScorecardPill
-            $status={packageSignature ? "pass" : "neutral"}
-            title={
-              packageSignature
-                ? `Cryptographically signed release (Ed25519 signature: ${packageSignature.slice(0, 16)}...)`
-                : "Release has not been cryptographically signed with an Ed25519 publisher key."
-            }
-          >
-            {packageSignature ? <VerifiedIcon size={12} /> : <AlertIcon size={12} />}
-            <span>{packageSignature ? "Ed25519 Verified" : "Unsigned Release"}</span>
-          </ScorecardPill>
+            <ScorecardPill
+              $status={packageSignature ? "pass" : "neutral"}
+              title={
+                packageSignature
+                  ? `Cryptographically signed release (Ed25519 signature: ${packageSignature.slice(0, 16)}...)`
+                  : "Release has not been cryptographically signed with an Ed25519 publisher key."
+              }
+            >
+              {packageSignature ? <VerifiedIcon size={12} /> : <AlertIcon size={12} />}
+              <span>{packageSignature ? "Ed25519 Verified" : "Unsigned Release"}</span>
+            </ScorecardPill>
 
-          {oidcRepository && (
+            {oidcRepository && (
+              <ScorecardPill
+                $status="pass"
+                title={`Keyless CI/CD Attestation verified from GitHub/GitLab repository ${oidcRepository} (${oidcWorkflow || "CI"})`}
+                data-testid="oidc-attestation-pill"
+              >
+                <VerifiedIcon size={12} fill="var(--color-accent-emphasis, #0969da)" />
+                <span>CI: {oidcRepository}</span>
+              </ScorecardPill>
+            )}
+
             <ScorecardPill
               $status="pass"
-              title={`Keyless CI/CD Attestation verified from GitHub/GitLab repository ${oidcRepository} (${oidcWorkflow || "CI"})`}
-              data-testid="oidc-attestation-pill"
+              title="Static AST security screening verified zero high/critical hazards (no unsafe C bindings, split tokens, or directory traversal)."
             >
-              <VerifiedIcon size={12} fill="var(--color-accent-emphasis, #0969da)" />
-              <span>CI: {oidcRepository}</span>
-            </ScorecardPill>
-          )}
-
-          <ScorecardPill
-            $status="pass"
-            title="Static AST security screening verified zero high/critical hazards (no unsafe C bindings, split tokens, or directory traversal)."
-          >
-            <CheckIcon size={12} />
-            <span>Security Scan: 0 Hazards</span>
-          </ScorecardPill>
-
-          <ScorecardPill
-            $status={(vulnerabilityCount ?? 0) === 0 ? "pass" : "fail"}
-            title={
-              (vulnerabilityCount ?? 0) === 0
-                ? "OSV vulnerability database verified 0 known CVE / GHSA advisories in this release and its dependencies."
-                : `${vulnerabilityCount} known security vulnerabilities reported in OSV database for this release.`
-            }
-            data-testid="osv-vulnerabilities-pill"
-          >
-            {(vulnerabilityCount ?? 0) === 0 ? (
               <CheckIcon size={12} />
-            ) : (
-              <AlertIcon size={12} fill="var(--color-danger-fg, #cf222e)" />
-            )}
-            <span>
-              {(vulnerabilityCount ?? 0) === 0 ? "0 CVEs (OSV)" : `${vulnerabilityCount} Vulnerabilities (OSV)`}
-            </span>
-          </ScorecardPill>
+              <span>Security Scan: 0 Hazards</span>
+            </ScorecardPill>
 
-          <ScorecardPill
-            $status={jobStatus === "failed" ? "warn" : "pass"}
-            title={
-              jobStatus === "failed"
-                ? "Background ingestion or symbol indexing reported warnings."
-                : "Flat DAE equations and symbols verified against OpenModelica compiler ground truth."
-            }
-          >
-            {jobStatus === "failed" ? <AlertIcon size={12} /> : <CheckIcon size={12} />}
-            <span>{jobStatus === "failed" ? "Indexing Issue" : "OMC DAE Parity"}</span>
-          </ScorecardPill>
+            <ScorecardPill
+              $status={(vulnerabilityCount ?? 0) === 0 ? "pass" : "fail"}
+              title={
+                (vulnerabilityCount ?? 0) === 0
+                  ? "OSV vulnerability database verified 0 known CVE / GHSA advisories in this release and its dependencies."
+                  : `${vulnerabilityCount} known security vulnerabilities reported in OSV database for this release.`
+              }
+              data-testid="osv-vulnerabilities-pill"
+            >
+              {(vulnerabilityCount ?? 0) === 0 ? (
+                <CheckIcon size={12} />
+              ) : (
+                <AlertIcon size={12} fill="var(--color-danger-fg, #cf222e)" />
+              )}
+              <span>
+                {(vulnerabilityCount ?? 0) === 0 ? "0 CVEs (OSV)" : `${vulnerabilityCount} Vulnerabilities (OSV)`}
+              </span>
+            </ScorecardPill>
 
-          <ScorecardPill
-            $status={docPercentage >= 70 ? "pass" : docPercentage >= 30 ? "warn" : "neutral"}
-            title={`${documentedClasses} of ${totalClasses} classes have docstrings or descriptions.`}
-          >
-            <CodeIcon size={12} />
-            <span>
-              {docPercentage}% Documented ({documentedClasses}/{totalClasses})
-            </span>
-          </ScorecardPill>
-        </ScorecardContainer>
+            <ScorecardPill
+              $status={jobStatus === "failed" ? "warn" : "pass"}
+              title={
+                jobStatus === "failed"
+                  ? "Background ingestion or symbol indexing reported warnings."
+                  : "Flat DAE equations and symbols verified against OpenModelica compiler ground truth."
+              }
+            >
+              {jobStatus === "failed" ? <AlertIcon size={12} /> : <CheckIcon size={12} />}
+              <span>{jobStatus === "failed" ? "Indexing Issue" : "OMC DAE Parity"}</span>
+            </ScorecardPill>
+
+            <ScorecardPill
+              $status={docPercentage >= 70 ? "pass" : docPercentage >= 30 ? "warn" : "neutral"}
+              title={`${documentedClasses} of ${totalClasses} classes have docstrings or descriptions.`}
+            >
+              <CodeIcon size={12} />
+              <span>
+                {docPercentage}% Documented ({documentedClasses}/{totalClasses})
+              </span>
+            </ScorecardPill>
+          </ScorecardContainer>
+        )}
       </HeaderBar>
 
       {/* ── Alerts & Notifications ── */}
@@ -1196,7 +1217,7 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
           </Box>
         )}
 
-        {(jobStatus === "pending" || jobStatus === "running") && (
+        {(jobStatus === "pending" || jobStatus === "running" || jobStatus === "processing") && (
           <Box mb={3}>
             <Flash
               variant="warning"
@@ -1210,10 +1231,19 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
               }}
             >
               <Box display="flex" alignItems="center" gap={2}>
-                <SyncIcon size={16} fill="#d97706" />
-                <Text style={{ fontSize: 13, fontWeight: 500 }}>
-                  Background ingestion and indexing is currently in progress…
-                </Text>
+                <SpinSyncIcon size={16} fill="#d97706" />
+                <Box>
+                  <Text style={{ fontSize: 13, fontWeight: 600, display: "block" }}>
+                    Background ingestion and indexing is currently in progress…
+                  </Text>
+                  <Text style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+                    {jobStatus === "pending"
+                      ? "Waiting for a background worker slot."
+                      : totalClasses > 0
+                        ? `Parsing Modelica AST and indexing symbols (${totalClasses.toLocaleString()} classes indexed so far).`
+                        : "Parsing Modelica AST and extracting symbols for this release."}
+                  </Text>
+                </Box>
               </Box>
               {onOpenLogs && (
                 <Button

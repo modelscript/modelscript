@@ -912,3 +912,21 @@ export function openArtifactInVsCodeWindow(options: BuildEditorUrlOptions): void
     // BroadcastChannel unavailable
   }
 }
+
+/**
+ * Builds the standalone VS Code Web Workbench URL (`/vscode/workbench#memfs:package-...`) for a package.
+ */
+export function buildVsCodeWorkbenchUrlForPackage(name: string, version?: string): string {
+  const safeName = name || "model";
+  const libSpec = encodeURIComponent(`${safeName}@${version || "latest"}`);
+  return `/vscode/workbench#memfs:package-${safeName}?libs=${libSpec}`;
+}
+
+/**
+ * Opens a package directly in a new standalone VS Code window (`/vscode/workbench#memfs:package-...`).
+ */
+export function openPackageInVsCodeWindow(name: string, version?: string): void {
+  if (typeof window === "undefined") return;
+  const workbenchUrl = buildVsCodeWorkbenchUrlForPackage(name, version);
+  window.open(workbenchUrl, "_blank", "noopener,noreferrer");
+}

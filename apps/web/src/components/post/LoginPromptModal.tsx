@@ -85,7 +85,8 @@ export interface LoginPromptModalProps {
 
 export const LoginPromptModal: React.FC<LoginPromptModalProps> = ({ onClose }) => {
   const branding = useInstanceBranding();
-  const brandName = branding.instanceName || "Ansatz";
+  const brandName =
+    !branding.instanceName || branding.instanceName === "Ansatz" ? "Ansatz Network" : branding.instanceName;
   const navigate = useNavigate();
 
   const modal = (

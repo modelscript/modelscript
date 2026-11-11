@@ -514,4 +514,77 @@ end BooleanNetwork1;`;
     assert.ok(stylesSrc.includes("scrollbar-width: none;"), "TabBar in styles.ts must specify scrollbar-width: none");
     assert.ok(stylesSrc.includes("display: none;"), "TabBar in styles.ts must hide webkit scrollbars");
   });
+
+  test("getPackageLanguageBadge returns single colorful language badge for packages", async () => {
+    const { getPackageLanguageBadge } = await import("../src/pages/libraries/constants.js");
+
+    assert.deepEqual(getPackageLanguageBadge({ name: "Modelica", description: "Modelica Standard Library" }), {
+      id: "modelica",
+      label: "Modelica",
+    });
+    assert.deepEqual(getPackageLanguageBadge({ name: "Complex", description: "Complex Numbers Library" }), {
+      id: "modelica",
+      label: "Modelica",
+    });
+    assert.deepEqual(getPackageLanguageBadge({ name: "OpenIPSL", description: "OpenIPSL Power System Library" }), {
+      id: "modelica",
+      label: "Modelica",
+    });
+    assert.deepEqual(
+      getPackageLanguageBadge({ name: "Buildings", description: "Lawrence Berkeley National Lab Buildings" }),
+      {
+        id: "modelica",
+        label: "Modelica",
+      },
+    );
+
+    const cardItemPath = path.resolve(import.meta.dirname, "../src/pages/libraries/components/PackageCardItem.tsx");
+    const cardItemSrc = fs.readFileSync(cardItemPath, "utf-8");
+    assert.ok(cardItemSrc.includes("getPackageLanguageBadge"), "PackageCardItem must use getPackageLanguageBadge");
+    assert.ok(
+      !cardItemSrc.includes("domains.map"),
+      "PackageCardItem must not map over domains to render multiple tags",
+    );
+  });
+
+  test("package_quality_scorecard is defined, defaulted to false, and gates the quality scorecard", async () => {
+    const { DEFAULT_FRONTEND_FLAGS } = await import("../src/FeatureFlagContext.js");
+    assert.strictEqual(
+      DEFAULT_FRONTEND_FLAGS["package_quality_scorecard"],
+      false,
+      "package_quality_scorecard must default to false",
+    );
+
+    const headerPath = path.resolve(import.meta.dirname, "../src/pages/package/components/PackageHeader.tsx");
+    const headerSrc = fs.readFileSync(headerPath, "utf-8");
+    assert.ok(
+      headerSrc.includes('useFeatureFlag("package_quality_scorecard")'),
+      "PackageHeader must use the package_quality_scorecard feature flag",
+    );
+    assert.ok(
+      headerSrc.includes("showQualityScorecard && ("),
+      "PackageHeader must gate ScorecardContainer behind showQualityScorecard",
+    );
+  });
+
+  test("PackageDetailPage and PackageTreeSidebar preserve sidebar and display processing state", () => {
+    const detailPagePath = path.resolve(import.meta.dirname, "../src/pages/PackageDetailPage.tsx");
+    const detailPageSrc = fs.readFileSync(detailPagePath, "utf-8");
+    assert.ok(
+      detailPageSrc.includes('pkg.jobStatus === "pending" ||') &&
+        detailPageSrc.includes('pkg.jobStatus === "processing" ||'),
+      "PackageDetailPage must render sidebar when package is pending or processing",
+    );
+
+    const sidebarPath = path.resolve(import.meta.dirname, "../src/pages/package/components/PackageTreeSidebar.tsx");
+    const sidebarSrc = fs.readFileSync(sidebarPath, "utf-8");
+    assert.ok(
+      sidebarSrc.includes('data-testid="package-tree-processing"'),
+      "PackageTreeSidebar must render package-tree-processing container when empty while processing",
+    );
+    assert.ok(
+      sidebarSrc.includes("Indexing Package Contents"),
+      "PackageTreeSidebar must display Indexing Package Contents status",
+    );
+  });
 });

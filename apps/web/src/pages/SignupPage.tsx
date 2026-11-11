@@ -235,7 +235,8 @@ export default function SignupPage() {
   };
 
   const branding = useInstanceBranding();
-  const brandName = branding.instanceName || "Ansatz";
+  const brandName =
+    !branding.instanceName || branding.instanceName === "Ansatz" ? "Ansatz Network" : branding.instanceName;
   const [waitlistOpen, setWaitlistOpen] = useState(false);
 
   const emailDomain = email.includes("@") ? email.split("@").pop()!.trim().toLowerCase() : "";

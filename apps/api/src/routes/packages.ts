@@ -394,6 +394,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     const catalogLibraries = getStdlibCatalog().libraries;
     const catalogByPkgName = new Map<string, (typeof catalogLibraries)[number]>();
     for (const l of catalogLibraries) {
+      if (l.language?.toLowerCase() !== "modelica" && l.packageName.toLowerCase() !== "modelica") {
+        continue;
+      }
       const existing = catalogByPkgName.get(l.packageName);
       if (
         !existing ||
@@ -403,14 +406,37 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       }
     }
 
-    const storageNames = new Set(storage.list());
-    for (const pkgName of snapshot.packagesByName.keys()) {
-      storageNames.add(pkgName);
-    }
-    if (query || req.query["includeCatalog"] === "true") {
-      for (const pkgName of catalogByPkgName.keys()) {
-        storageNames.add(pkgName);
+    const isToyPackage = (pkgName: string) => {
+      if (pkgName.startsWith("@modelscript/example-") || pkgName.startsWith("@examples/")) {
+        return true;
       }
+      if (process.env["STDLIB_PACKS"] !== "all") {
+        if (
+          pkgName === "EPANET-Benchmark-Networks" ||
+          pkgName === "Standard-Robots" ||
+          pkgName === "SysML" ||
+          pkgName === "USGS-Groundwater-Aquifers" ||
+          pkgName === "SPICE-Standard" ||
+          pkgName === "AUTOSAR-Metamodels" ||
+          pkgName === "STEP-Fasteners" ||
+          pkgName === "BioModels-Curated-Core"
+        ) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const storageNames = new Set<string>();
+    for (const pkgName of storage.list()) {
+      if (!isToyPackage(pkgName)) storageNames.add(pkgName);
+    }
+    for (const pkgName of snapshot.packagesByName.keys()) {
+      if (!isToyPackage(pkgName)) storageNames.add(pkgName);
+    }
+    // Always deploy and include open source Modelica libraries from catalog
+    for (const pkgName of catalogByPkgName.keys()) {
+      if (!isToyPackage(pkgName)) storageNames.add(pkgName);
     }
     const names = Array.from(storageNames).sort();
 
@@ -609,6 +635,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         isDeprecated,
         deprecationReason: release?.deprecation_reason ?? null,
         isYanked,
+        language: catalogLib?.language || "modelica",
         domains,
         jobStatus,
       };

@@ -7,7 +7,7 @@ import { Link } from "react-router-dom";
 import type { LibraryListItem } from "../../../api";
 import Box from "../../../components/Box";
 import Spinner from "../../../components/Spinner";
-import { formatDomainLabel, formatTimeAgo, inferPackageDomains, splitScopedPackageName } from "../constants";
+import { formatTimeAgo, getPackageLanguageBadge, inferPackageDomains, splitScopedPackageName } from "../constants";
 import { DomainBadge } from "../styles";
 import { PackageIcon } from "./PackageIcon";
 
@@ -98,11 +98,10 @@ export const PackageCardItem: React.FC<PackageCardItemProps> = ({ lib }) => {
                 <AlertIcon size={10} /> deprecated
               </Label>
             )}
-            {domains.map((dom) => (
-              <DomainBadge key={dom} $domain={dom}>
-                {formatDomainLabel(dom)}
-              </DomainBadge>
-            ))}
+            {(() => {
+              const lang = getPackageLanguageBadge(lib);
+              return <DomainBadge $domain={lang.id}>{lang.label}</DomainBadge>;
+            })()}
           </Box>
 
           <Text

@@ -1646,6 +1646,16 @@ export class LibraryDatabase {
            ON CONFLICT(flag_key) DO NOTHING`,
         )
         .run();
+
+      // Reconcile spaces_hub and space_chat flags in existing databases where previously seeded as enabled
+      this.#db
+        .prepare(
+          `UPDATE feature_flags
+           SET is_enabled = 0, allowed_roles = 'admin,beta_tester', updated_at = datetime('now')
+           WHERE flag_key IN ('spaces_hub', 'space_chat', 'spaces', 'chat')
+             AND (allowed_roles = 'admin,beta_tester,user,guest' OR allowed_roles = '' OR allowed_roles IS NULL)`,
+        )
+        .run();
     } catch {}
 
     // Dedicated OpenAlex Database (openalex.db) is initialized lazily via this.openalexDb
@@ -1812,6 +1822,28 @@ export class LibraryDatabase {
         CREATE INDEX IF NOT EXISTS idx_space_workflow_runs_space ON space_workflow_runs(space_id, status);
         CREATE INDEX IF NOT EXISTS idx_space_workflow_runs_sha ON space_workflow_runs(space_id, commit_sha);
       `);
+    } catch {}
+
+    // Purge legacy toy packages and non-Modelica packages from packages table
+    try {
+      this.#db.exec(`
+        DELETE FROM packages WHERE name LIKE '@modelscript/example-%'
+          OR name LIKE '@examples/%';
+      `);
+      if (process.env["STDLIB_PACKS"] !== "all") {
+        this.#db.exec(`
+          DELETE FROM packages WHERE name IN (
+            'EPANET-Benchmark-Networks',
+            'Standard-Robots',
+            'SysML',
+            'USGS-Groundwater-Aquifers',
+            'SPICE-Standard',
+            'AUTOSAR-Metamodels',
+            'STEP-Fasteners',
+            'BioModels-Curated-Core'
+          );
+        `);
+      }
     } catch {}
   }
 

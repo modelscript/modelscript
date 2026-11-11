@@ -177,6 +177,33 @@ export function inferPackageDomains(pkg: {
   return Array.from(set).slice(0, 4);
 }
 
+export function getPackageLanguageBadge(pkg: {
+  name: string;
+  language?: string | undefined;
+  lang?: string | undefined;
+  domains?: string[] | undefined;
+  description?: string | null | undefined;
+}): { id: string; label: string } {
+  const lang = (pkg.language || pkg.lang || "").toLowerCase().trim();
+  if (lang === "modelica") return { id: "modelica", label: "Modelica" };
+  if (lang === "sysml2" || lang === "sysml") return { id: "sysml2", label: "SysML v2" };
+  if (lang === "spice") return { id: "power", label: "SPICE" };
+  if (lang === "step" || lang === "cad") return { id: "cad", label: "3D CAD" };
+  if (lang === "fmu" || lang === "ssp") return { id: "fmu", label: "FMU / SSP" };
+  if (lang) return { id: lang, label: formatDomainLabel(lang) };
+
+  const nameLower = pkg.name.toLowerCase();
+  const descLower = (pkg.description || "").toLowerCase();
+  const combined = `${nameLower} ${descLower}`;
+
+  if (nameLower === "sysml" || combined.includes("sysml")) {
+    return { id: "sysml2", label: "SysML v2" };
+  }
+
+  // Modelica is the default and canonical language for packages in the registry
+  return { id: "modelica", label: "Modelica" };
+}
+
 export function formatTimeAgo(dateStr?: string | null): string {
   if (!dateStr) return "";
   try {

@@ -143,7 +143,8 @@ export default function LoginPage() {
     }
   };
 
-  const brandName = branding.instanceName || "Ansatz";
+  const brandName =
+    !branding.instanceName || branding.instanceName === "Ansatz" ? "Ansatz Network" : branding.instanceName;
   const hasOAuthButtons = Boolean(
     authConfig?.oidcEnabled ||
     (!authConfig?.airgapEnforced && authConfig?.oauthProviders && authConfig.oauthProviders.length > 0),

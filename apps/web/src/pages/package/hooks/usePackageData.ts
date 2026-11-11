@@ -139,6 +139,11 @@ export function usePackageData(
       setCollaborators(collabData?.collaborators || []);
       setCanManageServer(Boolean(libDetail?.canManage || collabData?.canManage));
       setPendingTransfers(transfers.filter((t) => t.package_name === name));
+      if (classList && classList.length > 0) {
+        setJobInfo((prev) =>
+          !prev || prev.status === "failed" ? { status: "completed", classesProcessed: classList.length } : prev,
+        );
+      }
     } catch (err) {
       setError("Failed to load artifact details");
       console.error(err);
@@ -160,7 +165,10 @@ export function usePackageData(
       try {
         const status = await getJobStatus(name, version);
         setJobInfo((prev) => {
-          if (status.status === "completed" && (prev?.status === "pending" || prev?.status === "processing")) {
+          if (
+            status.status === "completed" &&
+            (prev?.status === "pending" || prev?.status === "processing" || prev?.status === "running")
+          ) {
             fetchData();
           }
           return status;
@@ -168,7 +176,12 @@ export function usePackageData(
       } catch (err: unknown) {
         const error = err as { response?: { status?: number | undefined } | undefined };
         if (error?.response?.status === 404) {
-          setJobInfo({ status: "failed" }); // No job exists, don't poll forever
+          setJobInfo((prev) => {
+            if (prev?.status === "completed" || classes.length > 0) {
+              return { status: "completed", classesProcessed: classes.length };
+            }
+            return { status: "failed" };
+          });
         } else {
           console.error("Failed to check job status", err);
         }
@@ -178,7 +191,7 @@ export function usePackageData(
     checkStatus();
     const interval = setInterval(checkStatus, 3000);
     return () => clearInterval(interval);
-  }, [name, version, jobStatus, fetchData]);
+  }, [name, version, jobStatus, classes.length, fetchData]);
 
   // Derived data from packument & library
   const currentManifest: NpmVersionManifest | null =

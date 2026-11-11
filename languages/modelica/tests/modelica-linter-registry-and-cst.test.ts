@@ -500,5 +500,88 @@ end M;
         `Expected M6052 in ${JSON.stringify(diags)}`,
       );
     });
+
+    it("warns on class missing a description string (M4130)", () => {
+      const diags = getCstDiagnostics(`
+model NoDescModel
+  Real x;
+equation
+  x = 0;
+end NoDescModel;
+`);
+      assert.ok(
+        diags.some((d) => d.code === ModelicaErrorCode.CLASS_MISSING_DESCRIPTION.code),
+        `Expected M4130 in ${JSON.stringify(diags)}`,
+      );
+    });
+
+    it("warns on public parameter missing a description string (M4131)", () => {
+      const diags = getCstDiagnostics(`
+model ParamNoDesc "Valid model description"
+  parameter Real p = 1.0;
+equation
+end ParamNoDesc;
+`);
+      assert.ok(
+        diags.some((d) => d.code === ModelicaErrorCode.PARAMETER_MISSING_DESCRIPTION.code),
+        `Expected M4131 in ${JSON.stringify(diags)}`,
+      );
+    });
+
+    it("warns on public constant missing a description string (M4132)", () => {
+      const diags = getCstDiagnostics(`
+model ConstNoDesc "Valid model description"
+  constant Real c = 2.718;
+equation
+end ConstNoDesc;
+`);
+      assert.ok(
+        diags.some((d) => d.code === ModelicaErrorCode.CONSTANT_MISSING_DESCRIPTION.code),
+        `Expected M4132 in ${JSON.stringify(diags)}`,
+      );
+    });
+
+    it("warns on resource reference using absolute filesystem path (M4136)", () => {
+      const diags = getCstDiagnostics(`
+model AbsPathModel "Description"
+  String p = "C:/data/table.mat";
+equation
+end AbsPathModel;
+`);
+      assert.ok(
+        diags.some((d) => d.code === ModelicaErrorCode.RESOURCE_ABSOLUTE_PATH.code),
+        `Expected M4136 in ${JSON.stringify(diags)}`,
+      );
+    });
+
+    it("detects empty or broken modelica:// URI reference (M4134)", () => {
+      const diags = getCstDiagnostics(`
+model BrokenUriModel "Description"
+  String u = "modelica://";
+equation
+end BrokenUriModel;
+`);
+      assert.ok(
+        diags.some((d) => d.code === ModelicaErrorCode.BROKEN_MODELICA_URI.code),
+        `Expected M4134 in ${JSON.stringify(diags)}`,
+      );
+    });
+
+    it("does not report M4130, M4131, or M4132 when descriptions are provided", () => {
+      const diags = getCstDiagnostics(`
+model Untitled "Untitled engineering model"
+  parameter Real p = 1.0 "Param description";
+  constant Real c = 2.0 "Constant description";
+  annotation(
+    Icon(coordinateSystem(preserveAspectRatio = false, extent = {{-100, -100}, {100, 100}})),
+    Diagram(coordinateSystem(preserveAspectRatio = false, extent = {{-100, -100}, {100, 100}}))
+  );
+end Untitled;
+`);
+      assert.ok(
+        !diags.some((d) => [4130, 4131, 4132].includes(d.code)),
+        `Did not expect M4130/M4131/M4132 but got: ${JSON.stringify(diags)}`,
+      );
+    });
   });
 });

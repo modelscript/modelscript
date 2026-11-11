@@ -47,6 +47,7 @@ import {
   getNodeBBox,
   getPortOutwardNormal,
   healOrthogonalVertices,
+  isContainerDiagramNode,
   portOrthogonalRouter,
   pruneIntermediateVertices,
   pruneOrthogonalLoops,
@@ -1960,7 +1961,14 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           const obstacles: RectLike[] = [];
           for (const node of g.getNodes()) {
             if (node.id === activeWireState.sourceCell.id || node.id === cell.id) continue;
-            if (isEphemeralDiagramNode(node.id)) continue;
+            if (
+              isEphemeralDiagramNode(node.id) ||
+              node.id.startsWith("comp_") ||
+              node.id.startsWith("__diagram_group_") ||
+              isContainerDiagramNode(node)
+            ) {
+              continue;
+            }
             const bbox = getNodeBBox(node);
             if (bbox) obstacles.push(bbox);
           }
@@ -2380,7 +2388,14 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       const obstacles: RectLike[] = [];
       for (const node of g.getNodes()) {
         if (node.id === source.cell || node.id === target.cell) continue;
-        if (isEphemeralDiagramNode(node.id)) continue;
+        if (
+          isEphemeralDiagramNode(node.id) ||
+          node.id.startsWith("comp_") ||
+          node.id.startsWith("__diagram_group_") ||
+          isContainerDiagramNode(node)
+        ) {
+          continue;
+        }
         const bbox = typeof node.getBBox === "function" ? node.getBBox() : null;
         if (bbox) {
           obstacles.push({

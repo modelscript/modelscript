@@ -63,6 +63,9 @@ function getPasswordStrength(pw: string): {
 
 export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onBack }) => {
   const { user, isAdmin, updateToken, refreshUser } = useAuth();
+  const isUserAdmin = Boolean(
+    user && (isAdmin || user.account_type === "admin" || user.role === "admin" || user.isAdmin === true),
+  );
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
   const navigate = useNavigate();
@@ -706,7 +709,7 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
         </DetailText>
         <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
       </DetailItem>
-      {isAdmin && (
+      {isUserAdmin && (
         <DetailItem $clickable onClick={() => navigate("/admin")}>
           <DetailIcon>
             <ShieldLockIcon size={20} fill="var(--color-accent-purple)" />

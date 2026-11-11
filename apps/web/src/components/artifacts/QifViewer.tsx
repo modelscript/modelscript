@@ -393,11 +393,14 @@ const QifViewerInner: React.FC<QifViewerProps & { parsedDoc?: QifDocument }> = (
 
   const heatmapSvg = useMemo(() => {
     if (viewTab !== "spc") return "";
+    if (typeof viewConfig?.["heatmapSvg"] === "string" && (viewConfig["heatmapSvg"] as string).includes("<svg")) {
+      return adaptSvgMarkupForTheme(DOMPurify.sanitize(viewConfig["heatmapSvg"] as string), isDark);
+    }
     const rawHeatmapSvg = DOMPurify.sanitize(
       renderQifMbdHeatmapSvg(baseParsedData.doc, baseParsedData.scene.spcSummary),
     );
     return adaptSvgMarkupForTheme(rawHeatmapSvg, isDark);
-  }, [viewTab, baseParsedData.doc, baseParsedData.scene.spcSummary, isDark]);
+  }, [viewTab, baseParsedData.doc, baseParsedData.scene.spcSummary, isDark, viewConfig]);
 
   const { doc, scene: sceneBase } = baseParsedData;
   const partGeometry = geometryState.status === "ready" ? geometryState.geometry : null;

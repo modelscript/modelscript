@@ -255,9 +255,11 @@ export function getLibraryInfo(resourceId?: string): { name: string; version?: s
     resourceId.startsWith("psse://stdlib/") ||
     resourceId.startsWith("psse://builtins")
   ) {
+    const meta = mountedLibraryMetadata.get("PSSE-Standard-Dynamics");
+    if (!meta) return null;
     return {
       name: "PSSE-Standard-Dynamics",
-      version: mountedLibraryMetadata.get("PSSE-Standard-Dynamics")?.version || "1.0.0",
+      version: meta.version || "1.0.0",
     };
   }
   if (resourceId.startsWith("builtin://")) {
@@ -343,6 +345,9 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
     for (const id of rootChildIds) {
       const entry = index.symbols.get(id);
       if (!entry || !isTreeVisible(entry)) continue;
+      if (entry.resourceId?.startsWith("builtin://") && !getLibraryInfo(entry.resourceId)) {
+        continue;
+      }
 
       const libInfo = getLibraryInfo(entry.resourceId);
       if (libInfo) {

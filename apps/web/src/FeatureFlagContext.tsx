@@ -112,6 +112,11 @@ export const DEFAULT_FRONTEND_FLAGS: FeatureFlags = {
   cad_step_viewer: true,
   cae_cloud_solver: false,
   billing_stripe_live: false,
+  billing: false,
+  organizations: false,
+  orgs: false,
+  invites: false,
+  user_invites: false,
   digital_twins: false,
   cosim_mqtt: false,
   timescaledb_historian: false,
@@ -123,13 +128,20 @@ export const DEFAULT_FRONTEND_FLAGS: FeatureFlags = {
   package_artifacts_tab: true,
   package_version_compare: true,
   package_advanced_exports: false,
+  package_quality_scorecard: false,
   bot_accounts: false,
+  ai_bots: false,
+  bots: false,
   sparql_rdf_endpoints: false,
   mcp_gateway_sse: false,
   composer_ai_polish: false,
   ai_polish: false,
   feeds_page: false,
   rss_feeds: false,
+  spaces_hub: false,
+  spaces: false,
+  space_chat: false,
+  chat: false,
   topic_dismissal: true,
   trending_topic_dismissal: true,
   ...DEFAULT_LANGUAGE_FLAGS,
@@ -292,6 +304,41 @@ export function FeatureFlagProvider({ children }: { children: React.ReactNode })
       if (key === "trending_topic_dismissal" && "topic_dismissal" in overrides) {
         return overrides["topic_dismissal"]!;
       }
+      if (key === "spaces" && "spaces_hub" in overrides) {
+        return overrides["spaces_hub"]!;
+      }
+      if (key === "spaces_hub" && "spaces" in overrides) {
+        return overrides["spaces"]!;
+      }
+      if (key === "chat" && "space_chat" in overrides) {
+        return overrides["space_chat"]!;
+      }
+      if (key === "space_chat" && "chat" in overrides) {
+        return overrides["chat"]!;
+      }
+      if (key === "billing" && "billing_stripe_live" in overrides) {
+        return overrides["billing_stripe_live"]!;
+      }
+      if (key === "billing_stripe_live" && "billing" in overrides) {
+        return overrides["billing"]!;
+      }
+      if (key === "organizations" && "orgs" in overrides) {
+        return overrides["orgs"]!;
+      }
+      if (key === "orgs" && "organizations" in overrides) {
+        return overrides["organizations"]!;
+      }
+      if (key === "invites" && "user_invites" in overrides) {
+        return overrides["user_invites"]!;
+      }
+      if (key === "user_invites" && "invites" in overrides) {
+        return overrides["invites"]!;
+      }
+      if (key === "bot_accounts" || key === "ai_bots" || key === "bots") {
+        if ("bot_accounts" in overrides) return overrides["bot_accounts"]!;
+        if ("ai_bots" in overrides) return overrides["ai_bots"]!;
+        if ("bots" in overrides) return overrides["bots"]!;
+      }
 
       // 3. Fall back to evaluated flags or default
       if (key === "repositories" && flags["repositories"] === undefined && flags["git_repositories"] !== undefined) {
@@ -333,6 +380,45 @@ export function FeatureFlagProvider({ children }: { children: React.ReactNode })
         flags["topic_dismissal"] !== undefined
       ) {
         return flags["topic_dismissal"]!;
+      }
+      if (key === "spaces" && flags["spaces"] === undefined && flags["spaces_hub"] !== undefined) {
+        return flags["spaces_hub"]!;
+      }
+      if (key === "spaces_hub" && flags["spaces_hub"] === undefined && flags["spaces"] !== undefined) {
+        return flags["spaces"]!;
+      }
+      if (key === "chat" && flags["chat"] === undefined && flags["space_chat"] !== undefined) {
+        return flags["space_chat"]!;
+      }
+      if (key === "space_chat" && flags["space_chat"] === undefined && flags["chat"] !== undefined) {
+        return flags["chat"]!;
+      }
+      if (key === "billing" && flags["billing"] === undefined && flags["billing_stripe_live"] !== undefined) {
+        return flags["billing_stripe_live"]!;
+      }
+      if (
+        key === "billing_stripe_live" &&
+        flags["billing_stripe_live"] === undefined &&
+        flags["billing"] !== undefined
+      ) {
+        return flags["billing"]!;
+      }
+      if (key === "organizations" && flags["organizations"] === undefined && flags["orgs"] !== undefined) {
+        return flags["orgs"]!;
+      }
+      if (key === "orgs" && flags["orgs"] === undefined && flags["organizations"] !== undefined) {
+        return flags["organizations"]!;
+      }
+      if (key === "invites" && flags["invites"] === undefined && flags["user_invites"] !== undefined) {
+        return flags["user_invites"]!;
+      }
+      if (key === "user_invites" && flags["user_invites"] === undefined && flags["invites"] !== undefined) {
+        return flags["invites"]!;
+      }
+      if (key === "bot_accounts" || key === "ai_bots" || key === "bots") {
+        if (flags["bot_accounts"] !== undefined) return flags["bot_accounts"]!;
+        if (flags["ai_bots"] !== undefined) return flags["ai_bots"]!;
+        if (flags["bots"] !== undefined) return flags["bots"]!;
       }
       return flags[key] ?? DEFAULT_FRONTEND_FLAGS[key] ?? false;
     },

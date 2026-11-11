@@ -5,8 +5,10 @@ import { describe, it } from "node:test";
 import {
   classKindFromEntry,
   getCompositeName,
+  getLibraryInfo,
   getTreeChildrenFast,
   isTreeVisible,
+  mountedLibraryMetadata,
 } from "../src/utils/hierarchy-utils.js";
 import {
   getOntologyCategoryNodes,
@@ -59,6 +61,16 @@ describe("LSP Tree Hierarchy & OWL 2 Tree Utilities", () => {
       const nodes = getOntologyRootNodes({}, mockStore);
       assert.strictEqual(nodes.length, 1);
       assert.strictEqual(nodes[0]?.name, "Workspace Ontology");
+    });
+
+    it("suppresses fallback ontology root node when store only contains bfo-core background axioms", () => {
+      const mockStore = {
+        axioms: [{ type: "ClassDeclaration", classIri: "bfo:Entity" }],
+        axiomsBySource: new Map([["bfo-core", [{ type: "ClassDeclaration", classIri: "bfo:Entity" }]]]),
+      };
+
+      const nodes = getOntologyRootNodes({}, mockStore);
+      assert.strictEqual(nodes.length, 0, "Must not create Workspace Ontology when only bfo-core axioms exist");
     });
 
     it("generates ontology category folder nodes (Classes, Properties, Individuals)", () => {
@@ -188,6 +200,49 @@ describe("LSP Tree Hierarchy & OWL 2 Tree Utilities", () => {
       assert.strictEqual(roots.length, 1);
       assert.strictEqual(roots[0]?.name, "TopModel");
       assert.strictEqual(roots[0]?.classKind, "model");
+    });
+
+    it("does not expose unmounted builtin libraries in getLibraryInfo or getTreeChildrenFast", async () => {
+      // PSSE is not mounted in mountedLibraryMetadata by default
+      mountedLibraryMetadata.delete("PSSE-Standard-Dynamics");
+      assert.strictEqual(getLibraryInfo("builtin://psse"), null);
+
+      const mockIndex = {
+        symbols: new Map([
+          [
+            100,
+            {
+              id: 100,
+              name: "PSSEDynamics",
+              kind: "Class",
+              parentId: null,
+              resourceId: "builtin://psse",
+              language: "psse",
+            },
+          ],
+        ]),
+        childrenOf: new Map([[0, [100]]]),
+      };
+
+      const roots = await getTreeChildrenFast(mockIndex);
+      assert.strictEqual(roots.length, 0, "Unmounted builtin PSSE library must not appear in roots");
+
+      // Once explicitly mounted, it must appear
+      mountedLibraryMetadata.set("PSSE-Standard-Dynamics", {
+        name: "PSSE-Standard-Dynamics",
+        version: "1.0.0",
+        language: "psse",
+      });
+      try {
+        const info = getLibraryInfo("builtin://psse");
+        assert.ok(info);
+        assert.strictEqual(info.name, "PSSE-Standard-Dynamics");
+
+        const mountedRoots = await getTreeChildrenFast(mockIndex);
+        assert.ok(mountedRoots.some((r) => r.id === "__LIB__:PSSE-Standard-Dynamics"));
+      } finally {
+        mountedLibraryMetadata.delete("PSSE-Standard-Dynamics");
+      }
     });
   });
 });
