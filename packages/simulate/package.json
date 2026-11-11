@@ -126,6 +126,7 @@
       "test": {
         "dependsOn": [
           "build",
+          "@modelscript/psse:build",
           "@modelscript/scad:build",
           "@modelscript/sysml2:build"
         ]

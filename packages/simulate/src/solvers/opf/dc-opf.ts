@@ -507,8 +507,23 @@ export function solveDcOpf(powerCase: GenericPowerCase, options: OpfOptions = {}
  */
 export async function solveDcOpfAsync(powerCase: GenericPowerCase, options: OpfOptions = {}): Promise<OpfSolution> {
   if (options.tier === "ampl" || (options.customAmplConstraints && options.customAmplConstraints.length > 0)) {
-    const amplPkg = "@modelscript/ampl";
-    const { solveAmplOpf } = (await import(amplPkg)) as any;
+    let solveAmplOpf: ((powerCase: GenericPowerCase, options?: OpfOptions) => Promise<OpfSolution>) | undefined;
+    try {
+      const amplPkg = "@modelscript/ampl";
+      const mod = (await import(amplPkg)) as unknown as {
+        solveAmplOpf: (powerCase: GenericPowerCase, options?: OpfOptions) => Promise<OpfSolution>;
+      };
+      solveAmplOpf = mod.solveAmplOpf;
+    } catch {
+      const amplRel = ["..", "..", "..", "..", "..", "languages", "ampl", "src", "index.js"].join("/");
+      const fallback = (await import(amplRel)) as unknown as {
+        solveAmplOpf: (powerCase: GenericPowerCase, options?: OpfOptions) => Promise<OpfSolution>;
+      };
+      solveAmplOpf = fallback.solveAmplOpf;
+    }
+    if (!solveAmplOpf) {
+      throw new Error("AMPL OPF solver is not available");
+    }
     return solveAmplOpf(powerCase, { ...options, formulation: "dc" });
   }
   if (options.tier === "direct") {

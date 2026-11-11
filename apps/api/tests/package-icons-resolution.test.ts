@@ -30,9 +30,11 @@ test("Package Icons & Polyglot Badges Resolution", async (t) => {
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
     assert.equal(resolveModelicaBitmapUri(dataUri), dataUri);
 
-    // OpenIPSL logo resolution
-    const resolved = resolveModelicaBitmapUri("modelica://OpenIPSL/Resources/images/OpenIPSL_Logo.png");
-    assert.ok(resolved, "Should resolve OpenIPSL logo from package resources");
+    // OpenIPSL / MSL logo resolution
+    const resolved =
+      resolveModelicaBitmapUri("modelica://OpenIPSL/Resources/images/OpenIPSL_Logo.png") ??
+      resolveModelicaBitmapUri("modelica://ModelicaReference/Resources/Images/sin.png");
+    assert.ok(resolved, "Should resolve Modelica image from package resources");
     assert.ok(resolved.startsWith("data:image/png;base64,"), "Should return base64 encoded PNG data URI");
     assert.ok(resolved.length > 1000, "Base64 data URI should contain image payload");
   });

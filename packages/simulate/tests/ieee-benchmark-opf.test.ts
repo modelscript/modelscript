@@ -37,8 +37,17 @@ async function loadPsseCase(name: string): Promise<GenericPowerCase> {
   if (!filePath) {
     throw new Error(`Test file not found: ${possiblePaths.join(" or ")}`);
   }
-  const pssePkg = "@modelscript/psse";
-  const { parseRaw } = (await import(pssePkg)) as any;
+  let parseRaw: any;
+  try {
+    const pssePkg = "@modelscript/psse";
+    ({ parseRaw } = (await import(pssePkg)) as any);
+  } catch {
+    const fallbackPath = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../../languages/psse/src/parser/raw-parser.js",
+    );
+    ({ parseRaw } = (await import(fallbackPath)) as any);
+  }
   const content = fs.readFileSync(filePath, "utf-8");
   return parseRaw(content);
 }
