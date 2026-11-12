@@ -50,7 +50,7 @@ import { FeaSolver } from "../../../../../../packages/simulate/src/fea/fea-solve
 import { Tet4Mesher } from "../../../../../../packages/simulate/src/fea/tet4-mesher.js";
 import { MeshQualityAnalyzer } from "../../../../../../packages/simulate/src/meshing/mesh-quality-analyzer.js";
 import type { IconName } from "../data/icons";
-import { getWasmRuntime, type WorkflowDiagnostic } from "./workflow-highlighter";
+import { getWasmRuntime, lintSyntaxForLang, type WorkflowDiagnostic } from "./workflow-highlighter";
 
 export interface CoordinatorPaneSpec {
   index: number;
@@ -1701,6 +1701,12 @@ export function evaluateCoordinatorScenario(
     const effectiveVonMises = extractNum(codes[3], /S_MISES_MAX\s*=\s*(-?\d+(?:\.\d+)?)/, vonMisesMax);
     const effectiveDeflection = extractNum(codes[3], /U3_MAX\s*=\s*(-?\d+(?:\.\d+)?)/, maxDeflectionMm);
 
+    const declaredSysmlMassKg = extractNum(
+      codes[0],
+      /attribute\s+mass\s*:\s*Real\s*=\s*(-?\d+(?:\.\d+)?)\s*;/,
+      effectiveMassKg,
+    );
+
     // Sync SysML v2 part def ClevisBracket attributes (Pane 0)
     codes[0] = replaceNumInCode(
       codes[0],
@@ -1908,6 +1914,23 @@ export function evaluateCoordinatorScenario(
           : `+${(effectiveDeflection - maxDeflection).toFixed(2)} mm over limit`,
       },
     );
+
+    if (Math.abs(declaredSysmlMassKg - effectiveMassKg) > 0.005) {
+      const posSysml = findLineCol(codes[0], /attribute\s+mass\s*:/);
+      const msg = `[MSC-THEORY-CONFLICT] ConstraintTheoryOracle: 'SysML2::ActuatorArchitecture::ClevisBracket.mass' is declared as ${declaredSysmlMassKg} kg but is bound (<-) to 'CAD::MountingBracket::computed_mass_kg' = ${effectiveMassKg.toFixed(2)} kg. Edit the CAD geometry to change the mass.`;
+      paneDiagnostics[0].push({ ...posSysml, severity: "error", code: "MSC-MASS-MIRROR", message: msg });
+      conflicts.push({
+        literals: [],
+        explanation: msg,
+        culpritEntities: ["SysML2::ActuatorArchitecture::ClevisBracket.mass", "CAD::MountingBracket::computed_mass_kg"],
+        theoryName: "ConstraintTheoryOracle",
+      });
+      const massLink = variableLinks[0];
+      if (massLink) {
+        massLink.status = "UNSAT";
+        massLink.marginText = `declared ${declaredSysmlMassKg} kg ≠ CAD ${effectiveMassKg.toFixed(2)} kg`;
+      }
+    }
 
     if (!massSat) {
       const posSysml = findLineCol(codes[0], /bracket\.mass\s*<=\s*max_mass/);
@@ -3316,6 +3339,13 @@ export function evaluateCoordinatorScenario(
   if (!satRes.isSat && satRes.conflict && conflicts.length === 0) {
     conflicts.push(satRes.conflict);
   }
+  // Native GLR syntax errors for the SysML v2 / Modelica panes (other panes are checked by their oracles).
+  scenario.panes.forEach((p, idx) => {
+    for (const d of lintSyntaxForLang(codes[idx]!, p.lang)) {
+      paneDiagnostics[idx]!.push(d);
+    }
+  });
+
   const isSat = conflicts.length === 0 && satRes.isSat;
 
   if (isSat) {

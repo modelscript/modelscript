@@ -586,6 +586,8 @@ function buildRotateExtrudeSolid(poly: [number, number][], angleDeg: number, fn:
  */
 export class ScadEvaluator {
   private static readonly MAX_CALL_DEPTH = 64;
+  /** Upper bound on elements produced by a single `[a:s:b]` range, guarding against runaway loops. */
+  private static readonly MAX_RANGE_ELEMENTS = 256;
   private globalScope: Scope;
   private workspace?: UnifiedWorkspace | undefined;
   private currentUri?: string | undefined;
@@ -2204,12 +2206,21 @@ export class ScadEvaluator {
         end = Number(exprs[2]);
       }
       const result: number[] = [];
+      const maxElements = ScadEvaluator.MAX_RANGE_ELEMENTS;
+      const tooLarge = (): never => {
+        throw new RangeError(`OpenSCAD range [${start}:${step}:${end}] exceeds ${maxElements} elements.`);
+      };
+      if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(step)) return result;
       if (step > 0) {
-        for (let v = start; v <= end + 1e-9; v += step)
+        for (let v = start; v <= end + 1e-9; v += step) {
+          if (result.length >= maxElements) tooLarge();
           result.push(Math.abs(v - Math.round(v)) < 1e-9 ? Math.round(v) : v);
+        }
       } else if (step < 0) {
-        for (let v = start; v >= end - 1e-9; v += step)
+        for (let v = start; v >= end - 1e-9; v += step) {
+          if (result.length >= maxElements) tooLarge();
           result.push(Math.abs(v - Math.round(v)) < 1e-9 ? Math.round(v) : v);
+        }
       }
       return result;
     }

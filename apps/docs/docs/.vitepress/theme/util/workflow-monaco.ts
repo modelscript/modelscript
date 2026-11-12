@@ -1179,6 +1179,7 @@ export async function mountWorkflowMonacoPane(options: MountWorkflowMonacoOption
     lineHeight: 20,
     fontFamily: "var(--vp-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace)",
     padding: { top: 12, bottom: 12 },
+    stickyScroll: { enabled: false },
     wordWrap: "on",
     wrappingStrategy: "advanced",
     scrollbar: {

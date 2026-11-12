@@ -255,8 +255,13 @@ export function sanitizeSysmlForFastParse(source: string): string {
       while (i < n && source[i] !== c) i += source[i] === "\\" ? 2 : 1;
       i++;
     } else if (/[0-9]/.test(c) && !isIdPart(source[i - 1])) {
-      // numeric literal such as 1.25 or 2.5e-3: skip the whole token
-      while (i < n && /[0-9A-Za-z_.]/.test(source[i]!)) i++;
+      // numeric literal such as 1.25 or 2.5e-3: skip the whole token. A dangling dot that is
+      // not followed by a digit (`0.` while the user is mid-way through typing `0.88`) is lexed
+      // as a feature-chain postfix and hits the same pathological parse time, so blank it out.
+      while (i < n && /[0-9A-Za-z_.]/.test(source[i]!)) {
+        if (source[i] === "." && !/[0-9]/.test(source[i + 1] ?? "")) out[i] = " ";
+        i++;
+      }
     } else if (c === "." && isIdPart(source[i - 1]) && isIdStart(d)) {
       out[i] = "_";
       i++;
@@ -276,6 +281,16 @@ function guardSysmlParser(runtime: WasmLanguageRuntime | null): WasmLanguageRunt
   const original = parser.parse.bind(parser);
   parser.parse = (src: string, ...rest: unknown[]) => original(sanitizeSysmlForFastParse(src), ...rest);
   parser.__sysmlGuarded = true;
+
+  // The LSP facade parses through its own path (not `parser.parse`), so it needs the same guard.
+  const facade = runtime?.facade as
+    | { parse: (src: string, ...rest: unknown[]) => unknown; __sysmlGuarded?: boolean }
+    | undefined;
+  if (facade && !facade.__sysmlGuarded && typeof facade.parse === "function") {
+    const originalFacadeParse = facade.parse.bind(facade);
+    facade.parse = (src: string, ...rest: unknown[]) => originalFacadeParse(sanitizeSysmlForFastParse(src), ...rest);
+    facade.__sysmlGuarded = true;
+  }
   return runtime;
 }
 
@@ -2861,6 +2876,29 @@ function lintViaDeclarativeTggRules(
       }
     }
   }
+}
+
+/**
+ * Native GLR syntax/semantic diagnostics for a single SysML v2 or Modelica buffer, for editors
+ * that are not tied to a TGG workflow pair (e.g. the digital-thread coordinator panes).
+ * Returns `[]` for other languages or when the WASM parsers are unavailable.
+ */
+export function lintSyntaxForLang(code: string, lang: string): WorkflowDiagnostic[] {
+  const diags: WorkflowDiagnostic[] = [];
+  try {
+    if (lang === "sysml") {
+      lintSysmlWithWasmLspFacade(code, diags);
+    } else if (lang === "modelica") {
+      // Only genuine GLR parse errors: the heuristic style/semicolon lints false-positive on the
+      // multi-line `annotation(twin = ...)` bindings these panes use.
+      const all: WorkflowDiagnostic[] = [];
+      lintModelicaWithWasmLspFacade(code, all);
+      diags.push(...all.filter((d) => d.severity === "error" && d.code === "M1001"));
+    }
+  } catch {
+    /* parser unavailable or input unparsable: no syntax diagnostics */
+  }
+  return diags;
 }
 
 /**
