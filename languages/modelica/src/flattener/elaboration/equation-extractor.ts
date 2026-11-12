@@ -2429,13 +2429,16 @@ export function extractClassEquations(
                       }
                     }
                   }
-                } else if (k === ExprKind.Der) {
+                } else if (k === ExprKind.Der || k === ExprKind.Pre) {
                   const inner = resolveToArrayCtor(dae.getExprLeft(id));
                   if (dae.getExprKind(inner) === ExprKind.ArrayCtor) {
-                    const distributeDer = (exprId: number): number => {
+                    const distributeOp = (exprId: number): number => {
                       if (dae.getExprKind(exprId) === ExprKind.ArrayCtor) {
                         const elems = getArrayCtorElements(exprId, dae);
-                        return dae.addArrayCtorExpr(elems.map((e) => distributeDer(e)));
+                        return dae.addArrayCtorExpr(elems.map((e) => distributeOp(e)));
+                      }
+                      if (k === ExprKind.Pre) {
+                        return dae.addPreExpr(exprId);
                       }
                       const ek = dae.getExprKind(exprId);
                       if (ek === ExprKind.RealLiteral || ek === ExprKind.IntLiteral) {
@@ -2457,7 +2460,7 @@ export function extractClassEquations(
                       }
                       return dae.addDerExpr(exprId);
                     };
-                    return distributeDer(inner);
+                    return distributeOp(inner);
                   }
                 } else if (k === ExprKind.Binary) {
                   const op = dae.getExprData1(id) as BinOp;
@@ -2756,7 +2759,10 @@ export function extractClassEquations(
               if (
                 hasLeftDims &&
                 dae.getExprKind(expandedRhs) !== ExprKind.ArrayCtor &&
-                (isSyncArrayCall(rhsExprId) || isCardinalityCall(rhsExprId) || isArrayReturningCall(rhsExprId))
+                (isSyncArrayCall(rhsExprId) ||
+                  isCardinalityCall(rhsExprId) ||
+                  isArrayReturningCall(rhsExprId) ||
+                  (flattener.options.omcCompatibility && dae.getExprKind(rhsExprId) === ExprKind.Call))
               ) {
                 let finalLhs = lhsExprId;
                 if (dae.getExprKind(finalLhs) === ExprKind.ArrayCtor) {
@@ -2764,7 +2770,18 @@ export function extractClassEquations(
                   while (firstElem >= 0 && dae.getExprKind(firstElem) === ExprKind.ArrayCtor) {
                     firstElem = dae.getExprLeft(firstElem);
                   }
-                  if (firstElem >= 0 && dae.getExprKind(firstElem) === ExprKind.Name) {
+                  const firstElemKind = firstElem >= 0 ? dae.getExprKind(firstElem) : -1;
+                  if (firstElemKind === ExprKind.Pre || firstElemKind === ExprKind.Der) {
+                    const innerId = dae.getExprData1(firstElem);
+                    if (innerId >= 0 && dae.getExprKind(innerId) === ExprKind.Name) {
+                      const elemName = dae.interner.resolve(dae.getExprData1(innerId));
+                      if (elemName && elemName.includes("[")) {
+                        const baseNameExpr = dae.addNameExpr(elemName.split("[")[0]!);
+                        finalLhs =
+                          firstElemKind === ExprKind.Pre ? dae.addPreExpr(baseNameExpr) : dae.addDerExpr(baseNameExpr);
+                      }
+                    }
+                  } else if (firstElem >= 0 && dae.getExprKind(firstElem) === ExprKind.Name) {
                     const elemName = dae.interner.resolve(dae.getExprData1(firstElem));
                     if (elemName && elemName.includes("[")) {
                       finalLhs = dae.addNameExpr(elemName.split("[")[0]!);
@@ -2777,9 +2794,9 @@ export function extractClassEquations(
                 }
                 const shape = effectiveLhsDims && effectiveLhsDims.length > 0 ? effectiveLhsDims : [1];
                 const eqIdx =
-                  !isInitial && typeof dae.addArrayEquation === "function"
+                  typeof dae.addArrayEquation === "function"
                     ? dae.addArrayEquation(finalLhs, finalRhs, shape)
-                    : dae.addEquation(isInitial ? EqKind.InitialSimple : EqKind.Array, finalLhs, finalRhs);
+                    : dae.addEquation(EqKind.Array, finalLhs, finalRhs);
                 if (eqIdx >= 0) emittedEqIndices.push(eqIdx);
                 const startB = node.startIndex ?? node.startOffset;
                 const endB = node.endIndex ?? node.endOffset;
@@ -3450,9 +3467,13 @@ export function extractClassEquations(
                     hasWhenLhsError = true;
                     return;
                   }
-                  const expLhs = expandWhenSide(lhsId);
-                  const expRhs = expandWhenSide(rhsId);
-                  emitWhenEqPair(expLhs, expRhs);
+                  if (isTupleLhs) {
+                    emitWhenEqPair(lhsId, rhsId);
+                  } else {
+                    const expLhs = expandWhenSide(lhsId);
+                    const expRhs = expandWhenSide(rhsId);
+                    emitWhenEqPair(expLhs, expRhs);
+                  }
                 }
                 return;
               }

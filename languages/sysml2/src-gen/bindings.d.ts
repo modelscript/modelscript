@@ -1671,62 +1671,61 @@ export declare enum SyntaxKind {
   SequenceExpression = 429,
   FeatureReferenceExpression = 430,
   FeatureReferenceMember = 431,
-  MetadataAccessExpression = 432,
-  ElementReferenceMember = 433,
-  InvocationExpression = 434,
-  ConstructorExpression = 435,
-  ConstructorResultMember = 436,
-  ConstructorResult = 437,
-  InstantiatedTypeMember = 438,
-  FeatureChain = 439,
-  _FeatureChain = 439,
-  OwnedFeatureChaining = 440,
-  ArgumentList = 441,
-  _ArgumentList = 441,
-  PositionalArgumentList = 442,
-  _PositionalArgumentList = 442,
-  ArgumentMember = 443,
-  Argument = 444,
-  NamedArgumentList = 445,
-  _NamedArgumentList = 445,
-  NamedArgumentMember = 446,
-  NamedArgument = 447,
-  ParameterRedefinition = 448,
-  ArgumentValue = 449,
-  NullExpression = 450,
-  LiteralExpression = 451,
-  _LiteralExpression = 451,
-  LiteralBoolean = 452,
-  BooleanValue = 453,
-  LiteralString = 454,
-  LiteralInteger = 455,
-  LiteralReal = 456,
-  RealValue = 457,
-  Name = 458,
-  GlobalQualification = 459,
-  Qualification = 460,
-  QualifiedName = 461,
-  START = 462,
-  _START = 462,
-  MetaClassificationTestOperator = 648,
-  CastOperator = 649,
-  MetaCastOperator = 650,
-  LiteralInfinity = 696,
-  DECIMALVALUE = 701,
-  DECIMAL_VALUE = 701,
-  EXPVALUE = 702,
-  EXP_VALUE = 702,
-  ID = 703,
-  UNRESTRICTEDNAME = 704,
-  UNRESTRICTED_NAME = 704,
-  STRINGVALUE = 705,
-  STRING_VALUE = 705,
-  REGULARCOMMENT = 706,
-  REGULAR_COMMENT = 706,
-  MLNOTE = 707,
-  ML_NOTE = 707,
-  SLNOTE = 708,
-  SL_NOTE = 708,
+  ElementReferenceMember = 432,
+  InvocationExpression = 433,
+  ConstructorExpression = 434,
+  ConstructorResultMember = 435,
+  ConstructorResult = 436,
+  InstantiatedTypeMember = 437,
+  FeatureChain = 438,
+  _FeatureChain = 438,
+  OwnedFeatureChaining = 439,
+  ArgumentList = 440,
+  _ArgumentList = 440,
+  PositionalArgumentList = 441,
+  _PositionalArgumentList = 441,
+  ArgumentMember = 442,
+  Argument = 443,
+  NamedArgumentList = 444,
+  _NamedArgumentList = 444,
+  NamedArgumentMember = 445,
+  NamedArgument = 446,
+  ParameterRedefinition = 447,
+  ArgumentValue = 448,
+  NullExpression = 449,
+  LiteralExpression = 450,
+  _LiteralExpression = 450,
+  LiteralBoolean = 451,
+  BooleanValue = 452,
+  LiteralString = 453,
+  LiteralInteger = 454,
+  LiteralReal = 455,
+  RealValue = 456,
+  Name = 457,
+  GlobalQualification = 458,
+  Qualification = 459,
+  QualifiedName = 460,
+  START = 461,
+  _START = 461,
+  MetaClassificationTestOperator = 647,
+  CastOperator = 648,
+  MetaCastOperator = 649,
+  LiteralInfinity = 694,
+  DECIMALVALUE = 699,
+  DECIMAL_VALUE = 699,
+  EXPVALUE = 700,
+  EXP_VALUE = 700,
+  ID = 701,
+  UNRESTRICTEDNAME = 702,
+  UNRESTRICTED_NAME = 702,
+  STRINGVALUE = 703,
+  STRING_VALUE = 703,
+  REGULARCOMMENT = 704,
+  REGULAR_COMMENT = 704,
+  MLNOTE = 705,
+  ML_NOTE = 705,
+  SLNOTE = 706,
+  SL_NOTE = 706,
   EOF = 1023,
 }
 
@@ -1875,16 +1874,16 @@ export declare enum FieldId {
   collect = 71,
   Select = 72,
   select = 72,
-  FeatureChain = 73,
-  featureChain = 73,
-  Value = 74,
-  value = 74,
-  Unit = 75,
-  unit = 75,
-  Left = 76,
-  left = 76,
-  Right = 77,
-  right = 77,
+  Value = 73,
+  value = 73,
+  Unit = 74,
+  unit = 74,
+  Left = 75,
+  left = 75,
+  Right = 76,
+  right = 76,
+  FeatureChain = 77,
+  featureChain = 77,
   Result = 78,
   result = 78,
   Chaining = 79,
@@ -2714,10 +2713,6 @@ export interface FeatureReferenceMemberNode extends SyntaxNode {
   readonly typeId: SyntaxKind.FeatureReferenceMember;
 }
 export declare function isFeatureReferenceMember(node: SyntaxNode | null | undefined): node is FeatureReferenceMemberNode;
-export interface MetadataAccessExpressionNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.MetadataAccessExpression;
-}
-export declare function isMetadataAccessExpression(node: SyntaxNode | null | undefined): node is MetadataAccessExpressionNode;
 export interface ElementReferenceMemberNode extends SyntaxNode {
   readonly typeId: SyntaxKind.ElementReferenceMember;
 }
@@ -6143,8 +6138,6 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is FeatureChainMemberNode;
     memberElement(node: SyntaxNode | null | undefined): SyntaxNode | null;
     memberElementList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    ownedRelatedElement(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    ownedRelatedElementList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const OwnedFeatureChain: {
     readonly typeId: number;
@@ -6194,13 +6187,6 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is FeatureReferenceMemberNode;
     memberElement(node: SyntaxNode | null | undefined): SyntaxNode | null;
     memberElementList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const MetadataAccessExpression: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is MetadataAccessExpressionNode;
-    ownedRelationship(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    ownedRelationshipList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ElementReferenceMember: {
     readonly typeId: number;

@@ -1122,9 +1122,12 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
     return lDims ?? rDims;
   }
 
-  // ── Case 6: Unary / Negation operators (ExprKind.Unary / ExprKind.Negate) ──
+  // ── Case 6: Unary / Negation / Der / Pre operators ──
   if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
     return getExprDims(dae.getExprLeft(exprId), dae, db, flattener);
+  }
+  if (kind === ExprKind.Der || kind === ExprKind.Pre) {
+    return getExprDims(dae.getExprData1(exprId), dae, db, flattener);
   }
 
   // ── Case 7: Function calls and built-in array constructors (ExprKind.Call) ──
@@ -1579,12 +1582,7 @@ export function evalDaeExpr(
   }
 }
 
-function evalDaeExprInner(
-  exprId: number,
-  dae: DAEBuilder,
-  visitedExprs: Set<number>,
-  visitedVars?: Set<number>,
-): any {
+function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<number>, visitedVars?: Set<number>): any {
   {
     const kind = dae.getExprKind(exprId);
     switch (kind) {

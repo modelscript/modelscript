@@ -120,6 +120,9 @@ export class ModelicaFlattener {
   public usedExternalObjects = new Set<SymbolId>();
   public usedRecordSymIds = new Set<SymbolId>();
   public usedRecordNames = new Set<string>();
+  public implicitInners: { name: string; classId: SymbolId }[] = [];
+  /** Element currently being instantiated as an implicit top-level `inner` (MLS §5.4), or null. */
+  public implicitInnerElem: SymbolId | null = null;
   public fmuComponents = new Map<string, SymbolId>();
   public failedFunctionIds = new Set<SymbolId>();
   public invalidInterfaceFunctionIds = new Set<SymbolId>();
@@ -1628,6 +1631,7 @@ export class ModelicaFlattener {
     this.usedExternalObjects.clear();
     this.usedRecordSymIds.clear();
     this.usedRecordNames.clear();
+    this.implicitInners = [];
     this.failedFunctionIds.clear();
     this.invalidInterfaceFunctionIds.clear();
     this.calledFunctionSymIds.clear();
@@ -1680,6 +1684,7 @@ export class ModelicaFlattener {
     dae.extensionMetadata["scalarizeMinMax"] = compilerOpts.scalarizeMinMax;
     dae.extensionMetadata["isGen"] = compilerOpts.isGen;
     dae.extensionMetadata["ignoreReplaceable"] = compilerOpts.ignoreReplaceable;
+    dae.extensionMetadata["omcCompatibility"] = Boolean(this.options.omcCompatibility);
     (dae.extensionMetadata as any).hasOldInstOption = compilerOpts.hasOldInstAnnotation;
     // Check for non-instantiable class specializations (package, function, etc.)
     const classCstForCheck = classCst as SyntaxNode | null;
@@ -3266,6 +3271,11 @@ export class ModelicaFlattener {
       // 2. Layer 2: Direct CST Equation extraction
       layer2EqStartIdx = dae.eqCount;
       this.extractClassEquations(rootClassId, "", dae);
+      if (this.implicitInners.length > 0) {
+        for (const inner of this.implicitInners) {
+          this.extractClassEquations(inner.classId, inner.name, dae);
+        }
+      }
       if (this.pendingArrayBindings.size > 0) {
         for (const items of this.pendingArrayBindings.values()) {
           for (const item of items) {

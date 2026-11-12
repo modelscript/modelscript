@@ -104,6 +104,8 @@ function interpolate1D(table: number[][], colIdx: number, u: number, smoothness 
 const MSL_C_NAME_MAP: Record<string, string> = {
   "Modelica.Utilities.Strings.length": "ModelicaStrings_length",
   "Modelica.Utilities.Strings.compare": "ModelicaStrings_compare",
+  "Modelica.Utilities.Strings.hashString": "ModelicaStrings_hashString",
+  "Modelica.Math.Random.Utilities.automaticLocalSeed": "ModelicaStrings_hashString",
   "Modelica.Utilities.Strings.Advanced.skipWhiteSpace": "ModelicaStrings_skipWhiteSpace",
   "Modelica.Utilities.Strings.Advanced.scanReal": "ModelicaStrings_scanReal",
   "Modelica.Utilities.Strings.Advanced.scanInteger": "ModelicaStrings_scanInteger",
@@ -136,6 +138,24 @@ export function evaluateMslCFunction(funcName: string, args: any[]): any {
       const cmp1 = caseSensitive ? s1 : s1.toLowerCase();
       const cmp2 = caseSensitive ? s2 : s2.toLowerCase();
       return cmp1 < cmp2 ? 1 : cmp1 > cmp2 ? 3 : 2; // Modelica convention: 1 (s1<s2), 2 (equal), 3 (s1>s2)
+    }
+    case "ModelicaStrings_hashString": {
+      const str = String(args[0] ?? "");
+      let hash = 0xaaaaaaaa >>> 0;
+      const bytes = Buffer.from(str, "utf8");
+      for (let i = 0; i < bytes.length; i++) {
+        const b = bytes[i]!;
+        if ((i & 1) === 0) {
+          const t1 = (hash << 7) >>> 0;
+          const t2 = Math.imul(b, hash >>> 3) >>> 0;
+          hash = (hash ^ (t1 ^ t2)) >>> 0;
+        } else {
+          const t1 = (hash << 11) >>> 0;
+          const t2 = (b ^ (hash >>> 5)) >>> 0;
+          hash = (hash ^ (~(t1 + t2) >>> 0)) >>> 0;
+        }
+      }
+      return hash | 0; // signed 32-bit integer
     }
     case "ModelicaStrings_skipWhiteSpace": {
       const str = String(args[0] ?? "");

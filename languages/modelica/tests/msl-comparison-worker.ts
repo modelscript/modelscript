@@ -1173,7 +1173,15 @@ function executeFlattenStage(context: Context, task: WorkerTask): FlattenResult 
     }
   }
   if (unmatchedEquations > 0) {
+    const missingInMsEqs = Array.from(omcEqSet).filter((e) => !msEqSet.has(e));
+    const extraInMsEqs = Array.from(msEqSet).filter((e) => !omcEqSet.has(e));
     diffParts.push(`Unmatched equations: ${unmatchedEquations}`);
+    if (missingInMsEqs.length > 0) {
+      diffParts.push(`MissingEq: [${missingInMsEqs.slice(0, 5).join(" ; ")}]`);
+    }
+    if (extraInMsEqs.length > 0) {
+      diffParts.push(`ExtraEq: [${extraInMsEqs.slice(0, 5).join(" ; ")}]`);
+    }
   }
   const diffSummary = diffParts.length > 0 ? diffParts.join(" | ") : undefined;
 

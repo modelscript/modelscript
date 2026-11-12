@@ -88,6 +88,7 @@ export interface ComponentFlattener {
   currentBindingCompName?: string | undefined;
   innerDeclarations: Map<string, Map<string, string>>;
   innerOuterComponents: Set<string>;
+  implicitInnerElem: SymbolId | null;
   disabledComponents: Set<string>;
   expandableBuses: Map<string, SymbolId>;
   usedExternalObjects: Set<SymbolId>;
@@ -1737,8 +1738,14 @@ export function instantiateElements(
       elements = expandedElements;
     }
     for (const elemId of elements) {
-      const compInst =
+      const baseCompInst =
         oldInstExpandedCompInst.get(elemId) ?? flattener.db.query<ComponentInstanceData>("componentInstance", elemId);
+      // MLS §5.4: an `outer` without a matching `inner` gets an implicit top-level `inner` instance of the
+      // same type. While that instance is being created the element is treated as `inner`.
+      const compInst =
+        baseCompInst && flattener.implicitInnerElem === elemId
+          ? { ...baseCompInst, isOuter: false, isInner: true }
+          : baseCompInst;
       compInstMap.set(elemId, compInst);
       if (compInst?.name && compInst?.typeSpecifier) {
         if (!compInst.typeSpecifier.includes(".") && compInst.name === compInst.typeSpecifier) {
@@ -2236,6 +2243,34 @@ export function instantiateElements(
               break;
             }
             p = p.includes(".") ? p.split(".").slice(0, -1).join(".") : p === "" ? null : "";
+          }
+
+          if (
+            !foundInner &&
+            prefix !== "" &&
+            flattener.options.omcCompatibility &&
+            !flattener.implicitInnerElem &&
+            !flattener.db
+              .childrenOf(flattener.currentRootClassId)
+              .some((c) => c.kind === "Component" && c.name === compInst.name)
+          ) {
+            // Create the implicit `inner` (e.g. `SysData`) at the top level, then bind this `outer` to it.
+            flattener.implicitInnerElem = elemId;
+            const savedClassId = flattener.currentClassId;
+            try {
+              instantiateElements(flattener, [elemId], "", dae, undefined);
+            } finally {
+              flattener.implicitInnerElem = null;
+              flattener.currentClassId = savedClassId;
+            }
+            if (flattener.innerDeclarations.get("")?.has(compInst.name)) {
+              foundInner = true;
+              (state.outerToInner ??= new Map<string, string>()).set(fullCompName, compInst.name);
+              const targetClassId = flattener.db.query<SymbolId | null>("classInstance", elemId);
+              if (targetClassId) {
+                flattener["implicitInners"].push({ name: compInst.name, classId: targetClassId });
+              }
+            }
           }
 
           if (!foundInner) {

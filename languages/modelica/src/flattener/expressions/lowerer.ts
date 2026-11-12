@@ -4848,6 +4848,13 @@ function lowerPreBinaryCSTExpression(
       }
     }
 
+    // 2.7. Builtin getInstanceName() function
+    if ((fnName === "getInstanceName" || cleanFnName === "getInstanceName") && argExprIds.length === 0) {
+      const rootName = flattener?.currentRootClassName ?? "";
+      const instPath = prefix ? (rootName ? `${rootName}.${prefix}` : prefix) : rootName;
+      return dae.addStringLiteral(instPath);
+    }
+
     const hadLeadingDot = typeof fnName === "string" && fnName.startsWith(".");
 
     // 3. Overloaded constructor: Complex(...)
@@ -6279,6 +6286,7 @@ function lowerPreBinaryCSTExpression(
         fnDae.eqCount === 0 &&
         fnDae.algorithmSections.length === 0 &&
         !fnDae.externalDecl &&
+        !fnDae.name.endsWith("Utilities.automaticLocalSeed") &&
         !hasOutputExpr &&
         argExprIds.every((aid) => evalDaeExpr(aid, dae) !== null)
       ) {

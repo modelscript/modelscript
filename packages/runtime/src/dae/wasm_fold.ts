@@ -2540,7 +2540,7 @@ export function foldArenaConstants(
 
   // 3. Fold equations once after variable parameters/constants have converged
   const eqFoldMap = omcCompatibility ? constMap : paramMap;
-  const ifElseFoldMap = omcCompatibility ? finalParamOrConstMap : paramMap;
+  const ifElseFoldMap = omcCompatibility ? constMap : paramMap;
   for (let eq = 0; eq < arena.eqCount; eq++) {
     const eqKind = arena.getEqKind(eq);
     if (eqKind === EqKind.Simple || eqKind === EqKind.InitialSimple || eqKind === EqKind.Array) {
@@ -5200,6 +5200,24 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
     if ((lhsElements && lhsElements.length === 0) || (rhsElements && rhsElements.length === 0)) {
       return;
     }
+    if (
+      Boolean((dae.extensionMetadata as Record<string, unknown> | undefined)?.["omcCompatibility"]) &&
+      kind === EqKind.InitialSimple &&
+      lhsElements &&
+      lhsElements.length > 0 &&
+      !rhsElements &&
+      dae.getExprKind(rhsId) === ExprKind.Call
+    ) {
+      const newLhs = cloneExpr(lhsId, "", null);
+      const newRhs = cloneExpr(rhsId, "", null);
+      if (targetList) {
+        targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
+      } else {
+        out.addEquation(kind, newLhs, newRhs, eqFlags);
+        recordEqMeta(out.eqCount - 1);
+      }
+      return;
+    }
     if (lhsElements && lhsElements.length > 0) {
       const N = lhsElements.length;
       for (let k = 0; k < N; k++) {
@@ -5393,6 +5411,27 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
     }
 
     if (recFields && recFields.length > 0) {
+      const isOmcCompat = Boolean(
+        dae.extensionMetadata?.["omcCompatibility"] ||
+        dae.extensionMetadata?.["isOldFrontend"] ||
+        out.extensionMetadata?.["omcCompatibility"],
+      );
+      const isRecordVarEq =
+        lhsRec &&
+        rhsRec &&
+        kind !== EqKind.Connect &&
+        (dae.getExprKind(rhsId) === ExprKind.Name || dae.getExprKind(rhsId) === ExprKind.Der);
+      if (isOmcCompat && isRecordVarEq) {
+        const newLhs = cloneExpr(lhsId, "", null);
+        const newRhs = cloneExpr(rhsId, "", null);
+        if (targetList) {
+          targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
+        } else {
+          out.addEquation(kind, newLhs, newRhs, eqFlags);
+          recordEqMeta(out.eqCount - 1);
+        }
+        return;
+      }
       for (const field of recFields) {
         const newLhs = getFieldExpr(dae, out, lhsId, field, cloneExpr, expandArrayEquations);
         const newRhs = getFieldExpr(dae, out, rhsId, field, cloneExpr, expandArrayEquations);

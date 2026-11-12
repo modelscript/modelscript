@@ -134,7 +134,7 @@ export const definitionStructuralQueries = {
 
     const walk = (entryId: number, parentId: number | null, pathPrefix: string) => {
       const entry = db.symbol(entryId);
-      if (!entry) return;
+      if (!entry) return null;
 
       const path = pathPrefix ? `${pathPrefix}.${entry.name}` : entry.name || "";
       const node: import("@modelscript/diagram").TopologyNode = {

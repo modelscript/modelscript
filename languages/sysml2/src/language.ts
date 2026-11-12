@@ -234,7 +234,6 @@ export const sysml2Language = language({
     [$["LiteralInteger"]!, $["RealValue"]!],
     [$["FeatureReferenceMember"]!, $["ElementReferenceMember"]!, $["OwnedFeatureChaining"]!],
     [$["Qualification"]!],
-    [$["FeatureChainMember"]!, $["OwnedFeatureChaining"]!],
     [$["_FeatureChain"]!],
     [$["_postfix_operation"]!],
     [$["MeasurementExpression"]!, $["PrimaryExpression"]!],
@@ -3056,23 +3055,20 @@ export const sysml2Language = language({
       prec(PREC.EXTENT, seq(field("operator", "all"), field("typeResult", $["TypeResultMember"]!))),
 
     _postfix_operation: ($) =>
-      seq(
-        choice(
-          seq("#", "(", field("indexOperand", $["SequenceExpression"]!), ")"),
-          seq(field("operator", "["), field("filterOperand", $["SequenceExpression"]!), "]"),
-          seq(
-            "->",
-            field("invocationType", $["InstantiatedTypeMember"]!),
-            choice(
-              field("body", $["BodyExpression"]!),
-              field("functionRef", $["FunctionReferenceExpression"]!),
-              $["_ArgumentList"]!,
-            ),
+      choice(
+        seq("#", "(", field("indexOperand", $["SequenceExpression"]!), ")"),
+        seq(field("operator", "["), field("filterOperand", $["SequenceExpression"]!), "]"),
+        seq(
+          "->",
+          field("invocationType", $["InstantiatedTypeMember"]!),
+          choice(
+            field("body", $["BodyExpression"]!),
+            field("functionRef", $["FunctionReferenceExpression"]!),
+            $["_ArgumentList"]!,
           ),
-          seq(".", field("collect", $["BodyExpression"]!)),
-          seq(".?", field("select", $["BodyExpression"]!)),
         ),
-        optional(seq(".", field("featureChain", $["FeatureChainMember"]!))),
+        seq(".", field("collect", $["BodyExpression"]!)),
+        seq(".?", field("select", $["BodyExpression"]!)),
       ),
 
     MeasurementExpression: ($) =>
@@ -3129,15 +3125,12 @@ export const sysml2Language = language({
     FunctionReference: ($) => field("ownedRelationship", $["ReferenceTyping"]!),
 
     FeatureChainMember: ($) =>
-      choice(
-        ref({
-          syntax: field("memberElement", $["QualifiedName"]!),
-          name: (self) => self.memberElement,
-          targetKinds: ["Feature"],
-          resolve: "qualified",
-        }),
-        field("ownedRelatedElement", $["OwnedFeatureChain"]!),
-      ),
+      ref({
+        syntax: field("memberElement", $["QualifiedName"]!),
+        name: (self) => self.memberElement,
+        targetKinds: ["Feature"],
+        resolve: "qualified",
+      }),
 
     OwnedFeatureChain: ($) => $["_FeatureChain"]!,
 
@@ -3146,7 +3139,6 @@ export const sysml2Language = language({
         $["NullExpression"]!,
         $["_LiteralExpression"]!,
         $["FeatureReferenceExpression"]!,
-        $["MetadataAccessExpression"]!,
         $["InvocationExpression"]!,
         $["ConstructorExpression"]!,
         $["BodyExpression"]!,
@@ -3173,7 +3165,6 @@ export const sysml2Language = language({
         resolve: "qualified",
       }),
 
-    MetadataAccessExpression: ($) => seq(field("ownedRelationship", $["ElementReferenceMember"]!), ".", "metadata"),
     ElementReferenceMember: ($) =>
       ref({
         syntax: field("memberElement", $["QualifiedName"]!),
