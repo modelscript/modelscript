@@ -1,11 +1,11 @@
 ---
 title: CLI Commands Reference
-description: Complete command, subcommand, and flag reference for the modelscript (msx) CLI across compilation, simulation, verification, digital thread, and 90 engineering domain formats.
+description: Complete command, subcommand, and flag reference for the modelscript (msx) CLI across compilation, simulation, verification, digital thread, and 92 engineering domain formats.
 ---
 
 # CLI Commands Reference
 
-This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **157 commands** (126 primary commands + 31 aliases) across **90 supported languages** can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
+This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **169 commands** (138 primary commands + 31 aliases) across **92 supported languages** can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
 
 ---
 
@@ -363,7 +363,7 @@ msx pscad verify-ieee2800 SolarPlant_250MW.pscx --tstop 3.0 --step 20us -o ieee2
 
 ### `polyglot`
 
-Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 90 supported languages.
+Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 92 supported languages.
 
 <CliCommand name="polyglot" :show-actions="false" />
 
@@ -1244,7 +1244,7 @@ Resolves semantic version constraints, verifies SHA-256 content-addressable dige
 
 ### `stdlib`
 
-Browses, searches, and bootstraps official standard libraries across all 90 engineering languages.
+Browses, searches, and bootstraps official standard libraries across all 92 engineering languages.
 
 <CliCommand name="stdlib" />
 
@@ -1358,3 +1358,237 @@ msx sign posts/thruster-design.md -k ~/.ssh/id_ed25519
 # Verify a post's cryptographic proof sidecar against a public key or server registry
 msx sign posts/thruster-design.md --verify -p ~/.ssh/id_ed25519.pub
 ```
+
+---
+
+## Additional Core & Domain Commands
+
+### `domain`
+
+Unified domain command router (`msx domain <lang> <action> [files..]`, alias `tool`) for invoking lifecycle or specialty actions across any registered language.
+
+<CliCommand name="domain" />
+
+---
+
+### `inspect`
+
+Inspect and summarize engineering models across any supported language (aliases: `info`, `summary`).
+
+<CliCommand name="inspect" />
+
+---
+
+### `benchmark`
+
+Run industrial verification and scalability benchmarks for PSS/E and PSCAD.
+
+<CliCommand name="benchmark" />
+
+---
+
+### `token`
+
+Manage granular personal access tokens (`create`, `list`, `revoke`).
+
+<CliCommand name="token" />
+
+---
+
+### `atp`
+
+Inspect, lint, simulate, and convert ATP-EMTP transient card decks (`.atp`, `.dat`).
+
+<CliCommand name="atp" />
+
+---
+
+### `comtrade`
+
+Inspect, lint, analyze, and convert IEEE C37.111 COMTRADE fault recordings (`.cfg`, `.dat`, `.cff`).
+
+<CliCommand name="comtrade" />
+
+---
+
+### `scl`
+
+Inspect, lint, audit, and convert IEC 61850 Substation Configuration files (`.scd`, `.cid`, `.ssd`).
+
+<CliCommand name="scl" />
+
+---
+
+### `dnp3`
+
+Inspect, lint, process telemetry, and convert IEEE 1815 / DNP3 device profiles (`.dnp3`, `.xml`, `.json`).
+
+<CliCommand name="dnp3" />
+
+---
+
+### `oneliner`
+
+Inspect, lint, solve short-circuit faults, and convert ASPEN OneLiner / CAPE cases (`.olx`, `.dxt`).
+
+<CliCommand name="oneliner" />
+
+---
+
+### `sel`
+
+Inspect, lint, evaluate protection, and convert SEL relay settings (`.rcf`, `.rdb`, `.sel`, `.txt`).
+
+<CliCommand name="sel" />
+
+---
+
+### `verilog-a`
+
+Inspect, validate, lower to DAE, and project Verilog-A / Verilog-AMS compact models (`.va`, `.vams`).
+
+<CliCommand name="verilog-a" />
+
+---
+
+### `ibis`
+
+Inspect, lint, evaluate, and lower ANSI/EIA-656-B IBIS buffer models (`.ibs`).
+
+<CliCommand name="ibis" />
+
+---
+
+### `touchstone`
+
+Inspect, lint, verify passivity, and lower Touchstone N-Port models (`.s1p` ... `.sNp`, `.ts`).
+
+<CliCommand name="touchstone" />
+
+---
+
+### `eclipse`
+
+Inspect, lint, solve reservoir depletion, and lower ECLIPSE-format reservoir decks (`.data`, `.dat`, `.inc`).
+
+<CliCommand name="eclipse" />
+
+---
+
+### `aspen`
+
+Inspect, lint, solve, and lower Aspen-compatible chemical process flowsheets (`.in`, `.inp`, `.bkp`).
+
+<CliCommand name="aspen" />
+
+---
+
+### `relap5`
+
+Inspect, lint, solve kinetics, and lower RELAP5-3D thermal-hydraulic reactor decks (`.i`, `.inp`, `.r5`).
+
+<CliCommand name="relap5" />
+
+---
+
+### `energyplus`
+
+Inspect, validate, lower to DAE, and project US DOE EnergyPlus building models (`.idf`, `.epJSON`).
+
+<CliCommand name="energyplus" />
+
+---
+
+### `hec-hms`
+
+Inspect, lint, simulate runoff, and convert USACE HEC-HMS hydrologic basin models (`.basin`, `.hms`).
+
+<CliCommand name="hec-hms" />
+
+---
+
+### `waterml`
+
+Inspect, lint, fit rating curves, and convert OGC WaterML 2.0 timeseries (`.waterml`, `.wml2`, `.xml`, `.json`).
+
+<CliCommand name="waterml" />
+
+---
+
+### `asm`
+
+Inspect, lint, simulate biokinetics, and convert IWA Activated Sludge Models (`.asm`, `.bsm`, `.wrrf`).
+
+<CliCommand name="asm" />
+
+---
+
+### `opendrive`
+
+Inspect, validate, sample clothoids, lower to DAE, and project ASAM OpenDRIVE road networks (`.xodr`, `.xml`).
+
+<CliCommand name="opendrive" />
+
+---
+
+### `openscenario`
+
+Inspect, lint, simulate, and lower ASAM OpenSCENARIO scenario files (`.xosc`, `.osc`).
+
+<CliCommand name="openscenario" />
+
+---
+
+### `plcopen`
+
+Inspect, validate, simulate, and project IEC 61131-3 PLCopen XML & Structured Text models (`.xml`, `.plcopen`, `.st`).
+
+<CliCommand name="plcopen" />
+
+---
+
+### `jsbsim`
+
+Inspect, lint, simulate 6-DOF flight dynamics, and lower JSBSim models (`.xml`).
+
+<CliCommand name="jsbsim" />
+
+---
+
+### `ccsds`
+
+Inspect, validate, propagate, lower to DAE, and project CCSDS and XTCE spacecraft data (`.oem`, `.opm`, `.omm`, `.xtce`).
+
+<CliCommand name="ccsds" />
+
+---
+
+### `cfd`
+
+Inspect, lint, solve, and project CFD aerodynamic models (`.cfg`, `.foam`, `.su2`).
+
+<CliCommand name="cfd" />
+
+---
+
+### `fea`
+
+Inspect, lint, solve, and project FEA structural models (`.inp`, `.bdf`, `.dat`).
+
+<CliCommand name="fea" />
+
+---
+
+### `c`
+
+Inspect, lint, and bridge C99/ANSI C files and headers (`.c`, `.h`).
+
+<CliCommand name="c" />
+
+---
+
+### `sbml`
+
+Inspect, lint, simulate biochemical networks, and lower SBML models (`.sbml`, `.xml`).
+
+<CliCommand name="sbml" />

@@ -102,7 +102,7 @@ describe("Settings Feature Flag Gating (AI Bots, Billing, Organizations, Invites
 
     // Entire Billing & Teams category gated
     assert.ok(
-      content.includes("...((hasOrganizations || hasBilling || hasInvites)") &&
+      content.includes("...(hasOrganizations || hasBilling || hasInvites") &&
         content.includes('category: "Billing & Teams"'),
       "SettingsPage must gate the Billing & Teams category behind hasOrganizations, hasBilling, and hasInvites",
     );

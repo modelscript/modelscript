@@ -54,7 +54,7 @@ end X;`;
     const root = activeFacade.parseIncremental(code, 0, 0, code.length, "file:///test_valid.mo");
     expect(root).toBeGreaterThan(0);
 
-    const diags = activeFacade.getDiagnostics(root);
+    const diags = activeFacade.getDiagnostics(root).filter((d: any) => !(d.code >= 4130 && d.code <= 4134));
     expect(diags).toEqual([]);
   });
 

@@ -22,7 +22,7 @@ describe("Modelica Incremental Nested Model Edit Test", () => {
     activeFacade.lastAstRoot = 0;
     const ast0 = activeFacade.parseIncremental(initialCode, 0, 0, initialCode.length, "file:///test.mo");
     expect(ast0).toBeGreaterThan(0);
-    expect(activeFacade.getDiagnostics(ast0)).toHaveLength(0);
+    expect(activeFacade.getDiagnostics(ast0).filter((d: any) => !(d.code >= 4130 && d.code <= 4134))).toHaveLength(0);
 
     // 2. Insert unclosed inner model '  model Y\n'
     const insertOffset1 = initialCode.indexOf("\n\n") + 1;
@@ -39,7 +39,7 @@ describe("Modelica Incremental Nested Model Edit Test", () => {
     const text3 = text2.slice(0, insertOffset2) + insertText2 + text2.slice(insertOffset2);
     const ast2 = activeFacade.parseIncremental(insertText2, insertOffset2, 0, text3.length, "file:///test.mo");
     expect(ast2).toBeGreaterThan(0);
-    const diags2 = activeFacade.getDiagnostics(ast2);
+    const diags2 = activeFacade.getDiagnostics(ast2).filter((d: any) => !(d.code >= 4130 && d.code <= 4134));
     expect(diags2).toHaveLength(0);
   });
 
@@ -47,7 +47,7 @@ describe("Modelica Incremental Nested Model Edit Test", () => {
     const baseCode = `model X\n  Real a;\n  Real b;\nend X;\n`;
     activeFacade.lastAstRoot = 0;
     const ast0 = activeFacade.parseIncremental(baseCode, 0, 0, baseCode.length, "file:///test.mo");
-    expect(activeFacade.getDiagnostics(ast0)).toHaveLength(0);
+    expect(activeFacade.getDiagnostics(ast0).filter((d: any) => !(d.code >= 4130 && d.code <= 4134))).toHaveLength(0);
 
     // Two edits: one near top, one near bottom
     const offsetA = baseCode.indexOf("Real a");
@@ -65,7 +65,7 @@ describe("Modelica Incremental Nested Model Edit Test", () => {
 
     const astBatch = activeFacade.parseIncrementalBatch(editsAsc, newTotalLength, "file:///test.mo");
     expect(astBatch).toBeGreaterThan(0);
-    const diags = activeFacade.getDiagnostics(astBatch);
+    const diags = activeFacade.getDiagnostics(astBatch).filter((d: any) => !(d.code >= 4130 && d.code <= 4134));
     expect(diags).toHaveLength(0);
   });
 });

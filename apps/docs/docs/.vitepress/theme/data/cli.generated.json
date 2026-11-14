@@ -3462,6 +3462,34 @@
         "type": "boolean",
         "description": "Preserve original token layout where grammar permits",
         "default": false
+      },
+      {
+        "name": "structural",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Reorganize sections structurally (merge duplicate equation sections, canonical ordering)",
+        "default": false
+      },
+      {
+        "name": "one-of-each-section",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Enforce a single equation/algorithm section by merging duplicate sections",
+        "default": false
+      },
+      {
+        "name": "imports-first",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Hoist import statements to the very top of each class",
+        "default": false
+      },
+      {
+        "name": "declaration-order",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Order declarations: parameters/constants first, then components, then inner classes",
+        "default": false
       }
     ],
     "subcommands": []
@@ -5395,12 +5423,27 @@
           "f"
         ],
         "type": "string",
-        "description": "Output format: terminal or json",
+        "description": "Output format: terminal, json, or sarif",
         "choices": [
           "terminal",
-          "json"
+          "json",
+          "sarif"
         ],
         "default": "terminal"
+      },
+      {
+        "name": "sarif-base",
+        "aliases": [],
+        "type": "string",
+        "description": "Base directory to relativize artifact URIs against in SARIF output"
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "File path to write diagnostic report to instead of stdout"
       },
       {
         "name": "profile",

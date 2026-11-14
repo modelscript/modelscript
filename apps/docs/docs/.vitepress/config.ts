@@ -65,6 +65,17 @@ const examplesBySlug: Record<string, unknown> = fs.existsSync(examplesJsonPath)
     )
   : {};
 
+function resolveEnvFlag(...keys: string[]): boolean {
+  for (const key of keys) {
+    const val = process.env[key];
+    if (val !== undefined) {
+      const normalized = val.trim().toLowerCase();
+      return normalized === "true" || normalized === "1";
+    }
+  }
+  return false;
+}
+
 export default defineConfig({
   markdown: {
     math: true,
@@ -101,6 +112,32 @@ export default defineConfig({
     },
   },
   vite: {
+    define: {
+      __FEATURE_FLAG_HOME_WORKFLOW_PAIRS__: JSON.stringify(
+        resolveEnvFlag(
+          "FEATURE_FLAG_HOME_WORKFLOW_PAIRS",
+          "VITE_FEATURE_FLAG_HOME_WORKFLOW_PAIRS",
+          "FEATURE_FLAG_HOME_SHOWCASE",
+          "VITE_FEATURE_FLAG_HOME_SHOWCASE",
+        ),
+      ),
+      __FEATURE_FLAG_HOME_SEMANTIC_COORDINATOR__: JSON.stringify(
+        resolveEnvFlag(
+          "FEATURE_FLAG_HOME_SEMANTIC_COORDINATOR",
+          "VITE_FEATURE_FLAG_HOME_SEMANTIC_COORDINATOR",
+          "FEATURE_FLAG_HOME_SHOWCASE",
+          "VITE_FEATURE_FLAG_HOME_SHOWCASE",
+        ),
+      ),
+      __FEATURE_FLAG_HOME_AI_AGENT__: JSON.stringify(
+        resolveEnvFlag(
+          "FEATURE_FLAG_HOME_AI_AGENT",
+          "VITE_FEATURE_FLAG_HOME_AI_AGENT",
+          "FEATURE_FLAG_HOME_SHOWCASE",
+          "VITE_FEATURE_FLAG_HOME_SHOWCASE",
+        ),
+      ),
+    },
     build: {
       target: ["es2020", "safari15"],
     },

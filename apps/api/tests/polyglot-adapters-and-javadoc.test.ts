@@ -324,7 +324,14 @@ describe("44-Language Package Adapters & Polyglot Javadoc Generation", () => {
       enqueueProcess: () => {},
     } as any;
 
-    await seedPrepackagedLibraries(storage, db, fakeQueue);
+    const prevPacks = process.env["STDLIB_PACKS"];
+    process.env["STDLIB_PACKS"] = "all";
+    try {
+      await seedPrepackagedLibraries(storage, db, fakeQueue);
+    } finally {
+      if (prevPacks === undefined) delete process.env["STDLIB_PACKS"];
+      else process.env["STDLIB_PACKS"] = prevPacks;
+    }
 
     const sysmlPkg = db.getPackage("SysML");
     expect(sysmlPkg).not.toBeNull();

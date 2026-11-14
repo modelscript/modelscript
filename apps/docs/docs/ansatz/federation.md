@@ -13,7 +13,7 @@ Ansatz implements the **W3C ActivityPub** standard (Server-to-Server and Client-
 
 In conventional social networks, posts consist of plain text, raster images, or static video. In Ansatz, posts carry **Morsels**—compact, self-contained, executable engineering payloads embedded directly inside ActivityStreams 2.0 `Note` or `Article` objects:
 
-1. **Executable Multi-Physics Models**: Deflate-compressed (`#m=...`) or content-addressed source bundles across any of the 68 supported languages (`Modelica`, `SysML v2`, `PSCAD`, `CIM/CGMES`, `OLGA`, `SPICE`, `URDF`, `OpenSCAD`, `DICOM-RT`).
+1. **Executable Multi-Physics Models**: Deflate-compressed (`#m=...`) or content-addressed source bundles across any of the 92 supported languages (`Modelica`, `SysML v2`, `PSCAD`, `CIM/CGMES`, `OLGA`, `SPICE`, `URDF`, `OpenSCAD`, `DICOM-RT`).
 2. **Reproducible Simulation Trajectories**: Encapsulated DAE/ODE time-series datasets (`Vega-Lite` / Arrow binary attachments) paired with exact solver tolerances, Pantelides index metrics, and initial conditions.
 3. **Interactive 3D CAD, FEA & CFD Views**: Compressed STEP B-Rep geometries, 3MF surgical guides, or VTK Unstructured Grid (`.vtu`) von Mises stress fields rendered directly in the feed via Three.js and `CanvasContextPool`.
 4. **Semantic Architecture & Schematic Diffs**: Structural AST/DAE diffs (`PolyglotVersionDiffView`) highlighting added, modified, or deleted components and equations across Git revisions.

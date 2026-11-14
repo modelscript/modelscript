@@ -20,14 +20,14 @@ Welcome to **ModelScript**, the open-core **computable digital thread** platform
 
 ## What is the Computable Digital Thread?
 
-Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **90 engineering languages and file formats** spanning **12 industry verticals**:
+Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **92 engineering languages and file formats** spanning **12 industry verticals**:
 
 - **System Architecture, Requirements, Security & Ontologies** (`SysML v2`, `KerML`, `ReqIF`, `NIST OSCAL`, `OSLC 3.0`, `OWL2`, `AAS / DDP`)
 - **Multi-Domain Acausal, Optimization & Block-Diagram Simulation** (`Modelica 3.x`, `ModelScript .msx`, `AMPL`, `MATLAB Simulink`, `EASY5`, `FMI 2.0/3.0 FMU`, `SSP 1.0/2.0`)
 - **Power Grids, Telecom, Electronics & Embedded Control** (`PSCAD EMT`, `Siemens PSS/E`, `DIgSILENT PowerFactory`, `GE PSLF`, `CIM / CGMES`, `OpenDSS`, `OCPP`, `OpenADR`, `DWDM Optical`, `5G NR RAN`, `Outside-Plant Fiber`, `SPICE`, `Verilog-A`, `IBIS`, `Touchstone`, `PLCopen IEC 61131-3`, `AutomationML`, `AUTOSAR ARXML`, `ANSI C`, `Fortran`)
 - **3D CAD Geometry, Metrology, Multibody & Robotics** (`STEP AP214/AP242`, `OpenUSD`, `ISO 23952 QIF`, `OpenSCAD CSG`, `ROS URDF / Xacro`, `SIMPACK`, `MSC Adams`, `GENSYS`, `OpenSim`, `ASAM OpenDRIVE / OpenSCENARIO`, `GTFS`)
 - **Continuum CAE, Process, Chemistry, Thermal, Subsurface & Water Networks** (`CalculiX / Abaqus FEA`, `SU2 / OpenFOAM CFD`, `OLGA`, `PipelineStudio`, `ECLIPSE`, `TOUGH2/TOUGH3`, `Aspen Plus`, `gPROMS`, `Cantera`, `PHREEQC`, `SMILES / SDF`, `RELAP5-3D`, `EnergyPlus`, `EPANET`, `EPA SWMM`, `USACE HEC-RAS`, `USGS MODFLOW 6`, `US EPA LandGEM`)
-- **Systems/Synthetic Biology, Radiology & Computer-Assisted Surgery** (`SBML`, `Antimony`, `BioNetGen`, `SBOL3`, `SED-ML`, `NONMEM NMTRAN`, `PDB / mmCIF`, `GenBank / FASTA`, `CellML`, `FEBio / SOFA`, `DICOM-RT`, `TOPAS / GATE`, `NIfTI / NRRD`, `3MF Medical`, `OpenIGTLink / PLUS`)
+- **Systems/Synthetic Biology, Radiology & Computer-Assisted Surgery** (`SBML`, `Antimony`, `BioNetGen`, `SBOL3`, `SED-ML`, `NONMEM NMTRAN`, `Monolix MLXTRAN`, `PDB / mmCIF`, `GenBank / FASTA`, `CellML`, `NEURON NMODL`, `FEBio / SOFA`, `DICOM-RT`, `TOPAS / GATE`, `NIfTI / NRRD`, `3MF Medical`, `OpenIGTLink / PLUS`)
 
 Traditionally, these disciplines operate in disconnected silos. Enterprise "digital threads" have historically been **passive and descriptive** — composed of static document links, heavyweight PLM databases, and manual spreadsheets that drift out of sync the moment a parameter changes.
 
@@ -50,7 +50,7 @@ flowchart LR
 | :--------------------------- | :---------------------------------------------------------- | :--------------------------------------------------------------------------------------------- |
 | **Artifact Storage**         | Proprietary binary blobs in centralized SQL/PLM vaults      | Plain-text, human-readable source files versioned in Git                                       |
 | **Cross-Domain Links**       | Manual, untyped hyperlinks that silently go stale           | Typed `@satisfies` / `@verifies` bindings & bidirectional Triple Graph Grammars (TGG)          |
-| **Static Analysis**          | Checked manually during design reviews                      | **1,260+ static lint rules** across **90 languages** evaluated on every keystroke and CI push  |
+| **Static Analysis**          | Checked manually during design reviews                      | **1,160 static lint rules** across **92 languages** evaluated on every keystroke and CI push   |
 | **Requirement Verification** | Post-hoc spreadsheet sign-offs                              | Automated $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and Taylor-model reachability proofs        |
 | **Code Review & Diffs**      | Opaque binary attachments or screenshot exports             | Structural AST/DAE diffs and visual schematic PR diffs (`msx pr-diff`)                         |
 | **AI Copilot Integration**   | Unverified text generation prone to physical hallucinations | Closed-loop MCP server (`@modelscript/mcp`) grounded in DAE solvers and formal counterexamples |
@@ -59,7 +59,7 @@ flowchart LR
 
 ## Core Pillars of ModelScript
 
-### 1. Code-First Engineering Across 90 Languages (25 Stable & 65 Beta)
+### 1. Code-First Engineering Across 92 Languages (25 Stable & 67 Beta)
 
 Every model, schematic, requirement, netlist, and mesh configuration lives as clean text in Git. Engineers diff, review, merge, and gate physical hardware designs using standard pull requests, SARIF code scanning, and reproducible CI/CD pipelines.
 
@@ -95,7 +95,7 @@ A single background worker pool (`@modelscript/lsp`) indexes polyglot workspaces
 
 ### 6. AI-Native Closed-Loop Engineering (`@modelscript/mcp`)
 
-Large language models struggle with physical engineering when left to guess differential equations in free text. `@modelscript/mcp` exposes **92 deterministic compiler, simulation, CAD, TGG, grid/water/telecom, and formal verification tools** over the Model Context Protocol (MCP). AI agents iteratively draft code, run `modelica_lint`, integrate stiff DAEs with `modelica_simulate`, falsify requirements, and calibrate parameters via `modelica_diff_calibrate` until every formal proof passes.
+Large language models struggle with physical engineering when left to guess differential equations in free text. `@modelscript/mcp` exposes **105 deterministic compiler, simulation, CAD, TGG, grid/water/telecom, and formal verification tools** over the Model Context Protocol (MCP). AI agents iteratively draft code, run `modelica_lint`, integrate stiff DAEs with `modelica_simulate`, falsify requirements, and calibrate parameters via `modelica_diff_calibrate` until every formal proof passes.
 
 ---
 
@@ -159,11 +159,11 @@ The official extension turns VS Code or Cursor into a complete multi-domain mode
 1. Open VS Code and open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 2. Search for **`ModelScript`** (`modelscript.modelscript`) and click **Install**.
 
-The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 90 supported formats, interactive schematic and Bode plot panels, the 3D WebGL CAD viewer with formal verification overlays, and the DAP time-travel simulation debugger.
+The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 92 supported formats, interactive schematic and Bode plot panels, the 3D WebGL CAD viewer with formal verification overlays, and the DAP time-travel simulation debugger.
 
 ### 4. AI Coding Assistants & MCP Server (`@modelscript/mcp`)
 
-Connect AI agents (Claude Code, Claude Desktop, Cursor, Windsurf, or custom orchestrators) to ModelScript's **92 deterministic engineering tools** over the Model Context Protocol:
+Connect AI agents (Claude Code, Claude Desktop, Cursor, Windsurf, or custom orchestrators) to ModelScript's **105 deterministic engineering tools** over the Model Context Protocol:
 
 ```bash
 # Register @modelscript/mcp in Claude Code with a single command
@@ -248,7 +248,7 @@ npm run dev           # Start API backend, LSP workers, and Studio
 ## Next Steps
 
 - Follow the **[Getting Started Tutorial](./getting-started.md)** to build, verify, simulate, and export your first connected multi-domain model.
-- Explore **[CLI Overview](../cli/overview.md)** for global flags, environment variables, and all 157 `msx` commands (126 primary commands + 31 aliases).
+- Explore **[CLI Overview](../cli/overview.md)** for global flags, environment variables, and all 169 `msx` commands (138 primary commands + 31 aliases).
 
 ================================================================================
 DOCUMENT: Getting Started
@@ -473,7 +473,7 @@ msx dhf status drone_specs.sysml DroneSimulation.mo
 
 ## Next Steps
 
-- **[Polyglot Languages Overview](../languages/overview.md)** — Explore all 68 supported engineering languages and cross-domain projections.
+- **[Polyglot Languages Overview](../languages/overview.md)** — Explore all 92 supported engineering languages and cross-domain projections.
 - **[AI Agents & MCP Workflows](./ai-agents.md)** — Automate closed-loop synthesis, TGG reconciliation, and RTM auditing with AI agents.
 - **[CI/CD & GitHub Actions](./ci-cd.md)** — Gate pull requests with `msx lint`, `msx verify --format sarif`, `msx pr-diff`, and `msx dhf export`.
 - **[Triple Graph Grammar (TGG) Engine](../architecture/tgg.md)** — Learn how bidirectional synchronization keeps SysML v2 and Modelica aligned.
@@ -487,7 +487,7 @@ CANONICAL URL: https://modelscript.org/guide/ai-agents
 
 Large language models excel at generating structure and exploring design spaces, but when asked to write differential equations, power-grid topologies, or safety-critical requirements in free text, they frequently hallucinate mismatched units, structurally singular DAEs, or violated physical conservation laws.
 
-ModelScript closes this loop through **`@modelscript/mcp`** — a deterministic **Model Context Protocol (MCP)** server exposing **92 polyglot compilation, simulation, CAD, TGG, power grid, municipal water, telecom, and formal verification tools** (plus **70+ domain-specific tool extensions**). Instead of guessing physics, an AI agent iteratively compiles, simulates, verifies, and calibrates models against mathematical solvers until every requirement proof passes.
+ModelScript closes this loop through **`@modelscript/mcp`** — a deterministic **Model Context Protocol (MCP)** server exposing **105 polyglot compilation, simulation, CAD, TGG, power grid, municipal water, telecom, and formal verification tools** (plus **70+ domain-specific tool extensions**). Instead of guessing physics, an AI agent iteratively compiles, simulates, verifies, and calibrates models against mathematical solvers until every requirement proof passes.
 
 ---
 
@@ -517,7 +517,7 @@ Or add it directly from your terminal via the VS Code CLI:
 code --add-mcp '{"name":"modelscript","command":"npx","args":["-y","@modelscript/mcp"]}'
 ```
 
-Installing the official **ModelScript VS Code Extension** (`ext install modelscript.modelscript`) also registers all 92 tools natively into `vscode.lm.registerTool`, unlocking the **`@modelscript`** GitHub Copilot Chat participant (`/explain`, `/fix`, `/simulate`, `/verify`, `/optimize`, `/diagram`) and the dedicated **ModelScript AI** sidebar panel.
+Installing the official **ModelScript VS Code Extension** (`ext install modelscript.modelscript`) also registers all 105 tools natively into `vscode.lm.registerTool`, unlocking the **`@modelscript`** GitHub Copilot Chat participant (`/explain`, `/fix`, `/simulate`, `/verify`, `/optimize`, `/diagram`) and the dedicated **ModelScript AI** sidebar panel.
 
 ### Claude Code (`stdio`)
 
@@ -573,12 +573,12 @@ When prompting an LLM outside of MCP (or seeding system prompts for custom agent
 ```mermaid
 sequenceDiagram
     participant Agent as AI Agent (Claude / Cursor)
-    participant MCP as @modelscript/mcp (92 Tools)
+    participant MCP as @modelscript/mcp (105 Tools)
     participant Core as WASM GLR + Salsa + DAE Arena
     participant Verify as 13 Theory Oracles & Solvers
 
     Agent->>MCP: 1. modelica_lint / sysml2_check_constraints
-    MCP->>Core: Parse CST & evaluate 1,260+ static lint rules
+    MCP->>Core: Parse CST & evaluate 1,160 static lint rules
     Core-->>Agent: Structured diagnostics (line, col, rule, fix)
     Agent->>MCP: 2. modelscript_closed_loop_synthesize
     MCP->>Verify: Flatten DAE -> Integrate -> Check STL robustness
@@ -704,7 +704,7 @@ Use these prompt templates with Claude Code or Cursor when working in a ModelScr
 
 ## Next Steps
 
-- **[MCP Server & IDE Workbench Reference](../reference/mcp-and-ide.md)** — Full schema reference for all 92 core MCP tools, IDE copilot tiers, and autonomous social bots.
+- **[MCP Server & IDE Workbench Reference](../reference/mcp-and-ide.md)** — Full schema reference for all 105 core MCP tools, IDE copilot tiers, and autonomous social bots.
 - **[CI/CD & GitHub Actions](./ci-cd.md)** — Automate headless linting, SARIF verification, visual PR diffs, and DHF compliance dossiers on every commit.
 
 ================================================================================
@@ -733,7 +733,7 @@ flowchart LR
 
 | Stage                      | Command                                        | Output Format                             | Purpose                                                                                                 |
 | :------------------------- | :--------------------------------------------- | :---------------------------------------- | :------------------------------------------------------------------------------------------------------ |
-| **Static Analysis**        | `msx lint ./models ./requirements`             | `json`, `text`                            | Enforces 1,260+ static syntax, type, unit, and structural rules across 90 languages.                    |
+| **Static Analysis**        | `msx lint ./models ./requirements`             | `json`, `text`                            | Enforces 1,160 static syntax, type, unit, and structural rules across 92 languages.                     |
 | **Cross-Domain Alignment** | `msx polyglot verify .`                        | Terminal / Exit Code                      | Verifies `@satisfies` / `@verifies` bindings and cross-language port compatibility.                     |
 | **Visual PR Review**       | `msx pr-diff --base origin/main`               | `pr-comment`, `visual-svg`, `visual-html` | Generates color-coded schematic diffs (added = green, modified = amber, deleted = red).                 |
 | **Formal Verification**    | `msx verify <Class> <file> --format sarif`     | `sarif`, `junit`, `ctrf`, `html`, `dhf`   | Runs $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and flowpipe proofs; integrates with GitHub Security tab. |
@@ -917,7 +917,7 @@ msx cloud download job_01j8x9k2m ./artifacts
 ## Next Steps
 
 - **[CLI Overview](../cli/overview.md)** — Global flags (`--daemon`), environment variables, and exit code conventions.
-- **[CLI Commands Reference](../cli/commands.md)** — Exhaustive flag tables for all 157 `msx` commands (126 primary commands + 31 aliases).
+- **[CLI Commands Reference](../cli/commands.md)** — Exhaustive flag tables for all 169 `msx` commands (138 primary commands + 31 aliases).
 - **[Standards & Export Formats](../reference/export-formats.md)** — Details on SARIF 2.1.0, FMI 2.0/3.0, SSP, ReqIF, OSLC 3.0, and FDA/ISO DHF bundles.
 
 ================================================================================
@@ -1766,7 +1766,7 @@ CANONICAL URL: https://modelscript.org/ansatz/overview
 While **ModelScript** provides the core command-line toolchain (`msx`), WebAssembly GLR parsers, and linear-memory DAE simulation engine, **Ansatz** serves as the collaborative platform layer. It provides:
 
 1. **A Polyglot Package Registry:** A centralized and federated index for publishing and versioning Modelica, SysML v2, STEP, SBML, and ModelScript libraries with SPDX license auditing and polyglot standard library discovery (`msx stdlib`).
-2. **Federated Engineering Feeds ("Morsels"):** W3C ActivityPub-powered social collaboration where engineers share executable simulation runs across 90 languages, 3D CAD/FEA/CFD snapshots, and schematic diffs across independent nodes.
+2. **Federated Engineering Feeds ("Morsels"):** W3C ActivityPub-powered social collaboration where engineers share executable simulation runs across 92 languages, 3D CAD/FEA/CFD snapshots, and schematic diffs across independent nodes.
 3. **Scholarly Citations & Literature Graph (`/references`):** Integrated OpenAlex, Crossref, BibTeX, and RIS bibliographic hub linking peer-reviewed literature (`[@cite_key]`) directly to executable models, parameters, and verification morsels.
 4. **Personal Activity Git Vault:** Every user account is backed by a cryptographically signed, user-owned Git repository vault that versions posts, model snapshots, citations, and annotations for complete data sovereignty and offline Git portability.
 5. **Cloud HPC Simulation Dispatcher:** An orchestration gateway bridging browser-based design with remote Slurm HPC clusters and continuum CAE solvers.
@@ -1792,7 +1792,7 @@ The monorepo maintains a clear boundary between the engine and the platform:
 │   • packages/runtime: SoA DAE arena, BLT, Salsa query engine           │
 │   • packages/simulate: SUNDIALS CVODE/IDA, WebGPU solver               │
 │   • packages/dsl: WASM GLR parser compiler, TGG graph rewriting        │
-│   • languages/*: 90 engineering & scientific domain language parsers   │
+│   • languages/*: 92 engineering & scientific domain language parsers   │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1858,7 +1858,7 @@ Practicing engineers in automotive, aerospace, energy, defense, and biomedical s
 ├────────────────────┼─────────────────────────────┼─────────────────────┤
 │ Interoperability   │ Isolated disciplinary silos │ Cross-domain Salsa  │
 │                    │ bridged only by static      │ hypergraph linking  │
-│                    │ PowerPoint screenshots      │ 90 format parsers   │
+│                    │ PowerPoint screenshots      │ 92 format parsers   │
 └────────────────────┴─────────────────────────────┴─────────────────────┘
 ```
 
@@ -2037,7 +2037,7 @@ Ansatz implements the **W3C ActivityPub** standard (Server-to-Server and Client-
 
 In conventional social networks, posts consist of plain text, raster images, or static video. In Ansatz, posts carry **Morsels**—compact, self-contained, executable engineering payloads embedded directly inside ActivityStreams 2.0 `Note` or `Article` objects:
 
-1. **Executable Multi-Physics Models**: Deflate-compressed (`#m=...`) or content-addressed source bundles across any of the 68 supported languages (`Modelica`, `SysML v2`, `PSCAD`, `CIM/CGMES`, `OLGA`, `SPICE`, `URDF`, `OpenSCAD`, `DICOM-RT`).
+1. **Executable Multi-Physics Models**: Deflate-compressed (`#m=...`) or content-addressed source bundles across any of the 92 supported languages (`Modelica`, `SysML v2`, `PSCAD`, `CIM/CGMES`, `OLGA`, `SPICE`, `URDF`, `OpenSCAD`, `DICOM-RT`).
 2. **Reproducible Simulation Trajectories**: Encapsulated DAE/ODE time-series datasets (`Vega-Lite` / Arrow binary attachments) paired with exact solver tolerances, Pantelides index metrics, and initial conditions.
 3. **Interactive 3D CAD, FEA & CFD Views**: Compressed STEP B-Rep geometries, 3MF surgical guides, or VTK Unstructured Grid (`.vtu`) von Mises stress fields rendered directly in the feed via Three.js and `CanvasContextPool`.
 4. **Semantic Architecture & Schematic Diffs**: Structural AST/DAE diffs (`PolyglotVersionDiffView`) highlighting added, modified, or deleted components and equations across Git revisions.
@@ -2231,7 +2231,7 @@ Engineering simulations for safety-critical aerospace, nuclear, and medical syst
 - **Content-Addressable Storage (SHA-256)**: Every published archive is indexed by its SHA-256 Merkle digest. Modifying a single byte of an equation or parameter table alters the digest and fails lockfile verification.
 - **Detached Ed25519 Publisher Signatures (`--signature`)**: Publishers sign package digests using their registered Ed25519 keys (`msx keys`). During `msx install`, the CLI verifies both the SHA-256 integrity hash and the publisher's cryptographic signature.
 - **SPDX License Compatibility Auditing**: During upload and installation, the registry parses SPDX license expressions (`AGPL-3.0-or-later`, `MPL-2.0`, `Apache-2.0`, `MIT`, or commercial licenses) and warns when a dependency tree mixes incompatible copyleft and proprietary terms.
-- **Polyglot Standard Library Sync (`msx stdlib`)**: Built-in standard libraries across all 68 languages can be inspected and synchronized offline via `msx stdlib`.
+- **Polyglot Standard Library Sync (`msx stdlib`)**: Built-in standard libraries across all 92 languages can be inspected and synchronized offline via `msx stdlib`.
 
 ---
 
@@ -2565,7 +2565,7 @@ ModelScript is built on a **data-oriented, WebAssembly-first compiler architectu
 
 ```mermaid
 flowchart TB
-    subgraph Languages["Polyglot Source Languages (90 Formats — 25 Stable & 65 Beta)"]
+    subgraph Languages["Polyglot Source Languages (92 Formats — 25 Stable & 67 Beta)"]
         direction TB
         MO[".mo (Modelica 3.x) / .mod (AMPL)"]
         SYS[".sysml / .kerml / .reqif / .oscal.json"]
@@ -2641,22 +2641,22 @@ Thirteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 
 ## Monorepo Package Matrix
 
-| Package                   | Path                | Primary Responsibility                                                                                                                                                       |
-| :------------------------ | :------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@modelscript/dsl`        | `packages/dsl`      | Grammar combinators, Ahead-of-Time WASM GLR parser compiler (`buildParser`), TGG/DPO engine, Critical Pair Analysis, E-graphs, CST semantic diff/merge                       |
-| `@modelscript/runtime`    | `packages/runtime`  | Linear-memory `DAEBuilder`, `ArenaDAEPrinter`, Salsa `QueryEngine`, `WorkspaceIndex`, BLT/Pantelides solver, Sparse Arnoldi eigensolver, 13 Formal Theory Oracles            |
-| `@modelscript/simulate`   | `packages/simulate` | Numerical integrators (SUNDIALS CVODE/IDA, Radau IIA, Rodas4P, TR-BDF2, Tsit5, DOPRI5, Dommel EMT), WebGPU contingency screener, PALC bifurcation, FNO surrogates            |
-| `@modelscript/cad`        | `packages/cad`      | OpenCascade (OCCT) B-Rep kernel, CSG evaluator, STEP AP214/AP242 serializer, 3D tetrahedral FEA solver, 3D formal verification overlays, Gerber ECAD parser                  |
-| `@modelscript/diagram`    | `packages/diagram`  | Polyglot schematic layout engine, orthogonal Manhattan router, TCC / R-X / P-Q / Water Diff specialized builders, SVG/Canvas renderer                                        |
-| `@modelscript/exchange`   | `packages/exchange` | FMI 2.0/3.0 FMU import/export, SSP 1.0/2.0 container toolkit, Co-Simulation Master Orchestrator, MISRA-C / Q8.24 fixed-point firmware synthesizer, WebSerial HIL             |
-| `@modelscript/lsp`        | `packages/lsp`      | Multi-language LSP server across all 90 languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                            |
-| `@modelscript/mcp`        | `packages/mcp`      | Unified Model Context Protocol server exposing 92 core and 70+ domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools           |
-| `@modelscript/ide-client` | `packages/ide`      | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports with 3D verification overlays                            |
-| `@modelscript/examples`   | `packages/examples` | Curated multi-domain reference workspaces (CubeSat, EV Battery Pack, IEEE 39-Bus Grid, Robotic Arm, Aero-Structural Wing)                                                    |
-| `modelscript` (`msx`)     | `apps/cli`          | Unified command-line interface (157 commands across `flatten`, `simulate`, `verify`, `dossier`, `gatekeeper`, `ampl`, `powerfactory`, `pslf`, `fmu`, `csg`, `surrogate`, etc.) |
-| `@modelscript/api`        | `apps/api`          | REST, GraphQL, SPARQL, Regulatory Dossier, Grid Gatekeeper, and WebSocket simulation backend server                                                                          |
-| `@modelscript/web`        | `apps/web`          | Ansatz Web application (Morsel, Studio, Package Registry, and social modeling platform)                                                                                      |
-| `@modelscript/ee`         | `ee`                | Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — Ed25519 license verification, SSO/SAML, RBAC, Slurm HPC dispatcher, Digital Twin Historian, HIL                   |
+| Package                   | Path                | Primary Responsibility                                                                                                                                                         |
+| :------------------------ | :------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@modelscript/dsl`        | `packages/dsl`      | Grammar combinators, Ahead-of-Time WASM GLR parser compiler (`buildParser`), TGG/DPO engine, Critical Pair Analysis, E-graphs, CST semantic diff/merge                         |
+| `@modelscript/runtime`    | `packages/runtime`  | Linear-memory `DAEBuilder`, `ArenaDAEPrinter`, Salsa `QueryEngine`, `WorkspaceIndex`, BLT/Pantelides solver, Sparse Arnoldi eigensolver, 13 Formal Theory Oracles              |
+| `@modelscript/simulate`   | `packages/simulate` | Numerical integrators (SUNDIALS CVODE/IDA, Radau IIA, Rodas4P, TR-BDF2, Tsit5, DOPRI5, Dommel EMT), WebGPU contingency screener, PALC bifurcation, FNO surrogates              |
+| `@modelscript/cad`        | `packages/cad`      | OpenCascade (OCCT) B-Rep kernel, CSG evaluator, STEP AP214/AP242 serializer, 3D tetrahedral FEA solver, 3D formal verification overlays, Gerber ECAD parser                    |
+| `@modelscript/diagram`    | `packages/diagram`  | Polyglot schematic layout engine, orthogonal Manhattan router, TCC / R-X / P-Q / Water Diff specialized builders, SVG/Canvas renderer                                          |
+| `@modelscript/exchange`   | `packages/exchange` | FMI 2.0/3.0 FMU import/export, SSP 1.0/2.0 container toolkit, Co-Simulation Master Orchestrator, MISRA-C / Q8.24 fixed-point firmware synthesizer, WebSerial HIL               |
+| `@modelscript/lsp`        | `packages/lsp`      | Multi-language LSP server across all 92 languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                              |
+| `@modelscript/mcp`        | `packages/mcp`      | Unified Model Context Protocol server exposing 105 core and 70+ domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools            |
+| `@modelscript/ide-client` | `packages/ide`      | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports with 3D verification overlays                              |
+| `@modelscript/examples`   | `packages/examples` | Curated multi-domain reference workspaces (CubeSat, EV Battery Pack, IEEE 39-Bus Grid, Robotic Arm, Aero-Structural Wing)                                                      |
+| `modelscript` (`msx`)     | `apps/cli`          | Unified command-line interface (169 commands across `flatten`, `simulate`, `verify`, `dossier`, `gatekeeper`, `ampl`, `powerfactory`, `pslf`, `fmu`, `csg`, `surrogate`, etc.) |
+| `@modelscript/api`        | `apps/api`          | REST, GraphQL, SPARQL, Regulatory Dossier, Grid Gatekeeper, and WebSocket simulation backend server                                                                            |
+| `@modelscript/web`        | `apps/web`          | Ansatz Web application (Morsel, Studio, Package Registry, and social modeling platform)                                                                                        |
+| `@modelscript/ee`         | `ee`                | Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — Ed25519 license verification, SSO/SAML, RBAC, Slurm HPC dispatcher, Digital Twin Historian, HIL                     |
 
 ================================================================================
 DOCUMENT: Monorepo & Taxonomy
@@ -2691,7 +2691,7 @@ To maintain modularity and avoid circular dependencies, the codebase is structur
 
 ### Layer 1: Core Engine & Languages
 
-- **Directories:** `languages/*` (90 domain languages across `Stable` [24] and `Beta` [57] tiers) and `packages/{dsl,runtime,simulate,cad,diagram,exchange,lsp,mcp}`.
+- **Directories:** `languages/*` (92 documented domain languages across `Stable` [25] and `Beta` [67] tiers) and `packages/{dsl,runtime,simulate,cad,diagram,exchange,lsp,mcp}`.
 - **Rule:** Pure computation, formal theory, parsers, and solvers. Zero UI dependencies, zero database dependencies, and zero Express/HTTP servers.
 - **Independence:** Can be compiled and embedded in any JavaScript, Node.js, WebAssembly, or desktop runtime.
 
@@ -5651,7 +5651,7 @@ When `--daemon` is passed, `msx` connects to the local Unix domain socket (`~/.m
 
 ## Complete Command Reference by Category
 
-The `msx` CLI registers **157 commands** (126 primary commands + 31 ergonomic aliases) organized across **90 supported languages** and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
+The `msx` CLI registers **169 commands** (138 primary commands + 31 aliases) organized across **92 supported languages** and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
 
 ### 1. Compilation, Simulation & Optimization
 
@@ -5667,6 +5667,7 @@ The `msx` CLI registers **157 commands** (126 primary commands + 31 ergonomic al
 | [`surrogate`](./commands.md#surrogate)     | —         | Run Design of Experiments (DoE), train Neural/Polynomial/RBF surrogates, and export ONNX/C/Modelica ROMs.          |
 | [`mc`](./commands.md#mc)                   | —         | Execute multi-threaded Monte Carlo uncertainty quantification and reliability sweeps.                              |
 | [`csg`](./commands.md#csg)                 | —         | Extract Constructive Solid Geometry (CSG) primitives from Modelica models into 3D CAD meshes.                      |
+| [`benchmark`](./commands.md#benchmark)     | —         | Run industrial SOTA verification and scalability benchmarks for PSS/E and PSCAD.                                   |
 
 ### 2. Linting, Formatting, Diffing & Localization
 
@@ -5698,11 +5699,13 @@ The `msx` CLI registers **157 commands** (126 primary commands + 31 ergonomic al
 
 | Command                                      | Aliases                | Summary                                                                                                                         |
 | :------------------------------------------- | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------ |
+| [`domain`](./commands.md#domain)             | `tool`                 | Invoke domain-specific engineering actions and solvers for any registered language.                                             |
+| [`inspect`](./commands.md#inspect)           | `info`, `summary`      | Inspect and summarize engineering models across any supported language.                                                         |
 | [`render`](./commands.md#render)             | —                      | Render headless SVG diagrams for Modelica icons/schematics, SysML v2 (BDD/IBD/State/Activity), and PSCAD SLDs.                  |
 | [`fmu`](./commands.md#fmu)                   | `export-fmu`           | Package models into FMI 2.0/3.0 Functional Mock-up Units (`.fmu`) or inspect/import existing FMUs.                              |
 | [`import-fmu`](./commands.md#import-fmu)     | `fmu-import`           | Unpack an external `.fmu` archive and generate typed Modelica wrapper blocks and SSP bindings.                                  |
 | [`cosim`](./commands.md#cosim)               | —                      | Orchestrate and inspect distributed FMI/SSP Co-Simulation sessions, participants, and adaptive step optimizers.                 |
-| [`polyglot`](./commands.md#polyglot)         | —                      | Query cross-language symbol indices, verify digital thread links, and check operational digital twin drift across 90 languages. |
+| [`polyglot`](./commands.md#polyglot)         | —                      | Query cross-language symbol indices, verify digital thread links, and check operational digital twin drift across 92 languages. |
 | [`align`](./commands.md#align)               | —                      | Reconcile Triple Graph Grammar (TGG) correspondences across SysML v2, Modelica, Spice, and STEP artifacts.                      |
 | [`sysml`](./commands.md#sysml)               | —                      | Export, import, check, inspect, and bi-directionally synchronize SysML v2 `.sysml` and Modelica `.mo` models.                   |
 | [`oslc`](./commands.md#oslc)                 | —                      | Export OSLC 3.0 RDF/Turtle/JSON-LD catalogs or launch a live OSLC Tracked Resource Set (TRS 3.0) server.                        |
@@ -5718,34 +5721,59 @@ The `msx` CLI registers **157 commands** (126 primary commands + 31 ergonomic al
 | [`pslf`](./commands.md#pslf)                 | —                      | Parse, lint (`PSLF-E001`–`PSLF-W003`), solve power flow, and project GE PSLF (`.epc`, `.dyd`) transmission decks.               |
 | [`cgmes`](./commands.md#cgmes)               | —                      | Inspect, lint (`C1001`–`C1010`), solve AC/DC OPF, and convert ENTSO-E CIM / CGMES (`.xml`, `.rdf`) grid profiles.               |
 | [`opendss`](./commands.md#opendss)           | —                      | Solve unbalanced 3-phase power flow, harmonics, QSTS, IEEE 1547 hosting capacity, and FLISR on OpenDSS (`.dss`) feeders.        |
+| [`atp`](./commands.md#atp)                   | —                      | Inspect, lint, simulate, and convert ATP-EMTP transient card decks (`.atp`, `.dat`).                                            |
+| [`comtrade`](./commands.md#comtrade)         | —                      | Inspect, lint, analyze, and convert IEEE C37.111 COMTRADE fault recordings (`.cfg`, `.dat`, `.cff`).                            |
+| [`scl`](./commands.md#scl)                   | —                      | Inspect, lint, audit, and convert IEC 61850 Substation Configuration files (`.scd`, `.cid`, `.ssd`).                            |
+| [`dnp3`](./commands.md#dnp3)                 | —                      | Inspect, lint, process telemetry, and convert IEEE 1815 / DNP3 device profiles (`.dnp3`, `.xml`, `.json`).                      |
+| [`oneliner`](./commands.md#oneliner)         | —                      | Inspect, lint, solve short-circuit faults, and convert ASPEN OneLiner / CAPE cases (`.olx`, `.dxt`).                            |
+| [`sel`](./commands.md#sel)                   | —                      | Inspect, lint, evaluate protection, and convert SEL relay settings (`.rcf`, `.rdb`, `.sel`, `.txt`).                            |
 | [`ocpp`](./commands.md#ocpp)                 | —                      | Validate, simulate smart-charging sessions, and lower OCPP 1.6J / 2.0.1 (`.ocpp`) EV charging transcripts.                      |
 | [`openadr`](./commands.md#openadr)           | —                      | Validate, simulate demand-response curtailment events, and lower OpenADR 2.0b / 3.0 (`.openadr`) payloads.                      |
 | [`optical`](./commands.md#optical)           | —                      | Compute ITU-T G.694.1 DWDM OSNR/GSNR link budgets and analyze Telcordia SR-4731 OTDR (`.sor`) traces.                           |
 | [`ran`](./commands.md#ran)                   | —                      | Compute 3GPP TR 38.901 5G NR / LTE RF link budgets, SINR coverage grids, and parse NSMA (`.adf`, `.msi`) antennas.              |
 | [`fiber`](./commands.md#fiber)               | —                      | Resolve TIA-598-D fiber color codes, trace splice enclosures, and audit SRLG diversity on `.fiber` outside-plant cables.        |
 | [`spice`](./commands.md#spice)               | —                      | Simulate DC operating point, transient, and AC frequency sweeps on SPICE (`.cir`, `.sp`, `.net`) netlists.                      |
+| [`verilog-a`](./commands.md#verilog-a)       | —                      | Inspect, validate, lower to DAE, and project Verilog-A / Verilog-AMS compact models (`.va`, `.vams`).                           |
+| [`ibis`](./commands.md#ibis)                 | —                      | Inspect, lint, evaluate, and lower ANSI/EIA-656-B IBIS buffer models (`.ibs`).                                                  |
+| [`touchstone`](./commands.md#touchstone)     | —                      | Inspect, lint, verify passivity, and lower Touchstone N-Port models (`.s1p` ... `.sNp`, `.ts`).                                 |
 | [`olga`](./commands.md#olga)                 | —                      | Simulate 1D drift-flux multiphase flow, severe slugging, PVT flash, and verify flow assurance on OLGA (`.opi`, `.key`) decks.   |
 | [`lps`](./commands.md#lps)                   | —                      | Simulate transient gas/liquid networks, line pack, and hydrogen blends in PipelineStudio (`.lps`, `.tgx`, `.tlx`) models.       |
+| [`eclipse`](./commands.md#eclipse)           | —                      | Inspect, lint, solve reservoir depletion, and lower ECLIPSE-format reservoir decks (`.data`, `.dat`, `.inc`).                   |
+| [`aspen`](./commands.md#aspen)               | —                      | Inspect, lint, solve, and lower Aspen-compatible chemical process flowsheets (`.in`, `.inp`, `.bkp`).                            |
+| [`relap5`](./commands.md#relap5)             | —                      | Inspect, lint, solve kinetics, and lower RELAP5-3D thermal-hydraulic reactor decks (`.i`, `.inp`, `.r5`).                       |
+| [`energyplus`](./commands.md#energyplus)     | —                      | Inspect, validate, lower to DAE, and project US DOE EnergyPlus building models (`.idf`, `.epJSON`).                             |
 | [`epanet`](./commands.md#epanet)             | —                      | Solve Global Gradient hydraulics, WQ chlorine decay, fire-flow, pump energy, and AWWA M36 audits on EPANET (`.inp`) networks.   |
 | [`swmm`](./commands.md#swmm)                 | —                      | Solve 1D Saint-Venant dynamic wave stormwater routing, detention pond sizing, and LID controls on EPA SWMM (`.inp`) models.     |
 | [`hec-ras`](./commands.md#hec-ras)           | `hecras`               | Solve 1D standard-step steady water surface profiles and floodplains on USACE HEC-RAS (`.prj`, `.g01`) river geometries.        |
+| [`hec-hms`](./commands.md#hec-hms)           | —                      | Inspect, lint, simulate runoff, and convert HEC-HMS hydrologic basin models (`.basin`, `.hms`).                                 |
+| [`waterml`](./commands.md#waterml)           | —                      | Inspect, lint, fit rating curves, and convert OGC WaterML timeseries (`.waterml`, `.wml2`, `.xml`, `.json`).                   |
+| [`asm`](./commands.md#asm)                   | —                      | Inspect, lint, simulate biokinetics, and convert IWA Activated Sludge Models (`.asm`, `.bsm`, `.wrrf`).                         |
 | [`tough`](./commands.md#tough)               | `tough2`               | Parse, lint, and simulate non-isothermal multiphase subsurface & geothermal reservoirs on TOUGH2/TOUGH3 (`.tough`) decks.       |
 | [`modflow`](./commands.md#modflow)           | `mf6`                  | Solve 3D Darcy finite-difference groundwater head and pumping drawdowns on USGS MODFLOW 6 (`.nam`, `.dis`) models.              |
 | [`landgem`](./commands.md#landgem)           | —                      | Compute first-order landfill methane generation kinetics and biogas CHP energy yield on US EPA LandGEM (`.landgem`) decks.      |
 | [`gtfs`](./commands.md#gtfs)                 | —                      | Validate transit feeds, headways, and lower electric bus/rail fleet schedules to DAE on GTFS (`.gtfs`) datasets.                |
 | [`simulink`](./commands.md#simulink)         | —                      | Inspect, lint, lower to DAE, and project MATLAB Simulink (`.slx`, `.mdl`) control block diagrams to Modelica.                   |
 | [`autosar`](./commands.md#autosar)           | —                      | Inspect, lint, simulate the discrete Virtual RTE scheduler, and project AUTOSAR (`.arxml`) architectures.                       |
+| [`opendrive`](./commands.md#opendrive)       | —                      | Inspect, validate, sample clothoids, lower to DAE, and project OpenDRIVE road networks (`.xodr`, `.xml`).                       |
+| [`openscenario`](./commands.md#openscenario) | —                      | Inspect, lint, simulate, and lower ASAM OpenSCENARIO scenario files (`.xosc`, `.osc`).                                         |
+| [`plcopen`](./commands.md#plcopen)           | —                      | Inspect, validate, simulate, and project IEC 61131-3 PLCopen XML & Structured Text models (`.xml`, `.plcopen`, `.st`).          |
 | [`urdf`](./commands.md#urdf)                 | —                      | Validate kinematic trees, evaluate Featherstone RNEA inverse dynamics, and project ROS URDF/Xacro (`.urdf`, `.xacro`) robots.   |
 | [`simpack`](./commands.md#simpack)           | —                      | Analyze Grübler spatial mobility, lint markers/joints, and simulate SIMPACK (`.spck`, `.sim`) multibody systems.                |
 | [`gensys`](./commands.md#gensys)             | —                      | Verify EN 14363 derailment safety ($Y/Q \le 0.80$), FASTSIM contact, and simulate GENSYS (`.calc`) rail vehicles.               |
 | [`adams`](./commands.md#adams)               | —                      | Analyze spatial mobility, lint markers, and project MSC Adams (`.adm`, `.cmd`) multibody mechanisms.                            |
+| [`jsbsim`](./commands.md#jsbsim)             | —                      | Inspect, lint, simulate 6-DOF flight dynamics, and lower JSBSim models (`.xml`).                                                |
+| [`ccsds`](./commands.md#ccsds)               | —                      | Inspect, validate, propagate, lower to DAE, and project CCSDS and XTCE spacecraft data (`.oem`, `.opm`, `.omm`, `.xtce`).       |
 | [`easy5`](./commands.md#easy5)               | —                      | Inspect, lint, linearize, and project EASY5 (`.ez5`, `.ezm`) aerospace and fluid-thermal schematics.                            |
 | [`gtsuite`](./commands.md#gtsuite)           | —                      | Inspect, lint compressor surge/CFL bounds, and simulate GT-SUITE (`.gtm`, `.gtd`) engine and powertrain models.                 |
 | [`sima`](./commands.md#sima)                 | —                      | Verify DNV-OS-E301 mooring tension safety factors and vessel offsets on SIMA (`.sima`, `.inp`) offshore models.                 |
 | [`rocets`](./commands.md#rocets)             | —                      | Balance turbopump flows, check chamber mixture ratios, and simulate NASA ROCETS (`.roc`, `.deck`) propulsion decks.             |
+| [`cfd`](./commands.md#cfd)                   | —                      | Inspect, lint, solve, and project CFD aerodynamic models (`.cfg`, `.foam`, `.su2`).                                            |
+| [`fea`](./commands.md#fea)                   | —                      | Inspect, lint, solve, and project FEA structural models (`.inp`, `.bdf`, `.dat`).                                              |
+| [`c`](./commands.md#c)                       | —                      | Inspect, lint, and bridge C99/ANSI C files and headers (`.c`, `.h`).                                                            |
 | [`qif`](./commands.md#qif)                   | —                      | Validate ASME Y14.5 GD&T rules, compute SPC capability ($C_p, C_{pk}$, TUR), and reconcile STEP AP242 with ISO 23952 `.qif`.    |
 | [`oscal`](./commands.md#oscal)               | —                      | Resolve control baselines, audit NIST SP 800-53 / SP 800-82 CPS compliance, and project NIST OSCAL security models.             |
 | [`aml`](./commands.md#aml)                   | `automationml`, `caex` | Validate IEC 62714 CAEX hierarchies, run closed-loop Virtual PLC commissioning, and project `.aml` workcells.                   |
+| [`sbml`](./commands.md#sbml)                 | —                      | Inspect, lint, simulate biochemical networks, and lower SBML models (`.sbml`, `.xml`).                                         |
 | [`opensim`](./commands.md#opensim)           | —                      | Validate musculoskeletal kinematics & Hill-type muscles (`M9101`–`M9110`), simulate activation, and project `.osim` models.     |
 | [`dicom-rt`](./commands.md#dicom-rt)         | —                      | Verify QUANTEC OAR dose limits & MLC kinematics (`M9201`–`M9210`), compute DVH/BED/$\text{EQD}_2$, and project `.rtplan`.       |
 | [`cellml`](./commands.md#cellml)             | —                      | Validate SI dimensional consistency (`M9301`–`M9310`), integrate electrophysiology ODEs, and project `.cellml` models.          |
@@ -5775,8 +5803,9 @@ The `msx` CLI registers **157 commands** (126 primary commands + 31 ergonomic al
 | [`login`](./commands.md#login-logout-whoami)        | —                | Authenticate with the Ansatz Package Registry / Platform and store credentials in `~/.ansatzrc`.               |
 | [`logout`](./commands.md#login-logout-whoami)       | —                | Remove stored authentication tokens from `~/.ansatzrc` / `~/.modelscriptrc`.                                   |
 | [`whoami`](./commands.md#login-logout-whoami)       | —                | Display the currently authenticated user, organization roles, and active registry endpoint.                    |
+| [`token`](./commands.md#token)                      | —                | Manage granular personal access tokens (`create`, `list`, `revoke`).                                            |
 | [`install`](./commands.md#install)                  | `i`, `add`       | Resolve, verify, and install versioned dependencies from the Ansatz Package Registry into `modelica_modules/`. |
-| [`stdlib`](./commands.md#stdlib)                    | —                | Browse, search, and bootstrap official standard libraries across all 90 engineering languages.                 |
+| [`stdlib`](./commands.md#stdlib)                    | —                | Browse, search, and bootstrap official standard libraries across all 92 engineering languages.                 |
 | [`pack`](./commands.md#pack-publish-unpublish)      | —                | Create a deterministic, SHA-256 content-addressed `.zip` package archive from the workspace.                   |
 | [`publish`](./commands.md#pack-publish-unpublish)   | —                | Sign (Ed25519) and publish a package archive to the Ansatz Package Registry.                                   |
 | [`unpublish`](./commands.md#pack-publish-unpublish) | —                | Retract or deprecate a published package version from the Ansatz Package Registry.                             |
@@ -5808,7 +5837,7 @@ CANONICAL URL: https://modelscript.org/cli/commands
 
 # CLI Commands Reference
 
-This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **157 commands** (126 primary commands + 31 aliases) across **90 supported languages** can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
+This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **169 commands** (138 primary commands + 31 aliases) across **92 supported languages** can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
 
 ---
 
@@ -6068,7 +6097,9 @@ Lint polyglot libraries using QueryEngine and DSL parsers
 
 Options:
   - `--language, -l, --lang <string>`: Filter to specific language (e.g. modelica, sysml2, owl2, scad, ssp, cfd, fea, pscad, fortran, easy5, rocets, lps, sima, gtsuite)
-  - `--format, -f <string>`: Output format: terminal or json (default: "terminal")
+  - `--format, -f <string>`: Output format: terminal, json, or sarif (default: "terminal")
+  - `--sarif-base <string>`: Base directory to relativize artifact URIs against in SARIF output
+  - `--out, -o <string>`: File path to write diagnostic report to instead of stdout
   - `--profile <string>`: OWL 2 ontology profile to validate against (DL or EL) (default: "DL")
   - `--strict <boolean>`: Treat warnings as errors (default: false)
 
@@ -6105,6 +6136,10 @@ Options:
   - `--language, -l <string>`: Explicit language override (e.g. modelica, sysml2, scad, step)
   - `--indent-size <number>`: Number of spaces per indentation level (default: 2)
   - `--preserve-formatting <boolean>`: Preserve original token layout where grammar permits (default: false)
+  - `--structural <boolean>`: Reorganize sections structurally (merge duplicate equation sections, canonical ordering) (default: false)
+  - `--one-of-each-section <boolean>`: Enforce a single equation/algorithm section by merging duplicate sections (default: false)
+  - `--imports-first <boolean>`: Hoist import statements to the very top of each class (default: false)
+  - `--declaration-order <boolean>`: Order declarations: parameters/constants first, then components, then inner classes (default: false)
 
 ---
 
@@ -6481,7 +6516,7 @@ msx pscad verify-ieee2800 SolarPlant_250MW.pscx --tstop 3.0 --step 20us -o ieee2
 
 ### `polyglot`
 
-Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 90 supported languages.
+Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 92 supported languages.
 
 ### CLI Command: `polyglot <action>`
 Multi-domain TGG projection, formal verification, and digital thread tracking
@@ -7793,7 +7828,7 @@ Options:
 
 ### `stdlib`
 
-Browses, searches, and bootstraps official standard libraries across all 90 engineering languages.
+Browses, searches, and bootstraps official standard libraries across all 92 engineering languages.
 
 ### CLI Command: `stdlib [action] [pack]`
 Manage, list, and synchronize polyglot standard libraries across 81 languages
@@ -8004,6 +8039,397 @@ msx sign posts/thruster-design.md -k ~/.ssh/id_ed25519
 msx sign posts/thruster-design.md --verify -p ~/.ssh/id_ed25519.pub
 ```
 
+---
+
+## Additional Core & Domain Commands
+
+### `domain`
+
+Unified domain command router (`msx domain <lang> <action> [files..]`, alias `tool`) for invoking lifecycle or specialty actions across any registered language.
+
+### CLI Command: `domain <lang> <action> [files..]`
+Invoke domain-specific engineering actions and solvers for any registered language
+
+Options:
+  - `--format, -f <string>`: Output format (terminal, json, pretty, table, text, csv, svg) (default: "terminal")
+  - `--json <boolean>`: Emit output as machine-readable JSON (shorthand for --format=json) (default: false)
+  - `--output, -o, --out <string>`: Output file path
+
+---
+
+### `inspect`
+
+Inspect and summarize engineering models across any supported language (aliases: `info`, `summary`).
+
+### CLI Command: `inspect <files..>`
+Inspect and summarize engineering models across any of the 81 supported languages
+
+Options:
+  - `--language, -l, --lang <string>`: Explicitly override language ID
+  - `--format, -f <string>`: Output format (terminal, json, pretty, table, text) (default: "terminal")
+  - `--json <boolean>`: Emit output as machine-readable JSON (shorthand for --format=json) (default: false)
+  - `--output, -o, --out <string>`: Write summary report to output file
+
+---
+
+### `benchmark`
+
+Run industrial verification and scalability benchmarks for PSS/E and PSCAD.
+
+### CLI Command: `benchmark [suite]`
+Run industrial SOTA verification and scalability benchmarks for PSS/E and PSCAD
+
+Options:
+  - `--model, -m <string>`: Benchmark model name (PSSE: activsg2000, mmwg70k, pegase9241, all; PSCAD: cigre-b4, wind100, ehv-corridor, all)
+  - `--contingencies, -c <number>`: Number of N-1 contingencies to screen in ACCC benchmarks
+  - `--durationMs, --tstop <number>`: Simulation duration in milliseconds for EMT benchmarks
+  - `--timeStepUs, --dt <number>`: Simulation time step in microseconds for EMT benchmarks
+  - `--out, -o <string>`: Output destination path for PSS/E Tabulated CSV reports
+  - `--html <string>`: Export self-contained interactive HTML benchmark dashboard
+  - `--json <string>`: Export machine-readable benchmark metrics in JSON format
+  - `--export-raw <string>`: Export case to Siemens PSS/E .raw format (for activsg2000)
+  - `--export-comtrade <string>`: Export trajectory to IEEE C37.111 COMTRADE (.cff) container (for PSCAD)
+  - `--export-psout <string>`: Export trajectory to native PSCAD v5 (*.psout) binary (for PSCAD)
+
+---
+
+### `token`
+
+Manage granular personal access tokens (`create`, `list`, `revoke`).
+
+### CLI Command: `token <action>`
+Manage granular personal access tokens (create, list, revoke)
+
+---
+
+### `atp`
+
+Inspect, lint, simulate, and convert ATP-EMTP transient card decks (`.atp`, `.dat`).
+
+### CLI Command: `atp <action> [files..]`
+Inspect, lint, simulate, and convert ATP-EMTP transient card decks (.atp, .dat)
+
+Options:
+  - `--out, -o <string>`: Output destination path
+
+---
+
+### `comtrade`
+
+Inspect, lint, analyze, and convert IEEE C37.111 COMTRADE fault recordings (`.cfg`, `.dat`, `.cff`).
+
+### CLI Command: `comtrade <action> [files..]`
+Inspect, lint, analyze, and convert COMTRADE fault recordings (.cfg, .dat, .cff)
+
+Options:
+  - `--channel, -c <number>`: Analog channel index for phasor extraction (default: 0)
+  - `--out, -o <string>`: Output destination path
+
+---
+
+### `scl`
+
+Inspect, lint, audit, and convert IEC 61850 Substation Configuration files (`.scd`, `.cid`, `.ssd`).
+
+### CLI Command: `scl <action> [files..]`
+Inspect, lint, audit, and convert IEC 61850 Substation Configuration files (.scd, .cid, .ssd)
+
+Options:
+  - `--out, -o <string>`: Output destination path
+
+---
+
+### `dnp3`
+
+Inspect, lint, process telemetry, and convert IEEE 1815 / DNP3 device profiles (`.dnp3`, `.xml`, `.json`).
+
+### CLI Command: `dnp3 <action> [files..]`
+Inspect, lint, process telemetry, and convert IEEE 1815 / DNP3 device profiles (.dnp3, .xml, .json)
+
+Options:
+  - `--out, -o <string>`: Output destination path
+  - `--deadband <number>`: Deadband threshold for telemetry filtering
+
+---
+
+### `oneliner`
+
+Inspect, lint, solve short-circuit faults, and convert ASPEN OneLiner / CAPE cases (`.olx`, `.dxt`).
+
+### CLI Command: `oneliner <action> [files..]`
+Inspect, lint, solve short-circuit faults, and convert ASPEN OneLiner / CAPE cases (.olx, .dxt)
+
+Options:
+  - `--bus, -b <string>`: Bus ID or number to fault
+  - `--out, -o <string>`: Output destination path
+
+---
+
+### `sel`
+
+Inspect, lint, evaluate protection, and convert SEL relay settings (`.rcf`, `.rdb`, `.sel`, `.txt`).
+
+### CLI Command: `sel <action> [files..]`
+Inspect, lint, evaluate protection, and convert SEL relay settings (.rcf, .rdb, .sel, .txt)
+
+Options:
+  - `--current, -i <number>`: Phase current in amperes to evaluate (default: 20)
+  - `--impedance, -z <number>`: Fault loop impedance in ohms to evaluate distance reach
+  - `--out, -o <string>`: Output destination path
+
+---
+
+### `verilog-a`
+
+Inspect, validate, lower to DAE, and project Verilog-A / Verilog-AMS compact models (`.va`, `.vams`).
+
+### CLI Command: `verilog-a <action> [files..]`
+Inspect, validate, lower to DAE, and project Verilog-A / Verilog-AMS compact models (.va, .vams)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path
+
+---
+
+### `ibis`
+
+Inspect, lint, evaluate, and lower ANSI/EIA-656-B IBIS buffer models (`.ibs`).
+
+### CLI Command: `ibis <action> [files..]`
+Inspect, lint, evaluate, and lower ANSI/EIA-656-B IBIS buffer models (.ibs)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (e.g. for Modelica export)
+
+---
+
+### `touchstone`
+
+Inspect, lint, verify passivity, and lower Touchstone N-Port models (`.s1p` ... `.sNp`, `.ts`).
+
+### CLI Command: `touchstone <action> [files..]`
+Inspect, lint, verify passivity, and lower Touchstone N-Port models (.s1p ... .sNp, .ts)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (e.g. for Modelica export)
+  - `--order <number>`: Rational macromodel order for vector fitting (default: 2)
+
+---
+
+### `eclipse`
+
+Inspect, lint, solve reservoir depletion, and lower ECLIPSE-format reservoir decks (`.data`, `.dat`, `.inc`).
+
+### CLI Command: `eclipse <action> [files..]`
+Inspect, lint, solve reservoir depletion, and lower ECLIPSE-format reservoir decks (.data, .dat, .inc)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (e.g. for Modelica export)
+  - `--days, -d <number>`: Simulation duration in days (default: 365.0)
+
+---
+
+### `aspen`
+
+Inspect, lint, solve, and lower Aspen-compatible chemical process flowsheets (`.in`, `.inp`, `.bkp`).
+
+### CLI Command: `aspen <action> [files..]`
+Inspect, lint, solve, and lower Aspen-compatible chemical process flowsheets (.in, .inp, .bkp)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (e.g. for Modelica export)
+  - `--stream, -s <string>`: Target feed stream ID for flash VLE calculation
+
+---
+
+### `relap5`
+
+Inspect, lint, solve kinetics, and lower RELAP5-3D thermal-hydraulic reactor decks (`.i`, `.inp`, `.r5`).
+
+### CLI Command: `relap5 <action> [files..]`
+Inspect, lint, solve kinetics, and lower RELAP5-3D thermal-hydraulic reactor decks (.i, .inp, .r5)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (e.g. for Modelica export)
+  - `--duration, -d <number>`: Kinetics simulation duration in seconds (default: 10.0)
+
+---
+
+### `energyplus`
+
+Inspect, validate, lower to DAE, and project US DOE EnergyPlus building models (`.idf`, `.epJSON`).
+
+### CLI Command: `energyplus <action> [files..]`
+Inspect, validate, lower to DAE, and project US DOE EnergyPlus building models (.idf, .epJSON)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (Modelica model, JSON metadata, or synchronized EnergyPlus file)
+  - `--from-modelica <string>`: Path to modified Modelica file for bidirectional synchronization
+  - `--strategy <string>`: Conflict reconciliation strategy for sync (default: "target-wins")
+  - `--format, -f <string>`: Output format: 'terminal' or 'json' (default: "terminal")
+  - `--json <boolean>`: Emit JSON output (default: false)
+  - `--tamb <number>`: Outdoor ambient temperature in deg C for thermal-balance (default: 10)
+
+---
+
+### `hec-hms`
+
+Inspect, lint, simulate runoff, and convert USACE HEC-HMS hydrologic basin models (`.basin`, `.hms`).
+
+### CLI Command: `hec-hms <action> [files..]`
+Inspect, lint, simulate runoff, and convert HEC-HMS hydrologic basin models (.basin, .hms)
+
+Options:
+  - `--rain <number>`: Design storm precipitation depth in millimeters (default: 50)
+  - `--out, -o <string>`: Output destination path
+
+---
+
+### `waterml`
+
+Inspect, lint, fit rating curves, and convert OGC WaterML 2.0 timeseries (`.waterml`, `.wml2`, `.xml`, `.json`).
+
+### CLI Command: `waterml <action> [files..]`
+Inspect, lint, fit rating curves, and convert OGC WaterML timeseries (.waterml, .wml2, .xml, .json)
+
+Options:
+  - `--out, -o <string>`: Output destination path
+
+---
+
+### `asm`
+
+Inspect, lint, simulate biokinetics, and convert IWA Activated Sludge Models (`.asm`, `.bsm`, `.wrrf`).
+
+### CLI Command: `asm <action> [files..]`
+Inspect, lint, simulate biokinetics, and convert IWA Activated Sludge Models (.asm, .bsm, .wrrf)
+
+Options:
+  - `--days <number>`: Simulation horizon in days (default: 10)
+  - `--out, -o <string>`: Output destination path
+
+---
+
+### `opendrive`
+
+Inspect, validate, sample clothoids, lower to DAE, and project ASAM OpenDRIVE road networks (`.xodr`, `.xml`).
+
+### CLI Command: `opendrive <action> [files..]`
+Inspect, validate, sample clothoids, lower to DAE, and project OpenDRIVE road networks (.xodr, .xml)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path for generated track or SVG diagram
+  - `--step <number>`: Discretization sampling step along road reference line in meters (default: 1)
+  - `--theme <string>`: Visual theme for vector SVG rendering (dark | light) (default: "dark")
+
+---
+
+### `openscenario`
+
+Inspect, lint, simulate, and lower ASAM OpenSCENARIO scenario files (`.xosc`, `.osc`).
+
+### CLI Command: `openscenario <action> [files..]`
+Inspect, lint, simulate, and lower ASAM OpenSCENARIO scenario files (.xosc, .osc)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (e.g. for Modelica export)
+  - `--duration, -d <number>`: Simulation duration in seconds (default: 10.0)
+
+---
+
+### `plcopen`
+
+Inspect, validate, simulate, and project IEC 61131-3 PLCopen XML & Structured Text models (`.xml`, `.plcopen`, `.st`).
+
+### CLI Command: `plcopen <action> [files..]`
+Inspect, validate, simulate, and project IEC 61131-3 PLCopen XML & Structured Text models (.xml, .plcopen, .st)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path
+  - `--cycles <number>`: Number of scan cycles for run-scan (default: 10)
+  - `--dt <number>`: Cycle time interval in milliseconds for run-scan (default: 10)
+
+---
+
+### `jsbsim`
+
+Inspect, lint, simulate 6-DOF flight dynamics, and lower JSBSim models (`.xml`).
+
+### CLI Command: `jsbsim <action> [files..]`
+Inspect, lint, simulate 6-DOF flight dynamics, and lower JSBSim models (.xml)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (e.g. for Modelica export)
+  - `--duration, -d <number>`: Simulation duration in seconds (default: 10.0)
+  - `--speed, -s <number>`: Initial airspeed in ft/s (default: 180.0)
+  - `--altitude, -a <number>`: Initial altitude in ft (default: 5000.0)
+
+---
+
+### `ccsds`
+
+Inspect, validate, propagate, lower to DAE, and project CCSDS and XTCE spacecraft data (`.oem`, `.opm`, `.omm`, `.xtce`).
+
+### CLI Command: `ccsds <action> [files..]`
+Inspect, validate, propagate, lower to DAE, and project CCSDS and XTCE spacecraft data (.oem, .opm, .omm, .xtce)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path for generated Modelica or SysML v2 code
+  - `--format, -f <string>`: Output format: 'terminal' or 'json' (default: "terminal")
+  - `--json <boolean>`: Output results in JSON format (default: false)
+  - `--duration, --stop-time, --tstop <number>`: Propagation duration in seconds (~90 min default) (default: 5400)
+  - `--step, --step-size, --dt <number>`: Propagation time step in seconds (default: 30)
+
+---
+
+### `cfd`
+
+Inspect, lint, solve, and project CFD aerodynamic models (`.cfg`, `.foam`, `.su2`).
+
+### CLI Command: `cfd <action> [files..]`
+Inspect, lint, solve, and project CFD aerodynamic models (.cfg, .foam, .su2)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (for code generation or DAE metadata)
+
+---
+
+### `fea`
+
+Inspect, lint, solve, and project FEA structural models (`.inp`, `.bdf`, `.dat`).
+
+### CLI Command: `fea <action> [files..]`
+Inspect, lint, solve, and project FEA structural models (.inp, .bdf, .dat)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (for code generation or DAE metadata)
+
+---
+
+### `c`
+
+Inspect, lint, and bridge C99/ANSI C files and headers (`.c`, `.h`).
+
+### CLI Command: `c <action> [files..]`
+Inspect, lint, and bridge C99/ANSI C files and headers (.c, .h)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (e.g. for Modelica export)
+  - `--include <string>`: Header include directive name for Modelica external annotation
+
+---
+
+### `sbml`
+
+Inspect, lint, simulate biochemical networks, and lower SBML models (`.sbml`, `.xml`).
+
+### CLI Command: `sbml <action> [files..]`
+Inspect, lint, simulate biochemical networks, and lower SBML models (.sbml, .xml)
+
+Options:
+  - `--out, -o, --output <string>`: Output file path (e.g. for Modelica export)
+  - `--duration, -d <number>`: Simulation duration in seconds (default: 10.0)
+
 ================================================================================
 DOCUMENT: Polyglot Language Ecosystem
 CANONICAL URL: https://modelscript.org/languages/overview
@@ -8011,19 +8437,19 @@ CANONICAL URL: https://modelscript.org/languages/overview
 
 # Polyglot Language Ecosystem
 
-ModelScript is not a single-language compiler—it is a **polyglot systems engineering framework**. All **91 engineering, scientific, and clinical languages** share the same WebAssembly GLR parser compiler (`@modelscript/dsl`), the same `SymbolIndex` and `WorkspaceIndex` architecture, and the same Triple Graph Grammar (TGG) synchronization engine.
+ModelScript is not a single-language compiler—it is a **polyglot systems engineering framework**. All **92 engineering, scientific, and clinical languages** share the same WebAssembly GLR parser compiler (`@modelscript/dsl`), the same `SymbolIndex` and `WorkspaceIndex` architecture, and the same Triple Graph Grammar (TGG) synchronization engine.
 
 ---
 
 ## Language Maturity Tiers
 
-Every language package under `languages/<slug>/` declares an explicit maturity tier in `package.json#modelscript.tier`, continuously audited in CI by `scripts/lint-package-manifests.ts` and `scripts/audit-language-maturity.ts` (**25 Stable**, **65 Beta**, **0 Preview**):
+Every language package under `languages/<slug>/` declares an explicit maturity tier in `package.json#modelscript.tier`, continuously audited in CI by `scripts/lint-package-manifests.ts` and `scripts/audit-language-maturity.ts` (**25 Stable**, **67 Beta**, **0 Preview**):
 
 | Tier        |   Badge   | Criteria & Guarantees                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | :---------- | :-------: | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Stable**  | `Stable`  | Production-ready (**25 languages**) with complete Ahead-of-Time WASM GLR parser, static domain linter, `DAEBuilder` / solver lowering, and verification against official industry benchmarks, standard library snapshots, or homologation suites (including ModelScript, Modelica, AMPL, SysML v2, ReqIF, SSP, OWL 2, CSV, C, PSCAD, PSS/E, OpenDSS, SPICE, OLGA, PipelineStudio, EPANET, SWMM, EnergyPlus, GENSYS, URDF, PLCopen, STEP, OpenSCAD, and OpenUSD).                                                                                                                                                                                           |
-| **Beta**    |  `Beta`   | Domain-complete (**65 languages**) with native WASM GLR parser, static domain linter, `DAEBuilder` / domain solver lowering, cross-language projections, and $\ge 5$ unit and integration test suites (including MATPOWER, IEEE COMTRADE, IEC 61850 SCL, IWA ASM, OGC WaterML 2.0, ATP-EMTP, IEEE 1815 DNP3, ASPEN OneLiner, SEL Settings, USACE HEC-HMS, DIgSILENT PowerFactory, GE PSLF, CIM/CGMES, OCPP, OpenADR, Optical/DWDM, 5G/6G RAN, Fiber OSP, HEC-RAS, TOUGH, MODFLOW 6, LandGEM, GTFS, AUTOSAR, Simulink, SIMPACK, ADAMS, AutomationML, NIST OSCAL, ISO 23952 QIF, CFD, FEA, Chemical/Bio, and the Radiology / Oncology / Surgical CAS suite). |
-| **Preview** | `Preview` | Early-access tier (**0 languages currently in Preview** — all 90 language packages meet or exceed `Beta` or `Stable` verification requirements).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Stable**  | `Stable`  | Production-ready (**25 languages**) with complete Ahead-of-Time WASM GLR parser, static domain linter, `DAEBuilder` / solver lowering, and verification against official industry benchmarks, standard library snapshots, or homologation suites (including Modelica, AMPL, SysML v2, ReqIF, SSP, OWL 2, CSV, C, PSCAD, PSS/E, OpenDSS, SPICE, OLGA, PipelineStudio, EPANET, SWMM, EnergyPlus, GENSYS, URDF, PLCopen, STEP, OpenSCAD, and OpenUSD).                                                                                                                                                                                           |
+| **Beta**    |  `Beta`   | Domain-complete (**67 languages**) with native WASM GLR parser, static domain linter, `DAEBuilder` / domain solver lowering, cross-language projections, and $\ge 5$ unit and integration test suites (including MATPOWER, IEEE COMTRADE, IEC 61850 SCL, IWA ASM, OGC WaterML 2.0, ATP-EMTP, IEEE 1815 DNP3, ASPEN OneLiner, SEL Settings, USACE HEC-HMS, DIgSILENT PowerFactory, GE PSLF, CIM/CGMES, OCPP, OpenADR, Optical/DWDM, 5G/6G RAN, Fiber OSP, HEC-RAS, TOUGH, MODFLOW 6, LandGEM, GTFS, AUTOSAR, Simulink, SIMPACK, ADAMS, AutomationML, NIST OSCAL, ISO 23952 QIF, CFD, FEA, Chemical/Bio, MLXTRAN, NMODL, and the Radiology / Oncology / Surgical CAS suite). |
+| **Preview** | `Preview` | Early-access tier (**0 languages currently in Preview** — all 92 documented language packages meet or exceed `Beta` or `Stable` verification requirements).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 ---
 
@@ -8036,7 +8462,7 @@ Search by name, file extension, maturity tier, or engineering domain, or filter 
 Filter by platform group, maturity tier (`Stable`, `Beta`, `Preview`), industry, or capability across all engineering languages to inspect simulation engines, linear-memory DAE lowering, and polyglot projections:
 
 ### Polyglot Language Capability Matrix
-ModelScript supports 90 modeling, simulation, and engineering formats across 5 pipeline capabilities:
+ModelScript supports 92 modeling, simulation, and engineering formats across 5 pipeline capabilities:
 | Language | Tier | Extension | Role | Parse | Lint | DAE Arena | Simulate | Projections |
 | :--- | :---: | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
 | Modelica | `stable` | `.mo` | Acausal multi-domain physics | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -8119,9 +8545,11 @@ ModelScript supports 90 modeling, simulation, and engineering formats across 5 p
 | SBOL3 | `beta` | `.sbol` | Synthetic biology genetic circuits & Hill kinetics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | SED-ML | `beta` | `.sedml` | COMBINE reproducible simulation experiment protocols | ✓ | ✓ | ✓ | ✓ | ✓ |
 | NMTRAN (NONMEM) | `beta` | `.ctl` | Clinical PK/PD compartmental dosing & exposure | ✓ | ✓ | ✓ | ✓ | ✓ |
+| MLXTRAN (Monolix) | `beta` | `.mlxtran` | Monolix PK/PD longitudinal & compartmental models | ✓ | ✓ | ✓ | ✓ | ✓ |
 | PDB / mmCIF | `beta` | `.pdb` | 3D protein structures, Ramachandran & GNM dynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | GenBank / FASTA | `beta` | `.gb` | Annotated nucleotide sequences, ORFs & restriction maps | ✓ | ✓ | ✓ | ✓ | ✓ |
 | CellML | `beta` | `.cellml` | Cellular electrophysiology & Physiome ODE models | ✓ | ✓ | ✓ | ✓ | ✓ |
+| NMODL (NEURON) | `beta` | `.mod` | NEURON ion-channel & Hodgkin-Huxley membrane kinetics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | OpenSim | `beta` | `.osim` | Musculoskeletal multibody & Hill-type muscle dynamics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | FEBio / SOFA | `beta` | `.feb` | Hyperelastic soft-tissue biomechanics & surgical scenes | ✓ | ✓ | ✓ | ✓ | ✓ |
 | DICOM-RT | `beta` | `.rtplan` | Clinical radiotherapy plans, DVH metrics & BED/EQD2 | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -8207,7 +8635,7 @@ ModelScript enforces 306 OpenModelica-compatible diagnostic rules across six mod
 | `connections-streams.ts`           | `M3003`–`M3004`: Connector plug-compatibility, stream connector rules, cardinality checks                         |
 | `synchronous-clocks.ts` & `cfa.ts` | Clock partitioning rules, uninitialized discrete variables, structural singularity diagnostics                    |
 
-### Diagnostics for Modelica (226 rules)
+### Diagnostics for Modelica (233 rules)
 | Code | Severity | Identifier | Summary |
 | :--- | :--- | :--- | :--- |
 | `M1000` | error | `identity-arg-count` | Wrong number of arguments to identity. |
@@ -8379,6 +8807,13 @@ ModelScript enforces 306 OpenModelica-compatible diagnostic rules across six mod
 | `M4124` | error | `stream-missing-instream` | Stream variable '<varName>' accessed in connector equation without required inStream() operator. |
 | `M4125` | error | `stream-mixed-with-flow` | Variable '<varName>' cannot have both 'stream' and 'flow' prefixes. |
 | `M4126` | error | `inner-outer-causality-mismatch` | Outer component '<outerName>' causality conflicts with inner declaration '<innerName>'. |
+| `M4130` | warning | `class-missing-description` | Class '<className>' is missing a description string. |
+| `M4131` | warning | `parameter-missing-description` | Public parameter '<paramName>' is missing a description string. |
+| `M4132` | info | `constant-missing-description` | Public constant '<constName>' is missing a description string. |
+| `M4133` | info | `class-missing-icon` | Class '<className>' is missing an icon annotation and does not inherit one. |
+| `M4134` | error | `broken-modelica-uri` | Broken 'modelica://' reference: '<uri>' does not resolve to an existing class or model. |
+| `M4135` | error | `resource-missing` | Referenced resource file '<res>' does not exist on disk. |
+| `M4136` | warning | `resource-absolute-path` | Resource reference '<pathStr>' uses an absolute filesystem path; use a relative path or 'modelica://' URI instead. |
 | `M5001` | error | `equation-type-mismatch` | Type mismatch in equation <lhsExpanded>=<rhsExpanded> of type <lhsType>=<rhsType>. |
 | `M5002` | error | `constrainedby-type-mismatch` | Replaceable '<componentName>': default type '<defaultType>' is not compatible with constraining type '<constrainingType>'. |
 | `M5003` | error | `if-branch-type-mismatch` | If-equation branch type mismatch: '<varName>' assigned type '<branchType>' but expected '<expectedType>'. |
@@ -9519,7 +9954,7 @@ tag_port("base_mount", "frame", [0, 0, -1])
 
 ## Semantic Linter & Diagnostic Codes
 
-`lintScadCst(sourceText)` (`languages/scad/src/linter.ts`) performs static scope resolution, constant folding, and geometric validity checking across 9 diagnostic rules:
+`lintScadCst(sourceText)` (`languages/scad/src/linter.ts`) performs static scope resolution, constant folding, and geometric validity checking across 13 diagnostic rules:
 
 ### Diagnostics for OpenSCAD (13 rules)
 | Code | Severity | Identifier | Summary |
@@ -17189,6 +17624,105 @@ const sbmlXml = nmtranToSbml(model);
 NONMEM is a registered trademark of ICON plc. PsN and Pirana are trademarks or software products of their respective authors and Certara, L.P. Reference to these marks is strictly for nominative identification of control stream format compatibility and data interchange. ModelScript is an independent open-core project not affiliated with or endorsed by these entities.
 
 ================================================================================
+DOCUMENT: MLXTRAN (Monolix) (.mlxtran) Language Reference
+CANONICAL URL: https://modelscript.org/languages/mlxtran
+================================================================================
+
+# MLXTRAN / Monolix-Compatible Pharmacometrics & PK/PD (`.mlxtran`)
+
+`@modelscript/mlxtran` (`languages/mlxtran`) provides native WebAssembly GLR parsing, multi-compartment pharmacokinetic/pharmacodynamic (PK/PD) ODE and PK-macro solving ($\text{AUC}$, $C_{\max}$, $T_{\max}$, $t_{1/2}$), `DAEBuilder` linear-memory lowering, and **Modelica 3.x** projections for **Monolix MLXTRAN** longitudinal pharmacometric models.
+
+---
+
+## Supported Extensions & Standards
+
+| Extension  | Format                 | Description                                                                                                                   |
+| :--------- | :--------------------- | :---------------------------------------------------------------------------------------------------------------------------- |
+| `.mlxtran` | MLXTRAN Structural Model | Monolix-compatible longitudinal model (`[LONGITUDINAL]`, `input = {...}`, `PK:`, `EQUATION:`, `ddt_<state>`, `OUTPUT:`) |
+
+---
+
+## Key Capabilities
+
+### 1. Structural Sections, PK Macros & Differential Equations (`EQUATION:`)
+
+`@modelscript/mlxtran` parses `[LONGITUDINAL]` blocks with `input = {...}` parameter declarations, `PK:` compartmental macro statements (`compartment`, `absorption`, `depot`, `elimination`, `transfer`), `EQUATION:` differential equations (`ddt_<state>`), and `OUTPUT:` declarations:
+
+$$\frac{dA_d}{dt} = -k_a A_d, \qquad \frac{dA_c}{dt} = k_a A_d - \frac{CL}{V} A_c - \frac{Q}{V} A_c + \frac{Q}{V_2} A_p, \qquad \frac{dA_p}{dt} = \frac{Q}{V} A_c - \frac{Q}{V_2} A_p$$
+
+### 2. Deterministic PK Simulation & Non-Compartmental Analysis (NCA)
+
+- Integrates 1- and 2-compartment oral/IV dosing models (`solveMlxtranPk`) and computes trapezoidal exposure metrics:
+  $$\text{AUC}_{0\to t} = \int_0^t C_c(\tau)\,d\tau, \qquad C_{\max} = \max_t C_c(t), \qquad T_{\max} = \arg\max_t C_c(t), \qquad t_{1/2} = \frac{\ln 2}{k_{10}}$$
+
+### 3. DAE Arena Lowering & Modelica Projection
+
+- Lowers MLXTRAN parameters, compartmental transfers, and `ddt_*` ODEs directly into `@modelscript/runtime`'s `DAEBuilder` arena (`lowerMlxtranToDae`) and projects models into **Modelica 3.x** (`mlxtranToModelica`).
+
+---
+
+## Pre-Flight Diagnostics
+
+### Diagnostics for MLXTRAN (Monolix) (10 rules)
+| Code | Severity | Identifier | Summary |
+| :--- | :--- | :--- | :--- |
+| `M9421` | error | `missing-longitudinal-block` | MLXTRAN model is missing the required '[LONGITUDINAL]' section header. |
+| `M9422` | error | `undeclared-input-parameter` | Equation references parameter '<paramName>' that is not declared in 'input = {...}'. |
+| `M9423` | warning | `orphan-derivative` | Differential variable '<stateName>' has time derivative 'ddt_<stateName>' but is never referenced in outputs or transfers. |
+| `M9424` | error | `mass-conservation-leak` | Mass conservation violation: transfer between compartment '<fromCmt>' and '<toCmt>' has unbalanced stoichiometry or rates. |
+| `M9425` | error | `negative-parameter-bound` | Physiological parameter '<paramName>' must be positive (> 0), got '<val>'. |
+| `M9426` | error | `duplicate-equation-definition` | Variable or derivative '<ident>' is defined multiple times in EQUATION block. |
+| `M9427` | warning | `missing-output-definition` | Model defines differential equations but is missing an 'OUTPUT:' block. |
+| `M9428` | error | `invalid-macro-target` | PK macro '<macroKind>' targets undefined compartment or state variable '<targetName>'. |
+| `M9429` | error | `syntax-error` | MLXTRAN syntax error: <detail>. |
+| `M9430` | error | `unbalanced-compartment-transfer` | Compartment transfer references invalid or identical compartment index ('from=<from>', 'to=<to>'). |
+
+---
+
+## CLI Usage
+
+```bash
+# Lint an MLXTRAN structural model for undeclared parameters, mass leaks, and missing OUTPUT blocks
+msx lint TwoCompOral.mlxtran
+
+# Parse and inspect the MLXTRAN concrete syntax tree
+msx parse TwoCompOral.mlxtran
+
+# Run domain inspection and PK simulation via the unified domain router
+msx domain mlxtran inspect TwoCompOral.mlxtran
+msx domain mlxtran simulate TwoCompOral.mlxtran
+```
+
+---
+
+## Programmatic TypeScript SDK
+
+```typescript
+import {
+  parseMlxtran,
+  lintMlxtran,
+  solveMlxtranPk,
+  lowerMlxtranToDae,
+  mlxtranToModelica,
+} from "@modelscript/mlxtran";
+import { DAEBuilder } from "@modelscript/runtime";
+
+const doc = parseMlxtran(mlxtranSource);
+const diagnostics = lintMlxtran(doc);
+const result = solveMlxtranPk(doc, { tEnd: 24, dt: 0.05, dose: 100 });
+
+const builder = new DAEBuilder();
+lowerMlxtranToDae(doc, builder);
+const modelicaCode = mlxtranToModelica(doc);
+```
+
+---
+
+## Trademarks & Disclaimers
+
+Monolix® and Lixoft® are registered trademarks of Lixoft SAS / Simulations Plus, Inc. Reference to these marks is strictly for nominative identification of MLXTRAN file format compatibility. ModelScript is an independent open-core project not affiliated with or endorsed by these entities.
+
+================================================================================
 DOCUMENT: PDB / mmCIF (.pdb) Language Reference
 CANONICAL URL: https://modelscript.org/languages/pdb
 ================================================================================
@@ -17510,6 +18044,98 @@ const builder = new DAEBuilder();
 lowerCellmlToDae(model, builder);
 const modelicaCode = cellmlToModelica(model);
 const sbmlXml = cellmlToSbml(model);
+```
+
+================================================================================
+DOCUMENT: NMODL (NEURON) (.mod) Language Reference
+CANONICAL URL: https://modelscript.org/languages/nmodl
+================================================================================
+
+# NMODL / NEURON Ion-Channel & Membrane Kinetics (`.mod`)
+
+`@modelscript/nmodl` (`languages/nmodl`) provides native WebAssembly GLR parsing, biophysical pre-flight static checks (`M9441`–`M9450`), deterministic Hodgkin-Huxley current-clamp action potential integration, `DAEBuilder` linear-memory lowering, and **Modelica 3.x** projections for **NEURON NMODL** ion-channel and synaptic mechanism descriptions.
+
+---
+
+## Supported Extensions & Standards
+
+| Extension | Format          | Description                                                                                                                   |
+| :-------- | :-------------- | :---------------------------------------------------------------------------------------------------------------------------- |
+| `.mod`    | NMODL Mechanism | NEURON Model Description Language (`NEURON`, `SUFFIX`, `USEION`, `PARAMETER`, `STATE`, `BREAKPOINT`, `DERIVATIVE`, `INITIAL`) |
+
+---
+
+## Key Capabilities
+
+### 1. Biophysical Interface & Kinetic Block Analysis
+
+`@modelscript/nmodl` parses `NEURON { SUFFIX ... USEION ... READ ... WRITE ... }` blocks, `PARAMETER` declarations with unit annotations, `STATE` gating variables, `INITIAL` conditions, `BREAKPOINT` ohmic/GHK current assignments, and `DERIVATIVE` gating ODEs:
+
+$$C_m \frac{dV_m}{dt} = I_{\text{stim}}(t) - \left[\bar{g}_{\text{Na}} m^3 h (V_m - E_{\text{Na}}) + \bar{g}_{\text{K}} n^4 (V_m - E_{\text{K}}) + g_L (V_m - E_L)\right]$$
+
+### 2. Current-Clamp Action Potential Solver
+
+- Integrates single-compartment soma membrane voltage $V_m(t)$ and voltage-gated channel states ($m, h, n$) under step current-clamp injection (`solveNmodlActionPotential`), reporting spike count, firing frequency, peak depolarization, and resting potential.
+
+### 3. DAE Arena Lowering & Modelica Projection
+
+- Lowers NMODL parameters, gating states, and `DERIVATIVE` / `BREAKPOINT` equations directly into `@modelscript/runtime`'s `DAEBuilder` arena (`lowerNmodlToDae`) and projects mechanisms into **Modelica 3.x** (`nmodlToModelica`).
+
+---
+
+## Pre-Flight Diagnostics
+
+### Diagnostics for NMODL (NEURON) (10 rules)
+| Code | Severity | Identifier | Summary |
+| :--- | :--- | :--- | :--- |
+| `M9441` | error | `missing-neuron-block` | NMODL file is missing the required 'NEURON { ... }' interface block. |
+| `M9442` | error | `missing-suffix-declaration` | 'NEURON' block is missing the required 'SUFFIX' mechanism identifier. |
+| `M9443` | error | `missing-derivative-evolution` | State variable '<stateName>' declared in 'STATE' block has no time-derivative equation in 'DERIVATIVE'. |
+| `M9444` | error | `unassigned-write-current` | Ion current '<curName>' declared in 'USEION ... WRITE' is never computed in 'BREAKPOINT'. |
+| `M9445` | error | `gating-probability-bounds` | Gating variable initial condition '<varName>' = <val> falls outside physical probability bounds [0, 1]. |
+| `M9446` | warning | `reversal-potential-sign` | Reversal potential parameter '<paramName>' has unexpected polarity (<val> mV). |
+| `M9447` | error | `missing-breakpoint-block` | Channel mechanism is missing the required 'BREAKPOINT' block. |
+| `M9448` | error | `duplicate-block-declaration` | Section block '<blockName>' is declared multiple times. |
+| `M9449` | error | `syntax-error` | NMODL syntax error: <detail>. |
+| `M9450` | warning | `unbalanced-units-bracket` | Parameter declaration '<paramName>' has unbalanced unit parentheses or brackets. |
+
+---
+
+## CLI Usage
+
+```bash
+# Lint an NMODL channel mechanism for missing SUFFIX/BREAKPOINT, unassigned currents, and gating bounds
+msx lint hh_sodium.mod
+
+# Parse and inspect the NMODL concrete syntax tree
+msx parse hh_sodium.mod
+
+# Run domain inspection and action-potential simulation via the unified domain router
+msx domain nmodl inspect hh_sodium.mod
+msx domain nmodl simulate hh_sodium.mod
+```
+
+---
+
+## Programmatic TypeScript SDK
+
+```typescript
+import {
+  parseNmodl,
+  lintNmodl,
+  solveNmodlActionPotential,
+  lowerNmodlToDae,
+  nmodlToModelica,
+} from "@modelscript/nmodl";
+import { DAEBuilder } from "@modelscript/runtime";
+
+const doc = parseNmodl(nmodlSource);
+const diagnostics = lintNmodl(doc);
+const sim = solveNmodlActionPotential(doc, { tEnd: 50, dt: 0.025, stimAmp: 10 });
+
+const builder = new DAEBuilder();
+lowerNmodlToDae(doc, builder);
+const modelicaCode = nmodlToModelica(doc);
 ```
 
 ================================================================================
@@ -18413,7 +19039,7 @@ CANONICAL URL: https://modelscript.org/industries/power-systems
 **Summary:** Run PSCAD/EMTDC electromagnetic transients, Siemens PSS/E, DIgSILENT PowerFactory, and GE PSLF transmission studies alongside OpenDSS distribution, OCPP EV charging, and OpenADR demand response — with IEEE 2800, NERC PRC-029, and ENTSO-E RfG verification built in.
 **Headline:** Grid-code compliance, from PSCAD to IEEE 2800 in one pipeline
 
-**Target Languages:** `pscad`, `psse`, `powerfactory`, `pslf`, `cgmes`, `opendss`, `ocpp`, `openadr`, `ampl`, `oscal`, `modelica`, `c`, `fortran`, `csv`
+**Target Languages:** `pscad`, `psse`, `powerfactory`, `pslf`, `cgmes`, `matpower`, `opendss`, `atp`, `comtrade`, `scl`, `dnp3`, `oneliner`, `sel`, `ocpp`, `openadr`, `ampl`, `oscal`, `modelica`, `c`, `fortran`, `csv`
 **Supported Standards:** IEEE 2800-2022 & NERC PRC-029-1, ENTSO-E RfG & IEEE 1547-2018, DIgSILENT PowerFactory (.dsl / .dgs), GE PSLF (.epc / .dyd) & PSS/E RAW v30–35, OCPP 1.6J / 2.0.1 & OpenADR 2.0b, NIST OSCAL 1.1 (NERC CIP), IEEE C37.111 COMTRADE, CIGRE black-box DLLs
 
 ### Industry Challenges & Solutions
@@ -18527,8 +19153,8 @@ CANONICAL URL: https://modelscript.org/industries/buildings
 **Summary:** Bring EnergyPlus building models, EPANET water distribution networks, EPA SWMM stormwater systems, HEC-RAS river hydraulics, MODFLOW 6 groundwater aquifers, and LandGEM landfill emissions into one workspace for coupled simulation and analysis.
 **Headline:** Model the built environment, from HVAC to river hydraulics and aquifers
 
-**Target Languages:** `energyplus`, `epanet`, `swmm`, `hec-ras`, `modflow`, `landgem`, `phreeqc`, `modelica`, `step`, `csv`
-**Supported Standards:** EnergyPlus IDF / epJSON, EPANET INP & AWWA M36, SWMM 5.x, USACE HEC-RAS & USGS MODFLOW 6, US EPA LandGEM, FMI 2.0 / 3.0
+**Target Languages:** `energyplus`, `epanet`, `swmm`, `hec-ras`, `hec-hms`, `modflow`, `waterml`, `asm`, `landgem`, `phreeqc`, `modelica`, `step`, `csv`
+**Supported Standards:** EnergyPlus IDF / epJSON, EPANET INP & AWWA M36, SWMM 5.x, USACE HEC-RAS, HEC-HMS & USGS MODFLOW 6, OGC WaterML 2.0 & IWA ASM, US EPA LandGEM, FMI 2.0 / 3.0
 
 ### Industry Challenges & Solutions
 - **Disconnected systems:** Energy, water, and drainage are modeled separately even though they interact.
@@ -18537,7 +19163,7 @@ CANONICAL URL: https://modelscript.org/industries/buildings
 
 ### Key Capabilities
 - **Building energy:** Parse EnergyPlus IDF/epJSON models for thermal and HVAC analysis.
-- **Water distribution:** Pressurized network hydraulics, WQchlorine decay, and AWWA M36 audits from EPANET models.
+- **Water distribution:** Pressurized network hydraulics, WQ chlorine decay, and AWWA M36 audits from EPANET models.
 - **Stormwater, rivers & aquifers:** 1D Saint-Venant SWMM routing, HEC-RAS river profiles, and MODFLOW 6 3D groundwater head.
 - **Sensor calibration:** Align simulations with CSV telemetry for digital twins.
 
@@ -18676,10 +19302,10 @@ CANONICAL URL: https://modelscript.org/industries/life-sciences
 # Life Sciences, Healthcare & Medical
 
 **Tagline:** Systems biology, pharmacometrics, radiotherapy & surgical CAS
-**Summary:** Unify systems & synthetic biology (SBML, Antimony, BioNetGen, SBOL3, SED-ML, NMTRAN, PDB, GenBank) with clinical physiology, biomechanics, radiation oncology, and computer-assisted surgery (CellML, OpenSim, FEBio, DICOM-RT, TOPAS, NIfTI/NRRD, 3MF Medical, OpenIGTLink).
+**Summary:** Unify systems & synthetic biology (SBML, Antimony, BioNetGen, SBOL3, SED-ML, NMTRAN, MLXTRAN, PDB, GenBank) with clinical physiology, neurobiology, biomechanics, radiation oncology, and computer-assisted surgery (CellML, NMODL, OpenSim, FEBio, DICOM-RT, TOPAS, NIfTI/NRRD, 3MF Medical, OpenIGTLink).
 **Headline:** From molecular pathways to radiotherapy and surgical navigation
 
-**Target Languages:** `sbml`, `antimony`, `bngl`, `sbol`, `sedml`, `nmtran`, `pdb`, `genbank`, `cellml`, `opensim`, `febio`, `dicom-rt`, `topas`, `nifti`, `three-mf`, `igtl`, `modelica`, `owl2`, `csv`
+**Target Languages:** `sbml`, `antimony`, `bngl`, `sbol`, `sedml`, `nmtran`, `mlxtran`, `pdb`, `genbank`, `cellml`, `nmodl`, `opensim`, `febio`, `dicom-rt`, `topas`, `nifti`, `three-mf`, `igtl`, `modelica`, `owl2`, `csv`
 **Supported Standards:** SBML L2/L3 & SED-ML, SBOL3 & GenBank, NONMEM NMTRAN, CellML 2.0, DICOM-RT (RTPLAN / RTSTRUCT / RTDOSE), NIfTI-1/2 & NRRD, ISO/ASTM 52915 3MF Medical, OpenIGTLink & PLUS, FDA 21 CFR Part 11 DHF
 
 ### Industry Challenges & Solutions
@@ -18714,7 +19340,7 @@ CANONICAL URL: https://modelscript.org/reference/linter-rules
 
 # Linter Rules Reference
 
-ModelScript ships **1153 diagnostic rules** across **83 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **1160 diagnostic rules** across **83 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -18735,7 +19361,7 @@ The **CLI** column below shows which command reports each language's rules.
 
 | Language                                  | Package                     | Rules | CLI                     |
 | :---------------------------------------- | :-------------------------- | ----: | :---------------------- |
-| [Modelica](#modelica)                     | `@modelscript/modelica`     |   226 | `msx lint`              |
+| [Modelica](#modelica)                     | `@modelscript/modelica`     |   233 | `msx lint`              |
 | [AMPL](#ampl)                             | `@modelscript/ampl`         |    12 | `msx lint`              |
 | [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |    55 | `msx lint`              |
 | [ReqIF](#reqif)                           | `@modelscript/reqif`        |    13 | `msx reqif lint`        |
@@ -18805,9 +19431,11 @@ The **CLI** column below shows which command reports each language's rules.
 | [SBOL3](#sbol)                            | `@modelscript/sbol`         |    10 | Language server / API   |
 | [SED-ML](#sedml)                          | `@modelscript/sedml`        |    10 | Language server / API   |
 | [NMTRAN (NONMEM)](#nmtran)                | `@modelscript/nmtran`       |    10 | Language server / API   |
+| [MLXTRAN (Monolix)](#mlxtran)             | `@modelscript/mlxtran`      |    10 | Language server / API   |
 | [PDB / mmCIF](#pdb)                       | `@modelscript/pdb`          |    10 | Language server / API   |
 | [GenBank / FASTA](#genbank)               | `@modelscript/genbank`      |    10 | Language server / API   |
 | [CellML](#cellml)                         | `@modelscript/cellml`       |    10 | Language server / API   |
+| [NMODL (NEURON)](#nmodl)                  | `@modelscript/nmodl`        |    10 | Language server / API   |
 | [OpenSim](#opensim)                       | `@modelscript/opensim`      |    10 | Language server / API   |
 | [FEBio / SOFA](#febio)                    | `@modelscript/febio`        |    10 | Language server / API   |
 | [DICOM-RT](#dicom-rt)                     | `@modelscript/dicom-rt`     |    10 | Language server / API   |
@@ -18815,9 +19443,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [NIfTI / NRRD](#nifti)                    | `@modelscript/nifti`        |    10 | Language server / API   |
 | [3MF Medical](#three-mf)                  | `@modelscript/three-mf`     |    10 | Language server / API   |
 | [OpenIGTLink / PLUS](#igtl)               | `@modelscript/igtl`         |    10 | Language server / API   |
-| [mlxtran](#mlxtran)                       | `@modelscript/mlxtran`      |    10 | Language server / API   |
 | [modelscript](#modelscript)               | `@modelscript/modelscript`  |    11 | Language server / API   |
-| [nmodl](#nmodl)                           | `@modelscript/nmodl`        |    10 | Language server / API   |
 
 ::: info Not yet listed
 These languages have linters whose rules are not exported as a catalog yet, so they can't be listed here: [ASPEN OneLiner / CAPE](../languages/oneliner.md), [ATP-EMTP](../languages/atp.md), [IEC 61850 SCL](../languages/scl.md), [IEEE 1815 / DNP3](../languages/dnp3.md), [IEEE COMTRADE](../languages/comtrade.md), [IWA Activated Sludge Models](../languages/asm.md), [MATPOWER](../languages/matpower.md), [OGC WaterML 2.0](../languages/waterml.md), [SEL Relay Settings](../languages/sel.md), [USACE HEC-HMS](../languages/hec-hms.md). See each language guide for details.
@@ -18825,7 +19451,7 @@ These languages have linters whose rules are not exported as a catalog yet, so t
 
 ## Modelica {#modelica}
 
-Acausal multi-domain physics. **226 rules** · `@modelscript/modelica` · Source: `languages/modelica/src/errors.ts` · [Language guide](../languages/modelica.md)
+Acausal multi-domain physics. **233 rules** · `@modelscript/modelica` · Source: `languages/modelica/src/errors.ts` · [Language guide](../languages/modelica.md)
 
 **`M1xxx` — Syntax & parse**
 
@@ -19015,6 +19641,13 @@ Acausal multi-domain physics. **226 rules** · `@modelscript/modelica` · Source
 | <span id="modelica-m4124"></span>`M4124` | `stream-missing-instream`                         | [error]    | Stream variable '<code>&lt;varName&gt;</code>' accessed in connector equation without required inStream() operator.                                                                                                                                                                               |
 | <span id="modelica-m4125"></span>`M4125` | `stream-mixed-with-flow`                          | [error]    | Variable '<code>&lt;varName&gt;</code>' cannot have both 'stream' and 'flow' prefixes.                                                                                                                                                                                                            |
 | <span id="modelica-m4126"></span>`M4126` | `inner-outer-causality-mismatch`                  | [error]    | Outer component '<code>&lt;outerName&gt;</code>' causality conflicts with inner declaration '<code>&lt;innerName&gt;</code>'.                                                                                                                                                                     |
+| <span id="modelica-m4130"></span>`M4130` | `class-missing-description`                       | [warning] | Class '<code>&lt;className&gt;</code>' is missing a description string.                                                                                                                                                                                                                           |
+| <span id="modelica-m4131"></span>`M4131` | `parameter-missing-description`                   | [warning] | Public parameter '<code>&lt;paramName&gt;</code>' is missing a description string.                                                                                                                                                                                                                |
+| <span id="modelica-m4132"></span>`M4132` | `constant-missing-description`                    | [info]       | Public constant '<code>&lt;constName&gt;</code>' is missing a description string.                                                                                                                                                                                                                 |
+| <span id="modelica-m4133"></span>`M4133` | `class-missing-icon`                              | [info]       | Class '<code>&lt;className&gt;</code>' is missing an icon annotation and does not inherit one.                                                                                                                                                                                                    |
+| <span id="modelica-m4134"></span>`M4134` | `broken-modelica-uri`                             | [error]    | Broken 'modelica://' reference: '<code>&lt;uri&gt;</code>' does not resolve to an existing class or model.                                                                                                                                                                                        |
+| <span id="modelica-m4135"></span>`M4135` | `resource-missing`                                | [error]    | Referenced resource file '<code>&lt;res&gt;</code>' does not exist on disk.                                                                                                                                                                                                                       |
+| <span id="modelica-m4136"></span>`M4136` | `resource-absolute-path`                          | [warning] | Resource reference '<code>&lt;pathStr&gt;</code>' uses an absolute filesystem path; use a relative path or 'modelica://' URI instead.                                                                                                                                                             |
 
 **`M5xxx` — Equations, algorithms & control-flow analysis**
 
@@ -20384,6 +21017,23 @@ Clinical PK/PD compartmental dosing & exposure. **10 rules** · `@modelscript/nm
 | <span id="nmtran-m9409"></span>`M9409` | `missing-required-trans-parameter`    | [error] | Subroutine '<code>&lt;advan&gt;</code>' with '<code>&lt;trans&gt;</code>' requires pharmacokinetic parameter '<code>&lt;paramName&gt;</code>' in '&#36;PK'.                         |
 | <span id="nmtran-m9410"></span>`M9410` | `negative-dosing-amount`              | [error] | Dosing record specifies a negative '<code>&lt;field&gt;</code>' value ('<code>&lt;value&gt;</code>').                                                                               |
 
+## MLXTRAN (Monolix) {#mlxtran}
+
+Monolix PK/PD longitudinal & compartmental models. **10 rules** · `@modelscript/mlxtran` · Source: `languages/mlxtran/src/errors.ts` · [Language guide](../languages/mlxtran.md)
+
+| Code                                    | Rule                              | Severity                                | Message                                                                                                                                                           |
+| :-------------------------------------- | :-------------------------------- | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="mlxtran-m9421"></span>`M9421` | `missing-longitudinal-block`      | [error]    | MLXTRAN model is missing the required '&#91;LONGITUDINAL&#93;' section header.                                                                                    |
+| <span id="mlxtran-m9422"></span>`M9422` | `undeclared-input-parameter`      | [error]    | Equation references parameter '<code>&lt;paramName&gt;</code>' that is not declared in 'input = &#123;...&#125;'.                                                 |
+| <span id="mlxtran-m9423"></span>`M9423` | `orphan-derivative`               | [warning] | Differential variable '<code>&lt;stateName&gt;</code>' has time derivative 'ddt\_<code>&lt;stateName&gt;</code>' but is never referenced in outputs or transfers. |
+| <span id="mlxtran-m9424"></span>`M9424` | `mass-conservation-leak`          | [error]    | Mass conservation violation: transfer between compartment '<code>&lt;fromCmt&gt;</code>' and '<code>&lt;toCmt&gt;</code>' has unbalanced stoichiometry or rates.  |
+| <span id="mlxtran-m9425"></span>`M9425` | `negative-parameter-bound`        | [error]    | Physiological parameter '<code>&lt;paramName&gt;</code>' must be positive (&gt; 0), got '<code>&lt;val&gt;</code>'.                                               |
+| <span id="mlxtran-m9426"></span>`M9426` | `duplicate-equation-definition`   | [error]    | Variable or derivative '<code>&lt;ident&gt;</code>' is defined multiple times in EQUATION block.                                                                  |
+| <span id="mlxtran-m9427"></span>`M9427` | `missing-output-definition`       | [warning] | Model defines differential equations but is missing an 'OUTPUT:' block.                                                                                           |
+| <span id="mlxtran-m9428"></span>`M9428` | `invalid-macro-target`            | [error]    | PK macro '<code>&lt;macroKind&gt;</code>' targets undefined compartment or state variable '<code>&lt;targetName&gt;</code>'.                                      |
+| <span id="mlxtran-m9429"></span>`M9429` | `syntax-error`                    | [error]    | MLXTRAN syntax error: <code>&lt;detail&gt;</code>.                                                                                                                |
+| <span id="mlxtran-m9430"></span>`M9430` | `unbalanced-compartment-transfer` | [error]    | Compartment transfer references invalid or identical compartment index ('from=<code>&lt;from&gt;</code>', 'to=<code>&lt;to&gt;</code>').                          |
+
 ## PDB / mmCIF {#pdb}
 
 3D protein structures, Ramachandran & GNM dynamics. **10 rules** · `@modelscript/pdb` · Source: `languages/pdb/src/errors.ts` · [Language guide](../languages/pdb.md)
@@ -20434,6 +21084,23 @@ Cellular electrophysiology & Physiome ODE models. **10 rules** · `@modelscript/
 | <span id="cellml-m9308"></span>`M9308` | `cellml-overconstrained-variable`        | [error]    | Variable '<code>&lt;varName&gt;</code>' in component '<code>&lt;compName&gt;</code>' has an 'in' interface or prior assignment and cannot be assigned by an equation or ODE.                                                                                          |
 | <span id="cellml-m9309"></span>`M9309` | `cellml-undefined-math-ci`               | [error]    | Equation in component '<code>&lt;compName&gt;</code>' references undeclared variable identifier '<code>&lt;ciName&gt;</code>'.                                                                                                                                        |
 | <span id="cellml-m9310"></span>`M9310` | `cellml-duplicate-variable-or-component` | [error]    | Duplicate <code>&lt;entityKind&gt;</code> '<code>&lt;name&gt;</code>' declared in component '<code>&lt;compName&gt;</code>'.                                                                                                                                          |
+
+## NMODL (NEURON) {#nmodl}
+
+NEURON ion-channel & Hodgkin-Huxley membrane kinetics. **10 rules** · `@modelscript/nmodl` · Source: `languages/nmodl/src/errors.ts` · [Language guide](../languages/nmodl.md)
+
+| Code                                  | Rule                           | Severity                                | Message                                                                                                                                               |
+| :------------------------------------ | :----------------------------- | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="nmodl-m9441"></span>`M9441` | `missing-neuron-block`         | [error]    | NMODL file is missing the required 'NEURON &#123; ... &#125;' interface block.                                                                        |
+| <span id="nmodl-m9442"></span>`M9442` | `missing-suffix-declaration`   | [error]    | 'NEURON' block is missing the required 'SUFFIX' mechanism identifier.                                                                                 |
+| <span id="nmodl-m9443"></span>`M9443` | `missing-derivative-evolution` | [error]    | State variable '<code>&lt;stateName&gt;</code>' declared in 'STATE' block has no time-derivative equation in 'DERIVATIVE'.                            |
+| <span id="nmodl-m9444"></span>`M9444` | `unassigned-write-current`     | [error]    | Ion current '<code>&lt;curName&gt;</code>' declared in 'USEION ... WRITE' is never computed in 'BREAKPOINT'.                                          |
+| <span id="nmodl-m9445"></span>`M9445` | `gating-probability-bounds`    | [error]    | Gating variable initial condition '<code>&lt;varName&gt;</code>' = <code>&lt;val&gt;</code> falls outside physical probability bounds &#91;0, 1&#93;. |
+| <span id="nmodl-m9446"></span>`M9446` | `reversal-potential-sign`      | [warning] | Reversal potential parameter '<code>&lt;paramName&gt;</code>' has unexpected polarity (<code>&lt;val&gt;</code> mV).                                  |
+| <span id="nmodl-m9447"></span>`M9447` | `missing-breakpoint-block`     | [error]    | Channel mechanism is missing the required 'BREAKPOINT' block.                                                                                         |
+| <span id="nmodl-m9448"></span>`M9448` | `duplicate-block-declaration`  | [error]    | Section block '<code>&lt;blockName&gt;</code>' is declared multiple times.                                                                            |
+| <span id="nmodl-m9449"></span>`M9449` | `syntax-error`                 | [error]    | NMODL syntax error: <code>&lt;detail&gt;</code>.                                                                                                      |
+| <span id="nmodl-m9450"></span>`M9450` | `unbalanced-units-bracket`     | [warning] | Parameter declaration '<code>&lt;paramName&gt;</code>' has unbalanced unit parentheses or brackets.                                                   |
 
 ## OpenSim {#opensim}
 
@@ -20554,23 +21221,6 @@ Image-guided surgical tracking, pivot calibration & TRE. **10 rules** · `@model
 | <span id="igtl-m9809"></span>`M9809` | `igtl-invalid-server-port`              | [error]    | OpenIGTLink server '<code>&lt;serverId&gt;</code>' ListeningPort '<code>&lt;port&gt;</code>' is outside valid TCP port range &#91;1024, 65535&#93;.                                                                               |
 | <span id="igtl-m9810"></span>`M9810` | `igtl-duplicate-transform-edge`         | [error]    | Duplicate '<code>&lt;Transform&gt;</code>' defined for coordinate frame pair '(<code>&lt;from&gt;</code>, <code>&lt;to&gt;</code>)'.                                                                                              |
 
-## mlxtran {#mlxtran}
-
-**10 rules** · `@modelscript/mlxtran` · Source: `languages/mlxtran/src/errors.ts`
-
-| Code                                    | Rule                              | Severity                                | Message                                                                                                                                                           |
-| :-------------------------------------- | :-------------------------------- | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| <span id="mlxtran-m9421"></span>`M9421` | `missing-longitudinal-block`      | [error]    | MLXTRAN model is missing the required '&#91;LONGITUDINAL&#93;' section header.                                                                                    |
-| <span id="mlxtran-m9422"></span>`M9422` | `undeclared-input-parameter`      | [error]    | Equation references parameter '<code>&lt;paramName&gt;</code>' that is not declared in 'input = &#123;...&#125;'.                                                 |
-| <span id="mlxtran-m9423"></span>`M9423` | `orphan-derivative`               | [warning] | Differential variable '<code>&lt;stateName&gt;</code>' has time derivative 'ddt\_<code>&lt;stateName&gt;</code>' but is never referenced in outputs or transfers. |
-| <span id="mlxtran-m9424"></span>`M9424` | `mass-conservation-leak`          | [error]    | Mass conservation violation: transfer between compartment '<code>&lt;fromCmt&gt;</code>' and '<code>&lt;toCmt&gt;</code>' has unbalanced stoichiometry or rates.  |
-| <span id="mlxtran-m9425"></span>`M9425` | `negative-parameter-bound`        | [error]    | Physiological parameter '<code>&lt;paramName&gt;</code>' must be positive (&gt; 0), got '<code>&lt;val&gt;</code>'.                                               |
-| <span id="mlxtran-m9426"></span>`M9426` | `duplicate-equation-definition`   | [error]    | Variable or derivative '<code>&lt;ident&gt;</code>' is defined multiple times in EQUATION block.                                                                  |
-| <span id="mlxtran-m9427"></span>`M9427` | `missing-output-definition`       | [warning] | Model defines differential equations but is missing an 'OUTPUT:' block.                                                                                           |
-| <span id="mlxtran-m9428"></span>`M9428` | `invalid-macro-target`            | [error]    | PK macro '<code>&lt;macroKind&gt;</code>' targets undefined compartment or state variable '<code>&lt;targetName&gt;</code>'.                                      |
-| <span id="mlxtran-m9429"></span>`M9429` | `syntax-error`                    | [error]    | MLXTRAN syntax error: <code>&lt;detail&gt;</code>.                                                                                                                |
-| <span id="mlxtran-m9430"></span>`M9430` | `unbalanced-compartment-transfer` | [error]    | Compartment transfer references invalid or identical compartment index ('from=<code>&lt;from&gt;</code>', 'to=<code>&lt;to&gt;</code>').                          |
-
 ## modelscript {#modelscript}
 
 **11 rules** · `@modelscript/modelscript` · Source: `languages/modelscript/src/errors.ts`
@@ -20588,23 +21238,6 @@ Image-guided surgical tracking, pivot calibration & TRE. **10 rules** · `@model
 | <span id="modelscript-m4002"></span>`M4002` | `flwor-unbound-variable`  | [error] | Variable '<code>&lt;varName&gt;</code>' in FLWOR clause is not bound in preceding 'for' or 'let' clauses.                    |
 | <span id="modelscript-m5001"></span>`M5001` | `argument-count-mismatch` | [error] | Function '<code>&lt;fnName&gt;</code>' expects <code>&lt;expected&gt;</code> arguments, but got <code>&lt;actual&gt;</code>. |
 | <span id="modelscript-m5002"></span>`M5002` | `unknown-struct-field`    | [error] | Struct '<code>&lt;structName&gt;</code>' has no field named '<code>&lt;fieldName&gt;</code>'.                                |
-
-## nmodl {#nmodl}
-
-**10 rules** · `@modelscript/nmodl` · Source: `languages/nmodl/src/errors.ts`
-
-| Code                                  | Rule                           | Severity                                | Message                                                                                                                                               |
-| :------------------------------------ | :----------------------------- | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| <span id="nmodl-m9441"></span>`M9441` | `missing-neuron-block`         | [error]    | NMODL file is missing the required 'NEURON &#123; ... &#125;' interface block.                                                                        |
-| <span id="nmodl-m9442"></span>`M9442` | `missing-suffix-declaration`   | [error]    | 'NEURON' block is missing the required 'SUFFIX' mechanism identifier.                                                                                 |
-| <span id="nmodl-m9443"></span>`M9443` | `missing-derivative-evolution` | [error]    | State variable '<code>&lt;stateName&gt;</code>' declared in 'STATE' block has no time-derivative equation in 'DERIVATIVE'.                            |
-| <span id="nmodl-m9444"></span>`M9444` | `unassigned-write-current`     | [error]    | Ion current '<code>&lt;curName&gt;</code>' declared in 'USEION ... WRITE' is never computed in 'BREAKPOINT'.                                          |
-| <span id="nmodl-m9445"></span>`M9445` | `gating-probability-bounds`    | [error]    | Gating variable initial condition '<code>&lt;varName&gt;</code>' = <code>&lt;val&gt;</code> falls outside physical probability bounds &#91;0, 1&#93;. |
-| <span id="nmodl-m9446"></span>`M9446` | `reversal-potential-sign`      | [warning] | Reversal potential parameter '<code>&lt;paramName&gt;</code>' has unexpected polarity (<code>&lt;val&gt;</code> mV).                                  |
-| <span id="nmodl-m9447"></span>`M9447` | `missing-breakpoint-block`     | [error]    | Channel mechanism is missing the required 'BREAKPOINT' block.                                                                                         |
-| <span id="nmodl-m9448"></span>`M9448` | `duplicate-block-declaration`  | [error]    | Section block '<code>&lt;blockName&gt;</code>' is declared multiple times.                                                                            |
-| <span id="nmodl-m9449"></span>`M9449` | `syntax-error`                 | [error]    | NMODL syntax error: <code>&lt;detail&gt;</code>.                                                                                                      |
-| <span id="nmodl-m9450"></span>`M9450` | `unbalanced-units-bracket`     | [warning] | Parameter declaration '<code>&lt;paramName&gt;</code>' has unbalanced unit parentheses or brackets.                                                   |
 
 ================================================================================
 DOCUMENT: Export Formats
@@ -20928,9 +21561,9 @@ In browser workers and edge sandboxes (`packages/mcp/src/polyglot-server.ts`), `
 
 ---
 
-### 2. Complete Reference of All 92 Core MCP Tools
+### 2. Complete Reference of All 105 Core MCP Tools
 
-The canonical MCP server (`packages/mcp/src/tools.ts`) registers **92 specialized engineering tools** grouped across fourteen functional domains:
+The canonical MCP server (`packages/mcp/src/tools.ts`) registers **105 specialized engineering tools** grouped across fifteen functional domains:
 
 #### Domain 1: Modelica Compilation, Simulation, Linearization & Sensitivity (11 Tools)
 
@@ -21057,42 +21690,89 @@ The canonical MCP server (`packages/mcp/src/tools.ts`) registers **92 specialize
 
 #### Domain 12: Municipal Water Distribution & Urban Stormwater (`EPANET` & `SWMM` — 10 Tools)
 
-| Tool Name                  | Required Arguments | Optional Arguments                                                                      | Description                                                                                                                                                                            |
-| :------------------------- | :----------------- | :-------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `epanet_solve_hydraulics`  | —                  | `inpContent?: string`, `inpPath?: string`, `tolerance?: number`                         | Solves pressurized pipe network hydraulics using the Todini-Pilati Global Gradient Algorithm (GGA) with Hazen-Williams, Darcy-Weisbach, or Chezy-Manning headloss formulas.            |
-| `epanet_water_quality`     | —                  | `inpContent?: string`, `inpPath?: string`, `kbBulkPerDay?: number`, `kwWallMPerDay?: number` | Simulates disinfectant (chlorine/chloramine) bulk + wall reaction decay, THM DBP formation, and water age transport across distribution junctions and storage tanks.                   |
-| `epanet_fire_flow`         | —                  | `inpContent?: string`, `inpPath?: string`, `minResidualPsi?: number` (`20`)             | Evaluates AWWA M31 / NFPA 291 available fire flow at each hydrant junction while maintaining a minimum $20\text{ psi}$ residual pressure across the distribution zone.                 |
-| `epanet_pump_energy`       | —                  | `inpContent?: string`, `inpPath?: string`, `tariffPerKwh?: number`                      | Audits pumping station wire-to-water efficiency, specific energy ($\text{kWh/MG}$ or $\text{kWh/m}^3$), peak demand charges, and time-of-use tariff optimization opportunities.        |
-| `epanet_contaminant_trace` | —                  | `inpContent?: string`, `inpPath?: string`, `sourceNode?: string`                        | Performs source-to-junction water provenance tracing and contaminant propagation envelope analysis, identifying critical isolation valves (`N-1` segment analysis).                    |
-| `water_audit_m36`          | `systemInputVolumeM3: number`, `billedAuthorizedM3: number` | `unbilledAuthorizedM3?: number`, `apparentLossesM3?: number`, `mainsLengthKm?: number`, `serviceConnections?: number`, `avgPressureMeters?: number` | Computes an AWWA M36 / IWA Water Balance Audit, Unavoidable Annual Real Losses ($\text{UARL}$), and Infrastructure Leakage Index ($\text{ILI} = \text{CARL} / \text{UARL}$). |
-| `epanet_localize_leak`     | —                  | `inpContent?: string`, `inpPath?: string`, `observedPressures?: Record<string, number>` | Solves inverse hydraulic sensitivity residual analysis to localize probable pipe burst/leak candidates from SCADA pressure transducer discrepancies.                                   |
-| `epanet_sensor_placement`  | —                  | `inpContent?: string`, `inpPath?: string`, `sensorCount?: number` (`3`)                 | Optimizes water quality and pressure sensor placement using submodular greedy detection-coverage maximization (`TEVA-SPOT` methodology).                                               |
-| `swmm_route_stormwater`    | —                  | `inpContent?: string`, `inpPath?: string`, `stormDepthMm?: number`, `durationHours?: number` | Executes EPA SWMM 5 dynamic-wave Saint-Venant conduit routing, Green-Ampt / Horton / SCS Curve Number catchment runoff, and Combined Sewer Overflow (CSO) surcharge analysis.     |
-| `swmm_size_detention_pond` | `inflowPeakCms: number`, `allowableOutflowCms: number`, `stormDurationHours: number` | `sideSlope?: number`, `maxDepthMeters?: number`, `orificeCd?: number` | Sizes a stormwater detention basin and multi-stage outlet structure (low-flow orifice + emergency weir) using Modified Puls level-pool routing ($dS/dt = I(t) - O(h)$).                |
+| Tool Name                  | Required Arguments                                                                   | Optional Arguments                                                                                                                                  | Description                                                                                                                                                                     |
+| :------------------------- | :----------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `epanet_solve_hydraulics`  | —                                                                                    | `inpContent?: string`, `inpPath?: string`, `tolerance?: number`                                                                                     | Solves pressurized pipe network hydraulics using the Todini-Pilati Global Gradient Algorithm (GGA) with Hazen-Williams, Darcy-Weisbach, or Chezy-Manning headloss formulas.     |
+| `epanet_water_quality`     | —                                                                                    | `inpContent?: string`, `inpPath?: string`, `kbBulkPerDay?: number`, `kwWallMPerDay?: number`                                                        | Simulates disinfectant (chlorine/chloramine) bulk + wall reaction decay, THM DBP formation, and water age transport across distribution junctions and storage tanks.            |
+| `epanet_fire_flow`         | —                                                                                    | `inpContent?: string`, `inpPath?: string`, `minResidualPsi?: number` (`20`)                                                                         | Evaluates AWWA M31 / NFPA 291 available fire flow at each hydrant junction while maintaining a minimum $20\text{ psi}$ residual pressure across the distribution zone.          |
+| `epanet_pump_energy`       | —                                                                                    | `inpContent?: string`, `inpPath?: string`, `tariffPerKwh?: number`                                                                                  | Audits pumping station wire-to-water efficiency, specific energy ($\text{kWh/MG}$ or $\text{kWh/m}^3$), peak demand charges, and time-of-use tariff optimization opportunities. |
+| `epanet_contaminant_trace` | —                                                                                    | `inpContent?: string`, `inpPath?: string`, `sourceNode?: string`                                                                                    | Performs source-to-junction water provenance tracing and contaminant propagation envelope analysis, identifying critical isolation valves (`N-1` segment analysis).             |
+| `water_audit_m36`          | `systemInputVolumeM3: number`, `billedAuthorizedM3: number`                          | `unbilledAuthorizedM3?: number`, `apparentLossesM3?: number`, `mainsLengthKm?: number`, `serviceConnections?: number`, `avgPressureMeters?: number` | Computes an AWWA M36 / IWA Water Balance Audit, Unavoidable Annual Real Losses ($\text{UARL}$), and Infrastructure Leakage Index ($\text{ILI} = \text{CARL} / \text{UARL}$).    |
+| `epanet_localize_leak`     | —                                                                                    | `inpContent?: string`, `inpPath?: string`, `observedPressures?: Record<string, number>`                                                             | Solves inverse hydraulic sensitivity residual analysis to localize probable pipe burst/leak candidates from SCADA pressure transducer discrepancies.                            |
+| `epanet_sensor_placement`  | —                                                                                    | `inpContent?: string`, `inpPath?: string`, `sensorCount?: number` (`3`)                                                                             | Optimizes water quality and pressure sensor placement using submodular greedy detection-coverage maximization (`TEVA-SPOT` methodology).                                        |
+| `swmm_route_stormwater`    | —                                                                                    | `inpContent?: string`, `inpPath?: string`, `stormDepthMm?: number`, `durationHours?: number`                                                        | Executes EPA SWMM 5 dynamic-wave Saint-Venant conduit routing, Green-Ampt / Horton / SCS Curve Number catchment runoff, and Combined Sewer Overflow (CSO) surcharge analysis.   |
+| `swmm_size_detention_pond` | `inflowPeakCms: number`, `allowableOutflowCms: number`, `stormDurationHours: number` | `sideSlope?: number`, `maxDepthMeters?: number`, `orificeCd?: number`                                                                               | Sizes a stormwater detention basin and multi-stage outlet structure (low-flow orifice + emergency weir) using Modified Puls level-pool routing ($dS/dt = I(t) - O(h)$).         |
 
 #### Domain 13: ECAD, High-Speed PCB Signal Integrity & Supply-Chain BOM (6 Tools)
 
-| Tool Name                     | Required Arguments | Optional Arguments                                                                      | Description                                                                                                                                                                                 |
-| :---------------------------- | :----------------- | :-------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ecad_check_dfm`              | —                  | `pcbJson?: string`, `pcbPath?: string`, `ipcClass?: 1 \| 2 \| 3`                        | Runs IPC-2221 / IPC-6012 Design for Manufacturing (DFM) and Design Rule Checks (DRC) on a PCB layout, checking trace clearances, annular rings, aspect ratios, and solder mask slivers.     |
-| `ecad_extract_netlist`        | —                  | `gerberContent?: string`, `pcbJson?: string`                                            | Extracts connectivity netlists, pad stacks, and parasitic trace lengths from RS-274X Gerber layers or structured PCB layouts for SPICE / IBIS signal-integrity verification.                |
-| `ecad_impedance_calc`         | `traceWidthMm: number`, `dielectricHeightMm: number`, `er: number` | `copperThicknessMm?: number`, `diffSpacingMm?: number`, `mode?: "microstrip" \| "stripline"` | Computes IPC-2141 / Waddell single-ended ($Z_0$) and differential ($Z_{\text{diff}}$) controlled-impedance transmission line parameters and propagation delay ($\text{ps/mm}$).        |
-| `ecad_thermal_via`            | `powerWatts: number`, `boardThicknessMm: number` | `viaCount?: number`, `holeDiameterMm?: number`, `platingThicknessUm?: number`, `deltaTMaxC?: number` | Calculates IPC-2152 thermal via array resistance ($R_{\theta,\text{via}}$ in $^{\circ}\text{C/W}$), current-carrying capacity, and recommended via stitch count for power dissipation. |
-| `supply_chain_bom_cost`       | `components: Array<{ mpn: string; qty: number; unitPriceUsd?: number }>` | `volumeSuites?: number[]`, `scrapRatePct?: number` | Evaluates multi-tier Bill of Materials (BOM) volume cost rollups (`1`, `100`, `1,000`, `10,000` units), MOQ excess inventory penalties, and Pareto cost drivers.                            |
-| `supply_chain_lifecycle_risk` | `components: Array<{ mpn: string; lifecycle?: string; sources?: number; leadTimeWeeks?: number }>` | — | Audits BOM components for obsolescence (`NRND`, `EOL`, `Obsolete`), single-source bottlenecks, geopolitical concentration, and RoHS/REACH compliance risk scores.                           |
+| Tool Name                     | Required Arguments                                                                                 | Optional Arguments                                                                                   | Description                                                                                                                                                                             |
+| :---------------------------- | :------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ecad_check_dfm`              | —                                                                                                  | `pcbJson?: string`, `pcbPath?: string`, `ipcClass?: 1 \| 2 \| 3`                                     | Runs IPC-2221 / IPC-6012 Design for Manufacturing (DFM) and Design Rule Checks (DRC) on a PCB layout, checking trace clearances, annular rings, aspect ratios, and solder mask slivers. |
+| `ecad_extract_netlist`        | —                                                                                                  | `gerberContent?: string`, `pcbJson?: string`                                                         | Extracts connectivity netlists, pad stacks, and parasitic trace lengths from RS-274X Gerber layers or structured PCB layouts for SPICE / IBIS signal-integrity verification.            |
+| `ecad_impedance_calc`         | `traceWidthMm: number`, `dielectricHeightMm: number`, `er: number`                                 | `copperThicknessMm?: number`, `diffSpacingMm?: number`, `mode?: "microstrip" \| "stripline"`         | Computes IPC-2141 / Waddell single-ended ($Z_0$) and differential ($Z_{\text{diff}}$) controlled-impedance transmission line parameters and propagation delay ($\text{ps/mm}$).         |
+| `ecad_thermal_via`            | `powerWatts: number`, `boardThicknessMm: number`                                                   | `viaCount?: number`, `holeDiameterMm?: number`, `platingThicknessUm?: number`, `deltaTMaxC?: number` | Calculates IPC-2152 thermal via array resistance ($R_{\theta,\text{via}}$ in $^{\circ}\text{C/W}$), current-carrying capacity, and recommended via stitch count for power dissipation.  |
+| `supply_chain_bom_cost`       | `components: Array<{ mpn: string; qty: number; unitPriceUsd?: number }>`                           | `volumeSuites?: number[]`, `scrapRatePct?: number`                                                   | Evaluates multi-tier Bill of Materials (BOM) volume cost rollups (`1`, `100`, `1,000`, `10,000` units), MOQ excess inventory penalties, and Pareto cost drivers.                        |
+| `supply_chain_lifecycle_risk` | `components: Array<{ mpn: string; lifecycle?: string; sources?: number; leadTimeWeeks?: number }>` | —                                                                                                    | Audits BOM components for obsolescence (`NRND`, `EOL`, `Obsolete`), single-source bottlenecks, geopolitical concentration, and RoHS/REACH compliance risk scores.                       |
 
 #### Domain 14: Telecom, DWDM Optical Transport, 5G NR RAN & Outside-Plant Fiber (8 Tools)
 
-| Tool Name             | Required Arguments | Optional Arguments                                                                      | Description                                                                                                                                                                                  |
-| :-------------------- | :----------------- | :-------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `optical_osnr_budget` | —                  | `code?: string`, `path?: string`, `spanCount?: number`, `spanLengthKm?: number`, `launchPowerDbm?: number` | Computes ITU-T G.694.1 DWDM optical link power budget, multi-span EDFA ASE noise accumulation, Gaussian Noise (GN) Kerr nonlinearity ($\text{SNR}_{\text{NL}}$), OSNR, and CD/PMD margins. |
-| `optical_otdr_analyze`| —                  | `code?: string`, `path?: string`, `events?: Array<{ distanceKm: number; lossDb: number; reflectanceDb: number }>` | Analyzes ITU-T G.650.3 / Telcordia SR-4731 OTDR trace events to classify fusion splices, reflective connectors, macro-bends, and fiber breaks with Two-Point and LSA attenuation slopes. |
-| `ran_link_budget`     | —                  | `code?: string`, `path?: string`, `freqGhz?: number`, `distanceKm?: number`, `scenario?: "UMa" \| "UMi" \| "RMa"` | Evaluates 3GPP TR 38.901 5G NR Sub-6 GHz and FR2 mmWave link budgets, computing path loss, shadow fading, SINR, Shannon/3GPP MCS spectral efficiency, and ITU-R P.838 rain attenuation. |
-| `ran_coverage_grid`   | —                  | `code?: string`, `path?: string`, `gridRadiusKm?: number`, `resolutionMeters?: number`  | Computes 2D spatial RSRP, SINR, and throughput coverage heatmaps across multi-sector 5G NR gNodeB cell sites with 3D directional antenna pattern beamforming and PCI mod-3/mod-30 checks.    |
-| `ran_antenna_parse`   | `msiContent: string` | —                                                                                     | Parses an `.msi` / `.pln` / Planet 3D base-station antenna radiation pattern file, extracting horizontal/vertical gain envelopes, half-power beamwidth (HPBW), front-to-back ratio, and electrical tilt. |
-| `fiber_color_code`    | `fiberNumber: number` | `tubesPerCable?: number` (`12`), `fibersPerTube?: number` (`12`)                     | Resolves TIA-598-D 12-color identification codes (Blue, Orange, Green, Brown, Slate, White, Red, Black, Yellow, Violet, Rose, Aqua + tracer stripes) for any fiber index ($1\dots 3,456$).   |
-| `fiber_splice_loss`   | —                  | `code?: string`, `path?: string`, `modeFieldDiameter1Um?: number`, `modeFieldDiameter2Um?: number`, `lateralOffsetUm?: number` | Calculates Marcuse Gaussian-beam fusion splice insertion loss from mode-field diameter (MFD) mismatch, lateral core offset, and angular tilt alongside PON OLT-to-ONT split budgets.     |
-| `telecom_srlg_audit`  | —                  | `code?: string`, `path?: string`                                                        | Audits Shared Risk Link Groups (SRLG) across optical and fiber topologies to verify physical conduit/duct diversity between primary and backup paths and detect single points of failure.     |
+| Tool Name              | Required Arguments    | Optional Arguments                                                                                                             | Description                                                                                                                                                                                              |
+| :--------------------- | :-------------------- | :----------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `optical_osnr_budget`  | —                     | `code?: string`, `path?: string`, `spanCount?: number`, `spanLengthKm?: number`, `launchPowerDbm?: number`                     | Computes ITU-T G.694.1 DWDM optical link power budget, multi-span EDFA ASE noise accumulation, Gaussian Noise (GN) Kerr nonlinearity ($\text{SNR}_{\text{NL}}$), OSNR, and CD/PMD margins.               |
+| `optical_otdr_analyze` | —                     | `code?: string`, `path?: string`, `events?: Array<{ distanceKm: number; lossDb: number; reflectanceDb: number }>`              | Analyzes ITU-T G.650.3 / Telcordia SR-4731 OTDR trace events to classify fusion splices, reflective connectors, macro-bends, and fiber breaks with Two-Point and LSA attenuation slopes.                 |
+| `ran_link_budget`      | —                     | `code?: string`, `path?: string`, `freqGhz?: number`, `distanceKm?: number`, `scenario?: "UMa" \| "UMi" \| "RMa"`              | Evaluates 3GPP TR 38.901 5G NR Sub-6 GHz and FR2 mmWave link budgets, computing path loss, shadow fading, SINR, Shannon/3GPP MCS spectral efficiency, and ITU-R P.838 rain attenuation.                  |
+| `ran_coverage_grid`    | —                     | `code?: string`, `path?: string`, `gridRadiusKm?: number`, `resolutionMeters?: number`                                         | Computes 2D spatial RSRP, SINR, and throughput coverage heatmaps across multi-sector 5G NR gNodeB cell sites with 3D directional antenna pattern beamforming and PCI mod-3/mod-30 checks.                |
+| `ran_antenna_parse`    | `msiContent: string`  | —                                                                                                                              | Parses an `.msi` / `.pln` / Planet 3D base-station antenna radiation pattern file, extracting horizontal/vertical gain envelopes, half-power beamwidth (HPBW), front-to-back ratio, and electrical tilt. |
+| `fiber_color_code`     | `fiberNumber: number` | `tubesPerCable?: number` (`12`), `fibersPerTube?: number` (`12`)                                                               | Resolves TIA-598-D 12-color identification codes (Blue, Orange, Green, Brown, Slate, White, Red, Black, Yellow, Violet, Rose, Aqua + tracer stripes) for any fiber index ($1\dots 3,456$).               |
+| `fiber_splice_loss`    | —                     | `code?: string`, `path?: string`, `modeFieldDiameter1Um?: number`, `modeFieldDiameter2Um?: number`, `lateralOffsetUm?: number` | Calculates Marcuse Gaussian-beam fusion splice insertion loss from mode-field diameter (MFD) mismatch, lateral core offset, and angular tilt alongside PON OLT-to-ONT split budgets.                     |
+| `telecom_srlg_audit`   | —                     | `code?: string`, `path?: string`                                                                                               | Audits Shared Risk Link Groups (SRLG) across optical and fiber topologies to verify physical conduit/duct diversity between primary and backup paths and detect single points of failure.                |
+
+#### Domain 15: Extended Power, Water, Telecom, ECAD & Polyglot Tools (42 Tools)
+
+| Tool Name                             | Category                                                    | Description                                                                                                                                      |
+| :------------------------------------ | :---------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `opendss_solve_faults`                | Power Systems, EMT & Distribution                           | Evaluates symmetrical/unsymmetrical short-circuit faults on OpenDSS feeders.                                                                     |
+| `opendss_evaluate_harmonics`          | Power Systems, EMT & Distribution                           | Computes harmonic voltage/current distortion and THD spectra on OpenDSS feeders.                                                                 |
+| `opendss_analyze_reliability`         | Power Systems, EMT & Distribution                           | Evaluates distribution reliability indices (SAIFI, SAIDI, CAIDI, ENS) on OpenDSS feeders.                                                        |
+| `opendss_solve_gic`                   | Power Systems, EMT & Distribution                           | Computes geomagnetically induced currents (GIC) across neutral-grounded transformers.                                                            |
+| `opendss_simulate_flisr`              | Power Systems, EMT & Distribution                           | Simulates Fault Location, Isolation, and Service Restoration (FLISR) switching sequences.                                                        |
+| `epanet_fire_flow_analysis`           | Municipal Water, Stormwater & Leak Localization             | Evaluates residual hydrant pressures under fire-flow demand conditions in EPANET networks.                                                       |
+| `epanet_outage_contingency`           | Municipal Water, Stormwater & Leak Localization             | Evaluates pipe/pump outage contingencies and isolated demand deficits in EPANET networks.                                                        |
+| `epanet_screen_contingencies_webgpu`  | Municipal Water, Stormwater & Leak Localization             | Runs batched hydraulic contingency screening using WebGPU compute acceleration.                                                                  |
+| `epanet_water_hammer_surge`           | Municipal Water, Stormwater & Leak Localization             | Evaluates transient water-hammer pressure surges from valve closure or pump trip.                                                                |
+| `water_audit_awwa_m36`                | Municipal Water, Stormwater & Leak Localization             | Computes AWWA M36 water balance, non-revenue water, and Infrastructure Leakage Index (ILI).                                                      |
+| `epanet_optimize_cip`                 | Municipal Water, Stormwater & Leak Localization             | Optimizes capital improvement (CIP) pipe rehabilitation and sizing plans.                                                                        |
+| `epanet_calibrate_scada`              | Municipal Water, Stormwater & Leak Localization             | Calibrates Hazen-Williams roughness and demands against SCADA pressure/flow telemetry.                                                           |
+| `epanet_gis_to_model`                 | Municipal Water, Stormwater & Leak Localization             | Converts GIS GeoJSON/shapefile water mains, junctions, and DEMs into an EPANET `.inp` model.                                                     |
+| `swmm_flood_routing`                  | Municipal Water, Stormwater & Leak Localization             | Runs 1D Saint-Venant dynamic-wave stormwater and sewer flood routing.                                                                            |
+| `swmm_simulate_rtc`                   | Municipal Water, Stormwater & Leak Localization             | Simulates real-time control (RTC) gates, orifices, and pump rules in SWMM.                                                                       |
+| `swmm_gis_to_model`                   | Municipal Water, Stormwater & Leak Localization             | Ingests municipal GIS stormwater conduits, manholes, catchments, and DEMs into SWMM `.inp`.                                                      |
+| `epanet_convert_watergems`            | Municipal Water, Stormwater & Leak Localization             | Converts Bentley WaterGEMS / HAMMER (`.wtg.sqlite`) or InfoWater models to EPANET `.inp`.                                                        |
+| `swmm_convert_infoworks`              | Municipal Water, Stormwater & Leak Localization             | Converts Autodesk / Innovyze InfoWorks ICM collection models to SWMM `.inp`.                                                                     |
+| `swmm_inundation_2d`                  | Municipal Water, Stormwater & Leak Localization             | Simulates 2D shallow-water overland street flooding coupled to 1D SWMM manholes.                                                                 |
+| `ecad_dfm_audit`                      | ECAD, PCB Signal Integrity & Supply-Chain BOM               | Runs Design for Manufacturing, Assembly, and Test (DFM/DFA/DFT) rules on PCB layouts.                                                            |
+| `ecad_generate_manufacturing_bundle`  | ECAD, PCB Signal Integrity & Supply-Chain BOM               | Generates IPC-2581C, ODB++ v8.1, Gerbers, and Centroid PnP manufacturing outputs.                                                                |
+| `supply_chain_scrub_bom`              | ECAD, PCB Signal Integrity & Supply-Chain BOM               | Scrubs a BOM across multi-tier distributors for pricing, stock, lead times, and obsolescence.                                                    |
+| `optical_inspect_otdr`                | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber         | Inspects Telcordia GR-196/SR-4731 `.sor` OTDR traces for attenuation, reflectance, and splices.                                                  |
+| `optical_solve_transmission`          | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber         | Solves multi-span DWDM transmission via the Enhanced Gaussian Noise (EGN) model (GSNR, ASE, NLI).                                                |
+| `ran_solve_microwave_budget`          | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber         | Solves LOS microwave link budgets, FSPL, ITU-R P.530 rain fade, and Fresnel clearance.                                                           |
+| `fiber_locate_otdr_fault`             | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber         | Pinpoints GPS coordinates of OTDR fiber breaks, correcting for helix twist and slack loops.                                                      |
+| `ran_evaluate_mpe_safety`             | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber         | Evaluates FCC OET-65 / ICNIRP 2020 / Safety Code 6 RF MPE exclusion boundaries and TER.                                                          |
+| `ran_evaluate_faa_obstruction`        | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber         | Evaluates FAA 14 CFR Part 77 / ICAO Annex 14 / CAR 601.23 tower airspace obstruction criteria.                                                   |
+| `fiber_evaluate_pole_loading`         | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber         | Evaluates utility pole structural loading per NESC Rule 250/260, CSA C22.3, or Eurocode EN 50341.                                                |
+| `fiber_generate_bdc_fabric`           | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber         | Generates FCC BDC / NTIA BEAD spatial datasets discretized into Uber H3 Res 8/9 hexagons.                                                        |
+| `telecom_evaluate_nors_outage`        | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber         | Evaluates FCC Part 4 (47 CFR § 4.9) NORS outage reporting thresholds and filing dossiers.                                                        |
+| `modelscript_bifurcation_continuation`| Closed-Loop Synthesis & Workspace                           | Traces steady-state equilibrium curves via PALC and detects Fold, Hopf, and Branch bifurcations.                                                 |
+| `modelscript_stochastic_jump`         | Closed-Loop Synthesis & Workspace                           | Executes discrete-state stochastic jump simulations via Gillespie SSA and Adaptive Tau-Leaping.                                                  |
+| `comtrade_extract_phasor`             | Power Protection, Hydro & Polyglot Diagnostics              | Extracts DFT RMS phasors from IEEE C37.111 COMTRADE fault recordings.                                                                            |
+| `scl_validate_goose`                  | Power Protection, Hydro & Polyglot Diagnostics              | Validates IEC 61850 GOOSE and Sampled Values publisher/subscriber latency and dataflow.                                                          |
+| `waterml_fit_rating_curve`            | Power Protection, Hydro & Polyglot Diagnostics              | Fits non-linear stage-discharge rating curves $Q = a(h - h_0)^b$ from WaterML timeseries.                                                        |
+| `atp_simulate_transient`              | Power Protection, Hydro & Polyglot Diagnostics              | Simulates electromagnetic transient trapezoidal companion-matrix response from ATP-EMTP decks.                                                     |
+| `dnp3_process_telemetry`              | Power Protection, Hydro & Polyglot Diagnostics              | Filters telemetry analog streams using IEEE 1815 / DNP3 deadband thresholding.                                                                   |
+| `oneliner_calculate_fault`            | Power Protection, Hydro & Polyglot Diagnostics              | Calculates symmetrical-component 3-phase and SLG fault currents from ASPEN OneLiner cases.                                                       |
+| `sel_evaluate_protection`             | Power Protection, Hydro & Polyglot Diagnostics              | Evaluates SEL relay trip logic, 50P instantaneous, and 51P time-overcurrent curves.                                                              |
+| `hec_hms_simulate_runoff`             | Power Protection, Hydro & Polyglot Diagnostics              | Simulates SCS Curve Number excess precipitation and unit hydrograph runoff from HEC-HMS basins.                                                  |
+| `asm_evaluate_biokinetics`            | Power Protection, Hydro & Polyglot Diagnostics              | Evaluates IWA Activated Sludge Model (ASM1) biological process and substrate conversion rates.                                                   |
 
 #### Declarative Polyglot Language Tools (`PolyglotMcpHost`)
 
@@ -21124,9 +21804,9 @@ The official ModelScript extension (`modelscript.modelscript`, source in `apps/i
 
 ### 1. Polyglot Language Server (`@modelscript/lsp`)
 
-A single unified Language Server Protocol instance provides incremental language intelligence across all 90 registered languages (`.mo`, `.sysml`, `.kerml`, `.msx`, `.mod`, `.pscx`, `.pswx`, `.raw`, `.dyr`, `.dsl`, `.dgs`, `.epc`, `.dyd`, `.dss`, `.ocpp`, `.oadr`, `.opt`, `.ran`, `.fbr`, `.inp`, `.ras`, `.tough`, `.nam`, `.lgm`, `.gtfs`, `.scad`, `.stp`, `.step`, `.usda`, `.owl`, `.ssp`, `.ssd`, `.ssv`, `.csv`, `.su2`, `.cfg`, `.gbr`, `.qif`, `.oscal.json`, `.aml`, `.osim`, `.rtplan`, `.cellml`, `.3mf`, `.igtl`, and more):
+A single unified Language Server Protocol instance provides incremental language intelligence across all 92 registered languages (`.mo`, `.sysml`, `.kerml`, `.msx`, `.mod`, `.pscx`, `.pswx`, `.raw`, `.dyr`, `.dsl`, `.dgs`, `.epc`, `.dyd`, `.dss`, `.ocpp`, `.oadr`, `.opt`, `.ran`, `.fbr`, `.inp`, `.ras`, `.tough`, `.nam`, `.lgm`, `.gtfs`, `.scad`, `.stp`, `.step`, `.usda`, `.owl`, `.ssp`, `.ssd`, `.ssv`, `.csv`, `.su2`, `.cfg`, `.gbr`, `.qif`, `.oscal.json`, `.aml`, `.osim`, `.rtplan`, `.cellml`, `.mlxtran`, `.3mf`, `.igtl`, and more):
 
-- **Real-Time Diagnostics**: Incremental GLR parsing + Salsa `lint__*` queries + cross-file unit/type checking across 1,260+ static diagnostic rules.
+- **Real-Time Diagnostics**: Incremental GLR parsing + Salsa `lint__*` queries + cross-file unit/type checking across 1,160 static diagnostic rules.
 - **Navigation & Refactoring**: Go-to-Definition, Find All References (across `.sysml` $\leftrightarrow$ `.mo` $\leftrightarrow$ `.msx` boundaries), Workspace Symbol Search, Rename Symbol, and Document Outline.
 - **Code Lenses & Inlay Hints**: Inline equation/variable balance badges (`[Balanced: 14 vars / 14 eqs]`), inferred SI unit inlay hints, and one-click `▶ Simulate`, `⚡ Verify`, and `📐 Render Diagram` CodeLenses above every `model`, `part def`, and `verification def`.
 
@@ -21170,27 +21850,27 @@ ModelScript registers a full **Debug Adapter Protocol** implementation (`"type":
 
 The extension contributes **15 custom visual editors** and **over 20 specialized engineering webview panels**:
 
-| Custom Editor / View ID                                | Bound File Types / Trigger               | Capabilities                                                                                                                                                        |
-| :----------------------------------------------------- | :--------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `modelscript.diagramEditor`                            | `.mo`, `.sysml`, `.pscx`, `.dsl`, `.dss` | Bi-directional graphical schematic, power SLD/TCC/P-Q/R-X, & SysML v2 (BDD/IBD/State/Activity) editor; dragging components or routing wires updates source CST.     |
-| `modelscript.monbNotebook`                             | `.monb`                                  | Literate engineering notebook combining Markdown/LaTeX narratives with live simulation and verification cells.                                                      |
-| `modelscript.fmuViewer`                                | `.fmu`                                   | Inspects FMI 2.0/3.0 `modelDescription.xml`, causal ports, dependency sparsity matrices, and runs interactive test simulations on `.fmu` files.                     |
-| `modelscript.sspEditor`                                | `.ssp`, `.ssd`, `.ssv`                   | Visual block-diagram editor for wiring multi-FMU co-simulation topologies and editing `.ssv` parameter tables.                                                      |
-| `modelscript.reqifEditor`                              | `.reqif`, `.reqifz`                      | Tabular requirements specification editor with suspect-link indicators and one-click SysML v2 synchronization.                                                      |
-| `modelscript.cadViewer`                                | `.stp`, `.step`, `.scad`, `.usda`, `.glb`| Hardware-accelerated Three.js / WebGL 3D CAD viewport with section planes, B-Rep face selection, kinematic playback, and formal verification overlays (`verification-overlay.ts`: reachability tubes, SOS barrier shells, and dynamic clearance vectors). |
-| `modelscript.gerberViewer`                             | `.gbr`, `.drl`                           | Multi-layer 2D/3D PCB copper, solder mask, silkscreen, and drill stackup inspector.                                                                                 |
-| `modelscript.cfdViewer`                                | `.su2`, `.vtk`, `.cfg`                   | Unstructured CFD mesh wireframe, boundary marker inspector, and pressure/velocity contour viewer.                                                                   |
-| `modelscript.feaViewer`                                | `.inp`, `.frd`                           | Finite-element mesh inspector with deformed shape magnification and von Mises stress colormaps.                                                                     |
-| `modelscript.qifEditor` (**QIF Metrology**)            | `.qif`                                   | ISO 23952 GD&T datum/characteristic inspector with live Statistical Process Control ($C_p/C_{pk}$, TUR, MMC/LMC bonus tolerance) control charts.                    |
-| `modelscript.oscalEditor` (**OSCAL Compliance**)       | `.oscal.json`, `.oscal.yaml`, `.oscal`   | NIST SP 800-53 / SP 800-82 Rev 3 OT/ICS control matrix inspector, profile baseline resolver, and POA&M audit dashboard.                                             |
-| `modelscript.amlEditor` (**AutomationML Topology**)    | `.aml`, `.caex`, `.amlx`                 | IEC 62714 CAEX SystemUnitClass / RoleClass / InternalElement hierarchy explorer and Virtual PLC commissioning panel.                                                |
-| `modelscript.opensimViewer` (**OpenSim Biomechanics**) | `.osim`                                  | 3D musculoskeletal kinematic chain viewer with Hill-type muscle activation-contraction curves and moment-arm plots.                                                 |
-| `modelscript.dicomRtViewer` (**DICOM-RT Dosimetry**)   | `.rtplan`, `.rtstruct`, `.rtdose`        | Cumulative Dose-Volume Histogram (DVH) plotter, QUANTEC OAR constraint scorecard, BED/$\text{EQD}_2$ calculator, and Beams-Eye-View MLC aperture inspector.         |
-| `modelscript.igtlViewer` (**OpenIGTLink Navigation**)  | `.igtl`, `.plus.xml`                     | $SE(3)$ surgical navigation coordinate-frame tree inspector, stylus pivot calibration solver, and Fitzpatrick Target Registration Error (TRE) analyzer.             |
-| **Simulation & Bode Plot Studio**                      | `modelscript.simulate`                   | Interactive multi-axis oscilloscope, FFT spectrum analyzer, phase portrait plotter, and linearized State-Space ($A,B,C,D$) Bode/Nyquist root-locus analyzer.        |
-| **BLT & Tearing Matrix Inspector**                     | `modelscript.inspectBlt`                 | Visualizes the Tarjan Block Lower Triangular incidence matrix, Pantelides differentiated equations, and Cellier-Elmqvist tearing variables.                         |
-| **Formal Verification & Counterexample Center**        | `modelscript.verify`                     | Interactive dashboard for running BMC/$k$-induction/IC3/STL falsification and replaying falsifying counterexample traces step-by-step on the schematic.             |
-| **Digital Thread & RTM Explorer**                      | `modelscript.digitalThread`              | Interactive graph explorer showing end-to-end traceability across OWL2 $\to$ SysML v2 $\to$ Modelica $\to$ CAD $\to$ Verification DHF.                              |
+| Custom Editor / View ID                                | Bound File Types / Trigger                | Capabilities                                                                                                                                                                                                                                              |
+| :----------------------------------------------------- | :---------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `modelscript.diagramEditor`                            | `.mo`, `.sysml`, `.pscx`, `.dsl`, `.dss`  | Bi-directional graphical schematic, power SLD/TCC/P-Q/R-X, & SysML v2 (BDD/IBD/State/Activity) editor; dragging components or routing wires updates source CST.                                                                                           |
+| `modelscript.monbNotebook`                             | `.monb`                                   | Literate engineering notebook combining Markdown/LaTeX narratives with live simulation and verification cells.                                                                                                                                            |
+| `modelscript.fmuViewer`                                | `.fmu`                                    | Inspects FMI 2.0/3.0 `modelDescription.xml`, causal ports, dependency sparsity matrices, and runs interactive test simulations on `.fmu` files.                                                                                                           |
+| `modelscript.sspEditor`                                | `.ssp`, `.ssd`, `.ssv`                    | Visual block-diagram editor for wiring multi-FMU co-simulation topologies and editing `.ssv` parameter tables.                                                                                                                                            |
+| `modelscript.reqifEditor`                              | `.reqif`, `.reqifz`                       | Tabular requirements specification editor with suspect-link indicators and one-click SysML v2 synchronization.                                                                                                                                            |
+| `modelscript.cadViewer`                                | `.stp`, `.step`, `.scad`, `.usda`, `.glb` | Hardware-accelerated Three.js / WebGL 3D CAD viewport with section planes, B-Rep face selection, kinematic playback, and formal verification overlays (`verification-overlay.ts`: reachability tubes, SOS barrier shells, and dynamic clearance vectors). |
+| `modelscript.gerberViewer`                             | `.gbr`, `.drl`                            | Multi-layer 2D/3D PCB copper, solder mask, silkscreen, and drill stackup inspector.                                                                                                                                                                       |
+| `modelscript.cfdViewer`                                | `.su2`, `.vtk`, `.cfg`                    | Unstructured CFD mesh wireframe, boundary marker inspector, and pressure/velocity contour viewer.                                                                                                                                                         |
+| `modelscript.feaViewer`                                | `.inp`, `.frd`                            | Finite-element mesh inspector with deformed shape magnification and von Mises stress colormaps.                                                                                                                                                           |
+| `modelscript.qifEditor` (**QIF Metrology**)            | `.qif`                                    | ISO 23952 GD&T datum/characteristic inspector with live Statistical Process Control ($C_p/C_{pk}$, TUR, MMC/LMC bonus tolerance) control charts.                                                                                                          |
+| `modelscript.oscalEditor` (**OSCAL Compliance**)       | `.oscal.json`, `.oscal.yaml`, `.oscal`    | NIST SP 800-53 / SP 800-82 Rev 3 OT/ICS control matrix inspector, profile baseline resolver, and POA&M audit dashboard.                                                                                                                                   |
+| `modelscript.amlEditor` (**AutomationML Topology**)    | `.aml`, `.caex`, `.amlx`                  | IEC 62714 CAEX SystemUnitClass / RoleClass / InternalElement hierarchy explorer and Virtual PLC commissioning panel.                                                                                                                                      |
+| `modelscript.opensimViewer` (**OpenSim Biomechanics**) | `.osim`                                   | 3D musculoskeletal kinematic chain viewer with Hill-type muscle activation-contraction curves and moment-arm plots.                                                                                                                                       |
+| `modelscript.dicomRtViewer` (**DICOM-RT Dosimetry**)   | `.rtplan`, `.rtstruct`, `.rtdose`         | Cumulative Dose-Volume Histogram (DVH) plotter, QUANTEC OAR constraint scorecard, BED/$\text{EQD}_2$ calculator, and Beams-Eye-View MLC aperture inspector.                                                                                               |
+| `modelscript.igtlViewer` (**OpenIGTLink Navigation**)  | `.igtl`, `.plus.xml`                      | $SE(3)$ surgical navigation coordinate-frame tree inspector, stylus pivot calibration solver, and Fitzpatrick Target Registration Error (TRE) analyzer.                                                                                                   |
+| **Simulation & Bode Plot Studio**                      | `modelscript.simulate`                    | Interactive multi-axis oscilloscope, FFT spectrum analyzer, phase portrait plotter, and linearized State-Space ($A,B,C,D$) Bode/Nyquist root-locus analyzer.                                                                                              |
+| **BLT & Tearing Matrix Inspector**                     | `modelscript.inspectBlt`                  | Visualizes the Tarjan Block Lower Triangular incidence matrix, Pantelides differentiated equations, and Cellier-Elmqvist tearing variables.                                                                                                               |
+| **Formal Verification & Counterexample Center**        | `modelscript.verify`                      | Interactive dashboard for running BMC/$k$-induction/IC3/STL falsification and replaying falsifying counterexample traces step-by-step on the schematic.                                                                                                   |
+| **Digital Thread & RTM Explorer**                      | `modelscript.digitalThread`               | Interactive graph explorer showing end-to-end traceability across OWL2 $\to$ SysML v2 $\to$ Modelica $\to$ CAD $\to$ Verification DHF.                                                                                                                    |
 
 ### 5. Three-Tier AI Engineering Copilot
 
@@ -21832,7 +22512,7 @@ If you have questions regarding this policy, wish to request written permission 
 
 ## 8. Third-Party Trademarks & Nominative Fair Use
 
-ModelScript supports interoperability, parsing, linting, simulation, and compilation across 90 engineering domains, modeling formats, and file standards.
+ModelScript supports interoperability, parsing, linting, simulation, and compilation across 92 engineering domains, modeling formats, and file standards.
 
 ### Non-Affiliation & Disclaimers
 

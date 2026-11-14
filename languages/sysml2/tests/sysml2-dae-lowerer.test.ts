@@ -195,7 +195,7 @@ describe("SysML v2 Direct DAE Arena Lowering & Execution", () => {
     const sysmlSource = `
       port def Pin {
         attribute v : Real;
-        flow attribute i : Real;
+        flow i : Real;
       }
 
       part def Resistor {
@@ -205,10 +205,10 @@ describe("SysML v2 Direct DAE Arena Lowering & Execution", () => {
         attribute v : Real = 0.0;
         attribute i : Real = 0.0;
 
-        p.v - n.v == v;
-        p.i == i;
-        n.i == -i;
-        v == R * i;
+        assert constraint { p.v - n.v == v }
+        assert constraint { p.i == i }
+        assert constraint { n.i == -i }
+        assert constraint { v == R * i }
       }
 
       part def Capacitor {
@@ -218,10 +218,10 @@ describe("SysML v2 Direct DAE Arena Lowering & Execution", () => {
         attribute v : Real = 0.0;
         attribute i : Real = 0.0;
 
-        p.v - n.v == v;
-        p.i == i;
-        n.i == -i;
-        C * der(v) == i;
+        assert constraint { p.v - n.v == v }
+        assert constraint { p.i == i }
+        assert constraint { n.i == -i }
+        assert constraint { C * der(v) == i }
       }
 
       part def Circuit {

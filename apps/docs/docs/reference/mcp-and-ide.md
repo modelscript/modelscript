@@ -1,6 +1,6 @@
 ---
 title: MCP Server & IDE Workbench Reference
-description: Complete reference for all 92 Model Context Protocol (@modelscript/mcp) engineering tools, MCP resources, and the 15 custom visual editors in the VS Code & Studio workbench.
+description: Complete reference for all 105 Model Context Protocol (@modelscript/mcp) engineering tools, MCP resources, and the 15 custom visual editors in the VS Code & Studio workbench.
 ---
 
 # MCP Server & IDE Workbench Reference
@@ -77,9 +77,9 @@ In browser workers and edge sandboxes (`packages/mcp/src/polyglot-server.ts`), `
 
 ---
 
-### 2. Complete Reference of All 92 Core MCP Tools
+### 2. Complete Reference of All 105 Core MCP Tools
 
-The canonical MCP server (`packages/mcp/src/tools.ts`) registers **92 specialized engineering tools** grouped across fourteen functional domains:
+The canonical MCP server (`packages/mcp/src/tools.ts`) registers **105 specialized engineering tools** grouped across fifteen functional domains:
 
 #### Domain 1: Modelica Compilation, Simulation, Linearization & Sensitivity (11 Tools)
 
@@ -243,6 +243,53 @@ The canonical MCP server (`packages/mcp/src/tools.ts`) registers **92 specialize
 | `fiber_splice_loss`    | —                     | `code?: string`, `path?: string`, `modeFieldDiameter1Um?: number`, `modeFieldDiameter2Um?: number`, `lateralOffsetUm?: number` | Calculates Marcuse Gaussian-beam fusion splice insertion loss from mode-field diameter (MFD) mismatch, lateral core offset, and angular tilt alongside PON OLT-to-ONT split budgets.                     |
 | `telecom_srlg_audit`   | —                     | `code?: string`, `path?: string`                                                                                               | Audits Shared Risk Link Groups (SRLG) across optical and fiber topologies to verify physical conduit/duct diversity between primary and backup paths and detect single points of failure.                |
 
+#### Domain 15: Extended Power, Water, Telecom, ECAD & Polyglot Tools (42 Tools)
+
+| Tool Name                              | Category                                            | Description                                                                                       |
+| :------------------------------------- | :-------------------------------------------------- | :------------------------------------------------------------------------------------------------ |
+| `opendss_solve_faults`                 | Power Systems, EMT & Distribution                   | Evaluates symmetrical/unsymmetrical short-circuit faults on OpenDSS feeders.                      |
+| `opendss_evaluate_harmonics`           | Power Systems, EMT & Distribution                   | Computes harmonic voltage/current distortion and THD spectra on OpenDSS feeders.                  |
+| `opendss_analyze_reliability`          | Power Systems, EMT & Distribution                   | Evaluates distribution reliability indices (SAIFI, SAIDI, CAIDI, ENS) on OpenDSS feeders.         |
+| `opendss_solve_gic`                    | Power Systems, EMT & Distribution                   | Computes geomagnetically induced currents (GIC) across neutral-grounded transformers.             |
+| `opendss_simulate_flisr`               | Power Systems, EMT & Distribution                   | Simulates Fault Location, Isolation, and Service Restoration (FLISR) switching sequences.         |
+| `epanet_fire_flow_analysis`            | Municipal Water, Stormwater & Leak Localization     | Evaluates residual hydrant pressures under fire-flow demand conditions in EPANET networks.        |
+| `epanet_outage_contingency`            | Municipal Water, Stormwater & Leak Localization     | Evaluates pipe/pump outage contingencies and isolated demand deficits in EPANET networks.         |
+| `epanet_screen_contingencies_webgpu`   | Municipal Water, Stormwater & Leak Localization     | Runs batched hydraulic contingency screening using WebGPU compute acceleration.                   |
+| `epanet_water_hammer_surge`            | Municipal Water, Stormwater & Leak Localization     | Evaluates transient water-hammer pressure surges from valve closure or pump trip.                 |
+| `water_audit_awwa_m36`                 | Municipal Water, Stormwater & Leak Localization     | Computes AWWA M36 water balance, non-revenue water, and Infrastructure Leakage Index (ILI).       |
+| `epanet_optimize_cip`                  | Municipal Water, Stormwater & Leak Localization     | Optimizes capital improvement (CIP) pipe rehabilitation and sizing plans.                         |
+| `epanet_calibrate_scada`               | Municipal Water, Stormwater & Leak Localization     | Calibrates Hazen-Williams roughness and demands against SCADA pressure/flow telemetry.            |
+| `epanet_gis_to_model`                  | Municipal Water, Stormwater & Leak Localization     | Converts GIS GeoJSON/shapefile water mains, junctions, and DEMs into an EPANET `.inp` model.      |
+| `swmm_flood_routing`                   | Municipal Water, Stormwater & Leak Localization     | Runs 1D Saint-Venant dynamic-wave stormwater and sewer flood routing.                             |
+| `swmm_simulate_rtc`                    | Municipal Water, Stormwater & Leak Localization     | Simulates real-time control (RTC) gates, orifices, and pump rules in SWMM.                        |
+| `swmm_gis_to_model`                    | Municipal Water, Stormwater & Leak Localization     | Ingests municipal GIS stormwater conduits, manholes, catchments, and DEMs into SWMM `.inp`.       |
+| `epanet_convert_watergems`             | Municipal Water, Stormwater & Leak Localization     | Converts Bentley WaterGEMS / HAMMER (`.wtg.sqlite`) or InfoWater models to EPANET `.inp`.         |
+| `swmm_convert_infoworks`               | Municipal Water, Stormwater & Leak Localization     | Converts Autodesk / Innovyze InfoWorks ICM collection models to SWMM `.inp`.                      |
+| `swmm_inundation_2d`                   | Municipal Water, Stormwater & Leak Localization     | Simulates 2D shallow-water overland street flooding coupled to 1D SWMM manholes.                  |
+| `ecad_dfm_audit`                       | ECAD, PCB Signal Integrity & Supply-Chain BOM       | Runs Design for Manufacturing, Assembly, and Test (DFM/DFA/DFT) rules on PCB layouts.             |
+| `ecad_generate_manufacturing_bundle`   | ECAD, PCB Signal Integrity & Supply-Chain BOM       | Generates IPC-2581C, ODB++ v8.1, Gerbers, and Centroid PnP manufacturing outputs.                 |
+| `supply_chain_scrub_bom`               | ECAD, PCB Signal Integrity & Supply-Chain BOM       | Scrubs a BOM across multi-tier distributors for pricing, stock, lead times, and obsolescence.     |
+| `optical_inspect_otdr`                 | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber | Inspects Telcordia GR-196/SR-4731 `.sor` OTDR traces for attenuation, reflectance, and splices.   |
+| `optical_solve_transmission`           | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber | Solves multi-span DWDM transmission via the Enhanced Gaussian Noise (EGN) model (GSNR, ASE, NLI). |
+| `ran_solve_microwave_budget`           | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber | Solves LOS microwave link budgets, FSPL, ITU-R P.530 rain fade, and Fresnel clearance.            |
+| `fiber_locate_otdr_fault`              | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber | Pinpoints GPS coordinates of OTDR fiber breaks, correcting for helix twist and slack loops.       |
+| `ran_evaluate_mpe_safety`              | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber | Evaluates FCC OET-65 / ICNIRP 2020 / Safety Code 6 RF MPE exclusion boundaries and TER.           |
+| `ran_evaluate_faa_obstruction`         | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber | Evaluates FAA 14 CFR Part 77 / ICAO Annex 14 / CAR 601.23 tower airspace obstruction criteria.    |
+| `fiber_evaluate_pole_loading`          | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber | Evaluates utility pole structural loading per NESC Rule 250/260, CSA C22.3, or Eurocode EN 50341. |
+| `fiber_generate_bdc_fabric`            | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber | Generates FCC BDC / NTIA BEAD spatial datasets discretized into Uber H3 Res 8/9 hexagons.         |
+| `telecom_evaluate_nors_outage`         | Telecom, DWDM Optical, 5G RAN & Outside-Plant Fiber | Evaluates FCC Part 4 (47 CFR § 4.9) NORS outage reporting thresholds and filing dossiers.         |
+| `modelscript_bifurcation_continuation` | Closed-Loop Synthesis & Workspace                   | Traces steady-state equilibrium curves via PALC and detects Fold, Hopf, and Branch bifurcations.  |
+| `modelscript_stochastic_jump`          | Closed-Loop Synthesis & Workspace                   | Executes discrete-state stochastic jump simulations via Gillespie SSA and Adaptive Tau-Leaping.   |
+| `comtrade_extract_phasor`              | Power Protection, Hydro & Polyglot Diagnostics      | Extracts DFT RMS phasors from IEEE C37.111 COMTRADE fault recordings.                             |
+| `scl_validate_goose`                   | Power Protection, Hydro & Polyglot Diagnostics      | Validates IEC 61850 GOOSE and Sampled Values publisher/subscriber latency and dataflow.           |
+| `waterml_fit_rating_curve`             | Power Protection, Hydro & Polyglot Diagnostics      | Fits non-linear stage-discharge rating curves $Q = a(h - h_0)^b$ from WaterML timeseries.         |
+| `atp_simulate_transient`               | Power Protection, Hydro & Polyglot Diagnostics      | Simulates electromagnetic transient trapezoidal companion-matrix response from ATP-EMTP decks.    |
+| `dnp3_process_telemetry`               | Power Protection, Hydro & Polyglot Diagnostics      | Filters telemetry analog streams using IEEE 1815 / DNP3 deadband thresholding.                    |
+| `oneliner_calculate_fault`             | Power Protection, Hydro & Polyglot Diagnostics      | Calculates symmetrical-component 3-phase and SLG fault currents from ASPEN OneLiner cases.        |
+| `sel_evaluate_protection`              | Power Protection, Hydro & Polyglot Diagnostics      | Evaluates SEL relay trip logic, 50P instantaneous, and 51P time-overcurrent curves.               |
+| `hec_hms_simulate_runoff`              | Power Protection, Hydro & Polyglot Diagnostics      | Simulates SCS Curve Number excess precipitation and unit hydrograph runoff from HEC-HMS basins.   |
+| `asm_evaluate_biokinetics`             | Power Protection, Hydro & Polyglot Diagnostics      | Evaluates IWA Activated Sludge Model (ASM1) biological process and substrate conversion rates.    |
+
 #### Declarative Polyglot Language Tools (`PolyglotMcpHost`)
 
 When using `PolyglotMcpHost` (`packages/mcp/src/polyglot-server.ts`), additional language-declared tools from `languages/*/src/language.ts` are automatically mounted:
@@ -273,9 +320,9 @@ The official ModelScript extension (`modelscript.modelscript`, source in `apps/i
 
 ### 1. Polyglot Language Server (`@modelscript/lsp`)
 
-A single unified Language Server Protocol instance provides incremental language intelligence across all 90 registered languages (`.mo`, `.sysml`, `.kerml`, `.msx`, `.mod`, `.pscx`, `.pswx`, `.raw`, `.dyr`, `.dsl`, `.dgs`, `.epc`, `.dyd`, `.dss`, `.ocpp`, `.oadr`, `.opt`, `.ran`, `.fbr`, `.inp`, `.ras`, `.tough`, `.nam`, `.lgm`, `.gtfs`, `.scad`, `.stp`, `.step`, `.usda`, `.owl`, `.ssp`, `.ssd`, `.ssv`, `.csv`, `.su2`, `.cfg`, `.gbr`, `.qif`, `.oscal.json`, `.aml`, `.osim`, `.rtplan`, `.cellml`, `.3mf`, `.igtl`, and more):
+A single unified Language Server Protocol instance provides incremental language intelligence across all 92 registered languages (`.mo`, `.sysml`, `.kerml`, `.msx`, `.mod`, `.pscx`, `.pswx`, `.raw`, `.dyr`, `.dsl`, `.dgs`, `.epc`, `.dyd`, `.dss`, `.ocpp`, `.oadr`, `.opt`, `.ran`, `.fbr`, `.inp`, `.ras`, `.tough`, `.nam`, `.lgm`, `.gtfs`, `.scad`, `.stp`, `.step`, `.usda`, `.owl`, `.ssp`, `.ssd`, `.ssv`, `.csv`, `.su2`, `.cfg`, `.gbr`, `.qif`, `.oscal.json`, `.aml`, `.osim`, `.rtplan`, `.cellml`, `.mlxtran`, `.3mf`, `.igtl`, and more):
 
-- **Real-Time Diagnostics**: Incremental GLR parsing + Salsa `lint__*` queries + cross-file unit/type checking across 1,260+ static diagnostic rules.
+- **Real-Time Diagnostics**: Incremental GLR parsing + Salsa `lint__*` queries + cross-file unit/type checking across 1,160 static diagnostic rules.
 - **Navigation & Refactoring**: Go-to-Definition, Find All References (across `.sysml` $\leftrightarrow$ `.mo` $\leftrightarrow$ `.msx` boundaries), Workspace Symbol Search, Rename Symbol, and Document Outline.
 - **Code Lenses & Inlay Hints**: Inline equation/variable balance badges (`[Balanced: 14 vars / 14 eqs]`), inferred SI unit inlay hints, and one-click `▶ Simulate`, `⚡ Verify`, and `📐 Render Diagram` CodeLenses above every `model`, `part def`, and `verification def`.
 

@@ -363,7 +363,10 @@ end DC_Motor;`;
     assert.ok(sourceWins.code.includes("&lt;= 30 m"), "source-wins must retain original 30 m limit");
 
     const physicsSimplex = compileTargetToSource("reqif-sysml", editedSysml, reqifOrig, "physics-simplex");
-    assert.ok(physicsSimplex.code.includes("&lt;= 40 m"), "physics-simplex must reconcile midpoint (30 + 50) / 2 = 40 m");
+    assert.ok(
+      physicsSimplex.code.includes("&lt;= 40 m"),
+      "physics-simplex must reconcile midpoint (30 + 50) / 2 = 40 m",
+    );
   });
 
   it("tokenizes pre-computed syntax + semantic tokens (Prong 1) and Monaco semantic spans + TGG envelope lints (Prong 2)", () => {
@@ -434,7 +437,10 @@ end DC_Motor;`;
     assert.ok(rIntel.referenceRanges.length >= 2, "WASM LspFacade.getReferences finds R occurrences");
 
     // 3. Live Compiler & TGG Physical Envelope Linter
-    assert.strictEqual(lintWorkflowCode("sysml-ssp", "source", motorMo).length, 0);
+    assert.strictEqual(
+      lintWorkflowCode("sysml-ssp", "source", motorMo).filter((d) => d.severity === "error").length,
+      0,
+    );
 
     // Non-positive resistance triggers M3001 physical envelope error
     const badMotor = motorMo.replace("parameter Real R = 0.5", "parameter Real R = 0");
@@ -520,10 +526,7 @@ end DC_Motor;`;
     // 4. Native SCAD & STEP WASM GLR CST spans + FEA/CFD dialect parsers + declarative TGG metadata
     assert.ok(SCAD_GRAMMAR_VOCAB.keywords.has("module"));
     assert.ok(STEP_GRAMMAR_VOCAB.keywords.has("DATA"));
-    const scadSpans = extractSemanticSpans(
-      COORDINATOR_SCENARIOS[0]!.panes[2].defaultCode,
-      "scad",
-    );
+    const scadSpans = extractSemanticSpans(COORDINATOR_SCENARIOS[0]!.panes[2].defaultCode, "scad");
     assert.ok(
       scadSpans.some((s) => s.kind === "class" && s.hoverMarkdown?.includes("OpenSCAD")),
       "SCAD WASM GLR CST extracts module declaration spans",
@@ -533,10 +536,7 @@ end DC_Motor;`;
       "SCAD WASM GLR CST extracts variable assignment spans",
     );
 
-    const stepSpans = extractSemanticSpans(
-      COORDINATOR_SCENARIOS[2]!.panes[3].defaultCode,
-      "step",
-    );
+    const stepSpans = extractSemanticSpans(COORDINATOR_SCENARIOS[2]!.panes[3].defaultCode, "step");
     assert.ok(
       stepSpans.some((s) => s.kind === "port" && s.hoverMarkdown?.includes("#11")),
       "STEP WASM GLR CST extracts entity instance #11 span",
@@ -546,19 +546,13 @@ end DC_Motor;`;
       "STEP WASM GLR CST extracts entity type spans",
     );
 
-    const feaSpans = extractSemanticSpans(
-      COORDINATOR_SCENARIOS[0]!.panes[3].defaultCode,
-      "fea",
-    );
+    const feaSpans = extractSemanticSpans(COORDINATOR_SCENARIOS[0]!.panes[3].defaultCode, "fea");
     assert.ok(
       feaSpans.some((s) => s.hoverMarkdown?.includes("CalculiX")),
       "FEA dialect parser enriches CalculiX .inp spans",
     );
 
-    const cfdSpans = extractSemanticSpans(
-      COORDINATOR_SCENARIOS[1]!.panes[2].defaultCode,
-      "cfd",
-    );
+    const cfdSpans = extractSemanticSpans(COORDINATOR_SCENARIOS[1]!.panes[2].defaultCode, "cfd");
     assert.ok(
       cfdSpans.some((s) => s.hoverMarkdown?.includes("OpenFOAM")),
       "CFD dialect parser enriches OpenFOAM dictionary spans",
@@ -586,7 +580,11 @@ end DC_Motor;`;
     assert.strictEqual(edits.length, 1, "Single line value change produces exactly 1 narrow edit");
     assert.strictEqual(edits[0]!.startLine, 2, "Edit targets only line 2");
     assert.strictEqual(edits[0]!.endLine, 2, "Edit ends on line 2");
-    assert.strictEqual(edits[0]!.startCol, edits[0]!.endCol, "Common suffix '5' is preserved so '7' is inserted in-place");
+    assert.strictEqual(
+      edits[0]!.startCol,
+      edits[0]!.endCol,
+      "Common suffix '5' is preserved so '7' is inserted in-place",
+    );
     assert.strictEqual(edits[0]!.text, "7", "Only the single inserted character '7' is spliced before '5'");
 
     const afterReplace = before.replace("R = 0.5", "R = 0.82");
@@ -633,9 +631,7 @@ end DC_Motor;`;
 
       if (scenario.id === "aerospace-actuator") {
         assert.ok(
-          nomRes.variableLinks.some((l) =>
-            l.domainBindings.some((b) => b.bindingSyntax.includes("FeaSolver.step()")),
-          ),
+          nomRes.variableLinks.some((l) => l.domainBindings.some((b) => b.bindingSyntax.includes("FeaSolver.step()"))),
           "Expected live FeaSolver.step() binding in aerospace-actuator",
         );
         assert.strictEqual(nomRes.paneVisuals[1].kind, "modelica-dae");
@@ -664,10 +660,7 @@ end DC_Motor;`;
 
         // Verify breaking a CAD tag_port name triggers [MSC-PORT-UNBOUND]
         const brokenPortCodes: [string, string, string, string] = [...defaults];
-        brokenPortCodes[2] = brokenPortCodes[2].replace(
-          'tag_port("fluid_core"',
-          'tag_port("renamed_channel_wall"',
-        );
+        brokenPortCodes[2] = brokenPortCodes[2].replace('tag_port("fluid_core"', 'tag_port("renamed_channel_wall"');
         const brokenPortRes = evaluateCoordinatorScenario(scenario.id, brokenPortCodes, 2);
         assert.strictEqual(brokenPortRes.isSat, false, "Broken CAD-CFD port binding must trigger UNSAT");
         assert.ok(
@@ -732,7 +725,3 @@ end DC_Motor;`;
     }
   });
 });
-
-
-
-

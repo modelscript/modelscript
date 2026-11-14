@@ -144,7 +144,7 @@ If you have questions regarding this policy, wish to request written permission 
 
 ## 8. Third-Party Trademarks & Nominative Fair Use
 
-ModelScript supports interoperability, parsing, linting, simulation, and compilation across 90 engineering domains, modeling formats, and file standards.
+ModelScript supports interoperability, parsing, linting, simulation, and compilation across 92 engineering domains, modeling formats, and file standards.
 
 ### Non-Affiliation & Disclaimers
 

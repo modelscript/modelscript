@@ -7,7 +7,7 @@ titleTemplate: false
 hero:
   name: "ModelScript"
   text: "One web-native compiler for every engineering model"
-  tagline: "Build a computable digital thread across 90 engineering formats. Link requirements, architecture, multi-physics models and 3D CAD — with simulation, formal verification, optimization and AI-agent tooling (MCP) built in."
+  tagline: "Build a computable digital thread across 92 engineering formats. Link requirements, architecture, multi-physics models and 3D CAD — with simulation, formal verification, optimization and AI-agent tooling (MCP) built in."
   image:
     src: /ms-logo.png
     alt: ModelScript 3D turbine engine
@@ -27,19 +27,27 @@ hero:
       rel: noopener noreferrer
 ---
 
+<script setup lang="ts">
+import {
+  isHomeAiAgentEnabled,
+  isHomeSemanticCoordinatorEnabled,
+  isHomeWorkflowPairsEnabled,
+} from "./.vitepress/theme/data/feature-flags";
+</script>
+
 <HomeStats />
 
 <HomeFormatStrip />
 
 <HomeIndustries />
 
-<HomeWorkflowPairs />
+<HomeWorkflowPairs v-if="isHomeWorkflowPairsEnabled" />
 
-<HomeSemanticCoordinator />
+<HomeSemanticCoordinator v-if="isHomeSemanticCoordinatorEnabled" />
 
 <HomeThread />
 
-<HomeAiAgent />
+<HomeAiAgent v-if="isHomeAiAgentEnabled" />
 
 <HomeCapabilities />
 

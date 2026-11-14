@@ -2759,10 +2759,7 @@ export function extractClassEquations(
               if (
                 hasLeftDims &&
                 dae.getExprKind(expandedRhs) !== ExprKind.ArrayCtor &&
-                (isSyncArrayCall(rhsExprId) ||
-                  isCardinalityCall(rhsExprId) ||
-                  isArrayReturningCall(rhsExprId) ||
-                  (flattener.options.omcCompatibility && dae.getExprKind(rhsExprId) === ExprKind.Call))
+                (isSyncArrayCall(rhsExprId) || isCardinalityCall(rhsExprId) || isArrayReturningCall(rhsExprId))
               ) {
                 let finalLhs = lhsExprId;
                 if (dae.getExprKind(finalLhs) === ExprKind.ArrayCtor) {

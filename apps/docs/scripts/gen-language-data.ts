@@ -78,6 +78,8 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
           "bngl",
           "genbank",
           "nmtran",
+          "mlxtran",
+          "nmodl",
           "pdb",
           "sbol",
           "sedml",
@@ -94,8 +96,7 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
 
     // Capabilities
     const hasDaeDir = fs.existsSync(path.join(dir, "src/dae"));
-    const hasSolverDir =
-      fs.existsSync(path.join(dir, "src/solver")) || fs.existsSync(path.join(dir, "src/solvers"));
+    const hasSolverDir = fs.existsSync(path.join(dir, "src/solver")) || fs.existsSync(path.join(dir, "src/solvers"));
     const hasDaeLowering =
       hasDaeDir ||
       actions.some((a) => a.includes("dae") || a === "compile") ||
@@ -123,6 +124,8 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
         "antimony",
         "bngl",
         "nmtran",
+        "mlxtran",
+        "nmodl",
         "opensim",
         "cellml",
       ].includes(lang.slug);
@@ -187,6 +190,8 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
         "antimony",
         "bngl",
         "nmtran",
+        "mlxtran",
+        "nmodl",
         "sedml",
         "opensim",
         "dicom-rt",
@@ -231,7 +236,7 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
     if (lang.slug === "oscal") projections.push("SysML v2", "ReqIF");
     if (lang.slug === "qif") projections.push("STEP", "SysML v2");
     if (lang.slug === "automationml") projections.push("URDF", "Modelica", "SysML v2");
-    if (["gproms", "cantera", "phreeqc", "cellml", "opensim", "nmtran"].includes(lang.slug)) {
+    if (["gproms", "cantera", "phreeqc", "cellml", "opensim", "nmtran", "mlxtran", "nmodl"].includes(lang.slug)) {
       projections.push("Modelica", "DAE");
     }
     if (["antimony", "bngl", "sedml"].includes(lang.slug)) {

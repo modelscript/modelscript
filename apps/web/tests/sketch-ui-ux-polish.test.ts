@@ -15,8 +15,9 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
 
     // Must have responsive collapse between 600px and 1160px
     assert.ok(
-      stylesContent.includes("@media (max-width: 1160px)") && stylesContent.includes("display: none !important"),
-      "SegmentedControl must collapse button labels to icon-only mode between 600px and 1160px",
+      (stylesContent.includes("@media (max-width: 1280px)") || stylesContent.includes("@media (max-width: 1160px)")) &&
+        stylesContent.includes("display: none !important"),
+      "SegmentedControl must collapse button labels to icon-only mode between 640px and 1280px",
     );
     // Must NOT hide at 960px
     assert.ok(

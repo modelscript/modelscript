@@ -225,76 +225,6 @@ let nodeInitAttempted = false;
 let browserInitPromise: Promise<void> | null = null;
 
 /**
- * Rewrites SysML feature-chain dots (`bracket.mass`) to underscores, byte-for-byte.
- *
- * WORKAROUND: the generated SysML v2 GLR parser currently needs ~5–20 s for any
- * expression containing a `PrimaryExpression` postfix (`a.b`, `a[1]`, ...), which makes
- * live editing unusable. Replacing the `.` with `_` keeps every offset identical (so
- * semantic tokens and diagnostics still line up) and parses in milliseconds. Comments,
- * strings, quoted names and numeric literals are left untouched. Remove once the
- * grammar's postfix/feature-chain ambiguity is fixed.
- */
-export function sanitizeSysmlForFastParse(source: string): string {
-  if (!source.includes(".")) return source;
-  const out = source.split("");
-  const n = source.length;
-  const isIdStart = (c: string | undefined): boolean => c !== undefined && /[A-Za-z_]/.test(c);
-  const isIdPart = (c: string | undefined): boolean => c !== undefined && /[A-Za-z_0-9]/.test(c);
-  let i = 0;
-  while (i < n) {
-    const c = source[i]!;
-    const d = source[i + 1];
-    if (c === "/" && d === "/") {
-      while (i < n && source[i] !== "\n") i++;
-    } else if (c === "/" && d === "*") {
-      i += 2;
-      while (i < n && !(source[i] === "*" && source[i + 1] === "/")) i++;
-      i += 2;
-    } else if (c === '"' || c === "'") {
-      i++;
-      while (i < n && source[i] !== c) i += source[i] === "\\" ? 2 : 1;
-      i++;
-    } else if (/[0-9]/.test(c) && !isIdPart(source[i - 1])) {
-      // numeric literal such as 1.25 or 2.5e-3: skip the whole token. A dangling dot that is
-      // not followed by a digit (`0.` while the user is mid-way through typing `0.88`) is lexed
-      // as a feature-chain postfix and hits the same pathological parse time, so blank it out.
-      while (i < n && /[0-9A-Za-z_.]/.test(source[i]!)) {
-        if (source[i] === "." && !/[0-9]/.test(source[i + 1] ?? "")) out[i] = " ";
-        i++;
-      }
-    } else if (c === "." && isIdPart(source[i - 1]) && isIdStart(d)) {
-      out[i] = "_";
-      i++;
-    } else {
-      i++;
-    }
-  }
-  return out.join("");
-}
-
-/** Installs {@link sanitizeSysmlForFastParse} on a SysML parser instance (idempotent). */
-function guardSysmlParser(runtime: WasmLanguageRuntime | null): WasmLanguageRuntime | null {
-  const parser = runtime?.parser as
-    | { parse: (src: string, ...rest: unknown[]) => unknown; __sysmlGuarded?: boolean }
-    | undefined;
-  if (!parser || parser.__sysmlGuarded) return runtime;
-  const original = parser.parse.bind(parser);
-  parser.parse = (src: string, ...rest: unknown[]) => original(sanitizeSysmlForFastParse(src), ...rest);
-  parser.__sysmlGuarded = true;
-
-  // The LSP facade parses through its own path (not `parser.parse`), so it needs the same guard.
-  const facade = runtime?.facade as
-    | { parse: (src: string, ...rest: unknown[]) => unknown; __sysmlGuarded?: boolean }
-    | undefined;
-  if (facade && !facade.__sysmlGuarded && typeof facade.parse === "function") {
-    const originalFacadeParse = facade.parse.bind(facade);
-    facade.parse = (src: string, ...rest: unknown[]) => originalFacadeParse(sanitizeSysmlForFastParse(src), ...rest);
-    facade.__sysmlGuarded = true;
-  }
-  return runtime;
-}
-
-/**
  * In Node.js / VitePress SSR (`process.versions.node`), synchronously initializes
  * the compiled Modelica, SysML v2, OpenSCAD, and STEP WebAssembly GLR parsers (`dist/parser.wasm`)
  * via `createWasmParserSync` from `src-gen/bindings.js`.
@@ -320,14 +250,12 @@ function ensureNodeWasmParsersSync(): void {
   try {
     const sysmlUrl = new URL("../../../../../../languages/sysml2/dist/parser.wasm", import.meta.url);
     const sysmlPath = decodeURIComponent(sysmlUrl.pathname);
-    sysmlWasmRuntime = guardSysmlParser(
-      createSysmlParserSync(sysmlPath, {
-        syntaxNames: SYSML_SYNTAX_NAMES,
-        fieldNames: SYSML_FIELD_NAMES,
-        lintMessages: SYSML_LINT_MESSAGES,
-        lintSeverities: SYSML_LINT_SEVERITIES,
-      }),
-    );
+    sysmlWasmRuntime = createSysmlParserSync(sysmlPath, {
+      syntaxNames: SYSML_SYNTAX_NAMES,
+      fieldNames: SYSML_FIELD_NAMES,
+      lintMessages: SYSML_LINT_MESSAGES,
+      lintSeverities: SYSML_LINT_SEVERITIES,
+    });
   } catch {
     sysmlWasmRuntime = null;
   }
@@ -393,7 +321,7 @@ export async function ensureBrowserWasmParsers(modelicaWasmUrl: string, sysml2Wa
         modelicaWasmRuntime = moRes.value;
       }
       if (sysRes.status === "fulfilled") {
-        sysmlWasmRuntime = guardSysmlParser(sysRes.value);
+        sysmlWasmRuntime = sysRes.value;
       }
       registerRequirementBinderParsers({
         sysmlParser: sysmlWasmRuntime?.parser,

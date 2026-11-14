@@ -13,7 +13,7 @@ ModelScript is built on a **data-oriented, WebAssembly-first compiler architectu
 
 ```mermaid
 flowchart TB
-    subgraph Languages["Polyglot Source Languages (90 Formats — 25 Stable & 65 Beta)"]
+    subgraph Languages["Polyglot Source Languages (92 Formats — 25 Stable & 67 Beta)"]
         direction TB
         MO[".mo (Modelica 3.x) / .mod (AMPL)"]
         SYS[".sysml / .kerml / .reqif / .oscal.json"]
@@ -97,11 +97,11 @@ Thirteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `@modelscript/cad`        | `packages/cad`      | OpenCascade (OCCT) B-Rep kernel, CSG evaluator, STEP AP214/AP242 serializer, 3D tetrahedral FEA solver, 3D formal verification overlays, Gerber ECAD parser                    |
 | `@modelscript/diagram`    | `packages/diagram`  | Polyglot schematic layout engine, orthogonal Manhattan router, TCC / R-X / P-Q / Water Diff specialized builders, SVG/Canvas renderer                                          |
 | `@modelscript/exchange`   | `packages/exchange` | FMI 2.0/3.0 FMU import/export, SSP 1.0/2.0 container toolkit, Co-Simulation Master Orchestrator, MISRA-C / Q8.24 fixed-point firmware synthesizer, WebSerial HIL               |
-| `@modelscript/lsp`        | `packages/lsp`      | Multi-language LSP server across all 90 languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                              |
-| `@modelscript/mcp`        | `packages/mcp`      | Unified Model Context Protocol server exposing 92 core and 70+ domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools             |
+| `@modelscript/lsp`        | `packages/lsp`      | Multi-language LSP server across all 92 languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                              |
+| `@modelscript/mcp`        | `packages/mcp`      | Unified Model Context Protocol server exposing 105 core and 70+ domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools            |
 | `@modelscript/ide-client` | `packages/ide`      | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports with 3D verification overlays                              |
 | `@modelscript/examples`   | `packages/examples` | Curated multi-domain reference workspaces (CubeSat, EV Battery Pack, IEEE 39-Bus Grid, Robotic Arm, Aero-Structural Wing)                                                      |
-| `modelscript` (`msx`)     | `apps/cli`          | Unified command-line interface (157 commands across `flatten`, `simulate`, `verify`, `dossier`, `gatekeeper`, `ampl`, `powerfactory`, `pslf`, `fmu`, `csg`, `surrogate`, etc.) |
+| `modelscript` (`msx`)     | `apps/cli`          | Unified command-line interface (169 commands across `flatten`, `simulate`, `verify`, `dossier`, `gatekeeper`, `ampl`, `powerfactory`, `pslf`, `fmu`, `csg`, `surrogate`, etc.) |
 | `@modelscript/api`        | `apps/api`          | REST, GraphQL, SPARQL, Regulatory Dossier, Grid Gatekeeper, and WebSocket simulation backend server                                                                            |
 | `@modelscript/web`        | `apps/web`          | Ansatz Web application (Morsel, Studio, Package Registry, and social modeling platform)                                                                                        |
 | `@modelscript/ee`         | `ee`                | Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — Ed25519 license verification, SSO/SAML, RBAC, Slurm HPC dispatcher, Digital Twin Historian, HIL                     |

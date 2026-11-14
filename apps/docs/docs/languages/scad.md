@@ -46,7 +46,7 @@ tag_port("base_mount", "frame", [0, 0, -1])
 
 ## Semantic Linter & Diagnostic Codes
 
-`lintScadCst(sourceText)` (`languages/scad/src/linter.ts`) performs static scope resolution, constant folding, and geometric validity checking across 9 diagnostic rules:
+`lintScadCst(sourceText)` (`languages/scad/src/linter.ts`) performs static scope resolution, constant folding, and geometric validity checking across 13 diagnostic rules:
 
 <LintRules lang="scad" />
 

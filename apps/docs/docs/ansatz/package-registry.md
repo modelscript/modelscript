@@ -78,7 +78,7 @@ Engineering simulations for safety-critical aerospace, nuclear, and medical syst
 - **Content-Addressable Storage (SHA-256)**: Every published archive is indexed by its SHA-256 Merkle digest. Modifying a single byte of an equation or parameter table alters the digest and fails lockfile verification.
 - **Detached Ed25519 Publisher Signatures (`--signature`)**: Publishers sign package digests using their registered Ed25519 keys (`msx keys`). During `msx install`, the CLI verifies both the SHA-256 integrity hash and the publisher's cryptographic signature.
 - **SPDX License Compatibility Auditing**: During upload and installation, the registry parses SPDX license expressions (`AGPL-3.0-or-later`, `MPL-2.0`, `Apache-2.0`, `MIT`, or commercial licenses) and warns when a dependency tree mixes incompatible copyleft and proprietary terms.
-- **Polyglot Standard Library Sync (`msx stdlib`)**: Built-in standard libraries across all 68 languages can be inspected and synchronized offline via `msx stdlib`.
+- **Polyglot Standard Library Sync (`msx stdlib`)**: Built-in standard libraries across all 92 languages can be inspected and synchronized offline via `msx stdlib`.
 
 ---
 

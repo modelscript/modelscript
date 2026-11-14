@@ -1,6 +1,6 @@
 ---
 title: Introduction
-description: Overview of the ModelScript computable digital thread platform, polyglot WebAssembly compiler, 13 Nelson-Oppen theory oracles, and 90 engineering languages.
+description: Overview of the ModelScript computable digital thread platform, polyglot WebAssembly compiler, 13 Nelson-Oppen theory oracles, and 92 engineering languages.
 ---
 
 # Introduction
@@ -11,14 +11,14 @@ Welcome to **ModelScript**, the open-core **computable digital thread** platform
 
 ## What is the Computable Digital Thread?
 
-Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **90 engineering languages and file formats** spanning **12 industry verticals**:
+Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **92 engineering languages and file formats** spanning **12 industry verticals**:
 
 - **System Architecture, Requirements, Security & Ontologies** (`SysML v2`, `KerML`, `ReqIF`, `NIST OSCAL`, `OSLC 3.0`, `OWL2`, `AAS / DDP`)
 - **Multi-Domain Acausal, Optimization & Block-Diagram Simulation** (`Modelica 3.x`, `ModelScript .msx`, `AMPL`, `MATLAB Simulink`, `EASY5`, `FMI 2.0/3.0 FMU`, `SSP 1.0/2.0`)
 - **Power Grids, Telecom, Electronics & Embedded Control** (`PSCAD EMT`, `Siemens PSS/E`, `DIgSILENT PowerFactory`, `GE PSLF`, `CIM / CGMES`, `OpenDSS`, `OCPP`, `OpenADR`, `DWDM Optical`, `5G NR RAN`, `Outside-Plant Fiber`, `SPICE`, `Verilog-A`, `IBIS`, `Touchstone`, `PLCopen IEC 61131-3`, `AutomationML`, `AUTOSAR ARXML`, `ANSI C`, `Fortran`)
 - **3D CAD Geometry, Metrology, Multibody & Robotics** (`STEP AP214/AP242`, `OpenUSD`, `ISO 23952 QIF`, `OpenSCAD CSG`, `ROS URDF / Xacro`, `SIMPACK`, `MSC Adams`, `GENSYS`, `OpenSim`, `ASAM OpenDRIVE / OpenSCENARIO`, `GTFS`)
 - **Continuum CAE, Process, Chemistry, Thermal, Subsurface & Water Networks** (`CalculiX / Abaqus FEA`, `SU2 / OpenFOAM CFD`, `OLGA`, `PipelineStudio`, `ECLIPSE`, `TOUGH2/TOUGH3`, `Aspen Plus`, `gPROMS`, `Cantera`, `PHREEQC`, `SMILES / SDF`, `RELAP5-3D`, `EnergyPlus`, `EPANET`, `EPA SWMM`, `USACE HEC-RAS`, `USGS MODFLOW 6`, `US EPA LandGEM`)
-- **Systems/Synthetic Biology, Radiology & Computer-Assisted Surgery** (`SBML`, `Antimony`, `BioNetGen`, `SBOL3`, `SED-ML`, `NONMEM NMTRAN`, `PDB / mmCIF`, `GenBank / FASTA`, `CellML`, `FEBio / SOFA`, `DICOM-RT`, `TOPAS / GATE`, `NIfTI / NRRD`, `3MF Medical`, `OpenIGTLink / PLUS`)
+- **Systems/Synthetic Biology, Radiology & Computer-Assisted Surgery** (`SBML`, `Antimony`, `BioNetGen`, `SBOL3`, `SED-ML`, `NONMEM NMTRAN`, `Monolix MLXTRAN`, `PDB / mmCIF`, `GenBank / FASTA`, `CellML`, `NEURON NMODL`, `FEBio / SOFA`, `DICOM-RT`, `TOPAS / GATE`, `NIfTI / NRRD`, `3MF Medical`, `OpenIGTLink / PLUS`)
 
 Traditionally, these disciplines operate in disconnected silos. Enterprise "digital threads" have historically been **passive and descriptive** — composed of static document links, heavyweight PLM databases, and manual spreadsheets that drift out of sync the moment a parameter changes.
 
@@ -41,7 +41,7 @@ flowchart LR
 | :--------------------------- | :---------------------------------------------------------- | :--------------------------------------------------------------------------------------------- |
 | **Artifact Storage**         | Proprietary binary blobs in centralized SQL/PLM vaults      | Plain-text, human-readable source files versioned in Git                                       |
 | **Cross-Domain Links**       | Manual, untyped hyperlinks that silently go stale           | Typed `@satisfies` / `@verifies` bindings & bidirectional Triple Graph Grammars (TGG)          |
-| **Static Analysis**          | Checked manually during design reviews                      | **1,260+ static lint rules** across **90 languages** evaluated on every keystroke and CI push  |
+| **Static Analysis**          | Checked manually during design reviews                      | **1,160 static lint rules** across **92 languages** evaluated on every keystroke and CI push   |
 | **Requirement Verification** | Post-hoc spreadsheet sign-offs                              | Automated $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and Taylor-model reachability proofs        |
 | **Code Review & Diffs**      | Opaque binary attachments or screenshot exports             | Structural AST/DAE diffs and visual schematic PR diffs (`msx pr-diff`)                         |
 | **AI Copilot Integration**   | Unverified text generation prone to physical hallucinations | Closed-loop MCP server (`@modelscript/mcp`) grounded in DAE solvers and formal counterexamples |
@@ -50,7 +50,7 @@ flowchart LR
 
 ## Core Pillars of ModelScript
 
-### 1. Code-First Engineering Across 90 Languages (25 Stable & 65 Beta)
+### 1. Code-First Engineering Across 92 Languages (25 Stable & 67 Beta)
 
 Every model, schematic, requirement, netlist, and mesh configuration lives as clean text in Git. Engineers diff, review, merge, and gate physical hardware designs using standard pull requests, SARIF code scanning, and reproducible CI/CD pipelines.
 
@@ -86,7 +86,7 @@ A single background worker pool (`@modelscript/lsp`) indexes polyglot workspaces
 
 ### 6. AI-Native Closed-Loop Engineering (`@modelscript/mcp`)
 
-Large language models struggle with physical engineering when left to guess differential equations in free text. `@modelscript/mcp` exposes **92 deterministic compiler, simulation, CAD, TGG, grid/water/telecom, and formal verification tools** over the Model Context Protocol (MCP). AI agents iteratively draft code, run `modelica_lint`, integrate stiff DAEs with `modelica_simulate`, falsify requirements, and calibrate parameters via `modelica_diff_calibrate` until every formal proof passes.
+Large language models struggle with physical engineering when left to guess differential equations in free text. `@modelscript/mcp` exposes **105 deterministic compiler, simulation, CAD, TGG, grid/water/telecom, and formal verification tools** over the Model Context Protocol (MCP). AI agents iteratively draft code, run `modelica_lint`, integrate stiff DAEs with `modelica_simulate`, falsify requirements, and calibrate parameters via `modelica_diff_calibrate` until every formal proof passes.
 
 ---
 

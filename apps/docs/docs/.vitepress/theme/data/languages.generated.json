@@ -22,7 +22,7 @@
         "FMU"
       ]
     },
-    "ruleCount": 226
+    "ruleCount": 233
   },
   {
     "slug": "ampl",
@@ -2437,6 +2437,30 @@
     "ruleCount": 10
   },
   {
+    "slug": "mlxtran",
+    "name": "MLXTRAN (Monolix)",
+    "sidebar": "MLXTRAN Pharmacometrics",
+    "ext": ".mlxtran",
+    "role": "Monolix PK/PD longitudinal & compartmental models",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/mlxtran",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx lint",
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
     "slug": "pdb",
     "name": "PDB / mmCIF",
     "sidebar": "PDB Macromolecular 3D",
@@ -2503,6 +2527,30 @@
       "to-sbml",
       "to-dae"
     ],
+    "capabilities": {
+      "parse": true,
+      "lint": true,
+      "dae": true,
+      "simulate": true,
+      "projections": [
+        "Modelica",
+        "DAE"
+      ]
+    },
+    "ruleCount": 10
+  },
+  {
+    "slug": "nmodl",
+    "name": "NMODL (NEURON)",
+    "sidebar": "NMODL Ion Channels",
+    "ext": ".mod",
+    "role": "NEURON ion-channel & Hodgkin-Huxley membrane kinetics",
+    "group": "life-sciences",
+    "pkgName": "@modelscript/nmodl",
+    "version": "0.1.0",
+    "tier": "beta",
+    "cliCommand": "msx lint",
+    "actions": [],
     "capabilities": {
       "parse": true,
       "lint": true,

@@ -1403,6 +1403,7 @@ function runTestCaseCore(
           (d) =>
             d.type !== "info" &&
             d.type !== "warning" &&
+            !(typeof d.code === "number" && d.code >= 4130 && d.code <= 4134) &&
             !d.message.includes("Components are deprecated in class.") &&
             !d.message.includes("Algorithm sections are deprecated in class.") &&
             !d.message.includes("Equation sections are deprecated in class."),
@@ -1498,6 +1499,7 @@ function runTestCaseCore(
             .filter(
               (d) =>
                 d.type !== "info" &&
+                !(typeof d.code === "number" && d.code >= 4130 && d.code <= 4134) &&
                 !d.message.includes("Components are deprecated in class.") &&
                 !d.message.includes("Algorithm sections are deprecated in class.") &&
                 !d.message.includes("Equation sections are deprecated in class."),

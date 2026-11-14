@@ -1023,6 +1023,48 @@
         "message": "Outer component '<outerName>' causality conflicts with inner declaration '<innerName>'."
       },
       {
+        "code": "M4130",
+        "rule": "class-missing-description",
+        "severity": "warning",
+        "message": "Class '<className>' is missing a description string."
+      },
+      {
+        "code": "M4131",
+        "rule": "parameter-missing-description",
+        "severity": "warning",
+        "message": "Public parameter '<paramName>' is missing a description string."
+      },
+      {
+        "code": "M4132",
+        "rule": "constant-missing-description",
+        "severity": "info",
+        "message": "Public constant '<constName>' is missing a description string."
+      },
+      {
+        "code": "M4133",
+        "rule": "class-missing-icon",
+        "severity": "info",
+        "message": "Class '<className>' is missing an icon annotation and does not inherit one."
+      },
+      {
+        "code": "M4134",
+        "rule": "broken-modelica-uri",
+        "severity": "error",
+        "message": "Broken 'modelica://' reference: '<uri>' does not resolve to an existing class or model."
+      },
+      {
+        "code": "M4135",
+        "rule": "resource-missing",
+        "severity": "error",
+        "message": "Referenced resource file '<res>' does not exist on disk."
+      },
+      {
+        "code": "M4136",
+        "rule": "resource-absolute-path",
+        "severity": "warning",
+        "message": "Resource reference '<pathStr>' uses an absolute filesystem path; use a relative path or 'modelica://' URI instead."
+      },
+      {
         "code": "M5001",
         "rule": "equation-type-mismatch",
         "severity": "error",
@@ -6902,6 +6944,77 @@
     ]
   },
   {
+    "slug": "mlxtran",
+    "name": "MLXTRAN (Monolix)",
+    "packageName": "@modelscript/mlxtran",
+    "sources": [
+      "languages/mlxtran/src/errors.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9421",
+        "rule": "missing-longitudinal-block",
+        "severity": "error",
+        "message": "MLXTRAN model is missing the required '[LONGITUDINAL]' section header."
+      },
+      {
+        "code": "M9422",
+        "rule": "undeclared-input-parameter",
+        "severity": "error",
+        "message": "Equation references parameter '<paramName>' that is not declared in 'input = {...}'."
+      },
+      {
+        "code": "M9423",
+        "rule": "orphan-derivative",
+        "severity": "warning",
+        "message": "Differential variable '<stateName>' has time derivative 'ddt_<stateName>' but is never referenced in outputs or transfers."
+      },
+      {
+        "code": "M9424",
+        "rule": "mass-conservation-leak",
+        "severity": "error",
+        "message": "Mass conservation violation: transfer between compartment '<fromCmt>' and '<toCmt>' has unbalanced stoichiometry or rates."
+      },
+      {
+        "code": "M9425",
+        "rule": "negative-parameter-bound",
+        "severity": "error",
+        "message": "Physiological parameter '<paramName>' must be positive (> 0), got '<val>'."
+      },
+      {
+        "code": "M9426",
+        "rule": "duplicate-equation-definition",
+        "severity": "error",
+        "message": "Variable or derivative '<ident>' is defined multiple times in EQUATION block."
+      },
+      {
+        "code": "M9427",
+        "rule": "missing-output-definition",
+        "severity": "warning",
+        "message": "Model defines differential equations but is missing an 'OUTPUT:' block."
+      },
+      {
+        "code": "M9428",
+        "rule": "invalid-macro-target",
+        "severity": "error",
+        "message": "PK macro '<macroKind>' targets undefined compartment or state variable '<targetName>'."
+      },
+      {
+        "code": "M9429",
+        "rule": "syntax-error",
+        "severity": "error",
+        "message": "MLXTRAN syntax error: <detail>."
+      },
+      {
+        "code": "M9430",
+        "rule": "unbalanced-compartment-transfer",
+        "severity": "error",
+        "message": "Compartment transfer references invalid or identical compartment index ('from=<from>', 'to=<to>')."
+      }
+    ]
+  },
+  {
     "slug": "pdb",
     "name": "PDB / mmCIF",
     "packageName": "@modelscript/pdb",
@@ -7111,6 +7224,77 @@
         "rule": "cellml-duplicate-variable-or-component",
         "severity": "error",
         "message": "Duplicate <entityKind> '<name>' declared in component '<compName>'."
+      }
+    ]
+  },
+  {
+    "slug": "nmodl",
+    "name": "NMODL (NEURON)",
+    "packageName": "@modelscript/nmodl",
+    "sources": [
+      "languages/nmodl/src/errors.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9441",
+        "rule": "missing-neuron-block",
+        "severity": "error",
+        "message": "NMODL file is missing the required 'NEURON { ... }' interface block."
+      },
+      {
+        "code": "M9442",
+        "rule": "missing-suffix-declaration",
+        "severity": "error",
+        "message": "'NEURON' block is missing the required 'SUFFIX' mechanism identifier."
+      },
+      {
+        "code": "M9443",
+        "rule": "missing-derivative-evolution",
+        "severity": "error",
+        "message": "State variable '<stateName>' declared in 'STATE' block has no time-derivative equation in 'DERIVATIVE'."
+      },
+      {
+        "code": "M9444",
+        "rule": "unassigned-write-current",
+        "severity": "error",
+        "message": "Ion current '<curName>' declared in 'USEION ... WRITE' is never computed in 'BREAKPOINT'."
+      },
+      {
+        "code": "M9445",
+        "rule": "gating-probability-bounds",
+        "severity": "error",
+        "message": "Gating variable initial condition '<varName>' = <val> falls outside physical probability bounds [0, 1]."
+      },
+      {
+        "code": "M9446",
+        "rule": "reversal-potential-sign",
+        "severity": "warning",
+        "message": "Reversal potential parameter '<paramName>' has unexpected polarity (<val> mV)."
+      },
+      {
+        "code": "M9447",
+        "rule": "missing-breakpoint-block",
+        "severity": "error",
+        "message": "Channel mechanism is missing the required 'BREAKPOINT' block."
+      },
+      {
+        "code": "M9448",
+        "rule": "duplicate-block-declaration",
+        "severity": "error",
+        "message": "Section block '<blockName>' is declared multiple times."
+      },
+      {
+        "code": "M9449",
+        "rule": "syntax-error",
+        "severity": "error",
+        "message": "NMODL syntax error: <detail>."
+      },
+      {
+        "code": "M9450",
+        "rule": "unbalanced-units-bracket",
+        "severity": "warning",
+        "message": "Parameter declaration '<paramName>' has unbalanced unit parentheses or brackets."
       }
     ]
   },
@@ -7612,77 +7796,6 @@
     ]
   },
   {
-    "slug": "mlxtran",
-    "name": "mlxtran",
-    "packageName": "@modelscript/mlxtran",
-    "sources": [
-      "languages/mlxtran/src/errors.ts"
-    ],
-    "cli": null,
-    "rules": [
-      {
-        "code": "M9421",
-        "rule": "missing-longitudinal-block",
-        "severity": "error",
-        "message": "MLXTRAN model is missing the required '[LONGITUDINAL]' section header."
-      },
-      {
-        "code": "M9422",
-        "rule": "undeclared-input-parameter",
-        "severity": "error",
-        "message": "Equation references parameter '<paramName>' that is not declared in 'input = {...}'."
-      },
-      {
-        "code": "M9423",
-        "rule": "orphan-derivative",
-        "severity": "warning",
-        "message": "Differential variable '<stateName>' has time derivative 'ddt_<stateName>' but is never referenced in outputs or transfers."
-      },
-      {
-        "code": "M9424",
-        "rule": "mass-conservation-leak",
-        "severity": "error",
-        "message": "Mass conservation violation: transfer between compartment '<fromCmt>' and '<toCmt>' has unbalanced stoichiometry or rates."
-      },
-      {
-        "code": "M9425",
-        "rule": "negative-parameter-bound",
-        "severity": "error",
-        "message": "Physiological parameter '<paramName>' must be positive (> 0), got '<val>'."
-      },
-      {
-        "code": "M9426",
-        "rule": "duplicate-equation-definition",
-        "severity": "error",
-        "message": "Variable or derivative '<ident>' is defined multiple times in EQUATION block."
-      },
-      {
-        "code": "M9427",
-        "rule": "missing-output-definition",
-        "severity": "warning",
-        "message": "Model defines differential equations but is missing an 'OUTPUT:' block."
-      },
-      {
-        "code": "M9428",
-        "rule": "invalid-macro-target",
-        "severity": "error",
-        "message": "PK macro '<macroKind>' targets undefined compartment or state variable '<targetName>'."
-      },
-      {
-        "code": "M9429",
-        "rule": "syntax-error",
-        "severity": "error",
-        "message": "MLXTRAN syntax error: <detail>."
-      },
-      {
-        "code": "M9430",
-        "rule": "unbalanced-compartment-transfer",
-        "severity": "error",
-        "message": "Compartment transfer references invalid or identical compartment index ('from=<from>', 'to=<to>')."
-      }
-    ]
-  },
-  {
     "slug": "modelscript",
     "name": "modelscript",
     "packageName": "@modelscript/modelscript",
@@ -7756,77 +7869,6 @@
         "rule": "unknown-struct-field",
         "severity": "error",
         "message": "Struct '<structName>' has no field named '<fieldName>'."
-      }
-    ]
-  },
-  {
-    "slug": "nmodl",
-    "name": "nmodl",
-    "packageName": "@modelscript/nmodl",
-    "sources": [
-      "languages/nmodl/src/errors.ts"
-    ],
-    "cli": null,
-    "rules": [
-      {
-        "code": "M9441",
-        "rule": "missing-neuron-block",
-        "severity": "error",
-        "message": "NMODL file is missing the required 'NEURON { ... }' interface block."
-      },
-      {
-        "code": "M9442",
-        "rule": "missing-suffix-declaration",
-        "severity": "error",
-        "message": "'NEURON' block is missing the required 'SUFFIX' mechanism identifier."
-      },
-      {
-        "code": "M9443",
-        "rule": "missing-derivative-evolution",
-        "severity": "error",
-        "message": "State variable '<stateName>' declared in 'STATE' block has no time-derivative equation in 'DERIVATIVE'."
-      },
-      {
-        "code": "M9444",
-        "rule": "unassigned-write-current",
-        "severity": "error",
-        "message": "Ion current '<curName>' declared in 'USEION ... WRITE' is never computed in 'BREAKPOINT'."
-      },
-      {
-        "code": "M9445",
-        "rule": "gating-probability-bounds",
-        "severity": "error",
-        "message": "Gating variable initial condition '<varName>' = <val> falls outside physical probability bounds [0, 1]."
-      },
-      {
-        "code": "M9446",
-        "rule": "reversal-potential-sign",
-        "severity": "warning",
-        "message": "Reversal potential parameter '<paramName>' has unexpected polarity (<val> mV)."
-      },
-      {
-        "code": "M9447",
-        "rule": "missing-breakpoint-block",
-        "severity": "error",
-        "message": "Channel mechanism is missing the required 'BREAKPOINT' block."
-      },
-      {
-        "code": "M9448",
-        "rule": "duplicate-block-declaration",
-        "severity": "error",
-        "message": "Section block '<blockName>' is declared multiple times."
-      },
-      {
-        "code": "M9449",
-        "rule": "syntax-error",
-        "severity": "error",
-        "message": "NMODL syntax error: <detail>."
-      },
-      {
-        "code": "M9450",
-        "rule": "unbalanced-units-bracket",
-        "severity": "warning",
-        "message": "Parameter declaration '<paramName>' has unbalanced unit parentheses or brackets."
       }
     ]
   }

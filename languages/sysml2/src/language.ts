@@ -3074,11 +3074,14 @@ export const sysml2Language = language({
     MeasurementExpression: ($) =>
       prec.left(
         PREC.PRIMARY,
-        seq(
-          field("value", choice($["_LiteralExpression"]!, $["FeatureReferenceExpression"]!)),
-          "[",
-          field("unit", $["_UnitExpression"]!),
-          "]",
+        prec.dynamic(
+          1,
+          seq(
+            field("value", choice($["_LiteralExpression"]!, $["FeatureReferenceExpression"]!)),
+            "[",
+            field("unit", $["_UnitExpression"]!),
+            "]",
+          ),
         ),
       ),
 

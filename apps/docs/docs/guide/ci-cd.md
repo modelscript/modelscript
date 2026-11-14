@@ -24,7 +24,7 @@ flowchart LR
 
 | Stage                      | Command                                        | Output Format                             | Purpose                                                                                                 |
 | :------------------------- | :--------------------------------------------- | :---------------------------------------- | :------------------------------------------------------------------------------------------------------ |
-| **Static Analysis**        | `msx lint ./models ./requirements`             | `json`, `text`                            | Enforces 1,260+ static syntax, type, unit, and structural rules across 90 languages.                    |
+| **Static Analysis**        | `msx lint ./models ./requirements`             | `json`, `text`                            | Enforces 1,160 static syntax, type, unit, and structural rules across 92 languages.                     |
 | **Cross-Domain Alignment** | `msx polyglot verify .`                        | Terminal / Exit Code                      | Verifies `@satisfies` / `@verifies` bindings and cross-language port compatibility.                     |
 | **Visual PR Review**       | `msx pr-diff --base origin/main`               | `pr-comment`, `visual-svg`, `visual-html` | Generates color-coded schematic diffs (added = green, modified = amber, deleted = red).                 |
 | **Formal Verification**    | `msx verify <Class> <file> --format sarif`     | `sarif`, `junit`, `ctrf`, `html`, `dhf`   | Runs $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and flowpipe proofs; integrates with GitHub Security tab. |
@@ -208,5 +208,5 @@ msx cloud download job_01j8x9k2m ./artifacts
 ## Next Steps
 
 - **[CLI Overview](../cli/overview.md)** — Global flags (`--daemon`), environment variables, and exit code conventions.
-- **[CLI Commands Reference](../cli/commands.md)** — Exhaustive flag tables for all 157 `msx` commands (126 primary commands + 31 aliases).
+- **[CLI Commands Reference](../cli/commands.md)** — Exhaustive flag tables for all 169 `msx` commands (138 primary commands + 31 aliases).
 - **[Standards & Export Formats](../reference/export-formats.md)** — Details on SARIF 2.1.0, FMI 2.0/3.0, SSP, ReqIF, OSLC 3.0, and FDA/ISO DHF bundles.

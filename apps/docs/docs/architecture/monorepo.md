@@ -31,7 +31,7 @@ To maintain modularity and avoid circular dependencies, the codebase is structur
 
 ### Layer 1: Core Engine & Languages
 
-- **Directories:** `languages/*` (90 domain languages across `Stable` [24] and `Beta` [57] tiers) and `packages/{dsl,runtime,simulate,cad,diagram,exchange,lsp,mcp}`.
+- **Directories:** `languages/*` (92 documented domain languages across `Stable` [25] and `Beta` [67] tiers) and `packages/{dsl,runtime,simulate,cad,diagram,exchange,lsp,mcp}`.
 - **Rule:** Pure computation, formal theory, parsers, and solvers. Zero UI dependencies, zero database dependencies, and zero Express/HTTP servers.
 - **Independence:** Can be compiled and embedded in any JavaScript, Node.js, WebAssembly, or desktop runtime.
 

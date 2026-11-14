@@ -221,7 +221,7 @@ msx dhf status drone_specs.sysml DroneSimulation.mo
 
 ## Next Steps
 
-- **[Polyglot Languages Overview](../languages/overview.md)** — Explore all 68 supported engineering languages and cross-domain projections.
+- **[Polyglot Languages Overview](../languages/overview.md)** — Explore all 92 supported engineering languages and cross-domain projections.
 - **[AI Agents & MCP Workflows](./ai-agents.md)** — Automate closed-loop synthesis, TGG reconciliation, and RTM auditing with AI agents.
 - **[CI/CD & GitHub Actions](./ci-cd.md)** — Gate pull requests with `msx lint`, `msx verify --format sarif`, `msx pr-diff`, and `msx dhf export`.
 - **[Triple Graph Grammar (TGG) Engine](../architecture/tgg.md)** — Learn how bidirectional synchronization keeps SysML v2 and Modelica aligned.

@@ -5411,27 +5411,6 @@ export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): D
     }
 
     if (recFields && recFields.length > 0) {
-      const isOmcCompat = Boolean(
-        dae.extensionMetadata?.["omcCompatibility"] ||
-        dae.extensionMetadata?.["isOldFrontend"] ||
-        out.extensionMetadata?.["omcCompatibility"],
-      );
-      const isRecordVarEq =
-        lhsRec &&
-        rhsRec &&
-        kind !== EqKind.Connect &&
-        (dae.getExprKind(rhsId) === ExprKind.Name || dae.getExprKind(rhsId) === ExprKind.Der);
-      if (isOmcCompat && isRecordVarEq) {
-        const newLhs = cloneExpr(lhsId, "", null);
-        const newRhs = cloneExpr(rhsId, "", null);
-        if (targetList) {
-          targetList.push({ kind, lhsExprId: newLhs, rhsExprId: newRhs });
-        } else {
-          out.addEquation(kind, newLhs, newRhs, eqFlags);
-          recordEqMeta(out.eqCount - 1);
-        }
-        return;
-      }
       for (const field of recFields) {
         const newLhs = getFieldExpr(dae, out, lhsId, field, cloneExpr, expandArrayEquations);
         const newRhs = getFieldExpr(dae, out, rhsId, field, cloneExpr, expandArrayEquations);

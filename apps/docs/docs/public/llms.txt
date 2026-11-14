@@ -1,6 +1,6 @@
 # ModelScript
 
-> Open-core computable digital thread for polyglot engineering and simulation. Imports 90 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
+> Open-core computable digital thread for polyglot engineering and simulation. Imports 92 simulation and CAE formats, links them to requirements, solves DAEs/ODEs via a WebAssembly linear-memory arena, coordinates cross-domain co-simulation, and exports FMI 2.0/3.0 FMUs.
 
 ## Quick Links
 - [Official Website](https://modelscript.org/)
@@ -59,8 +59,8 @@
 - [CLI Overview](https://modelscript.org/cli/overview): Overview of the `msx` binary, global flags, and architecture.
 - [Commands Reference](https://modelscript.org/cli/commands): Comprehensive reference for all 138 CLI commands and subcommands.
 
-## Polyglot Languages (90 Formats)
-- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 90 formats.
+## Polyglot Languages (92 Formats)
+- [Polyglot Overview & Capability Matrix](https://modelscript.org/languages/overview): Cross-language capability matrix across all 92 formats.
 - [Modelica (.mo) [stable]](https://modelscript.org/languages/modelica): Acausal multi-domain physics.
 - [AMPL (.mod, .dat, .run, .nl, .mps) [stable]](https://modelscript.org/languages/ampl): Mathematical programming & optimization (LP, MILP, NLP).
 - [SysML v2 / KerML (.sysml) [stable]](https://modelscript.org/languages/sysml2): Systems architecture & requirements.
@@ -141,9 +141,11 @@
 - [SBOL3 (.sbol) [beta]](https://modelscript.org/languages/sbol): Synthetic biology genetic circuits & Hill kinetics.
 - [SED-ML (.sedml) [beta]](https://modelscript.org/languages/sedml): COMBINE reproducible simulation experiment protocols.
 - [NMTRAN (NONMEM) (.ctl) [beta]](https://modelscript.org/languages/nmtran): Clinical PK/PD compartmental dosing & exposure.
+- [MLXTRAN (Monolix) (.mlxtran) [beta]](https://modelscript.org/languages/mlxtran): Monolix PK/PD longitudinal & compartmental models.
 - [PDB / mmCIF (.pdb) [beta]](https://modelscript.org/languages/pdb): 3D protein structures, Ramachandran & GNM dynamics.
 - [GenBank / FASTA (.gb) [beta]](https://modelscript.org/languages/genbank): Annotated nucleotide sequences, ORFs & restriction maps.
 - [CellML (.cellml) [beta]](https://modelscript.org/languages/cellml): Cellular electrophysiology & Physiome ODE models.
+- [NMODL (NEURON) (.mod) [beta]](https://modelscript.org/languages/nmodl): NEURON ion-channel & Hodgkin-Huxley membrane kinetics.
 - [OpenSim (.osim) [beta]](https://modelscript.org/languages/opensim): Musculoskeletal multibody & Hill-type muscle dynamics.
 - [FEBio / SOFA (.feb) [beta]](https://modelscript.org/languages/febio): Hyperelastic soft-tissue biomechanics & surgical scenes.
 - [DICOM-RT (.rtplan) [beta]](https://modelscript.org/languages/dicom-rt): Clinical radiotherapy plans, DVH metrics & BED/EQD2.
@@ -168,7 +170,7 @@
 - [Life Sciences, Healthcare & Medical](https://modelscript.org/industries/life-sciences): Systems biology, pharmacometrics, radiotherapy & surgical CAS (SBML L2/L3 & SED-ML, SBOL3 & GenBank, NONMEM NMTRAN).
 
 ## Reference & Tooling
-- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 1153 diagnostics across 83 engineering languages.
+- [Linter Rules Catalog](https://modelscript.org/reference/linter-rules): Directory of 1160 diagnostics across 83 engineering languages.
 - [Export Formats](https://modelscript.org/reference/export-formats): Exporting to FMI 2.0/3.0 FMUs, SSP, STEP, CSV, and C code.
 - [MCP & IDE Integration](https://modelscript.org/reference/mcp-and-ide): Model Context Protocol server for AI coding agents and VS Code integration.
 - [Radiology & Surgical CAS](https://modelscript.org/reference/radiology-and-surgery): Radiation oncology, medical imaging, and computer-assisted surgery suite.

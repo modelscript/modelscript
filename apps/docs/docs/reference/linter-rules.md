@@ -1,6 +1,6 @@
 ---
 title: Linter Rules Reference
-description: Every diagnostic rule ModelScript ships — 1153 rules across 83 languages, with codes, severities and message templates generated from the source.
+description: Every diagnostic rule ModelScript ships — 1160 rules across 83 languages, with codes, severities and message templates generated from the source.
 outline: [2, 2]
 pageClass: lint-reference
 ---
@@ -9,7 +9,7 @@ pageClass: lint-reference
 
 # Linter Rules Reference
 
-ModelScript ships **1153 diagnostic rules** across **83 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **1160 diagnostic rules** across **83 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -30,7 +30,7 @@ The **CLI** column below shows which command reports each language's rules.
 
 | Language                                  | Package                     | Rules | CLI                     |
 | :---------------------------------------- | :-------------------------- | ----: | :---------------------- |
-| [Modelica](#modelica)                     | `@modelscript/modelica`     |   226 | `msx lint`              |
+| [Modelica](#modelica)                     | `@modelscript/modelica`     |   233 | `msx lint`              |
 | [AMPL](#ampl)                             | `@modelscript/ampl`         |    12 | `msx lint`              |
 | [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |    55 | `msx lint`              |
 | [ReqIF](#reqif)                           | `@modelscript/reqif`        |    13 | `msx reqif lint`        |
@@ -100,9 +100,11 @@ The **CLI** column below shows which command reports each language's rules.
 | [SBOL3](#sbol)                            | `@modelscript/sbol`         |    10 | Language server / API   |
 | [SED-ML](#sedml)                          | `@modelscript/sedml`        |    10 | Language server / API   |
 | [NMTRAN (NONMEM)](#nmtran)                | `@modelscript/nmtran`       |    10 | Language server / API   |
+| [MLXTRAN (Monolix)](#mlxtran)             | `@modelscript/mlxtran`      |    10 | Language server / API   |
 | [PDB / mmCIF](#pdb)                       | `@modelscript/pdb`          |    10 | Language server / API   |
 | [GenBank / FASTA](#genbank)               | `@modelscript/genbank`      |    10 | Language server / API   |
 | [CellML](#cellml)                         | `@modelscript/cellml`       |    10 | Language server / API   |
+| [NMODL (NEURON)](#nmodl)                  | `@modelscript/nmodl`        |    10 | Language server / API   |
 | [OpenSim](#opensim)                       | `@modelscript/opensim`      |    10 | Language server / API   |
 | [FEBio / SOFA](#febio)                    | `@modelscript/febio`        |    10 | Language server / API   |
 | [DICOM-RT](#dicom-rt)                     | `@modelscript/dicom-rt`     |    10 | Language server / API   |
@@ -110,9 +112,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [NIfTI / NRRD](#nifti)                    | `@modelscript/nifti`        |    10 | Language server / API   |
 | [3MF Medical](#three-mf)                  | `@modelscript/three-mf`     |    10 | Language server / API   |
 | [OpenIGTLink / PLUS](#igtl)               | `@modelscript/igtl`         |    10 | Language server / API   |
-| [mlxtran](#mlxtran)                       | `@modelscript/mlxtran`      |    10 | Language server / API   |
 | [modelscript](#modelscript)               | `@modelscript/modelscript`  |    11 | Language server / API   |
-| [nmodl](#nmodl)                           | `@modelscript/nmodl`        |    10 | Language server / API   |
 
 ::: info Not yet listed
 These languages have linters whose rules are not exported as a catalog yet, so they can't be listed here: [ASPEN OneLiner / CAPE](../languages/oneliner.md), [ATP-EMTP](../languages/atp.md), [IEC 61850 SCL](../languages/scl.md), [IEEE 1815 / DNP3](../languages/dnp3.md), [IEEE COMTRADE](../languages/comtrade.md), [IWA Activated Sludge Models](../languages/asm.md), [MATPOWER](../languages/matpower.md), [OGC WaterML 2.0](../languages/waterml.md), [SEL Relay Settings](../languages/sel.md), [USACE HEC-HMS](../languages/hec-hms.md). See each language guide for details.
@@ -120,7 +120,7 @@ These languages have linters whose rules are not exported as a catalog yet, so t
 
 ## Modelica {#modelica}
 
-Acausal multi-domain physics. **226 rules** · `@modelscript/modelica` · Source: `languages/modelica/src/errors.ts` · [Language guide](../languages/modelica.md)
+Acausal multi-domain physics. **233 rules** · `@modelscript/modelica` · Source: `languages/modelica/src/errors.ts` · [Language guide](../languages/modelica.md)
 
 **`M1xxx` — Syntax & parse**
 
@@ -310,6 +310,13 @@ Acausal multi-domain physics. **226 rules** · `@modelscript/modelica` · Source
 | <span id="modelica-m4124"></span>`M4124` | `stream-missing-instream`                         | <Badge type="danger" text="error" />    | Stream variable '<code>&lt;varName&gt;</code>' accessed in connector equation without required inStream() operator.                                                                                                                                                                               |
 | <span id="modelica-m4125"></span>`M4125` | `stream-mixed-with-flow`                          | <Badge type="danger" text="error" />    | Variable '<code>&lt;varName&gt;</code>' cannot have both 'stream' and 'flow' prefixes.                                                                                                                                                                                                            |
 | <span id="modelica-m4126"></span>`M4126` | `inner-outer-causality-mismatch`                  | <Badge type="danger" text="error" />    | Outer component '<code>&lt;outerName&gt;</code>' causality conflicts with inner declaration '<code>&lt;innerName&gt;</code>'.                                                                                                                                                                     |
+| <span id="modelica-m4130"></span>`M4130` | `class-missing-description`                       | <Badge type="warning" text="warning" /> | Class '<code>&lt;className&gt;</code>' is missing a description string.                                                                                                                                                                                                                           |
+| <span id="modelica-m4131"></span>`M4131` | `parameter-missing-description`                   | <Badge type="warning" text="warning" /> | Public parameter '<code>&lt;paramName&gt;</code>' is missing a description string.                                                                                                                                                                                                                |
+| <span id="modelica-m4132"></span>`M4132` | `constant-missing-description`                    | <Badge type="info" text="info" />       | Public constant '<code>&lt;constName&gt;</code>' is missing a description string.                                                                                                                                                                                                                 |
+| <span id="modelica-m4133"></span>`M4133` | `class-missing-icon`                              | <Badge type="info" text="info" />       | Class '<code>&lt;className&gt;</code>' is missing an icon annotation and does not inherit one.                                                                                                                                                                                                    |
+| <span id="modelica-m4134"></span>`M4134` | `broken-modelica-uri`                             | <Badge type="danger" text="error" />    | Broken 'modelica://' reference: '<code>&lt;uri&gt;</code>' does not resolve to an existing class or model.                                                                                                                                                                                        |
+| <span id="modelica-m4135"></span>`M4135` | `resource-missing`                                | <Badge type="danger" text="error" />    | Referenced resource file '<code>&lt;res&gt;</code>' does not exist on disk.                                                                                                                                                                                                                       |
+| <span id="modelica-m4136"></span>`M4136` | `resource-absolute-path`                          | <Badge type="warning" text="warning" /> | Resource reference '<code>&lt;pathStr&gt;</code>' uses an absolute filesystem path; use a relative path or 'modelica://' URI instead.                                                                                                                                                             |
 
 **`M5xxx` — Equations, algorithms & control-flow analysis**
 
@@ -1679,6 +1686,23 @@ Clinical PK/PD compartmental dosing & exposure. **10 rules** · `@modelscript/nm
 | <span id="nmtran-m9409"></span>`M9409` | `missing-required-trans-parameter`    | <Badge type="danger" text="error" /> | Subroutine '<code>&lt;advan&gt;</code>' with '<code>&lt;trans&gt;</code>' requires pharmacokinetic parameter '<code>&lt;paramName&gt;</code>' in '&#36;PK'.                         |
 | <span id="nmtran-m9410"></span>`M9410` | `negative-dosing-amount`              | <Badge type="danger" text="error" /> | Dosing record specifies a negative '<code>&lt;field&gt;</code>' value ('<code>&lt;value&gt;</code>').                                                                               |
 
+## MLXTRAN (Monolix) {#mlxtran}
+
+Monolix PK/PD longitudinal & compartmental models. **10 rules** · `@modelscript/mlxtran` · Source: `languages/mlxtran/src/errors.ts` · [Language guide](../languages/mlxtran.md)
+
+| Code                                    | Rule                              | Severity                                | Message                                                                                                                                                           |
+| :-------------------------------------- | :-------------------------------- | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="mlxtran-m9421"></span>`M9421` | `missing-longitudinal-block`      | <Badge type="danger" text="error" />    | MLXTRAN model is missing the required '&#91;LONGITUDINAL&#93;' section header.                                                                                    |
+| <span id="mlxtran-m9422"></span>`M9422` | `undeclared-input-parameter`      | <Badge type="danger" text="error" />    | Equation references parameter '<code>&lt;paramName&gt;</code>' that is not declared in 'input = &#123;...&#125;'.                                                 |
+| <span id="mlxtran-m9423"></span>`M9423` | `orphan-derivative`               | <Badge type="warning" text="warning" /> | Differential variable '<code>&lt;stateName&gt;</code>' has time derivative 'ddt\_<code>&lt;stateName&gt;</code>' but is never referenced in outputs or transfers. |
+| <span id="mlxtran-m9424"></span>`M9424` | `mass-conservation-leak`          | <Badge type="danger" text="error" />    | Mass conservation violation: transfer between compartment '<code>&lt;fromCmt&gt;</code>' and '<code>&lt;toCmt&gt;</code>' has unbalanced stoichiometry or rates.  |
+| <span id="mlxtran-m9425"></span>`M9425` | `negative-parameter-bound`        | <Badge type="danger" text="error" />    | Physiological parameter '<code>&lt;paramName&gt;</code>' must be positive (&gt; 0), got '<code>&lt;val&gt;</code>'.                                               |
+| <span id="mlxtran-m9426"></span>`M9426` | `duplicate-equation-definition`   | <Badge type="danger" text="error" />    | Variable or derivative '<code>&lt;ident&gt;</code>' is defined multiple times in EQUATION block.                                                                  |
+| <span id="mlxtran-m9427"></span>`M9427` | `missing-output-definition`       | <Badge type="warning" text="warning" /> | Model defines differential equations but is missing an 'OUTPUT:' block.                                                                                           |
+| <span id="mlxtran-m9428"></span>`M9428` | `invalid-macro-target`            | <Badge type="danger" text="error" />    | PK macro '<code>&lt;macroKind&gt;</code>' targets undefined compartment or state variable '<code>&lt;targetName&gt;</code>'.                                      |
+| <span id="mlxtran-m9429"></span>`M9429` | `syntax-error`                    | <Badge type="danger" text="error" />    | MLXTRAN syntax error: <code>&lt;detail&gt;</code>.                                                                                                                |
+| <span id="mlxtran-m9430"></span>`M9430` | `unbalanced-compartment-transfer` | <Badge type="danger" text="error" />    | Compartment transfer references invalid or identical compartment index ('from=<code>&lt;from&gt;</code>', 'to=<code>&lt;to&gt;</code>').                          |
+
 ## PDB / mmCIF {#pdb}
 
 3D protein structures, Ramachandran & GNM dynamics. **10 rules** · `@modelscript/pdb` · Source: `languages/pdb/src/errors.ts` · [Language guide](../languages/pdb.md)
@@ -1729,6 +1753,23 @@ Cellular electrophysiology & Physiome ODE models. **10 rules** · `@modelscript/
 | <span id="cellml-m9308"></span>`M9308` | `cellml-overconstrained-variable`        | <Badge type="danger" text="error" />    | Variable '<code>&lt;varName&gt;</code>' in component '<code>&lt;compName&gt;</code>' has an 'in' interface or prior assignment and cannot be assigned by an equation or ODE.                                                                                          |
 | <span id="cellml-m9309"></span>`M9309` | `cellml-undefined-math-ci`               | <Badge type="danger" text="error" />    | Equation in component '<code>&lt;compName&gt;</code>' references undeclared variable identifier '<code>&lt;ciName&gt;</code>'.                                                                                                                                        |
 | <span id="cellml-m9310"></span>`M9310` | `cellml-duplicate-variable-or-component` | <Badge type="danger" text="error" />    | Duplicate <code>&lt;entityKind&gt;</code> '<code>&lt;name&gt;</code>' declared in component '<code>&lt;compName&gt;</code>'.                                                                                                                                          |
+
+## NMODL (NEURON) {#nmodl}
+
+NEURON ion-channel & Hodgkin-Huxley membrane kinetics. **10 rules** · `@modelscript/nmodl` · Source: `languages/nmodl/src/errors.ts` · [Language guide](../languages/nmodl.md)
+
+| Code                                  | Rule                           | Severity                                | Message                                                                                                                                               |
+| :------------------------------------ | :----------------------------- | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="nmodl-m9441"></span>`M9441` | `missing-neuron-block`         | <Badge type="danger" text="error" />    | NMODL file is missing the required 'NEURON &#123; ... &#125;' interface block.                                                                        |
+| <span id="nmodl-m9442"></span>`M9442` | `missing-suffix-declaration`   | <Badge type="danger" text="error" />    | 'NEURON' block is missing the required 'SUFFIX' mechanism identifier.                                                                                 |
+| <span id="nmodl-m9443"></span>`M9443` | `missing-derivative-evolution` | <Badge type="danger" text="error" />    | State variable '<code>&lt;stateName&gt;</code>' declared in 'STATE' block has no time-derivative equation in 'DERIVATIVE'.                            |
+| <span id="nmodl-m9444"></span>`M9444` | `unassigned-write-current`     | <Badge type="danger" text="error" />    | Ion current '<code>&lt;curName&gt;</code>' declared in 'USEION ... WRITE' is never computed in 'BREAKPOINT'.                                          |
+| <span id="nmodl-m9445"></span>`M9445` | `gating-probability-bounds`    | <Badge type="danger" text="error" />    | Gating variable initial condition '<code>&lt;varName&gt;</code>' = <code>&lt;val&gt;</code> falls outside physical probability bounds &#91;0, 1&#93;. |
+| <span id="nmodl-m9446"></span>`M9446` | `reversal-potential-sign`      | <Badge type="warning" text="warning" /> | Reversal potential parameter '<code>&lt;paramName&gt;</code>' has unexpected polarity (<code>&lt;val&gt;</code> mV).                                  |
+| <span id="nmodl-m9447"></span>`M9447` | `missing-breakpoint-block`     | <Badge type="danger" text="error" />    | Channel mechanism is missing the required 'BREAKPOINT' block.                                                                                         |
+| <span id="nmodl-m9448"></span>`M9448` | `duplicate-block-declaration`  | <Badge type="danger" text="error" />    | Section block '<code>&lt;blockName&gt;</code>' is declared multiple times.                                                                            |
+| <span id="nmodl-m9449"></span>`M9449` | `syntax-error`                 | <Badge type="danger" text="error" />    | NMODL syntax error: <code>&lt;detail&gt;</code>.                                                                                                      |
+| <span id="nmodl-m9450"></span>`M9450` | `unbalanced-units-bracket`     | <Badge type="warning" text="warning" /> | Parameter declaration '<code>&lt;paramName&gt;</code>' has unbalanced unit parentheses or brackets.                                                   |
 
 ## OpenSim {#opensim}
 
@@ -1849,23 +1890,6 @@ Image-guided surgical tracking, pivot calibration & TRE. **10 rules** · `@model
 | <span id="igtl-m9809"></span>`M9809` | `igtl-invalid-server-port`              | <Badge type="danger" text="error" />    | OpenIGTLink server '<code>&lt;serverId&gt;</code>' ListeningPort '<code>&lt;port&gt;</code>' is outside valid TCP port range &#91;1024, 65535&#93;.                                                                               |
 | <span id="igtl-m9810"></span>`M9810` | `igtl-duplicate-transform-edge`         | <Badge type="danger" text="error" />    | Duplicate '<code>&lt;Transform&gt;</code>' defined for coordinate frame pair '(<code>&lt;from&gt;</code>, <code>&lt;to&gt;</code>)'.                                                                                              |
 
-## mlxtran {#mlxtran}
-
-**10 rules** · `@modelscript/mlxtran` · Source: `languages/mlxtran/src/errors.ts`
-
-| Code                                    | Rule                              | Severity                                | Message                                                                                                                                                           |
-| :-------------------------------------- | :-------------------------------- | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| <span id="mlxtran-m9421"></span>`M9421` | `missing-longitudinal-block`      | <Badge type="danger" text="error" />    | MLXTRAN model is missing the required '&#91;LONGITUDINAL&#93;' section header.                                                                                    |
-| <span id="mlxtran-m9422"></span>`M9422` | `undeclared-input-parameter`      | <Badge type="danger" text="error" />    | Equation references parameter '<code>&lt;paramName&gt;</code>' that is not declared in 'input = &#123;...&#125;'.                                                 |
-| <span id="mlxtran-m9423"></span>`M9423` | `orphan-derivative`               | <Badge type="warning" text="warning" /> | Differential variable '<code>&lt;stateName&gt;</code>' has time derivative 'ddt\_<code>&lt;stateName&gt;</code>' but is never referenced in outputs or transfers. |
-| <span id="mlxtran-m9424"></span>`M9424` | `mass-conservation-leak`          | <Badge type="danger" text="error" />    | Mass conservation violation: transfer between compartment '<code>&lt;fromCmt&gt;</code>' and '<code>&lt;toCmt&gt;</code>' has unbalanced stoichiometry or rates.  |
-| <span id="mlxtran-m9425"></span>`M9425` | `negative-parameter-bound`        | <Badge type="danger" text="error" />    | Physiological parameter '<code>&lt;paramName&gt;</code>' must be positive (&gt; 0), got '<code>&lt;val&gt;</code>'.                                               |
-| <span id="mlxtran-m9426"></span>`M9426` | `duplicate-equation-definition`   | <Badge type="danger" text="error" />    | Variable or derivative '<code>&lt;ident&gt;</code>' is defined multiple times in EQUATION block.                                                                  |
-| <span id="mlxtran-m9427"></span>`M9427` | `missing-output-definition`       | <Badge type="warning" text="warning" /> | Model defines differential equations but is missing an 'OUTPUT:' block.                                                                                           |
-| <span id="mlxtran-m9428"></span>`M9428` | `invalid-macro-target`            | <Badge type="danger" text="error" />    | PK macro '<code>&lt;macroKind&gt;</code>' targets undefined compartment or state variable '<code>&lt;targetName&gt;</code>'.                                      |
-| <span id="mlxtran-m9429"></span>`M9429` | `syntax-error`                    | <Badge type="danger" text="error" />    | MLXTRAN syntax error: <code>&lt;detail&gt;</code>.                                                                                                                |
-| <span id="mlxtran-m9430"></span>`M9430` | `unbalanced-compartment-transfer` | <Badge type="danger" text="error" />    | Compartment transfer references invalid or identical compartment index ('from=<code>&lt;from&gt;</code>', 'to=<code>&lt;to&gt;</code>').                          |
-
 ## modelscript {#modelscript}
 
 **11 rules** · `@modelscript/modelscript` · Source: `languages/modelscript/src/errors.ts`
@@ -1883,20 +1907,3 @@ Image-guided surgical tracking, pivot calibration & TRE. **10 rules** · `@model
 | <span id="modelscript-m4002"></span>`M4002` | `flwor-unbound-variable`  | <Badge type="danger" text="error" /> | Variable '<code>&lt;varName&gt;</code>' in FLWOR clause is not bound in preceding 'for' or 'let' clauses.                    |
 | <span id="modelscript-m5001"></span>`M5001` | `argument-count-mismatch` | <Badge type="danger" text="error" /> | Function '<code>&lt;fnName&gt;</code>' expects <code>&lt;expected&gt;</code> arguments, but got <code>&lt;actual&gt;</code>. |
 | <span id="modelscript-m5002"></span>`M5002` | `unknown-struct-field`    | <Badge type="danger" text="error" /> | Struct '<code>&lt;structName&gt;</code>' has no field named '<code>&lt;fieldName&gt;</code>'.                                |
-
-## nmodl {#nmodl}
-
-**10 rules** · `@modelscript/nmodl` · Source: `languages/nmodl/src/errors.ts`
-
-| Code                                  | Rule                           | Severity                                | Message                                                                                                                                               |
-| :------------------------------------ | :----------------------------- | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| <span id="nmodl-m9441"></span>`M9441` | `missing-neuron-block`         | <Badge type="danger" text="error" />    | NMODL file is missing the required 'NEURON &#123; ... &#125;' interface block.                                                                        |
-| <span id="nmodl-m9442"></span>`M9442` | `missing-suffix-declaration`   | <Badge type="danger" text="error" />    | 'NEURON' block is missing the required 'SUFFIX' mechanism identifier.                                                                                 |
-| <span id="nmodl-m9443"></span>`M9443` | `missing-derivative-evolution` | <Badge type="danger" text="error" />    | State variable '<code>&lt;stateName&gt;</code>' declared in 'STATE' block has no time-derivative equation in 'DERIVATIVE'.                            |
-| <span id="nmodl-m9444"></span>`M9444` | `unassigned-write-current`     | <Badge type="danger" text="error" />    | Ion current '<code>&lt;curName&gt;</code>' declared in 'USEION ... WRITE' is never computed in 'BREAKPOINT'.                                          |
-| <span id="nmodl-m9445"></span>`M9445` | `gating-probability-bounds`    | <Badge type="danger" text="error" />    | Gating variable initial condition '<code>&lt;varName&gt;</code>' = <code>&lt;val&gt;</code> falls outside physical probability bounds &#91;0, 1&#93;. |
-| <span id="nmodl-m9446"></span>`M9446` | `reversal-potential-sign`      | <Badge type="warning" text="warning" /> | Reversal potential parameter '<code>&lt;paramName&gt;</code>' has unexpected polarity (<code>&lt;val&gt;</code> mV).                                  |
-| <span id="nmodl-m9447"></span>`M9447` | `missing-breakpoint-block`     | <Badge type="danger" text="error" />    | Channel mechanism is missing the required 'BREAKPOINT' block.                                                                                         |
-| <span id="nmodl-m9448"></span>`M9448` | `duplicate-block-declaration`  | <Badge type="danger" text="error" />    | Section block '<code>&lt;blockName&gt;</code>' is declared multiple times.                                                                            |
-| <span id="nmodl-m9449"></span>`M9449` | `syntax-error`                 | <Badge type="danger" text="error" />    | NMODL syntax error: <code>&lt;detail&gt;</code>.                                                                                                      |
-| <span id="nmodl-m9450"></span>`M9450` | `unbalanced-units-bracket`     | <Badge type="warning" text="warning" /> | Parameter declaration '<code>&lt;paramName&gt;</code>' has unbalanced unit parentheses or brackets.                                                   |

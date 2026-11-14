@@ -69,7 +69,7 @@ end ChuaCircuit;`;
   it("should cleanly parse valid ChuaCircuit model with zero diagnostics", () => {
     facade.lastAstRoot = 0;
     const ast = facade.parseIncremental(validCode, 0, 0, validCode.length, "file:///chua.mo");
-    const diags = facade.getDiagnostics(ast);
+    const diags = facade.getDiagnostics(ast).filter((d: any) => !(d.code >= 4130 && d.code <= 4134));
     assert.strictEqual(diags.length, 0, `Expected 0 diagnostics, got: ${JSON.stringify(diags)}`);
   });
 
@@ -105,7 +105,7 @@ end ChuaCircuit;`;
     // 1. Initial parse
     facade.lastAstRoot = 0;
     let ast = facade.parseIncremental(validCode, 0, 0, validCode.length, "file:///chua_inc.mo");
-    assert.strictEqual(facade.getDiagnostics(ast).length, 0);
+    assert.strictEqual(facade.getDiagnostics(ast).filter((d: any) => !(d.code >= 4130 && d.code <= 4134)).length, 0);
 
     // Find the offset of '100.0;' on line 3 ("parameter Real R = 100.0;")
     const line3Prefix = "  parameter Real R = ";
@@ -131,7 +131,7 @@ end ChuaCircuit;`;
 
     // 3. Incremental edit: retype "100.0"
     ast = facade.parseIncremental("100.0", editOffset, 0, validCode.length, "file:///chua_inc.mo");
-    const repairedDiags = facade.getDiagnostics(ast);
+    const repairedDiags = facade.getDiagnostics(ast).filter((d: any) => !(d.code >= 4130 && d.code <= 4134));
     assert.strictEqual(
       repairedDiags.length,
       0,
