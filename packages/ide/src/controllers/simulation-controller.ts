@@ -61,8 +61,20 @@ export function detectLanguageIdFromUri(uriStr?: string): string {
   if (!uriStr) return "modelica";
   const clean = uriStr.split("?")[0]!.split("#")[0]!.toLowerCase();
   // Compound extensions first
-  if (clean.endsWith(".oscal.json") || clean.endsWith(".oscal.xml") || clean.endsWith(".oscal.yaml") || clean.endsWith(".oscal.yml")) return "oscal";
-  if (clean.endsWith(".dcm.json") || clean.endsWith(".rtplan.json") || clean.endsWith(".rtdose.json") || clean.endsWith(".rtstruct.json")) return "dicom-rt";
+  if (
+    clean.endsWith(".oscal.json") ||
+    clean.endsWith(".oscal.xml") ||
+    clean.endsWith(".oscal.yaml") ||
+    clean.endsWith(".oscal.yml")
+  )
+    return "oscal";
+  if (
+    clean.endsWith(".dcm.json") ||
+    clean.endsWith(".rtplan.json") ||
+    clean.endsWith(".rtdose.json") ||
+    clean.endsWith(".rtstruct.json")
+  )
+    return "dicom-rt";
   if (clean.endsWith(".igtl.json") || clean.endsWith(".igtl.xml")) return "igtl";
   if (clean.endsWith(".nii.gz") || clean.endsWith(".nii.json")) return "nifti";
   if (clean.endsWith(".qif.xml") || clean.endsWith(".qif.json")) return "qif";
@@ -584,9 +596,7 @@ export function registerSimulationCommands(
                 (isSupportedModelFile(e.document.uri.path) || e.document.languageId === "modelica"),
             )?.document ??
             vscode.workspace.textDocuments.find(
-              (d) =>
-                d.uri.scheme !== "output" &&
-                (isSupportedModelFile(d.uri.path) || d.languageId === "modelica"),
+              (d) => d.uri.scheme !== "output" && (isSupportedModelFile(d.uri.path) || d.languageId === "modelica"),
             );
           if (candidate) {
             uri = candidate.uri.toString();
@@ -683,6 +693,103 @@ export function registerSimulationCommands(
       },
     ),
 
+    vscode.commands.registerCommand(
+      "modelscript.pscad.inspect_line_constants",
+      async (uri?: string, componentName?: string, params?: Record<string, unknown>) => {
+        return vscode.commands.executeCommand("modelscript.openLineGeometryEditor", { uri, componentName, params });
+      },
+    ),
+
+    vscode.commands.registerCommand("modelscript.pscad.verify_ieee2800", async (uriArg?: string) => {
+      if (!client) return;
+      const uri = uriArg ?? vscode.window.activeTextEditor?.document.uri.toString();
+      if (!uri) {
+        vscode.window.showWarningMessage("No active PSCAD document found for IEEE 2800-2022 verification.");
+        return;
+      }
+      const openDoc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri);
+      const docText = openDoc?.getText();
+      const res = await vscode.window.withProgress<
+        | {
+            complianceReport?: {
+              overallPass?: boolean;
+              projectName?: string;
+              summary?: string;
+            };
+          }
+        | undefined
+      >(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "Running IEEE 2800-2022 Ride-Through Verification...",
+          cancellable: false,
+        },
+        () =>
+          client!.sendRequest("modelscript/executeAction", {
+            actionId: "simulate_hybrid_emt",
+            languageId: "pscad",
+            uri,
+            inputs: {
+              ...(docText ? { documentText: docText } : {}),
+              verifyIeee2800: true,
+            },
+          }),
+      );
+      const report = res?.complianceReport;
+      if (report) {
+        const status = report.overallPass ? "PASS" : "FAIL";
+        vscode.window.showInformationMessage(
+          `IEEE 2800-2022 Verification (${report.projectName ?? "PSCAD"}): ${status} — ${report.summary ?? ""}`,
+        );
+      } else {
+        vscode.window.showWarningMessage(
+          "IEEE 2800-2022 verification completed, but no compliance report was produced.",
+        );
+      }
+    }),
+
+    vscode.commands.registerCommand("modelscript.pscad.loadLibraryPackage", async () => {
+      if (!client) return;
+      const picked = await vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false,
+        filters: { "PSCAD Library / Package": ["json", "pslx"] },
+        openLabel: "Load PSCAD Library Package",
+      });
+      if (!picked || picked.length === 0) return;
+      const fileUri = picked[0]!;
+      const rawBytes = await vscode.workspace.fs.readFile(fileUri);
+      const rawText = new TextDecoder().decode(rawBytes);
+      if (fileUri.path.endsWith(".json")) {
+        const pkgJson = JSON.parse(rawText);
+        const dirUri = vscode.Uri.joinPath(fileUri, "..");
+        const readRel = async (rel?: string) => {
+          if (!rel) return undefined;
+          const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(dirUri, rel));
+          return bytes;
+        };
+        const symBytes = await readRel(pkgJson?.modelscript?.symbols);
+        const diagBytes = await readRel(pkgJson?.modelscript?.diagrams);
+        const wasmBytes = await readRel(pkgJson?.modelscript?.runtime?.wasm);
+        await client.sendRequest("modelscript/registerLibraryBundle", {
+          pkgJson,
+          symbols: symBytes ? JSON.parse(new TextDecoder().decode(symBytes)) : [],
+          diagrams: diagBytes ? JSON.parse(new TextDecoder().decode(diagBytes)) : undefined,
+          wasmBase64: wasmBytes ? Buffer.from(wasmBytes).toString("base64") : undefined,
+        });
+        vscode.window.showInformationMessage(`Loaded PSCAD library package '${pkgJson.name}'.`);
+      } else {
+        await client.sendRequest("modelscript/executeAction", {
+          actionId: "lint_pscad_project",
+          languageId: "pscad",
+          uri: fileUri.toString(),
+          inputs: { documentText: rawText },
+        });
+        vscode.window.showInformationMessage(`Indexed PSCAD library '${fileUri.path.split("/").pop()}'.`);
+      }
+    }),
+
     vscode.commands.registerCommand("modelscript.diagram.simulate", async (args?: SimulationCommandArg) => {
       if (!client) return;
       let uri =
@@ -712,7 +819,43 @@ export function registerSimulationCommands(
       }
 
       if (uri.endsWith(".raw") || uri.endsWith(".dyr")) {
-        return await vscode.commands.executeCommand("modelscript.psse.simulate_psse_transient", uri);
+        const studyChoice = await vscode.window.showQuickPick(
+          [
+            { label: "Solve AC Power Flow (Newton-Raphson)", command: "modelscript.psse.solve_powerflow" },
+            {
+              label: "Simulate Transient Stability (Multi-Machine)",
+              command: "modelscript.psse.simulate_psse_transient",
+            },
+            {
+              label: "Run N-1 Contingency Security Screening (ACCC)",
+              command: "modelscript.psse.analyze_n1_contingencies",
+            },
+            { label: "Calculate Short-Circuit Fault Currents", command: "modelscript.psse.solve_short_circuit" },
+            { label: "Audit NERC Reliability Compliance", command: "modelscript.psse.audit_nerc_compliance" },
+          ],
+          { placeHolder: "Select PSS/E study to run" },
+        );
+        if (!studyChoice) return;
+        if (studyChoice.command === "modelscript.psse.simulate_psse_transient") {
+          const stopRaw = await vscode.window.showInputBox({
+            prompt: "Transient simulation stop time (seconds)",
+            value: "2.0",
+          });
+          if (stopRaw === undefined) return;
+          const faultBusRaw = await vscode.window.showInputBox({
+            prompt: "Fault bus number (leave empty for automatic selection)",
+            value: "",
+          });
+          if (faultBusRaw === undefined) return;
+          const stopTime = Number.parseFloat(stopRaw);
+          const faultBus = faultBusRaw.trim() ? Number.parseInt(faultBusRaw.trim(), 10) : undefined;
+          return await vscode.commands.executeCommand(studyChoice.command, {
+            uri,
+            stopTime: Number.isFinite(stopTime) && stopTime > 0 ? stopTime : 2.0,
+            ...(faultBus && Number.isFinite(faultBus) ? { faultBus } : {}),
+          });
+        }
+        return await vscode.commands.executeCommand(studyChoice.command, uri);
       }
 
       const isPscad = uri.endsWith(".pscx") || uri.endsWith(".pslx");

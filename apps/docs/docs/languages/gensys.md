@@ -65,3 +65,9 @@ AI agents interacting via the ModelScript MCP server have access to:
 ## Diagnostic Rules
 
 <LintRules lang="gensys" />
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="gensys" />

@@ -275,3 +275,5 @@ export function lintCgmesModel(model: CgmesModel): CgmesDiagnostic[] {
 
   return diagnostics;
 }
+
+export * from "./workspace.js";

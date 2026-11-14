@@ -179,3 +179,9 @@ The `@modelscript/ide-client` package provides a dedicated dual-mode custom edit
 - **Module Netlist**: Filterable tabular listing of modules, parameters, and ports.
 - **Pre-Flight Diagnostics**: Live diagnostic warnings and error badges with click-to-line navigation.
 - **Projections**: Side-by-side Modelica and FMI SSP code viewers with one-click export.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="rocets" />

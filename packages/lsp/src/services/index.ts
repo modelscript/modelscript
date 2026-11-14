@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./cad-metrics-service.js";
 export {
   CollaborationDocumentSession,
   CollaborationSessionManager,
@@ -9,12 +10,12 @@ export {
   type SymbolEditCollision,
   type SymbolSpan,
 } from "./collaboration-session.js";
-export * from "./cad-metrics-service.js";
 export * from "./diagram-service.js";
 export * from "./document-manager.js";
 export * from "./hierarchy-service.js";
 export * from "./parser-service.js";
 export * from "./reasoner-service.js";
 export * from "./validation-service.js";
+export * from "./workspace-linter-dispatch.js";
 export * from "./workspace-manager.js";
 export * from "./writeback-service.js";

@@ -470,7 +470,7 @@ export const ActionsTab: React.FC<ActionsTabProps> = ({ projectId, provider, def
                 margin: 0,
                 padding: "16px",
                 borderRadius: "8px",
-                backgroundColor: "var(--color-canvas-inset, #0d1117)",
+                backgroundColor: "var(--ms-bg-canvas, var(--color-canvas-inset))",
                 color: "var(--color-fg-default, #e6edf3)",
                 fontFamily: "ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,monospace",
                 fontSize: "12.5px",

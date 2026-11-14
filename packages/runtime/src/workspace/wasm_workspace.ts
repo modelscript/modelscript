@@ -33,6 +33,8 @@ export interface IWorkspaceIndex {
   getIndexAsync?(): Promise<SymbolIndex>;
   /** Returns a lightweight top-level skeleton `SymbolIndex` for workspace navigation. */
   getSkeletonIndex?(): SymbolIndex;
+  /** Replaces the unified `SymbolIndex` with a prebuilt index and synchronizes ID/file tables. */
+  setUnifiedIndex?(index: SymbolIndex): void;
 }
 
 /**
@@ -1037,27 +1039,44 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       if (typeof this.ensureFQNIndexed === "function") {
         this.ensureFQNIndexed(_parentFQN);
       }
-      let parentEntries = this.unifiedIndex.byName.get(_parentFQN);
+      const isContainerParent = (id: SymbolId): boolean => {
+        const sym = this.unifiedIndex.symbols.get(id);
+        if (!sym) return false;
+        return (
+          sym.kind !== "Import" &&
+          sym.kind !== "Extends" &&
+          sym.kind !== "Component" &&
+          sym.kind !== "Connect" &&
+          sym.kind !== "Reference" &&
+          sym.kind !== "Equation" &&
+          sym.kind !== "Annotation"
+        );
+      };
+      let parentEntries = this.unifiedIndex.byName.get(_parentFQN)?.filter(isContainerParent);
       if (!parentEntries || parentEntries.length === 0) {
         const parts = _parentFQN.split(".");
         const lastPart = parts.pop();
         if (lastPart) {
-          const candidates = this.unifiedIndex.byName.get(lastPart);
+          const candidates = this.unifiedIndex.byName.get(lastPart)?.filter(isContainerParent);
           if (candidates && candidates.length > 0) {
             if (parts.length === 0) {
-              parentEntries = candidates;
+              const rootMatches = candidates.filter((candId) => {
+                const sym = this.unifiedIndex.symbols.get(candId);
+                return sym !== undefined && (sym.parentId === null || sym.parentId === undefined);
+              });
+              parentEntries = rootMatches.length > 0 ? rootMatches : candidates;
             } else {
               const matched = candidates.filter((candId) => {
                 let curr: SymbolId | null = candId;
                 for (let pIdx = parts.length; pIdx >= 0; pIdx--) {
-                  if (curr === null) return false;
+                  if (curr === null || curr === undefined) return false;
                   const sym = this.unifiedIndex.symbols.get(curr);
-                  if (!sym) return false;
+                  if (!sym || !isContainerParent(curr)) return false;
                   const expectedName = pIdx === parts.length ? lastPart : parts[pIdx]!;
                   if (sym.name !== expectedName) return false;
                   curr = sym.parentId;
                 }
-                return curr === null;
+                return curr === null || curr === undefined;
               });
               if (matched.length > 0) {
                 parentEntries = matched;
@@ -1488,6 +1507,63 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
       this.unifiedIndex.symbols.clear();
       this.unifiedIndex.byName.clear();
       this.unifiedIndex.childrenOf.clear();
+    }
+    this._version++;
+    this._structuralRevision++;
+  }
+
+  /**
+   * Installs a prebuilt `SymbolIndex` (such as a serialized MSL library index) and synchronizes
+   * `nextSymbolId`, `fileSymbols`, and `fqnToUri` so subsequent lazy/incremental indexing never
+   * collides with existing symbol IDs or re-parses already-indexed files.
+   */
+  setUnifiedIndex(index: SymbolIndex): void {
+    this.unifiedIndex = index;
+    this.fileSymbols.clear();
+    this.fqnToUri.clear();
+    this.ensuredFQNs.clear();
+
+    let maxId = 0;
+    for (const [id, entry] of index.symbols.entries()) {
+      if (id > maxId) maxId = id;
+      const uri = entry.resourceId;
+      if (!uri) continue;
+      if (!this.uriToId.has(uri)) {
+        const fid = this.nextFileId++;
+        this.uriToId.set(uri, fid);
+        this.idToUri.set(fid, uri);
+      }
+      let list = this.fileSymbols.get(uri);
+      if (!list) {
+        list = [];
+        this.fileSymbols.set(uri, list);
+      }
+      list.push(id);
+      this.fileLoaders.delete(uri);
+
+      if (entry.kind === "Class" || entry.kind === "Package") {
+        const parts: string[] = [entry.name];
+        let curr = entry.parentId;
+        let depth = 0;
+        while (curr !== null && curr !== undefined && depth < 32) {
+          const p = index.symbols.get(curr);
+          if (!p || (p.kind !== "Class" && p.kind !== "Package")) break;
+          parts.unshift(p.name);
+          curr = p.parentId;
+          depth++;
+        }
+        if (curr === null || curr === undefined) {
+          const fqn = parts.join(".");
+          if (!this.fqnToUri.has(fqn)) {
+            this.fqnToUri.set(fqn, uri);
+          }
+          this.ensuredFQNs.add(fqn);
+        }
+      }
+    }
+
+    if (maxId >= this.nextSymbolId) {
+      this.nextSymbolId = maxId + 1;
     }
     this._version++;
     this._structuralRevision++;
@@ -2185,6 +2261,15 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return this.documents.size;
   }
 
+  /** Returns all indexed document entries (URI, raw text, and language ID) stored in `UnifiedWorkspace`. */
+  getAllDocumentEntries(): Array<{ uri: string; text: string; language?: string | undefined }> {
+    return Array.from(this.documents.values()).map((d) => ({
+      uri: d.uri,
+      text: d.text,
+      language: d.language,
+    }));
+  }
+
   /** Aggregate mutation version across `UnifiedWorkspace` and all registered language workspaces. */
   get version(): number {
     let v = this._version;
@@ -2712,14 +2797,31 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     }
   }
 
-  private notifyQueryEngines(uri: string | undefined, changedIds: Set<SymbolId>): void {
-    if (this.queryEngines.size === 0) return;
+  /** Broadcasts merged `SymbolIndex` invalidations to every registered language `QueryEngine`. */
+  public updateQueryEngines(
+    uri?: string | undefined,
+    changedIds?: Set<SymbolId> | null | undefined,
+    structuralChangedIds?: Set<SymbolId> | null | undefined,
+    changedNames?: Set<string> | null | undefined,
+  ): SymbolIndex {
     const merged = this.getIndex();
+    if (this.queryEngines.size === 0) return merged;
     for (const engine of this.queryEngines.values()) {
       if (engine && typeof engine.updateIndex === "function") {
-        engine.updateIndex(merged, uri, changedIds, changedIds);
+        engine.updateIndex(
+          merged,
+          uri,
+          changedIds ?? undefined,
+          structuralChangedIds ?? changedIds ?? undefined,
+          changedNames ?? undefined,
+        );
       }
     }
+    return merged;
+  }
+
+  private notifyQueryEngines(uri: string | undefined, changedIds: Set<SymbolId>): void {
+    this.updateQueryEngines(uri, changedIds, changedIds);
   }
 
   /** Creates a `PolyglotTransformer` for `language` if its config defines polyglot projection rules. */
@@ -2797,14 +2899,36 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
             : null;
         const startOff = entry.startOffset ?? 0;
         const endOff = entry.endOffset ?? 0;
-        merged.symbols.set(newId, {
+        const mergedEntry: SymbolEntry = {
           ...entry,
           id: newId,
           parentId: newParentId,
           startOffset: startOff,
           endOffset: endOff,
           language: entry.language ?? lang,
-        });
+        };
+        merged.symbols.set(newId, mergedEntry);
+
+        if (merged.symbolsByResource) {
+          const res = mergedEntry.resourceId;
+          if (res) {
+            let list = merged.symbolsByResource.get(res);
+            if (!list) {
+              list = [];
+              merged.symbolsByResource.set(res, list);
+            }
+            list.push(newId);
+          }
+          const docUri = mergedEntry.documentUri;
+          if (docUri && docUri !== res) {
+            let docList = merged.symbolsByResource.get(docUri);
+            if (!docList) {
+              docList = [];
+              merged.symbolsByResource.set(docUri, docList);
+            }
+            docList.push(newId);
+          }
+        }
       }
 
       for (const [name, ids] of idx.byName.entries()) {
@@ -2861,6 +2985,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
         symbols: new Map<SymbolId, SymbolEntry>(),
         byName: new Map<string, SymbolId[]>(),
         childrenOf: new Map<SymbolId | null, SymbolId[]>(),
+        symbolsByResource: new Map<string, SymbolId[]>(),
       };
       Object.defineProperty(empty, "workspace", { value: this, enumerable: false, configurable: true, writable: true });
       return empty;
@@ -2908,6 +3033,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
       symbols: new Map<SymbolId, SymbolEntry>(),
       byName: new Map<string, SymbolId[]>(),
       childrenOf: new Map<SymbolId | null, SymbolId[]>(),
+      symbolsByResource: new Map<string, SymbolId[]>(),
     };
     const entries: [string, SymbolIndex | null][] = [];
 
@@ -2944,18 +3070,20 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
 
   /** Ensures all direct child files under `parentFQN` are indexed across all language workspaces. */
   ensureChildrenIndexed(parentFQN?: string): void {
+    const dotFqn = parentFQN && parentFQN.includes("::") ? parentFQN.replace(/::/g, ".") : parentFQN;
     for (const ws of this.workspaces.values()) {
       if (!this.isDelegatedSelf(ws) && typeof (ws as any).ensureChildrenIndexed === "function") {
-        (ws as any).ensureChildrenIndexed(parentFQN);
+        (ws as any).ensureChildrenIndexed(dotFqn);
       }
     }
   }
 
   /** Ensures all ancestor packages and files along `fqn` are indexed across all language workspaces. */
   ensureFQNIndexed(fqn: string): void {
+    const dotFqn = fqn.includes("::") ? fqn.replace(/::/g, ".") : fqn;
     for (const ws of this.workspaces.values()) {
       if (!this.isDelegatedSelf(ws) && typeof (ws as any).ensureFQNIndexed === "function") {
-        (ws as any).ensureFQNIndexed(fqn);
+        (ws as any).ensureFQNIndexed(dotFqn);
       }
     }
   }

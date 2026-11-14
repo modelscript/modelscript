@@ -82,9 +82,7 @@ export interface SbolBenchmarkMetrics {
   sbmlXmlBytes: number;
 }
 
-export function runSbolBenchmark(
-  xml = SBOL_REPRESSILATOR_BENCHMARK,
-): SbolBenchmarkMetrics {
+export function runSbolBenchmark(xml = SBOL_REPRESSILATOR_BENCHMARK): SbolBenchmarkMetrics {
   const doc: SbolDocument = parseSbol(xml, "repressilator.sbol.xml");
 
   assert.ok(doc.components.length >= 8);
@@ -105,10 +103,7 @@ export function runSbolBenchmark(
     if (conc > maxTetR) maxTetR = conc;
   }
   const oscillationAmplitude = maxTetR - minTetR;
-  assert.ok(
-    oscillationAmplitude > 1.0,
-    `Expected sustained oscillation amplitude > 1.0, got ${oscillationAmplitude}`,
-  );
+  assert.ok(oscillationAmplitude > 1.0, `Expected sustained oscillation amplitude > 1.0, got ${oscillationAmplitude}`);
 
   // 2. Lower to DAEBuilder linear memory arena
   const dae = lowerSbolToDae(doc);
@@ -142,3 +137,31 @@ export function runSbolBenchmark(
     sbmlXmlBytes: sbmlXml.length,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const sbolBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "sbol",
+  referenceTool: "SBOL 3 / Hill Kinetics Repressilator",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runSbolBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "elowitz-repressilator-hill-dae",
+        name: "Elowitz Repressilator Hill DAE",
+        scale: "standard",
+        referenceTool: "SBOL 3 / Hill Kinetics Repressilator",
+        passed: m.isSquare && m.oscillationAmplitude > 1.0 && m.daeVarCount >= 6,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: 0,
+        threshold: 0,
+        details: `amp=${m.oscillationAmplitude.toFixed(2)}, ${m.daeVarCount}x${m.daeEqCount} DAE, ${m.modelicaLines} Modelica lines`,
+      },
+    ];
+  },
+};

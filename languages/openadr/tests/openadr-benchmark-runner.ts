@@ -66,9 +66,7 @@ export interface OpenAdrBenchmarkMetrics {
   isSquare: boolean;
 }
 
-export function runOpenAdrBenchmark(
-  deckStr = OPENADR_GRID_CURTAILMENT_BENCHMARK,
-): OpenAdrBenchmarkMetrics {
+export function runOpenAdrBenchmark(deckStr = OPENADR_GRID_CURTAILMENT_BENCHMARK): OpenAdrBenchmarkMetrics {
   const deck: OpenAdrDeck = parseOpenAdr(deckStr);
 
   assert.equal(deck.programs.length, 1);
@@ -78,10 +76,7 @@ export function runOpenAdrBenchmark(
   assert.equal(event.intervals.length, 4);
 
   // Evaluate time-series curtailment for target VEN
-  const schedule: CurtailmentSchedulePoint[] = evaluateCurtailment(
-    deck,
-    "VEN_REFINERY_MICROGRID_01",
-  );
+  const schedule: CurtailmentSchedulePoint[] = evaluateCurtailment(deck, "VEN_REFINERY_MICROGRID_01");
   assert.equal(schedule.length, 4);
 
   let totalDuration = 0;
@@ -108,8 +103,8 @@ export function runOpenAdrBenchmark(
   const varCount = arena.getVarCount();
   const eqCount = arena.getEqCount();
 
-  assert.equal(varCount, 2);
-  assert.equal(eqCount, 2);
+  assert.equal(varCount, 5);
+  assert.equal(eqCount, 5);
   assert.equal(varCount, eqCount, "OpenADR DAE arena must be square");
 
   return {
@@ -125,6 +120,34 @@ export function runOpenAdrBenchmark(
     isSquare: varCount === eqCount,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const openadrBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "openadr",
+  referenceTool: "OpenADR 2.0b / 3.0 Grid Curtailment",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runOpenAdrBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "caiso-dr-curtailment-schedule",
+        name: "caiso-dr-curtailment-schedule",
+        scale: "standard",
+        referenceTool: "OpenADR 2.0b / 3.0 Grid Curtailment",
+        passed: m.isSquare && m.maxEnergyShedKWh > 0 && m.daeVarCount === 5,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.daeEqCount,
+        threshold: 0,
+        details: `${m.maxEnergyShedKWh.toFixed(1)}kWh shed, ${m.daeVarCount}x${m.daeEqCount} DAE`,
+      },
+    ];
+  },
+};
 
 if (process.argv[1]?.endsWith("openadr-benchmark-runner.ts")) {
   const m = runOpenAdrBenchmark();

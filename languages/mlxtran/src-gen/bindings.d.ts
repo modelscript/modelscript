@@ -1383,9 +1383,9 @@ export declare enum SyntaxKind {
   PrimaryExpr = 54,
   START = 55,
   _START = 55,
-  CommentLine = 84,
-  Identifier = 85,
-  NumberLiteral = 86,
+  CommentLine = 89,
+  Identifier = 90,
+  NumberLiteral = 91,
   EOF = 1023,
 }
 

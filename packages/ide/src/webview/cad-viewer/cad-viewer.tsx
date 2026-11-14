@@ -596,7 +596,7 @@ function CadModel({
                   borderBottom: "1px solid rgba(255,255,255,0.1)",
                   paddingBottom: 4,
                   marginBottom: 4,
-                  color: "#58a6ff",
+                  color: "var(--vscode-textLink-foreground, var(--ms-brand, #22d3ee))",
                 }}
               >
                 {component.name}
@@ -1166,8 +1166,8 @@ export default function CadViewer({
     fontSize: "12px",
     fontWeight: 600,
     cursor: "pointer",
-    background: active ? "#0969da" : "transparent",
-    color: active ? "#ffffff" : dark ? "#c9d1d9" : "#24292f",
+    background: active ? "var(--vscode-button-background, var(--ms-brand, #0891b2))" : "transparent",
+    color: active ? "#ffffff" : dark ? "var(--vscode-foreground, #f4f4f5)" : "#24292f",
     transition: "background 0.15s ease",
   });
 
@@ -1360,7 +1360,7 @@ export default function CadViewer({
                   alignItems: "center",
                   gap: 4,
                   padding: "4px 8px",
-                  background: "#0969da",
+                  background: "var(--vscode-button-background, var(--ms-brand, #0891b2))",
                   color: "#ffffff",
                   border: "none",
                   borderRadius: "6px",

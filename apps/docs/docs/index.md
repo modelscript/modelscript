@@ -30,6 +30,7 @@ hero:
 <script setup lang="ts">
 import {
   isHomeAiAgentEnabled,
+  isHomePolyglotSandboxEnabled,
   isHomeSemanticCoordinatorEnabled,
   isHomeWorkflowPairsEnabled,
 } from "./.vitepress/theme/data/feature-flags";
@@ -44,6 +45,8 @@ import {
 <HomeWorkflowPairs v-if="isHomeWorkflowPairsEnabled" />
 
 <HomeSemanticCoordinator v-if="isHomeSemanticCoordinatorEnabled" />
+
+<HomePolyglotSandbox v-if="isHomePolyglotSandboxEnabled" />
 
 <HomeThread />
 

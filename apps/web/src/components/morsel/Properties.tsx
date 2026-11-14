@@ -21,7 +21,7 @@ import {
   TrashIcon,
   XIcon,
 } from "@primer/octicons-react";
-import { Textarea, TextInput, ToggleSwitch, useTheme } from "@primer/react";
+import { Button, Textarea, TextInput, ToggleSwitch, useTheme } from "@primer/react";
 import DOMPurify from "dompurify";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnsatzSketchIcon } from "../icons";
@@ -1384,20 +1384,6 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
 
   const activeTab = visibleTabs.find((t: any) => t.id === activeTabId) || visibleTabs[0];
 
-  const quickActionBtnStyle: React.CSSProperties = {
-    background: "transparent",
-    border: "1px solid var(--color-border-default, var(--ms-border))",
-    borderRadius: "var(--ms-radius-sm, 4px)",
-    color: "var(--color-fg-muted)",
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    padding: "3px 8px",
-    fontSize: 11,
-    transition: "all 0.15s ease",
-  };
-
   return (
     <div
       className="height-full overflow-auto border-left"
@@ -1560,92 +1546,57 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
               alignItems: "center",
               gap: 6,
               paddingTop: 6,
-              borderTop: "1px solid var(--color-border-subtle, var(--ms-border))",
+              borderTop: "1px solid var(--borderColor-muted, var(--ms-border))",
               flexWrap: "wrap",
             }}
           >
             {props.onLocateComponent && (
-              <button
-                type="button"
+              <Button
+                size="small"
+                variant="invisible"
+                leadingVisual={() => <LocationIcon size={13} />}
                 title="Locate component on schematic"
                 aria-label="Locate on schematic"
                 onClick={() => props.onLocateComponent?.(properties.name)}
-                style={quickActionBtnStyle}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-default)";
-                  (e.currentTarget as HTMLElement).style.backgroundColor =
-                    "var(--ms-surface-hover, rgba(125,125,125,0.08))";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-muted)";
-                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                }}
               >
-                <LocationIcon size={13} />
                 <span>Locate</span>
-              </button>
+              </Button>
             )}
             {props.onGoToSource && (
-              <button
-                type="button"
+              <Button
+                size="small"
+                variant="invisible"
+                leadingVisual={() => <CodeIcon size={13} />}
                 title="Go to declaration in Modelica source"
                 aria-label="Go to source"
                 onClick={() => props.onGoToSource?.(properties.name)}
-                style={quickActionBtnStyle}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-default)";
-                  (e.currentTarget as HTMLElement).style.backgroundColor =
-                    "var(--ms-surface-hover, rgba(125,125,125,0.08))";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-muted)";
-                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                }}
               >
-                <CodeIcon size={13} />
                 <span>Source</span>
-              </button>
+              </Button>
             )}
             {props.onDuplicateComponent && (
-              <button
-                type="button"
+              <Button
+                size="small"
+                variant="invisible"
+                leadingVisual={() => <CopyIcon size={13} />}
                 title="Duplicate component"
                 aria-label="Duplicate component"
                 onClick={() => props.onDuplicateComponent?.(properties.name)}
-                style={quickActionBtnStyle}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-default)";
-                  (e.currentTarget as HTMLElement).style.backgroundColor =
-                    "var(--ms-surface-hover, rgba(125,125,125,0.08))";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-muted)";
-                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                }}
               >
-                <CopyIcon size={13} />
                 <span>Duplicate</span>
-              </button>
+              </Button>
             )}
             {props.onDeleteComponent && (
-              <button
-                type="button"
+              <Button
+                size="small"
+                variant="danger"
+                leadingVisual={() => <TrashIcon size={13} />}
                 title="Delete component"
                 aria-label="Delete component"
                 onClick={() => props.onDeleteComponent?.(properties.name)}
-                style={quickActionBtnStyle}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = "var(--ms-danger, #e11d48)";
-                  (e.currentTarget as HTMLElement).style.borderColor = "var(--ms-danger, #e11d48)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = "var(--color-fg-muted)";
-                  (e.currentTarget as HTMLElement).style.borderColor = "var(--color-border-default, var(--ms-border))";
-                }}
               >
-                <TrashIcon size={13} />
                 <span>Delete</span>
-              </button>
+              </Button>
             )}
           </div>
 

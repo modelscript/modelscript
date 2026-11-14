@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CheckIcon, TrashIcon, XIcon } from "@primer/octicons-react";
+import { Button, Dialog } from "@primer/react";
 import React, { useMemo, useState } from "react";
 import Box from "../../../components/Box";
-import { ActionButton, Badge, Card, FilterPill, Input, ModalBox, ModalOverlay, Select, Textarea } from "../styles";
+import { ActionButton, Badge, Card, FilterPill, Input, Select, Textarea } from "../styles";
 import type { AdminModerationAction, AdminModerationReport } from "../types";
 
 export interface AdminModerationTabProps {
@@ -547,11 +548,12 @@ export const AdminModerationTab: React.FC<AdminModerationTabProps> = ({
 
       {/* ── RESOLUTION MODAL ── */}
       {activeReportToResolve && (
-        <ModalOverlay>
-          <ModalBox>
-            <span style={{ fontWeight: 800, fontSize: "16px" }}>
-              Resolve Moderation Report #{activeReportToResolve.id}
-            </span>
+        <Dialog
+          title={`Resolve Moderation Report #${activeReportToResolve.id}`}
+          width="medium"
+          onClose={() => setActiveReportToResolve(null)}
+        >
+          <Box display="flex" flexDirection="column" gap={3} style={{ maxHeight: "75vh", overflowY: "auto" }}>
             <Box fontSize="13px" color="var(--color-text-muted)">
               Reason: &ldquo;{activeReportToResolve.reason}&rdquo;
             </Box>
@@ -664,15 +666,15 @@ export const AdminModerationTab: React.FC<AdminModerationTabProps> = ({
             )}
 
             <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
-              <ActionButton $variant="secondary" onClick={() => setActiveReportToResolve(null)}>
+              <Button variant="default" onClick={() => setActiveReportToResolve(null)}>
                 Cancel
-              </ActionButton>
-              <ActionButton $variant="primary" onClick={handleConfirmResolve} disabled={loading}>
+              </Button>
+              <Button variant="primary" onClick={handleConfirmResolve} disabled={loading}>
                 Confirm Resolution
-              </ActionButton>
+              </Button>
             </Box>
-          </ModalBox>
-        </ModalOverlay>
+          </Box>
+        </Dialog>
       )}
     </div>
   );

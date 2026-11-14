@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { BinOp, DAEBuilder, EqKind, ExprKind, Variability } from "../dae/wasm_dae.js";
+import {
+  BinOp,
+  DAEBuilder,
+  EqKind,
+  ExprKind,
+  Variability,
+  getDefaultWasmExports,
+  setCachedWasmExports,
+} from "../dae/wasm_dae.js";
 
 // WASM Exports mapped globally within this module
 export let alloc: (size: number) => number;
@@ -21,6 +29,23 @@ let isInitialized = false;
  */
 export async function initBltWasm(urlOverride?: string | URL): Promise<void> {
   if (isInitialized) return;
+  if (!urlOverride) {
+    const cached = getDefaultWasmExports() as Record<string, unknown> | null | undefined;
+    if (
+      cached &&
+      typeof cached["alloc"] === "function" &&
+      typeof cached["free"] === "function" &&
+      typeof cached["computeBlt"] === "function" &&
+      cached["memory"] instanceof WebAssembly.Memory
+    ) {
+      alloc = cached["alloc"] as (size: number) => number;
+      free = cached["free"] as (ptr: number) => void;
+      computeBlt = cached["computeBlt"] as typeof computeBlt;
+      memory = cached["memory"];
+      isInitialized = true;
+      return;
+    }
+  }
   let url: string | URL;
 
   const isNodeOrBun =
@@ -33,8 +58,11 @@ export async function initBltWasm(urlOverride?: string | URL): Promise<void> {
   } else {
     if (isNodeOrBun) {
       // In Node.js, read from file system relative to dist/ or src/
-      const { join } = await import("path");
-      const { existsSync } = await import("node:fs");
+      const getBuiltin = (process as any)?.getBuiltinModule?.bind(process);
+      const pathId = "node:path";
+      const fsId = "node:fs";
+      const { join } = getBuiltin ? getBuiltin(pathId) : await import(/* @vite-ignore */ pathId);
+      const { existsSync } = getBuiltin ? getBuiltin(fsId) : await import(/* @vite-ignore */ fsId);
       const candidate1 = join(import.meta.dirname, "..", "build", "release.wasm");
       const candidate2 = join(import.meta.dirname, "..", "..", "build", "release.wasm");
       url = existsSync(candidate1) ? candidate1 : candidate2;
@@ -61,7 +89,9 @@ export async function initBltWasm(urlOverride?: string | URL): Promise<void> {
 
   let module: WebAssembly.Module;
   if (isNodeOrBun) {
-    const fs = await import("node:fs/promises");
+    const getBuiltin = (process as any)?.getBuiltinModule?.bind(process);
+    const fsPromisesId = "node:fs/promises";
+    const fs = getBuiltin ? getBuiltin(fsPromisesId) : await import(/* @vite-ignore */ fsPromisesId);
     module = await globalThis.WebAssembly.compile(await fs.readFile(url));
   } else {
     module = await globalThis.WebAssembly.compileStreaming(globalThis.fetch(url));
@@ -70,11 +100,14 @@ export async function initBltWasm(urlOverride?: string | URL): Promise<void> {
   const instance = await globalThis.WebAssembly.instantiate(module, {
     env: {
       abort: () => {
-        /* empty */
+        console.error("[WASM:blt] abort invoked");
       },
     },
   });
   const exports = instance.exports as Record<string, unknown>;
+  if (!urlOverride) {
+    setCachedWasmExports(instance.exports);
+  }
   alloc = exports["alloc"] as (size: number) => number;
   free = exports["free"] as (ptr: number) => void;
   computeBlt = exports["computeBlt"] as typeof computeBlt;
@@ -776,7 +809,9 @@ export function performBltTransformationArena(
     arena.ptr !== 0 &&
     (arena as any)._renamedVars?.size === 0 &&
     (arena as any).forMeta?.size === 0 &&
-    typeof arena.exports?.computeBltFromArena === "function"
+    typeof arena.exports?.computeBltFromArena === "function" &&
+    typeof arena.exports?.alloc === "function" &&
+    typeof arena.exports?.free === "function"
   ) {
     const totalVars = arena.varCount;
     const totalEqs = arena.eqCount;

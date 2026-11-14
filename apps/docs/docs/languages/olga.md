@@ -365,3 +365,9 @@ msx olga survey bathymetry_survey.csv \
 | **`profile`**  | Ingest spatial `.ppl` snapshot profiles  | `<file.ppl>`, `--out`                                                 | Elevation SVG snapshots, holdup heatmaps     |
 | **`cosim`**    | Multi-rate FMI/SSP co-simulation         | `<subsea.opi>`, `<topside.opi>`, `--macro-step`                       | Synchronized boundary trajectory CSV         |
 | **`fmu`**      | Standalone FMI 2.0/3.0 FMU packaging     | `<model>`, `--fmi-version=2.0\|3.0\|both`, `--out`                    | Portable binary `.fmu` zip archive           |
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="olga" />

@@ -242,7 +242,7 @@ export function AnimationTimeline({ controller }: AnimationTimelineProps) {
             height: 6,
             appearance: "none",
             WebkitAppearance: "none",
-            background: `linear-gradient(to right, var(--color-accent-fg, #58a6ff) ${progress}%, var(--color-border-default, rgba(255,255,255,0.15)) ${progress}%)`,
+            background: `linear-gradient(to right, var(--fgColor-accent, var(--ms-brand)) ${progress}%, var(--borderColor-default, rgba(255,255,255,0.15)) ${progress}%)`,
             borderRadius: 3,
             outline: "none",
             cursor: isLive ? "not-allowed" : "pointer",

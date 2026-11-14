@@ -79,3 +79,9 @@ msx sbml to-dae GlycolyticPathway.sbml
 # Project into Modelica 3.x biochemical network model
 msx sbml to-modelica GlycolyticPathway.sbml -o GlycolysisModel.mo
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="sbml" />

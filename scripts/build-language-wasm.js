@@ -64,6 +64,13 @@ export function runLanguageWasmBuild(options) {
     hash.update(outWasmFile);
     hashPathInto(hash, asconfigPath);
     hashPathInto(hash, assemblyDir);
+    const entryFullPath = path.join(dir, entryFile);
+    const entryDir = path.dirname(entryFullPath);
+    if (entryDir !== assemblyDir && entryDir !== dir) {
+      hashPathInto(hash, entryDir);
+    } else if (entryDir === dir) {
+      hashPathInto(hash, entryFullPath);
+    }
     return hash.digest("hex");
   }
 

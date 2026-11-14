@@ -2,6 +2,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import React, { useMemo, useState } from "react";
+import { InspectorTabs } from "./InspectorTabs.js";
 
 export interface AutomationControlInspectorProps {
   code: string;
@@ -178,7 +179,7 @@ export const AutomationControlInspector: React.FC<AutomationControlInspectorProp
   const [subView, setSubView] = useState<"sfc" | "schedule" | "safety">("sfc");
 
   const borderCol = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)";
-  const cardBg = isDark ? "rgba(22, 27, 34, 0.7)" : "rgba(255, 255, 255, 0.9)";
+  const cardBg = isDark ? "rgba(30, 30, 34, 0.75)" : "rgba(255, 255, 255, 0.9)";
   const textPrimary = isDark ? "#e6edf3" : "#1f2328";
   const textMuted = isDark ? "#8b949e" : "#59636e";
 
@@ -186,31 +187,16 @@ export const AutomationControlInspector: React.FC<AutomationControlInspectorProp
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {[
+      <InspectorTabs
+        ariaLabel="Automation control inspector views"
+        value={subView}
+        onChange={(id) => setSubView(id as typeof subView)}
+        tabs={[
           { id: "sfc", label: `⚙️ SFC State Graph (${steps.length} steps)` },
           { id: "schedule", label: `⏱️ Scan Cycle & WCET (${tasks.length} tasks)` },
           { id: "safety", label: `🛡️ Safety Interlocks (${interlocks.length})` },
-        ].map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setSubView(t.id as typeof subView)}
-            style={{
-              padding: "6px 12px",
-              fontSize: 12,
-              fontWeight: 600,
-              borderRadius: 6,
-              border: `1px solid ${borderCol}`,
-              cursor: "pointer",
-              backgroundColor: subView === t.id ? "#1f6feb" : cardBg,
-              color: subView === t.id ? "#ffffff" : textPrimary,
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+        ]}
+      />
 
       {subView === "sfc" && (
         <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
@@ -241,7 +227,12 @@ export const AutomationControlInspector: React.FC<AutomationControlInspectorProp
                   }}
                 >
                   <div>
-                    <span style={{ fontWeight: 700, color: s.isInitial ? "#3fb950" : "#58a6ff" }}>
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        color: s.isInitial ? "#3fb950" : "var(--fgColor-accent, var(--ms-brand))",
+                      }}
+                    >
                       {s.isInitial ? `[INITIAL] ${s.name}` : s.name}
                     </span>
                     <span style={{ color: textMuted, marginLeft: 10 }}>Actions: {s.actions.join(", ") || "Idle"}</span>
@@ -298,7 +289,7 @@ export const AutomationControlInspector: React.FC<AutomationControlInspectorProp
                       fontFamily: "monospace",
                     }}
                   >
-                    <span style={{ fontWeight: 700, color: "#58a6ff" }}>
+                    <span style={{ fontWeight: 700, color: "var(--fgColor-accent, var(--ms-brand))" }}>
                       {task.name} (Priority {task.priority})
                     </span>
                     <span>

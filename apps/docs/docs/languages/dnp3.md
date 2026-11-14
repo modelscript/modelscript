@@ -73,3 +73,9 @@ msx dnp3 to-dae rtu_substation_profile.xml
 ## MCP Agent Tool Integration
 
 - **`dnp3_process_telemetry`**: Filters high-frequency telemetry readings via DNP3 deadband thresholding and evaluates signal reconstruction accuracy (compression ratio, residual max, and RMSE) for agent-driven SCADA compression.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="dnp3" />

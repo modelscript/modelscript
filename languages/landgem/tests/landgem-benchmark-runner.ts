@@ -13,11 +13,11 @@
 
 import assert from "node:assert/strict";
 import {
+  lowerLandgemToDae,
   parseLandgem,
   solveBiogas,
-  lowerLandgemToDae,
-  type LandgemModel,
   type BiogasSimulationSummary,
+  type LandgemModel,
 } from "../src/index.js";
 
 export const REGIONAL_LANDGEM_BENCHMARK = `
@@ -79,7 +79,7 @@ export function runLandgemBenchmark(src = REGIONAL_LANDGEM_BENCHMARK): LandgemBe
 
   const digRes = summary.digesters[0]!;
   const peakLfg = summary.annualLfg.find((r) => r.year === summary.peakMethaneYear);
-  const powerPotentialMW = peakLfg?.powerPotentialMW ?? (summary.peakMethaneM3PerYear * 4.19e-7);
+  const powerPotentialMW = peakLfg?.powerPotentialMW ?? summary.peakMethaneM3PerYear * 4.19e-7;
 
   const arena = lowerLandgemToDae(model);
   const daeVarCount = arena.variables().length;
@@ -102,3 +102,31 @@ export function runLandgemBenchmark(src = REGIONAL_LANDGEM_BENCHMARK): LandgemBe
     isSquare: daeVarCount === daeEqCount,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const landgemBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "landgem",
+  referenceTool: "US EPA LandGEM / ADM1 Anaerobic Co-Digestion",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runLandgemBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "metro-landfill-adm1-chp",
+        name: "metro-landfill-adm1-chp",
+        scale: "standard",
+        referenceTool: "US EPA LandGEM / ADM1 Anaerobic Co-Digestion",
+        passed: m.isSquare && m.peakMethaneM3PerYear > 0 && m.daeVarCount > 0,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.daeEqCount,
+        threshold: 0,
+        details: `peak=${m.peakMethaneYear}, ${m.powerPotentialMW.toFixed(2)}MW, ${m.daeVarCount}x${m.daeEqCount} DAE`,
+      },
+    ];
+  },
+};

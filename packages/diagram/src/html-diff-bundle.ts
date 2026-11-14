@@ -209,7 +209,7 @@ export function renderVisualDiffToHtml(diffData: VisualDiffData, options: Visual
   </main>
 
   <script>
-    const modifiedChanges = ${JSON.stringify(modifiedDetails)};
+    const modifiedChanges = ${JSON.stringify(modifiedDetails).replace(/</g, "\\u003c")};
     let currentScale = 1.0;
     let translateX = 0;
     let translateY = 0;
@@ -272,6 +272,15 @@ export function renderVisualDiffToHtml(diffData: VisualDiffData, options: Visual
       }, { passive: false });
     });
 
+    function escHtml(val) {
+      return String(val == null ? "" : val)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
     // Node click inspector
     document.querySelectorAll(".diff-node").forEach((nodeEl, idx) => {
       nodeEl.style.cursor = "pointer";
@@ -282,11 +291,11 @@ export function renderVisualDiffToHtml(diffData: VisualDiffData, options: Visual
           const html = item.changes.map(c => \`
             <div class="diff-prop-row">
               <div class="diff-prop-key">
-                <span>\${c.key}</span>
+                <span>\${escHtml(c.key)}</span>
                 \${c.isBreaking ? '<span class="pill pill-breaking" style="font-size:9px">BREAKING</span>' : ''}
               </div>
-              <div>Old: <span class="val-old">\${JSON.stringify(c.oldValue ?? '')}</span></div>
-              <div>New: <span class="val-new">\${JSON.stringify(c.newValue ?? '')}</span></div>
+              <div>Old: <span class="val-old">\${escHtml(JSON.stringify(c.oldValue ?? ''))}</span></div>
+              <div>New: <span class="val-new">\${escHtml(JSON.stringify(c.newValue ?? ''))}</span></div>
             </div>
           \`).join("");
           document.getElementById("drawer-content").innerHTML = html;

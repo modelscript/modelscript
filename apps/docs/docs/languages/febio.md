@@ -89,3 +89,9 @@ lowerFebioToDae(model, builder);
 const calculixInp = febioToCalculixInp(model);
 const modelicaCode = febioToModelica(model);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="febio" />

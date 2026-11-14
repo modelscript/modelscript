@@ -54,7 +54,7 @@ export const nmodlGrammar = language({
         $.FunctionBlock,
       ),
 
-    TitleBlock: ($) => seq(semanticToken("keyword", choice("TITLE", "title")), field("title", $.RestOfLine)),
+    TitleBlock: ($) => seq(semanticToken("keyword", choice("TITLE", "title")), field("title", repeat($.Identifier))),
 
     NeuronBlock: ($) => seq(semanticToken("keyword", choice("NEURON", "neuron")), "{", repeat($.NeuronStatement), "}"),
 
@@ -98,7 +98,7 @@ export const nmodlGrammar = language({
       seq(
         field("name", $.Identifier),
         optional(seq("=", field("value", choice($.NumberLiteral, $.Identifier)))),
-        optional(seq("(", field("unit", $.Identifier), ")")),
+        optional(seq("(", field("unit", seq($.Identifier, repeat(seq(choice("/", "*"), $.Identifier)))), ")")),
         optional(seq("<", choice($.NumberLiteral, $.Identifier), ",", choice($.NumberLiteral, $.Identifier), ">")),
       ),
 
@@ -208,7 +208,6 @@ export const nmodlGrammar = language({
     PrimaryExpr: ($) => choice($.NumberLiteral, $.Identifier, seq("(", $.Expression, ")")),
 
     CommentLine: () => /:[^\n]*|\?[^\n]*/,
-    RestOfLine: () => /[^\n\r]+/,
     Identifier: () => /[a-zA-Z_][a-zA-Z0-9_]*/,
     NumberLiteral: () => /[-+]?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?/,
   },

@@ -99,3 +99,9 @@ rte.registerRunnable("EngineECU", "RE_ComputeThrottle", (ctx) => {
 // Advance 50 ms in 10 ms steps
 const executionLog = rte.runUntil(0.05, 0.01);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="autosar" />

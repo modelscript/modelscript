@@ -638,7 +638,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
         return {
           label: "Standard",
           sublabel: "Verification Gate",
-          fg: "var(--color-accent-fg, #0969da)",
+          fg: "var(--ms-brand)",
           bg: "var(--color-accent-subtle, rgba(9, 105, 218, 0.1))",
           border: "var(--color-accent-muted, rgba(9, 105, 218, 0.25))",
           icon: "⚙️",
@@ -670,10 +670,10 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
         return {
           label: "Simulating...",
           fullLabel: "DAE Simulation Gate: RUNNING",
-          fg: "var(--color-accent-fg, #0969da)",
+          fg: "var(--ms-brand)",
           bg: "var(--color-accent-subtle, rgba(9, 105, 218, 0.1))",
           border: "var(--color-accent-muted, rgba(9, 105, 218, 0.25))",
-          icon: <SyncIcon size={14} fill="var(--color-accent-fg, #0969da)" />,
+          icon: <SyncIcon size={14} fill="var(--ms-brand)" />,
         };
       case "pending":
       default:
@@ -927,7 +927,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                   </span>
                   <span>•</span>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                    <ShieldCheckIcon size={13} fill="var(--color-accent-fg, #0969da)" />
+                    <ShieldCheckIcon size={13} fill="var(--ms-brand)" />
                     <span>
                       <strong>Ed25519 cryptographic:</strong> {totalApprovals} Sign-Offs
                     </span>
@@ -1179,7 +1179,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                             }}
                             title="Ed25519 & 21 CFR Part 11 Electronic Signatures"
                           >
-                            <ShieldCheckIcon size={14} fill="var(--color-accent-fg, #0969da)" />
+                            <ShieldCheckIcon size={14} fill="var(--ms-brand)" />
                             <span>{eco.approvals.length} signed</span>
                           </div>
 
@@ -1358,7 +1358,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                           background: "var(--color-canvas-subtle)",
                           padding: "2px 6px",
                           borderRadius: "6px",
-                          color: "var(--color-accent-fg, #0969da)",
+                          color: "var(--ms-brand)",
                           border: "1px solid var(--color-border-default)",
                           fontSize: "12.5px",
                         }}
@@ -1372,7 +1372,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                           background: "var(--color-canvas-subtle)",
                           padding: "2px 6px",
                           borderRadius: "6px",
-                          color: "var(--color-accent-fg, #0969da)",
+                          color: "var(--ms-brand)",
                           border: "1px solid var(--color-border-default)",
                           fontSize: "12.5px",
                         }}
@@ -1438,7 +1438,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                           activeSection === sec.id
                             ? "var(--color-accent-subtle, rgba(9, 105, 218, 0.15))"
                             : "var(--color-canvas-default)",
-                        color: activeSection === sec.id ? "var(--color-accent-fg, #0969da)" : "var(--color-fg-muted)",
+                        color: activeSection === sec.id ? "var(--ms-brand)" : "var(--color-fg-muted)",
                         fontSize: "12px",
                         cursor: "pointer",
                         fontWeight: 600,
@@ -1463,7 +1463,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                               height: "28px",
                               borderRadius: "50%",
                               background: "var(--color-accent-subtle, rgba(9, 105, 218, 0.15))",
-                              color: "var(--color-accent-fg, #0969da)",
+                              color: "var(--ms-brand)",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -1551,7 +1551,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                     <PrSectionCard id="section-blast-radius">
                       <PrSectionHeader>
                         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <WorkflowIcon size={16} fill="var(--color-accent-fg, #0969da)" />
+                          <WorkflowIcon size={16} fill="var(--ms-brand)" />
                           <strong style={{ fontSize: "14px", color: "var(--color-fg-default)" }}>
                             Salsa Computable Blast Radius & Traceability
                           </strong>
@@ -1564,7 +1564,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                               padding: "3px 10px",
                               borderRadius: "2em",
                               background: "var(--color-canvas-default)",
-                              color: "var(--color-accent-fg, #0969da)",
+                              color: "var(--ms-brand)",
                               border: "1px solid var(--color-border-default)",
                             }}
                           >
@@ -1806,7 +1806,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                                     padding: "3px 10px",
                                     borderRadius: "2em",
                                     background: "var(--color-accent-subtle, rgba(9, 105, 218, 0.14))",
-                                    color: "var(--color-accent-fg, #0969da)",
+                                    color: "var(--ms-brand)",
                                     fontSize: "11.5px",
                                     fontWeight: 600,
                                     fontFamily: "var(--font-mono, monospace)",
@@ -1865,7 +1865,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                                   />
                                   <Tooltip
                                     contentStyle={{
-                                      background: "var(--color-canvas-overlay, #0d1117)",
+                                      background: "var(--color-canvas-overlay, var(--ms-bg))",
                                       borderColor: "var(--color-border-default)",
                                       borderRadius: "6px",
                                       fontSize: "12px",
@@ -2061,10 +2061,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                                 diffStudioMode === "studio"
                                   ? "var(--color-accent-subtle, rgba(9, 105, 218, 0.15))"
                                   : "var(--color-canvas-default)",
-                              color:
-                                diffStudioMode === "studio"
-                                  ? "var(--color-accent-fg, #0969da)"
-                                  : "var(--color-fg-muted)",
+                              color: diffStudioMode === "studio" ? "var(--ms-brand)" : "var(--color-fg-muted)",
                               fontSize: "12px",
                               fontWeight: diffStudioMode === "studio" ? 700 : 500,
                               cursor: "pointer",
@@ -2088,7 +2085,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                                   : "var(--color-canvas-default)",
                               color:
                                 diffStudioMode === "monaco" && diffSideBySide
-                                  ? "var(--color-accent-fg, #0969da)"
+                                  ? "var(--ms-brand)"
                                   : "var(--color-fg-muted)",
                               fontSize: "12px",
                               fontWeight: diffStudioMode === "monaco" && diffSideBySide ? 700 : 500,
@@ -2113,7 +2110,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                                   : "var(--color-canvas-default)",
                               color:
                                 diffStudioMode === "monaco" && !diffSideBySide
-                                  ? "var(--color-accent-fg, #0969da)"
+                                  ? "var(--ms-brand)"
                                   : "var(--color-fg-muted)",
                               fontSize: "12px",
                               fontWeight: diffStudioMode === "monaco" && !diffSideBySide ? 700 : 500,
@@ -2145,12 +2142,18 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                               onResolveParameterConflict={(paramName, val, strategy) => {
                                 if (activeDiffFile && diffResult) {
                                   const escapedParam = paramName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-                                  const regexWithParam = new RegExp(`(\\b(?:parameter\\s+\\w+\\s+)?${escapedParam}\\s*=\\s*)([^;\\s,\\n)]+)`, "g");
+                                  const regexWithParam = new RegExp(
+                                    `(\\b(?:parameter\\s+\\w+\\s+)?${escapedParam}\\s*=\\s*)([^;\\s,\\n)]+)`,
+                                    "g",
+                                  );
                                   let updated = activeDiffFile.newContent;
                                   if (regexWithParam.test(updated)) {
                                     updated = updated.replace(regexWithParam, `$1${val}`);
                                   } else {
-                                    const fallbackRegex = new RegExp(`(\\b${escapedParam}\\s*=\\s*)([^;\\s,\\n)]+)`, "g");
+                                    const fallbackRegex = new RegExp(
+                                      `(\\b${escapedParam}\\s*=\\s*)([^;\\s,\\n)]+)`,
+                                      "g",
+                                    );
                                     updated = updated.replace(fallbackRegex, `$1${val}`);
                                   }
 
@@ -2170,10 +2173,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                                 );
                               }}
                               onOpenDiagramWorkbench={() => {
-                                toast.showToast(
-                                  `Opening Diagram Workbench for ${activeDiffFile.filename}...`,
-                                  "info",
-                                );
+                                toast.showToast(`Opening Diagram Workbench for ${activeDiffFile.filename}...`, "info");
                               }}
                             />
                           ) : (
@@ -2532,7 +2532,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                         <TimelineConnector>
                           {/* Event 1: Change Request Created */}
                           <TimelineNode>
-                            <TimelineNodeIcon $color="var(--color-accent-fg, #0969da)">
+                            <TimelineNodeIcon $color="var(--ms-brand)">
                               <GitPullRequestIcon size={14} />
                             </TimelineNodeIcon>
                             <div style={{ fontSize: "13.5px", color: "var(--color-fg-muted)", paddingTop: "4px" }}>
@@ -2622,7 +2622,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                                           borderRadius: "4px",
                                           background: "var(--color-canvas-default)",
                                           border: "1px solid var(--color-border-default)",
-                                          color: "var(--color-accent-fg, #0969da)",
+                                          color: "var(--ms-brand)",
                                           fontWeight: 600,
                                         }}
                                       >
@@ -2700,7 +2700,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                                           padding: "8px 12px",
                                           borderRadius: "4px",
                                           background: "var(--color-canvas-subtle)",
-                                          borderLeft: "3px solid var(--color-accent-emphasis, #0969da)",
+                                          borderLeft: "3px solid var(--ms-brand)",
                                           fontSize: "13px",
                                           color: "var(--color-fg-default)",
                                           fontStyle: "italic",
@@ -3193,7 +3193,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                                 gap: "6px",
                               }}
                             >
-                              <span style={{ color: "var(--color-accent-fg, #0969da)" }}>•</span>
+                              <span style={{ color: "var(--ms-brand)" }}>•</span>
                               <span title={m}>{m}</span>
                             </div>
                           ))}
@@ -3319,7 +3319,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <GitPullRequestIcon size={18} fill="var(--color-accent-fg, #0969da)" />
+                <GitPullRequestIcon size={18} fill="var(--ms-brand)" />
                 <h4 style={{ margin: 0, fontSize: "15px", fontWeight: 600, color: "var(--color-fg-default)" }}>
                   + New Change Request (ECO Proposal)
                 </h4>
@@ -3643,7 +3643,7 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                       fontFamily: "var(--font-mono)",
                       fontSize: "12px",
                       fontWeight: 700,
-                      color: "var(--color-accent-fg, #0969da)",
+                      color: "var(--ms-brand)",
                     }}
                   >
                     #{activeEco.eco_number}

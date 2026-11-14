@@ -84,3 +84,9 @@ lowerCellmlToDae(model, builder);
 const modelicaCode = cellmlToModelica(model);
 const sbmlXml = cellmlToSbml(model);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="cellml" />

@@ -23,6 +23,7 @@ import {
   StarIcon,
   XIcon,
 } from "@primer/octicons-react";
+import DOMPurify from "dompurify";
 import katex from "katex";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -42,9 +43,8 @@ import { useAuth } from "../AuthContext";
 import CreateSpaceModal from "../components/spaces/CreateSpaceModal";
 import Spinner from "../components/Spinner";
 import { useToast } from "../components/ToastContext";
-import DOMPurify from "dompurify";
-import { safeCssImageUrl } from "../util/url";
 import { usePageTitle } from "../util/title";
+import { safeCssImageUrl } from "../util/url";
 
 /**
  * Horizontal SpaceTabsNav with hidden native scrollbars, smooth mouse-wheel scroll,
@@ -84,7 +84,7 @@ const SpaceTabButton = styled.button<{ $active?: boolean }>`
   border-radius: 9px;
   border: ${(props) => (props.$active ? "none" : "1px solid var(--color-border)")};
   background: ${(props) =>
-    props.$active ? "var(--ms-brand, #2563eb)" : "color-mix(in srgb, var(--ms-bg, #ffffff) 65%, transparent)"};
+    props.$active ? "var(--ms-brand)" : "color-mix(in srgb, var(--ms-bg, #ffffff) 65%, transparent)"};
   color: ${(props) => (props.$active ? "#ffffff" : "var(--ms-text-2)")};
   font-weight: 700;
   font-size: 13px;
@@ -93,19 +93,18 @@ const SpaceTabButton = styled.button<{ $active?: boolean }>`
   white-space: nowrap;
   box-sizing: border-box;
   flex-shrink: 0;
-  box-shadow: ${(props) =>
-    props.$active ? "0 2px 8px color-mix(in srgb, var(--ms-brand, #2563eb) 35%, transparent)" : "none"};
+  box-shadow: ${(props) => (props.$active ? "0 2px 8px color-mix(in srgb, var(--ms-brand) 35%, transparent)" : "none")};
   transition: all 0.15s cubic-bezier(0.2, 0, 0, 1);
 
   &:hover {
     border-radius: 9px;
-    background: ${(props) => (props.$active ? "var(--ms-brand, #2563eb)" : "var(--ms-surface-hover)")};
+    background: ${(props) => (props.$active ? "var(--ms-brand)" : "var(--ms-surface-hover)")};
     color: ${(props) => (props.$active ? "#ffffff" : "var(--ms-text-1)")};
     border-color: ${(props) => (props.$active ? "transparent" : "var(--ms-brand)")};
   }
 
   &:focus-visible {
-    outline: 2px solid var(--ms-brand, #3b82f6);
+    outline: 2px solid var(--ms-brand);
     outline-offset: 2px;
   }
 `;
@@ -361,7 +360,7 @@ const SimulationTelemetryCard: React.FC<{ data: SimulationTelemetryData }> = ({ 
           fontFamily: "var(--ms-font-mono)",
           fontSize: "12.5px",
           fontWeight: 600,
-          color: "var(--ms-brand, #3b82f6)",
+          color: "var(--ms-brand)",
         }}
       >
         📦 {data.model}
@@ -541,7 +540,7 @@ const InlineRichText: React.FC<{
                 padding: "2px 6px",
                 borderRadius: "4px",
                 background: "var(--ms-surface-hover)",
-                color: "var(--ms-brand, #3b82f6)",
+                color: "var(--ms-brand)",
                 border: "1px solid var(--color-border)",
               }}
             >
@@ -563,9 +562,9 @@ const InlineRichText: React.FC<{
                 margin: "0 4px",
                 padding: "2px 8px",
                 borderRadius: "6px",
-                border: "1px solid color-mix(in srgb, var(--ms-brand, #3b82f6) 35%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--ms-brand) 35%, transparent)",
                 background: "var(--ms-brand-soft, rgba(59, 130, 246, 0.1))",
-                color: "var(--ms-brand, #3b82f6)",
+                color: "var(--ms-brand)",
                 fontFamily: "var(--ms-font-mono)",
                 fontSize: "13px",
                 fontWeight: 600,
@@ -582,7 +581,7 @@ const InlineRichText: React.FC<{
             <span
               key={idx}
               style={{
-                color: "var(--ms-brand, #3b82f6)",
+                color: "var(--ms-brand)",
                 fontWeight: 700,
                 fontSize: "14.5px",
                 background: "var(--ms-brand-soft, rgba(59, 130, 246, 0.08))",
@@ -1149,7 +1148,7 @@ export const SpaceChatPage: React.FC = () => {
               borderRadius: "9px",
               border: "1.5px dashed var(--color-border)",
               background: "transparent",
-              color: "var(--ms-brand, #2563eb)",
+              color: "var(--ms-brand)",
               cursor: "pointer",
               transition: "all 0.15s ease",
             }}
@@ -1239,7 +1238,7 @@ export const SpaceChatPage: React.FC = () => {
                         fontWeight: 700,
                         textTransform: "uppercase",
                         letterSpacing: "0.04em",
-                        color: activeSpace.owner_type === "organization" ? "var(--ms-brand, #2563eb)" : "#a855f7",
+                        color: activeSpace.owner_type === "organization" ? "var(--ms-brand)" : "#a855f7",
                         background:
                           activeSpace.owner_type === "organization"
                             ? "var(--ms-brand-soft, rgba(59, 130, 246, 0.1))"
@@ -1355,7 +1354,7 @@ export const SpaceChatPage: React.FC = () => {
                           background: isSelected
                             ? "var(--ms-surface-selected, rgba(59, 130, 246, 0.12))"
                             : "transparent",
-                          color: isSelected ? "var(--ms-brand, #2563eb)" : "var(--ms-text-2)",
+                          color: isSelected ? "var(--ms-brand)" : "var(--ms-text-2)",
                           fontWeight: isSelected ? 700 : 500,
                           fontSize: "13px",
                           textAlign: "left",
@@ -1782,7 +1781,7 @@ export const SpaceChatPage: React.FC = () => {
                                 fontWeight: 800,
                                 textTransform: "uppercase",
                                 background: "var(--ms-brand-soft, rgba(59, 130, 246, 0.12))",
-                                color: "var(--ms-brand, #2563eb)",
+                                color: "var(--ms-brand)",
                                 padding: "1px 5px",
                                 borderRadius: "4px",
                               }}
@@ -1800,7 +1799,7 @@ export const SpaceChatPage: React.FC = () => {
                             <span
                               style={{
                                 fontSize: "11px",
-                                color: "var(--ms-brand, #2563eb)",
+                                color: "var(--ms-brand)",
                                 background: "var(--ms-brand-soft, rgba(59, 130, 246, 0.1))",
                                 padding: "2px 7px",
                                 borderRadius: "4px",
@@ -1861,12 +1860,12 @@ export const SpaceChatPage: React.FC = () => {
                                       padding: "3px 9px",
                                       borderRadius: "999px",
                                       border: hasReacted
-                                        ? "1px solid var(--ms-brand, #2563eb)"
+                                        ? "1px solid var(--ms-brand)"
                                         : "1px solid var(--color-border)",
                                       background: hasReacted
                                         ? "var(--ms-brand-soft, rgba(59, 130, 246, 0.14))"
                                         : "var(--ms-surface-hover)",
-                                      color: hasReacted ? "var(--ms-brand, #2563eb)" : "var(--ms-text-1)",
+                                      color: hasReacted ? "var(--ms-brand)" : "var(--ms-text-1)",
                                       fontSize: "13px",
                                       fontWeight: hasReacted ? 700 : 500,
                                       cursor: "pointer",
@@ -1896,9 +1895,9 @@ export const SpaceChatPage: React.FC = () => {
                                 gap: "6px",
                                 padding: "4px 10px",
                                 borderRadius: "6px",
-                                border: "1px solid color-mix(in srgb, var(--ms-brand, #2563eb) 20%, transparent)",
-                                background: "color-mix(in srgb, var(--ms-brand, #2563eb) 8%, transparent)",
-                                color: "var(--ms-brand, #2563eb)",
+                                border: "1px solid color-mix(in srgb, var(--ms-brand) 20%, transparent)",
+                                background: "color-mix(in srgb, var(--ms-brand) 8%, transparent)",
+                                color: "var(--ms-brand)",
                                 fontSize: "12.5px",
                                 fontWeight: 700,
                                 cursor: "pointer",
@@ -1909,7 +1908,7 @@ export const SpaceChatPage: React.FC = () => {
                               }}
                               onMouseLeave={(e) => {
                                 e.currentTarget.style.background =
-                                  "color-mix(in srgb, var(--ms-brand, #2563eb) 8%, transparent)";
+                                  "color-mix(in srgb, var(--ms-brand) 8%, transparent)";
                               }}
                             >
                               <CommentDiscussionIcon size={14} />
@@ -2177,7 +2176,7 @@ export const SpaceChatPage: React.FC = () => {
                     gap: "6px",
                     padding: "6px 14px",
                     borderRadius: "999px",
-                    background: "var(--ms-brand, #2563eb)",
+                    background: "var(--ms-brand)",
                     color: "#ffffff",
                     border: "none",
                     boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
@@ -2207,9 +2206,9 @@ export const SpaceChatPage: React.FC = () => {
                 {/* Main Composer Box (Slack-style with top formatting, textarea, and bottom actions) */}
                 <div
                   style={{
-                    border: isComposerFocused ? "1px solid var(--ms-brand, #2563eb)" : "1px solid var(--color-border)",
+                    border: isComposerFocused ? "1px solid var(--ms-brand)" : "1px solid var(--color-border)",
                     boxShadow: isComposerFocused
-                      ? "0 0 0 2px color-mix(in srgb, var(--ms-brand, #2563eb) 18%, transparent)"
+                      ? "0 0 0 2px color-mix(in srgb, var(--ms-brand) 18%, transparent)"
                       : "0 1px 3px rgba(0,0,0,0.02)",
                     borderRadius: "8px",
                     background: "var(--ms-bg)",
@@ -2503,12 +2502,12 @@ export const SpaceChatPage: React.FC = () => {
                           height: "32px",
                           borderRadius: "6px",
                           border: "none",
-                          background: chatInput.trim() ? "var(--ms-brand, #2563eb)" : "transparent",
+                          background: chatInput.trim() ? "var(--ms-brand)" : "transparent",
                           color: chatInput.trim() ? "#ffffff" : "var(--ms-text-3)",
                           cursor: chatInput.trim() ? "pointer" : "default",
                           transition: "all 0.15s ease",
                           boxShadow: chatInput.trim()
-                            ? "0 2px 6px color-mix(in srgb, var(--ms-brand, #2563eb) 35%, transparent)"
+                            ? "0 2px 6px color-mix(in srgb, var(--ms-brand) 35%, transparent)"
                             : "none",
                         }}
                       >
@@ -2923,11 +2922,9 @@ export const SpaceChatPage: React.FC = () => {
             >
               <div
                 style={{
-                  border: isThreadComposerFocused
-                    ? "1px solid var(--ms-brand, #2563eb)"
-                    : "1px solid var(--color-border)",
+                  border: isThreadComposerFocused ? "1px solid var(--ms-brand)" : "1px solid var(--color-border)",
                   boxShadow: isThreadComposerFocused
-                    ? "0 0 0 2px color-mix(in srgb, var(--ms-brand, #2563eb) 18%, transparent)"
+                    ? "0 0 0 2px color-mix(in srgb, var(--ms-brand) 18%, transparent)"
                     : "0 1px 3px rgba(0,0,0,0.02)",
                   borderRadius: "8px",
                   background: "var(--ms-bg)",
@@ -3090,7 +3087,7 @@ export const SpaceChatPage: React.FC = () => {
                       type="checkbox"
                       checked={alsoSendToChannel}
                       onChange={(e) => setAlsoSendToChannel(e.target.checked)}
-                      style={{ cursor: "pointer", accentColor: "var(--ms-brand, #2563eb)" }}
+                      style={{ cursor: "pointer", accentColor: "var(--ms-brand)" }}
                     />
                     <span>Also send to #{activeChannel.name}</span>
                   </label>
@@ -3107,7 +3104,7 @@ export const SpaceChatPage: React.FC = () => {
                       height: "28px",
                       borderRadius: "6px",
                       border: "none",
-                      background: threadInput.trim() ? "var(--ms-brand, #2563eb)" : "transparent",
+                      background: threadInput.trim() ? "var(--ms-brand)" : "transparent",
                       color: threadInput.trim() ? "#ffffff" : "var(--ms-text-3)",
                       cursor: threadInput.trim() ? "pointer" : "default",
                       transition: "all 0.15s ease",

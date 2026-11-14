@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./csmf-evaluator.js";
 export * from "./emt-solver.js";
 export * from "./frequency-scanner.js";
 export * from "./license-guard.js";

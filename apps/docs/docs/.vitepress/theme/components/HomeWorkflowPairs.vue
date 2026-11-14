@@ -1,19 +1,18 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { IconName } from "../data/icons";
-import {
-  compileTargetToSource,
-  compileWorkflowPair,
-  inspectPairSemanticEnvelope,
-  type WorkflowConflictStrategy,
-  type WorkflowEnvelopeInfo,
+import type {
+  WorkflowConflictStrategy,
+  WorkflowEnvelopeInfo,
 } from "../util/workflow-compiler";
+import type { WorkflowDiagnostic } from "../util/workflow-highlighter";
 import {
-  highlightWorkflowCode,
-  lintWorkflowCode,
-  type WorkflowDiagnostic,
-} from "../util/workflow-highlighter";
+  compileTargetToSourceAsync,
+  compileWorkflowPairAsync,
+  highlightAndLintCodeAsync,
+  plainLinesHtml,
+} from "../util/showcase-worker-client";
 import type { WorkflowMonacoInstance } from "../util/workflow-monaco";
 import MsIcon from "./MsIcon.vue";
 
@@ -270,7 +269,21 @@ const compileError = ref<string | null>(null);
 const compileElapsedMs = ref<number>(0.2);
 const conflictStrategy = ref<WorkflowConflictStrategy>("target-wins");
 const showEnvelopeInspector = ref<boolean>(false);
-const envelopeInfo = ref<WorkflowEnvelopeInfo>(inspectPairSemanticEnvelope(pairs[0]!.id, "target-wins", 0));
+const envelopeInfo = ref<WorkflowEnvelopeInfo>({
+  losslessnessStatus: "PROVEN_LOSSLESS",
+  ruleCount: 0,
+  complementFields: [],
+  reconciledCount: 0,
+  strategy: "target-wins",
+  rules: [],
+});
+
+async function refreshEnvelopeInfoLazy(pairId: string, strategy: WorkflowConflictStrategy): Promise<void> {
+  const { inspectPairSemanticEnvelope } = await import("../util/workflow-compiler");
+  if (current.value.id === pairId && conflictStrategy.value === strategy) {
+    envelopeInfo.value = inspectPairSemanticEnvelope(pairId, strategy, 0);
+  }
+}
 
 // Two-Prong Editor State: Prong 1 (Read-Only Pre-Computed Syntax + Semantic Tokens) -> Prong 2 (Live Monaco)
 const monacoActive = ref<boolean>(false);
@@ -298,20 +311,81 @@ const isModified = computed(() => {
   );
 });
 
-const highlightedSourceLines = computed(() =>
-  highlightWorkflowCode(liveSourceCode.value, current.value.sourceLang),
-);
+const highlightedSourceLines = ref<string[]>(plainLinesHtml(liveSourceCode.value));
+const highlightedTargetLines = ref<string[]>(plainLinesHtml(liveTargetCode.value));
+const sourceDiagnostics = ref<WorkflowDiagnostic[]>([]);
+const targetDiagnostics = ref<WorkflowDiagnostic[]>([]);
 
-const highlightedTargetLines = computed(() =>
-  highlightWorkflowCode(liveTargetCode.value, current.value.targetLang),
-);
+let sourceHlSeq = 0;
+let targetHlSeq = 0;
+let lastSourceHlKey = "";
+let lastTargetHlKey = "";
 
-const sourceDiagnostics = computed<WorkflowDiagnostic[]>(() =>
-  lintWorkflowCode(current.value.id, "source", liveSourceCode.value),
-);
+async function refreshSourceHighlightAndLint(
+  pairId: string,
+  code: string,
+  lang: string,
+): Promise<WorkflowDiagnostic[]> {
+  const key = `${pairId}\0${lang}\0${code}`;
+  if (key === lastSourceHlKey) return sourceDiagnostics.value;
+  const seq = ++sourceHlSeq;
+  try {
+    const res = await highlightAndLintCodeAsync(`pair-src:${pairId}`, code, lang, pairId, "source");
+    if (seq !== sourceHlSeq) return sourceDiagnostics.value;
+    lastSourceHlKey = key;
+    highlightedSourceLines.value = res.highlightedLines;
+    sourceDiagnostics.value = res.diagnostics;
+    syncMonacoDiagnostics();
+    return res.diagnostics;
+  } catch {
+    if (seq === sourceHlSeq) {
+      highlightedSourceLines.value = plainLinesHtml(code);
+    }
+    return sourceDiagnostics.value;
+  }
+}
 
-const targetDiagnostics = computed<WorkflowDiagnostic[]>(() =>
-  lintWorkflowCode(current.value.id, "target", liveTargetCode.value),
+async function refreshTargetHighlightAndLint(
+  pairId: string,
+  code: string,
+  lang: string,
+): Promise<WorkflowDiagnostic[]> {
+  const key = `${pairId}\0${lang}\0${code}`;
+  if (key === lastTargetHlKey) return targetDiagnostics.value;
+  const seq = ++targetHlSeq;
+  try {
+    const res = await highlightAndLintCodeAsync(`pair-tgt:${pairId}`, code, lang, pairId, "target");
+    if (seq !== targetHlSeq) return targetDiagnostics.value;
+    lastTargetHlKey = key;
+    highlightedTargetLines.value = res.highlightedLines;
+    targetDiagnostics.value = res.diagnostics;
+    syncMonacoDiagnostics();
+    return res.diagnostics;
+  } catch {
+    if (seq === targetHlSeq) {
+      highlightedTargetLines.value = plainLinesHtml(code);
+    }
+    return targetDiagnostics.value;
+  }
+}
+
+watch(
+  [liveSourceCode, liveTargetCode, activeIndex],
+  ([srcCode, tgtCode], oldVals) => {
+    if (typeof window === "undefined") {
+      highlightedSourceLines.value = plainLinesHtml(srcCode);
+      highlightedTargetLines.value = plainLinesHtml(tgtCode);
+      return;
+    }
+    if (oldVals?.[2] !== undefined && oldVals[2] !== activeIndex.value) {
+      highlightedSourceLines.value = plainLinesHtml(srcCode);
+      highlightedTargetLines.value = plainLinesHtml(tgtCode);
+    }
+    const p = current.value;
+    void refreshSourceHighlightAndLint(p.id, srcCode, p.sourceLang);
+    void refreshTargetHighlightAndLint(p.id, tgtCode, p.targetLang);
+  },
+  { immediate: true },
 );
 
 const allDiagnostics = computed(() => [
@@ -336,16 +410,24 @@ function syncMonacoDiagnostics(): void {
   }
 }
 
-function runForwardCompile(): void {
-  pairSourceState.set(current.value.id, liveSourceCode.value);
-  const syntaxErr = sourceDiagnostics.value.find(isSyntaxOrStructuralError);
+async function runForwardCompile(): Promise<void> {
+  const pairId = current.value.id;
+  pairSourceState.set(pairId, liveSourceCode.value);
+  const freshSrcDiags = await refreshSourceHighlightAndLint(
+    pairId,
+    liveSourceCode.value,
+    current.value.sourceLang,
+  );
+  if (pairId !== current.value.id) return;
+  const syntaxErr = freshSrcDiags.find(isSyntaxOrStructuralError);
   if (syntaxErr) {
     compileError.value = `[${syntaxErr.code}] (Line ${syntaxErr.startLine}:${syntaxErr.startCol}) ${syntaxErr.message}`;
     syncMonacoDiagnostics();
     return;
   }
 
-  const res = compileWorkflowPair(current.value.id, liveSourceCode.value, conflictStrategy.value);
+  const res = await compileWorkflowPairAsync(pairId, liveSourceCode.value, conflictStrategy.value);
+  if (pairId !== current.value.id) return;
   compileElapsedMs.value = res.elapsedMs;
   if (res.envelopeInfo) {
     envelopeInfo.value = res.envelopeInfo;
@@ -353,12 +435,13 @@ function runForwardCompile(): void {
   if (res.error) {
     compileError.value = res.error;
   } else {
-    const physErr = sourceDiagnostics.value.find((d) => d.severity === "error");
+    const physErr = freshSrcDiags.find((d) => d.severity === "error");
     compileError.value = physErr
       ? `[${physErr.code}] (Line ${physErr.startLine}:${physErr.startCol}) ${physErr.message}`
       : null;
     liveTargetCode.value = res.code;
-    pairTargetState.set(current.value.id, res.code);
+    pairTargetState.set(pairId, res.code);
+    void refreshTargetHighlightAndLint(pairId, res.code, current.value.targetLang);
     if (targetMonaco) {
       targetMonaco.setValue(res.code);
     }
@@ -370,24 +453,28 @@ function onSourceCodeEdited(val: string): void {
   interacted.value = true;
   if (timer) clearInterval(timer);
   liveSourceCode.value = val;
-  runForwardCompile();
+  void runForwardCompile();
 }
 
-function onTargetCodeEdited(val: string): void {
+async function onTargetCodeEdited(val: string): Promise<void> {
   if (!current.value.bidirectional) return;
+  const pairId = current.value.id;
   interacted.value = true;
   if (timer) clearInterval(timer);
   liveTargetCode.value = val;
-  pairTargetState.set(current.value.id, val);
+  pairTargetState.set(pairId, val);
 
-  const syntaxErr = targetDiagnostics.value.find(isSyntaxOrStructuralError);
+  const freshTgtDiags = await refreshTargetHighlightAndLint(pairId, val, current.value.targetLang);
+  if (pairId !== current.value.id) return;
+  const syntaxErr = freshTgtDiags.find(isSyntaxOrStructuralError);
   if (syntaxErr) {
     compileError.value = `[${syntaxErr.code}] (Line ${syntaxErr.startLine}:${syntaxErr.startCol}) ${syntaxErr.message}`;
     syncMonacoDiagnostics();
     return;
   }
 
-  const res = compileTargetToSource(current.value.id, val, liveSourceCode.value, conflictStrategy.value);
+  const res = await compileTargetToSourceAsync(pairId, val, liveSourceCode.value, conflictStrategy.value);
+  if (pairId !== current.value.id) return;
   compileElapsedMs.value = res.elapsedMs;
   if (res.envelopeInfo) {
     envelopeInfo.value = res.envelopeInfo;
@@ -395,12 +482,13 @@ function onTargetCodeEdited(val: string): void {
   if (res.error) {
     compileError.value = res.error;
   } else {
-    const physErr = targetDiagnostics.value.find((d) => d.severity === "error");
+    const physErr = freshTgtDiags.find((d) => d.severity === "error");
     compileError.value = physErr
       ? `[${physErr.code}] (Line ${physErr.startLine}:${physErr.startCol}) ${physErr.message}`
       : null;
     liveSourceCode.value = res.code;
-    pairSourceState.set(current.value.id, res.code);
+    pairSourceState.set(pairId, res.code);
+    void refreshSourceHighlightAndLint(pairId, res.code, current.value.sourceLang);
     if (sourceMonaco) {
       sourceMonaco.setValue(res.code);
     }
@@ -470,17 +558,19 @@ async function activateMonacoEditors(focusSide: "source" | "target" = "source"):
   }
 }
 
-function setConflictStrategy(nextStrategy: WorkflowConflictStrategy): void {
+async function setConflictStrategy(nextStrategy: WorkflowConflictStrategy): Promise<void> {
   interacted.value = true;
   if (timer) clearInterval(timer);
   conflictStrategy.value = nextStrategy;
+  const pairId = current.value.id;
   if (liveTargetCode.value !== current.value.targetCode) {
-    const res = compileTargetToSource(
-      current.value.id,
+    const res = await compileTargetToSourceAsync(
+      pairId,
       liveTargetCode.value,
       current.value.sourceCode,
       nextStrategy,
     );
+    if (pairId !== current.value.id || conflictStrategy.value !== nextStrategy) return;
     compileElapsedMs.value = res.elapsedMs;
     if (res.envelopeInfo) {
       envelopeInfo.value = res.envelopeInfo;
@@ -488,11 +578,11 @@ function setConflictStrategy(nextStrategy: WorkflowConflictStrategy): void {
     if (!res.error) {
       compileError.value = null;
       liveSourceCode.value = res.code;
-      pairSourceState.set(current.value.id, res.code);
+      pairSourceState.set(pairId, res.code);
       sourceMonaco?.setValue(res.code);
     }
   } else {
-    envelopeInfo.value = inspectPairSemanticEnvelope(current.value.id, nextStrategy, 0);
+    void refreshEnvelopeInfoLazy(pairId, nextStrategy);
   }
   syncMonacoDiagnostics();
 }
@@ -509,22 +599,12 @@ function resetCurrentPair(): void {
   runForwardCompile();
 }
 
-function loadPairState(p: WorkflowPair): void {
+async function loadPairState(p: WorkflowPair): Promise<void> {
   current.value = p;
   liveSourceCode.value = pairSourceState.get(p.id) ?? p.sourceCode;
   liveTargetCode.value = pairTargetState.get(p.id) ?? p.targetCode;
   compileError.value = null;
-  envelopeInfo.value = inspectPairSemanticEnvelope(p.id, conflictStrategy.value, 0);
-  if (!pairTargetState.has(p.id)) {
-    const res = compileWorkflowPair(p.id, liveSourceCode.value, conflictStrategy.value);
-    compileElapsedMs.value = res.elapsedMs;
-    if (res.envelopeInfo) {
-      envelopeInfo.value = res.envelopeInfo;
-    }
-    if (!res.error && res.code) {
-      liveTargetCode.value = res.code;
-    }
-  }
+  void refreshEnvelopeInfoLazy(p.id, conflictStrategy.value);
   if (sourceMonaco) {
     sourceMonaco.setLanguage(p.sourceLang);
     sourceMonaco.setValue(liveSourceCode.value);
@@ -532,6 +612,20 @@ function loadPairState(p: WorkflowPair): void {
   if (targetMonaco) {
     targetMonaco.setLanguage(p.targetLang);
     targetMonaco.setValue(liveTargetCode.value);
+  }
+  if (!pairTargetState.has(p.id)) {
+    const res = await compileWorkflowPairAsync(p.id, liveSourceCode.value, conflictStrategy.value);
+    if (p.id !== current.value.id) return;
+    compileElapsedMs.value = res.elapsedMs;
+    if (res.envelopeInfo) {
+      envelopeInfo.value = res.envelopeInfo;
+    }
+    if (!res.error && res.code) {
+      liveTargetCode.value = res.code;
+      if (targetMonaco) {
+        targetMonaco.setValue(liveTargetCode.value);
+      }
+    }
   }
   syncMonacoDiagnostics();
 }

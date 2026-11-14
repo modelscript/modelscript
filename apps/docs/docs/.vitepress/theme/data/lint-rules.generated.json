@@ -1065,6 +1065,30 @@
         "message": "Resource reference '<pathStr>' uses an absolute filesystem path; use a relative path or 'modelica://' URI instead."
       },
       {
+        "code": "M4140",
+        "rule": "tgg-conformance-missing-port",
+        "severity": "warning",
+        "message": "TGG conformance warning: '<targetName>' (<targetLang>) is missing counterpart port '<portName>' (<portType>) expected by '<sourceName>'."
+      },
+      {
+        "code": "M4141",
+        "rule": "tgg-conformance-param-mismatch",
+        "severity": "warning",
+        "message": "TGG conformance warning: parameter or port '<paramName>' type '<actualType>' is incompatible with '<expectedType>'."
+      },
+      {
+        "code": "M4142",
+        "rule": "tgg-conformance-missing-component",
+        "severity": "warning",
+        "message": "TGG conformance warning: '<targetName>' (<targetLang>) is missing expected component '<compName>' : '<compType>'."
+      },
+      {
+        "code": "M4143",
+        "rule": "tgg-conformance-unresolved-target",
+        "severity": "error",
+        "message": "Counterpart element referenced by '<sourceName>' could not be resolved in '<targetLang>'."
+      },
+      {
         "code": "M5001",
         "rule": "equation-type-mismatch",
         "severity": "error",
@@ -1715,6 +1739,30 @@
         "rule": "incompatible-flow-dimensions",
         "severity": "error",
         "message": "Flow connection links incompatible physical dimensions ('<sourceFlow>' to '<targetFlow>')."
+      },
+      {
+        "code": "S4080",
+        "rule": "tgg-conformance-missing-port",
+        "severity": "warning",
+        "message": "TGG conformance warning: '<targetName>' (<targetLang>) is missing counterpart port '<portName>' (<portType>) expected by '<sourceName>'."
+      },
+      {
+        "code": "S4081",
+        "rule": "tgg-conformance-param-mismatch",
+        "severity": "warning",
+        "message": "TGG conformance warning: parameter or port '<paramName>' type '<actualType>' is incompatible with '<expectedType>'."
+      },
+      {
+        "code": "S4082",
+        "rule": "tgg-conformance-missing-component",
+        "severity": "warning",
+        "message": "TGG conformance warning: '<targetName>' (<targetLang>) is missing expected component '<compName>' : '<compType>'."
+      },
+      {
+        "code": "S4083",
+        "rule": "tgg-conformance-unresolved-target",
+        "severity": "error",
+        "message": "Counterpart element referenced by '<sourceName>' could not be resolved in '<targetLang>'."
       },
       {
         "code": "S5001",

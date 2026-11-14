@@ -6,10 +6,10 @@
  * with DAE Arena Lowering and Mass-Energy Balance Parity.
  */
 
-import { parseAspen } from "../src/parser/aspen-parser.js";
-import { solveFlashRachfordRice, type FlashSolverResult } from "../src/solvers/flash-solver.js";
 import { lowerAspenToDae } from "../src/dae/aspen-to-dae.js";
 import { lintAspen } from "../src/lints/index.js";
+import { parseAspen } from "../src/parser/aspen-parser.js";
+import { solveFlashRachfordRice, type FlashSolverResult } from "../src/solvers/flash-solver.js";
 
 export interface AspenBenchmarkResult {
   name: string;
@@ -85,7 +85,7 @@ export function runAspenBenchmark(): AspenBenchmarkResult {
     temperature: 55.0,
     pressure: 2.2, // ~22 bar normalized
     components: ["ETHANE", "PROPANE", "N-BUTANE", "N-PENTANE"],
-    moleFractions: [0.25, 0.40, 0.25, 0.10],
+    moleFractions: [0.25, 0.4, 0.25, 0.1],
     totalFlow: 1000.0,
     propertyMethod: "PENG-ROB",
   });
@@ -122,3 +122,30 @@ export function runAspenBenchmark(): AspenBenchmarkResult {
     totalTimeMs,
   };
 }
+
+export const aspenBenchmarkAdapter: import("@modelscript/runtime/benchmark").LanguageBenchmarkAdapter = {
+  slug: "aspen",
+  referenceTool: "Aspen Plus V14 Peng-Robinson VLE",
+  referenceVersion: "14.0",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases(): Promise<import("@modelscript/runtime/benchmark").BenchmarkCaseResult[]> {
+    const t0 = performance.now();
+    const m = runAspenBenchmark();
+    const ok = m.isSquare && m.daeVariableCount > 0 && m.flashVaporFraction >= 0 && m.flashVaporFraction <= 1;
+    return [
+      {
+        id: "DeEthanizerTrain",
+        name: "Industrial De-Ethanizer & Hydrocarbon Fractionation Train",
+        scale: "standard",
+        referenceTool: "Aspen Plus V14 Peng-Robinson VLE",
+        metricKind: "dae-parity",
+        threshold: 0,
+        measuredError: ok ? 0 : 1,
+        passed: ok,
+        durationMs: Number((performance.now() - t0).toFixed(3)),
+        details: `${m.numComponents} components, ${m.numBlocks} blocks, V/F=${m.flashVaporFraction.toFixed(3)}, ${m.daeVariableCount} DAE vars/eqs`,
+      },
+    ];
+  },
+};

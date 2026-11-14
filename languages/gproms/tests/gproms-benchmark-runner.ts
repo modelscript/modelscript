@@ -127,6 +127,34 @@ export function runGpromsBenchmark(src = AXIAL_DISPERSION_PFR_BENCHMARK): Gproms
   };
 }
 
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const gpromsBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "gproms",
+  referenceTool: "gPROMS ProcessBuilder Method-of-Lines PFR",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runGpromsBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "axial-dispersion-pfr-mol",
+        name: "axial-dispersion-pfr-mol",
+        scale: "standard",
+        referenceTool: "gPROMS ProcessBuilder Method-of-Lines PFR",
+        passed: m.isSquare && m.isMonotonic && m.gridPoints === 11,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.daeEqCount,
+        threshold: 0,
+        details: `conv=${m.conversionPercent.toFixed(2)}%, ${m.gridPoints} grid pts, ${m.daeVarCount}x${m.daeEqCount} DAE`,
+      },
+    ];
+  },
+};
+
 if (process.argv[1]?.endsWith("gproms-benchmark-runner.ts")) {
   const m = runGpromsBenchmark();
   console.log("gPROMS Benchmark Results:", m);

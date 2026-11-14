@@ -3,6 +3,7 @@
 
 import React, { useMemo, useState } from "react";
 import { indexLocalSymbolLines, scanModelicaStructure } from "../modelica-scanner.js";
+import { InspectorTabs } from "./InspectorTabs.js";
 
 export interface DaeAdvancedInspectorProps {
   code: string;
@@ -655,7 +656,7 @@ export const DaeAdvancedInspector: React.FC<DaeAdvancedInspectorProps> = ({
   const [subView, setSubView] = useState<"pantelides" | "kirchhoff" | "units" | "initial">("pantelides");
 
   const borderCol = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)";
-  const cardBg = isDark ? "rgba(22, 27, 34, 0.7)" : "rgba(255, 255, 255, 0.9)";
+  const cardBg = isDark ? "rgba(30, 30, 34, 0.75)" : "rgba(255, 255, 255, 0.9)";
   const textPrimary = isDark ? "#e6edf3" : "#1f2328";
   const textMuted = isDark ? "#8b949e" : "#59636e";
 
@@ -666,8 +667,11 @@ export const DaeAdvancedInspector: React.FC<DaeAdvancedInspectorProps> = ({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {/* Sub-navigation */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {[
+      <InspectorTabs
+        ariaLabel="DAE advanced inspector views"
+        value={subView}
+        onChange={(id) => setSubView(id as typeof subView)}
+        tabs={[
           { id: "pantelides", label: `🔬 Pantelides Index (${pantelides.estimatedIndex})` },
           { id: "kirchhoff", label: `🔌 Kirchhoff & Stream Nodes (${kirchhoffNodes.length})` },
           {
@@ -678,26 +682,8 @@ export const DaeAdvancedInspector: React.FC<DaeAdvancedInspectorProps> = ({
             id: "initial",
             label: `⏱️ Initial System (t₀: ${initialBalance.totalSpecified}/${initialBalance.diffOrder})`,
           },
-        ].map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setSubView(t.id as typeof subView)}
-            style={{
-              padding: "6px 12px",
-              fontSize: 12,
-              fontWeight: 600,
-              borderRadius: 6,
-              border: `1px solid ${borderCol}`,
-              cursor: "pointer",
-              backgroundColor: subView === t.id ? "#1f6feb" : cardBg,
-              color: subView === t.id ? "#ffffff" : textPrimary,
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+        ]}
+      />
 
       {subView === "pantelides" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -724,7 +710,14 @@ export const DaeAdvancedInspector: React.FC<DaeAdvancedInspectorProps> = ({
             </div>
             <div style={{ padding: 12, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
               <div style={{ fontSize: 11, color: textMuted, fontWeight: 600 }}>DIFFERENTIATED STATES (ẋ)</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#58a6ff", fontFamily: "monospace" }}>
+              <div
+                style={{
+                  fontSize: 20,
+                  fontWeight: 800,
+                  color: "var(--fgColor-accent, var(--ms-brand))",
+                  fontFamily: "monospace",
+                }}
+              >
                 {pantelides.states.length}
               </div>
               <div
@@ -814,7 +807,13 @@ export const DaeAdvancedInspector: React.FC<DaeAdvancedInspectorProps> = ({
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontWeight: 700, fontFamily: "monospace", color: "#58a6ff" }}>
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        fontFamily: "monospace",
+                        color: "var(--fgColor-accent, var(--ms-brand))",
+                      }}
+                    >
                       {n.nodeId} ({n.ports.length} connected ports)
                     </span>
                     <div style={{ display: "flex", gap: 6 }}>
@@ -838,7 +837,7 @@ export const DaeAdvancedInspector: React.FC<DaeAdvancedInspectorProps> = ({
                           padding: "2px 6px",
                           borderRadius: 99,
                           backgroundColor: n.isStream ? "rgba(163,113,247,0.18)" : "rgba(88,166,255,0.15)",
-                          color: n.isStream ? "#a371f7" : "#58a6ff",
+                          color: n.isStream ? "#a371f7" : "var(--fgColor-accent, var(--ms-brand))",
                           fontWeight: 700,
                         }}
                       >
@@ -911,7 +910,14 @@ export const DaeAdvancedInspector: React.FC<DaeAdvancedInspectorProps> = ({
               </div>
               <div>
                 <div style={{ fontSize: 11, color: textMuted }}>Initial Equations</div>
-                <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "monospace", color: "#58a6ff" }}>
+                <div
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 800,
+                    fontFamily: "monospace",
+                    color: "var(--fgColor-accent, var(--ms-brand))",
+                  }}
+                >
                   {initialBalance.initialEqCount}
                 </div>
               </div>
@@ -983,7 +989,7 @@ export const DaeAdvancedInspector: React.FC<DaeAdvancedInspectorProps> = ({
                       style={{
                         color:
                           item.kind === "initial equation"
-                            ? "#58a6ff"
+                            ? "var(--fgColor-accent, var(--ms-brand))"
                             : item.kind === "fixed start"
                               ? "#3fb950"
                               : textMuted,

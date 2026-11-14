@@ -9,6 +9,7 @@ import {
   TrashIcon,
   UploadIcon,
 } from "@primer/octicons-react";
+import { Button, Dialog } from "@primer/react";
 import React, { useState } from "react";
 import {
   circuitBreakAdminFederationDomain,
@@ -16,19 +17,7 @@ import {
   type IngressVerificationResult,
 } from "../../../api";
 import Box from "../../../components/Box";
-import {
-  ActionButton,
-  Badge,
-  Card,
-  FilterPill,
-  Input,
-  ModalBox,
-  ModalOverlay,
-  Select,
-  StatGrid,
-  Table,
-  Textarea,
-} from "../styles";
+import { ActionButton, Badge, Card, FilterPill, Input, Select, StatGrid, Table, Textarea } from "../styles";
 import type {
   AdminFederationDeliveryItem,
   AdminFederationDomain,
@@ -639,11 +628,12 @@ export const AdminFederationTab: React.FC<AdminFederationTabProps> = ({
       )}
 
       {showImportModal && (
-        <ModalOverlay>
-          <ModalBox>
-            <span style={{ fontWeight: 800, fontSize: "16px" }}>
-              Import Federation Blocklist / Allowlist (CSV or JSON)
-            </span>
+        <Dialog
+          title="Import Federation Blocklist / Allowlist (CSV or JSON)"
+          width="medium"
+          onClose={() => setShowImportModal(false)}
+        >
+          <Box display="flex" flexDirection="column" gap={3}>
             <Box display="flex" gap={2}>
               <Select
                 style={{ flex: 1 }}
@@ -673,50 +663,38 @@ export const AdminFederationTab: React.FC<AdminFederationTabProps> = ({
               onChange={(e) => setImportContent(e.target.value)}
             />
             <Box display="flex" justifyContent="flex-end" gap={2}>
-              <ActionButton $variant="secondary" onClick={() => setShowImportModal(false)}>
+              <Button variant="default" onClick={() => setShowImportModal(false)}>
                 Cancel
-              </ActionButton>
-              <ActionButton
-                $variant="primary"
-                onClick={handleConfirmImport}
-                disabled={loading || !importContent.trim()}
-              >
+              </Button>
+              <Button variant="primary" onClick={handleConfirmImport} disabled={loading || !importContent.trim()}>
                 Import Domain Rules
-              </ActionButton>
+              </Button>
             </Box>
-          </ModalBox>
-        </ModalOverlay>
+          </Box>
+        </Dialog>
       )}
 
       {confirmPurgeDeadLettersOpen && (
-        <ModalOverlay onClick={() => setConfirmPurgeDeadLettersOpen(false)}>
-          <ModalBox
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Confirm Purge Dead-Letter Queue"
-          >
-            <span style={{ fontWeight: 800, fontSize: "16px", color: "var(--color-text-primary)" }}>
-              Purge Dead-Letter Delivery Queue
-            </span>
+        <Dialog
+          title="Purge Dead-Letter Delivery Queue"
+          width="medium"
+          onClose={() => setConfirmPurgeDeadLettersOpen(false)}
+        >
+          <Box display="flex" flexDirection="column" gap={3}>
             <Box fontSize="13px" color="var(--color-text-muted)" style={{ lineHeight: 1.5 }}>
               Are you sure you want to permanently purge all failed ActivityPub S2S delivery records (
               {queueStats?.failed ?? 0} item(s)) from the dead-letter queue?
             </Box>
             <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
-              <ActionButton
-                $variant="secondary"
-                onClick={() => setConfirmPurgeDeadLettersOpen(false)}
-                disabled={loading}
-              >
+              <Button variant="default" onClick={() => setConfirmPurgeDeadLettersOpen(false)} disabled={loading}>
                 Cancel
-              </ActionButton>
-              <ActionButton $variant="danger" onClick={() => void handlePurgeDeadLetters()} disabled={loading}>
+              </Button>
+              <Button variant="danger" onClick={() => void handlePurgeDeadLetters()} disabled={loading}>
                 Confirm Purge
-              </ActionButton>
+              </Button>
             </Box>
-          </ModalBox>
-        </ModalOverlay>
+          </Box>
+        </Dialog>
       )}
     </div>
   );

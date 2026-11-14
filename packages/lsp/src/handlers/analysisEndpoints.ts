@@ -43,8 +43,12 @@ import {
   type AssumeGuaranteeContract,
   type WhileLoopInfo,
 } from "@modelscript/sysml2";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { ClosedLoopCompilerEngine, runSelfHealingPipeline } from "../agent/index.js";
 import { LspContext, resolveFeatureFlags } from "../lsp-context.js";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { getRequirements } from "../requirements.js";
 import { evaluateArenaExprToNum, getArenaParameterInfo, printArenaExpression } from "../utils/arena-utils.js";
 import { flattenTargetClass } from "./simulationEndpoints.js";
@@ -411,7 +415,12 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
       // ── Constraints injection ──
       let stateConstraints: { variable: string; bound: number; type: "<=" | ">=" }[] | undefined;
-      const constraintsUri = (params as any).constraintsUri ?? params.sysmlUri;
+      const pExt = params as unknown as {
+        constraintsUri?: string;
+        constraintsFilter?: string;
+        variableMap?: Record<string, unknown>;
+      };
+      const constraintsUri = pExt.constraintsUri ?? params.sysmlUri;
       const qe = context.workspaceManager.getQueryEngine("sysml2");
       if (constraintsUri && qe) {
         try {
@@ -420,11 +429,8 @@ export function registerAnalysisEndpoints(context: LspContext) {
           if (doc) await context.validationService.validateTextDocument(doc);
 
           const sysmlDb = qe.toQueryDB();
-          const rawConstraints = extractSysML2Constraints(
-            sysmlDb,
-            params.sysmlFilter ?? (params as any).constraintsFilter,
-          );
-          const rawVarMap = params.sysmlVariableMap ?? (params as any).variableMap;
+          const rawConstraints = extractSysML2Constraints(sysmlDb, params.sysmlFilter ?? pExt.constraintsFilter);
+          const rawVarMap = params.sysmlVariableMap ?? pExt.variableMap;
           const variableMap = rawVarMap
             ? new Map<string, string>(Object.entries(rawVarMap).map(([k, v]) => [k, String(v)]))
             : undefined;
@@ -511,10 +517,11 @@ export function registerAnalysisEndpoints(context: LspContext) {
         // 1. Resolve queryDB from workspace manager (Modelica or SysML v2)
         const qe =
           context.workspaceManager.getQueryEngine("modelica") || context.workspaceManager.getQueryEngine("sysml2");
-        let queryDB: any = undefined;
-        if (qe && typeof (qe as any).toQueryDB === "function") {
+        let queryDB: unknown = undefined;
+        const qeWithToDb = qe as unknown as { toQueryDB?: () => unknown } | undefined;
+        if (qeWithToDb && typeof qeWithToDb.toQueryDB === "function") {
           try {
-            queryDB = (qe as any).toQueryDB();
+            queryDB = qeWithToDb.toQueryDB();
           } catch {}
         }
         if (!queryDB && context.workspaceManager?.unifiedWorkspace) {
@@ -534,7 +541,9 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
         if (!arena && context.parserService?.sharedContext) {
           try {
-            const sc = context.parserService.sharedContext as any;
+            const sc = context.parserService.sharedContext as unknown as {
+              flattenArena?: (model: string, cfg: unknown, uri: string) => DAEBuilder | null;
+            };
             const modelName =
               params.target ||
               params.uri
@@ -553,7 +562,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         if (!options.cancellationToken && token) {
           options.cancellationToken = token;
         }
-        let simResult: any = undefined;
+        let simResult: Awaited<ReturnType<typeof simulateArenaAsync>> | undefined = undefined;
         const needsSim = options.all || options.trajectories !== false || options.b2b;
         if (arena && needsSim) {
           try {
@@ -566,16 +575,18 @@ export function registerAnalysisEndpoints(context: LspContext) {
               stopTime,
               step,
             });
-          } catch (simErr: any) {
-            context.connection.console.warn(`[verifyAll] Numeric simulation warning: ${simErr?.message || simErr}`);
+          } catch (simErr: unknown) {
+            const msg = simErr instanceof Error ? simErr.message : String(simErr);
+            context.connection.console.warn(`[verifyAll] Numeric simulation warning: ${msg}`);
           }
         }
 
         // 4. Run Unified Verification via Theory Coordinator & Verifier
-        const coordinator =
-          (context.workspaceManager as any)?.getCoordinator?.() ||
-          (context.workspaceManager as any)?.coordinator ||
-          new SemanticTheoryCoordinator();
+        const wmExt = context.workspaceManager as unknown as {
+          getCoordinator?: () => SemanticTheoryCoordinator;
+          coordinator?: SemanticTheoryCoordinator;
+        };
+        const coordinator = wmExt?.getCoordinator?.() || wmExt?.coordinator || new SemanticTheoryCoordinator();
 
         const report = await UnifiedVerifier.verify(
           {
@@ -590,13 +601,295 @@ export function registerAnalysisEndpoints(context: LspContext) {
           options,
         );
 
+        const openDocs = context.documents?.all?.() ?? [];
+        const discoveredMap = new Map<string, { uri: string; fileName: string; content: string }>();
+        const normalizeDiscoveryKey = (uri: string) => uri.replace(/^([a-z0-9+-]+):\/(?!\/)/i, "$1:///").toLowerCase();
+        const isVirtualStdlibUri = (uri: string) => /^(builtin|modelica|msl):/i.test(uri);
+        const addDiscoveredFile = (uri: string, content: string) => {
+          const normKey = normalizeDiscoveryKey(uri);
+          if (discoveredMap.has(normKey)) return;
+          discoveredMap.set(normKey, {
+            uri,
+            fileName: uri.split(/[\\/]/).pop() || uri,
+            content,
+          });
+        };
+
+        for (const d of openDocs) {
+          addDiscoveredFile(d.uri, d.getText());
+        }
+
+        const unifiedWs = context.workspaceManager?.unifiedWorkspace as unknown as
+          | {
+              getAllDocumentEntries?: () => Array<{ uri?: string; text?: string }>;
+              getIndex?: () => {
+                documents?: Map<string, string | { text?: string; source?: string }>;
+                symbolsByResource?: Map<string, unknown>;
+              };
+              getDocument?: (uri: string) => unknown;
+            }
+          | undefined;
+        if (unifiedWs && typeof unifiedWs.getAllDocumentEntries === "function") {
+          for (const entry of unifiedWs.getAllDocumentEntries()) {
+            if (entry?.uri && entry.text && entry.text.trim().length > 0 && !isVirtualStdlibUri(entry.uri)) {
+              addDiscoveredFile(entry.uri, entry.text);
+            }
+          }
+        }
+        const indexedIndex = unifiedWs?.getIndex?.();
+        const fallbackIndexDocs = indexedIndex?.documents;
+        if (fallbackIndexDocs && typeof fallbackIndexDocs.entries === "function") {
+          for (const [docUri, docVal] of fallbackIndexDocs.entries()) {
+            const docText = typeof docVal === "string" ? docVal : (docVal?.text ?? docVal?.source);
+            if (docUri && docText && docText.trim().length > 0 && !isVirtualStdlibUri(docUri)) {
+              addDiscoveredFile(docUri, docText);
+            }
+          }
+        }
+        if (indexedIndex?.symbolsByResource) {
+          for (const resUri of indexedIndex.symbolsByResource.keys()) {
+            if (!resUri || isVirtualStdlibUri(resUri)) continue;
+            const docsExt = context.documents as unknown as { get?: (uri: string) => unknown } | undefined;
+            const wmDocs = context.workspaceManager as unknown as
+              | { getDocument?: (uri: string) => unknown }
+              | undefined;
+            const uDoc = (unifiedWs?.getDocument?.(resUri) ??
+              docsExt?.get?.(resUri) ??
+              wmDocs?.getDocument?.(resUri)) as { getText?: () => string; text?: string } | undefined;
+            const docText =
+              typeof uDoc?.text === "string"
+                ? uDoc.text
+                : typeof uDoc?.getText === "function"
+                  ? uDoc.getText()
+                  : undefined;
+            if (docText && docText.trim().length > 0) {
+              addDiscoveredFile(resUri, docText);
+            }
+          }
+        }
+
+        if (sourceText) {
+          addDiscoveredFile(params.uri, sourceText);
+        }
+
+        const POLYGLOT_MODEL_EXT_RE =
+          /\.(sysml|sysml2|mo|ms|msx|sp|cir|spice|scad|inp|cfd|urdf|step|stp|reqif|omn|ofn|owl)$/i;
+        // Discover transitively referenced files (*INCLUDE, @mesh_source:) and sibling model files on disk
+        try {
+          const initialEntries = Array.from(discoveredMap.values());
+          for (const entry of initialEntries) {
+            if (!entry.uri.startsWith("file://")) continue;
+            let fsPath: string;
+            try {
+              fsPath = fileURLToPath(entry.uri);
+            } catch {
+              continue;
+            }
+            const dir = path.dirname(fsPath);
+            // Referenced files via *INCLUDE, INPUT=... or @mesh_source: ...
+            const refMatches = [
+              ...entry.content.matchAll(/\*INCLUDE\s*,\s*INPUT\s*=\s*([^\s,]+)/gi),
+              ...entry.content.matchAll(/@mesh_source:\s*([^\s]+)/gi),
+            ];
+            for (const m of refMatches) {
+              const refRel = m[1]?.trim();
+              if (!refRel) continue;
+              const refPath = path.resolve(dir, refRel);
+              if (fs.existsSync(refPath) && fs.statSync(refPath).isFile()) {
+                addDiscoveredFile(pathToFileURL(refPath).href, fs.readFileSync(refPath, "utf-8"));
+              }
+            }
+            // Sibling model files in the target file's directory (capped at 24 files)
+            if (entry.uri.toLowerCase() === params.uri.toLowerCase() && fs.existsSync(dir)) {
+              const siblings = fs
+                .readdirSync(dir)
+                .filter((f) => POLYGLOT_MODEL_EXT_RE.test(f))
+                .slice(0, 24);
+              for (const sib of siblings) {
+                const sibPath = path.join(dir, sib);
+                try {
+                  if (fs.statSync(sibPath).isFile()) {
+                    addDiscoveredFile(pathToFileURL(sibPath).href, fs.readFileSync(sibPath, "utf-8"));
+                  }
+                } catch {
+                  // Ignore unreadable sibling
+                }
+              }
+            }
+          }
+        } catch {
+          // Non-fatal disk discovery fallback
+        }
+
+        const workspaceFiles = Array.from(discoveredMap.values());
+        const uniqueExts = new Set(
+          workspaceFiles.map((d) => {
+            const name = d.fileName;
+            const dot = name.lastIndexOf(".");
+            return dot >= 0 ? name.slice(dot).toLowerCase() : "";
+          }),
+        );
+        const hasCrossLanguageDirective = workspaceFiles.some((d) => {
+          const txt = d.content;
+          return (
+            txt.includes("@twin:") ||
+            txt.includes("@port_map:") ||
+            txt.includes("@mesh_source:") ||
+            txt.includes("annotation(twin")
+          );
+        });
+        const hasPolyglotWorkspace =
+          (workspaceFiles.length >= 2 && uniqueExts.size >= 2) ||
+          hasCrossLanguageDirective ||
+          workspaceFiles.some((d) => /\.(scad|inp|cfd|urdf|step|stp)$/i.test(d.uri));
+        if (hasPolyglotWorkspace) {
+          try {
+            const [
+              { createPolyglotCoordinator },
+              { OpenFoamDialect, evaluateCfdExpression },
+              { InpDialect },
+              { evaluateScad },
+              { scanStepEntities },
+              { parseUrdf },
+              { computeMeshVolumeAndArea, ToleranceStackVerifier, SolidKind },
+              { LbmVoxelizer, WebGPULbmRunner, FeaSolver, Tet4Mesher, MeshQualityAnalyzer },
+            ] = await Promise.all([
+              import("@modelscript/runtime"),
+              import("@modelscript/cfd"),
+              import("@modelscript/fea"),
+              import("@modelscript/scad"),
+              import("@modelscript/step"),
+              import("@modelscript/urdf"),
+              import("@modelscript/cad"),
+              import("@modelscript/simulate"),
+            ]);
+            const { evaluatePolyglotDigitalThreadFromFiles } = createPolyglotCoordinator({
+              OpenFoamDialect,
+              evaluateCfdExpression,
+              InpDialect,
+              evaluateScad,
+              scanStepEntities,
+              parseUrdf,
+              computeMeshVolumeAndArea,
+              ToleranceStackVerifier,
+              SolidKind,
+              LbmVoxelizer,
+              WebGPULbmRunner,
+              FeaSolver,
+              Tet4Mesher,
+              MeshQualityAnalyzer,
+            });
+            const symbolIndex = context.workspaceManager?.unifiedWorkspace?.getIndex?.();
+            for (const wf of workspaceFiles) {
+              const wfExt = wf as { theoryConstraints?: unknown };
+              const plugin = globalLanguageRegistry.getPluginForUri(wf.uri);
+              if (plugin?.extractTheoryConstraints && !wfExt.theoryConstraints) {
+                try {
+                  wfExt.theoryConstraints = await plugin.extractTheoryConstraints(wf.content, wf.uri, symbolIndex);
+                } catch {
+                  // Non-fatal typed extractor fallback
+                }
+              }
+            }
+            const threadRes = evaluatePolyglotDigitalThreadFromFiles(workspaceFiles, undefined, { symbolIndex });
+            const portBindings =
+              "parsedMetadata" in threadRes ? threadRes.parsedMetadata.portBindings : threadRes.portBindings;
+            const artifacts = "artifacts" in threadRes ? threadRes.artifacts : undefined;
+            const suggestedEdits = "suggestedEdits" in threadRes ? threadRes.suggestedEdits : undefined;
+            const evaluatedEquations =
+              "evaluatedEquations" in threadRes
+                ? threadRes.evaluatedEquations
+                : "parsedMetadata" in threadRes
+                  ? threadRes.parsedMetadata.evaluatedEquations
+                  : undefined;
+            const threadPayload = {
+              mode: ("mode" in threadRes ? threadRes.mode : "scenario") as "generic" | "scenario",
+              scenarioId: threadRes.scenarioId,
+              scenarioTitle: threadRes.scenarioTitle,
+              status: threadRes.status,
+              isSat: threadRes.isSat,
+              elapsedMs: threadRes.elapsedMs,
+              fileCount: "fileCount" in threadRes ? threadRes.fileCount : workspaceFiles.length,
+              domains:
+                "domains" in threadRes
+                  ? threadRes.domains
+                  : Array.from(new Set(threadRes.hypergraphNodes.map((n) => n.domainName))),
+              summaryText: threadRes.summaryText,
+              artifacts,
+              hypergraphNodes: threadRes.hypergraphNodes,
+              variableLinks: threadRes.variableLinks,
+              portBindings,
+              evaluatedEquations,
+              suggestedEdits,
+              conflicts: threadRes.conflicts,
+            };
+            UnifiedVerifier.attachPolyglotDigitalThread(report, threadPayload);
+
+            // Merge & push live LSP diagnostics per artifact URI without clobbering existing lints
+            if (Array.isArray(artifacts)) {
+              const diagsByUri = new Map<
+                string,
+                Array<{
+                  range: { start: { line: number; character: number }; end: { line: number; character: number } };
+                  severity: number;
+                  code?: string | undefined;
+                  source: string;
+                  message: string;
+                  data?: { suggestedEdits: unknown[] } | undefined;
+                }>
+              >();
+              for (const art of artifacts) {
+                if (!art.uri) continue;
+                const mapped = (art.diagnostics ?? []).map((d) => ({
+                  range: {
+                    start: { line: Math.max(0, (d.startLine ?? 1) - 1), character: Math.max(0, (d.startCol ?? 1) - 1) },
+                    end: {
+                      line: Math.max(0, (d.endLine ?? d.startLine ?? 1) - 1),
+                      character: Math.max(0, (d.endCol ?? d.startCol ?? 1) - 1),
+                    },
+                  },
+                  severity: d.severity === "warning" ? 2 : d.severity === "info" ? 3 : 1,
+                  code: d.code,
+                  source: "modelscript-digital-thread",
+                  message: d.message,
+                  data: suggestedEdits && suggestedEdits.length > 0 ? { suggestedEdits } : undefined,
+                }));
+                diagsByUri.set(art.uri, mapped);
+              }
+              const ctxExt = context as unknown as {
+                validationService?: { mergeDigitalThreadDiagnostics?: (m: typeof diagsByUri) => void };
+              };
+              if (typeof ctxExt.validationService?.mergeDigitalThreadDiagnostics === "function") {
+                ctxExt.validationService.mergeDigitalThreadDiagnostics(diagsByUri);
+              } else if (typeof context.connection?.sendDiagnostics === "function") {
+                for (const [uri, diagnostics] of diagsByUri.entries()) {
+                  context.connection.sendDiagnostics({
+                    uri,
+                    diagnostics: diagnostics as Parameters<typeof context.connection.sendDiagnostics>[0]["diagnostics"],
+                  });
+                }
+              }
+            }
+          } catch (polyErr: unknown) {
+            context.connection.console.warn(
+              `[verifyAll] Polyglot digital thread coordinator warning: ${polyErr instanceof Error ? polyErr.message : String(polyErr)}`,
+            );
+          }
+        }
+
         // 5. Query active trade study Pareto fronts if requested
-        if ((options as any).tradeStudy || (options as any).pareto) {
-          const rawCandidates =
-            (context.workspaceManager as any)?.getCandidates?.(params.uri) || (params as any).candidates || [];
+        const optsExt = options as unknown as { tradeStudy?: boolean; pareto?: boolean };
+        if (optsExt.tradeStudy || optsExt.pareto) {
+          const wmCand = context.workspaceManager as unknown as {
+            getCandidates?: (uri: string) => Parameters<typeof CandidateFilter.extractParetoFronts>[0];
+          };
+          const paramsCand = params as unknown as {
+            candidates?: Parameters<typeof CandidateFilter.extractParetoFronts>[0];
+          };
+          const rawCandidates = wmCand?.getCandidates?.(params.uri) || paramsCand.candidates || [];
           if (rawCandidates.length > 0) {
             const paretoFronts = CandidateFilter.extractParetoFronts(rawCandidates);
-            (report as any).tradeStudy = {
+            (report as unknown as { tradeStudy?: unknown }).tradeStudy = {
               candidatesCount: rawCandidates.length,
               paretoFrontsCount: paretoFronts.length,
               topParetoFront: paretoFronts[0] || [],
@@ -633,11 +926,11 @@ export function registerAnalysisEndpoints(context: LspContext) {
           if (!report.artifacts) {
             report.artifacts = {};
           }
-          (report.artifacts as any).formattedOutput = formattedOutput;
+          (report.artifacts as unknown as { formattedOutput?: string }).formattedOutput = formattedOutput;
         }
 
         return report;
-      } catch (err: any) {
+      } catch (err: unknown) {
         return {
           timestamp: new Date().toISOString(),
           target: params.target || params.uri,
@@ -657,8 +950,10 @@ export function registerAnalysisEndpoints(context: LspContext) {
               name: "Unified Verifier",
               passed: false,
               durationMs: 0,
-              summary: err.message || String(err),
-              violations: [{ stage: "error", message: err.message || String(err), severity: "error" }],
+              summary: err instanceof Error ? err.message : String(err),
+              violations: [
+                { stage: "error", message: err instanceof Error ? err.message : String(err), severity: "error" },
+              ],
             },
           },
         };

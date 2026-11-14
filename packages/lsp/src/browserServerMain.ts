@@ -552,6 +552,7 @@ documents.onDidSave(async (event) => {
       message: "Verifying requirements & invariants...",
     });
     await validationService.runVerificationForUri(event.document.uri, progressReporter);
+    await validationService.runLiveDigitalThreadValidation(event.document.uri);
   } catch (e: any) {
     connection.console.warn(`[onDidSave] Error verifying ${event.document.uri}: ${e?.message}`);
   }
@@ -568,6 +569,7 @@ documents.onDidChangeContent((change) => {
   for (const entry of threadEntries) {
     workspaceManager.hypergraph.markStale(entry.slot);
   }
+  validationService.scheduleDigitalThreadValidation(uri);
 
   // Bump revision — any in-flight deferred semantic work for an older revision
   // will check this and bail out before doing expensive linting.

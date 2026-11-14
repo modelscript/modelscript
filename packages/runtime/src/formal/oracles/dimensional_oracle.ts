@@ -15,6 +15,7 @@
  */
 
 import type { ConflictClause, SharedEquality, TheoryLiteral, TheoryOracle } from "../theory_coordinator.js";
+import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
 
 export type DimensionVector = [number, number, number, number, number, number, number];
 
@@ -328,14 +329,12 @@ export class DimensionalTheoryOracle implements TheoryOracle {
   }
 
   public retractLiteral(litId: number): void {
-    if (!this.assertedLiterals.has(litId)) return;
+    const hasShared = hasSharedEqualityWithLiteral(this.sharedEqualities, litId);
+    if (!this.assertedLiterals.has(litId) && !hasShared) return;
     this.assertedLiterals.delete(litId);
     const savedStack = this.levelStack;
     const remaining = Array.from(this.assertedLiterals.values());
-    const savedShared = this.sharedEqualities.filter((eq) => {
-      const justs = eq.justifications ?? eq.justification;
-      return !justs || !justs.includes(litId);
-    });
+    const savedShared = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
     this.reset();
     this.levelStack = savedStack;
     for (const lit of remaining) {

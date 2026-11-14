@@ -183,24 +183,32 @@ export class MarkdownPreviewService implements vscode.Disposable {
             const activeEditor = vscode.window.activeTextEditor;
             const docText = activeEditor ? activeEditor.document.getText() : "";
 
+            const uri = activeEditor ? activeEditor.document.uri.toString() : "modelscript-lib://global";
+
             let peerLabel = "Interface / Sink";
             let portLabel = "Connector Port";
-            const connMatch = docText.match(
-              new RegExp(
-                `connect\\s*\\(\\s*${targetClean}(?:\\.([A-Za-z0-9_]+))?\\s*,\\s*([A-Za-z0-9_]+)(?:\\.([A-Za-z0-9_]+))?\\s*\\)`,
-              ),
+            interface DiagramEdgeInfo {
+              source?: { cell?: string; port?: string } | undefined;
+              target?: { cell?: string; port?: string } | undefined;
+            }
+            const diagram = await client
+              .sendRequest<{ edges?: DiagramEdgeInfo[] }>("modelscript/diagram.getData", {
+                uri,
+                documentText: docText,
+              })
+              .catch(() => null);
+            const matchesTarget = (cell?: string): boolean =>
+              cell === targetClean || (typeof cell === "string" && cell.endsWith(`.${targetClean}`));
+            const matchingEdge = diagram?.edges?.find(
+              (edge) => matchesTarget(edge.source?.cell) || matchesTarget(edge.target?.cell),
             );
-            const sysmlConnMatch = docText.match(
-              new RegExp(
-                `connect\\s+${targetClean}(?:\\.([A-Za-z0-9_]+))?\\s+to\\s+([A-Za-z0-9_]+)(?:\\.([A-Za-z0-9_]+))?`,
-              ),
-            );
-            if (connMatch) {
-              peerLabel = connMatch[2] ?? peerLabel;
-              portLabel = [connMatch[1], connMatch[3]].filter(Boolean).join(" ↔ ") || portLabel;
-            } else if (sysmlConnMatch) {
-              peerLabel = sysmlConnMatch[2] ?? peerLabel;
-              portLabel = [sysmlConnMatch[1], sysmlConnMatch[3]].filter(Boolean).join(" ↔ ") || portLabel;
+            if (matchingEdge) {
+              const fromSource = matchesTarget(matchingEdge.source?.cell);
+              const peerCell = fromSource ? matchingEdge.target?.cell : matchingEdge.source?.cell;
+              const myPort = fromSource ? matchingEdge.source?.port : matchingEdge.target?.port;
+              const theirPort = fromSource ? matchingEdge.target?.port : matchingEdge.source?.port;
+              if (peerCell) peerLabel = peerCell;
+              portLabel = [myPort, theirPort].filter(Boolean).join(" ↔ ") || portLabel;
             }
 
             const svg = `<svg viewBox="0 0 400 180" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto; border: 1px solid var(--vscode-widget-border, #454545); border-radius: 6px; background: var(--vscode-editor-background, #1e1e1e); padding: 8px; font-family: sans-serif;">

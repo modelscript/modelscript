@@ -1,7 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { TextEdit } from "vscode-languageserver";
-import { deduplicateAndSort, type DiagramBackend, type DiagramDispatchDeps } from "../diagramApi.js";
+import {
+  computePscadComponentDropEdits,
+  createDropBatchState,
+  mergeCoincidentInsertEdits,
+} from "../cross-language-drop.js";
+import {
+  deduplicateAndSort,
+  getUnifiedIndexFromDeps,
+  type DiagramBackend,
+  type DiagramDispatchDeps,
+} from "../diagramApi.js";
 import type {
   ComponentPropertyData,
   DiagramApplyEditsParams,
@@ -332,20 +342,40 @@ export function createPscadDiagramBackend(backends: DiagramDispatchDeps): Diagra
       try {
         const text = await readPscxSource(params.uri);
         if (!text) return { seq: params.seq, edits: [], renderHint: "none" };
-        const { parsePscx, buildComponentXmlSnippet, planDiagramActions } = await import("@modelscript/pscad");
+        const { parsePscx, buildComponentXmlSnippet, getMasterComponentSchema, planDiagramActions } =
+          await import("@modelscript/pscad");
+        const unifiedIndex = getUnifiedIndexFromDeps(backends);
+        const hasForeignAddComponent = params.actions.some(
+          (a) =>
+            a.type === "addComponent" &&
+            computePscadComponentDropEdits({
+              docText: text,
+              rawClassName: a.className,
+              x: a.x,
+              y: a.y,
+              instanceName: a.name,
+              section: a.section,
+              hasNativeSchema: Boolean(getMasterComponentSchema(a.className)),
+              schematicEndLine: 0,
+              unifiedIndex,
+            }) !== null,
+        );
         // Preferred path: structural edits on the lossless XML tree. If an action references something
-        // the model cannot resolve, fall back to the legacy line-based logic below.
-        try {
-          const planned = planDiagramActions(text, params.actions as never);
-          if (planned.unresolved.length === 0) {
-            return { seq: params.seq, edits: planned.edits as TextEdit[], renderHint: planned.renderHint };
+        // the model cannot resolve (or drops a foreign cross-language symbol), fall back below.
+        if (!hasForeignAddComponent) {
+          try {
+            const planned = planDiagramActions(text, params.actions as never);
+            if (planned.unresolved.length === 0) {
+              return { seq: params.seq, edits: planned.edits as TextEdit[], renderHint: planned.renderHint };
+            }
+          } catch {
+            // fall through to legacy path
           }
-        } catch {
-          // fall through to legacy path
         }
         const project = parsePscx(text);
         const lines = text.split("\n");
         const allEdits: TextEdit[] = [];
+        const dropBatchState = createDropBatchState();
         let renderHint: "none" | "immediate" | "debounced" = "none";
 
         const allComponents = [
@@ -747,18 +777,35 @@ export function createPscadDiagramBackend(backends: DiagramDispatchDeps): Diagra
               }
             }
           } else if (action.type === "addComponent") {
-            const shortDef = (action.className.split(":").pop() || "Cmp").replace(/[^a-zA-Z0-9_]/g, "_");
-            const instanceId = action.name || `${shortDef}_${allComponents.length + 1}`;
-            const snippet = buildComponentXmlSnippet(action.className, instanceId, action.x, action.y);
             const insertLine = findSchematicEndLine(action.section);
-            allEdits.push({
-              range: {
-                start: { line: insertLine, character: 0 },
-                end: { line: insertLine, character: 0 },
-              },
-              newText: `${snippet}\n`,
+            const foreignEdits = computePscadComponentDropEdits({
+              docText: text,
+              rawClassName: action.className,
+              x: action.x,
+              y: action.y,
+              instanceName: action.name,
+              section: action.section,
+              hasNativeSchema: Boolean(getMasterComponentSchema(action.className)),
+              schematicEndLine: insertLine,
+              unifiedIndex,
+              batchState: dropBatchState,
             });
-            renderHint = "immediate";
+            if (foreignEdits) {
+              allEdits.push(...foreignEdits);
+              renderHint = "immediate";
+            } else {
+              const shortDef = (action.className.split(":").pop() || "Cmp").replace(/[^a-zA-Z0-9_]/g, "_");
+              const instanceId = action.name || `${shortDef}_${allComponents.length + 1}`;
+              const snippet = buildComponentXmlSnippet(action.className, instanceId, action.x, action.y);
+              allEdits.push({
+                range: {
+                  start: { line: insertLine, character: 0 },
+                  end: { line: insertLine, character: 0 },
+                },
+                newText: `${snippet}\n`,
+              });
+              renderHint = "immediate";
+            }
           } else if (action.type === "deleteComponents") {
             for (const name of action.names) {
               const strippedId = stripPrefix(name);
@@ -944,7 +991,7 @@ export function createPscadDiagramBackend(backends: DiagramDispatchDeps): Diagra
 
         return {
           seq: params.seq,
-          edits: deduplicateAndSort(allEdits),
+          edits: deduplicateAndSort(mergeCoincidentInsertEdits(allEdits)),
           renderHint,
         };
       } catch {

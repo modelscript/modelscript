@@ -197,3 +197,9 @@ msx lps simulate network.lps --duration=3600 --restart=state.sav
 # Export formal SysML v2 architectural model
 msx lps sysml network.lps -o network.sysml
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="lps" />

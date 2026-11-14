@@ -6,7 +6,21 @@
 
 import type { Verification3DOverlayPayload } from "@modelscript/cad";
 import { error, info } from "@modelscript/dsl";
-import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/runtime";
+import {
+  checkPortPlugCompatibility,
+  extractPortSignature,
+  isMemberLikeSymbol,
+  isNamespaceLikeSymbol,
+  isPortDefinitionSymbol,
+  isPortLikeSymbol,
+  isRelationshipOrImportSymbol,
+  isTypeLikeSymbol,
+  splitQualifiedPath,
+  WorkspaceTypeRegistry,
+  type QueryDB,
+  type SymbolEntry,
+  type SymbolId,
+} from "@modelscript/runtime";
 import { Cst, type SyntaxNode } from "../src-gen/bindings.js";
 import {
   AnnotationEvaluator,
@@ -24,6 +38,12 @@ interface CstNodeLike {
   type?: string;
   text?: string;
   children?: CstNodeLike[];
+}
+
+let _sharedTypeRegistry: WorkspaceTypeRegistry | undefined;
+function getSharedTypeRegistry(): WorkspaceTypeRegistry {
+  if (!_sharedTypeRegistry) _sharedTypeRegistry = new WorkspaceTypeRegistry();
+  return _sharedTypeRegistry;
 }
 
 /**
@@ -219,7 +239,25 @@ export function checkModifierNotFound(
   const elements = db.query<SymbolId[]>("instantiate", typeClassId) || [];
   for (const eid of elements) {
     const child = db.symbol(eid);
-    if (child && child.name && child.kind !== "Reference") declaredNames.add(child.name);
+    if (child && child.name && !isRelationshipOrImportSymbol(child)) declaredNames.add(child.name);
+  }
+  if (typeEntry.language && typeEntry.language !== "modelica") {
+    for (const child of db.childrenOf(typeClassId)) {
+      if (child.name && isMemberLikeSymbol(child)) {
+        declaredNames.add(child.name);
+      }
+    }
+    const collectNamedParams = (metaObj: unknown) => {
+      const m = metaObj as Record<string, unknown> | undefined;
+      const np = m?.["namedParams"];
+      if (np && typeof np === "object" && !Array.isArray(np)) {
+        for (const k of Object.keys(np as Record<string, unknown>)) {
+          declaredNames.add(k);
+        }
+      }
+    };
+    collectNamedParams(typeEntry.metadata);
+    collectNamedParams(currentEntry?.metadata);
   }
 
   // --- 3. Modifier Argument Lookup & Recursive Nested Validation ---
@@ -1025,11 +1063,16 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
   const compoundImports: Array<{ pkg: string; names: string[] }> = [];
 
   for (const child of children) {
-    if (child.kind === "Class" || child.kind === "Component" || child.kind === "EnumerationLiteral") {
+    if (
+      child.kind === "Class" ||
+      child.kind === "Component" ||
+      child.kind === "EnumerationLiteral" ||
+      (child.language && child.language !== "modelica" && (isTypeLikeSymbol(child) || isMemberLikeSymbol(child)))
+    ) {
       directByName[child.name] = child.id;
     } else if (child.kind === "Extends") {
       for (const extChild of db.childrenOf(child.id)) {
-        if (extChild.kind === "Class") {
+        if (extChild.kind === "Class" || isTypeLikeSymbol(extChild)) {
           directByName[extChild.name] = extChild.id;
         }
       }
@@ -1081,7 +1124,7 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
       }
 
       if (importKind === "simple") {
-        const shortName = aliasName ?? pkgName.split(".").pop() ?? pkgName;
+        const shortName = aliasName ?? splitQualifiedPath(pkgName).pop() ?? pkgName;
         if (shortName in qualifiedImports) {
           qualifiedImports[shortName] = "__CONFLICT__";
         } else {
@@ -1437,14 +1480,14 @@ export function resolveSimpleNameHelper(
 
   // Helper to resolve an import path, respecting local aliases for the first segment
   const resolveImportPath = (pathStr: string): SymbolEntry | null => {
-    const parts = pathStr.split(".");
+    const parts = splitQualifiedPath(pathStr);
     const first = parts[0];
-    const aliasTarget = scope.qualifiedImports[first!];
+    const aliasTarget = first ? scope.qualifiedImports[first] : undefined;
     if (aliasTarget && aliasTarget !== "__CONFLICT__") {
       const fullPath = [aliasTarget, ...parts.slice(1)].join(".");
       return resolveQualified(db, fullPath, true);
     } else {
-      return resolveQualified(db, pathStr, true);
+      return resolveQualified(db, parts.join("."), true);
     }
   };
 
@@ -1453,7 +1496,7 @@ export function resolveSimpleNameHelper(
     if (ci.names.includes(name)) {
       const pkgEntry = resolveImportPath(ci.pkg);
       if (pkgEntry) {
-        const foundEntry = db.childrenOf(pkgEntry.id).find((c) => c.name === name && c.kind !== "Reference");
+        const foundEntry = db.childrenOf(pkgEntry.id).find((c) => c.name === name && !isRelationshipOrImportSymbol(c));
         if (foundEntry) return foundEntry;
       }
     }
@@ -1466,7 +1509,7 @@ export function resolveSimpleNameHelper(
     const pkgEntry = resolveImportPath(pkg);
     if (pkgEntry) {
       for (const pkgChild of db.childrenOf(pkgEntry.id)) {
-        if (pkgChild.name === name && pkgChild.kind !== "Reference") {
+        if (pkgChild.name === name && !isRelationshipOrImportSymbol(pkgChild)) {
           unqualMatch = pkgChild;
           unqualMatchCount++;
           break;
@@ -1486,7 +1529,13 @@ export function resolveSimpleNameHelper(
     !visited.has(scope.parentId)
   ) {
     const parentEntry = db.symbol(scope.parentId);
-    if (parentEntry && (parentEntry.kind === "Class" || parentEntry.kind === "Package")) {
+    if (
+      parentEntry &&
+      (parentEntry.kind === "Class" ||
+        parentEntry.kind === "Package" ||
+        isNamespaceLikeSymbol(parentEntry) ||
+        isTypeLikeSymbol(parentEntry))
+    ) {
       const found =
         visited.size <= 1 && !skipInherited
           ? (db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", parentEntry.id)?.(name) ?? null)
@@ -1505,18 +1554,14 @@ export function resolveSimpleNameHelper(
   }
   return (
     predefined?.find((e) => (e.metadata as any)?.isPredefined) ??
-    predefined?.find(
-      (e) =>
-        (e.kind === "Class" || e.kind === "Package" || e.kind === "Function" || e.kind === "Definition") &&
-        e.parentId === null,
-    ) ??
+    predefined?.find((e) => isTypeLikeSymbol(e) && e.parentId === null) ??
     null
   );
 }
 
 /**
- * Resolves a dot-separated path from the global scope.
- * Used for resolving import targets and global fallbacks.
+ * Resolves a dot- or double-colon-separated path from the global scope.
+ * Used for resolving import targets and cross-language global fallbacks.
  */
 export function resolveQualified(db: QueryDB, path: string, topOnly = false): SymbolEntry | null {
   if (path.startsWith(".")) {
@@ -1535,7 +1580,7 @@ export function resolveQualified(db: QueryDB, path: string, topOnly = false): Sy
   if (db.ensureFQNIndexed) {
     db.ensureFQNIndexed(path);
   }
-  const parts = path.split(".");
+  const parts = splitQualifiedPath(path);
   if (parts.length === 0 || !parts[0]) return null;
 
   // Try to find the root part (entry with no parent)
@@ -1552,9 +1597,9 @@ export function resolveQualified(db: QueryDB, path: string, topOnly = false): Sy
     for (let i = 1; i < parts.length; i++) {
       const part = parts[i]!;
       const children = db.childrenOf(current.id);
-      // Prefer non-reference entries (Class, Component) over Reference entries
+      // Prefer non-relationship entries (Class, Component, Definition, Usage) over Reference/Import entries
       current =
-        children.find((c) => c.name === part && c.kind !== "Reference") ||
+        children.find((c) => c.name === part && !isRelationshipOrImportSymbol(c)) ||
         children.find((c) => c.name === part) ||
         null;
       if (!current) break;
@@ -2893,25 +2938,20 @@ export const classDefinitionQueries: Record<string, any> = {
     if (self.parentId !== null) {
       const resolve = db.query<any>("resolveName", self.parentId);
       if (resolve) baseEntry = resolve(typeName, true) as SymbolEntry | null;
-      if (!baseEntry && !typeName.includes(".")) {
+      if (!baseEntry && !typeName.includes(".") && !typeName.includes("::")) {
         const resSimple = db.query<any>("resolveSimpleName", self.parentId);
         if (resSimple) baseEntry = resSimple(typeName) as SymbolEntry | null;
       }
     }
 
     if (!baseEntry && (typeName.startsWith(".") || self.parentId === null || !isScopeEncapsulated(db, self.parentId))) {
-      if (typeName.includes(".")) {
+      if (typeName.includes(".") || typeName.includes("::")) {
         baseEntry = resolveQualified(db, typeName);
       } else {
         const entries = db.byName(typeName);
         baseEntry =
           entries?.find(
-            (e: any) =>
-              (e.metadata as Record<string, unknown>)?.["isPredefined"] ||
-              e.kind === "Class" ||
-              e.kind === "Package" ||
-              e.kind === "Function" ||
-              e.kind === "Def",
+            (e: SymbolEntry) => (e.metadata as Record<string, unknown>)?.["isPredefined"] || isTypeLikeSymbol(e),
           ) ?? null;
       }
     }
@@ -3260,7 +3300,10 @@ export const classDefinitionQueries: Record<string, any> = {
 
       for (const child of children) {
         if (
-          (child.kind === "Component" || child.kind === "Class") &&
+          (child.kind === "Component" ||
+            child.kind === "Class" ||
+            isMemberLikeSymbol(child) ||
+            isTypeLikeSymbol(child)) &&
           ((child.metadata as Record<string, unknown>)?.["redeclare"] || db.query<boolean>("isRedeclare", child.id))
         ) {
           redeclaredNames.add(child.name);
@@ -3311,6 +3354,9 @@ export const classDefinitionQueries: Record<string, any> = {
    * Check if this class is a connector type.
    */
   isConnector: (db: QueryDB, self: SymbolEntry) => {
+    if (isPortDefinitionSymbol(self)) {
+      return true;
+    }
     const meta = self.metadata as Record<string, unknown> | undefined;
     if (meta?.["isConnector"] === true) {
       return true;
@@ -3733,7 +3779,7 @@ export const classDefinitionQueries: Record<string, any> = {
       const cached = cache.get(key);
       if (cached !== undefined) return cached;
 
-      const parts = qualifiedName.split(".");
+      const parts = splitQualifiedPath(qualifiedName);
       if (parts.length === 0) {
         return null;
       }
@@ -3742,15 +3788,10 @@ export const classDefinitionQueries: Record<string, any> = {
         // Handle fully qualified names (e.g. .Modelica.Math.sin)
         let startIndex = 0;
         let initial: SymbolEntry | null = null;
-        if (parts[0] === "") {
-          if (parts.length < 2) return null;
-          initial =
-            db
-              .byName(parts[1]!)
-              ?.find(
-                (e) => e.parentId === null && (e.kind === "Class" || e.kind === "Package" || e.kind === "Function"),
-              ) ?? null;
-          startIndex = 2;
+        if (qualifiedName.trim().startsWith(".")) {
+          if (parts.length < 1) return null;
+          initial = db.byName(parts[0]!)?.find((e) => e.parentId === null && isTypeLikeSymbol(e)) ?? null;
+          startIndex = 1;
         } else {
           // Resolve first part via scope resolution
           const resolver = db.query<(n: string, enc?: boolean, skip?: boolean, mem?: boolean) => SymbolEntry | null>(
@@ -3799,8 +3840,8 @@ export const classDefinitionQueries: Record<string, any> = {
 
       let result = tryResolve();
       if (!result && db.ensureFQNIndexed) {
-        if (qualifiedName.includes(".")) {
-          db.ensureFQNIndexed(qualifiedName.startsWith(".") ? qualifiedName.slice(1) : qualifiedName);
+        if (qualifiedName.includes(".") || qualifiedName.includes("::")) {
+          db.ensureFQNIndexed(parts.join("."));
         }
         let enc: SymbolEntry | null = self;
         while (enc) {
@@ -4354,8 +4395,30 @@ export const componentDeclarationQueries: Record<string, any> = {
       return specArgs.data.redeclaredTypeSpecifier;
     }
     const meta = self.metadata as Record<string, unknown> | undefined;
-    if (meta?.["typeSpecifier"] && typeof meta["typeSpecifier"] === "string") {
-      return meta["typeSpecifier"].trim();
+    const directMeta = meta?.["typeSpecifier"] ?? meta?.["type_specifier"] ?? meta?.["typeName"];
+    if (typeof directMeta === "string" && directMeta.trim()) {
+      return directMeta.trim();
+    }
+    if (self.language && self.language !== "modelica") {
+      for (const child of db.childrenOf(self.id)) {
+        if (
+          child.ruleName === "OwnedFeatureTyping" ||
+          child.ruleName === "FeatureTyping" ||
+          child.ruleName === "ConjugatedPortTyping" ||
+          child.kind === "OwnedFeatureTyping" ||
+          child.kind === "FeatureTyping" ||
+          child.kind === "ConjugatedPortTyping"
+        ) {
+          const cmeta = child.metadata as Record<string, unknown> | undefined;
+          const raw =
+            (typeof cmeta?.["typeName"] === "string" && cmeta["typeName"]) ||
+            (typeof cmeta?.["target"] === "string" && cmeta["target"]) ||
+            (typeof child.name === "string" && child.name && !child.name.startsWith("<") ? child.name : "");
+          const cleaned = raw.trim().replace(/^~\s*/, "");
+          if (cleaned) return cleaned;
+        }
+      }
+      return null;
     }
     const cstNode = db.cstNode(self.id);
     let current = cstNode as any;
@@ -4372,33 +4435,20 @@ export const componentDeclarationQueries: Record<string, any> = {
    * Resolve the type specifier to the class it references.
    */
   resolvedType: (db: QueryDB, self: SymbolEntry) => {
-    const specArgs = db.argsOf<import("./modifications.js").ModelicaModArgs>(self.id);
-    let typeName = "";
-
-    if (specArgs?.data?.isRedeclaration && specArgs.data.redeclaredTypeSpecifier) {
-      typeName = specArgs.data.redeclaredTypeSpecifier;
-    } else {
-      const selfMeta = self.metadata as Record<string, unknown> | undefined;
-      typeName = String(selfMeta?.["typeSpecifier"] ?? selfMeta?.["type_specifier"] ?? "").trim();
-      if (!typeName) {
-        const cstNode = db.cstNode(self.id);
-        let current = cstNode as any;
-        while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
-          current = current.parent;
-        }
-        const typeSpecNode =
-          Cst.ComponentClause.typeSpecifier(current) ??
-          current?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
-        typeName = typeSpecNode?.text ?? "";
-      }
-    }
+    const typeName = db.query<string | null>("typeSpecifier", self.id)?.trim() ?? "";
 
     if (!typeName || typeof typeName !== "string") return null;
 
     // Try resolution from parent scope
     if (self.parentId !== null) {
       const parentEntry = db.symbol(self.parentId);
-      if (parentEntry && (parentEntry.kind === "Class" || parentEntry.kind === "Package")) {
+      if (
+        parentEntry &&
+        (parentEntry.kind === "Class" ||
+          parentEntry.kind === "Package" ||
+          isNamespaceLikeSymbol(parentEntry) ||
+          isTypeLikeSymbol(parentEntry))
+      ) {
         const qualResolver = db.query<(n: string) => SymbolEntry | null>("resolveName", parentEntry.id);
         if (qualResolver) {
           const resolved = qualResolver(typeName);
@@ -4408,16 +4458,18 @@ export const componentDeclarationQueries: Record<string, any> = {
     }
 
     // Fallback: global lookup — try full qualified name first, then simple name
-    if (typeName.includes(".")) {
+    if (typeName.includes(".") || typeName.includes("::")) {
+      const qual = resolveQualified(db, typeName);
+      if (qual) return qual;
       const entries = db.byName(typeName);
-      const found = entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function");
+      const found = entries?.find((e) => isTypeLikeSymbol(e));
       if (found) return found;
     }
-    const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
+    const simpleName = splitQualifiedPath(typeName).pop() ?? typeName;
     const entries = db.byName(simpleName);
     return (
       entries?.find((e) => (e.metadata as Record<string, unknown>)?.["isPredefined"] && e.kind === "Class") ??
-      entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ??
+      entries?.find((e) => isTypeLikeSymbol(e)) ??
       null
     );
   },
@@ -4832,9 +4884,15 @@ export const componentDeclarationQueries: Record<string, any> = {
         : self.parentId;
     if (scopeId !== null) {
       const parentEntry = db.symbol(scopeId);
-      if (parentEntry && (parentEntry.kind === "Class" || parentEntry.kind === "Package")) {
-        // Use resolveName for qualified (dotted) names, resolveSimpleName for simple names
-        if (typeName.includes(".")) {
+      if (
+        parentEntry &&
+        (parentEntry.kind === "Class" ||
+          parentEntry.kind === "Package" ||
+          isNamespaceLikeSymbol(parentEntry) ||
+          isTypeLikeSymbol(parentEntry))
+      ) {
+        // Use resolveName for qualified paths, resolveSimpleName for simple names
+        if (typeName.includes(".") || typeName.includes("::")) {
           const qualResolver = db.query<(n: string) => SymbolEntry | null>("resolveName", parentEntry.id);
           if (qualResolver) {
             typeEntry = qualResolver(typeName);
@@ -4852,8 +4910,14 @@ export const componentDeclarationQueries: Record<string, any> = {
     }
     if (!typeEntry && self.parentId !== null && self.parentId !== scopeId && !specArgs?.data?.isRedeclaration) {
       const declParent = db.symbol(self.parentId);
-      if (declParent && (declParent.kind === "Class" || declParent.kind === "Package")) {
-        if (typeName.includes(".")) {
+      if (
+        declParent &&
+        (declParent.kind === "Class" ||
+          declParent.kind === "Package" ||
+          isNamespaceLikeSymbol(declParent) ||
+          isTypeLikeSymbol(declParent))
+      ) {
+        if (typeName.includes(".") || typeName.includes("::")) {
           const qualResolver = db.query<(n: string) => SymbolEntry | null>("resolveName", declParent.id);
           if (qualResolver) {
             typeEntry = qualResolver(typeName);
@@ -4872,7 +4936,7 @@ export const componentDeclarationQueries: Record<string, any> = {
     const isEncapsulatedScope = scopeId !== null ? isScopeEncapsulated(db, scopeId) : false;
     if (isEncapsulatedScope) {
       if (!typeEntry) {
-        const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
+        const simpleName = splitQualifiedPath(typeName).pop() ?? typeName;
         const entries = db.byName(simpleName);
         typeEntry =
           entries?.find((e) => (e.metadata as Record<string, unknown>)?.["isPredefined"] && e.kind === "Class") ?? null;
@@ -4882,22 +4946,19 @@ export const componentDeclarationQueries: Record<string, any> = {
     }
 
     // Fallback: global lookup — try full qualified name first, then simple name
-    if (!typeEntry && typeName.includes(".")) {
+    if (!typeEntry && (typeName.includes(".") || typeName.includes("::"))) {
       typeEntry = resolveQualified(db, typeName);
     }
     if (!typeEntry) {
-      const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
+      const simpleName = splitQualifiedPath(typeName).pop() ?? typeName;
       const entries = db.byName(simpleName);
-      // Prefer predefined types (Real, Integer, etc.), or top-level classes for unqualified names.
+      // Prefer predefined types (Real, Integer, etc.), or top-level types across Modelica & foreign languages
       typeEntry =
         entries?.find((e) => (e.metadata as Record<string, unknown>)?.["isPredefined"] && e.kind === "Class") ??
-        (!typeName.includes(".")
+        (!typeName.includes(".") && !typeName.includes("::")
           ? (entries?.find(
               (e) => e.parentId === null && (e.metadata as Record<string, unknown>)?.["classPrefixes"] === "type",
-            ) ??
-            entries?.find(
-              (e) => e.parentId === null && (e.kind === "Class" || e.kind === "Package" || e.kind === "Function"),
-            ))
+            ) ?? entries?.find((e) => e.parentId === null && isTypeLikeSymbol(e)))
           : null) ??
         null;
     }
@@ -5564,7 +5625,7 @@ export const componentDeclarationQueries: Record<string, any> = {
     if (typeClassId) return null;
 
     if (self.parentId !== null) {
-      if (baseType.includes(".")) {
+      if (baseType.includes(".") || baseType.includes("::")) {
         const qualResolver = db.query<(n: string) => SymbolEntry | null>("resolveName", self.parentId);
         if (qualResolver && qualResolver(baseType)) return null;
       } else {
@@ -5573,7 +5634,7 @@ export const componentDeclarationQueries: Record<string, any> = {
       }
     }
 
-    if (baseType.includes(".")) {
+    if (baseType.includes(".") || baseType.includes("::")) {
       const resolved = resolveQualified(db, baseType);
       if (resolved) return null;
     } else {
@@ -5584,7 +5645,8 @@ export const componentDeclarationQueries: Record<string, any> = {
           e.kind === "Class" ||
           e.kind === "Package" ||
           e.kind === "Function" ||
-          e.kind === "Def",
+          e.kind === "Def" ||
+          isTypeLikeSymbol(e),
       );
       if (found) return null;
     }
@@ -5907,7 +5969,7 @@ export const shortClassSpecifierQueries: Record<string, any> = {
       if (cached !== undefined) return cached;
 
       const compute = (): SymbolEntry | null => {
-        const parts = name.split(".");
+        const parts = splitQualifiedPath(name);
         if (parts.length > 1 && parts[0]) {
           const simpleNameResolver = db.query<any>("resolveSimpleName", self.id);
           let current: SymbolEntry | null = simpleNameResolver ? simpleNameResolver(parts[0], encapsulated) : null;
@@ -6000,7 +6062,7 @@ export const connectEquationQueries: Record<string, any> = {
     const parentClassName = parentEntry?.name ?? "";
 
     const resolveEndpoint = (refText: string) => {
-      const rawSegments = refText.split(".");
+      const rawSegments = splitQualifiedPath(refText);
       let currentClassId: SymbolId = parentClassId;
       let currentEntry: SymbolEntry | null = null;
       let isInsideExpandable = false;
@@ -6042,18 +6104,24 @@ export const connectEquationQueries: Record<string, any> = {
         }
 
         currentEntry = found;
-        if (found.kind === "Component") {
+        const isForeignMember = Boolean(found.language && found.language !== "modelica" && isMemberLikeSymbol(found));
+        const isForeignPort = Boolean(found.language && found.language !== "modelica" && isPortLikeSymbol(found));
+        if (found.kind === "Component" || isForeignMember) {
           const nextClassId = db.query<SymbolId | null>("classInstance", found.id);
+          let isInlineForeignPort = false;
           if (!nextClassId) {
             let typeName = String(
-              (found.metadata as any)?.typeSpecifier ?? (found.metadata as any)?.type_specifier ?? "",
+              found.metadata?.["typeSpecifier"] ??
+                found.metadata?.["type_specifier"] ??
+                found.metadata?.["typeName"] ??
+                (isForeignMember ? (db.query<string | null>("typeSpecifier", found.id) ?? "") : ""),
             ).trim();
-            if (!typeName) {
-              let cur = db.cstNode(found.id) as any;
+            if (!typeName && (!found.language || found.language === "modelica")) {
+              let cur = db.cstNode(found.id) as SyntaxNode | null | undefined;
               while (cur && cur.type !== "ComponentClause" && cur.type !== "component_clause") {
                 cur = cur.parent;
               }
-              typeName = Cst.ComponentClause.typeSpecifier(cur)?.text?.trim() ?? "";
+              typeName = cur ? (Cst.ComponentClause.typeSpecifier(cur)?.text?.trim() ?? "") : "";
             }
             const isBuiltinNonConnector =
               typeName === "Real" ||
@@ -6063,18 +6131,34 @@ export const connectEquationQueries: Record<string, any> = {
               typeName === "Clock" ||
               typeName === "StateSelect" ||
               typeName === "AssertionLevel" ||
-              typeName === "ExternalObject";
-            if (!isBuiltinNonConnector || i < rawSegments.length - 1) {
+              typeName === "ExternalObject" ||
+              Boolean(
+                found.language &&
+                found.language !== "modelica" &&
+                getSharedTypeRegistry().toCanonicalPrimitive(found.language, typeName) !== null,
+              );
+            isInlineForeignPort = isForeignPort && (!typeName || isBuiltinNonConnector);
+            if ((!isBuiltinNonConnector && !isInlineForeignPort) || i < rawSegments.length - 1) {
               const fullMissing = rawSegments.slice(0, i + 1).join(".");
               return { resolved: false, unresolvableType: true, missingSegment: fullMissing, missingSegmentIndex: i };
             }
           }
-          const isC = nextClassId ? db.query<boolean>("isConnector", nextClassId) || false : false;
+          const isC =
+            (nextClassId ? db.query<boolean>("isConnector", nextClassId) || false : false) || isInlineForeignPort;
           compConnectors.push(isC);
           if (i < rawSegments.length - 1 && nextClassId) {
             currentClassId = nextClassId;
           }
-        } else if (found.kind === "Class" || found.kind === "Package") {
+        } else if (
+          found.kind === "Class" ||
+          found.kind === "Package" ||
+          Boolean(
+            found.language &&
+            found.language !== "modelica" &&
+            (isTypeLikeSymbol(found) || isNamespaceLikeSymbol(found)) &&
+            !isMemberLikeSymbol(found),
+          )
+        ) {
           if (i < rawSegments.length - 1) {
             currentClassId = found.id;
           }
@@ -6088,14 +6172,32 @@ export const connectEquationQueries: Record<string, any> = {
 
       if (!currentEntry) return { resolved: false, missingSegment: refText, missingSegmentIndex: 0 };
 
+      const currentIsForeignPort = Boolean(
+        currentEntry.language &&
+        currentEntry.language !== "modelica" &&
+        isPortLikeSymbol(currentEntry) &&
+        isMemberLikeSymbol(currentEntry),
+      );
       let typeClassId: SymbolId | null = null;
-      if (currentEntry.kind === "Component") {
+      if (
+        currentEntry.kind === "Component" ||
+        Boolean(currentEntry.language && currentEntry.language !== "modelica" && isMemberLikeSymbol(currentEntry))
+      ) {
         typeClassId = db.query<SymbolId | null>("classInstance", currentEntry.id);
-      } else if (currentEntry.kind === "Class") {
+      } else if (
+        currentEntry.kind === "Class" ||
+        Boolean(
+          currentEntry.language &&
+          currentEntry.language !== "modelica" &&
+          isTypeLikeSymbol(currentEntry) &&
+          !isMemberLikeSymbol(currentEntry),
+        )
+      ) {
         typeClassId = currentEntry.id;
       }
 
-      const isConn = typeClassId ? db.query<boolean>("isConnector", typeClassId) || false : false;
+      const isConn =
+        (typeClassId ? db.query<boolean>("isConnector", typeClassId) || false : false) || currentIsForeignPort;
       const isExp = typeClassId ? db.query<boolean>("isExpandableConnector", typeClassId) || false : false;
       const invalidForm = compConnectors.length >= 2 && !compConnectors[0] && !compConnectors[1];
 
@@ -6274,7 +6376,14 @@ export const connectEquationQueries: Record<string, any> = {
         return diags;
       }
 
-      if (lhsRes.entry?.kind === "Class" && lhsRes.isConnector) {
+      if (
+        lhsRes.entry &&
+        (lhsRes.entry.kind === "Class" ||
+          (lhsRes.entry.language !== "modelica" &&
+            isTypeLikeSymbol(lhsRes.entry) &&
+            !isMemberLikeSymbol(lhsRes.entry))) &&
+        lhsRes.isConnector
+      ) {
         diags.push(
           error(ModelicaErrorCode.CARDINALITY_EXPECTED_COMPONENT.message(lhsText), {
             ...getRange(lhsNode),
@@ -6283,7 +6392,14 @@ export const connectEquationQueries: Record<string, any> = {
         );
         return diags;
       }
-      if (rhsRes.entry?.kind === "Class" && rhsRes.isConnector) {
+      if (
+        rhsRes.entry &&
+        (rhsRes.entry.kind === "Class" ||
+          (rhsRes.entry.language !== "modelica" &&
+            isTypeLikeSymbol(rhsRes.entry) &&
+            !isMemberLikeSymbol(rhsRes.entry))) &&
+        rhsRes.isConnector
+      ) {
         diags.push(
           error(ModelicaErrorCode.CARDINALITY_EXPECTED_COMPONENT.message(rhsText), {
             ...getRange(rhsNode),
@@ -6337,6 +6453,49 @@ export const connectEquationQueries: Record<string, any> = {
     // 4. Standard connector plug-compatibility (M3003, M5004)
     if (lhsRes.isInsideExpandable || rhsRes.isInsideExpandable) {
       return null;
+    }
+
+    const lhsTypeEntry = (lhsRes.typeClassId ? db.symbol(lhsRes.typeClassId) : null) ?? null;
+    const rhsTypeEntry = (rhsRes.typeClassId ? db.symbol(rhsRes.typeClassId) : null) ?? null;
+    const isCrossLangConnect =
+      Boolean(lhsRes.entry?.language && lhsRes.entry.language !== "modelica") ||
+      Boolean(rhsRes.entry?.language && rhsRes.entry.language !== "modelica") ||
+      Boolean(lhsTypeEntry?.language && lhsTypeEntry.language !== "modelica") ||
+      Boolean(rhsTypeEntry?.language && rhsTypeEntry.language !== "modelica");
+
+    if (isCrossLangConnect) {
+      const lhsPortEntry = lhsRes.entry ?? lhsTypeEntry;
+      const rhsPortEntry = rhsRes.entry ?? rhsTypeEntry;
+      if (lhsPortEntry && rhsPortEntry) {
+        const registry = getSharedTypeRegistry();
+        let lhsSig = extractPortSignature(db, lhsPortEntry, { registry });
+        if ((!lhsSig || lhsSig.variables.length === 0) && lhsTypeEntry && lhsTypeEntry.id !== lhsPortEntry.id) {
+          const typeSig = extractPortSignature(db, lhsTypeEntry, { registry });
+          if (typeSig && typeSig.variables.length > 0) lhsSig = typeSig;
+        }
+        let rhsSig = extractPortSignature(db, rhsPortEntry, { registry });
+        if ((!rhsSig || rhsSig.variables.length === 0) && rhsTypeEntry && rhsTypeEntry.id !== rhsPortEntry.id) {
+          const typeSig = extractPortSignature(db, rhsTypeEntry, { registry });
+          if (typeSig && typeSig.variables.length > 0) rhsSig = typeSig;
+        }
+        if (lhsSig && rhsSig) {
+          const compat = checkPortPlugCompatibility(lhsSig, rhsSig, registry);
+          if (!compat.compatible) {
+            diags.push(
+              error(
+                ModelicaErrorCode.NOT_PLUG_COMPATIBLE.message(lhsText, rhsText) +
+                  (compat.reason ? ` (${compat.reason})` : ""),
+                {
+                  ...getRange(cst),
+                  code: ModelicaErrorCode.NOT_PLUG_COMPATIBLE.code,
+                },
+              ),
+            );
+            return diags;
+          }
+          return null;
+        }
+      }
     }
 
     // 4. Standard connector plug-compatibility (M3003, M5004)
@@ -6507,6 +6666,9 @@ export const modelicaQueryHooks = new Map<string, Record<string, any>>([
   ["ConnectEquation", connectEquationQueries],
   ["@kind:Class", foreignClassQueries],
   ["@kind:Package", foreignClassQueries],
+  ["@kind:Definition", foreignClassQueries],
+  ["@kind:Port", foreignClassQueries],
   ["@kind:Component", foreignComponentQueries],
   ["@kind:Variable", foreignComponentQueries],
+  ["@kind:Usage", foreignComponentQueries],
 ]);

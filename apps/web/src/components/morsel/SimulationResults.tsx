@@ -809,11 +809,9 @@ export function SimulationResults({
               borderRadius: "6px",
               fontSize: "12px",
               fontWeight: 600,
-              background: showIeee2800
-                ? "var(--color-accent-emphasis, #1f6feb)"
-                : "var(--color-canvas-subtle, #161b22)",
-              color: "#ffffff",
-              border: "1px solid var(--color-border-default, #30363d)",
+              background: showIeee2800 ? "var(--ms-brand)" : "var(--bgColor-muted, var(--ms-bg-elv))",
+              color: showIeee2800 ? "#ffffff" : "var(--fgColor-default, var(--ms-text))",
+              border: "1px solid var(--borderColor-default, var(--ms-border))",
               cursor: "pointer",
             }}
           >

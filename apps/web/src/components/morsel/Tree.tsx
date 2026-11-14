@@ -222,7 +222,7 @@ function setDragPreview(e: React.DragEvent, iconSvg: string | null | undefined, 
   ghost.style.justifyContent = "center";
   ghost.style.backgroundColor = "rgba(255, 255, 255, 0.95)";
   ghost.style.borderRadius = "8px";
-  ghost.style.border = "1.5px solid #0969da";
+  ghost.style.border = "1.5px solid var(--ms-brand, #0891b2)";
   ghost.style.boxShadow = "0 6px 16px rgba(0, 0, 0, 0.25)";
   ghost.style.pointerEvents = "none";
   ghost.style.zIndex = "999999";
@@ -244,7 +244,7 @@ function setDragPreview(e: React.DragEvent, iconSvg: string | null | undefined, 
     const label = document.createElement("div");
     label.style.fontSize = "10px";
     label.style.fontWeight = "bold";
-    label.style.color = "#0969da";
+    label.style.color = "var(--ms-brand, #0891b2)";
     label.style.textAlign = "center";
     label.style.lineHeight = "1.1";
     label.textContent = className.split(".").pop() || className;

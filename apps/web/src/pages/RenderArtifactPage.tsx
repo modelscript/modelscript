@@ -295,7 +295,7 @@ export default function RenderArtifactPage() {
               style={{
                 fontSize: "13px",
                 fontWeight: 600,
-                color: "var(--color-accent-fg, #0969da)",
+                color: "var(--ms-accent, var(--color-accent-fg))",
                 textDecoration: "none",
               }}
             >

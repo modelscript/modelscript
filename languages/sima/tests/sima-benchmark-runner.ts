@@ -62,9 +62,7 @@ export interface SimaBenchmarkMetrics {
   daeEqCount: number;
 }
 
-export function runSimaBenchmark(
-  deckContent = SIMA_OC4_SEMI_BENCHMARK_DECK,
-): SimaBenchmarkMetrics {
+export function runSimaBenchmark(deckContent = SIMA_OC4_SEMI_BENCHMARK_DECK): SimaBenchmarkMetrics {
   const model: SimaModel = parseCardDeck(deckContent);
 
   assert.equal(model.vessels.length, 1);
@@ -135,6 +133,34 @@ export function runSimaBenchmark(
     daeEqCount: eqCount,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const simaBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "sima",
+  referenceTool: "SINTEF SIMA / DNV-OS-E301 OC4 Semi-Submersible",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runSimaBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "oc4-semi-submersible-cummins-dnv",
+        name: "oc4-semi-submersible-cummins-dnv",
+        scale: "standard",
+        referenceTool: "SINTEF SIMA / DNV-OS-E301 OC4 Semi-Submersible",
+        passed: m.dnvCompliancePassed && m.minSafetyFactor >= 1.67 && m.daeVarCount > 20,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.daeEqCount,
+        threshold: 0,
+        details: `SF=${m.minSafetyFactor.toFixed(2)}, ${m.daeVarCount} vars/${m.daeEqCount} eqs`,
+      },
+    ];
+  },
+};
 
 if (process.argv[1]?.endsWith("sima-benchmark-runner.ts")) {
   const m = runSimaBenchmark();

@@ -80,6 +80,19 @@ function getBenchmarkReferencedSlugs(): Set<string> {
 
 const BENCHMARK_REFERENCED_SLUGS = getBenchmarkReferencedSlugs();
 
+function collectTsSources(dir: string, chunks: string[] = []): string[] {
+  if (!fs.existsSync(dir)) return chunks;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      collectTsSources(full, chunks);
+    } else if (entry.name.endsWith(".ts")) {
+      chunks.push(fs.readFileSync(full, "utf-8"));
+    }
+  }
+  return chunks;
+}
+
 /**
  * Analyzes a single language package against the 6 pillars.
  */
@@ -97,6 +110,7 @@ export function auditLanguage(slug: string): LanguageAuditResult {
 
   const testsDir = path.join(langDir, "tests");
   const srcDir = path.join(langDir, "src");
+  const combinedSrc = collectTsSources(srcDir).join("\n");
 
   // Determine domain kind
   let domainKind: "simulation" | "cad" | "semantic" | "container" = "simulation";
@@ -149,6 +163,7 @@ export function auditLanguage(slug: string): LanguageAuditResult {
     fs.existsSync(path.join(srcDir, "parser")) ||
     fs.existsSync(path.join(srcDir, "parser.ts")) ||
     fs.existsSync(path.join(srcDir, "grammar.ts")) ||
+    fs.existsSync(path.join(srcDir, "dialects")) ||
     fs.existsSync(path.join(langDir, "grammar.dsl")) ||
     fs.existsSync(path.join(langDir, "src-gen"));
   const hasParserTests =
@@ -157,6 +172,7 @@ export function auditLanguage(slug: string): LanguageAuditResult {
   // Pillar 2: Diagnostics & Linter
   const hasLinter =
     fs.existsSync(path.join(srcDir, "lints")) ||
+    fs.existsSync(path.join(srcDir, "lints.ts")) ||
     fs.existsSync(path.join(srcDir, "linter.ts")) ||
     fs.existsSync(path.join(srcDir, "linter")) ||
     fs.existsSync(path.join(srcDir, "diagnostics.ts")) ||
@@ -192,21 +208,28 @@ export function auditLanguage(slug: string): LanguageAuditResult {
     CORE_FOUNDATIONAL_LANGUAGES.has(slug);
 
   const hasToleranceCheck =
-    /rmse|tolerance|relativeError|maxRelErr|residual|drift|converge|error/i.test(combinedTests) ||
-    BENCHMARK_REFERENCED_SLUGS.has(slug) ||
-    CORE_FOUNDATIONAL_LANGUAGES.has(slug);
+    /rmse|nrmse|tolerance|relativeError|maxRelErr|absErr|relErr|residual|drift|converge|within|toBeCloseTo|Math\.abs\([\s\S]{1,120}?\)\s*<=?/i.test(
+      combinedTests,
+    ) ||
+    CORE_FOUNDATIONAL_LANGUAGES.has(slug) ||
+    CONTAINER_LANGUAGES.has(slug);
 
   // Pillar 4: Domain Lowering & Solvability
   let hasDomainLowering = false;
   let hasDomainLoweringTests = false;
 
   if (domainKind === "cad") {
-    hasDomainLowering =
+    const hasCadModule =
       fs.existsSync(path.join(srcDir, "cad")) ||
       fs.existsSync(path.join(srcDir, "csg")) ||
       fs.existsSync(path.join(srcDir, "brep")) ||
       fs.existsSync(path.join(srcDir, "geometry.ts")) ||
+      fs.existsSync(path.join(srcDir, "cae-mesher.ts")) ||
+      fs.existsSync(path.join(srcDir, "topology")) ||
+      fs.existsSync(path.join(srcDir, "step-bridge")) ||
       Boolean(pkg.dependencies?.["@modelscript/cad"]);
+    const emitsCadOrLowering = /tessellate|mesher|addEquation|lower.*ToDae|toStep|geometry|brep/i.test(combinedSrc);
+    hasDomainLowering = hasCadModule && emitsCadOrLowering;
     hasDomainLoweringTests =
       testFiles.some((f) => f.includes("cad") || f.includes("csg") || f.includes("geometry") || f.includes("dae")) ||
       /cad|csg|brep|geometry|lower.*ToDae/i.test(combinedTests);
@@ -224,18 +247,26 @@ export function auditLanguage(slug: string): LanguageAuditResult {
     hasDomainLowering = true;
     hasDomainLoweringTests = true;
   } else {
-    // Simulation / DAE
-    hasDomainLowering =
+    // Simulation / DAE: require actual solver/equation lowering implementation in src/, not empty directories
+    const hasLoweringDirOrFile =
       fs.existsSync(path.join(srcDir, "dae")) ||
       fs.existsSync(path.join(srcDir, "flattener.ts")) ||
       fs.existsSync(path.join(srcDir, "flattener")) ||
       fs.existsSync(path.join(srcDir, "compiler.ts")) ||
       fs.existsSync(path.join(srcDir, "solvers")) ||
-      fs.existsSync(path.join(srcDir, "solver.ts"));
+      fs.existsSync(path.join(srcDir, "solver")) ||
+      fs.existsSync(path.join(srcDir, "solver.ts")) ||
+      fs.existsSync(path.join(srcDir, "emt-solver.ts")) ||
+      fs.existsSync(path.join(srcDir, "physics")) ||
+      fs.existsSync(path.join(srcDir, "kinematics")) ||
+      fs.existsSync(path.join(srcDir, "mesh")) ||
+      fs.existsSync(path.join(srcDir, "projections"));
+    const emitsEquationsOrSolves =
+      /addEquation|EmtSolver|simulateDriftFlux|flattenArena|solve|simulate|compile|lower.*ToDae/i.test(combinedSrc);
+    hasDomainLowering = hasLoweringDirOrFile && emitsEquationsOrSolves;
     hasDomainLoweringTests =
       testFiles.some((f) => f.includes("dae") || f.includes("solver") || f.includes("compiler")) ||
-      /DAEBuilder|lower.*ToDae|flattenArena|simulate|solve/i.test(combinedTests) ||
-      BENCHMARK_REFERENCED_SLUGS.has(slug);
+      /DAEBuilder|lower.*ToDae|flattenArena|simulate|solve/i.test(combinedTests);
   }
 
   // Pillar 5: Zero-Allocation Arena Architecture
@@ -261,10 +292,13 @@ export function auditLanguage(slug: string): LanguageAuditResult {
   const gaps: string[] = [];
   const isFoundational = CORE_FOUNDATIONAL_LANGUAGES.has(slug);
 
-  if (!hasDomainLoweringTests) gaps.push(`Missing domain lowering tests (${domainKind})`);
+  if (!hasParser || !hasParserTests) gaps.push("Missing parser grammar or parser tests");
+  if (!hasDomainLowering || !hasDomainLoweringTests) gaps.push(`Missing domain lowering or tests (${domainKind})`);
   if (!hasBenchmark) gaps.push("Missing reference benchmark suite");
-  if (!hasLinterTests) gaps.push("Missing negative linter / diagnostic tests");
-  if (!hasLspTests) gaps.push("Missing Language Server Protocol (LSP) tests");
+  if (domainKind === "simulation" && !hasToleranceCheck && !isFoundational)
+    gaps.push("Missing numerical tolerance / residual / convergence assertions");
+  if (!hasLinter || !hasLinterTests) gaps.push("Missing negative linter / diagnostic tests");
+  if (!hasLsp || !hasLspTests) gaps.push("Missing Language Server Protocol (LSP) or tests");
   if (testFileCount < 5 && !isFoundational)
     gaps.push(`Test file count (${testFileCount}) below Beta threshold (min 5 required)`);
   if (testFileCount < 8 && !isFoundational)
@@ -276,14 +310,27 @@ export function auditLanguage(slug: string): LanguageAuditResult {
     auditedTier = "stable";
   } else if (
     testFileCount >= 8 &&
+    hasParser &&
+    hasParserTests &&
+    hasDomainLowering &&
     hasDomainLoweringTests &&
     hasBenchmark &&
+    (domainKind !== "simulation" || hasToleranceCheck) &&
+    hasLinter &&
     hasLinterTests &&
+    hasLsp &&
     hasLspTests &&
     usesRuntimeArena
   ) {
     auditedTier = "stable";
-  } else if (testFileCount >= 5 && hasDomainLoweringTests && hasBenchmark && usesRuntimeArena) {
+  } else if (
+    testFileCount >= 5 &&
+    hasParser &&
+    hasDomainLowering &&
+    hasDomainLoweringTests &&
+    hasBenchmark &&
+    usesRuntimeArena
+  ) {
     auditedTier = "beta";
   } else {
     auditedTier = "preview";
@@ -317,7 +364,7 @@ export function auditLanguage(slug: string): LanguageAuditResult {
 }
 
 /**
- * Runs the audit across all 81 languages in languages/.
+ * Runs the audit across all 93 languages in languages/.
  */
 export function auditAllLanguages(): LanguageAuditResult[] {
   const languagesDir = path.join(REPO_ROOT, "languages");

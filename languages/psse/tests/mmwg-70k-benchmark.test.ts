@@ -4,6 +4,7 @@ import * as assert from "node:assert";
 import test from "node:test";
 import { generate70kEasternInterconnectionCase } from "../src/benchmarking/accc-benchmarker.js";
 import { runMmwg70kBenchmark } from "../src/benchmarking/mmwg-70k.js";
+import { solveMultiIslandPowerFlow } from "../src/solver/island-solver.js";
 
 test("MMWG 70,000-Bus: System topology & scale verification", () => {
   const grid = generate70kEasternInterconnectionCase();
@@ -25,8 +26,11 @@ test("MMWG 70,000-Bus: Turnkey benchmark solve, ACCC screening & HTML export", a
   assert.strictEqual(res.accc.totalContingencies, 15);
   assert.ok(res.powerFlow.converged, "Base power flow must converge");
   assert.ok(res.powerFlow.memoryRssMb > 0, "Must record memory footprint");
-  assert.ok(res.comparisonVsSota.speedupFactor > 5.0, "Speedup factor must exceed 5.0x");
-  assert.strictEqual(res.comparisonVsSota.parityStatus, "PASS");
+  assert.strictEqual(res.comparisonVsSota.parityStatus, "UNVERIFIED");
+  assert.strictEqual(res.comparisonVsSota.speedupFactor, null);
+  assert.strictEqual(res.comparisonVsSota.sotaWallClockMs, null);
+  assert.strictEqual(res.comparisonVsSota.memoryRatioVsSota, null);
+  assert.strictEqual(res.comparisonVsSota.theilTic, null);
 
   // Verify PSS/E Tabulated CSV format
   assert.ok(res.psseTabulatedCsv.includes("CONTINGENCY LABEL,STATUS,ITERATIONS,MAX % LOADING"));
@@ -36,4 +40,24 @@ test("MMWG 70,000-Bus: Turnkey benchmark solve, ACCC screening & HTML export", a
   // Verify HTML Dashboard
   assert.ok(res.htmlDashboard, "Must generate self-contained HTML dashboard");
   assert.ok(res.htmlDashboard.includes("70,000-Bus US Eastern Interconnection"));
+  assert.ok(res.htmlDashboard.includes("UNVERIFIED"));
+
+  // Verify real SOTA comparison calculation when caller provides external reference
+  const refSol = solveMultiIslandPowerFlow(generate70kEasternInterconnectionCase(), {
+    maxIterations: 30,
+    tolerance: 1e-4,
+  });
+  const refTrace = refSol.buses.slice(0, 100).map((b) => b.vm);
+  const verified = await runMmwg70kBenchmark({
+    numContingencies: 5,
+    generateHtml: false,
+    referenceTrace: refTrace,
+    referenceWallClockMs: 5000.0,
+    referenceMemoryMb: 2500.0,
+    referenceTool: "External Reference",
+  });
+  assert.strictEqual(verified.comparisonVsSota.parityStatus, "PASS");
+  assert.ok((verified.comparisonVsSota.speedupFactor ?? 0) > 0);
+  assert.ok((verified.comparisonVsSota.memoryRatioVsSota ?? 0) > 0);
+  assert.strictEqual(verified.comparisonVsSota.theilTic, 0);
 });

@@ -329,6 +329,13 @@ export class DiagramService {
         },
         getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
         resolveClassInstance: (uri: string, name?: string) => this.workspaceManager.resolveClassInstance(uri, name),
+        getUnifiedIndex: () => {
+          try {
+            return this.workspaceManager.unifiedWorkspace?.getIndex?.({ eager: true }) ?? null;
+          } catch {
+            return null;
+          }
+        },
         isDocumentStale: (uri: string) => {
           if (!this.validationService) return false;
           const doc = this.documentManager.documents.get(uri);
@@ -547,6 +554,13 @@ export class DiagramService {
             return null;
           } catch (e) {
             this.connection.console.error(`[sysml2] Error getting symbol data: ${e}`);
+            return null;
+          }
+        },
+        getUnifiedIndex: () => {
+          try {
+            return this.workspaceManager.unifiedWorkspace?.getIndex?.({ eager: true }) ?? null;
+          } catch {
             return null;
           }
         },

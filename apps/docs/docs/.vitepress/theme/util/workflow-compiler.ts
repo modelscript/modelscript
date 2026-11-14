@@ -15,26 +15,23 @@ import {
 } from "../../../../../../languages/pscad/src/tgg/pscad-ieee-sync.js";
 import { verifyIeee2800Compliance } from "../../../../../../languages/pscad/src/verification/ieee2800.js";
 import { reqifTggRules } from "../../../../../../languages/reqif/src/tgg/reqif-rules.js";
-import {
-  projectReqIfViaTgg,
-  synchronizeSysml2ToReqIf,
-} from "../../../../../../languages/reqif/src/tgg/reqif-sync.js";
+import { projectReqIfViaTgg, synchronizeSysml2ToReqIf } from "../../../../../../languages/reqif/src/tgg/reqif-sync.js";
 import { simulinkTggRules } from "../../../../../../languages/simulink/src/tgg/simulink-rules.js";
 import {
   projectSimulinkViaTgg,
   synchronizeModelicaToSimulink,
 } from "../../../../../../languages/simulink/src/tgg/simulink-sync.js";
 import { urdfTggRules } from "../../../../../../languages/urdf/src/tgg/urdf-rules.js";
-import {
-  projectUrdfViaTgg,
-  synchronizeModelicaToUrdf,
-} from "../../../../../../languages/urdf/src/tgg/urdf-sync.js";
+import { projectUrdfViaTgg, synchronizeModelicaToUrdf } from "../../../../../../languages/urdf/src/tgg/urdf-sync.js";
 import {
   fmi3TggRules,
   projectModelicaToFmi3ViaTgg,
   synchronizeFmi3ToModelica,
 } from "../../../../../../packages/exchange/src/fmu/fmi3-tgg.js";
-import { EmtSolver, type EmtCircuitDefinition } from "../../../../../../packages/simulate/src/solvers/emt/emt-solver.js";
+import {
+  EmtSolver,
+  type EmtCircuitDefinition,
+} from "../../../../../../packages/simulate/src/solvers/emt/emt-solver.js";
 
 export type WorkflowConflictStrategy = "target-wins" | "source-wins" | "physics-simplex";
 
@@ -280,8 +277,119 @@ function compilePscadToIeee2800(sourceCode: string): string {
   return lines.join("\n");
 }
 
+export type WorkflowSideKind = "xml" | "modelica" | "sysml" | "ieee2800";
+
+export interface WorkflowPairAdapter {
+  sourceKind: WorkflowSideKind;
+  targetKind: WorkflowSideKind;
+  forward: (sourceCode: string) => string;
+  backward: (
+    origSource: string,
+    targetCode: string,
+    strategy: WorkflowConflictStrategy,
+  ) => { updatedText: string; reconciledCount: number };
+}
+
+/** Declarative registry mapping each workflow pair ID to its language kinds and bidirectional TGG adapters. */
+export const WORKFLOW_PAIR_ADAPTERS: Record<string, WorkflowPairAdapter> = {
+  "reqif-sysml": {
+    sourceKind: "xml",
+    targetKind: "sysml",
+    forward: (sourceCode) => {
+      const { sysmlText, doc } = projectReqIfViaTgg(sourceCode);
+      if (doc.specObjects.size === 0) {
+        throw new Error("No <SPEC-OBJECT> elements found in ReqIF XML.");
+      }
+      return sysmlText;
+    },
+    backward: (origSource, targetCode, strategy) => {
+      const res = synchronizeSysml2ToReqIf(origSource, targetCode, { strategy });
+      if (res.updatedText.trim() === "") {
+        throw new Error("Expected 'requirement def <Name> { ... }' in SysML v2 code.");
+      }
+      return { updatedText: res.updatedText, reconciledCount: res.changes.length };
+    },
+  },
+  "simulink-modelica": {
+    sourceKind: "xml",
+    targetKind: "modelica",
+    forward: (sourceCode) => {
+      const { modelicaText, model } = projectSimulinkViaTgg(sourceCode, "SuspensionControl");
+      if (model.rootSystem.blocks.size === 0) {
+        throw new Error("No <Block> elements found inside <System>.");
+      }
+      return modelicaText;
+    },
+    backward: (origSource, targetCode, strategy) => {
+      if (!/\bmodel\s+[A-Za-z_]/.test(targetCode)) {
+        throw new Error("Expected 'model <Name> ... end <Name>;' in Modelica code.");
+      }
+      const res = synchronizeModelicaToSimulink(origSource, targetCode, { strategy });
+      return { updatedText: res.updatedText, reconciledCount: res.changes.length };
+    },
+  },
+  "autosar-sysml": {
+    sourceKind: "xml",
+    targetKind: "sysml",
+    forward: (sourceCode) => {
+      const { sysmlText, model } = projectAutosarViaTgg(sourceCode);
+      if (model.components.size === 0 && model.packages.size === 0) {
+        throw new Error("No AUTOSAR SW-Component or AR-Package elements found.");
+      }
+      return sysmlText;
+    },
+    backward: (origSource, targetCode, strategy) => {
+      const res = synchronizeSysmlToAutosar(origSource, targetCode, strategy);
+      return { updatedText: res.updatedText, reconciledCount: res.changes.length };
+    },
+  },
+  "urdf-modelica": {
+    sourceKind: "xml",
+    targetKind: "modelica",
+    forward: (sourceCode) => {
+      const { modelicaText, robot } = projectUrdfViaTgg(sourceCode, { compactSnippet: true });
+      if (robot.links.size === 0) {
+        throw new Error("No <link> elements found in <robot>.");
+      }
+      return modelicaText;
+    },
+    backward: (origSource, targetCode, strategy) => {
+      const res = synchronizeModelicaToUrdf(origSource, targetCode, { strategy });
+      return { updatedText: res.updatedText, reconciledCount: res.changes.length };
+    },
+  },
+  "pscad-ieee": {
+    sourceKind: "xml",
+    targetKind: "ieee2800",
+    forward: (sourceCode) => compilePscadToIeee2800(sourceCode),
+    backward: (origSource, targetCode, strategy) => {
+      const res = synchronizeIeee2800ToPscad(origSource, targetCode, { strategy });
+      return { updatedText: res.updatedText, reconciledCount: res.changes.length };
+    },
+  },
+  "sysml-ssp": {
+    sourceKind: "modelica",
+    targetKind: "xml",
+    forward: (sourceCode) => {
+      const { fmi3Xml } = projectModelicaToFmi3ViaTgg(sourceCode);
+      return fmi3Xml;
+    },
+    backward: (origSource, targetCode, strategy) => {
+      const res = synchronizeFmi3ToModelica(origSource, targetCode, strategy);
+      return { updatedText: res.updatedText, reconciledCount: res.changes.length };
+    },
+  },
+};
+
+/** Returns the language kind for a given workflow pair side. */
+export function getWorkflowPairSideKind(pairId: string, side: "source" | "target"): WorkflowSideKind | undefined {
+  const adapter = WORKFLOW_PAIR_ADAPTERS[pairId];
+  if (!adapter) return undefined;
+  return side === "source" ? adapter.sourceKind : adapter.targetKind;
+}
+
 /**
- * Compiles source code to target code in the browser for any of the 6 workflow pairs
+ * Compiles source code to target code in the browser for any of the workflow pairs
  * using declarative Triple Graph Grammar (TGG) rules and PolyglotTransformer
  * (plus EmtSolver + IEEE 2800 verifier for pscad-ieee).
  */
@@ -297,64 +405,13 @@ export function compileWorkflowPair(
       return { code: "", elapsedMs: 0, error: "Source buffer is empty." };
     }
 
-    let code = "";
-    switch (pairId) {
-      case "reqif-sysml": {
-        const { sysmlText, doc } = projectReqIfViaTgg(sourceCode);
-        if (doc.specObjects.size === 0) {
-          throw new Error("No <SPEC-OBJECT> elements found in ReqIF XML.");
-        }
-        lastKnownSourceByPair.set(pairId, sourceCode);
-        code = sysmlText;
-        break;
-      }
-
-      case "simulink-modelica": {
-        const { modelicaText, model } = projectSimulinkViaTgg(sourceCode, "SuspensionControl");
-        if (model.rootSystem.blocks.size === 0) {
-          throw new Error("No <Block> elements found inside <System>.");
-        }
-        lastKnownSourceByPair.set(pairId, sourceCode);
-        code = modelicaText;
-        break;
-      }
-
-      case "autosar-sysml": {
-        const { sysmlText, model } = projectAutosarViaTgg(sourceCode);
-        if (model.components.size === 0 && model.packages.size === 0) {
-          throw new Error("No AUTOSAR SW-Component or AR-Package elements found.");
-        }
-        lastKnownSourceByPair.set(pairId, sourceCode);
-        code = sysmlText;
-        break;
-      }
-
-      case "urdf-modelica": {
-        const { modelicaText, robot } = projectUrdfViaTgg(sourceCode, { compactSnippet: true });
-        if (robot.links.size === 0) {
-          throw new Error("No <link> elements found in <robot>.");
-        }
-        lastKnownSourceByPair.set(pairId, sourceCode);
-        code = modelicaText;
-        break;
-      }
-
-      case "pscad-ieee": {
-        code = compilePscadToIeee2800(sourceCode);
-        lastKnownSourceByPair.set(pairId, sourceCode);
-        break;
-      }
-
-      case "sysml-ssp": {
-        const { fmi3Xml } = projectModelicaToFmi3ViaTgg(sourceCode);
-        lastKnownSourceByPair.set(pairId, sourceCode);
-        code = fmi3Xml;
-        break;
-      }
-
-      default:
-        throw new Error(`Unknown workflow pair '${pairId}'.`);
+    const adapter = WORKFLOW_PAIR_ADAPTERS[pairId];
+    if (!adapter) {
+      throw new Error(`Unknown workflow pair '${pairId}'.`);
     }
+
+    const code = adapter.forward(sourceCode);
+    lastKnownSourceByPair.set(pairId, sourceCode);
 
     const elapsedMs = Math.max(0.1, Math.round((nowMs() - t0) * 10) / 10);
     return {
@@ -469,64 +526,14 @@ export function compileTargetToSource(
       return { code: "", elapsedMs: 0, error: "Target buffer is empty." };
     }
 
-    const origSource =
-      currentSourceCode ?? lastKnownSourceByPair.get(pairId) ?? DEFAULT_SOURCE_BY_PAIR[pairId] ?? "";
-
-    let updatedText = "";
-    let reconciledCount = 0;
-
-    switch (pairId) {
-      case "reqif-sysml": {
-        const res = synchronizeSysml2ToReqIf(origSource, targetCode, { strategy });
-        if (res.updatedText.trim() === "") {
-          throw new Error("Expected 'requirement def <Name> { ... }' in SysML v2 code.");
-        }
-        updatedText = res.updatedText;
-        reconciledCount = res.changes.length;
-        break;
-      }
-
-      case "simulink-modelica": {
-        if (!/\bmodel\s+[A-Za-z_]/.test(targetCode)) {
-          throw new Error("Expected 'model <Name> ... end <Name>;' in Modelica code.");
-        }
-        const res = synchronizeModelicaToSimulink(origSource, targetCode, { strategy });
-        updatedText = res.updatedText;
-        reconciledCount = res.changes.length;
-        break;
-      }
-
-      case "autosar-sysml": {
-        const res = synchronizeSysmlToAutosar(origSource, targetCode, strategy);
-        updatedText = res.updatedText;
-        reconciledCount = res.changes.length;
-        break;
-      }
-
-      case "urdf-modelica": {
-        const res = synchronizeModelicaToUrdf(origSource, targetCode, { strategy });
-        updatedText = res.updatedText;
-        reconciledCount = res.changes.length;
-        break;
-      }
-
-      case "pscad-ieee": {
-        const res = synchronizeIeee2800ToPscad(origSource, targetCode, { strategy });
-        updatedText = res.updatedText;
-        reconciledCount = res.changes.length;
-        break;
-      }
-
-      case "sysml-ssp": {
-        const res = synchronizeFmi3ToModelica(origSource, targetCode, strategy);
-        updatedText = res.updatedText;
-        reconciledCount = res.changes.length;
-        break;
-      }
-
-      default:
-        throw new Error(`Unknown workflow pair '${pairId}'.`);
+    const adapter = WORKFLOW_PAIR_ADAPTERS[pairId];
+    if (!adapter) {
+      throw new Error(`Unknown workflow pair '${pairId}'.`);
     }
+
+    const origSource = currentSourceCode ?? lastKnownSourceByPair.get(pairId) ?? DEFAULT_SOURCE_BY_PAIR[pairId] ?? "";
+
+    const { updatedText, reconciledCount } = adapter.backward(origSource, targetCode, strategy);
 
     lastKnownSourceByPair.set(pairId, updatedText);
     const elapsedMs = Math.max(0.1, Math.round((nowMs() - t0) * 10) / 10);

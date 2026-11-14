@@ -66,3 +66,9 @@ msx plcopen to-dae AutomationController.xml --out=controller.dae.json
 # Project into Modelica synchronous clocked state machine components
 msx plcopen to-modelica AutomationController.xml -o ControllerBlocks.mo
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="plcopen" />

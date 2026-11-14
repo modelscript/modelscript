@@ -7,7 +7,7 @@
  * enabling compilation into native WebAssembly GLR parse tables and linear-memory CST.
  */
 
-import { choice, field, language, optional, repeat, semanticToken, seq } from "@modelscript/dsl";
+import { choice, field, language, optional, prec, repeat, semanticToken, seq } from "@modelscript/dsl";
 
 export const mlxtranGrammar = language({
   name: "Mlxtran",
@@ -90,16 +90,21 @@ export const mlxtranGrammar = language({
 
     MacroArg: ($) => seq(field("argName", $.Identifier), "=", field("argValue", choice($.NumberLiteral, $.Identifier))),
 
-    Expression: ($) => choice($.BinaryExpr, $.UnaryExpr, $.CallExpr, $.PrimaryExpr),
+    Expression: ($) => choice($.BinaryExpr, $.UnaryExpr, $.PrimaryExpr),
 
-    BinaryExpr: ($) => seq($.PrimaryExpr, choice("+", "-", "*", "/", "^"), choice($.BinaryExpr, $.PrimaryExpr)),
+    BinaryExpr: ($) =>
+      choice(
+        prec.left(1, seq($.Expression, choice("+", "-"), $.Expression)),
+        prec.left(2, seq($.Expression, choice("*", "/"), $.Expression)),
+        prec.right(3, seq($.Expression, "^", $.Expression)),
+      ),
 
-    UnaryExpr: ($) => seq(choice("-", "+"), $.PrimaryExpr),
+    UnaryExpr: ($) => prec.right(4, seq(choice("-", "+"), $.Expression)),
 
     CallExpr: ($) =>
       seq(field("func", $.Identifier), "(", optional(seq($.Expression, repeat(seq(",", $.Expression)))), ")"),
 
-    PrimaryExpr: ($) => choice($.NumberLiteral, $.Identifier, seq("(", $.Expression, ")")),
+    PrimaryExpr: ($) => choice($.NumberLiteral, $.CallExpr, $.Identifier, seq("(", $.Expression, ")")),
 
     CommentLine: () => /;[^\n]*|#[^\n]*/,
     Identifier: () => /[a-zA-Z_][a-zA-Z0-9_]*/,

@@ -19,7 +19,7 @@
 
 import { SparseTripletBuilder, sparseLuFactor, sparseLuSolve } from "@modelscript/runtime";
 import type { BranchRecord, BusRecord, PsseCase } from "../types.js";
-import { solvePowerFlow } from "./ac-powerflow.js";
+import { solvePowerFlow, type PowerFlowSolution } from "./ac-powerflow.js";
 import { detectElectricalIslands, solveMultiIslandPowerFlow } from "./island-solver.js";
 
 // ============================================================================
@@ -231,6 +231,8 @@ export interface ContingencyScreeningOptions {
   overloadThresholdPercent?: number | undefined;
   /** Optional active Remedial Action Schemes (RAS / SPS). */
   rasSchemes?: RemedialActionScheme[] | undefined;
+  /** Optional pre-solved base AC power flow solution to avoid redundant base solve. */
+  baseSolution?: PowerFlowSolution | undefined;
 }
 
 export interface LinearCandidateResult {
@@ -240,6 +242,9 @@ export interface LinearCandidateResult {
   causesIslanding: boolean;
   linearOverloads: number;
   maxBranchLoadingPercent: number;
+  worstBranch?: string | undefined;
+  worstFlowMva?: number | undefined;
+  worstRatingMva?: number | undefined;
 }
 
 export interface ContingencyScreeningReport {
@@ -801,8 +806,8 @@ export function screenContingencies(
   const overloadThreshold = options.overloadThresholdPercent ?? 100.0;
   const rasSchemes = (options.rasSchemes ?? []).filter((s) => s.enabled !== false);
 
-  // 1. Solve base AC power flow to establish initial operating point
-  const baseSol = solvePowerFlow(psCase, { maxIterations: 30, tolerance: 1e-4 });
+  // 1. Solve base AC power flow to establish initial operating point (unless already supplied)
+  const baseSol = options.baseSolution ?? solvePowerFlow(psCase, { maxIterations: 30, tolerance: 1e-4 });
 
   const branchBaseMap = new Map<string, number>();
   for (const br of baseSol.branches) {
@@ -1054,6 +1059,9 @@ export function screenContingencies(
     linearOverloads: number;
     maxLinearLoading: number;
     trippedBranches: Set<string>;
+    worstBranch?: string | undefined;
+    worstFlowMva?: number | undefined;
+    worstRatingMva?: number | undefined;
   }> = [];
 
   for (const ctg of contingencies) {
@@ -1093,6 +1101,27 @@ export function screenContingencies(
     let si = 0.0;
     let linearOverloads = 0;
     let maxLinearLoading = 0.0;
+    let worstBranchIdx = -1;
+    let worstFlowMva = 0.0;
+    let worstRatingMva = 0.0;
+
+    const scoreExactFlows = (exactFlows: Float64Array) => {
+      for (let l = 0; l < nFast; l++) {
+        const flow = exactFlows[l]!;
+        const rating = baseRatings[l]!;
+        const ratio = flow / rating;
+        const loadingPct = ratio * 100.0;
+        if (loadingPct > maxLinearLoading) {
+          maxLinearLoading = loadingPct;
+          worstBranchIdx = l;
+          worstFlowMva = flow;
+          worstRatingMva = rating;
+        }
+        if (loadingPct > overloadThreshold) linearOverloads++;
+        const r2 = ratio * ratio;
+        si += r2 * r2;
+      }
+    };
 
     if (flatLodf && !causesIslanding && (trippedArr.length === 1 || trippedArr.length === 2)) {
       if (trippedArr.length === 1) {
@@ -1105,7 +1134,12 @@ export function screenContingencies(
           const rating = baseRatings[l]!;
           const ratio = postFlow / rating;
           const loadingPct = ratio * 100.0;
-          if (loadingPct > maxLinearLoading) maxLinearLoading = loadingPct;
+          if (loadingPct > maxLinearLoading) {
+            maxLinearLoading = loadingPct;
+            worstBranchIdx = l;
+            worstFlowMva = postFlow;
+            worstRatingMva = rating;
+          }
           if (loadingPct > overloadThreshold) {
             linearOverloads++;
           }
@@ -1133,7 +1167,12 @@ export function screenContingencies(
             const rating = baseRatings[l]!;
             const ratio = postFlow / rating;
             const loadingPct = ratio * 100.0;
-            if (loadingPct > maxLinearLoading) maxLinearLoading = loadingPct;
+            if (loadingPct > maxLinearLoading) {
+              maxLinearLoading = loadingPct;
+              worstBranchIdx = l;
+              worstFlowMva = postFlow;
+              worstRatingMva = rating;
+            }
             if (loadingPct > overloadThreshold) {
               linearOverloads++;
             }
@@ -1142,38 +1181,19 @@ export function screenContingencies(
           }
         } else {
           // Near-islanding N-2 pair: exact sparse injection solve
-          const exactFlows = computeExactLinearOutageFlows(trippedIndices);
-          for (let l = 0; l < nFast; l++) {
-            const flow = exactFlows[l]!;
-            const rating = baseRatings[l]!;
-            const ratio = flow / rating;
-            const loadingPct = ratio * 100.0;
-            if (loadingPct > maxLinearLoading) maxLinearLoading = loadingPct;
-            if (loadingPct > overloadThreshold) linearOverloads++;
-            const r2 = ratio * ratio;
-            si += r2 * r2;
-          }
+          scoreExactFlows(computeExactLinearOutageFlows(trippedIndices));
         }
       }
     } else {
       // Exact sparse solve for grids where flatLodf is omitted (M > 5000) or multi-branch outages (k >= 3)
-      const exactFlows = computeExactLinearOutageFlows(trippedIndices);
-      for (let l = 0; l < nFast; l++) {
-        const flow = exactFlows[l]!;
-        const rating = baseRatings[l]!;
-        const ratio = flow / rating;
-        const loadingPct = ratio * 100.0;
-        if (loadingPct > maxLinearLoading) maxLinearLoading = loadingPct;
-        if (loadingPct > overloadThreshold) linearOverloads++;
-        const r2 = ratio * ratio;
-        si += r2 * r2;
-      }
+      scoreExactFlows(computeExactLinearOutageFlows(trippedIndices));
     }
 
     if (causesIslanding) {
       si += 5000.0 * (islandCount - 1);
     }
 
+    const worstFastBr = worstBranchIdx >= 0 ? branchFastList[worstBranchIdx] : undefined;
     screenedCandidates.push({
       contingency: ctg,
       severityIndex: si,
@@ -1182,6 +1202,9 @@ export function screenContingencies(
       linearOverloads,
       maxLinearLoading,
       trippedBranches,
+      worstBranch: worstFastBr ? `${worstFastBr.fromBus}-${worstFastBr.toBus} CKT ${worstFastBr.ckt}` : undefined,
+      worstFlowMva: worstFastBr ? worstFlowMva : undefined,
+      worstRatingMva: worstFastBr ? worstRatingMva : undefined,
     });
   }
 
@@ -1367,6 +1390,9 @@ export function screenContingencies(
       causesIslanding: c.causesIslanding,
       linearOverloads: c.linearOverloads,
       maxBranchLoadingPercent: Number(c.maxLinearLoading.toFixed(1)),
+      ...(c.worstBranch !== undefined ? { worstBranch: c.worstBranch } : {}),
+      ...(c.worstFlowMva !== undefined ? { worstFlowMva: c.worstFlowMva } : {}),
+      ...(c.worstRatingMva !== undefined ? { worstRatingMva: c.worstRatingMva } : {}),
     })),
   };
 }

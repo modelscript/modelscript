@@ -108,16 +108,13 @@ export class NativeFmuRunner {
     }
 
     // Initialize underlying binary instruction emulator for native symbol dispatch
-    if (binaryBuffer && binaryBuffer.byteLength >= 4) {
-      try {
-        this.emulator = new UniversalBinaryRunner(binaryBuffer, {
-          ...options,
-          variables: varsToIndex,
-        });
-      } catch {
-        this.emulator = null;
-      }
+    if (!binaryBuffer || binaryBuffer.byteLength < 4) {
+      throw new Error("Invalid native binary buffer: expected at least 4 bytes.");
     }
+    this.emulator = new UniversalBinaryRunner(binaryBuffer, {
+      ...options,
+      variables: varsToIndex,
+    });
   }
 
   /**
@@ -137,13 +134,9 @@ export class NativeFmuRunner {
     }
 
     if (this.emulator) {
-      try {
-        this.emulator.init(startTime);
-        for (const [vr, val] of this.shadowVars.entries()) {
-          this.emulator.setVar(vr, val);
-        }
-      } catch {
-        // Fallback to state-space transition kernel if guest binary init traps
+      this.emulator.init(startTime);
+      for (const [vr, val] of this.shadowVars.entries()) {
+        this.emulator.setVar(vr, val);
       }
     }
   }
@@ -170,11 +163,7 @@ export class NativeFmuRunner {
     }
     this.shadowVars.set(vr, value);
     if (this.emulator) {
-      try {
-        this.emulator.setVar(vr, value);
-      } catch {
-        // Ignore if VR is synthetic
-      }
+      this.emulator.setVar(vr, value);
     }
   }
 
@@ -185,25 +174,21 @@ export class NativeFmuRunner {
   }
 
   /**
-   * Executes one native/emulated FMI step and integrates state-space derivatives.
+   * Executes one native/emulated FMI step and integrates explicit derivative links if declared.
    */
   private advanceState(stepStartTime: number, dt: number): void {
     let emulatorUpdated = false;
     if (this.emulator && (this.exportedSymbols.has("fmi2DoStep") || this.exportedSymbols.has("fmi3DoStep"))) {
-      try {
-        const emuOut = this.emulator.step(stepStartTime, dt);
-        for (const [name, val] of Object.entries(emuOut)) {
-          const vr = this.varMap.get(name);
-          if (vr !== undefined && Number.isFinite(val)) {
-            const prev = this.shadowVars.get(vr) ?? 0.0;
-            if (Math.abs(val - prev) > 1e-12) {
-              this.shadowVars.set(vr, val);
-              emulatorUpdated = true;
-            }
+      const emuOut = this.emulator.step(stepStartTime, dt);
+      for (const [name, val] of Object.entries(emuOut)) {
+        const vr = this.varMap.get(name);
+        if (vr !== undefined && Number.isFinite(val)) {
+          const prev = this.shadowVars.get(vr) ?? 0.0;
+          if (Math.abs(val - prev) > 1e-12) {
+            this.shadowVars.set(vr, val);
+            emulatorUpdated = true;
           }
         }
-      } catch {
-        // Continue with state-space integration
       }
     }
 
@@ -211,45 +196,13 @@ export class NativeFmuRunner {
       return;
     }
 
-    // 1. Explicit derivative integration from modelDescription (der(x) -> x)
+    // Integrate explicit derivative variables from modelDescription (der(x) -> x) when declared
     if (this.derivativeLinks.length > 0) {
       for (const { stateVr, derVr } of this.derivativeLinks) {
         const x = this.shadowVars.get(stateVr) ?? 0.0;
         const dx = this.shadowVars.get(derVr) ?? 0.0;
         this.shadowVars.set(stateVr, x + dx * dt);
       }
-    }
-
-    // 2. Coupled input-to-state/output dynamics when binary stub returns static memory
-    let inputDrive = 0.0;
-    if (this.inputVrs.length > 0) {
-      for (const inVr of this.inputVrs) {
-        inputDrive += this.shadowVars.get(inVr) ?? 0.0;
-      }
-      inputDrive /= this.inputVrs.length;
-    }
-
-    const targets =
-      this.outputVrs.length > 0
-        ? this.outputVrs
-        : this.stateVrs.length > 0
-          ? this.stateVrs
-          : Array.from(this.varMap.values());
-
-    for (let i = 0; i < targets.length; i++) {
-      const vr = targets[i];
-      if (vr === undefined || this.inputVrs.includes(vr)) continue;
-      const cur = this.shadowVars.get(vr) ?? 0.0;
-      const initVal = this.initialVars.get(vr) ?? cur;
-      const tau = 0.25 + (i % 4) * 0.15;
-      const steadyTarget =
-        this.inputVrs.length > 0
-          ? initVal + inputDrive * (i % 2 === 0 ? 1.0 : 0.5)
-          : initVal !== 0
-            ? initVal * (1.0 + 0.05 * Math.sin(stepStartTime + dt))
-            : 0.1 * (1.0 - Math.exp(-(stepStartTime + dt) / tau));
-      const dVal = (steadyTarget - cur) / tau;
-      this.shadowVars.set(vr, cur + dVal * dt);
     }
   }
 

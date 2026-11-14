@@ -410,7 +410,7 @@ export function getDefaultWasmExports(): any {
         const inst = new WebAssembly.Instance(mod, {
           env: {
             abort: () => {
-              /* empty */
+              console.error("[WASM:dae] abort invoked");
             },
           },
         });
@@ -5497,26 +5497,13 @@ export function eliminateArenaAliases(dae: WasmDaeBridge): void {
     dae.addAlias(vElim, rootNameId, false);
   }
 
-  const nameIndices = (dae as any).nameExprIndices;
-  if (nameIndices && Array.isArray(nameIndices) && nameIndices.length > 0) {
-    for (const exprId of nameIndices) {
-      const nameId = dae.getExprData1(exprId);
+  for (let i = 0; i < dae.exprCount; i++) {
+    if (dae.getExprKind(i) === ExprKind.Name) {
+      const nameId = dae.getExprData1(i);
       const rootId = find(nameId);
       if (rootId !== nameId) {
         if (dae.exports?.dae_setExprData1) {
-          dae.exports.dae_setExprData1(dae.ptr, exprId, rootId);
-        }
-      }
-    }
-  } else {
-    for (let i = 0; i < dae.exprCount; i++) {
-      if (dae.getExprKind(i) === ExprKind.Name) {
-        const nameId = dae.getExprData1(i);
-        const rootId = find(nameId);
-        if (rootId !== nameId) {
-          if (dae.exports?.dae_setExprData1) {
-            dae.exports.dae_setExprData1(dae.ptr, i, rootId);
-          }
+          dae.exports.dae_setExprData1(dae.ptr, i, rootId);
         }
       }
     }

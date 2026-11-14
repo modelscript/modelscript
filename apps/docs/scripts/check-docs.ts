@@ -309,6 +309,33 @@ for (const file of [...walk(docsRoot), ...themeFiles]) {
     .forEach((text, i) => checkLanguageCounts(rel, i + 1, text));
 }
 
+const benchmarksJson = path.join(themeRoot, "data/benchmarks.generated.json");
+if (fs.existsSync(benchmarksJson)) {
+  const benchData = JSON.parse(fs.readFileSync(benchmarksJson, "utf8")) as {
+    languages: { slug: string }[];
+  };
+  const benchSlugs = new Set(benchData.languages.map((l) => l.slug));
+  const langPagesDir = path.join(docsRoot, "languages");
+  for (const file of fs.readdirSync(langPagesDir)) {
+    if (!file.endsWith(".md") || file === "overview.md") continue;
+    const slug = file.replace(/\.md$/, "");
+    const content = fs.readFileSync(path.join(langPagesDir, file), "utf8");
+    if (!content.includes(`<LanguageBenchmarks lang="${slug}"`)) {
+      problems.push({
+        file: `languages/${file}`,
+        line: 1,
+        message: `missing '<LanguageBenchmarks lang="${slug}" />' section`,
+      });
+    } else if (benchSlugs.size > 0 && !benchSlugs.has(slug)) {
+      problems.push({
+        file: `languages/${file}`,
+        line: 1,
+        message: `slug '${slug}' missing from benchmarks.generated.json (run 'npm run bench:languages:record')`,
+      });
+    }
+  }
+}
+
 if (problems.length) {
   for (const p of problems) console.error(`${p.file}:${p.line}  ${p.message}`);
   console.error(`\n✖ ${problems.length} docs problem(s) found.`);

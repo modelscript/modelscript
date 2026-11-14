@@ -52,11 +52,24 @@ test("100-Turbine Offshore Wind Collector: Closed-loop EMT simulation, COMTRADE 
   assert.ok(res.totalSteps > 1000, `Total steps: ${res.totalSteps}`);
   assert.ok(res.throughputStepsPerSec > 1000, `Throughput: ${res.throughputStepsPerSec} steps/s`);
   assert.ok(res.poiResidualVoltagePu >= 0, `POI residual voltage: ${res.poiResidualVoltagePu} pu`);
+  assert.ok(res.thdPercent >= 0 && Number.isFinite(res.thdPercent), `THD%: ${res.thdPercent}`);
+  assert.ok(res.reactiveCurrentInjectionPu >= 0 && Number.isFinite(res.reactiveCurrentInjectionPu));
 
-  // SOTA comparison statistics
-  assert.strictEqual(res.comparisonVsSota.parityStatus, "PASS");
-  assert.ok(res.comparisonVsSota.speedupFactor > 5.0, `Speedup factor: ${res.comparisonVsSota.speedupFactor}x`);
-  assert.ok(res.comparisonVsSota.theilTic < 0.02, `Theil's TIC: ${res.comparisonVsSota.theilTic}`);
+  // SOTA comparison statistics are UNVERIFIED without external reference
+  assert.strictEqual(res.comparisonVsSota.parityStatus, "UNVERIFIED");
+  assert.strictEqual(res.comparisonVsSota.speedupFactor, null);
+  assert.strictEqual(res.comparisonVsSota.theilTic, null);
+
+  const ref = new Float64Array(res.totalSteps).fill(1.0);
+  const resWithRef = await runWindCollectorBenchmark({
+    timeStepUs: 20.0,
+    durationMs: 25.0,
+    generateHtml: false,
+    referenceTrace: ref,
+    referenceWallClockMs: res.wallClockTimeMs * 2.0,
+  });
+  assert.ok(resWithRef.comparisonVsSota.theilTic !== null);
+  assert.ok(resWithRef.comparisonVsSota.speedupFactor !== null && resWithRef.comparisonVsSota.speedupFactor > 0);
 
   // COMTRADE .cff verification
   assert.ok(res.comtradeCff.includes("--- file type: CFG ---"), "Must include COMTRADE CFG");

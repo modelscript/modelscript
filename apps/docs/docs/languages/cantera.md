@@ -85,3 +85,9 @@ const builder = new DAEBuilder();
 lowerCanteraToDae(mech, builder);
 const modelicaSource = canteraToModelica(mech);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="cantera" />

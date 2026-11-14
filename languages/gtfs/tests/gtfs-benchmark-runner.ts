@@ -12,13 +12,13 @@
 
 import assert from "node:assert/strict";
 import {
-  parseGtfs,
-  solveTractionProfiles,
-  solveDepotCharging,
   lowerGtfsToDae,
+  parseGtfs,
+  solveDepotCharging,
+  solveTractionProfiles,
+  type DepotChargingProfile,
   type GtfsFeed,
   type TripTractionProfile,
-  type DepotChargingProfile,
 } from "../src/index.js";
 
 export const METRO_GTFS_BENCHMARK = `
@@ -107,3 +107,31 @@ export function runGtfsBenchmark(src = METRO_GTFS_BENCHMARK): GtfsBenchmarkMetri
     isSquare: daeVarCount === daeEqCount,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const gtfsBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "gtfs",
+  referenceTool: "GTFS Electric Transit Kinematics & Depot Charging",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runGtfsBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "metro-electric-bus-depot-charging",
+        name: "metro-electric-bus-depot-charging",
+        scale: "standard",
+        referenceTool: "GTFS Electric Transit Kinematics & Depot Charging",
+        passed: m.isSquare && m.depot24hHoursCount === 24 && m.daeVarCount > 0,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.daeEqCount,
+        threshold: 0,
+        details: `${m.tripsCount} trips, ${m.totalEnergyKWh.toFixed(2)}kWh, ${m.daeVarCount}x${m.daeEqCount} DAE`,
+      },
+    ];
+  },
+};

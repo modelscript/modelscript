@@ -46,11 +46,26 @@ export function registerWorkspaceFeaturesProvider(
       : getGlobalWorkspaceIndex || (() => null);
   void getWorkspaceIndex;
 
-  const isDecl = (entry: any): boolean => {
+  type SymbolEntryLike = {
+    id: number;
+    name: string;
+    kind: string;
+    parentId?: number | null;
+    resourceId?: string;
+    startOffset: number;
+    endOffset: number;
+  };
+  type SymbolIndexLike = {
+    symbols: Map<number, SymbolEntryLike>;
+    byName: Map<string, number[]>;
+    childrenOf?: Map<number, number[]>;
+  };
+
+  const isDecl = (entry: SymbolEntryLike): boolean => {
     return entry.kind !== "Reference" && entry.kind !== "ConnectEquation" && entry.kind !== "FunctionCall";
   };
 
-  const resolveRef = (entry: any, index: any): any[] => {
+  const resolveRef = (entry: SymbolEntryLike, index: SymbolIndexLike): SymbolEntryLike[] => {
     if (isDecl(entry)) return [entry];
     let current = entry.parentId ?? null;
     while (current !== null && current !== undefined) {
@@ -65,7 +80,7 @@ export function registerWorkspaceFeaturesProvider(
       current = parent?.parentId ?? null;
     }
     const ids = index.byName.get(entry.name) || [];
-    const decls: any[] = [];
+    const decls: SymbolEntryLike[] = [];
     for (const id of ids) {
       const sym = index.symbols.get(id);
       if (sym && isDecl(sym)) decls.push(sym);
@@ -73,16 +88,16 @@ export function registerWorkspaceFeaturesProvider(
     return decls;
   };
 
-  const findRefs = (declId: number, index: any): any[] => {
+  const findRefs = (declId: number, index: SymbolIndexLike): SymbolEntryLike[] => {
     const decl = index.symbols.get(declId);
     if (!decl) return [];
     const ids = index.byName.get(decl.name) || [];
-    const refs: any[] = [];
+    const refs: SymbolEntryLike[] = [];
     for (const id of ids) {
       const sym = index.symbols.get(id);
       if (sym && !isDecl(sym)) {
         const resolved = resolveRef(sym, index);
-        if (resolved.some((d: any) => d.id === declId)) {
+        if (resolved.some((d) => d.id === declId)) {
           refs.push(sym);
         }
       }
@@ -123,7 +138,7 @@ export function registerWorkspaceFeaturesProvider(
     }
     const word = text.slice(ws, we);
 
-    let targetEntry: any = null;
+    let targetEntry: SymbolEntryLike | null = null;
 
     for (const entry of unifiedIndex.symbols.values()) {
       const eStart = entry.startOffset;
@@ -140,8 +155,8 @@ export function registerWorkspaceFeaturesProvider(
     if (!targetEntry) return [];
 
     if (targetEntry.kind === "Class" && word !== targetEntry.name) {
-      const child = Array.from(unifiedIndex.symbols.values()).find(
-        (s: any) => s.resourceId === params.textDocument.uri && s.parentId === targetEntry.id && s.name === word,
+      const child = Array.from(unifiedIndex.symbols.values() as Iterable<SymbolEntryLike>).find(
+        (s) => s.resourceId === params.textDocument.uri && s.parentId === targetEntry!.id && s.name === word,
       );
       if (child) {
         targetEntry = child;
@@ -151,13 +166,16 @@ export function registerWorkspaceFeaturesProvider(
     // Find the declarations this symbol refers to (or itself if it is a declaration)
     let declarationIds: number[] = [];
     if (isDecl(targetEntry)) {
-      declarationIds = [targetEntry.id as number];
+      declarationIds = [targetEntry.id];
     } else {
       const decls = resolveRef(targetEntry, unifiedIndex);
-      declarationIds = decls.map((d: any) => d.id as number);
+      declarationIds = decls.map((d) => d.id);
     }
 
-    const results: any[] = [];
+    const results: Array<{
+      uri: string;
+      range: { start: { line: number; character: number }; end: { line: number; character: number } };
+    }> = [];
     const seen = new Set<string>();
 
     const addLocation = (uri: string, startOffset: number, endOffset: number) => {
@@ -246,7 +264,7 @@ export function registerWorkspaceFeaturesProvider(
 
     const isSysML2 = params.textDocument.uri.endsWith(".sysml");
     const unifiedIndex = isSysML2 ? await getUnifiedIndex(true) : await getUnifiedIndex(false);
-    let targetEntry: any = null;
+    let targetEntry: SymbolEntryLike | null = null;
 
     for (const entry of unifiedIndex.symbols.values()) {
       const eStart = entry.startOffset;
@@ -264,10 +282,10 @@ export function registerWorkspaceFeaturesProvider(
 
     let declarationIds: number[] = [];
     if (isDecl(targetEntry)) {
-      declarationIds = [targetEntry.id as number];
+      declarationIds = [targetEntry.id];
     } else {
       const decls = resolveRef(targetEntry, unifiedIndex);
-      declarationIds = decls.map((d: any) => d.id as number);
+      declarationIds = decls.map((d) => d.id);
     }
 
     if (declarationIds.length === 0) return null;
@@ -493,8 +511,32 @@ export function registerWorkspaceFeaturesProvider(
       }
     }
 
-    const batchDriftEdits: Array<{ range: any; newText: string }> = [];
-    const batchDriftDiags: any[] = [];
+    type LspRange = { start: { line: number; character: number }; end: { line: number; character: number } };
+    type DigitalThreadDiagData = {
+      simplexConsensus?: unknown;
+      sourceValue?: unknown;
+      unit?: string;
+      elementName?: string;
+      threadId?: string;
+      slot?: string;
+      sourceDomain?: string;
+      targetUri?: string;
+      targetLine?: number;
+      startOffset?: number;
+      endOffset?: number;
+      newText?: unknown;
+      description?: string;
+      suggestedEdits?: Array<{
+        uri?: string;
+        line?: number;
+        startOffset?: number;
+        endOffset?: number;
+        newText: string;
+        description?: string;
+      }>;
+    };
+    const batchDriftEdits: Array<{ range: LspRange; newText: string }> = [];
+    const batchDriftDiags: typeof params.context.diagnostics = [];
 
     for (const diagnostic of params.context.diagnostics) {
       // ── Digital Thread Quick-Fixes ──────────────────────────────────
@@ -504,7 +546,7 @@ export function registerWorkspaceFeaturesProvider(
         const endOffset = document.offsetAt(diagnostic.range.end);
         const termText = text.substring(startOffset, endOffset).trim();
 
-        const data = diagnostic.data as any;
+        const data = diagnostic.data as DigitalThreadDiagData | undefined;
         const consensus = data?.simplexConsensus;
         const sourceVal = data?.sourceValue;
         const unit = data?.unit ? ` ${data.unit}` : "";
@@ -582,6 +624,96 @@ export function registerWorkspaceFeaturesProvider(
               },
             },
           });
+        }
+
+        // 2b. Polyglot Digital Thread Generic Drift QuickFix (POLYGLOT_TWIN_DRIFT / suggestedEdits)
+        if (
+          (diagnostic.code === "POLYGLOT_TWIN_DRIFT" || data?.targetUri || Array.isArray(data?.suggestedEdits)) &&
+          (Array.isArray(data?.suggestedEdits) || (data?.targetUri && data?.newText !== undefined))
+        ) {
+          const editsList =
+            Array.isArray(data?.suggestedEdits) && data.suggestedEdits.length > 0
+              ? data.suggestedEdits
+              : [
+                  {
+                    uri: data?.targetUri,
+                    line: data?.targetLine,
+                    startOffset: data?.startOffset,
+                    endOffset: data?.endOffset,
+                    newText: String(data?.newText),
+                    description: data?.description,
+                  },
+                ];
+          const wsChanges: Record<string, Array<{ range: LspRange; newText: string }>> = {};
+          for (const se of editsList) {
+            if (!se.uri) continue;
+            const targetDoc = documents.get(se.uri);
+            let targetText = targetDoc?.getText();
+            if (targetText === undefined && /^file:\/\//i.test(se.uri) && typeof process !== "undefined") {
+              try {
+                const procBuiltin = process as unknown as {
+                  getBuiltinModule?: (id: string) => Record<string, (...a: string[]) => unknown>;
+                };
+                const nodeFs = procBuiltin.getBuiltinModule?.("node:fs") as
+                  | { existsSync: (p: string) => boolean; readFileSync: (p: string, enc: string) => string }
+                  | undefined;
+                const nodeUrl = procBuiltin.getBuiltinModule?.("node:url") as
+                  | { fileURLToPath: (u: string) => string }
+                  | undefined;
+                if (nodeFs && nodeUrl) {
+                  const fsPath = nodeUrl.fileURLToPath(se.uri);
+                  if (nodeFs.existsSync(fsPath)) {
+                    targetText = nodeFs.readFileSync(fsPath, "utf-8");
+                  }
+                }
+              } catch {
+                // Ignore unreadable external URI
+              }
+            }
+
+            let editRange: LspRange | undefined;
+            if (targetDoc && se.startOffset !== undefined && se.endOffset !== undefined) {
+              editRange = {
+                start: targetDoc.positionAt(se.startOffset),
+                end: targetDoc.positionAt(se.endOffset),
+              };
+            } else if (targetText !== undefined && se.startOffset !== undefined && se.endOffset !== undefined) {
+              const offsetToPos = (txt: string, utf16Off: number) => {
+                const clamped = Math.max(0, Math.min(utf16Off, txt.length));
+                const sub = txt.slice(0, clamped);
+                const lines = sub.split(/\r?\n/);
+                return { line: lines.length - 1, character: lines[lines.length - 1]!.length };
+              };
+              editRange = {
+                start: offsetToPos(targetText, se.startOffset),
+                end: offsetToPos(targetText, se.endOffset),
+              };
+            } else if (targetText !== undefined) {
+              const zeroLine = Math.max(0, (se.line ?? 1) - 1);
+              const lText = targetText.split(/\r?\n/)[zeroLine] ?? "";
+              const mVal = /(=|:=)\s*([-+]?[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)/.exec(lText);
+              if (mVal && mVal.index !== undefined) {
+                const startChar = lText.indexOf(mVal[2]!, mVal.index);
+                editRange = {
+                  start: { line: zeroLine, character: startChar },
+                  end: { line: zeroLine, character: startChar + mVal[2]!.length },
+                };
+              }
+            }
+            if (editRange) {
+              wsChanges[se.uri] ??= [];
+              wsChanges[se.uri]!.push({ range: editRange, newText: se.newText });
+            }
+          }
+          if (Object.keys(wsChanges).length > 0) {
+            actions.push({
+              title: editsList[0]?.description || `Sync '${elemName}' across polyglot digital thread`,
+              kind: CodeActionKind.QuickFix,
+              isPreferred: true,
+              diagnostics: [diagnostic],
+              edit: { changes: wsChanges },
+            });
+          }
         }
 
         // 3. Open in Digital Thread Explorer Command

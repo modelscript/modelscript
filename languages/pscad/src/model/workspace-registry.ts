@@ -38,7 +38,10 @@ export function clearPscadSources(): void {
 function tryAutoDiscoverMaster(): void {
   if (typeof process === "undefined" || !process.env) return;
   try {
-    const nodeFs = typeof process.versions?.node === "string" ? eval("require('node:fs')") : undefined;
+    const nodeFs =
+      typeof (process as { getBuiltinModule?: (m: string) => typeof import("node:fs") }).getBuiltinModule === "function"
+        ? (process as { getBuiltinModule: (m: string) => typeof import("node:fs") }).getBuiltinModule("node:fs")
+        : undefined;
     if (!nodeFs) return;
     const candidates = [
       process.env["PSCAD_MASTER_LIB_PATH"],

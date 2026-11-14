@@ -1,7 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import fs from "node:fs";
+import type * as fsType from "node:fs";
 import { hashIri64 } from "../ontology/wasm_ontology.js";
+
+function getNodeFs(): typeof fsType {
+  const mod = (process as any)?.getBuiltinModule?.("node:fs");
+  if (!mod) {
+    throw new Error("PagedTripleStore disk backing requires Node.js node:fs");
+  }
+  return mod;
+}
+const fs = new Proxy({} as typeof fsType, {
+  get(_target, prop) {
+    return (getNodeFs() as any)[prop];
+  },
+});
 
 export interface PagedWasmExports {
   paged_init?(bufferPoolFrames?: number): void;

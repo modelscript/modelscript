@@ -11,7 +11,6 @@
  *   npx tsx languages/verilog-a/tests/va-benchmark-runner.ts [options]
  */
 
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { lowerVerilogAToDae, parseVerilogA } from "../src/index.js";
@@ -89,6 +88,82 @@ endmodule
 
   if (!passed) process.exit(1);
 }
+
+export const verilogABenchmarkAdapter: import("@modelscript/runtime/benchmark").LanguageBenchmarkAdapter = {
+  slug: "verilog-a",
+  referenceTool: "CMC Verilog-A / Ngspice ADMS",
+  referenceVersion: "2.4",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases(): Promise<import("@modelscript/runtime/benchmark").BenchmarkCaseResult[]> {
+    const models = [
+      {
+        id: "cmc_diode",
+        name: "CMC Junction Diode with limexp & ddt Charge",
+        va: `
+module cmc_diode(anode, cathode);
+  inout anode, cathode;
+  electrical anode, cathode;
+  parameter real Is = 1e-14;
+  parameter real N = 1.0;
+  parameter real Vt = 0.02585;
+  parameter real Cj0 = 1e-12;
+  real Vd, Id, Qd;
+  analog begin
+    Vd = V(anode, cathode);
+    Id = Is * (limexp(Vd / (N * Vt)) - 1.0);
+    Qd = Cj0 * Vd;
+    I(anode, cathode) <+ Id + ddt(Qd);
+  end
+endmodule
+`,
+      },
+      {
+        id: "mosfet_rc",
+        name: "MOSFET Channel with Quadratic Saturation and Capacitances",
+        va: `
+module mosfet_rc(d, g, s);
+  inout d, g, s;
+  electrical d, g, s;
+  parameter real Kp = 2e-4;
+  parameter real Vth = 0.7;
+  parameter real Cds = 1e-12;
+  real Vgs, Vds, Ids, Qds;
+  analog begin
+    Vgs = V(g, s);
+    Vds = V(d, s);
+    if (Vgs < Vth) begin
+      Ids = 0.0;
+    end else begin
+      Ids = 0.5 * Kp * (Vgs - Vth) * (Vgs - Vth);
+    end
+    Qds = Cds * Vds;
+    I(d, s) <+ Ids + ddt(Qds);
+  end
+endmodule
+`,
+      },
+    ];
+    return models.map((m) => {
+      const t0 = performance.now();
+      const doc = parseVerilogA(m.va);
+      const arena = lowerVerilogAToDae(doc.modules[0]!);
+      const isSquare = arena.getVarCount() === arena.getEqCount() && arena.getVarCount() >= 4;
+      return {
+        id: m.id,
+        name: m.name,
+        scale: "standard" as const,
+        referenceTool: "CMC Verilog-A / Ngspice ADMS",
+        metricKind: "dae-parity" as const,
+        threshold: 0,
+        measuredError: isSquare ? 0 : 1,
+        passed: isSquare,
+        durationMs: Number((performance.now() - t0).toFixed(3)),
+        details: `${arena.getVarCount()} DAE vars, ${arena.getEqCount()} DAE eqs`,
+      };
+    });
+  },
+};
 
 if (process.argv[1] === __filename) {
   runVerilogABenchmarks();

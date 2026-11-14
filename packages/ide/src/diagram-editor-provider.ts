@@ -975,45 +975,48 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     }
     #toolbar {
       position: absolute;
-      top: 10px;
-      left: 10px;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
       z-index: 100;
       display: flex;
       gap: 8px;
-      background: var(--vscode-editorWidget-background, #252526);
-      border: 1px solid var(--vscode-widget-border, #454545);
-      border-radius: 4px;
-      padding: 4px 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      background: var(--vscode-editorWidget-background, #1e1e22);
+      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.12));
+      border-radius: 10px;
+      padding: 5px 10px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.3);
       font-family: var(--vscode-font-family, sans-serif);
       font-size: 12px;
       align-items: center;
     }
     #toolbar select {
-      background: var(--vscode-dropdown-background, #3c3c3c);
-      color: var(--vscode-dropdown-foreground, #f0f0f0);
-      border: 1px solid var(--vscode-dropdown-border, #3c3c3c);
-      border-radius: 2px;
-      padding: 2px 4px;
+      background: var(--vscode-dropdown-background, #242429);
+      color: var(--vscode-dropdown-foreground, #f4f4f5);
+      border: 1px solid var(--vscode-dropdown-border, rgba(255, 255, 255, 0.12));
+      border-radius: 6px;
+      padding: 3px 6px;
       font-size: 12px;
       outline: none;
     }
     #breadcrumb-bar {
       position: absolute;
-      top: 10px;
-      left: 10px;
+      top: 12px;
+      left: 12px;
       z-index: 100;
       display: none;
       align-items: center;
       gap: 6px;
-      background: var(--vscode-editorWidget-background, #252526);
-      border: 1px solid var(--vscode-widget-border, #454545);
-      border-radius: 4px;
-      padding: 4px 10px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      background: var(--vscode-editorWidget-background, #1e1e22);
+      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.12));
+      border-radius: 10px;
+      padding: 5px 12px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.3);
       font-family: var(--vscode-font-family, sans-serif);
       font-size: 12px;
-      color: var(--vscode-foreground, #ccc);
+      color: var(--vscode-foreground, #f4f4f5);
     }
     .breadcrumb-item {
       display: inline-flex;

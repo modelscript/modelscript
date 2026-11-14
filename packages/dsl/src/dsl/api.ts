@@ -5,11 +5,16 @@ import { compileMcpConfig, type McpManifest } from "../codegen/compile_mcp.js";
 import type { GeneratedFile } from "../codegen/parser.js";
 import { generateParser, generateParserTables } from "../codegen/parser.js";
 import { generateTextMate } from "../codegen/textmate.js";
+import { type TranspileSubsetDiagnostic, validateLanguageQueries } from "../codegen/transpiler/transpiler.js";
 import type { GrammarConflictDiagnostic } from "./automata.js";
-import { LanguageOptions, SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "./language.js";
+import type { GrammarDiagnostic } from "./grammar.js";
+import { LanguageOptions, resolveSourceUrl } from "./language.js";
+import { SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "./primitives.js";
 
 export type { McpManifest } from "../codegen/compile_mcp.js";
+export type { TranspileSubsetDiagnostic } from "../codegen/transpiler/transpiler.js";
 export type { GrammarConflictDiagnostic } from "./automata.js";
+export type { GrammarDiagnostic } from "./grammar.js";
 
 /**
  * Options for configuring language parser build and source AST extraction.
@@ -17,6 +22,8 @@ export type { GrammarConflictDiagnostic } from "./automata.js";
 export interface BuildOptions {
   /** Source file path for Direct Source AST extraction */
   sourcePath?: string | undefined;
+  /** Source file URL (e.g. `import.meta.url`) for Direct Source AST extraction */
+  sourceUrl?: string | URL | undefined;
   /** Source code text for in-memory Direct Source AST extraction */
   sourceText?: string | undefined;
 }
@@ -58,6 +65,10 @@ export interface BuildResult {
   table?: any;
   /** Any unresolved grammar conflicts (shift/reduce or reduce/reduce). */
   conflicts?: GrammarConflictDiagnostic[] | undefined;
+  /** Static grammar validation diagnostics (undefined rules, unreachable rules, nullable repeats, etc.). */
+  grammarDiagnostics?: GrammarDiagnostic[] | undefined;
+  /** Static TS-to-AssemblyScript subset diagnostics for `queries`, `lints`, and `scanner`. */
+  queryDiagnostics?: TranspileSubsetDiagnostic[] | undefined;
   /** Compiled Model Context Protocol (MCP) tool and resource manifest. */
   mcpManifest?: McpManifest | undefined;
 }
@@ -72,6 +83,8 @@ export interface BuildResult {
 export function buildParser(languageDef: LanguageOptions, options?: BuildOptions): BuildResult {
   if (options?.sourcePath) {
     (languageDef as any)[SOURCE_PATH_SYMBOL] = options.sourcePath;
+  } else if (options?.sourceUrl) {
+    (languageDef as any)[SOURCE_PATH_SYMBOL] = resolveSourceUrl(options.sourceUrl);
   }
   if (options?.sourceText) {
     (languageDef as any)[SOURCE_TEXT_SYMBOL] = options.sourceText;
@@ -113,6 +126,8 @@ export function buildParser(languageDef: LanguageOptions, options?: BuildOptions
     fieldNames: javascriptWrapper.fieldNames,
     table: result.table,
     conflicts: result.table.diagnostics || [],
+    grammarDiagnostics: result.grammar.diagnostics,
+    queryDiagnostics: validateLanguageQueries(languageDef),
     mcpManifest,
   };
 }

@@ -27,6 +27,7 @@ import { ModelicaPortBalancer } from "../connections.js";
 import { AnnotationEvaluator } from "../diagram/annotation-evaluator.js";
 import { ModelicaErrorCode } from "../errors.js";
 import { getShortClassSpecifierNode, isScopeEncapsulated, validateEnumeration } from "../queries.js";
+import { emitIntegerRealBindingDiagnostic, postWasmValidate } from "./post-wasm-validate.js";
 
 import {
   checkBalance,
@@ -1153,6 +1154,7 @@ export class ModelicaFlattener {
     "identity",
     "diagonal",
     "StateSelect",
+    "Connections",
   ]);
 
   private cstContainsAnyIdentifier(node: any, names: Set<string>): boolean {
@@ -2738,6 +2740,8 @@ export class ModelicaFlattener {
       this.explicitArrayMode !== "preserve" &&
       (this.options.backend === "wasm" ||
         ((this.options.backend === "hybrid" || !this.options.backend) &&
+          // Explicit `backend: "wasm"` runs WASM under `omcCompatibility` (via `flattener_setOmcCompatibility`),
+          // whereas `hybrid` stays on TS for OMC-exact formatting parity until WASM passes the full OMC testsuite.
           !this.options.omcCompatibility &&
           Boolean(this.options.useWasmKernel) &&
           !this.useLocalDirection &&
@@ -2802,6 +2806,8 @@ export class ModelicaFlattener {
       (this as any)._wasmDiffStats = wasmDiffStats;
     }
 
+    let wasmErrStartByte = -1;
+    let wasmErrEndByte = -1;
     if (!cachedArena && hasWasmFlattener && classNodePtr && allowWasm) {
       let wasmFlattener = 0;
       try {
@@ -2827,14 +2833,14 @@ export class ModelicaFlattener {
               : 0;
           if (wasmErrorCode !== 0) {
             const ex = dae.exports as any;
+            wasmErrStartByte =
+              typeof ex.flattener_getErrorStartByte === "function" ? ex.flattener_getErrorStartByte(wasmFlattener) : -1;
+            wasmErrEndByte =
+              typeof ex.flattener_getErrorEndByte === "function" ? ex.flattener_getErrorEndByte(wasmFlattener) : -1;
             wasmBail = describeWasmBail(
               wasmErrorCode,
-              typeof ex.flattener_getErrorStartByte === "function"
-                ? ex.flattener_getErrorStartByte(wasmFlattener)
-                : undefined,
-              typeof ex.flattener_getErrorEndByte === "function"
-                ? ex.flattener_getErrorEndByte(wasmFlattener)
-                : undefined,
+              wasmErrStartByte >= 0 ? wasmErrStartByte : undefined,
+              wasmErrEndByte >= 0 ? wasmErrEndByte : undefined,
               isStrictWasm ? "strict-partial" : "ts-fallback",
               typeof ex.lsp_isCharOffsetKernel === "function" && ex.lsp_isCharOffsetKernel()
                 ? 1
@@ -2866,6 +2872,15 @@ export class ModelicaFlattener {
           if ((varCount > 0 || disabledCount > 0 || isStrictWasm) && wasmErrorCode === 0 && !hybridAlgorithmGate) {
             flattenedInWasm = true;
             this.recordWasmSourceRanges(dae, rootClassId);
+            if (disabledCount > 0 && typeof (dae.exports as any)?.flattener_getDisabledNameId === "function") {
+              for (let d = 0; d < disabledCount; d++) {
+                const nameId = (dae.exports as any).flattener_getDisabledNameId(wasmFlattener, d);
+                const disabledName = nameId === 0 ? "" : dae.interner.resolve(nameId);
+                if (disabledName) {
+                  this.disabledComponents.add(disabledName);
+                }
+              }
+            }
             if (dae.functions.size > 0 && typeof (dae.exports as any).dae_setExprData1 === "function") {
               const origExprCount = dae.exprCount;
               for (let eIdx = 0; eIdx < origExprCount; eIdx++) {
@@ -3165,13 +3180,18 @@ export class ModelicaFlattener {
       }
       if (!flattenedInWasm) {
         if (isStrictWasm) {
-          dae.diagnostics.push({
-            code: ModelicaErrorCode.WASM_FLATTENER_UNSUPPORTED.code,
-            rule: "wasm-flattener-unsupported",
-            severity: "error",
-            message: `[ModelicaFlattener] Model '${rootName}' could not be flattened using strict WASM backend.`,
-            range: null,
-          });
+          if (this.state.wasmErrorCode === 3629) {
+            emitIntegerRealBindingDiagnostic(this.db, dae, rootClassId, wasmErrStartByte, wasmErrEndByte);
+          }
+          if (!dae.diagnostics.some((d) => d.severity === "error")) {
+            dae.diagnostics.push({
+              code: ModelicaErrorCode.WASM_FLATTENER_UNSUPPORTED.code,
+              rule: "wasm-flattener-unsupported",
+              severity: "error",
+              message: `[ModelicaFlattener] Model '${rootName}' could not be flattened using strict WASM backend.`,
+              range: null,
+            });
+          }
           if (wasmBail) this.state.wasmBail = wasmBail;
           return dae;
         }
@@ -3474,6 +3494,10 @@ export class ModelicaFlattener {
 
     if (!isOldFrontend) {
       this.markConditionalParametersFinal(dae, rootClassId);
+    }
+    if (flattenedInWasm) {
+      this.checkCyclicConstantsAndParameters(dae, rootClassId);
+      postWasmValidate(this.db, dae, rootClassId);
     }
 
     const varCountBeforeConnections = dae.varCount;

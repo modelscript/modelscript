@@ -140,3 +140,6 @@ languages/modelica/testsuite/OpenModelica/flattening/modelica/**/*.h
 !languages/modelica/testsuite/OpenModelica/flattening/modelica/mosfiles/TestLibrary/Resources/SpecialSources/ext4.c
 !languages/modelica/testsuite/OpenModelica/flattening/modelica/mosfiles/ext_ExternalFunctionResultOrder.c
 !languages/modelica/testsuite/OpenModelica/flattening/modelica/records/External_C_RecordTest.c
+
+# Staged browser LSP & WASM assets for docs showcase
+apps/docs/docs/public/lsp/

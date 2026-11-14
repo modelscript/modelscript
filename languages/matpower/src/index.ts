@@ -13,4 +13,5 @@ export * from "./parser/matpower-parser.js";
 export * from "./parser/matpower-writer.js";
 export * from "./projections/matpower-to-psse.js";
 export * from "./projections/psse-to-matpower.js";
+export * from "./tgg/index.js";
 export * from "./types.js";

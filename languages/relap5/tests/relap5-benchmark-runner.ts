@@ -93,6 +93,34 @@ export function runRelap5Benchmark(deckText = PWR_BENCHMARK_DECK): Relap5Benchma
   };
 }
 
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const relap5BenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "relap5",
+  referenceTool: "RELAP5 / NRC PWR SCRAM Point Kinetics",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const r = runRelap5Benchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "pwr-4loop-scram-point-kinetics",
+        name: "pwr-4loop-scram-point-kinetics",
+        scale: "standard",
+        referenceTool: "RELAP5 / NRC PWR SCRAM Point Kinetics",
+        passed: r.isSquare && r.powerDropRatio < 0.2 && r.simStepsCount >= 400,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: r.daeEquationsCount,
+        threshold: 0,
+        details: `P_final=${r.finalPowerMW.toFixed(1)}MW (${(r.powerDropRatio * 100).toFixed(1)}%), ${r.daeVariablesCount}x${r.daeEquationsCount} DAE`,
+      },
+    ];
+  },
+};
+
 if (process.argv[1] && process.argv[1].endsWith("relap5-benchmark-runner.ts")) {
   console.log("=== RELAP5 Nuclear Thermal-Hydraulics Benchmark ===");
   const report = runRelap5Benchmark();

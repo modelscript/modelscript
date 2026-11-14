@@ -445,7 +445,7 @@ export const QuickstartContainer = styled.div`
   margin: 16px 0 24px;
   padding: 20px;
   background: var(--surface-overlay, rgba(22, 27, 34, 0.5));
-  border: 1px solid var(--color-border-default, #30363d);
+  border: 1px solid var(--ms-border-default, var(--color-border-default));
   border-radius: var(--radius-lg, 12px);
   backdrop-filter: blur(12px);
   display: flex;

@@ -7,12 +7,12 @@
  * and NLP problem classes, measuring solve time, iterations, and ground-truth parity.
  */
 
-import {
-  instantiateAmpl,
-  parseAmplData,
-  parseAmplModel,
-  solveAmpl,
-} from "../src/index.js";
+import type { BenchmarkCaseResult, LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
+import { instantiateAmpl, parseAmplData, parseAmplModel, solveAmpl } from "../src/index.js";
+
+const __filename = fileURLToPath(import.meta.url);
 
 interface BenchmarkCase {
   id: string;
@@ -159,17 +159,65 @@ const BENCHMARKS: BenchmarkCase[] = [
   },
 ];
 
+export const amplBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "ampl",
+  referenceTool: "AMPL / HiGHS & Ipopt Reference",
+  referenceVersion: "1.0",
+  defaultTolerance: 1e-2,
+  metricKind: "exact",
+  async runCases(): Promise<BenchmarkCaseResult[]> {
+    const out: BenchmarkCaseResult[] = [];
+    for (const b of BENCHMARKS) {
+      const t0 = performance.now();
+      try {
+        const model = parseAmplModel(b.modSrc);
+        const data = b.datSrc ? parseAmplData(b.datSrc) : undefined;
+        const problem = instantiateAmpl(model, data);
+        const result = await solveAmpl(problem);
+        const absDiff = Math.abs(result.objectiveValue - b.expectedObj);
+        const ok = result.status === "OPTIMAL" && absDiff <= b.tolerance;
+        out.push({
+          id: b.id,
+          name: b.name,
+          scale: "standard",
+          referenceTool: "AMPL / HiGHS & Ipopt Reference",
+          metricKind: "exact",
+          threshold: b.tolerance,
+          measuredError: Number.isFinite(absDiff) ? absDiff : null,
+          passed: ok,
+          durationMs: Number((performance.now() - t0).toFixed(3)),
+          details: `${b.category}: obj=${result.objectiveValue.toFixed(4)} (expected ${b.expectedObj.toFixed(4)})`,
+        });
+      } catch (err: unknown) {
+        out.push({
+          id: b.id,
+          name: b.name,
+          scale: "standard",
+          referenceTool: "AMPL / HiGHS & Ipopt Reference",
+          metricKind: "exact",
+          threshold: b.tolerance,
+          measuredError: null,
+          passed: false,
+          durationMs: Number((performance.now() - t0).toFixed(3)),
+          details: (err as Error).message,
+        });
+      }
+    }
+    return out;
+  },
+};
+
 async function runBenchmarks(): Promise<void> {
   console.log("=======================================================================================");
   console.log("             @modelscript/ampl — Mathematical Programming Benchmark Suite              ");
   console.log("=======================================================================================");
   console.log(
     "Benchmark ID".padEnd(20) +
-    "Category".padEnd(10) +
-    "Status".padEnd(12) +
-    "Actual Obj".padEnd(15) +
-    "Expected Obj".padEnd(15) +
-    "Time (ms)"
+      "Category".padEnd(10) +
+      "Status".padEnd(12) +
+      "Actual Obj".padEnd(15) +
+      "Expected Obj".padEnd(15) +
+      "Time (ms)",
   );
   console.log("-".repeat(87));
 
@@ -193,11 +241,11 @@ async function runBenchmarks(): Promise<void> {
     const statusStr = ok ? "PASS" : "FAIL";
     console.log(
       b.id.padEnd(20) +
-      b.category.padEnd(10) +
-      statusStr.padEnd(12) +
-      result.objectiveValue.toFixed(4).padEnd(15) +
-      b.expectedObj.toFixed(4).padEnd(15) +
-      `${elapsed}ms`
+        b.category.padEnd(10) +
+        statusStr.padEnd(12) +
+        result.objectiveValue.toFixed(4).padEnd(15) +
+        b.expectedObj.toFixed(4).padEnd(15) +
+        `${elapsed}ms`,
     );
   }
 
@@ -209,7 +257,9 @@ async function runBenchmarks(): Promise<void> {
   }
 }
 
-runBenchmarks().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (process.argv[1] === __filename) {
+  runBenchmarks().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

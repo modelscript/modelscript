@@ -30,6 +30,7 @@ import type {
   EmtTransformer,
   EmtTransmissionLine,
 } from "../types.js";
+import { computeSotaComparison, type SotaComparisonMetrics, type SotaComparisonOptions } from "./sota-comparison.js";
 
 export interface EhvCorridorBenchmarkResult {
   caseName: string;
@@ -47,18 +48,7 @@ export interface EhvCorridorBenchmarkResult {
   ssov98thPercentilePu: number;
   steepestTrvRrrvKvPerUs: number;
   modalDelaySeparationMs: number;
-  comparisonVsSota: {
-    sotaTool: string;
-    sotaWallClockMs: number;
-    speedupFactor: number;
-    discrepancyRmse: number;
-    discrepancyNrmsePct: number;
-    theilTic: number;
-    theilUm: number;
-    theilUs: number;
-    theilUc: number;
-    parityStatus: "PASS" | "WARN" | "FAIL";
-  };
+  comparisonVsSota: SotaComparisonMetrics;
   comtradeCff: string;
   psoutBinary: Uint8Array;
   htmlDashboard?: string | undefined;
@@ -230,11 +220,13 @@ export function generateEhvCorridorNetlist(): EmtNetlist {
 /**
  * Runs the Untransposed 500 kV EHV Corridor with Subsea XLPE Cable Benchmark.
  */
-export async function runEhvCorridorBenchmark(options?: {
-  timeStepUs?: number;
-  durationMs?: number;
-  generateHtml?: boolean;
-}): Promise<EhvCorridorBenchmarkResult> {
+export async function runEhvCorridorBenchmark(
+  options?: SotaComparisonOptions & {
+    timeStepUs?: number;
+    durationMs?: number;
+    generateHtml?: boolean;
+  },
+): Promise<EhvCorridorBenchmarkResult> {
   const dtUs = options?.timeStepUs ?? 20.0;
   const durationMs = options?.durationMs ?? 150.0;
   const dtSec = dtUs * 1e-6;
@@ -269,29 +261,33 @@ export async function runEhvCorridorBenchmark(options?: {
 
   // Calculate Statistical Switching Overvoltage (SSOV) 98th Percentile (V_2%)
   voltageMagnitudesPu.sort((a, b) => a - b);
-  const p98Index = Math.min(voltageMagnitudesPu.length - 1, Math.floor(0.98 * voltageMagnitudesPu.length));
-  const ssov98thPercentilePu = voltageMagnitudesPu[p98Index] ?? 1.45;
+  const p98Index =
+    voltageMagnitudesPu.length > 0
+      ? Math.min(voltageMagnitudesPu.length - 1, Math.floor(0.98 * voltageMagnitudesPu.length))
+      : 0;
+  const ssov98thPercentilePu = voltageMagnitudesPu[p98Index] ?? 0.0;
   const peakOvervoltageKv = maxAbsVoltsV;
   const peakOvervoltagePu = maxAbsVoltsV / vNominalPeakKv;
 
   // Calculate Steepest Transient Recovery Voltage Rate-of-Rise (RRRV)
-  // Across fault clearing window (t = 88 ms to 95 ms)
+  // Prefer fault clearing window (88-95 ms) when simulated; otherwise measure peak dv/dt over simulated window
   let maxRrrvKvPerUs = 0.0;
+  const useClearingWindow = durationMs >= 95.0;
   for (let i = 1; i < transitionVolts.length; i++) {
     const t = emtResult.time[i]!;
-    if (t >= 0.088 && t <= 0.095) {
+    if (!useClearingWindow || (t >= 0.088 && t <= 0.095)) {
       const dvKv = Math.abs(transitionVolts[i]! - transitionVolts[i - 1]!) / 1000.0;
-      const dtMicrosec = dtUs;
-      const rrrv = dvKv / dtMicrosec;
+      const rrrv = dvKv / dtUs;
       if (rrrv > maxRrrvKvPerUs) {
         maxRrrvKvPerUs = rrrv;
       }
     }
   }
-  const steepestTrvRrrvKvPerUs = Math.max(maxRrrvKvPerUs, 2.35);
+  const steepestTrvRrrvKvPerUs = maxRrrvKvPerUs;
 
-  // Modal travel delay separation: tau_0 (ground mode) = 1.25 ms vs tau_1 (aerial mode) = 1.00 ms
-  const modalDelaySeparationMs = 0.25;
+  // Derive theoretical OHL modal travel separation from modeled OHL geometry (ground ~240 km/ms vs aerial ~300 km/ms)
+  const ohlLine = netlist.transmissionLines.find((l) => l.id === "LINE_OHL_300KM");
+  const modalDelaySeparationMs = ohlLine ? ohlLine.lengthKm / 240.0 - ohlLine.lengthKm / 300.0 : 0.0;
 
   // Generate COMTRADE CFF container
   const simResultLike: SimulationResultLike = {
@@ -307,37 +303,25 @@ export async function runEhvCorridorBenchmark(options?: {
   // Generate native PSCAD v5 *.psout binary
   const psoutBinary = writePscadPsout(simResultLike);
 
-  // Calibrate SOTA comparison trajectory against PSCAD v5.1 ULM ground truth
   const nPoints = emtResult.time.length;
-  const sotaGroundTruth = new Float64Array(nPoints);
   const msCurve = new Float64Array(nPoints);
-
   for (let i = 0; i < nPoints; i++) {
-    const t = emtResult.time[i]!;
-    const vPu = Math.abs(recvVolts[i]!) / (vNominalPeakKv * 1000.0);
-    msCurve[i] = vPu;
-    // Calibrated SOTA ground truth reflecting PSCAD v5.1 Universal Line Model reference
-    sotaGroundTruth[i] = vPu + 0.004 * Math.sin(2 * Math.PI * 60 * t + 0.05);
+    msCurve[i] = Math.abs(recvVolts[i]!) / (vNominalPeakKv * 1000.0);
   }
 
-  let sumSq = 0;
-  let maxDiff = 0;
-  let sumSotaSq = 0;
-  let sumMsSq = 0;
+  const comparisonVsSota = computeSotaComparison(msCurve, wallClockMs, options, {
+    normalizationSpan: 1.0,
+    nrmsePassLimitPct: 1.0,
+    ticPassLimit: 0.02,
+  });
 
-  for (let i = 0; i < nPoints; i++) {
-    const diff = msCurve[i]! - sotaGroundTruth[i]!;
-    sumSq += diff * diff;
-    if (Math.abs(diff) > maxDiff) maxDiff = Math.abs(diff);
-    sumSotaSq += sotaGroundTruth[i]! * sotaGroundTruth[i]!;
-    sumMsSq += msCurve[i]! * msCurve[i]!;
-  }
-
-  const rmse = Math.sqrt(sumSq / nPoints);
-  const nrmsePct = rmse * 100;
-  const denom = Math.sqrt(sumMsSq / nPoints) + Math.sqrt(sumSotaSq / nPoints);
-  const theilTic = denom > 1e-12 ? rmse / denom : 0.0;
-  const sotaWallClockMs = wallClockMs * 18.2;
+  const throughputStepsPerSec = wallClockMs > 0 ? Math.round(totalSteps / (wallClockMs / 1000)) : 0;
+  const statusColor =
+    comparisonVsSota.parityStatus === "PASS"
+      ? "#22c55e"
+      : comparisonVsSota.parityStatus === "WARN"
+        ? "#eab308"
+        : "#94a3b8";
 
   // Build Interactive HTML Dashboard if requested
   let htmlDashboard: string | undefined;
@@ -346,11 +330,11 @@ export async function runEhvCorridorBenchmark(options?: {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>ModelScript EMT — 500 kV EHV Corridor ULM Benchmark vs PSCAD v5.1</title>
+  <title>ModelScript EMT — 500 kV EHV Corridor ULM Benchmark</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; }
     h1, h2, h3 { margin: 0 0 12px 0; font-weight: 600; }
-    .badge-pass { background: #166534; color: #bbf7d0; padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 12px; }
+    .badge { background: ${statusColor}22; color: ${statusColor}; border: 1px solid ${statusColor}; padding: 4px 10px; border-radius: 9999px; font-weight: 700; font-size: 12px; }
     .kpi { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 24px 0; }
     .kpi-box { background: #1e293b; padding: 18px; border-radius: 8px; border: 1px solid #334155; }
     .kpi-title { font-size: 12px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em; margin-bottom: 6px; }
@@ -362,33 +346,33 @@ export async function runEhvCorridorBenchmark(options?: {
   </style>
 </head>
 <body>
-  <h1>ModelScript EMT vs PSCAD v5.1: 500 kV EHV Corridor ULM Benchmark</h1>
-  <p style="color: #94a3b8; font-size: 14px;">300 km Untransposed Overhead Line + 50 km Subsea XLPE Cable &bull; IEEE PES / CIGRE WG 33.02 Reference Case</p>
+  <h1>ModelScript EMT: 500 kV EHV Corridor ULM Benchmark</h1>
+  <p style="color: #94a3b8; font-size: 14px;">300 km Untransposed Overhead Line + 50 km Subsea XLPE Cable &bull; Reference: ${comparisonVsSota.sotaTool}</p>
 
   <div class="kpi">
     <div class="kpi-box">
-      <div class="kpi-title">Execution Speedup</div>
-      <div class="kpi-val" style="color: #38bdf8;">${(sotaWallClockMs / Math.max(1, wallClockMs)).toFixed(1)}&times; Faster</div>
-      <div style="font-size: 11px; color: #94a3b8;">${wallClockMs.toFixed(1)} ms vs ${sotaWallClockMs.toFixed(1)} ms</div>
+      <div class="kpi-title">Execution Time / Speedup</div>
+      <div class="kpi-val" style="color: #38bdf8;">${comparisonVsSota.speedupFactor !== null ? `${comparisonVsSota.speedupFactor.toFixed(2)}&times;` : `${wallClockMs.toFixed(1)} ms`}</div>
+      <div style="font-size: 11px; color: #94a3b8;">${comparisonVsSota.sotaWallClockMs !== null ? `${wallClockMs.toFixed(1)} ms vs ${comparisonVsSota.sotaWallClockMs.toFixed(1)} ms` : "No external timing baseline provided"}</div>
     </div>
     <div class="kpi-box">
       <div class="kpi-title">Simulation Throughput</div>
-      <div class="kpi-val">${Math.round(totalSteps / (wallClockMs / 1000)).toLocaleString()}</div>
+      <div class="kpi-val">${throughputStepsPerSec.toLocaleString()}</div>
       <div style="font-size: 11px; color: #94a3b8;">steps / second</div>
     </div>
     <div class="kpi-box">
       <div class="kpi-title">NRMSE % Error</div>
-      <div class="kpi-val" style="color: #22c55e;">${nrmsePct.toFixed(2)}%</div>
-      <div style="font-size: 11px; color: #94a3b8;">Parity Limit &lt; 1.00%</div>
+      <div class="kpi-val" style="color: ${statusColor};">${comparisonVsSota.discrepancyNrmsePct !== null ? `${comparisonVsSota.discrepancyNrmsePct.toFixed(2)}%` : "N/A"}</div>
+      <div style="font-size: 11px; color: #94a3b8;">${comparisonVsSota.discrepancyNrmsePct !== null ? "Parity Limit &lt; 1.00%" : "No external trace supplied"}</div>
     </div>
     <div class="kpi-box">
       <div class="kpi-title">Theil's TIC</div>
-      <div class="kpi-val">${theilTic.toFixed(4)}</div>
-      <div style="font-size: 11px; color: #22c55e;">Strict Parity (Um &lt; 0.5%)</div>
+      <div class="kpi-val">${comparisonVsSota.theilTic !== null ? comparisonVsSota.theilTic.toFixed(4) : "N/A"}</div>
+      <div style="font-size: 11px; color: ${statusColor};">${comparisonVsSota.theilUm !== null ? `Um=${(comparisonVsSota.theilUm * 100).toFixed(1)}%` : "No external trace supplied"}</div>
     </div>
     <div class="kpi-box">
       <div class="kpi-title">CIGRE 33.02 Parity</div>
-      <div style="margin-top: 8px;"><span class="badge-pass">PASS</span></div>
+      <div style="margin-top: 8px;"><span class="badge">${comparisonVsSota.parityStatus}</span></div>
     </div>
   </div>
 
@@ -396,14 +380,14 @@ export async function runEhvCorridorBenchmark(options?: {
     <h3>Electromagnetic Transient Benchmark Metrics Summary</h3>
     <table>
       <thead>
-        <tr><th>Channel / Metric</th><th>ModelScript ULM</th><th>PSCAD v5.1 Baseline</th><th>Status</th></tr>
+        <tr><th>Channel / Metric</th><th>ModelScript ULM</th><th>External Reference</th><th>Status</th></tr>
       </thead>
       <tbody>
-        <tr><td>Peak Overvoltage (V_max)</td><td>${peakOvervoltageKv.toFixed(1)} kV (${peakOvervoltagePu.toFixed(2)} pu)</td><td>${(peakOvervoltageKv * 1.002).toFixed(1)} kV</td><td><span style="color:#22c55e;">● PASS</span></td></tr>
-        <tr><td>Statistical SSOV 98th Percentile (V_2%)</td><td>${ssov98thPercentilePu.toFixed(3)} p.u.</td><td>1.450 p.u.</td><td><span style="color:#22c55e;">● PASS</span></td></tr>
-        <tr><td>Steepest TRV Rate-of-Rise (RRRV)</td><td>${steepestTrvRrrvKvPerUs.toFixed(2)} kV/&mu;s</td><td>2.35 kV/&mu;s</td><td><span style="color:#22c55e;">● PASS</span></td></tr>
-        <tr><td>Modal Delay Separation (&tau;_0 - &tau;_1)</td><td>${modalDelaySeparationMs.toFixed(2)} ms</td><td>0.25 ms</td><td><span style="color:#22c55e;">● PASS</span></td></tr>
-        <tr><td>Transmission Length Modeled</td><td>350 km (300 km OHL + 50 km Cable)</td><td>350 km</td><td><span style="color:#22c55e;">● PASS</span></td></tr>
+        <tr><td>Peak Overvoltage (V_max)</td><td>${peakOvervoltageKv.toFixed(1)} kV (${peakOvervoltagePu.toFixed(2)} pu)</td><td>—</td><td><span style="color:#38bdf8;">● MEASURED</span></td></tr>
+        <tr><td>Statistical SSOV 98th Percentile (V_2%)</td><td>${ssov98thPercentilePu.toFixed(3)} p.u.</td><td>—</td><td><span style="color:#38bdf8;">● MEASURED</span></td></tr>
+        <tr><td>Steepest TRV Rate-of-Rise (RRRV)</td><td>${steepestTrvRrrvKvPerUs.toFixed(2)} kV/&mu;s</td><td>—</td><td><span style="color:#38bdf8;">● MEASURED</span></td></tr>
+        <tr><td>Modal Delay Separation (&tau;_0 - &tau;_1)</td><td>${modalDelaySeparationMs.toFixed(2)} ms</td><td>—</td><td><span style="color:#38bdf8;">● MEASURED</span></td></tr>
+        <tr><td>Transmission Length Modeled</td><td>350 km (300 km OHL + 50 km Cable)</td><td>350 km</td><td><span style="color:${statusColor};">● ${comparisonVsSota.parityStatus}</span></td></tr>
       </tbody>
     </table>
   </div>
@@ -421,24 +405,13 @@ export async function runEhvCorridorBenchmark(options?: {
     timeStepUs: dtUs,
     durationMs,
     wallClockTimeMs: wallClockMs,
-    throughputStepsPerSec: Math.round(totalSteps / (wallClockMs / 1000)),
+    throughputStepsPerSec,
     peakOvervoltageKv,
     peakOvervoltagePu,
     ssov98thPercentilePu,
     steepestTrvRrrvKvPerUs,
     modalDelaySeparationMs,
-    comparisonVsSota: {
-      sotaTool: "PSCAD/EMTDC v5.1.0 (ULM)",
-      sotaWallClockMs,
-      speedupFactor: sotaWallClockMs / Math.max(1, wallClockMs),
-      discrepancyRmse: rmse,
-      discrepancyNrmsePct: nrmsePct,
-      theilTic,
-      theilUm: 0.003,
-      theilUs: 0.007,
-      theilUc: 0.99,
-      parityStatus: nrmsePct < 1.0 && theilTic < 0.02 ? "PASS" : "WARN",
-    },
+    comparisonVsSota,
     comtradeCff,
     psoutBinary,
     htmlDashboard,

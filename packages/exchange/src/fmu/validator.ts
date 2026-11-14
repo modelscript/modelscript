@@ -10,7 +10,7 @@
  * - `simulateFmuArchive`: Runs Co-Simulation (`cs`) or Model Exchange (`me`) directly on any `.fmu` archive
  */
 
-import { execFileSync, execSync, spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -670,8 +670,11 @@ function ensureHarnessBinary(isFmi3: boolean): string {
   const cPath = path.join(cacheDir, `${binName}.c`);
   fs.writeFileSync(cPath, cSource, "utf-8");
   const cc = process.env["CC"] ?? "gcc";
-  const dlFlag = process.platform === "win32" ? "" : "-ldl -lm";
-  execSync(`${cc} -O2 "${cPath}" -o "${binPath}" ${dlFlag}`, { stdio: "pipe", timeout: 60000 });
+  const args = ["-O2", cPath, "-o", binPath];
+  if (process.platform !== "win32") {
+    args.push("-ldl", "-lm");
+  }
+  execFileSync(cc, args, { stdio: "pipe", timeout: 60000 });
   return binPath;
 }
 

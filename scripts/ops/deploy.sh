@@ -10,14 +10,27 @@
 set -euo pipefail
 
 IMAGE_TAG="${IMAGE_TAG:-latest}"
+DEPLOY_PROFILE="${DEPLOY_PROFILE:-flagship}"
 TARGET_DIR="${TARGET_DIR:-/opt/modelscript}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production"
+
+resolve_ops_script() {
+  local name="$1"
+  if [ -f "${SCRIPT_DIR}/${name}" ]; then
+    printf '%s\n' "${SCRIPT_DIR}/${name}"
+  elif [ -f "${TARGET_DIR}/scripts/ops/${name}" ]; then
+    printf '%s\n' "${TARGET_DIR}/scripts/ops/${name}"
+  elif [ -f "${TARGET_DIR}/scripts/${name}" ]; then
+    printf '%s\n' "${TARGET_DIR}/scripts/${name}"
+  fi
+}
 
 cd "${TARGET_DIR}"
 
 echo "================================================================================"
 echo " ModelScript Production Deployment Sentinel"
-echo " Target Tag: ${IMAGE_TAG}"
+echo " Target Tag: ${IMAGE_TAG} (Profile: ${DEPLOY_PROFILE})"
 echo " Host:       $(hostname) (${TARGET_DIR})"
 echo " Time:       $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 echo "================================================================================"
@@ -27,8 +40,8 @@ TOTAL_RAM_MB=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}' || echo 0)
 TOTAL_SWAP_MB=$(free -m 2>/dev/null | awk '/^Swap:/{print $2}' || echo 0)
 if [ "${TOTAL_RAM_MB:-0}" -gt 0 ] && [ "${TOTAL_RAM_MB:-0}" -le 2500 ] && [ "${TOTAL_SWAP_MB:-0}" -lt 1000 ]; then
   echo "⚠️  Detected low-memory host (${TOTAL_RAM_MB}MB RAM) with insufficient swap (${TOTAL_SWAP_MB}MB)."
-  SWAP_SCRIPT="${TARGET_DIR}/scripts/ops/setup-droplet-swap.sh"
-  if [ -f "${SWAP_SCRIPT}" ]; then
+  SWAP_SCRIPT="$(resolve_ops_script "setup-droplet-swap.sh")"
+  if [ -n "${SWAP_SCRIPT}" ] && [ -f "${SWAP_SCRIPT}" ]; then
     echo "==> Invoking setup-droplet-swap.sh to provision 2GB safety swap..."
     bash "${SWAP_SCRIPT}" || echo "⚠️  Could not configure swap automatically (run 'sudo ${SWAP_SCRIPT}' manually)."
   fi
@@ -46,10 +59,18 @@ fi
 
 # Step 2: Create atomic pre-deploy hot backup
 LATEST_BACKUP=""
-if [ -f "${TARGET_DIR}/scripts/backup.sh" ]; then
+BACKUP_SCRIPT="$(resolve_ops_script "backup.sh")"
+RESTORE_SCRIPT="$(resolve_ops_script "restore.sh")"
+if [ -n "${BACKUP_SCRIPT}" ] && [ -f "${BACKUP_SCRIPT}" ]; then
   echo "==> Creating pre-deploy database snapshot..."
-  chmod +x "${TARGET_DIR}/scripts/backup.sh" "${TARGET_DIR}/scripts/restore.sh" 2>/dev/null || true
-  "${TARGET_DIR}/scripts/backup.sh" "pre-deploy" || true
+  chmod +x "${BACKUP_SCRIPT}" 2>/dev/null || true
+  if [ -n "${RESTORE_SCRIPT}" ] && [ -f "${RESTORE_SCRIPT}" ]; then
+    chmod +x "${RESTORE_SCRIPT}" 2>/dev/null || true
+  fi
+  if ! "${BACKUP_SCRIPT}" "pre-deploy"; then
+    echo "🚨 ERROR: Pre-deploy database snapshot failed. Aborting deployment before modifying containers."
+    exit 1
+  fi
   LATEST_BACKUP="$(ls -1t "${TARGET_DIR}/backups"/snapshot-pre-deploy-*.db 2>/dev/null | head -n1 || true)"
   # Retain only the 5 most recent database snapshots to prevent disk exhaustion
   if [ -d "${TARGET_DIR}/backups" ]; then
@@ -82,17 +103,18 @@ if [ "${AVAIL_KB:-0}" -lt 4194304 ]; then
 fi
 
 # Step 2c: Execute Production Hardening Pre-Flight Sentinel
-if [ -f "${TARGET_DIR}/scripts/ops/preflight-audit.ts" ]; then
+PREFLIGHT_SCRIPT="$(resolve_ops_script "preflight-audit.ts")"
+if [ -n "${PREFLIGHT_SCRIPT}" ] && [ -f "${PREFLIGHT_SCRIPT}" ]; then
   echo "==> Executing Production Hardening Pre-Flight Sentinel..."
-  npx tsx "${TARGET_DIR}/scripts/ops/preflight-audit.ts" || {
+  npx tsx "${PREFLIGHT_SCRIPT}" || {
     echo "🚨 ERROR: Production Hardening Pre-Flight Sentinel reported critical security failures!"
     exit 1
   }
 fi
 
 # Step 3: Pull target Docker images
-echo "==> Pulling target Docker images (IMAGE_TAG=${IMAGE_TAG})..."
-IMAGE_TAG="${IMAGE_TAG}" ${COMPOSE_CMD} --profile federated pull
+echo "==> Pulling target Docker images (IMAGE_TAG=${IMAGE_TAG}, profile=${DEPLOY_PROFILE})..."
+IMAGE_TAG="${IMAGE_TAG}" ${COMPOSE_CMD} --profile "${DEPLOY_PROFILE}" pull
 
 # Step 4: Launch updated services with --wait
 echo "==> Normalizing volume permissions for unprivileged node user (uid 1000)..."
@@ -106,7 +128,7 @@ done
 
 echo "==> Rolling out updated services..."
 ROLLOUT_FAILED=false
-if ! IMAGE_TAG="${IMAGE_TAG}" ${COMPOSE_CMD} --profile federated up -d --wait --remove-orphans; then
+if ! IMAGE_TAG="${IMAGE_TAG}" ${COMPOSE_CMD} --profile "${DEPLOY_PROFILE}" up -d --wait --remove-orphans; then
   echo "🚨 ERROR: Docker compose rollout failed to start containers healthy!"
   ROLLOUT_FAILED=true
 fi
@@ -171,14 +193,16 @@ if [ "${ROLLOUT_FAILED}" = "true" ]; then
 
   if [ -n "${PREV_API_IMAGE}" ] && [ "${PREV_API_IMAGE}" != "${IMAGE_TAG}" ]; then
     echo "==> Rolling back containers to previous known-good tag (${PREV_API_IMAGE})..."
-    IMAGE_TAG="${PREV_API_IMAGE}" ${COMPOSE_CMD} --profile federated up -d --wait --remove-orphans || true
+    IMAGE_TAG="${PREV_API_IMAGE}" ${COMPOSE_CMD} --profile "${DEPLOY_PROFILE}" up -d --wait --remove-orphans || true
 
     # Check if rollback image is healthy
     if check_endpoint "http://127.0.0.1:3000/health"; then
       echo "✓ Rollback successful! Services restored to ${PREV_API_IMAGE}."
-    elif [ -n "${LATEST_BACKUP}" ] && [ -f "${LATEST_BACKUP}" ]; then
+    elif [ -n "${LATEST_BACKUP}" ] && [ -f "${LATEST_BACKUP}" ] && [ -n "${RESTORE_SCRIPT}" ] && [ -f "${RESTORE_SCRIPT}" ]; then
       echo "==> Services still unhealthy after image rollback. Restoring pre-deploy database snapshot..."
-      "${TARGET_DIR}/scripts/restore.sh" "${LATEST_BACKUP}" || true
+      if ! "${RESTORE_SCRIPT}" "${LATEST_BACKUP}"; then
+        echo "🚨 CRITICAL: Database restore from ${LATEST_BACKUP} also failed!"
+      fi
     fi
   fi
 

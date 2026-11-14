@@ -9,6 +9,7 @@
  */
 
 import type { ConflictClause, SharedEquality, TheoryLiteral, TheoryOracle } from "../theory_coordinator.js";
+import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
 
 export type DistributionSpec =
   | { kind: "normal"; mean: number; stdDev: number }
@@ -125,15 +126,13 @@ export class UqTheoryOracle implements TheoryOracle {
   }
 
   public retractLiteral(litId: number): void {
-    if (!this.assertedLiterals.has(litId)) return;
+    const hasShared = hasSharedEqualityWithLiteral(this.sharedEqualities, litId);
+    if (!this.assertedLiterals.has(litId) && !hasShared) return;
     this.assertedLiterals.delete(litId);
     const savedStack = this.levelStack;
     const savedBase = new Map(this.baseDistributions);
     const remaining = Array.from(this.assertedLiterals.values());
-    const remainingSharedEqs = this.sharedEqualities.filter((eq) => {
-      const justs = eq.justifications ?? eq.justification ?? [];
-      return !justs.includes(litId);
-    });
+    const remainingSharedEqs = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
     this.reset();
     this.levelStack = savedStack;
     for (const [k, v] of savedBase) {

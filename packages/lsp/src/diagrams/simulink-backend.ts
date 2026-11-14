@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { DiagramBackend, DiagramDispatchDeps } from "../diagramApi.js";
+import type { TextEdit } from "vscode-languageserver";
+import {
+  computeSimulinkComponentDropEdits,
+  createDropBatchState,
+  mergeCoincidentInsertEdits,
+} from "../cross-language-drop.js";
+import {
+  deduplicateAndSort,
+  getUnifiedIndexFromDeps,
+  type DiagramBackend,
+  type DiagramDispatchDeps,
+} from "../diagramApi.js";
 import type {
   ComponentPropertyData,
   DiagramApplyEditsParams,
@@ -165,7 +176,41 @@ export function createSimulinkDiagramBackend(backends: DiagramDispatchDeps): Dia
     },
 
     async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
-      return { seq: params.seq, edits: [], renderHint: "none" };
+      try {
+        const raw = await readSimulinkSource(params.uri);
+        if (typeof raw !== "string") {
+          return { seq: params.seq, edits: [], renderHint: "none" };
+        }
+        const unifiedIndex = getUnifiedIndexFromDeps(backends);
+        const batchState = createDropBatchState();
+        const allEdits: TextEdit[] = [];
+        let renderHint: "none" | "immediate" | "debounced" = "none";
+
+        for (const action of params.actions) {
+          if (action.type === "addComponent") {
+            const edits = computeSimulinkComponentDropEdits({
+              docText: raw,
+              rawClassName: action.className,
+              x: action.x,
+              y: action.y,
+              instanceName: action.name,
+              section: action.section,
+              unifiedIndex,
+              batchState,
+            });
+            allEdits.push(...edits);
+            if (edits.length > 0) renderHint = "immediate";
+          }
+        }
+
+        return {
+          seq: params.seq,
+          edits: deduplicateAndSort(mergeCoincidentInsertEdits(allEdits)),
+          renderHint,
+        };
+      } catch {
+        return { seq: params.seq, edits: [], renderHint: "none" };
+      }
     },
 
     async drillDown(params: DiagramDrillDownParams): Promise<DiagramDrillDownResult | null> {

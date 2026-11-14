@@ -65,3 +65,9 @@ msx qif reconcile-step TurbineBladeInspection.qif --step=TurbineBlade.step
 msx qif to-sysml TurbineBladeInspection.qif -o BladeMetrology.sysml
 msx qif to-modelica TurbineBladeInspection.qif -o BladeMetrology.mo
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="qif" />

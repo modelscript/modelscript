@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React, { useMemo, useState } from "react";
+import { InspectorTabs } from "./InspectorTabs.js";
 
 export interface OpenChannelHydraulicsInspectorProps {
   code: string;
@@ -35,7 +36,7 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
 
   const isDark = colorMode === "dark";
   const borderCol = "var(--color-border-default, rgba(148, 163, 184, 0.18))";
-  const cardBg = "var(--color-bg-card, rgba(22, 27, 34, 0.6))";
+  const cardBg = "var(--bgColor-muted, var(--ms-bg-elv))";
   const textPrimary = "var(--color-fg-default, #c9d1d9)";
   const textMuted = "var(--color-fg-muted, #8b949e)";
 
@@ -228,44 +229,24 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
         }}
       >
         <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: "#58a6ff" }}>River Basin & Open-Channel Hydraulics</div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "var(--fgColor-accent, var(--ms-brand))" }}>
+            River Basin & Open-Channel Hydraulics
+          </div>
           <div style={{ fontSize: 12, color: textMuted }}>
             Saint-Venant 1D Standard-Step Backwater & Longitudinal Surface Profiles
           </div>
         </div>
 
-        <div
-          style={{
-            display: "inline-flex",
-            borderRadius: 6,
-            border: `1px solid ${borderCol}`,
-            overflow: "hidden",
-            backgroundColor: isDark ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.8)",
-          }}
-        >
-          {[
+        <InspectorTabs
+          ariaLabel="Open channel hydraulics views"
+          value={subTab}
+          onChange={(id) => setSubTab(id as any)}
+          tabs={[
             { id: "profile", label: `WSP & EGL Profile (${sections.length} XS)` },
             { id: "section", label: `Cross-Section STA ${activeSection.station}` },
             { id: "table", label: "Hydraulic Table" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setSubTab(tab.id as any)}
-              style={{
-                padding: "5px 12px",
-                fontSize: 12,
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-                backgroundColor: subTab === tab.id ? "var(--color-accent-fg, #1f6feb)" : "transparent",
-                color: subTab === tab.id ? "#ffffff" : textMuted,
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+          ]}
+        />
       </div>
 
       {/* KPI Ribbon */}
@@ -282,7 +263,14 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
           style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}
         >
           <div style={{ fontSize: 11, color: textMuted }}>Design Discharge Q</div>
-          <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#58a6ff" }}>
+          <div
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              fontFamily: "monospace",
+              color: "var(--fgColor-accent, var(--ms-brand))",
+            }}
+          >
             {activeSection.flowM3s.toFixed(1)} m³/s
           </div>
         </div>
@@ -521,18 +509,19 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
                   style={{
                     borderBottom: `1px solid ${borderCol}`,
                     cursor: "pointer",
-                    backgroundColor:
-                      idx === selectedStationIdx
-                        ? isDark
-                          ? "rgba(56, 139, 253, 0.15)"
-                          : "rgba(56, 139, 253, 0.1)"
-                        : "transparent",
+                    backgroundColor: idx === selectedStationIdx ? "var(--ms-brand-soft)" : "transparent",
                   }}
                 >
                   <td style={{ padding: "8px 12px", fontFamily: "monospace", fontWeight: 600 }}>{s.station}</td>
                   <td style={{ padding: "8px 12px", fontFamily: "monospace" }}>{s.flowM3s.toFixed(1)}</td>
                   <td style={{ padding: "8px 12px", fontFamily: "monospace" }}>{s.invertElev.toFixed(2)}</td>
-                  <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#388bfd" }}>
+                  <td
+                    style={{
+                      padding: "8px 12px",
+                      fontFamily: "monospace",
+                      color: "var(--fgColor-accent, var(--ms-brand))",
+                    }}
+                  >
                     {s.waterElev.toFixed(2)}
                   </td>
                   <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#39c5bb" }}>

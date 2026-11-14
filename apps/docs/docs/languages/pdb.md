@@ -98,3 +98,9 @@ const dae = lowerPdbToDae(structure);
 const scadCode = pdbToScad(structure);
 const moCode = pdbToModelica(structure);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="pdb" />

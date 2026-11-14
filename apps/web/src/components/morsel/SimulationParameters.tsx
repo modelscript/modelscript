@@ -99,7 +99,7 @@ function NumericParameterRow({
           variant="invisible"
           onClick={toggleSweep}
           style={{
-            color: isSweeping ? "var(--fgColor-accent, #0969da)" : "var(--fgColor-muted, #656d76)",
+            color: isSweeping ? "var(--fgColor-accent, var(--ms-brand))" : "var(--fgColor-muted, #656d76)",
             marginRight: 4,
             padding: "0 4px",
           }}
@@ -503,7 +503,7 @@ export function SimulationExperimentSettings({
             fontSize: "11px",
             background: "transparent",
             border: "none",
-            color: "var(--color-accent-fg, #0969da)",
+            color: "var(--fgColor-accent, var(--ms-brand))",
             cursor: "pointer",
             padding: "2px 0",
             display: "flex",
@@ -520,7 +520,7 @@ export function SimulationExperimentSettings({
       {showAdvanced && (
         <div
           style={{
-            background: "var(--color-canvas-subtle, rgba(0,0,0,0.02))",
+            background: "var(--bgColor-muted, rgba(0,0,0,0.02))",
             padding: "4px 0",
             borderRadius: "4px",
             margin: "2px 8px",
@@ -562,7 +562,7 @@ export function SimulationExperimentSettings({
                 type="checkbox"
                 checked={overrides.equidistant !== false}
                 onChange={(e) => onChange("equidistant", e.target.checked)}
-                style={{ cursor: "pointer", accentColor: "var(--color-accent-emphasis, #0969da)" }}
+                style={{ cursor: "pointer", accentColor: "var(--ms-brand)" }}
               />
             </label>
           </div>
@@ -584,7 +584,7 @@ export function SimulationExperimentSettings({
                 type="checkbox"
                 checked={!!overrides.steadyStateOnly}
                 onChange={(e) => onChange("steadyStateOnly", e.target.checked)}
-                style={{ cursor: "pointer", accentColor: "var(--color-accent-emphasis, #0969da)" }}
+                style={{ cursor: "pointer", accentColor: "var(--ms-brand)" }}
               />
             </label>
           </div>

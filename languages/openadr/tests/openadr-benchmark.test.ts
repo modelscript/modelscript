@@ -14,7 +14,7 @@ test("OpenADR Benchmark: 4-interval industrial demand response curtailment and D
   assert.equal(metrics.minCurtailmentKW, 150.0);
   assert.equal(metrics.maxEnergyShedKWh, 750.0);
   assert.equal(metrics.eventDurationSeconds, 10800);
-  assert.equal(metrics.daeVarCount, 2);
-  assert.equal(metrics.daeEqCount, 2);
+  assert.equal(metrics.daeVarCount, 5);
+  assert.equal(metrics.daeEqCount, 5);
   assert.equal(metrics.isSquare, true);
 });

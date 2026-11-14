@@ -57,7 +57,7 @@ const RerunOverlay = styled.div`
   font-size: 12px;
   font-weight: 500;
   color: var(--color-text-primary);
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--ms-bg-canvas, var(--color-canvas-default));
   border: 1px solid var(--ms-border, var(--color-border));
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
   pointer-events: none;

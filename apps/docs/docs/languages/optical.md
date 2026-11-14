@@ -77,3 +77,8 @@ msx optical lint network.json
 msx optical to-dae network.json --out=optical.dae
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="optical" />

@@ -7,11 +7,11 @@
  */
 
 import { DAEBuilder } from "@modelscript/runtime";
-import { resolveStrandColor } from "../src/catalog/tia-598.js";
-import { computeNescCableLoading, type AerialCableSpecification } from "../src/structural/nesc-loading.js";
-import { evaluatePoleLoading, type PoleSpecification, type PoleAttachmentLoad } from "../src/structural/pole-stress.js";
 import { evaluateSrlgDisjointness, type SrlgNetwork, type SrlgPath } from "../src/analysis/srlg-analyzer.js";
+import { resolveStrandColor } from "../src/catalog/tia-598.js";
 import { lowerFiberNetworkToDae, type FiberLinkParams } from "../src/dae/lowering.js";
+import { computeNescCableLoading, type AerialCableSpecification } from "../src/structural/nesc-loading.js";
+import { evaluatePoleLoading, type PoleAttachmentLoad, type PoleSpecification } from "../src/structural/pole-stress.js";
 
 export interface FiberBenchmarkResult {
   name: string;
@@ -89,10 +89,38 @@ export function runFiberBenchmark(): FiberBenchmarkResult {
       { id: "NODE_3", name: "Node 3" },
     ],
     segments: [
-      { segmentId: "S1", fromNodeId: "CO", toNodeId: "NODE_1", cableId: "C1", lengthMeters: 4000, srlgIds: ["DUCT_WEST"] },
-      { segmentId: "S2", fromNodeId: "NODE_1", toNodeId: "NODE_2", cableId: "C2", lengthMeters: 3000, srlgIds: ["POLE_WEST"] },
-      { segmentId: "S3", fromNodeId: "CO", toNodeId: "NODE_3", cableId: "C3", lengthMeters: 4500, srlgIds: ["DUCT_EAST"] },
-      { segmentId: "S4", fromNodeId: "NODE_3", toNodeId: "NODE_2", cableId: "C4", lengthMeters: 3500, srlgIds: ["POLE_EAST"] },
+      {
+        segmentId: "S1",
+        fromNodeId: "CO",
+        toNodeId: "NODE_1",
+        cableId: "C1",
+        lengthMeters: 4000,
+        srlgIds: ["DUCT_WEST"],
+      },
+      {
+        segmentId: "S2",
+        fromNodeId: "NODE_1",
+        toNodeId: "NODE_2",
+        cableId: "C2",
+        lengthMeters: 3000,
+        srlgIds: ["POLE_WEST"],
+      },
+      {
+        segmentId: "S3",
+        fromNodeId: "CO",
+        toNodeId: "NODE_3",
+        cableId: "C3",
+        lengthMeters: 4500,
+        srlgIds: ["DUCT_EAST"],
+      },
+      {
+        segmentId: "S4",
+        fromNodeId: "NODE_3",
+        toNodeId: "NODE_2",
+        cableId: "C4",
+        lengthMeters: 3500,
+        srlgIds: ["POLE_EAST"],
+      },
     ],
   };
 
@@ -249,3 +277,29 @@ export function runFiberBenchmark(): FiberBenchmarkResult {
     totalTimeMs,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const fiberBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "fiber",
+  referenceTool: "ANSI/TIA-598-D & NESC Rule 250",
+  defaultTolerance: 1.0,
+  metricKind: "max-relative-error",
+  async runCases() {
+    const res = runFiberBenchmark();
+    return [
+      {
+        id: "tia598-144strand-metro-ring",
+        name: "tia598-144strand-metro-ring",
+        scale: "standard",
+        referenceTool: "ANSI/TIA-598-D & NESC Rule 250",
+        passed: res.isSrlgDisjoint && res.isPoleLoadingCompliant && res.minOpticalMarginDb > 0 && res.variableCount > 0,
+        durationMs: res.totalTimeMs,
+        metricKind: "max-relative-error",
+        measuredError: res.maxPoleStressRatio,
+        threshold: 1.0,
+        details: `${res.totalStrandCount} strands, poleStress=${(res.maxPoleStressRatio * 100).toFixed(1)}%, margin=${res.minOpticalMarginDb.toFixed(2)}dB`,
+      },
+    ];
+  },
+};

@@ -11,10 +11,10 @@ description: "@modelscript/landgem (languages/landgem) provides native parsing, 
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.landgem`, `.lfg` | EPA LandGEM Model | Annual solid waste acceptance cohorts, methane capacity $L_0$, and decay rates $k$ |
-| `.biogas` | Biogas / ADM1 Digester Deck | CSTR reactor parameters, hydraulic retention times (HRT), and influent COD loads |
+| Extension          | Format                      | Description                                                                        |
+| :----------------- | :-------------------------- | :--------------------------------------------------------------------------------- |
+| `.landgem`, `.lfg` | EPA LandGEM Model           | Annual solid waste acceptance cohorts, methane capacity $L_0$, and decay rates $k$ |
+| `.biogas`          | Biogas / ADM1 Digester Deck | CSTR reactor parameters, hydraulic retention times (HRT), and influent COD loads   |
 
 ---
 
@@ -41,6 +41,12 @@ description: "@modelscript/landgem (languages/landgem) provides native parsing, 
   $$P_{\text{elec}}(t) = Q_{\text{CH}_4}(t) \cdot \text{LHV}_{\text{CH}_4} \cdot \eta_{\text{elec}}$$
   $$P_{\text{thermal}}(t) = Q_{\text{CH}_4}(t) \cdot \text{LHV}_{\text{CH}_4} \cdot \eta_{\text{thermal}}$$
 - Direct integration into electrical power networks (`@modelscript/opendss`) and district heating networks.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="landgem" />
 
 ---
 

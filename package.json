@@ -28,6 +28,8 @@
   "scripts": {
     "audit:languages": "npx tsx scripts/audit-language-maturity.ts",
     "bench:dae-scale": "npx tsx scripts/benchmark-dae-scale.ts",
+    "bench:languages": "npx tsx scripts/benchmark-languages.ts",
+    "bench:languages:record": "npx tsx scripts/benchmark-languages.ts --record",
     "bench:parser": "npm run bench:parser --workspace=@modelscript/modelica",
     "bench:polyglot": "npx tsx scripts/benchmark-polyglot-runner.ts",
     "bench:triplestore": "npx tsx scripts/benchmark-triplestore.ts",

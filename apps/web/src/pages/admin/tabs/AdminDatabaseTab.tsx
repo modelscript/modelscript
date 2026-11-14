@@ -9,6 +9,7 @@ import {
   TrashIcon,
   UploadIcon,
 } from "@primer/octicons-react";
+import { Button, Dialog } from "@primer/react";
 import React, { useState } from "react";
 import {
   type AdminInstanceBundle,
@@ -19,7 +20,7 @@ import {
   uploadAdminBackup,
 } from "../../../api";
 import Box from "../../../components/Box";
-import { ActionButton, Badge, Card, Input, ModalBox, ModalOverlay, StatGrid, Table } from "../styles";
+import { ActionButton, Badge, Card, Input, StatGrid, Table } from "../styles";
 import type { AdminBackupInfo, AdminDbStatus } from "../types";
 
 export interface AdminDatabaseTabProps {
@@ -581,61 +582,45 @@ export const AdminDatabaseTab: React.FC<AdminDatabaseTabProps> = ({
       )}
 
       {confirmPruneOpen && (
-        <ModalOverlay onClick={() => setConfirmPruneOpen(false)}>
-          <ModalBox
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Confirm Prune Old Snapshots"
-          >
-            <span style={{ fontWeight: 800, fontSize: "16px", color: "var(--color-text-primary)" }}>
-              Confirm Prune Old Snapshots
-            </span>
+        <Dialog title="Confirm Prune Old Snapshots" width="medium" onClose={() => setConfirmPruneOpen(false)}>
+          <Box display="flex" flexDirection="column" gap={3}>
             <Box fontSize="13px" color="var(--color-text-muted)" style={{ lineHeight: 1.5 }}>
               Are you sure you want to permanently delete older SQLite WAL snapshots and retain only the latest{" "}
               <strong>{keepCount}</strong> snapshot(s)?
             </Box>
             <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
-              <ActionButton $variant="secondary" onClick={() => setConfirmPruneOpen(false)} disabled={loading}>
+              <Button variant="default" onClick={() => setConfirmPruneOpen(false)} disabled={loading}>
                 Cancel
-              </ActionButton>
-              <ActionButton $variant="danger" onClick={() => void handlePruneSnapshots()} disabled={loading}>
+              </Button>
+              <Button variant="danger" onClick={() => void handlePruneSnapshots()} disabled={loading}>
                 Confirm Prune
-              </ActionButton>
+              </Button>
             </Box>
-          </ModalBox>
-        </ModalOverlay>
+          </Box>
+        </Dialog>
       )}
 
       {confirmDeleteBackupFile && (
-        <ModalOverlay onClick={() => setConfirmDeleteBackupFile(null)}>
-          <ModalBox
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Confirm Delete Snapshot"
-          >
-            <span style={{ fontWeight: 800, fontSize: "16px", color: "var(--color-text-primary)" }}>
-              Delete Backup Snapshot
-            </span>
+        <Dialog title="Delete Backup Snapshot" width="medium" onClose={() => setConfirmDeleteBackupFile(null)}>
+          <Box display="flex" flexDirection="column" gap={3}>
             <Box fontSize="13px" color="var(--color-text-muted)" style={{ lineHeight: 1.5 }}>
               Are you sure you want to permanently delete backup snapshot <code>{confirmDeleteBackupFile}</code>? This
               action cannot be undone.
             </Box>
             <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
-              <ActionButton $variant="secondary" onClick={() => setConfirmDeleteBackupFile(null)} disabled={loading}>
+              <Button variant="default" onClick={() => setConfirmDeleteBackupFile(null)} disabled={loading}>
                 Cancel
-              </ActionButton>
-              <ActionButton
-                $variant="danger"
+              </Button>
+              <Button
+                variant="danger"
                 onClick={() => void handleDeleteBackup(confirmDeleteBackupFile)}
                 disabled={loading}
               >
                 Confirm Delete
-              </ActionButton>
+              </Button>
             </Box>
-          </ModalBox>
-        </ModalOverlay>
+          </Box>
+        </Dialog>
       )}
     </div>
   );

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckIcon, CopyIcon, DownloadIcon, ShieldCheckIcon, ShieldLockIcon, XIcon } from "@primer/octicons-react";
+import { CheckIcon, CopyIcon, DownloadIcon } from "@primer/octicons-react";
+import { Dialog } from "@primer/react";
 import QRCode from "qrcode";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 import { disable2FA, regenerateBackupCodes2FA, setup2FA, verify2FA } from "../../api";
-import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 interface TwoFactorModalProps {
   isOpen: boolean;
@@ -16,74 +16,6 @@ interface TwoFactorModalProps {
   hasPassword?: boolean | undefined;
   mode?: "manage" | "regenerate" | undefined;
 }
-
-const Overlay = styled.div`
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  padding: 16px;
-  overflow-y: auto;
-`;
-
-const ModalCard = styled.div`
-  background: var(--surface-overlay, var(--color-canvas-overlay));
-  border: 1px solid var(--border-subtle, var(--color-border-default));
-  border-radius: var(--radius-xl, 16px);
-  width: 100%;
-  max-width: 520px;
-  max-height: calc(100dvh - 32px);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-`;
-
-const ModalHeader = styled.div`
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border-subtle, var(--color-border-default));
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
-`;
-
-const ModalTitle = styled.h2`
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--color-text-heading, var(--color-text-primary));
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-`;
-
-const CloseButton = styled.button`
-  background: none;
-  border: none;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  &:hover {
-    color: var(--color-text-primary);
-    background: var(--surface-elevated, var(--color-canvas-subtle));
-  }
-`;
-
-const ModalBody = styled.div`
-  padding: 24px;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-`;
 
 const QrContainer = styled.div`
   display: flex;
@@ -232,8 +164,6 @@ export default function TwoFactorModal({
   const [disablePassword, setDisablePassword] = useState("");
   const [disableCode, setDisableCode] = useState("");
 
-  const modalRef = useRef<HTMLDivElement>(null);
-
   const handleRequestClose = () => {
     if (step === "backup" && !acknowledgedBackup) {
       setError("Please confirm that you have saved your recovery backup codes before closing.");
@@ -241,8 +171,6 @@ export default function TwoFactorModal({
     }
     onClose();
   };
-
-  useFocusTrap(modalRef, isOpen, { onEscape: handleRequestClose });
 
   useEffect(() => {
     if (!isOpen) {
@@ -293,8 +221,9 @@ export default function TwoFactorModal({
       setStep("backup");
       onStatusChange(true);
       onBackupCodesRegenerated?.((res.backupCodes || []).length || 10);
-    } catch (err: any) {
-      setError(err.response?.data?.error || "Invalid verification code. Please try again.");
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { error?: string } } };
+      setError(apiErr.response?.data?.error || "Invalid verification code. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -316,9 +245,10 @@ export default function TwoFactorModal({
         onStatusChange(false);
         onClose();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { error?: string } } };
       setError(
-        err.response?.data?.error ||
+        apiErr.response?.data?.error ||
           (mode === "regenerate"
             ? "Failed to regenerate backup codes. Please verify your credentials."
             : "Failed to disable 2FA. Please verify your credentials."),
@@ -351,86 +281,30 @@ export default function TwoFactorModal({
     URL.revokeObjectURL(url);
   };
 
+  const dialogTitle =
+    step === "backup"
+      ? "Save Recovery Backup Codes"
+      : isEnabled && mode === "regenerate"
+        ? "Regenerate Recovery Backup Codes"
+        : isEnabled
+          ? "Disable Two-Factor Authentication"
+          : "Set Up Two-Factor Authentication";
+
   return (
-    <Overlay onClick={handleRequestClose} role="dialog" aria-modal="true" aria-labelledby="two-factor-title">
-      <ModalCard ref={modalRef} onClick={(e) => e.stopPropagation()}>
-        <ModalHeader>
-          <ModalTitle id="two-factor-title">
-            {step === "backup" ? (
-              <>
-                <ShieldCheckIcon size={20} />
-                Save Recovery Backup Codes
-              </>
-            ) : isEnabled && mode === "regenerate" ? (
-              <>
-                <ShieldCheckIcon size={20} />
-                Regenerate Recovery Backup Codes
-              </>
-            ) : isEnabled ? (
-              <>
-                <ShieldLockIcon size={20} />
-                Disable Two-Factor Authentication
-              </>
-            ) : (
-              <>
-                <ShieldCheckIcon size={20} />
-                Set Up Two-Factor Authentication
-              </>
-            )}
-          </ModalTitle>
-          <CloseButton
-            onClick={handleRequestClose}
-            disabled={step === "backup" && !acknowledgedBackup}
-            aria-label="Close modal"
-          >
-            <XIcon size={18} />
-          </CloseButton>
-        </ModalHeader>
+    <Dialog title={dialogTitle} width="medium" onClose={handleRequestClose}>
+      <div style={{ maxHeight: "75vh", overflowY: "auto" }}>
+        {error && <ErrorBanner>{error}</ErrorBanner>}
 
-        <ModalBody>
-          {error && <ErrorBanner>{error}</ErrorBanner>}
+        {isEnabled && step !== "backup" ? (
+          <form onSubmit={handleDisable}>
+            <p style={{ color: "var(--color-text-muted)", fontSize: "14px", lineHeight: "1.5", margin: "0 0 16px" }}>
+              {mode === "regenerate"
+                ? "Generating new backup recovery codes will immediately invalidate all previously issued recovery codes. Confirm your identity to generate 10 new single-use codes."
+                : "Disabling two-factor authentication will remove the extra layer of security on your account. You will only need your email and password to log in."}
+            </p>
 
-          {isEnabled && step !== "backup" ? (
-            <form onSubmit={handleDisable}>
-              <p style={{ color: "var(--color-text-muted)", fontSize: "14px", lineHeight: "1.5", margin: "0 0 16px" }}>
-                {mode === "regenerate"
-                  ? "Generating new backup recovery codes will immediately invalidate all previously issued recovery codes. Confirm your identity to generate 10 new single-use codes."
-                  : "Disabling two-factor authentication will remove the extra layer of security on your account. You will only need your email and password to log in."}
-              </p>
-
-              {hasPassword && (
-                <div style={{ marginBottom: "16px" }}>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      marginBottom: "6px",
-                      color: "var(--color-text-primary)",
-                    }}
-                  >
-                    Account Password
-                  </label>
-                  <input
-                    type="password"
-                    value={disablePassword}
-                    onChange={(e) => setDisablePassword(e.target.value)}
-                    placeholder="Enter your current password"
-                    required
-                    style={{
-                      width: "100%",
-                      padding: "10px 14px",
-                      borderRadius: "6px",
-                      border: "1px solid var(--border-subtle, var(--color-border-default))",
-                      background: "var(--surface-elevated, var(--color-canvas-subtle))",
-                      color: "var(--color-text-primary)",
-                      fontSize: "14px",
-                    }}
-                  />
-                </div>
-              )}
-
-              <div style={{ marginBottom: "20px" }}>
+            {hasPassword && (
+              <div style={{ marginBottom: "16px" }}>
                 <label
                   style={{
                     display: "block",
@@ -440,13 +314,13 @@ export default function TwoFactorModal({
                     color: "var(--color-text-primary)",
                   }}
                 >
-                  Current 2FA Code or Backup Code
+                  Account Password
                 </label>
                 <input
-                  type="text"
-                  value={disableCode}
-                  onChange={(e) => setDisableCode(e.target.value)}
-                  placeholder="6-digit code or 8-char recovery code"
+                  type="password"
+                  value={disablePassword}
+                  onChange={(e) => setDisablePassword(e.target.value)}
+                  placeholder="Enter your current password"
                   required
                   style={{
                     width: "100%",
@@ -456,130 +330,160 @@ export default function TwoFactorModal({
                     background: "var(--surface-elevated, var(--color-canvas-subtle))",
                     color: "var(--color-text-primary)",
                     fontSize: "14px",
-                    fontFamily: "monospace",
                   }}
                 />
               </div>
+            )}
 
-              <ActionButton type="submit" $variant={mode === "regenerate" ? "primary" : "danger"} disabled={loading}>
-                {loading
-                  ? mode === "regenerate"
-                    ? "Generating New Codes…"
-                    : "Disabling 2FA…"
-                  : mode === "regenerate"
-                    ? "Generate 10 New Backup Codes"
-                    : "Confirm and Disable 2FA"}
-              </ActionButton>
-            </form>
-          ) : step === "setup" ? (
-            <form onSubmit={handleVerify}>
-              <p style={{ color: "var(--color-text-muted)", fontSize: "14px", lineHeight: "1.5", margin: "0 0 12px" }}>
-                Scan the QR code below using your authenticator app (Google Authenticator, 1Password, Authy, Apple
-                Keychain, etc.):
-              </p>
-
-              {qrDataUrl && (
-                <QrContainer>
-                  <img src={qrDataUrl} alt="2FA QR Code" width="180" height="180" style={{ display: "block" }} />
-                </QrContainer>
-              )}
-
-              <p style={{ color: "var(--color-text-muted)", fontSize: "13px", margin: "12px 0 6px" }}>
-                Or manually enter this secret key into your authenticator:
-              </p>
-
-              <SecretBox>
-                <span>{secret.match(/.{1,4}/g)?.join(" ") || secret}</span>
-                <CopyButton type="button" onClick={copySecret}>
-                  {hasCopiedSecret ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
-                  {hasCopiedSecret ? "Copied" : "Copy"}
-                </CopyButton>
-              </SecretBox>
-
-              <div style={{ marginTop: "20px" }}>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "13px",
-                    fontWeight: 600,
-                    marginBottom: "6px",
-                    color: "var(--color-text-primary)",
-                  }}
-                >
-                  Enter the 6-digit code generated by your app:
-                </label>
-                <CodeInput
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  value={verificationCode}
-                  onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ""))}
-                  placeholder="123456"
-                  autoFocus
-                  required
-                />
-              </div>
-
-              <div style={{ marginTop: "20px" }}>
-                <ActionButton type="submit" disabled={loading || verificationCode.length !== 6}>
-                  {loading ? "Verifying…" : "Verify and Activate 2FA"}
-                </ActionButton>
-              </div>
-            </form>
-          ) : (
-            <div>
-              <p style={{ color: "var(--color-text-primary)", fontSize: "14px", fontWeight: 600, margin: "0 0 8px" }}>
-                Two-Factor Authentication is now active! 🎉
-              </p>
-              <p style={{ color: "var(--color-text-muted)", fontSize: "13px", lineHeight: "1.5", margin: "0 0 16px" }}>
-                Save these 10 backup recovery codes. Each code can be used once to access your account if you lose
-                access to your authenticator device.
-              </p>
-
-              <BackupCodeGrid>
-                {backupCodes.map((c, i) => (
-                  <BackupCodeItem key={i}>{c}</BackupCodeItem>
-                ))}
-              </BackupCodeGrid>
-
-              <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
-                <CopyButton type="button" onClick={copyAllBackupCodes} style={{ flex: 1, padding: "10px" }}>
-                  {hasCopiedCodes ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
-                  {hasCopiedCodes ? "Copied All Codes" : "Copy All Codes"}
-                </CopyButton>
-                <CopyButton type="button" onClick={downloadBackupCodes} style={{ flex: 1, padding: "10px" }}>
-                  <DownloadIcon size={14} />
-                  Download .txt
-                </CopyButton>
-              </div>
-
+            <div style={{ marginBottom: "20px" }}>
               <label
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
+                  display: "block",
                   fontSize: "13px",
+                  fontWeight: 600,
+                  marginBottom: "6px",
                   color: "var(--color-text-primary)",
-                  cursor: "pointer",
-                  marginBottom: "20px",
                 }}
               >
-                <input
-                  type="checkbox"
-                  checked={acknowledgedBackup}
-                  onChange={(e) => setAcknowledgedBackup(e.target.checked)}
-                />
-                I have saved my backup recovery codes in a safe location
+                Current 2FA Code or Backup Code
               </label>
+              <input
+                type="text"
+                value={disableCode}
+                onChange={(e) => setDisableCode(e.target.value)}
+                placeholder="6-digit code or 8-char recovery code"
+                required
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  borderRadius: "6px",
+                  border: "1px solid var(--border-subtle, var(--color-border-default))",
+                  background: "var(--surface-elevated, var(--color-canvas-subtle))",
+                  color: "var(--color-text-primary)",
+                  fontSize: "14px",
+                  fontFamily: "monospace",
+                }}
+              />
+            </div>
 
-              <ActionButton type="button" onClick={onClose} disabled={!acknowledgedBackup}>
-                Done
+            <ActionButton type="submit" $variant={mode === "regenerate" ? "primary" : "danger"} disabled={loading}>
+              {loading
+                ? mode === "regenerate"
+                  ? "Generating New Codes…"
+                  : "Disabling 2FA…"
+                : mode === "regenerate"
+                  ? "Generate 10 New Backup Codes"
+                  : "Confirm and Disable 2FA"}
+            </ActionButton>
+          </form>
+        ) : step === "setup" ? (
+          <form onSubmit={handleVerify}>
+            <p style={{ color: "var(--color-text-muted)", fontSize: "14px", lineHeight: "1.5", margin: "0 0 12px" }}>
+              Scan the QR code below using your authenticator app (Google Authenticator, 1Password, Authy, Apple
+              Keychain, etc.):
+            </p>
+
+            {qrDataUrl && (
+              <QrContainer>
+                <img src={qrDataUrl} alt="2FA QR Code" width="180" height="180" style={{ display: "block" }} />
+              </QrContainer>
+            )}
+
+            <p style={{ color: "var(--color-text-muted)", fontSize: "13px", margin: "12px 0 6px" }}>
+              Or manually enter this secret key into your authenticator:
+            </p>
+
+            <SecretBox>
+              <span>{secret.match(/.{1,4}/g)?.join(" ") || secret}</span>
+              <CopyButton type="button" onClick={copySecret}>
+                {hasCopiedSecret ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+                {hasCopiedSecret ? "Copied" : "Copy"}
+              </CopyButton>
+            </SecretBox>
+
+            <div style={{ marginTop: "20px" }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  marginBottom: "6px",
+                  color: "var(--color-text-primary)",
+                }}
+              >
+                Enter the 6-digit code generated by your app:
+              </label>
+              <CodeInput
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={verificationCode}
+                onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ""))}
+                placeholder="123456"
+                autoFocus
+                required
+              />
+            </div>
+
+            <div style={{ marginTop: "20px" }}>
+              <ActionButton type="submit" disabled={loading || verificationCode.length !== 6}>
+                {loading ? "Verifying…" : "Verify and Activate 2FA"}
               </ActionButton>
             </div>
-          )}
-        </ModalBody>
-      </ModalCard>
-    </Overlay>
+          </form>
+        ) : (
+          <div>
+            <p style={{ color: "var(--color-text-primary)", fontSize: "14px", fontWeight: 600, margin: "0 0 8px" }}>
+              Two-Factor Authentication is now active! 🎉
+            </p>
+            <p style={{ color: "var(--color-text-muted)", fontSize: "13px", lineHeight: "1.5", margin: "0 0 16px" }}>
+              Save these 10 backup recovery codes. Each code can be used once to access your account if you lose access
+              to your authenticator device.
+            </p>
+
+            <BackupCodeGrid>
+              {backupCodes.map((c, i) => (
+                <BackupCodeItem key={i}>{c}</BackupCodeItem>
+              ))}
+            </BackupCodeGrid>
+
+            <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
+              <CopyButton type="button" onClick={copyAllBackupCodes} style={{ flex: 1, padding: "10px" }}>
+                {hasCopiedCodes ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+                {hasCopiedCodes ? "Copied All Codes" : "Copy All Codes"}
+              </CopyButton>
+              <CopyButton type="button" onClick={downloadBackupCodes} style={{ flex: 1, padding: "10px" }}>
+                <DownloadIcon size={14} />
+                Download .txt
+              </CopyButton>
+            </div>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                fontSize: "13px",
+                color: "var(--color-text-primary)",
+                cursor: "pointer",
+                marginBottom: "20px",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={acknowledgedBackup}
+                onChange={(e) => setAcknowledgedBackup(e.target.checked)}
+              />
+              I have saved my backup recovery codes in a safe location
+            </label>
+
+            <ActionButton type="button" onClick={onClose} disabled={!acknowledgedBackup}>
+              Done
+            </ActionButton>
+          </div>
+        )}
+      </div>
+    </Dialog>
   );
 }

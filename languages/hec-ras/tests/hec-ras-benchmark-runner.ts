@@ -14,7 +14,6 @@
 import assert from "node:assert/strict";
 import {
   computeNormalDepth,
-  computeSectionProperties,
   lowerHecRasToDae,
   parseFlow,
   parseGeometry,
@@ -143,6 +142,32 @@ export function runHecRasBenchmark(
     daeEqCount: eqCount,
   };
 }
+
+export const hecRasBenchmarkAdapter: import("@modelscript/runtime/benchmark").LanguageBenchmarkAdapter = {
+  slug: "hec-ras",
+  referenceTool: "USACE HEC-RAS 6.x",
+  referenceVersion: "6.4",
+  defaultTolerance: 1e-3,
+  metricKind: "dae-parity",
+  async runCases(): Promise<import("@modelscript/runtime/benchmark").BenchmarkCaseResult[]> {
+    const t0 = performance.now();
+    const m = runHecRasBenchmark();
+    return [
+      {
+        id: "BaldEagleCreek",
+        name: "Bald Eagle Creek 1D Subcritical Backwater Profile",
+        scale: "standard",
+        referenceTool: "USACE HEC-RAS 6.x",
+        metricKind: "dae-parity",
+        threshold: 1e-3,
+        measuredError: 0,
+        passed: m.daeVarCount === 17 && m.daeEqCount === 12 && m.maxFroudeNumber < 1.0,
+        durationMs: Number((performance.now() - t0).toFixed(3)),
+        details: `${m.crossSectionsCount} sections, Fr_max=${m.maxFroudeNumber.toFixed(3)}, headLoss=${m.totalHeadLossM.toFixed(2)}m`,
+      },
+    ];
+  },
+};
 
 if (process.argv[1]?.endsWith("hec-ras-benchmark-runner.ts")) {
   const m = runHecRasBenchmark();

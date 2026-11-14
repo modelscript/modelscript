@@ -31,7 +31,7 @@ import {
   XIcon as X,
   XCircleFillIcon,
 } from "@primer/octicons-react";
-import { Button } from "@primer/react";
+import { Button, Dialog } from "@primer/react";
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -99,10 +99,7 @@ import {
   LibrarySidebar,
   MetaButton,
   MetaLine,
-  ModalCard,
   ModalFooter,
-  ModalHeader,
-  ModalOverlay,
   MonoSearchWrapper,
   NewCollectionForm,
   NotesBox,
@@ -1516,21 +1513,8 @@ export const ReferencesPage: React.FC = () => {
 
       {/* Import Modal (BibTeX, RIS, DOI/URN) */}
       {showImportModal && (
-        <ModalOverlay onClick={() => setShowImportModal(false)}>
-          <ModalCard
-            role="dialog"
-            aria-modal="true"
-            aria-label="Import scholarly references"
-            data-testid="references-import-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <ModalHeader>
-              <h2>Import Scholarly References</h2>
-              <IconButton type="button" aria-label="Close" onClick={() => setShowImportModal(false)}>
-                <X size={16} />
-              </IconButton>
-            </ModalHeader>
-
+        <Dialog title="Import Scholarly References" width="medium" onClose={() => setShowImportModal(false)}>
+          <div data-testid="references-import-modal" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <FilterPillBar>
               {(
                 [
@@ -1578,27 +1562,18 @@ export const ReferencesPage: React.FC = () => {
                 </Button>
               </ModalFooter>
             </form>
-          </ModalCard>
-        </ModalOverlay>
+          </div>
+        </Dialog>
       )}
 
       {/* Add Custom Source / Local PDF Modal */}
       {showCreateWorkModal && (
-        <ModalOverlay onClick={() => setShowCreateWorkModal(false)}>
-          <ModalCard
-            role="dialog"
-            aria-modal="true"
-            aria-label="Register scholarly source"
-            data-testid="references-create-work-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <ModalHeader>
-              <h2>Register Scholarly Source &amp; Local PDF</h2>
-              <IconButton type="button" aria-label="Close" onClick={() => setShowCreateWorkModal(false)}>
-                <X size={16} />
-              </IconButton>
-            </ModalHeader>
-
+        <Dialog
+          title="Register Scholarly Source & Local PDF"
+          width="medium"
+          onClose={() => setShowCreateWorkModal(false)}
+        >
+          <div data-testid="references-create-work-modal" style={{ maxHeight: "75vh", overflowY: "auto" }}>
             <form
               onSubmit={(e) => void handleCreateCustomWork(e)}
               style={{ display: "flex", flexDirection: "column", gap: 12 }}
@@ -1688,8 +1663,8 @@ export const ReferencesPage: React.FC = () => {
                 </Button>
               </ModalFooter>
             </form>
-          </ModalCard>
-        </ModalOverlay>
+          </div>
+        </Dialog>
       )}
     </Box>
   );

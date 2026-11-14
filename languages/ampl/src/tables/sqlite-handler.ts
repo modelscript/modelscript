@@ -21,6 +21,13 @@ function getSqliteDatabaseClass(): any {
   }
 }
 
+function quoteSqliteIdent(ident: string): string {
+  if (!ident || ident.includes("\0")) {
+    throw new Error(`Invalid SQLite identifier: ${JSON.stringify(ident)}`);
+  }
+  return `"${ident.replace(/"/g, '""')}"`;
+}
+
 /**
  * Reads row records from a SQLite database file.
  */
@@ -34,7 +41,8 @@ export function readSqliteTableRows(
   const db = new DatabaseSync(absPath);
 
   try {
-    const query = `SELECT * FROM "${tableName}"`;
+    const quotedTable = quoteSqliteIdent(tableName);
+    const query = `SELECT * FROM ${quotedTable}`;
     const stmt = db.prepare(query);
     const results = stmt.all();
     return results as Record<string, string | number>[];
@@ -59,31 +67,42 @@ export function writeSqliteTableRows(
   const db = new DatabaseSync(absPath);
 
   try {
+    const quotedTable = quoteSqliteIdent(tableName);
     const firstRow = rows[0]!;
     const cols = Object.keys(firstRow);
+    if (cols.length === 0) return;
 
     const colDefs = cols
       .map((c) => {
         const val = firstRow[c];
         const typeStr = typeof val === "number" ? "REAL" : "TEXT";
-        return `"${c}" ${typeStr}`;
+        return `${quoteSqliteIdent(c)} ${typeStr}`;
       })
       .join(", ");
 
-    db.exec(`CREATE TABLE IF NOT EXISTS "${tableName}" (${colDefs});`);
+    db.exec(`CREATE TABLE IF NOT EXISTS ${quotedTable} (${colDefs});`);
 
     const placeholders = cols.map(() => "?").join(", ");
-    const insertStmt = db.prepare(`INSERT INTO "${tableName}" VALUES (${placeholders});`);
+    const insertStmt = db.prepare(`INSERT INTO ${quotedTable} VALUES (${placeholders});`);
 
     db.exec("BEGIN TRANSACTION;");
-    for (const row of rows) {
-      const vals = cols.map((c) => {
-        const v = row[c];
-        return v !== undefined ? v : null;
-      });
-      insertStmt.run(...vals);
+    try {
+      for (const row of rows) {
+        const vals = cols.map((c) => {
+          const v = row[c];
+          return v !== undefined ? v : null;
+        });
+        insertStmt.run(...vals);
+      }
+      db.exec("COMMIT;");
+    } catch (err) {
+      try {
+        db.exec("ROLLBACK;");
+      } catch {
+        // Ignore rollback failure when transaction is already closed
+      }
+      throw err;
     }
-    db.exec("COMMIT;");
   } finally {
     db.close();
   }

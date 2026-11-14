@@ -1,0 +1,1943 @@
+[
+  {
+    "name": "source3",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:source3",
+    "exports": ["Name", "V", "MVA", "f", "Ph", "R", "L"],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Phase Voltage Source",
+      "category": "Sources & Rotating Machines",
+      "domain": "electrical",
+      "description": "Three-phase AC Thévenin equivalent voltage source with internal R-L impedance.",
+      "aliases": ["source_3", "source3", "source_3p", "source_1", "vsrc"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Source Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "Src1",
+          "description": "Unique source identifier"
+        },
+        {
+          "key": "V",
+          "aliases": ["v", "Vm", "kv"],
+          "label": "Base Voltage (L-L RMS)",
+          "tab": "Ratings",
+          "group": "Electrical Ratings",
+          "kind": "number",
+          "unit": "kV",
+          "defaultValue": 230,
+          "min": 0.1,
+          "description": "Line-to-line RMS nominal voltage"
+        },
+        {
+          "key": "MVA",
+          "aliases": ["mva"],
+          "label": "Base Power",
+          "tab": "Ratings",
+          "group": "Electrical Ratings",
+          "kind": "number",
+          "unit": "MVA",
+          "defaultValue": 100,
+          "min": 0.1,
+          "description": "Three-phase MVA rating"
+        },
+        {
+          "key": "f",
+          "aliases": ["freq", "F"],
+          "label": "Fundamental Frequency",
+          "tab": "Ratings",
+          "group": "Electrical Ratings",
+          "kind": "number",
+          "unit": "Hz",
+          "defaultValue": 60,
+          "min": 1,
+          "max": 400,
+          "description": "Nominal AC frequency"
+        },
+        {
+          "key": "Ph",
+          "aliases": ["phase"],
+          "label": "Initial Phase Angle",
+          "tab": "Ratings",
+          "group": "Electrical Ratings",
+          "kind": "number",
+          "unit": "deg",
+          "defaultValue": 0,
+          "description": "Voltage source initial phase angle"
+        },
+        {
+          "key": "R",
+          "aliases": ["R1s"],
+          "label": "Internal Series Resistance",
+          "tab": "Impedances",
+          "group": "Source Impedance",
+          "kind": "number",
+          "unit": "Ω",
+          "defaultValue": 0.05,
+          "min": 0,
+          "description": "Positive-sequence internal series resistance"
+        },
+        {
+          "key": "L",
+          "aliases": ["L1p"],
+          "label": "Internal Series Inductance",
+          "tab": "Impedances",
+          "group": "Source Impedance",
+          "kind": "number",
+          "unit": "H",
+          "defaultValue": 0.005,
+          "min": 0,
+          "description": "Positive-sequence internal series inductance"
+        }
+      ]
+    }
+  },
+  {
+    "name": "sync_machine",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:sync_machine",
+    "exports": [
+      "Name",
+      "MVA",
+      "V",
+      "freq",
+      "H",
+      "D",
+      "Xd",
+      "Xd_prime",
+      "Xd_sub",
+      "Xq",
+      "Xq_prime",
+      "Xq_sub",
+      "Pm",
+      "Ef"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Synchronous Machine (Subtransient)",
+      "category": "Sources & Rotating Machines",
+      "domain": "electrical",
+      "description": "6th-order Park dq0 subtransient synchronous generator with multi-mass shaft, IEEE ST1A AVR & TGOV1 governor.",
+      "aliases": ["sync_machine", "synchronous_machine", "syncgen"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Generator Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "SyncGen1",
+          "description": "Machine instance name"
+        },
+        {
+          "key": "MVA",
+          "label": "Rated Apparent Power",
+          "tab": "Ratings",
+          "group": "Nominal Ratings",
+          "kind": "number",
+          "unit": "MVA",
+          "defaultValue": 250,
+          "min": 0.1,
+          "description": "3-phase rated MVA"
+        },
+        {
+          "key": "V",
+          "label": "Rated Line Voltage",
+          "tab": "Ratings",
+          "group": "Nominal Ratings",
+          "kind": "number",
+          "unit": "kV",
+          "defaultValue": 18,
+          "min": 0.1,
+          "description": "Rated line-to-line RMS voltage"
+        },
+        {
+          "key": "freq",
+          "label": "Rated Frequency",
+          "tab": "Ratings",
+          "group": "Nominal Ratings",
+          "kind": "number",
+          "unit": "Hz",
+          "defaultValue": 60,
+          "min": 1,
+          "description": "Nominal synchronous frequency"
+        },
+        {
+          "key": "H",
+          "label": "Inertia Constant (H)",
+          "tab": "Ratings",
+          "group": "Rotor Mechanics",
+          "kind": "number",
+          "unit": "s",
+          "defaultValue": 3.5,
+          "min": 0.05,
+          "description": "Combined turbine-generator inertia constant"
+        },
+        {
+          "key": "D",
+          "label": "Rotor Damping (D)",
+          "tab": "Ratings",
+          "group": "Rotor Mechanics",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 2,
+          "min": 0,
+          "description": "Speed damping coefficient"
+        },
+        {
+          "key": "Xd",
+          "label": "d-Axis Synchronous Reactance (Xd)",
+          "tab": "Impedances",
+          "group": "d/q Reactances",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 1.8,
+          "min": 0.05,
+          "description": "Unsaturated d-axis synchronous reactance"
+        },
+        {
+          "key": "Xd_prime",
+          "label": "d-Axis Transient Reactance (Xd')",
+          "tab": "Impedances",
+          "group": "d/q Reactances",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 0.3,
+          "min": 0.02,
+          "description": "d-axis transient reactance (must be < Xd)"
+        },
+        {
+          "key": "Xd_sub",
+          "label": "d-Axis Subtransient Reactance (Xd'')",
+          "tab": "Impedances",
+          "group": "d/q Reactances",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 0.2,
+          "min": 0.01,
+          "description": "d-axis subtransient reactance (must be < Xd')"
+        },
+        {
+          "key": "Xq",
+          "label": "q-Axis Synchronous Reactance (Xq)",
+          "tab": "Impedances",
+          "group": "d/q Reactances",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 1.7,
+          "min": 0.05,
+          "description": "Unsaturated q-axis synchronous reactance"
+        },
+        {
+          "key": "Xq_prime",
+          "label": "q-Axis Transient Reactance (Xq')",
+          "tab": "Impedances",
+          "group": "d/q Reactances",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 0.45,
+          "min": 0.02,
+          "description": "q-axis transient reactance"
+        },
+        {
+          "key": "Xq_sub",
+          "label": "q-Axis Subtransient Reactance (Xq'')",
+          "tab": "Impedances",
+          "group": "d/q Reactances",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 0.2,
+          "min": 0.01,
+          "description": "q-axis subtransient reactance"
+        },
+        {
+          "key": "Pm",
+          "label": "Mechanical Power Input",
+          "tab": "Control",
+          "group": "Operating Point",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 0.85,
+          "description": "Initial turbine mechanical power"
+        },
+        {
+          "key": "Ef",
+          "label": "Excitation Field Voltage",
+          "tab": "Control",
+          "group": "Operating Point",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 1.2,
+          "description": "Exciter field voltage"
+        }
+      ]
+    }
+  },
+  {
+    "name": "ind_machine",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:ind_machine",
+    "exports": [
+      "Name",
+      "machine_type",
+      "MVA",
+      "V",
+      "H",
+      "slip",
+      "Tm",
+      "Rs",
+      "Xs",
+      "Xm",
+      "Rr",
+      "Xr",
+      "I_crowbar",
+      "R_cb"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Induction Machine / DFIG",
+      "category": "Sources & Rotating Machines",
+      "domain": "electrical",
+      "description": "5th-order 3-phase squirrel-cage motor or wound-rotor DFIG wind generator with active rotor crowbar protection.",
+      "aliases": ["ind_machine", "induction_machine", "dfig", "master:dfig"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Machine Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "IndMachine1",
+          "description": "Induction machine or DFIG identifier"
+        },
+        {
+          "key": "machine_type",
+          "aliases": ["type"],
+          "label": "Rotor Configuration",
+          "tab": "General",
+          "group": "Configuration",
+          "kind": "select",
+          "defaultValue": "squirrel_cage",
+          "options": [
+            {
+              "label": "Squirrel-Cage Induction Motor",
+              "value": "squirrel_cage"
+            },
+            {
+              "label": "Doubly-Fed Induction Generator (DFIG)",
+              "value": "dfig"
+            }
+          ],
+          "description": "Short-circuited squirrel-cage rotor or converter-fed DFIG rotor"
+        },
+        {
+          "key": "MVA",
+          "label": "Rated Power",
+          "tab": "Ratings",
+          "group": "Electrical Ratings",
+          "kind": "number",
+          "unit": "MVA",
+          "defaultValue": 10,
+          "min": 0.01,
+          "description": "3-phase MVA base rating"
+        },
+        {
+          "key": "V",
+          "label": "Rated Stator Voltage",
+          "tab": "Ratings",
+          "group": "Electrical Ratings",
+          "kind": "number",
+          "unit": "kV",
+          "defaultValue": 13.8,
+          "min": 0.1,
+          "description": "Stator L-L RMS voltage"
+        },
+        {
+          "key": "H",
+          "label": "Rotor Inertia Constant",
+          "tab": "Ratings",
+          "group": "Mechanical",
+          "kind": "number",
+          "unit": "s",
+          "defaultValue": 1.5,
+          "min": 0.05,
+          "description": "Inertia constant H"
+        },
+        {
+          "key": "slip",
+          "aliases": ["s0", "initial_slip"],
+          "label": "Initial Slip (s)",
+          "tab": "Control",
+          "group": "Operating Point",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 0.02,
+          "description": "Initial slip (>0 motoring, <0 super-synchronous generating)"
+        },
+        {
+          "key": "Tm",
+          "aliases": ["T_load"],
+          "label": "Mechanical Shaft Torque",
+          "tab": "Control",
+          "group": "Operating Point",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 0.6,
+          "description": "Load torque (>0) or wind turbine drive torque (<0)"
+        },
+        {
+          "key": "Rs",
+          "label": "Stator Resistance (Rs)",
+          "tab": "Impedances",
+          "group": "Equivalent Circuit",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 0.015,
+          "min": 0.001,
+          "description": "Stator winding resistance"
+        },
+        {
+          "key": "Xs",
+          "label": "Stator Leakage Reactance (Xs)",
+          "tab": "Impedances",
+          "group": "Equivalent Circuit",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 0.1,
+          "min": 0.01,
+          "description": "Stator leakage reactance"
+        },
+        {
+          "key": "Xm",
+          "label": "Magnetizing Reactance (Xm)",
+          "tab": "Impedances",
+          "group": "Equivalent Circuit",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 3.5,
+          "min": 0.2,
+          "description": "Air-gap magnetizing reactance"
+        },
+        {
+          "key": "Rr",
+          "label": "Rotor Resistance (Rr')",
+          "tab": "Impedances",
+          "group": "Equivalent Circuit",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 0.015,
+          "min": 0.001,
+          "description": "Referred rotor resistance"
+        },
+        {
+          "key": "Xr",
+          "label": "Rotor Leakage Reactance (Xr')",
+          "tab": "Impedances",
+          "group": "Equivalent Circuit",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 0.1,
+          "min": 0.01,
+          "description": "Referred rotor leakage reactance"
+        },
+        {
+          "key": "I_crowbar",
+          "aliases": ["crowbar_threshold"],
+          "label": "DFIG Crowbar Trigger Current",
+          "tab": "Protection",
+          "group": "Rotor Crowbar",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 1.8,
+          "min": 1,
+          "description": "Rotor current magnitude threshold that triggers active crowbar"
+        },
+        {
+          "key": "R_cb",
+          "aliases": ["crowbar_r"],
+          "label": "DFIG Crowbar Resistance",
+          "tab": "Protection",
+          "group": "Rotor Crowbar",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 0.15,
+          "min": 0.01,
+          "description": "Active rotor crowbar bypass resistance"
+        }
+      ]
+    }
+  },
+  {
+    "name": "xfmr-3p2w",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:xfmr-3p2w",
+    "exports": ["Name", "Connection", "MVA", "V1", "V2", "X", "Knee"],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Phase 2-Winding Transformer",
+      "category": "Transformers, Lines & Cables",
+      "domain": "electrical",
+      "description": "Three-phase 2-winding power transformer with turns ratio, vector group phase shift, and anhysteretic core saturation.",
+      "aliases": ["xfmr-3p2w", "xfmr_3p2w", "transformer"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Transformer Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "T1",
+          "description": "Transformer identifier"
+        },
+        {
+          "key": "Connection",
+          "label": "Winding Vector Group",
+          "tab": "General",
+          "group": "Configuration",
+          "kind": "select",
+          "defaultValue": "Yg-Yg",
+          "options": [
+            {
+              "label": "Wye-Grounded / Wye-Grounded (Yg-Yg)",
+              "value": "Yg-Yg"
+            },
+            {
+              "label": "Wye-Grounded / Delta (Yg-D)",
+              "value": "Yg-D"
+            },
+            {
+              "label": "Delta / Wye-Grounded (D-Yg)",
+              "value": "D-Yg"
+            },
+            {
+              "label": "Delta / Delta (D-D)",
+              "value": "D-D"
+            }
+          ],
+          "description": "Primary and secondary winding connection topology"
+        },
+        {
+          "key": "MVA",
+          "aliases": ["Tmva"],
+          "label": "Rated Power (3-Phase)",
+          "tab": "Ratings",
+          "group": "Ratings",
+          "kind": "number",
+          "unit": "MVA",
+          "defaultValue": 250,
+          "min": 0.1,
+          "description": "Transformer 3-phase MVA rating"
+        },
+        {
+          "key": "V1",
+          "aliases": ["v1"],
+          "label": "Primary Winding Voltage (L-L)",
+          "tab": "Ratings",
+          "group": "Ratings",
+          "kind": "number",
+          "unit": "kV",
+          "defaultValue": 18,
+          "min": 0.1,
+          "description": "Primary nominal RMS voltage"
+        },
+        {
+          "key": "V2",
+          "aliases": ["v2"],
+          "label": "Secondary Winding Voltage (L-L)",
+          "tab": "Ratings",
+          "group": "Ratings",
+          "kind": "number",
+          "unit": "kV",
+          "defaultValue": 230,
+          "min": 0.1,
+          "description": "Secondary nominal RMS voltage"
+        },
+        {
+          "key": "X",
+          "aliases": ["Xl", "leakage_reactance"],
+          "label": "Leakage Reactance (Xl)",
+          "tab": "Impedances",
+          "group": "Short-Circuit",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 0.1,
+          "min": 0.005,
+          "max": 0.5,
+          "description": "Positive-sequence leakage reactance"
+        },
+        {
+          "key": "Knee",
+          "aliases": ["V_knee"],
+          "label": "Saturation Knee Voltage",
+          "tab": "Impedances",
+          "group": "Core Saturation",
+          "kind": "number",
+          "unit": "pu",
+          "defaultValue": 1.2,
+          "min": 1,
+          "max": 2,
+          "description": "Magnetizing saturation knee point in pu"
+        }
+      ]
+    }
+  },
+  {
+    "name": "tline",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:tline",
+    "exports": [
+      "Name",
+      "model_type",
+      "length",
+      "R",
+      "L",
+      "C",
+      "conductor_height",
+      "conductor_radius",
+      "soil_resistivity"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Overhead Transmission Line",
+      "category": "Transformers, Lines & Cables",
+      "domain": "electrical",
+      "description": "3-Phase coupled overhead transmission line supporting Bergeron, Carson/Deri-Semlyen FDPM, and Pi-section models.",
+      "aliases": ["tline", "pi_line", "bergeron_line"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Line Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "Line1",
+          "description": "Transmission line identifier"
+        },
+        {
+          "key": "model_type",
+          "aliases": ["model"],
+          "label": "Line Formulation",
+          "tab": "General",
+          "group": "Formulation",
+          "kind": "select",
+          "defaultValue": "bergeron",
+          "options": [
+            {
+              "label": "Bergeron Traveling-Wave",
+              "value": "bergeron"
+            },
+            {
+              "label": "Frequency-Dependent Phase/Modal (FDPM)",
+              "value": "fd"
+            },
+            {
+              "label": "Nominal Pi-Section",
+              "value": "pi"
+            }
+          ],
+          "description": "Distributed traveling-wave or lumped pi-equivalent model"
+        },
+        {
+          "key": "length",
+          "aliases": ["Length", "len"],
+          "label": "Line Length",
+          "tab": "Geometry",
+          "group": "Corridor",
+          "kind": "number",
+          "unit": "km",
+          "defaultValue": 100,
+          "min": 0.1,
+          "description": "Physical corridor length in km"
+        },
+        {
+          "key": "R",
+          "aliases": ["r_per_km"],
+          "label": "Positive-Seq Resistance (R1)",
+          "tab": "Impedances",
+          "group": "RLC per km",
+          "kind": "number",
+          "unit": "Ω/km",
+          "defaultValue": 0.032,
+          "min": 0,
+          "description": "Positive-sequence resistance per km"
+        },
+        {
+          "key": "L",
+          "aliases": ["l_per_km"],
+          "label": "Positive-Seq Inductance (L1)",
+          "tab": "Impedances",
+          "group": "RLC per km",
+          "kind": "number",
+          "unit": "H/km",
+          "defaultValue": 0.001,
+          "min": 0.000001,
+          "description": "Positive-sequence inductance per km"
+        },
+        {
+          "key": "C",
+          "aliases": ["c_per_km"],
+          "label": "Positive-Seq Capacitance (C1)",
+          "tab": "Impedances",
+          "group": "RLC per km",
+          "kind": "number",
+          "unit": "F/km",
+          "defaultValue": 1.15e-8,
+          "min": 1e-12,
+          "description": "Positive-sequence shunt capacitance per km"
+        },
+        {
+          "key": "conductor_height",
+          "label": "Average Conductor Height",
+          "tab": "Geometry",
+          "group": "Tower Geometry",
+          "kind": "number",
+          "unit": "m",
+          "defaultValue": 22,
+          "min": 2,
+          "description": "Average phase conductor height above ground"
+        },
+        {
+          "key": "conductor_radius",
+          "label": "Conductor Outer Radius",
+          "tab": "Geometry",
+          "group": "Tower Geometry",
+          "kind": "number",
+          "unit": "m",
+          "defaultValue": 0.016,
+          "min": 0.001,
+          "description": "Phase conductor radius"
+        },
+        {
+          "key": "soil_resistivity",
+          "label": "Earth Soil Resistivity",
+          "tab": "Geometry",
+          "group": "Tower Geometry",
+          "kind": "number",
+          "unit": "Ω·m",
+          "defaultValue": 100,
+          "min": 1,
+          "description": "Carson earth return soil resistivity"
+        }
+      ]
+    }
+  },
+  {
+    "name": "cable",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:cable",
+    "exports": ["Name", "length", "core_radius", "insulation_radius", "eps_r", "burial_depth"],
+    "inherits": [],
+    "metadata": {
+      "label": "Underground / Submarine Coaxial Cable",
+      "category": "Transformers, Lines & Cables",
+      "domain": "electrical",
+      "description": "Coaxial core-sheath-armour XLPE underground or submarine cable using Wedepohl-Wilcox Bessel skin effect & Pollaczek earth return.",
+      "aliases": ["cable", "coax_cable", "submarine_cable"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Cable Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "SubCable1",
+          "description": "Cable identifier"
+        },
+        {
+          "key": "length",
+          "label": "Cable Route Length",
+          "tab": "Geometry",
+          "group": "Route",
+          "kind": "number",
+          "unit": "km",
+          "defaultValue": 45,
+          "min": 0.1,
+          "description": "Total route length in km"
+        },
+        {
+          "key": "core_radius",
+          "label": "Core Conductor Radius (r1)",
+          "tab": "Geometry",
+          "group": "Coaxial Cross-Section",
+          "kind": "number",
+          "unit": "m",
+          "defaultValue": 0.022,
+          "min": 0.002,
+          "description": "Inner copper/aluminium core radius"
+        },
+        {
+          "key": "insulation_radius",
+          "label": "XLPE Insulation Outer Radius (r2)",
+          "tab": "Geometry",
+          "group": "Coaxial Cross-Section",
+          "kind": "number",
+          "unit": "m",
+          "defaultValue": 0.052,
+          "min": 0.005,
+          "description": "Main insulation outer radius (inner sheath radius)"
+        },
+        {
+          "key": "eps_r",
+          "label": "XLPE Relative Permittivity (εr)",
+          "tab": "Impedances",
+          "group": "Dielectric",
+          "kind": "number",
+          "defaultValue": 2.3,
+          "min": 1,
+          "max": 10,
+          "description": "Relative permittivity of main insulation"
+        },
+        {
+          "key": "burial_depth",
+          "label": "Burial / Seabed Depth",
+          "tab": "Geometry",
+          "group": "Route",
+          "kind": "number",
+          "unit": "m",
+          "defaultValue": 1.5,
+          "min": 0.1,
+          "description": "Burial depth below ground/seabed surface"
+        }
+      ]
+    }
+  },
+  {
+    "name": "resistor",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:resistor",
+    "exports": ["Name", "R"],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Phase Resistor",
+      "category": "Transformers, Lines & Cables",
+      "domain": "electrical",
+      "description": "Three-phase linear series or shunt resistance branch.",
+      "aliases": ["resistor", "r"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Name",
+          "tab": "General",
+          "group": "General",
+          "kind": "string",
+          "defaultValue": "R1",
+          "description": "Branch name"
+        },
+        {
+          "key": "R",
+          "label": "Resistance (R)",
+          "tab": "Impedances",
+          "group": "Parameters",
+          "kind": "number",
+          "unit": "Ω",
+          "defaultValue": 10,
+          "min": 0.000001,
+          "description": "Resistance per phase in Ohms"
+        }
+      ]
+    }
+  },
+  {
+    "name": "inductor",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:inductor",
+    "exports": ["Name", "L"],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Phase Inductor",
+      "category": "Transformers, Lines & Cables",
+      "domain": "electrical",
+      "description": "Three-phase linear series or shunt reactor.",
+      "aliases": ["inductor", "l"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Name",
+          "tab": "General",
+          "group": "General",
+          "kind": "string",
+          "defaultValue": "L1",
+          "description": "Reactor name"
+        },
+        {
+          "key": "L",
+          "label": "Inductance (L)",
+          "tab": "Impedances",
+          "group": "Parameters",
+          "kind": "number",
+          "unit": "H",
+          "defaultValue": 0.01,
+          "min": 1e-9,
+          "description": "Inductance per phase in Henries"
+        }
+      ]
+    }
+  },
+  {
+    "name": "capacitor",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:capacitor",
+    "exports": ["Name", "C"],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Phase Capacitor Bank",
+      "category": "Transformers, Lines & Cables",
+      "domain": "electrical",
+      "description": "Three-phase shunt or series capacitor bank.",
+      "aliases": ["capacitor", "c"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Name",
+          "tab": "General",
+          "group": "General",
+          "kind": "string",
+          "defaultValue": "C1",
+          "description": "Capacitor bank name"
+        },
+        {
+          "key": "C",
+          "label": "Capacitance (C)",
+          "tab": "Impedances",
+          "group": "Parameters",
+          "kind": "number",
+          "unit": "F",
+          "defaultValue": 0.00005,
+          "min": 1e-12,
+          "description": "Capacitance per phase in Farads"
+        }
+      ]
+    }
+  },
+  {
+    "name": "vsc_pwm",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:vsc_pwm",
+    "exports": ["Name", "MVA", "V", "Vdc", "f_carrier"],
+    "inherits": [],
+    "metadata": {
+      "label": "Two-Level VSC PWM Converter",
+      "category": "Power Electronics, HVDC & FACTS",
+      "domain": "electrical",
+      "description": "Three-phase 2-level Sine-Triangle PWM Voltage-Source Converter with sub-step firing interpolation.",
+      "aliases": ["vsc_pwm", "vsc"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Converter Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "VSC1",
+          "description": "VSC bridge identifier"
+        },
+        {
+          "key": "MVA",
+          "label": "Rated Power",
+          "tab": "Ratings",
+          "group": "Ratings",
+          "kind": "number",
+          "unit": "MVA",
+          "defaultValue": 150,
+          "min": 0.1,
+          "description": "Converter MVA rating"
+        },
+        {
+          "key": "V",
+          "label": "Rated AC Voltage (L-L)",
+          "tab": "Ratings",
+          "group": "Ratings",
+          "kind": "number",
+          "unit": "kV",
+          "defaultValue": 230,
+          "min": 0.1,
+          "description": "Nominal AC terminal voltage"
+        },
+        {
+          "key": "Vdc",
+          "label": "Nominal DC-Link Voltage",
+          "tab": "Ratings",
+          "group": "DC Link",
+          "kind": "number",
+          "unit": "kV",
+          "defaultValue": 400,
+          "min": 0.1,
+          "description": "Pole-to-pole DC-link voltage"
+        },
+        {
+          "key": "f_carrier",
+          "label": "PWM Carrier Frequency",
+          "tab": "Control",
+          "group": "Modulation",
+          "kind": "number",
+          "unit": "Hz",
+          "defaultValue": 1980,
+          "min": 100,
+          "max": 50000,
+          "description": "Triangular PWM carrier switching frequency"
+        }
+      ]
+    }
+  },
+  {
+    "name": "lcc_6pulse",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:lcc_6pulse",
+    "exports": ["Name", "MVA", "V", "Vdc", "alpha_deg"],
+    "inherits": [],
+    "metadata": {
+      "label": "6-Pulse Graetz LCC HVDC Bridge",
+      "category": "Power Electronics, HVDC & FACTS",
+      "domain": "electrical",
+      "description": "Line-commutated 6-pulse thyristor converter bridge with firing angle α and commutation overlap μ.",
+      "aliases": ["lcc_6pulse", "lcc"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Bridge Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "LCC1",
+          "description": "LCC thyristor bridge identifier"
+        },
+        {
+          "key": "MVA",
+          "label": "Rated Power",
+          "tab": "Ratings",
+          "group": "Ratings",
+          "kind": "number",
+          "unit": "MVA",
+          "defaultValue": 500,
+          "min": 0.1,
+          "description": "Converter rating"
+        },
+        {
+          "key": "V",
+          "label": "AC Commutation Voltage",
+          "tab": "Ratings",
+          "group": "Ratings",
+          "kind": "number",
+          "unit": "kV",
+          "defaultValue": 230,
+          "min": 0.1,
+          "description": "AC commutation bus RMS voltage"
+        },
+        {
+          "key": "Vdc",
+          "label": "Rated DC Voltage",
+          "tab": "Ratings",
+          "group": "Ratings",
+          "kind": "number",
+          "unit": "kV",
+          "defaultValue": 500,
+          "min": 0.1,
+          "description": "Nominal DC pole voltage"
+        },
+        {
+          "key": "alpha_deg",
+          "aliases": ["alpha"],
+          "label": "Firing Delay Angle (α)",
+          "tab": "Control",
+          "group": "Firing Control",
+          "kind": "number",
+          "unit": "deg",
+          "defaultValue": 15,
+          "min": 5,
+          "max": 165,
+          "description": "Thyristor firing angle α in degrees"
+        }
+      ]
+    }
+  },
+  {
+    "name": "mmc_thevenin",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:mmc_thevenin",
+    "exports": ["Name", "MVA", "V", "Vdc", "N_sm", "C_sm", "L_arm"],
+    "inherits": [],
+    "metadata": {
+      "label": "Modular Multilevel Converter (MMC)",
+      "category": "Power Electronics, HVDC & FACTS",
+      "domain": "electrical",
+      "description": "Half-bridge / full-bridge Thévenin equivalent arm MMC with capacitor voltage sorting and CCSC.",
+      "aliases": ["mmc_thevenin", "mmc"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "MMC Station Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "MMC1",
+          "description": "MMC converter station identifier"
+        },
+        {
+          "key": "MVA",
+          "label": "Rated Station Power",
+          "tab": "Ratings",
+          "group": "Ratings",
+          "kind": "number",
+          "unit": "MVA",
+          "defaultValue": 400,
+          "min": 1,
+          "description": "Station MVA rating"
+        },
+        {
+          "key": "V",
+          "label": "Rated AC Voltage",
+          "tab": "Ratings",
+          "group": "Ratings",
+          "kind": "number",
+          "unit": "kV",
+          "defaultValue": 230,
+          "min": 1,
+          "description": "AC grid L-L voltage"
+        },
+        {
+          "key": "Vdc",
+          "label": "Pole-to-Pole DC Voltage",
+          "tab": "Ratings",
+          "group": "Ratings",
+          "kind": "number",
+          "unit": "kV",
+          "defaultValue": 400,
+          "min": 1,
+          "description": "HVDC link voltage"
+        },
+        {
+          "key": "N_sm",
+          "aliases": ["num_submodules"],
+          "label": "Submodules per Arm (N)",
+          "tab": "Control",
+          "group": "Multilevel Arm",
+          "kind": "number",
+          "defaultValue": 40,
+          "min": 4,
+          "max": 512,
+          "description": "Number of half-bridge submodules per phase arm"
+        },
+        {
+          "key": "C_sm",
+          "label": "Submodule Capacitance",
+          "tab": "Impedances",
+          "group": "Multilevel Arm",
+          "kind": "number",
+          "unit": "F",
+          "defaultValue": 0.01,
+          "min": 0.00001,
+          "description": "Individual submodule DC capacitor value"
+        },
+        {
+          "key": "L_arm",
+          "label": "Arm Reactor Inductance",
+          "tab": "Impedances",
+          "group": "Multilevel Arm",
+          "kind": "number",
+          "unit": "H",
+          "defaultValue": 0.015,
+          "min": 0.0001,
+          "description": "Phase arm buffer inductance"
+        }
+      ]
+    }
+  },
+  {
+    "name": "fmu_ibr",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:fmu_ibr",
+    "exports": ["Name", "fmu_path", "control_mode", "MVA", "V"],
+    "inherits": [],
+    "metadata": {
+      "label": "OEM Black-Box IBR FMU (FMI 2.0/3.0)",
+      "category": "Power Electronics, HVDC & FACTS",
+      "domain": "electrical",
+      "description": "Multi-rate co-simulated OEM Inverter-Based Resource (Wind/Solar/BESS) FMU with IEEE 2800 ride-through telemetry.",
+      "aliases": ["fmu_ibr", "inverter_fmu", "ibr"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "IBR Plant Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "IBR_Plant1",
+          "description": "IBR plant instance name"
+        },
+        {
+          "key": "fmu_path",
+          "label": "FMU Archive Path",
+          "tab": "General",
+          "group": "Co-Simulation",
+          "kind": "string",
+          "defaultValue": "vendor_ibr_controller.fmu",
+          "description": "Path to FMI 2.0/3.0 .fmu binary"
+        },
+        {
+          "key": "control_mode",
+          "label": "Control Architecture",
+          "tab": "Control",
+          "group": "Controller",
+          "kind": "select",
+          "defaultValue": "grid_following",
+          "options": [
+            {
+              "label": "Grid-Following (PLL + Current Loop)",
+              "value": "grid_following"
+            },
+            {
+              "label": "Grid-Forming (Virtual Synchronous Machine)",
+              "value": "grid_forming"
+            },
+            {
+              "label": "Frequency/Voltage Droop",
+              "value": "droop"
+            }
+          ],
+          "description": "Inverter synchronization and control mode"
+        },
+        {
+          "key": "MVA",
+          "label": "Rated Plant Capacity",
+          "tab": "Ratings",
+          "group": "Ratings",
+          "kind": "number",
+          "unit": "MVA",
+          "defaultValue": 150,
+          "min": 0.1,
+          "description": "Plant rated MVA at POI"
+        },
+        {
+          "key": "V",
+          "label": "POI Nominal Voltage",
+          "tab": "Ratings",
+          "group": "Ratings",
+          "kind": "number",
+          "unit": "kV",
+          "defaultValue": 230,
+          "min": 0.1,
+          "description": "POI nominal L-L RMS voltage"
+        }
+      ]
+    }
+  },
+  {
+    "name": "breaker3",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:breaker3",
+    "exports": ["Name", "Status", "t_open", "t_close", "chopping_current"],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Phase Circuit Breaker",
+      "category": "Switchgear & Protection",
+      "domain": "electrical",
+      "description": "Three-phase AC circuit breaker with natural current-zero arc extinction, current chopping, and single-pole tripping.",
+      "aliases": ["breaker3", "breaker", "brk"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Breaker Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "BRK1",
+          "description": "Circuit breaker identifier"
+        },
+        {
+          "key": "Status",
+          "label": "Initial Contact State",
+          "tab": "Control",
+          "group": "Switching Schedule",
+          "kind": "select",
+          "defaultValue": "Closed",
+          "options": [
+            {
+              "label": "Initially Closed",
+              "value": "Closed"
+            },
+            {
+              "label": "Initially Open",
+              "value": "Open"
+            }
+          ],
+          "description": "Breaker state at t = 0"
+        },
+        {
+          "key": "t_open",
+          "label": "Trip / Opening Time",
+          "tab": "Control",
+          "group": "Switching Schedule",
+          "kind": "number",
+          "unit": "s",
+          "defaultValue": 0.06,
+          "min": 0,
+          "description": "Scheduled trip command time"
+        },
+        {
+          "key": "t_close",
+          "label": "Reclosing Time",
+          "tab": "Control",
+          "group": "Switching Schedule",
+          "kind": "number",
+          "unit": "s",
+          "defaultValue": 0.25,
+          "min": 0,
+          "description": "Scheduled auto-reclose time"
+        },
+        {
+          "key": "chopping_current",
+          "label": "Current Chopping Limit",
+          "tab": "Protection",
+          "group": "Arc Extinction",
+          "kind": "number",
+          "unit": "A",
+          "defaultValue": 0.5,
+          "min": 0,
+          "description": "Instantaneous current level below which arc extinguishes"
+        }
+      ]
+    }
+  },
+  {
+    "name": "tpflt",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:tpflt",
+    "exports": ["Name", "type", "t_start", "duration", "R"],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Phase Timed Fault",
+      "category": "Switchgear & Protection",
+      "domain": "electrical",
+      "description": "Timed symmetrical (3PH) or unbalanced (SLG, LL, DLG) short-circuit fault branch.",
+      "aliases": ["tpflt", "fault"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Fault Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "FLT1",
+          "description": "Fault element identifier"
+        },
+        {
+          "key": "type",
+          "aliases": ["fault_type"],
+          "label": "Fault Type",
+          "tab": "Protection",
+          "group": "Fault Configuration",
+          "kind": "select",
+          "defaultValue": "SLG",
+          "options": [
+            {
+              "label": "Single-Line-to-Ground (SLG / A-G)",
+              "value": "SLG"
+            },
+            {
+              "label": "Line-to-Line (LL / B-C)",
+              "value": "LL"
+            },
+            {
+              "label": "Double-Line-to-Ground (DLG / B-C-G)",
+              "value": "DLG"
+            },
+            {
+              "label": "Three-Phase Bolted/Impedance (3PH)",
+              "value": "3PH"
+            }
+          ],
+          "description": "Faulted phase combination"
+        },
+        {
+          "key": "t_start",
+          "aliases": ["TF"],
+          "label": "Fault Inception Time",
+          "tab": "Protection",
+          "group": "Timing",
+          "kind": "number",
+          "unit": "s",
+          "defaultValue": 0.05,
+          "min": 0,
+          "description": "Fault start time in seconds"
+        },
+        {
+          "key": "duration",
+          "aliases": ["DF"],
+          "label": "Fault Duration",
+          "tab": "Protection",
+          "group": "Timing",
+          "kind": "number",
+          "unit": "s",
+          "defaultValue": 0.08,
+          "min": 0.001,
+          "description": "Fault duration in seconds"
+        },
+        {
+          "key": "R",
+          "aliases": ["RON"],
+          "label": "Fault Arc Resistance",
+          "tab": "Impedances",
+          "group": "Impedance",
+          "kind": "number",
+          "unit": "Ω",
+          "defaultValue": 0.01,
+          "min": 0.00001,
+          "description": "Fault path resistance in Ohms"
+        }
+      ]
+    }
+  },
+  {
+    "name": "arrester",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:arrester",
+    "exports": ["Name", "Vref"],
+    "inherits": [],
+    "metadata": {
+      "label": "ZnO Metal-Oxide Surge Arrester",
+      "category": "Switchgear & Protection",
+      "domain": "electrical",
+      "description": "Gapless non-linear metal-oxide varistor (MOV) surge arrester with 3-segment piecewise power-law V-I curve.",
+      "aliases": ["arrester", "mov", "surge_arrester"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Arrester Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "MOV1",
+          "description": "Surge arrester identifier"
+        },
+        {
+          "key": "Vref",
+          "aliases": ["protection_level_kv"],
+          "label": "Reference / Clamping Voltage (Vref)",
+          "tab": "Protection",
+          "group": "Nonlinear V-I",
+          "kind": "number",
+          "unit": "kV",
+          "defaultValue": 265,
+          "min": 1,
+          "description": "MOV reference knee voltage in kV (should exceed bus BaseKV)"
+        }
+      ]
+    }
+  },
+  {
+    "name": "pi_ctlr",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:pi_ctlr",
+    "exports": ["Name", "Kp", "Ti", "max", "min"],
+    "inherits": [],
+    "metadata": {
+      "label": "PI Controller (Proportional-Integral)",
+      "category": "CSMF Control Blocks",
+      "domain": "control",
+      "description": "Continuous-time Proportional-Integral (PI) controller with anti-windup output limits: G(s) = Kp + 1/(s·Ti).",
+      "aliases": ["pi_ctlr", "pi"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Block Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "PI1",
+          "description": "Control block signal name"
+        },
+        {
+          "key": "Kp",
+          "label": "Proportional Gain (Kp)",
+          "tab": "Control",
+          "group": "Transfer Function",
+          "kind": "number",
+          "defaultValue": 2.5,
+          "description": "Proportional gain"
+        },
+        {
+          "key": "Ti",
+          "label": "Integral Time Constant (Ti)",
+          "tab": "Control",
+          "group": "Transfer Function",
+          "kind": "number",
+          "unit": "s",
+          "defaultValue": 0.02,
+          "min": 0.00001,
+          "description": "Integral reset time constant"
+        },
+        {
+          "key": "max",
+          "aliases": ["UL"],
+          "label": "Upper Output Limit",
+          "tab": "Control",
+          "group": "Anti-Windup Limits",
+          "kind": "number",
+          "defaultValue": 1.5,
+          "description": "Maximum output saturation limit"
+        },
+        {
+          "key": "min",
+          "aliases": ["LL"],
+          "label": "Lower Output Limit",
+          "tab": "Control",
+          "group": "Anti-Windup Limits",
+          "kind": "number",
+          "defaultValue": -1.5,
+          "description": "Minimum output saturation limit"
+        }
+      ]
+    }
+  },
+  {
+    "name": "realpole",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:realpole",
+    "exports": ["Name", "G", "T"],
+    "inherits": [],
+    "metadata": {
+      "label": "Real Pole (First-Order Low-Pass Lag)",
+      "category": "CSMF Control Blocks",
+      "domain": "control",
+      "description": "First-order lag filter block: G(s) = K / (1 + s·T).",
+      "aliases": ["realpole", "lag"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Block Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "Lag1",
+          "description": "Control block identifier"
+        },
+        {
+          "key": "G",
+          "aliases": ["K"],
+          "label": "DC Gain (K)",
+          "tab": "Control",
+          "group": "Transfer Function",
+          "kind": "number",
+          "defaultValue": 1,
+          "description": "Steady-state gain"
+        },
+        {
+          "key": "T",
+          "label": "Time Constant (T)",
+          "tab": "Control",
+          "group": "Transfer Function",
+          "kind": "number",
+          "unit": "s",
+          "defaultValue": 0.02,
+          "min": 0.000001,
+          "description": "Filter time constant"
+        }
+      ]
+    }
+  },
+  {
+    "name": "sum",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:sum",
+    "exports": ["Name", "s1", "s2"],
+    "inherits": [],
+    "metadata": {
+      "label": "Summing Junction (Σ)",
+      "category": "CSMF Control Blocks",
+      "domain": "control",
+      "description": "Weighted two-input algebraic summer / subtractor: y = s1·u1 + s2·u2.",
+      "aliases": ["sum", "add"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Block Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "Sum1",
+          "description": "Summing block identifier"
+        },
+        {
+          "key": "s1",
+          "label": "Input 1 Sign / Weight",
+          "tab": "Control",
+          "group": "Weights",
+          "kind": "number",
+          "defaultValue": 1,
+          "description": "Multiplier on input 1"
+        },
+        {
+          "key": "s2",
+          "label": "Input 2 Sign / Weight",
+          "tab": "Control",
+          "group": "Weights",
+          "kind": "number",
+          "defaultValue": -1,
+          "description": "Multiplier on input 2 (-1 for error subtraction)"
+        }
+      ]
+    }
+  },
+  {
+    "name": "gain",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:gain",
+    "exports": ["Name", "K"],
+    "inherits": [],
+    "metadata": {
+      "label": "Scalar Gain Amplifier (K)",
+      "category": "CSMF Control Blocks",
+      "domain": "control",
+      "description": "Linear scalar multiplier block: y = K · u.",
+      "aliases": ["gain"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Block Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "Gain1",
+          "description": "Gain block identifier"
+        },
+        {
+          "key": "K",
+          "label": "Gain Multiplier (K)",
+          "tab": "Control",
+          "group": "Parameters",
+          "kind": "number",
+          "defaultValue": 1,
+          "description": "Scalar gain factor"
+        }
+      ]
+    }
+  },
+  {
+    "name": "limit",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:limit",
+    "exports": ["Name", "UL", "LL"],
+    "inherits": [],
+    "metadata": {
+      "label": "Hard Limiter / Saturation",
+      "category": "CSMF Control Blocks",
+      "domain": "control",
+      "description": "Clamps continuous control signal between lower limit LL and upper limit UL.",
+      "aliases": ["limit", "limiter"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Block Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "Lim1",
+          "description": "Limiter block identifier"
+        },
+        {
+          "key": "UL",
+          "aliases": ["max"],
+          "label": "Upper Limit (UL)",
+          "tab": "Control",
+          "group": "Saturation Bounds",
+          "kind": "number",
+          "defaultValue": 1.2,
+          "description": "Maximum output value"
+        },
+        {
+          "key": "LL",
+          "aliases": ["min"],
+          "label": "Lower Limit (LL)",
+          "tab": "Control",
+          "group": "Saturation Bounds",
+          "kind": "number",
+          "defaultValue": -1.2,
+          "description": "Minimum output value"
+        }
+      ]
+    }
+  },
+  {
+    "name": "compar",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:compar",
+    "exports": ["Name", "threshold"],
+    "inherits": [],
+    "metadata": {
+      "label": "Threshold Comparator / Relay",
+      "category": "CSMF Control Blocks",
+      "domain": "control",
+      "description": "Outputs logic high (1.0) when input signal exceeds pickup threshold, driving breaker trip actuators.",
+      "aliases": ["compar", "relay"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Comparator Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "Relay1",
+          "description": "Comparator identifier"
+        },
+        {
+          "key": "threshold",
+          "label": "Pickup Threshold",
+          "tab": "Protection",
+          "group": "Relay Settings",
+          "kind": "number",
+          "defaultValue": 1.5,
+          "description": "Signal level that triggers high output"
+        }
+      ]
+    }
+  },
+  {
+    "name": "const",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:const",
+    "exports": ["Name", "value"],
+    "inherits": [],
+    "metadata": {
+      "label": "Constant Setpoint Source",
+      "category": "CSMF Control Blocks",
+      "domain": "control",
+      "description": "Outputs a constant real reference setpoint signal.",
+      "aliases": ["const", "constant"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Setpoint Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "Vref_Set",
+          "description": "Constant signal name"
+        },
+        {
+          "key": "value",
+          "aliases": ["K"],
+          "label": "Constant Value",
+          "tab": "Control",
+          "group": "Value",
+          "kind": "number",
+          "defaultValue": 1,
+          "description": "Numeric constant value"
+        }
+      ]
+    }
+  },
+  {
+    "name": "pgb",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:pgb",
+    "exports": ["Name", "Units", "Max", "Min"],
+    "inherits": [],
+    "metadata": {
+      "label": "Output Channel / Oscilloscope Probe (PGB)",
+      "category": "Meters, Probes & Buses",
+      "domain": "meter",
+      "description": "PSCAD Graph Builder (PGB) output channel recording signal or waveform into COMTRADE and oscilloscope plots.",
+      "aliases": ["pgb", "probe", "oscilloscope"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Channel Title",
+          "tab": "General",
+          "group": "Plot Channel",
+          "kind": "string",
+          "defaultValue": "V_POI_pu",
+          "description": "Oscilloscope trace title"
+        },
+        {
+          "key": "Units",
+          "label": "Engineering Units",
+          "tab": "General",
+          "group": "Plot Channel",
+          "kind": "string",
+          "defaultValue": "pu",
+          "description": "Displayed y-axis engineering unit"
+        },
+        {
+          "key": "Max",
+          "label": "Plot Y-Axis Max",
+          "tab": "General",
+          "group": "Scaling",
+          "kind": "number",
+          "defaultValue": 2,
+          "description": "Maximum display scale"
+        },
+        {
+          "key": "Min",
+          "label": "Plot Y-Axis Min",
+          "tab": "General",
+          "group": "Scaling",
+          "kind": "number",
+          "defaultValue": -2,
+          "description": "Minimum display scale"
+        }
+      ]
+    }
+  },
+  {
+    "name": "multimeter",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:multimeter",
+    "exports": ["Name", "Vrms", "P_Q"],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Phase Digital Multimeter (V, I, P, Q)",
+      "category": "Meters, Probes & Buses",
+      "domain": "meter",
+      "description": "Measures 3-phase instantaneous and RMS bus voltage, branch current, active power P (MW), and reactive power Q (Mvar).",
+      "aliases": ["multimeter", "voltmeter", "ammeter", "master:voltmeter", "master:ammeter"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Meter Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "Meter1",
+          "description": "Multimeter identifier"
+        },
+        {
+          "key": "Vrms",
+          "label": "Measure RMS Voltage",
+          "tab": "General",
+          "group": "Outputs",
+          "kind": "boolean",
+          "defaultValue": true,
+          "description": "Export RMS voltage signal"
+        },
+        {
+          "key": "P_Q",
+          "label": "Measure Active/Reactive Power",
+          "tab": "General",
+          "group": "Outputs",
+          "kind": "boolean",
+          "defaultValue": true,
+          "description": "Export 3-phase P & Q telemetry"
+        }
+      ]
+    }
+  },
+  {
+    "name": "datalabel",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:datalabel",
+    "exports": ["Name"],
+    "inherits": [],
+    "metadata": {
+      "label": "Wireless Data Label (Signal Net)",
+      "category": "Meters, Probes & Buses",
+      "domain": "control",
+      "description": "Wireless control signal label connecting matching signal nets across the schematic without crossing wires.",
+      "aliases": ["datalabel", "data_label", "radio_link"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Signal Net Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "Vref",
+          "description": "Shared wireless signal net name"
+        }
+      ]
+    }
+  },
+  {
+    "name": "xnode",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "master:xnode",
+    "exports": ["Name"],
+    "inherits": [],
+    "metadata": {
+      "label": "Wireless Electrical Node (XNode / Pin)",
+      "category": "Meters, Probes & Buses",
+      "domain": "electrical",
+      "description": "Wireless electrical node connector / sub-page boundary pin linking matching 3-phase nodes.",
+      "aliases": ["xnode", "pin"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Electrical Node Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "POI_Node",
+          "description": "Shared electrical node / boundary port name"
+        }
+      ]
+    }
+  },
+  {
+    "name": "Bus",
+    "kind": "pscad_component",
+    "ruleName": "UserCmpDefn",
+    "namePath": "Bus",
+    "exports": ["Name", "BaseKV"],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Phase Electrical Busbar",
+      "category": "Meters, Probes & Buses",
+      "domain": "bus",
+      "description": "Three-phase substation busbar node with nominal line-to-line RMS voltage rating.",
+      "aliases": ["bus", "master:bus"],
+      "parameters": [
+        {
+          "key": "Name",
+          "label": "Bus Name",
+          "tab": "General",
+          "group": "Identification",
+          "kind": "string",
+          "defaultValue": "Bus1",
+          "description": "Substation busbar name"
+        },
+        {
+          "key": "BaseKV",
+          "aliases": ["vbase"],
+          "label": "Nominal Base Voltage (L-L)",
+          "tab": "Ratings",
+          "group": "Ratings",
+          "kind": "number",
+          "unit": "kV",
+          "defaultValue": 230,
+          "min": 0.1,
+          "description": "Nominal line-to-line RMS voltage in kV"
+        }
+      ]
+    }
+  }
+]

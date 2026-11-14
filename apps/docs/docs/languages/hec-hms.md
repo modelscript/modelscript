@@ -81,3 +81,9 @@ msx hec-hms to-dae CastroValley.basin
 AI agents connect to `@modelscript/hec-hms` through dedicated MCP tools:
 
 - **`hec_hms_simulate_runoff`**: Evaluates SCS Curve Number excess precipitation, dimensionless unit hydrograph convolution, and Muskingum channel routing directly within agent reasoning workflows.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="hec-hms" />

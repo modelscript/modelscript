@@ -204,9 +204,9 @@ const ProtocolPills = styled.div`
 `;
 
 const ProtocolPillButton = styled.button<{ $active: boolean }>`
-  background: ${(p) => (p.$active ? "var(--color-accent-subtle, rgba(59, 130, 246, 0.15))" : "transparent")};
-  color: ${(p) => (p.$active ? "var(--color-accent-fg, #0969da)" : "var(--color-fg-muted)")};
-  border: 1px solid ${(p) => (p.$active ? "var(--color-accent-muted, rgba(59, 130, 246, 0.4))" : "transparent")};
+  background: ${(p) => (p.$active ? "var(--ms-accent-subtle, var(--color-accent-subtle))" : "transparent")};
+  color: ${(p) => (p.$active ? "var(--ms-accent, var(--color-accent-fg))" : "var(--color-fg-muted)")};
+  border: 1px solid ${(p) => (p.$active ? "var(--ms-accent, var(--color-accent-muted))" : "transparent")};
   border-radius: 6px;
   padding: 3px 10px;
   font-size: 11.5px;

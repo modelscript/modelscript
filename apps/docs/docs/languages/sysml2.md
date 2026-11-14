@@ -72,3 +72,9 @@ description: "@modelscript/sysml2 (languages/sysml2) implements the OMG Systems 
 ## Diagnostic Rules
 
 <LintRules lang="sysml2" />
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="sysml2" />

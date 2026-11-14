@@ -101,3 +101,9 @@ const speciation = solvePhreeqcSpeciation(deck);
 const dae = lowerPhreeqcToDae(deck);
 const moCode = phreeqcToModelica(deck);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="phreeqc" />

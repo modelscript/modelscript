@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckIcon, SearchIcon, SyncIcon, XIcon } from "@primer/octicons-react";
-import React, { useMemo, useRef, useState } from "react";
+import { CheckIcon, SearchIcon, SyncIcon } from "@primer/octicons-react";
+import { Button, Dialog, TextInput } from "@primer/react";
+import React, { useMemo, useState } from "react";
 import { DEFAULT_FRONTEND_FLAGS, getLanguageFlagKey, useFeatureFlags } from "../FeatureFlagContext";
-import { useFocusTrap } from "../hooks/useFocusTrap";
 import { ALL_PLAYGROUND_LANGUAGES } from "../pages/playground/constants";
 
 interface DevFlagsModalProps {
@@ -239,9 +239,6 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
 
-  const modalRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(modalRef, isOpen, { onEscape: onClose });
-
   const allKeys = useMemo(() => {
     const set = new Set<string>([
       ...Object.keys(DEFAULT_FRONTEND_FLAGS),
@@ -277,179 +274,44 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
   if (!isOpen) return null;
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: "var(--color-overlay-backdrop, rgba(15, 23, 42, 0.55))",
-        backdropFilter: "blur(6px)",
-        zIndex: 10000,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "20px",
-      }}
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="dev-flags-title"
+    <Dialog
+      title="Developer Feature Flags"
+      subtitle="Instant real-time toggles persisted in localStorage with zero page reload"
+      width="xlarge"
+      onClose={onClose}
     >
-      <div
-        ref={modalRef}
-        style={{
-          width: "100%",
-          maxWidth: "760px",
-          maxHeight: "88vh",
-          backgroundColor: "var(--surface-overlay, var(--ms-bg-elv))",
-          border: "1px solid var(--color-border-default)",
-          borderRadius: "14px",
-          boxShadow: "var(--ms-shadow-pop)",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          color: "var(--color-text-primary)",
-          fontFamily: "var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div
-          style={{
-            padding: "16px 20px",
-            borderBottom: "1px solid var(--color-border)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            background: "linear-gradient(180deg, var(--color-accent-purple-bg) 0%, transparent 100%)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "20px" }}>🚩</span>
-            <div>
-              <div style={{ fontSize: "16px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
-                <span id="dev-flags-title">Developer Feature Flags</span>
-                {activeOverridesCount > 0 && (
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      backgroundColor: "var(--status-warning-bg)",
-                      color: "var(--color-warning)",
-                      border: "1px solid var(--status-warning-border)",
-                      padding: "2px 7px",
-                      borderRadius: "9999px",
-                      fontFamily: "var(--font-mono, monospace)",
-                    }}
-                  >
-                    {activeOverridesCount} {activeOverridesCount === 1 ? "override" : "overrides"} active
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: "12px", color: "var(--color-text-muted)", marginTop: "2px" }}>
-                Instant real-time toggles persisted in localStorage with zero page reload
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            {activeOverridesCount > 0 && (
-              <button
-                type="button"
-                onClick={resetAllOverrides}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  background: "var(--color-danger-subtle)",
-                  border: "1px solid var(--color-danger-muted)",
-                  color: "var(--color-danger-fg)",
-                  borderRadius: "6px",
-                  padding: "5px 10px",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                }}
-                title="Clear all overrides and revert to server defaults"
-              >
-                <SyncIcon size={12} />
-                <span>Reset to Defaults</span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "var(--color-text-muted)",
-                cursor: "pointer",
-                padding: "6px",
-                display: "flex",
-                alignItems: "center",
-                borderRadius: "6px",
-              }}
-              aria-label="Close modal"
-            >
-              <XIcon size={18} />
-            </button>
-          </div>
-        </div>
-
+      <div style={{ display: "flex", flexDirection: "column", maxHeight: "76vh", overflow: "hidden" }}>
         {/* Filter & Search Bar */}
         <div
           style={{
-            padding: "12px 20px",
-            borderBottom: "1px solid var(--color-border)",
+            padding: "12px 4px",
+            borderBottom: "1px solid var(--ms-divider, var(--color-border))",
             display: "flex",
             flexDirection: "column",
             gap: "10px",
-            backgroundColor: "var(--color-canvas-subtle)",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              background: "var(--color-search-bg)",
-              border: "1px solid var(--color-search-border)",
-              borderRadius: "8px",
-              padding: "6px 12px",
-            }}
-          >
-            <SearchIcon size={14} style={{ color: "var(--color-text-muted)" }} />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search flags by name, key, or category..."
-              style={{
-                flex: 1,
-                background: "transparent",
-                border: "none",
-                outline: "none",
-                color: "inherit",
-                fontSize: "13px",
-              }}
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--color-text-muted)",
-                  cursor: "pointer",
-                  padding: "2px",
-                }}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ flex: 1 }}>
+              <TextInput
+                block
+                leadingVisual={SearchIcon}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search flags by name, key, or category..."
+                autoFocus
+              />
+            </div>
+            {activeOverridesCount > 0 && (
+              <Button
+                variant="danger"
+                size="small"
+                leadingVisual={SyncIcon}
+                onClick={resetAllOverrides}
+                title="Clear all overrides and revert to server defaults"
               >
-                <XIcon size={12} />
-              </button>
+                Reset ({activeOverridesCount})
+              </Button>
             )}
           </div>
 
@@ -658,24 +520,11 @@ export const DevFlagsModal: React.FC<DevFlagsModalProps> = ({ isOpen, onClose })
             Tip: You can also override flags via URL query parameters:{" "}
             <code style={{ color: "var(--color-accent-cyan)" }}>?ff_cae_cloud_solver=1</code>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              background: "var(--color-accent-purple)",
-              border: "none",
-              color: "#ffffff",
-              borderRadius: "6px",
-              padding: "6px 14px",
-              fontSize: "12px",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
+          <Button variant="primary" size="small" onClick={onClose}>
             Done
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 };

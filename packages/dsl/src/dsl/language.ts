@@ -43,6 +43,24 @@ export interface SymbolConfig<FieldName extends string = string> {
 }
 
 /**
+ * Common metadata fields attached to indexed symbols, with an open extension index.
+ */
+export interface DslSymbolMetadata {
+  classPrefixes?: string[] | undefined;
+  classKind?: string | undefined;
+  iconSvg?: string | undefined;
+  iconAnnotation?: unknown;
+  placementAnnotation?: unknown;
+  typeSpecifier?: string | undefined;
+  variability?: string | undefined;
+  causality?: string | undefined;
+  defaultValue?: unknown;
+  unit?: string | undefined;
+  description?: string | undefined;
+  [key: string]: unknown;
+}
+
+/**
  * Symbol descriptor emitted by declarative `language({ indexing })` hooks into `UnifiedWorkspace`.
  */
 export interface DslSymbolInput {
@@ -85,7 +103,7 @@ export interface DslSymbolInput {
   /** Optional additional lookup names registered in `SymbolIndex.byName` (e.g. plain bus number `'101'` for `'Bus_101'`). */
   aliases?: string[] | undefined;
   /** Arbitrary language/domain metadata (classPrefixes, classKind, iconSvg, iconAnnotation, placementAnnotation, typeSpecifier, variability, causality, defaultValue, unit, description, etc.). */
-  metadata?: Record<string, any> | undefined;
+  metadata?: DslSymbolMetadata | undefined;
 }
 
 /**
@@ -257,6 +275,9 @@ export interface LanguageOptions<
   /** Optional file path of the language source file for Direct Source AST extraction. */
   sourcePath?: string | undefined;
 
+  /** Optional file URL (e.g. `import.meta.url`) for Direct Source AST extraction without stack-trace inspection. */
+  sourceUrl?: string | URL | undefined;
+
   /** Optional source code text of the language file for in-memory AST extraction. */
   sourceText?: string | undefined;
 
@@ -278,7 +299,7 @@ export interface LanguageOptions<
   /**
    * Domain-Specific Abstract Interpretation & Solver Domains (DAE, Simulation, Reasoner, Octagon)
    */
-  domains?: Record<string, any> | undefined;
+  domains?: Record<string, Record<string, unknown>> | undefined;
 
   /**
    * Declarative Dataflow & Control Flow Analysis Configuration
@@ -666,6 +687,29 @@ export interface LanguageOptions<
 }
 
 /**
+ * Converts a `file://` URL (such as `import.meta.url`) or `URL` instance into a local file path
+ * in a browser-safe way without requiring `node:url`.
+ */
+export function resolveSourceUrl(url: string | URL): string {
+  const raw = typeof url === "string" ? url : url.href;
+  if (!raw.startsWith("file://")) return raw;
+  let pathname = decodeURIComponent(raw.slice("file://".length));
+  // Strip leading slash on Windows drive paths like /C:/...
+  if (/^\/[A-Za-z]:\//.test(pathname)) {
+    pathname = pathname.slice(1);
+  }
+  return pathname;
+}
+
+/**
+ * Helper for passing `import.meta.url` cleanly into `language({ ...fromMeta(import.meta), ... })`
+ * without relying on stack-trace inspection.
+ */
+export function fromMeta(meta: { url: string }): { sourceUrl: string } {
+  return { sourceUrl: meta.url };
+}
+
+/**
  * Main entry point for defining a new language grammar.
  *
  * @param options The language configuration object
@@ -681,6 +725,8 @@ export function language<
 ): LanguageOptions<RuleName, FieldName, QueryName, ModelAttrs> {
   if (options.sourcePath) {
     (options as any)[SOURCE_PATH_SYMBOL] = options.sourcePath;
+  } else if (options.sourceUrl) {
+    (options as any)[SOURCE_PATH_SYMBOL] = resolveSourceUrl(options.sourceUrl);
   }
   if (options.sourceText) {
     (options as any)[SOURCE_TEXT_SYMBOL] = options.sourceText;
@@ -735,6 +781,7 @@ export const grammar = language;
 export * from "./action-types.js";
 export * from "./codegraph.js";
 export * from "./combinators.js";
+export * from "./compose.js";
 export * from "./config-types.js";
 export * from "./container-types.js";
 export * from "./dae-types.js";

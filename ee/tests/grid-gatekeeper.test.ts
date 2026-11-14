@@ -99,4 +99,28 @@ describe("Grid Code Gatekeeper CI/CD for ISOs & Transmission Planners (@modelscr
     assert.ok(router);
     assert.equal(typeof router, "function");
   });
+
+  it("fails closed when dynamic verification telemetry is omitted", () => {
+    const unverifiedPkg: GatekeeperSubmissionPackage = {
+      submissionId: "SUB-UNVERIFIED-001",
+      developerOrganization: "Example Energy LLC",
+      plantName: "UNVERIFIED_PLANT",
+      gridInterconnection: "Western",
+      ratedMva: 100.0,
+      poiKv: 230.0,
+      hasRawPowerFlow: true,
+      hasDyrDynamics: true,
+      hasPscadModel: true,
+      hasWasmFirmware: true,
+    };
+
+    const scorecard = runGatekeeperScreeningPipeline(unverifiedPkg);
+    assert.equal(scorecard.overallVerdict, "REJECTED");
+    assert.equal(scorecard.stages[0]?.verdict, "PASS");
+    for (const stageNumber of [2, 3, 4, 5]) {
+      const stage = scorecard.stages.find((s) => s.stageNumber === stageNumber);
+      assert.equal(stage?.verdict, "FAIL", `Stage ${stageNumber} should fail when telemetry is omitted`);
+    }
+    assert.ok(scorecard.rejectionReasons.length >= 4);
+  });
 });

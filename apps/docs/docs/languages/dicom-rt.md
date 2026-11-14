@@ -102,3 +102,9 @@ lowerDicomRtToDae(plan, builder);
 const scadCode = dicomRtToScad(plan);
 const sysmlPkg = dicomRtToSysML2(plan);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="dicom-rt" />

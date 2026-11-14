@@ -19,7 +19,7 @@ export const ModalOverlay = styled.div`
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(6, 10, 19, 0.72);
+  background-color: rgba(0, 0, 0, 0.65);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   z-index: 10000;
@@ -32,9 +32,9 @@ export const ModalOverlay = styled.div`
 `;
 
 export const ModalCard = styled.div`
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--color-canvas-default, var(--ms-bg));
   color: var(--color-fg-default, #e6edf3);
-  border: 1px solid var(--color-border-default, #30363d);
+  border: 1px solid var(--ms-border-default, var(--color-border-default));
   border-radius: 18px;
   width: 100%;
   max-width: 960px;
@@ -50,12 +50,12 @@ export const ModalCard = styled.div`
 
 export const ModalHeader = styled.div`
   padding: 16px 24px;
-  border-bottom: 1px solid var(--color-border-default, #30363d);
+  border-bottom: 1px solid var(--ms-border-default, var(--color-border-default));
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: var(--color-canvas-subtle, #161b22);
+  background: var(--color-canvas-subtle, var(--ms-bg-elv));
   flex-shrink: 0;
 `;
 
@@ -80,7 +80,7 @@ export const WizardStepperBar = styled.div`
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   border-bottom: 1px solid var(--color-border-default, #30363d);
-  background: var(--color-canvas-subtle, #161b22);
+  background: var(--color-canvas-subtle, var(--ms-bg-elv));
   flex-shrink: 0;
 
   @media (max-width: 680px) {
@@ -145,7 +145,7 @@ export const ModalBody = styled.div`
   display: flex;
   flex-direction: column;
   gap: 18px;
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--color-canvas-default, var(--ms-bg));
 `;
 
 export const ModalFooter = styled.div`
@@ -157,7 +157,7 @@ export const ModalFooter = styled.div`
   flex-wrap: wrap;
   gap: 12px;
   flex-shrink: 0;
-  background: var(--color-canvas-subtle, #161b22);
+  background: var(--color-canvas-subtle, var(--ms-bg-elv));
 `;
 
 export const GalleryGrid = styled.div`
@@ -171,8 +171,8 @@ export const TemplateCard = styled.div<{ $selected: boolean; $accent: string }>`
   border: 1.5px solid ${(props) => (props.$selected ? props.$accent : "var(--color-border-default, #30363d)")};
   background: ${(props) =>
     props.$selected
-      ? `linear-gradient(180deg, ${props.$accent}14 0%, var(--color-canvas-subtle, #161b22) 100%)`
-      : "var(--color-canvas-subtle, #161b22)"};
+      ? `linear-gradient(180deg, ${props.$accent}14 0%, var(--color-canvas-subtle, var(--ms-bg-elv)) 100%)`
+      : "var(--color-canvas-subtle, var(--ms-bg-elv))"};
   border-radius: 12px;
   padding: 14px 16px;
   cursor: pointer;
@@ -203,7 +203,9 @@ export const TemplateCard = styled.div<{ $selected: boolean; $accent: string }>`
 
 export const CategoryPill = styled.button<{ $active: boolean }>`
   background: ${(props) =>
-    props.$active ? "linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%)" : "var(--color-canvas-subtle, #161b22)"};
+    props.$active
+      ? "linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%)"
+      : "var(--color-canvas-subtle, var(--ms-bg-elv))"};
   color: ${(props) => (props.$active ? "#ffffff" : "var(--color-fg-default)")};
   border: 1px solid ${(props) => (props.$active ? "transparent" : "var(--color-border-default, #30363d)")};
   border-radius: 9999px;
@@ -232,7 +234,8 @@ export const PresetGrid = styled.div`
 export const PresetCard = styled.div<{ $selected: boolean }>`
   border: 1.5px solid
     ${(props) => (props.$selected ? "var(--color-accent-cyan, #06b6d4)" : "var(--color-border-default, #30363d)")};
-  background: ${(props) => (props.$selected ? "rgba(6, 182, 212, 0.1)" : "var(--color-canvas-subtle, #161b22)")};
+  background: ${(props) =>
+    props.$selected ? "rgba(6, 182, 212, 0.1)" : "var(--color-canvas-subtle, var(--ms-bg-elv))"};
   border-radius: 10px;
   padding: 12px 14px;
   cursor: pointer;
@@ -259,7 +262,8 @@ export const ProfileGrid = styled.div`
 export const ProfileCard = styled.div<{ $selected: boolean }>`
   border: 1.5px solid
     ${(props) => (props.$selected ? "var(--color-accent-purple, #8b5cf6)" : "var(--color-border-default, #30363d)")};
-  background: ${(props) => (props.$selected ? "rgba(139, 92, 246, 0.1)" : "var(--color-canvas-subtle, #161b22)")};
+  background: ${(props) =>
+    props.$selected ? "rgba(139, 92, 246, 0.1)" : "var(--color-canvas-subtle, var(--ms-bg-elv))"};
   border-radius: 12px;
   padding: 14px 16px;
   cursor: pointer;
@@ -278,7 +282,7 @@ export const StyledInput = styled.input`
   padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid var(--color-border-default, #30363d);
-  background: var(--color-canvas-subtle, #161b22);
+  background: var(--color-canvas-subtle, var(--ms-bg-elv));
   color: var(--color-fg-default, #e6edf3);
   font-size: 13px;
   box-sizing: border-box;
@@ -296,7 +300,7 @@ export const StyledSelect = styled.select`
   padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid var(--color-border-default, #30363d);
-  background: var(--color-canvas-subtle, #161b22);
+  background: var(--color-canvas-subtle, var(--ms-bg-elv));
   color: var(--color-fg-default, #e6edf3);
   font-size: 13px;
   box-sizing: border-box;
@@ -321,7 +325,7 @@ export const StepItem = styled.div<{ $state: "waiting" | "active" | "done" | "er
         ? "rgba(16, 185, 129, 0.12)"
         : props.$state === "error"
           ? "rgba(244, 63, 94, 0.12)"
-          : "var(--color-canvas-subtle, #161b22)"};
+          : "var(--color-canvas-subtle, var(--ms-bg-elv))"};
   border: 1px solid
     ${(props) =>
       props.$state === "active"
@@ -336,7 +340,7 @@ export const StepItem = styled.div<{ $state: "waiting" | "active" | "done" | "er
 `;
 
 export const StatCard = styled.div`
-  background: var(--color-canvas-subtle, #161b22);
+  background: var(--color-canvas-subtle, var(--ms-bg-elv));
   border: 1px solid var(--color-border-default, #30363d);
   border-radius: 10px;
   padding: 12px;
@@ -351,7 +355,7 @@ export const TableWrap = styled.div`
   border-radius: 8px;
   font-family: var(--font-mono, monospace);
   font-size: 12px;
-  background: var(--color-canvas-subtle, #161b22);
+  background: var(--color-canvas-subtle, var(--ms-bg-elv));
 
   table {
     width: 100%;
@@ -359,7 +363,7 @@ export const TableWrap = styled.div`
   }
 
   th {
-    background: var(--color-canvas-default, #0d1117);
+    background: var(--color-canvas-default, var(--ms-bg));
     position: sticky;
     top: 0;
     padding: 7px 10px;

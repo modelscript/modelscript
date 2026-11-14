@@ -31,6 +31,7 @@ import type {
   EmtTransformer,
   EmtTransmissionLine,
 } from "../types.js";
+import { computeSotaComparison, type SotaComparisonMetrics, type SotaComparisonOptions } from "./sota-comparison.js";
 
 export interface WindCollectorBenchmarkResult {
   caseName: string;
@@ -45,18 +46,7 @@ export interface WindCollectorBenchmarkResult {
   poiResidualVoltagePu: number;
   reactiveCurrentInjectionPu: number;
   thdPercent: number;
-  comparisonVsSota: {
-    sotaTool: string;
-    sotaWallClockMs: number;
-    speedupFactor: number;
-    discrepancyRmse: number;
-    discrepancyNrmsePct: number;
-    theilTic: number;
-    theilUm: number;
-    theilUs: number;
-    theilUc: number;
-    parityStatus: "PASS" | "WARN" | "FAIL";
-  };
+  comparisonVsSota: SotaComparisonMetrics;
   comtradeCff: string;
   psoutBinary: Uint8Array;
   htmlDashboard?: string | undefined;
@@ -255,11 +245,13 @@ export function generateWindCollector100Netlist(options?: { scr?: number }): Emt
 /**
  * Runs the 100-Turbine Offshore Wind Collector Benchmark Suite.
  */
-export async function runWindCollectorBenchmark(options?: {
-  timeStepUs?: number;
-  durationMs?: number;
-  generateHtml?: boolean;
-}): Promise<WindCollectorBenchmarkResult> {
+export async function runWindCollectorBenchmark(
+  options?: SotaComparisonOptions & {
+    timeStepUs?: number;
+    durationMs?: number;
+    generateHtml?: boolean;
+  },
+): Promise<WindCollectorBenchmarkResult> {
   const dtUs = options?.timeStepUs ?? 20.0;
   const durationMs = options?.durationMs ?? 100.0;
   const dtSec = dtUs * 1e-6;
@@ -278,13 +270,46 @@ export async function runWindCollectorBenchmark(options?: {
 
   // Telemetry inspection at POI
   const poiVolts = emtResult.busVoltages.get("GRID_POI_220KV") ?? new Float64Array(totalSteps);
-  let minPoiVoltageV = Infinity;
+  let minPoiVoltageV = poiVolts.length > 0 ? Infinity : 0.0;
   for (let i = 0; i < poiVolts.length; i++) {
     const absV = Math.abs(poiVolts[i]!);
     if (absV < minPoiVoltageV) minPoiVoltageV = absV;
   }
   const vNominalV = (220.0 * Math.sqrt(2) * 1000) / Math.sqrt(3);
   const poiResidualVoltagePu = minPoiVoltageV / Math.max(1.0, vNominalV);
+
+  // Measure actual POI/feeder current magnitude in p.u. relative to 800 MW @ 220 kV base
+  const iBasePeakA = (800_000 / (Math.sqrt(3) * 220.0)) * Math.SQRT2 || 1.0;
+  let peakInjectionCurrentA = 0.0;
+  for (const currents of emtResult.branchCurrents?.values() ?? []) {
+    for (let i = 0; i < currents.length; i++) {
+      const absI = Math.abs(currents[i]!);
+      if (absI > peakInjectionCurrentA) peakInjectionCurrentA = absI;
+    }
+  }
+  const reactiveCurrentInjectionPu = peakInjectionCurrentA / iBasePeakA;
+
+  // Compute real Total Harmonic Distortion (THD %) via single-cycle 60 Hz DFT over poiVolts
+  const samplesPerCycle = Math.min(poiVolts.length, Math.max(16, Math.round(1.0 / (60.0 * dtSec))));
+  const cycleStart = Math.max(0, poiVolts.length - samplesPerCycle);
+  const harmonicMags: number[] = [];
+  for (let h = 1; h <= 15; h++) {
+    let re = 0;
+    let im = 0;
+    for (let k = 0; k < samplesPerCycle; k++) {
+      const sample = poiVolts[cycleStart + k] ?? 0;
+      const angle = (2 * Math.PI * h * k) / samplesPerCycle;
+      re += sample * Math.cos(angle);
+      im -= sample * Math.sin(angle);
+    }
+    harmonicMags.push(Math.hypot(re, im));
+  }
+  const v1Mag = harmonicMags[0] ?? 0;
+  let sumHarmSq = 0;
+  for (let h = 1; h < harmonicMags.length; h++) {
+    sumHarmSq += harmonicMags[h]! * harmonicMags[h]!;
+  }
+  const thdPercent = v1Mag > 1e-6 ? (Math.sqrt(sumHarmSq) / v1Mag) * 100.0 : 0.0;
 
   // Generate COMTRADE CFF container
   const simResultLike: SimulationResultLike = {
@@ -300,37 +325,25 @@ export async function runWindCollectorBenchmark(options?: {
   // Generate native PSCAD v5 *.psout binary
   const psoutBinary = writePscadPsout(simResultLike);
 
-  // Calibrate SOTA comparison trajectory
   const nPoints = emtResult.time.length;
-  const sotaGroundTruth = new Float64Array(nPoints);
   const msCurve = new Float64Array(nPoints);
-
   for (let i = 0; i < nPoints; i++) {
-    const t = emtResult.time[i]!;
-    const vPu = Math.abs(poiVolts[i]!) / Math.max(1.0, vNominalV);
-    msCurve[i] = vPu;
-    // Calibrated SOTA ground truth reflecting commercial PSCAD v5.1 trajectory
-    sotaGroundTruth[i] = vPu + 0.003 * Math.sin(2 * Math.PI * 60 * t);
+    msCurve[i] = Math.abs(poiVolts[i]!) / Math.max(1.0, vNominalV);
   }
 
-  let sumSq = 0;
-  let maxDiff = 0;
-  let sumSotaSq = 0;
-  let sumMsSq = 0;
+  const comparisonVsSota = computeSotaComparison(msCurve, wallClockMs, options, {
+    normalizationSpan: 1.0,
+    nrmsePassLimitPct: 1.0,
+    ticPassLimit: 0.02,
+  });
 
-  for (let i = 0; i < nPoints; i++) {
-    const diff = msCurve[i]! - sotaGroundTruth[i]!;
-    const absDiff = Math.abs(diff);
-    sumSq += diff * diff;
-    if (absDiff > maxDiff) maxDiff = absDiff;
-    sumSotaSq += sotaGroundTruth[i]! * sotaGroundTruth[i]!;
-    sumMsSq += msCurve[i]! * msCurve[i]!;
-  }
-
-  const rmse = Math.sqrt(sumSq / nPoints);
-  const nrmsePct = (rmse / 1.0) * 100.0;
-  const theilTic = rmse / (Math.sqrt(sumMsSq / nPoints) + Math.sqrt(sumSotaSq / nPoints));
-  const sotaWallClockMs = wallClockMs * 16.5; // 16.5x speedup over commercial single-thread
+  const throughputStepsPerSec = wallClockMs > 0 ? Math.round(totalSteps / (wallClockMs / 1000)) : 0;
+  const statusColor =
+    comparisonVsSota.parityStatus === "PASS"
+      ? "#22c55e"
+      : comparisonVsSota.parityStatus === "WARN"
+        ? "#eab308"
+        : "#94a3b8";
 
   let htmlDashboard: string | undefined;
   if (options?.generateHtml ?? true) {
@@ -338,7 +351,7 @@ export async function runWindCollectorBenchmark(options?: {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>100-Turbine Offshore Wind Collector — ModelScript SOTA Comparison</title>
+  <title>100-Turbine Offshore Wind Collector — ModelScript EMT Benchmark</title>
   <style>
     body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; padding: 28px; }
     .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 18px; margin-bottom: 20px; }
@@ -347,7 +360,7 @@ export async function runWindCollectorBenchmark(options?: {
     .kpi-box { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px 20px; flex: 1; min-width: 180px; }
     .kpi-title { font-size: 11px; text-transform: uppercase; color: #94a3b8; }
     .kpi-val { font-size: 20px; font-weight: bold; margin-top: 4px; }
-    .badge-pass { background: #22c55e22; color: #22c55e; border: 1px solid #22c55e; padding: 4px 10px; border-radius: 9999px; font-weight: bold; }
+    .badge { background: ${statusColor}22; color: ${statusColor}; border: 1px solid ${statusColor}; padding: 4px 10px; border-radius: 9999px; font-weight: bold; }
     table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
     th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
     th { color: #94a3b8; background: #151f30; }
@@ -355,32 +368,32 @@ export async function runWindCollectorBenchmark(options?: {
 </head>
 <body>
   <h1>100-Turbine Offshore Wind Collector Network (800 MW)</h1>
-  <p style="color: #94a3b8; margin-top: 0;">IEC 61400-27-1 / IEEE 2800-2022 &bull; Validated against PSCAD v5.1.0 &bull; Generated: ${new Date().toISOString()}</p>
+  <p style="color: #94a3b8; margin-top: 0;">IEC 61400-27-1 / IEEE 2800-2022 &bull; Reference: ${comparisonVsSota.sotaTool} &bull; Generated: ${new Date().toISOString()}</p>
 
   <div class="kpi">
     <div class="kpi-box">
-      <div class="kpi-title">Execution Speedup</div>
-      <div class="kpi-val" style="color: #38bdf8;">${(sotaWallClockMs / Math.max(1, wallClockMs)).toFixed(1)}&times; Faster</div>
-      <div style="font-size: 11px; color: #94a3b8;">${wallClockMs.toFixed(1)} ms vs ${sotaWallClockMs.toFixed(1)} ms</div>
+      <div class="kpi-title">Execution Time / Speedup</div>
+      <div class="kpi-val" style="color: #38bdf8;">${comparisonVsSota.speedupFactor !== null ? `${comparisonVsSota.speedupFactor.toFixed(2)}&times;` : `${wallClockMs.toFixed(1)} ms`}</div>
+      <div style="font-size: 11px; color: #94a3b8;">${comparisonVsSota.sotaWallClockMs !== null ? `${wallClockMs.toFixed(1)} ms vs ${comparisonVsSota.sotaWallClockMs.toFixed(1)} ms` : "No external timing baseline provided"}</div>
     </div>
     <div class="kpi-box">
       <div class="kpi-title">Throughput</div>
-      <div class="kpi-val">${Math.round(totalSteps / (wallClockMs / 1000)).toLocaleString()}</div>
+      <div class="kpi-val">${throughputStepsPerSec.toLocaleString()}</div>
       <div style="font-size: 11px; color: #94a3b8;">steps / second</div>
     </div>
     <div class="kpi-box">
       <div class="kpi-title">NRMSE % Error</div>
-      <div class="kpi-val" style="color: #22c55e;">${nrmsePct.toFixed(2)}%</div>
-      <div style="font-size: 11px; color: #94a3b8;">Limit &lt; 1.00%</div>
+      <div class="kpi-val" style="color: ${statusColor};">${comparisonVsSota.discrepancyNrmsePct !== null ? `${comparisonVsSota.discrepancyNrmsePct.toFixed(2)}%` : "N/A"}</div>
+      <div style="font-size: 11px; color: #94a3b8;">${comparisonVsSota.discrepancyNrmsePct !== null ? "Limit &lt; 1.00%" : "No external trace supplied"}</div>
     </div>
     <div class="kpi-box">
       <div class="kpi-title">Theil's TIC</div>
-      <div class="kpi-val">${theilTic.toFixed(4)}</div>
-      <div style="font-size: 11px; color: #22c55e;">Strict Parity (Um &lt; 0.5%)</div>
+      <div class="kpi-val">${comparisonVsSota.theilTic !== null ? comparisonVsSota.theilTic.toFixed(4) : "N/A"}</div>
+      <div style="font-size: 11px; color: ${statusColor};">${comparisonVsSota.theilUm !== null ? `Um=${(comparisonVsSota.theilUm * 100).toFixed(1)}%` : "No external trace supplied"}</div>
     </div>
     <div class="kpi-box">
       <div class="kpi-title">IEEE 2800 Compliance</div>
-      <div style="margin-top: 8px;"><span class="badge-pass">PASS</span></div>
+      <div style="margin-top: 8px;"><span class="badge">${comparisonVsSota.parityStatus}</span></div>
     </div>
   </div>
 
@@ -388,14 +401,14 @@ export async function runWindCollectorBenchmark(options?: {
     <h3>Offshore Wind Collector Benchmark Metrics Summary</h3>
     <table>
       <thead>
-        <tr><th>Channel / Metric</th><th>ModelScript EMT</th><th>PSCAD v5.1 Baseline</th><th>Status</th></tr>
+        <tr><th>Channel / Metric</th><th>ModelScript EMT</th><th>External Reference</th><th>Status</th></tr>
       </thead>
       <tbody>
-        <tr><td>POI 220 kV Residual Voltage</td><td>${poiResidualVoltagePu.toFixed(3)} p.u.</td><td>0.150 p.u.</td><td><span style="color:#22c55e;">● PASS</span></td></tr>
-        <tr><td>LVRT Reactive Current Injection</td><td>1.85 p.u.</td><td>1.80 p.u.</td><td><span style="color:#22c55e;">● PASS</span></td></tr>
-        <tr><td>Total Harmonic Distortion (THD)</td><td>1.42%</td><td>1.50%</td><td><span style="color:#22c55e;">● PASS</span></td></tr>
-        <tr><td>Discrete WTG Nodes Simulated</td><td>100 turbines</td><td>100 turbines</td><td><span style="color:#22c55e;">● PASS</span></td></tr>
-        <tr><td>Simulation Throughput</td><td>${Math.round(totalSteps / (wallClockMs / 1000)).toLocaleString()} steps/s</td><td>1,200 steps/s</td><td><span style="color:#22c55e;">● 16.5&times; SOTA</span></td></tr>
+        <tr><td>POI 220 kV Residual Voltage</td><td>${poiResidualVoltagePu.toFixed(3)} p.u.</td><td>—</td><td><span style="color:#38bdf8;">● MEASURED</span></td></tr>
+        <tr><td>Measured Current Injection (p.u.)</td><td>${reactiveCurrentInjectionPu.toFixed(2)} p.u.</td><td>—</td><td><span style="color:#38bdf8;">● MEASURED</span></td></tr>
+        <tr><td>Total Harmonic Distortion (THD)</td><td>${thdPercent.toFixed(2)}%</td><td>—</td><td><span style="color:#38bdf8;">● MEASURED</span></td></tr>
+        <tr><td>Discrete WTG Nodes Simulated</td><td>100 turbines</td><td>100 turbines</td><td><span style="color:#38bdf8;">● MEASURED</span></td></tr>
+        <tr><td>Simulation Throughput</td><td>${throughputStepsPerSec.toLocaleString()} steps/s</td><td>${comparisonVsSota.sotaWallClockMs !== null ? `${comparisonVsSota.sotaWallClockMs.toFixed(1)} ms ref` : "N/A"}</td><td><span style="color:${statusColor};">● ${comparisonVsSota.parityStatus}</span></td></tr>
       </tbody>
     </table>
   </div>
@@ -412,22 +425,11 @@ export async function runWindCollectorBenchmark(options?: {
     timeStepUs: dtUs,
     durationMs,
     wallClockTimeMs: wallClockMs,
-    throughputStepsPerSec: Math.round(totalSteps / (wallClockMs / 1000)),
+    throughputStepsPerSec,
     poiResidualVoltagePu,
-    reactiveCurrentInjectionPu: 1.85,
-    thdPercent: 1.42,
-    comparisonVsSota: {
-      sotaTool: "PSCAD/EMTDC v5.1.0",
-      sotaWallClockMs,
-      speedupFactor: sotaWallClockMs / Math.max(1, wallClockMs),
-      discrepancyRmse: rmse,
-      discrepancyNrmsePct: nrmsePct,
-      theilTic,
-      theilUm: 0.002,
-      theilUs: 0.008,
-      theilUc: 0.99,
-      parityStatus: nrmsePct < 1.0 && theilTic < 0.02 ? "PASS" : "WARN",
-    },
+    reactiveCurrentInjectionPu,
+    thdPercent,
+    comparisonVsSota,
     comtradeCff,
     psoutBinary,
     htmlDashboard,

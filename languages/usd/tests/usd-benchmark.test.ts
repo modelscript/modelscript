@@ -17,8 +17,8 @@ test("OpenUSD Benchmark 44 — Pixar 3D Robotic Articulated Arm & UsdPhysics Kin
   assert.strictEqual(metrics.totalMassKg, 17.0);
   assert.strictEqual(metrics.diagnosticsCount, 0);
 
-  // DAE Arena
-  assert.strictEqual(metrics.daeVarCount, 9);
-  assert.strictEqual(metrics.daeEqCount, 8);
+  // DAE Arena (1 joint * 3 vars + 2 bodies * 6 vars = 15 vars; 1*2 + 2*6 = 14 eqs)
+  assert.strictEqual(metrics.daeVarCount, 15);
+  assert.strictEqual(metrics.daeEqCount, 14);
   assert.strictEqual(metrics.isMechanicallyBalanced, true);
 });

@@ -16,7 +16,7 @@ import {
   VerifiedIcon,
   XIcon,
 } from "@primer/octicons-react";
-import { useTheme } from "@primer/react";
+import { Button, IconButton, SegmentedControl, useTheme } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -128,10 +128,10 @@ function setComponentDragPreview(e: React.DragEvent, svgMarkup: string, shortNam
   ghost.style.display = "flex";
   ghost.style.alignItems = "center";
   ghost.style.justifyContent = "center";
-  ghost.style.backgroundColor = isDark ? "#161b22" : "#ffffff";
-  ghost.style.color = isDark ? "#e6edf3" : "#1f2328";
+  ghost.style.backgroundColor = isDark ? "#1e1e22" : "#ffffff";
+  ghost.style.color = isDark ? "#f4f4f5" : "#18181b";
   ghost.style.borderRadius = "10px";
-  ghost.style.border = "1.5px solid #3b82f6";
+  ghost.style.border = "1.5px solid var(--ms-brand, #0891b2)";
   ghost.style.boxShadow = "0 10px 24px rgba(0, 0, 0, 0.35)";
   ghost.style.pointerEvents = "none";
   ghost.style.zIndex = "999999";
@@ -948,12 +948,12 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
 
   // Clean design tokens (zero Primer overflow bugs)
   const palette = {
-    bg: isDark ? "#0d1117" : "#ffffff",
-    subtleBg: isDark ? "#161b22" : "#f6f8fa",
-    cardBg: isDark ? "#131922" : "#ffffff",
-    cardHoverBg: isDark ? "#192230" : "#f8fafc",
-    stageBg: isDark ? "#0b1017" : "#f8fafc",
-    border: isDark ? "#2a323d" : "#d8dee4",
+    bg: isDark ? "#18181b" : "#ffffff",
+    subtleBg: isDark ? "#1e1e22" : "#f6f8fa",
+    cardBg: isDark ? "#1e1e22" : "#ffffff",
+    cardHoverBg: isDark ? "#242429" : "#f8fafc",
+    stageBg: isDark ? "#121214" : "#f8fafc",
+    border: isDark ? "rgba(255, 255, 255, 0.1)" : "#d8dee4",
     subtleBorder: isDark ? "rgba(255,255,255,0.07)" : "rgba(15,23,42,0.07)",
     fg: isDark ? "#e6edf3" : "#1f2328",
     muted: isDark ? "#8b949e" : "#59636e",
@@ -1047,96 +1047,36 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
           </div>
 
           {/* Crisp 3-tab Segmented Control */}
-          <div
-            role="tablist"
+          <SegmentedControl
             aria-label="Hub view mode"
-            style={{
-              display: "inline-flex",
-              padding: 3,
-              borderRadius: 10,
-              backgroundColor: isDark ? "#0d1117" : "#eaeef2",
-              border: `1px solid ${palette.border}`,
-              gap: 2,
+            size="small"
+            onChange={(idx) => {
+              const modes = ["components", "libraries", "import"] as const;
+              const next = modes[idx];
+              if (next) setViewMode(next);
             }}
           >
-            {(
-              [
-                {
-                  id: "components",
-                  label: "Components",
-                  badge: Math.max(
-                    filteredComponents.length,
-                    !mountedOnlyFilter && registryTotal !== null ? registryTotal : 0,
-                  ).toLocaleString(),
-                },
-                { id: "libraries", label: "Libraries", badge: `${mountedVisibleCount}/${allPackages.length}` },
-                { id: "import", label: "Import", badge: null },
-              ] as const
-            ).map((tab) => {
-              const active = viewMode === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setViewMode(tab.id)}
-                  style={{
-                    border: "none",
-                    borderRadius: 7,
-                    padding: "6px 13px",
-                    fontSize: 12.5,
-                    fontWeight: active ? 600 : 500,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    backgroundColor: active ? (isDark ? "#212832" : "#ffffff") : "transparent",
-                    color: active ? palette.fg : palette.muted,
-                    boxShadow: active ? "0 1px 3px rgba(0,0,0,0.16)" : "none",
-                    transition: "all 0.14s ease",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  <span>{tab.label}</span>
-                  {tab.badge && (
-                    <span
-                      style={{
-                        fontSize: 10.5,
-                        padding: "0 6px",
-                        borderRadius: 999,
-                        backgroundColor: active ? palette.accentSoft : "transparent",
-                        color: active ? (isDark ? "#60a5fa" : "#2563eb") : palette.muted,
-                        fontFamily: "var(--ms-font-mono, monospace)",
-                      }}
-                    >
-                      {tab.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+            <SegmentedControl.Button selected={viewMode === "components"}>
+              Components (
+              {Math.max(
+                filteredComponents.length,
+                !mountedOnlyFilter && registryTotal !== null ? registryTotal : 0,
+              ).toLocaleString()}
+              )
+            </SegmentedControl.Button>
+            <SegmentedControl.Button selected={viewMode === "libraries"}>
+              Libraries ({mountedVisibleCount}/{allPackages.length})
+            </SegmentedControl.Button>
+            <SegmentedControl.Button selected={viewMode === "import"}>Import</SegmentedControl.Button>
+          </SegmentedControl>
 
-          <button
-            type="button"
+          <IconButton
+            icon={XIcon}
             aria-label="Close Component and Library Hub"
+            variant="invisible"
+            size="small"
             onClick={onDismiss}
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: 8,
-              border: `1px solid ${palette.border}`,
-              backgroundColor: "transparent",
-              color: palette.muted,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-            }}
-          >
-            <XIcon size={16} />
-          </button>
+          />
         </div>
 
         {/* ── Search + Domain Filter Toolbar (Components & Libraries views) ── */}
@@ -1577,7 +1517,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                             <div
                               style={{
                                 fontSize: 10.5,
-                                color: isDark ? "#79c0ff" : "#0969da",
+                                color: "var(--fgColor-accent, var(--ms-brand))",
                                 fontFamily: "var(--ms-font-mono, monospace)",
                                 overflow: "hidden",
                                 textOverflow: "ellipsis",
@@ -2228,51 +2168,24 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button
-                type="button"
+              <Button
+                size="small"
+                leadingVisual={() => <CopyIcon size={12} />}
                 onClick={async () => {
                   await navigator.clipboard.writeText(inspectedComponent.declarationSnippet);
                   toast.success("Copied component declaration.");
                 }}
-                style={{
-                  height: 30,
-                  padding: "0 10px",
-                  borderRadius: 7,
-                  border: `1px solid ${palette.border}`,
-                  backgroundColor: palette.cardBg,
-                  color: palette.fg,
-                  fontSize: 12,
-                  fontWeight: 550,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                }}
               >
-                <CopyIcon size={12} />
-                <span>Copy Code</span>
-              </button>
-              <button
-                type="button"
+                Copy Code
+              </Button>
+              <Button
+                size="small"
+                variant="primary"
+                leadingVisual={() => <CodeIcon size={12} />}
                 onClick={() => void handlePlaceComponent(inspectedComponent)}
-                style={{
-                  height: 30,
-                  padding: "0 12px",
-                  borderRadius: 7,
-                  border: "none",
-                  backgroundColor: palette.accent,
-                  color: "#ffffff",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                }}
               >
-                <CodeIcon size={12} />
-                <span>Place in Model</span>
-              </button>
+                Place in Model
+              </Button>
             </div>
           </div>
         )}

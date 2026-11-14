@@ -8,10 +8,14 @@
  */
 
 import { language } from "@modelscript/dsl";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { instantiateWasmCompanionsForNetlist } from "./catalog/wasm-companion-loader.js";
 import { emtResultToComtrade, writeComtrade } from "./comtrade/comtrade-writer.js";
 import { writePscadOut, type PscadOutResult } from "./comtrade/pscad-out-writer.js";
 import { indexPscadDocument } from "./indexing.js";
 import { lintPscx } from "./lints/index.js";
+import { registerPscadSource } from "./model/workspace-registry.js";
 import { computeSimulationCoverage, type SimulationCoverage } from "./netlist/coverage.js";
 import { extractEmtNetlist, netlistToEmtCircuit } from "./netlist/emt-netlist.js";
 import { parsePscx } from "./parser/pscx-parser.js";
@@ -19,6 +23,7 @@ import { writePscadPsout } from "./psout/index.js";
 import { EmtSolver } from "./solver/emt-solver.js";
 import { runFrequencyScan } from "./solver/frequency-scanner.js";
 import { runPointOnWaveSweep } from "./solver/parametric-sweep.js";
+import { pscadPolyglotConfig } from "./tgg/pscad-polyglot.js";
 import {
   verifyIeee2800Compliance,
   type Ieee2800ComplianceReport,
@@ -31,6 +36,10 @@ import {
 export interface PscadSimulationPipelineOptions {
   /** Raw XML contents of the `.pscx` or `.pslx` project document. */
   documentText: string;
+  /** Optional external `.pslx` library XML contents to register before netlist extraction. */
+  librarySources?: string[] | undefined;
+  /** Optional filesystem path to the `.pscx` file; sibling `*.pslx` libraries in the same directory are auto-registered. */
+  projectPath?: string | undefined;
   /** Whether to execute fixed-step electromagnetic transient (EMT) time-domain simulation. */
   runSimulation?: boolean | undefined;
   /** Whether to serialize the simulated waveforms into IEEE C37.111 COMTRADE `.cfg` and `.dat` strings. */
@@ -52,6 +61,11 @@ export interface PscadSimulationPipelineOptions {
    * sources on unsourced buses and canned IBR currents). Without a `solverRunner` no result is produced.
    */
   strict?: boolean | undefined;
+  /**
+   * When true, fail simulation with a `P6100` error if EMT netlist lowering coverage is below 90%
+   * or if the extracted netlist contains no sources.
+   */
+  strictNetlist?: boolean | undefined;
   /** Optional external EMT solver callback (e.g., `@modelscript/simulate` Dommel solver); falls back to built-in companion synthesizer when omitted. */
   solverRunner?:
     | ((
@@ -83,11 +97,13 @@ function synthesizeCompanionTrajectory(
   timeStepSec: number,
   durationSec: number,
 ) {
+  const fmuCompanions = instantiateWasmCompanionsForNetlist(netlist);
   const solver = new EmtSolver(netlist, {
     timeStepSec,
     durationSec,
     nominalFrequencyHz: netlist.nominalFrequencyHz || 60.0,
     enableCda: true,
+    ...(fmuCompanions.size > 0 ? { fmuCompanions } : {}),
   });
   return solver.solve();
 }
@@ -97,6 +113,27 @@ function synthesizeCompanionTrajectory(
  * IEEE C37.111 COMTRADE export, and IEEE 2800-2022 compliance verification pipeline.
  */
 export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptions) {
+  if (options.librarySources) {
+    for (let i = 0; i < options.librarySources.length; i++) {
+      const libXml = options.librarySources[i];
+      if (libXml) registerPscadSource(`pscad-lib://inline/${i}.pslx`, libXml);
+    }
+  }
+  if (options.projectPath) {
+    try {
+      const dir = path.dirname(options.projectPath);
+      if (fs.existsSync(dir)) {
+        for (const entry of fs.readdirSync(dir)) {
+          if (/\.pslx$/i.test(entry)) {
+            const fullPath = path.join(dir, entry);
+            registerPscadSource(`file://${fullPath}`, fs.readFileSync(fullPath, "utf8"));
+          }
+        }
+      }
+    } catch {
+      // Ignore filesystem errors in browser/virtual environments
+    }
+  }
   const project = parsePscx(options.documentText);
   const netlist = extractEmtNetlist(project);
   const circuit = netlistToEmtCircuit(netlist);
@@ -108,6 +145,7 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
     injectedReferenceBuses: [],
     synthesizedIbr: false,
   };
+  let strictNetlistFailed = false;
   if (coverage.simulatable > 0 && coverage.ratio < 0.9) {
     const top = coverage.dropped
       .slice(0, 5)
@@ -116,9 +154,32 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
     diagnostics.push({
       code: "P6100",
       rule: "emt-netlist-coverage",
-      severity: "warning",
+      severity: options.strictNetlist ? "error" : "warning",
       message: `Only ${coverage.lowered} of ${coverage.simulatable} simulatable components are supported by the EMT netlist; unsupported: ${top}.`,
     });
+    if (options.strictNetlist) {
+      strictNetlistFailed = true;
+    }
+  }
+  const hasActiveSource =
+    netlist.sources.length > 0 ||
+    (netlist.currentSources?.length ?? 0) > 0 ||
+    (netlist.synchronousMachines?.length ?? 0) > 0;
+  const isControlOnly =
+    !hasActiveSource &&
+    ((netlist.controlBlocks?.length ?? 0) > 0 || (netlist.customFortranBlocks?.length ?? 0) > 0) &&
+    netlist.branches.length === 0 &&
+    netlist.transformers.length === 0 &&
+    netlist.transmissionLines.length === 0;
+  if (options.strictNetlist && !hasActiveSource && !isControlOnly) {
+    diagnostics.push({
+      code: "P6100",
+      rule: "emt-netlist-coverage",
+      severity: "error",
+      message:
+        "Strict netlist mode rejected simulation because the extracted EMT netlist has no voltage/current sources.",
+    });
+    strictNetlistFailed = true;
   }
 
   if (netlist.assumptions && netlist.assumptions.length > 0) {
@@ -127,6 +188,15 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
       rule: "emt-assumed-parameters",
       severity: "warning",
       message: `${netlist.assumptions.length} parameter default(s) were assumed: ${netlist.assumptions[0]}${netlist.assumptions.length > 1 ? " (and more)" : ""}`,
+    });
+  }
+
+  if (netlist.customFortranBlocks && netlist.customFortranBlocks.length > 0) {
+    diagnostics.push({
+      code: "P6104",
+      rule: "fortran-companion-fallback",
+      severity: "warning",
+      message: `${netlist.customFortranBlocks.length} custom Fortran (DSDYN/DSOUT) block(s) detected; provide clean-room AssemblyScript fmi-ls-emt companions via compileAssemblyScriptCompanion for native WASM execution.`,
     });
   }
 
@@ -155,7 +225,7 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
       }
     | undefined;
 
-  if (shouldRunSim) {
+  if (shouldRunSim && !strictNetlistFailed) {
     if (options.solverRunner) {
       simulationReport.solver = "external";
       simulationResult = options.solverRunner(circuit, {
@@ -175,13 +245,15 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
     } else {
       simulationReport.solver = "builtin-companion";
       const sourced = new Set(((netlist.sources ?? []) as { bus?: string }[]).map((s) => s.bus));
-      const isolatedUnsourced = Array.from(netlist.buses.keys()).filter((b) => {
-        if (sourced.has(b)) return false;
-        const busObj = netlist.buses.get(b);
-        return !busObj || busObj.connectedBranchIds.length === 0;
-      });
+      const isolatedUnsourced = isControlOnly
+        ? []
+        : Array.from(netlist.buses.keys()).filter((b) => {
+            if (sourced.has(b)) return false;
+            const busObj = netlist.buses.get(b);
+            return !busObj || busObj.connectedBranchIds.length === 0;
+          });
       simulationReport.injectedReferenceBuses = isolatedUnsourced;
-      simulationReport.synthesizedIbr = (netlist.fmuInstances ?? []).length > 0;
+      simulationReport.synthesizedIbr = !isControlOnly && (netlist.fmuInstances ?? []).length > 0;
       simulationResult = synthesizeCompanionTrajectory(netlist, timeStepSec, durationSec);
       if (simulationReport.injectedReferenceBuses.length > 0 || simulationReport.synthesizedIbr) {
         diagnostics.push({
@@ -295,6 +367,7 @@ export const pscadLanguage = language({
       dark: "./assets/pscad/icon-dark.png",
     },
   },
+  polyglot: pscadPolyglotConfig,
   rules: {
     Root: () => "pscad",
   },

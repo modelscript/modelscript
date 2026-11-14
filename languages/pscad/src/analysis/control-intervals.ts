@@ -102,6 +102,11 @@ function transfer(b: EmtControlBlock, ins: Interval[]): Interval {
       return hull(u0, ZERO);
     case "select":
       return hull(u0, u1);
+    case "abs":
+      return { lo: 0, hi: Math.max(Math.abs(u0.lo), Math.abs(u0.hi)) };
+    case "tdelay":
+    case "zminusone":
+      return u0;
     case "maxmin":
       // max/min of the operands always lies within the hull of the operands.
       return ins.length > 0 ? hull(...ins) : ZERO;

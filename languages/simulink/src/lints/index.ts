@@ -2,3 +2,5 @@
 
 export { SimulinkErrorCode, analyzeSimulinkSchedule } from "./rules.js";
 export * from "./simulink-linters.js";
+
+export * from "./workspace.js";

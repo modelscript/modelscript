@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { ExprKind } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { lowerLandgemToDae, parseLandgem } from "../src/index.js";
@@ -39,16 +40,25 @@ test("LandGEM DAE Lowering — lowers multi-digester facility into DAE arena", (
   const vars = arena.variables();
   const eqs = arena.equations();
 
-  // 2 site vars (Q_CH4, P_LFG) + 3 vars per digester * 2 = 8 vars
-  assert.strictEqual(vars.length, 8);
-  assert.strictEqual(eqs.length, 8);
+  // 4 site vars (M_pot, Q_CH4, P_LFG, V_CH4_cum) + 4 vars per digester * 2 = 12 vars
+  assert.strictEqual(vars.length, 12);
+  assert.strictEqual(eqs.length, 12);
+
+  const derCount = Array.from({ length: arena.getEqCount() }, (_, i) => arena.getExprKind(arena.getEqLhs(i))).filter(
+    (k) => k === ExprKind.Der,
+  ).length;
+  assert.strictEqual(derCount, 4, "Expected 4 differential equations across site and digesters");
 
   const varNames = vars.map((v) => v.name);
+  assert.ok(varNames.includes("M_pot_NorthValleyFill"));
   assert.ok(varNames.includes("Q_CH4_NorthValleyFill"));
   assert.ok(varNames.includes("P_LFG_MW_NorthValleyFill"));
+  assert.ok(varNames.includes("V_CH4_cum_NorthValleyFill"));
+  assert.ok(varNames.includes("S_cod_Digester_Alpha"));
   assert.ok(varNames.includes("Q_biogas_Digester_Alpha"));
   assert.ok(varNames.includes("P_elec_kW_Digester_Alpha"));
   assert.ok(varNames.includes("P_thermal_kW_Digester_Alpha"));
+  assert.ok(varNames.includes("S_cod_Digester_Beta"));
   assert.ok(varNames.includes("Q_biogas_Digester_Beta"));
   assert.ok(varNames.includes("P_elec_kW_Digester_Beta"));
   assert.ok(varNames.includes("P_thermal_kW_Digester_Beta"));

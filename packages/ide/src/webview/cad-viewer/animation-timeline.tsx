@@ -232,7 +232,7 @@ export function AnimationTimeline({ controller }: AnimationTimelineProps) {
             height: 6,
             appearance: "none",
             WebkitAppearance: "none",
-            background: `linear-gradient(to right, #58a6ff ${progress}%, rgba(255,255,255,0.15) ${progress}%)`,
+            background: `linear-gradient(to right, var(--vscode-textLink-foreground, var(--ms-brand, #22d3ee)) ${progress}%, rgba(255,255,255,0.15) ${progress}%)`,
             borderRadius: 3,
             outline: "none",
             cursor: isLive ? "not-allowed" : "pointer",
@@ -269,7 +269,9 @@ export function AnimationTimeline({ controller }: AnimationTimelineProps) {
       <button
         style={{
           ...btnStyle,
-          color: controller.loop ? "#58a6ff" : "var(--vscode-foreground, #8b949e)",
+          color: controller.loop
+            ? "var(--vscode-textLink-foreground, var(--ms-brand, #22d3ee))"
+            : "var(--vscode-foreground, #8b949e)",
         }}
         onClick={handleToggleLoop}
         disabled={isLive}

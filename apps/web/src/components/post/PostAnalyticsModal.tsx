@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BookmarkIcon, CommentIcon, HeartIcon, InfoIcon, RssIcon, SyncIcon, XIcon } from "@primer/octicons-react";
-import { Heading, IconButton, Text, Tooltip } from "@primer/react";
+import { BookmarkIcon, CommentIcon, HeartIcon, InfoIcon, RssIcon, SyncIcon } from "@primer/octicons-react";
+import { Dialog, Text, Tooltip } from "@primer/react";
 import React, { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import styled from "styled-components";
 import { getPostAnalytics } from "../../api";
 import { safeCssImageUrl } from "../../util/url";
@@ -17,45 +16,6 @@ export interface PostAnalyticsData {
   location_stats?: any[];
   region_stats?: any[];
 }
-
-const AnalyticsModalOverlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(6px);
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-`;
-
-const AnalyticsModalContainer = styled.div`
-  background: var(--surface-overlay);
-  border: 1px solid var(--color-border-glass);
-  backdrop-filter: blur(16px);
-  border-radius: 16px;
-  width: 90%;
-  max-width: 600px;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
-`;
-
-const AnalyticsHeader = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 16px;
-  position: sticky;
-  top: 0;
-  background: var(--surface-overlay);
-  backdrop-filter: blur(12px);
-  z-index: 10;
-  border-bottom: 1px solid var(--color-border);
-`;
 
 const AnalyticsCard = styled.div`
   border: 1px solid var(--color-border);
@@ -176,17 +136,6 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
     };
   }, [postId]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
   const impressions = Math.max(
     analyticsData?.view_count ?? 0,
     displayPost.views_count ?? 0,
@@ -199,238 +148,218 @@ export const PostAnalyticsModal: React.FC<PostAnalyticsModalProps> = ({
   const engagements = likes + reposts + replies + bookmarks;
   const engagementRate = impressions > 0 ? `${Math.min(100, (engagements / impressions) * 100).toFixed(1)}%` : "0.0%";
 
-  const modal = (
-    <AnalyticsModalOverlay
-      onClick={(e) => {
-        e.stopPropagation();
-        onClose();
-      }}
-    >
-      <AnalyticsModalContainer
-        role="dialog"
-        aria-modal="true"
-        aria-label="Post Analytics"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <AnalyticsHeader>
-          <IconButton icon={XIcon} variant="invisible" onClick={onClose} aria-label="Close" />
-          <Heading as="h2" style={{ fontSize: "20px" }}>
-            Post Analytics
-          </Heading>
-        </AnalyticsHeader>
-        <Box>
-          <AnalyticsCard>
-            <Box display="flex" gap={2}>
-              <ModalAvatar $url={displayPost.avatar_url || undefined}>
-                {!displayPost.avatar_url && displayPost.username.charAt(0).toUpperCase()}
-              </ModalAvatar>
-              <Box style={{ minWidth: 0, flex: 1 }}>
-                <Box display="flex" alignItems="center" gap={1}>
-                  <Text
-                    style={{
-                      fontWeight: "bold",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {displayPost.display_name || displayPost.username}
-                    </span>
-                    {displayPost.account_type === "rss" && (
-                      <span style={{ color: "var(--color-fg-muted)", flexShrink: 0, display: "inline-flex" }}>
-                        <RssIcon size={14} />
-                      </span>
-                    )}
-                  </Text>
-                  <Text
-                    style={{
-                      color: "var(--color-fg-muted)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      flexShrink: 1,
-                    }}
-                  >
-                    @{displayPost.username}
-                  </Text>
-                  <Text style={{ color: "var(--color-fg-muted)", flexShrink: 0 }}>·</Text>
-                  <Text style={{ color: "var(--color-fg-muted)", flexShrink: 0, whiteSpace: "nowrap" }}>
-                    {formatRelativeTime(displayPost.created_at)}
-                  </Text>
-                </Box>
-                <Box
-                  mt={1}
-                  fontSize="15px"
+  return (
+    <Dialog title="Post Analytics" width="large" onClose={onClose}>
+      <Box style={{ maxHeight: "75vh", overflowY: "auto" }}>
+        <AnalyticsCard>
+          <Box display="flex" gap={2}>
+            <ModalAvatar $url={displayPost.avatar_url || undefined}>
+              {!displayPost.avatar_url && displayPost.username.charAt(0).toUpperCase()}
+            </ModalAvatar>
+            <Box style={{ minWidth: 0, flex: 1 }}>
+              <Box display="flex" alignItems="center" gap={1}>
+                <Text
                   style={{
+                    fontWeight: "bold",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  <RenderContent text={displayPost.content} />
-                </Box>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {displayPost.display_name || displayPost.username}
+                  </span>
+                  {displayPost.account_type === "rss" && (
+                    <span style={{ color: "var(--color-fg-muted)", flexShrink: 0, display: "inline-flex" }}>
+                      <RssIcon size={14} />
+                    </span>
+                  )}
+                </Text>
+                <Text
+                  style={{
+                    color: "var(--color-fg-muted)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    flexShrink: 1,
+                  }}
+                >
+                  @{displayPost.username}
+                </Text>
+                <Text style={{ color: "var(--color-fg-muted)", flexShrink: 0 }}>·</Text>
+                <Text style={{ color: "var(--color-fg-muted)", flexShrink: 0, whiteSpace: "nowrap" }}>
+                  {formatRelativeTime(displayPost.created_at)}
+                </Text>
+              </Box>
+              <Box
+                mt={1}
+                fontSize="15px"
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                }}
+              >
+                <RenderContent text={displayPost.content} />
               </Box>
             </Box>
-          </AnalyticsCard>
+          </Box>
+        </AnalyticsCard>
 
-          <Box mb={4} style={{ padding: "0 16px" }}>
-            {isLoading && !analyticsData ? (
-              <div
-                className="skeleton"
-                style={{ width: "100%", height: "260px", borderRadius: "12px" }}
-                aria-label="Loading geographic analytics"
+        <Box mb={4} style={{ padding: "0 16px" }}>
+          {isLoading && !analyticsData ? (
+            <div
+              className="skeleton"
+              style={{ width: "100%", height: "260px", borderRadius: "12px" }}
+              aria-label="Loading geographic analytics"
+            />
+          ) : (
+            <>
+              {fetchError && (
+                <Box
+                  mb={2}
+                  p={2}
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--color-fg-muted)",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: "8px",
+                  }}
+                >
+                  {fetchError}
+                </Box>
+              )}
+              <WorldMap
+                data={analyticsData?.location_stats || []}
+                regionData={analyticsData?.region_stats || []}
+                totalViews={impressions}
               />
-            ) : (
-              <>
-                {fetchError && (
-                  <Box
-                    mb={2}
-                    p={2}
+            </>
+          )}
+        </Box>
+        <AnalyticsCard style={{ display: "flex", justifyContent: "space-around", alignItems: "center" }}>
+          <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
+            <span
+              style={{
+                color: liked ? "var(--color-danger-fg, #f91880)" : "var(--color-fg-muted)",
+                display: "inline-flex",
+              }}
+            >
+              <HeartIcon size={20} />
+            </span>
+            <Text style={{ fontWeight: "bold", fontSize: "16px" }}>{likes}</Text>
+          </Box>
+          <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
+            <span
+              style={{
+                color: reposted ? "var(--color-success-fg, #00ba7c)" : "var(--color-fg-muted)",
+                display: "inline-flex",
+              }}
+            >
+              <SyncIcon size={20} />
+            </span>
+            <Text style={{ fontWeight: "bold", fontSize: "16px" }}>{reposts}</Text>
+          </Box>
+          <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
+            <span style={{ color: "var(--color-fg-muted)", display: "inline-flex" }}>
+              <CommentIcon size={20} />
+            </span>
+            <Text style={{ fontWeight: "bold", fontSize: "16px" }}>{replies}</Text>
+          </Box>
+          <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
+            <span style={{ color: "var(--color-fg-muted)", display: "inline-flex" }}>
+              <BookmarkIcon size={20} />
+            </span>
+            <Text style={{ fontWeight: "bold", fontSize: "16px" }}>{bookmarks}</Text>
+          </Box>
+        </AnalyticsCard>
+
+        <Box display="flex" flexWrap="wrap" style={{ padding: "16px 12px 24px" }}>
+          <Box width="33.333%" display="flex" justifyContent="center">
+            <AnalyticsStatGroup style={{ alignItems: "center" }}>
+              <AnalyticsStatTitle>
+                Impressions{" "}
+                <Tooltip text="Times this post was seen." type="label">
+                  <button
+                    type="button"
                     style={{
-                      fontSize: "12px",
-                      color: "var(--color-fg-muted)",
-                      border: "1px solid var(--color-border)",
-                      borderRadius: "8px",
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      color: "inherit",
+                      cursor: "help",
+                      display: "inline-flex",
+                      alignItems: "center",
                     }}
                   >
-                    {fetchError}
-                  </Box>
-                )}
-                <WorldMap
-                  data={analyticsData?.location_stats || []}
-                  regionData={analyticsData?.region_stats || []}
-                  totalViews={impressions}
-                />
-              </>
-            )}
+                    <InfoIcon size={14} />
+                  </button>
+                </Tooltip>
+              </AnalyticsStatTitle>
+              <AnalyticsStatValue>{formatNumber(impressions)}</AnalyticsStatValue>
+            </AnalyticsStatGroup>
           </Box>
-          <AnalyticsCard style={{ display: "flex", justifyContent: "space-around", alignItems: "center" }}>
-            <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
-              <span
-                style={{
-                  color: liked ? "var(--color-danger-fg, #f91880)" : "var(--color-fg-muted)",
-                  display: "inline-flex",
-                }}
-              >
-                <HeartIcon size={20} />
-              </span>
-              <Text style={{ fontWeight: "bold", fontSize: "16px" }}>{likes}</Text>
-            </Box>
-            <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
-              <span
-                style={{
-                  color: reposted ? "var(--color-success-fg, #00ba7c)" : "var(--color-fg-muted)",
-                  display: "inline-flex",
-                }}
-              >
-                <SyncIcon size={20} />
-              </span>
-              <Text style={{ fontWeight: "bold", fontSize: "16px" }}>{reposts}</Text>
-            </Box>
-            <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
-              <span style={{ color: "var(--color-fg-muted)", display: "inline-flex" }}>
-                <CommentIcon size={20} />
-              </span>
-              <Text style={{ fontWeight: "bold", fontSize: "16px" }}>{replies}</Text>
-            </Box>
-            <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
-              <span style={{ color: "var(--color-fg-muted)", display: "inline-flex" }}>
-                <BookmarkIcon size={20} />
-              </span>
-              <Text style={{ fontWeight: "bold", fontSize: "16px" }}>{bookmarks}</Text>
-            </Box>
-          </AnalyticsCard>
-
-          <Box display="flex" flexWrap="wrap" style={{ padding: "16px 12px 24px" }}>
-            <Box width="33.333%" display="flex" justifyContent="center">
-              <AnalyticsStatGroup style={{ alignItems: "center" }}>
-                <AnalyticsStatTitle>
-                  Impressions{" "}
-                  <Tooltip text="Times this post was seen." type="label">
-                    <button
-                      type="button"
-                      style={{
-                        background: "none",
-                        border: "none",
-                        padding: 0,
-                        color: "inherit",
-                        cursor: "help",
-                        display: "inline-flex",
-                        alignItems: "center",
-                      }}
-                    >
-                      <InfoIcon size={14} />
-                    </button>
-                  </Tooltip>
-                </AnalyticsStatTitle>
-                <AnalyticsStatValue>{formatNumber(impressions)}</AnalyticsStatValue>
-              </AnalyticsStatGroup>
-            </Box>
-            <Box width="33.333%" display="flex" justifyContent="center">
-              <AnalyticsStatGroup style={{ alignItems: "center" }}>
-                <AnalyticsStatTitle>
-                  Engagements{" "}
-                  <Tooltip
-                    text="Total number of recorded interactions on this post (likes, reposts, replies, and bookmarks)."
-                    type="label"
+          <Box width="33.333%" display="flex" justifyContent="center">
+            <AnalyticsStatGroup style={{ alignItems: "center" }}>
+              <AnalyticsStatTitle>
+                Engagements{" "}
+                <Tooltip
+                  text="Total number of recorded interactions on this post (likes, reposts, replies, and bookmarks)."
+                  type="label"
+                >
+                  <button
+                    type="button"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      color: "inherit",
+                      cursor: "help",
+                      display: "inline-flex",
+                      alignItems: "center",
+                    }}
                   >
-                    <button
-                      type="button"
-                      style={{
-                        background: "none",
-                        border: "none",
-                        padding: 0,
-                        color: "inherit",
-                        cursor: "help",
-                        display: "inline-flex",
-                        alignItems: "center",
-                      }}
-                    >
-                      <InfoIcon size={14} />
-                    </button>
-                  </Tooltip>
-                </AnalyticsStatTitle>
-                <AnalyticsStatValue>{formatNumber(engagements)}</AnalyticsStatValue>
-              </AnalyticsStatGroup>
-            </Box>
-            <Box width="33.333%" display="flex" justifyContent="center">
-              <AnalyticsStatGroup style={{ alignItems: "center" }}>
-                <AnalyticsStatTitle>
-                  Engagement Rate{" "}
-                  <Tooltip
-                    text="Percentage of impressions that resulted in a like, repost, reply, or bookmark."
-                    type="label"
+                    <InfoIcon size={14} />
+                  </button>
+                </Tooltip>
+              </AnalyticsStatTitle>
+              <AnalyticsStatValue>{formatNumber(engagements)}</AnalyticsStatValue>
+            </AnalyticsStatGroup>
+          </Box>
+          <Box width="33.333%" display="flex" justifyContent="center">
+            <AnalyticsStatGroup style={{ alignItems: "center" }}>
+              <AnalyticsStatTitle>
+                Engagement Rate{" "}
+                <Tooltip
+                  text="Percentage of impressions that resulted in a like, repost, reply, or bookmark."
+                  type="label"
+                >
+                  <button
+                    type="button"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      color: "inherit",
+                      cursor: "help",
+                      display: "inline-flex",
+                      alignItems: "center",
+                    }}
                   >
-                    <button
-                      type="button"
-                      style={{
-                        background: "none",
-                        border: "none",
-                        padding: 0,
-                        color: "inherit",
-                        cursor: "help",
-                        display: "inline-flex",
-                        alignItems: "center",
-                      }}
-                    >
-                      <InfoIcon size={14} />
-                    </button>
-                  </Tooltip>
-                </AnalyticsStatTitle>
-                <AnalyticsStatValue>{engagementRate}</AnalyticsStatValue>
-              </AnalyticsStatGroup>
-            </Box>
+                    <InfoIcon size={14} />
+                  </button>
+                </Tooltip>
+              </AnalyticsStatTitle>
+              <AnalyticsStatValue>{engagementRate}</AnalyticsStatValue>
+            </AnalyticsStatGroup>
           </Box>
         </Box>
-      </AnalyticsModalContainer>
-    </AnalyticsModalOverlay>
+      </Box>
+    </Dialog>
   );
-
-  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 };

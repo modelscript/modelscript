@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import type { Verification3DOverlayPayload } from "@modelscript/cad";
 import { CheckIcon, CopyIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import { Environment, Html, useProgress } from "@react-three/drei";
@@ -18,7 +19,6 @@ import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import { adaptSvgMarkupForTheme } from "./PolyglotArtifactViewer";
 import SafeOrbitControls from "./SafeOrbitControls";
 import type { SpatialPin } from "./spatial-pin";
-import type { Verification3DOverlayPayload } from "@modelscript/cad";
 import ViewportCameraControls, { type CameraPreset, type ClipAxis, type RenderMode } from "./ViewportCameraControls";
 
 interface CadStepViewerProps {
@@ -1041,10 +1041,14 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
       };
     }
     const parsed = parseStepExpressDiagram(effectiveStepSource);
-    const rawSvg = pregenExpressSvg.trim().length > 0 ? DOMPurify.sanitize(pregenExpressSvg) : parsed.svg;
+    const rawSvg = pregenExpressSvg.trim().length > 0 ? pregenExpressSvg : parsed.svg;
+    const themedSvg = adaptSvgMarkupForTheme(rawSvg, isDark);
     return {
       ...parsed,
-      svg: adaptSvgMarkupForTheme(rawSvg, isDark),
+      svg:
+        typeof DOMPurify.sanitize === "function"
+          ? DOMPurify.sanitize(themedSvg, { USE_PROFILES: { svg: true, svgFilters: true } })
+          : themedSvg,
     };
   }, [viewTab, pregenExpressSvg, effectiveStepSource, isDark]);
 
@@ -1314,9 +1318,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                   : "rgba(239, 68, 68, 0.15)",
                 color: effectiveVerificationOverlay.isCertifiedSafe ? "#34d399" : "#f87171",
                 border: `1px solid ${
-                  effectiveVerificationOverlay.isCertifiedSafe
-                    ? "rgba(16, 185, 129, 0.35)"
-                    : "rgba(239, 68, 68, 0.35)"
+                  effectiveVerificationOverlay.isCertifiedSafe ? "rgba(16, 185, 129, 0.35)" : "rgba(239, 68, 68, 0.35)"
                 }`,
                 fontFamily: "var(--font-mono, monospace)",
                 whiteSpace: "nowrap",

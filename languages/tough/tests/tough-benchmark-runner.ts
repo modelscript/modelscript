@@ -11,12 +11,7 @@
  */
 
 import assert from "node:assert/strict";
-import {
-  lowerToughToDae,
-  parseTough,
-  solveGeothermalWells,
-  type ToughDeck,
-} from "../src/index.js";
+import { lowerToughToDae, parseTough, solveGeothermalWells, type ToughDeck } from "../src/index.js";
 
 export const TOUGH_GEOTHERMAL_RESERVOIR_BENCHMARK = `
 TOUGH2 EOS1 Geothermal Reservoir Benchmark
@@ -63,9 +58,7 @@ export interface ToughBenchmarkMetrics {
   isSquare: boolean;
 }
 
-export function runToughBenchmark(
-  deckContent = TOUGH_GEOTHERMAL_RESERVOIR_BENCHMARK,
-): ToughBenchmarkMetrics {
+export function runToughBenchmark(deckContent = TOUGH_GEOTHERMAL_RESERVOIR_BENCHMARK): ToughBenchmarkMetrics {
   const deck: ToughDeck = parseTough(deckContent);
 
   assert.equal(deck.rocks.length, 2);
@@ -112,3 +105,31 @@ export function runToughBenchmark(
     isSquare: vars.length === eqs.length,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const toughBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "tough",
+  referenceTool: "LBNL TOUGH2 EOS1 Geothermal Reservoir",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runToughBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "eos1-5block-geothermal-reservoir",
+        name: "eos1-5block-geothermal-reservoir",
+        scale: "standard",
+        referenceTool: "LBNL TOUGH2 EOS1 Geothermal Reservoir",
+        passed: m.isSquare && m.daeVarCount === 16 && m.totalThermalPowerMW > 0,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.daeEqCount,
+        threshold: 0,
+        details: `P_th=${m.totalThermalPowerMW.toFixed(2)}MW, ${m.daeVarCount}x${m.daeEqCount} DAE`,
+      },
+    ];
+  },
+};

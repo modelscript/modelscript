@@ -2,6 +2,8 @@
 
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { LibraryDatabase } from "../database.js";
 import { resolveTierPreset, type SetupTierPreset } from "./tier-presets.js";
@@ -209,7 +211,20 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       if (res.created) {
         console.log(`[SeedAdmin] Successfully created initial administrator '${res.username}' (${res.email})`);
         if (res.generatedPassword) {
-          console.log(`[SeedAdmin] Generated Temporary Password: ${res.generatedPassword}`);
+          const bootstrapFile = process.env["ADMIN_BOOTSTRAP_FILE"]?.trim();
+          if (bootstrapFile) {
+            const resolvedBootstrap = path.resolve(bootstrapFile);
+            fs.mkdirSync(path.dirname(resolvedBootstrap), { recursive: true, mode: 0o700 });
+            fs.writeFileSync(resolvedBootstrap, `${res.generatedPassword}\n`, { encoding: "utf8", mode: 0o600 });
+            fs.chmodSync(resolvedBootstrap, 0o600);
+            console.log(
+              `[SeedAdmin] Initial password was auto-generated and written to '${resolvedBootstrap}' (mode 0600).`,
+            );
+          } else {
+            console.warn(
+              `[SeedAdmin] Initial password was auto-generated because ADMIN_INIT_PASSWORD was not set (redacted from stdout). Set ADMIN_INIT_PASSWORD or ADMIN_BOOTSTRAP_FILE on a fresh database.`,
+            );
+          }
         }
       } else {
         console.log("[SeedAdmin] Administrator user already exists. No action taken.");

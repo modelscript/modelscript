@@ -454,7 +454,7 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
                           style={{
                             width: "100%",
                             padding: "8px 12px",
-                            background: "var(--color-canvas-default, #0d1117)",
+                            background: "var(--ms-bg-canvas, var(--color-canvas-default))",
                             border: "1px solid var(--color-border-default)",
                             borderRadius: "6px",
                             color: "var(--color-fg-default)",
@@ -620,7 +620,7 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
               style={{
                 width: "100%",
                 padding: "8px 12px",
-                background: "var(--color-canvas-default, #0d1117)",
+                background: "var(--ms-bg-canvas, var(--color-canvas-default))",
                 border: "1px solid var(--color-border-default)",
                 borderRadius: "6px",
                 color: "var(--color-fg-default)",

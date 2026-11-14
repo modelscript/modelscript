@@ -9,10 +9,7 @@
  */
 
 import express, { type Request, type Response, type Router } from "express";
-import {
-  runGatekeeperScreeningPipeline,
-  type GatekeeperSubmissionPackage,
-} from "./gatekeeper-pipeline.js";
+import { runGatekeeperScreeningPipeline, type GatekeeperSubmissionPackage } from "./gatekeeper-pipeline.js";
 
 /**
  * Creates the Grid Code Gatekeeper Express router.
@@ -59,10 +56,10 @@ export function createGatekeeperRouter(): Router {
       gridInterconnection: pkg.gridInterconnection || "Eastern",
       ratedMva: pkg.ratedMva ?? 100.0,
       poiKv: pkg.poiKv ?? 230.0,
-      hasRawPowerFlow: pkg.hasRawPowerFlow ?? true,
-      hasDyrDynamics: pkg.hasDyrDynamics ?? true,
-      hasPscadModel: pkg.hasPscadModel ?? true,
-      hasWasmFirmware: pkg.hasWasmFirmware ?? true,
+      hasRawPowerFlow: pkg.hasRawPowerFlow ?? false,
+      hasDyrDynamics: pkg.hasDyrDynamics ?? false,
+      hasPscadModel: pkg.hasPscadModel ?? false,
+      hasWasmFirmware: pkg.hasWasmFirmware ?? false,
       staticDiagnosticCount: pkg.staticDiagnosticCount,
       flatStartMaxDriftPercent: pkg.flatStartMaxDriftPercent,
       lowestStableScr: pkg.lowestStableScr,

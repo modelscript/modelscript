@@ -7,7 +7,7 @@
  * enabling compilation into native WebAssembly GLR parse tables and linear-memory CST.
  */
 
-import { choice, field, language, optional, repeat, semanticToken, seq } from "@modelscript/dsl";
+import { choice, field, language, optional, prec, repeat, semanticToken, seq } from "@modelscript/dsl";
 
 export const nmtranGrammar = language({
   name: "Nmtran",
@@ -49,7 +49,11 @@ export const nmtranGrammar = language({
         $.GenericRecord,
       ),
 
-    ProblemRecord: ($) => seq(semanticToken("keyword", choice("$PROBLEM", "$PROB")), field("title", $.RestOfLine)),
+    ProblemRecord: ($) =>
+      seq(
+        semanticToken("keyword", choice("$PROBLEM", "$PROB")),
+        repeat(choice($.Identifier, $.NumberLiteral, $.StringLiteral, "-", "/")),
+      ),
 
     DataRecord: ($) =>
       seq(
@@ -117,7 +121,7 @@ export const nmtranGrammar = language({
       seq(field("recordName", /\$[A-Z0-9_]+/), repeat(choice($.Identifier, $.RecordOption, $.NumberLiteral))),
 
     RecordOption: ($) =>
-      seq(field("key", $.Identifier), "=", field("value", choice($.NumberLiteral, $.StringLiteral, $.Identifier))),
+      seq(field("key", $.Identifier), "=", field("value", choice($.NumberLiteral, $.StringLiteral, $.Identifier, "@"))),
 
     Equation: ($) => choice($.DerivativeEquation, $.AssignmentEquation, $.IfEquation),
 
@@ -143,19 +147,23 @@ export const nmtranGrammar = language({
         semanticToken("keyword", choice("ENDIF", "endif")),
       ),
 
-    Expression: ($) => choice($.BinaryExpr, $.UnaryExpr, $.CallExpr, $.PrimaryExpr),
+    Expression: ($) => choice($.BinaryExpr, $.UnaryExpr, $.PrimaryExpr),
 
-    BinaryExpr: ($) => seq($.PrimaryExpr, choice("+", "-", "*", "/", "**"), choice($.BinaryExpr, $.PrimaryExpr)),
+    BinaryExpr: ($) =>
+      choice(
+        prec.left(1, seq($.Expression, choice("+", "-"), $.Expression)),
+        prec.left(2, seq($.Expression, choice("*", "/"), $.Expression)),
+        prec.right(3, seq($.Expression, "**", $.Expression)),
+      ),
 
-    UnaryExpr: ($) => seq(choice("-", "+"), $.PrimaryExpr),
+    UnaryExpr: ($) => prec.right(4, seq(choice("-", "+"), $.Expression)),
 
     CallExpr: ($) =>
       seq(field("func", $.Identifier), "(", optional(seq($.Expression, repeat(seq(",", $.Expression)))), ")"),
 
-    PrimaryExpr: ($) => choice($.NumberLiteral, $.Identifier, seq("(", $.Expression, ")")),
+    PrimaryExpr: ($) => choice($.NumberLiteral, $.CallExpr, $.Identifier, seq("(", $.Expression, ")")),
 
     CommentLine: () => /;[^\n]*/,
-    RestOfLine: () => /[^\n\r]+/,
     Identifier: () => /[a-zA-Z_][a-zA-Z0-9_]*/,
     NumberLiteral: () => /[-+]?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?/,
     StringLiteral: () => /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/,

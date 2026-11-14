@@ -86,3 +86,9 @@ lowerThreeMfToDae(model, builder);
 const stepFile = threeMfToStep(model);
 const scadCode = threeMfToScad(model);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="three-mf" />

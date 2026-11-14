@@ -125,3 +125,9 @@ msx fea solve BracketAssembly.inp
 ## Trademarks & Disclaimers
 
 CalculiX, Abaqus, and NASTRAN are trademarks or registered trademarks of their respective owners (including Dassault Systèmes Simulia Corp., NASA, and MSC Software / Hexagon AB). Reference to these marks is solely for nominative identification of format compatibility and data interchange. ModelScript is an independent open-core project not affiliated with or endorsed by these entities.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="fea" />

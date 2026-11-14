@@ -20,7 +20,10 @@ export const openDssGrammar = language({
   rules: {
     Deck: ($) => repeat(choice($.Statement, $.CommentLine)),
 
-    Statement: ($) => choice($.CircuitDef, $.ElementDef, $.EditDirective, $.SetDirective, $.CommandDirective),
+    Statement: ($) =>
+      choice($.CircuitDef, $.ElementDef, $.EditDirective, $.SetDirective, $.ContinuationStatement, $.CommandDirective),
+
+    ContinuationStatement: ($) => seq("~", repeat($.PropertyAssignment)),
 
     CircuitDef: ($) =>
       seq(
@@ -110,6 +113,7 @@ export const openDssGrammar = language({
       choice(
         seq(semanticToken("keyword", choice("Solve", "solve"))),
         seq(semanticToken("keyword", choice("Clear", "clear"))),
+        seq(semanticToken("keyword", choice("CalcVoltageBases", "calcvoltagebases"))),
         seq(
           semanticToken("keyword", choice("Redirect", "redirect")),
           field("path", choice($.StringLiteral, $.Identifier)),
@@ -125,7 +129,7 @@ export const openDssGrammar = language({
       ),
 
     CommentLine: () => /([!].*|\/\/.*)/,
-    Identifier: () => /[a-zA-Z_][a-zA-Z0-9_.]*/,
+    Identifier: () => /[a-zA-Z_][a-zA-Z0-9_]*/,
     NumberLiteral: () => /[-+]?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?/,
     StringLiteral: () => /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/,
   },

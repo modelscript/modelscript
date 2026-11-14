@@ -10,10 +10,9 @@
  *   4. Branch complex power flow calculation (Pij, Qij, Pji, Qji) and thermal loading.
  */
 
+import type { FmiLsRmsCompanionInstance } from "@modelscript/exchange";
 import {
   computeAmdOrdering,
-  type SparseCCSMatrix,
-  type SparseLU,
   solveLinearSystemSparse,
   solveSparseCCS,
   sparseLuAnalyze,
@@ -21,7 +20,10 @@ import {
   sparseLuRefactorize,
   sparseLuSolve,
   SparseTripletBuilder,
+  type SparseCCSMatrix,
+  type SparseLU,
 } from "@modelscript/runtime";
+import { instantiateWasmDyrModelsForCase, type PsseLinkedDynamicInstance } from "../catalog/wasm-dyr-loader.js";
 import { extractPowerFlowNetlist } from "../netlist/powerflow-netlist.js";
 import type { PsseCase, PsseConCase, PsseSeqCase } from "../types.js";
 import { solveHelmPowerFlow } from "./helm-powerflow.js";
@@ -836,6 +838,12 @@ export interface PsseTransientOptions {
         numStates?: number | undefined;
       }>
     | undefined;
+  /** Optional linked FMU / AssemblyScript co-simulation dynamic models attached to buses/machines. */
+  fmuModels?: PsseLinkedDynamicInstance[] | undefined;
+  /** Optional `fmi-ls-rms` Norton-companion FMUs stamped simultaneously into the nodal matrix. */
+  nortonCompanions?: FmiLsRmsCompanionInstance[] | undefined;
+  /** Whether to auto-instantiate matching `.dyr` models from loaded `package.json#modelscript` WASM libraries (default: true). */
+  useWasmStdLib?: boolean | undefined;
   /**
    * External boundary current injections for TS-EMT co-simulation.
    * Injects complex current (Ir + j Ii) in per-unit into the designated boundary bus.
@@ -1158,6 +1166,31 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
     }
   }
 
+  // Pre-extract off-diagonal non-zero admittances for O(nnz) sparse assembly
+  const offDiagI: number[] = [];
+  const offDiagK: number[] = [];
+  const offDiagG: number[] = [];
+  const offDiagB: number[] = [];
+  for (let i = 0; i < N; i++) {
+    for (let k = 0; k < N; k++) {
+      if (i === k) continue;
+      const g = baseG[i * N + k]!;
+      const b = baseB[i * N + k]!;
+      if (g !== 0 || b !== 0) {
+        offDiagI.push(i);
+        offDiagK.push(k);
+        offDiagG.push(g);
+        offDiagB.push(b);
+      }
+    }
+  }
+
+  let cachedNetLu: SparseLU | null = null;
+  let cachedFaultState: boolean | null = null;
+  let cachedStallSum = NaN;
+  let cachedNortonKey = "";
+  const netSolVec = new Float64Array(2 * N);
+
   // Solve network voltages V_r, V_i for given machine rotor angles delta[], transient EMFs eqPrime[], and fault state
   const solveNetworkVoltages = (
     deltas: Float64Array,
@@ -1166,27 +1199,7 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
     tSec: number = 0.0,
   ): { vr: Float64Array; vi: Float64Array; pe: Float64Array; id: Float64Array; vt: Float64Array } => {
     const dim = 2 * N;
-    const A = new Float64Array(dim * dim);
     const rhs = new Float64Array(dim);
-
-    for (let i = 0; i < N; i++) {
-      for (let k = 0; k < N; k++) {
-        const g = baseG[i * N + k]!;
-        let b = baseB[i * N + k]!;
-        if (i === k) {
-          b += motorStallShuntB[i]!;
-          if (faultActive && i === faultBusIdx) {
-            b -= faultB;
-          }
-        }
-        // Real equation: G * Vr - B * Vi = Ir
-        A[2 * i * dim + 2 * k] = g;
-        A[2 * i * dim + (2 * k + 1)] = -b;
-        // Imag equation: B * Vr + G * Vi = Ii
-        A[(2 * i + 1) * dim + 2 * k] = b;
-        A[(2 * i + 1) * dim + (2 * k + 1)] = g;
-      }
-    }
 
     for (let m = 0; m < M; m++) {
       const mach = machines[m]!;
@@ -1213,13 +1226,79 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
       }
     }
 
-    solveLinearSystem(A, rhs, dim);
+    // Simultaneous `fmi-ls-rms` Norton-companion nodal stamping (G_eq, B_eq, Ir_hist, Ii_hist)
+    let nortonKey = "";
+    const nortonStamps: Array<{ bIdx: number; gEq: number; bEq: number }> = [];
+    if (options.nortonCompanions) {
+      for (const comp of options.nortonCompanions) {
+        const bIdx = netlist.busIndices.get(comp.busNumber);
+        if (bIdx === undefined) continue;
+        const { gEq, bEq, irHist, iiHist } = comp.stampNorton(tSec, dt);
+        rhs[2 * bIdx] = (rhs[2 * bIdx] ?? 0) + irHist;
+        rhs[2 * bIdx + 1] = (rhs[2 * bIdx + 1] ?? 0) + iiHist;
+        nortonStamps.push({ bIdx, gEq, bEq });
+        nortonKey += `${bIdx}:${gEq}:${bEq};`;
+      }
+    }
+
+    let stallSum = 0;
+    for (let i = 0; i < N; i++) stallSum += motorStallShuntB[i]!;
+
+    if (
+      !cachedNetLu ||
+      cachedFaultState !== faultActive ||
+      cachedStallSum !== stallSum ||
+      cachedNortonKey !== nortonKey
+    ) {
+      const builder = new SparseTripletBuilder(dim, dim);
+      for (let idx = 0; idx < offDiagI.length; idx++) {
+        const i = offDiagI[idx]!;
+        const k = offDiagK[idx]!;
+        const g = offDiagG[idx]!;
+        const b = offDiagB[idx]!;
+        builder.add(2 * i, 2 * k, g);
+        builder.add(2 * i, 2 * k + 1, -b);
+        builder.add(2 * i + 1, 2 * k, b);
+        builder.add(2 * i + 1, 2 * k + 1, g);
+      }
+
+      const diagG = new Float64Array(N);
+      const diagB = new Float64Array(N);
+      for (let i = 0; i < N; i++) {
+        diagG[i] = baseG[i * N + i]!;
+        let b = baseB[i * N + i]! + motorStallShuntB[i]!;
+        if (faultActive && i === faultBusIdx) {
+          b -= faultB;
+        }
+        diagB[i] = b;
+      }
+      for (const ns of nortonStamps) {
+        diagG[ns.bIdx] = (diagG[ns.bIdx] ?? 0) + ns.gEq;
+        diagB[ns.bIdx] = (diagB[ns.bIdx] ?? 0) + ns.bEq;
+      }
+      for (let i = 0; i < N; i++) {
+        const g = diagG[i]!;
+        const b = diagB[i]!;
+        builder.add(2 * i, 2 * i, g);
+        builder.add(2 * i, 2 * i + 1, -b);
+        builder.add(2 * i + 1, 2 * i, b);
+        builder.add(2 * i + 1, 2 * i + 1, g);
+      }
+
+      const ccs = builder.toCCS();
+      cachedNetLu = sparseLuFactor(ccs, { allowPerturbation: true, useAmdOrdering: dim >= 48 });
+      cachedFaultState = faultActive;
+      cachedStallSum = stallSum;
+      cachedNortonKey = nortonKey;
+    }
+
+    sparseLuSolve(cachedNetLu!, rhs, netSolVec);
 
     const vr = new Float64Array(N);
     const vi = new Float64Array(N);
     for (let i = 0; i < N; i++) {
-      vr[i] = rhs[2 * i] ?? Vm0[i]!;
-      vi[i] = rhs[2 * i + 1] ?? 0;
+      vr[i] = netSolVec[2 * i] ?? Vm0[i]!;
+      vi[i] = netSolVec[2 * i + 1] ?? 0;
     }
 
     const pe = new Float64Array(M);
@@ -1325,6 +1404,24 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
       state: initRes.state,
       dstate: initRes.dstate,
     };
+  });
+
+  // Initialize optional FMU / AssemblyScript standard-library dynamic models
+  const linkedDynamicModels = [
+    ...(options.fmuModels ?? []),
+    ...(options.useWasmStdLib !== false
+      ? instantiateWasmDyrModelsForCase(options.dyr ? { ...psseCase, dyr: options.dyr } : psseCase)
+      : []),
+  ].map((model) => {
+    const machIdx = machines.findIndex((m) => m.busNum === model.busNumber);
+    const busIdx = machIdx >= 0 ? machines[machIdx]!.busIdx : -1;
+    const eterm0 = busIdx >= 0 ? Vm0[busIdx]! : 1.0;
+    const efdInit = machIdx >= 0 ? efd[machIdx]! : 1.0;
+    const pmechInit = machIdx >= 0 ? pm[machIdx]! : 0.8;
+    const vr0 = busIdx >= 0 ? eterm0 * Math.cos(Va0[busIdx]!) : 1.0;
+    const vi0 = busIdx >= 0 ? eterm0 * Math.sin(Va0[busIdx]!) : 0.0;
+    model.init({ eterm: eterm0, speedDev: 0.0, efd: efdInit, pmech: pmechInit, vr: vr0, vi: vi0 });
+    return { model, machIdx, busIdx };
   });
 
   const nSteps = Math.max(10, Math.round(stopTime / dt));
@@ -1573,6 +1670,40 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
       dm.dstate = res3.dstate;
       if (Number.isFinite(res3.efd) && res3.efd !== 0) {
         efd[m] = Math.min(mach.efdMax, Math.max(mach.efdMin, res3.efd));
+      }
+    }
+
+    // Step linked FMU / AssemblyScript package.json#modelscript dynamic models
+    for (const lm of linkedDynamicModels) {
+      if (lm.machIdx < 0) continue;
+      const m = lm.machIdx;
+      const mach = machines[m]!;
+      const vrCur = vr[mach.busIdx]!;
+      const viCur = vi[mach.busIdx]!;
+      const vtCur = Math.hypot(vrCur, viCur);
+      const speedCur = dOmega[m]! / omega0;
+      const out = lm.model.doStep(t, dt, {
+        eterm: vtCur,
+        speedDev: speedCur,
+        efd: efd[m]!,
+        pmech: pm[m]!,
+        vr: vrCur,
+        vi: viCur,
+      });
+      if (out.efd !== undefined && Number.isFinite(out.efd)) {
+        efd[m] = Math.min(mach.efdMax, Math.max(mach.efdMin, out.efd));
+      }
+      if (out.pmech !== undefined && Number.isFinite(out.pmech)) {
+        pm[m] = Math.min(mach.pMaxPu, Math.max(0.0, out.pmech));
+      }
+    }
+
+    // Advance `fmi-ls-rms` Norton companions with solved bus voltage phasors
+    if (options.nortonCompanions) {
+      for (const comp of options.nortonCompanions) {
+        const bIdx = netlist.busIndices.get(comp.busNumber);
+        if (bIdx === undefined) continue;
+        comp.doStep(t, dt, vr[bIdx] ?? 1.0, vi[bIdx] ?? 0.0);
       }
     }
   }
@@ -2490,4 +2621,3 @@ export async function solvePowerFlowAsync(
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   return solvePowerFlow(psseCase, options);
 }
-

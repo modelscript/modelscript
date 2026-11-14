@@ -7,7 +7,7 @@
  * pre-flight linter diagnostics, Todini GGM solver, DAE lowering, and Modelica export.
  */
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { iniSectionRules, language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerEpanetToDae } from "./dae/epanet-to-dae.js";
 import { canIndexEpanet, indexEpanetDocument } from "./indexing.js";
 import { lintEpanet } from "./lints/rules.js";
@@ -19,16 +19,17 @@ export const epanetLanguage = language({
   name: "epanet",
   fileExtensions: [".epanet", ".epanet.inp", ".inp", ".net"],
   maturity: "experimental",
+  extras: ($) => [/[ \t\r\n]+/, $.IniComment],
   indexing: {
     indexFile: indexEpanetDocument,
     canIndex: canIndexEpanet,
   },
   lsp: {
     fileExtensions: [".epanet", ".epanet.inp", ".inp", ".net"],
+    folding: ["IniSectionHeader"],
+    outline: ["IniSectionHeader"],
   },
-  rules: {
-    Root: () => "epanet",
-  },
+  rules: iniSectionRules,
 
   actions: [
     {

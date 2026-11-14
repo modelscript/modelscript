@@ -57,7 +57,11 @@ export interface DiagnosticContext<FieldName extends string = string> {
 /**
  * Describes an automated code action (quick-fix or refactoring) attached to a `CompilerLint` diagnostic.
  */
-export interface CompilerLintFix<_RuleName extends string = string, FieldName extends string = string> {
+export interface CompilerLintFix<
+  RuleName extends string = string,
+  FieldName extends string = string,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> {
   /** Human-readable title displayed in the IDE code action menu, or a formatter computing it from the target node. */
   title: string | ((target: DiagnosticContext<FieldName>) => string);
   /** Classification of the code action (`"quickfix"` or `"refactor"`). */
@@ -67,9 +71,9 @@ export interface CompilerLintFix<_RuleName extends string = string, FieldName ex
   /** Computes the character offset text replacement edit to apply when the user invokes this fix. */
   generateEdit?:
     | ((
-        db: any,
+        db: CodeGraph<ModelAttrs, RuleName, FieldName>,
         node: number,
-        $: Record<string, number>,
+        $: Record<RuleName | (string & {}), number>,
       ) => {
         startOffset: number;
         endOffset: number;
@@ -105,7 +109,7 @@ export interface CompilerLint<
   /** Diagnostic severity level emitted when this lint rule triggers. */
   severity: "error" | "warning" | "info";
   /** Optional quick-fix or refactoring code actions offered for diagnostics produced by this rule. */
-  fixes?: CompilerLintFix<RuleName, FieldName>[] | undefined;
+  fixes?: CompilerLintFix<RuleName, FieldName, ModelAttrs>[] | undefined;
 }
 
 /**

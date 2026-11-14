@@ -8,7 +8,9 @@ import {
   getAntimonyHover,
   validateAntimony,
 } from "@modelscript/antimony";
+import { asmLanguage, getAsmDiagnostics, getAsmDocumentSymbols } from "@modelscript/asm";
 import { aspenLanguage, getAspenDocumentSymbols, getAspenHover, validateAspen } from "@modelscript/aspen";
+import { atpLanguage, getAtpDiagnostics, getAtpDocumentSymbols } from "@modelscript/atp";
 import {
   automationMLLanguage,
   getAutomationMLDocumentSymbols,
@@ -23,8 +25,10 @@ import { ccsdsLanguage, getCcsdsDocumentSymbols, getCcsdsHover, validateCcsds } 
 import { cellmlLanguage, getCellmlDocumentSymbols, getCellmlHover, validateCellml } from "@modelscript/cellml";
 import { cfdLanguage, getCfdDocumentSymbols, getCfdHover, validateCfd } from "@modelscript/cfd";
 import { cgmesLanguage, lintCgmesModel, parseCgmesRdf } from "@modelscript/cgmes";
+import { comtradeLanguage, getComtradeDiagnostics, getComtradeDocumentSymbols } from "@modelscript/comtrade";
 import csvLangFallback from "@modelscript/csv/language";
 import { dicomRtLanguage, getDicomRtDocumentSymbols, getDicomRtHover, validateDicomRt } from "@modelscript/dicom-rt";
+import { dnp3Language, getDnp3Diagnostics, getDnp3DocumentSymbols } from "@modelscript/dnp3";
 import { easy5Language, getEasy5DocumentSymbols, getEasy5Hover, validateEasy5 } from "@modelscript/easy5";
 import { eclipseLanguage, getEclipseDocumentSymbols, getEclipseHover, validateEclipse } from "@modelscript/eclipse";
 import {
@@ -43,12 +47,22 @@ import { gensysLanguage, getGensysDocumentSymbols, getGensysHover, validateGensy
 import { getGpromsDocumentSymbols, getGpromsHover, gpromsLanguage, validateGproms } from "@modelscript/gproms";
 import { getGtfsDocumentSymbols, getGtfsHover, gtfsLanguage, validateGtfs } from "@modelscript/gtfs";
 import { getGtsuiteDocumentSymbols, getGtsuiteHover, gtsuiteLanguage, validateGtsuite } from "@modelscript/gtsuite";
+import {
+  getDiagnostics as getHecHmsDiagnostics,
+  getDocumentSymbols as getHecHmsDocumentSymbols,
+  hecHmsLanguage,
+} from "@modelscript/hec-hms";
 import { getHecRasDocumentSymbols, getHecRasHover, hecRasLanguage, validateHecRas } from "@modelscript/hec-ras";
 import { getIbisDocumentSymbols, getIbisHover, ibisLanguage, validateIbis } from "@modelscript/ibis";
 import { getIgtlDocumentSymbols, getIgtlHover, igtlLanguage, validateIgtl } from "@modelscript/igtl";
 import { getJsbsimDocumentSymbols, getJsbsimHover, jsbsimLanguage, validateJsbsim } from "@modelscript/jsbsim";
 import { getLandgemDocumentSymbols, getLandgemHover, landgemLanguage, validateLandgem } from "@modelscript/landgem";
 import { getLpsDocumentSymbols, getLpsHover, lpsLanguage, validateLps } from "@modelscript/lps";
+import {
+  getDiagnostics as getMatpowerDiagnostics,
+  getDocumentSymbols as getMatpowerDocumentSymbols,
+  matpowerLanguage,
+} from "@modelscript/matpower";
 import { modelicaActionHandlers, modelicaLanguage } from "@modelscript/modelica";
 import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
@@ -58,6 +72,7 @@ import { getNiftiDocumentSymbols, getNiftiHover, niftiLanguage, validateNifti } 
 import { getNmtranDocumentSymbols, getNmtranHover, nmtranLanguage, validateNmtran } from "@modelscript/nmtran";
 import { getOcppDocumentSymbols, getOcppHover, ocppLanguage, validateOcpp } from "@modelscript/ocpp";
 import { getOlgaDocumentSymbols, getOlgaHover, olgaLanguage, validateOlga } from "@modelscript/olga";
+import { getOneLinerDiagnostics, getOneLinerDocumentSymbols, onelinerLanguage } from "@modelscript/oneliner";
 import { getOpenAdrDocumentSymbols, getOpenAdrHover, openadrLanguage, validateOpenAdr } from "@modelscript/openadr";
 import {
   getOpenDriveDocumentSymbols,
@@ -101,7 +116,9 @@ import { getRocetsDocumentSymbols, getRocetsHover, rocetsLanguage, validateRocet
 import { getSbmlDocumentSymbols, getSbmlHover, sbmlLanguage, validateSbml } from "@modelscript/sbml";
 import { getSbolDocumentSymbols, getSbolHover, sbolLanguage, validateSbol } from "@modelscript/sbol";
 import scadLangFallback from "@modelscript/scad/language";
+import { getSclDiagnostics, getSclDocumentSymbols, sclLanguage } from "@modelscript/scl";
 import { getSedmlDocumentSymbols, getSedmlHover, sedmlLanguage, validateSedml } from "@modelscript/sedml";
+import { getSELDiagnostics, getSELDocumentSymbols, selLanguage } from "@modelscript/sel";
 import { getSimaDocumentSymbols, getSimaHover, simaLanguage, validateSima } from "@modelscript/sima";
 import { getSimpackDocumentSymbols, getSimpackHover, simpackLanguage, validateSimpack } from "@modelscript/simpack";
 import {
@@ -134,6 +151,7 @@ import {
   validateVerilogA,
   verilogALanguage,
 } from "@modelscript/verilog-a";
+import { getWaterMlDiagnostics, getWaterMlDocumentSymbols, watermlLanguage } from "@modelscript/waterml";
 import {
   createOpenDriveDiagramBackend,
   createPscadDiagramBackend,
@@ -784,11 +802,63 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
   });
 
   // 6. PSSE
+  void import("@modelscript/psse").then((m) => m.ensureBuiltInPsseLibraryRegistered?.());
   globalLanguageRegistry.register({
     id: "psse",
     name: "PSSE",
-    extensions: [".raw", ".dyr", ".sav"],
+    extensions: [".raw", ".dyr", ".seq", ".con", ".mon", ".sub", ".sav", ".out"],
     languageDef: psseLanguage,
+    extractTheoryConstraints: async (text: string) => {
+      const { parseRaw } = await import("@modelscript/psse");
+      const c = parseRaw(text);
+      const ns = `PSSE::${c.header?.sbase ?? 100}MVA`;
+      const parameters: any[] = [];
+      const ports: any[] = [];
+      if (Number.isFinite(c.header?.sbase)) {
+        parameters.push({
+          name: "SBASE",
+          fqn: `${ns}::SBASE`,
+          value: c.header.sbase,
+          rawValueText: String(c.header.sbase),
+          unit: "MVA",
+          line: 1,
+          startCol: 1,
+          endCol: 6,
+        });
+      }
+      for (const bus of c.buses.values()) {
+        const bName = `bus_${bus.i}`;
+        if (Number.isFinite(bus.baseKv)) {
+          parameters.push({
+            name: `${bName}_baseKv`,
+            fqn: `${ns}::${bName}.baseKv`,
+            value: bus.baseKv,
+            rawValueText: String(bus.baseKv),
+            unit: "kV",
+            line: 1,
+            startCol: 1,
+            endCol: 1 + bName.length,
+          });
+        }
+        ports.push({ name: bName, kind: "PowerBus", line: 1 });
+      }
+      for (const gen of c.generators) {
+        const gName = `gen_${gen.i}_${gen.id}`;
+        if (Number.isFinite(gen.pg)) {
+          parameters.push({
+            name: `${gName}_pg`,
+            fqn: `${ns}::${gName}.pg`,
+            value: gen.pg,
+            rawValueText: String(gen.pg),
+            unit: "MW",
+            line: 1,
+            startCol: 1,
+            endCol: 1 + gName.length,
+          });
+        }
+      }
+      return { namespaceFqn: ns, parameters, ports };
+    },
     customHandlers: {
       symbols: (treeWrapper: any) => {
         const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
@@ -836,8 +906,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       analyze_n1_contingencies: async (ctx: any, params: any) => {
         const text = params?.documentText ?? ctx.documentText;
         if (!text) return null;
-        const { parseRaw, analyzeN1Contingencies } = await import("@modelscript/psse");
-        const parsed = parseRaw(text);
+        const { analyzeN1Contingencies } = await import("@modelscript/psse");
+        const parsed = getMergedPsseCase(workspaceManager.unifiedWorkspace, ctx.uri ?? "", text);
         const caseTitle = parsed.title1 || `PSS/E Grid (Rev ${parsed.header.rev})`;
         return analyzeN1Contingencies(parsed, caseTitle);
       },
@@ -852,14 +922,15 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       lint_psse_case: async (ctx: any, params: any) => {
         const text = params?.documentText ?? ctx.documentText;
         if (!text) return [];
-        const { parseRaw, lintPsse } = await import("@modelscript/psse");
-        return lintPsse(parseRaw(text));
+        const { lintPsse } = await import("@modelscript/psse");
+        const parsed = getMergedPsseCase(workspaceManager.unifiedWorkspace, ctx.uri ?? "", text);
+        return lintPsse(parsed);
       },
       extract_powerflow_netlist: async (ctx: any, params: any) => {
         const text = params?.documentText ?? ctx.documentText;
         if (!text) return null;
-        const { parseRaw, extractPowerFlowNetlist, serializePowerFlowNetlist } = await import("@modelscript/psse");
-        const parsed = parseRaw(text);
+        const { extractPowerFlowNetlist, serializePowerFlowNetlist } = await import("@modelscript/psse");
+        const parsed = getMergedPsseCase(workspaceManager.unifiedWorkspace, ctx.uri ?? "", text);
         const netlist = extractPowerFlowNetlist(parsed);
         const caseTitle = parsed.title1 || `PSS/E Grid (Rev ${parsed.header.rev})`;
         return serializePowerFlowNetlist(netlist, caseTitle);
@@ -867,14 +938,16 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       export_psse_modelica: async (ctx: any, params: any) => {
         const text = params?.documentText ?? ctx.documentText;
         if (!text) return "";
-        const { parseRaw, psseToModelica } = await import("@modelscript/psse");
-        return psseToModelica(parseRaw(text));
+        const { psseToModelica } = await import("@modelscript/psse");
+        const parsed = getMergedPsseCase(workspaceManager.unifiedWorkspace, ctx.uri ?? "", text);
+        return psseToModelica(parsed);
       },
       export_psse_pscad: async (ctx: any, params: any) => {
         const text = params?.documentText ?? ctx.documentText;
         if (!text) return null;
-        const { parseRaw, psseToEmtNetlist } = await import("@modelscript/psse");
-        return psseToEmtNetlist(parseRaw(text));
+        const { psseToEmtNetlist } = await import("@modelscript/psse");
+        const parsed = getMergedPsseCase(workspaceManager.unifiedWorkspace, ctx.uri ?? "", text);
+        return psseToEmtNetlist(parsed);
       },
       export_psse_dae: async (ctx: any, params: any) => {
         const text = params?.documentText ?? ctx.documentText;
@@ -887,8 +960,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       solve_powerflow: async (ctx: any, params: any) => {
         const text = params?.documentText ?? ctx.documentText;
         if (!text) return null;
-        const { parseRaw, solvePowerFlow, formatPowerFlowReport } = await import("@modelscript/psse");
-        const parsed = parseRaw(text);
+        const { solvePowerFlow, formatPowerFlowReport } = await import("@modelscript/psse");
+        const parsed = getMergedPsseCase(workspaceManager.unifiedWorkspace, ctx.uri ?? "", text);
         const sol = solvePowerFlow(parsed, params);
         const caseTitle = parsed.title1 || `PSS/E Grid (Rev ${parsed.header.rev})`;
         return { ...sol, reportText: formatPowerFlowReport(sol, caseTitle) };
@@ -1497,6 +1570,50 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     get diagramBackend() {
       return createSpiceDiagramBackend({});
     },
+    extractTheoryConstraints: async (text: string) => {
+      const { parseSpice, parseSpiceNumber } = await import("@modelscript/spice");
+      const circuit = parseSpice(text);
+      const ns = circuit.title ? `SPICE::${circuit.title.replace(/\s+/g, "_")}` : "SPICE::Circuit";
+      const parameters: any[] = [];
+      const seenNodes = new Set<string>();
+      const ports: any[] = [];
+      const unitForType = (t: string): string => {
+        const up = t.toUpperCase();
+        if (up === "R") return "Ohm";
+        if (up === "C") return "F";
+        if (up === "L") return "H";
+        if (up === "V" || up === "E") return "V";
+        if (up === "I" || up === "G") return "A";
+        return "";
+      };
+      for (const comp of circuit.components ?? []) {
+        const val =
+          typeof comp.value === "number"
+            ? comp.value
+            : comp.rawValueExpr
+              ? parseSpiceNumber(comp.rawValueExpr)
+              : Number.NaN;
+        if (Number.isFinite(val)) {
+          parameters.push({
+            name: comp.name,
+            fqn: `${ns}::${comp.name}`,
+            value: val,
+            rawValueText: String(comp.rawValueExpr ?? val),
+            unit: unitForType(String(comp.kind ?? "")),
+            line: (comp as any).line ?? 1,
+            startCol: 1,
+            endCol: 1 + comp.name.length,
+          });
+        }
+        for (const n of comp.nodes ?? []) {
+          if (n && !seenNodes.has(n)) {
+            seenNodes.add(n);
+            ports.push({ name: n, kind: "ElectricalNode", line: (comp as any).line ?? 1 });
+          }
+        }
+      }
+      return { namespaceFqn: ns, parameters, ports };
+    },
     customHandlers: {
       symbols: (treeWrapper: any) =>
         getSpiceDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
@@ -1610,6 +1727,43 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     name: "ROS URDF & SDFormat",
     extensions: [".urdf", ".sdf", ".xacro"],
     languageDef: urdfLanguage,
+    extractTheoryConstraints: async (text: string) => {
+      const { parseUrdf } = await import("@modelscript/urdf");
+      const robot = parseUrdf(text);
+      const ns = `URDF::${robot.name || "Robot"}`;
+      const parameters: any[] = [];
+      const ports: any[] = [];
+      for (const link of robot.links.values()) {
+        if (link.inertial && Number.isFinite(link.inertial.mass)) {
+          parameters.push({
+            name: `${link.name}_mass`,
+            fqn: `${ns}::${link.name}.mass`,
+            value: link.inertial.mass,
+            rawValueText: String(link.inertial.mass),
+            unit: "kg",
+            line: 1,
+            startCol: 1,
+            endCol: 1 + link.name.length,
+          });
+        }
+      }
+      for (const joint of robot.joints.values()) {
+        if (joint.limits?.effort !== undefined && Number.isFinite(joint.limits.effort)) {
+          parameters.push({
+            name: `${joint.name}_effort`,
+            fqn: `${ns}::${joint.name}.effort`,
+            value: joint.limits.effort,
+            rawValueText: String(joint.limits.effort),
+            unit: "N*m",
+            line: 1,
+            startCol: 1,
+            endCol: 1 + joint.name.length,
+          });
+        }
+        ports.push({ name: joint.name, kind: `Joint:${joint.type}`, line: 1 });
+      }
+      return { namespaceFqn: ns, parameters, ports };
+    },
     customHandlers: {
       symbols: (treeWrapper: any) =>
         getUrdfDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
@@ -2865,6 +3019,33 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     name: "Cantera",
     extensions: [".cti", ".ctml"],
     languageDef: canteraLanguage,
+    extractTheoryConstraints: async (text: string) => {
+      const { parseCantera } = await import("@modelscript/cantera");
+      const doc = parseCantera(text);
+      const ns = `Cantera::${doc.mechanism?.name || "Mechanism"}`;
+      const parameters: any[] = [];
+      parameters.push({
+        name: "speciesCount",
+        fqn: `${ns}::speciesCount`,
+        value: doc.mechanism?.species?.size ?? 0,
+        rawValueText: String(doc.mechanism?.species?.size ?? 0),
+        unit: "",
+        line: 1,
+        startCol: 1,
+        endCol: 13,
+      });
+      parameters.push({
+        name: "reactionCount",
+        fqn: `${ns}::reactionCount`,
+        value: doc.mechanism?.reactions?.length ?? 0,
+        rawValueText: String(doc.mechanism?.reactions?.length ?? 0),
+        unit: "",
+        line: 1,
+        startCol: 1,
+        endCol: 14,
+      });
+      return { namespaceFqn: ns, parameters, ports: [] };
+    },
     customHandlers: {
       symbols: (treeWrapper: any) =>
         getCanteraDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
@@ -2941,6 +3122,40 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     name: "Fiber",
     extensions: [".fiber.geojson", ".osp.json"],
     languageDef: fiberLanguage,
+    customHandlers: {
+      validate: async (doc: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const { parseFiberGis, lintFiberNetwork } = await import("@modelscript/fiber");
+        try {
+          const network = parseFiberGis(text);
+          const diags = lintFiberNetwork(network);
+          return diags.map((d) => {
+            const idx = d.elementId ? text.indexOf(d.elementId) : -1;
+            const pos = idx >= 0 ? offsetToPosition(text, idx) : { line: 0, character: 0 };
+            return {
+              range: {
+                start: pos,
+                end: { line: pos.line, character: pos.character + Math.max(1, d.elementId?.length ?? 1) },
+              },
+              severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
+              code: d.code,
+              source: "modelscript-fiber",
+              message: d.message,
+            };
+          });
+        } catch (err: any) {
+          return [
+            {
+              range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+              severity: 1,
+              code: "FIBER1000",
+              source: "modelscript-fiber",
+              message: err?.message ? String(err.message) : "Invalid Fiber GeoJSON/OSP document.",
+            },
+          ];
+        }
+      },
+    },
     disposables: [],
   });
 
@@ -3257,6 +3472,196 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     disposables: [],
   });
 
+  // 74. ASM (Activated Sludge Model)
+  globalLanguageRegistry.register({
+    id: "asm",
+    name: "ASM",
+    extensions: [".asm", ".bsm", ".wrrf"],
+    languageDef: asmLanguage,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getAsmDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: any) => getAsmDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 75. ATP-EMTP
+  globalLanguageRegistry.register({
+    id: "atp",
+    name: "ATP-EMTP",
+    extensions: [".atp", ".dat"],
+    languageDef: atpLanguage,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getAtpDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: any) => getAtpDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 76. COMTRADE
+  globalLanguageRegistry.register({
+    id: "comtrade",
+    name: "COMTRADE",
+    extensions: [".cfg", ".dat", ".cff"],
+    languageDef: comtradeLanguage,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getComtradeDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: any) => getComtradeDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 77. DNP3
+  globalLanguageRegistry.register({
+    id: "dnp3",
+    name: "DNP3",
+    extensions: [".dnp3", ".xml", ".json"],
+    languageDef: dnp3Language,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getDnp3DocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: any) => getDnp3Diagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 78. HEC-HMS
+  globalLanguageRegistry.register({
+    id: "hec-hms",
+    name: "HEC-HMS",
+    extensions: [".basin", ".hms", ".met", ".control"],
+    languageDef: hecHmsLanguage,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getHecHmsDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: any) => getHecHmsDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 79. MATPOWER
+  globalLanguageRegistry.register({
+    id: "matpower",
+    name: "MATPOWER",
+    extensions: [".m", ".matpower"],
+    languageDef: matpowerLanguage,
+    extractTheoryConstraints: async (text: string) => {
+      const { parseMatpowerCase } = await import("@modelscript/matpower");
+      const mpc = parseMatpowerCase(text);
+      const ns = `MATPOWER::${mpc.caseName || "Case"}`;
+      const parameters: any[] = [
+        {
+          name: "baseMVA",
+          fqn: `${ns}::baseMVA`,
+          value: mpc.baseMVA,
+          rawValueText: String(mpc.baseMVA),
+          unit: "MVA",
+          line: 1,
+          startCol: 1,
+          endCol: 8,
+        },
+      ];
+      const ports: any[] = [];
+      for (const b of mpc.bus) {
+        const bName = `bus_${b.bus_i}`;
+        if (Number.isFinite(b.baseKv)) {
+          parameters.push({
+            name: `${bName}_baseKV`,
+            fqn: `${ns}::${bName}.baseKV`,
+            value: b.baseKv,
+            rawValueText: String(b.baseKv),
+            unit: "kV",
+            line: 1,
+            startCol: 1,
+            endCol: 1 + bName.length,
+          });
+        }
+        ports.push({ name: bName, kind: "PowerBus", line: 1 });
+      }
+      for (let i = 0; i < mpc.gen.length; i++) {
+        const g = mpc.gen[i]!;
+        if (Number.isFinite(g.pg)) {
+          parameters.push({
+            name: `gen_${g.bus}_${i + 1}_Pg`,
+            fqn: `${ns}::gen_${g.bus}_${i + 1}.Pg`,
+            value: g.pg,
+            rawValueText: String(g.pg),
+            unit: "MW",
+            line: 1,
+            startCol: 1,
+            endCol: 12,
+          });
+        }
+      }
+      return { namespaceFqn: ns, parameters, ports };
+    },
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getMatpowerDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: any) => getMatpowerDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 80. ASPEN OneLiner
+  globalLanguageRegistry.register({
+    id: "oneliner",
+    name: "ASPEN OneLiner",
+    extensions: [".olx", ".dxt"],
+    languageDef: onelinerLanguage,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getOneLinerDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: any) => getOneLinerDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 81. IEC 61850 SCL
+  globalLanguageRegistry.register({
+    id: "scl",
+    name: "IEC 61850 SCL",
+    extensions: [".scd", ".cid", ".icd", ".ssd", ".iid", ".scl"],
+    languageDef: sclLanguage,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getSclDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: any) => getSclDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 82. SEL Protection
+  globalLanguageRegistry.register({
+    id: "sel",
+    name: "SEL Protection",
+    extensions: [".rcf", ".rdb", ".sel", ".txt"],
+    languageDef: selLanguage,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getSELDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: any) => getSELDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 83. WaterML
+  globalLanguageRegistry.register({
+    id: "waterml",
+    name: "WaterML",
+    extensions: [".waterml", ".wml2", ".xml", ".json"],
+    languageDef: watermlLanguage,
+    customHandlers: {
+      symbols: (treeWrapper: any) =>
+        getWaterMlDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: any) => getWaterMlDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
   if (
     workspaceManager?.unifiedWorkspace &&
     typeof workspaceManager.unifiedWorkspace.registerLanguageDef === "function"
@@ -3269,6 +3674,6 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
   }
 
   if (connection) {
-    connection.console.info("[lsp] All 81 built-in domain language plugins registered successfully.");
+    connection.console.info("[lsp] All built-in domain language plugins registered successfully.");
   }
 }

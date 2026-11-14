@@ -50,6 +50,7 @@ import { organizationsRouter } from "./routes/organizations.js";
 import { packagesRouter } from "./routes/packages.js";
 import { physicsRouter } from "./routes/physics.js";
 import { provisioningRouter } from "./routes/provisioning.js";
+import { pscadRouter } from "./routes/pscad.js";
 import { publishRouter } from "./routes/publish.js";
 import { pushRouter } from "./routes/push.js";
 import { rdfRouter } from "./routes/rdf.js";
@@ -185,7 +186,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
           );
           if (res.generatedPassword) {
             console.warn(
-              `[AdminSeed] NOTICE: Initial admin password was auto-generated because ADMIN_INIT_PASSWORD was not set: ${res.generatedPassword}`,
+              `[AdminSeed] NOTICE: Initial admin password was auto-generated because ADMIN_INIT_PASSWORD was not set (redacted from logs). Set ADMIN_INIT_PASSWORD on a fresh database or reset via admin recovery to obtain credentials.`,
             );
           }
         }
@@ -845,6 +846,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   });
 
   app.use("/api/v1/fmus", optionalAuth, fmuRouter(fmuStorage));
+  app.use("/api/v1/pscad", optionalAuth, pscadRouter());
   app.use("/git", gitServerRouter(database));
   app.use("/api/v1/git-server", gitServerRouter(database));
   app.use("/api/thumbnails", express.static(path.resolve(API_ROOT, "public/thumbnails")));

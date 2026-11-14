@@ -2,6 +2,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import React, { useMemo, useState } from "react";
+import { InspectorTabs } from "./InspectorTabs.js";
 
 export interface ThermoFluidInspectorProps {
   code: string;
@@ -218,7 +219,7 @@ export const ThermoFluidInspector: React.FC<ThermoFluidInspectorProps> = ({ code
   const [subView, setSubView] = useState<"hgl" | "reynolds" | "nodes">("hgl");
 
   const borderCol = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)";
-  const cardBg = isDark ? "rgba(22, 27, 34, 0.7)" : "rgba(255, 255, 255, 0.9)";
+  const cardBg = isDark ? "rgba(30, 30, 34, 0.75)" : "rgba(255, 255, 255, 0.9)";
   const textPrimary = isDark ? "#e6edf3" : "#1f2328";
   const textMuted = isDark ? "#8b949e" : "#59636e";
 
@@ -229,31 +230,16 @@ export const ThermoFluidInspector: React.FC<ThermoFluidInspectorProps> = ({ code
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {[
+      <InspectorTabs
+        ariaLabel="Thermo-fluid inspector views"
+        value={subView}
+        onChange={(id) => setSubView(id as typeof subView)}
+        tabs={[
           { id: "hgl", label: `🌊 Hydraulic Grade Line (${conduits.length} conduits)` },
           { id: "reynolds", label: `💨 Darcy-Weisbach & Reynolds Regime` },
           { id: "nodes", label: `⚖️ Nodal Continuity & Heads (${nodes.length} nodes)` },
-        ].map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setSubView(t.id as typeof subView)}
-            style={{
-              padding: "6px 12px",
-              fontSize: 12,
-              fontWeight: 600,
-              borderRadius: 6,
-              border: `1px solid ${borderCol}`,
-              cursor: "pointer",
-              backgroundColor: subView === t.id ? "#1f6feb" : cardBg,
-              color: subView === t.id ? "#ffffff" : textPrimary,
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+        ]}
+      />
 
       {subView === "hgl" && (
         <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
@@ -283,7 +269,11 @@ export const ThermoFluidInspector: React.FC<ThermoFluidInspectorProps> = ({ code
                     onClick={() => onRevealLine?.(c.line, c.id)}
                     style={{ borderBottom: `1px solid ${borderCol}`, cursor: "pointer" }}
                   >
-                    <td style={{ padding: "6px 8px", fontWeight: 700, color: "#58a6ff" }}>{c.id}</td>
+                    <td
+                      style={{ padding: "6px 8px", fontWeight: 700, color: "var(--fgColor-accent, var(--ms-brand))" }}
+                    >
+                      {c.id}
+                    </td>
                     <td style={{ padding: "6px 8px" }}>
                       {c.from} → {c.to}
                     </td>
@@ -363,7 +353,11 @@ export const ThermoFluidInspector: React.FC<ThermoFluidInspectorProps> = ({ code
                     onClick={() => onRevealLine?.(n.line, n.id)}
                     style={{ borderBottom: `1px solid ${borderCol}`, cursor: "pointer" }}
                   >
-                    <td style={{ padding: "6px 8px", fontWeight: 700, color: "#58a6ff" }}>{n.id}</td>
+                    <td
+                      style={{ padding: "6px 8px", fontWeight: 700, color: "var(--fgColor-accent, var(--ms-brand))" }}
+                    >
+                      {n.id}
+                    </td>
                     <td style={{ padding: "6px 8px" }}>{n.kind}</td>
                     <td style={{ padding: "6px 8px" }}>{n.elevationM}</td>
                     <td style={{ padding: "6px 8px", color: "#3fb950" }}>{n.headM.toFixed(2)}</td>

@@ -8,7 +8,20 @@
  * verification solver outcomes (IC3 inductive invariants, SMT UNSAT cores, and reachability proofs).
  */
 
-import crypto from "node:crypto";
+import type * as cryptoType from "node:crypto";
+
+function getNodeCrypto(): typeof cryptoType {
+  const c = (process as any)?.getBuiltinModule?.("node:crypto");
+  if (!c) {
+    throw new Error("ProofManifestGenerator requires Node.js node:crypto");
+  }
+  return c;
+}
+const crypto = new Proxy({} as typeof cryptoType, {
+  get(_target, prop) {
+    return (getNodeCrypto() as any)[prop];
+  },
+});
 
 export interface ProofManifestItem {
   domain: "sysml" | "modelica" | "cad" | "formal_proof";
@@ -27,8 +40,8 @@ export interface ProofManifestItem {
 
 export interface ManifestSigningOptions {
   algorithm?: "sha256" | "ed25519" | undefined;
-  privateKey?: crypto.KeyObject | string | undefined;
-  publicKey?: crypto.KeyObject | string | undefined;
+  privateKey?: cryptoType.KeyObject | string | undefined;
+  publicKey?: cryptoType.KeyObject | string | undefined;
 }
 
 export interface DigitalThreadProofManifest {

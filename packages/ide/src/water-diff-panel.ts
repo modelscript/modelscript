@@ -167,11 +167,11 @@ export class WaterDiffPanel extends BaseWebviewPanel {
   <title>Water Network Diff Visualizer</title>
   <style>
     :root {
-      --bg: #0d1117;
-      --card-bg: #161b22;
-      --border: #30363d;
-      --text: #c9d1d9;
-      --text-muted: #8b949e;
+      --bg: var(--vscode-editor-background, #18181b);
+      --card-bg: var(--vscode-sideBar-background, #1e1e22);
+      --border: var(--vscode-panel-border, rgba(255, 255, 255, 0.12));
+      --text: var(--vscode-foreground, #f4f4f5);
+      --text-muted: var(--vscode-descriptionForeground, #a1a1aa);
       --added: #238636;
       --deleted: #da3633;
       --modified: #d29922;

@@ -11,11 +11,7 @@
  */
 
 import assert from "node:assert/strict";
-import {
-  cfdToDae,
-  getCfdDialect,
-  type CfdModelData,
-} from "../src/index.js";
+import { cfdToDae, getCfdDialect, type CfdModelData } from "../src/index.js";
 
 export const NACA0012_TRANSONIC_BENCHMARK_CONFIG = `
 % NASA Langley TMR NACA 0012 Transonic Airfoil Benchmark
@@ -52,9 +48,7 @@ export interface CfdBenchmarkMetrics {
   isSquare: boolean;
 }
 
-export function runCfdBenchmark(
-  configStr = NACA0012_TRANSONIC_BENCHMARK_CONFIG,
-): CfdBenchmarkMetrics {
+export function runCfdBenchmark(configStr = NACA0012_TRANSONIC_BENCHMARK_CONFIG): CfdBenchmarkMetrics {
   const dialect = getCfdDialect("su2");
   const model: CfdModelData = dialect.parse(configStr);
 
@@ -109,6 +103,32 @@ export function runCfdBenchmark(
     isSquare: varCount === eqCount,
   };
 }
+
+export const cfdBenchmarkAdapter: import("@modelscript/runtime/benchmark").LanguageBenchmarkAdapter = {
+  slug: "cfd",
+  referenceTool: "NASA TMR / SU2 NACA 0012",
+  referenceVersion: "8.0",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases(): Promise<import("@modelscript/runtime/benchmark").BenchmarkCaseResult[]> {
+    const t0 = performance.now();
+    const m = runCfdBenchmark();
+    return [
+      {
+        id: "NACA0012-Transonic",
+        name: "NASA Langley TMR NACA 0012 Transonic Airfoil (M=0.799)",
+        scale: "standard",
+        referenceTool: "NASA TMR / SU2 NACA 0012",
+        metricKind: "dae-parity",
+        threshold: 0,
+        measuredError: m.isSquare ? 0 : 1,
+        passed: m.isSquare && m.daeVarCount === 19,
+        durationMs: Number((performance.now() - t0).toFixed(3)),
+        details: `CL=${m.clEstimated.toFixed(4)}, CD=${m.cdEstimated.toFixed(4)}, ${m.daeVarCount} DAE vars/eqs`,
+      },
+    ];
+  },
+};
 
 if (process.argv[1]?.endsWith("cfd-benchmark-runner.ts")) {
   const m = runCfdBenchmark();

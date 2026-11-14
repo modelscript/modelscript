@@ -452,15 +452,13 @@ export const SysML2ErrorCode = {
     code: 4017,
     rule: "unsatisfied-critical-requirement",
     severity: "warning" as DiagnosticSeverity,
-    message: (reqName: string) =>
-      `Critical requirement '${reqName}' has no incoming satisfy or verify relationship.`,
+    message: (reqName: string) => `Critical requirement '${reqName}' has no incoming satisfy or verify relationship.`,
   },
   CIRCULAR_PORT_DELEGATION: {
     code: 4018,
     rule: "circular-port-delegation",
     severity: "error" as DiagnosticSeverity,
-    message: (portName: string) =>
-      `Port '${portName}' delegation connection chain contains a cyclic dependency.`,
+    message: (portName: string) => `Port '${portName}' delegation connection chain contains a cyclic dependency.`,
   },
   INCOMPATIBLE_FLOW_DIMENSIONS: {
     code: 4019,
@@ -473,15 +471,13 @@ export const SysML2ErrorCode = {
     code: 5017,
     rule: "dead-state-transition",
     severity: "warning" as DiagnosticSeverity,
-    message: (transName: string) =>
-      `State transition '${transName}' guard condition is tautologically false.`,
+    message: (transName: string) => `State transition '${transName}' guard condition is tautologically false.`,
   },
   NON_DETERMINISTIC_TRANSITIONS: {
     code: 5018,
     rule: "non-deterministic-transitions",
     severity: "warning" as DiagnosticSeverity,
-    message: (stateName: string) =>
-      `State '${stateName}' has overlapping, unprioritized outgoing transition guards.`,
+    message: (stateName: string) => `State '${stateName}' has overlapping, unprioritized outgoing transition guards.`,
   },
   STATE_TRANSITION_UNREACHABLE: {
     code: 5019,
@@ -489,6 +485,34 @@ export const SysML2ErrorCode = {
     severity: "warning" as DiagnosticSeverity,
     message: (transName: string, stateName: string) =>
       `State transition '${transName}' originates from unreachable state '${stateName}'.`,
+  },
+  TGG_CONFORMANCE_MISSING_PORT: {
+    code: 4080,
+    rule: "tgg-conformance-missing-port",
+    severity: "warning" as DiagnosticSeverity,
+    message: (targetName: string, targetLang: string, portName: string, portType: string, sourceName: string) =>
+      `TGG conformance warning: '${targetName}' (${targetLang}) is missing counterpart port '${portName}' (${portType}) expected by '${sourceName}'.`,
+  },
+  TGG_CONFORMANCE_PARAM_MISMATCH: {
+    code: 4081,
+    rule: "tgg-conformance-param-mismatch",
+    severity: "warning" as DiagnosticSeverity,
+    message: (paramName: string, expectedType: string, actualType: string) =>
+      `TGG conformance warning: parameter or port '${paramName}' type '${actualType}' is incompatible with '${expectedType}'.`,
+  },
+  TGG_CONFORMANCE_MISSING_COMPONENT: {
+    code: 4082,
+    rule: "tgg-conformance-missing-component",
+    severity: "warning" as DiagnosticSeverity,
+    message: (targetName: string, targetLang: string, compName: string, compType: string) =>
+      `TGG conformance warning: '${targetName}' (${targetLang}) is missing expected component '${compName}' : '${compType}'.`,
+  },
+  TGG_CONFORMANCE_UNRESOLVED_TARGET: {
+    code: 4083,
+    rule: "tgg-conformance-unresolved-target",
+    severity: "error" as DiagnosticSeverity,
+    message: (sourceName: string, targetLang: string) =>
+      `Counterpart element referenced by '${sourceName}' could not be resolved in '${targetLang}'.`,
   },
 } as const;
 

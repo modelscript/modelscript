@@ -65,7 +65,7 @@ const examplesBySlug: Record<string, unknown> = fs.existsSync(examplesJsonPath)
     )
   : {};
 
-function resolveEnvFlag(...keys: string[]): boolean {
+function resolveEnvFlagWithDefault(defaultValue: boolean, ...keys: string[]): boolean {
   for (const key of keys) {
     const val = process.env[key];
     if (val !== undefined) {
@@ -73,7 +73,11 @@ function resolveEnvFlag(...keys: string[]): boolean {
       return normalized === "true" || normalized === "1";
     }
   }
-  return false;
+  return defaultValue;
+}
+
+function resolveEnvFlag(...keys: string[]): boolean {
+  return resolveEnvFlagWithDefault(false, ...keys);
 }
 
 export default defineConfig({
@@ -83,6 +87,7 @@ export default defineConfig({
     languages: modelicaGrammar ? [modelicaGrammar as any] : [],
     languageAlias: {
       abaqus: "ini",
+      ampl: "python",
       owl: "lisp",
       rocets: "c",
       scad: "c",
@@ -135,6 +140,13 @@ export default defineConfig({
           "VITE_FEATURE_FLAG_HOME_AI_AGENT",
           "FEATURE_FLAG_HOME_SHOWCASE",
           "VITE_FEATURE_FLAG_HOME_SHOWCASE",
+        ),
+      ),
+      __FEATURE_FLAG_HOME_POLYGLOT_SANDBOX__: JSON.stringify(
+        resolveEnvFlagWithDefault(
+          true,
+          "FEATURE_FLAG_HOME_POLYGLOT_SANDBOX",
+          "VITE_FEATURE_FLAG_HOME_POLYGLOT_SANDBOX",
         ),
       ),
     },

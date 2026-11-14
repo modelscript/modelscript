@@ -33,7 +33,11 @@ export const relap5DeckGrammar = language({
         $.GenericCard,
       ),
 
-    TitleCard: ($) => seq(semanticToken("keyword", choice("0000100", "100")), field("title", $.RestOfLine)),
+    TitleCard: ($) =>
+      seq(
+        semanticToken("keyword", choice("0000100", "100")),
+        repeat(field("titleWord", choice($.Identifier, $.NumberLiteral, $.StringLiteral))),
+      ),
 
     ControlCard: () =>
       seq(
@@ -48,14 +52,17 @@ export const relap5DeckGrammar = language({
         field("endTime", choice($.NumberLiteral, $.Identifier)),
         field("minDt", choice($.NumberLiteral, $.Identifier)),
         field("maxDt", choice($.NumberLiteral, $.Identifier)),
-        optional(field("controlFlags", choice($.NumberLiteral, $.Identifier))),
+        repeat(field("controlFlags", choice($.NumberLiteral, $.Identifier))),
       ),
 
     VolumeCard: ($) =>
       seq(
         field("cardNumber", $.VolumeCardNum),
         field("componentName", $.Identifier),
-        field("componentType", choice("pipe", "branch", "annulus", "single_volume", "tmdv")),
+        field(
+          "componentType",
+          choice("pipe", "branch", "annulus", "single_volume", "snglvol", "tmdv", "tmdpvol", "pump", "valve"),
+        ),
         repeat(field("word", choice($.NumberLiteral, $.Identifier, $.StringLiteral))),
       ),
 
@@ -97,9 +104,9 @@ export const relap5DeckGrammar = language({
 
     TerminalCard: () => choice("/", ".", "end", "END"),
 
-    VolumeCardNum: () => /[1][0-9]{6}/,
+    VolumeCardNum: () => /[1][0-9]{2}0000/,
     JunctionCardNum: () => /[2][0-9]{6}/,
-    HeatCardNum: () => /[3][0-9]{6}/,
+    HeatCardNum: () => /[3][0-9]{2}0000/,
     KineticsCardNum: () => /[4][0-9]{6}/,
     TripCardNum: () => /[5][0-9]{6}/,
     CardNumber: () => /[0-9]{3,7}/,
@@ -108,6 +115,5 @@ export const relap5DeckGrammar = language({
     Identifier: () => /[a-zA-Z_][a-zA-Z0-9_.-]*/,
     NumberLiteral: () => /[-+]?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?/,
     StringLiteral: () => /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/,
-    RestOfLine: () => /[^\r\n]+/,
   },
 });

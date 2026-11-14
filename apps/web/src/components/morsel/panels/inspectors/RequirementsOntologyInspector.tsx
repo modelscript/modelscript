@@ -2,6 +2,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import React, { useMemo, useState } from "react";
+import { InspectorTabs } from "./InspectorTabs.js";
 
 export interface RequirementsOntologyInspectorProps {
   code: string;
@@ -248,39 +249,23 @@ export const RequirementsOntologyInspector: React.FC<RequirementsOntologyInspect
   const [subView, setSubView] = useState<"matrix" | "owl" | "compliance">("matrix");
 
   const borderCol = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)";
-  const cardBg = isDark ? "rgba(22, 27, 34, 0.7)" : "rgba(255, 255, 255, 0.9)";
-  const textPrimary = isDark ? "#e6edf3" : "#1f2328";
+  const cardBg = isDark ? "rgba(30, 30, 34, 0.75)" : "rgba(255, 255, 255, 0.9)";
   const textMuted = isDark ? "#8b949e" : "#59636e";
 
   const { requirements, owl, oscal } = useMemo(() => analyzeRequirementsOntology(code, lines), [code, lines]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {[
+      <InspectorTabs
+        ariaLabel="Requirements & ontology inspector views"
+        value={subView}
+        onChange={(id) => setSubView(id as typeof subView)}
+        tabs={[
           { id: "matrix", label: `🎯 Traceability Matrix (${requirements.length} reqs)` },
           { id: "owl", label: `🧠 OWL2 Description Logic (${owl.classes.length} classes)` },
           { id: "compliance", label: `🛡️ OSCAL Controls (${oscal.controls.length})` },
-        ].map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setSubView(t.id as typeof subView)}
-            style={{
-              padding: "6px 12px",
-              fontSize: 12,
-              fontWeight: 600,
-              borderRadius: 6,
-              border: `1px solid ${borderCol}`,
-              cursor: "pointer",
-              backgroundColor: subView === t.id ? "#1f6feb" : cardBg,
-              color: subView === t.id ? "#ffffff" : textPrimary,
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+        ]}
+      />
 
       {subView === "matrix" && (
         <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
@@ -312,7 +297,9 @@ export const RequirementsOntologyInspector: React.FC<RequirementsOntologyInspect
                       onClick={() => onRevealLine?.(r.line, r.id)}
                       style={{ borderBottom: `1px solid ${borderCol}`, cursor: "pointer" }}
                     >
-                      <td style={{ padding: "6px 8px", fontWeight: 700, color: "#58a6ff" }}>
+                      <td
+                        style={{ padding: "6px 8px", fontWeight: 700, color: "var(--fgColor-accent, var(--ms-brand))" }}
+                      >
                         {r.id !== r.title ? `${r.id} (${r.title})` : r.id}
                       </td>
                       <td style={{ padding: "6px 8px", color: r.satisfiedBy.length ? "#3fb950" : "#f85149" }}>
@@ -374,7 +361,7 @@ export const RequirementsOntologyInspector: React.FC<RequirementsOntologyInspect
                     fontFamily: "monospace",
                   }}
                 >
-                  <span style={{ color: "#58a6ff", fontWeight: 700 }}>{ax.sub}</span> ⊑{" "}
+                  <span style={{ color: "var(--fgColor-accent, var(--ms-brand))", fontWeight: 700 }}>{ax.sub}</span> ⊑{" "}
                   <span style={{ color: "#a371f7", fontWeight: 700 }}>{ax.sup}</span> (L{ax.line})
                 </div>
               ))}
@@ -409,7 +396,7 @@ export const RequirementsOntologyInspector: React.FC<RequirementsOntologyInspect
                     fontFamily: "monospace",
                   }}
                 >
-                  <span style={{ color: "#58a6ff", fontWeight: 700 }}>{c.id}</span>
+                  <span style={{ color: "var(--fgColor-accent, var(--ms-brand))", fontWeight: 700 }}>{c.id}</span>
                   <span style={{ color: "#3fb950", fontWeight: 600 }}>
                     {c.status} (L{c.line})
                   </span>

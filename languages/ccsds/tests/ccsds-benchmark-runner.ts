@@ -121,6 +121,34 @@ export function runCcsdsBenchmark(oemText = ISS_OEM_BENCHMARK): CcsdsBenchmarkRe
   };
 }
 
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const ccsdsBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "ccsds",
+  referenceTool: "GMAT / Orekit ISS Orbit Propagator",
+  defaultTolerance: 5.0,
+  metricKind: "max-relative-error",
+  async runCases() {
+    const t0 = performance.now();
+    const report = runCcsdsBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "iss-oem-j2j4-orbit-propagation",
+        name: "iss-oem-j2j4-orbit-propagation",
+        scale: "standard",
+        referenceTool: "GMAT / Orekit ISS Orbit Propagator",
+        passed: report.propagatedStepsCount > 50 && report.semiMajorAxisDriftKm < 5.0 && report.daeVariablesCount > 0,
+        durationMs: elapsedMs,
+        metricKind: "max-relative-error",
+        measuredError: report.semiMajorAxisDriftKm,
+        threshold: 5.0,
+        details: `${report.propagatedStepsCount} steps, drift=${report.semiMajorAxisDriftKm.toFixed(4)}km, ${report.daeVariablesCount} DAE vars`,
+      },
+    ];
+  },
+};
+
 if (process.argv[1] && process.argv[1].endsWith("ccsds-benchmark-runner.ts")) {
   console.log("=== CCSDS Astrodynamics & Orbit Propagation Benchmark ===");
   const report = runCcsdsBenchmark();

@@ -373,11 +373,14 @@ export class OidcService {
         algorithms: ["HS256"],
       });
     } else {
+      if (!this.clientId || !this.issuerUrl) {
+        throw new Error("Invalid OIDC configuration: clientId and issuerUrl are required for token verification");
+      }
       const pemKey = await this.getSigningKey(header.kid);
       rawDecoded = jwt.verify(idToken, pemKey, {
         algorithms: ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
-        audience: this.clientId || undefined,
-        issuer: this.issuerUrl || undefined,
+        audience: this.clientId,
+        issuer: this.issuerUrl,
       });
     }
 

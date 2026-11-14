@@ -20,9 +20,15 @@ import {
   type CoordinatorSatResult,
   type TheoryLiteral,
 } from "../formal/theory_coordinator.js";
+import type { SymbolEntry } from "../runtime.js";
+import { extractPortSignature } from "../util/port_signature.js";
+import {
+  isMemberLikeSymbol,
+  isPortLikeSymbol,
+  isRelationshipOrImportSymbol,
+  isTypeLikeSymbol,
+} from "../util/symbol_roles.js";
 import { WorkspaceTypeRegistry } from "../util/type_registry.js";
-import { DigitalThreadHypergraph, type BlastRadiusResult } from "./thread_hypergraph.js";
-import { DOMAIN_NAME_TO_INDEX } from "./thread_serializer.js";
 import {
   evaluateRuleDescriptor,
   extractComplementFields,
@@ -34,6 +40,8 @@ import {
   type GraphSyncResult,
   type PatternMatchResult,
 } from "./tgg-pattern-interpreter.js";
+import { DigitalThreadHypergraph, type BlastRadiusResult } from "./thread_hypergraph.js";
+import { DOMAIN_NAME_TO_INDEX } from "./thread_serializer.js";
 
 export type { EvaluatedTGGRule, GraphSyncChange, GraphSyncResult, PatternMatchResult };
 
@@ -463,7 +471,16 @@ export class PolyglotTransformer {
   /**
    * Dynamically resolves a type name between domains using static type maps and the workspace type registry.
    */
-  resolveType(sourceLang: string, targetLang: string, typeName: string, workspace?: any): string {
+  resolveType(
+    sourceLang: string,
+    targetLang: string,
+    typeName: string,
+    workspace?: {
+      getIndex?: (opts?: {
+        eager?: boolean;
+      }) => { byName?: Map<string, number[]>; symbols?: Map<number, { name?: string; language?: string }> } | null;
+    },
+  ): string {
     const localTargetMap = this.typeMaps[targetLang.toLowerCase()];
     if (localTargetMap && localTargetMap[typeName]) {
       return localTargetMap[typeName];
@@ -538,10 +555,10 @@ export class PolyglotTransformer {
     string,
     {
       id: string;
-      sourceVal: any;
-      targetVal: any;
+      sourceVal: unknown;
+      targetVal: unknown;
       ruleName?: string | undefined;
-      resolved?: any;
+      resolved?: unknown;
       isResolved: boolean;
     }
   >();
@@ -549,7 +566,7 @@ export class PolyglotTransformer {
   /**
    * Records a concurrent modification conflict between source and target models.
    */
-  recordConflict(id: string, sourceVal: any, targetVal: any, ruleName?: string): void {
+  recordConflict(id: string, sourceVal: unknown, targetVal: unknown, ruleName?: string): void {
     this.conflicts.set(id, {
       id,
       sourceVal,
@@ -562,14 +579,14 @@ export class PolyglotTransformer {
   /**
    * Retrieves all recorded conflict items.
    */
-  getConflicts(): { id: string; sourceVal: any; targetVal: any; isResolved: boolean; resolved?: any }[] {
+  getConflicts(): { id: string; sourceVal: unknown; targetVal: unknown; isResolved: boolean; resolved?: unknown }[] {
     return Array.from(this.conflicts.values());
   }
 
   /**
    * Manually or programmatically reconciles a recorded conflict.
    */
-  resolveConflict(id: string, resolution: "source" | "target" | any): void {
+  resolveConflict(id: string, resolution: unknown): void {
     const item = this.conflicts.get(id);
     if (!item) return;
     if (resolution === "source") {
@@ -614,17 +631,19 @@ export class PolyglotTransformer {
   /**
    * Resolves a multi-hop property path on a polyglot graph node (e.g. "ports/connection/target").
    */
-  resolvePath(node: PolyglotNode, pathString: string): any {
+  resolvePath(node: PolyglotNode, pathString: string): unknown {
     const segments = pathString.split("/");
-    let current: any = node;
+    let current: unknown = node;
     for (const seg of segments) {
       if (!current || typeof current !== "object") return null;
       if (Array.isArray(current)) {
-        current = current.find(
-          (item) => item.name === seg || item.type === seg || item.source === seg || item.target === seg,
-        );
+        current = current.find((item: unknown) => {
+          if (!item || typeof item !== "object") return false;
+          const rec = item as Record<string, unknown>;
+          return rec["name"] === seg || rec["type"] === seg || rec["source"] === seg || rec["target"] === seg;
+        });
       } else {
-        current = current[seg];
+        current = (current as Record<string, unknown>)[seg];
       }
     }
     return current;
@@ -696,7 +715,7 @@ export class PolyglotTransformer {
     for (const [domName, node] of Object.entries(domainNodes)) {
       const domIdx = DOMAIN_NAME_TO_INDEX[domName.toLowerCase()];
       if (domIdx !== undefined) {
-        const nodeId = (node as any).id || pseudoNodeId++;
+        const nodeId = node.id || pseudoNodeId++;
         this.hypergraph.bindDomainNode(slot, domIdx, nodeId);
       }
     }
@@ -1208,14 +1227,14 @@ export class PolyglotTransformer {
           this.recordConflict(conflictId, oldVal, newVal, best.rule.rule.name);
 
           const ruleStrategy =
-            c.kind === "reconcilePhysics"
-              ? "physics-simplex"
-              : typeof thirdArg === "string"
-                ? thirdArg
-                : "target-wins";
+            c.kind === "reconcilePhysics" ? "physics-simplex" : typeof thirdArg === "string" ? thirdArg : "target-wins";
           const effectiveStrategy = options?.strategy ?? ruleStrategy;
 
-          if (effectiveStrategy === "physics-simplex" && c.kind === "reconcilePhysics" && typeof thirdArg === "object") {
+          if (
+            effectiveStrategy === "physics-simplex" &&
+            c.kind === "reconcilePhysics" &&
+            typeof thirdArg === "object"
+          ) {
             const bounds = thirdArg as { min: number; max: number };
             this.resolveConflictPhysics(conflictId, bounds.min, bounds.max);
           } else if (effectiveStrategy === "source-wins") {
@@ -1252,12 +1271,7 @@ export class PolyglotTransformer {
       }
     }
 
-    const sourceNode = instantiateNodePattern(
-      best.rule.sourcePattern,
-      best.env,
-      targetNode.name,
-      restoredComplement,
-    );
+    const sourceNode = instantiateNodePattern(best.rule.sourcePattern, best.env, targetNode.name, restoredComplement);
     this.syncThreadRule(this.nextInterpreterSlot++, best.rule.rule, best.env);
 
     return { sourceNode, matchedRule: best.rule, env: best.env, changes, complement: restoredComplement };
@@ -1487,6 +1501,284 @@ export class PolyglotTransformer {
       targetSyncResult,
     };
   }
+
+  /**
+   * Read-only structural conformance check between a source `PolyglotNode` and its
+   * counterpart `targetNode` in `targetLang`, evaluating registered TGG forward expectations
+   * and port/parameter compatibility without mutating shadow complements or hypergraph state.
+   */
+  validateCorrespondence(
+    sourceNode: PolyglotNode,
+    targetNode: PolyglotNode | null,
+    sourceLang: string,
+    targetLang: string,
+  ): CorrespondenceDiagnostic[] {
+    const diagnostics: CorrespondenceDiagnostic[] = [];
+    const sLang = sourceLang.toLowerCase();
+    const tLang = targetLang.toLowerCase();
+
+    if (!targetNode) {
+      diagnostics.push({
+        code: "CONFORMANCE_UNRESOLVED_TARGET",
+        severity: "error",
+        message: `Counterpart element referenced by '${sourceNode.name}' could not be resolved in '${targetLang}'.`,
+        elementName: sourceNode.name,
+        sourceLang: sLang,
+        targetLang: tLang,
+      });
+      return diagnostics;
+    }
+
+    // 1. Evaluate best matching TGG forward rule without mutating storeComplement / hypergraph
+    let expectedNode: PolyglotNode | null = null;
+    const candidates: PatternMatchResult[] = [];
+    for (const r of this.rules) {
+      if (r.targetLang && r.targetLang.toLowerCase() !== tLang) continue;
+      if (r.sourceLang && r.sourceLang.toLowerCase() !== sLang) continue;
+      const desc = evaluateRuleDescriptor(r);
+      const m = matchNodePattern(sourceNode, desc.sourcePattern, desc, this);
+      if (m) candidates.push(m);
+    }
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => b.specificity - a.specificity);
+      const best = candidates[0]!;
+      solveWhereConstraints(best.rule.constraints, best.env, "forward", this.typeMaps);
+      expectedNode = instantiateNodePattern(best.rule.targetPattern, best.env, sourceNode.name);
+    }
+
+    const expectedPorts = expectedNode?.ports ?? sourceNode.ports ?? [];
+    const targetPortsByName = new Map<string, NonNullable<PolyglotNode["ports"]>[number]>();
+    for (const tp of targetNode.ports ?? []) {
+      targetPortsByName.set(tp.name.toLowerCase(), tp);
+    }
+    const targetCompsByName = new Map<string, NonNullable<PolyglotNode["components"]>[number]>();
+    for (const tc of targetNode.components ?? []) {
+      targetCompsByName.set(tc.name.toLowerCase(), tc);
+    }
+    const targetAttrsByName = new Map<string, NonNullable<PolyglotNode["attributes"]>[number]>();
+    for (const ta of targetNode.attributes ?? []) {
+      targetAttrsByName.set(ta.name.toLowerCase(), ta);
+    }
+
+    // 2. Check counterpart ports (name + type/direction compatibility)
+    for (const ep of expectedPorts) {
+      if (ep.isInherited) continue;
+      const key = ep.name.toLowerCase();
+      const tp = targetPortsByName.get(key);
+      const tc = tp ? undefined : targetCompsByName.get(key);
+      if (!tp && !tc) {
+        diagnostics.push({
+          code: "CONFORMANCE_MISSING_PORT",
+          severity: "warning",
+          message: `TGG conformance warning: '${targetNode.name}' (${targetLang}) is missing counterpart port '${ep.name}' (${ep.type}) expected by '${sourceNode.name}' (${sourceLang}).`,
+          elementName: sourceNode.name,
+          expectedName: ep.name,
+          expectedType: ep.type,
+          sourceLang: sLang,
+          targetLang: tLang,
+        });
+        continue;
+      }
+      const actualPortType = tp?.type ?? tc?.typeSpecifier ?? "";
+      if (ep.type && actualPortType) {
+        const typeCheck = this.typeRegistry.areTypesCompatible(sLang, ep.type, tLang, actualPortType);
+        if (!typeCheck.compatible) {
+          diagnostics.push({
+            code: "CONFORMANCE_PARAM_MISMATCH",
+            severity: "warning",
+            message: `TGG conformance warning: port '${ep.name}' on '${targetNode.name}' has type '${actualPortType}' (${targetLang}), incompatible with '${ep.type}' (${sourceLang}).`,
+            elementName: ep.name,
+            expectedName: ep.name,
+            expectedType: ep.type,
+            actualType: actualPortType,
+            sourceLang: sLang,
+            targetLang: tLang,
+          });
+        }
+      }
+    }
+
+    // 3. Check shared parameter/attribute type equivalence
+    const sourceAttrs = expectedNode?.attributes ?? sourceNode.attributes ?? [];
+    for (const sa of sourceAttrs) {
+      if (sa.isInherited) continue;
+      const key = sa.name.toLowerCase();
+      const ta = targetAttrsByName.get(key);
+      const tc = ta ? undefined : targetCompsByName.get(key);
+      const targetType = ta?.type ?? tc?.typeSpecifier;
+      if (targetType && sa.type) {
+        const compat = this.typeRegistry.areTypesCompatible(sLang, sa.type, tLang, targetType);
+        if (!compat.compatible) {
+          diagnostics.push({
+            code: "CONFORMANCE_PARAM_MISMATCH",
+            severity: "warning",
+            message: `TGG conformance warning: parameter '${sa.name}' has incompatible types '${sa.type}' (${sourceLang}) vs '${targetType}' (${targetLang}).`,
+            elementName: sa.name,
+            expectedName: sa.name,
+            expectedType: sa.type,
+            actualType: targetType,
+            sourceLang: sLang,
+            targetLang: tLang,
+          });
+        }
+      }
+    }
+
+    // 4. Check expected sub-components synthesized by forward TGG rules (if any rule matched)
+    if (expectedNode?.components) {
+      for (const ec of expectedNode.components) {
+        if (ec.isInherited) continue;
+        if (!targetCompsByName.has(ec.name.toLowerCase())) {
+          diagnostics.push({
+            code: "CONFORMANCE_MISSING_COMPONENT",
+            severity: "warning",
+            message: `TGG conformance warning: '${targetNode.name}' (${targetLang}) is missing expected component '${ec.name}' : '${ec.typeSpecifier}'.`,
+            elementName: sourceNode.name,
+            expectedName: ec.name,
+            expectedType: ec.typeSpecifier,
+            sourceLang: sLang,
+            targetLang: tLang,
+          });
+        }
+      }
+    }
+
+    return diagnostics;
+  }
+}
+
+export interface CorrespondenceDiagnostic {
+  code:
+    | "CONFORMANCE_MISSING_PORT"
+    | "CONFORMANCE_PARAM_MISMATCH"
+    | "CONFORMANCE_MISSING_COMPONENT"
+    | "CONFORMANCE_UNRESOLVED_TARGET";
+  severity: "error" | "warning";
+  message: string;
+  elementName: string;
+  expectedName?: string | undefined;
+  expectedType?: string | undefined;
+  actualType?: string | undefined;
+  sourceLang: string;
+  targetLang: string;
+}
+
+/**
+ * Builds a universal `PolyglotNode` view from an indexed `SymbolEntry` and its children,
+ * extracting ports, component instances, scalar attributes, and tabular `metadata.namedParams`
+ * so any indexed ModelScript language participates in TGG conformance checking.
+ */
+export function symbolEntryToPolyglotNode(
+  db: {
+    symbol(id: number): SymbolEntry | undefined;
+    childrenOf(id: number | null): SymbolEntry[];
+    byName?(n: string): SymbolEntry[];
+  },
+  entry: SymbolEntry,
+): PolyglotNode {
+  const meta = (entry.metadata ?? {}) as Record<string, unknown>;
+  const ports: NonNullable<PolyglotNode["ports"]> = [];
+  const attributes: NonNullable<PolyglotNode["attributes"]> = [];
+  const components: NonNullable<PolyglotNode["components"]> = [];
+
+  for (const child of db.childrenOf(entry.id)) {
+    if (isRelationshipOrImportSymbol(child) || isTypeLikeSymbol(child)) continue;
+    if (!isMemberLikeSymbol(child)) continue;
+
+    const cMeta = (child.metadata ?? {}) as Record<string, unknown>;
+    const typedChild = db
+      .childrenOf(child.id)
+      .find(
+        (k) =>
+          k.ruleName === "OwnedFeatureTyping" ||
+          k.ruleName === "ConjugatedPortTyping" ||
+          k.ruleName === "FeatureTyping",
+      );
+    const rawType = String(
+      typedChild?.name ?? cMeta["typeSpecifier"] ?? cMeta["type_specifier"] ?? cMeta["type"] ?? "Real",
+    ).trim();
+
+    if (isPortLikeSymbol(child)) {
+      const sig = extractPortSignature(db, child);
+      ports.push({
+        name: child.name,
+        type: rawType,
+        direction: sig?.variables[0]?.direction,
+        isConjugated: sig?.isConjugated,
+      });
+      continue;
+    }
+
+    const variability = typeof cMeta["variability"] === "string" ? cMeta["variability"] : "";
+    const causality = typeof cMeta["causality"] === "string" ? cMeta["causality"] : "";
+    const isScalarAttr =
+      variability === "parameter" ||
+      variability === "constant" ||
+      child.ruleName === "AttributeUsage" ||
+      rawType === "Real" ||
+      rawType === "Integer" ||
+      rawType === "Boolean" ||
+      rawType === "String" ||
+      rawType.startsWith("ScalarValues::");
+
+    if (isScalarAttr) {
+      attributes.push({
+        name: child.name,
+        type: rawType,
+        ...(cMeta["value"] !== undefined ? { value: String(cMeta["value"]) } : {}),
+      });
+    } else {
+      components.push({
+        name: child.name,
+        typeSpecifier: rawType,
+        ...(variability ? { variability } : {}),
+        ...(causality ? { causality } : {}),
+      });
+    }
+  }
+
+  // Tabular/parameterized formats (e.g. PSS/E .dyr records) store parameters in metadata.namedParams
+  const namedParams = meta["namedParams"];
+  if (namedParams && typeof namedParams === "object" && !Array.isArray(namedParams)) {
+    for (const [k, v] of Object.entries(namedParams as Record<string, unknown>)) {
+      if (!attributes.some((a) => a.name === k)) {
+        attributes.push({
+          name: k,
+          type: typeof v === "boolean" ? "Boolean" : typeof v === "string" ? "String" : "Real",
+          ...(v !== undefined && v !== null ? { value: String(v) } : {}),
+        });
+      }
+    }
+  }
+
+  // Metadata-declared ports (e.g. PSCAD flyBy / Simulink port descriptors)
+  const metaPorts = Array.isArray(meta["ports"]) ? meta["ports"] : Array.isArray(meta["pins"]) ? meta["pins"] : null;
+  if (metaPorts) {
+    for (const p of metaPorts) {
+      if (p && typeof p === "object" && typeof (p as any).name === "string") {
+        const pName = String((p as any).name);
+        if (!ports.some((ep) => ep.name === pName)) {
+          ports.push({
+            name: pName,
+            type: String((p as any).type ?? "Real"),
+            direction: (p as any).direction,
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    id: entry.id,
+    name: entry.name,
+    kind: typeof meta["classPrefixes"] === "string" ? meta["classPrefixes"] : entry.kind,
+    extends: entry.inherits,
+    ports,
+    attributes,
+    components,
+    language: entry.language,
+    resourceId: entry.resourceId,
+  };
 }
 
 export interface DpoExecutionResult {

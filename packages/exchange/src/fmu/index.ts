@@ -5,6 +5,8 @@ export * from "./archive.js";
 export * from "./binary-introspect.js";
 export * from "./compile-wasm.js";
 export * from "./fmi-ls-bus.js";
+export * from "./fmi-ls-emt.js";
+export * from "./fmi-ls-rms.js";
 export * from "./fmi.js";
 export * from "./fmi3-tgg.js";
 export * from "./fmi3.js";

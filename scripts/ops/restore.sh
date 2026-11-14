@@ -10,6 +10,7 @@
 set -euo pipefail
 
 TARGET_DIR="${TARGET_DIR:-/opt/modelscript}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKUP_DIR="${TARGET_DIR}/backups"
 COMPOSE_CMD="docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.production"
 
@@ -67,8 +68,12 @@ echo "==> Initiating database restore from $(basename "${TARGET_FILE}")..."
 
 # Step 1: Pre-restore safety snapshot of the currently live data
 echo "    [1/5] Creating pre-restore emergency safety backup of live state..."
-if [ -f "${TARGET_DIR}/scripts/backup.sh" ]; then
-  "${TARGET_DIR}/scripts/backup.sh" "pre-restore" || echo "    (Warning: live backup could not be captured, proceeding with volume swap)"
+BACKUP_SCRIPT="${SCRIPT_DIR}/backup.sh"
+if [ ! -f "${BACKUP_SCRIPT}" ] && [ -f "${TARGET_DIR}/scripts/backup.sh" ]; then
+  BACKUP_SCRIPT="${TARGET_DIR}/scripts/backup.sh"
+fi
+if [ -f "${BACKUP_SCRIPT}" ]; then
+  "${BACKUP_SCRIPT}" "pre-restore" || echo "    (Warning: live backup could not be captured, proceeding with volume swap)"
 fi
 
 # Step 2: Stop API service gracefully to ensure no concurrent writes

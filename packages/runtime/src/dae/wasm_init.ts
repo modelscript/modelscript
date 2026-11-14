@@ -827,6 +827,31 @@ export function buildInitBLT(dae: DAEBuilder): InitBLTResult {
     return { blocks: [], knowns, unknowns: new Set(), equationCount: 0, matchedEquationCount: 0 };
   }
 
+  // Propagate knowns across simple identity equations `u = v` (matching solveInitialEquationsArenaInner aliasPairs propagation)
+  const isResolvableVarName = (n: string): boolean =>
+    n.startsWith("der(") ||
+    dae.getVarIdxByName(n) >= 0 ||
+    Boolean(dae.getNamedArrayShape && dae.getNamedArrayShape(n)?.length);
+  let knownAliasChanged = true;
+  while (knownAliasChanged) {
+    knownAliasChanged = false;
+    for (const eq of initEquations) {
+      if (eq.source !== "continuous") continue;
+      if (dae.getExprKind(eq.lhs) === ExprKind.Name && dae.getExprKind(eq.rhs) === ExprKind.Name) {
+        const lName = dae.interner.resolve(dae.getExprData1(eq.lhs)) ?? "";
+        const rName = dae.interner.resolve(dae.getExprData1(eq.rhs)) ?? "";
+        if (!lName || !rName || lName === rName) continue;
+        if (knowns.has(lName) && !knowns.has(rName) && isResolvableVarName(rName)) {
+          knowns.add(rName);
+          knownAliasChanged = true;
+        } else if (knowns.has(rName) && !knowns.has(lName) && isResolvableVarName(lName)) {
+          knowns.add(lName);
+          knownAliasChanged = true;
+        }
+      }
+    }
+  }
+
   // 3. Determine unknowns: all referenced vars that are not known
   const allReferenced = new Set<string>();
   for (const eq of initEquations) {
@@ -1305,6 +1330,15 @@ function containsHomotopyCall(arena: DAEBuilder, exprId: number): boolean {
   return false;
 }
 
+function safeEvalInitRuntime(arena: DAEBuilder, exprId: number, valuesByStringId: Float64Array): number {
+  if (exprId === -1) return 0;
+  try {
+    return evaluateArenaRuntime(arena, exprId, valuesByStringId);
+  } catch {
+    return NaN;
+  }
+}
+
 function evaluateInitJacobianEntry(
   arena: DAEBuilder,
   resExprId: number,
@@ -1313,7 +1347,7 @@ function evaluateInitJacobianEntry(
   rBase: number,
   valuesByStringId: Float64Array,
 ): number {
-  let val = jExprId !== -1 ? evaluateArenaRuntime(arena, jExprId, valuesByStringId) : 0;
+  let val = jExprId !== -1 ? safeEvalInitRuntime(arena, jExprId, valuesByStringId) : 0;
   if ((!Number.isFinite(val) || val === 0) && resExprId !== -1 && zj >= 0 && Number.isFinite(rBase)) {
     const orig = valuesByStringId[zj] ?? 0;
     const eps = 1.4901161193847656e-8 * Math.max(Math.abs(orig), 1.0);
@@ -1532,6 +1566,65 @@ export function solveImplicitBlock(
   );
 
   let converged = false;
+  const areAllResidualsFinite = (): boolean => {
+    for (let i = 0; i < nSolve; i++) {
+      const exprId = residualExprIds[i] ?? -1;
+      if (!Number.isFinite(safeEvalInitRuntime(arena, exprId, result.valuesByStringId))) {
+        return false;
+      }
+    }
+    return true;
+  };
+  const restoreSnapshot = (): void => {
+    for (let i = 0; i < nSolve; i++) {
+      valuesByStringId[unknownList[i]!] = initialValuesSnapshot[i]!;
+    }
+  };
+
+  if (!areAllResidualsFinite()) {
+    const unknownSet = new Set(unknownList.slice(0, nSolve));
+    const maxSeedPasses = Math.min(Math.max(block.equations.length, 3), 10);
+    for (let pass = 0; pass < maxSeedPasses; pass++) {
+      let progress = false;
+      for (const eq of block.equations) {
+        const lhsKind = eq.lhs >= 0 ? arena.getExprKind(eq.lhs) : -1;
+        const rhsKind = eq.rhs >= 0 ? arena.getExprKind(eq.rhs) : -1;
+        if (lhsKind === ExprKind.Name) {
+          const id = arena.getExprData1(eq.lhs);
+          if (unknownSet.has(id)) {
+            const val = safeEvalInitRuntime(arena, eq.rhs, result.valuesByStringId);
+            if (Number.isFinite(val) && result.valuesByStringId[id] !== val) {
+              result.valuesByStringId[id] = val;
+              progress = true;
+            }
+            continue;
+          }
+        }
+        if (rhsKind === ExprKind.Name) {
+          const id = arena.getExprData1(eq.rhs);
+          if (unknownSet.has(id)) {
+            const val = safeEvalInitRuntime(arena, eq.lhs, result.valuesByStringId);
+            if (Number.isFinite(val) && result.valuesByStringId[id] !== val) {
+              result.valuesByStringId[id] = val;
+              progress = true;
+            }
+          }
+        }
+      }
+      if (areAllResidualsFinite() || !progress) break;
+    }
+  }
+
+  const seededSnapshot = new Float64Array(nSolve);
+  for (let i = 0; i < nSolve; i++) {
+    seededSnapshot[i] = valuesByStringId[unknownList[i]!] ?? 0;
+  }
+  const restoreSeeded = (): void => {
+    for (let i = 0; i < nSolve; i++) {
+      valuesByStringId[unknownList[i]!] = seededSnapshot[i]!;
+    }
+  };
+
   if (hasHomotopy) {
     // Modelica Language Specification MLS §3.7.2:
     // When homotopy(actual, simplified) is present, initialize starting from the
@@ -1564,6 +1657,7 @@ export function solveImplicitBlock(
   }
 
   if (!converged) {
+    restoreSeeded();
     // Tier 1 default: Sparse Damped Newton with Armijo Line Search, Nominal Scaling & Box Bounds
     converged = runNewton(
       arena,
@@ -1581,10 +1675,11 @@ export function solveImplicitBlock(
 
   // Tier 3: Adaptive Pseudo-Arc-Length Homotopy Continuation (Keller's Method for Limit Points)
   if (!converged) {
+    restoreSeeded();
     const snapshotF64 = new Float64Array(arena.interner.size + 16);
     for (let i = 0; i < nSolve; i++) {
       const zj = unknownList[i]!;
-      snapshotF64[zj] = initialValuesSnapshot[i]!;
+      snapshotF64[zj] = seededSnapshot[i]!;
     }
     converged = runArcLengthHomotopy(
       arena,
@@ -1616,6 +1711,7 @@ export function solveImplicitBlock(
 
   // Tier 4: Switched Evolution Pseudo-Transient Relaxation (False Transient Continuation)
   if (!converged) {
+    restoreSeeded();
     converged = runPseudoTransientRelaxation(
       arena,
       result,
@@ -1645,6 +1741,7 @@ export function solveImplicitBlock(
 
   // Tier 5: sBB Fallback (for small stubborn non-convex loops <= 8 variables)
   if (!converged && nSolve <= 8) {
+    restoreSeeded();
     converged = runSbbFallback(arena, result, residualExprIds, unknownList, nSolve, 1e-4);
     if (converged) {
       runNewton(
@@ -1662,10 +1759,9 @@ export function solveImplicitBlock(
     }
   }
 
-  if (!converged) {
-    for (let i = 0; i < nSolve; i++) {
-      valuesByStringId[unknownList[i]!] = initialValuesSnapshot[i]!;
-    }
+  if (!converged || !Number.isFinite(result.residualNorm)) {
+    converged = false;
+    restoreSnapshot();
   }
 
   result.converged = converged;
@@ -1799,7 +1895,12 @@ function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float
         if (block.type === "explicit") {
           matchedCount++;
           const targetId = arena.interner.intern(block.target);
-          result.valuesByStringId[targetId] = evaluateArenaRuntime(arena, block.expr, result.valuesByStringId);
+          const evalVal = safeEvalInitRuntime(arena, block.expr, result.valuesByStringId);
+          if (Number.isFinite(evalVal)) {
+            result.valuesByStringId[targetId] = evalVal;
+          } else {
+            allConverged = false;
+          }
         } else if (block.type === "implicit") {
           matchedCount += block.unknowns.length;
           const blockRes = solveImplicitBlock(arena, block, result.valuesByStringId, 1e-10);
@@ -1991,6 +2092,7 @@ function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float
 
   // 7. Tier 2: Operator Homotopy continuation
   if (!converged && residualExprIds.some((exprId) => containsHomotopyCall(arena, exprId))) {
+    result.valuesByStringId.set(postBltValues);
     converged = runOperatorHomotopy(
       arena,
       result,
@@ -2019,6 +2121,7 @@ function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float
 
   // 8. Tier 3: Adaptive Pseudo-Arc-Length Homotopy continuation (Keller's Method)
   if (!converged) {
+    result.valuesByStringId.set(postBltValues);
     const homotopyConverged = runArcLengthHomotopy(
       arena,
       result,
@@ -2050,6 +2153,7 @@ function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float
 
   // 9. Tier 4: Switched Evolution Pseudo-Transient Relaxation
   if (!converged) {
+    result.valuesByStringId.set(postBltValues);
     converged = runPseudoTransientRelaxation(
       arena,
       result,
@@ -2079,6 +2183,7 @@ function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float
 
   // 10. Tier 5: sBB fallback (for small loops <= 8 unknowns)
   if (!converged && nSolve <= 8) {
+    result.valuesByStringId.set(postBltValues);
     const sbbConverged = runSbbFallback(arena, result, residualExprIds, unknownList, nSolve, 1e-4);
     converged = sbbConverged;
     if (converged) {
@@ -2095,6 +2200,11 @@ function solveInitialEquationsArenaInner(arena: DAEBuilder, initialValues: Float
         varBounds,
       );
     }
+  }
+
+  if (!converged || !Number.isFinite(result.residualNorm)) {
+    result.valuesByStringId.set(postBltValues);
+    converged = false;
   }
 
   result.converged = converged;
@@ -2209,11 +2319,22 @@ function runNewton(
     result.iterations = iter + 1;
 
     const R = new Array(nSolve).fill(0) as number[];
+    let hasNonFiniteR = false;
     for (let i = 0; i < nSolve; i++) {
       const exprId = residualExprIds[i] ?? -1;
       if (exprId !== -1) {
-        R[i] = evaluateArenaRuntime(arena, exprId, result.valuesByStringId);
+        const val = safeEvalInitRuntime(arena, exprId, result.valuesByStringId);
+        R[i] = val;
+        if (!Number.isFinite(val)) {
+          hasNonFiniteR = true;
+        }
       }
+    }
+
+    if (hasNonFiniteR) {
+      result.residualNorm = NaN;
+      result.converged = false;
+      return false;
     }
 
     let norm = 0;
@@ -2260,9 +2381,14 @@ function runNewton(
 
     // Unscale search direction: dz[j] = du[j] * nominal[j]
     const dz = new Float64Array(nSolve);
+    let dzFinite = true;
     for (let j = 0; j < nSolve; j++) {
       const nom = varBounds[j]?.nominal ?? 1.0;
-      dz[j] = (du[j] ?? 0) * nom;
+      const step = (du[j] ?? 0) * nom;
+      dz[j] = step;
+      if (!Number.isFinite(step)) {
+        dzFinite = false;
+      }
     }
 
     // 3. Armijo Backtracking Line Search with Box Bounds Projection
@@ -2277,30 +2403,49 @@ function runNewton(
       origZ[i] = zj !== -1 ? (result.valuesByStringId[zj] ?? 0) : 0;
     }
 
+    const restoreOrigZ = (): void => {
+      for (let i = 0; i < nSolve; i++) {
+        const zj = unknownList[i] ?? -1;
+        if (zj !== -1) {
+          result.valuesByStringId[zj] = origZ[i] ?? 0;
+        }
+      }
+    };
+
     const tryLineSearch = (stepDz: Float64Array): boolean => {
       let a = 1.0;
       while (a >= minAlpha) {
+        let valid = true;
         for (let i = 0; i < nSolve; i++) {
           const zj = unknownList[i] ?? -1;
           if (zj !== -1) {
             const rawNext = (origZ[i] ?? 0) + a * (stepDz[i] ?? 0);
+            if (!Number.isFinite(rawNext)) {
+              valid = false;
+              break;
+            }
             const b = varBounds[i];
             const clampedNext = b ? Math.max(b.min, Math.min(b.max, rawNext)) : rawNext;
+            if (!Number.isFinite(clampedNext)) {
+              valid = false;
+              break;
+            }
             result.valuesByStringId[zj] = clampedNext;
           }
         }
 
         let trialNorm = 0;
-        let valid = true;
-        for (let i = 0; i < nSolve; i++) {
-          const exprId = residualExprIds[i] ?? -1;
-          if (exprId !== -1) {
-            const resVal = evaluateArenaRuntime(arena, exprId, result.valuesByStringId);
-            if (!isFinite(resVal) || isNaN(resVal)) {
-              valid = false;
-              break;
+        if (valid) {
+          for (let i = 0; i < nSolve; i++) {
+            const exprId = residualExprIds[i] ?? -1;
+            if (exprId !== -1) {
+              const resVal = safeEvalInitRuntime(arena, exprId, result.valuesByStringId);
+              if (!Number.isFinite(resVal)) {
+                valid = false;
+                break;
+              }
+              trialNorm += Math.abs(resVal);
             }
-            trialNorm += Math.abs(resVal);
           }
         }
 
@@ -2309,10 +2454,11 @@ function runNewton(
         }
         a *= 0.5;
       }
+      restoreOrigZ();
       return false;
     };
 
-    stepAccepted = tryLineSearch(dz);
+    stepAccepted = dzFinite && tryLineSearch(dz);
 
     // 4. Levenberg-Marquardt Regularization Fallback if standard Newton step was rejected
     if (!stepAccepted && nSolve > 1) {
@@ -2345,12 +2491,17 @@ function runNewton(
         luSolveFlat(lmFact, lmDu);
 
         const lmDz = new Float64Array(nSolve);
+        let lmFinite = true;
         for (let j = 0; j < nSolve; j++) {
           const nom = varBounds[j]?.nominal ?? 1.0;
-          lmDz[j] = (lmDu[j] ?? 0) * nom;
+          const step = (lmDu[j] ?? 0) * nom;
+          lmDz[j] = step;
+          if (!Number.isFinite(step)) {
+            lmFinite = false;
+          }
         }
 
-        if (tryLineSearch(lmDz)) {
+        if (lmFinite && tryLineSearch(lmDz)) {
           stepAccepted = true;
           lmLambda = Math.max(lmLambda * 0.2, 1e-9);
         } else {
@@ -2361,12 +2512,7 @@ function runNewton(
 
     if (!stepAccepted) {
       // Revert to original point if line search failed to find acceptable reduction
-      for (let i = 0; i < nSolve; i++) {
-        const zj = unknownList[i] ?? -1;
-        if (zj !== -1) {
-          result.valuesByStringId[zj] = origZ[i] ?? 0;
-        }
-      }
+      restoreOrigZ();
       break;
     }
 
@@ -2423,7 +2569,10 @@ function runArcLengthHomotopy(
   let f0Norm = 0;
   for (let i = 0; i < nSolve; i++) {
     const exprId = residualExprIds[i] ?? -1;
-    f0[i] = exprId !== -1 ? evaluateArenaRuntime(arena, exprId, result.valuesByStringId) : 0;
+    f0[i] = exprId !== -1 ? safeEvalInitRuntime(arena, exprId, result.valuesByStringId) : 0;
+    if (!Number.isFinite(f0[i]!)) {
+      return false;
+    }
     f0Norm += Math.abs(f0[i]!);
   }
 
@@ -2432,6 +2581,13 @@ function runArcLengthHomotopy(
     result.converged = true;
     return true;
   }
+
+  const restoreZ0 = (): void => {
+    for (let i = 0; i < nSolve; i++) {
+      const zj = unknownList[i]!;
+      result.valuesByStringId[zj] = z0[i]!;
+    }
+  };
 
   // Tangent equation: J_z * dz + J_lambda * dlambda = 0 => dz = -f0 * dlambda
   for (let i = 0; i < nSolve; i++) {
@@ -2450,10 +2606,21 @@ function runArcLengthHomotopy(
 
     // 1. Predictor step along tangent
     const zPred = new Float64Array(nSolve);
+    let predFinite = true;
     for (let i = 0; i < nSolve; i++) {
-      zPred[i] = z[i]! + ds * v[i]!;
+      const val = z[i]! + ds * v[i]!;
+      if (!Number.isFinite(val)) {
+        predFinite = false;
+        break;
+      }
+      zPred[i] = val;
     }
     let lambdaPred = lambda + ds * v[nSolve]!;
+    if (!predFinite || !Number.isFinite(lambdaPred)) {
+      ds *= 0.5;
+      if (ds < dsMin) break;
+      continue;
+    }
 
     // 2. Newton-Keller Corrector
     const zCurr = new Float64Array(zPred);
@@ -2471,10 +2638,20 @@ function runArcLengthHomotopy(
       // Evaluate H_i(z, lambda) = lambda * F_i(z) + (1 - lambda) * (z_i - z0_i)
       const H = new Float64Array(nSolve);
       const F = new Float64Array(nSolve);
+      let evalOk = true;
       for (let i = 0; i < nSolve; i++) {
         const exprId = residualExprIds[i] ?? -1;
-        F[i] = exprId !== -1 ? evaluateArenaRuntime(arena, exprId, result.valuesByStringId) : 0;
-        H[i] = lambdaCurr * F[i]! + (1.0 - lambdaCurr) * (zCurr[i]! - z0[i]!);
+        const fVal = exprId !== -1 ? safeEvalInitRuntime(arena, exprId, result.valuesByStringId) : 0;
+        if (!Number.isFinite(fVal)) {
+          evalOk = false;
+          break;
+        }
+        F[i] = fVal;
+        H[i] = lambdaCurr * fVal + (1.0 - lambdaCurr) * (zCurr[i]! - z0[i]!);
+      }
+      if (!evalOk) {
+        correctorConverged = false;
+        break;
       }
 
       // Arc-length constraint: v^T * ([zCurr; lambdaCurr] - [z; lambda]) - ds = 0
@@ -2486,6 +2663,10 @@ function runArcLengthHomotopy(
 
       let resNorm = Math.abs(N_arc);
       for (let i = 0; i < nSolve; i++) resNorm += Math.abs(H[i]!);
+      if (!Number.isFinite(resNorm)) {
+        correctorConverged = false;
+        break;
+      }
 
       if (resNorm < tol) {
         correctorConverged = true;
@@ -2531,13 +2712,28 @@ function runArcLengthHomotopy(
       rhs[nSolve] = -N_arc;
 
       const dSol = solveLU(augJ, rhs, nSolve + 1);
+      let dSolFinite = Number.isFinite(dSol[nSolve] ?? NaN);
+      for (let i = 0; i < nSolve && dSolFinite; i++) {
+        if (!Number.isFinite(dSol[i] ?? NaN) || !Number.isFinite(zCurr[i]! + dSol[i]!)) {
+          dSolFinite = false;
+        }
+      }
+      if (!dSolFinite) {
+        correctorConverged = false;
+        break;
+      }
 
       for (let i = 0; i < nSolve; i++) {
-        const raw = zCurr[i]! + (dSol[i] ?? 0);
+        const raw = zCurr[i]! + dSol[i]!;
         const b = varBounds[i];
-        zCurr[i] = b ? Math.max(b.min, Math.min(b.max, raw)) : raw;
+        const nextVal = b ? Math.max(b.min, Math.min(b.max, raw)) : raw;
+        if (!Number.isFinite(nextVal)) {
+          correctorConverged = false;
+          break;
+        }
+        zCurr[i] = nextVal;
       }
-      lambdaCurr += dSol[nSolve] ?? 0;
+      lambdaCurr += dSol[nSolve]!;
     }
 
     if (correctorConverged) {
@@ -2610,6 +2806,7 @@ function runArcLengthHomotopy(
     }
   }
 
+  restoreZ0();
   return false;
 }
 
@@ -2637,19 +2834,43 @@ function runPseudoTransientRelaxation(
   const maxSteps = 100;
   const currentZ = new Float64Array(nSolve);
 
+  const initialSnapshot = new Float64Array(nSolve);
   for (let i = 0; i < nSolve; i++) {
     const zj = unknownList[i]!;
-    currentZ[i] = result.valuesByStringId[zj] ?? 0;
+    const v = result.valuesByStringId[zj] ?? 0;
+    currentZ[i] = v;
+    initialSnapshot[i] = v;
   }
+  const restoreCurrent = (): void => {
+    for (let i = 0; i < nSolve; i++) {
+      result.valuesByStringId[unknownList[i]!] = currentZ[i] ?? 0;
+    }
+  };
+  const restoreInitial = (): void => {
+    for (let i = 0; i < nSolve; i++) {
+      result.valuesByStringId[unknownList[i]!] = initialSnapshot[i] ?? 0;
+    }
+  };
 
   for (let step = 0; step < maxSteps; step++) {
     result.iterations++;
 
     // 1. Evaluate current residual
     const R = new Array(nSolve).fill(0) as number[];
+    let residualFinite = true;
     for (let i = 0; i < nSolve; i++) {
       const exprId = residualExprIds[i] ?? -1;
-      R[i] = exprId !== -1 ? evaluateArenaRuntime(arena, exprId, result.valuesByStringId) : 0;
+      const rVal = exprId !== -1 ? safeEvalInitRuntime(arena, exprId, result.valuesByStringId) : 0;
+      R[i] = rVal;
+      if (!Number.isFinite(rVal)) {
+        residualFinite = false;
+        break;
+      }
+    }
+    if (!residualFinite) {
+      result.residualNorm = NaN;
+      restoreInitial();
+      return false;
     }
 
     let norm = 0;
@@ -2697,27 +2918,40 @@ function runPseudoTransientRelaxation(
     const negR = R.map((r) => -r);
     const dz = solveLU(A, negR, nSolve);
 
-    // 4. Trial step with bounds clamping
+    // 4. Trial step with bounds clamping (verify finiteness before writing to arena)
     const trialZ = new Float64Array(nSolve);
+    let isFiniteStep = true;
     for (let i = 0; i < nSolve; i++) {
+      const stepVal = dz[i] ?? NaN;
+      if (!Number.isFinite(stepVal)) {
+        isFiniteStep = false;
+        break;
+      }
       const b = bounds[i];
-      const raw = (currentZ[i] ?? 0) + (dz[i] ?? 0);
-      trialZ[i] = b ? Math.max(b.min, Math.min(b.max, raw)) : raw;
-      const zj = unknownList[i]!;
-      result.valuesByStringId[zj] = trialZ[i]!;
+      const raw = (currentZ[i] ?? 0) + stepVal;
+      const nextVal = b ? Math.max(b.min, Math.min(b.max, raw)) : raw;
+      if (!Number.isFinite(nextVal)) {
+        isFiniteStep = false;
+        break;
+      }
+      trialZ[i] = nextVal;
     }
 
     let trialNorm = 0;
-    let isFiniteStep = true;
-    for (let i = 0; i < nSolve; i++) {
-      const exprId = residualExprIds[i] ?? -1;
-      if (exprId !== -1) {
-        const val = evaluateArenaRuntime(arena, exprId, result.valuesByStringId);
-        if (!isFinite(val) || isNaN(val)) {
-          isFiniteStep = false;
-          break;
+    if (isFiniteStep) {
+      for (let i = 0; i < nSolve; i++) {
+        result.valuesByStringId[unknownList[i]!] = trialZ[i]!;
+      }
+      for (let i = 0; i < nSolve; i++) {
+        const exprId = residualExprIds[i] ?? -1;
+        if (exprId !== -1) {
+          const val = safeEvalInitRuntime(arena, exprId, result.valuesByStringId);
+          if (!Number.isFinite(val)) {
+            isFiniteStep = false;
+            break;
+          }
+          trialNorm += Math.abs(val);
         }
-        trialNorm += Math.abs(val);
       }
     }
 
@@ -2736,10 +2970,7 @@ function runPseudoTransientRelaxation(
       }
     } else {
       // Step rejected: restore current state and damp deltaTau
-      for (let i = 0; i < nSolve; i++) {
-        const zj = unknownList[i]!;
-        result.valuesByStringId[zj] = currentZ[i] ?? 0;
-      }
+      restoreCurrent();
       deltaTau = Math.max(deltaTau * 0.3, minDeltaTau);
       if (deltaTau <= minDeltaTau) {
         break;
@@ -2747,6 +2978,7 @@ function runPseudoTransientRelaxation(
     }
   }
 
+  restoreInitial();
   return false;
 }
 

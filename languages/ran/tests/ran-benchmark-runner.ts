@@ -7,12 +7,12 @@
  */
 
 import { DAEBuilder } from "@modelscript/runtime";
+import { lowerRanNetworkToDae, type RanLinkParams } from "../src/dae/lowering.js";
+import { evaluateSiteMpe, type RfEmitterConfig } from "../src/em-safety/mpe-solver.js";
 import { parseNsmaAdf } from "../src/parser/nsma-parser.js";
-import { interpolateAntennaGain } from "../src/solvers/pattern-interpolator.js";
 import { computeFresnelRadiusMeters } from "../src/solvers/fresnel.js";
 import { computeFsplDb } from "../src/solvers/itu-r-p530.js";
-import { evaluateSiteMpe, type RfEmitterConfig } from "../src/em-safety/mpe-solver.js";
-import { lowerRanNetworkToDae, type RanLinkParams } from "../src/dae/lowering.js";
+import { interpolateAntennaGain } from "../src/solvers/pattern-interpolator.js";
 
 export interface RanBenchmarkResult {
   name: string;
@@ -224,3 +224,29 @@ export function runRanBenchmark(): RanBenchmarkResult {
     totalTimeMs,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const ranBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "ran",
+  referenceTool: "FCC OET-65 MPE & ITU-R P.530 5G Backhaul",
+  defaultTolerance: 1.0,
+  metricKind: "max-relative-error",
+  async runCases() {
+    const m = runRanBenchmark();
+    return [
+      {
+        id: "5g-cband-mimo-backhaul-mpe",
+        name: "5g-cband-mimo-backhaul-mpe",
+        scale: "standard",
+        referenceTool: "FCC OET-65 MPE & ITU-R P.530 5G Backhaul",
+        passed: m.isMpeCompliant && m.totalBackhaulCapacityMbps > 0 && m.variableCount > 0,
+        durationMs: m.totalTimeMs,
+        metricKind: "max-relative-error",
+        measuredError: m.mpeMaxTer,
+        threshold: 1.0,
+        details: `MPE_TER=${m.mpeMaxTer.toFixed(3)}, cap=${m.totalBackhaulCapacityMbps.toFixed(1)}Mbps, ${m.variableCount}x${m.equationCount} DAE`,
+      },
+    ];
+  },
+};

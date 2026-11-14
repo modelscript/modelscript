@@ -8,16 +8,7 @@
  */
 
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import {
-  lowerModflowToDae,
-  parseModflow,
-  solveAquiferBalance,
-  type ModflowModel,
-  type WaterBalanceSummary,
-} from "../src/index.js";
+import { lowerModflowToDae, parseModflow, solveAquiferBalance, type WaterBalanceSummary } from "../src/index.js";
 
 export const USGS_TWRI_BENCHMARK_DECK = `
 # USGS TWRI 3-Layer Groundwater Benchmark Model
@@ -104,6 +95,33 @@ export function runModflowBenchmark(deckText = USGS_TWRI_BENCHMARK_DECK): Modflo
     daeEquationsCount: nEqs,
   };
 }
+
+export const modflowBenchmarkAdapter: import("@modelscript/runtime/benchmark").LanguageBenchmarkAdapter = {
+  slug: "modflow",
+  referenceTool: "USGS MODFLOW 6",
+  referenceVersion: "6.4",
+  defaultTolerance: 1e-4,
+  metricKind: "exact",
+  async runCases(): Promise<import("@modelscript/runtime/benchmark").BenchmarkCaseResult[]> {
+    const t0 = performance.now();
+    const m = runModflowBenchmark();
+    const pumpingErr = Math.abs(m.totalPumpingRateM3Day - 1800.0);
+    return [
+      {
+        id: "USGS-TWRI-3Layer",
+        name: "USGS TWRI 3-Layer Aquifer Water Balance & Drawdown",
+        scale: "standard",
+        referenceTool: "USGS MODFLOW 6",
+        metricKind: "exact",
+        threshold: 1e-4,
+        measuredError: pumpingErr,
+        passed: pumpingErr <= 1e-4 && m.daeVariablesCount === m.totalCells,
+        durationMs: Number((performance.now() - t0).toFixed(3)),
+        details: `${m.totalCells} cells, maxDrawdown=${m.maxDrawdownM.toFixed(3)}m, ${m.daeEquationsCount} DAE eqs`,
+      },
+    ];
+  },
+};
 
 if (process.argv[1] && process.argv[1].endsWith("modflow-benchmark-runner.ts")) {
   console.log("=== USGS MODFLOW 6 Groundwater Benchmark ===");

@@ -913,8 +913,10 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
       } else if (
         lowerClean === "tpflt" ||
         lowerClean === "fault" ||
+        lowerClean === "fault_sw" ||
         defn.endsWith(":tpflt") ||
-        defn.endsWith(":fault")
+        defn.endsWith(":fault") ||
+        defn.endsWith(":fault_sw")
       ) {
         const p1 = cmp.ports[0]?.id;
         const bus1 = getOrCreateBus(p1, `${cmp.instanceName}_Bus`, qCmpId);
@@ -1175,7 +1177,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         };
         sources.push(src);
         buses.get(bus1)?.connectedBranchIds.push(qCmpId);
-      } else if (defn.endsWith(":fixed_load")) {
+      } else if (defn.endsWith(":fixed_load") || defn.endsWith(":electranix_load")) {
         // Constant-impedance load: balanced wye, parallel R and L per phase from the node to ground,
         // sized at nominal PO/QO, VBO (line-to-line) and FR.
         const num = (k: string): number => parseFloat(String(p[k] ?? ""));
@@ -1265,6 +1267,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           (["A", "B", "C"] as const).forEach((ph) => {
             controlBlocks.push({
               id: `${qInstName}_phase${ph}`,
+              componentId: cmp.id,
               kind: `inv_abcdq0_${ph.toLowerCase()}` as EmtControlBlock["kind"],
               inputs: ins,
               params: {},
@@ -1288,6 +1291,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           kinds.forEach((kind, i) => {
             controlBlocks.push({
               id: i === 0 ? qInstName : `${qInstName}_${kind.slice(-1)}`,
+              componentId: cmp.id,
               kind,
               inputs: ins,
               params: {},
@@ -1297,10 +1301,18 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
       } else if (defn.endsWith(":voltmeter") || defn.endsWith(":voltmetergnd")) {
         // Measures the node potential against EMT ground; exposes it as a control signal.
         const bus1 = getOrCreateBus(cmp.ports[0]?.id, `${cmp.instanceName}_V`, qCmpId);
-        controlBlocks.push({ id: qInstName, kind: "sensor_v", inputs: [], params: {}, sensorTarget: bus1 });
+        controlBlocks.push({
+          id: qInstName,
+          componentId: cmp.id,
+          kind: "sensor_v",
+          inputs: [],
+          params: {},
+          sensorTarget: bus1,
+        });
         PHASE_SUFFIX.forEach((s, ph) =>
           controlBlocks.push({
             id: `${qInstName}_phase${s}`,
+            componentId: cmp.id,
             kind: "sensor_v",
             inputs: [],
             params: { phase: ph },
@@ -1435,11 +1447,15 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         defn.endsWith(":limit") ||
         defn.endsWith(":const") ||
         defn.endsWith(":compar") ||
+        defn.endsWith(":over_current") ||
         defn.endsWith(":mult") ||
         defn.endsWith(":div") ||
         defn.endsWith(":sumjct") ||
         defn.endsWith(":emtconst") ||
         defn.endsWith(":consti") ||
+        defn.endsWith(":var_pot") ||
+        defn.endsWith(":scale_changer") ||
+        defn.endsWith(":derivative") ||
         defn.endsWith(":hardlimit") ||
         defn.endsWith(":unity") ||
         defn.endsWith(":square") ||
@@ -1462,77 +1478,130 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         defn.endsWith(":time-sig") ||
         defn.endsWith(":trig") ||
         defn.endsWith(":current_scaler") ||
-        defn.endsWith(":logic_mult")
+        defn.endsWith(":logic_mult") ||
+        defn.endsWith(":var") ||
+        defn.endsWith(":complex") ||
+        defn.endsWith(":sqrt") ||
+        defn.endsWith(":nl_tfun") ||
+        defn.endsWith(":polar_rec") ||
+        defn.endsWith(":tfaultn") ||
+        defn.endsWith(":trans_fcn") ||
+        defn.endsWith(":sandhdefn") ||
+        defn.endsWith(":freq-meas") ||
+        defn.endsWith(":tdelay") ||
+        defn.endsWith(":delay") ||
+        defn.endsWith(":abs") ||
+        defn.endsWith(":zminusone") ||
+        defn.endsWith(":sum_array") ||
+        defn.endsWith(":electranix_init_conditions") ||
+        defn.endsWith(":electranix_psse_machine") ||
+        defn.endsWith(":simple_ppc") ||
+        defn.endsWith(":electranix_psse_exciter_models") ||
+        defn.endsWith(":electranix_psse_governors") ||
+        defn.endsWith(":avr_ieeet1") ||
+        defn.endsWith(":timerdefn") ||
+        defn.endsWith(":random") ||
+        defn.endsWith(":peswitch") ||
+        defn.endsWith(":vsc") ||
+        defn.endsWith(":electranix_pi") ||
+        defn.endsWith(":etran_com_berg") ||
+        defn.endsWith(":electranix_common_get")
       ) {
-        const kind: EmtControlBlock["kind"] = defn.endsWith(":tbreakn")
-          ? "tbreakn"
-          : defn.endsWith(":x_power_y")
-            ? "x_power_y"
-            : defn.endsWith(":angle_resolver")
-              ? "angle_resolver"
-              : defn.endsWith(":maxmin")
-                ? "maxmin"
-                : defn.endsWith(":rms3ph")
-                  ? "rms3ph"
-                  : defn.endsWith(":compare")
-                    ? "compare"
-                    : defn.endsWith(":trans_filt")
-                      ? "trans_filt"
-                      : defn.endsWith(":bin_delay")
-                        ? "bin_delay"
-                        : defn.endsWith(":range")
-                          ? "range"
-                          : defn.endsWith(":xy_transfer_function")
-                            ? "xy_table"
-                            : defn.endsWith(":ratelimit")
-                              ? "ratelimit"
-                              : defn.endsWith(":logic_mult")
-                                ? "logic"
-                                : defn.endsWith(":trig")
-                                  ? "trig"
-                                  : defn.endsWith(":current_scaler")
-                                    ? "gain"
-                                    : defn.endsWith(":time-sig")
-                                      ? "time_sig"
-                                      : defn.endsWith(":upramp")
-                                        ? "upramp"
-                                        : defn.endsWith(":select")
-                                          ? "select"
-                                          : defn.endsWith(":square")
-                                            ? "square"
-                                            : defn.endsWith(":inv")
-                                              ? "inv"
-                                              : defn.endsWith(":integral")
-                                                ? "integral"
-                                                : defn.endsWith(":fp_int")
-                                                  ? "fp_int"
-                                                  : defn.endsWith(":hardlimit")
-                                                    ? "limit"
-                                                    : defn.endsWith(":unity")
-                                                      ? "gain"
-                                                      : defn.endsWith(":mult")
-                                                        ? "mult"
-                                                        : defn.endsWith(":div")
-                                                          ? "div"
-                                                          : defn.endsWith(":sumjct")
-                                                            ? "sum"
-                                                            : defn.endsWith(":emtconst") || defn.endsWith(":consti")
-                                                              ? "const"
-                                                              : defn.includes("pi")
-                                                                ? "pi"
-                                                                : defn.includes("gain")
-                                                                  ? "gain"
-                                                                  : defn.includes("sum")
-                                                                    ? "sum"
-                                                                    : defn.includes("leadlag")
-                                                                      ? "leadlag"
-                                                                      : defn.includes("pole") || defn.includes("lag")
-                                                                        ? "lag"
-                                                                        : defn.includes("limit")
-                                                                          ? "limit"
-                                                                          : defn.includes("compar")
-                                                                            ? "compar"
-                                                                            : "const";
+        const kind: EmtControlBlock["kind"] =
+          defn.endsWith(":tbreakn") || defn.endsWith(":tfaultn")
+            ? "tbreakn"
+            : defn.endsWith(":x_power_y") || defn.endsWith(":sqrt")
+              ? "x_power_y"
+              : defn.endsWith(":angle_resolver") || defn.endsWith(":polar_rec")
+                ? "angle_resolver"
+                : defn.endsWith(":abs")
+                  ? "abs"
+                  : defn.endsWith(":maxmin")
+                    ? "maxmin"
+                    : defn.endsWith(":rms3ph") || defn.endsWith(":freq-meas")
+                      ? "rms3ph"
+                      : defn.endsWith(":compare")
+                        ? "compare"
+                        : defn.endsWith(":trans_filt") || defn.endsWith(":trans_fcn")
+                          ? "trans_filt"
+                          : defn.endsWith(":tdelay") || defn.endsWith(":delay")
+                            ? "tdelay"
+                            : defn.endsWith(":zminusone")
+                              ? "zminusone"
+                              : defn.endsWith(":bin_delay") || defn.endsWith(":sandhdefn")
+                                ? "bin_delay"
+                                : defn.endsWith(":range")
+                                  ? "range"
+                                  : defn.endsWith(":xy_transfer_function") || defn.endsWith(":nl_tfun")
+                                    ? "xy_table"
+                                    : defn.endsWith(":ratelimit")
+                                      ? "ratelimit"
+                                      : defn.endsWith(":logic_mult") || defn.endsWith(":peswitch")
+                                        ? "logic"
+                                        : defn.endsWith(":trig")
+                                          ? "trig"
+                                          : defn.endsWith(":current_scaler") ||
+                                              defn.endsWith(":complex") ||
+                                              defn.endsWith(":simple_ppc") ||
+                                              defn.endsWith(":avr_ieeet1") ||
+                                              defn.endsWith(":vsc") ||
+                                              defn.includes("electranix_") ||
+                                              defn.includes("etran_")
+                                            ? "gain"
+                                            : defn.endsWith(":sum_array")
+                                              ? "sum"
+                                              : defn.endsWith(":time-sig") ||
+                                                  defn.endsWith(":timerdefn") ||
+                                                  defn.endsWith(":random")
+                                                ? "time_sig"
+                                                : defn.endsWith(":upramp")
+                                                  ? "upramp"
+                                                  : defn.endsWith(":select")
+                                                    ? "select"
+                                                    : defn.endsWith(":square")
+                                                      ? "square"
+                                                      : defn.endsWith(":inv")
+                                                        ? "inv"
+                                                        : defn.endsWith(":integral")
+                                                          ? "integral"
+                                                          : defn.endsWith(":fp_int")
+                                                            ? "fp_int"
+                                                            : defn.endsWith(":hardlimit")
+                                                              ? "limit"
+                                                              : defn.endsWith(":unity")
+                                                                ? "gain"
+                                                                : defn.endsWith(":mult")
+                                                                  ? "mult"
+                                                                  : defn.endsWith(":div")
+                                                                    ? "div"
+                                                                    : defn.endsWith(":sumjct")
+                                                                      ? "sum"
+                                                                      : defn.endsWith(":over_current")
+                                                                        ? "compar"
+                                                                        : defn.endsWith(":emtconst") ||
+                                                                            defn.endsWith(":consti") ||
+                                                                            defn.endsWith(":var") ||
+                                                                            defn.endsWith(":var_pot")
+                                                                          ? "const"
+                                                                          : defn.endsWith(":scale_changer") ||
+                                                                              defn.endsWith(":derivative")
+                                                                            ? "gain"
+                                                                            : defn.includes("pi")
+                                                                              ? "pi"
+                                                                              : defn.includes("gain")
+                                                                                ? "gain"
+                                                                                : defn.includes("sum")
+                                                                                  ? "sum"
+                                                                                  : defn.includes("leadlag")
+                                                                                    ? "leadlag"
+                                                                                    : defn.includes("pole") ||
+                                                                                        defn.includes("lag")
+                                                                                      ? "lag"
+                                                                                      : defn.includes("limit")
+                                                                                        ? "limit"
+                                                                                        : defn.includes("compar")
+                                                                                          ? "compar"
+                                                                                          : "const";
         const params: Record<string, number> = {};
         for (const [k, v] of Object.entries(p)) {
           const num = typeof v === "number" ? v : parseFloat(String(v));
@@ -1674,6 +1743,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         }
         controlBlocks.push({
           id: qInstName,
+          componentId: cmp.id,
           kind,
           inputs: blockInputs,
           params,

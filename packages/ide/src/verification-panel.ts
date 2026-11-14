@@ -80,6 +80,77 @@ export class VerificationPanel extends BaseWebviewPanel {
             break;
           }
 
+          case "openLocation": {
+            if (typeof msg.uri === "string" && msg.uri.length > 0) {
+              try {
+                const targetUri = msg.uri.includes("://") ? vscode.Uri.parse(msg.uri) : vscode.Uri.file(msg.uri);
+                const doc = await vscode.workspace.openTextDocument(targetUri);
+                const line = Math.max(0, Number(msg.line ?? 1) - 1);
+                const col = Math.max(0, Number(msg.column ?? 1) - 1);
+                const pos = new vscode.Position(line, col);
+                await vscode.window.showTextDocument(doc, {
+                  selection: new vscode.Range(pos, pos),
+                  preserveFocus: false,
+                });
+              } catch {
+                // Ignore unopenable location
+              }
+            }
+            break;
+          }
+
+          case "applyDigitalThreadSync": {
+            const edits: Array<{
+              uri?: string;
+              line?: number;
+              startOffset?: number;
+              endOffset?: number;
+              newText: string;
+            }> = Array.isArray(msg.suggestedEdits) ? msg.suggestedEdits : [];
+            if (edits.length > 0) {
+              const wsEdit = new vscode.WorkspaceEdit();
+              for (const se of edits) {
+                if (!se.uri) continue;
+                try {
+                  const targetUri = se.uri.includes("://") ? vscode.Uri.parse(se.uri) : vscode.Uri.file(se.uri);
+                  const doc = await vscode.workspace.openTextDocument(targetUri);
+                  let range: vscode.Range | undefined;
+                  if (se.startOffset !== undefined && se.endOffset !== undefined) {
+                    range = new vscode.Range(doc.positionAt(se.startOffset), doc.positionAt(se.endOffset));
+                  } else {
+                    const zeroLine = Math.max(0, (se.line ?? 1) - 1);
+                    const lineText = doc.lineAt(Math.min(zeroLine, doc.lineCount - 1)).text;
+                    const mVal = /(=|:=)\s*([-+]?[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)/.exec(lineText);
+                    if (mVal && mVal.index !== undefined) {
+                      const colStart = lineText.indexOf(mVal[2]!, mVal.index);
+                      range = new vscode.Range(zeroLine, colStart, zeroLine, colStart + mVal[2]!.length);
+                    }
+                  }
+                  if (range) {
+                    wsEdit.replace(targetUri, range, se.newText);
+                  }
+                } catch {
+                  // Ignore unreadable URI
+                }
+              }
+              const applied = await vscode.workspace.applyEdit(wsEdit);
+              if (applied) {
+                await vscode.workspace.saveAll(false);
+                const activeEditor = vscode.window.activeTextEditor;
+                if (activeEditor) {
+                  const uri = activeEditor.document.uri.toString();
+                  const requirements = await this.client.sendRequest<unknown>("modelscript/getRequirements", { uri });
+                  const unifiedReport = await this.client.sendRequest<unknown>("modelscript/verifyAll", {
+                    uri,
+                    options: { all: true },
+                  });
+                  this._panel.webview.postMessage({ type: "verificationComplete", requirements, unifiedReport });
+                }
+              }
+            }
+            break;
+          }
+
           case "exportDhf": {
             const editor = vscode.window.activeTextEditor;
             if (!editor) {

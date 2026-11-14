@@ -87,3 +87,9 @@ const dae = lowerAntimonyToDae(doc);
 const sbmlXml = antimonyToSbml(doc);
 const moCode = antimonyToModelica(doc);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="antimony" />

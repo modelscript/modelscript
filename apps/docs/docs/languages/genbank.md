@@ -97,3 +97,9 @@ const dae = lowerGenbankToDae(record);
 const sbolDoc = genbankToSbol(record);
 const moCode = genbankToModelica(record);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="genbank" />

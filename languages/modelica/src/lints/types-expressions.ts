@@ -1240,8 +1240,23 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4031,
     message: (subNode, arrNode, dimIndex, dimSize) => {
-      const idxText = subNode && subNode.text ? subNode.text : "index";
-      const arrName = arrNode && arrNode.text && arrNode.text !== "0" ? arrNode.text.split("[")[0]!.trim() : "array";
+      const isConnect = subNode && subNode.text && subNode.text.startsWith("connect");
+      const dIdxNum = dimIndex ? Number(dimIndex) : 1;
+      let idxText = subNode && subNode.text ? subNode.text : "index";
+      if (isConnect && arrNode && arrNode.text) {
+        const lb = arrNode.text.indexOf("[");
+        const rb = arrNode.text.lastIndexOf("]");
+        if (lb >= 0 && rb > lb) {
+          const parts = arrNode.text.slice(lb + 1, rb).split(",");
+          idxText = (parts[dIdxNum - 1] ?? parts[0] ?? "index").trim();
+        }
+      }
+      const arrName =
+        arrNode && arrNode.text && arrNode.text !== "0"
+          ? isConnect
+            ? arrNode.text.trim()
+            : arrNode.text.split("[")[0]!.trim()
+          : "array";
       const dIdx = dimIndex ? String(dimIndex) : "1";
       const dSz = dimSize ? String(dimSize) : "?";
       return `Subscript '${idxText}' for dimension ${dIdx} (size = ${dSz}) of ${arrName} is out of bounds.`;
@@ -1343,7 +1358,23 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
             if (numCount == 1 && firstNum != 0) {
               const val = db.ast.parseInteger(sub);
               if (val < 1 || val > dimSize) {
-                db.diagnostic(sub, arrNameNode, dimIdx, dimSize);
+                let connectNode: u32 = 0;
+                if ($.connect_equation) {
+                  for (const cc of db.ast.getDescendants(encClass, $.connect_equation)) {
+                    for (const cr of db.ast.getDescendants(cc, $.component_reference)) {
+                      if (cr === node) {
+                        connectNode = cc;
+                        break;
+                      }
+                    }
+                    if (connectNode !== 0) break;
+                  }
+                }
+                if (connectNode !== 0) {
+                  db.diagnostic(connectNode, node, dimIdx, dimSize);
+                } else {
+                  db.diagnostic(sub, arrNameNode, dimIdx, dimSize);
+                }
                 return;
               }
             }

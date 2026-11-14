@@ -1378,24 +1378,15 @@ export declare enum SyntaxKind {
   GenericRecord = 46,
   START = 47,
   _START = 47,
-  CommentLine = 56,
-  RestOfLine = 57,
+  CommentLine = 57,
   Identifier = 58,
   NumberLiteral = 59,
   EOF = 1023,
 }
 
 export declare enum FieldId {
-  Classification = 1,
-  classification = 1,
-  Title = 2,
-  title = 2,
-  Details = 3,
-  details = 3,
-  AtomLine = 4,
-  atomLine = 4,
-  RecordType = 5,
-  recordType = 5,
+  RecordType = 1,
+  recordType = 1,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1459,10 +1450,6 @@ export interface CommentLineNode extends SyntaxNode {
   readonly typeId: SyntaxKind.CommentLine;
 }
 export declare function isCommentLine(node: SyntaxNode | null | undefined): node is CommentLineNode;
-export interface RestOfLineNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.RestOfLine;
-}
-export declare function isRestOfLine(node: SyntaxNode | null | undefined): node is RestOfLineNode;
 export interface IdentifierNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Identifier;
 }
@@ -1488,50 +1475,36 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is HeaderRecordNode;
-    classification(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    classificationList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const TitleRecord: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is TitleRecordNode;
-    title(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    titleList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const HelixRecord: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is HelixRecordNode;
-    details(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    detailsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const SheetRecord: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is SheetRecordNode;
-    details(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    detailsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const SsbondRecord: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is SsbondRecordNode;
-    details(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    detailsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const AtomRecord: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is AtomRecordNode;
-    atomLine(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    atomLineList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const HetatmRecord: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is HetatmRecordNode;
-    atomLine(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    atomLineList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const TerRecord: {
     readonly typeId: number;
@@ -1559,11 +1532,6 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is CommentLineNode;
-  };
-  export const RestOfLine: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is RestOfLineNode;
   };
   export const Identifier: {
     readonly typeId: number;

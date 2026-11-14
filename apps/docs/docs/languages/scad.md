@@ -87,3 +87,9 @@ npx msx csg SatelliteChassis satellite.mo > bracket.scad
 | `ScadCubeToMultiBodyShape`          | `ModuleInstantiation` (`cube`)                                  | `modelica`      | `ComponentClause` (`Modelica.Mechanics.MultiBody.Visualizers.FixedShape` `"box"`)      |
 | `ScadCylinderToMultiBodyShape`      | `ModuleInstantiation` (`cylinder`)                              | `modelica`      | `ComponentClause` (`Modelica.Mechanics.MultiBody.Visualizers.FixedShape` `"cylinder"`) |
 | `ScadSphereToMultiBodyShape`        | `ModuleInstantiation` (`sphere`)                                | `modelica`      | `ComponentClause` (`Modelica.Mechanics.MultiBody.Visualizers.FixedShape` `"sphere"`)   |
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="scad" />

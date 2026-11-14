@@ -65,3 +65,9 @@ msx aml to-ssp RoboticAssemblyCell.aml -o SystemStructure.ssd
 msx aml to-sysml RoboticAssemblyCell.aml -o PlantArchitecture.sysml
 msx aml to-modelica RoboticAssemblyCell.aml -o PlantModel.mo
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="automationml" />

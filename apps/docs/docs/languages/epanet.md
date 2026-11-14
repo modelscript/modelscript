@@ -49,6 +49,12 @@ description: "@modelscript/epanet (languages/epanet) provides native parsing, hy
 
 ---
 
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="epanet" />
+
+---
+
 ## Static Analysis & Pre-Flight Linter Rules
 
 <LintRules lang="epanet" />
@@ -81,4 +87,3 @@ msx epanet from-gis pipes.geojson --nodes=junctions.geojson --out=MunicipalWater
 msx epanet to-dae MunicipalWaterNetwork.inp --out=network.dae.json
 msx epanet to-modelica MunicipalWaterNetwork.inp -o MunicipalPipes.mo
 ```
-

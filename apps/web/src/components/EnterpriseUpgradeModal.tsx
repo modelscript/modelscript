@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { Button, Dialog, Label, Text } from "@primer/react";
 import React from "react";
-import { useFocusTrap } from "../hooks/useFocusTrap.js";
 import { useInstanceBranding } from "../InstanceBrandingContext";
+import Box from "./Box";
 
 export interface EnterpriseUpgradeEventDetail {
   edition?: "ce" | "ee" | string | undefined;
@@ -65,13 +66,8 @@ function installEnterpriseFetchInterceptor(): void {
 
 export default function EnterpriseUpgradeModal(): React.ReactElement | null {
   const [detail, setDetail] = React.useState<EnterpriseUpgradeEventDetail | null>(null);
-  const modalRef = React.useRef<HTMLDivElement>(null);
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
-
-  useFocusTrap(modalRef, !!detail, {
-    onEscape: () => setDetail(null),
-  });
 
   React.useEffect(() => {
     installEnterpriseFetchInterceptor();
@@ -98,166 +94,65 @@ export default function EnterpriseUpgradeModal(): React.ReactElement | null {
   const pricingUrl = detail.pricingUrl || "https://modelscript.org/pricing";
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="ee-upgrade-modal-title"
-      onClick={() => setDetail(null)}
-      style={{
-        position: "fixed",
-        inset: 0,
-        backgroundColor: "rgba(9, 13, 22, 0.72)",
-        backdropFilter: "blur(4px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 9999,
-        padding: "16px",
-        overflowY: "auto",
-      }}
-    >
-      <div
-        ref={modalRef}
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--ms-surface-1)",
-          color: "var(--ms-text-1)",
-          border: "1px solid var(--ms-border)",
-          borderRadius: "12px",
-          maxWidth: "540px",
-          maxHeight: "calc(100dvh - 32px)",
-          overflowY: "auto",
-          width: "100%",
-          padding: "24px",
-          boxShadow: "0 20px 48px rgba(0, 0, 0, 0.45)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-          <span
-            style={{
-              fontSize: "12px",
-              fontWeight: 600,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-              padding: "3px 8px",
-              borderRadius: "999px",
-              background: "var(--ms-accent-subtle)",
-              color: "var(--ms-accent)",
-              border: "1px solid var(--ms-border)",
-            }}
-          >
-            {isCeMode ? "Community Edition (AGPL-3.0)" : "Enterprise Edition Entitlement"}
-          </span>
-          <button
-            type="button"
-            aria-label="Close modal"
-            onClick={() => setDetail(null)}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--ms-text-3)",
-              cursor: "pointer",
-              fontSize: "18px",
-              lineHeight: 1,
-            }}
-          >
-            ✕
-          </button>
-        </div>
+    <Dialog title={`${brandName} Enterprise Edition Required`} width="medium" onClose={() => setDetail(null)}>
+      <Box display="flex" flexDirection="column" gap={3}>
+        <Box>
+          <Label variant="accent">{isCeMode ? "Community Edition (AGPL-3.0)" : "Enterprise Edition Entitlement"}</Label>
+        </Box>
 
-        <h2 id="ee-upgrade-modal-title" style={{ margin: "0 0 8px", fontSize: "20px", fontWeight: 600 }}>
-          {brandName} Enterprise Edition Required
-        </h2>
-
-        <p style={{ margin: "0 0 16px", fontSize: "14px", lineHeight: 1.55, color: "var(--ms-text-2)" }}>
+        <Text style={{ fontSize: "14px", lineHeight: 1.55, color: "var(--ms-text-2, var(--color-fg-muted))" }}>
           {detail.message ||
             detail.error ||
             `This capability is part of ${brandName} Enterprise Edition (ee/, powered by ModelScript) and requires an active Enterprise license key.`}
-        </p>
+        </Text>
 
         {detail.requiredFeature && (
-          <div
+          <Box
+            p={2}
             style={{
-              marginBottom: "16px",
-              padding: "10px 12px",
               borderRadius: "8px",
-              background: "var(--ms-surface-2)",
-              border: "1px solid var(--ms-border)",
+              background: "var(--ms-bg-elv, var(--color-canvas-subtle))",
+              border: "1px solid var(--ms-border, var(--color-border-default))",
               fontSize: "13px",
-              fontFamily: "monospace",
+              fontFamily: "var(--ms-font-mono, monospace)",
             }}
           >
             Required entitlement: <strong>{detail.requiredFeature}</strong>
-          </div>
+          </Box>
         )}
 
-        <div
+        <Box
+          p={3}
           style={{
-            marginBottom: "20px",
-            padding: "12px",
             borderRadius: "8px",
-            background: "var(--ms-surface-2)",
+            background: "var(--ms-bg-elv, var(--color-canvas-subtle))",
+            border: "1px solid var(--ms-border, var(--color-border-default))",
             fontSize: "13px",
             lineHeight: 1.5,
           }}
         >
-          <div style={{ fontWeight: 600, marginBottom: "4px" }}>How to activate on self-hosted instances:</div>
-          <code style={{ display: "block", fontSize: "12px", color: "var(--ms-accent)" }}>
+          <Box style={{ fontWeight: 600, marginBottom: "4px" }}>How to activate on self-hosted instances:</Box>
+          <code style={{ display: "block", fontSize: "12px", color: "var(--ms-brand)" }}>
             MSX_EDITION=ee MSX_LICENSE_KEY=msx_lic_...
           </code>
-        </div>
+        </Box>
 
-        <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={() => setDetail(null)}
-            style={{
-              padding: "8px 14px",
-              borderRadius: "6px",
-              border: "1px solid var(--ms-border)",
-              background: "transparent",
-              color: "var(--ms-text-1)",
-              fontSize: "13px",
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-          >
+        <Box display="flex" justifyContent="flex-end" flexWrap="wrap" gap={2} pt={2}>
+          <Button variant="invisible" onClick={() => setDetail(null)}>
             Dismiss
-          </button>
-          <a
+          </Button>
+          <Button
+            as="a"
             href="mailto:enterprise@ansatz.social?subject=Ansatz%20Enterprise%20License%20Inquiry"
-            style={{
-              padding: "8px 14px",
-              borderRadius: "6px",
-              border: "1px solid var(--ms-border)",
-              background: "var(--ms-surface-2)",
-              color: "var(--ms-text-1)",
-              fontSize: "13px",
-              fontWeight: 500,
-              textDecoration: "none",
-            }}
+            variant="default"
           >
             Contact Sales
-          </a>
-          <a
-            href={pricingUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              padding: "8px 16px",
-              borderRadius: "6px",
-              border: "none",
-              background: "var(--ms-accent)",
-              color: "var(--ms-surface-1)",
-              fontSize: "13px",
-              fontWeight: 600,
-              textDecoration: "none",
-            }}
-          >
+          </Button>
+          <Button as="a" href={pricingUrl} target="_blank" rel="noopener noreferrer" variant="primary">
             View Enterprise Pricing
-          </a>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </Box>
+      </Box>
+    </Dialog>
   );
 }

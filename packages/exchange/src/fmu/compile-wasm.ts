@@ -44,7 +44,7 @@ export async function compileToWasm(
   },
 ): Promise<WasmCompileResult> {
   // Dynamic imports — only available in Node.js
-  const [fs, path, os, { execSync }] = await Promise.all([
+  const [fs, path, os, { execFileSync }] = await Promise.all([
     import("fs"),
     import("path"),
     import("os"),
@@ -53,7 +53,7 @@ export async function compileToWasm(
 
   // Check if emcc is available
   try {
-    execSync("emcc --version", { stdio: "pipe" });
+    execFileSync("emcc", ["--version"], { stdio: "pipe" });
   } catch {
     return {
       wasm: null,
@@ -84,9 +84,9 @@ export async function compileToWasm(
       optLevel,
       "-sWASM=1",
       "-sMODULARIZE=1",
-      `-sEXPORT_NAME="createWasmModel"`,
-      `-sEXPORTED_FUNCTIONS="[${exportList}]"`,
-      `-sEXPORTED_RUNTIME_METHODS="['ccall','cwrap','getValue','setValue']"`,
+      `-sEXPORT_NAME=createWasmModel`,
+      `-sEXPORTED_FUNCTIONS=[${exportList}]`,
+      `-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue']`,
       "-sALLOW_MEMORY_GROWTH=1",
       "-sTOTAL_STACK=67108864",
       "-sINITIAL_MEMORY=268435456",
@@ -97,10 +97,8 @@ export async function compileToWasm(
       ...(options?.extraFlags ?? []),
     ];
 
-    const cmd = `emcc ${flags.join(" ")}`;
-
     try {
-      execSync(cmd, {
+      execFileSync("emcc", flags, {
         cwd: tmpDir,
         stdio: "pipe",
         timeout: 60000, // 60 second timeout

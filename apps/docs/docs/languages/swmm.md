@@ -87,3 +87,8 @@ msx swmm to-dae UrbanDrainage.inp
 msx swmm to-modelica UrbanDrainage.inp -o StormwaterNetwork.mo
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="swmm" />

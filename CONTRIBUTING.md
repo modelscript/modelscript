@@ -24,27 +24,29 @@ npm run build
 
 ### Common Commands
 
-| Command                   | Description                                                                 |
-| :------------------------ | :-------------------------------------------------------------------------- |
-| `npm run doctor:dev`      | Inspect local toolchains, memory, and database readiness across all tracks  |
-| `npm run dev:ansatz`      | Start Ansatz full-stack platform (API backend + Web frontend)               |
-| `npm run dev:compiler`    | Watch and recompile core compiler & language packages                       |
-| `npm run dev:cli`         | Start interactive ModelScript CLI (`msx`) development sandbox               |
-| `npm run dev:docs`        | Start VitePress documentation portal on `localhost:5173`                    |
-| `npm run build`           | Build all workspace packages in topological dependency order via Nx         |
-| `npm run build:affected`  | Build only packages affected by current branch changes                      |
-| `npm test`                | Run tests for affected packages via the RAM/CPU-aware `test-coordinator.js` |
-| `npm run test:fast`       | Fast unit-test runner across affected packages                              |
-| `npm run test:all`        | Run all unit and integration test suites across the monorepo                |
-| `npm run lint`            | Run ESLint and repository policy linters on affected packages               |
-| `npm run lint:all`        | Run ESLint, manifest, header, cycle, and type-safety ratchet checks         |
-| `npm run typecheck`       | Run TypeScript `tsc --noEmit` across affected packages                      |
-| `npm run verify:dist`     | Verify `package.json#exports` and `.wasm` asset parity in `dist/`           |
-| `npm run verify:pack`     | Verify `npm pack` tarball completeness and isolated ESM consumer imports    |
-| `npm run version:bump`    | Bump and synchronize all 73+ workspace manifests, Tauri, and source pins    |
-| `npm run release:dry-run` | Preview the Smart Hybrid release version, changelog, and tag plan locally   |
-| `npm run clean:scratch`   | Remove untracked `scratch*` directories and ephemeral debug logs            |
-| `npm run format`          | Format code, JSON, and Markdown files with Prettier                         |
+| Command                          | Description                                                                 |
+| :------------------------------- | :-------------------------------------------------------------------------- |
+| `npm run doctor:dev`             | Inspect local toolchains, memory, and database readiness across all tracks  |
+| `npm run dev:ansatz`             | Start Ansatz full-stack platform (API backend + Web frontend)               |
+| `npm run dev:compiler`           | Watch and recompile core compiler & language packages                       |
+| `npm run dev:cli`                | Start interactive ModelScript CLI (`msx`) development sandbox               |
+| `npm run dev:docs`               | Start VitePress documentation portal on `localhost:5173`                    |
+| `npm run build`                  | Build all workspace packages in topological dependency order via Nx         |
+| `npm run build:affected`         | Build only packages affected by current branch changes                      |
+| `npm test`                       | Run tests for affected packages via the RAM/CPU-aware `test-coordinator.js` |
+| `npm run test:fast`              | Fast unit-test runner across affected packages                              |
+| `npm run test:all`               | Run all unit and integration test suites across the monorepo                |
+| `npm run lint`                   | Run ESLint and repository policy linters on affected packages               |
+| `npm run lint:all`               | Run ESLint, manifest, header, cycle, and type-safety ratchet checks         |
+| `npm run typecheck`              | Run TypeScript `tsc --noEmit` across affected packages                      |
+| `npm run verify:dist`            | Verify `package.json#exports` and `.wasm` asset parity in `dist/`           |
+| `npm run verify:pack`            | Verify `npm pack` tarball completeness and isolated ESM consumer imports    |
+| `npm run bench:languages`        | Run unified parse/conformance benchmarks across all 93 languages            |
+| `npm run bench:languages:record` | Record benchmark baseline and automatically update docs & `llms-full.txt`   |
+| `npm run version:bump`           | Bump and synchronize all 73+ workspace manifests, Tauri, and source pins    |
+| `npm run release:dry-run`        | Preview the Smart Hybrid release version, changelog, and tag plan locally   |
+| `npm run clean:scratch`          | Remove untracked `scratch*` directories and ephemeral debug logs            |
+| `npm run format`                 | Format code, JSON, and Markdown files with Prettier                         |
 
 ### Choose Your Development Track
 
@@ -160,6 +162,25 @@ npm run test:msl:sim -- --model=Modelica.Electrical.Analog.Examples.ChuaCircuit
 npm run test:msl:diagram
 npm run test:msl:icon -- --package=Modelica.Electrical.Analog.Basic
 ```
+
+### Polyglot Language Benchmarks & Documentation Sync
+
+The unified polyglot benchmark runner ([`scripts/benchmark-languages.ts`](./scripts/benchmark-languages.ts)) evaluates all 93 language packages across parser throughput/recovery, static diagnostics, and domain-specific reference parity adapters (`LanguageBenchmarkAdapter`):
+
+```bash
+# Run benchmarks for all languages (or filter to specific slugs)
+npm run bench:languages
+npm run bench:languages -- --lang=epanet,sbml
+
+# Record baseline, update docs benchmark data, and refresh llms-full.txt in one command
+npm run bench:languages:record
+npm run bench:languages:record -- --lang=epanet,sbml
+
+# Verify all docs generators and content checks pass
+npm run check --workspace=@modelscript/docs
+```
+
+To wire a language's custom parity runner into the unified suite, export a `LanguageBenchmarkAdapter` from `languages/<slug>/tests/<slug>-benchmark-runner.ts` (see [`epanet-benchmark-runner.ts`](./languages/epanet/tests/epanet-benchmark-runner.ts) for an example).
 
 ---
 

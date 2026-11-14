@@ -22,4 +22,5 @@ export * from "./solver/swe-2d-solver.js";
 export * from "./solver/swmm-quality.js";
 export * from "./solver/swmm-rtc.js";
 export * from "./spatial/index.js";
+export * from "./tgg/index.js";
 export * from "./types.js";

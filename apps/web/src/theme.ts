@@ -83,7 +83,7 @@ export function applyThemeToDom(nextTheme: Theme): void {
   }
   const metaThemeColor = document.querySelector('meta[name="theme-color"]');
   if (metaThemeColor) {
-    const targetColor = nextTheme === "dark" ? "#0a0f1c" : "#ffffff";
+    const targetColor = nextTheme === "dark" ? "#18181b" : "#ffffff";
     if (metaThemeColor.getAttribute("content") !== targetColor) {
       metaThemeColor.setAttribute("content", targetColor);
     }

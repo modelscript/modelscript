@@ -111,9 +111,7 @@ export interface AntimonyBenchmarkMetrics {
   sbmlXmlLength: number;
 }
 
-export function runAntimonyBenchmark(
-  modelText = ANTIMONY_MAPK_BENCHMARK,
-): AntimonyBenchmarkMetrics {
+export function runAntimonyBenchmark(modelText = ANTIMONY_MAPK_BENCHMARK): AntimonyBenchmarkMetrics {
   const doc: AntimonyDocument = parseAntimony(modelText, "mapk_benchmark.ant");
   const mod = doc.mainModule;
 
@@ -178,3 +176,30 @@ export function runAntimonyBenchmark(
     sbmlXmlLength: sbml.length,
   };
 }
+
+export const antimonyBenchmarkAdapter: import("@modelscript/runtime/benchmark").LanguageBenchmarkAdapter = {
+  slug: "antimony",
+  referenceTool: "libAntimony / Tellurium",
+  referenceVersion: "2.14",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases(): Promise<import("@modelscript/runtime/benchmark").BenchmarkCaseResult[]> {
+    const t0 = performance.now();
+    const m = runAntimonyBenchmark();
+    const ok = m.isSquare && m.totalMkkkConserved && m.totalMkkConserved && m.totalMapkConserved;
+    return [
+      {
+        id: "KholodenkoMapkCascade",
+        name: "Kholodenko (2000) MAPK Signaling Cascade & Pool Conservation",
+        scale: "standard",
+        referenceTool: "libAntimony / Tellurium",
+        metricKind: "dae-parity",
+        threshold: 0,
+        measuredError: ok ? 0 : 1,
+        passed: ok,
+        durationMs: Number((performance.now() - t0).toFixed(3)),
+        details: `${m.speciesCount} species, ${m.reactionsCount} reactions, ${m.daeVarCount} DAE vars/eqs`,
+      },
+    ];
+  },
+};

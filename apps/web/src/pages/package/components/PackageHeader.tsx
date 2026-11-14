@@ -1120,7 +1120,7 @@ export const PackageHeader: React.FC<PackageHeaderProps> = ({
                 title={`Keyless CI/CD Attestation verified from GitHub/GitLab repository ${oidcRepository} (${oidcWorkflow || "CI"})`}
                 data-testid="oidc-attestation-pill"
               >
-                <VerifiedIcon size={12} fill="var(--color-accent-emphasis, #0969da)" />
+                <VerifiedIcon size={12} fill="var(--ms-accent, var(--color-accent-emphasis))" />
                 <span>CI: {oidcRepository}</span>
               </ScorecardPill>
             )}

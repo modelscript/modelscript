@@ -1,0 +1,167 @@
+[
+  {
+    "name": "SEXS",
+    "kind": "psse_dyr_model",
+    "ruleName": "dyr_record",
+    "namePath": "psse:SEXS",
+    "exports": ["Vterm", "Efd"],
+    "inherits": [],
+    "metadata": { "label": "Simplified Excitation System", "category": "exciter", "domain": "control", "minCon": 6 }
+  },
+  {
+    "name": "ESAC1A",
+    "kind": "psse_dyr_model",
+    "ruleName": "dyr_record",
+    "namePath": "psse:ESAC1A",
+    "exports": ["Vterm", "Efd"],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE Type AC1A Excitation System",
+      "category": "exciter",
+      "domain": "control",
+      "minCon": 15
+    }
+  },
+  {
+    "name": "EXST1",
+    "kind": "psse_dyr_model",
+    "ruleName": "dyr_record",
+    "namePath": "psse:EXST1",
+    "exports": ["Vterm", "Efd"],
+    "inherits": [],
+    "metadata": { "label": "IEEE Type ST1 Static Exciter", "category": "exciter", "domain": "control", "minCon": 9 }
+  },
+  {
+    "name": "IEEET1",
+    "kind": "psse_dyr_model",
+    "ruleName": "dyr_record",
+    "namePath": "psse:IEEET1",
+    "exports": ["Vterm", "Efd"],
+    "inherits": [],
+    "metadata": { "label": "IEEE Type 1 DC Rotating Exciter", "category": "exciter", "domain": "control", "minCon": 7 }
+  },
+  {
+    "name": "TGOV1",
+    "kind": "psse_dyr_model",
+    "ruleName": "dyr_record",
+    "namePath": "psse:TGOV1",
+    "exports": ["dOmega", "Pmech"],
+    "inherits": [],
+    "metadata": { "label": "Steam Turbine-Governor Model", "category": "governor", "domain": "mechanical", "minCon": 7 }
+  },
+  {
+    "name": "GAST",
+    "kind": "psse_dyr_model",
+    "ruleName": "dyr_record",
+    "namePath": "psse:GAST",
+    "exports": ["dOmega", "Pmech"],
+    "inherits": [],
+    "metadata": { "label": "Gas Turbine-Governor Model", "category": "governor", "domain": "mechanical", "minCon": 8 }
+  },
+  {
+    "name": "HYGOV",
+    "kind": "psse_dyr_model",
+    "ruleName": "dyr_record",
+    "namePath": "psse:HYGOV",
+    "exports": ["dOmega", "Pmech"],
+    "inherits": [],
+    "metadata": { "label": "Hydro Turbine-Governor Model", "category": "governor", "domain": "mechanical", "minCon": 9 }
+  },
+  {
+    "name": "PSS2B",
+    "kind": "psse_dyr_model",
+    "ruleName": "dyr_record",
+    "namePath": "psse:PSS2B",
+    "exports": ["dOmega", "Vs"],
+    "inherits": [],
+    "metadata": {
+      "label": "Dual-Input Power System Stabilizer",
+      "category": "stabilizer",
+      "domain": "control",
+      "minCon": 15
+    }
+  },
+  {
+    "name": "GENROU",
+    "kind": "psse_dyr_model",
+    "ruleName": "dyr_record",
+    "namePath": "psse:GENROU",
+    "exports": ["Efd", "Pmech"],
+    "inherits": [],
+    "metadata": {
+      "label": "Round-Rotor Synchronous Generator",
+      "category": "generator",
+      "domain": "electrical",
+      "minCon": 14
+    }
+  },
+  {
+    "name": "GENTPJ",
+    "kind": "psse_dyr_model",
+    "ruleName": "dyr_record",
+    "namePath": "psse:GENTPJ",
+    "exports": ["Efd", "Pmech"],
+    "inherits": [],
+    "metadata": {
+      "label": "Saturated Round-Rotor Generator",
+      "category": "generator",
+      "domain": "electrical",
+      "minCon": 15
+    }
+  },
+  {
+    "name": "GENSAE",
+    "kind": "psse_dyr_model",
+    "ruleName": "dyr_record",
+    "namePath": "psse:GENSAE",
+    "exports": ["Efd", "Pmech"],
+    "inherits": [],
+    "metadata": {
+      "label": "Salient-Pole Synchronous Generator",
+      "category": "generator",
+      "domain": "electrical",
+      "minCon": 13
+    }
+  },
+  {
+    "name": "REGC_A",
+    "kind": "psse_dyr_model",
+    "ruleName": "dyr_record",
+    "namePath": "psse:REGC_A",
+    "exports": ["Vterm", "Iq"],
+    "inherits": [],
+    "metadata": {
+      "label": "WECC Renewable Generator-Converter",
+      "category": "ibr",
+      "domain": "electrical",
+      "minCon": 4
+    }
+  },
+  {
+    "name": "REEC_A",
+    "kind": "psse_dyr_model",
+    "ruleName": "dyr_record",
+    "namePath": "psse:REEC_A",
+    "exports": ["Vterm", "Qcmd"],
+    "inherits": [],
+    "metadata": { "label": "WECC Renewable Electrical Control", "category": "ibr", "domain": "control", "minCon": 6 }
+  },
+  {
+    "name": "REPC_A",
+    "kind": "psse_dyr_model",
+    "ruleName": "dyr_record",
+    "namePath": "psse:REPC_A",
+    "exports": ["dOmega", "Pcmd"],
+    "inherits": [],
+    "metadata": { "label": "WECC Renewable Plant Controller", "category": "ibr", "domain": "control", "minCon": 6 }
+  },
+  {
+    "name": "CMPLDW",
+    "kind": "psse_dyr_model",
+    "ruleName": "dyr_record",
+    "namePath": "psse:CMPLDW",
+    "exports": ["Vterm", "Slip"],
+    "inherits": [],
+    "metadata": { "label": "WECC Composite Load Model", "category": "load", "domain": "electrical", "minCon": 16 }
+  }
+]

@@ -9,11 +9,19 @@ import {
   DimensionalTheoryOracle,
   DOMAIN_INDEX_TO_NAME,
   DOMAIN_NAME_TO_INDEX,
+  extractCrossLanguageLinks,
   FlowAlgebraOracle,
+  isMemberLikeSymbol,
+  isTypeLikeSymbol,
   LanguageWorkspaceIndex,
   OntologyTheoryOracle,
+  parseSysmlRequirements,
   QueryEngine,
   SemanticTheoryCoordinator,
+  SymbolEntry,
+  type SymbolIndex,
+  type SyntaxNode,
+  type TheoryLiteral,
   ThreadDomain,
   UnifiedWorkspace,
 } from "@modelscript/runtime";
@@ -66,6 +74,8 @@ export interface ThreadElementMetadata {
   domain?: string | undefined;
   /** Optional key-value map of extracted engineering parameters (e.g., `mass`, `frontalArea`). */
   properties?: Record<string, any> | undefined;
+  /** Marks entries created by automatic workspace discovery so manual test seeders remain untouched. */
+  autoDiscovered?: boolean | undefined;
 }
 
 /**
@@ -101,6 +111,14 @@ export class WorkspaceManager {
   public hypergraph: DigitalThreadHypergraph = new DigitalThreadHypergraph();
   /** Metadata lookup table mapping `${domain}:${nodeId}` keys to source locations and properties. */
   public threadMetadataMap = new Map<string, ThreadElementMetadata>();
+  /** Tracks auto-asserted SemanticTheoryCoordinator literal IDs per hypergraph slot for clean cross-file retraction. */
+  private autoCoordinatorLiteralsBySlot = new Map<number, number[]>();
+  /** Tracks auto-discovered hypergraph slots touched by each document URI. */
+  private autoSlotsByUri = new Map<string, Set<number>>();
+  /** Tracks auto-bound thread slot/metadata keys owned by each document URI. */
+  private autoThreadKeysByUri = new Map<string, Array<{ slot: number; metaKey: string }>>();
+  /** Set of hypergraph slot indices created by automatic discovery (never manually seeded slots). */
+  private autoSlotIds = new Set<number>();
 
   /** Canonical Semantic Theory Coordinator for cross-domain formal consistency checking. */
   public coordinator: SemanticTheoryCoordinator = new SemanticTheoryCoordinator();
@@ -145,9 +163,9 @@ export class WorkspaceManager {
       slot = this.hypergraph.createThread(threadId, 1);
     }
     this.hypergraph.bindDomainNode(slot, domain, nodeId);
-    const domName = DOMAIN_INDEX_TO_NAME[domain] ?? "unknown";
-    const key = `${domName}:${nodeId}`;
-    this.threadMetadataMap.set(key, { ...meta, domain: domName });
+    const slotDomName = DOMAIN_INDEX_TO_NAME[domain] ?? "unknown";
+    const key = `${slotDomName}:${nodeId}`;
+    this.threadMetadataMap.set(key, { ...meta, domain: meta.domain ?? slotDomName });
     return slot;
   }
 
@@ -164,19 +182,32 @@ export class WorkspaceManager {
       domain: string;
       nodeId: number;
     }[] = [];
+    const seenSlotNodes = new Set<string>();
 
     const normUri = uri.toLowerCase();
     for (const [key, meta] of this.threadMetadataMap.entries()) {
       if (meta.uri && (meta.uri.toLowerCase() === normUri || normUri.endsWith(meta.uri.toLowerCase()))) {
         const parts = key.split(":");
-        const domName = parts[0]!;
+        const slotDomName = parts[0]!;
         const nodeId = parseInt(parts[1]!, 10);
-        const domIdx = DOMAIN_NAME_TO_INDEX[domName];
+        const domIdx = DOMAIN_NAME_TO_INDEX[slotDomName];
         if (domIdx !== undefined) {
-          const slot = this.hypergraph.findSlotByDomainNode(domIdx, nodeId);
-          if (slot !== null && slot !== undefined) {
+          const slots =
+            typeof (this.hypergraph as any).findSlotsByDomainNode === "function"
+              ? this.hypergraph.findSlotsByDomainNode(domIdx, nodeId)
+              : (() => {
+                  const s = this.hypergraph.findSlotByDomainNode(domIdx, nodeId);
+                  return s !== null && s !== undefined ? [s] : [];
+                })();
+          for (const slot of slots) {
+            if (typeof (this.hypergraph as any).isRemoved === "function" && this.hypergraph.isRemoved(slot)) {
+              continue;
+            }
+            const dedupe = `${slot}:${slotDomName}:${nodeId}`;
+            if (seenSlotNodes.has(dedupe)) continue;
+            seenSlotNodes.add(dedupe);
             const record = this.hypergraph.getRecord(slot);
-            results.push({ slot, record, meta, domain: domName, nodeId });
+            results.push({ slot, record, meta, domain: meta.domain ?? slotDomName, nodeId });
           }
         }
       }
@@ -197,15 +228,18 @@ export class WorkspaceManager {
     const isStale = this.hypergraph.isStale(slot);
     const status = isConflict ? "conflict" : isStale ? "stale" : "synced";
 
+    const isAutoSlot = this.autoSlotIds.has(slot);
     for (let dom = 0; dom < 16; dom++) {
       const nodeId = this.hypergraph.getDomainNode(slot, dom);
       if (nodeId && nodeId > 0) {
-        const domName = DOMAIN_INDEX_TO_NAME[dom] ?? "unknown";
-        const key = `${domName}:${nodeId}`;
+        const slotDomName = DOMAIN_INDEX_TO_NAME[dom] ?? "unknown";
+        const key = `${slotDomName}:${nodeId}`;
         const meta = this.threadMetadataMap.get(key);
+        if (isAutoSlot && !meta) continue;
+        const reportedDomain = meta?.domain ?? slotDomName;
         domainElements.push({
-          domain: domName,
-          name: meta?.name ?? `${domName}_node_${nodeId}`,
+          domain: reportedDomain,
+          name: meta?.name ?? `${reportedDomain}_node_${nodeId}`,
           uri: meta?.uri,
           line: meta?.line ?? 1,
           column: meta?.column ?? 1,
@@ -214,6 +248,7 @@ export class WorkspaceManager {
         });
       }
     }
+    if (isAutoSlot && domainElements.length < 2) return [];
     return domainElements;
   }
 
@@ -620,7 +655,9 @@ export class WorkspaceManager {
       try {
         const n = engine.toQueryDB().cstNode(entry.id);
         if (n) return n;
-      } catch {}
+      } catch {
+        // Deliberate fallback: stale or evicted CST entries fall through to document text re-parse.
+      }
     }
     const resId = entry.resourceId;
     const normUri = resId ? resId.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///") : "";
@@ -653,7 +690,9 @@ export class WorkspaceManager {
               tree: parsedTree,
               classCache: new Map(),
             });
-          } catch {}
+          } catch (err) {
+            console.warn("[LSP:workspace-manager] CST fallback parse failed:", err);
+          }
         } else {
           const sc = (globalThis as any).sharedContext ?? this.documentManager?.sharedContext;
           if (sc && typeof sc.parse === "function") {
@@ -666,7 +705,9 @@ export class WorkspaceManager {
                 tree: parsedTree,
                 classCache: new Map(),
               });
-            } catch {}
+            } catch (err) {
+              console.warn("[LSP:workspace-manager] sharedContext CST parse failed:", err);
+            }
           }
         }
       }
@@ -1513,5 +1554,496 @@ export class WorkspaceManager {
     }
 
     return null;
+  }
+
+  /**
+   * Maps any registered ModelScript language ID onto the 16-domain `ThreadDomain` bitfield
+   * used by `DigitalThreadHypergraph`, preserving distinct slots across cross-language pairs.
+   */
+  public mapLanguageToThreadDomain(langId: string): ThreadDomain {
+    const norm = langId.toLowerCase();
+    const mapped = DOMAIN_NAME_TO_INDEX[norm];
+    if (mapped !== undefined) return mapped;
+    switch (norm) {
+      case "psse":
+      case "raw":
+      case "dyr":
+        return ThreadDomain.FMU;
+      case "pscad":
+      case "pscx":
+      case "pslx":
+        return ThreadDomain.Software;
+      case "easy5":
+      case "rocets":
+        return ThreadDomain.Surrogate;
+      case "spice":
+        return ThreadDomain.Telemetry;
+      case "ssp":
+      case "ssv":
+        return ThreadDomain.BOM;
+      default:
+        return ThreadDomain.Software;
+    }
+  }
+
+  private normalizeAutoThreadUri(uri: string | undefined): string {
+    return (uri ?? "").replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///").toLowerCase();
+  }
+
+  private retractSlotCoordinatorLiterals(slot: number): void {
+    const prevLits = this.autoCoordinatorLiteralsBySlot.get(slot);
+    if (prevLits && typeof this.coordinator?.retractLiteral === "function") {
+      for (const litId of prevLits) {
+        try {
+          this.coordinator.retractLiteral(litId);
+        } catch {
+          // Ignore already-retracted literals
+        }
+      }
+    }
+    this.autoCoordinatorLiteralsBySlot.delete(slot);
+  }
+
+  private retractAutoThreadStateForUri(uri: string): void {
+    const normTarget = this.normalizeAutoThreadUri(uri);
+    const prevSlots = this.autoSlotsByUri.get(normTarget);
+    if (prevSlots) {
+      for (const slot of prevSlots) {
+        this.retractSlotCoordinatorLiterals(slot);
+      }
+      this.autoSlotsByUri.delete(normTarget);
+    }
+
+    const prevKeys = this.autoThreadKeysByUri.get(normTarget);
+    if (prevKeys) {
+      for (const { slot, metaKey } of prevKeys) {
+        this.retractSlotCoordinatorLiterals(slot);
+        if (typeof this.hypergraph?.clearTheoryConflict === "function") {
+          this.hypergraph.clearTheoryConflict(slot);
+        }
+        const existing = this.threadMetadataMap.get(metaKey);
+        if (existing?.autoDiscovered && this.normalizeAutoThreadUri(existing.uri) === normTarget) {
+          this.threadMetadataMap.delete(metaKey);
+        }
+      }
+      this.autoThreadKeysByUri.delete(normTarget);
+    }
+  }
+
+  private getDocTextForUri(uri: string | undefined): string {
+    if (!uri) return "";
+    const dm = this.documentManager;
+    if (dm?.documents) {
+      const doc = dm.documents.get(uri) ?? dm.documents.get(uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///"));
+      if (doc && typeof doc.getText === "function") return doc.getText();
+    }
+    const treeEntry = dm?.documentTrees?.get(uri);
+    if (treeEntry?.text) return treeEntry.text;
+    const uDoc = this.unifiedWorkspace?.getDocument?.(uri);
+    return uDoc?.text ?? "";
+  }
+
+  private extractNumericScalarProperties(
+    index: SymbolIndex,
+    entry: SymbolEntry,
+    fallbackText?: string,
+  ): Record<string, number> {
+    const props: Record<string, number> = {};
+    const docText = fallbackText || this.getDocTextForUri(entry.resourceId);
+
+    const recordNumeric = (name: string | undefined, val: unknown): void => {
+      if (!name) return;
+      if (typeof val === "number" && Number.isFinite(val)) {
+        props[name] = val;
+      } else if (typeof val === "string") {
+        const parsed = Number(val.trim());
+        if (val.trim() !== "" && Number.isFinite(parsed)) {
+          props[name] = parsed;
+        }
+      }
+    };
+
+    const extractFromSymbol = (sym: SymbolEntry): void => {
+      const meta = (sym.metadata ?? {}) as Record<string, unknown>;
+      if (meta["namedParams"] && typeof meta["namedParams"] === "object") {
+        for (const [k, v] of Object.entries(meta["namedParams"])) {
+          recordNumeric(k, v);
+        }
+      }
+      for (const key of ["value", "defaultValue", "bindingValue", "literalValue"]) {
+        if (meta[key] !== undefined) {
+          recordNumeric(sym.name, meta[key]);
+          break;
+        }
+      }
+      if (props[sym.name] === undefined && docText && sym.endOffset > sym.startOffset) {
+        const slice = docText.slice(Math.max(0, sym.startOffset), Math.min(docText.length, sym.endOffset + 40));
+        const assignMatch = slice.match(/=\s*([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)\b/);
+        if (assignMatch?.[1]) {
+          recordNumeric(sym.name, assignMatch[1]);
+        }
+      }
+    };
+
+    extractFromSymbol(entry);
+    const childIds: number[] = index.childrenOf?.get(entry.id) ?? [];
+    for (const cid of childIds) {
+      const child = index.symbols?.get(cid);
+      if (child && isMemberLikeSymbol(child)) {
+        extractFromSymbol(child);
+      }
+    }
+    return props;
+  }
+
+  /**
+   * Automatically discovers cross-language links, requirement bindings, and matching scalar parameters
+   * for `uri` from source CSTs, imports, `@twin`/`implements` annotations, and `UnifiedWorkspace` symbols,
+   * registering hypergraph slots and formal theory constraints in `this.coordinator`.
+   */
+  public discoverThreadsForDocument(
+    uri: string,
+    text: string,
+    langId: string,
+    tree?: { rootNode?: SyntaxNode | null | undefined } | null,
+  ): number[] {
+    if (!this.unifiedWorkspace || typeof this.unifiedWorkspace.getIndex !== "function" || !text) {
+      return [];
+    }
+    const uIdx = this.unifiedWorkspace.getIndex();
+    if (!uIdx || !uIdx.symbols) return [];
+
+    const normLang = langId.toLowerCase();
+    const normUri = (u: string) => u.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///").toLowerCase();
+    const targetNormUri = normUri(uri);
+
+    this.retractAutoThreadStateForUri(uri);
+
+    const docsToScan: Array<{
+      docUri: string;
+      docText: string;
+      docLang: string;
+      docTree: { rootNode?: SyntaxNode | null | undefined } | null | undefined;
+    }> = [{ docUri: uri, docText: text, docLang: normLang, docTree: tree }];
+    if (this.documentManager?.documents) {
+      for (const otherDoc of this.documentManager.documents.all()) {
+        if (normUri(otherDoc.uri) === targetNormUri) continue;
+        const otherLang =
+          globalLanguageRegistry.getPluginForUri(otherDoc.uri)?.id?.toLowerCase() ??
+          otherDoc.languageId?.toLowerCase() ??
+          "";
+        if (!otherLang) continue;
+        const cachedTree = this.documentManager.documentTrees.get(otherDoc.uri)?.tree;
+        docsToScan.push({
+          docUri: otherDoc.uri,
+          docText: otherDoc.getText(),
+          docLang: otherLang,
+          docTree: cachedTree,
+        });
+      }
+    }
+
+    const discoveredLinks: ReturnType<typeof extractCrossLanguageLinks> = [];
+    for (const item of docsToScan) {
+      try {
+        const found = extractCrossLanguageLinks({
+          uri: item.docUri,
+          language: item.docLang,
+          index: uIdx,
+          text: item.docText,
+          tree: item.docTree,
+        });
+        for (const link of found) {
+          if (!link.targetEntry) continue;
+          const srcNorm = normUri(link.sourceUri);
+          const tgtNorm = link.targetEntry.resourceId ? normUri(link.targetEntry.resourceId) : "";
+          if (srcNorm === targetNormUri || tgtNorm === targetNormUri) {
+            discoveredLinks.push(link);
+          }
+        }
+      } catch {
+        // Ignore link extraction failures on malformed/partial buffers
+      }
+    }
+
+    const computeLineCol = (srcText: string, offset: number): { line: number; column: number } => {
+      const safe = Math.max(0, Math.min(offset, srcText.length));
+      const before = srcText.slice(0, safe);
+      const nl = before.lastIndexOf("\n");
+      let line = 1;
+      for (let i = 0; i < safe; i++) {
+        if (srcText.charCodeAt(i) === 10) line++;
+      }
+      return { line, column: nl === -1 ? safe + 1 : safe - nl };
+    };
+
+    const touchedSlots = new Set<number>();
+    const retractedSlotsThisPass = new Set<number>();
+    const ownedMetaKeys: Array<{ slot: number; metaKey: string }> = [];
+    const slotVarNames = new Map<number, string[]>();
+
+    const retractSlotOnce = (slot: number): void => {
+      if (!retractedSlotsThisPass.has(slot)) {
+        this.retractSlotCoordinatorLiterals(slot);
+        retractedSlotsThisPass.add(slot);
+      }
+    };
+
+    const assertSlotLiteral = (slot: number, lit: Omit<TheoryLiteral, "id"> & { id?: number | undefined }): void => {
+      if (typeof this.coordinator?.assertLiteral !== "function") return;
+      retractSlotOnce(slot);
+      const litId = this.coordinator.assertLiteral(lit);
+      const list = this.autoCoordinatorLiteralsBySlot.get(slot) ?? [];
+      list.push(litId);
+      this.autoCoordinatorLiteralsBySlot.set(slot, list);
+    };
+
+    for (const link of discoveredLinks) {
+      const srcEntry = uIdx.symbols.get(link.sourceSymbolId);
+      const tgtEntry = link.targetEntry;
+      if (!srcEntry || !tgtEntry) continue;
+      // Ignore pure package-level wildcard imports unless target is a concrete type/model
+      if (link.relationKind === "import" && !isTypeLikeSymbol(tgtEntry)) continue;
+
+      const srcLang = link.sourceLang.toLowerCase();
+      const tgtLang = (tgtEntry.language ?? "").toLowerCase();
+      if (!tgtLang || tgtLang === srcLang) continue;
+
+      let srcDomain = this.mapLanguageToThreadDomain(srcLang);
+      let tgtDomain = this.mapLanguageToThreadDomain(tgtLang);
+      if (srcDomain === tgtDomain) {
+        tgtDomain = srcDomain === ThreadDomain.Software ? ThreadDomain.FMU : ThreadDomain.Software;
+      }
+
+      const stableSymbolPath = (entry: SymbolEntry): string => {
+        const parts: string[] = [];
+        let cur: SymbolEntry | undefined = entry;
+        const seen = new Set<number>();
+        while (cur && !seen.has(cur.id)) {
+          seen.add(cur.id);
+          if (cur.name) parts.unshift(cur.name);
+          cur = cur.parentId != null ? uIdx.symbols.get(cur.parentId) : undefined;
+        }
+        return parts.join(".") || entry.name;
+      };
+      const srcStableName = stableSymbolPath(srcEntry);
+      const tgtStableName = stableSymbolPath(tgtEntry);
+      const pairKey = [
+        `${srcLang}:${normUri(srcEntry.resourceId ?? link.sourceUri)}:${srcStableName}`,
+        `${tgtLang}:${normUri(tgtEntry.resourceId ?? "")}:${tgtStableName}`,
+      ]
+        .sort()
+        .join("|");
+      let hash = 2166136261;
+      for (let i = 0; i < pairKey.length; i++) {
+        hash ^= pairKey.charCodeAt(i);
+        hash = Math.imul(hash, 16777619) >>> 0;
+      }
+      const threadId = 100_000 + (hash % 800_000_000);
+
+      const srcText = normUri(link.sourceUri) === targetNormUri ? text : this.getDocTextForUri(link.sourceUri);
+      const tgtText =
+        tgtEntry.resourceId && normUri(tgtEntry.resourceId) === targetNormUri
+          ? text
+          : this.getDocTextForUri(tgtEntry.resourceId);
+
+      const srcProps: Record<string, unknown> = {
+        ...this.extractNumericScalarProperties(uIdx, srcEntry, srcText),
+        ...(link.properties ?? {}),
+      };
+      const tgtProps: Record<string, unknown> = {
+        ...this.extractNumericScalarProperties(uIdx, tgtEntry, tgtText),
+      };
+
+      const tgtPos = tgtEntry.resourceId ? computeLineCol(tgtText, tgtEntry.startOffset) : { line: 1, column: 1 };
+
+      const srcDomName = DOMAIN_INDEX_TO_NAME[srcDomain] ?? "unknown";
+      const tgtDomName = DOMAIN_INDEX_TO_NAME[tgtDomain] ?? "unknown";
+      const srcMetaKey = `${srcDomName}:${srcEntry.id}`;
+      const tgtMetaKey = `${tgtDomName}:${tgtEntry.id}`;
+
+      const slot = this.bindThreadSlot(threadId, srcDomain, srcEntry.id, {
+        name: srcEntry.name,
+        uri: link.sourceUri,
+        line: link.sourceLine,
+        column: link.sourceColumn,
+        length: srcEntry.name.length,
+        domain: srcLang,
+        properties: srcProps,
+        autoDiscovered: true,
+      });
+      this.bindThreadSlot(threadId, tgtDomain, tgtEntry.id, {
+        name: tgtEntry.name,
+        uri: tgtEntry.resourceId ?? "",
+        line: tgtPos.line,
+        column: tgtPos.column,
+        length: tgtEntry.name.length,
+        domain: tgtLang,
+        properties: tgtProps,
+        autoDiscovered: true,
+      });
+
+      this.autoSlotIds.add(slot);
+      touchedSlots.add(slot);
+      retractSlotOnce(slot);
+      if (normUri(link.sourceUri) === targetNormUri) {
+        ownedMetaKeys.push({ slot, metaKey: srcMetaKey });
+      }
+      if (tgtEntry.resourceId && normUri(tgtEntry.resourceId) === targetNormUri) {
+        ownedMetaKeys.push({ slot, metaKey: tgtMetaKey });
+      }
+
+      // Assert shared numeric parameter equalities + exact intervals into SemanticTheoryCoordinator
+      const canonicalKey = (k: string) => (k === "m" ? "mass" : k);
+      for (const [kA, vA] of Object.entries(srcProps)) {
+        if (typeof vA !== "number" || !Number.isFinite(vA)) continue;
+        const canonA = canonicalKey(kA);
+        const matchB = Object.entries(tgtProps).find(([kB]) => canonicalKey(kB) === canonA);
+        if (matchB && typeof matchB[1] === "number" && Number.isFinite(matchB[1])) {
+          const vB = matchB[1];
+          const varA = `${threadId}.${srcLang}.${srcEntry.name}.${canonA}`;
+          const varB = `${threadId}.${tgtLang}.${tgtEntry.name}.${canonA}`;
+          const vars = slotVarNames.get(slot) ?? [];
+          vars.push(varA, varB, canonA, srcEntry.name, tgtEntry.name);
+          slotVarNames.set(slot, vars);
+          if (typeof this.coordinator?.assertLiteral === "function") {
+            assertSlotLiteral(slot, {
+              predicate: "interval",
+              args: [varA, vA, vA],
+              domain: "continuous_safety",
+              sourceContext: { slot, uri: link.sourceUri, name: `${srcEntry.name}.${kA}`, value: vA },
+            });
+            assertSlotLiteral(slot, {
+              predicate: "interval",
+              args: [varB, vB, vB],
+              domain: "continuous_safety",
+              sourceContext: { slot, uri: tgtEntry.resourceId, name: `${tgtEntry.name}.${matchB[0]}`, value: vB },
+            });
+            assertSlotLiteral(slot, {
+              predicate: "equal",
+              args: [varA, varB],
+              domain: "continuous_safety",
+              sourceContext: { slot, key: canonA },
+            });
+          }
+        }
+      }
+    }
+
+    // Bind formal SysML v2 requirement constraints against discovered thread variables
+    for (const item of docsToScan) {
+      if (item.docLang !== "sysml2" && item.docLang !== "sysml") continue;
+      let reqs: ReturnType<typeof parseSysmlRequirements> = [];
+      try {
+        reqs = parseSysmlRequirements(item.docText, item.docTree?.rootNode ?? null);
+      } catch {
+        reqs = [];
+      }
+      if (reqs.length === 0) continue;
+
+      for (const req of reqs) {
+        const canonAttr = req.targetAttribute === "m" ? "mass" : req.targetAttribute;
+        for (const slot of touchedSlots) {
+          const elems = this.findAlignedElementsBySlot(slot);
+          const rec = this.hypergraph.getRecord(slot);
+          const matchesSubject = (() => {
+            if (!req.subjectName) return true;
+            const subjLower = req.subjectName.toLowerCase();
+            if (
+              elems.some((el) => el.name.toLowerCase() === subjLower || el.name.toLowerCase().endsWith(`.${subjLower}`))
+            ) {
+              return true;
+            }
+            if (rec?.domainNodes) {
+              for (const nodeId of Object.values(rec.domainNodes)) {
+                let cur = uIdx.symbols.get(nodeId);
+                const seen = new Set<number>();
+                while (cur && !seen.has(cur.id)) {
+                  seen.add(cur.id);
+                  if (cur.name.toLowerCase() === subjLower) return true;
+                  cur = cur.parentId != null ? uIdx.symbols.get(cur.parentId) : undefined;
+                }
+              }
+            }
+            return false;
+          })();
+          if (!matchesSubject) continue;
+
+          for (const el of elems) {
+            const props = el.properties ?? {};
+            const matchedVal =
+              typeof props[req.targetAttribute] === "number"
+                ? props[req.targetAttribute]
+                : typeof props[canonAttr] === "number"
+                  ? props[canonAttr]
+                  : undefined;
+            if (
+              typeof matchedVal === "number" &&
+              Number.isFinite(matchedVal) &&
+              typeof this.coordinator?.assertLiteral === "function"
+            ) {
+              const reqVar = `req.${req.id}.${canonAttr}`;
+              const elVar = `${slot}.${el.domain}.${el.name}.${canonAttr}`;
+              const vars = slotVarNames.get(slot) ?? [];
+              vars.push(reqVar, elVar, req.id, el.name, req.targetAttribute);
+              slotVarNames.set(slot, vars);
+              assertSlotLiteral(slot, {
+                predicate: "bound",
+                args: [reqVar, req.operator, req.limitValue],
+                domain: "continuous_safety",
+                sourceContext: { slot, uri: item.docUri, requirementId: req.id, limitValue: req.limitValue },
+              });
+              assertSlotLiteral(slot, {
+                predicate: "interval",
+                args: [elVar, matchedVal, matchedVal],
+                domain: "continuous_safety",
+                sourceContext: { slot, uri: el.uri, name: el.name, value: matchedVal },
+              });
+              assertSlotLiteral(slot, {
+                predicate: "equal",
+                args: [reqVar, elVar],
+                domain: "continuous_safety",
+                sourceContext: { slot, requirementId: req.id },
+              });
+            }
+          }
+        }
+      }
+    }
+
+    if (touchedSlots.size > 0) {
+      this.autoSlotsByUri.set(targetNormUri, new Set(touchedSlots));
+    }
+    if (ownedMetaKeys.length > 0) {
+      this.autoThreadKeysByUri.set(targetNormUri, ownedMetaKeys);
+    }
+
+    if (touchedSlots.size > 0 && typeof this.coordinator?.checkSat === "function") {
+      try {
+        const sat = this.coordinator.checkSat();
+        for (const slot of touchedSlots) {
+          if (typeof this.hypergraph?.clearTheoryConflict === "function") {
+            this.hypergraph.clearTheoryConflict(slot);
+          }
+        }
+        if (!sat.isSat && sat.conflict) {
+          const culprits = (sat.conflict.culpritEntities ?? []).map((c) => c.toLowerCase());
+          const explanationLower = (sat.conflict.explanation ?? "").toLowerCase();
+          for (const slot of touchedSlots) {
+            const slotVars = (slotVarNames.get(slot) ?? []).map((v) => v.toLowerCase());
+            const matchesSlot =
+              culprits.some((c) => slotVars.some((sv) => sv === c || sv.includes(c) || c.includes(sv))) ||
+              slotVars.some((sv) => explanationLower.includes(sv));
+            if (matchesSlot && typeof this.hypergraph?.recordTheoryConflict === "function") {
+              this.hypergraph.recordTheoryConflict(slot, sat.conflict);
+            }
+          }
+        }
+      } catch {
+        // Non-fatal: partial theory states must not crash validation
+      }
+    }
+
+    return Array.from(touchedSlots);
   }
 }

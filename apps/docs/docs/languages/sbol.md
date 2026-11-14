@@ -94,3 +94,9 @@ lowerSbolToDae(model, builder);
 const sbmlXml = sbolToSbml(model);
 const modelicaCode = sbolToModelica(model);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="sbol" />

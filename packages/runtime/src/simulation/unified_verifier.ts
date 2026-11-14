@@ -137,6 +137,26 @@ export interface UnifiedVerificationReport {
   };
   stages: Record<string, VerificationStageResult>;
   artifacts?: Record<string, string> | undefined;
+  polyglotDigitalThread?:
+    | {
+        mode?: "generic" | "scenario" | undefined;
+        scenarioId: string;
+        scenarioTitle: string;
+        status: string;
+        isSat: boolean;
+        fileCount?: number | undefined;
+        domains?: string[] | undefined;
+        summaryText: string;
+        artifacts?: unknown[] | undefined;
+        hypergraphNodes: unknown[];
+        variableLinks: unknown[];
+        portBindings: unknown[];
+        evaluatedEquations?: unknown[] | undefined;
+        suggestedEdits?: unknown[] | undefined;
+        updatedCodes?: string[] | undefined;
+        conflicts: unknown[];
+      }
+    | undefined;
 }
 
 /**
@@ -1317,7 +1337,8 @@ export class UnifiedVerifier {
       let text = ctx.sourceText || "";
       if (!/\balgorithm\b/.test(text) && ctx.paths && ctx.paths.length > 0) {
         try {
-          const fs = await import("node:fs");
+          const fsId = "node:fs";
+          const fs = await import(fsId);
           for (const p of ctx.paths) {
             if (p.endsWith(".mo") && fs.existsSync(p)) {
               text += "\n" + fs.readFileSync(p, "utf-8");
@@ -1734,5 +1755,124 @@ export class UnifiedVerifier {
     }
 
     return lines.join("\n");
+  }
+
+  /**
+   * Attaches a polyglot digital thread evaluation result to a `UnifiedVerificationReport`,
+   * creating a first-class `stages["polyglot_digital_thread"]` entry so all report formatters
+   * (Terminal, SARIF, HTML, CTRF, JUnit, DHF) include cross-language violations and status.
+   */
+  public static attachPolyglotDigitalThread(
+    report: UnifiedVerificationReport,
+    threadRes: NonNullable<UnifiedVerificationReport["polyglotDigitalThread"]> & {
+      elapsedMs?: number | undefined;
+      paneDiagnostics?:
+        | Array<
+            Array<{
+              startLine?: number | undefined;
+              startCol?: number | undefined;
+              endLine?: number | undefined;
+              endCol?: number | undefined;
+              severity?: string | undefined;
+              code?: string | undefined;
+              message: string;
+            }>
+          >
+        | undefined;
+      artifacts?:
+        | Array<{
+            fileName?: string | undefined;
+            uri?: string | undefined;
+            diagnostics?:
+              | Array<{
+                  startLine?: number | undefined;
+                  startCol?: number | undefined;
+                  endLine?: number | undefined;
+                  endCol?: number | undefined;
+                  severity?: string | undefined;
+                  code?: string | undefined;
+                  message: string;
+                }>
+              | undefined;
+          }>
+        | undefined;
+      conflicts?:
+        | Array<{
+            explanation?: string | undefined;
+            culpritEntities?: string[] | undefined;
+            theoryName?: string | undefined;
+          }>
+        | undefined;
+    },
+  ): UnifiedVerificationReport {
+    report.polyglotDigitalThread = threadRes;
+    const stageKey = "polyglot_digital_thread";
+    const violations: VerificationViolation[] = [];
+
+    if (Array.isArray(threadRes.artifacts)) {
+      for (const art of threadRes.artifacts) {
+        const uri = art.uri || art.fileName;
+        for (const d of art.diagnostics ?? []) {
+          violations.push({
+            id: d.code ?? "POLYGLOT_DIGITAL_THREAD",
+            message: d.message,
+            severity: d.severity === "warning" ? "warning" : d.severity === "info" ? "note" : "error",
+            stage: stageKey,
+            location: {
+              uri,
+              line: d.startLine ?? 1,
+              column: d.startCol ?? 1,
+              endLine: d.endLine ?? d.startLine ?? 1,
+              endColumn: d.endCol ?? d.startCol ?? 1,
+            },
+          });
+        }
+      }
+    }
+
+    if (violations.length === 0 && !threadRes.isSat && Array.isArray(threadRes.conflicts)) {
+      for (const c of threadRes.conflicts) {
+        violations.push({
+          id: c.theoryName ?? "POLYGLOT_THEORY_CONFLICT",
+          message: c.explanation || threadRes.summaryText,
+          severity: "error",
+          stage: stageKey,
+          location: report.target ? { uri: report.target, line: 1, column: 1 } : undefined,
+        });
+      }
+    }
+
+    const hadStage = Boolean(report.stages[stageKey]);
+    report.stages[stageKey] = {
+      stage: stageKey,
+      name: "Polyglot Digital Thread & Nelson-Oppen Coordinator",
+      passed: threadRes.isSat,
+      certified: threadRes.isSat,
+      durationMs: threadRes.elapsedMs ?? 0,
+      summary: threadRes.summaryText,
+      violations,
+      details: {
+        scenarioId: threadRes.scenarioId,
+        scenarioTitle: threadRes.scenarioTitle,
+        domains: threadRes.domains,
+        fileCount: threadRes.fileCount,
+      },
+    };
+
+    if (!hadStage) {
+      report.summary.totalStages += 1;
+      if (threadRes.isSat) {
+        report.summary.passedStages += 1;
+        report.summary.certifiedStages += 1;
+      } else {
+        report.summary.failedStages += 1;
+      }
+    }
+    report.summary.totalViolations += violations.length;
+    if (!threadRes.isSat) {
+      report.summary.overallPassed = false;
+    }
+
+    return report;
   }
 }

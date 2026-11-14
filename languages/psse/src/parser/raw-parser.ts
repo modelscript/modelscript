@@ -175,6 +175,7 @@ export function parseRaw(text: string): PsseCase {
   function resolveSectionFromComment(commentLine: string, currentSec: number): number {
     const upper = commentLine.toUpperCase();
     if (/^Q(?:\s*,|\s*\/|\s*$)/i.test(commentLine.trim())) return 99;
+    if (upper.includes("BEGIN BUS")) return 0;
     if (upper.includes("BEGIN LOAD")) return 1;
     if (upper.includes("BEGIN FIXED SHUNT")) return 2;
     if (upper.includes("BEGIN GENERATOR")) return 3;
@@ -287,6 +288,8 @@ export function parseRaw(text: string): PsseCase {
         // Generator Data
         const busNum = parseNum(toks[0], 0);
         if (busNum > 0) {
+          // PSS/E v35 inserts NREG (regulated node) at toks[8] before MBASE
+          const off = header.rev >= 35 && toks.length >= 20 ? 1 : 0;
           generators.push({
             i: busNum,
             id: parseStr(toks[1], "1"),
@@ -296,18 +299,18 @@ export function parseRaw(text: string): PsseCase {
             qb: parseNum(toks[5], -9999.0),
             vs: parseNum(toks[6], 1.0),
             ireg: parseNum(toks[7], 0),
-            mbase: parseNum(toks[8], header.sbase),
-            zr: parseNum(toks[9], 0.0),
-            zx: parseNum(toks[10], 1.0),
-            rt: parseNum(toks[11], 0.0),
-            xt: parseNum(toks[12], 0.0),
-            gtap: parseNum(toks[13], 1.0),
-            stat: parseNum(toks[14], 1),
-            rmpct: parseNum(toks[15], 100.0),
-            pt: parseNum(toks[16], 9999.0),
-            pb: parseNum(toks[17], -9999.0),
-            o1: toks[18] !== undefined ? parseNum(toks[18], 1) : undefined,
-            f1: toks[19] !== undefined ? parseNum(toks[19], 1.0) : undefined,
+            mbase: parseNum(toks[8 + off], header.sbase),
+            zr: parseNum(toks[9 + off], 0.0),
+            zx: parseNum(toks[10 + off], 1.0),
+            rt: parseNum(toks[11 + off], 0.0),
+            xt: parseNum(toks[12 + off], 0.0),
+            gtap: parseNum(toks[13 + off], 1.0),
+            stat: parseNum(toks[14 + off], 1),
+            rmpct: parseNum(toks[15 + off], 100.0),
+            pt: parseNum(toks[16 + off], 9999.0),
+            pb: parseNum(toks[17 + off], -9999.0),
+            o1: toks[18 + off] !== undefined ? parseNum(toks[18 + off], 1) : undefined,
+            f1: toks[19 + off] !== undefined ? parseNum(toks[19 + off], 1.0) : undefined,
             span,
           });
         }
@@ -319,6 +322,10 @@ export function parseRaw(text: string): PsseCase {
         const fromBus = parseNum(toks[0], 0);
         const toBus = parseNum(toks[1], 0);
         if (fromBus > 0 && toBus !== 0) {
+          // PSS/E v35 inserts NAME at toks[6] and uses 12 RATE columns (toks[7..18]) before GI..BJ & STAT
+          const isFullV35 = header.rev >= 35 && toks.length >= 26;
+          const rateOff = isFullV35 ? 1 : 0;
+          const off = isFullV35 ? 10 : 0;
           branches.push({
             i: fromBus,
             j: toBus,
@@ -326,18 +333,18 @@ export function parseRaw(text: string): PsseCase {
             r: parseNum(toks[3], 0.0),
             x: parseNum(toks[4], 0.0001),
             b: parseNum(toks[5], 0.0),
-            rateA: parseNum(toks[6], 0.0),
-            rateB: parseNum(toks[7], 0.0),
-            rateC: parseNum(toks[8], 0.0),
-            gi: parseNum(toks[9], 0.0),
-            bi: parseNum(toks[10], 0.0),
-            gj: parseNum(toks[11], 0.0),
-            bj: parseNum(toks[12], 0.0),
-            st: parseNum(toks[13], 1),
-            met: parseNum(toks[14], 1),
-            len: parseNum(toks[15], 0.0),
-            o1: toks[16] !== undefined ? parseNum(toks[16], 1) : undefined,
-            f1: toks[17] !== undefined ? parseNum(toks[17], 1.0) : undefined,
+            rateA: parseNum(toks[6 + rateOff], 0.0),
+            rateB: parseNum(toks[7 + rateOff], 0.0),
+            rateC: parseNum(toks[8 + rateOff], 0.0),
+            gi: parseNum(toks[9 + off], 0.0),
+            bi: parseNum(toks[10 + off], 0.0),
+            gj: parseNum(toks[11 + off], 0.0),
+            bj: parseNum(toks[12 + off], 0.0),
+            st: parseNum(toks[13 + off], 1),
+            met: parseNum(toks[14 + off], 1),
+            len: parseNum(toks[15 + off], 0.0),
+            o1: toks[16 + off] !== undefined ? parseNum(toks[16 + off], 1) : undefined,
+            f1: toks[17 + off] !== undefined ? parseNum(toks[17 + off], 1.0) : undefined,
             span,
           });
         }

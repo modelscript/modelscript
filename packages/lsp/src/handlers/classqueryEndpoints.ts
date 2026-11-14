@@ -4,6 +4,7 @@ import type { Context } from "@modelscript/modelica";
 import { computeComponentInsert } from "@modelscript/modelica/diagram";
 import type { ClassHierarchyNode, ComponentTreeNode, TreeNodeInfo } from "@modelscript/runtime";
 import { printArenaDAE } from "@modelscript/runtime/dae-printer";
+import { computeModelicaComponentDropEdits, resolveCrossLanguageComponentDrop } from "../cross-language-drop.js";
 import { LspContext } from "../lsp-context.js";
 import { isClassInstance } from "../utils/ast-utils.js";
 import {
@@ -620,7 +621,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
       const cleanClassName = rawClass.replace(/^__LIB__:[^/]+\//, "").replace(/^__LIB__:/, "");
 
       // SysML2 — dispatch handles element insert + layout storage
-      if (params.uri.endsWith(".sysml")) {
+      if (params.uri.endsWith(".sysml") || params.uri.endsWith(".sysml2")) {
         const result = await context.diagramService.getDiagramDispatch().applyEdits({
           uri: params.uri,
           seq: 0,
@@ -647,14 +648,18 @@ export function registerClassQueryEndpoints(context: LspContext) {
       void docContext;
 
       try {
-        // Get base name from defaultComponentName annotation or class name
-        const shortName = cleanClassName.split(".").pop() || "component";
+        const docText = doc.getText();
+        const unifiedIndex = context.workspaceManager.unifiedWorkspace?.getIndex?.({ eager: true }) ?? null;
+        const resolved = resolveCrossLanguageComponentDrop(unifiedIndex, cleanClassName, "modelica", docText);
+
+        // Get base name from defaultComponentName annotation or resolved class name
+        const shortName = resolved.baseName || resolved.className.split(".").pop() || "component";
         let baseName = shortName.toLowerCase();
         try {
           let droppedClass: any = null;
           if (context.workspaceManager.globalModelicaQueryEngine) {
             const db = context.workspaceManager.globalModelicaQueryEngine.toQueryDB();
-            const parts = cleanClassName.split(".");
+            const parts = resolved.className.split(".");
             let currentId: any = null;
             for (const part of parts) {
               const resolver = db.query<any>("resolveSimpleName", currentId);
@@ -689,7 +694,17 @@ export function registerClassQueryEndpoints(context: LspContext) {
           i++;
         }
 
-        return computeComponentInsert(classInstance, cleanClassName, name, params.x, params.y, doc.getText());
+        return computeModelicaComponentDropEdits({
+          docText,
+          uri: params.uri,
+          rawClassName: cleanClassName,
+          x: params.x,
+          y: params.y,
+          classInstance,
+          computeComponentInsert,
+          unifiedIndex,
+          instanceName: name,
+        });
       } catch (e) {
         console.error("[diagram] addComponent error:", e);
         return [];

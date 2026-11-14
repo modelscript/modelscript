@@ -58,12 +58,14 @@ export async function compileDslToWasm(
   const monarch = monarchFile ? JSON.parse(monarchFile.content) : null;
   const textmate = tmFile ? JSON.parse(tmFile.content) : null;
 
-  // 3. Compile AssemblyScript to WASM in-memory
+  // 3. Compile AssemblyScript to WASM in-memory (opaque import so browser bundlers do not inline asc/binaryen)
   let ascModule: any = null;
+  const ascMainPkg = ["assemblyscript", "asc"].join("/");
+  const ascDistPkg = ["assemblyscript", "dist", "asc.js"].join("/");
   try {
-    ascModule = await import("assemblyscript/asc");
+    ascModule = await import(/* @vite-ignore */ ascMainPkg);
   } catch {
-    ascModule = await import("assemblyscript/dist/asc.js");
+    ascModule = await import(/* @vite-ignore */ ascDistPkg);
   }
   const asc = ascModule?.default ?? ascModule;
 

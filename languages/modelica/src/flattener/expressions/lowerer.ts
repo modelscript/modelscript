@@ -73,6 +73,7 @@ import {
   evalArithmeticText,
   evaluateCSTNumber,
   evaluateEnumRange,
+  expandDottedArrayMemberRef,
   expandVarToArrayCtor,
   extractEnumLiteralsFromCst,
   flattenColonNodes,
@@ -2268,6 +2269,19 @@ function lowerPreBinaryCSTExpression(
                 const dims = getExprDims(aid, dae, db);
                 if (dims && dims.length > 0) isArray = true;
               }
+              if (
+                !isArray &&
+                expandDottedArrayMemberRef(
+                  vName,
+                  prefix ?? "",
+                  dae,
+                  db ?? flattener?.db,
+                  flattener?.currentClassId,
+                  flattener?.currentRootClassId,
+                ).isArray
+              ) {
+                isArray = true;
+              }
               if (!isArray && db) {
                 const simpleName = vName.includes(".") ? vName.split(".").pop()! : vName;
                 const candidates = db.byName(simpleName);
@@ -3819,6 +3833,16 @@ function lowerPreBinaryCSTExpression(
             if (dae.hasArrayElements(vName)) {
               const ctor = expandVarToArrayCtor(vName, dae);
               if (ctor !== null) arrArg = ctor;
+            } else {
+              const expanded = expandDottedArrayMemberRef(
+                vName,
+                prefix ?? "",
+                dae,
+                db ?? flattener?.db,
+                flattener?.currentClassId,
+                flattener?.currentRootClassId,
+              );
+              if (expanded.ctorId !== null) arrArg = expanded.ctorId;
             }
           }
         }

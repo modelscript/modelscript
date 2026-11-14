@@ -93,3 +93,9 @@ On [Ansatz](https://ansatz.social), `.urdf`, `.sdf`, and `.xacro` artifacts rend
 ## Robotics Linters & Diagnostic Rules
 
 <LintRules lang="urdf" />
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="urdf" />

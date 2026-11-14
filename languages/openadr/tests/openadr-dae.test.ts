@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { ExprKind } from "@modelscript/runtime";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { lowerOpenAdrToDae } from "../src/dae/openadr-to-dae.js";
@@ -18,14 +19,17 @@ event "DR_EVENT_1" {
 `;
 
 describe("OpenADR DAE Lowering", () => {
-  it("compiles demand response limit into DAE arena parameters and variables", () => {
+  it("compiles demand response limit and ramp dynamics into square DAE arena", () => {
     const deck = parseOpenAdr(DAE_TEST_DECK);
     const arena = lowerOpenAdrToDae(deck);
 
-    // Should create 2 variables: P_curtail_limit (Parameter), P_target_demand (Continuous)
-    assert.strictEqual(arena.getVarCount(), 2);
+    // 5 variables: P_curtail_limit, P_baseline, tau_ramp (Parameter) + P_target_demand, E_shed_kWh (Continuous states)
+    assert.strictEqual(arena.getVarCount(), 5);
+    assert.strictEqual(arena.getEqCount(), 5);
 
-    // 2 equations: P_curtail_limit = 120.0, P_target_demand = P_curtail_limit
-    assert.strictEqual(arena.getEqCount(), 2);
+    const derEqCount = Array.from({ length: arena.getEqCount() }, (_, i) =>
+      arena.getExprKind(arena.getEqLhs(i)),
+    ).filter((k) => k === ExprKind.Der).length;
+    assert.strictEqual(derEqCount, 2, "Expected differential equations for P_target_demand and E_shed_kWh");
   });
 });

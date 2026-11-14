@@ -8,14 +8,12 @@
  */
 
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   calculateBartzHeatTransfer,
   evaluateCombustionCEA,
   evaluateNozzlePerformance,
-  lowerRocetsToDae,
   parseRocetsDeck,
   rocetsToDae,
   simulateRocetsTransient,
@@ -122,6 +120,39 @@ export function runRocetsBenchmark(deckText = SSME_BENCHMARK_DECK): RocetsBenchm
     isSquare: nVars === nEqs,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const rocetsBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "rocets",
+  referenceTool: "NASA ROCETS / CEA SSME Power Balance",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const r = runRocetsBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "nasa-ssme-staged-combustion",
+        name: "nasa-ssme-staged-combustion",
+        scale: "standard",
+        referenceTool: "NASA ROCETS / CEA SSME Power Balance",
+        passed:
+          r.converged &&
+          r.daeVariablesCount > 0 &&
+          r.daeEquationsCount > 0 &&
+          r.ispVacSec > 370 &&
+          r.transientFinalThrustN > 800000,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: r.daeEquationsCount,
+        threshold: 0,
+        details: `Isp=${r.ispVacSec.toFixed(1)}s, F_vac=${(r.thrustVacN / 1e6).toFixed(2)}MN, ${r.daeVariablesCount}x${r.daeEquationsCount} DAE`,
+      },
+    ];
+  },
+};
 
 if (process.argv[1] && process.argv[1].endsWith("rocets-benchmark-runner.ts")) {
   console.log("=== NASA ROCETS Liquid Propulsion Benchmark ===");

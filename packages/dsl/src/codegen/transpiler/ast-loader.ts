@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import * as fs from "fs";
-import * as path from "path";
+import type * as fsType from "node:fs";
+import type * as pathType from "node:path";
 import * as ts from "typescript";
 
 export interface ExtractedLanguageAST {
@@ -26,10 +26,18 @@ export interface ExtractedLanguageAST {
  * @returns Extracted AST mapping container or null if extraction fails
  */
 export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageAST | null {
+  const fs = (typeof process !== "undefined" ? (process as any).getBuiltinModule?.("node:fs") : undefined) as
+    | typeof fsType
+    | undefined;
+  const path = (typeof process !== "undefined" ? (process as any).getBuiltinModule?.("node:path") : undefined) as
+    | typeof pathType
+    | undefined;
   let sourceText = "";
   let filePath = "language.ts";
 
   if (
+    fs &&
+    path &&
     typeof sourcePathOrText === "string" &&
     (path.isAbsolute(sourcePathOrText) ||
       sourcePathOrText.startsWith("./") ||
@@ -117,6 +125,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
   });
 
   function getImportCandidates(moduleSpecifier: string): string[] {
+    if (!fs || !path) return [];
     const baseDir = filePath !== "language.ts" ? path.dirname(path.resolve(filePath)) : "";
     let targetPath = baseDir ? path.resolve(baseDir, moduleSpecifier) : moduleSpecifier;
     if (targetPath.endsWith(".js")) {
@@ -131,7 +140,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
       try {
         const candidates = getImportCandidates(imp.moduleSpecifier);
         for (const testPath of candidates) {
-          const normalized = path.resolve(testPath);
+          const normalized = path!.resolve(testPath);
           const normalizedSlash = normalized.replace(/\\/g, "/");
           if (
             normalizedSlash.includes("/packages/dsl/src/") ||
@@ -141,7 +150,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
           ) {
             continue;
           }
-          if (fs.existsSync(normalized)) {
+          if (fs!.existsSync(normalized)) {
             const subAst = extractLanguageAST(normalized);
             if (subAst) {
               if (subAst.constants.has(imp.importedName)) {
@@ -179,7 +188,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
       try {
         const candidates = getImportCandidates(imp.moduleSpecifier);
         for (const testPath of candidates) {
-          const normalized = path.resolve(testPath);
+          const normalized = path!.resolve(testPath);
           const normalizedSlash = normalized.replace(/\\/g, "/");
           if (
             normalizedSlash.includes("/packages/dsl/src/") ||
@@ -189,7 +198,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
           ) {
             continue;
           }
-          if (fs.existsSync(normalized)) {
+          if (fs!.existsSync(normalized)) {
             const subAst = extractLanguageAST(normalized);
             if (subAst) {
               const cls = subAst.classes.get(imp.importedName);
@@ -213,7 +222,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
       try {
         const candidates = getImportCandidates(imp.moduleSpecifier);
         for (const testPath of candidates) {
-          const normalized = path.resolve(testPath);
+          const normalized = path!.resolve(testPath);
           const normalizedSlash = normalized.replace(/\\/g, "/");
           if (
             normalizedSlash.includes("/packages/dsl/src/") ||
@@ -223,7 +232,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
           ) {
             continue;
           }
-          if (fs.existsSync(normalized)) {
+          if (fs!.existsSync(normalized)) {
             const subAst = extractLanguageAST(normalized);
             if (subAst) {
               const fn = subAst.functions.get(imp.importedName);
@@ -245,7 +254,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
       try {
         const candidates = getImportCandidates(imp.moduleSpecifier);
         for (const testPath of candidates) {
-          const normalized = path.resolve(testPath);
+          const normalized = path!.resolve(testPath);
           const normalizedSlash = normalized.replace(/\\/g, "/");
           if (
             normalizedSlash.includes("/packages/dsl/src/") ||
@@ -255,7 +264,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
           ) {
             continue;
           }
-          if (fs.existsSync(normalized)) {
+          if (fs!.existsSync(normalized)) {
             const subAst = extractLanguageAST(normalized);
             if (subAst) {
               for (const [k, v] of subAst.constants) {

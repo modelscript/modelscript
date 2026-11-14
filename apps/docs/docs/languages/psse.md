@@ -200,3 +200,8 @@ Opening any `.raw` file in the ModelScript IDE or VS Code launches the custom du
 - **Overload & Violation Badges**: Automatic highlight of under-voltage ($V < 0.95\text{ pu}$), over-voltage ($V > 1.05\text{ pu}$), and thermal line overloads ($S_{ij} > \text{Rate A}$).
 - **Export Toolbar**: Export to SVG diagrams, Modelica `.mo` packages, and PSCAD/EMT netlists.
 
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="psse" />

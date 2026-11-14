@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import React, { useMemo, useState } from "react";
+import { InspectorTabs } from "./InspectorTabs.js";
 
 export interface TransitCockpitInspectorProps {
   code: string;
@@ -38,7 +39,7 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
 
   const isDark = colorMode === "dark";
   const borderCol = "var(--color-border-default, rgba(148, 163, 184, 0.18))";
-  const cardBg = "var(--color-bg-card, rgba(22, 27, 34, 0.6))";
+  const cardBg = "var(--bgColor-muted, var(--ms-bg-elv))";
   const textPrimary = "var(--color-fg-default, #c9d1d9)";
   const textMuted = "var(--color-fg-muted, #8b949e)";
 
@@ -152,7 +153,7 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
         }}
       >
         <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: "#58a6ff" }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "var(--fgColor-accent, var(--ms-brand))" }}>
             Transit Electrification & Fleet Charging Cockpit
           </div>
           <div style={{ fontSize: 12, color: textMuted }}>
@@ -160,38 +161,16 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
           </div>
         </div>
 
-        <div
-          style={{
-            display: "inline-flex",
-            borderRadius: 6,
-            border: `1px solid ${borderCol}`,
-            overflow: "hidden",
-            backgroundColor: isDark ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.8)",
-          }}
-        >
-          {[
+        <InspectorTabs
+          ariaLabel="Transit cockpit views"
+          value={subTab}
+          onChange={(id) => setSubTab(id as any)}
+          tabs={[
             { id: "marey", label: `Marey Stringline (${trips.length} Trips)` },
             { id: "charging", label: "Depot Grid & Load Profile" },
             { id: "fleet", label: "Battery SOC Schedule" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setSubTab(tab.id as any)}
-              style={{
-                padding: "5px 12px",
-                fontSize: 12,
-                fontWeight: 600,
-                border: "none",
-                cursor: "pointer",
-                backgroundColor: subTab === tab.id ? "var(--color-accent-fg, #1f6feb)" : "transparent",
-                color: subTab === tab.id ? "#ffffff" : textMuted,
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+          ]}
+        />
       </div>
 
       {/* KPI Ribbon */}
@@ -206,7 +185,14 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
           style={{ padding: "8px 12px", borderRadius: 6, backgroundColor: cardBg, border: `1px solid ${borderCol}` }}
         >
           <div style={{ fontSize: 11, color: textMuted }}>Total Fleet Energy</div>
-          <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "monospace", color: "#58a6ff" }}>
+          <div
+            style={{
+              fontSize: 16,
+              fontWeight: 700,
+              fontFamily: "monospace",
+              color: "var(--fgColor-accent, var(--ms-brand))",
+            }}
+          >
             {totalDailyKwh.toFixed(1)} kWh
           </div>
         </div>
@@ -317,11 +303,11 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
                     y1={y1}
                     x2={x2}
                     y2={y2}
-                    stroke={isSelected ? "#f0883e" : "#58a6ff"}
+                    stroke={isSelected ? "#f0883e" : "var(--fgColor-accent, var(--ms-brand))"}
                     strokeWidth={isSelected ? 3 : 1.8}
                     opacity={isSelected ? 1.0 : 0.8}
                   />
-                  <circle cx={x1} cy={y1} r={3} fill="#58a6ff" />
+                  <circle cx={x1} cy={y1} r={3} fill="var(--fgColor-accent, var(--ms-brand))" />
                   <circle cx={x2} cy={y2} r={3} fill="#3fb950" />
                 </g>
               );
@@ -343,8 +329,15 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
                 1500 kW Capacity Limit
               </span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                <span style={{ width: 10, height: 10, backgroundColor: "#58a6ff", borderRadius: 2 }} /> Aggregated EVSE
-                Load
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    backgroundColor: "var(--fgColor-accent, var(--ms-brand))",
+                    borderRadius: 2,
+                  }}
+                />{" "}
+                Aggregated EVSE Load
               </span>
             </div>
           </div>
@@ -406,17 +399,20 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
                   style={{
                     borderBottom: `1px solid ${borderCol}`,
                     cursor: "pointer",
-                    backgroundColor:
-                      selectedTripId === t.id
-                        ? isDark
-                          ? "rgba(56, 139, 253, 0.15)"
-                          : "rgba(56, 139, 253, 0.1)"
-                        : "transparent",
+                    backgroundColor: selectedTripId === t.id ? "var(--ms-brand-soft)" : "transparent",
                   }}
                 >
                   <td style={{ padding: "8px 12px", fontFamily: "monospace", fontWeight: 600 }}>{t.id}</td>
                   <td style={{ padding: "8px 12px" }}>{t.routeId}</td>
-                  <td style={{ padding: "8px 12px", fontFamily: "monospace", color: "#58a6ff" }}>{t.vehicleId}</td>
+                  <td
+                    style={{
+                      padding: "8px 12px",
+                      fontFamily: "monospace",
+                      color: "var(--fgColor-accent, var(--ms-brand))",
+                    }}
+                  >
+                    {t.vehicleId}
+                  </td>
                   <td style={{ padding: "8px 12px", fontFamily: "monospace" }}>
                     {Math.floor(t.depTimeH)}:{String(Math.round((t.depTimeH % 1) * 60)).padStart(2, "0")} →{" "}
                     {Math.floor(t.arrTimeH)}:{String(Math.round((t.arrTimeH % 1) * 60)).padStart(2, "0")}

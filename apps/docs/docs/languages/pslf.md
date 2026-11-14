@@ -86,3 +86,9 @@ msx pslf to-psse wecc_case.epc --dyr=wecc_case.dyd --out=wecc_case.raw
 # Convert PSS/E (.raw / .dyr) to GE PSLF (.epc / .dyd)
 msx pslf from-psse wecc_case.raw --dyr=wecc_case.dyr --out=wecc_case.epc
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="pslf" />

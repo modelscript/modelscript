@@ -2,7 +2,12 @@
 
 import { computeSemanticDiff, type SemanticEdit } from "@modelscript/dsl";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
-import { DOMAIN_INDEX_TO_NAME } from "@modelscript/runtime";
+import {
+  DOMAIN_INDEX_TO_NAME,
+  type DiagramComponentSpec,
+  type LibrarySymbolStub,
+  type ModelscriptLibraryManifest,
+} from "@modelscript/runtime";
 import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import path from "node:path";
 import { TextDocument } from "vscode-languageserver-textdocument";
@@ -223,6 +228,18 @@ export function registerMiscEndpoints(context: LspContext) {
     });
     try {
       await ensureLibraryVersionMounted(params, loaderCtx, getServerDistBase(), true);
+      try {
+        const { globalLibraryRegistry } = await import("@modelscript/runtime");
+        const path = await import("node:path");
+        const nodeModulesRoot = path.resolve(process.cwd(), "node_modules");
+        const pkgDir = path.resolve(nodeModulesRoot, params.name);
+        const relPkg = path.relative(nodeModulesRoot, pkgDir);
+        if (relPkg && !relPkg.startsWith("..") && !path.isAbsolute(relPkg)) {
+          await globalLibraryRegistry.loadLibraryFromDir(pkgDir);
+        }
+      } catch {
+        // Non-Node or non-library package; ignore
+      }
       context.connection.console.info(`[lsp] Successfully loaded ${params.name}@${params.version}`);
 
       context.connection.sendNotification("modelscript/status", {
@@ -379,6 +396,29 @@ export function registerMiscEndpoints(context: LspContext) {
   // Request-based package lifecycle endpoints (awaited by Morsel & VS Code Package Hub)
   context.connection.onRequest("modelscript/installPackage", performInstallPackage);
   context.connection.onRequest("modelscript/uninstallPackage", performUninstallPackage);
+  context.connection.onRequest(
+    "modelscript/registerLibraryBundle",
+    async (params: {
+      pkgJson: { name: string; version?: string; modelscript: ModelscriptLibraryManifest };
+      symbols?: LibrarySymbolStub[] | undefined;
+      diagrams?: DiagramComponentSpec[] | undefined;
+      wasmBase64?: string | undefined;
+    }) => {
+      const { globalLibraryRegistry } = await import("@modelscript/runtime");
+      const wasmBytes = params.wasmBase64
+        ? Uint8Array.from(atob(String(params.wasmBase64)), (c) => c.charCodeAt(0))
+        : undefined;
+      const loaded = globalLibraryRegistry.registerLibraryBundle(params.pkgJson, {
+        symbols: params.symbols ?? [],
+        diagrams: params.diagrams,
+        wasmBytes,
+      });
+      for (const doc of context.documents.all()) {
+        context.validationService.validateTextDocument(doc);
+      }
+      return { ok: true, packageName: loaded.packageName, symbolCount: loaded.symbols.length };
+    },
+  );
   context.connection.onRequest("modelscript/importLibraryZipReq", performImportLibraryZip);
 
   // Backwards-compatible notification handlers

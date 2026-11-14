@@ -35,7 +35,7 @@ export const MeasurementHud: React.FC<MeasurementHudProps> = ({
         flexWrap: "wrap",
         gap: "8px",
         padding: "6px 12px",
-        background: "var(--color-canvas-subtle, #161b22)",
+        background: "var(--bgColor-muted, var(--ms-bg-elv))",
         border: "1px solid var(--color-accent-cyan, #06b6d4)",
         borderRadius: "6px",
         fontSize: "11px",

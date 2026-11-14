@@ -249,7 +249,7 @@ export function getMicroBadgeConfig(type: string): { icon: React.ReactNode; bg: 
     case "reply":
       return {
         icon: <ReplyIcon size={9} />,
-        bg: "var(--color-accent-emphasis, #0969da)",
+        bg: "var(--ms-accent, var(--color-accent-emphasis))",
         color: "var(--color-fg-on-emphasis, #ffffff)",
       };
     case "repost":
@@ -261,7 +261,7 @@ export function getMicroBadgeConfig(type: string): { icon: React.ReactNode; bg: 
     case "quote":
       return {
         icon: <QuoteIcon size={9} />,
-        bg: "var(--color-accent-emphasis, #0969da)",
+        bg: "var(--ms-accent, var(--color-accent-emphasis))",
         color: "var(--color-fg-on-emphasis, #ffffff)",
       };
     case "follow":
@@ -269,7 +269,7 @@ export function getMicroBadgeConfig(type: string): { icon: React.ReactNode; bg: 
     case "follow_accepted":
       return {
         icon: <PersonIcon size={9} />,
-        bg: "var(--color-accent-emphasis, #0969da)",
+        bg: "var(--ms-accent, var(--color-accent-emphasis))",
         color: "var(--color-fg-on-emphasis, #ffffff)",
       };
     case "bookmark":
@@ -297,7 +297,7 @@ export function getMicroBadgeConfig(type: string): { icon: React.ReactNode; bg: 
     case "package_published":
       return {
         icon: <PackageIcon size={9} />,
-        bg: "var(--color-accent-emphasis, #0969da)",
+        bg: "var(--ms-accent, var(--color-accent-emphasis))",
         color: "var(--color-fg-on-emphasis, #ffffff)",
       };
     case "package_yanked":

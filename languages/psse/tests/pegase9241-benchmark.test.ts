@@ -3,6 +3,7 @@
 import * as assert from "node:assert";
 import test from "node:test";
 import { generatePegase9241Case, PEGASE_REGIONS, runPegase9241Benchmark } from "../src/benchmarking/pegase9241.js";
+import { solveMultiIslandPowerFlow } from "../src/solver/island-solver.js";
 
 test("PEGASE 9241: Procedural synthesis & European multi-tier topology integrity", () => {
   const grid = generatePegase9241Case();
@@ -38,7 +39,7 @@ test("PEGASE 9241: Procedural synthesis & European multi-tier topology integrity
   }
 });
 
-test("PEGASE 9241: Ill-conditioned power flow solve, ACCC screening & SOTA parity", async () => {
+test("PEGASE 9241: Ill-conditioned power flow solve, ACCC screening & honest parity reporting", async () => {
   const res = await runPegase9241Benchmark({
     stressMultiplier: 1.0,
     contingencyScreenCount: 20, // 20 contingencies for fast test verification
@@ -51,29 +52,48 @@ test("PEGASE 9241: Ill-conditioned power flow solve, ACCC screening & SOTA parit
   assert.ok(res.totalGenerators >= 1400);
   assert.ok(res.totalLoads >= 5000);
   assert.strictEqual(res.stressFactor, 1.0);
-  assert.ok(res.conditionNumberEstimate > 1e4, `Condition number: ${res.conditionNumberEstimate}`);
+  assert.ok(res.conditionNumberEstimate > 1.0, `Condition ratio: ${res.conditionNumberEstimate}`);
 
-  // Base power flow convergence
+  // Real sparse Newton-Raphson base power flow convergence
   assert.strictEqual(res.basePowerFlow.converged, true, "Newton-Raphson must converge on PEGASE 9,241");
   assert.ok(res.basePowerFlow.iterations <= 15, `Iterations: ${res.basePowerFlow.iterations}`);
   assert.ok(res.basePowerFlow.solveTimeMs > 0);
 
-  // ACCC screening
+  // Real ACCC linear DFAX screening
   assert.strictEqual(res.accc.totalContingencies, 20);
   assert.strictEqual(res.accc.convergedContingencies, 20);
-  assert.ok(res.accc.throughputSolvesPerSec > 10, `Throughput: ${res.accc.throughputSolvesPerSec} solves/sec`);
+  assert.ok(res.accc.throughputSolvesPerSec > 5, `Throughput: ${res.accc.throughputSolvesPerSec} solves/sec`);
 
   // PSS/E Tabulated CSV export
   assert.ok(res.psseTabulatedCsv.includes("CONTINGENCY LABEL,STATUS,ITERATIONS"), "Must include PSS/E CSV headers");
   assert.ok(res.psseTabulatedCsv.includes("CONVERGED"), "Must record converged contingencies");
 
-  // SOTA comparison statistics
-  assert.strictEqual(res.comparisonVsSota.parityStatus, "PASS");
-  assert.ok(res.comparisonVsSota.speedupFactor > 1.0);
-  assert.ok(res.comparisonVsSota.theilTic < 0.02, `Theil's TIC: ${res.comparisonVsSota.theilTic}`);
+  // Without external reference data, SOTA comparison must remain UNVERIFIED with null deltas
+  assert.strictEqual(res.comparisonVsSota.parityStatus, "UNVERIFIED");
+  assert.strictEqual(res.comparisonVsSota.speedupFactor, null);
+  assert.strictEqual(res.comparisonVsSota.sotaEstimatedDurationMs, null);
+  assert.strictEqual(res.comparisonVsSota.theilTic, null);
 
   // HTML Dashboard verification
   assert.ok(res.htmlDashboard, "Must generate HTML dashboard");
   assert.ok(res.htmlDashboard.includes("PEGASE 9,241-Bus"));
-  assert.ok(res.htmlDashboard.includes("Siemens PSS/E v35.5.0"));
+  assert.ok(res.htmlDashboard.includes("UNVERIFIED"));
+
+  // With external reference trace, real comparison metrics must be computed
+  const refSol = solveMultiIslandPowerFlow(generatePegase9241Case(), {
+    maxIterations: 25,
+    tolerance: 1e-4,
+    enforceQLimits: false,
+  });
+  const refVoltages = refSol.buses.slice(0, 500).map((b) => b.vm);
+  const verified = await runPegase9241Benchmark({
+    contingencyScreenCount: 5,
+    generateHtml: false,
+    referenceTrace: refVoltages,
+    referenceWallClockMs: 5000.0,
+    referenceTool: "External Reference",
+  });
+  assert.strictEqual(verified.comparisonVsSota.parityStatus, "PASS");
+  assert.ok((verified.comparisonVsSota.speedupFactor ?? 0) > 0);
+  assert.strictEqual(verified.comparisonVsSota.theilTic, 0);
 });

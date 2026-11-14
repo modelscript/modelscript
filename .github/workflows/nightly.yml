@@ -85,7 +85,7 @@ jobs:
       - name: Run MSL Benchmarks Across All Stages
         run: |
           mkdir -p reports
-          npm run test:msl -- --report-html=reports/msl-benchmarks.html --report-json=reports/msl-benchmarks.json || true
+          npm run test:msl -- --report-html=reports/msl-benchmarks.html --report-json=reports/msl-benchmarks.json
       - name: Upload MSL Benchmark Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -145,7 +145,7 @@ jobs:
       - name: Run Library Conformance Benchmarks
         run: |
           mkdir -p reports
-          npm run test:lib -- --library=${{ matrix.library }} --stage=flatten --report-html=reports/${{ matrix.library }}-benchmarks.html --report-json=reports/${{ matrix.library }}-benchmarks.json || true
+          npm run test:lib -- --library=${{ matrix.library }} --stage=flatten --report-html=reports/${{ matrix.library }}-benchmarks.html --report-json=reports/${{ matrix.library }}-benchmarks.json
       - name: Upload Library Benchmark Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -189,4 +189,4 @@ jobs:
         with:
           node-version-file: ".nvmrc"
       - name: Run Audit
-        run: npm audit --omit=dev || true
+        run: npm audit --omit=dev

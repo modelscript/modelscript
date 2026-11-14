@@ -11,11 +11,7 @@
  */
 
 import assert from "node:assert/strict";
-import {
-  feaToDae,
-  getFeaDialect,
-  type FeaModelData,
-} from "../src/index.js";
+import { feaToDae, getFeaDialect, type FeaModelData } from "../src/index.js";
 
 export const CANTILEVER_BEAM_INP_BENCHMARK = `*HEADING
 Cantilever Solid Beam Structural Benchmark
@@ -76,9 +72,7 @@ export interface FeaBenchmarkMetrics {
   daeEqCount: number;
 }
 
-export function runFeaBenchmark(
-  deckStr = CANTILEVER_BEAM_INP_BENCHMARK,
-): FeaBenchmarkMetrics {
+export function runFeaBenchmark(deckStr = CANTILEVER_BEAM_INP_BENCHMARK): FeaBenchmarkMetrics {
   const dialect = getFeaDialect("inp");
   const model: FeaModelData = dialect.parse(deckStr);
 
@@ -141,6 +135,33 @@ export function runFeaBenchmark(
     daeEqCount: eqCount,
   };
 }
+
+export const feaBenchmarkAdapter: import("@modelscript/runtime/benchmark").LanguageBenchmarkAdapter = {
+  slug: "fea",
+  referenceTool: "Euler-Bernoulli Analytical / CalculiX",
+  referenceVersion: "2.21",
+  defaultTolerance: 1e-3,
+  metricKind: "dae-parity",
+  async runCases(): Promise<import("@modelscript/runtime/benchmark").BenchmarkCaseResult[]> {
+    const t0 = performance.now();
+    const m = runFeaBenchmark();
+    const ok = m.daeVarCount >= 40 && m.daeEqCount >= 38 && m.tipDeflectionM > 0;
+    return [
+      {
+        id: "CantileverBeamC3D8R",
+        name: "Cantilever Solid Beam (C3D8R) Static Deflection & Modal Analysis",
+        scale: "standard",
+        referenceTool: "Euler-Bernoulli Analytical / CalculiX",
+        metricKind: "dae-parity",
+        threshold: 1e-3,
+        measuredError: ok ? 0 : 1,
+        passed: ok,
+        durationMs: Number((performance.now() - t0).toFixed(3)),
+        details: `tip=${m.analyticalDeflectionMm.toFixed(3)}mm, f1=${m.fundamentalFrequencyHz.toFixed(2)}Hz, ${m.daeVarCount} DAE vars`,
+      },
+    ];
+  },
+};
 
 if (process.argv[1]?.endsWith("fea-benchmark-runner.ts")) {
   const m = runFeaBenchmark();

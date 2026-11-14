@@ -57,7 +57,9 @@ export function runOpticalBenchmark(): OpticalBenchmarkMetrics {
     name: "New York Hub",
     nodeType: "rdm",
     degrees: [{ degreeNumber: 1, maxWavelengths: 96 }],
-    srgs: [{ srgNumber: 1, maxAddDropWavelengths: 96, isColorless: true, isDirectionless: true, isContentionless: true }],
+    srgs: [
+      { srgNumber: 1, maxAddDropWavelengths: 96, isColorless: true, isDirectionless: true, isContentionless: true },
+    ],
     ports: [],
   };
 
@@ -66,7 +68,9 @@ export function runOpticalBenchmark(): OpticalBenchmarkMetrics {
     name: "Chicago Hub",
     nodeType: "rdm",
     degrees: [{ degreeNumber: 1, maxWavelengths: 96 }],
-    srgs: [{ srgNumber: 1, maxAddDropWavelengths: 96, isColorless: true, isDirectionless: true, isContentionless: true }],
+    srgs: [
+      { srgNumber: 1, maxAddDropWavelengths: 96, isColorless: true, isDirectionless: true, isContentionless: true },
+    ],
     ports: [],
   };
 
@@ -84,7 +88,7 @@ export function runOpticalBenchmark(): OpticalBenchmarkMetrics {
       toNodeId: i === numSpans ? "ROADM-WEST" : `ILA-${i}`,
       lengthKm: 100.0,
       fiberType: "SSMF",
-      attenuationDbPerKm: 0.20,
+      attenuationDbPerKm: 0.2,
       dispersionPsPerNmKm: 16.7,
       pmdPsPerSqrtKm: 0.04,
       nonLinearCoeffPerWKm: 1.3,
@@ -146,6 +150,34 @@ export function runOpticalBenchmark(): OpticalBenchmarkMetrics {
     edfaDaeEqCount: eqCount,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const opticalBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "optical",
+  referenceTool: "OpenROADM / GNPy 800G DWDM Transmission",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runOpticalBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "dwdm-800g-600km-gn-model",
+        name: "dwdm-800g-600km-gn-model",
+        scale: "standard",
+        referenceTool: "OpenROADM / GNPy 800G DWDM Transmission",
+        passed: m.osnrMarginDb > 0 && m.edfaDaeVarCount === 6 && m.edfaDaeEqCount === 5,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.edfaDaeEqCount,
+        threshold: 0,
+        details: `GSNR=${m.gsnrDb.toFixed(2)}dB, margin=${m.osnrMarginDb.toFixed(2)}dB, ${m.edfaDaeVarCount} vars/${m.edfaDaeEqCount} eqs`,
+      },
+    ];
+  },
+};
 
 if (process.argv[1]?.endsWith("optical-benchmark-runner.ts")) {
   const m = runOpticalBenchmark();

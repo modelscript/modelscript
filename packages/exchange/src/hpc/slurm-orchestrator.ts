@@ -194,12 +194,12 @@ echo "[HPC] Execution finished at $(date)."
 
     // Write scripts to case directory if accessible locally
     if (this.spec.caseDir) {
-      await fs.mkdir(path.join(this.spec.caseDir, "system"), { recursive: true }).catch(() => {});
-      await fs.writeFile(path.join(this.spec.caseDir, "system", "decomposeParDict"), decomposeDict).catch(() => {});
-      await fs.writeFile(path.join(this.spec.caseDir, "submit.sbatch"), sbatchScript).catch(() => {});
+      await fs.mkdir(path.join(this.spec.caseDir, "system"), { recursive: true });
+      await fs.writeFile(path.join(this.spec.caseDir, "system", "decomposeParDict"), decomposeDict);
+      await fs.writeFile(path.join(this.spec.caseDir, "submit.sbatch"), sbatchScript);
     }
 
-    // Try sbatch execution if available, otherwise transition to simulated cluster mode
+    // Try sbatch execution if available, otherwise transition to local simulation mode when sbatch is absent
     this.slurmJobId = await this.trySbatch(sbatchScript);
     this.jobStatus = "running";
     return {
@@ -209,18 +209,26 @@ echo "[HPC] Execution finished at $(date)."
   }
 
   private trySbatch(scriptContent: string): Promise<string> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const proc = spawn("sbatch", [], { stdio: ["pipe", "pipe", "pipe"] });
       let stdout = "";
+      let stderr = "";
 
       proc.stdout.on("data", (d) => {
         stdout += d.toString();
       });
+      proc.stderr.on("data", (d) => {
+        stderr += d.toString();
+      });
 
-      proc.on("error", () => {
-        // Slurm sbatch not installed on this local workstation; return synthetic cluster job ID
-        const syntheticId = `slurm_${Math.floor(100000 + Math.random() * 900000)}`;
-        resolve(syntheticId);
+      proc.on("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "ENOENT") {
+          // Slurm sbatch not installed on this local workstation; return synthetic local job ID
+          const syntheticId = `slurm_${Math.floor(100000 + Math.random() * 900000)}`;
+          resolve(syntheticId);
+          return;
+        }
+        reject(new Error(`Failed to spawn sbatch: ${err.message}`, { cause: err }));
       });
 
       proc.on("close", (code) => {
@@ -228,7 +236,9 @@ echo "[HPC] Execution finished at $(date)."
           const match = stdout.match(/Submitted batch job (\d+)/);
           resolve(match ? match[1]! : `slurm_${Date.now()}`);
         } else {
-          resolve(`slurm_${Math.floor(100000 + Math.random() * 900000)}`);
+          reject(
+            new Error(`sbatch exited with code ${code ?? -1}: ${stderr.trim() || stdout.trim() || "unknown error"}`),
+          );
         }
       });
 

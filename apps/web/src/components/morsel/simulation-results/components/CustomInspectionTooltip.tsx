@@ -42,13 +42,13 @@ export function CustomInspectionTooltip({
   return (
     <div
       style={{
-        backgroundColor: "var(--color-canvas-subtle, #161b22)",
-        border: "1px solid var(--color-border-default, #30363d)",
+        backgroundColor: "var(--bgColor-muted, var(--ms-bg-elv))",
+        border: "1px solid var(--borderColor-default, var(--ms-border))",
         borderRadius: "8px",
         padding: "8px 12px",
         boxShadow: "0 6px 18px rgba(0, 0, 0, 0.4)",
         fontSize: "12px",
-        color: "var(--color-fg-default, #e6edf3)",
+        color: "var(--fgColor-default, var(--ms-text))",
         minWidth: "190px",
         backdropFilter: "blur(8px)",
       }}
@@ -58,12 +58,12 @@ export function CustomInspectionTooltip({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          borderBottom: "1px solid var(--color-border-muted, #21262d)",
+          borderBottom: "1px solid var(--borderColor-muted, rgba(255,255,255,0.08))",
           paddingBottom: "4px",
           marginBottom: "6px",
           fontWeight: 600,
           fontFamily: "var(--font-mono, monospace)",
-          color: "var(--color-accent-fg, #58a6ff)",
+          color: "var(--fgColor-accent, var(--ms-brand))",
         }}
       >
         <span>{formattedLabel}</span>
@@ -139,7 +139,9 @@ export function CustomInspectionTooltip({
                   <span>Base: {baseVal.toFixed(4)}</span>
                   <span
                     style={{
-                      color: isPositiveDelta ? "var(--color-accent-fg, #58a6ff)" : "var(--color-success-fg, #3fb950)",
+                      color: isPositiveDelta
+                        ? "var(--fgColor-accent, var(--ms-brand))"
+                        : "var(--fgColor-success, #3fb950)",
                       fontWeight: 600,
                     }}
                   >

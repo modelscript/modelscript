@@ -118,9 +118,9 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
         gap: 8,
         padding: "8px 16px",
         borderRadius: "var(--ms-radius-lg, 12px)",
-        backgroundColor: "var(--color-canvas-subtle, var(--ms-surface-glass, rgba(22, 27, 34, 0.9)))",
+        backgroundColor: "var(--ms-surface-glass)",
         backdropFilter: "blur(12px)",
-        border: "1px solid var(--color-border-default, var(--ms-border, rgba(148, 163, 184, 0.18)))",
+        border: "1px solid var(--borderColor-default, var(--ms-border))",
         boxShadow: "var(--ms-shadow-pop, 0 4px 24px rgba(0, 0, 0, 0.25))",
         zIndex: 1000,
       }}

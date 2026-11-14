@@ -164,11 +164,11 @@ export function CadBindingPickerModal({
     onClose();
   };
 
-  const bgModal = dark ? "#161b22" : "#ffffff";
-  const borderCol = dark ? "#30363d" : "#d0d7de";
-  const textPrimary = dark ? "#f0f6fc" : "#1f2328";
-  const textMuted = dark ? "#8b949e" : "#656d76";
-  const inputBg = dark ? "#0d1117" : "#f6f8fa";
+  const bgModal = dark ? "var(--vscode-editorWidget-background, #1e1e22)" : "#ffffff";
+  const borderCol = dark ? "var(--vscode-widget-border, rgba(255, 255, 255, 0.12))" : "#d0d7de";
+  const textPrimary = dark ? "var(--vscode-foreground, #f4f4f5)" : "#1f2328";
+  const textMuted = dark ? "var(--vscode-descriptionForeground, #a1a1aa)" : "#656d76";
+  const inputBg = dark ? "var(--vscode-input-background, #121214)" : "#f6f8fa";
 
   return (
     <div
@@ -213,7 +213,10 @@ export function CadBindingPickerModal({
           <div>
             <div style={{ fontWeight: 600, fontSize: "15px" }}>Link 3D CAD Geometry to Simulation Variables</div>
             <div style={{ fontSize: "12px", color: textMuted, marginTop: 2 }}>
-              Component: <code style={{ color: "#58a6ff", fontWeight: 600 }}>{component.name}</code>
+              Component:{" "}
+              <code style={{ color: "var(--vscode-textLink-foreground, var(--ms-brand, #22d3ee))", fontWeight: 600 }}>
+                {component.name}
+              </code>
             </div>
           </div>
           <button
@@ -402,8 +405,8 @@ export function CadBindingPickerModal({
             style={{
               padding: "6px 12px",
               background: "transparent",
-              color: "#58a6ff",
-              border: "1px solid rgba(88, 166, 255, 0.4)",
+              color: "var(--vscode-textLink-foreground, var(--ms-brand, #22d3ee))",
+              border: "1px solid var(--vscode-focusBorder, rgba(34, 211, 238, 0.4))",
               borderRadius: "6px",
               fontSize: "12px",
               fontWeight: 600,
@@ -434,7 +437,7 @@ export function CadBindingPickerModal({
               onClick={handleSave}
               style={{
                 padding: "6px 14px",
-                background: "#0969da",
+                background: "var(--vscode-button-background, var(--ms-brand, #0891b2))",
                 color: "#ffffff",
                 border: "none",
                 borderRadius: "6px",

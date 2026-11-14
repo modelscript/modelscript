@@ -115,7 +115,7 @@ export class WasmDopri5 {
         this.wasmInstance.exports.stepDopri5(daePtr, varValuesPtr, kStagesPtr, tempValuesPtr, yNewPtr, dt, atol, rtol),
       );
     }
-    return true;
+    throw new Error("WasmDopri5: WASM module does not export 'stepDopri5'.");
   }
 
   /**
@@ -133,7 +133,9 @@ export class WasmDopri5 {
   ): void {
     if (typeof this.wasmInstance?.exports?.hermiteInterpolate === "function") {
       this.wasmInstance.exports.hermiteInterpolate(y0Ptr, y1Ptr, k1Ptr, k7Ptr, dt, theta, numVars, outPtr);
+      return;
     }
+    throw new Error("WasmDopri5: WASM module does not export 'hermiteInterpolate'.");
   }
 }
 

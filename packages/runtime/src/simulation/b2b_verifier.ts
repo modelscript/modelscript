@@ -9,10 +9,10 @@
  * zero-allocation C99 Software-in-the-Loop (SiL).
  */
 
-import * as crypto from "node:crypto";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
+import type * as cryptoType from "node:crypto";
+import type * as fsType from "node:fs";
+import type * as osType from "node:os";
+import type * as pathType from "node:path";
 import { initBltWasm } from "../analysis/wasm_blt.js";
 import type { DAEBuilder } from "../dae/wasm_dae.js";
 
@@ -90,14 +90,26 @@ export class B2BEquivalenceVerifier {
     const startTime = options.startTime ?? milResult?.t?.[0] ?? exp.startTime ?? 0.0;
     const stopTime = options.stopTime ?? milResult?.t?.[milResult.t.length - 1] ?? exp.stopTime ?? 1.0;
     const dt = options.dt ?? exp.interval ?? Math.min(0.001, (stopTime - startTime) / 1000);
-    const rawId = options.modelIdentifier || (arena as any).modelName || "Model";
-    const modelId = path.basename(rawId, path.extname(rawId)).replace(/[^a-zA-Z0-9_]/g, "_");
-
     // 2. Check compiler availability
     if (typeof window !== "undefined") {
       throw new Error("B2BEquivalenceVerifier is not supported in browser environments.");
     }
-    const { execFileSync } = await import(/* @vite-ignore */ "node:child_process");
+    const [cryptoId, fsId, osId, pathId, cpId] = [
+      "node:crypto",
+      "node:fs",
+      "node:os",
+      "node:path",
+      "node:child_process",
+    ];
+    const [crypto, fs, os, path, { execFileSync }] = await Promise.all([
+      import(/* @vite-ignore */ cryptoId) as Promise<typeof cryptoType>,
+      import(/* @vite-ignore */ fsId) as Promise<typeof fsType>,
+      import(/* @vite-ignore */ osId) as Promise<typeof osType>,
+      import(/* @vite-ignore */ pathId) as Promise<typeof pathType>,
+      import(/* @vite-ignore */ cpId),
+    ]);
+    const rawId = options.modelIdentifier || (arena as any).modelName || "Model";
+    const modelId = path.basename(rawId, path.extname(rawId)).replace(/[^a-zA-Z0-9_]/g, "_");
 
     let compilerVersion = "";
     try {
@@ -267,7 +279,7 @@ export class B2BEquivalenceVerifier {
     } catch (err: any) {
       const compileErr = err.stderr ? err.stderr.toString() : err.message;
       if (!options.preserveArtifacts) {
-        this.cleanScratch(scratchDir, [headerPath, sourcePath, harnessPath, binPath]);
+        this.cleanScratch(fs, scratchDir, [headerPath, sourcePath, harnessPath, binPath]);
       }
       return {
         passed: false,
@@ -291,7 +303,7 @@ export class B2BEquivalenceVerifier {
     } catch (err: any) {
       const execErr = err.stderr ? err.stderr.toString() : err.message;
       if (!options.preserveArtifacts) {
-        this.cleanScratch(scratchDir, [headerPath, sourcePath, harnessPath, binPath]);
+        this.cleanScratch(fs, scratchDir, [headerPath, sourcePath, harnessPath, binPath]);
       }
       return {
         passed: false,
@@ -308,7 +320,7 @@ export class B2BEquivalenceVerifier {
       };
     } finally {
       if (!options.preserveArtifacts) {
-        this.cleanScratch(scratchDir, [headerPath, sourcePath, harnessPath, binPath]);
+        this.cleanScratch(fs, scratchDir, [headerPath, sourcePath, harnessPath, binPath]);
       }
     }
 
@@ -536,7 +548,7 @@ export class B2BEquivalenceVerifier {
     };
   }
 
-  private static cleanScratch(scratchDir: string, files: string[]): void {
+  private static cleanScratch(fs: typeof fsType, scratchDir: string, files: string[]): void {
     for (const f of files) {
       try {
         if (fs.existsSync(f)) fs.unlinkSync(f);

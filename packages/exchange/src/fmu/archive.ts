@@ -754,7 +754,7 @@ export async function compileFmuBinary(
   id: string,
   sources: { modelC: string; modelH: string; fmi2FunctionsC: string; fmi3FunctionsC: string; cmakeLists: string },
 ): Promise<Uint8Array> {
-  const [fs, path, os, { execSync }] = await Promise.all([
+  const [fs, path, os, { execFileSync }] = await Promise.all([
     import("fs"),
     import("path"),
     import("os"),
@@ -774,8 +774,8 @@ export async function compileFmuBinary(
     fs.writeFileSync(path.join(tmpDir, "fmi2FunctionTypes.h"), FMI2_FUNCTION_TYPES_H);
     fs.writeFileSync(path.join(tmpDir, "CMakeLists.txt"), sources.cmakeLists);
 
-    execSync(`cmake -B build -S . -DCMAKE_BUILD_TYPE=Release`, { cwd: tmpDir, stdio: "pipe" });
-    execSync(`cmake --build build --config Release`, { cwd: tmpDir, stdio: "pipe" });
+    execFileSync("cmake", ["-B", "build", "-S", ".", "-DCMAKE_BUILD_TYPE=Release"], { cwd: tmpDir, stdio: "pipe" });
+    execFileSync("cmake", ["--build", "build", "--config", "Release"], { cwd: tmpDir, stdio: "pipe" });
 
     const buildDir = path.join(tmpDir, "build");
     const files = fs.readdirSync(buildDir);

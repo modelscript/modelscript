@@ -80,3 +80,9 @@ msx waterml to-dae usgs_gauge_01646500.xml
 ## MCP Agent Tool Integration
 
 - **`waterml_fit_rating_curve`**: Solves non-linear power-law rating curves from observed hydrologic stage and discharge pairs, reporting equation coefficients ($a, b, h_0$), residual tracking, and RMSE convergence to AI agents.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="waterml" />

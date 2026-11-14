@@ -473,12 +473,11 @@ export function startNodeServer(input?: any, output?: any) {
   documents.onDidSave(async (e) => {
     try {
       await validationService.validateTextDocument(e.document);
-      const progressReporter = await LspWorkDoneProgressReporter.create(
-        connection,
-        "ModelScript Formal Verification",
-        { message: "Verifying requirements & invariants..." },
-      );
+      const progressReporter = await LspWorkDoneProgressReporter.create(connection, "ModelScript Formal Verification", {
+        message: "Verifying requirements & invariants...",
+      });
       await validationService.runVerificationForUri(e.document.uri, progressReporter);
+      await validationService.runLiveDigitalThreadValidation(e.document.uri);
     } catch (err: any) {
       connection.console.warn(`[onDidSave] Verification error for ${e.document.uri}: ${err?.message}`);
     }
@@ -514,6 +513,7 @@ export function startNodeServer(input?: any, output?: any) {
     for (const entry of threadEntries) {
       workspaceManager.hypergraph.markStale(entry.slot);
     }
+    validationService.scheduleDigitalThreadValidation(uri);
 
     // Bump revision — any in-flight deferred semantic work for an older revision
     // will check this and bail out before doing expensive linting.

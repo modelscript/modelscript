@@ -9,6 +9,7 @@ import {
   ShieldCheckIcon,
   TrashIcon,
 } from "@primer/octicons-react";
+import { Button, Dialog } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import { type AdminUserForensics, getAdminUserForensics } from "../../../api/admin";
 import Box from "../../../components/Box";
@@ -21,8 +22,6 @@ import {
   Card,
   FilterPill,
   Input,
-  ModalBox,
-  ModalOverlay,
   Select,
   StatGrid,
   Table,
@@ -544,17 +543,21 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
       )}
 
       {forensicsData && (
-        <ModalOverlay>
-          <ModalBox style={{ maxWidth: "680px", maxHeight: "85vh", overflowY: "auto" }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <span style={{ fontWeight: 800, fontSize: "16px" }}>
+        <Dialog
+          title={
+            <Box display="flex" justifyContent="space-between" alignItems="center" gap={2}>
+              <span>
                 User Forensic Dossier — @{forensicsData.user.username} (#{forensicsData.user.id})
               </span>
               <Badge $variant={forensicsData.user.status === "active" ? "success" : "danger"}>
                 {forensicsData.user.status}
               </Badge>
             </Box>
-
+          }
+          width="large"
+          onClose={() => setForensicsData(null)}
+        >
+          <Box display="flex" flexDirection="column" gap={3} style={{ maxHeight: "75vh", overflowY: "auto" }}>
             <Box display="flex" gap={2} flexWrap="wrap" fontSize="12px" color="var(--color-text-muted)">
               <span>
                 Role: <strong>{forensicsData.user.account_type}</strong>
@@ -634,21 +637,21 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
             </Box>
 
             <Box display="flex" justifyContent="flex-end" mt={2}>
-              <ActionButton $variant="secondary" onClick={() => setForensicsData(null)}>
+              <Button variant="default" onClick={() => setForensicsData(null)}>
                 Close Dossier
-              </ActionButton>
+              </Button>
             </Box>
-          </ModalBox>
-        </ModalOverlay>
+          </Box>
+        </Dialog>
       )}
 
       {selectedUser && (
-        <ModalOverlay>
-          <ModalBox>
-            <span style={{ fontWeight: 800, fontSize: "16px" }}>
-              Account Governance — @{selectedUser.username} (#{selectedUser.id})
-            </span>
-
+        <Dialog
+          title={`Account Governance — @${selectedUser.username} (#${selectedUser.id})`}
+          width="medium"
+          onClose={() => setSelectedUser(null)}
+        >
+          <Box display="flex" flexDirection="column" gap={3} style={{ maxHeight: "75vh", overflowY: "auto" }}>
             <Box display="flex" flexDirection="column" gap={1}>
               <label style={{ fontSize: "12px", fontWeight: 600 }}>Account Standing</label>
               <Select
@@ -748,55 +751,47 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
             </label>
 
             <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
-              <ActionButton $variant="secondary" onClick={() => setSelectedUser(null)}>
+              <Button variant="default" onClick={() => setSelectedUser(null)}>
                 Cancel
-              </ActionButton>
-              <ActionButton $variant="primary" onClick={handleConfirmGovernance} disabled={loading}>
+              </Button>
+              <Button variant="primary" onClick={handleConfirmGovernance} disabled={loading}>
                 Apply Governance Action
-              </ActionButton>
+              </Button>
             </Box>
-          </ModalBox>
-        </ModalOverlay>
+          </Box>
+        </Dialog>
       )}
 
       {confirmReset2FAUser && (
-        <ModalOverlay onClick={() => setConfirmReset2FAUser(null)}>
-          <ModalBox
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Confirm Emergency 2FA Reset"
-          >
-            <span style={{ fontWeight: 800, fontSize: "16px", color: "var(--color-text-primary)" }}>
-              Confirm Emergency 2FA Reset — @{confirmReset2FAUser.username} (#{confirmReset2FAUser.id})
-            </span>
+        <Dialog
+          title={`Confirm Emergency 2FA Reset — @${confirmReset2FAUser.username} (#${confirmReset2FAUser.id})`}
+          width="medium"
+          onClose={() => setConfirmReset2FAUser(null)}
+        >
+          <Box display="flex" flexDirection="column" gap={3}>
             <Box fontSize="13px" color="var(--color-text-muted)" style={{ lineHeight: 1.5 }}>
               Are you sure you want to reset two-factor authentication (TOTP) and invalidate all recovery codes for{" "}
               <strong>@{confirmReset2FAUser.username}</strong>? This action is logged in the immutable audit trail.
             </Box>
             <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
-              <ActionButton $variant="secondary" onClick={() => setConfirmReset2FAUser(null)} disabled={loading}>
+              <Button variant="default" onClick={() => setConfirmReset2FAUser(null)} disabled={loading}>
                 Cancel
-              </ActionButton>
-              <ActionButton
-                $variant="danger"
-                onClick={() => void resetUser2FA(confirmReset2FAUser.id)}
-                disabled={loading}
-              >
+              </Button>
+              <Button variant="danger" onClick={() => void resetUser2FA(confirmReset2FAUser.id)} disabled={loading}>
                 Confirm Reset 2FA
-              </ActionButton>
+              </Button>
             </Box>
-          </ModalBox>
-        </ModalOverlay>
+          </Box>
+        </Dialog>
       )}
 
       {hasBilling && creditModalUser && (
-        <ModalOverlay>
-          <ModalBox>
-            <span style={{ fontWeight: 800, fontSize: "16px" }}>
-              Adjust Compute Credits — @{creditModalUser.username} (Balance: {creditModalUser.credit_balance ?? 0})
-            </span>
-
+        <Dialog
+          title={`Adjust Compute Credits — @${creditModalUser.username} (Balance: ${creditModalUser.credit_balance ?? 0})`}
+          width="medium"
+          onClose={() => setCreditModalUser(null)}
+        >
+          <Box display="flex" flexDirection="column" gap={3}>
             <Box display="flex" gap={1} flexWrap="wrap">
               {[100, 500, 1000, -100].map((preset) => (
                 <FilterPill
@@ -832,30 +827,25 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
             </Box>
 
             <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
-              <ActionButton $variant="secondary" onClick={() => setCreditModalUser(null)}>
+              <Button variant="default" onClick={() => setCreditModalUser(null)}>
                 Cancel
-              </ActionButton>
-              <ActionButton $variant="primary" onClick={handleConfirmCredits} disabled={loading}>
+              </Button>
+              <Button variant="primary" onClick={handleConfirmCredits} disabled={loading}>
                 Apply Credit Adjustment
-              </ActionButton>
+              </Button>
             </Box>
-          </ModalBox>
-        </ModalOverlay>
+          </Box>
+        </Dialog>
       )}
 
       {createModalOpen && (
-        <ModalOverlay onClick={() => setCreateModalOpen(false)}>
-          <ModalBox
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Create User Account"
-          >
-            <span style={{ fontWeight: 800, fontSize: "16px" }}>Create User Account</span>
-            <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-              Directly provision an account on this instance (bypasses public registration mode restrictions).
-            </span>
-
+        <Dialog
+          title="Create User Account"
+          subtitle="Directly provision an account on this instance (bypasses public registration mode restrictions)."
+          width="medium"
+          onClose={() => setCreateModalOpen(false)}
+        >
+          <Box style={{ maxHeight: "75vh", overflowY: "auto" }}>
             <form
               onSubmit={(e) => void handleConfirmCreateUser(e)}
               style={{ display: "flex", flexDirection: "column", gap: "12px" }}
@@ -946,20 +936,20 @@ export const AdminUsersTab: React.FC<AdminUsersTabProps> = ({
               </label>
 
               <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
-                <ActionButton type="button" $variant="secondary" onClick={() => setCreateModalOpen(false)}>
+                <Button type="button" variant="default" onClick={() => setCreateModalOpen(false)}>
                   Cancel
-                </ActionButton>
-                <ActionButton
+                </Button>
+                <Button
                   type="submit"
-                  $variant="primary"
+                  variant="primary"
                   disabled={loading || !newUsername.trim() || !newEmail.trim() || newPassword.length < 8}
                 >
                   Create Account
-                </ActionButton>
+                </Button>
               </Box>
             </form>
-          </ModalBox>
-        </ModalOverlay>
+          </Box>
+        </Dialog>
       )}
     </div>
   );

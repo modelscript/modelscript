@@ -300,3 +300,5 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
 
   return diagnostics;
 }
+
+export * from "./workspace.js";

@@ -615,14 +615,14 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
             borderRadius: "999px",
             fontSize: "11px",
             fontFamily: "'SF Mono', 'Cascadia Code', 'Fira Code', monospace",
-            backgroundColor: props.theme === "vs-dark" ? "rgba(22, 27, 34, 0.88)" : "rgba(255, 255, 255, 0.92)",
-            color: props.theme === "vs-dark" ? "#e6edf3" : "#1f2328",
-            border: `1px solid ${props.theme === "vs-dark" ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.12)"}`,
+            backgroundColor: "var(--ms-surface-glass)",
+            color: "var(--fgColor-default, var(--ms-text-1))",
+            border: "1px solid var(--borderColor-default, var(--ms-border))",
             boxShadow: "0 4px 14px rgba(0,0,0,0.22)",
             backdropFilter: "blur(8px)",
           }}
         >
-          <span style={{ fontWeight: 700, color: props.theme === "vs-dark" ? "#58a6ff" : "#0969da" }}>
+          <span style={{ fontWeight: 700, color: "var(--fgColor-accent, var(--ms-brand))" }}>
             t = {scrubbedPoint.time.toFixed(3)}s
           </span>
           {scrubbedPoint.values &&

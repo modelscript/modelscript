@@ -1195,7 +1195,7 @@ const ScriptDetailPage: React.FC = () => {
         <Box
           ref={logContainerRef}
           flex={1}
-          bg="var(--color-canvas-inset, var(--color-canvas-default, #0d1117))"
+          bg="var(--ms-bg-canvas, var(--color-canvas-inset, var(--color-canvas-default)))"
           color="var(--color-text-primary, #c9d1d9)"
           p={3}
           style={{ overflowY: "auto", fontFamily: "monospace", fontSize: "13px" }}

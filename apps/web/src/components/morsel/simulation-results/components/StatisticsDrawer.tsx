@@ -28,7 +28,7 @@ export const StatisticsDrawer: React.FC<StatisticsDrawerProps> = ({
         border: "1px solid var(--color-border-muted, #21262d)",
         borderRadius: "6px",
         padding: "8px 12px",
-        background: "var(--color-canvas-subtle, #161b22)",
+        background: "var(--bgColor-muted, var(--ms-bg-elv))",
         fontSize: "11px",
         fontFamily: "var(--font-mono, monospace)",
       }}

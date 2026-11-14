@@ -12,9 +12,9 @@
 
 import assert from "node:assert/strict";
 import {
-  parseSmiles,
   estimateThermophysicalProperties,
   lowerSmilesToDae,
+  parseSmiles,
   type ThermophysicalEstimate,
 } from "../src/index.js";
 
@@ -80,6 +80,34 @@ export function runSmilesBenchmark(smilesStr = TAXOL_SMILES_BENCHMARK): SmilesBe
     isSquare: varCount === eqCount,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const smilesBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "smiles",
+  referenceTool: "RDKit / Joback-Reid Taxol Thermophysical",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runSmilesBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "paclitaxel-taxol-joback-eos-dae",
+        name: "Paclitaxel (Taxol) Joback-Reid & EOS DAE",
+        scale: "standard",
+        referenceTool: "RDKit / Joback-Reid Taxol Thermophysical",
+        metricKind: "dae-parity",
+        threshold: 0,
+        measuredError: m.isSquare ? 0 : Math.abs(m.daeVarCount - m.daeEqCount),
+        passed: m.isSquare && m.daeVarCount === 13 && m.heavyAtomCount === 62,
+        durationMs: elapsedMs,
+        details: `${m.formula}, MW=${m.molecularWeight.toFixed(2)}, ${m.daeVarCount}x${m.daeEqCount} DAE`,
+      },
+    ];
+  },
+};
 
 if (process.argv[1]?.endsWith("smiles-benchmark-runner.ts")) {
   const m = runSmilesBenchmark();

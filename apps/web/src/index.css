@@ -189,24 +189,57 @@
 }
 
 [data-theme="dark"] {
-  --color-bg-card: rgba(15, 22, 38, 0.72);
-  --color-bg-card-hover: rgba(20, 30, 50, 0.82);
-  --color-glass-bg: rgba(15, 22, 38, 0.72);
-  --color-glass-bg-hover: rgba(20, 30, 50, 0.82);
+  --color-bg-card: rgba(30, 30, 34, 0.78);
+  --color-bg-card-hover: rgba(39, 39, 44, 0.88);
+  --color-glass-bg: rgba(30, 30, 34, 0.82);
+  --color-glass-bg-hover: rgba(39, 39, 44, 0.92);
   --sticky-bg-mix: var(--sticky-bg-mix-dark, 0%);
   --surface-sticky: color-mix(in srgb, var(--color-bg-primary) var(--sticky-bg-mix), transparent);
   --backdrop-sticky: var(--backdrop-sticky-dark, none);
-  --color-pre-bg: #050912;
-  --surface-overlay: rgba(15, 22, 38, 0.97);
-  --color-overlay-backdrop: rgba(2, 6, 23, 0.72);
-  --color-canvas-subtle: rgba(148, 163, 184, 0.05);
-  --color-canvas-inset: #050912;
-  --color-neutral-muted: rgba(148, 163, 184, 0.16);
-  --color-map-land: rgba(148, 163, 184, 0.12);
-  --color-map-land-hover: rgba(148, 163, 184, 0.24);
-  --color-map-stroke: rgba(148, 163, 184, 0.22);
-  --color-card-border: rgba(148, 163, 184, 0.16);
+  --color-pre-bg: #121214;
+  --surface-overlay: rgba(30, 30, 34, 0.97);
+  --color-overlay-backdrop: rgba(0, 0, 0, 0.68);
+  --color-canvas-subtle: var(--ms-bg-elv);
+  --color-canvas-inset: var(--ms-bg-inset);
+  --color-neutral-muted: rgba(255, 255, 255, 0.1);
+  --color-map-land: rgba(255, 255, 255, 0.08);
+  --color-map-land-hover: rgba(255, 255, 255, 0.16);
+  --color-map-stroke: rgba(255, 255, 255, 0.16);
+  --color-card-border: rgba(255, 255, 255, 0.1);
   --color-card-border-hover: rgba(34, 211, 238, 0.45);
+}
+
+/* ─── Standardize Primer CSS variables onto --ms-* neutral surfaces ─── */
+[data-theme="dark"],
+[data-color-mode="dark"] {
+  --bgColor-default: var(--ms-bg);
+  --bgColor-muted: var(--ms-bg-elv);
+  --bgColor-inset: var(--ms-bg-inset);
+  --bgColor-neutral-muted: rgba(255, 255, 255, 0.08);
+  --bgColor-neutral-emphasis: #3f3f46;
+  --fgColor-default: var(--ms-text-1);
+  --fgColor-muted: var(--ms-text-2);
+  --fgColor-accent: var(--ms-link);
+  --borderColor-default: var(--ms-border);
+  --borderColor-muted: var(--ms-divider);
+  --overlay-bgColor: var(--ms-bg-elv);
+  --control-bgColor-rest: var(--ms-bg-soft);
+  --control-bgColor-hover: rgba(255, 255, 255, 0.09);
+  --control-bgColor-active: rgba(255, 255, 255, 0.13);
+  --control-borderColor-rest: var(--ms-border);
+}
+
+[data-theme="light"],
+[data-color-mode="light"] {
+  --bgColor-default: var(--ms-bg);
+  --bgColor-muted: var(--ms-bg-alt);
+  --bgColor-inset: var(--ms-bg-inset);
+  --fgColor-default: var(--ms-text-1);
+  --fgColor-muted: var(--ms-text-2);
+  --fgColor-accent: var(--ms-brand);
+  --borderColor-default: var(--ms-border);
+  --borderColor-muted: var(--ms-divider);
+  --overlay-bgColor: var(--ms-bg-elv);
 }
 
 /* ─── Ansatz mark (counter-themed squircle tile: obsidian on light, platinum on dark) ─── */

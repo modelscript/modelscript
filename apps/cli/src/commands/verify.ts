@@ -18,7 +18,7 @@ import sysml2LangFallback from "@modelscript/sysml2/language";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import type { Argv, CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
@@ -56,6 +56,8 @@ interface VerifyArgs {
   exportDir?: string | undefined;
   updateHypergraph?: boolean | undefined;
   coordinator?: boolean | undefined;
+  sync?: boolean | undefined;
+  fix?: boolean | undefined;
   flattener?: "ts" | "wasm" | "hybrid" | "diff" | undefined;
 }
 
@@ -211,7 +213,17 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       })
       .option("coordinator", {
         description:
-          "execute 4-language SemanticTheoryCoordinator & DigitalThreadHypergraph verification across SysML v2, Modelica, OpenSCAD/URDF, and FEA/CFD/STEP",
+          "execute polyglot SemanticTheoryCoordinator & DigitalThreadHypergraph verification across arbitrary N files and languages",
+        type: "boolean",
+        default: false,
+      })
+      .option("sync", {
+        description: "apply suggested cross-file digital thread synchronization edits on disk",
+        type: "boolean",
+        default: false,
+      })
+      .option("fix", {
+        description: "alias for --sync; apply suggested digital thread fixes on disk",
         type: "boolean",
         default: false,
       }) as unknown as Argv<VerifyArgs>;
@@ -245,15 +257,63 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     const __dirname = path.dirname(__filename);
 
     const hasPolyglotCaeFiles = paths.some((p) => /\.(scad|inp|cfd|urdf|step|stp)$/i.test(p));
-    if (args.coordinator || hasPolyglotCaeFiles) {
-      const enginePath = path.resolve(
-        __dirname,
-        "../../../docs/docs/.vitepress/theme/util/semantic-coordinator-engine.js",
-      );
-      const coordinatorModule: any = await import(pathToFileURL(enginePath).href);
-      const { COORDINATOR_SCENARIOS, evaluatePolyglotDigitalThreadFromFiles } = coordinatorModule;
+    const cliUniqueExts = new Set(paths.map((p) => path.extname(p).toLowerCase()).filter(Boolean));
+    const hasPolyglotDirective = paths.some((p) => {
+      try {
+        const resolved = path.resolve(process.cwd(), p);
+        if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+          const txt = fs.readFileSync(resolved, "utf-8");
+          return (
+            txt.includes("@twin:") ||
+            txt.includes("@port_map:") ||
+            txt.includes("@mesh_source:") ||
+            txt.includes("annotation(twin")
+          );
+        }
+      } catch {
+        // ignore
+      }
+      return false;
+    });
+    let pendingPolyglotThreadPayload: any = null;
+    if (args.coordinator || hasPolyglotCaeFiles || cliUniqueExts.size >= 2 || hasPolyglotDirective) {
+      const [
+        { createPolyglotCoordinator, COORDINATOR_SCENARIOS, UnifiedVerifier },
+        { OpenFoamDialect, evaluateCfdExpression },
+        { InpDialect },
+        { evaluateScad },
+        { scanStepEntities },
+        { parseUrdf },
+        { computeMeshVolumeAndArea, ToleranceStackVerifier, SolidKind },
+        { LbmVoxelizer, WebGPULbmRunner, FeaSolver, Tet4Mesher, MeshQualityAnalyzer },
+      ] = await Promise.all([
+        import("@modelscript/runtime"),
+        import("@modelscript/cfd"),
+        import("@modelscript/fea"),
+        import("@modelscript/scad"),
+        import("@modelscript/step"),
+        import("@modelscript/urdf"),
+        import("@modelscript/cad"),
+        import("@modelscript/simulate"),
+      ]);
+      const { evaluatePolyglotDigitalThreadFromFiles } = createPolyglotCoordinator({
+        OpenFoamDialect,
+        evaluateCfdExpression,
+        InpDialect,
+        evaluateScad,
+        scanStepEntities,
+        parseUrdf,
+        computeMeshVolumeAndArea,
+        ToleranceStackVerifier,
+        SolidKind,
+        LbmVoxelizer,
+        WebGPULbmRunner,
+        FeaSolver,
+        Tet4Mesher,
+        MeshQualityAnalyzer,
+      });
 
-      const loadedFiles: { fileName: string; content: string }[] = [];
+      const loadedFiles: { fileName: string; filePath?: string; content: string }[] = [];
       for (const p of paths) {
         const resolvedPath = path.resolve(process.cwd(), p);
         if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isDirectory()) {
@@ -262,6 +322,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
             if (fs.statSync(childPath).isFile()) {
               loadedFiles.push({
                 fileName: entry,
+                filePath: childPath,
                 content: fs.readFileSync(childPath, "utf-8"),
               });
             }
@@ -269,13 +330,14 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         } else if (fs.existsSync(resolvedPath)) {
           loadedFiles.push({
             fileName: path.basename(resolvedPath),
+            filePath: resolvedPath,
             content: fs.readFileSync(resolvedPath, "utf-8"),
           });
         } else {
           // Resolve against built-in digital-thread scenario panes when bare filenames are passed
           const base = path.basename(p).toLowerCase();
           for (const scen of COORDINATOR_SCENARIOS) {
-            const pane = scen.panes.find((pn: any) => pn.fileName.toLowerCase() === base);
+            const pane = scen.panes.find((pn) => pn.fileName.toLowerCase() === base);
             if (pane) {
               loadedFiles.push({
                 fileName: pane.fileName,
@@ -287,75 +349,202 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         }
       }
 
-      const explicitScenario = target && COORDINATOR_SCENARIOS.some((s: any) => s.id === target) ? target : undefined;
-      const res = evaluatePolyglotDigitalThreadFromFiles(loadedFiles, explicitScenario);
+      const explicitScenario = target && COORDINATOR_SCENARIOS.some((s) => s.id === target) ? target : undefined;
+      let res = evaluatePolyglotDigitalThreadFromFiles(
+        loadedFiles.map((f) => ({ fileName: f.fileName, content: f.content })),
+        explicitScenario,
+      );
 
-      if (args.format === "json") {
-        console.log(
-          JSON.stringify(
-            {
-              scenarioId: res.scenarioId,
-              scenarioTitle: res.scenarioTitle,
-              status: res.status,
-              isSat: res.isSat,
-              elapsedMs: res.elapsedMs,
-              iterations: res.iterations,
-              summaryText: res.summaryText,
-              hypergraphNodes: res.hypergraphNodes,
-              variableLinks: res.variableLinks,
-              portBindings: res.parsedMetadata.portBindings,
-              directiveLinks: res.parsedMetadata.directiveLinks,
-              evaluatedEquations: res.parsedMetadata.evaluatedEquations,
-              sharedEqualities: res.sharedEqualities,
-              conflicts: res.conflicts,
-            },
-            null,
-            2,
-          ),
-        );
+      const initialEdits: Array<{
+        fileIndex: number;
+        fileName: string;
+        line: number;
+        startOffset?: number;
+        endOffset?: number;
+        newText: string;
+        description: string;
+      }> = "suggestedEdits" in res && Array.isArray((res as any).suggestedEdits) ? (res as any).suggestedEdits : [];
+
+      if ((args.fix || args.sync) && initialEdits.length > 0) {
+        const editsByIdx = new Map<number, typeof initialEdits>();
+        for (const se of initialEdits) {
+          const arr = editsByIdx.get(se.fileIndex) ?? [];
+          arr.push(se);
+          editsByIdx.set(se.fileIndex, arr);
+        }
+        let appliedCount = 0;
+        for (const [idx, edits] of editsByIdx.entries()) {
+          const lf = loadedFiles[idx];
+          if (!lf?.filePath) continue;
+          let txt = lf.content;
+          const offsetEdits = edits
+            .filter((e) => e.startOffset !== undefined && e.endOffset !== undefined)
+            .sort((a, b) => b.startOffset! - a.startOffset!);
+          for (const oe of offsetEdits) {
+            txt = txt.slice(0, oe.startOffset!) + oe.newText + txt.slice(oe.endOffset!);
+            appliedCount++;
+          }
+          if (txt !== lf.content) {
+            fs.writeFileSync(lf.filePath, txt, "utf-8");
+            lf.content = txt;
+          }
+        }
+        if (appliedCount > 0) {
+          res = evaluatePolyglotDigitalThreadFromFiles(
+            loadedFiles.map((f) => ({ fileName: f.fileName, content: f.content })),
+            explicitScenario,
+          );
+        }
+      }
+
+      const portBindings = "parsedMetadata" in res ? res.parsedMetadata.portBindings : res.portBindings;
+      const directiveLinks = "parsedMetadata" in res ? res.parsedMetadata.directiveLinks : res.directiveLinks;
+      const evaluatedEquations =
+        "evaluatedEquations" in res
+          ? res.evaluatedEquations
+          : "parsedMetadata" in res
+            ? res.parsedMetadata.evaluatedEquations
+            : [];
+      const suggestedEdits = "suggestedEdits" in res ? res.suggestedEdits : [];
+      const domains =
+        "domains" in res ? res.domains : Array.from(new Set(res.hypergraphNodes.map((n) => n.domainName)));
+      const fileCount = "fileCount" in res ? res.fileCount : loadedFiles.length;
+      const artifacts = "artifacts" in res ? res.artifacts : undefined;
+
+      const hasSingleModelSources = paths.some((p) => /\.(mo|sysml)$/i.test(p));
+      if (!args.coordinator && hasSingleModelSources) {
+        pendingPolyglotThreadPayload = {
+          mode: ("mode" in res ? res.mode : "scenario") as "generic" | "scenario",
+          scenarioId: res.scenarioId,
+          scenarioTitle: res.scenarioTitle,
+          status: res.status,
+          isSat: res.isSat,
+          elapsedMs: res.elapsedMs,
+          fileCount,
+          domains,
+          summaryText: res.summaryText,
+          artifacts,
+          hypergraphNodes: res.hypergraphNodes,
+          variableLinks: res.variableLinks,
+          portBindings,
+          conflicts: res.conflicts,
+        };
       } else {
-        console.log(`\n=== ModelScript Polyglot SemanticTheoryCoordinator ===`);
-        console.log(`Scenario : ${res.scenarioTitle} (${res.scenarioId})`);
-        console.log(`Verdict  : [${res.status}] ${res.summaryText}`);
-        console.log(
-          `Hypergraph: ${res.hypergraphNodes.map((n: any) => `${n.fileName} (${n.oracleName}: ${n.status})`).join(" | ")}`,
-        );
-        if (res.parsedMetadata.portBindings.length > 0) {
-          console.log(`\n--- CAD <-> CAE Boundary Port Bindings (${res.parsedMetadata.portBindings.length}) ---`);
-          for (const pb of res.parsedMetadata.portBindings) {
+        if (args.format === "json") {
+          console.log(
+            JSON.stringify(
+              {
+                mode: "mode" in res ? res.mode : "scenario",
+                scenarioId: res.scenarioId,
+                scenarioTitle: res.scenarioTitle,
+                status: res.status,
+                isSat: res.isSat,
+                elapsedMs: res.elapsedMs,
+                iterations: res.iterations,
+                fileCount,
+                domains,
+                summaryText: res.summaryText,
+                artifacts,
+                hypergraphNodes: res.hypergraphNodes,
+                variableLinks: res.variableLinks,
+                portBindings,
+                directiveLinks,
+                evaluatedEquations,
+                suggestedEdits,
+                sharedEqualities: res.sharedEqualities,
+                conflicts: res.conflicts,
+              },
+              null,
+              2,
+            ),
+          );
+        } else if (
+          args.format === "sarif" ||
+          args.format === "junit" ||
+          args.format === "html" ||
+          args.format === "ctrf" ||
+          args.format === "dhf"
+        ) {
+          const baseReport: any = {
+            timestamp: new Date().toISOString(),
+            target: paths.join(", "),
+            summary: {
+              totalStages: 0,
+              passedStages: 0,
+              failedStages: 0,
+              certifiedStages: 0,
+              skippedStages: 0,
+              totalViolations: 0,
+              durationMs: res.elapsedMs,
+              overallPassed: res.isSat,
+            },
+            stages: {},
+          };
+          UnifiedVerifier.attachPolyglotDigitalThread(baseReport, {
+            mode: ("mode" in res ? res.mode : "scenario") as "generic" | "scenario",
+            scenarioId: res.scenarioId,
+            scenarioTitle: res.scenarioTitle,
+            status: res.status,
+            isSat: res.isSat,
+            elapsedMs: res.elapsedMs,
+            fileCount,
+            domains,
+            summaryText: res.summaryText,
+            artifacts,
+            hypergraphNodes: res.hypergraphNodes,
+            variableLinks: res.variableLinks,
+            portBindings,
+            conflicts: res.conflicts,
+          });
+          if (args.format === "sarif") console.log(UnifiedVerifier.formatSarif(baseReport));
+          else if (args.format === "junit") console.log(UnifiedVerifier.formatJUnit(baseReport));
+          else if (args.format === "html") console.log(UnifiedVerifier.formatHtml(baseReport));
+          else if (args.format === "ctrf") console.log(UnifiedVerifier.formatCtrf(baseReport));
+          else console.log(UnifiedVerifier.formatDhf(baseReport));
+        } else {
+          console.log(`\n=== ModelScript Polyglot SemanticTheoryCoordinator ===`);
+          console.log(`Scenario : ${res.scenarioTitle} (${res.scenarioId})`);
+          console.log(`Verdict  : [${res.status}] ${res.summaryText}`);
+          console.log(
+            `Hypergraph: ${res.hypergraphNodes.map((n) => `${n.fileName} (${n.oracleName}: ${n.status})`).join(" | ")}`,
+          );
+          if (portBindings.length > 0) {
+            console.log(`\n--- CAD <-> CAE Boundary Port Bindings (${portBindings.length}) ---`);
+            for (const pb of portBindings) {
+              console.log(
+                `  [${pb.isBound ? "BOUND" : "UNBOUND"}] tag_port("${pb.portName}", "${pb.cadPortType}") in ${pb.cadFileName}:${pb.cadLine} <-> ${pb.caePatchSpec} in ${pb.caeFileName}:${pb.caeLine}`,
+              );
+            }
+          }
+          if (evaluatedEquations.length > 0) {
+            console.log(`\n--- Symbolically Evaluated Domain Equations (${evaluatedEquations.length}) ---`);
+            for (const eq of evaluatedEquations) {
+              console.log(
+                `  [${eq.language}] ${eq.fileName}: ${eq.lhs} = ${eq.rhsExpression} => ${eq.evaluatedValue} ${eq.unit}`,
+              );
+            }
+          }
+          console.log(`\n--- Cross-Domain FQN Variable Links (${res.variableLinks.length}) ---`);
+          for (const vl of res.variableLinks) {
             console.log(
-              `  [${pb.isBound ? "BOUND" : "UNBOUND"}] tag_port("${pb.portName}", "${pb.cadPortType}") in ${pb.cadFileName}:${pb.cadLine} <-> ${pb.caePatchSpec} in ${pb.caeFileName}:${pb.caeLine}`,
+              `  [${vl.status}] ${vl.canonicalFqn} = ${vl.valueFormatted} (bound: ${vl.boundsFormatted}) via ${vl.oracleName} — ${vl.marginText}`,
             );
           }
-        }
-        console.log(
-          `\n--- Symbolically Evaluated Domain Equations (${res.parsedMetadata.evaluatedEquations.length}) ---`,
-        );
-        for (const eq of res.parsedMetadata.evaluatedEquations) {
-          console.log(
-            `  [${eq.language}] ${eq.fileName}: ${eq.lhs} = ${eq.rhsExpression} => ${eq.evaluatedValue} ${eq.unit}`,
-          );
-        }
-        console.log(`\n--- Cross-Domain FQN Variable Links (${res.variableLinks.length}) ---`);
-        for (const vl of res.variableLinks) {
-          console.log(
-            `  [${vl.status}] ${vl.canonicalFqn} = ${vl.valueFormatted} (bound: ${vl.boundsFormatted}) via ${vl.oracleName} — ${vl.marginText}`,
-          );
-        }
-        if (res.conflicts.length > 0) {
-          console.log(`\n--- Formal Conflict Clauses (${res.conflicts.length}) ---`);
-          for (const c of res.conflicts) {
-            console.log(`  [${c.theoryName}] ${c.explanation}`);
-            console.log(`    Culprit FQNs: ${c.culpritEntities.join(", ")}`);
+          if (res.conflicts.length > 0) {
+            console.log(`\n--- Formal Conflict Clauses (${res.conflicts.length}) ---`);
+            for (const c of res.conflicts) {
+              console.log(`  [${c.theoryName}] ${c.explanation}`);
+              console.log(`    Culprit FQNs: ${c.culpritEntities.join(", ")}`);
+            }
           }
+          console.log("");
         }
-        console.log("");
-      }
 
-      if (!res.isSat) {
-        process.exitCode = 1;
+        if (!res.isSat) {
+          process.exitCode = 1;
+        }
+        return;
       }
-      return;
     }
 
     // Load Modelica Parser
@@ -616,6 +805,9 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       },
       verifOptions,
     );
+    if (pendingPolyglotThreadPayload) {
+      UnifiedVerifier.attachPolyglotDigitalThread(report, pendingPolyglotThreadPayload);
+    }
     if (args.falsify || args.all) {
       const sysmlPath = paths.find((p) => p.endsWith(".sysml"));
       const moPath = paths.find((p) => p.endsWith(".mo"));

@@ -29,6 +29,7 @@ import type {
   EmtTransformer,
   EmtTransmissionLine,
 } from "../types.js";
+import { computeSotaComparison, type SotaComparisonMetrics, type SotaComparisonOptions } from "./sota-comparison.js";
 
 export interface CigreB4BenchmarkResult {
   caseName: string;
@@ -39,20 +40,9 @@ export interface CigreB4BenchmarkResult {
   throughputStepsPerSec: number;
   peakDcOvercurrentKa: number;
   minDcVoltageKv: number;
-  postFaultRecoveryTimeMs: number;
-  submoduleRipplePercent: number;
-  comparisonVsSota: {
-    sotaTool: string;
-    sotaWallClockMs: number;
-    speedupFactor: number;
-    discrepancyRmse: number;
-    discrepancyNrmsePct: number;
-    theilTic: number;
-    theilUm: number;
-    theilUs: number;
-    theilUc: number;
-    parityStatus: "PASS" | "WARN" | "FAIL";
-  };
+  postFaultRecoveryTimeMs: number | null;
+  submoduleRipplePercent: number | null;
+  comparisonVsSota: SotaComparisonMetrics;
   comtradeCff: string;
   psoutBinary: Uint8Array;
   htmlDashboard?: string | undefined;
@@ -384,11 +374,13 @@ export function generateCigreB4HvdcNetlist(): EmtNetlist {
 /**
  * Runs the CIGRE B4 Multi-Terminal HVDC Benchmark and exports shareable SOTA artifacts.
  */
-export async function runCigreB4Benchmark(options?: {
-  timeStepUs?: number;
-  durationMs?: number;
-  generateHtml?: boolean;
-}): Promise<CigreB4BenchmarkResult> {
+export async function runCigreB4Benchmark(
+  options?: SotaComparisonOptions & {
+    timeStepUs?: number;
+    durationMs?: number;
+    generateHtml?: boolean;
+  },
+): Promise<CigreB4BenchmarkResult> {
   const dtUs = options?.timeStepUs ?? 50.0;
   const durationMs = options?.durationMs ?? 100.0;
   const dtSec = dtUs * 1e-6;
@@ -408,22 +400,65 @@ export async function runCigreB4Benchmark(options?: {
   // Extract critical telemetry channels
   const dc2Volts = emtResult.busVoltages.get("DC_BUS_2") ?? new Float64Array(totalSteps);
   let peakDcOvercurrentKa = 0.0;
-  let minDcVoltageKv = Infinity;
+  let minDcVoltageKv = dc2Volts.length > 0 ? Infinity : 0.0;
 
   for (let i = 0; i < dc2Volts.length; i++) {
     const vKv = Math.abs(dc2Volts[i]!) / 1000.0;
     if (vKv < minDcVoltageKv) minDcVoltageKv = vKv;
   }
 
-  // Calculate fault current peak during 40-80 ms
+  // Calculate fault current peak strictly from solved telemetry
   const faultCurrents = emtResult.branchCurrents?.get("DC_REACTOR_2");
-  if (faultCurrents) {
-    for (let i = 0; i < faultCurrents.length; i++) {
-      const iKa = Math.abs(faultCurrents[i]!) / 1000.0;
-      if (iKa > peakDcOvercurrentKa) peakDcOvercurrentKa = iKa;
+  if (!faultCurrents) {
+    throw new Error("Missing DC_REACTOR_2 branch current telemetry from CIGRE B4 EMT solve");
+  }
+  for (let i = 0; i < faultCurrents.length; i++) {
+    const iKa = Math.abs(faultCurrents[i]!) / 1000.0;
+    if (iKa > peakDcOvercurrentKa) peakDcOvercurrentKa = iKa;
+  }
+
+  // Measure pre-fault DC voltage mean & ripple, and post-fault recovery time after fault clear (t >= 0.08 s)
+  const nPoints = emtResult.time.length;
+  const msCurve = new Float64Array(nPoints);
+  let preSumKv = 0;
+  let preCount = 0;
+  let preMinKv = Infinity;
+  let preMaxKv = -Infinity;
+  for (let i = 0; i < nPoints; i++) {
+    const t = emtResult.time[i]!;
+    const vKv = Math.abs(dc2Volts[i]!) / 1000.0;
+    msCurve[i] = vKv;
+    if (t >= 0.005 && t < 0.04) {
+      preSumKv += vKv;
+      preCount++;
+      if (vKv < preMinKv) preMinKv = vKv;
+      if (vKv > preMaxKv) preMaxKv = vKv;
     }
-  } else {
-    peakDcOvercurrentKa = 12.8; // Standard CIGRE benchmark peak
+  }
+  const preMeanKv = preCount > 0 ? preSumKv / preCount : 0;
+  const submoduleRipplePercent = preCount > 0 && preMeanKv > 1e-6 ? ((preMaxKv - preMinKv) / preMeanKv) * 100.0 : null;
+
+  let postFaultRecoveryTimeMs: number | null = null;
+  if (durationMs > 80.0 && preMeanKv > 1e-6) {
+    const minBand = preMeanKv * 0.9;
+    const maxBand = preMeanKv * 1.1;
+    const holdSteps = Math.max(1, Math.round(0.001 / dtSec));
+    for (let i = 0; i < nPoints - holdSteps; i++) {
+      const t = emtResult.time[i]!;
+      if (t < 0.08) continue;
+      let stable = true;
+      for (let j = i; j < i + holdSteps; j++) {
+        const vKv = msCurve[j]!;
+        if (vKv < minBand || vKv > maxBand) {
+          stable = false;
+          break;
+        }
+      }
+      if (stable) {
+        postFaultRecoveryTimeMs = (t - 0.08) * 1000.0;
+        break;
+      }
+    }
   }
 
   // Generate COMTRADE CFF container
@@ -440,52 +475,27 @@ export async function runCigreB4Benchmark(options?: {
   // Generate PSCAD v5 *.psout binary
   const psoutBinary = writePscadPsout(simResultLike);
 
-  // Synthesize SOTA ground truth trajectory for Station 2 DC Voltage (kV)
-  const nPoints = emtResult.time.length;
-  const sotaGroundTruth = new Float64Array(nPoints);
-  const msCurve = new Float64Array(nPoints);
+  const comparisonVsSota = computeSotaComparison(msCurve, wallClockMs, options, {
+    normalizationSpan: 200.0,
+    nrmsePassLimitPct: 1.5,
+    ticPassLimit: 0.02,
+  });
 
-  for (let i = 0; i < nPoints; i++) {
-    const t = emtResult.time[i]!;
-    const vVal = Math.abs(dc2Volts[i]!) / 1000.0;
-    msCurve[i] = vVal;
-    // Calibrated SOTA ground truth reference reflecting commercial PSCAD/EMTDC v5.1 trajectory
-    sotaGroundTruth[i] = vVal + 0.15 * Math.sin(2 * Math.PI * 100 * t);
-  }
-
-  // Statistical goodness of fit metrics
-  let sumSq = 0;
-  let maxDiff = 0;
-  let sumSotaSq = 0;
-  let sumMsSq = 0;
-
-  for (let i = 0; i < nPoints; i++) {
-    const diff = msCurve[i]! - sotaGroundTruth[i]!;
-    const absDiff = Math.abs(diff);
-    sumSq += diff * diff;
-    if (absDiff > maxDiff) maxDiff = absDiff;
-    sumSotaSq += sotaGroundTruth[i]! * sotaGroundTruth[i]!;
-    sumMsSq += msCurve[i]! * msCurve[i]!;
-  }
-
-  const rmse = Math.sqrt(sumSq / nPoints);
-  const nrmsePct = (rmse / 200.0) * 100.0;
-  const theilTic = rmse / (Math.sqrt(sumMsSq / nPoints) + Math.sqrt(sumSotaSq / nPoints));
-  const sotaWallClockMs = wallClockMs * 14.2; // 14.2x speedup over commercial single-thread
-
-  // Theil breakdown
-  const theilUm = 0.004;
-  const theilUs = 0.012;
-  const theilUc = 0.984;
+  const throughputStepsPerSec = wallClockMs > 0 ? Math.round(totalSteps / (wallClockMs / 1000)) : 0;
+  const statusColor =
+    comparisonVsSota.parityStatus === "PASS"
+      ? "#22c55e"
+      : comparisonVsSota.parityStatus === "WARN"
+        ? "#eab308"
+        : "#94a3b8";
 
   let htmlDashboard: string | undefined;
   if (options?.generateHtml ?? true) {
-    // Generate self-contained HTML dashboard
     htmlDashboard = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>CIGRE B4 DC Grid Benchmark — ModelScript vs PSCAD v5.1 SOTA Comparison</title>
+  <title>CIGRE B4 DC Grid Benchmark — ModelScript EMT Report</title>
   <style>
     body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; padding: 28px; }
     .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 18px; margin-bottom: 20px; }
@@ -494,7 +504,7 @@ export async function runCigreB4Benchmark(options?: {
     .kpi-box { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px 20px; flex: 1; min-width: 180px; }
     .kpi-title { font-size: 11px; text-transform: uppercase; color: #94a3b8; }
     .kpi-val { font-size: 20px; font-weight: bold; margin-top: 4px; }
-    .badge-pass { background: #22c55e22; color: #22c55e; border: 1px solid #22c55e; padding: 4px 10px; border-radius: 9999px; font-weight: bold; }
+    .badge { background: ${statusColor}22; color: ${statusColor}; border: 1px solid ${statusColor}; padding: 4px 10px; border-radius: 9999px; font-weight: bold; }
     table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
     th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
     th { color: #94a3b8; background: #151f30; }
@@ -502,32 +512,32 @@ export async function runCigreB4Benchmark(options?: {
 </head>
 <body>
   <h1>CIGRE B4 DC Grid Benchmark (Multi-Terminal HVDC & MMC)</h1>
-  <p style="color: #94a3b8; margin-top: 0;">CIGRE TB 604 &bull; Validated against PSCAD/EMTDC v5.1.0 &bull; Generated: ${new Date().toISOString()}</p>
+  <p style="color: #94a3b8; margin-top: 0;">CIGRE TB 604 &bull; Reference: ${comparisonVsSota.sotaTool} &bull; Generated: ${new Date().toISOString()}</p>
 
   <div class="kpi">
     <div class="kpi-box">
-      <div class="kpi-title">Execution Speedup</div>
-      <div class="kpi-val" style="color: #38bdf8;">${(sotaWallClockMs / Math.max(1, wallClockMs)).toFixed(1)}&times; Faster</div>
-      <div style="font-size: 11px; color: #94a3b8;">${wallClockMs.toFixed(1)} ms vs ${sotaWallClockMs.toFixed(1)} ms</div>
+      <div class="kpi-title">Execution Time / Speedup</div>
+      <div class="kpi-val" style="color: #38bdf8;">${comparisonVsSota.speedupFactor !== null ? `${comparisonVsSota.speedupFactor.toFixed(2)}&times;` : `${wallClockMs.toFixed(1)} ms`}</div>
+      <div style="font-size: 11px; color: #94a3b8;">${comparisonVsSota.sotaWallClockMs !== null ? `${wallClockMs.toFixed(1)} ms vs ${comparisonVsSota.sotaWallClockMs.toFixed(1)} ms` : "No external timing baseline provided"}</div>
     </div>
     <div class="kpi-box">
       <div class="kpi-title">Throughput</div>
-      <div class="kpi-val">${Math.round(totalSteps / (wallClockMs / 1000)).toLocaleString()}</div>
+      <div class="kpi-val">${throughputStepsPerSec.toLocaleString()}</div>
       <div style="font-size: 11px; color: #94a3b8;">steps / second</div>
     </div>
     <div class="kpi-box">
       <div class="kpi-title">NRMSE % Error</div>
-      <div class="kpi-val" style="color: #22c55e;">${nrmsePct.toFixed(2)}%</div>
-      <div style="font-size: 11px; color: #94a3b8;">Limit &lt; 1.50%</div>
+      <div class="kpi-val" style="color: ${statusColor};">${comparisonVsSota.discrepancyNrmsePct !== null ? `${comparisonVsSota.discrepancyNrmsePct.toFixed(2)}%` : "N/A"}</div>
+      <div style="font-size: 11px; color: #94a3b8;">${comparisonVsSota.discrepancyNrmsePct !== null ? "Limit &lt; 1.50%" : "No external trace supplied"}</div>
     </div>
     <div class="kpi-box">
       <div class="kpi-title">Theil's TIC</div>
-      <div class="kpi-val">${theilTic.toFixed(4)}</div>
-      <div style="font-size: 11px; color: #22c55e;">Strict Parity (Um=0.4%)</div>
+      <div class="kpi-val">${comparisonVsSota.theilTic !== null ? comparisonVsSota.theilTic.toFixed(4) : "N/A"}</div>
+      <div style="font-size: 11px; color: ${statusColor};">${comparisonVsSota.theilUm !== null ? `Um=${(comparisonVsSota.theilUm * 100).toFixed(1)}%` : "No external trace supplied"}</div>
     </div>
     <div class="kpi-box">
       <div class="kpi-title">SOTA Parity Status</div>
-      <div style="margin-top: 8px;"><span class="badge-pass">PASS</span></div>
+      <div style="margin-top: 8px;"><span class="badge">${comparisonVsSota.parityStatus}</span></div>
     </div>
   </div>
 
@@ -535,14 +545,14 @@ export async function runCigreB4Benchmark(options?: {
     <h3>CIGRE B4 Benchmark Metrics Summary</h3>
     <table>
       <thead>
-        <tr><th>Channel / Metric</th><th>ModelScript EMT</th><th>PSCAD v5.1 Baseline</th><th>Status</th></tr>
+        <tr><th>Channel / Metric</th><th>ModelScript EMT</th><th>External Reference</th><th>Parity Status</th></tr>
       </thead>
       <tbody>
-        <tr><td>DC Station 2 Min Voltage</td><td>${minDcVoltageKv.toFixed(2)} kV</td><td>24.80 kV</td><td><span style="color:#22c55e;">● PASS</span></td></tr>
-        <tr><td>DC Pole-to-Ground Overcurrent Peak</td><td>${peakDcOvercurrentKa.toFixed(2)} kA</td><td>12.80 kA</td><td><span style="color:#22c55e;">● PASS</span></td></tr>
-        <tr><td>Post-Fault Voltage Recovery Time</td><td>24.5 ms</td><td>25.0 ms</td><td><span style="color:#22c55e;">● PASS</span></td></tr>
-        <tr><td>Submodule Capacitor Ripple Spread</td><td>0.12%</td><td>0.15%</td><td><span style="color:#22c55e;">● PASS</span></td></tr>
-        <tr><td>Simulation Throughput</td><td>${Math.round(totalSteps / (wallClockMs / 1000)).toLocaleString()} steps/s</td><td>2,800 steps/s</td><td><span style="color:#22c55e;">● 14.2&times; SOTA</span></td></tr>
+        <tr><td>DC Station 2 Min Voltage</td><td>${minDcVoltageKv.toFixed(2)} kV</td><td>—</td><td><span style="color:#38bdf8;">● MEASURED</span></td></tr>
+        <tr><td>DC Pole-to-Ground Overcurrent Peak</td><td>${peakDcOvercurrentKa.toFixed(2)} kA</td><td>—</td><td><span style="color:#38bdf8;">● MEASURED</span></td></tr>
+        <tr><td>Post-Fault Voltage Recovery Time</td><td>${postFaultRecoveryTimeMs !== null ? `${postFaultRecoveryTimeMs.toFixed(2)} ms` : "N/A"}</td><td>—</td><td><span style="color:#38bdf8;">● MEASURED</span></td></tr>
+        <tr><td>Submodule Capacitor Ripple Spread</td><td>${submoduleRipplePercent !== null ? `${submoduleRipplePercent.toFixed(3)}%` : "N/A"}</td><td>—</td><td><span style="color:#38bdf8;">● MEASURED</span></td></tr>
+        <tr><td>Simulation Throughput</td><td>${throughputStepsPerSec.toLocaleString()} steps/s</td><td>${comparisonVsSota.sotaWallClockMs !== null ? `${comparisonVsSota.sotaWallClockMs.toFixed(1)} ms ref` : "N/A"}</td><td><span style="color:${statusColor};">● ${comparisonVsSota.parityStatus}</span></td></tr>
       </tbody>
     </table>
   </div>
@@ -556,23 +566,12 @@ export async function runCigreB4Benchmark(options?: {
     timeStepUs: dtUs,
     durationMs,
     wallClockTimeMs: wallClockMs,
-    throughputStepsPerSec: Math.round(totalSteps / (wallClockMs / 1000)),
+    throughputStepsPerSec,
     peakDcOvercurrentKa,
     minDcVoltageKv,
-    postFaultRecoveryTimeMs: 24.5,
-    submoduleRipplePercent: 0.12,
-    comparisonVsSota: {
-      sotaTool: "PSCAD/EMTDC v5.1.0",
-      sotaWallClockMs,
-      speedupFactor: sotaWallClockMs / Math.max(1, wallClockMs),
-      discrepancyRmse: rmse,
-      discrepancyNrmsePct: nrmsePct,
-      theilTic,
-      theilUm,
-      theilUs,
-      theilUc,
-      parityStatus: nrmsePct < 1.5 && theilTic < 0.02 ? "PASS" : "WARN",
-    },
+    postFaultRecoveryTimeMs,
+    submoduleRipplePercent,
+    comparisonVsSota,
     comtradeCff,
     psoutBinary,
     htmlDashboard,

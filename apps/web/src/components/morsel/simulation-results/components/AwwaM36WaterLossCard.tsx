@@ -36,7 +36,7 @@ export interface AwwaM36WaterLossCardProps {
 const CardContainer = styled.div<{ $isDark: boolean }>`
   border: 1px solid var(--color-border-default, ${(p) => (p.$isDark ? "#30363d" : "#d0d7de")});
   border-radius: 10px;
-  background: var(--color-canvas-subtle, ${(p) => (p.$isDark ? "#0d1117" : "#f6f8fa")});
+  background: var(--bgColor-inset, ${(p) => (p.$isDark ? "#121214" : "#f6f8fa")});
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -75,7 +75,7 @@ const BandBadge = styled.span<{ $band: "Band A" | "Band B" | "Band C" | "Band D"
     p.$band === "Band A"
       ? "var(--color-success-emphasis, #238636)"
       : p.$band === "Band B"
-        ? "var(--color-accent-emphasis, #1f6feb)"
+        ? "var(--ms-brand)"
         : p.$band === "Band C"
           ? "var(--color-attention-emphasis, #9a6700)"
           : "var(--color-danger-emphasis, #da3633)"};
@@ -96,7 +96,7 @@ const ActionBtn = styled.button`
   font-size: 12px;
   font-weight: 600;
   border: 1px solid var(--color-border-default, #30363d);
-  background: var(--color-canvas-default, #161b22);
+  background: var(--bgColor-muted, var(--ms-bg-elv));
   color: var(--color-fg-default, #c9d1d9);
   cursor: pointer;
   transition: background 0.15s ease;
@@ -118,21 +118,21 @@ const KpiCard = styled.div<{ $highlight?: boolean }>`
   gap: 4px;
   padding: 10px 12px;
   border-radius: 6px;
-  background: var(--color-canvas-default, #161b22);
-  border: 1px solid
-    ${(p) => (p.$highlight ? "var(--color-accent-emphasis, #1f6feb)" : "var(--color-border-subtle, #30363d)")};
+  background: var(--bgColor-muted, var(--ms-bg-elv));
+  border: 1px solid ${(p) => (p.$highlight ? "var(--ms-brand)" : "var(--borderColor-muted, var(--ms-border))")};
 
   & > span:first-child {
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    color: var(--color-fg-muted, #8b949e);
+    color: var(--fgColor-muted, var(--ms-text-2));
   }
 
   & > div:last-child {
     font-size: 16px;
     font-weight: 700;
-    color: ${(p) => (p.$highlight ? "var(--color-accent-fg, #58a6ff)" : "var(--color-fg-default, #c9d1d9)")};
+    color: ${(p) =>
+      p.$highlight ? "var(--fgColor-accent, var(--ms-brand))" : "var(--fgColor-default, var(--ms-text))"};
   }
 `;
 
@@ -142,7 +142,7 @@ const WaterBalanceSection = styled.div`
   gap: 6px;
   padding: 12px;
   border-radius: 6px;
-  background: var(--color-canvas-default, #161b22);
+  background: var(--bgColor-muted, var(--ms-bg-elv));
   border: 1px solid var(--color-border-subtle, #30363d);
 `;
 
@@ -242,7 +242,8 @@ export const AwwaM36WaterLossCard: React.FC<AwwaM36WaterLossCardProps> = ({
         realLossesM3Year: activeReport.realLossesM3,
         nonRevenueWaterM3Year: activeReport.apparentLossesM3 + activeReport.realLossesM3,
         nonRevenueWaterPct:
-          ((activeReport.apparentLossesM3 + activeReport.realLossesM3) / Math.max(1, activeReport.systemInputVolumeM3)) *
+          ((activeReport.apparentLossesM3 + activeReport.realLossesM3) /
+            Math.max(1, activeReport.systemInputVolumeM3)) *
           100,
         carlM3Year: (activeReport.carlLitersPerConnDay * activeReport.serviceConnections * 365) / 1000,
         uarlM3Year: (activeReport.uarlLitersPerConnDay * activeReport.serviceConnections * 365) / 1000,
@@ -255,7 +256,7 @@ export const AwwaM36WaterLossCard: React.FC<AwwaM36WaterLossCardProps> = ({
         },
         networkStats: {
           totalMainsLengthKm: activeReport.totalMainsLengthKm,
-          avgSystemPressureM: (activeReport.averagePressurePsi * 0.7032496),
+          avgSystemPressureM: activeReport.averagePressurePsi * 0.7032496,
           serviceConnectionsCount: activeReport.serviceConnections,
         },
       },
@@ -278,7 +279,7 @@ export const AwwaM36WaterLossCard: React.FC<AwwaM36WaterLossCardProps> = ({
     <CardContainer $isDark={isDark} data-testid="awwa-m36-water-loss-card">
       <HeaderRow>
         <TitleGroup>
-          <GraphIcon size={20} fill="#58a6ff" />
+          <GraphIcon size={20} fill="var(--fgColor-accent, var(--ms-brand))" />
           <div>
             <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 700 }}>AWWA M36 Water Audit &amp; Loss Control</h3>
             <span style={{ fontSize: "11px", color: "var(--color-fg-muted, #8b949e)" }}>

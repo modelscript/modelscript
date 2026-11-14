@@ -37,7 +37,7 @@ export interface Ieee2800VerificationCardProps {
 const CardContainer = styled.div<{ $isDark: boolean }>`
   border: 1px solid var(--color-border-default, ${(p) => (p.$isDark ? "#30363d" : "#d0d7de")});
   border-radius: 10px;
-  background: var(--color-canvas-subtle, ${(p) => (p.$isDark ? "#0d1117" : "#f6f8fa")});
+  background: var(--bgColor-inset, ${(p) => (p.$isDark ? "#121214" : "#f6f8fa")});
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -95,7 +95,7 @@ const ActionBtn = styled.button`
   font-size: 12px;
   font-weight: 600;
   border: 1px solid var(--color-border-default, #30363d);
-  background: var(--color-canvas-default, #161b22);
+  background: var(--bgColor-muted, var(--ms-bg-elv));
   color: var(--color-fg-default, #c9d1d9);
   cursor: pointer;
   transition: background 0.15s ease;
@@ -118,7 +118,7 @@ const ClauseRow = styled.div<{ $status: "PASS" | "FAIL" | "WARN"; $expanded: boo
     ${(p) =>
       p.$status === "FAIL" ? "rgba(218, 54, 51, 0.4)" : "var(--color-border-subtle, rgba(255, 255, 255, 0.08))"};
   border-radius: 6px;
-  background: var(--color-canvas-default, #161b22);
+  background: var(--bgColor-muted, var(--ms-bg-elv));
   overflow: hidden;
   transition: border-color 0.15s ease;
 `;
@@ -149,8 +149,8 @@ const ClauseNumber = styled.span`
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-accent-fg, #58a6ff);
-  background: rgba(56, 139, 253, 0.1);
+  color: var(--fgColor-accent, var(--ms-brand));
+  background: var(--ms-brand-soft);
   padding: 2px 6px;
   border-radius: 4px;
 `;
@@ -185,7 +185,7 @@ const ChartBox = styled.div`
   margin-top: 6px;
   border: 1px solid var(--color-border-default, #30363d);
   border-radius: 8px;
-  background: var(--color-canvas-default, #161b22);
+  background: var(--bgColor-muted, var(--ms-bg-elv));
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -423,7 +423,7 @@ export const Ieee2800VerificationCard: React.FC<Ieee2800VerificationCardProps> =
               <YAxis stroke={isDark ? "#8b949e" : "#57606a"} tick={{ fontSize: 10 }} domain={[0, 1.4]} unit="pu" />
               <Tooltip
                 contentStyle={{
-                  background: isDark ? "#161b22" : "#ffffff",
+                  background: isDark ? "#1e1e22" : "#ffffff",
                   borderColor: isDark ? "#30363d" : "#d0d7de",
                   fontSize: 11,
                 }}

@@ -22,7 +22,7 @@
         "FMU"
       ]
     },
-    "ruleCount": 233
+    "ruleCount": 237
   },
   {
     "slug": "ampl",
@@ -88,7 +88,7 @@
         "ReqIF"
       ]
     },
-    "ruleCount": 55
+    "ruleCount": 59
   },
   {
     "slug": "reqif",
@@ -861,6 +861,8 @@
       "export-ssp",
       "to-ssp",
       "psout",
+      "extract",
+      "build-fmu",
       "benchmark"
     ],
     "capabilities": {
@@ -902,6 +904,7 @@
       "cpf",
       "sld",
       "idv",
+      "verify",
       "verify-nerc",
       "to-cgmes",
       "from-cgmes",
@@ -2223,7 +2226,7 @@
     "group": "process",
     "pkgName": "@modelscript/cantera",
     "version": "0.1.0",
-    "tier": "beta",
+    "tier": "stable",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {

@@ -994,9 +994,15 @@ export function renderMolstarHtml(doc: PdbDocument, biophysics: ProteinBiophysic
         tooltip.style.display = "block";
         tooltip.style.left = (e.clientX - rect.left + 10) + "px";
         tooltip.style.top = (e.clientY - rect.top - 20) + "px";
-        tooltip.innerHTML = "<b>" + found.res + found.seq + ":" + found.chain + "</b><br/>" +
-          "φ=" + found.phi.toFixed(1) + "°, ψ=" + found.psi.toFixed(1) + "°<br/>" +
-          "Region: " + found.region;
+        const bold = document.createElement("b");
+        bold.textContent = String(found.res) + String(found.seq) + ":" + String(found.chain);
+        tooltip.replaceChildren(
+          bold,
+          document.createElement("br"),
+          document.createTextNode("φ=" + found.phi.toFixed(1) + "°, ψ=" + found.psi.toFixed(1) + "°"),
+          document.createElement("br"),
+          document.createTextNode("Region: " + String(found.region)),
+        );
       } else {
         tooltip.style.display = "none";
       }

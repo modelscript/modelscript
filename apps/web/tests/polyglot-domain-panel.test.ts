@@ -10,6 +10,7 @@ import { analyzeBiochemStoichiometry } from "../src/components/morsel/panels/ins
 import { analyzeCaeContinuum } from "../src/components/morsel/panels/inspectors/CaeContinuumInspector.js";
 import { analyzeDaePhysics } from "../src/components/morsel/panels/inspectors/DaeAdvancedInspector.js";
 import { analyzeMultibodyKinematics } from "../src/components/morsel/panels/inspectors/MultibodyInspector.js";
+import { PowerGridInspector } from "../src/components/morsel/panels/inspectors/PowerGridInspector.js";
 import { indexLocalSymbolLines } from "../src/components/morsel/panels/modelica-scanner.js";
 
 describe("PolyglotDomainPanel Render & Variable Scope Integrity", () => {
@@ -444,5 +445,35 @@ end BadUnitsAndPendulum;
     assert.equal(bio.species.length, 4);
     assert.equal(bio.reactions.length, 1);
     assert.equal(bio.conservedMoieties.length >= 2, true, "Should discover hexose and adenylate conserved pools");
+  });
+
+  it("renders PowerGridInspector with PSS/E study bar, fault controls, and custom USRMDL toggle", () => {
+    const rawCode = [
+      "0, 100.0, 33 / TEST",
+      "TEST",
+      "CASE",
+      "1,'BUS1        ', 138.0,3, 1, 1, 1,1.000, 0.000",
+      "2,'BUS2        ', 138.0,1, 1, 1, 1,0.990,-2.000",
+      "0 / END OF BUS DATA",
+      "2, 1, 100.0, 0.0",
+      "0 / END OF LOAD DATA",
+      "0 / END OF FIXED SHUNT DATA",
+      "1,'1 ', 100.0, 0.0, 50.0,-50.0,1.000, 0, 100.0",
+      "0 / END OF GENERATOR DATA",
+      "1, 2,'1 ', 0.01, 0.05, 0.0, 100.0",
+      "0 / END OF BRANCH DATA",
+      "Q",
+    ].join("\n");
+    const html = renderToStaticMarkup(
+      React.createElement(PowerGridInspector, {
+        code: rawCode,
+        lines: rawCode.split("\n"),
+        colorMode: "dark",
+      }),
+    );
+    assert.ok(html.includes("+ Attach .dyr / .seq / .fmu"), "Missing attach button");
+    assert.ok(html.includes("+ Custom USRMDL (AS)"), "Missing Custom USRMDL button");
+    assert.ok(html.includes("Solve Power Flow"), "Missing Solve Power Flow button");
+    assert.ok(html.includes("Run Transient"), "Missing Run Transient button");
   });
 });

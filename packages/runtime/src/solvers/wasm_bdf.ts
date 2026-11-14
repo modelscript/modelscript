@@ -135,7 +135,7 @@ export class WasmBdf {
     if (typeof this.wasmInstance?.exports?.dae_createBdfSolver === "function") {
       return this.wasmInstance.exports.dae_createBdfSolver(daePtr, nStates, atol, rtol, maxOrder);
     }
-    return 0;
+    throw new Error("WasmBdf: WASM module does not export 'dae_createBdfSolver'.");
   }
 
   /**
@@ -144,7 +144,9 @@ export class WasmBdf {
   setStateMapping(solverPtr: number, idx: number, stateVarIdx: number, derivVarIdx: number): void {
     if (typeof this.wasmInstance?.exports?.dae_setBdfStateMapping === "function") {
       this.wasmInstance.exports.dae_setBdfStateMapping(solverPtr, idx, stateVarIdx, derivVarIdx);
+      return;
     }
+    throw new Error("WasmBdf: WASM module does not export 'dae_setBdfStateMapping'.");
   }
 
   /**
@@ -154,7 +156,7 @@ export class WasmBdf {
     if (typeof this.wasmInstance?.exports?.dae_stepBdfSolver === "function") {
       return this.wasmInstance.exports.dae_stepBdfSolver(solverPtr, varValuesPtr, t, dt);
     }
-    return t + dt;
+    throw new Error("WasmBdf: WASM module does not export 'dae_stepBdfSolver'.");
   }
 }
 

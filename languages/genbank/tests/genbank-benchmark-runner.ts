@@ -11,12 +11,7 @@
  */
 
 import assert from "node:assert/strict";
-import {
-  parseGenbank,
-  analyzeGenbankSequence,
-  lowerGenbankToDae,
-  type GenbankDocument,
-} from "../src/index.js";
+import { analyzeGenbankSequence, lowerGenbankToDae, parseGenbank, type GenbankDocument } from "../src/index.js";
 
 export const PGFP_MINI_GENBANK_BENCHMARK = `LOCUS       pGFP_Mini                 90 bp    ds-DNA  circular SYN 04-NOV-2026
 DEFINITION  Synthetic mini-GFP expression plasmid with BioBrick sites.
@@ -106,6 +101,34 @@ export function runGenbankBenchmark(gbStr = PGFP_MINI_GENBANK_BENCHMARK): Genban
     isSquare: varCount === eqCount,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const genbankBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "genbank",
+  referenceTool: "NCBI GenBank / BioPython Central Dogma",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runGenbankBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "pgfp-mini-plasmid-dae",
+        name: "pgfp-mini-plasmid-dae",
+        scale: "standard",
+        referenceTool: "NCBI GenBank / BioPython Central Dogma",
+        passed: m.isSquare && m.daeVarCount === 7 && m.orfsCount >= 1,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.daeEqCount,
+        threshold: 0,
+        details: `${m.lengthNt}bp, ${m.featuresCount} features, CAI=${m.caiGfp.toFixed(3)}, ${m.daeVarCount}x${m.daeEqCount} DAE`,
+      },
+    ];
+  },
+};
 
 if (process.argv[1]?.endsWith("genbank-benchmark-runner.ts")) {
   const m = runGenbankBenchmark();

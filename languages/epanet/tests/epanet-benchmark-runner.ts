@@ -15,13 +15,14 @@
  *   --report-json=<path>   Export JSON summary report
  */
 
+import type { BenchmarkCaseResult, LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
 import fs from "node:fs";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { parseInp, solveHydraulics } from "../src/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 interface EpanetBenchmarkResult {
   networkId: string;
@@ -31,19 +32,16 @@ interface EpanetBenchmarkResult {
   iterations: number;
   converged: boolean;
   maxFlowBalanceError: number;
+  durationMs: number;
   passed: boolean;
   message?: string;
 }
 
-export async function runEpanetBenchmarks(options?: { tolerance?: number; reportJson?: string }): Promise<void> {
-  const tolerance = options?.tolerance ?? 0.001;
-  console.log(`[epanet-benchmark-runner] Running EPANET 2.2 benchmark networks (tolerance: ${tolerance})...`);
-
-  const networks = [
-    {
-      id: "Net1-Gravity",
-      name: "EPANET Net1 Gravity Baseline",
-      inp: `[TITLE]
+const EPANET_NETWORKS = [
+  {
+    id: "Net1-Gravity",
+    name: "EPANET Net1 Gravity Baseline",
+    inp: `[TITLE]
 Gravity Feed Network
 
 [RESERVOIRS]
@@ -60,11 +58,11 @@ Gravity Feed Network
  P1  R1     J1     1000    200   100        0          OPEN
  P2  J1     J2     800     150   100        0          OPEN
 `,
-    },
-    {
-      id: "Net2-Branched",
-      name: "EPANET Net2 Branched Distribution",
-      inp: `[TITLE]
+  },
+  {
+    id: "Net2-Branched",
+    name: "EPANET Net2 Branched Distribution",
+    inp: `[TITLE]
 Branched Feed Network
 
 [RESERVOIRS]
@@ -83,17 +81,17 @@ Branched Feed Network
  P2  J1     J2     900     150   100        0          OPEN
  P3  J1     J3     1000    150   100        0          OPEN
 `,
-    },
-  ];
+  },
+];
 
+function evaluateEpanetNetworks(tolerance: number): EpanetBenchmarkResult[] {
   const results: EpanetBenchmarkResult[] = [];
-
-  for (const n of networks) {
+  for (const n of EPANET_NETWORKS) {
+    const t0 = performance.now();
     try {
       const net = parseInp(n.inp);
       const res = solveHydraulics(net);
 
-      // Verify mass continuity at all internal junctions
       let maxBalanceErr = 0;
       for (const j of net.junctions) {
         let inflow = 0;
@@ -108,7 +106,6 @@ Branched Feed Network
       }
 
       const passed = res.converged && res.iterations <= 15 && maxBalanceErr <= tolerance;
-
       results.push({
         networkId: n.id,
         name: n.name,
@@ -117,12 +114,9 @@ Branched Feed Network
         iterations: res.iterations,
         converged: res.converged,
         maxFlowBalanceError: maxBalanceErr,
+        durationMs: performance.now() - t0,
         passed,
       });
-
-      console.log(
-        `  [${passed ? "PASS" : "FAIL"}] ${n.id}: ${n.name} (iters: ${res.iterations}, flowErr: ${maxBalanceErr.toExponential(3)})`,
-      );
     } catch (err: unknown) {
       results.push({
         networkId: n.id,
@@ -132,10 +126,50 @@ Branched Feed Network
         iterations: 0,
         converged: false,
         maxFlowBalanceError: Infinity,
+        durationMs: performance.now() - t0,
         passed: false,
         message: (err as Error).message,
       });
-      console.log(`  [FAIL] ${n.id}: ${n.name} - ${(err as Error).message}`);
+    }
+  }
+  return results;
+}
+
+export const epanetBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "epanet",
+  referenceTool: "US EPA EPANET 2.2",
+  referenceVersion: "2.2",
+  defaultTolerance: 0.001,
+  metricKind: "residual",
+  async runCases(ctx): Promise<BenchmarkCaseResult[]> {
+    const tol = ctx?.tolerance ?? 0.001;
+    return evaluateEpanetNetworks(tol).map((r) => ({
+      id: r.networkId,
+      name: r.name,
+      scale: "standard",
+      referenceTool: "US EPA EPANET 2.2",
+      metricKind: "residual",
+      threshold: tol,
+      measuredError: Number.isFinite(r.maxFlowBalanceError) ? r.maxFlowBalanceError : null,
+      passed: r.passed,
+      durationMs: Number(r.durationMs.toFixed(3)),
+      details: r.message ?? `${r.numJunctions} junctions, ${r.numPipes} pipes, ${r.iterations} GGM iterations`,
+    }));
+  },
+};
+
+export async function runEpanetBenchmarks(options?: { tolerance?: number; reportJson?: string }): Promise<void> {
+  const tolerance = options?.tolerance ?? 0.001;
+  console.log(`[epanet-benchmark-runner] Running EPANET 2.2 benchmark networks (tolerance: ${tolerance})...`);
+
+  const results = evaluateEpanetNetworks(tolerance);
+  for (const r of results) {
+    if (r.message) {
+      console.log(`  [FAIL] ${r.networkId}: ${r.name} - ${r.message}`);
+    } else {
+      console.log(
+        `  [${r.passed ? "PASS" : "FAIL"}] ${r.networkId}: ${r.name} (iters: ${r.iterations}, flowErr: ${r.maxFlowBalanceError.toExponential(3)})`,
+      );
     }
   }
 

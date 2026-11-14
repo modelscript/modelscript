@@ -62,3 +62,9 @@ msx lint trajectory_data.csv
 # Output simulation trajectories directly to standard CSV format
 msx simulate CircuitModel.mo --stop-time=1.0 --step-size=0.001 --format=csv -o sim_results.csv
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="csv" />

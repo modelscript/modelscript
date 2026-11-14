@@ -10,8 +10,15 @@
  * 4. Export to Siemens PSS/E Tabulated ACCC CSV format and standalone interactive HTML dashboard.
  */
 
-import { generate70kEasternInterconnectionCase } from "./accc-benchmarker.js";
-import { calculateSotaDiscrepancy, generateSotaHtmlDashboard, type SotaDashboardReport } from "./sota-discrepancy.js";
+import { solveMultiIslandPowerFlow } from "../solver/island-solver.js";
+import { generate70kEasternInterconnectionCase, runLinearAcccBenchmarkScreening } from "./accc-benchmarker.js";
+import {
+  computePsseSotaComparison,
+  generateSotaHtmlDashboard,
+  type PsseSotaComparisonOptions,
+  type PsseSotaParityStatus,
+  type SotaDashboardReport,
+} from "./sota-discrepancy.js";
 
 export interface Mmwg70kBenchmarkResult {
   caseName: string;
@@ -23,6 +30,8 @@ export interface Mmwg70kBenchmarkResult {
   totalLoadMw: number;
   powerFlow: {
     converged: boolean;
+    iterations: number;
+    maxMismatchMva: number;
     solveTimeMs: number;
     memoryRssMb: number;
     sparseNonZeros: number;
@@ -38,27 +47,28 @@ export interface Mmwg70kBenchmarkResult {
   };
   comparisonVsSota: {
     sotaTool: string;
-    sotaWallClockMs: number;
-    speedupFactor: number;
-    memoryRatioVsSota: number; // e.g. 0.48 = 48% of PSS/E RAM
-    discrepancyNrmsePct: number;
-    theilTic: number;
-    parityStatus: "PASS" | "WARN" | "FAIL";
+    sotaWallClockMs: number | null;
+    speedupFactor: number | null;
+    memoryRatioVsSota: number | null;
+    discrepancyNrmsePct: number | null;
+    theilTic: number | null;
+    parityStatus: PsseSotaParityStatus;
   };
   psseTabulatedCsv: string;
   htmlDashboard?: string | undefined;
 }
 
 /**
- * Runs the turnkey 70,000-Bus Eastern Interconnection SOTA Scale Benchmark.
+ * Runs the turnkey 70,000-Bus Eastern Interconnection Scale Benchmark.
  */
-export async function runMmwg70kBenchmark(options?: {
-  numContingencies?: number;
-  generateHtml?: boolean;
-}): Promise<Mmwg70kBenchmarkResult> {
-  const t0 = performance.now();
+export async function runMmwg70kBenchmark(
+  options?: PsseSotaComparisonOptions & {
+    numContingencies?: number;
+    referenceMemoryMb?: number | undefined;
+    generateHtml?: boolean;
+  },
+): Promise<Mmwg70kBenchmarkResult> {
   const psseCase = generate70kEasternInterconnectionCase();
-  const prepTimeMs = performance.now() - t0;
 
   const totalBuses = psseCase.buses.size;
   const totalBranches = psseCase.branches.length;
@@ -70,104 +80,66 @@ export async function runMmwg70kBenchmark(options?: {
   let totL = 0;
   for (const l of psseCase.loads) totL += l.pl;
 
-  // Measure memory footprint
-  const memUsage = process.memoryUsage ? process.memoryUsage().rss / (1024 * 1024) : 450.0;
+  // 1. Real Sparse AC Power Flow Solve
+  const tPf = performance.now();
+  const pfResult = solveMultiIslandPowerFlow(psseCase, {
+    maxIterations: 30,
+    tolerance: 1e-4,
+  });
+  const pfSolveMs = performance.now() - tPf;
 
-  // Base power flow solve simulation (sparse LU with AMD ordering)
-  // Simulated high-efficiency sparse solve timing
-  const pfSolveMs = Math.max(12.5, prepTimeMs * 0.4);
+  // Measure process memory footprint
+  const memUsage = process.memoryUsage ? Math.round(process.memoryUsage().rss / (1024 * 1024)) : 0;
 
-  // ACCC Contingency Screening
+  // 2. Real Sparse B_bus ACCC Contingency Screening
   const maxN = options?.numContingencies ?? 50;
-  const targetBranches = psseCase.branches.slice(0, maxN);
+  const accc = runLinearAcccBenchmarkScreening(psseCase, pfResult, maxN, (br) => `CONT_70K_BR_${br.i}_${br.j}`);
 
-  const tAccc = performance.now();
-  const acccRecords = targetBranches.map((br, idx) => {
-    const fInit = 0.5 * br.rateA;
-    const fPost = fInit * (1.0 + (idx % 11 === 0 ? 0.38 : 0.12));
-    const maxLoading = (fPost / br.rateA) * 100.0;
-    const vMin = 1.0 - (maxLoading > 100 ? 0.07 : 0.015);
-
-    return {
-      label: `CONT_70K_BR_${br.i}_${br.j}`,
-      status: "CONVERGED",
-      maxLoading,
-      worstBranch: `${br.i}-${br.j}`,
-      flowMva: fPost,
-      ratingMva: br.rateA,
-      lowestVoltagePu: vMin,
-      lowestBus: br.i,
-      violations: vMin < 0.95 ? 1 : 0,
-      severityIndex: Math.pow(maxLoading / 100.0, 4),
-      timeMs: 0.45,
-    };
-  });
-  const acccDurationMs = Math.max(1.0, performance.now() - tAccc);
-
-  let totalViolations = 0;
-  let worstContingency = "None";
-  let maxLoading = 0;
-  for (const r of acccRecords) {
-    if (r.maxLoading > 100) totalViolations++;
-    if (r.maxLoading > maxLoading) {
-      maxLoading = r.maxLoading;
-      worstContingency = r.label;
-    }
+  // 3. Extract solved bus voltage profile & compare only against caller-supplied reference
+  const sampleCount = Math.min(100, pfResult.buses.length);
+  const timeSec = new Float64Array(sampleCount);
+  const msCurve = new Float64Array(sampleCount);
+  for (let i = 0; i < sampleCount; i++) {
+    timeSec[i] = i;
+    msCurve[i] = pfResult.buses[i]!.vm;
   }
 
-  // Export PSS/E Tabulated CSV
-  const csvLines: string[] = [
-    "CONTINGENCY LABEL,STATUS,ITERATIONS,MAX % LOADING,WORST MONITORED BRANCH,FLOW MVA,RATING MVA,LOWEST VOLTAGE PU,LOWEST VOLTAGE BUS,VOLTAGE VIOLATIONS COUNT,SEVERITY INDEX,EXECUTION TIME MS",
-  ];
-  for (const r of acccRecords) {
-    csvLines.push(
-      `"${r.label}",${r.status},3,${r.maxLoading.toFixed(2)},"${r.worstBranch}",${r.flowMva.toFixed(1)},${r.ratingMva.toFixed(1)},${r.lowestVoltagePu.toFixed(4)},${r.lowestBus},${r.violations},${r.severityIndex.toFixed(2)},${r.timeMs.toFixed(2)}`,
-    );
-  }
-  const psseTabulatedCsv = csvLines.join("\n");
-
-  const totalMs = pfSolveMs + acccDurationMs;
-  const sotaWallClockMs = totalMs * 11.8; // 11.8x speedup vs commercial PSS/E v35 ACCC single-thread
-  const throughput = Math.round(acccRecords.length / (acccDurationMs / 1000));
-
-  // Synthetic validation trajectory (70k grid voltage stability curve)
-  const nPoints = 40;
-  const timeSec = new Float64Array(nPoints);
-  const msCurve = new Float64Array(nPoints);
-  const sotaCurve = new Float64Array(nPoints);
-
-  for (let i = 0; i < nPoints; i++) {
-    timeSec[i] = i * 0.25;
-    const baseV = 1.02 - 0.02 * Math.exp(-i * 0.05);
-    sotaCurve[i] = baseV;
-    msCurve[i] = baseV + 0.0004 * Math.sin(i * 0.5);
-  }
-
-  const discrepancy = calculateSotaDiscrepancy(msCurve, sotaCurve, {
-    ratedSpan: 0.1,
-    nrmsePassThresholdPercent: 1.0,
-    ticPassThreshold: 0.015,
-  });
+  const totalMs = pfSolveMs + accc.executionTimeMs;
+  const comparison = computePsseSotaComparison(
+    msCurve,
+    totalMs,
+    options,
+    {
+      ratedSpan: 0.1,
+      nrmsePassThresholdPercent: 1.0,
+      ticPassThreshold: 0.015,
+    },
+    "Siemens PSS/E v35.5",
+  );
+  const memoryRatioVsSota =
+    typeof options?.referenceMemoryMb === "number" && options.referenceMemoryMb > 0 && memUsage > 0
+      ? memUsage / options.referenceMemoryMb
+      : null;
 
   let htmlDashboard: string | undefined;
   if (options?.generateHtml ?? true) {
     const reportData: SotaDashboardReport = {
-      suiteTitle: "70,000-Bus US Eastern Interconnection (MMWG) SOTA Benchmark",
+      suiteTitle: "70,000-Bus US Eastern Interconnection (MMWG) Benchmark",
       benchmarkModel: "MMWG Eastern Interconnection (70,000 Buses, 70,000 Branches)",
-      sotaComparator: "Siemens PSS/E v35.5 (Activity ACCC)",
+      sotaComparator: `${comparison.sotaTool} (Activity ACCC)`,
       executionMetrics: {
         modelscriptTimeMs: totalMs,
-        sotaTimeMs: sotaWallClockMs,
-        speedupFactor: sotaWallClockMs / Math.max(1, totalMs),
-        throughputPerSec: throughput,
+        sotaTimeMs: comparison.sotaWallClockMs,
+        speedupFactor: comparison.speedupFactor,
+        throughputPerSec: accc.throughputSolvesPerSec,
         throughputUnit: "contingencies/sec",
-        memoryPeakMb: Math.round(memUsage),
+        memoryPeakMb: memUsage,
       },
-      metrics: discrepancy,
+      metrics: comparison.discrepancy,
       timeSec,
       modelscriptCurve: msCurve,
-      sotaCurve,
-      curveLabel: "Area 1 Hub Voltage Stability Under High Contingency Stress",
+      sotaCurve: options?.referenceTrace,
+      curveLabel: "Solved Bus Voltage Magnitude Profile",
       unit: "p.u.",
     };
     htmlDashboard = generateSotaHtmlDashboard(reportData);
@@ -182,30 +154,32 @@ export async function runMmwg70kBenchmark(options?: {
     totalGenerationMw: totP,
     totalLoadMw: totL,
     powerFlow: {
-      converged: true,
+      converged: pfResult.converged,
+      iterations: pfResult.iterations,
+      maxMismatchMva: pfResult.maxMismatchPu * psseCase.header.sbase,
       solveTimeMs: pfSolveMs,
-      memoryRssMb: Math.round(memUsage),
+      memoryRssMb: memUsage,
       sparseNonZeros: totalBranches * 4 + totalBuses,
     },
     accc: {
-      totalContingencies: acccRecords.length,
-      screenedContingencies: acccRecords.length,
-      violationsCount: totalViolations,
-      screeningTimeMs: acccDurationMs,
-      throughputSolvesPerSec: throughput,
-      worstContingency,
-      maxLoadingPercent: maxLoading,
+      totalContingencies: accc.totalContingencies,
+      screenedContingencies: accc.convergedContingencies,
+      violationsCount: accc.totalViolationsFound,
+      screeningTimeMs: accc.executionTimeMs,
+      throughputSolvesPerSec: accc.throughputSolvesPerSec,
+      worstContingency: accc.worstContingency,
+      maxLoadingPercent: accc.maxLoadingPercent,
     },
     comparisonVsSota: {
-      sotaTool: "Siemens PSS/E v35.5 (Activity ACCC)",
-      sotaWallClockMs,
-      speedupFactor: sotaWallClockMs / Math.max(1, totalMs),
-      memoryRatioVsSota: 0.45, // ModelScript uses ~45% of PSS/E memory footprint
-      discrepancyNrmsePct: discrepancy.nrmsePercent,
-      theilTic: discrepancy.theilTic,
-      parityStatus: discrepancy.status,
+      sotaTool: comparison.sotaTool,
+      sotaWallClockMs: comparison.sotaWallClockMs,
+      speedupFactor: comparison.speedupFactor,
+      memoryRatioVsSota,
+      discrepancyNrmsePct: comparison.discrepancyNrmsePct,
+      theilTic: comparison.theilTic,
+      parityStatus: comparison.parityStatus,
     },
-    psseTabulatedCsv,
+    psseTabulatedCsv: accc.psseTabulatedCsv,
     htmlDashboard,
   };
 }

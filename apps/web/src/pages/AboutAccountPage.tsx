@@ -104,7 +104,7 @@ const InfoCard = styled.div`
   box-sizing: border-box;
 
   &:hover {
-    border-color: var(--color-accent-fg, #0969da);
+    border-color: var(--ms-accent, var(--color-accent-fg));
   }
 `;
 
@@ -257,7 +257,7 @@ export default function AboutAccountPage() {
                 {data.isVerified && !data.signing_verified && (
                   <CheckCircleFillIcon
                     size={18}
-                    fill="var(--color-accent-fg, #0969da)"
+                    fill="var(--ms-accent, var(--color-accent-fg))"
                     title="Connected Account (GitHub/Twitter)"
                   />
                 )}

@@ -92,3 +92,9 @@ const sbmlXml = nmtranToSbml(model);
 ## Trademarks & Disclaimers
 
 NONMEM is a registered trademark of ICON plc. PsN and Pirana are trademarks or software products of their respective authors and Certara, L.P. Reference to these marks is strictly for nominative identification of control stream format compatibility and data interchange. ModelScript is an independent open-core project not affiliated with or endorsed by these entities.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="nmtran" />

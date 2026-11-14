@@ -119,6 +119,34 @@ export function runPhreeqcBenchmark(pqiStr = KARST_AQUIFER_PHREEQC_BENCHMARK): P
   };
 }
 
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const phreeqcBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "phreeqc",
+  referenceTool: "USGS PHREEQC Aqueous Speciation",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runPhreeqcBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "karst-aquifer-calcite-speciation",
+        name: "karst-aquifer-calcite-speciation",
+        scale: "standard",
+        referenceTool: "USGS PHREEQC Aqueous Speciation",
+        passed: m.isSquare && m.daeVarCount >= 18 && m.siGypsum < 0,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.daeEqCount,
+        threshold: 0,
+        details: `I=${m.ionicStrength.toFixed(4)}, SI_Calcite=${m.siCalcite.toFixed(2)}, ${m.daeVarCount}x${m.daeEqCount} DAE`,
+      },
+    ];
+  },
+};
+
 if (process.argv[1]?.endsWith("phreeqc-benchmark-runner.ts")) {
   const m = runPhreeqcBenchmark();
   console.log("PHREEQC Benchmark Results:", m);

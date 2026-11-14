@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { CheckIcon, ClockIcon, GlobeIcon, MortarBoardIcon, SearchIcon, XIcon } from "@primer/octicons-react";
-import React, { useEffect, useRef, useState } from "react";
+import { Button, Dialog } from "@primer/react";
+import React, { useState } from "react";
 import type { AdminWaitlistEntry } from "../../../api";
 import Box from "../../../components/Box";
 import { useToast } from "../../../components/ToastContext";
-import { useFocusTrap } from "../../../hooks/useFocusTrap";
-import { ActionButton, Badge, Card, FilterPill, ModalBox, ModalOverlay, Table, Textarea } from "../styles";
+import { ActionButton, Badge, Card, FilterPill, Table, Textarea } from "../styles";
 
 export interface AdminWaitlistTabProps {
   entries: AdminWaitlistEntry[];
@@ -31,30 +31,9 @@ export const AdminWaitlistTab: React.FC<AdminWaitlistTabProps> = ({
   // Reject modal state
   const [rejectModalEntry, setRejectModalEntry] = useState<AdminWaitlistEntry | null>(null);
   const [rejectReason, setRejectReason] = useState("");
-  const rejectModalRef = useRef<HTMLDivElement | null>(null);
 
   // Approval modal state (to show generated invite code)
   const [approvedResult, setApprovedResult] = useState<{ email: string; inviteCode: string } | null>(null);
-  const approvedModalRef = useRef<HTMLDivElement | null>(null);
-
-  useFocusTrap(rejectModalRef, Boolean(rejectModalEntry), {
-    onEscape: () => setRejectModalEntry(null),
-  });
-  useFocusTrap(approvedModalRef, Boolean(approvedResult), {
-    onEscape: () => setApprovedResult(null),
-  });
-
-  useEffect(() => {
-    if (!rejectModalEntry && !approvedResult) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setRejectModalEntry(null);
-        setApprovedResult(null);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [rejectModalEntry, approvedResult]);
 
   const filteredEntries = entries.filter((e) => {
     if (statusFilter !== "all" && e.status !== statusFilter) return false;
@@ -292,17 +271,16 @@ export const AdminWaitlistTab: React.FC<AdminWaitlistTabProps> = ({
 
       {/* Reject Confirmation Modal */}
       {rejectModalEntry && (
-        <ModalOverlay onClick={() => setRejectModalEntry(null)}>
-          <ModalBox
-            ref={rejectModalRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Reject Waitlist Application"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: "450px" }}
-          >
-            <h3 style={{ margin: "0 0 12px 0", color: "#fff" }}>Reject Waitlist Application</h3>
-            <p style={{ color: "var(--color-text-secondary, #94a3b8)", fontSize: "14px", lineHeight: "1.4" }}>
+        <Dialog title="Reject Waitlist Application" width="small" onClose={() => setRejectModalEntry(null)}>
+          <div>
+            <p
+              style={{
+                color: "var(--color-text-secondary, #94a3b8)",
+                fontSize: "14px",
+                lineHeight: "1.4",
+                marginTop: 0,
+              }}
+            >
               Are you sure you want to reject the application for <strong>{rejectModalEntry.name}</strong> (
               {rejectModalEntry.email})?
             </p>
@@ -325,37 +303,38 @@ export const AdminWaitlistTab: React.FC<AdminWaitlistTabProps> = ({
               />
             </div>
             <Box display="flex" justifyContent="flex-end" gap={2} mt={3}>
-              <ActionButton $variant="secondary" onClick={() => setRejectModalEntry(null)}>
+              <Button variant="default" onClick={() => setRejectModalEntry(null)}>
                 Cancel
-              </ActionButton>
-              <ActionButton
-                $variant="danger"
-                onClick={handleConfirmReject}
-                disabled={processingId === rejectModalEntry.id}
-              >
+              </Button>
+              <Button variant="danger" onClick={handleConfirmReject} disabled={processingId === rejectModalEntry.id}>
                 Confirm Rejection
-              </ActionButton>
+              </Button>
             </Box>
-          </ModalBox>
-        </ModalOverlay>
+          </div>
+        </Dialog>
       )}
 
       {/* Approved Success Details Modal */}
       {approvedResult && (
-        <ModalOverlay onClick={() => setApprovedResult(null)}>
-          <ModalBox
-            ref={approvedModalRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Waitlist Approved"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: "480px" }}
-          >
-            <Box display="flex" alignItems="center" gap={2} mb={2}>
-              <CheckIcon size={24} fill="#22c55e" />
-              <h3 style={{ margin: 0, color: "#fff" }}>Waitlist Approved!</h3>
+        <Dialog
+          title={
+            <Box display="flex" alignItems="center" gap={2}>
+              <CheckIcon size={20} fill="#22c55e" />
+              <span>Waitlist Approved!</span>
             </Box>
-            <p style={{ color: "var(--color-text-secondary, #94a3b8)", fontSize: "14px", lineHeight: "1.4" }}>
+          }
+          width="small"
+          onClose={() => setApprovedResult(null)}
+        >
+          <div>
+            <p
+              style={{
+                color: "var(--color-text-secondary, #94a3b8)",
+                fontSize: "14px",
+                lineHeight: "1.4",
+                marginTop: 0,
+              }}
+            >
               Instant access has been granted for <strong>{approvedResult.email}</strong>. An invitation email with this
               activation code has been queued.
             </p>
@@ -378,7 +357,7 @@ export const AdminWaitlistTab: React.FC<AdminWaitlistTabProps> = ({
                   fontSize: "18px",
                   fontWeight: 700,
                   letterSpacing: "0.08em",
-                  color: "#fff",
+                  color: "var(--color-text-primary, #fff)",
                   marginTop: "6px",
                   userSelect: "all",
                 }}
@@ -387,12 +366,12 @@ export const AdminWaitlistTab: React.FC<AdminWaitlistTabProps> = ({
               </div>
             </Box>
             <Box display="flex" justifyContent="flex-end" mt={3}>
-              <ActionButton $variant="primary" onClick={() => setApprovedResult(null)}>
+              <Button variant="primary" onClick={() => setApprovedResult(null)}>
                 Done
-              </ActionButton>
+              </Button>
             </Box>
-          </ModalBox>
-        </ModalOverlay>
+          </div>
+        </Dialog>
       )}
     </div>
   );

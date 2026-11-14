@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BltBlock, BltDagEdge, BltModelAnalysis, DependencyKind } from "./blt-types.js";
+import { InspectorTabs } from "./inspectors/InspectorTabs.js";
 
 export interface BltVisualizerProps {
   analysis: BltModelAnalysis;
@@ -61,11 +62,11 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
 
   const isDark = colorMode === "dark";
   const borderCol = "var(--color-border-default, rgba(148, 163, 184, 0.18))";
-  const cardBg = "var(--color-bg-card, rgba(22, 27, 34, 0.6))";
+  const cardBg = "var(--bgColor-muted, var(--ms-bg-elv))";
   // 100% opaque surface tokens for sticky matrix headers so scrolled rows/columns never bleed through
-  const solidHeaderBg = isDark ? "#161b22" : "#f6f8fa";
-  const solidCornerBg = isDark ? "#0d1117" : "#eaeef2";
-  const solidHoverHeaderBg = isDark ? "#1b2c43" : "#dcebff";
+  const solidHeaderBg = isDark ? "#1e1e22" : "#f6f8fa";
+  const solidCornerBg = isDark ? "#121214" : "#eaeef2";
+  const solidHoverHeaderBg = isDark ? "#27272a" : "#e4e4e7";
   const textPrimary = "var(--color-fg-default, #c9d1d9)";
   const textMuted = "var(--color-fg-muted, #8b949e)";
 
@@ -302,7 +303,7 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
     canvas.height = cssSize * dpr;
     ctx.scale(dpr, dpr);
 
-    ctx.fillStyle = isDark ? "#0d1117" : "#ffffff";
+    ctx.fillStyle = isDark ? "#121214" : "#ffffff";
     ctx.fillRect(0, 0, cssSize, cssSize);
 
     const pad = 24;
@@ -357,7 +358,9 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
               ? "#bc8cff"
               : kind === "nonlinear"
                 ? "#d29922"
-                : "#58a6ff";
+                : isDark
+                  ? "#22d3ee"
+                  : "#0891b2";
         ctx.fillRect(cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize);
       }
       void eq;
@@ -451,7 +454,8 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
           <div>
             <div style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
               <span>
-                BLT Causal Architecture: <span style={{ color: "#58a6ff" }}>{analysis.className}</span>
+                BLT Causal Architecture:{" "}
+                <span style={{ color: "var(--fgColor-accent, var(--ms-brand))" }}>{analysis.className}</span>
               </span>
               {hasFlattenedDae && onSourceModeChange && (
                 <span
@@ -487,8 +491,8 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
                       fontWeight: 600,
                       border: "none",
                       cursor: "pointer",
-                      backgroundColor: sourceMode === "source" ? "rgba(88, 166, 255, 0.2)" : "transparent",
-                      color: sourceMode === "source" ? "#58a6ff" : textMuted,
+                      backgroundColor: sourceMode === "source" ? "var(--ms-brand-soft)" : "transparent",
+                      color: sourceMode === "source" ? "var(--fgColor-accent, var(--ms-brand))" : textMuted,
                     }}
                   >
                     Local Class
@@ -520,40 +524,17 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
           </span>
 
           {/* Sub-view switcher */}
-          <div
-            style={{
-              display: "inline-flex",
-              borderRadius: 6,
-              border: `1px solid ${borderCol}`,
-              overflow: "hidden",
-              backgroundColor: isDark ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.8)",
-            }}
-          >
-            {[
+          <InspectorTabs
+            ariaLabel="BLT visualization mode"
+            value={viewMode}
+            onChange={(id) => setViewMode(id as BltViewMode)}
+            tabs={[
               { id: "matrix", label: "Matrix Sparsity" },
               { id: "pipeline", label: "Causal Blocks & Tearing" },
               { id: "dag", label: "Dependency DAG" },
               { id: "tables", label: "System Equations" },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setViewMode(tab.id as BltViewMode)}
-                style={{
-                  padding: "5px 11px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  border: "none",
-                  cursor: "pointer",
-                  backgroundColor: viewMode === tab.id ? "var(--color-accent-fg, #1f6feb)" : "transparent",
-                  color: viewMode === tab.id ? "#ffffff" : textMuted,
-                  transition: "all 0.15s ease",
-                }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+            ]}
+          />
         </div>
       </div>
 
@@ -571,7 +552,7 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
             borderRadius: 8,
             border: `1px solid ${borderCol}`,
             backgroundColor: cardBg,
-            borderLeft: "3px solid #58a6ff",
+            borderLeft: "3px solid var(--ms-brand)",
           }}
         >
           <div style={{ fontSize: 11, color: textMuted, textTransform: "uppercase", fontWeight: 600 }}>
@@ -726,45 +707,15 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
 
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
               {(equations.length > 16 || variables.length > 16) && (
-                <div
-                  style={{
-                    display: "inline-flex",
-                    borderRadius: 6,
-                    border: `1px solid ${borderCol}`,
-                    overflow: "hidden",
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setMatrixMode("grid")}
-                    style={{
-                      padding: "3px 9px",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      border: "none",
-                      cursor: "pointer",
-                      backgroundColor: matrixMode === "grid" ? "var(--color-accent-fg, #1f6feb)" : "transparent",
-                      color: matrixMode === "grid" ? "#ffffff" : textMuted,
-                    }}
-                  >
-                    Interactive Grid
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMatrixMode("spy")}
-                    style={{
-                      padding: "3px 9px",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      border: "none",
-                      cursor: "pointer",
-                      backgroundColor: matrixMode === "spy" ? "var(--color-accent-fg, #1f6feb)" : "transparent",
-                      color: matrixMode === "spy" ? "#ffffff" : textMuted,
-                    }}
-                  >
-                    Overview Spy Plot
-                  </button>
-                </div>
+                <InspectorTabs
+                  ariaLabel="Matrix display mode"
+                  value={matrixMode}
+                  onChange={(id) => setMatrixMode(id as "grid" | "spy")}
+                  tabs={[
+                    { id: "grid", label: "Interactive Grid" },
+                    { id: "spy", label: "Overview Spy Plot" },
+                  ]}
+                />
               )}
 
               <label
@@ -831,7 +782,13 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <span
-                style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, backgroundColor: "#58a6ff" }}
+                style={{
+                  display: "inline-block",
+                  width: 10,
+                  height: 10,
+                  borderRadius: 2,
+                  backgroundColor: "var(--fgColor-accent, var(--ms-brand))",
+                }}
               />
               <span>Linear Dependency</span>
             </div>
@@ -889,7 +846,7 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
                 position: "relative",
                 border: `1px solid ${borderCol}`,
                 borderRadius: 6,
-                backgroundColor: isDark ? "#0d1117" : "#ffffff",
+                backgroundColor: isDark ? "#121214" : "#ffffff",
               }}
             >
               <table
@@ -970,7 +927,11 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
                             transform: "rotate(180deg)",
                             overflow: "hidden",
                             whiteSpace: "nowrap",
-                            color: isUnmatchedVar ? "#f85149" : isMatchedCol ? "#58a6ff" : textPrimary,
+                            color: isUnmatchedVar
+                              ? "#f85149"
+                              : isMatchedCol
+                                ? "var(--fgColor-accent, var(--ms-brand))"
+                                : textPrimary,
                             fontWeight: isMatchedCol ? 700 : 500,
                             cursor: "pointer",
                           }}
@@ -1042,7 +1003,11 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             cursor: "pointer",
-                            color: isUnmatchedEq ? "#f85149" : isHoveredRow ? "#58a6ff" : textPrimary,
+                            color: isUnmatchedEq
+                              ? "#f85149"
+                              : isHoveredRow
+                                ? "var(--fgColor-accent, var(--ms-brand))"
+                                : textPrimary,
                             fontWeight: isHoveredRow ? 700 : 500,
                           }}
                           onClick={() => onRevealLine?.(eq.line)}
@@ -1096,9 +1061,7 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
                                     ? "rgba(240, 136, 62, 0.11)"
                                     : "rgba(240, 136, 62, 0.08)"
                                   : isCrosshair
-                                    ? isDark
-                                      ? "rgba(56, 139, 253, 0.1)"
-                                      : "rgba(56, 139, 253, 0.08)"
+                                    ? "var(--ms-brand-soft)"
                                     : "transparent",
                                 cursor: kind ? "pointer" : "default",
                               }}
@@ -1144,7 +1107,7 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
                                     width: 8,
                                     height: 8,
                                     borderRadius: "50%",
-                                    backgroundColor: "#58a6ff",
+                                    backgroundColor: "var(--fgColor-accent, var(--ms-brand))",
                                     margin: "auto",
                                     pointerEvents: "none",
                                   }}
@@ -1194,7 +1157,13 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
               <>
                 <div style={{ maxWidth: "48%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   <span style={{ color: textMuted }}>Equation e{hoveredCell.eqIdx + 1}: </span>
-                  <span style={{ fontWeight: 600, color: "#58a6ff", fontFamily: "monospace" }}>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      color: "var(--fgColor-accent, var(--ms-brand))",
+                      fontFamily: "monospace",
+                    }}
+                  >
                     {equations[hoveredCell.eqIdx]?.text}
                   </span>
                 </div>
@@ -1250,14 +1219,14 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
                   borderRadius: 8,
                   border: `1px solid ${
                     isSelected
-                      ? "#58a6ff"
+                      ? "var(--fgColor-accent, var(--ms-brand))"
                       : block.isLoop
                         ? "rgba(210, 153, 34, 0.4)"
                         : block.blockType === "ode"
                           ? "rgba(188, 140, 255, 0.4)"
                           : borderCol
                   }`,
-                  boxShadow: isSelected ? "0 0 10px rgba(88, 166, 255, 0.3)" : "none",
+                  boxShadow: isSelected ? "0 0 0 2px var(--ms-brand-soft)" : "none",
                   backgroundColor: cardBg,
                   overflow: "hidden",
                   cursor: "pointer",
@@ -1328,8 +1297,8 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
                           borderRadius: 12,
                           fontSize: 11,
                           fontWeight: 700,
-                          backgroundColor: "rgba(88, 166, 255, 0.15)",
-                          color: "#58a6ff",
+                          backgroundColor: "var(--ms-brand-soft)",
+                          color: "var(--fgColor-accent, var(--ms-brand))",
                         }}
                       >
                         ⚡ Torn: -{block.tearing.reductionPercent}% Iteration Dim ({block.tearing.tearingVars.length}/
@@ -1366,7 +1335,9 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
                           cursor: "pointer",
                         }}
                       >
-                        <span style={{ color: "#58a6ff", wordBreak: "break-word" }}>{eq.text}</span>
+                        <span style={{ color: "var(--fgColor-accent, var(--ms-brand))", wordBreak: "break-word" }}>
+                          {eq.text}
+                        </span>
                         <span style={{ color: textMuted, fontSize: 11, whiteSpace: "nowrap" }}>Line {eq.line}</span>
                       </div>
                     ))}
@@ -1429,7 +1400,7 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
                       {block.tearing.causalChain.length > 0 && (
                         <div style={{ fontSize: 11, color: textMuted }}>
                           Inner Topological Forward Chain:{" "}
-                          <span style={{ color: "#58a6ff", fontFamily: "monospace" }}>
+                          <span style={{ color: "var(--fgColor-accent, var(--ms-brand))", fontFamily: "monospace" }}>
                             {block.tearing.causalChain.map((c) => `${c.solvedVar} ← [${c.eqText}]`).join(" → ")}
                           </span>
                         </div>
@@ -1543,7 +1514,9 @@ export const BltVisualizer: React.FC<BltVisualizerProps> = ({
                           {incomingEdges.length > 0 && (
                             <div>
                               Inputs from:{" "}
-                              <span style={{ color: "#58a6ff", fontFamily: "monospace" }}>
+                              <span
+                                style={{ color: "var(--fgColor-accent, var(--ms-brand))", fontFamily: "monospace" }}
+                              >
                                 {incomingEdges
                                   .slice(0, 5)
                                   .map((e) => `#${e.fromBlock + 1} (${e.sharedVar})`)

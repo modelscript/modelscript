@@ -235,9 +235,9 @@ export class NeuralSpikeViewerPanel extends BaseWebviewPanel {
       cursor: pointer;
     }
     .svg-container {
-      background: #0c1017;
-      border: 1px solid var(--vscode-widget-border, #374151);
-      border-radius: 6px;
+      background: var(--vscode-editor-background, #18181b);
+      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.12));
+      border-radius: 8px;
       padding: 12px;
       display: flex;
       justify-content: center;

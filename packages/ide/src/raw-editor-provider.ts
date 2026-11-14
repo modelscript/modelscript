@@ -16,12 +16,22 @@ import { renderPsseSvg } from "@modelscript/diagram/psse-diagram-builder";
 import {
   applyPsseDiagramWriteback,
   calculateShortCircuit,
+  compileAssemblyScriptDyrModel,
   extractPowerFlowNetlist,
   lintPsse,
+  loadFmuForPsse,
+  parseDyr,
   parseRaw,
+  parseSeq,
   psseToEmtNetlist,
   psseToModelica,
+  simulatePsseTransient,
   solvePowerFlow,
+  solvePowerFlowAsync,
+  type PsseDynamicModelIO,
+  type PsseDyrCase,
+  type PsseLinkedDynamicInstance,
+  type PsseSeqCase,
 } from "@modelscript/psse";
 
 import * as vscode from "vscode";
@@ -39,17 +49,102 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
     this.configureWebview(webviewPanel);
 
     let disposed = false;
+    let updateSeq = 0;
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+    let lastDyrCase: PsseDyrCase | undefined;
+    type NortonCompanion = NonNullable<Awaited<ReturnType<typeof loadFmuForPsse>>["nortonCompanion"]>;
+    interface FmuEntry {
+      name: string;
+      busNumber: number;
+      instance: PsseLinkedDynamicInstance;
+      nortonCompanion?: NortonCompanion | undefined;
+      terminalsCount: number;
+      terminalsSummary: string;
+    }
+    let lastFmuEntries: FmuEntry[] = [];
+    const customUsrmdlEntries: FmuEntry[] = [];
+    const getAllFmuEntries = (): FmuEntry[] => [...lastFmuEntries, ...customUsrmdlEntries];
+    const serializeFmuEntries = () =>
+      getAllFmuEntries().map((e) => ({
+        name: e.name,
+        busNumber: e.busNumber,
+        terminalsCount: e.terminalsCount,
+        terminalsSummary: e.terminalsSummary,
+      }));
     webviewPanel.webview.html = this.getHtmlForWebview();
 
-    const updateWebview = () => {
+    const updateWebview = async () => {
       if (disposed) return;
+      const seq = ++updateSeq;
       try {
         const text = document.getText();
         const parsed = parseRaw(text);
+
+        let seqCase: PsseSeqCase | undefined;
+        lastDyrCase = undefined;
+        lastFmuEntries = [];
+        try {
+          const dirUri = vscode.Uri.joinPath(document.uri, "..");
+          const entries = await vscode.workspace.fs.readDirectory(dirUri);
+          const rawFileName = document.uri.path.split("/").pop() ?? "";
+          const baseName = rawFileName.replace(/\.[^.]+$/, "").toLowerCase();
+
+          const pickCompanion = (ext: string): string | undefined => {
+            const exact = entries.find(
+              ([name, type]) => (type & vscode.FileType.File) !== 0 && name.toLowerCase() === `${baseName}${ext}`,
+            );
+            if (exact) return exact[0];
+            const first = entries.find(
+              ([name, type]) => (type & vscode.FileType.File) !== 0 && name.toLowerCase().endsWith(ext),
+            );
+            return first?.[0];
+          };
+
+          const decoder = new TextDecoder();
+          const dyrFile = pickCompanion(".dyr");
+          if (dyrFile) {
+            const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(dirUri, dyrFile));
+            parsed.dyr = parseDyr(decoder.decode(bytes));
+            lastDyrCase = parsed.dyr;
+          }
+          const seqFile = pickCompanion(".seq");
+          if (seqFile) {
+            const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(dirUri, seqFile));
+            seqCase = parseSeq(decoder.decode(bytes));
+          }
+          const defaultBus = parsed.generators[0]?.i ?? parsed.buses.values().next().value?.i ?? 1;
+          for (const [name, type] of entries) {
+            if ((type & vscode.FileType.File) !== 0 && name.toLowerCase().endsWith(".fmu")) {
+              try {
+                const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(dirUri, name));
+                const linked = await loadFmuForPsse(bytes, {});
+                const busNumber = linked.instance.busNumber !== 1 ? linked.instance.busNumber : defaultBus;
+                const terms = linked.terminals ?? [];
+                lastFmuEntries.push({
+                  name,
+                  busNumber,
+                  instance: linked.instance,
+                  ...(linked.nortonCompanion ? { nortonCompanion: linked.nortonCompanion } : {}),
+                  terminalsCount: terms.length,
+                  terminalsSummary: terms
+                    .map((t) => `${t.name}${t.terminalKind ? ` (${t.terminalKind})` : ""}`)
+                    .join(", "),
+                });
+              } catch {
+                // Skip invalid sibling .fmu
+              }
+            }
+          }
+        } catch {
+          // Directory scan or companion read is best-effort (e.g. untitled/virtual URIs)
+        }
+
+        if (disposed || seq !== updateSeq) return;
         const diags = lintPsse(parsed);
         const netlist = extractPowerFlowNetlist(parsed);
-        const powerflow = solvePowerFlow(parsed);
-        const shortCircuit = calculateShortCircuit(parsed);
+        const powerflow = await solvePowerFlowAsync(parsed);
+        if (disposed || seq !== updateSeq) return;
+        const shortCircuit = seqCase ? calculateShortCircuit(parsed, { seq: seqCase }) : calculateShortCircuit(parsed);
         const svg = renderPsseSvg(parsed, powerflow);
 
         // Serialize bus map into array for webview tables
@@ -67,6 +162,9 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
           loads: parsed.loads,
           fixedShunts: parsed.fixedShunts,
           switchedShunts: parsed.switchedShunts,
+          dyrCount: parsed.dyr?.records.length ?? 0,
+          fmuCount: getAllFmuEntries().length,
+          fmuEntries: serializeFmuEntries(),
           metrics: netlist.metrics,
           powerflow,
           shortCircuit,
@@ -74,6 +172,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
           svg,
         });
       } catch (err: unknown) {
+        if (disposed || seq !== updateSeq) return;
         const message = err instanceof Error ? err.message : String(err);
         webviewPanel.webview.postMessage({
           type: "error",
@@ -83,12 +182,15 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
     };
 
     // Initial update
-    updateWebview();
+    await updateWebview();
 
-    // Re-render when document changes
+    // Re-render when document changes (debounced to keep large cases responsive)
     const changeSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.toString() === document.uri.toString()) {
-        updateWebview();
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          void updateWebview();
+        }, 250);
       }
     });
 
@@ -96,7 +198,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
     const msgSubscription = webviewPanel.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
         case "ready":
-          updateWebview();
+          void updateWebview();
           break;
 
         case "writeback":
@@ -178,7 +280,140 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
         }
 
         case "simulateTransient": {
-          await vscode.commands.executeCommand("modelscript.psse.simulate_psse_transient", document.uri.toString());
+          try {
+            const parsed = parseRaw(document.getText());
+            if (lastDyrCase) parsed.dyr = lastDyrCase;
+            const allEntries = getAllFmuEntries();
+            const fmuModels = allEntries.map((e) => ({ ...e.instance, busNumber: e.busNumber }));
+            const nortonCompanions = allEntries
+              .filter((e): e is FmuEntry & { nortonCompanion: NortonCompanion } => Boolean(e.nortonCompanion))
+              .map((e) => ({ ...e.nortonCompanion, busNumber: e.busNumber }));
+            const faultBusNum = Number(msg.faultBus);
+            const faultStart = Number(msg.faultStartSec);
+            const faultClear = Number(msg.faultClearSec);
+            const tEnd = Number(msg.tEnd);
+            const result = simulatePsseTransient(parsed, {
+              stopTime: Number.isFinite(tEnd) && tEnd > 0 ? tEnd : 1.0,
+              timeStep: 0.01,
+              ...(Number.isFinite(faultBusNum) && String(msg.faultBus ?? "").trim() !== ""
+                ? { faultBus: faultBusNum }
+                : {}),
+              ...(Number.isFinite(faultStart) ? { faultStartSec: faultStart } : {}),
+              ...(Number.isFinite(faultClear) ? { faultClearSec: faultClear } : {}),
+              useWasmStdLib: true,
+              ...(fmuModels.length > 0 ? { fmuModels } : {}),
+              ...(nortonCompanions.length > 0 ? { nortonCompanions } : {}),
+            });
+            webviewPanel.webview.postMessage({ type: "transientResult", result });
+          } catch (e: unknown) {
+            vscode.window.showErrorMessage(`PSS/E transient simulation failed: ${e}`);
+          }
+          break;
+        }
+
+        case "setFmuBus": {
+          const idx = Number(msg.index);
+          const nextBus = Math.max(1, Math.trunc(Number(msg.busNumber) || 1));
+          const all = getAllFmuEntries();
+          if (idx >= 0 && idx < all.length) {
+            all[idx]!.busNumber = nextBus;
+          }
+          break;
+        }
+
+        case "detachFmu": {
+          const idx = Number(msg.index);
+          if (idx >= 0 && idx < lastFmuEntries.length) {
+            lastFmuEntries.splice(idx, 1);
+          } else {
+            const customIdx = idx - lastFmuEntries.length;
+            if (customIdx >= 0 && customIdx < customUsrmdlEntries.length) {
+              customUsrmdlEntries.splice(customIdx, 1);
+            }
+          }
+          webviewPanel.webview.postMessage({
+            type: "fmuEntriesUpdated",
+            fmuCount: getAllFmuEntries().length,
+            fmuEntries: serializeFmuEntries(),
+          });
+          break;
+        }
+
+        case "compileCustomUsrmdl": {
+          try {
+            const source = String(msg.source ?? "");
+            const modelName =
+              String(msg.modelName ?? "MY_USRMDL")
+                .trim()
+                .replace(/[^A-Za-z0-9_]/g, "_") || "MY_USRMDL";
+            const busNumber = Math.max(1, Math.trunc(Number(msg.busNumber) || 1));
+            const res = await compileAssemblyScriptDyrModel(source);
+            if (!res.wasmBytes) {
+              vscode.window.showErrorMessage(
+                `USRMDL compile failed: ${res.diagnostics.join("; ") || "no wasm output"}`,
+              );
+              break;
+            }
+            const mod = new WebAssembly.Module(new Uint8Array(res.wasmBytes));
+            const inst = new WebAssembly.Instance(mod, { env: { abort: () => {} } });
+            const exports = inst.exports as Record<string, unknown>;
+            const mem = exports["memory"] as WebAssembly.Memory | undefined;
+            const initFn = exports[`${modelName}_init`] as
+              | ((conPtr: number, count: number, statePtr: number, ioPtr: number) => void)
+              | undefined;
+            const stepFn = exports[`${modelName}_step`] as
+              | ((t: number, dt: number, conPtr: number, statePtr: number, ioPtr: number) => void)
+              | undefined;
+            if (!mem || typeof initFn !== "function" || typeof stepFn !== "function") {
+              vscode.window.showErrorMessage(`USRMDL missing ${modelName}_init / ${modelName}_step exports`);
+              break;
+            }
+            const conPtr = 4096;
+            const statePtr = 4608;
+            const ioPtr = 4736;
+            const linkedInst: PsseLinkedDynamicInstance = {
+              busNumber,
+              modelName,
+              init(io: PsseDynamicModelIO) {
+                if (mem.buffer.byteLength < ioPtr + 64) mem.grow(1);
+                const f64 = new Float64Array(mem.buffer);
+                const o = ioPtr >> 3;
+                f64[o + 0] = io.eterm;
+                f64[o + 1] = io.speedDev;
+                f64[o + 2] = io.efd;
+                f64[o + 3] = io.pmech;
+                f64[o + 4] = io.vr;
+                f64[o + 5] = io.vi;
+                initFn(conPtr, 0, statePtr, ioPtr);
+              },
+              doStep(tSec: number, dtSec: number, io: PsseDynamicModelIO) {
+                const f64 = new Float64Array(mem.buffer);
+                const o = ioPtr >> 3;
+                f64[o + 0] = io.eterm;
+                f64[o + 1] = io.speedDev;
+                f64[o + 2] = io.efd;
+                f64[o + 3] = io.pmech;
+                f64[o + 4] = io.vr;
+                f64[o + 5] = io.vi;
+                stepFn(tSec, dtSec, conPtr, statePtr, ioPtr);
+                return { efd: f64[o + 2], pmech: f64[o + 3] };
+              },
+            };
+            customUsrmdlEntries.push({
+              name: `${modelName}.wasm`,
+              busNumber,
+              instance: linkedInst,
+              terminalsCount: 0,
+              terminalsSummary: "",
+            });
+            webviewPanel.webview.postMessage({
+              type: "fmuEntriesUpdated",
+              fmuCount: getAllFmuEntries().length,
+              fmuEntries: serializeFmuEntries(),
+            });
+          } catch (e: unknown) {
+            vscode.window.showErrorMessage(`USRMDL compile failed: ${e}`);
+          }
           break;
         }
 
@@ -192,6 +427,7 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
 
     webviewPanel.onDidDispose(() => {
       disposed = true;
+      if (debounceTimer) clearTimeout(debounceTimer);
       changeSubscription.dispose();
       msgSubscription.dispose();
     });
@@ -557,6 +793,39 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
     <span>✓ Pre-flight Electrical Linter: Clean (0 diagnostic errors)</span>
   </div>
 
+  <!-- Transient Study Controls & Inline Waveform Panel -->
+  <div id="transient-bar" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:6px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted);">
+    <button id="btn-custom-usrmdl" type="button" style="padding:2px 8px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:3px;font-size:11px;cursor:pointer;">+ Custom USRMDL (AS)</button>
+    <span>Fault Bus: <input id="fault-bus" type="text" placeholder="auto" style="width:52px;padding:2px 5px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:3px;font-size:11px;"></span>
+    <span>t_f(s): <input id="fault-start" type="number" step="0.05" value="0.1" style="width:52px;padding:2px 5px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:3px;font-size:11px;"></span>
+    <span>t_clr(s): <input id="fault-clear" type="number" step="0.05" value="0.2" style="width:52px;padding:2px 5px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:3px;font-size:11px;"></span>
+    <span>t_end(s): <input id="transient-tend" type="number" step="0.5" min="0.1" value="1.0" style="width:52px;padding:2px 5px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:3px;font-size:11px;"></span>
+    <span id="fmu-pills" style="display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center;"></span>
+    <span id="companion-badge" style="margin-left:auto;"></span>
+  </div>
+  <div id="custom-usrmdl-drawer" style="display:none;padding:8px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border);font-size:11px;color:var(--text-muted);">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+      <strong style="color:var(--text-primary);">Custom AssemblyScript USRMDL</strong>
+      <span>Model: <input id="usrmdl-name" type="text" value="MY_USRMDL" style="width:100px;padding:2px 5px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:3px;font-size:11px;"></span>
+      <span>Bus: <input id="usrmdl-bus" type="number" min="1" value="1" style="width:52px;padding:2px 5px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:3px;font-size:11px;"></span>
+      <button id="btn-compile-usrmdl" type="button" style="padding:2px 8px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:3px;font-size:11px;cursor:pointer;">Compile &amp; Attach</button>
+    </div>
+    <textarea id="usrmdl-source" rows="6" spellcheck="false" style="width:100%;font-family:monospace;font-size:11px;padding:6px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;">export function MY_USRMDL_init(conPtr: usize, count: i32, statePtr: usize, ioPtr: usize): void {
+  store&lt;f64&gt;(statePtr, load&lt;f64&gt;(ioPtr + 16));
+}
+export function MY_USRMDL_step(t: f64, dt: f64, conPtr: usize, statePtr: usize, ioPtr: usize): void {
+  const eterm = load&lt;f64&gt;(ioPtr);
+  const efd = Math.max(0.0, Math.min(5.0, load&lt;f64&gt;(statePtr) + 25.0 * (1.0 - eterm) * dt));
+  store&lt;f64&gt;(statePtr, efd);
+  store&lt;f64&gt;(ioPtr + 16, efd);
+}</textarea>
+  </div>
+  <div id="transient-panel" style="display:none;padding:8px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border);font-size:11px;">
+    <div id="transient-summary" style="margin-bottom:6px;display:flex;flex-wrap:wrap;gap:12px;"></div>
+    <svg id="transient-svg" viewBox="0 0 600 110" style="width:100%;height:110px;display:block;border:1px solid var(--border);border-radius:4px;"></svg>
+    <div id="transient-legend" style="margin-top:4px;display:flex;flex-wrap:wrap;gap:12px;color:var(--text-muted);"></div>
+  </div>
+
   <!-- Content Area -->
   <div class="content-area">
     <!-- View 1: SLD Diagram -->
@@ -672,13 +941,152 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
       }
     });
 
+    function renderFmuPills(entries) {
+      const container = document.getElementById("fmu-pills");
+      if (!container) return;
+      container.innerHTML = "";
+      (entries || []).forEach((entry, idx) => {
+        const pill = document.createElement("span");
+        pill.style.cssText = "display:inline-flex;align-items:center;gap:4px;padding:1px 6px;border:1px solid var(--border);border-radius:3px;";
+        const nameEl = document.createElement("span");
+        nameEl.textContent = entry.name;
+        pill.appendChild(nameEl);
+        if (entry.terminalsCount > 0) {
+          const termEl = document.createElement("span");
+          termEl.textContent = entry.terminalsCount + (entry.terminalsCount === 1 ? " term" : " terms");
+          termEl.title = entry.terminalsSummary || "";
+          termEl.style.cssText = "font-size:10px;padding:0 4px;border:1px solid var(--border);border-radius:3px;";
+          pill.appendChild(termEl);
+        }
+        const atEl = document.createElement("span");
+        atEl.textContent = "@Bus";
+        pill.appendChild(atEl);
+        const busInput = document.createElement("input");
+        busInput.type = "number";
+        busInput.min = "1";
+        busInput.value = String(entry.busNumber || 1);
+        busInput.style.cssText = "width:44px;padding:1px 4px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);border-radius:3px;font-size:11px;";
+        busInput.addEventListener("change", () => {
+          vscode.postMessage({ type: "setFmuBus", index: idx, busNumber: Number(busInput.value) || 1 });
+        });
+        pill.appendChild(busInput);
+        const rmBtn = document.createElement("button");
+        rmBtn.type = "button";
+        rmBtn.textContent = "×";
+        rmBtn.title = "Detach model";
+        rmBtn.style.cssText = "border:none;background:transparent;color:var(--text-muted);cursor:pointer;padding:0 2px;";
+        rmBtn.addEventListener("click", () => {
+          vscode.postMessage({ type: "detachFmu", index: idx });
+        });
+        pill.appendChild(rmBtn);
+        container.appendChild(pill);
+      });
+    }
+
+    const btnCustomUsrmdl = document.getElementById("btn-custom-usrmdl");
+    if (btnCustomUsrmdl) {
+      btnCustomUsrmdl.addEventListener("click", () => {
+        const drawer = document.getElementById("custom-usrmdl-drawer");
+        if (drawer) drawer.style.display = drawer.style.display === "none" ? "block" : "none";
+      });
+    }
+    const btnCompileUsrmdl = document.getElementById("btn-compile-usrmdl");
+    if (btnCompileUsrmdl) {
+      btnCompileUsrmdl.addEventListener("click", () => {
+        const modelName = document.getElementById("usrmdl-name")?.value || "MY_USRMDL";
+        const busNumber = Number(document.getElementById("usrmdl-bus")?.value || "1");
+        const source = document.getElementById("usrmdl-source")?.value || "";
+        vscode.postMessage({ type: "compileCustomUsrmdl", modelName, busNumber, source });
+        const drawer = document.getElementById("custom-usrmdl-drawer");
+        if (drawer) drawer.style.display = "none";
+      });
+    }
+
     window.addEventListener("message", (event) => {
       const msg = event.data;
       if (msg.type === "update") {
         currentData = msg;
+        const badge = document.getElementById("companion-badge");
+        if (badge) {
+          badge.textContent = "Paired: " + (msg.dyrCount || 0) + " DYR, " + (msg.fmuCount || 0) + " FMU";
+        }
+        renderFmuPills(msg.fmuEntries);
         renderAll();
+      } else if (msg.type === "fmuEntriesUpdated") {
+        const badge = document.getElementById("companion-badge");
+        if (badge && currentData) {
+          badge.textContent = "Paired: " + (currentData.dyrCount || 0) + " DYR, " + (msg.fmuCount || 0) + " FMU";
+        }
+        renderFmuPills(msg.fmuEntries);
+      } else if (msg.type === "transientResult" && msg.result) {
+        renderTransientResult(msg.result);
       }
     });
+
+    function renderTransientResult(res) {
+      const panel = document.getElementById("transient-panel");
+      const summaryEl = document.getElementById("transient-summary");
+      const svgEl = document.getElementById("transient-svg");
+      const legendEl = document.getElementById("transient-legend");
+      if (!panel || !summaryEl || !svgEl || !legendEl || !res.t || res.t.length < 2) return;
+      panel.style.display = "block";
+      const s = res.summary || {};
+      summaryEl.textContent = "";
+      const summaryStrong = document.createElement("strong");
+      summaryStrong.textContent = "Transient Stability (" + (s.stable ? "Stable" : "Unstable") + ")";
+      summaryEl.appendChild(summaryStrong);
+      const summaryParts = [
+        "Fault Bus " + String(s.faultBus ?? "auto") + " (" + Number(s.faultStartSec || 0).toFixed(2) + "s-" + Number(s.faultClearSec || 0).toFixed(2) + "s)",
+        "Max Δδ: " + Number(s.maxRotorAngleSpreadDeg || 0).toFixed(1) + "°",
+        "Max |Δf|: " + Number(s.maxFreqDeviationHz || 0).toFixed(3) + " Hz",
+        "Min V: " + Number(s.minBusVoltagePu || 0).toFixed(3) + " pu",
+      ];
+      for (const part of summaryParts) {
+        const span = document.createElement("span");
+        span.textContent = part;
+        summaryEl.appendChild(span);
+      }
+
+      const preferred = (res.states || []).filter((k) => k.startsWith("vt_") || k.startsWith("delta_") || k.startsWith("omega_"));
+      const keys = (preferred.length > 0 ? preferred : (res.states || [])).slice(0, 4);
+      const colors = ["#38bdf8", "#4ade80", "#facc15", "#f87171"];
+      const tMax = res.t[res.t.length - 1] || 1;
+      svgEl.textContent = "";
+      legendEl.textContent = "";
+      keys.forEach((key, idx) => {
+        const vals = (res.variables && res.variables[key]) || [];
+        let minV = Infinity, maxV = -Infinity;
+        for (let i = 0; i < vals.length; i++) {
+          if (vals[i] < minV) minV = vals[i];
+          if (vals[i] > maxV) maxV = vals[i];
+        }
+        const span = maxV - minV > 1e-6 ? maxV - minV : 1;
+        const pts = vals.map((v, i) => {
+          const x = 10 + ((res.t[i] || 0) / tMax) * 580;
+          const y = 98 - ((v - minV) / span) * 86;
+          return x.toFixed(1) + "," + y.toFixed(1);
+        }).join(" ");
+        const col = colors[idx % colors.length];
+        const poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        poly.setAttribute("fill", "none");
+        poly.setAttribute("stroke", col);
+        poly.setAttribute("stroke-width", "1.6");
+        poly.setAttribute("points", pts);
+        svgEl.appendChild(poly);
+
+        const legendItem = document.createElement("span");
+        const swatch = document.createElement("span");
+        swatch.style.display = "inline-block";
+        swatch.style.width = "8px";
+        swatch.style.height = "8px";
+        swatch.style.borderRadius = "2px";
+        swatch.style.background = col;
+        swatch.style.marginRight = "4px";
+        legendItem.appendChild(swatch);
+        legendItem.appendChild(document.createTextNode(String(key)));
+        legendEl.appendChild(legendItem);
+      });
+    }
 
     function switchView(viewName) {
       document.getElementById("sld-view").classList.toggle("active", viewName === "sld");
@@ -697,6 +1105,16 @@ export class RawEditorProvider extends BaseCustomEditorProvider {
     }
 
     function exportAction(actionType) {
+      if (actionType === "simulateTransient") {
+        vscode.postMessage({
+          type: "simulateTransient",
+          faultBus: document.getElementById("fault-bus")?.value ?? "",
+          faultStartSec: document.getElementById("fault-start")?.value ?? "0.1",
+          faultClearSec: document.getElementById("fault-clear")?.value ?? "0.2",
+          tEnd: document.getElementById("transient-tend")?.value ?? "1.0",
+        });
+        return;
+      }
       vscode.postMessage({ type: actionType });
     }
 

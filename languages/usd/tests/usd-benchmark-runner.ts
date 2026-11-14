@@ -12,13 +12,7 @@
  */
 
 import assert from "node:assert/strict";
-import {
-  parseUsd,
-  lintUsdStage,
-  lowerUsdToDae,
-  type UsdStage,
-  type UsdDiagnostic,
-} from "../src/index.js";
+import { lintUsdStage, lowerUsdToDae, parseUsd, type UsdDiagnostic, type UsdStage } from "../src/index.js";
 
 export const ROBOTIC_ARM_USD_BENCHMARK = `#usda 1.0
 (
@@ -138,3 +132,31 @@ export function runUsdBenchmark(src = ROBOTIC_ARM_USD_BENCHMARK): UsdBenchmarkMe
     isMechanicallyBalanced: daeVarCount >= daeEqCount,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const usdBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "usd",
+  referenceTool: "Pixar OpenUSD / UsdPhysics Articulated Arm",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runUsdBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "robotic-arm-usdphysics-dae",
+        name: "robotic-arm-usdphysics-dae",
+        scale: "standard",
+        referenceTool: "Pixar OpenUSD / UsdPhysics Articulated Arm",
+        passed: m.isMechanicallyBalanced && m.diagnosticsCount === 0 && m.daeVarCount > 0,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.daeEqCount,
+        threshold: 0,
+        details: `${m.rigidBodyCount} bodies, ${m.jointCount} joint, ${m.daeVarCount} vars/${m.daeEqCount} eqs`,
+      },
+    ];
+  },
+};

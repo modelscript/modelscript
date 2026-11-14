@@ -40,7 +40,7 @@ export interface CsoNpdesComplianceCardProps {
 const CardContainer = styled.div<{ $isDark: boolean }>`
   border: 1px solid var(--color-border-default, ${(p) => (p.$isDark ? "#30363d" : "#d0d7de")});
   border-radius: 10px;
-  background: var(--color-canvas-subtle, ${(p) => (p.$isDark ? "#0d1117" : "#f6f8fa")});
+  background: var(--bgColor-inset, ${(p) => (p.$isDark ? "#121214" : "#f6f8fa")});
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -114,7 +114,7 @@ const MetricGrid = styled.div`
 `;
 
 const MetricTile = styled.div<{ $isDark: boolean; $alert?: boolean }>`
-  background: var(--color-canvas-default, ${(p) => (p.$isDark ? "#161b22" : "#ffffff")});
+  background: var(--bgColor-muted, ${(p) => (p.$isDark ? "#1e1e22" : "#ffffff")});
   border: 1px solid
     ${(p) => (p.$alert ? "var(--color-danger-emphasis, #da3633)" : "var(--color-border-subtle, #eaecef)")};
   border-radius: 8px;
@@ -150,7 +150,7 @@ const OutfallsTable = styled.table<{ $isDark: boolean }>`
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
-  background: var(--color-canvas-default, ${(p) => (p.$isDark ? "#161b22" : "#ffffff")});
+  background: var(--bgColor-muted, ${(p) => (p.$isDark ? "#1e1e22" : "#ffffff")});
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid var(--color-border-subtle, #eaecef);
@@ -359,7 +359,7 @@ export const CsoNpdesComplianceCard: React.FC<CsoNpdesComplianceCardProps> = ({
 
         <MetricTile $isDark={isDark}>
           <MetricLabel>RTC / Storage Diverted</MetricLabel>
-          <MetricValue $color="#1f6feb">
+          <MetricValue $color="var(--fgColor-accent, var(--ms-brand))">
             {((data.rtcVolumeDivertedM3 ?? 0) / 1000).toFixed(1)} <span style={{ fontSize: "12px" }}>k-m³</span>
           </MetricValue>
           <MetricSub>Volume saved via control</MetricSub>

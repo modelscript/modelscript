@@ -90,3 +90,9 @@ lowerTopasToDae(model, builder);
 const scadCode = topasToScad(model);
 const modelicaCode = topasToModelica(model);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="topas" />

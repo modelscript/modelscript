@@ -842,7 +842,7 @@ function buildPsseModelSymbol(schema: DyrModelSchema, modelNameOverride?: string
     ruleName: "psse_model",
     resourceId: PSSE_STANDARD_DYNAMICS_RESOURCE_ID,
     metadata: {
-      classPrefixes: "model",
+      classPrefixes: ["model"],
       classKind: "model",
       psseModel: modelName,
       psseCategory: schema.category,
@@ -868,7 +868,7 @@ export function buildPsseBuiltinSymbols(): DslBuiltinSymbol[] {
       ruleName: "psse_package",
       resourceId: PSSE_STANDARD_DYNAMICS_RESOURCE_ID,
       metadata: {
-        classPrefixes: "package",
+        classPrefixes: ["package"],
         classKind: "package",
         description: "Scalar physical control & power signal connectors for PSS/E dynamic blocks.",
       },
@@ -879,7 +879,7 @@ export function buildPsseBuiltinSymbols(): DslBuiltinSymbol[] {
           ruleName: "psse_connector",
           resourceId: PSSE_STANDARD_DYNAMICS_RESOURCE_ID,
           metadata: {
-            classPrefixes: "connector",
+            classPrefixes: ["connector"],
             classKind: "connector",
             causality: "input",
             isConnector: true,
@@ -894,7 +894,7 @@ export function buildPsseBuiltinSymbols(): DslBuiltinSymbol[] {
           ruleName: "psse_connector",
           resourceId: PSSE_STANDARD_DYNAMICS_RESOURCE_ID,
           metadata: {
-            classPrefixes: "connector",
+            classPrefixes: ["connector"],
             classKind: "connector",
             causality: "output",
             isConnector: true,
@@ -923,7 +923,7 @@ export function buildPsseBuiltinSymbols(): DslBuiltinSymbol[] {
       ruleName: "psse_package",
       resourceId: PSSE_STANDARD_DYNAMICS_RESOURCE_ID,
       metadata: {
-        classPrefixes: "package",
+        classPrefixes: ["package"],
         classKind: "package",
         description:
           "IEEE & WECC standard synchronous generators, exciters, turbine governors, stabilizers, and renewable IBR models.",
@@ -960,7 +960,7 @@ export function indexPsseDocument(ctx: DslIndexFileContext): void {
       startOffset: 0,
       endOffset: text.length,
       metadata: {
-        classPrefixes: "model",
+        classPrefixes: ["model"],
         recordCount: dyrCase.records.length,
       },
       children: dyrCase.records.map((rec) => ({
@@ -1092,7 +1092,7 @@ export function indexPsseDocument(ctx: DslIndexFileContext): void {
     startOffset: parsedCase.header.span?.startOffset ?? 0,
     endOffset: parsedCase.header.span?.endOffset ?? text.length,
     metadata: {
-      classPrefixes: "model",
+      classPrefixes: ["model"],
       sbase: parsedCase.header.sbase,
       rev: parsedCase.header.rev,
       basfrq: parsedCase.header.basfrq,
@@ -1147,12 +1147,24 @@ export function findCompanionPsseRaw(
  * Parses or retrieves a `PsseCase` from `workspace` and attaches any companion `.dyr` dynamic data.
  */
 export function getMergedPsseCase(workspace: UnifiedWorkspace, uri: string, text?: string): PsseCase {
-  if (uri.toLowerCase().endsWith(".dyr")) {
+  const lower = uri.toLowerCase();
+  const isDyr = lower.endsWith(".dyr");
+  const isAux =
+    isDyr ||
+    lower.endsWith(".seq") ||
+    lower.endsWith(".con") ||
+    lower.endsWith(".mon") ||
+    lower.endsWith(".sub") ||
+    lower.endsWith(".out");
+
+  if (isAux) {
     if (text) {
       workspace.indexDocumentText(uri, text, "psse");
     }
     const companion = findCompanionPsseRaw(workspace, uri);
-    const dyr = workspace.getParsedModel<PsseDyrCase>(uri, "dyr");
+    const dyr = isDyr
+      ? workspace.getParsedModel<PsseDyrCase>(uri, "dyr")
+      : findCompanionPsseDyr(workspace, companion?.uri ?? uri)?.dyr;
     if (companion) {
       if (dyr) companion.psseCase.dyr = dyr;
       return companion.psseCase;

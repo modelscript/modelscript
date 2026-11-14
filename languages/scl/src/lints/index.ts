@@ -98,3 +98,5 @@ export function lintSclDocument(doc: SclDocument): SclDiagnostic[] {
 
   return diagnostics;
 }
+
+export * from "./workspace.js";

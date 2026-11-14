@@ -1392,43 +1392,40 @@ export declare enum SyntaxKind {
   PrimaryExpr = 80,
   START = 81,
   _START = 81,
-  CommentLine = 130,
-  RestOfLine = 131,
-  Identifier = 132,
-  NumberLiteral = 133,
-  StringLiteral = 134,
+  CommentLine = 137,
+  Identifier = 138,
+  NumberLiteral = 139,
+  StringLiteral = 140,
   EOF = 1023,
 }
 
 export declare enum FieldId {
-  Title = 1,
-  title = 1,
-  File = 2,
-  file = 2,
-  Option = 3,
-  option = 3,
-  Item = 4,
-  item = 4,
-  Lower = 5,
-  lower = 5,
-  Init = 6,
-  init = 6,
-  Upper = 7,
-  upper = 7,
-  RecordName = 8,
-  recordName = 8,
-  Key = 9,
-  key = 9,
-  Value = 10,
-  value = 10,
-  Lhs = 11,
-  lhs = 11,
-  Rhs = 12,
-  rhs = 12,
-  Cond = 13,
-  cond = 13,
-  Func = 14,
-  func = 14,
+  File = 1,
+  file = 1,
+  Option = 2,
+  option = 2,
+  Item = 3,
+  item = 3,
+  Lower = 4,
+  lower = 4,
+  Init = 5,
+  init = 5,
+  Upper = 6,
+  upper = 6,
+  RecordName = 7,
+  recordName = 7,
+  Key = 8,
+  key = 8,
+  Value = 9,
+  value = 9,
+  Lhs = 10,
+  lhs = 10,
+  Rhs = 11,
+  rhs = 11,
+  Cond = 12,
+  cond = 12,
+  Func = 13,
+  func = 13,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1548,10 +1545,6 @@ export interface CommentLineNode extends SyntaxNode {
   readonly typeId: SyntaxKind.CommentLine;
 }
 export declare function isCommentLine(node: SyntaxNode | null | undefined): node is CommentLineNode;
-export interface RestOfLineNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.RestOfLine;
-}
-export declare function isRestOfLine(node: SyntaxNode | null | undefined): node is RestOfLineNode;
 export interface IdentifierNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Identifier;
 }
@@ -1581,8 +1574,6 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ProblemRecordNode;
-    title(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    titleList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const DataRecord: {
     readonly typeId: number;
@@ -1742,11 +1733,6 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is CommentLineNode;
-  };
-  export const RestOfLine: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is RestOfLineNode;
   };
   export const Identifier: {
     readonly typeId: number;

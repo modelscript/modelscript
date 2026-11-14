@@ -57,6 +57,8 @@ export interface LanguagePlugin {
   preprocessText?: ((text: string) => string) | undefined;
   /** Factory for creating a Salsa QueryEngine for this language */
   createQueryEngine?: ((unifiedIndex: any, cstTreeWrapper: any) => QueryEngine) | undefined;
+  /** Optional typed Nelson-Oppen theory constraint extractor for digital thread verification */
+  extractTheoryConstraints?: ((text: string, uri?: string, symbolIndex?: any) => Promise<any> | any) | undefined;
   /** Diagram backend instance */
   diagramBackend?: any;
   /** Annotation evaluator class or constructor */

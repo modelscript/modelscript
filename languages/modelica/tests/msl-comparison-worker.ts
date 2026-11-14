@@ -108,7 +108,21 @@ export function linkMslPackageHierarchy(
           if (modSym) modSym.parentId = null;
         } else if (parentId !== null && symId !== parentId) {
           const existingSym = symbolIndex.symbols.get(symId);
-          if (existingSym && (existingSym.parentId === null || existingSym.parentId === undefined)) {
+          const prevParent = existingSym?.parentId != null ? symbolIndex.symbols.get(existingSym.parentId) : null;
+          const hasBrokenParent =
+            existingSym &&
+            (existingSym.parentId === null ||
+              existingSym.parentId === undefined ||
+              !prevParent ||
+              (prevParent.kind !== "Class" && prevParent.kind !== "Package"));
+          if (existingSym && hasBrokenParent) {
+            if (existingSym.parentId !== null && existingSym.parentId !== undefined) {
+              const oldChildren = symbolIndex.childrenOf.get(existingSym.parentId);
+              if (oldChildren) {
+                const idx = oldChildren.indexOf(symId);
+                if (idx !== -1) oldChildren.splice(idx, 1);
+              }
+            }
             existingSym.parentId = parentId;
             const childList = symbolIndex.childrenOf.get(parentId) || [];
             if (!childList.includes(symId)) {
@@ -1294,26 +1308,23 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
       numberOfIntervals: intervals,
       outputStringIds: outIds,
     };
-    // Non-MSL libraries (e.g. OpenIPSL transient stability) are sensitive to integration error:
-    // use tight adaptive DOPRI5 (like OMC's tolerance-controlled solver), falling back to the
-    // default fixed-step integrator if it cannot run the model.
-    if (task.library && task.library !== "Modelica") {
-      try {
-        msRes = await simulateArena(arena as any, {
-          ...baseSimOpts,
-          solver: "dopri5",
-          atol: Math.min(tolerance * 1e-3, 1e-9),
-          rtol: Math.min(tolerance * 1e-3, 1e-9),
-        });
-        if (
-          !msRes?.y?.length ||
-          !msRes.y.every((row: ArrayLike<number>) => row.length === 0 || Number.isFinite(row[0]))
-        ) {
-          msRes = undefined;
-        }
-      } catch {
+    // Try adaptive DOPRI5 first (matching OMC's tolerance-controlled solver), falling back to the
+    // default fixed-step integrator if it cannot complete cleanly.
+    try {
+      msRes = await simulateArena(arena as any, {
+        ...baseSimOpts,
+        solver: "dopri5",
+        atol: Math.min(tolerance * 1e-3, 1e-9),
+        rtol: Math.min(tolerance * 1e-3, 1e-9),
+      });
+      if (
+        !msRes?.y?.length ||
+        !msRes.y.every((row: ArrayLike<number>) => row.length === 0 || Number.isFinite(row[0]))
+      ) {
         msRes = undefined;
       }
+    } catch {
+      msRes = undefined;
     }
     if (!msRes) {
       msRes = await simulateArena(arena as any, baseSimOpts);
@@ -1512,21 +1523,28 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
       const omcValues = omcDataByVar.get(varName);
       if (omcValues && omcValues.length > 0) {
         const numPoints = Math.min(msRes.y.length, omcValues.length);
+        if (numPoints === 0) continue;
         const sampleTarget = Math.min(30, numPoints);
         const stride = Math.max(1, Math.floor(numPoints / sampleTarget));
         const times: number[] = [];
         const omcVals: number[] = [];
         const msVals: number[] = [];
         for (let p = 0; p < numPoints; p += stride) {
+          const omcV = omcValues[p];
+          const msV = msRes.y[p]?.[sIdx];
+          if (omcV === undefined || msV === undefined) continue;
           times.push(Number((msRes.t?.[p] ?? p).toFixed(4)));
-          omcVals.push(Number(omcValues[p].toFixed(5)));
-          msVals.push(Number(msRes.y[p][sIdx].toFixed(5)));
+          omcVals.push(Number(omcV.toFixed(5)));
+          msVals.push(Number(msV.toFixed(5)));
         }
         const lastIdx = numPoints - 1;
-        if (times[times.length - 1] !== Number((msRes.t?.[lastIdx] ?? lastIdx).toFixed(4))) {
-          times.push(Number((msRes.t?.[lastIdx] ?? lastIdx).toFixed(4)));
-          omcVals.push(Number(omcValues[lastIdx].toFixed(5)));
-          msVals.push(Number(msRes.y[lastIdx][sIdx].toFixed(5)));
+        const lastTime = Number((msRes.t?.[lastIdx] ?? lastIdx).toFixed(4));
+        const lastOmcV = omcValues[lastIdx];
+        const lastMsV = msRes.y[lastIdx]?.[sIdx];
+        if (lastOmcV !== undefined && lastMsV !== undefined && times[times.length - 1] !== lastTime) {
+          times.push(lastTime);
+          omcVals.push(Number(lastOmcV.toFixed(5)));
+          msVals.push(Number(lastMsV.toFixed(5)));
         }
         sampleTrajectory = {
           variable: varName,
@@ -1834,18 +1852,42 @@ async function getOrInitWorkerContext(task: WorkerTask): Promise<Context> {
     childrenOf: new Map<number, number[]>(rawIndex.childrenOf),
   };
 
-  const hasDeps = !!task.extraLibraries && task.extraLibraries.length > 0;
+  const rootPkgName = task.library || task.modelFqn.split(".")[0] || "Modelica";
+  linkMslPackageHierarchy(symbolIndex, task.mslDir, rootPkgName);
 
-  if (!hasDeps) {
-    const rootPkgName = task.library || task.modelFqn.split(".")[0] || "Modelica";
-    linkMslPackageHierarchy(symbolIndex, task.mslDir, rootPkgName);
-    context.setSymbolIndex(symbolIndex);
+  const isLibInSymbolIndex = (libName: string): boolean => {
+    const ids = symbolIndex.byName.get(libName);
+    if (!ids || ids.length === 0) return false;
+    return ids.some((id: number) => {
+      const sym = symbolIndex.symbols.get(id);
+      return (
+        sym && (sym.kind === "Class" || sym.kind === "Package") && (sym.parentId === null || sym.parentId === undefined)
+      );
+    });
+  };
+
+  if (task.extraLibraries) {
+    for (const extra of task.extraLibraries) {
+      if (
+        extra.name &&
+        extra.name !== rootPkgName &&
+        fs.existsSync(extra.path) &&
+        fs.statSync(extra.path).isDirectory()
+      ) {
+        if (isLibInSymbolIndex(extra.name)) {
+          linkMslPackageHierarchy(symbolIndex, extra.path, extra.name);
+        }
+      }
+    }
   }
 
-  if (hasDeps) {
-    for (const extra of task.extraLibraries!) {
+  context.setSymbolIndex(symbolIndex);
+
+  if (task.extraLibraries) {
+    for (const extra of task.extraLibraries) {
       if (fs.existsSync(extra.path)) {
-        await context.addLibrary(extra.path, { skipIndex: true });
+        const alreadyIndexed = extra.name ? isLibInSymbolIndex(extra.name) : false;
+        await context.addLibrary(extra.path, { skipIndex: alreadyIndexed });
       }
     }
   }
@@ -1856,9 +1898,6 @@ async function getOrInitWorkerContext(task: WorkerTask): Promise<Context> {
   // (e.g. OpenIPSL -> Complex/ModelicaServices/Modelica) the dependency symbols must be
   // indexed together with it, otherwise `Complex` etc. fail to resolve and flattening
   // silently truncates after the first dependent component.
-  if (hasDeps) {
-    await context.finalizeLibraries();
-  }
 
   cachedWorkerContext = {
     context,

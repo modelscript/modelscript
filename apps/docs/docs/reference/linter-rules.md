@@ -1,6 +1,6 @@
 ---
 title: Linter Rules Reference
-description: Every diagnostic rule ModelScript ships — 1160 rules across 83 languages, with codes, severities and message templates generated from the source.
+description: Every diagnostic rule ModelScript ships — 1168 rules across 83 languages, with codes, severities and message templates generated from the source.
 outline: [2, 2]
 pageClass: lint-reference
 ---
@@ -9,7 +9,7 @@ pageClass: lint-reference
 
 # Linter Rules Reference
 
-ModelScript ships **1160 diagnostic rules** across **83 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **1168 diagnostic rules** across **83 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -30,9 +30,9 @@ The **CLI** column below shows which command reports each language's rules.
 
 | Language                                  | Package                     | Rules | CLI                     |
 | :---------------------------------------- | :-------------------------- | ----: | :---------------------- |
-| [Modelica](#modelica)                     | `@modelscript/modelica`     |   233 | `msx lint`              |
+| [Modelica](#modelica)                     | `@modelscript/modelica`     |   237 | `msx lint`              |
 | [AMPL](#ampl)                             | `@modelscript/ampl`         |    12 | `msx lint`              |
-| [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |    55 | `msx lint`              |
+| [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |    59 | `msx lint`              |
 | [ReqIF](#reqif)                           | `@modelscript/reqif`        |    13 | `msx reqif lint`        |
 | [NIST OSCAL](#oscal)                      | `@modelscript/oscal`        |    13 | Language server / API   |
 | [SSP](#ssp)                               | `@modelscript/ssp`          |    18 | `msx lint`              |
@@ -120,7 +120,7 @@ These languages have linters whose rules are not exported as a catalog yet, so t
 
 ## Modelica {#modelica}
 
-Acausal multi-domain physics. **233 rules** · `@modelscript/modelica` · Source: `languages/modelica/src/errors.ts` · [Language guide](../languages/modelica.md)
+Acausal multi-domain physics. **237 rules** · `@modelscript/modelica` · Source: `languages/modelica/src/errors.ts` · [Language guide](../languages/modelica.md)
 
 **`M1xxx` — Syntax & parse**
 
@@ -317,6 +317,10 @@ Acausal multi-domain physics. **233 rules** · `@modelscript/modelica` · Source
 | <span id="modelica-m4134"></span>`M4134` | `broken-modelica-uri`                             | <Badge type="danger" text="error" />    | Broken 'modelica://' reference: '<code>&lt;uri&gt;</code>' does not resolve to an existing class or model.                                                                                                                                                                                        |
 | <span id="modelica-m4135"></span>`M4135` | `resource-missing`                                | <Badge type="danger" text="error" />    | Referenced resource file '<code>&lt;res&gt;</code>' does not exist on disk.                                                                                                                                                                                                                       |
 | <span id="modelica-m4136"></span>`M4136` | `resource-absolute-path`                          | <Badge type="warning" text="warning" /> | Resource reference '<code>&lt;pathStr&gt;</code>' uses an absolute filesystem path; use a relative path or 'modelica://' URI instead.                                                                                                                                                             |
+| <span id="modelica-m4140"></span>`M4140` | `tgg-conformance-missing-port`                    | <Badge type="warning" text="warning" /> | TGG conformance warning: '<code>&lt;targetName&gt;</code>' (<code>&lt;targetLang&gt;</code>) is missing counterpart port '<code>&lt;portName&gt;</code>' (<code>&lt;portType&gt;</code>) expected by '<code>&lt;sourceName&gt;</code>'.                                                           |
+| <span id="modelica-m4141"></span>`M4141` | `tgg-conformance-param-mismatch`                  | <Badge type="warning" text="warning" /> | TGG conformance warning: parameter or port '<code>&lt;paramName&gt;</code>' type '<code>&lt;actualType&gt;</code>' is incompatible with '<code>&lt;expectedType&gt;</code>'.                                                                                                                      |
+| <span id="modelica-m4142"></span>`M4142` | `tgg-conformance-missing-component`               | <Badge type="warning" text="warning" /> | TGG conformance warning: '<code>&lt;targetName&gt;</code>' (<code>&lt;targetLang&gt;</code>) is missing expected component '<code>&lt;compName&gt;</code>' : '<code>&lt;compType&gt;</code>'.                                                                                                     |
+| <span id="modelica-m4143"></span>`M4143` | `tgg-conformance-unresolved-target`               | <Badge type="danger" text="error" />    | Counterpart element referenced by '<code>&lt;sourceName&gt;</code>' could not be resolved in '<code>&lt;targetLang&gt;</code>'.                                                                                                                                                                   |
 
 **`M5xxx` — Equations, algorithms & control-flow analysis**
 
@@ -406,7 +410,7 @@ Mathematical programming & optimization (LP, MILP, NLP). **12 rules** · `@model
 
 ## SysML v2 / KerML {#sysml2}
 
-Systems architecture & requirements. **55 rules** · `@modelscript/sysml2` · Source: `languages/sysml2/src/errors.ts` · [Language guide](../languages/sysml2.md)
+Systems architecture & requirements. **59 rules** · `@modelscript/sysml2` · Source: `languages/sysml2/src/errors.ts` · [Language guide](../languages/sysml2.md)
 
 **`S1xxx` — Syntax, parsing & naming conventions**
 
@@ -445,24 +449,28 @@ Systems architecture & requirements. **55 rules** · `@modelscript/sysml2` · So
 
 **`S4xxx` — Structural & metamodel semantics**
 
-| Code                                   | Rule                               | Severity                                | Message                                                                                                                          |
-| :------------------------------------- | :--------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------- |
-| <span id="sysml2-s4001"></span>`S4001` | `circular-specialization`          | <Badge type="danger" text="error" />    | Circular specialization: '<code>&lt;name&gt;</code>' transitively specializes itself                                             |
-| <span id="sysml2-s4002"></span>`S4002` | `circular-satisfaction`            | <Badge type="danger" text="error" />    | Circular satisfaction: '<code>&lt;name&gt;</code>' transitively satisfies itself                                                 |
-| <span id="sysml2-s4003"></span>`S4003` | `empty-definition`                 | <Badge type="info" text="info" />       | Definition '<code>&lt;name&gt;</code>' has no members                                                                            |
-| <span id="sysml2-s4004"></span>`S4004` | `abstract-requirement-violation`   | <Badge type="danger" text="error" />    | Cannot make an existing concrete requirement abstract.                                                                           |
-| <span id="sysml2-s4005"></span>`S4005` | `ontological-inconsistency`        | <Badge type="danger" text="error" />    | Ontological inconsistency detected in '<code>&lt;name&gt;</code>'<code>&lt;detail&gt;</code>                                     |
-| <span id="sysml2-s4006"></span>`S4006` | `missing-subject`                  | <Badge type="info" text="info" />       | Requirement '<code>&lt;name&gt;</code>' should have a specified subject or satisfy relation                                      |
-| <span id="sysml2-s4007"></span>`S4007` | `empty-package`                    | <Badge type="info" text="info" />       | Package '<code>&lt;name&gt;</code>' has no members                                                                               |
-| <span id="sysml2-s4008"></span>`S4008` | `requirement-without-constraint`   | <Badge type="info" text="info" />       | Requirement '<code>&lt;name&gt;</code>' has no constraints or textual documentation                                              |
-| <span id="sysml2-s4009"></span>`S4009` | `empty-verification-case`          | <Badge type="info" text="info" />       | Verification case '<code>&lt;name&gt;</code>' has no verify requirements or sub-actions                                          |
-| <span id="sysml2-s4010"></span>`S4010` | `missing-verification-objective`   | <Badge type="warning" text="warning" /> | Verification case '<code>&lt;name&gt;</code>' has no verification objective or verify statement                                  |
-| <span id="sysml2-s4011"></span>`S4011` | `unverified-requirement`           | <Badge type="warning" text="warning" /> | Requirement '<code>&lt;name&gt;</code>' is not verified by any verification case in package '<code>&lt;pkgName&gt;</code>'       |
-| <span id="sysml2-s4012"></span>`S4012` | `calc-return-missing`              | <Badge type="warning" text="warning" /> | Calculation '<code>&lt;name&gt;</code>' has a body without a return parameter or result expression.                              |
-| <span id="sysml2-s4013"></span>`S4013` | `expose-target-invalid`            | <Badge type="danger" text="error" />    | Exposed target '<code>&lt;target&gt;</code>' in view '<code>&lt;viewName&gt;</code>' could not be resolved.                      |
-| <span id="sysml2-s4017"></span>`S4017` | `unsatisfied-critical-requirement` | <Badge type="warning" text="warning" /> | Critical requirement '<code>&lt;reqName&gt;</code>' has no incoming satisfy or verify relationship.                              |
-| <span id="sysml2-s4018"></span>`S4018` | `circular-port-delegation`         | <Badge type="danger" text="error" />    | Port '<code>&lt;portName&gt;</code>' delegation connection chain contains a cyclic dependency.                                   |
-| <span id="sysml2-s4019"></span>`S4019` | `incompatible-flow-dimensions`     | <Badge type="danger" text="error" />    | Flow connection links incompatible physical dimensions ('<code>&lt;sourceFlow&gt;</code>' to '<code>&lt;targetFlow&gt;</code>'). |
+| Code                                   | Rule                                | Severity                                | Message                                                                                                                                                                                                                                 |
+| :------------------------------------- | :---------------------------------- | :-------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="sysml2-s4001"></span>`S4001` | `circular-specialization`           | <Badge type="danger" text="error" />    | Circular specialization: '<code>&lt;name&gt;</code>' transitively specializes itself                                                                                                                                                    |
+| <span id="sysml2-s4002"></span>`S4002` | `circular-satisfaction`             | <Badge type="danger" text="error" />    | Circular satisfaction: '<code>&lt;name&gt;</code>' transitively satisfies itself                                                                                                                                                        |
+| <span id="sysml2-s4003"></span>`S4003` | `empty-definition`                  | <Badge type="info" text="info" />       | Definition '<code>&lt;name&gt;</code>' has no members                                                                                                                                                                                   |
+| <span id="sysml2-s4004"></span>`S4004` | `abstract-requirement-violation`    | <Badge type="danger" text="error" />    | Cannot make an existing concrete requirement abstract.                                                                                                                                                                                  |
+| <span id="sysml2-s4005"></span>`S4005` | `ontological-inconsistency`         | <Badge type="danger" text="error" />    | Ontological inconsistency detected in '<code>&lt;name&gt;</code>'<code>&lt;detail&gt;</code>                                                                                                                                            |
+| <span id="sysml2-s4006"></span>`S4006` | `missing-subject`                   | <Badge type="info" text="info" />       | Requirement '<code>&lt;name&gt;</code>' should have a specified subject or satisfy relation                                                                                                                                             |
+| <span id="sysml2-s4007"></span>`S4007` | `empty-package`                     | <Badge type="info" text="info" />       | Package '<code>&lt;name&gt;</code>' has no members                                                                                                                                                                                      |
+| <span id="sysml2-s4008"></span>`S4008` | `requirement-without-constraint`    | <Badge type="info" text="info" />       | Requirement '<code>&lt;name&gt;</code>' has no constraints or textual documentation                                                                                                                                                     |
+| <span id="sysml2-s4009"></span>`S4009` | `empty-verification-case`           | <Badge type="info" text="info" />       | Verification case '<code>&lt;name&gt;</code>' has no verify requirements or sub-actions                                                                                                                                                 |
+| <span id="sysml2-s4010"></span>`S4010` | `missing-verification-objective`    | <Badge type="warning" text="warning" /> | Verification case '<code>&lt;name&gt;</code>' has no verification objective or verify statement                                                                                                                                         |
+| <span id="sysml2-s4011"></span>`S4011` | `unverified-requirement`            | <Badge type="warning" text="warning" /> | Requirement '<code>&lt;name&gt;</code>' is not verified by any verification case in package '<code>&lt;pkgName&gt;</code>'                                                                                                              |
+| <span id="sysml2-s4012"></span>`S4012` | `calc-return-missing`               | <Badge type="warning" text="warning" /> | Calculation '<code>&lt;name&gt;</code>' has a body without a return parameter or result expression.                                                                                                                                     |
+| <span id="sysml2-s4013"></span>`S4013` | `expose-target-invalid`             | <Badge type="danger" text="error" />    | Exposed target '<code>&lt;target&gt;</code>' in view '<code>&lt;viewName&gt;</code>' could not be resolved.                                                                                                                             |
+| <span id="sysml2-s4017"></span>`S4017` | `unsatisfied-critical-requirement`  | <Badge type="warning" text="warning" /> | Critical requirement '<code>&lt;reqName&gt;</code>' has no incoming satisfy or verify relationship.                                                                                                                                     |
+| <span id="sysml2-s4018"></span>`S4018` | `circular-port-delegation`          | <Badge type="danger" text="error" />    | Port '<code>&lt;portName&gt;</code>' delegation connection chain contains a cyclic dependency.                                                                                                                                          |
+| <span id="sysml2-s4019"></span>`S4019` | `incompatible-flow-dimensions`      | <Badge type="danger" text="error" />    | Flow connection links incompatible physical dimensions ('<code>&lt;sourceFlow&gt;</code>' to '<code>&lt;targetFlow&gt;</code>').                                                                                                        |
+| <span id="sysml2-s4080"></span>`S4080` | `tgg-conformance-missing-port`      | <Badge type="warning" text="warning" /> | TGG conformance warning: '<code>&lt;targetName&gt;</code>' (<code>&lt;targetLang&gt;</code>) is missing counterpart port '<code>&lt;portName&gt;</code>' (<code>&lt;portType&gt;</code>) expected by '<code>&lt;sourceName&gt;</code>'. |
+| <span id="sysml2-s4081"></span>`S4081` | `tgg-conformance-param-mismatch`    | <Badge type="warning" text="warning" /> | TGG conformance warning: parameter or port '<code>&lt;paramName&gt;</code>' type '<code>&lt;actualType&gt;</code>' is incompatible with '<code>&lt;expectedType&gt;</code>'.                                                            |
+| <span id="sysml2-s4082"></span>`S4082` | `tgg-conformance-missing-component` | <Badge type="warning" text="warning" /> | TGG conformance warning: '<code>&lt;targetName&gt;</code>' (<code>&lt;targetLang&gt;</code>) is missing expected component '<code>&lt;compName&gt;</code>' : '<code>&lt;compType&gt;</code>'.                                           |
+| <span id="sysml2-s4083"></span>`S4083` | `tgg-conformance-unresolved-target` | <Badge type="danger" text="error" />    | Counterpart element referenced by '<code>&lt;sourceName&gt;</code>' could not be resolved in '<code>&lt;targetLang&gt;</code>'.                                                                                                         |
 
 **`S5xxx` — Behavior, state machines & formal verification**
 

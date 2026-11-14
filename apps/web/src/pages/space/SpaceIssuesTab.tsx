@@ -381,7 +381,7 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
         return {
           label: "Standard Issue",
           sublabel: "Engineering Problem",
-          fg: "var(--color-accent-fg, #0969da)",
+          fg: "var(--ms-accent, var(--color-accent-fg))",
           bg: "var(--color-accent-subtle, rgba(9, 105, 218, 0.1))",
           border: "var(--color-accent-muted, rgba(9, 105, 218, 0.25))",
           icon: "⚙️",
@@ -722,7 +722,7 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
                                     padding: "1px 6px",
                                     borderRadius: "4px",
                                     background: "var(--color-accent-subtle, rgba(9, 105, 218, 0.1))",
-                                    color: "var(--color-accent-fg, #0969da)",
+                                    color: "var(--ms-accent, var(--color-accent-fg))",
                                     border: "1px solid var(--color-accent-muted, rgba(9, 105, 218, 0.25))",
                                   }}
                                   title={`Linked to Pull Request #${linkedPr.eco_number}`}
@@ -991,7 +991,7 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
                               height: "28px",
                               borderRadius: "50%",
                               background: "var(--color-accent-subtle, rgba(9, 105, 218, 0.15))",
-                              color: "var(--color-accent-fg, #0969da)",
+                              color: "var(--ms-accent, var(--color-accent-fg))",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -1079,7 +1079,7 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
                       <IssueSectionCard>
                         <IssueSectionHeader>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <GitPullRequestIcon size={16} fill="var(--color-accent-fg, #0969da)" />
+                            <GitPullRequestIcon size={16} fill="var(--ms-accent, var(--color-accent-fg))" />
                             <strong style={{ fontSize: "14px", color: "var(--color-fg-default)" }}>
                               Linked Pull Request #{linkedPr.eco_number}
                             </strong>
@@ -1122,7 +1122,7 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
                               borderRadius: "6px",
                               border: "1px solid var(--color-border-default)",
                               background: "var(--color-canvas-subtle)",
-                              color: "var(--color-accent-fg, #0969da)",
+                              color: "var(--ms-accent, var(--color-accent-fg))",
                               fontSize: "12.5px",
                               fontWeight: 600,
                               textDecoration: "none",

@@ -763,9 +763,20 @@ export class WasmQueryEngine {
     _resourceId?: string,
     explicitChangedIds?: Set<SymbolId>,
     structuralChangedIds?: Set<SymbolId>,
+    explicitChangedNames?: Set<string>,
   ): void {
     const changedIds = explicitChangedIds ? new Set<SymbolId>(explicitChangedIds) : new Set<SymbolId>();
-    const changedNames = new Set<string>();
+    const changedNames = explicitChangedNames ? new Set<string>(explicitChangedNames) : new Set<string>();
+
+    // Collect changed names for explicit IDs too so peer engines invalidate byName dependencies
+    if (explicitChangedIds && explicitChangedIds.size > 0) {
+      for (const id of explicitChangedIds) {
+        const oldName = this.index.symbols.get(id)?.name ?? this.symbolNames.get(id);
+        const newName = newIndex.symbols.get(id)?.name;
+        if (oldName) changedNames.add(oldName);
+        if (newName) changedNames.add(newName);
+      }
+    }
 
     // If the caller did not supply explicit changed symbol IDs, compute the diff between the old and new index.
     if (!explicitChangedIds || explicitChangedIds.size === 0) {
@@ -876,7 +887,7 @@ export class WasmQueryEngine {
     // the engine backs a merged UnifiedWorkspace whose per-language indices were remapped.
     for (const id of rawIds) {
       if (id > 0 && getSymbolDomain(id) === 0) {
-        for (let d = 1; d <= 11; d++) {
+        for (let d = 1; d <= 16; d++) {
           const polyId = makePolyglotSymbolId(d, id);
           if (
             this.index.symbols.has(polyId) ||
@@ -892,7 +903,7 @@ export class WasmQueryEngine {
     if (structuralChangedIds && structIds) {
       for (const id of structuralChangedIds) {
         if (id > 0 && getSymbolDomain(id) === 0) {
-          for (let d = 1; d <= 11; d++) {
+          for (let d = 1; d <= 16; d++) {
             const polyId = makePolyglotSymbolId(d, id);
             if (
               this.index.symbols.has(polyId) ||

@@ -71,3 +71,9 @@ msx ibis to-dae Ddr4Driver.ibs
 # Project into Modelica 3.x electrical analog component
 msx ibis to-modelica Ddr4Driver.ibs -o Ddr4Buffer.mo
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="ibis" />

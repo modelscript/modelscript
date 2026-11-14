@@ -190,13 +190,20 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { buildParser } from "@modelscript/dsl";
-import { ${languageExportName} } from "${relLanguageModule}";
+import * as langModuleNamespace from "${relLanguageModule}";
 
 const __dirname = ${JSON.stringify(path.resolve(dir))};
 const languagePath = fs.existsSync(path.join(__dirname, "src", "language.ts"))
   ? path.join(__dirname, "src", "language.ts")
   : path.join(__dirname, "language.ts");
-const result = buildParser(${languageExportName}, { sourcePath: languagePath });
+const langDef =
+  (langModuleNamespace as Record<string, any>)[${JSON.stringify(languageExportName)}] ??
+  (langModuleNamespace as Record<string, any>).default ??
+  Object.values(langModuleNamespace).find((v: any) => v && typeof v === "object" && "rules" in v && "name" in v);
+if (!langDef) {
+  throw new Error("Could not find Language export '" + ${JSON.stringify(languageExportName)} + "' in " + languagePath);
+}
+const result = buildParser(langDef, { sourcePath: languagePath });
 
 // 1. Write AssemblyScript files to as-gen/ for asc
 const asGenDir = path.join(__dirname, "as-gen");

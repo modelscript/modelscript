@@ -6,14 +6,25 @@ import { Connection, Diagnostic, DiagnosticSeverity, Range } from "vscode-langua
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { DocumentManager } from "./document-manager.js";
 import { ParserService } from "./parser-service.js";
+import { hasWorkspaceLinter, runWorkspaceLinterForDocument } from "./workspace-linter-dispatch.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 
 import { getModelicaErrorCodeDef } from "@modelscript/modelica";
 import {
+  type CorrespondenceDiagnostic,
+  extractCrossLanguageLinks,
+  isTypeLikeSymbol,
   PolyglotDriftChecker,
   type PolyglotModelSource,
+  PolyglotTransformer,
   QueryEngine,
   SemanticAxiomProjector,
+  splitQualifiedPath,
+  type SymbolEntry,
+  symbolEntryToPolyglotNode,
+  type SymbolIndex,
+  type SyntaxNode,
+  type UnifiedWorkspace,
   VerificationRunner,
 } from "@modelscript/runtime";
 import { simulateArena } from "@modelscript/simulate";
@@ -35,6 +46,34 @@ export interface WasmLintDiagnostic {
   code?: string | number;
   lintName?: string;
   severity?: number;
+}
+
+interface EngineLintDiagnosticLike {
+  startOffset: number;
+  endOffset: number;
+  severity: "error" | "warning" | "info" | string;
+  code?: string | number | undefined;
+  lintName?: string | undefined;
+  message: string;
+}
+
+type ValidationQueryEngine = QueryEngine & {
+  preflight?: (symbolIds: number[], phases: string[]) => Promise<void> | void;
+  runAllLintsAsync?: (
+    uri: string,
+    shouldYield: () => Promise<boolean>,
+    viewport?: { startOffset?: number | undefined; endOffset?: number | undefined },
+  ) => Promise<EngineLintDiagnosticLike[]>;
+};
+
+interface SharedContextWorkspaceBridge {
+  attachExternalUnifiedWorkspace?: (uw: UnifiedWorkspace) => void;
+  syncExternalWorkspace?: () => void;
+  __attachedExternalUw?: unknown;
+}
+
+interface PolyglotTreeLike {
+  rootNode?: SyntaxNode | null | undefined;
 }
 
 /**
@@ -267,6 +306,12 @@ export class ValidationService {
   public activeValidationTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Debounce timer for cross-file revalidation when exported symbol names change. */
   public revalidationTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Re-entrancy guard preventing cyclical cascading validation across cross-language dependents. */
+  private isCascadeRevalidationActive = false;
+  /** Tracks URIs currently undergoing dependent revalidation to break cycles cleanly. */
+  private revalidatingUris = new Set<string>();
+  /** Per-language cached `PolyglotTransformer` instances for live TGG conformance checking. */
+  private tggTransformerCache = new Map<string, PolyglotTransformer>();
   /** Debounce timer for SysML v2 verification triggers. */
   public verificationTimer: ReturnType<typeof setTimeout> | null = null;
   /** Active AbortController for SysML v2 requirement verification execution. */
@@ -288,6 +333,8 @@ export class ValidationService {
   public daeVerificationResultsByUri = new Map<string, Map<string, any>>();
   /** Cached OWL2 / ontological description logic reasoner diagnostics per document URI. */
   public reasonerDiagnosticsByUri = new Map<string, Diagnostic[]>();
+  /** Cached polyglot digital thread diagnostics merged across verifyAll runs per document URI. */
+  public digitalThreadDiagnosticsByUri = new Map<string, Diagnostic[]>();
 
   /**
    * Returns true once all declared project library dependencies have been loaded into the workspace.
@@ -379,6 +426,7 @@ export class ValidationService {
         this.lastNotifiedProjectTreeText.set(uri, currentText);
       }
     }
+    if (typeof this.connection?.sendNotification !== "function") return;
     const g = globalThis as any;
     if (g.projectTreeChangedTimer) {
       g.projectTreeChangedPending = true;
@@ -389,7 +437,7 @@ export class ValidationService {
       g.projectTreeChangedTimer = null;
       if (g.projectTreeChangedPending) {
         g.projectTreeChangedPending = false;
-        this.connection.sendNotification("modelscript/projectTreeChanged");
+        this.connection?.sendNotification?.("modelscript/projectTreeChanged");
       }
     }, 100);
   }
@@ -495,6 +543,8 @@ export class ValidationService {
     this.daeVerificationResultsByUri.delete(eff);
     this.reasonerDiagnosticsByUri.delete(uri);
     this.reasonerDiagnosticsByUri.delete(eff);
+    this.digitalThreadDiagnosticsByUri.delete(uri);
+    this.digitalThreadDiagnosticsByUri.delete(eff);
 
     // Retract registered axioms from owl2Store and update reasoner
     const store = this.workspaceManager?.unifiedWorkspace?.owl2Store;
@@ -1155,18 +1205,9 @@ export class ValidationService {
       changedNames = typeof wsIndex.takeGlobalChangedNames === "function" ? wsIndex.takeGlobalChangedNames() : null;
     }
 
-    if (changedNames && changedNames.size > 0) {
-      if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
-      this.revalidationTimer = setTimeout(() => {
-        for (const d of this.documentManager.documents.all()) {
-          const eff = d.uri.startsWith("modelscript-lib://global")
-            ? "file://" + d.uri.substring("modelscript-lib://global".length)
-            : d.uri;
-          if (eff !== effectiveUri) {
-            this.validateTextDocument(d);
-          }
-        }
-      }, 500);
+    if (this.revalidationTimer) {
+      clearTimeout(this.revalidationTimer);
+      this.revalidationTimer = null;
     }
 
     const unifiedIndex = this.workspaceManager.unifiedWorkspace.getIndex();
@@ -1192,6 +1233,8 @@ export class ValidationService {
         (engine as any).updateTree(cstTreeWrapper);
       }
     }
+
+    this.syncWorkspaceStateAfterIndex(effectiveUri, changedIds, structuralChangedIds, changedNames);
 
     const context = this.parserService.sharedContext;
     if (context && langId === "modelica") {
@@ -1321,11 +1364,13 @@ export class ValidationService {
         const res = await plugin.customHandlers.validate(textDocument);
         if (res !== undefined) {
           const diags = normalizePluginDiagnostics(res, plugin.id);
+          const docTree = { rootNode: { text } } as any;
           this.documentManager.documentTrees.set(uri, {
             text,
-            tree: { rootNode: { text } } as any,
+            tree: docTree,
             classCache: new Map(),
           });
+          const contentChanged = this.lastIndexedText.get(uri) !== text;
           if ((plugin.languageDef as any)?.indexing?.indexFile) {
             this.indexNativeDslDocument(uri, text, plugin.id, plugin.languageDef);
           } else if (plugin.workspaceIndex) {
@@ -1341,9 +1386,18 @@ export class ValidationService {
               );
             }
           }
-          this.lastSemanticDiagnostics.set(uri, diags);
-          this.connection.sendDiagnostics({ uri, diagnostics: diags });
-          this.sendProjectTreeChanged();
+          this.lastIndexedText.set(uri, text);
+          await this.finalizeCrossLanguageValidation({
+            uri,
+            effectiveUri: uri,
+            text,
+            langId: plugin.id,
+            tree: docTree,
+            textDocument,
+            diagnostics: diags,
+            hasSyntaxErrors: diags.some((d) => d.severity === DiagnosticSeverity.Error),
+            contentChanged,
+          });
           return;
         }
       } catch (e: any) {
@@ -1453,11 +1507,13 @@ export class ValidationService {
               { documentText: text, uri },
             );
             const diags = normalizePluginDiagnostics(rawDiags, plugin.id);
+            const docTree = { rootNode: { text } } as any;
             this.documentManager.documentTrees.set(uri, {
               text,
-              tree: { rootNode: { text } } as any,
+              tree: docTree,
               classCache: new Map(),
             });
+            const contentChanged = this.lastIndexedText.get(uri) !== text;
             const wsIdx = plugin.workspaceIndex ?? this.workspaceManager.getWorkspaceIndex(plugin.id);
             if ((plugin.languageDef as any)?.indexing?.indexFile) {
               this.indexNativeDslDocument(uri, text, plugin.id, plugin.languageDef);
@@ -1474,9 +1530,18 @@ export class ValidationService {
                 );
               }
             }
-            this.lastSemanticDiagnostics.set(uri, diags);
-            this.connection.sendDiagnostics({ uri, diagnostics: diags });
-            this.sendProjectTreeChanged();
+            this.lastIndexedText.set(uri, text);
+            await this.finalizeCrossLanguageValidation({
+              uri,
+              effectiveUri: uri,
+              text,
+              langId: plugin.id,
+              tree: docTree,
+              textDocument,
+              diagnostics: diags,
+              hasSyntaxErrors: diags.some((d) => d.severity === DiagnosticSeverity.Error),
+              contentChanged,
+            });
             return;
           } catch (e: any) {
             this.connection.console.error(`[validate] Action lint handler ${lintKey} failed for ${uri}: ${e.message}`);
@@ -1610,7 +1675,25 @@ export class ValidationService {
     } finally {
       releaseLock();
     }
-    const wasmLspDiags = this.convertWasmLintDiagnostics(wasmLintDiags, textDocument, plugin, text);
+    const rawWasmLspDiags = this.convertWasmLintDiagnostics(wasmLintDiags, textDocument, plugin, text);
+    const initialUnifiedIdx =
+      typeof this.workspaceManager?.unifiedWorkspace?.getIndex === "function"
+        ? this.workspaceManager.unifiedWorkspace.getIndex()
+        : undefined;
+    const initialEngine = plugin?.queryEngine ?? this.workspaceManager?.getQueryEngine?.(langId);
+    const wasmLspDiags = initialUnifiedIdx
+      ? this.reconcileCrossLanguageWasmDiagnostics(
+          rawWasmLspDiags,
+          initialUnifiedIdx,
+          initialEngine,
+          null,
+          uri,
+          langId,
+          text,
+          textDocument,
+          plugin,
+        )
+      : rawWasmLspDiags;
     const cachedSemantic = (this.lastSemanticDiagnostics.get(uri) || []).filter(
       (d) => typeof d.code !== "number" || d.code < 1000 || d.code >= 6000,
     );
@@ -1762,19 +1845,10 @@ export class ValidationService {
 
       if (isStale()) return;
 
-      // ── Step 2: Cross-File Revalidation Trigger ──────────────────────────
-      if (changedNames && changedNames.size > 0) {
-        if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
-        this.revalidationTimer = setTimeout(() => {
-          for (const doc of this.documentManager.documents.all()) {
-            const eff = doc.uri.startsWith("modelscript-lib://global")
-              ? "file://" + doc.uri.substring("modelscript-lib://global".length)
-              : doc.uri;
-            if (eff !== effectiveUri) {
-              this.validateTextDocument(doc);
-            }
-          }
-        }, 500);
+      // ── Step 2: Cross-File Dependency State Prep ──────────────────────────
+      if (this.revalidationTimer) {
+        clearTimeout(this.revalidationTimer);
+        this.revalidationTimer = null;
       }
 
       // ── Step 3: Unified Index & QueryEngine Update ───────────────────────
@@ -1788,6 +1862,9 @@ export class ValidationService {
           this.workspaceManager.setQueryEngine(langId, engine);
         }
       } else {
+        if (plugin?.queryEngine && !this.workspaceManager.getQueryEngine(langId)) {
+          this.workspaceManager.setQueryEngine(langId, engine);
+        }
         if (langId === "modelica") {
           const injectFn = (globalThis as any).injectPredefinedTypes;
           if (typeof injectFn === "function") injectFn(unifiedIndex);
@@ -1801,6 +1878,8 @@ export class ValidationService {
           (engine as any).updateTree(cstTreeWrapper);
         }
       }
+
+      this.syncWorkspaceStateAfterIndex(effectiveUri, changedIds, structuralChangedIds, changedNames);
 
       // Sync parser sharedContext if Modelica
       const context = this.parserService.sharedContext;
@@ -1834,16 +1913,17 @@ export class ValidationService {
       const docSymbolCount = resourceSymbolIds ? resourceSymbolIds.length : 0;
       const isWorkspaceFile = !!this.documentManager.documents.get(uri);
 
+      const vEngine = engine as ValidationQueryEngine | null | undefined;
       if (
-        engine &&
+        vEngine &&
         resourceSymbolIds &&
         resourceSymbolIds.length > 0 &&
-        (engine as any).preflight &&
+        vEngine.preflight &&
         !isWorkspaceFile &&
         docSymbolCount < 2000
       ) {
         try {
-          await (engine as any).preflight(resourceSymbolIds, ["resolve", "members", "type_check"]);
+          await vEngine.preflight(resourceSymbolIds, ["resolve", "members", "type_check"]);
         } catch {
           // Best-effort
         }
@@ -1863,30 +1943,34 @@ export class ValidationService {
       // here because the WASM input buffer may have been overwritten by parsing another document
       // during the async yields above. Using a stale rootPtr with a different input buffer would
       // cause the linter to read garbled text at the old CST byte offsets.
+      let pendingWasmDiags: Diagnostic[] = [];
       if (!hasSyntaxErrors && wasmLintDiags && wasmLintDiags.length > 0) {
         try {
-          const wasmLspDiags = this.convertWasmLintDiagnostics(
+          pendingWasmDiags = this.convertWasmLintDiagnostics(
             wasmLintDiags,
             currentDoc ?? textDocument,
             plugin,
             currentText,
             bridge,
           );
-          newSemanticDiagnostics.push(...wasmLspDiags);
-        } catch (e: any) {
-          this.connection.console.warn(`[runUnifiedSemanticPipeline] CST linter error for ${uri}: ${e?.message ?? e}`);
+        } catch (e: unknown) {
+          this.connection.console.warn(
+            `[runUnifiedSemanticPipeline] CST linter error for ${uri}: ${e instanceof Error ? e.message : String(e)}`,
+          );
         }
       }
 
       // 5b. Salsa QueryEngine symbol lints
       const skipHeavyLints = (!isWorkspaceFile && docSymbolCount > 1000) || hasSyntaxErrors;
-      if (!skipHeavyLints && engine && typeof (engine as any).runAllLintsAsync === "function") {
+      let capturedEngineDiags: EngineLintDiagnosticLike[] = [];
+      if (!skipHeavyLints && vEngine && typeof vEngine.runAllLintsAsync === "function") {
         const viewportRange = this.documentViewports.get(uri) ?? undefined;
-        const engineDiags = await (engine as any).runAllLintsAsync(effectiveUri, yieldAndCheckStale, viewportRange);
+        const engineDiags = await vEngine.runAllLintsAsync(effectiveUri, yieldAndCheckStale, viewportRange);
         if (isStale()) return;
+        capturedEngineDiags = Array.isArray(engineDiags) ? engineDiags : [];
 
         const posIdx = (bridge as any)?.positions ?? this.documentManager.getLineIndexForDoc(uri);
-        for (const d of engineDiags) {
+        for (const d of capturedEngineDiags) {
           const startOff = d.startOffset;
           const endOff = d.endOffset;
           const start = posIdx?.charOffsetToPosition?.(startOff) ?? { line: 0, character: 0 };
@@ -1901,13 +1985,33 @@ export class ValidationService {
             range: { start, end },
             message: d.message,
             source: plugin?.name ? plugin.name.toLowerCase() : "modelscript",
-            code: diagCode,
+            ...(diagCode !== undefined ? { code: diagCode } : {}),
           };
 
           const isDuplicate = tryDeduplicateOrMergeSemanticDiagnostic(newSemanticDiagnostics, incomingDiag, plugin);
 
           if (!isDuplicate) {
             newSemanticDiagnostics.push(incomingDiag);
+          }
+        }
+      }
+
+      // Reconcile single-file WASM CST M2002/M2003 lints with multi-file & cross-language resolution
+      if (pendingWasmDiags.length > 0) {
+        const reconciledWasm = this.reconcileCrossLanguageWasmDiagnostics(
+          pendingWasmDiags,
+          unifiedIndex,
+          engine,
+          capturedEngineDiags,
+          effectiveUri,
+          langId,
+          currentText,
+          currentDoc ?? textDocument,
+          plugin,
+        );
+        for (const wd of reconciledWasm) {
+          if (!tryDeduplicateOrMergeSemanticDiagnostic(newSemanticDiagnostics, wd, plugin)) {
+            newSemanticDiagnostics.push(wd);
           }
         }
       }
@@ -1927,10 +2031,8 @@ export class ValidationService {
           await this.postValidateModelicaAbstractInterpretation(effectiveUri, textDocument, newSemanticDiagnostics);
           await this.postValidateModelicaDaeReachability(effectiveUri, textDocument, newSemanticDiagnostics);
           this.postValidateModelicaReasoner(effectiveUri, newSemanticDiagnostics);
-          this.postValidatePolyglotDrift(effectiveUri, langId, newSemanticDiagnostics);
         } else if (!hasSyntaxErrors) {
           this.postValidatePolyglotReasoner(effectiveUri, langId, newSemanticDiagnostics);
-          this.postValidatePolyglotDrift(effectiveUri, langId, newSemanticDiagnostics);
         }
       }
 
@@ -1955,154 +2057,10 @@ export class ValidationService {
         }
       }
 
-      // Digital Thread Cross-Domain Diagnostics
-      const threadDiags = this.collectThreadDiagnostics(effectiveUri, textDocument);
-      if (threadDiags.length > 0) {
-        newSemanticDiagnostics.push(...threadDiags);
-      }
-
-      // Multi-domain Digital Thread Parameter Parity Diagnostics
-      // NOTE: Reachability verdicts are intentionally NOT emitted here. They must come from a
-      // sound reachability engine (see @modelscript/runtime VerificationVerdict), never from text matching.
-      if (text) {
-        const lines = text.split(/\r?\n/);
-
-        // 1. Multi-domain Digital Thread parameter parity diagnostics
-        const threadEntries = this.workspaceManager?.getThreadsForUri(uri) ?? [];
-        let calibratedMass: number | undefined;
-        let peerSysmlName: string | undefined;
-
-        for (const te of threadEntries) {
-          const aligned = this.workspaceManager?.findAlignedElementsBySlot(te.slot) ?? [];
-          for (const el of aligned) {
-            if (el.uri !== uri && el.properties?.["mass"] !== undefined) {
-              calibratedMass = el.properties["mass"];
-            }
-            if (el.domain === "sysml2" || el.domain === "sysml") {
-              peerSysmlName = el.name.replace(/^(?:part\s+def|model)\s+/, "");
-            }
-          }
-          if (calibratedMass !== undefined) break;
-        }
-
-        const isParityTarget =
-          (uri.endsWith(".mo") || langId === "modelica") &&
-          (calibratedMass !== undefined || uri.includes("DroneSimulation") || text.includes("DroneSimulation"));
-
-        if (isParityTarget) {
-          const targetMass = calibratedMass ?? 1.2;
-          const targetSysml = peerSysmlName ?? "DroneAssembly";
-          const cachedTree = this.documentManager?.documentTrees?.get(uri);
-          const rootNode = cachedTree?.tree?.rootNode;
-          let handledViaCst = false;
-          if (rootNode && textDocument) {
-            const findCstNodes = (n: any, type: string, out: any[] = []) => {
-              if (!n) return out;
-              if (n.type === type) out.push(n);
-              for (const ch of n.children || []) findCstNodes(ch, type, out);
-              return out;
-            };
-            const compDecls = findCstNodes(rootNode, "component_declaration");
-            for (const cd of compDecls) {
-              const idNode = (cd.children || []).find((c: any) => c.type === "identifier");
-              if (idNode?.text === "m") {
-                const modNode = (cd.children || []).find((c: any) => c.type === "modification");
-                const modText = modNode?.text ?? "";
-                const valMatch = /=\s*([0-9.]+)/.exec(modText);
-                if (valMatch) {
-                  const val = parseFloat(valMatch[1]!);
-                  const startPos = textDocument.positionAt(idNode.startIndex);
-                  const endPos = textDocument.positionAt(idNode.endIndex);
-                  handledViaCst = true;
-                  if (Math.abs(val - targetMass) > 0.01) {
-                    newSemanticDiagnostics.push({
-                      severity: DiagnosticSeverity.Warning,
-                      range: { start: startPos, end: endPos },
-                      message: `[Digital Thread Drift] Parameter 'm = ${val}' drifts from FEA calibrated structural mass (${targetMass.toFixed(2)} kg). Run 'ModelScript: Sync Digital Thread Parameters' to reconcile.`,
-                      source: "modelscript-digital-thread",
-                    });
-                  } else {
-                    newSemanticDiagnostics.push({
-                      severity: DiagnosticSeverity.Information,
-                      range: { start: startPos, end: endPos },
-                      message: `[Digital Thread In Parity] Parameter 'm' (${targetMass.toFixed(2)} kg) is synchronized with FEA structural mass and SysML v2 ${targetSysml}.`,
-                      source: "modelscript-digital-thread",
-                    });
-                  }
-                  break;
-                }
-              }
-            }
-          }
-
-          if (!handledViaCst) {
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i]!;
-
-              const massMatch = /^\s*parameter\s+Real\s+m\s*=\s*([0-9.]+)/.exec(line);
-              if (massMatch) {
-                const val = parseFloat(massMatch[1]!);
-                const colMatch = /\bReal\s+(m)\b/.exec(line);
-                const col = colMatch ? colMatch.index + colMatch[0].lastIndexOf("m") : line.indexOf("m");
-                if (Math.abs(val - targetMass) > 0.01) {
-                  newSemanticDiagnostics.push({
-                    severity: DiagnosticSeverity.Warning,
-                    range: { start: { line: i, character: col }, end: { line: i, character: col + 1 } },
-                    message: `[Digital Thread Drift] Parameter 'm = ${val}' drifts from FEA calibrated structural mass (${targetMass.toFixed(2)} kg). Run 'ModelScript: Sync Digital Thread Parameters' to reconcile.`,
-                    source: "modelscript-digital-thread",
-                  });
-                } else {
-                  newSemanticDiagnostics.push({
-                    severity: DiagnosticSeverity.Information,
-                    range: { start: { line: i, character: col }, end: { line: i, character: col + 1 } },
-                    message: `[Digital Thread In Parity] Parameter 'm' (${targetMass.toFixed(2)} kg) is synchronized with FEA structural mass and SysML v2 ${targetSysml}.`,
-                    source: "modelscript-digital-thread",
-                  });
-                }
-              }
-            }
-          }
-        }
-
-        // 2. Multi-Domain Digital-Thread architecture binding diagnostics
-        if (this.workspaceManager) {
-          const threadEntries = this.workspaceManager.getThreadsForUri(uri);
-          if (threadEntries && threadEntries.length > 0) {
-            for (const entry of threadEntries) {
-              const { slot, meta } = entry;
-              const aligned = this.workspaceManager.findAlignedElementsBySlot(slot);
-              if (aligned.length > 1) {
-                const rawName = meta.name.replace(/^(?:part\s+def|model|package|def)\s+/, "").trim();
-                for (let i = 0; i < lines.length; i++) {
-                  const line = lines[i]!;
-                  const col = rawName ? line.indexOf(rawName) : -1;
-                  if (
-                    col >= 0 &&
-                    (line.includes("part def") ||
-                      line.includes("part ") ||
-                      line.includes("model ") ||
-                      line.includes("package "))
-                  ) {
-                    const peerList = aligned
-                      .filter((el) => el.domain.toLowerCase() !== entry.domain.toLowerCase())
-                      .map((el) => `${el.domain.toUpperCase()} (${el.name})`)
-                      .join(", ");
-                    newSemanticDiagnostics.push({
-                      severity: DiagnosticSeverity.Information,
-                      range: {
-                        start: { line: i, character: col },
-                        end: { line: i, character: col + rawName.length },
-                      },
-                      message: `[Multi-Domain Digital Thread] Architecture bound across ${aligned.length} domains: ${peerList}.`,
-                      source: "modelscript-digital-thread",
-                    });
-                    break;
-                  }
-                }
-              }
-            }
-          }
-        }
+      const dtDiags =
+        this.digitalThreadDiagnosticsByUri.get(uri) ?? this.digitalThreadDiagnosticsByUri.get(effectiveUri);
+      if (dtDiags && dtDiags.length > 0) {
+        newSemanticDiagnostics.push(...dtDiags);
       }
 
       // ── Step 7: Populate Class / Symbol Wrappers for Trees ───────────────
@@ -2110,14 +2068,35 @@ export class ValidationService {
         this.populateClassWrappers(effectiveUri, uri, unifiedIndex, engine, context);
       }
 
-      // ── Step 8: Deliver Diagnostics and Notify UI ────────────────────────
+      // ── Step 8: Finalize Cross-Language Links, Deliver Diagnostics, & Cascade ──
       if (isStale()) return;
-      this.lastSemanticDiagnostics.set(uri, newSemanticDiagnostics);
-      const rawDiagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
+      const finalSemanticDiags = await this.finalizeCrossLanguageValidation({
+        uri,
+        effectiveUri,
+        text,
+        langId,
+        tree,
+        textDocument: currentDoc ?? textDocument,
+        diagnostics: newSemanticDiagnostics,
+        hasSyntaxErrors,
+        changedIds,
+        structuralChangedIds,
+        changedNames,
+        skipSend: true,
+        skipCascade: true,
+        isStale,
+      });
+      if (isStale()) return;
+      this.lastSemanticDiagnostics.set(uri, finalSemanticDiags);
+      const rawDiagnostics = [...baseDiagnostics, ...finalSemanticDiags];
       const diagnostics = deduplicateAllDiagnostics(rawDiagnostics);
       if (diagnostics.length > 1000) diagnostics.length = 1000;
       this.connection.sendDiagnostics({ uri, diagnostics });
       this.sendProjectTreeChanged(uri);
+
+      if ((textChanged || (changedNames && changedNames.size > 0)) && !this.isCascadeRevalidationActive) {
+        await this.revalidateCrossLanguageDependents(effectiveUri);
+      }
     } catch (e: any) {
       this.connection.console.error(`[runUnifiedSemanticPipeline] Error for ${uri}: ${e.message}\n${e.stack}`);
       if (!isStale()) {
@@ -2136,7 +2115,7 @@ export class ValidationService {
    */
   public collectThreadDiagnostics(uri: string, textDocument?: TextDocument): Diagnostic[] {
     const diagnostics: Diagnostic[] = [];
-    if (!this.workspaceManager) return diagnostics;
+    if (typeof this.workspaceManager?.getThreadsForUri !== "function") return diagnostics;
 
     const threadEntries = this.workspaceManager.getThreadsForUri(uri);
     if (!threadEntries || threadEntries.length === 0) return diagnostics;
@@ -2260,10 +2239,848 @@ export class ValidationService {
   }
 
   /**
+   * Synchronizes all registered Salsa QueryEngines and Modelica's external UnifiedWorkspace
+   * attachment after any document in any language is indexed or re-indexed.
+   */
+  private syncWorkspaceStateAfterIndex(
+    effectiveUri?: string,
+    changedIds?: Set<number> | null,
+    structuralChangedIds?: Set<number> | null,
+    changedNames?: Set<string> | null,
+  ): void {
+    const uw = this.workspaceManager?.unifiedWorkspace as
+      | (UnifiedWorkspace & {
+          updateQueryEngines?: (
+            uri?: string,
+            changedIds?: Set<number>,
+            structuralChangedIds?: Set<number>,
+            changedNames?: Set<string>,
+          ) => void;
+        })
+      | undefined;
+    if (uw && typeof uw.updateQueryEngines === "function") {
+      try {
+        uw.updateQueryEngines(
+          effectiveUri,
+          changedIds ?? undefined,
+          structuralChangedIds ?? undefined,
+          changedNames ?? undefined,
+        );
+      } catch {
+        // Best-effort query engine refresh
+      }
+    }
+    const sharedContext = this.parserService?.sharedContext as SharedContextWorkspaceBridge | undefined;
+    if (sharedContext && uw) {
+      try {
+        if (typeof sharedContext.attachExternalUnifiedWorkspace === "function") {
+          if (sharedContext.__attachedExternalUw !== uw) {
+            sharedContext.attachExternalUnifiedWorkspace(uw);
+            sharedContext.__attachedExternalUw = uw;
+          } else if (typeof sharedContext.syncExternalWorkspace === "function") {
+            sharedContext.syncExternalWorkspace();
+          }
+        } else if (typeof sharedContext.syncExternalWorkspace === "function") {
+          sharedContext.syncExternalWorkspace();
+        }
+      } catch {
+        // Non-fatal if context lacks foreign workspace support
+      }
+    }
+  }
+
+  /**
+   * Re-validates open workspace peer documents immediately and boundedly whenever a document's
+   * exported symbols or indexed contents change, without recursive re-entry loops.
+   */
+  private async revalidateCrossLanguageDependents(sourceEffectiveUri: string): Promise<void> {
+    if (this.isCascadeRevalidationActive) return;
+    if (!this.documentManager?.documents || typeof this.documentManager.documents.all !== "function") return;
+    if (this.revalidationTimer) {
+      clearTimeout(this.revalidationTimer);
+      this.revalidationTimer = null;
+    }
+
+    const normUri = (u: string) =>
+      (u.startsWith("modelscript-lib://global")
+        ? "file://" + u.substring("modelscript-lib://global".length)
+        : u
+      ).replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
+    const sourceNorm = normUri(sourceEffectiveUri);
+
+    this.isCascadeRevalidationActive = true;
+    try {
+      const peers = Array.from(this.documentManager.documents.all());
+      for (const peerDoc of peers) {
+        const peerNorm = normUri(peerDoc.uri);
+        if (peerNorm === sourceNorm || this.revalidatingUris.has(peerNorm)) continue;
+        this.revalidatingUris.add(peerNorm);
+        try {
+          await this.validateTextDocument(peerDoc);
+          const pending = this.activeValidationPromises.get(peerDoc.uri);
+          if (pending) {
+            await pending;
+          }
+        } catch {
+          // Non-fatal peer revalidation error
+        } finally {
+          this.revalidatingUris.delete(peerNorm);
+        }
+      }
+    } finally {
+      this.isCascadeRevalidationActive = false;
+    }
+  }
+
+  /**
+   * Reconciles single-file WASM CST lint diagnostics (`M2002`/`M2003`) against the multi-file,
+   * cross-language `UnifiedWorkspace` and Salsa `QueryEngine` so resolved imported or foreign types,
+   * ports, and variables never produce false single-file errors while genuine unresolved errors remain.
+   */
+  private reconcileCrossLanguageWasmDiagnostics(
+    wasmDiags: Diagnostic[],
+    unifiedIndex: SymbolIndex,
+    engine: ValidationQueryEngine | null | undefined,
+    engineDiags: Array<{
+      code?: string | number | undefined;
+      startOffset?: number | undefined;
+      endOffset?: number | undefined;
+    }> | null,
+    effectiveUri: string,
+    langId: string,
+    text: string,
+    textDocument?: TextDocument,
+    plugin?: LanguagePlugin,
+  ): Diagnostic[] {
+    if (!wasmDiags.length || !unifiedIndex?.symbols) return wasmDiags;
+
+    const normLang = langId.toLowerCase();
+    const normUri = (u: string) =>
+      (u.startsWith("modelscript-lib://global")
+        ? "file://" + u.substring("modelscript-lib://global".length)
+        : u
+      ).replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
+    const targetNorm = normUri(effectiveUri);
+
+    const docIds: number[] =
+      unifiedIndex.symbolsByResource?.get(effectiveUri) ?? unifiedIndex.symbolsByResource?.get(targetNorm) ?? [];
+    const docSymbols: SymbolEntry[] = docIds
+      .map((id) => unifiedIndex.symbols.get(id))
+      .filter((s): s is SymbolEntry => Boolean(s));
+
+    const importedPrefixes: string[][] = [];
+    const importedLeafMap = new Map<string, string[]>();
+    for (const sym of docSymbols) {
+      if (sym.kind !== "Import" || !sym.name) continue;
+      const rawImp = String(sym.name).trim();
+      if (rawImp.endsWith(".*") || rawImp.endsWith("::*")) {
+        const pkgPath = rawImp.replace(/(\.\*|::\*)$/, "");
+        const parts = splitQualifiedPath(pkgPath);
+        if (parts.length > 0) importedPrefixes.push(parts);
+      } else {
+        const parts = splitQualifiedPath(rawImp);
+        if (parts.length > 0) importedLeafMap.set(parts[parts.length - 1]!, parts);
+      }
+    }
+
+    const resolvePathInUnified = (parts: string[]): SymbolEntry | undefined => {
+      if (parts.length === 0) return undefined;
+      const isExternalMatch = (cand: SymbolEntry | undefined): boolean => {
+        if (!cand) return false;
+        const candLang = (cand.language ?? "").toLowerCase();
+        if (candLang && candLang !== normLang) return true;
+        return Boolean(cand.resourceId && normUri(cand.resourceId) !== targetNorm);
+      };
+
+      const walkChildren = (root: SymbolEntry, rest: string[]): SymbolEntry | undefined => {
+        let curr: SymbolEntry | undefined = root;
+        for (const seg of rest) {
+          if (!curr) return undefined;
+          const childIds: number[] = unifiedIndex.childrenOf?.get(curr.id) ?? [];
+          let next: SymbolEntry | undefined;
+          for (const cid of childIds) {
+            const c = unifiedIndex.symbols.get(cid);
+            if (c && c.name === seg && c.kind !== "Import" && c.kind !== "Extends") {
+              next = c;
+              break;
+            }
+          }
+          if (!next) {
+            // Also traverse extends base classes if present
+            for (const cid of childIds) {
+              const c = unifiedIndex.symbols.get(cid);
+              if (c?.kind === "Extends" && c.name) {
+                const base = resolvePathInUnified(splitQualifiedPath(c.name));
+                if (base) {
+                  const foundInBase = walkChildren(base, [seg]);
+                  if (foundInBase) {
+                    next = foundInBase;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          curr = next;
+        }
+        return curr;
+      };
+
+      const roots: SymbolEntry[] = (unifiedIndex.byName?.get(parts[0]!) ?? [])
+        .map((id: number) => unifiedIndex.symbols.get(id))
+        .filter((s): s is SymbolEntry => Boolean(s && s.kind !== "Import" && s.kind !== "Extends"));
+      for (const r of roots) {
+        const hit = parts.length === 1 ? r : walkChildren(r, parts.slice(1));
+        if (hit && isExternalMatch(hit)) return hit;
+      }
+
+      // Suffix/namePath fallback across external/foreign entries
+      const leaf = parts[parts.length - 1]!;
+      const candidates: SymbolEntry[] = (unifiedIndex.byName?.get(leaf) ?? [])
+        .map((id: number) => unifiedIndex.symbols.get(id))
+        .filter((s): s is SymbolEntry => Boolean(s && isExternalMatch(s)));
+      const expected = parts.join(".").toLowerCase();
+      for (const c of candidates) {
+        if (parts.length === 1) return c;
+        const np = (c.namePath ?? c.name).replace(/::/g, ".").toLowerCase();
+        if (np === expected || np.endsWith(`.${expected}`)) return c;
+      }
+      return undefined;
+    };
+
+    const resolveImportedOrQualifiedChain = (chain: string): boolean => {
+      const parts = splitQualifiedPath(chain);
+      if (parts.length === 0) return false;
+      if (resolvePathInUnified(parts)) return true;
+      const aliased = importedLeafMap.get(parts[0]!);
+      if (aliased && resolvePathInUnified([...aliased, ...parts.slice(1)])) return true;
+      for (const pref of importedPrefixes) {
+        if (resolvePathInUnified([...pref, ...parts])) return true;
+      }
+      return false;
+    };
+
+    const computeOffset = (pos: { line: number; character: number }): number => {
+      if (textDocument && typeof textDocument.offsetAt === "function") {
+        return textDocument.offsetAt(pos);
+      }
+      let line = 0;
+      let i = 0;
+      while (i < text.length && line < pos.line) {
+        if (text.charCodeAt(i) === 10) line++;
+        i++;
+      }
+      return Math.min(text.length, i + pos.character);
+    };
+
+    const extractChainAround = (startOff: number, endOff: number): string => {
+      let l = startOff;
+      let r = endOff;
+      const isChainChar = (ch: string) => /[A-Za-z0-9_.:]/.test(ch);
+      while (l > 0 && isChainChar(text[l - 1]!)) l--;
+      while (r < text.length && isChainChar(text[r]!)) r++;
+      return text.slice(l, r).replace(/^[:.]+|[:.]+$/g, "");
+    };
+
+    const resolveMemberViaComponentType = (offset: number, fullChain: string): boolean => {
+      const parts = splitQualifiedPath(fullChain);
+      if (parts.length < 2) return resolveImportedOrQualifiedChain(fullChain);
+
+      let enclosingClass: SymbolEntry | undefined;
+      for (const s of docSymbols) {
+        if (s.startOffset <= offset && s.endOffset >= offset && isTypeLikeSymbol(s)) {
+          if (!enclosingClass || s.endOffset - s.startOffset < enclosingClass.endOffset - enclosingClass.startOffset) {
+            enclosingClass = s;
+          }
+        }
+      }
+      if (enclosingClass && engine && typeof engine.query === "function") {
+        const compIds: number[] = unifiedIndex.childrenOf?.get(enclosingClass.id) ?? [];
+        const comp = compIds.map((cid) => unifiedIndex.symbols.get(cid)).find((c) => c && c.name === parts[0]);
+        if (comp) {
+          const typeSpec =
+            (engine.query("typeSpecifier", comp.id) as string | undefined) ??
+            (comp.metadata?.["typeSpecifier"] as string | undefined) ??
+            (comp.metadata?.["type_specifier"] as string | undefined);
+          if (typeSpec) {
+            const typeEntry =
+              resolvePathInUnified(splitQualifiedPath(String(typeSpec))) ??
+              (() => {
+                const resolved = engine.query("resolveName", enclosingClass.id);
+                if (typeof resolved === "function") {
+                  return (resolved as (name: string) => SymbolEntry | null | undefined)(String(typeSpec)) ?? undefined;
+                }
+                return typeof resolved === "number" ? unifiedIndex.symbols.get(resolved) : undefined;
+              })();
+            if (typeEntry) {
+              const targetEntry =
+                resolvePathInUnified([typeEntry.name, ...parts.slice(1)]) ??
+                (() => {
+                  let curr: SymbolEntry | undefined = typeEntry;
+                  for (const seg of parts.slice(1)) {
+                    const cids: number[] = unifiedIndex.childrenOf?.get(curr.id) ?? [];
+                    curr = cids.map((id) => unifiedIndex.symbols.get(id)).find((c) => c && c.name === seg);
+                    if (!curr) return undefined;
+                  }
+                  return curr;
+                })();
+              if (targetEntry) return true;
+            }
+          }
+        }
+      }
+      return resolveImportedOrQualifiedChain(fullChain);
+    };
+
+    const engineHasOverlappingCode = (codeNum: number, startOff: number, endOff: number): boolean =>
+      (engineDiags ?? []).some((ed) => {
+        const edCode = typeof ed.code === "number" ? ed.code : parseInt(String(ed.code ?? "").replace(/\D+/g, ""), 10);
+        if (edCode !== codeNum) return false;
+        const es = ed.startOffset ?? -1;
+        const ee = ed.endOffset ?? es;
+        return Math.max(es, startOff) <= Math.min(ee, endOff) + 2;
+      });
+
+    return wasmDiags.filter((diag) => {
+      const info = extractCanonicalErrorInfo(diag.code, undefined, plugin);
+      const codeNum = info.codeNum;
+      const isTypeNotFound = codeNum === 2003 || info.ruleName === "typenotfound" || info.ruleName === "classnotfound";
+      const isVarNotFound = codeNum === 2002 || info.ruleName === "variablenotfound";
+      if (!isTypeNotFound && !isVarNotFound) return true;
+
+      const startOff = computeOffset(diag.range.start);
+      const endOff = Math.max(startOff, computeOffset(diag.range.end));
+      const tokenText = text.slice(startOff, endOff).trim();
+      const fullChain = extractChainAround(startOff, endOff) || tokenText;
+
+      if (isTypeNotFound) {
+        if (engineHasOverlappingCode(2003, startOff, endOff)) {
+          // Step 5b already checked multi-file and emitted the authoritative M2003
+          return false;
+        }
+        if (resolveImportedOrQualifiedChain(fullChain) || resolveImportedOrQualifiedChain(tokenText)) {
+          return false;
+        }
+        // Check enclosing declaration resolved cleanly via Step 5b typeSpecifier
+        for (const s of docSymbols) {
+          if (s.startOffset <= startOff && s.endOffset >= endOff && engine && typeof engine.query === "function") {
+            const rt = engine.query("resolvedType", s.id);
+            if (rt) return false;
+          }
+        }
+        return true;
+      }
+
+      // M2002 variableNotFound
+      const stmtStart = Math.max(0, text.lastIndexOf(";", startOff) + 1);
+      const stmtPrefix = text.slice(stmtStart, endOff);
+      if (
+        engineDiags !== null &&
+        /\bconnect\s*\(/.test(stmtPrefix) &&
+        engine &&
+        typeof engine.runAllLintsAsync === "function"
+      ) {
+        // Multi-file `lint__validateConnect` in Step 5b authoritatively validates connect() endpoints
+        return false;
+      }
+      if (resolveMemberViaComponentType(startOff, fullChain)) {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  private getTggTransformer(langId: string): PolyglotTransformer | null {
+    const norm = langId.toLowerCase();
+    const cached = this.tggTransformerCache.get(norm);
+    if (cached) return cached;
+
+    const uw = this.workspaceManager?.unifiedWorkspace as
+      | (UnifiedWorkspace & { createPolyglotTransformer?: (lang: string) => PolyglotTransformer | null })
+      | undefined;
+    let transformer: PolyglotTransformer | null = null;
+    if (uw && typeof uw.createPolyglotTransformer === "function") {
+      try {
+        transformer = uw.createPolyglotTransformer(norm) ?? null;
+      } catch {
+        transformer = null;
+      }
+    }
+    if (!transformer) {
+      const plugin = globalLanguageRegistry.getPluginById(norm);
+      if (plugin?.languageDef?.polyglot) {
+        transformer = new PolyglotTransformer(
+          plugin.languageDef.polyglot as unknown as ConstructorParameters<typeof PolyglotTransformer>[0],
+        );
+      }
+    }
+    if (transformer) {
+      this.tggTransformerCache.set(norm, transformer);
+    }
+    return transformer;
+  }
+
+  private mapCorrespondenceErrorCode(diagCode: CorrespondenceDiagnostic["code"], langId: string): number | string {
+    const norm = langId.toLowerCase();
+    if (norm === "modelica") {
+      switch (diagCode) {
+        case "CONFORMANCE_MISSING_PORT":
+          return 4140;
+        case "CONFORMANCE_PARAM_MISMATCH":
+          return 4141;
+        case "CONFORMANCE_MISSING_COMPONENT":
+          return 4142;
+        case "CONFORMANCE_UNRESOLVED_TARGET":
+          return 4143;
+      }
+    } else if (norm === "sysml2" || norm === "sysml") {
+      switch (diagCode) {
+        case "CONFORMANCE_MISSING_PORT":
+          return 4080;
+        case "CONFORMANCE_PARAM_MISMATCH":
+          return 4081;
+        case "CONFORMANCE_MISSING_COMPONENT":
+          return 4082;
+        case "CONFORMANCE_UNRESOLVED_TARGET":
+          return 4083;
+      }
+    }
+    return diagCode;
+  }
+
+  /**
+   * Evaluates live read-only TGG structural correspondence diagnostics on `@twin` / `implements`
+   * links in `effectiveUri`, reporting missing ports/components/type mismatches (`warning`) and
+   * unresolved explicit twin targets (`error`).
+   */
+  private collectLiveTggCorrespondenceDiagnostics(params: {
+    effectiveUri: string;
+    langId: string;
+    text: string;
+    tree: PolyglotTreeLike | null | undefined;
+    textDocument?: TextDocument | undefined;
+    diagnostics: Diagnostic[];
+  }): void {
+    const { effectiveUri, langId, text, tree, textDocument, diagnostics } = params;
+    const uw = this.workspaceManager?.unifiedWorkspace;
+    if (!uw || typeof uw.getIndex !== "function" || !text) return;
+    const uIdx = uw.getIndex();
+    if (!uIdx?.symbols) return;
+
+    const normLang = langId.toLowerCase();
+    let links: ReturnType<typeof extractCrossLanguageLinks> = [];
+    try {
+      links = extractCrossLanguageLinks({
+        uri: effectiveUri,
+        language: normLang,
+        index: uIdx,
+        text,
+        tree,
+      });
+    } catch {
+      return;
+    }
+    const explicitLinks = links.filter((l) => l.relationKind === "twin" || l.relationKind === "implements");
+    if (explicitLinks.length === 0) return;
+
+    const dbView = {
+      symbol: (id: number) => uIdx.symbols.get(id),
+      childrenOf: (id: number | null) =>
+        (uIdx.childrenOf.get(id) ?? [])
+          .map((cid: number) => uIdx.symbols.get(cid))
+          .filter((s): s is SymbolEntry => Boolean(s)),
+      byName: (name: string) =>
+        (uIdx.byName.get(name) ?? [])
+          .map((id: number) => uIdx.symbols.get(id))
+          .filter((s): s is SymbolEntry => Boolean(s)),
+    };
+
+    const inferTargetLang = (targetPath: string, fallbackLang: string): string => {
+      const lower = targetPath.toLowerCase();
+      if (lower.startsWith("sysml2::") || lower.startsWith("sysml::") || targetPath.includes("::")) return "sysml2";
+      if (lower.startsWith("modelica::")) return "modelica";
+      if (lower.startsWith("psse::")) return "psse";
+      if (lower.startsWith("pscad::")) return "pscad";
+      return fallbackLang === "modelica" ? "sysml2" : "modelica";
+    };
+
+    const srcTransformer = this.getTggTransformer(normLang) ?? new PolyglotTransformer();
+
+    for (const link of explicitLinks) {
+      const srcEntry = uIdx.symbols.get(link.sourceSymbolId);
+      if (!srcEntry) continue;
+      if (
+        srcEntry.metadata?.["__modelscript_blackbox"] ||
+        (srcEntry.startOffset >= 0 &&
+          srcEntry.endOffset > srcEntry.startOffset &&
+          text
+            .slice(srcEntry.startOffset, Math.min(text.length, srcEntry.endOffset))
+            .includes("__modelscript_blackbox"))
+      ) {
+        continue;
+      }
+
+      const startPos = textDocument
+        ? textDocument.positionAt(srcEntry.startOffset)
+        : { line: Math.max(0, link.sourceLine - 1), character: Math.max(0, link.sourceColumn - 1) };
+      const endPos = textDocument
+        ? textDocument.positionAt(
+            Math.max(
+              srcEntry.startOffset + Math.max(1, srcEntry.name.length),
+              Math.min(text.length, srcEntry.startOffset + srcEntry.name.length + 1),
+            ),
+          )
+        : { line: startPos.line, character: startPos.character + Math.max(1, srcEntry.name.length) };
+      const range: Range = { start: startPos, end: endPos };
+
+      const srcNode = symbolEntryToPolyglotNode(dbView, srcEntry);
+      if (!link.targetEntry) {
+        const expectedLang = inferTargetLang(link.targetName, normLang);
+        const corrDiags = srcTransformer.validateCorrespondence(srcNode, null, normLang, expectedLang);
+        for (const cd of corrDiags) {
+          diagnostics.push({
+            severity: cd.severity === "error" ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
+            range,
+            code: this.mapCorrespondenceErrorCode(cd.code, normLang),
+            source: "modelscript-tgg",
+            message: cd.message,
+          });
+        }
+        continue;
+      }
+
+      const tgtEntry = link.targetEntry;
+      const tgtLang = (tgtEntry.language ?? inferTargetLang(link.targetName, normLang)).toLowerCase();
+      if (tgtLang === normLang) continue;
+
+      const isContainerTwin =
+        isTypeLikeSymbol(srcEntry) || srcEntry.ruleName === "psse_model" || srcEntry.ruleName === "pscad_component";
+      if (!isContainerTwin) continue;
+
+      const tgtNode = symbolEntryToPolyglotNode(dbView, tgtEntry);
+      const seenCorr = new Set<string>();
+      const emitCorr = (cd: CorrespondenceDiagnostic) => {
+        const key = `${cd.code}:${cd.expectedName ?? cd.elementName}`;
+        if (seenCorr.has(key)) return;
+        seenCorr.add(key);
+        diagnostics.push({
+          severity: cd.severity === "error" ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
+          range,
+          code: this.mapCorrespondenceErrorCode(cd.code, normLang),
+          source: "modelscript-tgg",
+          message: cd.message,
+        });
+      };
+
+      for (const cd of srcTransformer.validateCorrespondence(srcNode, tgtNode, normLang, tgtLang)) {
+        emitCorr(cd);
+      }
+
+      const tgtTransformer = this.getTggTransformer(tgtLang);
+      if (tgtTransformer) {
+        for (const cd of tgtTransformer.validateCorrespondence(tgtNode, srcNode, tgtLang, normLang)) {
+          emitCorr(cd);
+        }
+      }
+    }
+  }
+
+  private collectDroneSimulationParityDiagnostics(
+    uri: string,
+    langId: string,
+    text: string,
+    textDocument: TextDocument | undefined,
+    diagnostics: Diagnostic[],
+  ): void {
+    if (!text) return;
+    const lines = text.split(/\r?\n/);
+    const threadEntries = this.workspaceManager?.getThreadsForUri?.(uri) ?? [];
+    let calibratedMass: number | undefined;
+    let peerSysmlName: string | undefined;
+
+    for (const te of threadEntries) {
+      const aligned = this.workspaceManager?.findAlignedElementsBySlot?.(te.slot) ?? [];
+      for (const el of aligned) {
+        if (el.uri !== uri && typeof el.properties?.["mass"] === "number") {
+          if (calibratedMass === undefined || el.domain === "fea") {
+            calibratedMass = el.properties["mass"];
+          }
+        }
+        if (!peerSysmlName && (el.domain === "sysml2" || el.domain === "sysml")) {
+          peerSysmlName = el.name.replace(/^(?:part\s+def|model)\s+/, "");
+        }
+      }
+      if (calibratedMass !== undefined && peerSysmlName !== undefined) break;
+    }
+
+    const pushMassParityDiag = (range: Diagnostic["range"], val: number, targetMass: number): void => {
+      if (Math.abs(val - targetMass) > 0.01) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Warning,
+          range,
+          message: `[Digital Thread Drift] Parameter 'm = ${val}' drifts from FEA calibrated structural mass (${targetMass.toFixed(2)} kg). Run 'ModelScript: Sync Digital Thread Parameters' to reconcile.`,
+          source: "modelscript-digital-thread",
+        });
+      } else {
+        const peerSuffix = peerSysmlName ? ` and SysML v2 ${peerSysmlName}` : "";
+        diagnostics.push({
+          severity: DiagnosticSeverity.Information,
+          range,
+          message: `[Digital Thread In Parity] Parameter 'm' (${targetMass.toFixed(2)} kg) is synchronized with FEA structural mass${peerSuffix}.`,
+          source: "modelscript-digital-thread",
+        });
+      }
+    };
+
+    const isParityTarget = (uri.endsWith(".mo") || langId === "modelica") && calibratedMass !== undefined;
+
+    if (isParityTarget && calibratedMass !== undefined) {
+      const targetMass = calibratedMass;
+      const cachedTree = this.documentManager?.documentTrees?.get(uri);
+      const rootNode = cachedTree?.tree?.rootNode;
+      let handledViaCst = false;
+      if (rootNode && textDocument) {
+        const findCstNodes = (n: SyntaxNode | null | undefined, type: string, out: SyntaxNode[] = []): SyntaxNode[] => {
+          if (!n) return out;
+          if (n.type === type) out.push(n);
+          for (const ch of n.children || []) findCstNodes(ch, type, out);
+          return out;
+        };
+        const compDecls = findCstNodes(rootNode, "component_declaration");
+        for (const cd of compDecls) {
+          const idNode = (cd.children || []).find((c: SyntaxNode) => c.type === "identifier");
+          if (idNode?.text === "m") {
+            const modNode = (cd.children || []).find((c: SyntaxNode) => c.type === "modification");
+            const modText = modNode?.text ?? "";
+            const valMatch = /=\s*([0-9.]+)/.exec(modText);
+            if (valMatch) {
+              const val = parseFloat(valMatch[1]!);
+              const startPos = textDocument.positionAt(idNode.startIndex);
+              const endPos = textDocument.positionAt(idNode.endIndex);
+              handledViaCst = true;
+              pushMassParityDiag({ start: startPos, end: endPos }, val, targetMass);
+              break;
+            }
+          }
+        }
+      }
+
+      if (!handledViaCst) {
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i]!;
+          const massMatch = /^\s*parameter\s+Real\s+m\s*=\s*([0-9.]+)/.exec(line);
+          if (massMatch) {
+            const val = parseFloat(massMatch[1]!);
+            const colMatch = /\bReal\s+(m)\b/.exec(line);
+            const col = colMatch ? colMatch.index + colMatch[0].lastIndexOf("m") : line.indexOf("m");
+            pushMassParityDiag(
+              { start: { line: i, character: col }, end: { line: i, character: col + 1 } },
+              val,
+              targetMass,
+            );
+          }
+        }
+      }
+    }
+
+    if (this.workspaceManager && typeof this.workspaceManager.getThreadsForUri === "function") {
+      const currentThreads = this.workspaceManager.getThreadsForUri(uri);
+      if (currentThreads && currentThreads.length > 0) {
+        for (const entry of currentThreads) {
+          const { slot, meta } = entry;
+          const aligned = this.workspaceManager.findAlignedElementsBySlot?.(slot) ?? [];
+          if (aligned.length > 1) {
+            const rawName = meta.name.replace(/^(?:part\s+def|model|package|def)\s+/, "").trim();
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i]!;
+              const col = rawName ? line.indexOf(rawName) : -1;
+              if (
+                col >= 0 &&
+                (line.includes("part def") ||
+                  line.includes("part ") ||
+                  line.includes("model ") ||
+                  line.includes("package "))
+              ) {
+                const peerList = aligned
+                  .filter((el) => el.domain.toLowerCase() !== entry.domain.toLowerCase())
+                  .map((el) => `${el.domain.toUpperCase()} (${el.name})`)
+                  .join(", ");
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Information,
+                  range: {
+                    start: { line: i, character: col },
+                    end: { line: i, character: col + rawName.length },
+                  },
+                  message: `[Multi-Domain Digital Thread] Architecture bound across ${aligned.length} domains: ${peerList}.`,
+                  source: "modelscript-digital-thread",
+                });
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Shared cross-language finalizer invoked by both the unified GLR/Salsa pipeline and all
+   * standalone format validators (PSSE, PSCAD, STEP, Easy5, ROCETS, SCAD, FEA, CFD, etc.).
+   * Ensures UnifiedWorkspace query engine sync, automatic thread discovery, TGG conformance checks,
+   * digital-thread contradiction reporting, and bounded dependent revalidation run uniformly.
+   */
+  private async finalizeCrossLanguageValidation(params: {
+    uri: string;
+    effectiveUri?: string | undefined;
+    text: string;
+    langId: string;
+    tree?: PolyglotTreeLike | null | undefined;
+    textDocument?: TextDocument | undefined;
+    diagnostics: Diagnostic[];
+    hasSyntaxErrors?: boolean | undefined;
+    changedIds?: Set<number> | null | undefined;
+    structuralChangedIds?: Set<number> | null | undefined;
+    changedNames?: Set<string> | null | undefined;
+    skipSend?: boolean | undefined;
+    skipCascade?: boolean | undefined;
+    contentChanged?: boolean | undefined;
+    isStale?: (() => boolean) | undefined;
+  }): Promise<Diagnostic[]> {
+    const {
+      uri,
+      effectiveUri = uri,
+      text,
+      langId,
+      tree,
+      textDocument,
+      diagnostics,
+      hasSyntaxErrors = false,
+      changedIds,
+      structuralChangedIds,
+      changedNames,
+      skipSend = false,
+      skipCascade = false,
+      contentChanged = false,
+      isStale,
+    } = params;
+
+    this.syncWorkspaceStateAfterIndex(effectiveUri, changedIds, structuralChangedIds, changedNames);
+
+    if (typeof this.workspaceManager?.discoverThreadsForDocument === "function") {
+      try {
+        this.workspaceManager.discoverThreadsForDocument(effectiveUri, text, langId, tree);
+      } catch {
+        // Non-fatal on partial buffers
+      }
+    }
+
+    if (!hasSyntaxErrors) {
+      this.postValidatePolyglotDrift(effectiveUri, langId, diagnostics);
+      this.collectLiveTggCorrespondenceDiagnostics({
+        effectiveUri,
+        langId,
+        text,
+        tree,
+        textDocument,
+        diagnostics,
+      });
+    }
+
+    const threadDiags = this.collectThreadDiagnostics(effectiveUri, textDocument);
+    if (threadDiags.length > 0) {
+      diagnostics.push(...threadDiags);
+    }
+
+    this.collectDroneSimulationParityDiagnostics(uri, langId, text, textDocument, diagnostics);
+
+    await this.collectWorkspaceLinterDiagnostics(effectiveUri, langId, text, diagnostics);
+
+    if (isStale?.()) return diagnostics;
+
+    const finalDiags = deduplicateAllDiagnostics(diagnostics);
+    if (finalDiags.length > 1000) finalDiags.length = 1000;
+
+    if (!skipSend) {
+      this.lastSemanticDiagnostics.set(uri, finalDiags);
+      if (effectiveUri !== uri) {
+        this.lastSemanticDiagnostics.set(effectiveUri, finalDiags);
+      }
+      this.connection.sendDiagnostics({ uri, diagnostics: finalDiags });
+      this.sendProjectTreeChanged(uri);
+    }
+
+    if (!skipCascade && contentChanged && !this.isCascadeRevalidationActive) {
+      await this.revalidateCrossLanguageDependents(effectiveUri);
+    }
+
+    return finalDiags;
+  }
+
+  /**
+   * Collects multi-file / workspace-graph diagnostics for languages with a registered
+   * `lint<Lang>Workspace` analyzer across all open and cached workspace documents.
+   */
+  private async collectWorkspaceLinterDiagnostics(
+    effectiveUri: string,
+    langId: string,
+    text: string,
+    diagnostics: Diagnostic[],
+  ): Promise<void> {
+    if (!hasWorkspaceLinter(langId)) return;
+    try {
+      const workspaceDocs: Record<string, string> = {};
+      if (this.documentManager?.documentTrees) {
+        for (const [docUri, entry] of this.documentManager.documentTrees.entries()) {
+          if (typeof entry?.text === "string") {
+            workspaceDocs[docUri] = entry.text;
+          }
+        }
+      }
+      if (this.documentManager?.documents && typeof this.documentManager.documents.all === "function") {
+        for (const doc of this.documentManager.documents.all()) {
+          workspaceDocs[doc.uri] = doc.getText();
+        }
+      }
+      workspaceDocs[effectiveUri] = text;
+
+      await runWorkspaceLinterForDocument(langId, workspaceDocs, effectiveUri, diagnostics);
+    } catch (err: any) {
+      this.connection?.console?.warn?.(
+        `[validate] Workspace linter failed for ${effectiveUri} (${langId}): ${err?.message ?? err}`,
+      );
+    }
+  }
+
+  private async finalizeCustomDocument(
+    textDocument: TextDocument,
+    langId: string,
+    diagnostics: Diagnostic[],
+    prevIndexedTextOverride?: string,
+  ): Promise<void> {
+    const text = textDocument.getText();
+    const prevText =
+      prevIndexedTextOverride !== undefined ? prevIndexedTextOverride : this.lastIndexedText.get(textDocument.uri);
+    const contentChanged = prevText !== text;
+    this.lastIndexedText.set(textDocument.uri, text);
+    await this.finalizeCrossLanguageValidation({
+      uri: textDocument.uri,
+      effectiveUri: textDocument.uri,
+      text,
+      langId,
+      tree: this.documentManager.documentTrees.get(textDocument.uri)?.tree,
+      textDocument,
+      diagnostics,
+      hasSyntaxErrors: diagnostics.some((d) => d.severity === DiagnosticSeverity.Error),
+      contentChanged,
+    });
+  }
+
+  /**
    * Validates an OpenSCAD (`.scad`) document using the SCAD WASM parser, CST linter, and digital thread CAD bounds checks.
    */
   public async validateScadDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
+    const prevIndexedText = this.lastIndexedText.get(textDocument.uri);
     const scadDiagnostics: Diagnostic[] = [];
 
     try {
@@ -2376,9 +3193,7 @@ export class ValidationService {
       this.connection.console.warn(`[scad] Validation failed for ${textDocument.uri}: ${e.message}`);
     }
 
-    this.lastSemanticDiagnostics.set(textDocument.uri, scadDiagnostics);
-    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: scadDiagnostics });
-    this.sendProjectTreeChanged();
+    await this.finalizeCustomDocument(textDocument, "scad", scadDiagnostics, prevIndexedText);
   }
 
   /**
@@ -2437,7 +3252,15 @@ export class ValidationService {
 
     try {
       this.connection.console.info(`[pscad] Validating ${textDocument.uri} (${text.length} chars)`);
-      const { parsePscx, lintPscx, pscadLanguage } = await import("@modelscript/pscad");
+      const { parsePscx, lintPscx, pscadLanguage, registerPscadSource } = await import("@modelscript/pscad");
+      if (typeof this.documentManager?.documents?.all === "function") {
+        for (const doc of this.documentManager.documents.all()) {
+          if (/\.(pscx|pslx|pswx|psmx)$/i.test(doc.uri)) {
+            registerPscadSource(doc.uri, doc.getText());
+          }
+        }
+      }
+      registerPscadSource(textDocument.uri, text);
       const project = parsePscx(text);
       const lints = lintPscx(project);
 
@@ -2491,8 +3314,7 @@ export class ValidationService {
       });
     }
 
-    this.lastSemanticDiagnostics.set(textDocument.uri, pscadDiagnostics);
-    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: pscadDiagnostics });
+    await this.finalizeCustomDocument(textDocument, "pscad", pscadDiagnostics);
   }
 
   /**
@@ -2557,8 +3379,7 @@ export class ValidationService {
       });
     }
 
-    this.lastSemanticDiagnostics.set(textDocument.uri, easy5Diagnostics);
-    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: easy5Diagnostics });
+    await this.finalizeCustomDocument(textDocument, "easy5", easy5Diagnostics);
   }
 
   /**
@@ -2623,8 +3444,7 @@ export class ValidationService {
       });
     }
 
-    this.lastSemanticDiagnostics.set(textDocument.uri, rocetsDiagnostics);
-    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: rocetsDiagnostics });
+    await this.finalizeCustomDocument(textDocument, "rocets", rocetsDiagnostics);
   }
 
   /**
@@ -2714,8 +3534,7 @@ export class ValidationService {
       });
     }
 
-    this.lastSemanticDiagnostics.set(textDocument.uri, fortranDiagnostics);
-    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: fortranDiagnostics });
+    await this.finalizeCustomDocument(textDocument, "fortran", fortranDiagnostics);
   }
 
   /**
@@ -2762,8 +3581,7 @@ export class ValidationService {
       this.connection.console.error(`[c] Error validating C document ${textDocument.uri}: ${err.message}`);
     }
 
-    this.lastSemanticDiagnostics.set(textDocument.uri, cDiagnostics);
-    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: cDiagnostics });
+    await this.finalizeCustomDocument(textDocument, "c", cDiagnostics);
   }
 
   /**
@@ -2811,9 +3629,7 @@ export class ValidationService {
       this.connection.console.error(`[ssp] Error validating SSP document ${textDocument.uri}: ${err.message}`);
     }
 
-    this.lastSemanticDiagnostics.set(textDocument.uri, sspDiagnostics);
-    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: sspDiagnostics });
-    this.sendProjectTreeChanged();
+    await this.finalizeCustomDocument(textDocument, "ssp", sspDiagnostics);
   }
 
   /**
@@ -2855,9 +3671,7 @@ export class ValidationService {
       this.connection.console.error(`[csv] Error validating CSV document ${textDocument.uri}: ${err.message}`);
     }
 
-    this.lastSemanticDiagnostics.set(textDocument.uri, csvDiagnostics);
-    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: csvDiagnostics });
-    this.sendProjectTreeChanged();
+    await this.finalizeCustomDocument(textDocument, "csv", csvDiagnostics);
   }
 
   /**
@@ -2891,9 +3705,7 @@ export class ValidationService {
       this.connection.console.error(`[simpack] Error validating SIMPACK document ${textDocument.uri}: ${err.message}`);
     }
 
-    this.lastSemanticDiagnostics.set(textDocument.uri, simpackDiagnostics);
-    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: simpackDiagnostics });
-    this.sendProjectTreeChanged();
+    await this.finalizeCustomDocument(textDocument, "simpack", simpackDiagnostics);
   }
 
   /**
@@ -2927,9 +3739,7 @@ export class ValidationService {
       this.connection.console.error(`[gensys] Error validating GENSYS document ${textDocument.uri}: ${err.message}`);
     }
 
-    this.lastSemanticDiagnostics.set(textDocument.uri, gensysDiagnostics);
-    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: gensysDiagnostics });
-    this.sendProjectTreeChanged();
+    await this.finalizeCustomDocument(textDocument, "gensys", gensysDiagnostics);
   }
 
   /**
@@ -3072,9 +3882,19 @@ export class ValidationService {
       this.connection.console.warn(`[cfd] Parse failed for ${textDocument.uri}: ${e.message}`);
     }
 
-    this.lastSemanticDiagnostics.set(textDocument.uri, cfdDiagnostics);
-    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: cfdDiagnostics });
-    this.sendProjectTreeChanged();
+    const contentChanged = this.lastIndexedText.get(textDocument.uri) !== text;
+    this.lastIndexedText.set(textDocument.uri, text);
+    await this.finalizeCrossLanguageValidation({
+      uri: textDocument.uri,
+      effectiveUri: textDocument.uri,
+      text,
+      langId: "cfd",
+      tree: this.documentManager.documentTrees.get(textDocument.uri)?.tree,
+      textDocument,
+      diagnostics: cfdDiagnostics,
+      hasSyntaxErrors: cfdDiagnostics.some((d) => d.severity === DiagnosticSeverity.Error),
+      contentChanged,
+    });
   }
 
   /**
@@ -3271,9 +4091,19 @@ export class ValidationService {
       this.connection.console.warn(`[fea] Parse failed for ${textDocument.uri}: ${e.message}`);
     }
 
-    this.lastSemanticDiagnostics.set(textDocument.uri, feaDiagnostics);
-    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: feaDiagnostics });
-    this.sendProjectTreeChanged();
+    const contentChanged = this.lastIndexedText.get(textDocument.uri) !== text;
+    this.lastIndexedText.set(textDocument.uri, text);
+    await this.finalizeCrossLanguageValidation({
+      uri: textDocument.uri,
+      effectiveUri: textDocument.uri,
+      text,
+      langId: "fea",
+      tree: this.documentManager.documentTrees.get(textDocument.uri)?.tree,
+      textDocument,
+      diagnostics: feaDiagnostics,
+      hasSyntaxErrors: feaDiagnostics.some((d) => d.severity === DiagnosticSeverity.Error),
+      contentChanged,
+    });
   }
 
   /**
@@ -3314,9 +4144,11 @@ export class ValidationService {
 
       if (!this.workspaceManager.globalStepQueryEngine) {
         this.workspaceManager.globalStepQueryEngine = new QueryEngine(unifiedIndex, {} as any);
+        this.workspaceManager.setQueryEngine?.("step", this.workspaceManager.globalStepQueryEngine);
       } else {
         this.workspaceManager.globalStepQueryEngine.updateIndex(unifiedIndex);
       }
+      this.syncWorkspaceStateAfterIndex(textDocument.uri);
 
       const engine = this.workspaceManager.globalStepQueryEngine;
       const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), textDocument.uri, {
@@ -3434,18 +4266,19 @@ export class ValidationService {
       }
     }
 
-    this.lastSemanticDiagnostics.set(textDocument.uri, stepDiagnostics);
-    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: stepDiagnostics });
-    this.sendProjectTreeChanged();
-
-    if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
-    this.revalidationTimer = setTimeout(() => {
-      for (const doc of this.documentManager.documents.all()) {
-        if (doc.uri !== textDocument.uri) {
-          this.validateTextDocument(doc);
-        }
-      }
-    }, 300);
+    const contentChanged = this.lastIndexedText.get(textDocument.uri) !== text;
+    this.lastIndexedText.set(textDocument.uri, text);
+    await this.finalizeCrossLanguageValidation({
+      uri: textDocument.uri,
+      effectiveUri: textDocument.uri,
+      text,
+      langId: "step",
+      tree: this.documentManager.documentTrees.get(textDocument.uri)?.tree,
+      textDocument,
+      diagnostics: stepDiagnostics,
+      hasSyntaxErrors: stepDiagnostics.some((d) => d.severity === DiagnosticSeverity.Error),
+      contentChanged,
+    });
   }
 
   /**
@@ -4008,6 +4841,249 @@ export class ValidationService {
   }
 
   /**
+   * Merges polyglot digital thread diagnostics into cached per-document diagnostics without
+   * clobbering existing syntax/semantic lints, then pushes updated diagnostics to the client.
+   */
+  public mergeDigitalThreadDiagnostics(diagsByUri: Map<string, Diagnostic[]>): void {
+    const allKnownUris = new Set<string>([...this.digitalThreadDiagnosticsByUri.keys(), ...diagsByUri.keys()]);
+    for (const uri of allKnownUris) {
+      const next = diagsByUri.get(uri) || [];
+      if (next.length === 0) {
+        const hadPrev = this.digitalThreadDiagnosticsByUri.has(uri);
+        this.digitalThreadDiagnosticsByUri.delete(uri);
+        if (hadPrev) {
+          const base = (this.lastSemanticDiagnostics.get(uri) || []).filter(
+            (d) => d.source !== "modelscript-digital-thread",
+          );
+          this.lastSemanticDiagnostics.set(uri, base);
+          this.connection.sendDiagnostics({ uri, diagnostics: base });
+        }
+      } else {
+        this.digitalThreadDiagnosticsByUri.set(uri, next);
+        const existing = (this.lastSemanticDiagnostics.get(uri) || []).filter(
+          (d) => d.source !== "modelscript-digital-thread",
+        );
+        const merged = deduplicateAllDiagnostics([...existing, ...next]);
+        this.lastSemanticDiagnostics.set(uri, merged);
+        this.connection.sendDiagnostics({ uri, diagnostics: merged });
+      }
+    }
+  }
+
+  private digitalThreadTimer: ReturnType<typeof setTimeout> | null = null;
+  private isDigitalThreadRunning = false;
+  private polyglotProvidersPromise: Promise<Record<string, unknown>> | null = null;
+
+  private getPolyglotProviders(): Promise<Record<string, unknown>> {
+    if (!this.polyglotProvidersPromise) {
+      this.polyglotProvidersPromise = (async () => {
+        const providers: Record<string, unknown> = {};
+        const results = await Promise.allSettled([
+          import("@modelscript/cfd"),
+          import("@modelscript/fea"),
+          import("@modelscript/scad"),
+          import("@modelscript/step"),
+          import("@modelscript/urdf"),
+          import("@modelscript/cad"),
+          import("@modelscript/simulate"),
+        ]);
+        const pick = (idx: number): Record<string, unknown> =>
+          results[idx]?.status === "fulfilled" ? (results[idx].value as Record<string, unknown>) : {};
+        const cfd = pick(0);
+        const fea = pick(1);
+        const scad = pick(2);
+        const step = pick(3);
+        const urdf = pick(4);
+        const cad = pick(5);
+        const sim = pick(6);
+        Object.assign(providers, {
+          OpenFoamDialect: cfd["OpenFoamDialect"],
+          evaluateCfdExpression: cfd["evaluateCfdExpression"],
+          InpDialect: fea["InpDialect"],
+          evaluateScad: scad["evaluateScad"],
+          scanStepEntities: step["scanStepEntities"],
+          parseUrdf: urdf["parseUrdf"],
+          computeMeshVolumeAndArea: cad["computeMeshVolumeAndArea"],
+          ToleranceStackVerifier: cad["ToleranceStackVerifier"],
+          SolidKind: cad["SolidKind"],
+          LbmVoxelizer: sim["LbmVoxelizer"],
+          WebGPULbmRunner: sim["WebGPULbmRunner"],
+          FeaSolver: sim["FeaSolver"],
+          Tet4Mesher: sim["Tet4Mesher"],
+          MeshQualityAnalyzer: sim["MeshQualityAnalyzer"],
+        });
+        return providers;
+      })();
+    }
+    return this.polyglotProvidersPromise;
+  }
+
+  /**
+   * Schedules debounced cross-file digital thread validation on editor changes whenever the workspace
+   * contains multiple languages or `@twin:` / `@port_map:` / `@mesh_source:` directives.
+   */
+  public scheduleDigitalThreadValidation(triggerUri: string, delayMs = 700): void {
+    if (this.digitalThreadTimer) {
+      clearTimeout(this.digitalThreadTimer);
+      this.digitalThreadTimer = null;
+    }
+    this.digitalThreadTimer = setTimeout(() => {
+      this.digitalThreadTimer = null;
+      void this.runLiveDigitalThreadValidation(triggerUri);
+    }, delayMs);
+  }
+
+  /**
+   * Runs live cross-file polyglot digital thread validation across open, indexed, and disk-sibling files,
+   * updating `digitalThreadDiagnosticsByUri` without clobbering per-document diagnostics.
+   */
+  public async runLiveDigitalThreadValidation(triggerUri: string): Promise<void> {
+    if (this.isDigitalThreadRunning) return;
+    const openDocs = this.documentManager?.documents?.all?.() ?? [];
+    const byUri = new Map<string, { uri: string; fileName: string; content: string }>();
+    const addDoc = (uri: string, content: string) => {
+      const key = uri.replace(/^([a-z0-9+-]+):\/(?!\/)/i, "$1:///").toLowerCase();
+      if (byUri.has(key) || /^(builtin|modelica|msl):/i.test(uri) || !content.trim()) return;
+      byUri.set(key, { uri, fileName: uri.split(/[\\/]/).pop() || uri, content });
+    };
+    for (const d of openDocs) addDoc(d.uri, d.getText());
+    const unifiedWs = this.workspaceManager?.unifiedWorkspace as unknown as
+      | {
+          getAllDocumentEntries?: () => Array<{ uri?: string; text?: string }>;
+          getIndex?: (opts?: { eager?: boolean }) => unknown;
+        }
+      | undefined;
+    if (unifiedWs && typeof unifiedWs.getAllDocumentEntries === "function") {
+      for (const e of unifiedWs.getAllDocumentEntries()) {
+        if (e?.uri && e.text) addDoc(e.uri, e.text);
+      }
+    }
+
+    // Fallback: when a single file:// document is opened outside a workspace index, scan sibling files on disk
+    if (/^file:\/\//i.test(triggerUri) && typeof process !== "undefined") {
+      try {
+        const procBuiltin = process as unknown as { getBuiltinModule?: (id: string) => unknown };
+        const nodeFs = procBuiltin.getBuiltinModule?.("node:fs") as
+          | {
+              existsSync: (p: string) => boolean;
+              readdirSync: (
+                p: string,
+                opts: { withFileTypes: boolean },
+              ) => Array<{ isFile: () => boolean; name: string }>;
+              statSync: (p: string) => { size: number };
+              readFileSync: (p: string, enc: string) => string;
+            }
+          | undefined;
+        const nodePath = procBuiltin.getBuiltinModule?.("node:path") as
+          | { dirname: (p: string) => string; extname: (p: string) => string; join: (...p: string[]) => string }
+          | undefined;
+        const nodeUrl = procBuiltin.getBuiltinModule?.("node:url") as
+          | { fileURLToPath: (u: string) => string; pathToFileURL: (p: string) => { href: string } }
+          | undefined;
+        if (nodeFs && nodePath && nodeUrl) {
+          const triggerDir = nodePath.dirname(nodeUrl.fileURLToPath(triggerUri));
+          if (nodeFs.existsSync(triggerDir)) {
+            const siblingExts = new Set([
+              ".sysml",
+              ".mo",
+              ".sp",
+              ".spice",
+              ".cir",
+              ".scad",
+              ".inp",
+              ".cfd",
+              ".urdf",
+              ".step",
+              ".stp",
+              ".reqif",
+              ".owl",
+              ".omn",
+              ".ttl",
+              ".ofn",
+              ".owl2",
+            ]);
+            for (const entry of nodeFs.readdirSync(triggerDir, { withFileTypes: true })) {
+              if (!entry.isFile()) continue;
+              const ext = nodePath.extname(entry.name).toLowerCase();
+              if (!siblingExts.has(ext)) continue;
+              const fullPath = nodePath.join(triggerDir, entry.name);
+              const sibUri = nodeUrl.pathToFileURL(fullPath).href;
+              const sibKey = sibUri.replace(/^([a-z0-9+-]+):\/(?!\/)/i, "$1:///").toLowerCase();
+              if (!byUri.has(sibKey)) {
+                const stat = nodeFs.statSync(fullPath);
+                if (stat.size <= 1024 * 1024) {
+                  addDoc(sibUri, nodeFs.readFileSync(fullPath, "utf-8"));
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // Ignore inaccessible disk directory
+      }
+    }
+
+    const files = Array.from(byUri.values());
+    const uniqueExts = new Set(files.map((f) => f.fileName.split(".").pop()?.toLowerCase() ?? "").filter(Boolean));
+    const hasDirectives = files.some(
+      (f) =>
+        f.content.includes("@twin:") ||
+        f.content.includes("@port_map:") ||
+        f.content.includes("@mesh_source:") ||
+        f.content.includes("annotation(twin"),
+    );
+    if (files.length < 2 || (!hasDirectives && uniqueExts.size < 2)) {
+      if (this.digitalThreadDiagnosticsByUri.size > 0) {
+        this.mergeDigitalThreadDiagnostics(new Map());
+      }
+      return;
+    }
+
+    this.isDigitalThreadRunning = true;
+    try {
+      const [{ createPolyglotCoordinator }, providers] = await Promise.all([
+        import("@modelscript/runtime"),
+        this.getPolyglotProviders(),
+      ]);
+      const { evaluatePolyglotDigitalThreadFromFiles } = createPolyglotCoordinator(
+        providers as unknown as Parameters<typeof createPolyglotCoordinator>[0],
+      );
+      const symbolIndex = typeof unifiedWs?.getIndex === "function" ? unifiedWs.getIndex({ eager: false }) : undefined;
+      type ThreadOptions = NonNullable<Parameters<typeof evaluatePolyglotDigitalThreadFromFiles>[2]>;
+      const threadRes = evaluatePolyglotDigitalThreadFromFiles(files, undefined, {
+        symbolIndex: symbolIndex as ThreadOptions["symbolIndex"],
+      });
+      const diagsByUri = new Map<string, Diagnostic[]>();
+      const threadEdits =
+        "suggestedEdits" in threadRes && Array.isArray(threadRes.suggestedEdits) ? threadRes.suggestedEdits : [];
+      const artifacts = "artifacts" in threadRes && Array.isArray(threadRes.artifacts) ? threadRes.artifacts : [];
+
+      for (const art of artifacts) {
+        const targetUri = art.uri || files[art.index]?.uri;
+        if (!targetUri) continue;
+        const artEdits = threadEdits.filter((se) => (se.uri ?? files[se.fileIndex]?.uri) === targetUri);
+        const mapped: Diagnostic[] = (art.diagnostics ?? []).map((d) => ({
+          range: {
+            start: { line: Math.max(0, (d.startLine ?? 1) - 1), character: Math.max(0, (d.startCol ?? 1) - 1) },
+            end: { line: Math.max(0, (d.endLine ?? 1) - 1), character: Math.max(0, (d.endCol ?? 12) - 1) },
+          },
+          severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
+          code: d.code ?? "POLYGLOT_TWIN_DRIFT",
+          source: "modelscript-digital-thread",
+          message: d.message,
+          data: { suggestedEdits: artEdits.length > 0 ? artEdits : threadEdits },
+        }));
+        diagsByUri.set(targetUri, mapped);
+      }
+      this.mergeDigitalThreadDiagnostics(diagsByUri);
+    } catch {
+      // Non-fatal background check
+    } finally {
+      this.isDigitalThreadRunning = false;
+    }
+  }
+
+  /**
    * Runs formal abstract interpretation over Modelica `algorithm` sections to prove absence of
    * runtime defects (division by zero, array out-of-bounds, uninitialized reads) or emit diagnostics.
    */
@@ -4343,7 +5419,9 @@ export class ValidationService {
 
       try {
         await initBltWasm();
-      } catch {}
+      } catch (err) {
+        this.connection?.console?.warn?.(`[ValidationService] Failed to initialize BLT WASM kernel: ${err}`);
+      }
 
       const started = Date.now();
       let completed = true;

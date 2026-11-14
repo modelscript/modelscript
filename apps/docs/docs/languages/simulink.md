@@ -97,3 +97,9 @@ const modelicaCode = simulinkToModelica(model);
 const dae = lowerSimulinkToDae(model);
 console.log(`Variables: ${dae.varCount}, Equations: ${dae.eqCount}`);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="simulink" />

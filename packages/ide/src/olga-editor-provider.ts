@@ -1018,7 +1018,7 @@ export class OlgaEditorProvider extends BaseCustomEditorProvider {
       gap: 6px;
       transition: all 0.15s ease;
     }
-    button:hover { background: #2563eb; color: #fff; border-color: #3b82f6; }
+    button:hover { background: var(--vscode-button-hoverBackground, #0891b2); color: #fff; border-color: var(--vscode-focusBorder, #22d3ee); }
     button.primary { background: #0284c7; color: #fff; border-color: #38bdf8; }
     button.primary:hover { background: #0369a1; }
 

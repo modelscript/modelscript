@@ -84,3 +84,9 @@ msx jsbsim to-dae Cessna172Skyhawk.xml
 # Project into Modelica 3.x 6-DOF flight mechanics model
 msx jsbsim to-modelica Cessna172Skyhawk.xml -o FlightMechanics.mo
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="jsbsim" />

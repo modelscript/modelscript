@@ -97,9 +97,14 @@ if (typeof self !== "undefined" && typeof self.process === "undefined") {
   self.process = globalThis.process;
 }`;
 
-import fs from "node:fs";
-import path from "node:path";
 import type { Plugin, PluginBuild } from "esbuild";
+import type * as FsTypes from "node:fs";
+import type * as PathTypes from "node:path";
+
+function getNodeModule<T>(id: string): T | undefined {
+  const proc = (globalThis as { process?: { getBuiltinModule?: (m: string) => T | undefined } }).process;
+  return proc?.getBuiltinModule?.(id);
+}
 
 export const BROWSER_BUFFER_AND_PROCESS_BANNER = `${BROWSER_BUFFER_BANNER}\n${BROWSER_PROCESS_BANNER}`;
 
@@ -122,9 +127,12 @@ export function createNodeBuiltinsIgnorePlugin(): Plugin {
       }));
       build.onResolve({ filter: /src-gen\/bindings\.js$/ }, (args) => {
         if (!args.resolveDir) return undefined;
-        const resolved = path.resolve(args.resolveDir, args.path);
+        const pathMod = getNodeModule<typeof PathTypes>("node:path");
+        const fsMod = getNodeModule<typeof FsTypes>("node:fs");
+        if (!pathMod || !fsMod) return undefined;
+        const resolved = pathMod.resolve(args.resolveDir, args.path);
         const normalized = resolved.replace(/\/dist\/src-gen\/bindings\.js$/, "/src-gen/bindings.js");
-        if (normalized !== resolved && fs.existsSync(normalized)) {
+        if (normalized !== resolved && fsMod.existsSync(normalized)) {
           return { path: normalized };
         }
         return undefined;

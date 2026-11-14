@@ -78,3 +78,9 @@ msx scl to-dae substation.scd
 ## MCP Agent Tool Integration
 
 - **`scl_validate_goose`**: Inspects GOOSE publisher/subscriber bindings, validates dataset FCDA references against ExtRef subscribers, and reports Type 1A/1B communication health directly to AI agents.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="scl" />

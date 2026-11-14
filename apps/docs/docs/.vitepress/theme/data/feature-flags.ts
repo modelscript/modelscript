@@ -3,6 +3,7 @@
 declare const __FEATURE_FLAG_HOME_WORKFLOW_PAIRS__: boolean;
 declare const __FEATURE_FLAG_HOME_SEMANTIC_COORDINATOR__: boolean;
 declare const __FEATURE_FLAG_HOME_AI_AGENT__: boolean;
+declare const __FEATURE_FLAG_HOME_POLYGLOT_SANDBOX__: boolean;
 
 function readEnvFlag(...keys: string[]): boolean | undefined {
   if (typeof process !== "undefined" && process.env) {
@@ -17,11 +18,15 @@ function readEnvFlag(...keys: string[]): boolean | undefined {
   return undefined;
 }
 
-function resolveDefinedFlag(definedValue: boolean | undefined, ...envKeys: string[]): boolean {
+function resolveDefinedFlag(
+  definedValue: boolean | undefined,
+  defaultValue: boolean,
+  ...envKeys: string[]
+): boolean {
   if (typeof definedValue === "boolean") {
     return definedValue;
   }
-  return readEnvFlag(...envKeys) ?? false;
+  return readEnvFlag(...envKeys) ?? defaultValue;
 }
 
 /**
@@ -31,6 +36,7 @@ function resolveDefinedFlag(definedValue: boolean | undefined, ...envKeys: strin
  */
 export const isHomeWorkflowPairsEnabled: boolean = resolveDefinedFlag(
   typeof __FEATURE_FLAG_HOME_WORKFLOW_PAIRS__ !== "undefined" ? __FEATURE_FLAG_HOME_WORKFLOW_PAIRS__ : undefined,
+  false,
   "FEATURE_FLAG_HOME_WORKFLOW_PAIRS",
   "VITE_FEATURE_FLAG_HOME_WORKFLOW_PAIRS",
   "FEATURE_FLAG_HOME_SHOWCASE",
@@ -41,6 +47,7 @@ export const isHomeSemanticCoordinatorEnabled: boolean = resolveDefinedFlag(
   typeof __FEATURE_FLAG_HOME_SEMANTIC_COORDINATOR__ !== "undefined"
     ? __FEATURE_FLAG_HOME_SEMANTIC_COORDINATOR__
     : undefined,
+  false,
   "FEATURE_FLAG_HOME_SEMANTIC_COORDINATOR",
   "VITE_FEATURE_FLAG_HOME_SEMANTIC_COORDINATOR",
   "FEATURE_FLAG_HOME_SHOWCASE",
@@ -49,8 +56,18 @@ export const isHomeSemanticCoordinatorEnabled: boolean = resolveDefinedFlag(
 
 export const isHomeAiAgentEnabled: boolean = resolveDefinedFlag(
   typeof __FEATURE_FLAG_HOME_AI_AGENT__ !== "undefined" ? __FEATURE_FLAG_HOME_AI_AGENT__ : undefined,
+  false,
   "FEATURE_FLAG_HOME_AI_AGENT",
   "VITE_FEATURE_FLAG_HOME_AI_AGENT",
   "FEATURE_FLAG_HOME_SHOWCASE",
   "VITE_FEATURE_FLAG_HOME_SHOWCASE",
+);
+
+export const isHomePolyglotSandboxEnabled: boolean = resolveDefinedFlag(
+  typeof __FEATURE_FLAG_HOME_POLYGLOT_SANDBOX__ !== "undefined"
+    ? __FEATURE_FLAG_HOME_POLYGLOT_SANDBOX__
+    : undefined,
+  true,
+  "FEATURE_FLAG_HOME_POLYGLOT_SANDBOX",
+  "VITE_FEATURE_FLAG_HOME_POLYGLOT_SANDBOX",
 );

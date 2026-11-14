@@ -12,9 +12,9 @@
 
 import assert from "node:assert/strict";
 import {
+  lowerNmtranToDae,
   parseNmtran,
   solveNmtranPkPd,
-  lowerNmtranToDae,
   type NmtranDocument,
   type PkPdSimulationResult,
 } from "../src/index.js";
@@ -98,6 +98,34 @@ export function runNmtranBenchmark(ctlStr = TWO_CMT_ORAL_CTL_BENCHMARK): NmtranB
     isSquare: varCount === eqCount,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const nmtranBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "nmtran",
+  referenceTool: "NONMEM ADVAN4 TRANS4 Population PK/PD",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runNmtranBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "advan4-trans4-two-cmt-oral-pk",
+        name: "advan4-trans4-two-cmt-oral-pk",
+        scale: "standard",
+        referenceTool: "NONMEM ADVAN4 TRANS4 Population PK/PD",
+        passed: m.isSquare && m.compartmentCount === 3 && m.cMax > 0,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.daeEqCount,
+        threshold: 0,
+        details: `Cmax=${m.cMax.toFixed(3)}, AUC=${m.auc0ToInf.toFixed(2)}, ${m.daeVarCount}x${m.daeEqCount} DAE`,
+      },
+    ];
+  },
+};
 
 if (process.argv[1]?.endsWith("nmtran-benchmark-runner.ts")) {
   const m = runNmtranBenchmark();

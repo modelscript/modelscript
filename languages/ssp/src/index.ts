@@ -9,3 +9,5 @@ export * from "./projection.js";
 export * from "./ssd-parser.js";
 export * from "./tabular.js";
 export * from "./types.js";
+
+export * from "./workspace-lint.js";

@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { XIcon } from "@primer/octicons-react";
+import { Button, IconButton, SegmentedControl } from "@primer/react";
+import DOMPurify from "dompurify";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { sanitizeSvgMarkup } from "../artifacts/PolyglotArtifactViewer";
 import { CURATED_PACKAGES, DOMAIN_FILTERS, type EngineeringDomainId } from "./componentGalleryCatalog";
 import { detectLanguageFromFilename, getLanguageExtension } from "./constants";
 import {
@@ -23,6 +27,13 @@ import {
 } from "./util/lsp-bridge";
 import { decompressMorselPayload, resolveMorselShortlink } from "./util/permalink";
 import { fetchRegistryClassSource, type StreamedRegistryModelItem, streamRegistryModels } from "./util/registry-stream";
+
+function sanitizeInlineSvgInner(svgInner: string): string {
+  if (!svgInner) return "";
+  return DOMPurify.sanitize(`<svg viewBox="0 0 16 16">${svgInner}</svg>`, {
+    USE_PROFILES: { svg: true },
+  }).replace(/^<svg[^>]*>|<\/svg>$/gi, "");
+}
 
 export type OpenModelModalMode = "gallery" | "workspace" | "local";
 export type OpenModelTargetView = "split" | "diagram" | "code";
@@ -842,74 +853,29 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div
-              role="tablist"
+            <SegmentedControl
               aria-label="Open model source"
-              style={{
-                display: "inline-flex",
-                padding: 3,
-                borderRadius: 10,
-                backgroundColor: isDark ? "rgba(15, 23, 42, 0.9)" : "#e2e8f0",
-                border: `1px solid ${borderCol}`,
+              size="small"
+              onChange={(idx) => {
+                const modes = ["gallery", "workspace", "local"] as const;
+                const next = modes[idx];
+                if (next) setMode(next);
               }}
             >
-              {(
-                [
-                  { id: "gallery", label: "Examples & Libraries" },
-                  {
-                    id: "workspace",
-                    label: `Current Workspace${documentModels.length > 0 ? ` (${documentModels.length})` : ""}`,
-                  },
-                  { id: "local", label: "Local File / Link" },
-                ] as const
-              ).map((tab) => {
-                const active = mode === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    onClick={() => setMode(tab.id)}
-                    style={{
-                      border: "none",
-                      cursor: "pointer",
-                      padding: "6px 13px",
-                      borderRadius: 7,
-                      fontSize: 12.5,
-                      fontWeight: active ? 600 : 500,
-                      backgroundColor: active ? (isDark ? "#1e293b" : "#ffffff") : "transparent",
-                      color: active ? textPrimary : textMuted,
-                      boxShadow: active ? "0 1px 3px rgba(0,0,0,0.12)" : "none",
-                      transition: "all 0.14s ease",
-                    }}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
+              <SegmentedControl.Button selected={mode === "gallery"}>Examples &amp; Libraries</SegmentedControl.Button>
+              <SegmentedControl.Button selected={mode === "workspace"}>
+                Current Workspace{documentModels.length > 0 ? ` (${documentModels.length})` : ""}
+              </SegmentedControl.Button>
+              <SegmentedControl.Button selected={mode === "local"}>Local File / Link</SegmentedControl.Button>
+            </SegmentedControl>
 
-            <button
-              type="button"
+            <IconButton
+              icon={XIcon}
               aria-label="Close Open Model dialog"
+              variant="invisible"
+              size="small"
               onClick={onClose}
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
-                border: `1px solid ${borderCol}`,
-                backgroundColor: "transparent",
-                color: textMuted,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 16,
-              }}
-            >
-              ✕
-            </button>
+            />
           </div>
         </div>
 
@@ -1065,7 +1031,7 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                         height="13"
                         viewBox="0 0 16 16"
                         fill="none"
-                        dangerouslySetInnerHTML={{ __html: df.svgInner }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeInlineSvgInner(df.svgInner) }}
                       />
                       {df.label}
                     </button>
@@ -1162,7 +1128,9 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                         >
                           <div
                             style={{ width: "100%", height: "100%", display: "flex", alignItems: "center" }}
-                            dangerouslySetInnerHTML={{ __html: live?.svg || item.diagramSvg }}
+                            dangerouslySetInnerHTML={{
+                              __html: sanitizeSvgMarkup(live?.svg || item.diagramSvg, { isDark, maxHeight: "130px" }),
+                            }}
                           />
 
                           {/* Dialect Pill */}
@@ -1379,7 +1347,9 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                         >
                           <div
                             style={{ width: "100%", height: "100%", display: "flex", alignItems: "center" }}
-                            dangerouslySetInnerHTML={{ __html: previewMarkup }}
+                            dangerouslySetInnerHTML={{
+                              __html: sanitizeSvgMarkup(previewMarkup, { isDark, maxHeight: "130px" }),
+                            }}
                           />
                           <span
                             style={{
@@ -1578,7 +1548,9 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                         >
                           <div
                             style={{ width: "100%", height: "100%" }}
-                            dangerouslySetInnerHTML={{ __html: previewMarkup }}
+                            dangerouslySetInnerHTML={{
+                              __html: sanitizeSvgMarkup(previewMarkup, { isDark, maxHeight: "130px" }),
+                            }}
                           />
                           <span
                             style={{
@@ -1718,14 +1690,17 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                       padding: 2,
                     }}
                     dangerouslySetInnerHTML={{
-                      __html: selectedStreamed
-                        ? livePreviews[selectedStreamed.id]?.svg ||
-                          selectedStreamed.diagramSvg ||
-                          buildEquationFallbackPreviewSvg(selectedStreamed.title, selectedStreamed.fqn, isDark)
-                        : selectedDynamic
-                          ? livePreviews[selectedDynamic.id]?.svg ||
-                            buildEquationFallbackPreviewSvg(selectedDynamic.title, selectedDynamic.fqn, isDark)
-                          : livePreviews[selectedCurated!.id]?.svg || selectedCurated!.diagramSvg,
+                      __html: sanitizeSvgMarkup(
+                        selectedStreamed
+                          ? livePreviews[selectedStreamed.id]?.svg ||
+                              selectedStreamed.diagramSvg ||
+                              buildEquationFallbackPreviewSvg(selectedStreamed.title, selectedStreamed.fqn, isDark)
+                          : selectedDynamic
+                            ? livePreviews[selectedDynamic.id]?.svg ||
+                              buildEquationFallbackPreviewSvg(selectedDynamic.title, selectedDynamic.fqn, isDark)
+                            : livePreviews[selectedCurated!.id]?.svg || selectedCurated!.diagramSvg,
+                        { isDark, maxHeight: "44px" },
+                      ),
                     }}
                   />
                   <div style={{ minWidth: 0 }}>
@@ -1854,9 +1829,11 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                     padding: 10,
                   }}
                   dangerouslySetInnerHTML={{
-                    __html:
+                    __html: sanitizeSvgMarkup(
                       workspacePreviews["ws:__active__"]?.svg ||
-                      buildEquationFallbackPreviewSvg("Active Buffer", currentDialect.toUpperCase(), isDark),
+                        buildEquationFallbackPreviewSvg("Active Buffer", currentDialect.toUpperCase(), isDark),
+                      { isDark, maxHeight: "160px" },
+                    ),
                   }}
                 />
                 <div style={{ fontSize: 14, fontWeight: 700 }}>Active {currentDialect.toUpperCase()} Buffer</div>
@@ -1908,7 +1885,12 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                             padding: 8,
                           }}
                         >
-                          <div style={{ width: "100%", height: "100%" }} dangerouslySetInnerHTML={{ __html: svg }} />
+                          <div
+                            style={{ width: "100%", height: "100%" }}
+                            dangerouslySetInnerHTML={{
+                              __html: sanitizeSvgMarkup(svg, { isDark, maxHeight: "130px" }),
+                            }}
+                          />
                           <span
                             style={{
                               position: "absolute",
@@ -2220,9 +2202,11 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                   <div
                     style={{ width: "100%", height: "100%", maxHeight: 280 }}
                     dangerouslySetInnerHTML={{
-                      __html:
+                      __html: sanitizeSvgMarkup(
                         stagedLocal.previewSvg ||
-                        buildEquationFallbackPreviewSvg(stagedLocal.title, stagedLocal.filename, isDark),
+                          buildEquationFallbackPreviewSvg(stagedLocal.title, stagedLocal.filename, isDark),
+                        { isDark, maxHeight: "280px" },
+                      ),
                     }}
                   />
                 </div>
@@ -2237,8 +2221,8 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                     gap: 8,
                   }}
                 >
-                  <button
-                    type="button"
+                  <Button
+                    size="small"
                     onClick={() => {
                       onOpenModel({
                         code: stagedLocal.code,
@@ -2249,22 +2233,12 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                       });
                       onClose();
                     }}
-                    style={{
-                      height: 34,
-                      padding: "0 13px",
-                      borderRadius: 8,
-                      border: `1px solid ${brand}`,
-                      backgroundColor: "transparent",
-                      color: isDark ? "#93c5fd" : brand,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
                   >
                     Open Full Diagram
-                  </button>
-                  <button
-                    type="button"
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="primary"
                     onClick={() => {
                       onOpenModel({
                         code: stagedLocal.code,
@@ -2275,20 +2249,9 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                       });
                       onClose();
                     }}
-                    style={{
-                      height: 34,
-                      padding: "0 16px",
-                      borderRadius: 8,
-                      border: "none",
-                      backgroundColor: brand,
-                      color: "#ffffff",
-                      fontSize: 12.5,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
                   >
                     Open in Split View
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}

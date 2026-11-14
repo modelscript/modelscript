@@ -2038,18 +2038,18 @@ export function renderPackageHubHtml(
   <title>Component &amp; Library Hub</title>
   <style>
     :root {
-      --bg: var(--vscode-editor-background, #0d1117);
-      --surface: var(--vscode-sideBar-background, #161b22);
-      --card-bg: var(--vscode-editorWidget-background, #161b22);
+      --bg: var(--vscode-editor-background, #18181b);
+      --surface: var(--vscode-sideBar-background, #1e1e22);
+      --card-bg: var(--vscode-editorWidget-background, #1e1e22);
       --stage-bg: rgba(127, 140, 160, 0.06);
-      --fg: var(--vscode-editor-foreground, #e6edf3);
-      --muted: var(--vscode-descriptionForeground, #8b949e);
-      --border: var(--vscode-widget-border, rgba(128, 138, 152, 0.22));
-      --border-strong: rgba(59, 130, 246, 0.55);
-      --accent: var(--vscode-button-background, #2563eb);
-      --accent-hover: var(--vscode-button-hoverBackground, #1d4ed8);
+      --fg: var(--vscode-editor-foreground, #f4f4f5);
+      --muted: var(--vscode-descriptionForeground, #a1a1aa);
+      --border: var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+      --border-strong: rgba(34, 211, 238, 0.45);
+      --accent: var(--vscode-button-background, #0891b2);
+      --accent-hover: var(--vscode-button-hoverBackground, #0e7490);
       --accent-fg: var(--vscode-button-foreground, #ffffff);
-      --input-bg: var(--vscode-input-background, #0d1117);
+      --input-bg: var(--vscode-input-background, #0e0e10);
       --input-fg: var(--vscode-input-foreground, #e6edf3);
       --input-border: var(--vscode-input-border, rgba(128, 138, 152, 0.3));
       --success: #2ea043;

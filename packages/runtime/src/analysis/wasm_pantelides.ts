@@ -1213,6 +1213,7 @@ export function pantelidesIndexReductionArena(
     arena.ptr !== 0 &&
     (arena as any)._renamedVars?.size === 0 &&
     typeof arena.exports?.dae_checkPantelidesIndex1 === "function" &&
+    typeof arena.exports?.alloc === "function" &&
     (arena.eqCount > 200 || arena.varCount > 200)
   ) {
     const varCount = arena.varCount;
@@ -1718,6 +1719,6 @@ export class WasmPantelides {
       }
       return { structuralIndex, dummyDerivativeCount, generatedEquations, dummyDerivatives };
     }
-    return { structuralIndex: 1, dummyDerivativeCount: 0 };
+    throw new Error("WasmPantelides: WASM module does not export Pantelides index-reduction routines.");
   }
 }

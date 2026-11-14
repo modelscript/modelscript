@@ -1,11 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { error, type LintResult } from "@modelscript/dsl";
-import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
+import {
+  checkPortPlugCompatibility,
+  extractPortSignature,
+  isNamespaceLikeSymbol,
+  isRelationshipOrImportSymbol,
+  isTypeLikeSymbol,
+  splitQualifiedPath,
+  WorkspaceTypeRegistry,
+  type QueryDB,
+  type SymbolEntry,
+} from "@modelscript/runtime";
 import { kermlStdlibEntries } from "../src-gen/kerml-snapshot.js";
 import { KNOWN_DIMENSIONS } from "./dimensions.js";
 import { SysML2ErrorCode } from "./errors.js";
 import type { SysmlCstNode } from "./flattener/cst-lowerer.js";
+
+let _sharedTypeRegistry: WorkspaceTypeRegistry | undefined;
+function getSharedTypeRegistry(): WorkspaceTypeRegistry {
+  if (!_sharedTypeRegistry) _sharedTypeRegistry = new WorkspaceTypeRegistry();
+  return _sharedTypeRegistry;
+}
 
 const STDLIB_PACKAGES = new Set<string>([
   "ScalarValues",
@@ -322,14 +338,13 @@ export interface TypeInferenceResult {
 export function normalizeTypeName(name: string): string {
   if (!name) return "";
   const clean = name.trim();
-  if (clean.includes("::")) {
-    return clean.split("::").pop()!;
-  }
-  return clean;
+  const parts = splitQualifiedPath(clean);
+  return parts.length > 0 ? parts[parts.length - 1]! : clean;
 }
 
 /**
- * Checks whether sourceType is assignable to targetType in SysML v2 / KerML.
+ * Checks whether sourceType is assignable to targetType in SysML v2 / KerML,
+ * including cross-language WorkspaceTypeRegistry canonical equivalence and Modelica/SysML2 superclasses.
  */
 export function isTypeAssignable(
   db: QueryDB,
@@ -337,10 +352,22 @@ export function isTypeAssignable(
   targetType: string,
   visited = new Set<string>(),
 ): boolean {
-  const normSource = normalizeTypeName(sourceType);
-  const normTarget = normalizeTypeName(targetType);
+  const cleanSource = sourceType.trim();
+  const cleanTarget = targetType.trim();
+  const normSource = normalizeTypeName(cleanSource);
+  const normTarget = normalizeTypeName(cleanTarget);
 
   if (normSource === normTarget) return true;
+
+  // Cross-language canonical primitive equivalence (widening only where strictly valid: Integer -> Real)
+  const registry = getSharedTypeRegistry();
+  if (
+    registry.toCanonicalPrimitive("sysml2", cleanSource) &&
+    registry.toCanonicalPrimitive("sysml2", cleanTarget) &&
+    registry.areTypesCompatible("sysml2", cleanSource, "sysml2", cleanTarget).compatible
+  ) {
+    return true;
+  }
 
   // Real accepts Integer, Natural, Positive (widening)
   if (normTarget === "Real") {
@@ -361,10 +388,10 @@ export function isTypeAssignable(
   if (visited.has(key)) return false;
   visited.add(key);
 
-  // Look up source definition to check specialization (:>)
+  // Look up source definition across SysML2 Definition & Modelica Class/Package/Connector symbols
   const candidates = db.byName(normSource);
   for (const cand of candidates) {
-    if (cand.kind !== "Definition") continue;
+    if (!isTypeLikeSymbol(cand)) continue;
 
     // Check inherits metadata
     if (Array.isArray(cand.inherits)) {
@@ -375,13 +402,14 @@ export function isTypeAssignable(
       }
     }
 
-    // Check OwnedSubclassification children
+    // Check OwnedSubclassification / Modelica Extends children
     const children = db.childrenOf(cand.id);
     for (const child of children) {
       if (
         child.ruleName === "OwnedSubclassification" ||
         child.ruleName === "Subclassification" ||
-        child.kind === "Specialization"
+        child.kind === "Specialization" ||
+        child.kind === "Extends"
       ) {
         if (child.name && isTypeAssignable(db, child.name, normTarget, visited)) {
           return true;
@@ -565,19 +593,7 @@ export function inferExpressionType(
 }
 
 function isDeclarationSymbol(c: SymbolEntry): boolean {
-  return (
-    c.kind !== "Reference" &&
-    c.kind !== "Import" &&
-    c.kind !== "Specialization" &&
-    c.ruleName !== "OwnedFeatureTyping" &&
-    c.ruleName !== "ConjugatedPortTyping" &&
-    c.ruleName !== "OwnedSubclassification" &&
-    c.ruleName !== "Subclassification" &&
-    c.ruleName !== "OwnedSubsetting" &&
-    c.ruleName !== "OwnedReferenceSubsetting" &&
-    c.ruleName !== "OwnedCrossSubsetting" &&
-    c.ruleName !== "OwnedRedefinition"
-  );
+  return !isRelationshipOrImportSymbol(c);
 }
 
 function resolveFeatureInScopeLocal(db: QueryDB, scopeId: number | null, name: string): SymbolEntry | null {
@@ -595,6 +611,35 @@ function resolveFeatureInScopeLocal(db: QueryDB, scopeId: number | null, name: s
   return globals?.[0] ?? null;
 }
 
+function stepIntoMemberOrTypedFeature(db: QueryDB, curr: SymbolEntry, segName: string): SymbolEntry | null {
+  const directChild: SymbolEntry | undefined = db
+    .childrenOf(curr.id)
+    .find((c) => c.name === segName && isDeclarationSymbol(c));
+  if (directChild && (isNamespaceLikeSymbol(curr) || isTypeLikeSymbol(curr))) {
+    return directChild;
+  }
+
+  let typeDef: SymbolEntry | null = null;
+  const typeChild = db.childrenOf(curr.id).find((c) => c.ruleName === "OwnedFeatureTyping" && c.name);
+  if (typeChild?.name) {
+    const norm = normalizeTypeName(typeChild.name);
+    const candidates = db.byName(norm);
+    typeDef = candidates.find((c) => isTypeLikeSymbol(c)) ?? candidates[0] ?? null;
+  }
+  if (!typeDef && curr.metadata?.["typeSpecifier"]) {
+    const norm = normalizeTypeName(String(curr.metadata["typeSpecifier"]));
+    const candidates = db.byName(norm);
+    typeDef = candidates.find((c) => isTypeLikeSymbol(c)) ?? candidates[0] ?? null;
+  }
+
+  if (typeDef) {
+    const member = findMemberInTypeDef(db, typeDef, segName);
+    if (member) return member;
+  }
+
+  return directChild ?? null;
+}
+
 /**
  * Resolves a potentially hierarchical or qualified feature path (e.g. "engine.fuelIn", "a.b.c", "Pkg::Member")
  * within an enclosing scope.
@@ -603,72 +648,30 @@ export function resolvePathInScope(db: QueryDB, scopeId: number | null, pathStr:
   if (!pathStr) return null;
   const cleanPath = pathStr.trim();
 
-  // 1. If path contains "::", resolve via namespace path
-  if (cleanPath.includes("::")) {
-    const segments = cleanPath.split("::").map((s) => s.trim());
+  if (cleanPath.includes("::") || cleanPath.includes(".")) {
+    const segments = splitQualifiedPath(cleanPath);
+    if (segments.length === 0) return null;
     const rootName = segments[0]!;
     const rest = segments.slice(1);
     const candidateRoots: SymbolEntry[] = [];
     const localRoot = resolveFeatureInScopeLocal(db, scopeId, rootName);
     if (localRoot) candidateRoots.push(localRoot);
-    for (const globalSym of db.byName(rootName)?.filter(isDeclarationSymbol) ?? []) {
-      if (!candidateRoots.some((r) => r.id === globalSym.id)) {
-        candidateRoots.push(globalSym);
+    if (cleanPath.includes("::")) {
+      for (const globalSym of db.byName(rootName)?.filter(isDeclarationSymbol) ?? []) {
+        if (!candidateRoots.some((r) => r.id === globalSym.id)) {
+          candidateRoots.push(globalSym);
+        }
       }
     }
     for (const root of candidateRoots) {
       let curr: SymbolEntry | null = root;
       for (const seg of rest) {
         if (!curr) break;
-        const children = db.childrenOf(curr.id);
-        curr = children.find((c) => c.name === seg && isDeclarationSymbol(c)) ?? null;
+        curr = stepIntoMemberOrTypedFeature(db, curr, seg);
       }
       if (curr) return curr;
     }
     return null;
-  }
-
-  // 2. If path contains ".", resolve via dot-notation (subpart -> port/feature)
-  if (cleanPath.includes(".")) {
-    const segments = cleanPath.split(".");
-    const first: SymbolEntry | null = resolveFeatureInScopeLocal(db, scopeId, segments[0]!);
-    if (!first) return null;
-    let curr: SymbolEntry = first;
-
-    for (let i = 1; i < segments.length; i++) {
-      const segName = segments[i]!;
-
-      // Determine the type definition of curr
-      let typeDef: SymbolEntry | null = null;
-      const typeChild = db.childrenOf(curr.id).find((c) => c.ruleName === "OwnedFeatureTyping" && c.name);
-      if (typeChild?.name) {
-        const norm = normalizeTypeName(typeChild.name);
-        const candidates = db.byName(norm);
-        typeDef = candidates.find((c) => c.kind === "Definition") ?? candidates[0] ?? null;
-      }
-      if (!typeDef && curr.metadata?.["typeSpecifier"]) {
-        const norm = normalizeTypeName(String(curr.metadata["typeSpecifier"]));
-        const candidates = db.byName(norm);
-        typeDef = candidates.find((c) => c.kind === "Definition") ?? candidates[0] ?? null;
-      }
-
-      if (typeDef) {
-        const member = findMemberInTypeDef(db, typeDef, segName);
-        if (member) {
-          curr = member;
-          continue;
-        }
-      }
-
-      // Check direct children of curr
-      const direct: SymbolEntry | undefined = db.childrenOf(curr.id).find((c) => c.name === segName);
-      if (direct) {
-        curr = direct;
-      } else {
-        return null;
-      }
-    }
-    return curr;
   }
 
   return resolveFeatureInScopeLocal(db, scopeId, cleanPath);
@@ -687,31 +690,32 @@ function findMemberInTypeDef(
   visited.add(typeDef.id);
 
   // 1. Direct child
-  const member = db.childrenOf(typeDef.id).find((c) => c.name === memberName);
+  const member = db.childrenOf(typeDef.id).find((c) => c.name === memberName && isDeclarationSymbol(c));
   if (member) return member;
 
   // 2. Inherits from SymbolEntry.inherits
   for (const sup of typeDef.inherits || []) {
     const norm = normalizeTypeName(sup);
     const candidates = db.byName(norm);
-    const parentDef = candidates.find((c) => c.kind === "Definition") ?? candidates[0];
+    const parentDef = candidates.find((c) => isTypeLikeSymbol(c)) ?? candidates[0];
     if (parentDef) {
       const found = findMemberInTypeDef(db, parentDef, memberName, visited);
       if (found) return found;
     }
   }
 
-  // 3. Subclassification children (:>)
+  // 3. Subclassification children (:>) and Modelica Extends
   for (const child of db.childrenOf(typeDef.id)) {
     if (
       child.ruleName === "OwnedSubclassification" ||
       child.ruleName === "Subclassification" ||
-      child.kind === "Specialization"
+      child.kind === "Specialization" ||
+      child.kind === "Extends"
     ) {
       if (child.name) {
         const norm = normalizeTypeName(child.name);
         const candidates = db.byName(norm);
-        const parentDef = candidates.find((c) => c.kind === "Definition") ?? candidates[0];
+        const parentDef = candidates.find((c) => isTypeLikeSymbol(c)) ?? candidates[0];
         if (parentDef) {
           const found = findMemberInTypeDef(db, parentDef, memberName, visited);
           if (found) return found;
@@ -790,6 +794,36 @@ export function checkFeatureAssignmentType(db: QueryDB, self: SymbolEntry): Lint
   return null;
 }
 
+function extractConnectionEndpointName(db: QueryDB, ref: SymbolEntry): string {
+  const chainChildren = db.childrenOf(ref.id).filter((c) => c.name && c.name !== "<anonymous>");
+  if (chainChildren.length > 0) {
+    return chainChildren.map((c) => c.name).join(".");
+  }
+  if (ref.name && ref.name !== "OwnedReferenceSubsetting") {
+    return ref.name.trim();
+  }
+  return (db.cstText(ref.startOffset, ref.endOffset) || "").trim();
+}
+
+function makePortLookupDb(db: QueryDB) {
+  return {
+    symbol: (id: number) => db.symbol(id) ?? undefined,
+    childrenOf: (id: number | null) => db.childrenOf(id),
+    byName: (name: string) => db.byName(name),
+  };
+}
+
+function isCrossLanguageEndpoint(db: QueryDB, entry: SymbolEntry): boolean {
+  if (entry.language && entry.language.toLowerCase() !== "sysml2") return true;
+  const typeChild = db
+    .childrenOf(entry.id)
+    .find((c) => c.ruleName === "OwnedFeatureTyping" || c.ruleName === "ConjugatedPortTyping");
+  const rawType = typeChild?.name ?? (entry.metadata?.["typeSpecifier"] ? String(entry.metadata["typeSpecifier"]) : "");
+  if (!rawType) return false;
+  const norm = normalizeTypeName(rawType.replace(/^~\s*/, ""));
+  return db.byName(norm).some((c) => isTypeLikeSymbol(c) && c.language && c.language.toLowerCase() !== "sysml2");
+}
+
 /**
  * Statically validates that port and connector endpoints are plug-compatible.
  */
@@ -797,31 +831,50 @@ export function checkConnectionTypeCompatibility(db: QueryDB, self: SymbolEntry)
   const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
   if (refs.length < 2) return null;
 
-  const getEndpointName = (ref: SymbolEntry) => {
-    const chainChildren = db.childrenOf(ref.id).filter((c) => c.name && c.name !== "<anonymous>");
-    if (chainChildren.length > 0) {
-      return chainChildren.map((c) => c.name).join(".");
-    }
-    if (ref.name && ref.name !== "OwnedReferenceSubsetting") {
-      return ref.name.trim();
-    }
-    return (db.cstText(ref.startOffset, ref.endOffset) || "").trim();
-  };
-
   const getPortType = (entry: SymbolEntry) => {
-    const typeChild = db.childrenOf(entry.id).find((c) => c.ruleName === "OwnedFeatureTyping");
+    const typeChild = db
+      .childrenOf(entry.id)
+      .find((c) => c.ruleName === "OwnedFeatureTyping" || c.ruleName === "ConjugatedPortTyping");
     if (typeChild?.name) return normalizeTypeName(typeChild.name);
     if (entry.metadata?.["typeSpecifier"]) return normalizeTypeName(String(entry.metadata["typeSpecifier"]));
     return null;
   };
 
+  const portLookupDb = makePortLookupDb(db);
+  const registry = getSharedTypeRegistry();
+
   for (let r = 0; r < refs.length - 1; r++) {
-    const sourceName = getEndpointName(refs[r]!);
-    const targetName = getEndpointName(refs[r + 1]!);
+    const sourceName = extractConnectionEndpointName(db, refs[r]!);
+    const targetName = extractConnectionEndpointName(db, refs[r + 1]!);
     const sourceEntry = resolvePathInScope(db, self.parentId, sourceName);
     const targetEntry = resolvePathInScope(db, self.parentId, targetName);
 
     if (sourceEntry && targetEntry) {
+      if (isCrossLanguageEndpoint(db, sourceEntry) || isCrossLanguageEndpoint(db, targetEntry)) {
+        const lhsSig = extractPortSignature(portLookupDb, sourceEntry, { registry });
+        const rhsSig = extractPortSignature(portLookupDb, targetEntry, { registry });
+        if (lhsSig && rhsSig) {
+          const compat = checkPortPlugCompatibility(lhsSig, rhsSig, registry);
+          if (!compat.compatible) {
+            return error(
+              SysML2ErrorCode.INCOMPATIBLE_PORT_CONNECTION.message(
+                sourceName,
+                lhsSig.typeName || "port",
+                targetName,
+                rhsSig.typeName || "port",
+              ),
+              {
+                code: SysML2ErrorCode.INCOMPATIBLE_PORT_CONNECTION.code,
+                field: "declaredName",
+                startOffset: self.startOffset,
+                endOffset: self.endOffset,
+              },
+            );
+          }
+          continue;
+        }
+      }
+
       const sourceType = getPortType(sourceEntry);
       const targetType = getPortType(targetEntry);
 
@@ -856,16 +909,8 @@ export function checkPortConjugationMismatch(db: QueryDB, self: SymbolEntry): Li
   const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
   if (refs.length < 2) return null;
 
-  const getEndpointName = (ref: SymbolEntry) => {
-    const chainChildren = db.childrenOf(ref.id).filter((c) => c.name && c.name !== "<anonymous>");
-    if (chainChildren.length > 0) {
-      return chainChildren.map((c) => c.name).join(".");
-    }
-    if (ref.name && ref.name !== "OwnedReferenceSubsetting") {
-      return ref.name.trim();
-    }
-    return (db.cstText(ref.startOffset, ref.endOffset) || "").trim();
-  };
+  const portLookupDb = makePortLookupDb(db);
+  const registry = getSharedTypeRegistry();
 
   const getPortTypingInfo = (entry: SymbolEntry): { baseType: string | null; isConjugated: boolean } => {
     const children = db.childrenOf(entry.id);
@@ -882,7 +927,10 @@ export function checkPortConjugationMismatch(db: QueryDB, self: SymbolEntry): Li
       return { baseType: normalizeTypeName(tildeMatch[1]), isConjugated: true };
     }
     if (entry.inherits?.some((inh) => inh.trim().startsWith("~"))) {
-      const raw = entry.inherits.find((inh) => inh.trim().startsWith("~"))!.replace(/^~\s*/, "").trim();
+      const raw = entry.inherits
+        .find((inh) => inh.trim().startsWith("~"))!
+        .replace(/^~\s*/, "")
+        .trim();
       return { baseType: raw ? normalizeTypeName(raw) : null, isConjugated: true };
     }
     const typeChild = children.find((c) => c.ruleName === "OwnedFeatureTyping");
@@ -904,11 +952,11 @@ export function checkPortConjugationMismatch(db: QueryDB, self: SymbolEntry): Li
   };
 
   const isDirectedPortDefinition = (typeName: string): boolean => {
-    const portDefs = db.byName(typeName).filter((d) => d.ruleName === "PortDefinition");
+    const portDefs = db.byName(typeName).filter((d) => d.ruleName === "PortDefinition" || isTypeLikeSymbol(d));
     for (const pd of portDefs) {
       for (const member of db.childrenOf(pd.id)) {
-        const dir = member.metadata?.["direction"];
-        if (dir === "in" || dir === "out") return true;
+        const dir = member.metadata?.["direction"] ?? member.metadata?.["causality"];
+        if (dir === "in" || dir === "out" || dir === "input" || dir === "output") return true;
         const memberText = (db.cstText(member.startOffset, member.endOffset, member) || "").trim();
         if (/^(?:in|out)\b/.test(memberText)) return true;
       }
@@ -917,11 +965,35 @@ export function checkPortConjugationMismatch(db: QueryDB, self: SymbolEntry): Li
   };
 
   for (let r = 0; r < refs.length - 1; r++) {
-    const sourceName = getEndpointName(refs[r]!);
-    const targetName = getEndpointName(refs[r + 1]!);
+    const sourceName = extractConnectionEndpointName(db, refs[r]!);
+    const targetName = extractConnectionEndpointName(db, refs[r + 1]!);
     const sourceEntry = resolvePathInScope(db, self.parentId, sourceName);
     const targetEntry = resolvePathInScope(db, self.parentId, targetName);
     if (!sourceEntry || !targetEntry) continue;
+
+    if (isCrossLanguageEndpoint(db, sourceEntry) || isCrossLanguageEndpoint(db, targetEntry)) {
+      const lhsSig = extractPortSignature(portLookupDb, sourceEntry, { registry });
+      const rhsSig = extractPortSignature(portLookupDb, targetEntry, { registry });
+      if (lhsSig && rhsSig) {
+        const compat = checkPortPlugCompatibility(lhsSig, rhsSig, registry);
+        if (!compat.compatible && /direction mismatch/i.test(compat.reason ?? "")) {
+          return error(
+            SysML2ErrorCode.PORT_CONJUGATION_MISMATCH.message(
+              sourceName,
+              targetName,
+              lhsSig.typeName || rhsSig.typeName || "port",
+            ),
+            {
+              code: SysML2ErrorCode.PORT_CONJUGATION_MISMATCH.code,
+              field: "declaredName",
+              startOffset: self.startOffset,
+              endOffset: self.endOffset,
+            },
+          );
+        }
+        continue;
+      }
+    }
 
     const srcInfo = getPortTypingInfo(sourceEntry);
     const tgtInfo = getPortTypingInfo(targetEntry);
@@ -931,8 +1003,7 @@ export function checkPortConjugationMismatch(db: QueryDB, self: SymbolEntry): Li
     const srcDir = sourceEntry.metadata?.["direction"];
     const tgtDir = targetEntry.metadata?.["direction"];
     const sameExplicitDirection =
-      isPeerConnection &&
-      ((srcDir === "in" && tgtDir === "in") || (srcDir === "out" && tgtDir === "out"));
+      isPeerConnection && ((srcDir === "in" && tgtDir === "in") || (srcDir === "out" && tgtDir === "out"));
 
     if (
       (srcInfo.isConjugated && tgtInfo.isConjugated) ||
@@ -1037,7 +1108,9 @@ export function checkSymbolResolution(db: QueryDB, self: SymbolEntry): LintResul
 
       const resolved =
         resolvePathInScope(db, self.parentId ?? self.id, cleanName) ??
-        (!cleanName.includes("::") ? db.byName(normalizeTypeName(cleanName))?.find(isDeclarationSymbol) : null) ??
+        (!cleanName.includes("::") && !cleanName.includes(".")
+          ? db.byName(normalizeTypeName(cleanName))?.find(isDeclarationSymbol)
+          : null) ??
         null;
       if (!resolved) {
         return error(SysML2ErrorCode.SYMBOL_NOT_FOUND.message(cleanName), {
@@ -1053,7 +1126,9 @@ export function checkSymbolResolution(db: QueryDB, self: SymbolEntry): LintResul
     if (!cleanName || cleanName === "<anonymous>" || isStdlibOrBuiltinSymbol(cleanName)) continue;
     const resolved =
       resolvePathInScope(db, self.parentId ?? self.id, cleanName) ??
-      (!cleanName.includes("::") ? db.byName(normalizeTypeName(cleanName))?.find(isDeclarationSymbol) : null) ??
+      (!cleanName.includes("::") && !cleanName.includes(".")
+        ? db.byName(normalizeTypeName(cleanName))?.find(isDeclarationSymbol)
+        : null) ??
       null;
     if (!resolved) {
       return error(SysML2ErrorCode.SYMBOL_NOT_FOUND.message(cleanName), {
@@ -1078,23 +1153,27 @@ export function checkImportResolution(db: QueryDB, self: SymbolEntry): LintResul
       rawImport = refChild.name.trim();
     } else {
       const text = db.cstText(self.startOffset, self.endOffset, self) || "";
-      const m = /\bimport\s+(?:all\s+)?([A-Za-z_][A-Za-z0-9_:]*)/.exec(text);
+      const m = /\bimport\s+(?:all\s+)?([A-Za-z_][A-Za-z0-9_:.]*)/.exec(text);
       if (m?.[1]) {
-        rawImport = m[1].replace(/::\*+.*$/, "").trim();
+        rawImport = m[1].replace(/(?:::|\.)\*+.*$/, "").trim();
       }
     }
   }
   if (!rawImport) return null;
 
   let cleanTarget = rawImport.trim();
-  while (cleanTarget.endsWith("::*")) cleanTarget = cleanTarget.slice(0, -3);
+  while (cleanTarget.endsWith("::*") || cleanTarget.endsWith(".*")) {
+    cleanTarget = cleanTarget.slice(0, cleanTarget.endsWith("::*") ? -3 : -2);
+  }
   cleanTarget = cleanTarget.trim();
   if (!cleanTarget || isStdlibOrBuiltinSymbol(cleanTarget)) return null;
 
   const resolved =
     resolvePathInScope(db, self.parentId, cleanTarget) ??
     db.byName(cleanTarget)?.find(isDeclarationSymbol) ??
-    (!cleanTarget.includes("::") ? db.byName(normalizeTypeName(cleanTarget))?.find(isDeclarationSymbol) : null) ??
+    (!cleanTarget.includes("::") && !cleanTarget.includes(".")
+      ? db.byName(normalizeTypeName(cleanTarget))?.find(isDeclarationSymbol)
+      : null) ??
     null;
 
   if (!resolved) {

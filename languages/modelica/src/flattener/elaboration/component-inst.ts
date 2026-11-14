@@ -69,7 +69,7 @@ import {
 import { getElementDiagRange } from "../support/range-utils.js";
 import { getFlatteningState, getNamedArrayShape, setNamedArrayShape } from "../support/state.js";
 import { ModelicaModificationEnv } from "../support/wasm-bridge.js";
-import { type ComponentInstanceData, type FlattenOptions } from "../types.js";
+import { type ComponentInstanceData, type ComponentModArgData, type FlattenOptions } from "../types.js";
 
 /**
  * Host flattener interface required by the component elaboration kernel.
@@ -2391,9 +2391,9 @@ export function instantiateElements(
         }
 
         // Check conditional component attribute ('if <cond>')
-        let conditionAttrNode: any = null;
+        let conditionAttrNode: SyntaxNode | null = null;
         if (elemCst) {
-          const findCondAttr = (n: any): any => {
+          const findCondAttr = (n: SyntaxNode | null | undefined): SyntaxNode | null => {
             if (!n) return null;
             if (n.type === "condition_attribute") return n;
             for (const c of n.children || []) {
@@ -2405,7 +2405,7 @@ export function instantiateElements(
           conditionAttrNode = findCondAttr(elemCst);
         }
         if (conditionAttrNode) {
-          const condExpr = conditionAttrNode.children?.find((c: any) => c.type === "expression");
+          const condExpr = conditionAttrNode.children?.find((c: SyntaxNode) => c.type === "expression");
           if (condExpr) {
             const condText = condExpr.text?.trim() ?? "";
             const condMatches = condText.match(/[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*/g) || [];
@@ -2429,13 +2429,122 @@ export function instantiateElements(
             else if (condText === "false") condVal = false;
             const isNeg = condText.startsWith("not ");
             const varName = isNeg ? condText.substring(4).trim() : condText;
-            const arg = parentMods?.args?.find((a: any) => a.name === varName);
+            const extractSimpleArgVal = (modArg?: ComponentModArgData | null): boolean | number | null => {
+              if (!modArg?.value) return null;
+              const mv = modArg.value;
+              if (mv.kind === "literal" && (typeof mv.value === "boolean" || typeof mv.value === "number")) {
+                return mv.value;
+              }
+              const txt = mv.text?.trim();
+              if (txt === "true") return true;
+              if (txt === "false") return false;
+              if (txt && /^-?\d+(?:\.\d+)?$/.test(txt)) return Number(txt);
+              return null;
+            };
+            const evalScalarTextInDaeOrDb = (
+              exprText: string,
+              scopePrefix: string,
+              scopeClassId?: SymbolId,
+            ): boolean | number | null => {
+              const t = exprText.trim();
+              if (t === "true") return true;
+              if (t === "false") return false;
+              const num = Number(t);
+              if (!isNaN(num) && t !== "") return num;
+              if (/^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(t)) {
+                const cand = scopePrefix ? `${scopePrefix}.${t}` : t;
+                const refIdx = dae.getVarIdxByName(cand) >= 0 ? dae.getVarIdxByName(cand) : dae.getVarIdxByName(t);
+                if (refIdx >= 0) {
+                  const refExpr = dae.getVarExpression(refIdx);
+                  if (refExpr !== undefined && refExpr >= 0) {
+                    const ev = evalDaeExpr(refExpr, dae);
+                    if (typeof ev === "boolean" || typeof ev === "number") return ev;
+                  }
+                }
+                // Fall back to resolving the symbol from the enclosing class in QueryDB (handles
+                // parameters declared after an `extends` clause that passes them into a redeclare mod).
+                if (!t.includes(".") && flattener.db) {
+                  let targetClassId = scopeClassId ?? flattener.currentRootClassId;
+                  if (scopeClassId === undefined && scopePrefix && flattener.currentRootClassId) {
+                    let cid: SymbolId | undefined = flattener.currentRootClassId;
+                    for (const seg of scopePrefix.split(".")) {
+                      if (cid === undefined) break;
+                      const segClean = seg.replace(/\[[^\]]*\]$/, "");
+                      const els: SymbolId[] = flattener.db.query<SymbolId[]>("instantiate", cid) ?? [];
+                      const foundId: SymbolId | undefined = els.find(
+                        (eid: SymbolId) => flattener.db.symbol(eid)?.name === segClean,
+                      );
+                      const nextCls: SymbolId | { id?: SymbolId | null } | null =
+                        foundId !== undefined
+                          ? flattener.db.query<SymbolId | { id?: SymbolId | null } | null>("classInstance", foundId)
+                          : null;
+                      const nextCid: SymbolId | null | undefined = typeof nextCls === "number" ? nextCls : nextCls?.id;
+                      if (nextCid === undefined || nextCid === null) {
+                        cid = undefined;
+                        break;
+                      }
+                      cid = nextCid;
+                    }
+                    if (cid !== undefined) targetClassId = cid;
+                  }
+                  if (targetClassId !== undefined) {
+                    const scopeEls = flattener.db.query<SymbolId[]>("instantiate", targetClassId) ?? [];
+                    const compId = scopeEls.find((eid: SymbolId) => flattener.db.symbol(eid)?.name === t);
+                    if (compId !== undefined) {
+                      const compData = flattener.db.query<ComponentInstanceData>("componentInstance", compId);
+                      const bindTxt = compData?.modification?.bindingExpression?.text?.trim();
+                      if (bindTxt === "true") return true;
+                      if (bindTxt === "false") return false;
+                      if (bindTxt && /^-?\d+(?:\.\d+)?$/.test(bindTxt)) return Number(bindTxt);
+                      const startEntry = compData?.modification?.args
+                        ?.slice()
+                        .reverse()
+                        .find((sa: ComponentModArgData) => !sa.isBreak && sa.name === "start");
+                      const simpleStart = extractSimpleArgVal(startEntry);
+                      if (simpleStart !== null) return simpleStart;
+                    }
+                  }
+                }
+              }
+              return null;
+            };
+            const arg: ComponentModArgData | undefined = parentMods?.args
+              ?.slice()
+              .reverse()
+              .find((a: ComponentModArgData) => !a.isBreak && a.name === varName);
+            const fallbackParentPrefix = prefix.includes(".") ? prefix.split(".").slice(0, -1).join(".") : "";
+            const argOriginPrefix = arg?.originPrefix ?? fallbackParentPrefix;
             if (arg?.value) {
-              if (arg.value.kind === "literal" && typeof arg.value.value === "boolean") {
-                condVal = isNeg ? !arg.value.value : arg.value.value;
-              } else if (arg.value.kind === "expression" && (arg.value.text === "true" || arg.value.text === "false")) {
-                const b = arg.value.text === "true";
-                condVal = isNeg ? !b : b;
+              const direct = extractSimpleArgVal(arg);
+              if (typeof direct === "boolean") {
+                condVal = isNeg ? !direct : direct;
+              } else if (arg.value.text) {
+                const resolved = evalScalarTextInDaeOrDb(
+                  arg.value.text,
+                  argOriginPrefix,
+                  arg.evaluationScopeId ?? arg.ownerClassId,
+                );
+                if (typeof resolved === "boolean") {
+                  condVal = isNeg ? !resolved : resolved;
+                }
+              }
+            } else if (arg && (arg.nestedArgs || arg.args)) {
+              const startArg = (arg.nestedArgs || arg.args)
+                ?.slice()
+                .reverse()
+                .find((na: ComponentModArgData) => !na.isBreak && na.name === "start");
+              const directStart = extractSimpleArgVal(startArg);
+              if (typeof directStart === "boolean") {
+                condVal = isNeg ? !directStart : directStart;
+              } else if (startArg?.value?.text) {
+                const resolved = evalScalarTextInDaeOrDb(
+                  startArg.value.text,
+                  argOriginPrefix,
+                  arg.evaluationScopeId ?? arg.ownerClassId,
+                );
+                if (typeof resolved === "boolean") {
+                  condVal = isNeg ? !resolved : resolved;
+                }
               }
             }
             if (condVal === null) {
@@ -2473,30 +2582,39 @@ export function instantiateElements(
                 let condSubs: Map<string, number | string> | undefined;
                 if (parentMods?.args) {
                   for (const a of parentMods.args) {
-                    if (a.name && a.value) {
-                      if (
-                        a.value.kind === "literal" &&
-                        (typeof a.value.value === "number" || typeof a.value.value === "boolean")
-                      ) {
+                    if (a.isBreak || !a.name) continue;
+                    const effectiveArg =
+                      a.value !== undefined
+                        ? a
+                        : (a.nestedArgs || a.args)
+                            ?.slice()
+                            .reverse()
+                            .find((na: ComponentModArgData) => !na.isBreak && na.name === "start");
+                    if (!effectiveArg?.value) continue;
+                    const simpleVal = extractSimpleArgVal(effectiveArg);
+                    if (typeof simpleVal === "boolean") {
+                      condSubs ??= new Map();
+                      condSubs.set(a.name, simpleVal ? "true" : "false");
+                    } else if (typeof simpleVal === "number") {
+                      condSubs ??= new Map();
+                      condSubs.set(a.name, simpleVal);
+                    } else if (effectiveArg.value.text) {
+                      const resolved = evalScalarTextInDaeOrDb(
+                        effectiveArg.value.text,
+                        a.originPrefix ?? fallbackParentPrefix,
+                        a.evaluationScopeId ?? a.ownerClassId,
+                      );
+                      if (typeof resolved === "boolean") {
                         condSubs ??= new Map();
-                        condSubs.set(
-                          a.name,
-                          typeof a.value.value === "boolean" ? (a.value.value ? "true" : "false") : a.value.value,
-                        );
-                      } else if (a.value.kind === "expression" && a.value.text) {
-                        const t = a.value.text.trim();
-                        if (t === "true" || t === "false") {
-                          condSubs ??= new Map();
-                          condSubs.set(a.name, t);
-                        } else if (/^-?\d+(?:\.\d+)?$/.test(t)) {
-                          condSubs ??= new Map();
-                          condSubs.set(a.name, Number(t));
-                        }
+                        condSubs.set(a.name, resolved ? "true" : "false");
+                      } else if (typeof resolved === "number") {
+                        condSubs ??= new Map();
+                        condSubs.set(a.name, resolved);
                       }
                     }
                   }
                 }
-                const findExprInMod = (n: any): any => {
+                const findExprInMod = (n: SyntaxNode | null | undefined): SyntaxNode | null => {
                   if (!n || n.type === "class_modification" || n.type === "ClassModification") return null;
                   if (n.type === "expression" || n.type === "Expression") return n;
                   for (const c of n.children || []) {
@@ -2505,7 +2623,7 @@ export function instantiateElements(
                   }
                   return null;
                 };
-                const findModExpr = (n: any): any => {
+                const findModExpr = (n: SyntaxNode | null | undefined): SyntaxNode | null => {
                   if (!n) return null;
                   if (n.type === "modification" || n.type === "Modification") {
                     return findExprInMod(n);
@@ -2522,7 +2640,7 @@ export function instantiateElements(
                   if (dae.getVarIdxByName(fullDep) >= 0) continue;
                   const siblingId = elements.find((eid) => flattener.db.symbol(eid)?.name === dep);
                   if (siblingId !== undefined) {
-                    const sibCst = flattener.db.cstNode(siblingId) as any;
+                    const sibCst = flattener.db.cstNode(siblingId) as SyntaxNode | null | undefined;
                     const sibBindExpr = findModExpr(sibCst);
                     if (sibBindExpr) {
                       const sibDiagLen = dae.diagnostics.length;
@@ -2538,6 +2656,42 @@ export function instantiateElements(
                         }
                       }
                       dae.diagnostics.length = sibDiagLen;
+                    } else {
+                      const sibInst = flattener.db.query<ComponentInstanceData>("componentInstance", siblingId);
+                      const sibStart = sibInst?.modification?.args
+                        ?.slice()
+                        .reverse()
+                        .find((sa: ComponentModArgData) => !sa.isBreak && sa.name === "start");
+                      const simpleSibStart = extractSimpleArgVal(sibStart);
+                      if (typeof simpleSibStart === "boolean") {
+                        condSubs ??= new Map();
+                        condSubs.set(dep, simpleSibStart ? "true" : "false");
+                      } else if (typeof simpleSibStart === "number") {
+                        condSubs ??= new Map();
+                        condSubs.set(dep, simpleSibStart);
+                      } else if (sibStart?.value?.cstBytes) {
+                        const sibCstBytes = sibStart.value.cstBytes;
+                        const startNode = flattener.db.cstNodeRange(
+                          sibCstBytes[0],
+                          sibCstBytes[1],
+                          flattener.db.symbol(siblingId) ?? undefined,
+                        );
+                        if (startNode) {
+                          const sibDiagLen = dae.diagnostics.length;
+                          const loweredStartId = flattener.lowerExpr(startNode, dae, prefix, condSubs);
+                          if (loweredStartId >= 0 && dae.diagnostics.length === sibDiagLen) {
+                            const evaluated = evalDaeExpr(loweredStartId, dae);
+                            if (typeof evaluated === "boolean") {
+                              condSubs ??= new Map();
+                              condSubs.set(dep, evaluated ? "true" : "false");
+                            } else if (typeof evaluated === "number") {
+                              condSubs ??= new Map();
+                              condSubs.set(dep, evaluated);
+                            }
+                          }
+                          dae.diagnostics.length = sibDiagLen;
+                        }
+                      }
                     }
                   }
                 }
@@ -6041,19 +6195,49 @@ export function instantiateElements(
               if (effectiveSubMod.args && effectiveSubMod.args.length > 0) {
                 const splitArgs = effectiveSubMod.args.map((arg: any) => {
                   const argText = arg?.value?.text?.trim();
+                  const sliceCompModifier = (comp: { body: string; iter: string; range: string }, origText: string) => {
+                    if (splitTopLevel(comp.range, ",").length !== 1) return null;
+                    const rangeVals = evaluateComprehensionRangeValues(
+                      comp.range,
+                      flattener,
+                      dae,
+                      prefix,
+                      flattener.currentClassId ?? classTargetId ?? undefined,
+                    );
+                    const iterVal = rangeVals && idxNum < rangeVals.length ? rangeVals[idxNum]! : String(idxNum + 1);
+                    const escapedIter = comp.iter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                    const iterRe = new RegExp(`"(?:\\\\.|[^"\\\\])*"|(\\.?\\b${escapedIter}\\b)`, "g");
+                    const itemText = comp.body.replace(iterRe, (match, identPart) =>
+                      !identPart || identPart.startsWith(".") ? match : iterVal,
+                    );
+                    return {
+                      ...arg,
+                      value: {
+                        ...arg.value,
+                        text: itemText,
+                        origArrayCompText: origText,
+                        kind: "expression",
+                        cstBytes: undefined,
+                      },
+                    };
+                  };
                   if (argText && !arg.each && !arg.isEach && argText.startsWith("{") && argText.endsWith("}")) {
                     const compMatch = parseBraceComprehension(argText);
-                    if (compMatch && compMatch.body === compMatch.iter && userDimLabels[0]?.[idxNum]) {
-                      const itemText = userDimLabels[0][idxNum]!;
-                      return {
-                        ...arg,
-                        value: {
-                          ...arg.value,
-                          text: itemText,
-                          kind: "expression",
-                          cstBytes: undefined,
-                        },
-                      };
+                    if (compMatch) {
+                      if (compMatch.body === compMatch.iter && userDimLabels[0]?.[idxNum]) {
+                        const itemText = userDimLabels[0][idxNum]!;
+                        return {
+                          ...arg,
+                          value: {
+                            ...arg.value,
+                            text: itemText,
+                            kind: "expression",
+                            cstBytes: undefined,
+                          },
+                        };
+                      }
+                      const sliced = sliceCompModifier(compMatch, argText);
+                      if (sliced) return sliced;
                     }
                     const items = parseArrayLiteralElements(argText);
                     if (items.length === indices.length) {
@@ -6072,28 +6256,8 @@ export function instantiateElements(
                   } else if (argText && !arg.each && !arg.isEach && /^array\s*\(/.test(argText)) {
                     const arrCompMatch = parseArrayComprehension(argText);
                     if (arrCompMatch) {
-                      const bodyExpr = arrCompMatch.body;
-                      const iterVar = arrCompMatch.iter;
-                      const rangeExpr = arrCompMatch.range;
-                      const rangeVals = evaluateComprehensionRangeValues(
-                        rangeExpr,
-                        flattener,
-                        dae,
-                        prefix,
-                        classTargetId ?? flattener.currentClassId ?? undefined,
-                      );
-                      const iterVal = rangeVals && idxNum < rangeVals.length ? rangeVals[idxNum]! : String(idxNum + 1);
-                      const itemText = bodyExpr.replace(new RegExp(`\\b${iterVar}\\b`, "g"), iterVal);
-                      return {
-                        ...arg,
-                        value: {
-                          ...arg.value,
-                          text: itemText,
-                          origArrayCompText: argText,
-                          kind: "expression",
-                          cstBytes: undefined,
-                        },
-                      };
+                      const sliced = sliceCompModifier(arrCompMatch, argText);
+                      if (sliced) return sliced;
                     }
                   } else if (
                     argText &&

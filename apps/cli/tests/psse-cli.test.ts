@@ -50,7 +50,7 @@ test("PSS/E CLI Commands (msx psse inspect, lint, to-dae, to-modelica, solve)", 
   await t.test("msx psse inspect / summary", async () => {
     const logs: string[] = [];
     const origLog = console.log;
-    console.log = (...args: any[]) => logs.push(args.join(" "));
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
 
     try {
       await (PsseCommand.handler as any)({
@@ -68,7 +68,7 @@ test("PSS/E CLI Commands (msx psse inspect, lint, to-dae, to-modelica, solve)", 
   await t.test("msx psse lint", async () => {
     const logs: string[] = [];
     const origLog = console.log;
-    console.log = (...args: any[]) => logs.push(args.join(" "));
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
 
     try {
       await (PsseCommand.handler as any)({
@@ -109,7 +109,7 @@ test("PSS/E CLI Commands (msx psse inspect, lint, to-dae, to-modelica, solve)", 
   await t.test("msx psse solve", async () => {
     const logs: string[] = [];
     const origLog = console.log;
-    console.log = (...args: any[]) => logs.push(args.join(" "));
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
 
     try {
       await (PsseCommand.handler as any)({
@@ -117,6 +117,37 @@ test("PSS/E CLI Commands (msx psse inspect, lint, to-dae, to-modelica, solve)", 
         files: [rawFile],
       });
       assert.ok(logs.some((l) => l.includes("Converged in")));
+    } finally {
+      console.log = origLog;
+    }
+  });
+
+  await t.test("msx psse verify", async () => {
+    const dyrFile = path.join(tmpDir, "ieee14.dyr");
+    fs.writeFileSync(
+      dyrFile,
+      [
+        "1 'GENROU' 1 6.00 0.04 0.70 0.05 4.00 0.00 1.80 1.70 0.30 0.55 0.25 0.18 0.00 0.00 /",
+        "2 'GENROU' 1 6.50 0.04 0.70 0.05 3.50 0.00 1.80 1.70 0.30 0.55 0.25 0.18 0.00 0.00 /",
+        "1 'SEXS' 1 0.10 10.00 100.00 0.05 -5.00 5.00 /",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const logs: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    try {
+      await (PsseCommand.handler as any)({
+        action: "verify",
+        files: [rawFile, dyrFile],
+        tEnd: 0.2,
+        dt: 0.01,
+      });
+      const output = logs.join("\n");
+      assert.ok(output.includes("[psse] Simulated"), `Expected simulation summary, got:\n${output}`);
+      assert.ok(output.includes("steps"), `Expected step count in summary, got:\n${output}`);
     } finally {
       console.log = origLog;
     }

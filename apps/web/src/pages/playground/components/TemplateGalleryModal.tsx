@@ -1,16 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  CheckIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-  CodeIcon,
-  CrossReferenceIcon,
-  SearchIcon,
-  XIcon,
-} from "@primer/octicons-react";
+import { CheckIcon, ChevronDownIcon, ChevronUpIcon, CodeIcon, SearchIcon } from "@primer/octicons-react";
+import { Button, Dialog, TextInput } from "@primer/react";
 import React, { useMemo, useState } from "react";
-import { useFocusTrap } from "../../../hooks/useFocusTrap";
 import { HERO_EXAMPLES, type HeroExample, TEMPLATE_CATEGORIES, type TemplateCategory } from "../constants";
 
 export interface TemplateGalleryModalProps {
@@ -29,8 +21,6 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<TemplateCategory>("All");
   const [previewingId, setPreviewingId] = useState<string | null>(null);
-
-  const containerRef = useFocusTrap(isOpen, onClose);
 
   const filteredTemplates = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -61,151 +51,32 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="template-gallery-title"
-      style={{
-        position: "fixed",
-        inset: 0,
-        backgroundColor: "rgba(0, 0, 0, 0.72)",
-        backdropFilter: "blur(8px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 9999,
-        padding: "16px",
-      }}
-      onClick={onClose}
+    <Dialog
+      title="Starter Engineering Templates"
+      subtitle="Curated multi-physics, controls, CAD, and system models ready to simulate and modify"
+      width="xlarge"
+      onClose={onClose}
     >
-      <div
-        ref={containerRef}
-        style={{
-          width: "100%",
-          maxWidth: "960px",
-          maxHeight: "88vh",
-          backgroundColor: "var(--color-canvas-default, var(--ms-bg, #0d1117))",
-          border: "1px solid var(--color-border-default, var(--ms-border, #30363d))",
-          borderRadius: "var(--ms-radius-lg, 14px)",
-          boxShadow: "var(--ms-shadow-pop, 0 24px 64px rgba(0, 0, 0, 0.56))",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          color: "var(--color-fg-default, var(--ms-text-1, #e6edf3))",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div
-          style={{
-            padding: "18px 24px",
-            borderBottom: "1px solid var(--color-border-default, var(--ms-border, #30363d))",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            background:
-              "linear-gradient(180deg, var(--color-canvas-subtle, var(--ms-bg-soft, #161b22)) 0%, transparent 100%)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: "var(--ms-radius-sm, 8px)",
-                backgroundColor: "var(--ms-brand-soft, rgba(8, 145, 178, 0.15))",
-                border: "1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 35%, transparent)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "var(--ms-brand, #0891b2)",
-              }}
-            >
-              <CrossReferenceIcon size={18} />
-            </div>
-            <div>
-              <div id="template-gallery-title" style={{ fontSize: "17px", fontWeight: 700, letterSpacing: "-0.01em" }}>
-                Starter Engineering Templates
-              </div>
-              <div style={{ fontSize: "12px", color: "var(--color-fg-muted)", marginTop: "2px" }}>
-                Curated multi-physics, controls, CAD, and system models ready to simulate and modify
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--color-fg-muted, #8b949e)",
-              cursor: "pointer",
-              padding: "6px",
-              display: "flex",
-              alignItems: "center",
-              borderRadius: "6px",
-            }}
-            aria-label="Close templates modal"
-          >
-            <XIcon size={18} />
-          </button>
-        </div>
-
+      <div style={{ display: "flex", flexDirection: "column", maxHeight: "76vh", overflow: "hidden" }}>
         {/* Search & Domain Filter Bar */}
         <div
           style={{
-            padding: "14px 24px",
-            borderBottom: "1px solid var(--color-border-default, #30363d)",
+            padding: "12px 16px",
+            borderBottom: "1px solid var(--ms-divider, var(--color-border-default))",
             display: "flex",
             flexDirection: "column",
             gap: "10px",
-            backgroundColor: "var(--color-canvas-subtle, #161b22)",
+            backgroundColor: "var(--color-canvas-subtle, var(--ms-bg-elv))",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              background: "var(--color-canvas-default, #0d1117)",
-              border: "1px solid var(--color-border-default, #30363d)",
-              borderRadius: "8px",
-              padding: "7px 12px",
-            }}
-          >
-            <SearchIcon size={15} style={{ color: "var(--color-fg-muted, #8b949e)" }} />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search templates by discipline, keyword, or engineering language..."
-              autoFocus
-              style={{
-                flex: 1,
-                background: "transparent",
-                border: "none",
-                outline: "none",
-                color: "inherit",
-                fontSize: "13px",
-              }}
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--color-fg-muted, #8b949e)",
-                  cursor: "pointer",
-                  padding: "2px",
-                }}
-              >
-                <XIcon size={13} />
-              </button>
-            )}
-          </div>
+          <TextInput
+            block
+            leadingVisual={SearchIcon}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search templates by discipline, keyword, or engineering language..."
+            autoFocus
+          />
 
           {/* Category Tabs */}
           <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "2px" }}>
@@ -217,8 +88,8 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                   type="button"
                   onClick={() => setSelectedCategory(cat)}
                   style={{
-                    background: isSelected ? "var(--color-accent-fg, #0969da)" : "transparent",
-                    border: `1px solid ${isSelected ? "var(--color-accent-fg, #0969da)" : "var(--color-border-default, #30363d)"}`,
+                    background: isSelected ? "var(--ms-accent, var(--color-accent-fg))" : "transparent",
+                    border: `1px solid ${isSelected ? "var(--ms-accent, var(--color-accent-fg))" : "var(--ms-border-default, var(--color-border-default))"}`,
                     color: isSelected ? "#ffffff" : "var(--color-fg-muted, #8b949e)",
                     borderRadius: "6px",
                     padding: "4px 11px",
@@ -277,9 +148,9 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                     justifyContent: "space-between",
                     padding: "16px",
                     borderRadius: "10px",
-                    backgroundColor: "var(--color-canvas-subtle, #161b22)",
-                    border: `1px solid ${isCurrent ? "var(--color-accent-fg, #0969da)" : "var(--color-border-subtle, #21262d)"}`,
-                    boxShadow: isCurrent ? "0 0 0 1px var(--color-accent-fg, #0969da)" : "none",
+                    backgroundColor: "var(--ms-bg-surface, var(--color-canvas-subtle))",
+                    border: `1px solid ${isCurrent ? "var(--ms-accent, var(--color-accent-fg))" : "var(--ms-border-subtle, var(--color-border-subtle))"}`,
+                    boxShadow: isCurrent ? "0 0 0 1px var(--ms-accent, var(--color-accent-fg))" : "none",
                     transition: "all 0.15s ease",
                   }}
                 >
@@ -298,8 +169,8 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                         style={{
                           fontSize: "11px",
                           fontWeight: 600,
-                          color: "var(--color-accent-fg, #58a6ff)",
-                          backgroundColor: "rgba(56, 139, 253, 0.1)",
+                          color: "var(--ms-accent, var(--color-accent-fg))",
+                          backgroundColor: "var(--ms-accent-subtle, rgba(6, 182, 212, 0.12))",
                           padding: "2px 7px",
                           borderRadius: "4px",
                           textTransform: "uppercase",
@@ -380,13 +251,13 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                           overflowY: "auto",
                           padding: "8px 10px",
                           borderRadius: "6px",
-                          backgroundColor: "var(--color-canvas-default, #0d1117)",
-                          border: "1px solid var(--color-border-muted, #21262d)",
+                          backgroundColor: "var(--color-canvas-default, var(--ms-bg))",
+                          border: "1px solid var(--color-border-muted, var(--ms-border))",
                           fontFamily: "var(--font-mono, monospace)",
                           fontSize: "11px",
                           whiteSpace: "pre-wrap",
                           wordBreak: "break-all",
-                          color: "var(--color-fg-muted, #8b949e)",
+                          color: "var(--color-fg-muted)",
                         }}
                       >
                         {template.code.slice(0, 400)}
@@ -397,61 +268,37 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
 
                   {/* Actions */}
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "12px" }}>
-                    <button
+                    <Button
                       type="button"
+                      size="small"
+                      variant="default"
                       onClick={() => setPreviewingId(isPreviewOpen ? null : template.id)}
-                      style={{
-                        background: "transparent",
-                        border: "1px solid var(--color-border-default, #30363d)",
-                        color: "var(--color-fg-muted, #8b949e)",
-                        borderRadius: "6px",
-                        padding: "5px 8px",
-                        fontSize: "11px",
-                        fontWeight: 500,
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "4px",
-                      }}
                       title={isPreviewOpen ? "Hide code" : "Preview code snippet"}
                     >
-                      <CodeIcon size={12} />
-                      {isPreviewOpen ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />}
-                    </button>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                        <CodeIcon size={12} />
+                        {isPreviewOpen ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />}
+                      </span>
+                    </Button>
 
-                    <button
+                    <Button
                       type="button"
+                      size="small"
+                      variant={isCurrent ? "default" : "primary"}
+                      style={{ flex: 1 }}
                       onClick={() => {
                         onSelectTemplate(template);
                         onClose();
                       }}
-                      style={{
-                        flex: 1,
-                        background: isCurrent ? "rgba(35, 134, 54, 0.2)" : "var(--color-btn-primary-bg, #238636)",
-                        border: isCurrent
-                          ? "1px solid rgba(46, 160, 67, 0.4)"
-                          : "1px solid var(--color-btn-primary-border, rgba(240, 246, 252, 0.1))",
-                        color: isCurrent ? "var(--color-success-fg, #3fb950)" : "#ffffff",
-                        borderRadius: "6px",
-                        padding: "6px 12px",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: "6px",
-                        transition: "all 0.15s ease",
-                      }}
                     >
                       {isCurrent ? (
-                        <>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                           <CheckIcon size={13} /> Active in Canvas
-                        </>
+                        </span>
                       ) : (
                         "Load Template"
                       )}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               );
@@ -459,6 +306,6 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 };

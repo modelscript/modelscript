@@ -24,7 +24,7 @@ test("LandGEM Benchmark 42 — Regional Solid Waste & Anaerobic Co-Digestion CHP
   assert.strictEqual(metrics.vfaRisk, "low");
 
   // DAE Arena
-  assert.strictEqual(metrics.daeVarCount, 5);
-  assert.strictEqual(metrics.daeEqCount, 5);
+  assert.strictEqual(metrics.daeVarCount, 8);
+  assert.strictEqual(metrics.daeEqCount, 8);
   assert.strictEqual(metrics.isSquare, true);
 });

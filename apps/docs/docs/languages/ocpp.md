@@ -11,10 +11,10 @@ description: "@modelscript/ocpp (languages/ocpp) provides native parsing, urgenc
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.ocpp` | OCPP Network Manifest | Station hierarchy, EVSE connector ratings, and charging session states |
-| `.json` | OCPP 2.0.1 JSON Payload | JSON schema conforming EV charging schedules and composite profiles |
+| Extension | Format                  | Description                                                            |
+| :-------- | :---------------------- | :--------------------------------------------------------------------- |
+| `.ocpp`   | OCPP Network Manifest   | Station hierarchy, EVSE connector ratings, and charging session states |
+| `.json`   | OCPP 2.0.1 JSON Payload | JSON schema conforming EV charging schedules and composite profiles    |
 
 ---
 
@@ -42,6 +42,12 @@ description: "@modelscript/ocpp (languages/ocpp) provides native parsing, urgenc
   $$\frac{d(SoC_i)}{dt} = \frac{\eta_{\text{chg}} \cdot P_i(t)}{C_{\text{battery},i}}$$
   $$P_{\text{total}}(t) = \sum_{i=1}^{N} P_i(t)$$
 - Emits soft-slack penalty equations for transformer thermal capacity overloads.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="ocpp" />
 
 ---
 

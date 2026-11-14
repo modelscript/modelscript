@@ -5,6 +5,7 @@ import { parseUrdf } from "@modelscript/urdf";
 import React, { useEffect, useMemo, useState } from "react";
 import { BltVisualizer } from "./BltVisualizer.js";
 import { analyzeModelBlt } from "./blt-analysis.js";
+import { InspectorTabs } from "./inspectors/InspectorTabs.js";
 import {
   AutomationControlInspector,
   BiochemInspector,
@@ -217,7 +218,12 @@ function analyzeRequirementsAndSysml(dialect: string, code: string, lines: strin
     domainGroup: "sysml-reqif",
     domainLabel: dialect === "reqif" ? "ReqIF Requirements Management" : "SysML v2 Architecture & RTM",
     kpis: [
-      { label: "Requirements", value: reqRows.length, sublabel: "Tracked specifications", accent: "#58a6ff" },
+      {
+        label: "Requirements",
+        value: reqRows.length,
+        sublabel: "Tracked specifications",
+        accent: "var(--fgColor-accent, var(--ms-brand))",
+      },
       {
         label: "Satisfied",
         value: reqRows.length > 0 ? `${Math.round((satisfiedCount / reqRows.length) * 100)}%` : "—",
@@ -535,7 +541,7 @@ function analyzeMultibody(dialect: string, code: string, lines: string[]): Domai
         label: "Rigid Bodies",
         value: bodyRows.length,
         sublabel: `${nBodiesWithGround} incl. ground frame`,
-        accent: "#58a6ff",
+        accent: "var(--fgColor-accent, var(--ms-brand))",
       },
       {
         label: "Kinematic Joints",
@@ -872,7 +878,12 @@ function analyzePowerAndCircuits(dialect: string, _code: string, lines: string[]
     domainGroup: "power-circuits",
     domainLabel: `${dialect.toUpperCase()} Power Grid & Circuit Netlist Inspector`,
     kpis: [
-      { label: "Buses / Nodes", value: busRows.length, sublabel: "Topological electrical nodes", accent: "#58a6ff" },
+      {
+        label: "Buses / Nodes",
+        value: busRows.length,
+        sublabel: "Topological electrical nodes",
+        accent: "var(--fgColor-accent, var(--ms-brand))",
+      },
       {
         label: "Branches / Elements",
         value: branchRows.length,
@@ -1063,7 +1074,7 @@ function analyzeThermoFluid(dialect: string, _code: string, lines: string[]): Do
         label: "Pipes & Branches",
         value: pipeRows.length,
         sublabel: "Conduits, valves & turbomachinery",
-        accent: "#58a6ff",
+        accent: "var(--fgColor-accent, var(--ms-brand))",
       },
       {
         label: "Nodes & Boundaries",
@@ -1159,7 +1170,12 @@ function analyzeCae(dialect: string, code: string, lines: string[]): DomainAnaly
       domainGroup: "cae",
       domainLabel: "ISO 10303-21 STEP B-Rep & Assembly Inspector",
       kpis: [
-        { label: "Cartesian Points", value: ptCount, sublabel: "3D geometric coordinates", accent: "#58a6ff" },
+        {
+          label: "Cartesian Points",
+          value: ptCount,
+          sublabel: "3D geometric coordinates",
+          accent: "var(--fgColor-accent, var(--ms-brand))",
+        },
         { label: "B-Rep Faces", value: faceCount, sublabel: "Topological surface patches", accent: "#3fb950" },
         { label: "Solids / Products", value: solidCount, sublabel: "B-Rep bodies & products", accent: "#a371f7" },
         {
@@ -1236,7 +1252,12 @@ function analyzeCae(dialect: string, code: string, lines: string[]): DomainAnaly
       domainGroup: "cae",
       domainLabel: "CFD Solver, Freestream & Boundary Marker Inspector",
       kpis: [
-        { label: "Solver Settings", value: meshRows.length, sublabel: "Discretization & mesh keys", accent: "#58a6ff" },
+        {
+          label: "Solver Settings",
+          value: meshRows.length,
+          sublabel: "Discretization & mesh keys",
+          accent: "var(--fgColor-accent, var(--ms-brand))",
+        },
         { label: "Fluid / Freestream", value: materialRows.length, sublabel: "Mach, Re, T∞, P∞", accent: "#3fb950" },
         {
           label: "Boundary Markers",
@@ -1319,7 +1340,12 @@ function analyzeCae(dialect: string, code: string, lines: string[]): DomainAnaly
       domainGroup: "cae",
       domainLabel: "OpenSCAD Parametric CSG Tree Inspector",
       kpis: [
-        { label: "CSG Primitives", value: meshRows.length, sublabel: "Solids & extrusions", accent: "#58a6ff" },
+        {
+          label: "CSG Primitives",
+          value: meshRows.length,
+          sublabel: "Solids & extrusions",
+          accent: "var(--fgColor-accent, var(--ms-brand))",
+        },
         {
           label: "Booleans / Transforms",
           value: bcSolverRows.length,
@@ -1442,7 +1468,12 @@ function analyzeCae(dialect: string, code: string, lines: string[]): DomainAnaly
     domainGroup: "cae",
     domainLabel: "FEA Mesh, Material & Boundary Condition Inspector",
     kpis: [
-      { label: "Mesh Nodes", value: nodeCount, sublabel: "*NODE coordinates", accent: "#58a6ff" },
+      {
+        label: "Mesh Nodes",
+        value: nodeCount,
+        sublabel: "*NODE coordinates",
+        accent: "var(--fgColor-accent, var(--ms-brand))",
+      },
       { label: "Mesh Elements", value: elemCount, sublabel: "*ELEMENT connectivity", accent: "#3fb950" },
       { label: "Materials", value: materialRows.length, sublabel: "Elastic, density & plastic", accent: "#a371f7" },
       { label: "BCs & Steps", value: bcSolverRows.length, sublabel: "Constraints, loads & steps", accent: "#d29922" },
@@ -1625,7 +1656,7 @@ function analyzeGeneralModel(
         label: "Components / Vars",
         value: componentRows.length,
         sublabel: "Parameters, states & blocks",
-        accent: "#58a6ff",
+        accent: "var(--fgColor-accent, var(--ms-brand))",
       },
       {
         label: "Equations / Links",
@@ -1789,7 +1820,7 @@ function analyzePlcopenAndAutomation(dialect: string, _code: string, lines: stri
     kpis: [
       { label: "POUs", value: Math.max(1, pouCount), accent: "#eab308" },
       { label: "Inputs / Outputs", value: `${inputCount} IN / ${outputCount} OUT`, accent: "#3fb950" },
-      { label: "Logic Statements", value: logicRows.length, accent: "#58a6ff" },
+      { label: "Logic Statements", value: logicRows.length, accent: "var(--fgColor-accent, var(--ms-brand))" },
       { label: "Scan Cycle", value: taskInterval, accent: "#bc8cff" },
     ],
     sections: [
@@ -2023,6 +2054,40 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
   const [flattenedCode, setFlattenedCode] = useState<string | null>(null);
   const [isFlattening, setIsFlattening] = useState(false);
   const [asyncSymbols, setAsyncSymbols] = useState<any[] | null>(null);
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifyReport, setVerifyReport] = useState<any | null>(null);
+
+  const runPolyglotVerify = async () => {
+    setVerifyBusy(true);
+    try {
+      const bridge = await import("../util/lsp-bridge");
+      const res = await bridge.verifyAllInLsp({ uri: documentUri, all: true });
+      setVerifyReport(res ?? null);
+    } catch (err: unknown) {
+      setVerifyReport({ error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
+
+  const applyThreadQuickFix = () => {
+    const edits: Array<{ uri?: string; startOffset?: number; endOffset?: number; newText: string }> = Array.isArray(
+      verifyReport?.polyglotDigitalThread?.suggestedEdits,
+    )
+      ? verifyReport.polyglotDigitalThread.suggestedEdits
+      : [];
+    const matching = edits
+      .filter((e) => (!e.uri || e.uri === documentUri) && e.startOffset !== undefined && e.endOffset !== undefined)
+      .sort((a, b) => b.startOffset! - a.startOffset!);
+    if (matching.length > 0 && onCodeChange) {
+      let next = code;
+      for (const e of matching) {
+        next = next.slice(0, e.startOffset!) + e.newText + next.slice(e.endOffset!);
+      }
+      onCodeChange(next);
+      void runPolyglotVerify();
+    }
+  };
 
   const isDark = colorMode === "dark";
   const d = dialect.toLowerCase();
@@ -2221,7 +2286,7 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
   }
 
   const borderCol = "var(--color-border-default, var(--ms-border, rgba(148, 163, 184, 0.18)))";
-  const cardBg = "var(--color-bg-card, var(--ms-bg-card, rgba(22, 27, 34, 0.5)))";
+  const cardBg = "var(--bgColor-muted, var(--ms-bg-elv))";
   const textPrimary = "var(--ms-text-1, var(--color-fg-default))";
   const textMuted = "var(--ms-text-2, var(--color-fg-muted))";
 
@@ -2262,37 +2327,31 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => void runPolyglotVerify()}
+            disabled={verifyBusy}
+            style={{
+              padding: "5px 10px",
+              borderRadius: 6,
+              border: `1px solid ${borderCol}`,
+              backgroundColor: cardBg,
+              color: textPrimary,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: verifyBusy ? "wait" : "pointer",
+            }}
+          >
+            {verifyBusy ? "Verifying…" : "Verify Digital Thread"}
+          </button>
+
           {availableSubTabs.length > 1 && (
-            <div
-              style={{
-                display: "inline-flex",
-                borderRadius: 6,
-                border: `1px solid ${borderCol}`,
-                overflow: "hidden",
-                backgroundColor: isDark ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.8)",
-              }}
-            >
-              {availableSubTabs.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setActiveSubTab(t.id)}
-                  style={{
-                    padding: "5px 12px",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    border: "none",
-                    cursor: "pointer",
-                    backgroundColor: effectiveSubTab === t.id ? "var(--color-accent-fg, #1f6feb)" : "transparent",
-                    color: effectiveSubTab === t.id ? "#ffffff" : textMuted,
-                    transition: "all 0.15s ease",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+            <InspectorTabs
+              ariaLabel="Polyglot domain views"
+              value={effectiveSubTab}
+              onChange={(id) => setActiveSubTab(id)}
+              tabs={availableSubTabs}
+            />
           )}
 
           {effectiveSubTab === "entities" && (
@@ -2314,6 +2373,77 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
           )}
         </div>
       </div>
+
+      {verifyReport && (
+        <div
+          style={{
+            padding: "10px 14px",
+            borderRadius: 8,
+            border: `1px solid ${verifyReport.error || verifyReport.polyglotDigitalThread?.isSat === false || verifyReport.summary?.overallPassed === false ? "rgba(239,68,68,0.45)" : "rgba(34,197,94,0.45)"}`,
+            backgroundColor:
+              verifyReport.error ||
+              verifyReport.polyglotDigitalThread?.isSat === false ||
+              verifyReport.summary?.overallPassed === false
+                ? "rgba(239,68,68,0.08)"
+                : "rgba(34,197,94,0.08)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            fontSize: 12,
+          }}
+        >
+          <div
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+          >
+            <strong>
+              {verifyReport.error
+                ? `Verification Error: ${verifyReport.error}`
+                : verifyReport.polyglotDigitalThread
+                  ? `Digital Thread: ${verifyReport.polyglotDigitalThread.status} — ${verifyReport.polyglotDigitalThread.summaryText}`
+                  : `Verification: ${verifyReport.summary?.overallPassed ? "PASSED" : "FAILED"} (${verifyReport.summary?.passedStages ?? 0}/${verifyReport.summary?.totalStages ?? 0} stages)`}
+            </strong>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {Array.isArray(verifyReport.polyglotDigitalThread?.suggestedEdits) &&
+                verifyReport.polyglotDigitalThread.suggestedEdits.length > 0 &&
+                onCodeChange && (
+                  <button
+                    type="button"
+                    onClick={applyThreadQuickFix}
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: 5,
+                      border: "1px solid var(--fgColor-accent, var(--ms-brand))",
+                      backgroundColor: "transparent",
+                      color: textPrimary,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Apply QuickFix ({verifyReport.polyglotDigitalThread.suggestedEdits.length})
+                  </button>
+                )}
+              <button
+                type="button"
+                onClick={() => setVerifyReport(null)}
+                style={{ background: "none", border: "none", color: textMuted, cursor: "pointer", fontSize: 12 }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+          {Array.isArray(verifyReport.polyglotDigitalThread?.conflicts) &&
+            verifyReport.polyglotDigitalThread.conflicts.length > 0 && (
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {verifyReport.polyglotDigitalThread.conflicts.map((c: any, idx: number) => (
+                  <li key={idx}>
+                    <strong>[{c.theoryName}]</strong> {c.explanation}
+                  </li>
+                ))}
+              </ul>
+            )}
+        </div>
+      )}
 
       {effectiveSubTab === "blt" && bltAnalysis ? (
         <BltVisualizer
@@ -2369,7 +2499,7 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
                   borderRadius: 8,
                   border: `1px solid ${borderCol}`,
                   backgroundColor: cardBg,
-                  borderLeft: `3px solid ${kpi.accent || "#58a6ff"}`,
+                  borderLeft: `3px solid ${kpi.accent || "var(--fgColor-accent, var(--ms-brand))"}`,
                 }}
               >
                 <div style={{ fontSize: 11, color: textMuted, textTransform: "uppercase", fontWeight: 600 }}>
@@ -2414,7 +2544,9 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
                       fontFamily: "monospace",
                     }}
                   >
-                    <span style={{ color: "#58a6ff", fontWeight: 600 }}>{link.parent}</span>
+                    <span style={{ color: "var(--fgColor-accent, var(--ms-brand))", fontWeight: 600 }}>
+                      {link.parent}
+                    </span>
                     <span style={{ color: textMuted }}>─[</span>
                     <span style={{ color: "#3fb950" }}>
                       {link.joint}:{link.type} ({link.dof}DOF)

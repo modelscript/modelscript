@@ -10,4 +10,5 @@ export * from "./parser/index.js";
 export * from "./projections/index.js";
 export * from "./solver/index.js";
 export * from "./spatial/index.js";
+export * from "./tgg/index.js";
 export * from "./types.js";

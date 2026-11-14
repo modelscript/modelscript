@@ -242,13 +242,14 @@ jobs:
           ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "which docker >/dev/null 2>&1 || (curl -fsSL https://get.docker.com | sh)"
 
           # 2. Ensure target directories exist
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "mkdir -p ${TARGET_DIR}/config ${TARGET_DIR}/scripts ${TARGET_DIR}/backups"
+          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "mkdir -p ${TARGET_DIR}/config ${TARGET_DIR}/scripts/ops ${TARGET_DIR}/backups"
 
           # 3. Synchronize compose files, configs, and ops deployment scripts
           scp docker-compose.yml docker-compose.prod.yml "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/"
           scp config/Caddyfile config/mosquitto.conf config/init-timescaledb.sql "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/config/"
+          scp scripts/ops/*.sh scripts/ops/preflight-audit.ts "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/scripts/ops/"
           scp scripts/ops/*.sh "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/scripts/"
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "chmod +x ${TARGET_DIR}/scripts/*.sh"
+          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "chmod +x ${TARGET_DIR}/scripts/ops/*.sh ${TARGET_DIR}/scripts/*.sh"
 
           # 4. Bootstrap / update .env.production from GitHub secret if provided
           if [ -n "$PROD_ENV_FILE" ]; then
@@ -282,5 +283,5 @@ jobs:
           fi
 
           # 5. Authenticate droplet to GHCR and execute production rollout sentinel with automated rollback
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin >/dev/null 2>&1 || true && \
-            IMAGE_TAG=${{ steps.version.outputs.version }} TARGET_DIR=${TARGET_DIR} ${TARGET_DIR}/scripts/deploy.sh"
+          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin && \
+            IMAGE_TAG=${{ steps.version.outputs.version }} TARGET_DIR=${TARGET_DIR} ${TARGET_DIR}/scripts/ops/deploy.sh"

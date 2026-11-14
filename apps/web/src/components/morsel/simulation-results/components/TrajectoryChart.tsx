@@ -142,7 +142,7 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
             />
             <Tooltip
               cursor={{
-                stroke: "var(--color-accent-fg, #58a6ff)",
+                stroke: "var(--fgColor-accent, var(--ms-brand))",
                 strokeWidth: 1.5,
                 strokeDasharray: "3 3",
               }}

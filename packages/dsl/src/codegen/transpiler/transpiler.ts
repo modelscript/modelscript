@@ -985,7 +985,7 @@ export function transpileQuery(
  * Transpiles a TypeScript class definition into an AssemblyScript `@unmanaged export class`.
  */
 export function transpileClass(
-  classDef: (new (...args: any[]) => any) | ((...args: any[]) => any) | string | ts.Node,
+  classDef: (new (...args: unknown[]) => unknown) | ((...args: unknown[]) => unknown) | string | ts.Node,
   _options: TranspileOptions | "query" | "lint" | "lsp" | "subtyping" | "dataflow" = "query",
 ): string {
   let classStr: string;
@@ -993,10 +993,10 @@ export function transpileClass(
     typeof classDef === "object" &&
     classDef !== null &&
     "kind" in classDef &&
-    typeof (classDef as any).getText === "function"
+    typeof classDef.getText === "function"
   ) {
-    const sf = typeof (classDef as any).getSourceFile === "function" ? (classDef as any).getSourceFile() : undefined;
-    classStr = (classDef as any).getText(sf);
+    const sf = typeof classDef.getSourceFile === "function" ? classDef.getSourceFile() : undefined;
+    classStr = classDef.getText(sf);
   } else if (typeof classDef === "function") {
     classStr = classDef.toString();
   } else {
@@ -1127,14 +1127,14 @@ export function transpileClass(
  * Transpiles a standalone TypeScript helper function into an exported AssemblyScript function.
  */
 export function transpileHelperFunction(
-  fn: ((...args: any[]) => any) | string | ts.Node,
+  fn: ((...args: unknown[]) => unknown) | string | ts.Node,
   options: TranspileOptions | "query" | "lint" | "lsp" | "subtyping" | "dataflow" = "query",
 ): string {
   const opts: TranspileOptions = typeof options === "string" ? { context: options } : options;
   let fnStr: string;
-  if (typeof fn === "object" && fn !== null && "kind" in fn && typeof (fn as any).getText === "function") {
-    const sf = typeof (fn as any).getSourceFile === "function" ? (fn as any).getSourceFile() : undefined;
-    fnStr = (fn as any).getText(sf);
+  if (typeof fn === "object" && fn !== null && "kind" in fn && typeof fn.getText === "function") {
+    const sf = typeof fn.getSourceFile === "function" ? fn.getSourceFile() : undefined;
+    fnStr = fn.getText(sf);
   } else if (typeof fn === "function") {
     fnStr = fn.toString();
   } else {
@@ -1190,4 +1190,148 @@ export function transpileHelperFunction(
   }
 
   return `export function ${fnName}(${paramsStr}): ${returnType} {\n${queryInfo.body}\n}`;
+}
+
+/** Diagnostic emitted by `validateTranspilableSubset` for unsupported TS-to-AssemblyScript constructs. */
+export interface TranspileSubsetDiagnostic {
+  code:
+    | "unsupported-async"
+    | "unsupported-try-catch"
+    | "unsupported-throw"
+    | "unsupported-closure"
+    | "unsupported-object-literal"
+    | "unsupported-dynamic-operator"
+    | "unsupported-yield";
+  message: string;
+  line: number;
+  column: number;
+  target?: string | undefined;
+}
+
+/**
+ * Validates a TypeScript query, lint, or scanner function against the subset supported by
+ * `transpileQuery` / AssemblyScript compilation before invoking `asc`.
+ */
+export function validateTranspilableSubset(queryFn: unknown, target?: string): TranspileSubsetDiagnostic[] {
+  if (typeof queryFn !== "function" && typeof queryFn !== "string") {
+    return [];
+  }
+  const raw = typeof queryFn === "function" ? queryFn.toString().trim() : queryFn.trim();
+  if (
+    typeof queryFn === "string" &&
+    !raw.includes("=>") &&
+    !raw.startsWith("function") &&
+    !raw.startsWith("export function")
+  ) {
+    return [];
+  }
+
+  const parseStr = raw.startsWith("(") && raw.includes("=>") && !raw.startsWith("((") ? `(${raw})` : raw;
+  const sourceFile = ts.createSourceFile("query.ts", parseStr, ts.ScriptTarget.Latest, true);
+  const diagnostics: TranspileSubsetDiagnostic[] = [];
+
+  let rootFn: ts.Node | undefined;
+  const findRootFn = (node: ts.Node): void => {
+    if (rootFn) return;
+    if (ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node)) {
+      rootFn = node;
+      return;
+    }
+    ts.forEachChild(node, findRootFn);
+  };
+  findRootFn(sourceFile);
+
+  const report = (node: ts.Node, code: TranspileSubsetDiagnostic["code"], message: string) => {
+    const pos = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+    diagnostics.push({
+      code,
+      message,
+      line: pos.line + 1,
+      column: pos.character + 1,
+      target,
+    });
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isAwaitExpression(node)) {
+      report(node, "unsupported-async", "Async/await is not supported in AssemblyScript-transpiled queries.");
+    } else if (ts.isYieldExpression(node)) {
+      report(node, "unsupported-yield", "Generators/yield are not supported in AssemblyScript-transpiled queries.");
+    } else if (ts.isTryStatement(node)) {
+      report(node, "unsupported-try-catch", "try/catch/finally is not supported in AssemblyScript-transpiled queries.");
+    } else if (ts.isThrowStatement(node)) {
+      report(node, "unsupported-throw", "throw statements are not supported in AssemblyScript-transpiled queries.");
+    } else if (
+      node !== rootFn &&
+      (ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node))
+    ) {
+      report(
+        node,
+        "unsupported-closure",
+        "Nested function closures are not supported in AssemblyScript-transpiled queries.",
+      );
+      return;
+    } else if (ts.isObjectLiteralExpression(node) && node.properties.length > 0) {
+      report(
+        node,
+        "unsupported-object-literal",
+        "Non-empty JS object literals allocate GC heap objects and are not supported in zero-GC AssemblyScript queries.",
+      );
+    } else if (
+      ts.isDeleteExpression(node) ||
+      (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.InKeyword)
+    ) {
+      report(
+        node,
+        "unsupported-dynamic-operator",
+        "Dynamic JS operators ('delete', 'in') are not supported in AssemblyScript.",
+      );
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  if (rootFn) {
+    if (
+      (ts.isArrowFunction(rootFn) || ts.isFunctionExpression(rootFn) || ts.isFunctionDeclaration(rootFn)) &&
+      rootFn.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)
+    ) {
+      report(rootFn, "unsupported-async", "Async functions are not supported in AssemblyScript-transpiled queries.");
+    }
+    ts.forEachChild(rootFn, visit);
+  } else {
+    visit(sourceFile);
+  }
+
+  return diagnostics;
+}
+
+/**
+ * Validates all `queries`, `lints`, and `scanner` functions on a `LanguageOptions` definition
+ * against the TS-to-AssemblyScript transpiler subset.
+ */
+export function validateLanguageQueries(languageDef: {
+  queries?: Record<string, unknown> | undefined;
+  lints?: Record<string, { query?: unknown }> | undefined;
+  scanner?: unknown;
+}): TranspileSubsetDiagnostic[] {
+  const diagnostics: TranspileSubsetDiagnostic[] = [];
+  if (languageDef.queries) {
+    for (const [name, fn] of Object.entries(languageDef.queries)) {
+      diagnostics.push(...validateTranspilableSubset(fn, `queries.${name}`));
+    }
+  }
+  if (languageDef.lints) {
+    for (const [name, lint] of Object.entries(languageDef.lints)) {
+      if (lint && typeof lint.query === "function") {
+        diagnostics.push(...validateTranspilableSubset(lint.query, `lints.${name}`));
+      }
+    }
+  }
+  if (typeof languageDef.scanner === "function") {
+    diagnostics.push(...validateTranspilableSubset(languageDef.scanner, "scanner"));
+  } else if (languageDef.scanner && typeof (languageDef.scanner as any).scan === "function") {
+    diagnostics.push(...validateTranspilableSubset((languageDef.scanner as any).scan, "scanner.scan"));
+  }
+  return diagnostics;
 }

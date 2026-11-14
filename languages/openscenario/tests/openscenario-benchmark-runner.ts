@@ -12,10 +12,10 @@
 
 import assert from "node:assert/strict";
 import {
-  parseOpenScenario,
-  simulateScenario,
   lowerOpenScenarioToDae,
   openScenarioToModelica,
+  parseOpenScenario,
+  simulateScenario,
   type OpenScenarioDocument,
 } from "../src/index.js";
 
@@ -221,9 +221,7 @@ export interface OpenScenarioBenchmarkMetrics {
   modelicaLines: number;
 }
 
-export function runOpenScenarioBenchmark(
-  xmlContent = OPENSCENARIO_HIGHWAY_BENCHMARK,
-): OpenScenarioBenchmarkMetrics {
+export function runOpenScenarioBenchmark(xmlContent = OPENSCENARIO_HIGHWAY_BENCHMARK): OpenScenarioBenchmarkMetrics {
   const doc: OpenScenarioDocument = parseOpenScenario(xmlContent, "benchmark_cutin.xosc");
 
   assert.ok(doc, "OpenSCENARIO document must parse successfully");
@@ -282,3 +280,31 @@ export function runOpenScenarioBenchmark(
     modelicaLines: moLines,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const openscenarioBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "openscenario",
+  referenceTool: "ASAM OpenSCENARIO 1.2 / esmini Cut-In AEB",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runOpenScenarioBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "highway-cutin-aeb-rss",
+        name: "highway-cutin-aeb-rss",
+        scale: "standard",
+        referenceTool: "ASAM OpenSCENARIO 1.2 / esmini Cut-In AEB",
+        passed: !m.hasCollision && m.daeVarCount >= 18 && m.daeEqCount >= 18,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.daeEqCount,
+        threshold: 0,
+        details: `minTTC=${m.minTtcSeconds.toFixed(2)}s, minDist=${m.minDistanceMeters.toFixed(2)}m, ${m.daeVarCount} vars/${m.daeEqCount} eqs`,
+      },
+    ];
+  },
+};

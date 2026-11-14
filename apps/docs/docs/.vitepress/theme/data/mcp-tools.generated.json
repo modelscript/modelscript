@@ -1,5 +1,5 @@
 {
-  "toolCount": 105,
+  "toolCount": 106,
   "tools": [
     {
       "name": "modelica_load",
@@ -524,6 +524,11 @@
     {
       "name": "asm_evaluate_biokinetics",
       "description": "Evaluate IWA Activated Sludge Model (ASM1) biological process rates and net substrate/biomass conversion rates.",
+      "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "workspace_lint",
+      "description": "Run multi-file / workspace-graph linting across companion files for cross-file engineering languages (CGMES, PSS/E, PSLF, PSCAD, OpenDSS, SCL, SPICE, ATP, Verilog-A, SSP, OSCAL, AUTOSAR, AutomationML, PLCopen, Simulink, USD, URDF, OpenSCAD, C, Fortran, AMPL, MODFLOW, HEC-RAS, ECLIPSE, EnergyPlus, TOPAS, CellML, Antimony, SED-ML, SBOL).",
       "category": "OWL2 Ontology & Fault Diagnostics"
     }
   ]

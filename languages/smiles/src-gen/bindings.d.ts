@@ -1363,17 +1363,15 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  Document = 8,
-  Record = 9,
-  MoleculeEntry = 10,
-  MolfileRecord = 11,
-  START = 12,
-  _START = 12,
-  CountsLine = 18,
-  MolfileDataLine = 19,
-  MolfileEndLine = 20,
-  SmilesPattern = 21,
-  MoleculeName = 22,
+  Document = 7,
+  Record = 8,
+  MoleculeEntry = 9,
+  MolfileRecord = 10,
+  START = 11,
+  _START = 11,
+  CountsLine = 20,
+  MolfileEndLine = 21,
+  SmilesPattern = 22,
   CommentLine = 23,
   Identifier = 24,
   EOF = 1023,
@@ -1413,10 +1411,6 @@ export interface CountsLineNode extends SyntaxNode {
   readonly typeId: SyntaxKind.CountsLine;
 }
 export declare function isCountsLine(node: SyntaxNode | null | undefined): node is CountsLineNode;
-export interface MolfileDataLineNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.MolfileDataLine;
-}
-export declare function isMolfileDataLine(node: SyntaxNode | null | undefined): node is MolfileDataLineNode;
 export interface MolfileEndLineNode extends SyntaxNode {
   readonly typeId: SyntaxKind.MolfileEndLine;
 }
@@ -1425,10 +1419,6 @@ export interface SmilesPatternNode extends SyntaxNode {
   readonly typeId: SyntaxKind.SmilesPattern;
 }
 export declare function isSmilesPattern(node: SyntaxNode | null | undefined): node is SmilesPatternNode;
-export interface MoleculeNameNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.MoleculeName;
-}
-export declare function isMoleculeName(node: SyntaxNode | null | undefined): node is MoleculeNameNode;
 export interface CommentLineNode extends SyntaxNode {
   readonly typeId: SyntaxKind.CommentLine;
 }
@@ -1471,11 +1461,6 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is CountsLineNode;
   };
-  export const MolfileDataLine: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is MolfileDataLineNode;
-  };
   export const MolfileEndLine: {
     readonly typeId: number;
     readonly type: string;
@@ -1485,11 +1470,6 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is SmilesPatternNode;
-  };
-  export const MoleculeName: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is MoleculeNameNode;
   };
   export const CommentLine: {
     readonly typeId: number;

@@ -44,6 +44,12 @@ description: "@modelscript/opendrive (languages/opendrive) provides compiler, an
 
 ---
 
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="opendrive" />
+
+---
+
 ## Static Analysis & Pre-Flight Linter Rules
 
 <LintRules lang="opendrive" />

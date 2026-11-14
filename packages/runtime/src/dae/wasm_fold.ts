@@ -128,6 +128,8 @@ function evalMatrixPow(A: any[], p: number): any[][] | null {
  * @param onlyConstants If `true`, restricts evaluation strictly to `Variability.Constant` symbols.
  * @returns The folded scalar or array constant, or `null` if the expression is non-constant.
  */
+const activeBindVarsMap = new WeakMap<object, Set<number>>();
+
 export function evaluateConstantArenaExpression(
   arena: DAEBuilder,
   exprId: number,
@@ -475,22 +477,37 @@ export function evaluateConstantArenaExpression(
       }
       const bindExpr = arena.getVarExpression(varIdx);
       if (bindExpr !== undefined && bindExpr >= 0 && bindExpr !== exprId) {
+        const scopeKey: object = paramMap ?? arena;
+        let activeVars = activeBindVarsMap.get(scopeKey);
+        if (!activeVars) {
+          activeVars = new Set<number>();
+          activeBindVarsMap.set(scopeKey, activeVars);
+        }
+        if (activeVars.has(varIdx)) {
+          return null;
+        }
         const bindMemo: Map<number, ArenaConstantValue> | undefined = !onlyConstants
           ? (paramMap as any)?._bindMemo
           : undefined;
         if (bindMemo && bindMemo.has(bindExpr)) {
           return bindMemo.get(bindExpr)!;
         }
-        const val = evaluateConstantArenaExpression(
-          arena,
-          bindExpr,
-          paramMap,
-          nameToIdx,
-          visitedDepth + 1,
-          db,
-          scopeId,
-          onlyConstants,
-        );
+        let val: ArenaConstantValue | null;
+        activeVars.add(varIdx);
+        try {
+          val = evaluateConstantArenaExpression(
+            arena,
+            bindExpr,
+            paramMap,
+            nameToIdx,
+            visitedDepth + 1,
+            db,
+            scopeId,
+            onlyConstants,
+          );
+        } finally {
+          activeVars.delete(varIdx);
+        }
         if (val !== null) {
           if (bindMemo) bindMemo.set(bindExpr, val);
           return val;
@@ -1437,17 +1454,8 @@ export function evaluateConstantArenaExpression(
       return null;
     }
 
-    if (argCount >= 1 && getCallArg(0) >= 0) {
-      const arg1 = evaluateConstantArenaExpression(
-        arena,
-        getCallArg(0),
-        paramMap,
-        nameToIdx,
-        visitedDepth + 1,
-        db,
-        scopeId,
-        onlyConstants,
-      );
+    if (allArgsConst && argCount >= 1 && getCallArg(0) >= 0) {
+      const arg1 = callArgs[0];
       if (Array.isArray(arg1) && argCount === 1) {
         const flat = (arg1 as any[]).flat(Infinity) as number[];
         if (flat.length === 0) return null;
@@ -1459,16 +1467,7 @@ export function evaluateConstantArenaExpression(
       if (typeof arg1 === "number") {
         let arg2 = 0.0;
         if (argCount >= 2) {
-          const arg2Val = evaluateConstantArenaExpression(
-            arena,
-            getCallArg(1),
-            paramMap,
-            nameToIdx,
-            visitedDepth + 1,
-            db,
-            scopeId,
-            onlyConstants,
-          );
+          const arg2Val = callArgs[1];
           if (typeof arg2Val !== "number") return null;
           arg2 = arg2Val;
         }
@@ -1480,45 +1479,24 @@ export function evaluateConstantArenaExpression(
 
       const fnBridge = arena.getFunction(funcName) ?? lookupRecordFunctionInDae(arena, funcName);
       if (fnBridge) {
-        const args: any[] = [];
-        let allOk = true;
-        for (let i = 0; i < argCount; i++) {
-          const val = evaluateConstantArenaExpression(
-            arena,
-            getCallArg(i),
-            paramMap,
-            nameToIdx,
-            visitedDepth + 1,
-            db,
-            scopeId,
-            onlyConstants,
-          );
-          if (val === null) {
-            allOk = false;
-            break;
+        const fnInternId = arena.interner.intern(fnBridge.name || funcName);
+        let res: any = null;
+        try {
+          res = evaluateArenaFunctionCall(arena, fnInternId, callArgs, db, scopeId);
+          if (res === null && fnBridge.name !== funcName) {
+            res = evaluateArenaFunctionCall(arena, arena.interner.intern(funcName), callArgs, db, scopeId);
           }
-          args.push(val);
+        } catch {
+          return null;
         }
-        if (allOk) {
-          const fnInternId = arena.interner.intern(fnBridge.name || funcName);
-          let res: any = null;
-          try {
-            res = evaluateArenaFunctionCall(arena, fnInternId, args, db, scopeId);
-            if (res === null && fnBridge.name !== funcName) {
-              res = evaluateArenaFunctionCall(arena, arena.interner.intern(funcName), args, db, scopeId);
+        if (res !== null) {
+          (fnBridge as any).wasCalled = true;
+          for (const f of arena.functions.values()) {
+            if (f.name === fnBridge.name) {
+              (f as any).wasCalled = true;
             }
-          } catch {
-            return null;
           }
-          if (res !== null) {
-            (fnBridge as any).wasCalled = true;
-            for (const f of arena.functions.values()) {
-              if (f.name === fnBridge.name) {
-                (f as any).wasCalled = true;
-              }
-            }
-            return res as any;
-          }
+          return res as any;
         }
       }
     }

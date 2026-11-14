@@ -2546,34 +2546,28 @@ export class LibraryDatabase {
         )
         .run(redactedEmail, redactedName, redactedBio, userId);
 
-      try {
-        this.#db.prepare(`DELETE FROM users WHERE owner_id = ? AND account_type = 'bot'`).run(userId);
-      } catch {}
+      const safeDelete = (sql: string, ...args: unknown[]): void => {
+        try {
+          this.#db.prepare(sql).run(...args);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!msg.includes("no such table") && !msg.includes("no such column")) {
+            throw err;
+          }
+        }
+      };
 
-      try {
-        this.#db.prepare(`DELETE FROM api_tokens WHERE user_id = ?`).run(userId);
-      } catch {}
-
-      try {
-        this.#db.prepare(`DELETE FROM pending_totp_secrets WHERE user_id = ?`).run(userId);
-      } catch {}
-
-      try {
-        this.#db.prepare(`DELETE FROM oauth_accounts WHERE user_id = ?`).run(userId);
-      } catch {}
-
-      try {
-        this.#db.prepare(`DELETE FROM user_public_keys WHERE user_id = ?`).run(userId);
-      } catch {}
-
-      try {
-        this.#db.prepare(`DELETE FROM bookmarks WHERE user_id = ?`).run(userId);
-        this.#db.prepare(`DELETE FROM likes WHERE user_id = ?`).run(userId);
-        this.#db.prepare(`DELETE FROM follows WHERE follower_id = ? OR following_id = ?`).run(userId, userId);
-        this.#db.prepare(`DELETE FROM notifications WHERE user_id = ? OR actor_id = ?`).run(userId, userId);
-        this.#db.prepare(`DELETE FROM user_mutes WHERE muter_id = ? OR muted_id = ?`).run(userId, userId);
-        this.#db.prepare(`DELETE FROM user_blocks WHERE blocker_id = ? OR blocked_id = ?`).run(userId, userId);
-      } catch {}
+      safeDelete(`DELETE FROM users WHERE owner_id = ? AND account_type = 'bot'`, userId);
+      safeDelete(`DELETE FROM api_tokens WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM pending_totp_secrets WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM oauth_accounts WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM user_public_keys WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM bookmarks WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM likes WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM follows WHERE follower_id = ? OR following_id = ?`, userId, userId);
+      safeDelete(`DELETE FROM notifications WHERE user_id = ? OR actor_id = ?`, userId, userId);
+      safeDelete(`DELETE FROM user_mutes WHERE muter_id = ? OR muted_id = ?`, userId, userId);
+      safeDelete(`DELETE FROM user_blocks WHERE blocker_id = ? OR blocked_id = ?`, userId, userId);
 
       this.logAudit({
         actorId: userId,
@@ -8177,10 +8171,6 @@ export class LibraryDatabase {
       const matchesHash = candidatePayloads.some((payload) => {
         const hmac = crypto.createHmac("sha256", auditSecret).update(payload).digest("hex");
         if (hmac === row.entry_hash) return true;
-        if (hasCustomSecret) {
-          const defaultHmac = crypto.createHmac("sha256", "msx-audit-chain-v1").update(payload).digest("hex");
-          if (defaultHmac === row.entry_hash) return true;
-        }
         if (!hasCustomSecret) {
           const sha = crypto.createHash("sha256").update(payload).digest("hex");
           return sha === row.entry_hash;
@@ -8240,16 +8230,41 @@ export class LibraryDatabase {
     }
 
     const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-    return this.#db
+    if (!this.#auditDb) {
+      return this.#db
+        .prepare(
+          `SELECT a.*, u.username as actor_username
+           FROM audit_logs a
+           LEFT JOIN users u ON a.actor_id = u.id
+           ${whereSql}
+           ORDER BY a.created_at DESC, a.id DESC
+           LIMIT ? OFFSET ?`,
+        )
+        .all(...params, limit, offset) as AuditLogRow[];
+    }
+
+    const rows = this.#auditDb
       .prepare(
-        `SELECT a.*, u.username as actor_username
+        `SELECT a.*
          FROM audit_logs a
-         LEFT JOIN users u ON a.actor_id = u.id
          ${whereSql}
          ORDER BY a.created_at DESC, a.id DESC
          LIMIT ? OFFSET ?`,
       )
       .all(...params, limit, offset) as AuditLogRow[];
+
+    const actorIds = Array.from(new Set(rows.map((r) => r.actor_id).filter((id): id is number => id !== null)));
+    if (actorIds.length > 0) {
+      const placeholders = actorIds.map(() => "?").join(", ");
+      const users = this.#db
+        .prepare(`SELECT id, username FROM users WHERE id IN (${placeholders})`)
+        .all(...actorIds) as { id: number; username: string }[];
+      const usernameById = new Map(users.map((u) => [u.id, u.username]));
+      for (const row of rows) {
+        row.actor_username = row.actor_id !== null ? (usernameById.get(row.actor_id) ?? null) : null;
+      }
+    }
+    return rows;
   }
 
   /**
@@ -8296,7 +8311,8 @@ export class LibraryDatabase {
     }
 
     const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-    const row = this.#db.prepare(`SELECT COUNT(*) as c FROM audit_logs a ${whereSql}`).get(...params) as
+    const auditTarget = this.#auditDb ?? this.#db;
+    const row = auditTarget.prepare(`SELECT COUNT(*) as c FROM audit_logs a ${whereSql}`).get(...params) as
       | { c: number }
       | undefined;
     return row?.c ?? 0;

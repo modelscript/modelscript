@@ -13,7 +13,7 @@ export const smilesGrammar = language({
   name: "Smiles",
   word: ($) => $.Identifier,
   extras: ($) => [/[ \t\r\n]+/, $.CommentLine],
-  conflicts: ($) => [[$.MoleculeEntry], [$.SmilesPattern, $.MoleculeName]],
+  conflicts: ($) => [[$.MoleculeEntry]],
   lsp: {
     folding: ["MoleculeEntry", "MolfileRecord"],
     outline: ["MoleculeEntry", "MolfileRecord"],
@@ -23,16 +23,19 @@ export const smilesGrammar = language({
 
     Record: ($) => choice($.MoleculeEntry, $.MolfileRecord),
 
-    MoleculeEntry: ($) => seq(field("smiles", $.SmilesPattern), optional(field("name", $.MoleculeName))),
+    MoleculeEntry: ($) =>
+      seq(
+        field("smiles", choice($.SmilesPattern, $.Identifier)),
+        optional(field("name", choice($.Identifier, $.SmilesPattern))),
+      ),
 
-    MolfileRecord: ($) => seq(field("counts", $.CountsLine), repeat($.MolfileDataLine), $.MolfileEndLine),
+    MolfileRecord: ($) =>
+      seq(field("counts", $.CountsLine), repeat(choice($.SmilesPattern, $.Identifier)), $.MolfileEndLine),
 
     CountsLine: () => /.*(V2000|V3000)[^\r\n]*/,
-    MolfileDataLine: () => /[^\r\n]+/,
     MolfileEndLine: () => /M\s+END[^\r\n]*/,
 
     SmilesPattern: () => /[A-Za-z0-9@+\-[\]()/\\#=.:%*]+/,
-    MoleculeName: () => /[a-zA-Z_][a-zA-Z0-9_\-.]*/,
 
     CommentLine: () => /#[^\r\n]*/,
     Identifier: () => /[a-zA-Z_][a-zA-Z0-9_\-.]*/,

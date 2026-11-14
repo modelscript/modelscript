@@ -23,7 +23,14 @@ import {
   type PsseCase,
   type TransformerRecord,
 } from "../types.js";
-import { calculateSotaDiscrepancy, generateSotaHtmlDashboard, type SotaDashboardReport } from "./sota-discrepancy.js";
+import { runLinearAcccBenchmarkScreening } from "./accc-benchmarker.js";
+import {
+  computePsseSotaComparison,
+  generateSotaHtmlDashboard,
+  type PsseSotaComparisonOptions,
+  type PsseSotaParityStatus,
+  type SotaDashboardReport,
+} from "./sota-discrepancy.js";
 
 export const ACTIVSG2000_AREAS: readonly string[] = [
   "Coast",
@@ -61,12 +68,12 @@ export interface ActivSg2000BenchmarkResult {
   };
   comparisonVsSota: {
     sotaTool: string;
-    sotaEstimatedDurationMs: number;
-    speedupFactor: number;
-    discrepancyRmse: number;
-    discrepancyNrmsePct: number;
-    theilTic: number;
-    parityStatus: "PASS" | "WARN" | "FAIL";
+    sotaEstimatedDurationMs: number | null;
+    speedupFactor: number | null;
+    discrepancyRmse: number | null;
+    discrepancyNrmsePct: number | null;
+    theilTic: number | null;
+    parityStatus: PsseSotaParityStatus;
   };
   psseTabulatedCsv: string;
   htmlDashboard?: string | undefined;
@@ -247,8 +254,8 @@ export function generateActivSg2000Case(): PsseCase {
       // Connecting branches
       let parentBus: number;
       if (b < 10) {
-        // Direct step-down from 500 kV hub via 500/230 kV autotransformer
-        parentBus = hub1;
+        // Direct step-down from 500 kV hubs via 500/230 kV autotransformers
+        parentBus = b % 2 === 0 ? hub1 : hub2;
         transformers.push({
           i: parentBus,
           j: bNum,
@@ -285,7 +292,7 @@ export function generateActivSg2000Case(): PsseCase {
           nomv2: 230.0,
         });
       } else {
-        // Mesh network within area
+        // Primary feeder/trunk within area
         parentBus = areaBase + Math.floor(b / 2);
         branches.push({
           i: parentBus,
@@ -306,11 +313,37 @@ export function generateActivSg2000Case(): PsseCase {
           len: is230kV ? 25.0 : 12.0,
         });
       }
+
+      // Lateral ring/mesh tie within the same voltage tier so N-1 single-line contingencies stay interconnected
+      const meshPeer = is230kV
+        ? areaBase + 2 + ((b - 2 + 1) % 58)
+        : areaBase + 60 + ((b - 60 + 1) % (busesPerArea - 60));
+      if (meshPeer !== bNum && meshPeer !== parentBus) {
+        branches.push({
+          i: bNum,
+          j: meshPeer,
+          ckt: "1",
+          r: is230kV ? 0.004 : 0.009,
+          x: is230kV ? 0.04 : 0.07,
+          b: is230kV ? 0.035 : 0.004,
+          rateA: is230kV ? 400.0 : 160.0,
+          rateB: is230kV ? 450.0 : 180.0,
+          rateC: is230kV ? 500.0 : 200.0,
+          gi: 0,
+          bi: 0,
+          gj: 0,
+          bj: 0,
+          st: 1,
+          met: 1,
+          len: is230kV ? 28.0 : 14.0,
+        });
+      }
     }
 
     // Inter-area 500 kV transmission ties (ring interconnection across Texas)
     const nextArea = (a % numAreas) + 1;
     const nextHub = (nextArea - 1) * busesPerArea + 1;
+    const nextHub2 = nextHub + 1;
     branches.push({
       i: hub1,
       j: nextHub,
@@ -328,6 +361,24 @@ export function generateActivSg2000Case(): PsseCase {
       st: 1,
       met: 1,
       len: 120.0,
+    });
+    branches.push({
+      i: hub2,
+      j: nextHub2,
+      ckt: "1",
+      r: 0.0022,
+      x: 0.03,
+      b: 0.2,
+      rateA: 1500.0,
+      rateB: 1700.0,
+      rateC: 1900.0,
+      gi: 0,
+      bi: 0,
+      gj: 0,
+      bj: 0,
+      st: 1,
+      met: 1,
+      len: 130.0,
     });
   }
 
@@ -420,11 +471,12 @@ export function exportActivSg2000RawString(psseCase: PsseCase = generateActivSg2
 /**
  * Runs the turnkey ACTIVSg2000 Industrial Benchmark Suite.
  */
-export async function runActivSg2000Benchmark(options?: {
-  maxContingencies?: number;
-  sotaBaselineDurationMs?: number;
-  generateHtml?: boolean;
-}): Promise<ActivSg2000BenchmarkResult> {
+export async function runActivSg2000Benchmark(
+  options?: PsseSotaComparisonOptions & {
+    maxContingencies?: number;
+    generateHtml?: boolean;
+  },
+): Promise<ActivSg2000BenchmarkResult> {
   const psseCase = generateActivSg2000Case();
 
   let totP = 0;
@@ -441,100 +493,57 @@ export async function runActivSg2000Benchmark(options?: {
   });
   const pfDurationMs = performance.now() - t0;
 
-  // 2. ACCC Contingency Screening
+  // 2. Real Sparse B_bus / LODF ACCC Contingency Screening
   const maxN = options?.maxContingencies ?? 100;
-  const inServiceBranches = psseCase.branches.filter((b) => b.st === 1).slice(0, maxN);
+  const accc = runLinearAcccBenchmarkScreening(
+    psseCase,
+    pfResult,
+    maxN,
+    (br) => `CONT_BRANCH_${br.i}_${br.j}_${br.ckt}`,
+  );
 
-  const t1 = performance.now();
-  const acccRecords = inServiceBranches.map((br, idx) => {
-    // Screen single branch outage
-    const fInit = 0.5 * br.rateA;
-    const fPost = fInit * (1.0 + (idx % 7 === 0 ? 0.45 : 0.15));
-    const maxLoading = (fPost / br.rateA) * 100.0;
-    const vMin = 1.0 - (maxLoading > 100 ? 0.08 : 0.02);
-
-    return {
-      contingencyLabel: `CONT_BRANCH_${br.i}_${br.j}_${br.ckt}`,
-      status: "CONVERGED" as const,
-      iterations: 3,
-      maxLoadingPercent: maxLoading,
-      worstBranch: `${br.i}-${br.j} CKT ${br.ckt}`,
-      flowMva: fPost,
-      ratingMva: br.rateA,
-      lowestVoltagePu: vMin,
-      lowestVoltageBus: br.i,
-      voltageViolationsCount: vMin < 0.95 ? 1 : 0,
-      severityIndex: Math.pow(maxLoading / 100.0, 4),
-      executionTimeMs: 0.8,
-    };
-  });
-  const acccDurationMs = performance.now() - t1;
-
-  let totalViolations = 0;
-  let worstContingency = "None";
-  let maxLoading = 0;
-  for (const r of acccRecords) {
-    if (r.maxLoadingPercent > 100) totalViolations++;
-    if (r.maxLoadingPercent > maxLoading) {
-      maxLoading = r.maxLoadingPercent;
-      worstContingency = r.contingencyLabel;
-    }
+  // 3. Extract solved bus voltage profile & compare only against caller-supplied reference
+  const sampleCount = Math.min(100, pfResult.buses.length);
+  const timeSec = new Float64Array(sampleCount);
+  const msCurve = new Float64Array(sampleCount);
+  for (let i = 0; i < sampleCount; i++) {
+    timeSec[i] = i;
+    msCurve[i] = pfResult.buses[i]!.vm;
   }
 
-  // Format PSS/E Tabulated CSV for colleague verification
-  const csvLines: string[] = [
-    "CONTINGENCY LABEL,STATUS,ITERATIONS,MAX % LOADING,WORST MONITORED BRANCH,FLOW MVA,RATING MVA,LOWEST VOLTAGE PU,LOWEST VOLTAGE BUS,VOLTAGE VIOLATIONS COUNT,SEVERITY INDEX,EXECUTION TIME MS",
-  ];
-  for (const r of acccRecords) {
-    csvLines.push(
-      `"${r.contingencyLabel}",${r.status},${r.iterations},${r.maxLoadingPercent.toFixed(2)},"${r.worstBranch}",${r.flowMva.toFixed(1)},${r.ratingMva.toFixed(1)},${r.lowestVoltagePu.toFixed(4)},${r.lowestVoltageBus},${r.voltageViolationsCount},${r.severityIndex.toFixed(2)},${r.executionTimeMs.toFixed(2)}`,
-    );
-  }
-  const psseTabulatedCsv = csvLines.join("\n");
-
-  // SOTA comparison statistics
-  const totalMs = pfDurationMs + acccDurationMs;
-  const sotaBaselineDurationMs = options?.sotaBaselineDurationMs ?? totalMs * 8.4;
-  const speedup = sotaBaselineDurationMs / Math.max(1, totalMs);
-
-  // Generate synthetic trajectory for HTML dashboard validation (e.g. Area 1 Voltage vs SOTA)
-  const nPoints = 50;
-  const timeSec = new Float64Array(nPoints);
-  const msCurve = new Float64Array(nPoints);
-  const sotaCurve = new Float64Array(nPoints);
-
-  for (let i = 0; i < nPoints; i++) {
-    timeSec[i] = i * 0.1;
-    const baseV = 1.025 - 0.03 * Math.exp(-i * 0.08) * Math.cos(2 * Math.PI * 0.5 * (i * 0.1));
-    sotaCurve[i] = baseV;
-    msCurve[i] = baseV + 0.001 * (Math.sin(i) * 0.5); // Micro-residual parity
-  }
-
-  const discrepancy = calculateSotaDiscrepancy(msCurve, sotaCurve, {
-    ratedSpan: 0.15,
-    nrmsePassThresholdPercent: 1.0,
-    ticPassThreshold: 0.015,
-  });
+  const totalMs = pfDurationMs + accc.executionTimeMs;
+  const comparison = computePsseSotaComparison(
+    msCurve,
+    totalMs,
+    options,
+    {
+      ratedSpan: 0.15,
+      nrmsePassThresholdPercent: 1.0,
+      ticPassThreshold: 0.015,
+    },
+    "Siemens PSS/E v35.5",
+  );
+  const memoryPeakMb = process.memoryUsage ? Math.round(process.memoryUsage().rss / (1024 * 1024)) : 0;
 
   let htmlDashboard: string | undefined;
   if (options?.generateHtml ?? true) {
     const reportData: SotaDashboardReport = {
       suiteTitle: "ACTIVSg2000 Texas Grid SOTA Power Flow & ACCC Benchmark",
       benchmarkModel: "ACTIVSg2000 (2,000 Buses, 3,206 Branches)",
-      sotaComparator: "Siemens PSS/E v35.5 (Activity ACCC)",
+      sotaComparator: `${comparison.sotaTool} (Activity ACCC)`,
       executionMetrics: {
         modelscriptTimeMs: totalMs,
-        sotaTimeMs: sotaBaselineDurationMs,
-        speedupFactor: speedup,
-        throughputPerSec: Math.round(acccRecords.length / (acccDurationMs / 1000)),
+        sotaTimeMs: comparison.sotaWallClockMs,
+        speedupFactor: comparison.speedupFactor,
+        throughputPerSec: accc.throughputSolvesPerSec,
         throughputUnit: "contingencies/sec",
-        memoryPeakMb: 185.4,
+        memoryPeakMb,
       },
-      metrics: discrepancy,
+      metrics: comparison.discrepancy,
       timeSec,
       modelscriptCurve: msCurve,
-      sotaCurve,
-      curveLabel: "Area 1 Coast EHV Bus Voltage Dynamic Response",
+      sotaCurve: options?.referenceTrace,
+      curveLabel: "Solved Bus Voltage Magnitude Profile",
       unit: "p.u.",
     };
     htmlDashboard = generateSotaHtmlDashboard(reportData);
@@ -555,24 +564,24 @@ export async function runActivSg2000Benchmark(options?: {
       maxMismatchMva: pfResult.maxMismatchPu * psseCase.header.sbase,
     },
     accc: {
-      totalContingencies: acccRecords.length,
-      convergedContingencies: acccRecords.length,
-      totalViolationsFound: totalViolations,
-      executionTimeMs: acccDurationMs,
-      throughputSolvesPerSec: Math.round(acccRecords.length / (acccDurationMs / 1000)),
-      worstContingency,
-      maxLoadingPercent: maxLoading,
+      totalContingencies: accc.totalContingencies,
+      convergedContingencies: accc.convergedContingencies,
+      totalViolationsFound: accc.totalViolationsFound,
+      executionTimeMs: accc.executionTimeMs,
+      throughputSolvesPerSec: accc.throughputSolvesPerSec,
+      worstContingency: accc.worstContingency,
+      maxLoadingPercent: accc.maxLoadingPercent,
     },
     comparisonVsSota: {
-      sotaTool: "Siemens PSS/E v35.5",
-      sotaEstimatedDurationMs: sotaBaselineDurationMs,
-      speedupFactor: speedup,
-      discrepancyRmse: discrepancy.rmse,
-      discrepancyNrmsePct: discrepancy.nrmsePercent,
-      theilTic: discrepancy.theilTic,
-      parityStatus: discrepancy.status,
+      sotaTool: comparison.sotaTool,
+      sotaEstimatedDurationMs: comparison.sotaWallClockMs,
+      speedupFactor: comparison.speedupFactor,
+      discrepancyRmse: comparison.discrepancyRmse,
+      discrepancyNrmsePct: comparison.discrepancyNrmsePct,
+      theilTic: comparison.theilTic,
+      parityStatus: comparison.parityStatus,
     },
-    psseTabulatedCsv,
+    psseTabulatedCsv: accc.psseTabulatedCsv,
     htmlDashboard,
   };
 }

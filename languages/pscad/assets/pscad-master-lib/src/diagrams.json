@@ -1,0 +1,624 @@
+[
+  {
+    "namePath": "master:source3",
+    "aliases": ["source_3", "source3", "source_3p", "source_1", "vsrc"],
+    "label": "3-Phase Voltage Source",
+    "category": "Sources & Rotating Machines",
+    "domain": "electrical",
+    "width": 60,
+    "height": 60,
+    "ports": [
+      {
+        "name": "Term",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:sync_machine",
+    "aliases": ["sync_machine", "synchronous_machine", "syncgen"],
+    "label": "Synchronous Machine (Subtransient)",
+    "category": "Sources & Rotating Machines",
+    "domain": "electrical",
+    "width": 60,
+    "height": 60,
+    "ports": [
+      {
+        "name": "Term",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      },
+      {
+        "name": "Ef",
+        "kind": "signal",
+        "side": "top",
+        "dx": 0,
+        "dy": -18
+      },
+      {
+        "name": "Pm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:ind_machine",
+    "aliases": ["ind_machine", "induction_machine", "dfig", "master:dfig"],
+    "label": "Induction Machine / DFIG",
+    "category": "Sources & Rotating Machines",
+    "domain": "electrical",
+    "width": 60,
+    "height": 60,
+    "ports": [
+      {
+        "name": "Term",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:xfmr-3p2w",
+    "aliases": ["xfmr-3p2w", "xfmr_3p2w", "transformer"],
+    "label": "3-Phase 2-Winding Transformer",
+    "category": "Transformers, Lines & Cables",
+    "domain": "electrical",
+    "width": 72,
+    "height": 60,
+    "ports": [
+      {
+        "name": "N1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": -54,
+        "dy": 0
+      },
+      {
+        "name": "N2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:tline",
+    "aliases": ["tline", "pi_line", "bergeron_line"],
+    "label": "Overhead Transmission Line",
+    "category": "Transformers, Lines & Cables",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "ports": [
+      {
+        "name": "Send",
+        "kind": "electrical",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Recv",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:cable",
+    "aliases": ["cable", "coax_cable", "submarine_cable"],
+    "label": "Underground / Submarine Coaxial Cable",
+    "category": "Transformers, Lines & Cables",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "ports": [
+      {
+        "name": "Send",
+        "kind": "electrical",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Recv",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:resistor",
+    "aliases": ["resistor", "r"],
+    "label": "3-Phase Resistor",
+    "category": "Transformers, Lines & Cables",
+    "domain": "electrical",
+    "width": 56,
+    "height": 36,
+    "ports": [
+      {
+        "name": "p",
+        "kind": "electrical",
+        "side": "left",
+        "dx": -18,
+        "dy": 0
+      },
+      {
+        "name": "n",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 18,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:inductor",
+    "aliases": ["inductor", "l"],
+    "label": "3-Phase Inductor",
+    "category": "Transformers, Lines & Cables",
+    "domain": "electrical",
+    "width": 56,
+    "height": 36,
+    "ports": [
+      {
+        "name": "p",
+        "kind": "electrical",
+        "side": "left",
+        "dx": -18,
+        "dy": 0
+      },
+      {
+        "name": "n",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 18,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:capacitor",
+    "aliases": ["capacitor", "c"],
+    "label": "3-Phase Capacitor Bank",
+    "category": "Transformers, Lines & Cables",
+    "domain": "electrical",
+    "width": 56,
+    "height": 36,
+    "ports": [
+      {
+        "name": "p",
+        "kind": "electrical",
+        "side": "left",
+        "dx": -18,
+        "dy": 0
+      },
+      {
+        "name": "n",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 18,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:vsc_pwm",
+    "aliases": ["vsc_pwm", "vsc"],
+    "label": "Two-Level VSC PWM Converter",
+    "category": "Power Electronics, HVDC & FACTS",
+    "domain": "electrical",
+    "width": 72,
+    "height": 60,
+    "ports": [
+      {
+        "name": "AC",
+        "kind": "electrical",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:lcc_6pulse",
+    "aliases": ["lcc_6pulse", "lcc"],
+    "label": "6-Pulse Graetz LCC HVDC Bridge",
+    "category": "Power Electronics, HVDC & FACTS",
+    "domain": "electrical",
+    "width": 72,
+    "height": 60,
+    "ports": [
+      {
+        "name": "AC",
+        "kind": "electrical",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:mmc_thevenin",
+    "aliases": ["mmc_thevenin", "mmc"],
+    "label": "Modular Multilevel Converter (MMC)",
+    "category": "Power Electronics, HVDC & FACTS",
+    "domain": "electrical",
+    "width": 72,
+    "height": 60,
+    "ports": [
+      {
+        "name": "AC",
+        "kind": "electrical",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:fmu_ibr",
+    "aliases": ["fmu_ibr", "inverter_fmu", "ibr"],
+    "label": "OEM Black-Box IBR FMU (FMI 2.0/3.0)",
+    "category": "Power Electronics, HVDC & FACTS",
+    "domain": "electrical",
+    "width": 60,
+    "height": 60,
+    "ports": [
+      {
+        "name": "POI",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:breaker3",
+    "aliases": ["breaker3", "breaker", "brk"],
+    "label": "3-Phase Circuit Breaker",
+    "category": "Switchgear & Protection",
+    "domain": "electrical",
+    "width": 48,
+    "height": 44,
+    "ports": [
+      {
+        "name": "N1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": -18,
+        "dy": 0
+      },
+      {
+        "name": "N2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 18,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:tpflt",
+    "aliases": ["tpflt", "fault"],
+    "label": "3-Phase Timed Fault",
+    "category": "Switchgear & Protection",
+    "domain": "electrical",
+    "width": 40,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Bus",
+        "kind": "electrical",
+        "side": "top",
+        "dx": 0,
+        "dy": -18
+      }
+    ]
+  },
+  {
+    "namePath": "master:arrester",
+    "aliases": ["arrester", "mov", "surge_arrester"],
+    "label": "ZnO Metal-Oxide Surge Arrester",
+    "category": "Switchgear & Protection",
+    "domain": "electrical",
+    "width": 40,
+    "height": 54,
+    "ports": [
+      {
+        "name": "Top",
+        "kind": "electrical",
+        "side": "top",
+        "dx": 0,
+        "dy": -18
+      }
+    ]
+  },
+  {
+    "namePath": "master:pi_ctlr",
+    "aliases": ["pi_ctlr", "pi"],
+    "label": "PI Controller (Proportional-Integral)",
+    "category": "CSMF Control Blocks",
+    "domain": "control",
+    "width": 64,
+    "height": 42,
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": -18,
+        "dy": 0
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 18,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:realpole",
+    "aliases": ["realpole", "lag"],
+    "label": "Real Pole (First-Order Low-Pass Lag)",
+    "category": "CSMF Control Blocks",
+    "domain": "control",
+    "width": 64,
+    "height": 42,
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": -18,
+        "dy": 0
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 18,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:sum",
+    "aliases": ["sum", "add"],
+    "label": "Summing Junction (Σ)",
+    "category": "CSMF Control Blocks",
+    "domain": "control",
+    "width": 44,
+    "height": 44,
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": -18,
+        "dy": 0
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": -18,
+        "dy": 0
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 18,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:gain",
+    "aliases": ["gain"],
+    "label": "Scalar Gain Amplifier (K)",
+    "category": "CSMF Control Blocks",
+    "domain": "control",
+    "width": 52,
+    "height": 40,
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": -18,
+        "dy": 0
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 18,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:limit",
+    "aliases": ["limit", "limiter"],
+    "label": "Hard Limiter / Saturation",
+    "category": "CSMF Control Blocks",
+    "domain": "control",
+    "width": 56,
+    "height": 40,
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": -18,
+        "dy": 0
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 18,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:compar",
+    "aliases": ["compar", "relay"],
+    "label": "Threshold Comparator / Relay",
+    "category": "CSMF Control Blocks",
+    "domain": "control",
+    "width": 56,
+    "height": 40,
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": -18,
+        "dy": 0
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 18,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:const",
+    "aliases": ["const", "constant"],
+    "label": "Constant Setpoint Source",
+    "category": "CSMF Control Blocks",
+    "domain": "control",
+    "width": 48,
+    "height": 34,
+    "ports": [
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 18,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:pgb",
+    "aliases": ["pgb", "probe", "oscilloscope"],
+    "label": "Output Channel / Oscilloscope Probe (PGB)",
+    "category": "Meters, Probes & Buses",
+    "domain": "meter",
+    "width": 54,
+    "height": 34,
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": -18,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:multimeter",
+    "aliases": ["multimeter", "voltmeter", "ammeter", "master:voltmeter", "master:ammeter"],
+    "label": "3-Phase Digital Multimeter (V, I, P, Q)",
+    "category": "Meters, Probes & Buses",
+    "domain": "meter",
+    "width": 48,
+    "height": 44,
+    "ports": [
+      {
+        "name": "N1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": -18,
+        "dy": 0
+      },
+      {
+        "name": "N2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 18,
+        "dy": 0
+      },
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "top",
+        "dx": 0,
+        "dy": -18
+      }
+    ]
+  },
+  {
+    "namePath": "master:datalabel",
+    "aliases": ["datalabel", "data_label", "radio_link"],
+    "label": "Wireless Data Label (Signal Net)",
+    "category": "Meters, Probes & Buses",
+    "domain": "control",
+    "width": 44,
+    "height": 24,
+    "ports": [
+      {
+        "name": "port",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "master:xnode",
+    "aliases": ["xnode", "pin"],
+    "label": "Wireless Electrical Node (XNode / Pin)",
+    "category": "Meters, Probes & Buses",
+    "domain": "electrical",
+    "width": 44,
+    "height": 24,
+    "ports": [
+      {
+        "name": "port",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "Bus",
+    "aliases": ["bus", "master:bus"],
+    "label": "3-Phase Electrical Busbar",
+    "category": "Meters, Probes & Buses",
+    "domain": "bus",
+    "width": 80,
+    "height": 14,
+    "ports": []
+  }
+]

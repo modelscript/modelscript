@@ -7875,7 +7875,7 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform (inspect, summary, lint, diagram, diff, sim/simulate, verify-ieee2800/verify, export-modelica/to-modelica, export-ssp/to-ssp, psout)",
+        "description": "Action to perform (inspect, summary, lint, diagram, diff, sim/simulate, verify-ieee2800/verify, export-modelica, export-ssp, psout, extract, build-fmu)",
         "choices": [
           "inspect",
           "summary",
@@ -7891,6 +7891,8 @@
           "export-ssp",
           "to-ssp",
           "psout",
+          "extract",
+          "build-fmu",
           "benchmark"
         ]
       },
@@ -7898,7 +7900,7 @@
         "name": "files",
         "aliases": [],
         "type": "string",
-        "description": "Project file(s) to process",
+        "description": "Project file(s) or library package directory to process",
         "array": true
       }
     ],
@@ -7910,7 +7912,7 @@
           "output"
         ],
         "type": "string",
-        "description": "Output file path (for diagram SVG, Modelica, SSD, CSV, or COMTRADE export)"
+        "description": "Output file or directory path"
       },
       {
         "name": "tstop",
@@ -7947,6 +7949,51 @@
           "cff"
         ],
         "default": "pscad"
+      },
+      {
+        "name": "name",
+        "aliases": [],
+        "type": "string",
+        "description": "Package name for 'extract' (defaults to project name)"
+      },
+      {
+        "name": "lang",
+        "aliases": [],
+        "type": "string",
+        "description": "Stub implementation language for 'extract'",
+        "choices": [
+          "assemblyscript",
+          "c",
+          "fortran"
+        ],
+        "default": "assemblyscript"
+      },
+      {
+        "name": "component",
+        "aliases": [],
+        "type": "string",
+        "description": "Component name to package for 'build-fmu'"
+      },
+      {
+        "name": "include-comments",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Include FlyBy comments and parameter descriptions in 'extract' (default: stripped)",
+        "default": false
+      },
+      {
+        "name": "include-graphics",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Include raw <graphic> primitives in 'extract' (default: stripped)",
+        "default": false
+      },
+      {
+        "name": "include-scripts",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Include raw Fortran/Computations/Dsdyn/Dsout scripts in 'extract' (default: stripped)",
+        "default": false
       }
     ],
     "subcommands": []
@@ -8029,6 +8076,7 @@
           "cpf",
           "sld",
           "idv",
+          "verify",
           "verify-nerc",
           "to-cgmes",
           "from-cgmes",
@@ -8071,7 +8119,7 @@
         "name": "dyr",
         "aliases": [],
         "type": "string",
-        "description": "Associated PSS/E DYR dynamic models data file"
+        "description": "Companion PSS/E .dyr dynamic data file"
       },
       {
         "name": "algorithm",
@@ -8152,6 +8200,12 @@
         "type": "number",
         "description": "Port to listen on when running HTTP server (default: 8080)",
         "default": 8080
+      },
+      {
+        "name": "ref-out",
+        "aliases": [],
+        "type": "string",
+        "description": "Reference commercial PSS/E .out or CSV trajectory file for ground-truth verification"
       }
     ],
     "subcommands": []
@@ -11455,7 +11509,21 @@
         "name": "coordinator",
         "aliases": [],
         "type": "boolean",
-        "description": "execute 4-language SemanticTheoryCoordinator & DigitalThreadHypergraph verification across SysML v2, Modelica, OpenSCAD/URDF, and FEA/CFD/STEP",
+        "description": "execute polyglot SemanticTheoryCoordinator & DigitalThreadHypergraph verification across arbitrary N files and languages",
+        "default": false
+      },
+      {
+        "name": "sync",
+        "aliases": [],
+        "type": "boolean",
+        "description": "apply suggested cross-file digital thread synchronization edits on disk",
+        "default": false
+      },
+      {
+        "name": "fix",
+        "aliases": [],
+        "type": "boolean",
+        "description": "alias for --sync; apply suggested digital thread fixes on disk",
         "default": false
       }
     ],

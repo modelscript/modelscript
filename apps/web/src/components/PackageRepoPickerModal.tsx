@@ -1,74 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { GitBranchIcon, MarkGithubIcon, PackageIcon, RepoIcon, SearchIcon, XIcon } from "@primer/octicons-react";
-import { Text } from "@primer/react";
+import { GitBranchIcon, MarkGithubIcon, PackageIcon, RepoIcon, SearchIcon } from "@primer/octicons-react";
+import { Dialog, Text, TextInput } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import styled from "styled-components";
 import { createArtifactView, getLibraries, getRepos, type LibraryListItem } from "../api";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import Box from "./Box";
 import Spinner from "./Spinner";
-
-const ModalOverlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(4px);
-  z-index: 10000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-`;
-
-const ModalContent = styled.div`
-  background: var(--surface-overlay, rgba(14, 20, 36, 0.95));
-  backdrop-filter: blur(16px);
-  border: 1px solid var(--color-border-glass, rgba(255, 255, 255, 0.08));
-  border-radius: 16px;
-  width: 100%;
-  max-width: 680px;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
-  overflow: hidden;
-`;
-
-const ModalHeader = styled.div`
-  padding: 18px 24px;
-  border-bottom: 1px solid var(--color-border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-`;
-
-const SearchInputWrapper = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  background: var(--color-search-bg, rgba(255, 255, 255, 0.04));
-  border: 1px solid var(--color-search-border, rgba(255, 255, 255, 0.1));
-  border-radius: 9999px;
-  margin: 16px 24px 8px 24px;
-`;
-
-const StyledInput = styled.input`
-  background: transparent;
-  border: none;
-  outline: none;
-  width: 100%;
-  color: var(--color-text-primary, #ffffff);
-  font-size: 14px;
-  &::placeholder {
-    color: var(--color-text-muted, #8b949e);
-  }
-`;
 
 const TabContainer = styled.div`
   display: flex;
@@ -243,42 +182,34 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
     }
   };
 
-  const modal = (
-    <ModalOverlay onClick={onClose}>
-      <ModalContent onClick={(e) => e.stopPropagation()}>
-        <ModalHeader>
-          <Box display="flex" alignItems="center" gap={2}>
-            {activeTab === "packages" ? (
-              <span style={{ color: "var(--color-accent-purple, #a855f7)", display: "inline-flex" }}>
-                <PackageIcon size={20} />
-              </span>
-            ) : (
-              <span style={{ color: "var(--color-accent-cyan, #06b6d4)", display: "inline-flex" }}>
-                <RepoIcon size={20} />
-              </span>
-            )}
-            <Text style={{ fontWeight: 700, fontSize: "16px", color: "var(--color-fg-default)" }}>
-              Attach Engineering Resource
-            </Text>
-          </Box>
-          <button
-            onClick={onClose}
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--color-text-muted)",
-              cursor: "pointer",
-            }}
-          >
-            <XIcon size={18} />
-          </button>
-        </ModalHeader>
+  if (!isOpen) return null;
 
-        <SearchInputWrapper>
-          <span style={{ color: "var(--color-text-muted)", display: "inline-flex" }}>
-            <SearchIcon size={16} />
-          </span>
-          <StyledInput
+  return (
+    <Dialog
+      title={
+        <Box display="flex" alignItems="center" gap={2}>
+          {activeTab === "packages" ? (
+            <span style={{ color: "var(--color-accent-purple, #a855f7)", display: "inline-flex" }}>
+              <PackageIcon size={20} />
+            </span>
+          ) : (
+            <span style={{ color: "var(--ms-accent, #06b6d4)", display: "inline-flex" }}>
+              <RepoIcon size={20} />
+            </span>
+          )}
+          <Text style={{ fontWeight: 700, fontSize: "16px", color: "var(--color-fg-default)" }}>
+            Attach Engineering Resource
+          </Text>
+        </Box>
+      }
+      width="large"
+      onClose={onClose}
+    >
+      <Box display="flex" flexDirection="column" maxHeight="75vh" overflow="hidden">
+        <Box mb={3}>
+          <TextInput
+            block
+            leadingVisual={SearchIcon}
             placeholder={
               effectiveTab === "packages" ? "Search packages (e.g. Modelica, Buildings)..." : "Search repositories..."
             }
@@ -286,7 +217,7 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
             onChange={(e) => setSearchQuery(e.target.value)}
             autoFocus
           />
-        </SearchInputWrapper>
+        </Box>
 
         {hasRepos && (
           <TabContainer>
@@ -398,11 +329,9 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
             ))
           )}
         </ItemList>
-      </ModalContent>
-    </ModalOverlay>
+      </Box>
+    </Dialog>
   );
-
-  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 };
 
 export default PackageRepoPickerModal;

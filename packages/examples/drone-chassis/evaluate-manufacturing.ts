@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import fs from "fs";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import occtimportjs from "occt-import-js";
-import path from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // 1. Read CAD and calculate geometric properties
 interface MeshData {
@@ -24,13 +28,13 @@ function computeMeshProperties(meshes: MeshData[]) {
     let surfaceArea = 0;
 
     for (let i = 0; i < indices.length; i += 3) {
-      const i0 = indices[i] * 3;
-      const i1 = indices[i + 1] * 3;
-      const i2 = indices[i + 2] * 3;
+      const i0 = (indices[i] ?? 0) * 3;
+      const i1 = (indices[i + 1] ?? 0) * 3;
+      const i2 = (indices[i + 2] ?? 0) * 3;
 
-      const v0 = [positions[i0], positions[i0 + 1], positions[i0 + 2]];
-      const v1 = [positions[i1], positions[i1 + 1], positions[i1 + 2]];
-      const v2 = [positions[i2], positions[i2 + 1], positions[i2 + 2]];
+      const v0: [number, number, number] = [positions[i0] ?? 0, positions[i0 + 1] ?? 0, positions[i0 + 2] ?? 0];
+      const v1: [number, number, number] = [positions[i1] ?? 0, positions[i1 + 1] ?? 0, positions[i1 + 2] ?? 0];
+      const v2: [number, number, number] = [positions[i2] ?? 0, positions[i2 + 1] ?? 0, positions[i2 + 2] ?? 0];
 
       const crossX = v1[1] * v2[2] - v1[2] * v2[1];
       const crossY = v1[2] * v2[0] - v1[0] * v2[2];
@@ -65,7 +69,7 @@ async function main() {
   console.log(`[1/3] Parsing CAD geometry from ${stepPath}...`);
   const fileData = fs.readFileSync(stepPath);
 
-  const occt = await (occtimportjs as any)();
+  const occt = await occtimportjs();
   const result = occt.ReadStepFile(new Uint8Array(fileData), null);
 
   const props = computeMeshProperties(result.meshes || []);

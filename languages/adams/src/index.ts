@@ -14,4 +14,5 @@ export * from "./lints/index.js";
 export * from "./lsp.js";
 export * from "./parser/index.js";
 export * from "./projections/index.js";
+export * from "./tgg/index.js";
 export * from "./types.js";

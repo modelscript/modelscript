@@ -368,7 +368,7 @@ export const NotionGhostButton = styled.button<{ $active?: boolean | undefined }
   padding: 4px 8px;
   border-radius: 6px;
   border: none;
-  background: ${(props) => (props.$active ? "var(--ms-surface-selected, rgba(15, 23, 42, 0.06))" : "transparent")};
+  background: ${(props) => (props.$active ? "var(--ms-surface-selected, rgba(0, 0, 0, 0.06))" : "transparent")};
   color: ${(props) => (props.$active ? "var(--ms-text-1)" : "var(--ms-text-3)")};
   font-family: inherit;
   font-size: 12.5px;
@@ -379,7 +379,7 @@ export const NotionGhostButton = styled.button<{ $active?: boolean | undefined }
     color 0.12s ease;
 
   &:hover:not(:disabled) {
-    background: var(--ms-surface-hover, rgba(15, 23, 42, 0.05));
+    background: var(--ms-surface-hover, rgba(0, 0, 0, 0.05));
     color: var(--ms-text-1);
   }
 
@@ -432,11 +432,11 @@ export const NotionPropertyValueInput = styled.input`
   transition: background-color 0.12s ease;
 
   &:hover {
-    background: var(--ms-surface-hover, rgba(15, 23, 42, 0.04));
+    background: var(--ms-surface-hover, rgba(0, 0, 0, 0.04));
   }
 
   &:focus {
-    background: var(--ms-surface-hover, rgba(15, 23, 42, 0.04));
+    background: var(--ms-surface-hover, rgba(0, 0, 0, 0.04));
     border-color: var(--ms-border);
   }
 
@@ -494,7 +494,7 @@ export const NotionGutterIconButton = styled.button`
     color 0.12s ease;
 
   &:hover:not(:disabled) {
-    background: var(--ms-surface-hover, rgba(15, 23, 42, 0.06));
+    background: var(--ms-surface-hover, rgba(0, 0, 0, 0.06));
     color: var(--ms-text-1);
   }
 
@@ -554,7 +554,7 @@ export const NotebookCellTextarea = styled.textarea<{
   resize: none;
   overflow: hidden;
   background: ${(props) =>
-    props.$variant === "callout" ? "var(--ms-surface-hover, rgba(15, 23, 42, 0.03))" : "transparent"};
+    props.$variant === "callout" ? "var(--ms-surface-hover, rgba(0, 0, 0, 0.03))" : "transparent"};
   border-left: ${(props) =>
     props.$variant === "quote"
       ? "3px solid var(--ms-border-strong)"
@@ -637,8 +637,8 @@ export const SlashMenuPopover = styled.div`
   border: 1px solid var(--ms-border);
   border-radius: 12px;
   box-shadow:
-    0 12px 32px rgba(15, 23, 42, 0.14),
-    0 2px 6px rgba(15, 23, 42, 0.06);
+    0 12px 32px rgba(0, 0, 0, 0.14),
+    0 2px 6px rgba(0, 0, 0, 0.06);
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -663,7 +663,7 @@ export const SlashMenuItemButton = styled.button<{ $selected?: boolean | undefin
   padding: 6px 8px;
   border: none;
   border-radius: 8px;
-  background: ${(props) => (props.$selected ? "var(--ms-surface-hover, rgba(15, 23, 42, 0.06))" : "transparent")};
+  background: ${(props) => (props.$selected ? "var(--ms-surface-hover, rgba(0, 0, 0, 0.06))" : "transparent")};
   color: var(--ms-text-1);
   text-align: left;
   cursor: pointer;
@@ -671,7 +671,7 @@ export const SlashMenuItemButton = styled.button<{ $selected?: boolean | undefin
   transition: background-color 0.1s ease;
 
   &:hover {
-    background: var(--ms-surface-hover, rgba(15, 23, 42, 0.06));
+    background: var(--ms-surface-hover, rgba(0, 0, 0, 0.06));
   }
 
   .slash-item-icon {

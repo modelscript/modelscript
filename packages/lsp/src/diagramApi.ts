@@ -26,6 +26,11 @@ import {
   computeOWL2NameEdit,
 } from "@modelscript/owl2/diagram";
 import type { TextEdit } from "vscode-languageserver";
+import {
+  computeModelicaComponentDropEdits,
+  resolveCrossLanguageComponentDrop,
+  resolveGenericComponentDrop,
+} from "./cross-language-drop.js";
 import type {
   ComponentPropertyData,
   DiagramApplyEditsParams,
@@ -130,7 +135,8 @@ export interface ModelicaBackendDeps {
 
   resolveClassInstance: (uri: string, className?: string) => any | null;
   flushValidation: (uri: string) => Promise<void>;
-  isDocumentStale?: (uri: string) => boolean;
+  isDocumentStale?: ((uri: string) => boolean) | undefined;
+  getUnifiedIndex?: (() => any) | undefined;
 }
 
 export class ModelicaDiagramBackend implements DiagramBackend {
@@ -219,7 +225,12 @@ export class ModelicaDiagramBackend implements DiagramBackend {
             .pop()
             ?.replace(/\.[^.]+$/, "") ?? "";
         const modelName = /^[A-Za-z_][A-Za-z0-9_]*$/.test(baseFile) ? baseFile : "Model1";
+        const unifiedIndex = this.deps.getUnifiedIndex?.() ?? null;
         const usedNames = new Set<string>();
+        const importLines: string[] = [];
+        const seenImports = new Set<string>();
+        const stubBlocks: string[] = [];
+        const seenStubs = new Set<string>();
         const declLines: string[] = [];
         for (const act of addActions) {
           if (act.type !== "addComponent") continue;
@@ -232,8 +243,22 @@ export class ModelicaDiagramBackend implements DiagramBackend {
           ) {
             continue;
           }
-          const cleanClass = rawClass.replace(/^__LIB__:[^/]+\//, "").replace(/^__LIB__:/, "");
-          const baseName = (cleanClass.split(".").pop() || "comp").replace(/[^A-Za-z0-9_]/g, "") || "comp";
+          const resolved = resolveCrossLanguageComponentDrop(unifiedIndex, rawClass, "modelica", currentText);
+          if (resolved.importPath && !seenImports.has(resolved.importPath)) {
+            seenImports.add(resolved.importPath);
+            importLines.push(`  import ${resolved.importPath};`);
+          }
+          if (resolved.stubBlock && resolved.stubName && !seenStubs.has(resolved.stubName)) {
+            seenStubs.add(resolved.stubName);
+            const indentedStub = resolved.stubBlock
+              .split("\n")
+              .map((l) => (l.trim().length > 0 ? `  ${l}` : ""))
+              .join("\n");
+            stubBlocks.push(indentedStub);
+          }
+          const baseName =
+            (resolved.baseName || resolved.className.split(".").pop() || "comp").replace(/[^A-Za-z0-9_]/g, "") ||
+            "comp";
           let uniqueName = act.name || `${baseName}1`;
           let idx = 1;
           if (!act.name) {
@@ -246,7 +271,7 @@ export class ModelicaDiagramBackend implements DiagramBackend {
           const ox = Math.round(act.x ?? 0);
           const oy = -Math.round(act.y ?? 0);
           declLines.push(
-            `  ${cleanClass} ${uniqueName} annotation(Placement(transformation(origin={${ox},${oy}}, extent={{-10,-10},{10,10}})));`,
+            `  ${resolved.className} ${uniqueName} annotation(Placement(transformation(origin={${ox},${oy}}, extent={{-10,-10},{10,10}})));`,
           );
         }
         if (declLines.length > 0) {
@@ -254,7 +279,8 @@ export class ModelicaDiagramBackend implements DiagramBackend {
           const endLine = Math.max(0, lines.length - 1);
           const endChar = lines[endLine]?.length ?? 0;
           const prefix = currentText.length > 0 && !currentText.endsWith("\n") ? `${currentText}\n` : currentText;
-          const newText = `${prefix}model ${modelName}\n${declLines.join("\n")}\nend ${modelName};\n`;
+          const sections = [...importLines, ...stubBlocks, ...declLines];
+          const newText = `${prefix}model ${modelName}\n${sections.join("\n")}\nend ${modelName};\n`;
           return {
             seq: params.seq,
             edits: [
@@ -273,7 +299,8 @@ export class ModelicaDiagramBackend implements DiagramBackend {
       return { seq: params.seq, edits: [], renderHint: "none" };
     }
 
-    let result = processDiagramEditBatch(params, targetInstance, docText);
+    const unifiedIndex = this.deps.getUnifiedIndex?.() ?? null;
+    let result = processDiagramEditBatch(params, targetInstance, docText, unifiedIndex);
 
     // If no edits could be produced (e.g. stale AST where component ranges no longer match),
     // flush validation once to synchronize AST and retry.
@@ -297,7 +324,7 @@ export class ModelicaDiagramBackend implements DiagramBackend {
       if (freshDocText) {
         const freshTarget = this.resolveTargetInstance(params.uri, params.className, freshInstances, freshDocText);
         if (freshTarget) {
-          result = processDiagramEditBatch(params, freshTarget, freshDocText);
+          result = processDiagramEditBatch(params, freshTarget, freshDocText, unifiedIndex);
         }
       }
     }
@@ -352,6 +379,7 @@ export interface SysML2BackendDeps {
     name: string,
     insertionLine?: number,
     tree?: unknown,
+    options?: unknown,
   ) => TextEdit[];
   computeElementDelete: (text: string, names: string[], tree?: unknown) => TextEdit[];
   generateUniqueName: (text: string, baseName: string) => string;
@@ -378,6 +406,7 @@ export interface SysML2BackendDeps {
           | undefined;
       } | null)
     | undefined;
+  getUnifiedIndex?: (() => any) | undefined;
 }
 
 export class SysML2DiagramBackend implements DiagramBackend {
@@ -599,11 +628,42 @@ export class SysML2DiagramBackend implements DiagramBackend {
             break;
           }
           case "addComponent": {
-            const elementType = action.className;
-            const baseParts = elementType.replace("Definition", "").replace("Usage", "");
-            const baseName = baseParts.charAt(0).toLowerCase() + baseParts.slice(1);
-            const uniqueName = this.deps.generateUniqueName(docText, baseName);
-            allEdits.push(...this.deps.computeElementInsert(docText, elementType, uniqueName, undefined, tree));
+            const unifiedIndex = this.deps.getUnifiedIndex?.() ?? null;
+            const resolved = resolveCrossLanguageComponentDrop(unifiedIndex, action.className, "sysml2", docText);
+            const candidateBase = action.name || resolved.baseName || "part";
+            let uniqueName = this.deps.generateUniqueName(docText, candidateBase);
+            if (!action.name) {
+              let idx = 1;
+              while (allEdits.some((e) => new RegExp(`\\b${uniqueName}\\b`).test(e.newText))) {
+                idx++;
+                uniqueName = this.deps.generateUniqueName(docText, `${candidateBase}${idx}`);
+              }
+            }
+            const dupImport =
+              resolved.importPath && allEdits.some((e) => e.newText.includes(`import ${resolved.importPath};`));
+            const dupStub =
+              resolved.stubName && allEdits.some((e) => e.newText.includes(`part def ${resolved.stubName}`));
+            const effectiveImport = dupImport ? undefined : resolved.importPath;
+            const effectiveStub = dupStub ? undefined : resolved.stubBlock;
+            const insertOptions =
+              effectiveImport || effectiveStub || resolved.sysmlUsageKind || resolved.className !== action.className
+                ? {
+                    typeName: resolved.className,
+                    usageKind: resolved.sysmlUsageKind,
+                    importPath: effectiveImport,
+                    stubBlock: effectiveStub,
+                  }
+                : undefined;
+            allEdits.push(
+              ...this.deps.computeElementInsert(
+                docText,
+                resolved.className,
+                uniqueName,
+                undefined,
+                tree,
+                insertOptions,
+              ),
+            );
             // Store position in layout
             layout = this.deps.updateElementPositions(layout, [
               {
@@ -989,6 +1049,7 @@ export interface GenericDSLBackendDeps {
   getSyntaxNames?: ((uri: string) => Record<number, string> | string[] | undefined) | undefined;
   getRawAstData?: ((uri: string) => { nodes: any[]; edges: any[] } | null) | undefined;
   getSymbolIndex?: ((uri: string) => any) | undefined;
+  getUnifiedIndex?: (() => any) | undefined;
   getScopeResolver?: ((uri: string) => any) | undefined;
   layoutStorage?: SidecarLayoutStorage | undefined;
   fsBridge?: FileSystemBridge | undefined;
@@ -2796,27 +2857,28 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           break;
         }
         case "addComponent": {
-          const baseName = action.name || action.className.charAt(0).toLowerCase() + action.className.slice(1);
-          let uniqueName = action.name || `${baseName}1`;
-          if (!action.name && maskedText) {
-            let idx = 1;
-            while (new RegExp(`\\b${baseName}${idx}\\b`).test(maskedText)) {
-              idx++;
-            }
-            uniqueName = `${baseName}${idx}`;
-          }
+          const priorEditText = allEdits.map((e) => e.newText).join("\n");
+          const resolvedGeneric = resolveGenericComponentDrop({
+            uri: params.uri,
+            rawClassName: action.className,
+            docText: priorEditText ? `${docText ?? ""}\n${priorEditText}` : (docText ?? ""),
+            instanceName: action.name,
+            symbolIndex: this.deps.getUnifiedIndex?.() ?? this.deps.getSymbolIndex?.(params.uri) ?? null,
+          });
+          const resolvedClassName = resolvedGeneric.className;
+          const uniqueName = resolvedGeneric.instanceName;
 
           let nodeText = "";
           if (typeof mutations?.createNode === "function") {
-            nodeText = mutations.createNode(action.className, uniqueName, action.x, action.y);
+            nodeText = mutations.createNode(resolvedClassName, uniqueName, action.x, action.y);
           } else if (typeof mutations?.nodeTemplate === "function") {
-            nodeText = mutations.nodeTemplate(action.className, uniqueName);
+            nodeText = mutations.nodeTemplate(resolvedClassName, uniqueName);
           } else if (typeof mutations?.nodeTemplate === "string") {
             nodeText = mutations.nodeTemplate
-              .replace(/\$\{className\}/g, action.className)
+              .replace(/\$\{className\}/g, resolvedClassName)
               .replace(/\$\{name\}/g, uniqueName);
           } else {
-            nodeText = `${action.className} ${uniqueName};\n`;
+            nodeText = `${resolvedClassName} ${uniqueName};\n`;
           }
 
           if (docText !== undefined && nodeText) {
@@ -3050,7 +3112,18 @@ export interface DiagramDispatchDeps {
   gensys?: DiagramBackend | undefined;
   adams?: DiagramBackend | undefined;
   urdf?: DiagramBackend | undefined;
+  getUnifiedIndex?: (() => any) | undefined;
   customBackends?: Map<string | RegExp, DiagramBackend> | undefined;
+}
+
+export function getUnifiedIndexFromDeps(backends: DiagramDispatchDeps): any {
+  return (
+    backends.getUnifiedIndex?.() ??
+    (backends.modelica as any)?.deps?.getUnifiedIndex?.() ??
+    (backends.sysml2 as any)?.deps?.getUnifiedIndex?.() ??
+    (backends.generic as any)?.deps?.getUnifiedIndex?.() ??
+    null
+  );
 }
 
 const DOMAIN_BUILDERS: Record<string, (text: string, params: DiagramGetDataParams) => Promise<unknown>> = {
@@ -3596,6 +3669,7 @@ export function processDiagramEditBatch(
   request: DiagramApplyEditsParams,
   classInstance: any,
   docText: string,
+  unifiedIndex?: any,
 ): DiagramApplyEditsResult {
   const ops = getModelicaDiagramOps();
   const sortFn: (edits: TextEdit[]) => TextEdit[] = ops.deduplicateAndSort ?? deduplicateAndSort;
@@ -3697,7 +3771,8 @@ export function processDiagramEditBatch(
             ? ops.computeConnectRemove(currentText, ci, action.source, action.target)
             : [];
         case "addComponent": {
-          const baseName = action.className.split(".").pop() || "comp";
+          const resolved = resolveCrossLanguageComponentDrop(unifiedIndex, action.className, "modelica", currentText);
+          const baseName = resolved.baseName || resolved.className.split(".").pop() || "comp";
           let uniqueName = action.name || baseName + "1";
           let counter = 1;
 
@@ -3716,9 +3791,17 @@ export function processDiagramEditBatch(
             }
           }
           createdComponentNames.add(uniqueName);
-          return ops.computeComponentInsert
-            ? ops.computeComponentInsert(ci, action.className, uniqueName, action.x, action.y, currentText)
-            : [];
+          return computeModelicaComponentDropEdits({
+            docText: currentText,
+            uri: request.uri,
+            rawClassName: action.className,
+            x: action.x,
+            y: action.y,
+            classInstance: ci,
+            computeComponentInsert: ops.computeComponentInsert,
+            unifiedIndex,
+            instanceName: uniqueName,
+          });
         }
         case "deleteComponents":
           return ops.computeComponentsDelete ? ops.computeComponentsDelete(currentText, ci, action.names) : [];

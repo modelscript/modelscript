@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { AlertIcon, ArrowLeftIcon } from "@primer/octicons-react";
-import { Heading, Text } from "@primer/react";
+import { Dialog, Heading, Text } from "@primer/react";
 import React, { Suspense, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import styledImport, { keyframes } from "styled-components";
@@ -237,36 +237,6 @@ const PackageDetailSkeleton: React.FC = () => (
     </MainContentWrap>
   </PageWrap>
 );
-
-const LogsModalOverlay = styled.div`
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(4px);
-  z-index: 1200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  animation: ${fadeIn} 0.15s ease-out;
-`;
-
-const LogsModalContainer = styled.div`
-  width: 1000px;
-  max-width: 95vw;
-  height: 82vh;
-  max-height: 850px;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  border-radius: 10px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.85);
-
-  & > div {
-    height: 100%;
-    margin-bottom: 0;
-  }
-`;
 
 /* ─── main controller component ─── */
 
@@ -700,14 +670,12 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
           Not shown by default as an unclosable sidebar.
           Rendered as a sleek modal dialog when opened via header button or alert banner. */}
       {logsModalOpen && name && version && (
-        <LogsModalOverlay
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setLogsModalOpen(false);
-            }
-          }}
+        <Dialog
+          title={`Ingestion & Indexer Logs — ${name}@${version}`}
+          width="xlarge"
+          onClose={() => setLogsModalOpen(false)}
         >
-          <LogsModalContainer>
+          <div style={{ height: "72vh", display: "flex", flexDirection: "column" }}>
             <TerminalLogViewer
               packageName={name}
               packageVersion={version}
@@ -718,8 +686,8 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
               isModal={true}
               onClose={() => setLogsModalOpen(false)}
             />
-          </LogsModalContainer>
-        </LogsModalOverlay>
+          </div>
+        </Dialog>
       )}
     </PageWrap>
   );

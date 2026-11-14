@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { Button, Dialog } from "@primer/react";
 import React, { useState } from "react";
 import Box from "../../../components/Box";
 import { sanitizeHttpUrl } from "../../../util/url";
-import { ActionButton, Badge, Card, FilterPill, ModalBox, ModalOverlay, Select, Table, Textarea } from "../styles";
+import { ActionButton, Badge, Card, FilterPill, Select, Table, Textarea } from "../styles";
 import type { AdminDmcaNotice, AdminQuarantinedResource } from "../types";
 
 export interface AdminDmcaTabProps {
@@ -242,9 +243,12 @@ export const AdminDmcaTab: React.FC<AdminDmcaTabProps> = ({
 
       {/* ── DMCA RESOLUTION MODAL ── */}
       {activeDmcaToResolve && (
-        <ModalOverlay>
-          <ModalBox>
-            <span style={{ fontWeight: 800, fontSize: "16px" }}>Resolve DMCA Notice #{activeDmcaToResolve.id}</span>
+        <Dialog
+          title={`Resolve DMCA Notice #${activeDmcaToResolve.id}`}
+          width="medium"
+          onClose={() => setActiveDmcaToResolve(null)}
+        >
+          <Box display="flex" flexDirection="column" gap={3} style={{ maxHeight: "75vh", overflowY: "auto" }}>
             <Box fontSize="13px" color="var(--color-text-muted)">
               Infringing URL: {activeDmcaToResolve.infringing_url}
             </Box>
@@ -310,28 +314,25 @@ export const AdminDmcaTab: React.FC<AdminDmcaTabProps> = ({
             )}
 
             <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
-              <ActionButton $variant="secondary" onClick={() => setActiveDmcaToResolve(null)}>
+              <Button variant="default" onClick={() => setActiveDmcaToResolve(null)}>
                 Cancel
-              </ActionButton>
-              <ActionButton
-                $variant="primary"
-                onClick={handleConfirmResolve}
-                disabled={loading || !dmcaActionTaken.trim()}
-              >
+              </Button>
+              <Button variant="primary" onClick={handleConfirmResolve} disabled={loading || !dmcaActionTaken.trim()}>
                 Confirm Resolution
-              </ActionButton>
+              </Button>
             </Box>
-          </ModalBox>
-        </ModalOverlay>
+          </Box>
+        </Dialog>
       )}
 
       {/* ── DMCA COUNTER-NOTICE MODAL ── */}
       {counterNoticeModal && (
-        <ModalOverlay>
-          <ModalBox>
-            <span style={{ fontWeight: 800, fontSize: "16px" }}>
-              Record § 512(g) Counter-Notice — Notice #{counterNoticeModal.id}
-            </span>
+        <Dialog
+          title={`Record § 512(g) Counter-Notice — Notice #${counterNoticeModal.id}`}
+          width="medium"
+          onClose={() => setCounterNoticeModal(null)}
+        >
+          <Box display="flex" flexDirection="column" gap={3}>
             <Box fontSize="12px" color="var(--color-text-muted)">
               Filing a statutory counter-notice starts the 14-day waiting window before the quarantined resource becomes
               eligible for restoration unless the claimant files notice of court action.
@@ -342,19 +343,19 @@ export const AdminDmcaTab: React.FC<AdminDmcaTabProps> = ({
               onChange={(e) => setCounterNoticeText(e.target.value)}
             />
             <Box display="flex" justifyContent="flex-end" gap={2}>
-              <ActionButton $variant="secondary" onClick={() => setCounterNoticeModal(null)}>
+              <Button variant="default" onClick={() => setCounterNoticeModal(null)}>
                 Cancel
-              </ActionButton>
-              <ActionButton
-                $variant="primary"
+              </Button>
+              <Button
+                variant="primary"
                 onClick={handleConfirmCounterNotice}
                 disabled={loading || !counterNoticeText.trim()}
               >
                 Record Counter-Notice
-              </ActionButton>
+              </Button>
             </Box>
-          </ModalBox>
-        </ModalOverlay>
+          </Box>
+        </Dialog>
       )}
     </div>
   );

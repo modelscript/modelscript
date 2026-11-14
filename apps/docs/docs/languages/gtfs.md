@@ -11,10 +11,10 @@ description: "@modelscript/gtfs (languages/gtfs) provides native parsing, longit
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
+| Extension       | Format            | Description                                                                                          |
+| :-------------- | :---------------- | :--------------------------------------------------------------------------------------------------- |
 | `.gtfs`, `.zip` | GTFS Transit Feed | Standard multi-table archive containing `routes.txt`, `stops.txt`, `trips.txt`, and `stop_times.txt` |
-| `.txt`, `.csv` | GTFS Section Text | Concatenated or standalone schedule tables |
+| `.txt`, `.csv`  | GTFS Section Text | Concatenated or standalone schedule tables                                                           |
 
 ---
 
@@ -41,6 +41,12 @@ description: "@modelscript/gtfs (languages/gtfs) provides native parsing, longit
 - Aggregates multi-bus return charging schedules at central depot facilities:
   $$P_{\text{depot}}(t) = \sum_{b=1}^{N_{\text{fleet}}} P_{\text{charge}, b}(t) \le P_{\text{transformer}}^{\max}$$
 - Co-simulates depot electrical peak demands with distribution feeder models (`@modelscript/opendss`) and automated smart charging schedulers (`@modelscript/ocpp`).
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="gtfs" />
 
 ---
 

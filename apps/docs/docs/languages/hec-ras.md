@@ -11,11 +11,11 @@ description: "@modelscript/hec-ras (languages/hec-ras) provides native parsing, 
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.g01`, `.g02`, `.g03` | HEC-RAS Geometry File | River reach coordinates, cross-section station-elevations, Manning's $n$, and weir structures |
-| `.rasgeo`, `.geo` | Modern HEC-RAS ASCII Geometry | Unified multi-reach geometry exchange format |
-| `.f01`, `.f02` | HEC-RAS Steady Flow File | Boundary conditions (known WS, critical depth, normal depth, rating curves) |
+| Extension              | Format                        | Description                                                                                   |
+| :--------------------- | :---------------------------- | :-------------------------------------------------------------------------------------------- |
+| `.g01`, `.g02`, `.g03` | HEC-RAS Geometry File         | River reach coordinates, cross-section station-elevations, Manning's $n$, and weir structures |
+| `.rasgeo`, `.geo`      | Modern HEC-RAS ASCII Geometry | Unified multi-reach geometry exchange format                                                  |
+| `.f01`, `.f02`         | HEC-RAS Steady Flow File      | Boundary conditions (known WS, critical depth, normal depth, rating curves)                   |
 
 ---
 
@@ -43,6 +43,12 @@ description: "@modelscript/hec-ras (languages/hec-ras) provides native parsing, 
   $$\frac{\partial A}{\partial t} + \frac{\partial Q}{\partial x} = q_L$$
   $$\frac{\partial Q}{\partial t} + \frac{\partial}{\partial x}\left(\frac{\beta Q^2}{A}\right) + g A \frac{\partial h}{\partial x} + g A (S_f - S_0) = 0$$
 - Enables direct co-simulation with urban drainage (`@modelscript/swmm`), drinking water networks (`@modelscript/epanet`), and regional aquifers (`@modelscript/modflow`).
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="hec-ras" />
 
 ---
 

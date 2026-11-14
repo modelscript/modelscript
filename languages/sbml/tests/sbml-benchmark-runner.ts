@@ -15,8 +15,10 @@
  *   --report-json=<path>   Export JSON summary report
  */
 
+import type { BenchmarkCaseResult, LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
 import fs from "node:fs";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { lowerSbmlToDae, parseSbml, simulateSbmlReactions } from "../src/index.js";
 
@@ -30,22 +32,16 @@ interface BenchmarkResult {
   daeVarCount: number;
   daeEqCount: number;
   rmse: number;
+  durationMs: number;
   passed: boolean;
   message?: string;
 }
 
-export async function runSbmlBenchmarks(options?: { tolerance?: number; reportJson?: string }): Promise<void> {
-  const tolerance = options?.tolerance ?? 0.001;
-  console.log(`[sbml-benchmark-runner] Running SBML semantic test cases (tolerance: ${tolerance})...`);
-
-  const results: BenchmarkResult[] = [];
-
-  // Default canonical cases
-  const cases = [
-    {
-      id: "case00001",
-      name: "First Order Linear Decay",
-      xml: `<?xml version="1.0" encoding="UTF-8"?>
+const SBML_CASES = [
+  {
+    id: "case00001",
+    name: "First Order Linear Decay",
+    xml: `<?xml version="1.0" encoding="UTF-8"?>
 <sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
   <model id="case00001" name="First Order Decay">
     <listOfCompartments><compartment id="c" size="1.0"/></listOfCompartments>
@@ -59,12 +55,12 @@ export async function runSbmlBenchmarks(options?: { tolerance?: number; reportJs
     </listOfReactions>
   </model>
 </sbml>`,
-      exactFn: (t: number) => 1.5 * Math.exp(-0.1 * t),
-    },
-    {
-      id: "case00002",
-      name: "Reversible Monomolecular Reaction",
-      xml: `<?xml version="1.0" encoding="UTF-8"?>
+    exactFn: (t: number) => 1.5 * Math.exp(-0.1 * t),
+  },
+  {
+    id: "case00002",
+    name: "Reversible Monomolecular Reaction",
+    xml: `<?xml version="1.0" encoding="UTF-8"?>
 <sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
   <model id="case00002" name="Reversible Isomerization">
     <listOfCompartments><compartment id="c" size="1.0"/></listOfCompartments>
@@ -85,11 +81,14 @@ export async function runSbmlBenchmarks(options?: { tolerance?: number; reportJs
     </listOfReactions>
   </model>
 </sbml>`,
-      exactFn: (t: number) => 0.4 + 1.6 * Math.exp(-0.5 * t), // A(t)
-    },
-  ];
+    exactFn: (t: number) => 0.4 + 1.6 * Math.exp(-0.5 * t),
+  },
+];
 
-  for (const c of cases) {
+function evaluateSbmlCases(tolerance: number): BenchmarkResult[] {
+  const results: BenchmarkResult[] = [];
+  for (const c of SBML_CASES) {
+    const t0 = performance.now();
     try {
       const doc = parseSbml(c.xml);
       const dae = lowerSbmlToDae(doc);
@@ -113,10 +112,9 @@ export async function runSbmlBenchmarks(options?: { tolerance?: number; reportJs
         daeVarCount: dae.getVarCount(),
         daeEqCount: dae.getEqCount(),
         rmse,
+        durationMs: performance.now() - t0,
         passed,
       });
-
-      console.log(`  [${passed ? "PASS" : "FAIL"}] ${c.id}: ${c.name} (RMSE = ${rmse.toExponential(3)})`);
     } catch (err: unknown) {
       results.push({
         caseId: c.id,
@@ -126,10 +124,48 @@ export async function runSbmlBenchmarks(options?: { tolerance?: number; reportJs
         daeVarCount: 0,
         daeEqCount: 0,
         rmse: Infinity,
+        durationMs: performance.now() - t0,
         passed: false,
         message: (err as Error).message,
       });
-      console.log(`  [FAIL] ${c.id}: ${c.name} - ${(err as Error).message}`);
+    }
+  }
+  return results;
+}
+
+export const sbmlBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "sbml",
+  referenceTool: "libSBML / Analytical Reference",
+  referenceVersion: "3.3.0",
+  defaultTolerance: 0.001,
+  metricKind: "rmse",
+  async runCases(ctx): Promise<BenchmarkCaseResult[]> {
+    const tol = ctx?.tolerance ?? 0.001;
+    return evaluateSbmlCases(tol).map((r) => ({
+      id: r.caseId,
+      name: r.name,
+      scale: "standard",
+      referenceTool: "libSBML / Analytical Reference",
+      metricKind: "rmse",
+      threshold: tol,
+      measuredError: Number.isFinite(r.rmse) ? r.rmse : null,
+      passed: r.passed,
+      durationMs: Number(r.durationMs.toFixed(3)),
+      details: r.message ?? `${r.speciesCount} species, ${r.reactionCount} reactions, ${r.daeVarCount} DAE vars`,
+    }));
+  },
+};
+
+export async function runSbmlBenchmarks(options?: { tolerance?: number; reportJson?: string }): Promise<void> {
+  const tolerance = options?.tolerance ?? 0.001;
+  console.log(`[sbml-benchmark-runner] Running SBML semantic test cases (tolerance: ${tolerance})...`);
+
+  const results = evaluateSbmlCases(tolerance);
+  for (const r of results) {
+    if (r.message) {
+      console.log(`  [FAIL] ${r.caseId}: ${r.name} - ${r.message}`);
+    } else {
+      console.log(`  [${r.passed ? "PASS" : "FAIL"}] ${r.caseId}: ${r.name} (RMSE = ${r.rmse.toExponential(3)})`);
     }
   }
 

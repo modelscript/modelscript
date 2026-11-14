@@ -87,3 +87,9 @@ lowerIgtlToDae(model, builder);
 const urdfXml = igtlToUrdf(model);
 const modelicaCode = igtlToModelica(model);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="igtl" />

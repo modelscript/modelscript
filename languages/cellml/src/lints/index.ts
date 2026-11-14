@@ -360,3 +360,5 @@ export function lintCellmlDocument(doc: CellmlDocument): CellmlDiagnostic[] {
 }
 
 export const lintCellml = lintCellmlDocument;
+
+export * from "./workspace.js";

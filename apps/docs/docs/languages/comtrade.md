@@ -77,3 +77,9 @@ msx comtrade to-dae fault_record.cfg
 ## MCP Agent Tool Integration
 
 - **`comtrade_extract_phasor`**: Performs sliding-window 1-cycle Discrete Fourier Transform (DFT) phasor estimation (RMS magnitude, phase angle in degrees, nominal frequency) from COMTRADE records for protective relaying evaluation.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="comtrade" />

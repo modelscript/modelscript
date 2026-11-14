@@ -9,6 +9,14 @@ import { LanguageOptions, Rule, toRule } from "./language.js";
 /** A type alias for string, representing a grammar symbol (terminal or non-terminal) */
 export type SymbolName = string;
 
+/** Static diagnostic emitted by `validateGrammar` before LR automaton construction. */
+export interface GrammarDiagnostic {
+  code: "undefined-rule" | "unreachable-rule" | "unproductive-rule" | "nullable-repeat";
+  severity: "error" | "warning";
+  rule?: string | undefined;
+  message: string;
+}
+
 /**
  * Represents a single normalized production rule in BNF (Backus-Naur Form).
  */
@@ -74,7 +82,10 @@ export interface RuleNormalizer {
 /** Normalizes a direct symbol reference. */
 export class SymbolNormalizer implements RuleNormalizer {
   /** Returns a single `FlattenResult` referencing the target symbol name with the inherited field context. */
-  normalize(_g: NormalizedGrammar, _ctx: string, rule: any, _children: any[], p: FlattenContext): FlattenResult[] {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, _children: any[], p: FlattenContext): FlattenResult[] {
+    if (typeof rule.value === "string") {
+      g.recordSymbolRef(ctx, rule.value);
+    }
     return [{ sym: rule.value, field: p.field }];
   }
   /** Formats the referenced symbol name as its literal EBNF identifier. */
@@ -477,6 +488,22 @@ export class NormalizedGrammar {
   reservedKeywords = new Map<string, Set<string>>();
   /** Keyword string literals automatically extracted using the grammar's `word` token pattern. */
   extractedKeywords?: string[] | undefined;
+  /** Symbol references (`$['name']`) recorded per rule context for static grammar validation. */
+  symbolRefs = new Map<string, Set<string>>();
+  /** Extra symbol names referenced in `extras` or `externals` for reachability analysis. */
+  entrySymbols = new Set<string>();
+  /** Static grammar diagnostics computed after flattening. */
+  diagnostics: GrammarDiagnostic[] = [];
+
+  /** Records a symbol reference from `ctx` to `target` for undefined-rule checking. */
+  recordSymbolRef(ctx: string, target: string): void {
+    let refs = this.symbolRefs.get(ctx);
+    if (!refs) {
+      refs = new Set();
+      this.symbolRefs.set(ctx, refs);
+    }
+    refs.add(target);
+  }
 
   /**
    * Evaluates and flattens a declarative `LanguageOptions` specification into normalized BNF productions.
@@ -688,6 +715,7 @@ export class NormalizedGrammar {
       for (const ext of extRules) {
         if (ext.type === "SYMBOL") {
           this.terminals.add(ext.value);
+          this.entrySymbols.add(ext.value);
         }
       }
     }
@@ -721,6 +749,8 @@ export class NormalizedGrammar {
       this.symToInt.set(nonTerm, symId++);
     }
     this.symToInt.set("EOF", 1023);
+
+    this.diagnostics = validateGrammar(this);
   }
 
   /**
@@ -883,10 +913,11 @@ export class NormalizedGrammar {
     const cacheKey = `${sig}#${p.prec}#${p.assoc}#${p.dynamicPrec}#${p.field}`;
     let symName = this.syntheticCache.get(cacheKey);
     if (!symName) {
-      symName = `_${ebnf}`;
+      const bounded = ebnf.length > 48 ? `${ebnf.slice(0, 40)}_${fnv1aHex(sig)}` : ebnf;
+      symName = `_${bounded}`;
       let counter = 1;
       while (this.nonTerminals.has(symName)) {
-        symName = `_${ebnf}_${counter++}`;
+        symName = `_${bounded}_${counter++}`;
       }
       this.syntheticCache.set(cacheKey, symName);
     }
@@ -951,4 +982,147 @@ export class NormalizedGrammar {
     console.error("UNKNOWN RULE:", rule);
     throw new Error(`Unknown rule type: ${rule.type}`);
   }
+}
+
+function fnv1aHex(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * Runs static validation checks over a `NormalizedGrammar` before LR automaton construction:
+ * - `undefined-rule`: `$['name']` references that are not declared in `rules`, `terminals`, or `externals`
+ * - `unreachable-rule`: declared rules unreachable from `startSymbol` or `extras`
+ * - `unproductive-rule`: non-terminals that cannot derive any finite terminal string
+ * - `nullable-repeat`: `repeat()` / `repeat1()` whose body can derive epsilon (infinite empty-reduction loop)
+ */
+export function validateGrammar(grammar: NormalizedGrammar): GrammarDiagnostic[] {
+  const diagnostics: GrammarDiagnostic[] = [];
+  const declaredRules = Object.keys(grammar.evaluatedRules);
+  if (declaredRules.length === 0) return diagnostics;
+
+  // 1. Undefined rule references
+  for (const [ctx, refs] of grammar.symbolRefs.entries()) {
+    for (const target of refs) {
+      if (target === "EOF" || target === "ERROR") continue;
+      if (!grammar.evaluatedRules[target] && !grammar.terminals.has(target) && !grammar.nonTerminals.has(target)) {
+        diagnostics.push({
+          code: "undefined-rule",
+          severity: "error",
+          rule: ctx,
+          message: `Rule '${ctx}' references undefined symbol '${target}'.`,
+        });
+      }
+    }
+  }
+
+  // 2. Nullable set (fixed-point)
+  const nullable = new Set<string>();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const prod of grammar.productions) {
+      if (nullable.has(prod.left)) continue;
+      if (prod.right.length === 0 || prod.right.every((sym) => nullable.has(sym))) {
+        nullable.add(prod.left);
+        changed = true;
+      }
+    }
+  }
+
+  // 3. Nullable repetition loops (isList recursive step whose body is empty or all-nullable)
+  const reportedRepeats = new Set<string>();
+  for (const prod of grammar.productions) {
+    if (!prod.isList || prod.right.length === 0) continue;
+    if (prod.right[0] !== prod.left) continue;
+    const body = prod.right.slice(1);
+    if (body.length === 0 || body.every((sym) => nullable.has(sym))) {
+      if (!reportedRepeats.has(prod.left)) {
+        reportedRepeats.add(prod.left);
+        const origins = grammar.syntheticOrigins.get(prod.left);
+        const originRule = origins ? Array.from(origins).find((o) => !!grammar.evaluatedRules[o]) : undefined;
+        diagnostics.push({
+          code: "nullable-repeat",
+          severity: "error",
+          rule: originRule ?? prod.left,
+          message: `Repetition '${prod.left}'${originRule ? ` in rule '${originRule}'` : ""} matches an empty string on every iteration (nullable body inside repeat/repeat1).`,
+        });
+      }
+    }
+  }
+
+  // 4. Productive non-terminals (fixed-point)
+  const productive = new Set<string>(grammar.terminals);
+  productive.add("EOF");
+  productive.add("ERROR");
+  changed = true;
+  while (changed) {
+    changed = false;
+    for (const prod of grammar.productions) {
+      if (productive.has(prod.left)) continue;
+      if (prod.right.length === 0 || prod.right.every((sym) => productive.has(sym))) {
+        productive.add(prod.left);
+        changed = true;
+      }
+    }
+  }
+  for (const ruleName of declaredRules) {
+    if (grammar.nonTerminals.has(ruleName) && !productive.has(ruleName)) {
+      diagnostics.push({
+        code: "unproductive-rule",
+        severity: "error",
+        rule: ruleName,
+        message: `Non-terminal '${ruleName}' is unproductive (cannot derive any terminal string).`,
+      });
+    }
+  }
+
+  // 5. Unreachable rules from startSymbol / _extras / entrySymbols
+  const prodsByLhs = new Map<string, Production[]>();
+  for (const prod of grammar.productions) {
+    let list = prodsByLhs.get(prod.left);
+    if (!list) {
+      list = [];
+      prodsByLhs.set(prod.left, list);
+    }
+    list.push(prod);
+  }
+  const reachable = new Set<string>();
+  const queue: string[] = [];
+  if (grammar.startSymbol) queue.push(grammar.startSymbol);
+  for (const entry of grammar.entrySymbols) queue.push(entry);
+  for (const [ctx, refs] of grammar.symbolRefs.entries()) {
+    if (ctx === "_extras") {
+      for (const r of refs) queue.push(r);
+    }
+  }
+  while (queue.length > 0) {
+    const sym = queue.shift()!;
+    if (reachable.has(sym)) continue;
+    reachable.add(sym);
+    const prods = prodsByLhs.get(sym);
+    if (prods) {
+      for (const prod of prods) {
+        for (const rhsSym of prod.right) {
+          if (!reachable.has(rhsSym)) queue.push(rhsSym);
+        }
+      }
+    }
+  }
+  for (const ruleName of declaredRules) {
+    if (!reachable.has(ruleName)) {
+      diagnostics.push({
+        code: "unreachable-rule",
+        severity: "warning",
+        rule: ruleName,
+        message: `Rule '${ruleName}' is unreachable from start symbol '${grammar.startSymbol}'.`,
+      });
+    }
+  }
+
+  return diagnostics;
 }

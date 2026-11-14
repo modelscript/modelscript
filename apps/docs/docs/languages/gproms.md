@@ -84,3 +84,9 @@ const modelicaCode = gpromsToModelica(model);
 ## Trademarks & Disclaimers
 
 gPROMS is a registered trademark of Process Systems Enterprise Limited (Siemens Process Systems Enterprise). Reference to gPROMS and PML is strictly for nominative identification of model file format compatibility. ModelScript is an independent open-core project not affiliated with or endorsed by Siemens Process Systems Enterprise.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="gproms" />

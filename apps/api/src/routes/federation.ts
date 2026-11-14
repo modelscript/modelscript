@@ -1412,10 +1412,12 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
             try {
               const parsedAuthor = new URL(attributedTo);
               if (parsedAuthor.protocol !== "https:" && parsedAuthor.protocol !== "http:") {
+                res.status(400).json({ error: "Invalid attributedTo protocol" });
                 return;
               }
               originDomain = parsedAuthor.hostname.toLowerCase();
             } catch {
+              res.status(400).json({ error: "Invalid attributedTo URL" });
               return;
             }
 
@@ -1430,6 +1432,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
               originDomain === "localhost" ||
               originDomain === "127.0.0.1"
             ) {
+              res.status(403).json({ error: "Relaying local-origin activities is not permitted" });
               return;
             }
 

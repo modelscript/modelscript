@@ -84,3 +84,9 @@ const dae = lowerBnglToDae(model);
 const sbmlXml = bnglToSbml(model);
 const moCode = bnglToModelica(model);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="bngl" />

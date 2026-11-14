@@ -71,3 +71,9 @@ const builder = new DAEBuilder();
 lowerNmodlToDae(doc, builder);
 const modelicaCode = nmodlToModelica(doc);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="nmodl" />

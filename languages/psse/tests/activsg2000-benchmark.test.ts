@@ -73,7 +73,10 @@ test("ACTIVSg2000: End-to-end benchmark execution, PSS/E CSV & HTML export", asy
   assert.ok(res.totalGenerationMw > 50000, `Total generation: ${res.totalGenerationMw} MW`);
   assert.strictEqual(res.accc.totalContingencies, 20);
   assert.ok(res.accc.throughputSolvesPerSec > 0);
-  assert.strictEqual(res.comparisonVsSota.parityStatus, "PASS");
+  assert.strictEqual(res.comparisonVsSota.parityStatus, "UNVERIFIED");
+  assert.strictEqual(res.comparisonVsSota.speedupFactor, null);
+  assert.strictEqual(res.comparisonVsSota.sotaEstimatedDurationMs, null);
+  assert.strictEqual(res.comparisonVsSota.theilTic, null);
 
   // Verify PSS/E Tabulated CSV format
   assert.ok(res.psseTabulatedCsv.includes("CONTINGENCY LABEL,STATUS,ITERATIONS,MAX % LOADING"));
@@ -84,5 +87,21 @@ test("ACTIVSg2000: End-to-end benchmark execution, PSS/E CSV & HTML export", asy
   assert.ok(res.htmlDashboard, "Must generate self-contained HTML dashboard");
   assert.ok(res.htmlDashboard.includes("ACTIVSg2000 Texas Grid SOTA Power Flow & ACCC Benchmark"));
   assert.ok(res.htmlDashboard.includes("Theil's Inequality Decomposition"));
+  assert.ok(res.htmlDashboard.includes("UNVERIFIED"));
   assert.ok(res.htmlDashboard.includes("<svg viewBox="));
+
+  // With external reference voltage vector and timing, real parity metrics are computed
+  const refTrace = Array.from(generateActivSg2000Case().buses.values())
+    .slice(0, 100)
+    .map(() => 1.0);
+  const verified = await runActivSg2000Benchmark({
+    maxContingencies: 5,
+    generateHtml: false,
+    referenceTrace: refTrace,
+    referenceWallClockMs: 1000.0,
+    referenceTool: "External Reference Solver",
+  });
+  assert.strictEqual(verified.comparisonVsSota.sotaTool, "External Reference Solver");
+  assert.ok((verified.comparisonVsSota.speedupFactor ?? 0) > 0);
+  assert.ok(verified.comparisonVsSota.theilTic !== null);
 });

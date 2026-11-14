@@ -14,6 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
+import { requireCliEnterpriseModule } from "../ee-loader.js";
 
 export const DossierCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "dossier <action> [files...]",
@@ -52,7 +53,12 @@ export const DossierCommand: CommandModule<Record<string, unknown>, Record<strin
       process.exit(1);
     }
 
-    const { buildRegulatoryDossier } = await import("@modelscript/ee");
+    const ee = await requireCliEnterpriseModule("msx dossier");
+    if (typeof ee.buildRegulatoryDossier !== "function") {
+      console.error("[dossier] Loaded Enterprise module does not export buildRegulatoryDossier.");
+      process.exit(1);
+    }
+    const buildRegulatoryDossier = ee.buildRegulatoryDossier;
 
     for (const file of files) {
       const absPath = path.resolve(process.cwd(), file);

@@ -567,9 +567,11 @@ difference() {
   translate([0, 0, -1])
     cylinder(h = boss_h + 2, r = bore_r, center = false);
   // Four M8 mounting bolt holes
-  for (sx = [-28, 28], sy = [-16, 16]) {
-    translate([sx, sy, -1])
-      cylinder(h = base_h + 2, r = 4.2, center = false);
+  for (sx = [-28, 28]) {
+    for (sy = [-16, 16]) {
+      translate([sx, sy, -1])
+        cylinder(h = base_h + 2, r = 4.2, center = false);
+    }
   }
 }`,
   },
@@ -1105,17 +1107,18 @@ Link "Cylinder1" -> "ExhaustTurbine"`,
     description:
       "Multi-body rail vehicle model with carbody, bolster, bogie frame, two wheelsets, primary/secondary air-spring couplings, and EN 14363 track.",
     viewLabel: "GENSYS Multibody Rail Vehicle Topology",
-    code: `## GENSYS High-Speed Passenger Coach Bogie Deck
-func const v_kmh = 250.0
-mass m_carbody  0.0 0.0 -1.85   38000.0 38000.0 38000.0   58000.0 1250000.0 1250000.0
-mass m_bogie1   9.5 0.0 -0.65    2600.0  2600.0  2600.0    1800.0    3200.0    4600.0
-mass m_axle11  10.8 0.0 -0.46    1450.0  1450.0  1450.0     820.0     140.0     820.0
-mass m_axle12   8.2 0.0 -0.46    1450.0  1450.0  1450.0     820.0     140.0     820.0
-
-coupl k_sec_z   m_carbody m_bogie1  0.42e6
-coupl c_sec_z   m_carbody m_bogie1  28.0e3
-coupl k_prim_11 m_bogie1  m_axle11  1.15e6
-coupl k_prim_12 m_bogie1  m_axle12  1.15e6`,
+    code: `# GENSYS High-Speed Passenger Coach Bogie Deck
+v_kmh = 250.0
+body m_carbody 38000.0 58000.0 1250000.0 1250000.0 0.0 0.0 -1.85
+body m_bogie1   2600.0  1800.0    3200.0    4600.0 9.5 0.0 -0.65
+wheelset m_axle11 1450.0 820.0 140.0 820.0 1.435 0.46
+wheelset m_axle12 1450.0 820.0 140.0 820.0 1.435 0.46
+bogie b1 m_bogie1 m_axle11 m_axle12
+spring k_sec_z m_carbody m_bogie1 0.42e6 0.42e6 0.42e6
+damper c_sec_z m_carbody m_bogie1 28.0e3 28.0e3 28.0e3
+track tang_track 1.435
+speed 69.44
+run 0.0 10.0 0.001`,
   },
 
   simpack: {
@@ -1351,7 +1354,7 @@ END`,
     description:
       "Coupled six-equation two-fluid thermal-hydraulics and point reactor kinetics deck for a PWR core, hot leg, U-tube steam generator, and RCP.",
     viewLabel: "RELAP5 Nuclear Reactor Nodalization Diagram",
-    code: `= RELAP5-3D PWR Primary Loop & Point Kinetics Deck
+    code: `* RELAP5-3D PWR Primary Loop & Point Kinetics Deck
 0000100 new transnt
 0000105 5.0 20.0
 0000201 20.0 1.0e-4 0.02 3 10 100
@@ -1968,7 +1971,7 @@ Zone,
 
 ZoneHVAC:IdealLoadsAirSystem,
   SouthZoneIdealAir,
-  ,
+  AlwaysOn,
   SouthSupplyInlet,
   SouthExhaustOutlet,
   50.0,
@@ -2363,7 +2366,7 @@ ORIGIN
     viewLabel: "NM-TRAN Compartmental PK/PD Structure",
     code: `$PROBLEM Oral Two-Compartment Population PK Analysis
 $INPUT ID TIME AMT DV MDV EVID WT CRCL
-$DATA ../data/pk_phase2.csv IGNORE=@
+$DATA "../data/pk_phase2.csv" IGNORE=@
 $SUBROUTINES ADVAN4 TRANS4
 $PK
   TVCL = THETA(1) * (WT / 70.0)**0.75
@@ -2715,6 +2718,239 @@ load data
    2 "BUS2_LOAD" 500.0 "1 " 1  440.0  120.0  0.0  0.0  0.0  0.0
 99999
 end`,
+  },
+
+  asm: {
+    filename: "Bsm1WastewaterPlant.asm",
+    title: "IWA ASM1 Biological Wastewater Treatment",
+    description: "Activated Sludge Model No. 1 biokinetic Monod growth, decay, and nitrification rates.",
+    viewLabel: "ASM1 Biokinetic Process Matrix",
+    code: `model Bsm1WastewaterPlant
+  standard ASM1
+  param mu_H = 4.0
+  param K_S = 10.0
+  param Y_H = 0.67
+  state S_S = 69.5
+  state X_BH = 2500.0
+  state S_O = 2.0
+  process aerobic_growth
+    rate mu_H * (S_S / (K_S + S_S)) * X_BH
+    stoich S_S = -1.0 / Y_H
+    stoich X_BH = 1.0`,
+  },
+
+  atp: {
+    filename: "Energization230kV.atp",
+    title: "ATP/EMTP 230 kV Line Energization Switching Transient",
+    description:
+      "ATP fixed-format card deck for 60 Hz sinusoidal source, breaker closing switch, and Bergeron transmission line.",
+    viewLabel: "ATP Switching Surge Network",
+    code: `C ATP/EMTP 230 kV Line Energization
+BEGIN NEW DATA CASE
+  5.0E-5  0.050
+/BRANCH
+  SRC     BUS1              0.50    10.0
+  BUS1    BUS2              1.20    45.0   0.012
+/SWITCH
+  SRC     BUS1      0.005   1.000
+/SOURCE
+14SRC               187.8E3   60.0    0.0
+BLANK BRANCH
+BLANK SWITCH
+BLANK SOURCE
+BEGIN NEW DATA CASE
+BLANK`,
+  },
+
+  comtrade: {
+    filename: "FaultRecord500kV.cfg",
+    title: "IEEE C37.111 COMTRADE Oscillography Record",
+    description:
+      "500 kV transmission fault capture with 3-phase voltage/current analog channels and breaker trip status.",
+    viewLabel: "COMTRADE Phasor & Trip Oscillography",
+    code: `SUBSTATION_500KV,REC_01,2013
+4,3A,1D
+1,VA,,,kV,0.1,0,0,-32767,32767,500000,115,P
+2,VB,,,kV,0.1,0,0,-32767,32767,500000,115,P
+3,IA,,,A,0.5,0,0,-32767,32767,2000,5,P
+1,52A_TRIP,,,0
+60.0
+1
+4800,480
+01/06/2026,12:00:00.000000
+01/06/2026,12:00:00.016667
+ASCII
+1.0`,
+  },
+
+  dnp3: {
+    filename: "SubstationOutstation.dnp3",
+    title: "IEEE 1815 DNP3 Substation Telemetry Profile",
+    description: "DNP3 outstation point map with analog inputs, binary breaker status, and CROB control points.",
+    viewLabel: "DNP3 Outstation Point Map",
+    code: `OUTSTATION "Substation_Bay_1" {
+  ADDRESS 10;
+  MASTER_ADDRESS 1;
+  POINT BI 0 "BREAKER_52A" CLASS 1;
+  POINT AI 0 "BUS_KV" SCALE 0.01 DEADBAND 0.5;
+  POINT AI 1 "FEEDER_MW" SCALE 0.1 DEADBAND 1.0;
+  POINT BO 0 "TRIP_CLOSE_CROB";
+}`,
+  },
+
+  "hec-hms": {
+    filename: "UpperWatershed.hms",
+    title: "USACE HEC-HMS SCS Curve Number Runoff Basin",
+    description: "Hydrologic Modeling System basin deck with SCS CN infiltration and Clark unit hydrograph transform.",
+    viewLabel: "HEC-HMS Subbasin Hydrograph",
+    code: `Basin: UpperWatershed
+     Description: 42.5 km2 Urbanizing Catchment
+End:
+
+Subbasin: NorthCreek
+     Area: 42.5
+     LossRate: SCS
+     Percent Impervious Area: 28.0
+     Curve Number: 76.0
+     Initial Abstraction: 16.0
+     Transform: SCS
+     Lag Time: 95.0
+End:`,
+  },
+
+  matpower: {
+    filename: "case9.m",
+    title: "MATPOWER IEEE 9-Bus AC Optimal Power Flow",
+    description: "MATPOWER mpc struct defining baseMVA, bus, gen, branch, and quadratic gencost matrices.",
+    viewLabel: "MATPOWER 9-Bus Network",
+    code: `function mpc = case9
+mpc.version = '2';
+mpc.baseMVA = 100;
+mpc.bus = [
+  1 3 0   0  0 0 1 1.04 0   345 1 1.1 0.9;
+  2 2 0   0  0 0 1 1.025 9.3 345 1 1.1 0.9;
+  3 1 125 50 0 0 1 1.00 -3.2 345 1 1.1 0.9;
+];
+mpc.gen = [
+  1 71.6 27.0 300 -300 1.04 100 1 250 10;
+  2 163.0 6.7 300 -300 1.025 100 1 300 10;
+];
+mpc.branch = [
+  1 2 0.010 0.085 0.176 250 250 250 0 0 1 -360 360;
+  2 3 0.017 0.092 0.158 250 250 250 0 0 1 -360 360;
+];`,
+  },
+
+  mlxtran: {
+    filename: "OneCmtOralPK.mlxtran",
+    title: "Monolix Mlxtran Population Pharmacokinetic Model",
+    description: "Mlxtran ODE structural block with oral absorption rate ka, clearance Cl, and distribution volume V.",
+    viewLabel: "Mlxtran PK Compartment Model",
+    code: `[LONGITUDINAL]
+input = {ka, V, Cl}
+
+EQUATION:
+ddt_A_depot = -ka * A_depot
+ddt_A_central = ka * A_depot - (Cl / V) * A_central
+Cc = A_central / V`,
+  },
+
+  nmodl: {
+    filename: "hh_sodium.mod",
+    title: "NEURON NMODL Hodgkin-Huxley Sodium Channel",
+    description: "NEURON ion-channel mechanism with STATE gating variables m, h and DERIVATIVE kinetics.",
+    viewLabel: "NMODL Ion Channel Kinetics",
+    code: `TITLE Squid axon sodium channel
+NEURON {
+  SUFFIX hh_na
+  USEION na READ ena WRITE ina
+  RANGE gnabar, ina
+}
+PARAMETER {
+  gnabar = 0.12 (mho/cm2)
+  ena = 50.0 (mV)
+}
+STATE {
+  m
+  h
+}
+BREAKPOINT {
+  SOLVE states METHOD cnexp
+  ina = gnabar * m^3 * h * (v - ena)
+}
+DERIVATIVE states {
+  m' = (minf - m) / mtau
+  h' = (hinf - h) / htau
+}`,
+  },
+
+  oneliner: {
+    filename: "FeederProtection.olx",
+    title: "ASPEN OneLiner Short-Circuit & Relay Coordination",
+    description: "Substation bus, line impedance, and IEEE C37.112 very-inverse overcurrent relay coordination deck.",
+    viewLabel: "OneLiner Protection Topology",
+    code: `BUS "SUB_138" 138.0
+BUS "FDR_138" 138.0
+GEN "GRID_EQ" BUS "SUB_138" MVA 500 X1 0.12 X0 0.10
+LINE "L_138" FROM "SUB_138" TO "FDR_138" R1 0.015 X1 0.085 R0 0.045 X0 0.250
+RELAY "OC_51" BUS "SUB_138" BRANCH "L_138" CURVE "IEEE_VI" PICKUP 400.0 DIAL 1.5`,
+  },
+
+  scl: {
+    filename: "SubstationBay.scd",
+    title: "IEC 61850-6 Substation Configuration Language (SCD)",
+    description: "IEC 61850 XML Substation Configuration Description with IED protection bay and GOOSE dataset.",
+    viewLabel: "IEC 61850 SCL Substation Tree",
+    code: `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B">
+  <Header id="SubstationBay_SCD" version="1.0"/>
+  <Substation name="S1_230KV">
+    <VoltageLevel name="VL_230">
+      <Bay name="BAY_LINE1"/>
+    </VoltageLevel>
+  </Substation>
+  <IED name="IED_PROT_01" type="SEL_421">
+    <AccessPoint name="AP1"/>
+  </IED>
+</SCL>`,
+  },
+
+  sel: {
+    filename: "Relay421Settings.rdb",
+    title: "SEL-421 Transmission Line Distance & Overcurrent Settings",
+    description: "Schweitzer Engineering Laboratories relay settings block with Zone 1/2 mho reach and SELogic trip.",
+    viewLabel: "SEL Protection Zones & SELogic",
+    code: `[GLOBAL]
+RID = "LINE_230KV_A"
+CTR = 240
+PTR = 2000
+
+[GROUP1]
+Z1P = 4.25
+Z2P = 6.80
+51P1P = 1.25
+51P1C = U3
+TR = "Z1P OR 51P1T"`,
+  },
+
+  waterml: {
+    filename: "StreamGaugeSeries.xml",
+    title: "OGC WaterML 2.0 Hydrologic Time-Series Observation",
+    description: "OGC WaterML 2.0 MeasurementTimeseries XML payload for river stage and discharge gauging.",
+    viewLabel: "WaterML 2.0 Observation Series",
+    code: `<?xml version="1.0" encoding="UTF-8"?>
+<wml2:Collection xmlns:wml2="http://www.opengis.net/waterml/2.0" xmlns:gml="http://www.opengis.net/gml/3.2" gml:id="col_1">
+  <wml2:observationMember>
+    <wml2:MeasurementTimeseries gml:id="ts_discharge">
+      <wml2:point>
+        <wml2:MeasurementTVP>
+          <wml2:time>2026-11-01T00:00:00Z</wml2:time>
+          <wml2:value>142.5</wml2:value>
+        </wml2:MeasurementTVP>
+      </wml2:point>
+    </wml2:MeasurementTimeseries>
+  </wml2:observationMember>
+</wml2:Collection>`,
   },
 };
 
@@ -4872,6 +5108,18 @@ async function renderExampleSvgs(slug: string, code: string): Promise<{ svgDark:
     case "modflow":
     case "landgem":
     case "powerfactory":
+    case "asm":
+    case "atp":
+    case "comtrade":
+    case "dnp3":
+    case "hec-hms":
+    case "matpower":
+    case "mlxtran":
+    case "nmodl":
+    case "oneliner":
+    case "scl":
+    case "sel":
+    case "waterml":
     case "pslf": {
       const spec = EXAMPLE_SPECS[slug]!;
       const domainMeta: Record<

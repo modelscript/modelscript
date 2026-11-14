@@ -74,3 +74,9 @@ msx aspen to-dae MethanolWaterPlant.inp
 # Project into Modelica 3.x acausal fluid stream model
 msx aspen to-modelica MethanolWaterPlant.inp -o MethanolPlant.mo
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="aspen" />

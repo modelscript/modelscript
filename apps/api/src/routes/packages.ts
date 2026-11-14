@@ -1440,7 +1440,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
             manifestAuthor = parsedManifest.author;
             manifestLicense = parsedManifest.license;
             manifestProfile = parsedManifest.profile;
-          } catch {}
+          } catch (err) {
+            console.warn(`[Packages] Malformed stored manifest JSON for '${name}@${version}':`, err);
+          }
         }
       }
       const resources = getPackageVersionResources(database, name, version);
@@ -1796,7 +1798,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
                 try {
                   const parsed = JSON.parse(manifestResult.content);
                   manifestName = parsed?.name;
-                } catch {}
+                } catch (err) {
+                  console.warn(`[Packages] Malformed upstream manifest.json for '${name}@${version}':`, err);
+                }
               } else if (manifestResult.type === "mo") {
                 manifestName = parsePackageMo(manifestResult.content)?.name ?? undefined;
               }
@@ -3205,7 +3209,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
                       ext === "svg" ? "image/svg+xml" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
                     const b64 = fs.readFileSync(cand).toString("base64");
                     return `href="data:${mime};base64,${b64}"`;
-                  } catch {}
+                  } catch (err) {
+                    console.warn(`[Packages] Failed to inline icon asset '${cand}':`, err);
+                  }
                 }
               }
               return match;
@@ -3255,7 +3261,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
                 const parsedM = JSON.parse(verRow.manifest);
                 if (typeof parsedM.language === "string") domain = parsedM.language;
                 else if (typeof parsedM.modelscript?.language === "string") domain = parsedM.modelscript.language;
-              } catch {}
+              } catch (err) {
+                console.warn(`[Packages] Malformed manifest JSON for '${name}@${version}':`, err);
+              }
             }
             const artifacts = database.getArtifacts(verRow.id);
             for (const a of artifacts) {

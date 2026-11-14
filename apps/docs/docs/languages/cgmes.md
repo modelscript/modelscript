@@ -194,3 +194,9 @@ const { psseCase } = cgmesToPsse(model, { sbaseMva: 100.0 });
 const solution = solvePowerFlow(psseCase, { algorithm: "newton_raphson" });
 const modelicaSource = cgmesToModelica(model, { packageName: "EntsoeCorridor" });
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="cgmes" />

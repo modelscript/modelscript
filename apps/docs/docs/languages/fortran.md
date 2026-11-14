@@ -70,3 +70,9 @@ import { lintFortranSource, lowerFortranToDae } from "@modelscript/fortran";
 const diagnostics = lintFortranSource(source);
 const result = lowerFortranToDae(builder, source.split("\n"));
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="fortran" />

@@ -3,11 +3,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import yargs, { type ArgumentsCamelCase, type Argv, type CommandBuilder, type CommandModule } from "yargs";
-
-const CURRENT_CLI_DIR = import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT_DIR = path.resolve(CURRENT_CLI_DIR, "../../..");
+import { loadCliEnterpriseModule } from "./ee-loader.js";
 
 const ENTERPRISE_CLI_COMMANDS = new Set([
   "autosar",
@@ -48,32 +46,20 @@ async function enforceEnterpriseCliEntitlement(commandSpec: string | readonly st
     process.exit(1);
   }
 
-  const candidates = [
-    path.join(REPO_ROOT_DIR, "ee", "dist", "index.js"),
-    path.join(REPO_ROOT_DIR, "ee", "src", "index.ts"),
-  ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      try {
-        const eeMod = (await import(pathToFileURL(candidate).href)) as {
-          verifyEnterpriseCliCommand?: (cmd: string) => { allowed: boolean; reason?: string };
-        };
-        if (typeof eeMod.verifyEnterpriseCliCommand === "function") {
-          const check = eeMod.verifyEnterpriseCliCommand(subcommand);
-          if (!check.allowed) {
-            console.error(`[Enterprise License Required] ${check.reason ?? "License check failed."}`);
-            process.exit(1);
-          }
-        }
-        return;
-      } catch {
-        // Continue to next candidate
+  const eeMod = await loadCliEnterpriseModule();
+  if (eeMod) {
+    if (typeof eeMod.verifyEnterpriseCliCommand === "function") {
+      const check = eeMod.verifyEnterpriseCliCommand(subcommand);
+      if (!check.allowed) {
+        console.error(`[Enterprise License Required] ${check.reason ?? "License check failed."}`);
+        process.exit(1);
       }
     }
+    return;
   }
 
   console.error(
-    `[Enterprise Edition Required] 'msx ${subcommand}' requires ModelScript Enterprise Edition (@modelscript/ee), which is not included in the Community Edition distribution.`,
+    `[Enterprise Edition Required] 'msx ${subcommand}' requires ModelScript Enterprise Edition (@modelscript/ee), which is disabled or not included in this distribution.`,
   );
   process.exit(1);
 }

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { AlertIcon, CheckCircleIcon, SyncIcon } from "@primer/octicons-react";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Button, Dialog } from "@primer/react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   adjustAdminUserCredits,
@@ -75,7 +76,6 @@ import {
 } from "../api";
 import { setAdminSudoToken, type SudoRequiredEventDetail } from "../api/client";
 import Box from "../components/Box";
-import { useFocusTrap } from "../hooks/useFocusTrap";
 import { usePageTitle } from "../util/title";
 import {
   ActionButton,
@@ -96,8 +96,6 @@ import {
   DetailColumn,
   Header,
   Input,
-  ModalBox,
-  ModalOverlay,
   type AdminTab,
 } from "./admin";
 
@@ -770,28 +768,6 @@ export const AdminPage: React.FC = () => {
     confirmLabel: string;
     onConfirm: () => Promise<void>;
   } | null>(null);
-  const confirmModalRef = useRef<HTMLDivElement | null>(null);
-  const sudoModalRef = useRef<HTMLDivElement | null>(null);
-
-  useFocusTrap(confirmModalRef, Boolean(confirmModal), {
-    onEscape: () => setConfirmModal(null),
-  });
-  useFocusTrap(sudoModalRef, Boolean(sudoPrompt), {
-    onEscape: handleCancelSudo,
-  });
-
-  useEffect(() => {
-    if (!confirmModal && !sudoPrompt) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (confirmModal) setConfirmModal(null);
-        if (sudoPrompt) handleCancelSudo();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirmModal, sudoPrompt]);
 
   const handleDeletePostDirectly = async (postId: number) => {
     setConfirmModal({
@@ -1440,44 +1416,26 @@ export const AdminPage: React.FC = () => {
       </DetailColumn>
 
       {confirmModal && (
-        <ModalOverlay onClick={() => setConfirmModal(null)}>
-          <ModalBox
-            ref={confirmModalRef}
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label={confirmModal.title}
-          >
-            <span style={{ fontWeight: 800, fontSize: "16px", color: "var(--color-text-primary)" }}>
-              {confirmModal.title}
-            </span>
+        <Dialog title={confirmModal.title} width="medium" onClose={() => setConfirmModal(null)}>
+          <Box display="flex" flexDirection="column" gap={3}>
             <Box fontSize="14px" color="var(--color-text-muted)" style={{ lineHeight: 1.5 }}>
               {confirmModal.message}
             </Box>
             <Box display="flex" justifyContent="flex-end" gap={2} mt={2}>
-              <ActionButton $variant="secondary" onClick={() => setConfirmModal(null)} disabled={loading}>
+              <Button variant="default" onClick={() => setConfirmModal(null)} disabled={loading}>
                 Cancel
-              </ActionButton>
-              <ActionButton $variant="danger" onClick={() => void confirmModal.onConfirm()} disabled={loading}>
+              </Button>
+              <Button variant="danger" onClick={() => void confirmModal.onConfirm()} disabled={loading}>
                 {confirmModal.confirmLabel}
-              </ActionButton>
+              </Button>
             </Box>
-          </ModalBox>
-        </ModalOverlay>
+          </Box>
+        </Dialog>
       )}
 
       {sudoPrompt && (
-        <ModalOverlay onClick={handleCancelSudo}>
-          <ModalBox
-            ref={sudoModalRef}
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Administrator Step-Up Authentication"
-          >
-            <span style={{ fontWeight: 800, fontSize: "16px", color: "var(--color-text-primary)" }}>
-              Administrator Step-Up Authentication (Sudo Mode)
-            </span>
+        <Dialog title="Administrator Step-Up Authentication (Sudo Mode)" width="medium" onClose={handleCancelSudo}>
+          <Box display="flex" flexDirection="column" gap={3}>
             <Box fontSize="13px" color="var(--color-text-muted)" style={{ lineHeight: 1.5 }}>
               {sudoPrompt.message}
             </Box>
@@ -1505,20 +1463,20 @@ export const AdminPage: React.FC = () => {
                 </Box>
               )}
               <Box display="flex" justifyContent="flex-end" gap={2}>
-                <ActionButton type="button" $variant="secondary" onClick={handleCancelSudo} disabled={sudoSubmitting}>
+                <Button type="button" variant="default" onClick={handleCancelSudo} disabled={sudoSubmitting}>
                   Cancel
-                </ActionButton>
-                <ActionButton
+                </Button>
+                <Button
                   type="submit"
-                  $variant="primary"
+                  variant="primary"
                   disabled={sudoSubmitting || (!sudoPassword && !sudoTotpCode.trim())}
                 >
                   {sudoSubmitting ? "Verifying…" : "Verify & Continue"}
-                </ActionButton>
+                </Button>
               </Box>
             </form>
-          </ModalBox>
-        </ModalOverlay>
+          </Box>
+        </Dialog>
       )}
     </AdminContainer>
   );

@@ -251,8 +251,48 @@ export async function getComponentProperties(
 // ────────────────────────────────────────────────────────────────────
 
 export async function simulate(uri: string, params: SimulateParams = {}): Promise<SimulateResult> {
-  const conn = await lsp();
   const opened = openedDocuments.get(uri);
+  if (/\.(pscx|pslx)$/i.test(uri) && opened?.text && typeof fetch === "function") {
+    const sources: Array<{ uri: string; text: string }> = [];
+    for (const [docUri, doc] of openedDocuments.entries()) {
+      if (/\.(pscx|pslx|pswx|psmx)$/i.test(docUri) && doc.text) {
+        sources.push({ uri: docUri, text: doc.text });
+      }
+    }
+    const resp = await fetch("/api/v1/pscad/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        documentText: opened.text,
+        sources,
+        durationSec: params.stopTime,
+        timeStepSec: params.stepSize,
+      }),
+    });
+    const data = (await resp.json()) as any;
+    if (!resp.ok) {
+      return { success: false, error: data?.error ?? `HTTP ${resp.status}` };
+    }
+    const sim = data?.simulationResult;
+    if (!sim) {
+      return { success: false, error: "No simulation result returned from PSCAD EMT backend." };
+    }
+    const variables: string[] = [];
+    const series: number[][] = [];
+    for (const [bus, vals] of Object.entries(sim.busVoltages ?? {})) {
+      variables.push(`V_${bus}`);
+      series.push(vals as number[]);
+    }
+    for (const [br, vals] of Object.entries(sim.branchCurrents ?? {})) {
+      variables.push(`I_${br}`);
+      series.push(vals as number[]);
+    }
+    const tArr: number[] = sim.time ?? [];
+    const y: number[][] = tArr.map((_, idx) => series.map((col) => col[idx] ?? 0));
+    return { success: true, t: tArr, y, variables };
+  }
+
+  const conn = await lsp();
   const effectiveClassName =
     params.className || (opened?.text ? (extractPrimaryModelicaClassName(opened.text) ?? undefined) : undefined);
   const reqParams = { uri, ...params, className: effectiveClassName };
@@ -477,6 +517,28 @@ export async function parseCode(code: string): Promise<{
   syntaxErrors: string[];
 }> {
   return (await lsp()).sendRequest("modelscript/parse", { code });
+}
+
+export async function verifyAllInLsp(
+  params: {
+    uri?: string;
+    target?: string;
+    all?: boolean;
+  } = {},
+): Promise<any> {
+  return (await lsp()).sendRequest("modelscript/verifyAll", params);
+}
+
+export async function getCodeActionsInLsp(
+  uri: string,
+  range: { start: { line: number; character: number }; end: { line: number; character: number } },
+  diagnostics: any[] = [],
+): Promise<any[]> {
+  return (await lsp()).sendRequest("textDocument/codeAction", {
+    textDocument: { uri },
+    range,
+    context: { diagnostics },
+  });
 }
 
 export async function getDocumentSymbols(uri: string): Promise<any[]> {

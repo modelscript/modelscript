@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckCircleIcon, CpuIcon, FlameIcon, SearchIcon, ServerIcon, XIcon, ZapIcon } from "@primer/octicons-react";
+import { CheckCircleIcon, CpuIcon, FlameIcon, SearchIcon, ServerIcon, ZapIcon } from "@primer/octicons-react";
+import { Button, Dialog, TextInput } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import styled from "styled-components";
 import {
   createArtifactViewFromHpcJob,
@@ -11,63 +11,6 @@ import {
   type HpcJobSummary,
 } from "../api";
 import Box from "./Box";
-
-const ModalOverlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(4px);
-  z-index: 10000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-`;
-
-const ModalContent = styled.div`
-  background: var(--surface-overlay, rgba(14, 20, 36, 0.95));
-  backdrop-filter: blur(16px);
-  border: 1px solid var(--color-border-glass);
-  border-radius: 16px;
-  width: 100%;
-  max-width: 680px;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
-  overflow: hidden;
-`;
-
-const ModalHeader = styled.div`
-  padding: 18px 24px;
-  border-bottom: 1px solid var(--color-border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-`;
-
-const SearchInputWrapper = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  background: var(--color-search-bg);
-  border: 1px solid var(--color-search-border);
-  border-radius: 9999px;
-  margin: 16px 24px 8px 24px;
-`;
-
-const StyledInput = styled.input`
-  background: transparent;
-  border: none;
-  outline: none;
-  width: 100%;
-  color: var(--color-text-primary);
-  font-size: 14px;
-`;
 
 const FilterPills = styled.div`
   display: flex;
@@ -157,31 +100,6 @@ const ProfileChip = styled.span`
   gap: 4px;
 `;
 
-const AttachButton = styled.button`
-  background: var(--gradient-cta);
-  color: white;
-  border: none;
-  border-radius: 9999px;
-  padding: 10px 20px;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  transition: all 0.15s ease-in-out;
-
-  &:hover:not(:disabled) {
-    box-shadow: 0 0 14px rgba(6, 182, 212, 0.5);
-    transform: translateY(-1px);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-`;
-
 interface HpcArtifactPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -240,39 +158,30 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
 
   if (!isOpen) return null;
 
-  const modal = (
-    <ModalOverlay onClick={onClose}>
-      <ModalContent onClick={(e) => e.stopPropagation()}>
-        <ModalHeader>
-          <Box display="flex" alignItems="center" gap={2}>
-            <ServerIcon size={20} fill="var(--color-accent-emphasis)" />
-            <span style={{ fontSize: "17px", fontWeight: "700", color: "var(--color-text-primary)" }}>
-              Attach HPC Simulation Artifact
-            </span>
-          </Box>
-          <button
-            onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "var(--color-text-muted)",
-              display: "flex",
-              alignItems: "center",
-            }}
-          >
-            <XIcon size={18} />
-          </button>
-        </ModalHeader>
-
-        <SearchInputWrapper>
-          <SearchIcon size={16} fill="var(--color-text-muted)" />
-          <StyledInput
+  return (
+    <Dialog
+      title={
+        <Box display="flex" alignItems="center" gap={2}>
+          <ServerIcon size={20} fill="var(--color-accent-emphasis)" />
+          <span style={{ fontSize: "17px", fontWeight: "700", color: "var(--color-text-primary)" }}>
+            Attach HPC Simulation Artifact
+          </span>
+        </Box>
+      }
+      width="large"
+      onClose={onClose}
+    >
+      <Box display="flex" flexDirection="column" maxHeight="75vh" overflow="hidden">
+        <Box mb={3}>
+          <TextInput
+            block
+            leadingVisual={SearchIcon}
             placeholder="Search completed simulation runs by name or solver..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            autoFocus
           />
-        </SearchInputWrapper>
+        </Box>
 
         <FilterPills>
           {["all", "calculix", "su2", "openfoam", "modelica"].map((filter) => (
@@ -380,13 +289,12 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
 
         {/* Modal Footer */}
         <Box
-          p={3}
-          px={4}
-          borderTop="1px solid var(--color-border)"
+          pt={3}
+          mt={2}
+          borderTop="1px solid var(--ms-border-subtle, var(--color-border))"
           display="flex"
           justifyContent="space-between"
           alignItems="center"
-          bg="var(--surface-overlay, rgba(14, 20, 36, 0.95))"
         >
           <Box display="flex" alignItems="center" gap={2}>
             <span style={{ fontSize: "12px", color: "var(--color-text-muted)", fontWeight: "600" }}>Colormap:</span>
@@ -394,9 +302,9 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
               value={colormap}
               onChange={(e) => setColormap(e.target.value)}
               style={{
-                background: "rgba(255, 255, 255, 0.05)",
+                background: "var(--ms-surface-subtle, rgba(255, 255, 255, 0.05))",
                 color: "var(--color-text-primary)",
-                border: "1px solid var(--color-border)",
+                border: "1px solid var(--ms-border-default, var(--color-border))",
                 borderRadius: "6px",
                 padding: "4px 8px",
                 fontSize: "12px",
@@ -413,32 +321,22 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
           </Box>
 
           <Box display="flex" gap={2}>
-            <button
-              onClick={onClose}
-              style={{
-                background: "transparent",
-                border: "1px solid var(--color-border-default)",
-                borderRadius: "9999px",
-                padding: "8px 16px",
-                fontSize: "13px",
-                fontWeight: "600",
-                cursor: "pointer",
-                color: "var(--color-text-primary)",
-              }}
-            >
+            <Button variant="default" onClick={onClose}>
               Cancel
-            </button>
-            <AttachButton disabled={selectedJobId === null || attaching} onClick={handleAttach}>
-              <ServerIcon size={16} />
+            </Button>
+            <Button
+              variant="primary"
+              leadingVisual={ServerIcon}
+              disabled={selectedJobId === null || attaching}
+              onClick={handleAttach}
+            >
               {attaching ? "Binding Artifact..." : "Attach Selected HPC Run"}
-            </AttachButton>
+            </Button>
           </Box>
         </Box>
-      </ModalContent>
-    </ModalOverlay>
+      </Box>
+    </Dialog>
   );
-
-  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 };
 
 export default HpcArtifactPickerModal;

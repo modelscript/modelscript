@@ -60,12 +60,14 @@ export interface GatekeeperScorecard {
  * Executes the 5-stage ISO Grid Code Gatekeeper automated screening pipeline.
  */
 export function runGatekeeperScreeningPipeline(pkg: GatekeeperSubmissionPackage): GatekeeperScorecard {
+  const evaluatedAt = new Date().toISOString();
   const stages: GatekeeperStageResult[] = [];
   const rejectionReasons: string[] = [];
 
   // ==========================================
   // Stage 1: Static Parameter & MOD-032 Gate
   // ==========================================
+  const s1Start = performance.now();
   const s1Errors = pkg.staticDiagnosticCount?.errors ?? (!pkg.hasRawPowerFlow || !pkg.hasDyrDynamics ? 1 : 0);
   const s1Warnings = pkg.staticDiagnosticCount?.warnings ?? 0;
   const s1Crit: string[] = [];
@@ -84,6 +86,9 @@ export function runGatekeeperScreeningPipeline(pkg: GatekeeperSubmissionPackage)
     s1Crit.push(`Detected ${s1Errors} syntax or boundary error(s) during MOD-032 parser screening.`);
     s1Rem.push("Resolve inverted reactive power limits (Qmin <= Qmax) and missing bus connections.");
   }
+  if (s1Warnings > 0) {
+    s1Warn.push(`Detected ${s1Warnings} warning(s) during static MOD-032 parser screening.`);
+  }
 
   const s1Verdict = s1Crit.length > 0 ? "FAIL" : s1Warnings > 0 ? "WARN" : "PASS";
   const s1Score = s1Verdict === "PASS" ? 100 : s1Verdict === "WARN" ? 80 : 0;
@@ -94,7 +99,7 @@ export function runGatekeeperScreeningPipeline(pkg: GatekeeperSubmissionPackage)
     stageName: "MOD-032 Static Completeness & Parameter Bounds",
     verdict: s1Verdict,
     scorePercent: s1Score,
-    executionTimeMs: 4.2,
+    executionTimeMs: Number(Math.max(0.01, performance.now() - s1Start).toFixed(2)),
     criticalIssues: s1Crit,
     warnings: s1Warn,
     remediationAdvice: s1Rem,
@@ -103,12 +108,18 @@ export function runGatekeeperScreeningPipeline(pkg: GatekeeperSubmissionPackage)
   // ==========================================
   // Stage 2: Flat-Start Equilibrium Gate
   // ==========================================
-  const drift = pkg.flatStartMaxDriftPercent ?? 0.05; // default 0.05%
+  const s2Start = performance.now();
+  const drift = pkg.flatStartMaxDriftPercent;
   const s2Crit: string[] = [];
   const s2Warn: string[] = [];
   const s2Rem: string[] = [];
 
-  if (drift > 1.0) {
+  if (drift === undefined || !Number.isFinite(drift)) {
+    s2Crit.push("Flat-start equilibrium telemetry ('flatStartMaxDriftPercent') was not provided or executed.");
+    s2Rem.push(
+      "Execute no-disturbance 10 s flat-start simulation and supply measured max active/reactive power drift.",
+    );
+  } else if (drift > 1.0) {
     s2Crit.push(`Flat-start active/reactive power drift (${drift.toFixed(2)}%) exceeds allowable 1.0% limit.`);
     s2Rem.push("Re-initialize exciter reference and governor pre-disturbance power balance at t=0.");
   } else if (drift > 0.1) {
@@ -116,15 +127,22 @@ export function runGatekeeperScreeningPipeline(pkg: GatekeeperSubmissionPackage)
   }
 
   const s2Verdict = s2Crit.length > 0 ? "FAIL" : s2Warn.length > 0 ? "WARN" : "PASS";
-  const s2Score = s2Verdict === "PASS" ? 100 : s2Verdict === "WARN" ? 85 : 20;
-  if (s2Verdict === "FAIL") rejectionReasons.push("Stage 2 Failure: Model exhibits numerical drift at steady state.");
+  const s2Score =
+    drift === undefined || !Number.isFinite(drift) ? 0 : s2Verdict === "PASS" ? 100 : s2Verdict === "WARN" ? 85 : 20;
+  if (s2Verdict === "FAIL") {
+    rejectionReasons.push(
+      drift === undefined || !Number.isFinite(drift)
+        ? "Stage 2 Failure: Flat-start equilibrium telemetry not verified."
+        : "Stage 2 Failure: Model exhibits numerical drift at steady state.",
+    );
+  }
 
   stages.push({
     stageNumber: 2,
     stageName: "Flat-Start Equilibrium & Initialization",
     verdict: s2Verdict,
     scorePercent: s2Score,
-    executionTimeMs: 12.5,
+    executionTimeMs: Number(Math.max(0.01, performance.now() - s2Start).toFixed(2)),
     criticalIssues: s2Crit,
     warnings: s2Warn,
     remediationAdvice: s2Rem,
@@ -133,28 +151,49 @@ export function runGatekeeperScreeningPipeline(pkg: GatekeeperSubmissionPackage)
   // ==========================================
   // Stage 3: Short-Circuit Ratio (SCR) Sweep Gate
   // ==========================================
-  const lowestStableScr = pkg.lowestStableScr ?? 1.5;
+  const s3Start = performance.now();
+  const lowestStableScr = pkg.lowestStableScr;
   const s3Crit: string[] = [];
   const s3Warn: string[] = [];
   const s3Rem: string[] = [];
 
-  if (lowestStableScr > 2.5) {
-    s3Crit.push(`Model becomes unstable under weak grid conditions (lowest stable SCR = ${lowestStableScr.toFixed(1)} > 2.5).`);
-    s3Rem.push("Tune PLL bandwidth and current loop proportional gains to prevent sub-synchronous control interactions (SSCI).");
+  if (lowestStableScr === undefined || !Number.isFinite(lowestStableScr)) {
+    s3Crit.push("Weak-grid SCR sweep telemetry ('lowestStableScr') was not provided or executed.");
+    s3Rem.push("Run weak-grid SCR stability sweep (SCR = 5.0 down to 1.2) and supply lowest stable SCR.");
+  } else if (lowestStableScr > 2.5) {
+    s3Crit.push(
+      `Model becomes unstable under weak grid conditions (lowest stable SCR = ${lowestStableScr.toFixed(1)} > 2.5).`,
+    );
+    s3Rem.push(
+      "Tune PLL bandwidth and current loop proportional gains to prevent sub-synchronous control interactions (SSCI).",
+    );
   } else if (lowestStableScr > 1.5) {
     s3Warn.push(`Model shows oscillatory damping degradation below SCR = ${lowestStableScr.toFixed(1)}.`);
   }
 
   const s3Verdict = s3Crit.length > 0 ? "FAIL" : s3Warn.length > 0 ? "WARN" : "PASS";
-  const s3Score = s3Verdict === "PASS" ? 100 : s3Verdict === "WARN" ? 80 : 30;
-  if (s3Verdict === "FAIL") rejectionReasons.push("Stage 3 Failure: Control instability in weak-grid interconnection sweep.");
+  const s3Score =
+    lowestStableScr === undefined || !Number.isFinite(lowestStableScr)
+      ? 0
+      : s3Verdict === "PASS"
+        ? 100
+        : s3Verdict === "WARN"
+          ? 80
+          : 30;
+  if (s3Verdict === "FAIL") {
+    rejectionReasons.push(
+      lowestStableScr === undefined || !Number.isFinite(lowestStableScr)
+        ? "Stage 3 Failure: Weak-grid SCR sweep telemetry not verified."
+        : "Stage 3 Failure: Control instability in weak-grid interconnection sweep.",
+    );
+  }
 
   stages.push({
     stageNumber: 3,
     stageName: "Short-Circuit Ratio (SCR) Weak-Grid Stability",
     verdict: s3Verdict,
     scorePercent: s3Score,
-    executionTimeMs: 45.1,
+    executionTimeMs: Number(Math.max(0.01, performance.now() - s3Start).toFixed(2)),
     criticalIssues: s3Crit,
     warnings: s3Warn,
     remediationAdvice: s3Rem,
@@ -163,31 +202,45 @@ export function runGatekeeperScreeningPipeline(pkg: GatekeeperSubmissionPackage)
   // ==========================================
   // Stage 4: IEEE 2800 / PRC-024 Ride-Through Gate
   // ==========================================
-  const lvrtPass = pkg.lvrtPass ?? true;
-  const hvrtPass = pkg.hvrtPass ?? true;
+  const s4Start = performance.now();
   const s4Crit: string[] = [];
   const s4Warn: string[] = [];
   const s4Rem: string[] = [];
 
-  if (!lvrtPass) {
-    s4Crit.push("Model trips or exhibits momentary cessation during 0.05 pu LVRT sag (violates IEEE 2800 Clause 5.3.2).");
+  if (pkg.lvrtPass === undefined) {
+    s4Crit.push("LVRT ride-through verification telemetry ('lvrtPass') was not provided or executed.");
+    s4Rem.push("Run IEEE 2800 / NERC PRC-024-3 LVRT simulation and supply verified pass/fail status.");
+  } else if (!pkg.lvrtPass) {
+    s4Crit.push(
+      "Model trips or exhibits momentary cessation during 0.05 pu LVRT sag (violates IEEE 2800 Clause 5.3.2).",
+    );
     s4Rem.push("Disable inverter momentary cessation in firmware and enable fast reactive current injection.");
   }
-  if (!hvrtPass) {
+
+  if (pkg.hvrtPass === undefined) {
+    s4Crit.push("HVRT ride-through verification telemetry ('hvrtPass') was not provided or executed.");
+    s4Rem.push("Run IEEE 2800 / NERC PRC-024-3 HVRT swell simulation and supply verified pass/fail status.");
+  } else if (!pkg.hvrtPass) {
     s4Crit.push("Model trips prematurely during 1.20 pu HVRT transient overvoltage swell.");
     s4Rem.push("Coordinate overvoltage protection delay settings with PRC-024-3 curves.");
   }
 
   const s4Verdict = s4Crit.length > 0 ? "FAIL" : "PASS";
   const s4Score = s4Verdict === "PASS" ? 100 : 0;
-  if (s4Verdict === "FAIL") rejectionReasons.push("Stage 4 Failure: Inverter trips or momentary cessation during fault ride-through.");
+  if (s4Verdict === "FAIL") {
+    rejectionReasons.push(
+      pkg.lvrtPass === undefined || pkg.hvrtPass === undefined
+        ? "Stage 4 Failure: IEEE 2800 / PRC-024 ride-through telemetry not verified."
+        : "Stage 4 Failure: Inverter trips or momentary cessation during fault ride-through.",
+    );
+  }
 
   stages.push({
     stageNumber: 4,
     stageName: "IEEE 2800 / PRC-024 Ride-Through Verification",
     verdict: s4Verdict,
     scorePercent: s4Score,
-    executionTimeMs: 28.0,
+    executionTimeMs: Number(Math.max(0.01, performance.now() - s4Start).toFixed(2)),
     criticalIssues: s4Crit,
     warnings: s4Warn,
     remediationAdvice: s4Rem,
@@ -196,30 +249,48 @@ export function runGatekeeperScreeningPipeline(pkg: GatekeeperSubmissionPackage)
   // ==========================================
   // Stage 5: EMT vs. RMS Dynamic Parity Gate
   // ==========================================
-  const nrmse = pkg.emtRmsNrmse ?? (pkg.hasPscadModel ? 0.04 : 0.0);
+  const s5Start = performance.now();
+  const nrmse = pkg.emtRmsNrmse;
   const s5Crit: string[] = [];
   const s5Warn: string[] = [];
   const s5Rem: string[] = [];
 
-  if (pkg.hasPscadModel) {
-    if (nrmse > 0.10) {
-      s5Crit.push(`EMT-to-RMS active power discrepancy NRMSE (${(nrmse * 100).toFixed(1)}%) exceeds 10% tolerance.`);
-      s5Rem.push("Align generic PSS/E REGCA/REECA parameters with PSCAD vendor control block time constants.");
-    } else if (nrmse > 0.06) {
-      s5Warn.push(`Moderate EMT-to-RMS divergence (${(nrmse * 100).toFixed(1)}% NRMSE) observed.`);
-    }
+  if (!pkg.hasPscadModel) {
+    s5Crit.push("Missing PSCAD EMT model required for EMT-to-RMS dynamic cross-parity verification.");
+    s5Rem.push("Submit vendor-verified PSCAD model (.pscx/.pslx) and run EMT-vs-RMS parity benchmark.");
+  } else if (nrmse === undefined || !Number.isFinite(nrmse)) {
+    s5Crit.push("EMT-to-RMS parity telemetry ('emtRmsNrmse') was not provided or executed.");
+    s5Rem.push("Execute EMT-vs-RMS transient benchmark and supply computed active power NRMSE.");
+  } else if (nrmse > 0.1) {
+    s5Crit.push(`EMT-to-RMS active power discrepancy NRMSE (${(nrmse * 100).toFixed(1)}%) exceeds 10% tolerance.`);
+    s5Rem.push("Align generic PSS/E REGCA/REECA parameters with PSCAD vendor control block time constants.");
+  } else if (nrmse > 0.06) {
+    s5Warn.push(`Moderate EMT-to-RMS divergence (${(nrmse * 100).toFixed(1)}% NRMSE) observed.`);
   }
 
   const s5Verdict = s5Crit.length > 0 ? "FAIL" : s5Warn.length > 0 ? "WARN" : "PASS";
-  const s5Score = s5Verdict === "PASS" ? 100 : s5Verdict === "WARN" ? 85 : 40;
-  if (s5Verdict === "FAIL") rejectionReasons.push("Stage 5 Failure: Unacceptable divergence between EMT and RMS simulation models.");
+  const s5Score =
+    !pkg.hasPscadModel || nrmse === undefined || !Number.isFinite(nrmse)
+      ? 0
+      : s5Verdict === "PASS"
+        ? 100
+        : s5Verdict === "WARN"
+          ? 85
+          : 40;
+  if (s5Verdict === "FAIL") {
+    rejectionReasons.push(
+      !pkg.hasPscadModel || nrmse === undefined || !Number.isFinite(nrmse)
+        ? "Stage 5 Failure: EMT-to-RMS cross-parity verification missing or incomplete."
+        : "Stage 5 Failure: Unacceptable divergence between EMT and RMS simulation models.",
+    );
+  }
 
   stages.push({
     stageNumber: 5,
     stageName: "EMT vs. RMS Model Parity (FERC Order 901)",
     verdict: s5Verdict,
     scorePercent: s5Score,
-    executionTimeMs: 18.2,
+    executionTimeMs: Number(Math.max(0.01, performance.now() - s5Start).toFixed(2)),
     criticalIssues: s5Crit,
     warnings: s5Warn,
     remediationAdvice: s5Rem,
@@ -250,7 +321,7 @@ export function runGatekeeperScreeningPipeline(pkg: GatekeeperSubmissionPackage)
     `* **Submission Reference:** \`${pkg.submissionId}\``,
     `* **Interconnection Customer:** ${pkg.developerOrganization}`,
     `* **Facility Name:** ${pkg.plantName} (${pkg.ratedMva.toFixed(1)} MVA @ ${pkg.poiKv.toFixed(1)} kV)`,
-    `* **Evaluation Timestamp:** ${new Date().toISOString()}`,
+    `* **Evaluation Timestamp:** ${evaluatedAt}`,
     `* **Screening Verdict:** **${overallVerdict}** (Composite Score: ${compositeScore} / 100)`,
     ``,
     `---`,
@@ -295,7 +366,7 @@ export function runGatekeeperScreeningPipeline(pkg: GatekeeperSubmissionPackage)
 
   return {
     submissionId: pkg.submissionId,
-    evaluatedAt: new Date().toISOString(),
+    evaluatedAt,
     plantName: pkg.plantName,
     developerOrganization: pkg.developerOrganization,
     overallVerdict,

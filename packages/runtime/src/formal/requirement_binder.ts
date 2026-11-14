@@ -7,9 +7,38 @@
  * GLR Concrete Syntax Tree (CST) traversal (`@modelscript/dsl`).
  */
 
-import { createWasmParserSync, type SyntaxNode, type TreeSitterParser } from "@modelscript/dsl/bindings";
+import { createWasmParserSync, type TreeSitterParser } from "@modelscript/dsl/bindings";
 import type { BoundRequirement } from "../analysis/wasm_zonotope_reach.js";
+import type { SymbolEntry, SymbolIndex } from "../runtime.js";
+import {
+  isMemberLikeSymbol,
+  isRelationshipOrImportSymbol,
+  isTypeLikeSymbol,
+  splitQualifiedPath,
+} from "../util/symbol_roles.js";
 import { SemanticTheoryCoordinator } from "./theory_coordinator.js";
+
+export interface RequirementCstNodeLike {
+  readonly id: number;
+  readonly type: string;
+  readonly text: string;
+  readonly startIndex: number;
+  readonly endIndex: number;
+  readonly parent: RequirementCstNodeLike | null;
+  readonly children: readonly RequirementCstNodeLike[];
+  readonly namedChildren: readonly RequirementCstNodeLike[];
+  readonly childCount: number;
+  readonly namedChildCount: number;
+  readonly firstChild: RequirementCstNodeLike | null;
+  readonly firstNamedChild: RequirementCstNodeLike | null;
+  child(index: number): RequirementCstNodeLike | null;
+  namedChild(index: number): RequirementCstNodeLike | null;
+  childForFieldName(fieldName: string): RequirementCstNodeLike | null;
+  childrenForFieldName(fieldName: string): RequirementCstNodeLike[];
+  descendantsOfType(types: string | string[]): RequirementCstNodeLike[];
+}
+
+type SyntaxNode = RequirementCstNodeLike;
 
 export type { BoundRequirement };
 
@@ -60,9 +89,15 @@ function loadWasmLanguageParserNodeSync(langDirName: "sysml2" | "modelica"): Tre
     const bindingsUrl = new URL(`../../../../languages/${langDirName}/src-gen/bindings.js`, import.meta.url);
     const bindingsPath = decodeURIComponent(bindingsUrl.pathname);
 
-    if (typeof process !== "undefined" && typeof (process as any).getBuiltinModule === "function") {
+    interface NodeBuiltinProcess {
+      getBuiltinModule?: (id: string) => unknown;
+    }
+    const getBuiltin = (process as unknown as NodeBuiltinProcess).getBuiltinModule;
+    if (typeof process !== "undefined" && typeof getBuiltin === "function") {
       try {
-        const fsMod = (process as any).getBuiltinModule("node:fs");
+        const fsMod = getBuiltin("node:fs") as
+          | { existsSync?: (p: string) => boolean; readFileSync?: (p: string, enc: string) => string }
+          | undefined;
         if (fsMod && typeof fsMod.existsSync === "function") {
           for (const rel of candidateRels) {
             const p = decodeURIComponent(new URL(rel, import.meta.url).pathname);
@@ -73,19 +108,21 @@ function loadWasmLanguageParserNodeSync(langDirName: "sysml2" | "modelica"): Tre
           }
         }
 
-        const modBuiltin = (process as any).getBuiltinModule("node:module");
+        const modBuiltin = getBuiltin("node:module") as { createRequire?: (url: string) => NodeRequire } | undefined;
         if (modBuiltin && typeof modBuiltin.createRequire === "function") {
           const req = modBuiltin.createRequire(import.meta.url);
-          const bindingsMod = req(bindingsPath);
+          const bindingsMod = req(bindingsPath) as {
+            createWasmParserSync?: (path: string) => { parser: TreeSitterParser };
+          };
           if (bindingsMod && typeof bindingsMod.createWasmParserSync === "function") {
-            return bindingsMod.createWasmParserSync(wasmPath).parser as TreeSitterParser;
+            return bindingsMod.createWasmParserSync(wasmPath).parser;
           }
         }
       } catch {
         // Fallback to reading SYNTAX_NAMES and FIELD_NAMES from bindings.js below
       }
 
-      const fsMod = (process as any).getBuiltinModule("node:fs");
+      const fsMod = getBuiltin("node:fs") as { readFileSync?: (p: string, enc: string) => string } | undefined;
       if (fsMod && typeof fsMod.readFileSync === "function") {
         const bindingsSrc = String(fsMod.readFileSync(bindingsPath, "utf8"));
         let syntaxNames: string[] | undefined;
@@ -647,11 +684,77 @@ export function parseSysmlRequirements(sysmlText: string, cstRoot?: SyntaxNode |
  * by traversing its native WebAssembly GLR Concrete Syntax Tree (CST).
  * Returns a map from Modelica variable name -> target path.
  */
+function extractTwinStringsFromModNodes(modNodes: SyntaxNode[]): string[] {
+  const targets: string[] = [];
+  for (const modNode of modNodes) {
+    const modNameNode = modNode.childForFieldName("name") ?? modNode.firstNamedChild;
+    const modKey = modNameNode?.text.trim().toLowerCase();
+    if (modKey === "twin" || modKey === "counterpart" || modKey === "implements") {
+      const strNodes = modNode.descendantsOfType(["string_literal"]);
+      if (strNodes.length > 0) {
+        const rawStr = strNodes[0]!.text.trim();
+        const unquoted =
+          (rawStr.startsWith('"') && rawStr.endsWith('"')) || (rawStr.startsWith("'") && rawStr.endsWith("'"))
+            ? rawStr.slice(1, -1)
+            : rawStr;
+        if (unquoted) {
+          targets.push(unquoted);
+        }
+      }
+    }
+  }
+  return targets;
+}
+
+function collectClassLevelAnnotationModNodes(
+  node: SyntaxNode,
+  rootClassNode: SyntaxNode,
+  inAnnotationClause: boolean,
+  out: SyntaxNode[],
+): void {
+  if (
+    node !== rootClassNode &&
+    (node.type === "class_definition" ||
+      node.type === "short_class_definition" ||
+      node.type === "component_declaration" ||
+      node.type === "component_declaration1")
+  ) {
+    return;
+  }
+  const nowInAnnot = inAnnotationClause || node.type === "annotation_clause";
+  if (nowInAnnot && node.type === "element_modification") {
+    out.push(node);
+  }
+  for (const child of node.namedChildren) {
+    collectClassLevelAnnotationModNodes(child, rootClassNode, nowInAnnot, out);
+  }
+}
+
 export function extractModelicaTwinAnnotations(moText: string, cstRoot?: SyntaxNode | null): Map<string, string> {
   const result = new Map<string, string>();
   const rootNode = cstRoot ?? getModelicaWasmParser()?.parse(moText)?.rootNode ?? null;
   if (!rootNode) {
     return result;
+  }
+
+  const classNodes = rootNode.descendantsOfType(["class_definition", "short_class_definition"]);
+  for (const classNode of classNodes) {
+    const specNode =
+      classNode.childForFieldName("class_specifier") ??
+      classNode.namedChildren.find(
+        (c: SyntaxNode) => c.type === "class_specifier" || c.type === "short_class_specifier",
+      );
+    const innerSpec = specNode?.type === "class_specifier" ? specNode.firstNamedChild : specNode;
+    const classNameNode =
+      innerSpec?.childForFieldName("name") ?? innerSpec?.namedChildren.find((c: SyntaxNode) => c.type === "identifier");
+    const className = classNameNode?.text.trim();
+    if (!className) continue;
+
+    const classModNodes: SyntaxNode[] = [];
+    collectClassLevelAnnotationModNodes(classNode, classNode, false, classModNodes);
+    for (const target of extractTwinStringsFromModNodes(classModNodes)) {
+      result.set(className, target);
+    }
   }
 
   const compNodes = rootNode.descendantsOfType(["component_declaration", "component_declaration1"]);
@@ -666,22 +769,8 @@ export function extractModelicaTwinAnnotations(moText: string, cstRoot?: SyntaxN
     if (!varName) continue;
 
     const modNodes = compNode.descendantsOfType(["element_modification"]);
-    for (const modNode of modNodes) {
-      const modNameNode = modNode.childForFieldName("name") ?? modNode.firstNamedChild;
-      const modKey = modNameNode?.text.trim().toLowerCase();
-      if (modKey === "twin" || modKey === "counterpart" || modKey === "implements") {
-        const strNodes = modNode.descendantsOfType(["string_literal"]);
-        if (strNodes.length > 0) {
-          const rawStr = strNodes[0]!.text.trim();
-          const unquoted =
-            (rawStr.startsWith('"') && rawStr.endsWith('"')) || (rawStr.startsWith("'") && rawStr.endsWith("'"))
-              ? rawStr.slice(1, -1)
-              : rawStr;
-          if (unquoted) {
-            result.set(varName, unquoted);
-          }
-        }
-      }
+    for (const target of extractTwinStringsFromModNodes(modNodes)) {
+      result.set(varName, target);
     }
   }
 
@@ -778,4 +867,254 @@ export function assertRequirementsToTheoryCoordinator(
       },
     });
   }
+}
+
+/**
+ * Normalized cross-language anchor discovered automatically from source annotations,
+ * imports, typed usages, and requirements traceability edges.
+ */
+export interface DiscoveredCrossLanguageLink {
+  sourceSymbolId: number;
+  sourceName: string;
+  sourceLang: string;
+  sourceUri: string;
+  sourceLine: number;
+  sourceColumn: number;
+  targetName: string;
+  relationKind: "twin" | "implements" | "import" | "typed_usage" | "satisfy" | "verify" | "allocate";
+  targetEntry?: SymbolEntry | undefined;
+  properties?: Record<string, unknown> | undefined;
+}
+
+function offsetToOneBasedLineCol(text: string, offset: number): { line: number; column: number } {
+  const safeOffset = Math.max(0, Math.min(offset, text.length));
+  const slice = text.slice(0, safeOffset);
+  const lastNl = slice.lastIndexOf("\n");
+  if (lastNl === -1) return { line: 1, column: safeOffset + 1 };
+  let line = 1;
+  for (let i = 0; i < safeOffset; i++) {
+    if (text.charCodeAt(i) === 10) line++;
+  }
+  return { line, column: safeOffset - lastNl };
+}
+
+function resolveTargetInIndex(index: SymbolIndex, rawPath: string, sourceLang: string): SymbolEntry | undefined {
+  const parts = splitQualifiedPath(rawPath);
+  if (parts.length === 0) return undefined;
+
+  // Strip optional domain prefix like "SysML2::" or "Modelica::" when the prefix is a domain marker
+  const firstLower = parts[0]!.toLowerCase();
+  const normalizedParts =
+    firstLower === "sysml2" ||
+    firstLower === "sysml" ||
+    firstLower === "modelica" ||
+    firstLower === "psse" ||
+    firstLower === "pscad"
+      ? parts.slice(1)
+      : parts;
+  if (normalizedParts.length === 0) return undefined;
+
+  const leaf = normalizedParts[normalizedParts.length - 1]!;
+  const candidates = (index.byName.get(leaf) ?? [])
+    .map((id) => index.symbols.get(id))
+    .filter((e): e is SymbolEntry => Boolean(e) && !isRelationshipOrImportSymbol(e));
+
+  if (normalizedParts.length === 1) {
+    return candidates.find((c) => c.language && c.language.toLowerCase() !== sourceLang.toLowerCase());
+  }
+
+  const rootCandidates = (index.byName.get(normalizedParts[0]!) ?? [])
+    .map((id) => index.symbols.get(id))
+    .filter((e): e is SymbolEntry => Boolean(e));
+
+  for (const root of rootCandidates) {
+    let curr: SymbolEntry | undefined = root;
+    for (let i = 1; i < normalizedParts.length && curr; i++) {
+      const seg = normalizedParts[i]!;
+      const childIds: number[] = index.childrenOf.get(curr.id) ?? [];
+      let nextCurr: SymbolEntry | undefined;
+      for (const cid of childIds) {
+        const candidate = index.symbols.get(cid);
+        if (candidate && candidate.name === seg && !isRelationshipOrImportSymbol(candidate)) {
+          nextCurr = candidate;
+          break;
+        }
+      }
+      curr = nextCurr;
+    }
+    if (curr && curr.language && curr.language.toLowerCase() !== sourceLang.toLowerCase()) {
+      return curr;
+    }
+  }
+
+  // Qualified suffix fallback matching namePath or parent chain
+  for (const cand of candidates) {
+    if (!cand.language || cand.language.toLowerCase() === sourceLang.toLowerCase()) continue;
+    const expectedTail = normalizedParts.join(".").toLowerCase();
+    const candPath = (cand.namePath ?? cand.name).replace(/::/g, ".").toLowerCase();
+    if (candPath === expectedTail || candPath.endsWith(`.${expectedTail}`)) {
+      return cand;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Automatically extracts cross-language thread anchors for `uri` from:
+ * 1. Explicit Modelica `annotation(twin = "...")` / `implements` bindings,
+ * 2. Indexed SysML v2 `@twin` / `implements` / `satisfy` / `verify` metadata,
+ * 3. Cross-language `Import` clauses and typed usages (`OwnedFeatureTyping` / `metadata.typeSpecifier`).
+ */
+export function extractCrossLanguageLinks(params: {
+  uri: string;
+  language: string;
+  index: SymbolIndex;
+  text: string;
+  tree?: { rootNode?: RequirementCstNodeLike | null | undefined } | null | undefined;
+}): DiscoveredCrossLanguageLink[] {
+  const { uri, language, index, text, tree } = params;
+  const normLang = language.toLowerCase();
+  const links: DiscoveredCrossLanguageLink[] = [];
+  const dedupeKeys = new Set<string>();
+
+  const docIds = index.symbolsByResource?.get(uri) ?? [];
+  const docSymbols: SymbolEntry[] =
+    docIds.length > 0
+      ? docIds.map((id) => index.symbols.get(id)).filter((e): e is SymbolEntry => Boolean(e))
+      : Array.from(index.symbols.values()).filter((e) => e.resourceId === uri || e.documentUri === uri);
+
+  const pushLink = (link: DiscoveredCrossLanguageLink) => {
+    const key = `${link.relationKind}:${link.sourceSymbolId}:${link.targetName}:${link.targetEntry?.id ?? ""}`;
+    if (!dedupeKeys.has(key)) {
+      dedupeKeys.add(key);
+      links.push(link);
+    }
+  };
+
+  // 1. Explicit Modelica CST twin / implements / counterpart annotations
+  if (normLang === "modelica") {
+    const twinMap = extractModelicaTwinAnnotations(text, tree?.rootNode ?? null);
+    for (const [varName, targetPath] of twinMap.entries()) {
+      const srcSym =
+        docSymbols.find((s) => s.name === varName && isMemberLikeSymbol(s)) ??
+        docSymbols.find((s) => s.name === varName);
+      if (!srcSym) continue;
+      const pos = offsetToOneBasedLineCol(text, srcSym.startOffset);
+      const targetEntry = resolveTargetInIndex(index, targetPath, normLang);
+      const metaVal = srcSym.metadata?.["value"];
+      const metaDefault = srcSym.metadata?.["defaultValue"];
+      const valNum = typeof metaVal === "number" ? metaVal : typeof metaDefault === "number" ? metaDefault : undefined;
+      pushLink({
+        sourceSymbolId: srcSym.id,
+        sourceName: srcSym.name,
+        sourceLang: normLang,
+        sourceUri: uri,
+        sourceLine: pos.line,
+        sourceColumn: pos.column,
+        targetName: targetPath,
+        relationKind: "twin",
+        targetEntry,
+        ...(valNum !== undefined ? { properties: { [varName]: valNum } } : {}),
+      });
+    }
+  }
+
+  // 2. Index-driven cross-language imports, typed usages, implements, and satisfy/verify links
+  for (const sym of docSymbols) {
+    const meta = (sym.metadata ?? {}) as Record<string, unknown>;
+    const pos = offsetToOneBasedLineCol(text, sym.startOffset);
+
+    const implementsPath =
+      typeof meta["implements"] === "string"
+        ? meta["implements"]
+        : typeof meta["twin"] === "string"
+          ? meta["twin"]
+          : typeof meta["counterpart"] === "string"
+            ? meta["counterpart"]
+            : undefined;
+    if (implementsPath) {
+      const targetEntry = resolveTargetInIndex(index, implementsPath, normLang);
+      pushLink({
+        sourceSymbolId: sym.id,
+        sourceName: sym.name,
+        sourceLang: normLang,
+        sourceUri: uri,
+        sourceLine: pos.line,
+        sourceColumn: pos.column,
+        targetName: implementsPath,
+        relationKind: meta["implements"] ? "implements" : "twin",
+        targetEntry,
+      });
+    }
+
+    if (sym.kind === "Import" && sym.name) {
+      const targetEntry = resolveTargetInIndex(index, sym.name, normLang);
+      if (targetEntry) {
+        pushLink({
+          sourceSymbolId: sym.id,
+          sourceName: sym.name,
+          sourceLang: normLang,
+          sourceUri: uri,
+          sourceLine: pos.line,
+          sourceColumn: pos.column,
+          targetName: sym.name,
+          relationKind: "import",
+          targetEntry,
+        });
+      }
+      continue;
+    }
+
+    if (sym.ruleName === "SatisfyRequirementUsage" || sym.ruleName === "VerifyRequirementUsage") {
+      if (sym.name) {
+        const targetEntry = resolveTargetInIndex(index, sym.name, normLang);
+        if (targetEntry) {
+          pushLink({
+            sourceSymbolId: sym.id,
+            sourceName: sym.name,
+            sourceLang: normLang,
+            sourceUri: uri,
+            sourceLine: pos.line,
+            sourceColumn: pos.column,
+            targetName: sym.name,
+            relationKind: sym.ruleName === "VerifyRequirementUsage" ? "verify" : "satisfy",
+            targetEntry,
+          });
+        }
+      }
+      continue;
+    }
+
+    if (isMemberLikeSymbol(sym)) {
+      const childIds = index.childrenOf.get(sym.id) ?? [];
+      const typeChild = childIds
+        .map((cid) => index.symbols.get(cid))
+        .find(
+          (c) =>
+            c &&
+            (c.ruleName === "OwnedFeatureTyping" ||
+              c.ruleName === "ConjugatedPortTyping" ||
+              c.ruleName === "FeatureTyping"),
+        );
+      const rawType = String(typeChild?.name ?? meta["typeSpecifier"] ?? meta["type_specifier"] ?? "").trim();
+      if (rawType) {
+        const targetEntry = resolveTargetInIndex(index, rawType, normLang);
+        if (targetEntry && isTypeLikeSymbol(targetEntry)) {
+          pushLink({
+            sourceSymbolId: sym.id,
+            sourceName: sym.name,
+            sourceLang: normLang,
+            sourceUri: uri,
+            sourceLine: pos.line,
+            sourceColumn: pos.column,
+            targetName: rawType,
+            relationKind: "typed_usage",
+            targetEntry,
+          });
+        }
+      }
+    }
+  }
+
+  return links;
 }

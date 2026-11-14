@@ -12,10 +12,10 @@
 
 import assert from "node:assert/strict";
 import {
-  parseTouchstone,
-  verifyPassivity,
   fitStateSpaceModel,
   lowerTouchstoneToDae,
+  parseTouchstone,
+  verifyPassivity,
   type TouchstoneDeck,
 } from "../src/index.js";
 
@@ -74,7 +74,10 @@ export function runTouchstoneBenchmark(content = TOUCHSTONE_4PORT_DIFFERENTIAL_B
 
   // 1. Verify Passivity across all frequency points
   const passivity = verifyPassivity(ts);
-  assert.ok(passivity.isPassive, `Passive differential interconnect must satisfy ||S|| <= 1, got maxNorm=${passivity.maxNorm}`);
+  assert.ok(
+    passivity.isPassive,
+    `Passive differential interconnect must satisfy ||S|| <= 1, got maxNorm=${passivity.maxNorm}`,
+  );
 
   // 2. Extract S21 (insertion loss) and S31 (near-end crosstalk) at 1.0 GHz (index 1)
   const p1G = ts.points[1]!;
@@ -118,3 +121,31 @@ export function runTouchstoneBenchmark(content = TOUCHSTONE_4PORT_DIFFERENTIAL_B
     daeEqCount: dae.getEqCount(),
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const touchstoneBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "touchstone",
+  referenceTool: "scikit-rf / Vector Fitting 4-Port Differential S4P",
+  defaultTolerance: 1.0,
+  metricKind: "max-relative-error",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runTouchstoneBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "diff-4port-passivity-vector-fit",
+        name: "diff-4port-passivity-vector-fit",
+        scale: "standard",
+        referenceTool: "scikit-rf / Vector Fitting 4-Port Differential S4P",
+        passed: m.isPassive && m.fittedPolesCount >= 2 && m.daeVarCount > 0,
+        durationMs: elapsedMs,
+        metricKind: "max-relative-error",
+        measuredError: m.maxSingularValue,
+        threshold: 1.0,
+        details: `||S||=${m.maxSingularValue.toFixed(4)}, IL=${m.insertionLossDbAt1GHz.toFixed(2)}dB, ${m.daeVarCount}x${m.daeEqCount} DAE`,
+      },
+    ];
+  },
+};

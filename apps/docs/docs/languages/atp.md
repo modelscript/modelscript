@@ -73,3 +73,9 @@ msx atp to-dae lightning_surge.atp
 ## MCP Agent Tool Integration
 
 - **`atp_simulate_transient`**: Executes Dommel companion-matrix trapezoidal transient simulation for fast electromagnetic pulse, switching surge, and RLC oscillatory analysis directly in AI agent pipelines.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="atp" />

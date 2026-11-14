@@ -8,13 +8,11 @@ import {
   ScreenFullIcon,
   ScreenNormalIcon,
   SparklesFillIcon,
-  XIcon,
   ZapIcon,
 } from "@primer/octicons-react";
-import { Heading, IconButton, Text, useTheme } from "@primer/react";
+import { Button, Dialog, IconButton, Text, useTheme } from "@primer/react";
 import type { editor } from "monaco-editor";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { createArtifactView } from "../../api";
 import type { NotebookCell } from "../../util/notebook";
 import Box from "../Box";
@@ -30,7 +28,6 @@ import {
   resolveSnippetFilename,
   type SnippetDiagnostic,
 } from "./snippet-diagnostics";
-import { TweetButton } from "./styles";
 
 const LazyCodeEditor = React.lazy(() => import("../morsel/Code"));
 
@@ -306,14 +303,11 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
     }
   }, [embedMode, token, isEditingExistingBlock, handleAttachInteractiveModel, handleInsertMarkdownBlock]);
 
-  // Keyboard shortcuts: Escape to close, Cmd/Ctrl+Enter to submit
+  // Keyboard shortcut: Cmd/Ctrl+Enter to submit (Escape handled by Primer Dialog)
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         if (snippetCode.trim() && !isSubmitting) {
           handlePrimarySubmit();
@@ -322,7 +316,7 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose, snippetCode, isSubmitting, handlePrimarySubmit]);
+  }, [isOpen, snippetCode, isSubmitting, handlePrimarySubmit]);
 
   if (!isOpen) return null;
 
@@ -330,115 +324,65 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
   const controlBg = isDark ? "rgba(15, 23, 42, 0.65)" : "var(--color-canvas-subtle, #f8fafc)";
   const controlBorder = "var(--ms-border, var(--color-border-default, #d0d7de))";
 
-  const modal = (
-    <>
-      <div
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: 99998,
-          backgroundColor: isDark ? "rgba(0, 0, 0, 0.72)" : "rgba(15, 23, 42, 0.45)",
-          backdropFilter: "blur(6px)",
-        }}
-        onClick={onClose}
-      />
+  return (
+    <Dialog
+      title={
+        <Box display="flex" alignItems="center" gap={2}>
+          <span style={{ color: "var(--ms-accent, #06b6d4)", display: "inline-flex" }}>
+            <CodeIcon size={18} />
+          </span>
+          <span>{isEditingExistingBlock ? "Edit Code Snippet" : "Insert Code Snippet / Executable Model"}</span>
+          <span
+            style={{
+              fontSize: "11px",
+              fontFamily: "var(--font-mono, monospace)",
+              padding: "1px 7px",
+              borderRadius: "999px",
+              background: "rgba(6, 182, 212, 0.12)",
+              color: "var(--ms-accent, #06b6d4)",
+              border: "1px solid rgba(6, 182, 212, 0.28)",
+              fontWeight: 600,
+            }}
+          >
+            {isEngineeringLang ? "WASM Compiler + LSP" : "Syntax + Lint"}
+          </span>
+        </Box>
+      }
+      width="xlarge"
+      onClose={onClose}
+    >
       <Box
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="compose-code-snippet-modal-title"
-        position="fixed"
-        top="50%"
-        left="50%"
-        style={{
-          transform: "translate(-50%, -50%)",
-          width: isFullScreen ? "96vw" : "740px",
-          maxWidth: "96vw",
-          height: isFullScreen ? "92vh" : undefined,
-          maxHeight: "92vh",
-          overflowY: "auto",
-          backdropFilter: "blur(16px)",
-        }}
-        bg="var(--color-canvas-default, var(--surface-overlay, #ffffff))"
-        border="1px solid var(--ms-border, var(--color-border-default))"
-        borderRadius="16px"
-        zIndex={99999}
-        boxShadow={isDark ? "0 20px 50px rgba(0,0,0,0.65)" : "0 20px 50px rgba(15, 23, 42, 0.18)"}
         display="flex"
         flexDirection="column"
-        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+        style={{
+          height: isFullScreen ? "80vh" : undefined,
+          maxHeight: "80vh",
+          overflowY: "auto",
+        }}
       >
-        {/* Header */}
-        <Box
-          display="flex"
-          alignItems="center"
-          justifyContent="space-between"
-          px={3}
-          py={2}
-          borderBottom="1px solid var(--ms-divider, var(--color-border-default))"
-          bg="var(--color-canvas-subtle, transparent)"
-        >
-          <Box display="flex" alignItems="center" gap={2}>
-            <span style={{ color: "var(--color-accent-cyan, #06b6d4)", display: "inline-flex" }}>
-              <CodeIcon size={18} />
-            </span>
-            <Heading id="compose-code-snippet-modal-title" as="h3" style={{ fontSize: "15px", margin: 0 }}>
-              {isEditingExistingBlock ? "Edit Code Snippet" : "Insert Code Snippet / Executable Model"}
-            </Heading>
-            <span
-              style={{
-                fontSize: "11px",
-                fontFamily: "var(--font-mono, monospace)",
-                padding: "1px 7px",
-                borderRadius: "999px",
-                background: "rgba(6, 182, 212, 0.12)",
-                color: "var(--color-accent-cyan, #06b6d4)",
-                border: "1px solid rgba(6, 182, 212, 0.28)",
-                fontWeight: 600,
-              }}
-            >
-              {isEngineeringLang ? "WASM Compiler + LSP" : "Syntax + Lint"}
-            </span>
-          </Box>
-          <Box display="flex" alignItems="center" gap={1}>
-            <button
-              type="button"
-              onClick={handleLoadStarter}
-              data-testid="snippet-load-sample-btn"
-              title={`Load sample ${langLabel} snippet`}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "5px",
-                padding: "4px 10px",
-                fontSize: "12px",
-                fontWeight: 600,
-                borderRadius: "6px",
-                border: `1px solid ${controlBorder}`,
-                background: controlBg,
-                color: "var(--color-fg-default)",
-                cursor: "pointer",
-                marginRight: "4px",
-              }}
-            >
-              <SparklesFillIcon size={12} />
-              <span>Load Sample</span>
-            </button>
-            <IconButton
-              icon={isFullScreen ? ScreenNormalIcon : ScreenFullIcon}
-              variant="invisible"
-              size="small"
-              onClick={() => setIsFullScreen((prev) => !prev)}
-              aria-label={isFullScreen ? "Exit Full Screen" : "Expand Editor"}
-            />
-            <IconButton icon={XIcon} variant="invisible" size="small" onClick={onClose} aria-label="Close" />
-          </Box>
+        {/* Toolbar */}
+        <Box display="flex" alignItems="center" justifyContent="flex-end" gap={2} mb={2}>
+          <Button
+            size="small"
+            variant="default"
+            leadingVisual={SparklesFillIcon}
+            onClick={handleLoadStarter}
+            data-testid="snippet-load-sample-btn"
+            title={`Load sample ${langLabel} snippet`}
+          >
+            Load Sample
+          </Button>
+          <IconButton
+            icon={isFullScreen ? ScreenNormalIcon : ScreenFullIcon}
+            variant="invisible"
+            size="small"
+            onClick={() => setIsFullScreen((prev) => !prev)}
+            aria-label={isFullScreen ? "Exit Full Screen" : "Expand Editor"}
+          />
         </Box>
 
         {/* Body */}
-        <Box p={3} display="flex" flexDirection="column" gap={2} flex={1} style={{ minHeight: 0 }}>
+        <Box display="flex" flexDirection="column" gap={2} flex={1} style={{ minHeight: 0 }}>
           {/* Language & Filename Controls */}
           <Box display="flex" gap={2} style={{ flexWrap: "wrap" }}>
             <select
@@ -890,32 +834,15 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
             )}
 
             <Box display="flex" alignItems="center" gap={2} style={{ marginLeft: "auto" }}>
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={isSubmitting}
-                data-testid="snippet-cancel-btn"
-                style={{
-                  height: "36px",
-                  padding: "0 14px",
-                  borderRadius: "999px",
-                  border: `1px solid ${controlBorder}`,
-                  background: "transparent",
-                  color: "var(--color-fg-default)",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: isSubmitting ? "not-allowed" : "pointer",
-                }}
-              >
+              <Button variant="default" onClick={onClose} disabled={isSubmitting} data-testid="snippet-cancel-btn">
                 Cancel
-              </button>
+              </Button>
 
-              <TweetButton
-                type="button"
+              <Button
+                variant="primary"
                 data-testid="snippet-submit-btn"
                 disabled={!snippetCode.trim() || isSubmitting}
                 onClick={handlePrimarySubmit}
-                style={{ height: "36px", fontSize: "13.5px", padding: "0 18px" }}
               >
                 {isSubmitting ? (
                   <>
@@ -932,13 +859,11 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
                 ) : (
                   <span>Insert Code Block</span>
                 )}
-              </TweetButton>
+              </Button>
             </Box>
           </Box>
         </Box>
       </Box>
-    </>
+    </Dialog>
   );
-
-  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 };

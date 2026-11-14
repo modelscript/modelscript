@@ -39,6 +39,24 @@ export interface ExtractedCompilerOptions {
   flowThreshold?: number | undefined;
 }
 
+export interface ComponentModArgValueData {
+  kind: string;
+  value?: unknown;
+  text?: string | undefined;
+  cstBytes?: readonly [number, number] | undefined;
+}
+
+export interface ComponentModArgData {
+  name: string;
+  isBreak?: boolean | undefined;
+  originPrefix?: string | undefined;
+  evaluationScopeId?: SymbolId | undefined;
+  ownerClassId?: SymbolId | undefined;
+  value?: ComponentModArgValueData | null | undefined;
+  nestedArgs?: readonly ComponentModArgData[] | undefined;
+  args?: readonly ComponentModArgData[] | undefined;
+}
+
 export interface ComponentInstanceData {
   name: string;
   typeSpecifier: string;
@@ -58,12 +76,7 @@ export interface ComponentInstanceData {
     | {
         isEach?: boolean | undefined;
         bindingExpression?: { text: string } | undefined;
-        args?:
-          | {
-              name: string;
-              value?: { kind: string; value?: any; text?: string | undefined } | undefined;
-            }[]
-          | undefined;
+        args?: ComponentModArgData[] | undefined;
       }
     | undefined;
 }

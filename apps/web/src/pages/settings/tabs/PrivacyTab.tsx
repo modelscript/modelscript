@@ -1486,7 +1486,10 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
           <DetailSubtitle style={{ display: "block", marginBottom: "12px", lineHeight: "1.5" }}>
             Configure <code>alsoKnownAs</code> actor URI aliases for bidirectional verification and broadcast an{" "}
             <code>ActivityPub Move</code> activity to migrate followers to another instance. Your actor URI is{" "}
-            <a href={actorUrl} style={{ color: "var(--color-accent-fg, #58a6ff)", textDecoration: "underline" }}>
+            <a
+              href={actorUrl}
+              style={{ color: "var(--ms-accent, var(--color-accent-fg))", textDecoration: "underline" }}
+            >
               <code>{actorUrl}</code>
             </a>
             .

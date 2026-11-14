@@ -78,3 +78,9 @@ msx relap5 to-dae PwrPrimaryLoop.i
 # Project into Modelica 3.x two-phase nuclear thermal-hydraulics model
 msx relap5 to-modelica PwrPrimaryLoop.i -o NuclearLoop.mo
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="relap5" />

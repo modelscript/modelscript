@@ -96,3 +96,9 @@ npx msx align chassis.step architecture.sysml
 ## Diagnostic Rules
 
 <LintRules lang="step" />
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="step" />

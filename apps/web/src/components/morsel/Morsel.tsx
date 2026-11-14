@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { decodeDataUrl } from "@modelscript/dsl/utils";
+import { detectPolyglotLanguage } from "@modelscript/lsp/utils/polyglot-detector.js";
 import type { editor } from "monaco-editor";
 import { type DataUrl } from "parse-data-url";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1071,6 +1072,88 @@ export default function MorselEditor(props: MorselEditorProps) {
     [dialect, instanceDocPrefix, props.onDialectChange],
   );
 
+  const [detectedDialectHint, setDetectedDialectHint] = useState<{
+    slug: string;
+    name: string;
+    reason: string;
+  } | null>(null);
+  const [isEditorDragOver, setIsEditorDragOver] = useState(false);
+
+  const handleEditorPaste = useCallback(
+    (pastedText: string, fullText: string) => {
+      if (pastedText.length < 24 && fullText.length < 40) return;
+      const match = detectPolyglotLanguage(pastedText) ?? detectPolyglotLanguage(fullText);
+      if (!match) return;
+      const targetInfo = getLanguageInfo(match.slug);
+      if (targetInfo.id !== dialect) {
+        setDetectedDialectHint({
+          slug: targetInfo.id,
+          name: targetInfo.name,
+          reason: match.reason,
+        });
+      } else {
+        setDetectedDialectHint(null);
+      }
+    },
+    [dialect],
+  );
+
+  const acceptDetectedDialect = useCallback(() => {
+    if (!detectedDialectHint) return;
+    const targetSlug = detectedDialectHint.slug;
+    setDetectedDialectHint(null);
+    handleSelectDialect(targetSlug);
+  }, [detectedDialectHint, handleSelectDialect]);
+
+  const handleEditorDrop = useCallback(
+    async (e: React.DragEvent<HTMLDivElement>) => {
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) return;
+      e.preventDefault();
+      setIsEditorDragOver(false);
+      if (file.size > 2_000_000) {
+        toast.warning("Dropped file is too large for inline editor preview (> 2 MB).");
+        return;
+      }
+      try {
+        const droppedText = await file.text();
+        const match = detectPolyglotLanguage(droppedText, file.name);
+        const targetInfo = getLanguageInfo(match?.slug ?? dialect);
+        const targetUri = `${instanceDocPrefix}.${getLanguageExtension(targetInfo.id)}`;
+
+        if (targetInfo.id !== dialect) {
+          didClose(documentUriRef.current);
+          setDialectState(targetInfo.id);
+          setSidecarContent(undefined);
+          setDrillDownPath([]);
+          setDiagramType(targetInfo.diagramTypes?.[0]?.id ?? "diagram");
+          if (targetInfo.supports3d && !targetInfo.supportsDiagram) {
+            setShowCadView(true);
+            setShowResultsView(false);
+          } else if (targetInfo.supportsDiagram) {
+            setShowCadView(false);
+          }
+          props.onDialectChange?.(targetInfo.id);
+        }
+
+        setLoadedCodeOverride(droppedText);
+        if (editorRef.current) {
+          editorRef.current.setValue(droppedText);
+        }
+        setLastLoadedContent(droppedText);
+        lastSyncedCodeRef.current = droppedText;
+        didOpen(targetUri, droppedText, targetInfo.id);
+        setContextVersion((v) => v + 1);
+        setDetectedDialectHint(null);
+        props.onCodeChange?.(droppedText);
+        toast.info(match ? `Loaded ${file.name} (${match.reason})` : `Loaded ${file.name}`);
+      } catch (err: any) {
+        toast.error(`Failed to read dropped file: ${err?.message || String(err)}`);
+      }
+    },
+    [dialect, instanceDocPrefix, props.onCodeChange, props.onDialectChange, toast],
+  );
+
   useEffect(() => {
     if (resolvedInitialDialect && resolvedInitialDialect !== dialect) {
       handleSelectDialect(resolvedInitialDialect);
@@ -1483,6 +1566,14 @@ export default function MorselEditor(props: MorselEditorProps) {
           >
             {/* Code Editor (on the left in split view) */}
             <div
+              onDragOver={(e) => {
+                if (e.dataTransfer?.types?.includes("Files")) {
+                  e.preventDefault();
+                  setIsEditorDragOver(true);
+                }
+              }}
+              onDragLeave={() => setIsEditorDragOver(false)}
+              onDrop={handleEditorDrop}
               style={{
                 display: (view === View.CODE || isSplit(view)) && (!isNarrow || mobileTab === "code") ? "flex" : "none",
                 flex: isNarrow ? 1 : isSplit(view) ? "none" : 1,
@@ -1497,8 +1588,66 @@ export default function MorselEditor(props: MorselEditorProps) {
                 flexDirection: "column",
                 minWidth: 0,
                 minHeight: 0,
+                outline: isEditorDragOver ? "2px dashed var(--ms-brand, #0891b2)" : "none",
+                outlineOffset: -2,
               }}
             >
+              {detectedDialectHint && (
+                <div
+                  role="status"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    padding: "6px 10px",
+                    fontSize: 12,
+                    background: colorMode === "dark" ? "rgba(8, 145, 178, 0.16)" : "rgba(8, 145, 178, 0.1)",
+                    borderBottom: `1px solid ${colorMode === "dark" ? "rgba(56, 189, 248, 0.35)" : "rgba(8, 145, 178, 0.3)"}`,
+                    color: colorMode === "dark" ? "#e2e8f0" : "#0f172a",
+                  }}
+                >
+                  <span>
+                    Detected <strong>{detectedDialectHint.name}</strong> ({detectedDialectHint.reason}).
+                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={acceptDetectedDialect}
+                      style={{
+                        padding: "3px 9px",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        borderRadius: 6,
+                        border: "none",
+                        cursor: "pointer",
+                        background: "var(--ms-brand, #0891b2)",
+                        color: "#ffffff",
+                      }}
+                    >
+                      Switch to {detectedDialectHint.name}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Dismiss dialect suggestion"
+                      onClick={() => setDetectedDialectHint(null)}
+                      style={{
+                        padding: "2px 6px",
+                        fontSize: 13,
+                        lineHeight: 1,
+                        borderRadius: 4,
+                        border: "none",
+                        background: "transparent",
+                        color: "inherit",
+                        cursor: "pointer",
+                        opacity: 0.75,
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              )}
               <Suspense fallback={null}>
                 <CodeEditor
                   uri={documentUri}
@@ -1508,6 +1657,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                   setEditor={setEditor}
                   content={content}
                   onChange={props.onCodeChange}
+                  onPaste={handleEditorPaste}
                   theme={colorMode === "dark" ? "vs-dark" : "light"}
                   externalErrors={
                     simulationStatus?.status === "failed" && simulationStatus.error ? [simulationStatus.error] : []

@@ -44,10 +44,10 @@ test("OpenUSD DAE Lowering — lowers multi-DOF serial manipulator into DAE aren
   const stage = parseUsd(TWO_DOF_MANIPULATOR);
   const dae = lowerUsdToDae(stage);
 
-  // 2 joints * 3 vars + 3 bodies * 3 vars = 6 + 9 = 15 vars
-  assert.strictEqual(dae.varCount, 15);
-  // 2 joints * 2 eqs + 3 bodies * 3 eqs = 4 + 9 = 13 eqs
-  assert.strictEqual(dae.eqCount, 13);
+  // 2 joints * 3 vars + 3 bodies * 6 vars (x,y,z,vx,vy,vz) = 6 + 18 = 24 vars
+  assert.strictEqual(dae.varCount, 24);
+  // 2 joints * 2 eqs + 3 bodies * 6 eqs = 4 + 18 = 22 eqs
+  assert.strictEqual(dae.eqCount, 22);
 
   const varNames = Array.from({ length: dae.varCount }, (_, i) => dae.getVarName(i));
   assert.ok(varNames.includes("j1.q"));
@@ -59,6 +59,9 @@ test("OpenUSD DAE Lowering — lowers multi-DOF serial manipulator into DAE aren
   assert.ok(varNames.includes("link0.x"));
   assert.ok(varNames.includes("link1.y"));
   assert.ok(varNames.includes("link2.z"));
+  assert.ok(varNames.includes("link0.vx"));
+  assert.ok(varNames.includes("link1.vy"));
+  assert.ok(varNames.includes("link2.vz"));
 });
 
 test("OpenUSD DAE Lowering — handles prismatic joint dynamics", () => {

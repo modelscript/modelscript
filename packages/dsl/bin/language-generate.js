@@ -4,14 +4,30 @@
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
-import { buildParser } from "../dist/index.js";
+import { buildParser, validateLanguageQueries } from "../dist/index.js";
+
+function parseArgs(argv) {
+  const flags = new Set();
+  const positional = [];
+  for (const arg of argv) {
+    if (arg.startsWith("--")) {
+      flags.add(arg);
+    } else {
+      positional.push(arg);
+    }
+  }
+  return {
+    entryPath: positional[0] || "src/index.ts",
+    outDir: positional[1] || "build/src-gen",
+    inspect: flags.has("--inspect"),
+    conflictsOnly: flags.has("--conflicts"),
+    json: flags.has("--json"),
+  };
+}
 
 async function main() {
-  const args = process.argv.slice(2);
-  const entryPath = args[0] || "src/index.ts";
-  const outDir = args[1] || "build/src-gen";
-
-  const absoluteEntry = path.resolve(process.cwd(), entryPath);
+  const opts = parseArgs(process.argv.slice(2));
+  const absoluteEntry = path.resolve(process.cwd(), opts.entryPath);
   if (!fs.existsSync(absoluteEntry)) {
     console.error(`Error: Entry file not found at ${absoluteEntry}`);
     process.exit(1);
@@ -28,9 +44,59 @@ async function main() {
     process.exit(1);
   }
 
-  const result = buildParser(languageDef);
+  const result = buildParser(languageDef, { sourcePath: absoluteEntry });
+  const queryDiagnostics = validateLanguageQueries(languageDef);
+  const grammarDiagnostics = result.grammarDiagnostics || [];
+  const conflicts = result.conflicts || [];
 
-  const absoluteOutDir = path.resolve(process.cwd(), outDir);
+  if (opts.inspect || opts.conflictsOnly) {
+    if (opts.json) {
+      console.log(
+        JSON.stringify(
+          {
+            parserInfo: {
+              name: result.parserInfo.name,
+              startSymbol: result.parserInfo.startSymbol,
+              statesCount: result.parserInfo.statesCount,
+              nonTerminalsCount: result.parserInfo.nonTerminals.length,
+              terminalsCount: result.parserInfo.terminals.length,
+            },
+            grammarDiagnostics,
+            queryDiagnostics,
+            conflicts,
+          },
+          null,
+          2,
+        ),
+      );
+    } else {
+      console.log(`=== ${result.parserInfo.name} Grammar Inspection ===`);
+      console.log(`Start symbol : ${result.parserInfo.startSymbol}`);
+      console.log(`GLR states   : ${result.parserInfo.statesCount}`);
+      console.log(`Non-terminals: ${result.parserInfo.nonTerminals.length}`);
+      console.log(`Terminals    : ${result.parserInfo.terminals.length}`);
+      console.log(`Grammar diags: ${grammarDiagnostics.length}`);
+      for (const d of grammarDiagnostics) {
+        console.log(`  [${d.severity.toUpperCase()}] (${d.code}) ${d.message}`);
+      }
+      console.log(`Query AS diags: ${queryDiagnostics.length}`);
+      for (const d of queryDiagnostics) {
+        console.log(`  [${d.code}] ${d.target || "query"}:${d.line}:${d.column} - ${d.message}`);
+      }
+      console.log(`Conflicts    : ${conflicts.length}`);
+      for (const c of conflicts) {
+        console.log(
+          `  [${c.type}] rules=${c.rules.join(", ")}${c.symbolSequence ? ` | seq: ${c.symbolSequence}` : ""}`,
+        );
+        if (opts.conflictsOnly && c.output) {
+          console.log(c.output);
+        }
+      }
+    }
+    return;
+  }
+
+  const absoluteOutDir = path.resolve(process.cwd(), opts.outDir);
   if (!fs.existsSync(absoluteOutDir)) {
     fs.mkdirSync(absoluteOutDir, { recursive: true });
   }

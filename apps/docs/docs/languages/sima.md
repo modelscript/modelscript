@@ -124,3 +124,9 @@ msx sima to-ssp cases/OC4_Semi.inp --out=SystemStructure.ssd
 # Export formal SysML v2 architectural parts, ports, and DNV requirements
 msx sima to-sysml2 cases/OC4_Semi.inp --out=OC4_Semi.sysml
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="sima" />

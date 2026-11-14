@@ -884,7 +884,8 @@ export class OslcGateway {
     if (typeof window !== "undefined") {
       throw new Error("Embedded OSLC HTTP server is not supported in browser environments.");
     }
-    const http = await import(/* @vite-ignore */ "node:http");
+    const httpId = "node:http";
+    const http = (await import(/* @vite-ignore */ httpId)) as typeof import("node:http");
     if (this.server) {
       return (this.server.address() as any).port;
     }

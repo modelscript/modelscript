@@ -1648,6 +1648,34 @@ export const ModelicaErrorCode = {
     message: (pathStr: string) =>
       `Resource reference '${pathStr}' uses an absolute filesystem path; use a relative path or 'modelica://' URI instead.`,
   },
+  TGG_CONFORMANCE_MISSING_PORT: {
+    code: 4140,
+    rule: "tgg-conformance-missing-port",
+    severity: "warning",
+    message: (targetName: string, targetLang: string, portName: string, portType: string, sourceName: string) =>
+      `TGG conformance warning: '${targetName}' (${targetLang}) is missing counterpart port '${portName}' (${portType}) expected by '${sourceName}'.`,
+  },
+  TGG_CONFORMANCE_PARAM_MISMATCH: {
+    code: 4141,
+    rule: "tgg-conformance-param-mismatch",
+    severity: "warning",
+    message: (paramName: string, expectedType: string, actualType: string) =>
+      `TGG conformance warning: parameter or port '${paramName}' type '${actualType}' is incompatible with '${expectedType}'.`,
+  },
+  TGG_CONFORMANCE_MISSING_COMPONENT: {
+    code: 4142,
+    rule: "tgg-conformance-missing-component",
+    severity: "warning",
+    message: (targetName: string, targetLang: string, compName: string, compType: string) =>
+      `TGG conformance warning: '${targetName}' (${targetLang}) is missing expected component '${compName}' : '${compType}'.`,
+  },
+  TGG_CONFORMANCE_UNRESOLVED_TARGET: {
+    code: 4143,
+    rule: "tgg-conformance-unresolved-target",
+    severity: "error",
+    message: (sourceName: string, targetLang: string) =>
+      `Counterpart element referenced by '${sourceName}' could not be resolved in '${targetLang}'.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

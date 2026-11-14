@@ -179,8 +179,8 @@ export class TokamakEquilibriumPanel extends BaseWebviewPanel {
   <meta charset="UTF-8">
   <style>
     body {
-      background-color: var(--vscode-editor-background, #0c1017);
-      color: var(--vscode-editor-foreground, #e6edf3);
+      background-color: var(--vscode-editor-background, #18181b);
+      color: var(--vscode-editor-foreground, #f4f4f5);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       margin: 0;
       padding: 16px;
@@ -192,9 +192,9 @@ export class TokamakEquilibriumPanel extends BaseWebviewPanel {
       gap: 16px;
       margin-bottom: 12px;
       padding: 10px 14px;
-      background: var(--vscode-sideBar-background, #161b22);
-      border: 1px solid var(--vscode-panel-border, #30363d);
-      border-radius: 6px;
+      background: var(--vscode-sideBar-background, #1e1e22);
+      border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.12));
+      border-radius: 8px;
     }
     .tool-item {
       display: flex;
@@ -212,18 +212,18 @@ export class TokamakEquilibriumPanel extends BaseWebviewPanel {
     .canvas-container {
       display: flex;
       justify-content: center;
-      background: #090d13;
-      border: 1px solid var(--vscode-panel-border, #30363d);
-      border-radius: 6px;
+      background: var(--vscode-editorGroup-emptyBackground, #121214);
+      border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.12));
+      border-radius: 8px;
       padding: 12px;
       overflow: auto;
     }
     .info-card {
       margin-top: 14px;
       padding: 12px 16px;
-      background: var(--vscode-sideBar-background, #161b22);
-      border: 1px solid var(--vscode-panel-border, #30363d);
-      border-radius: 6px;
+      background: var(--vscode-sideBar-background, #1e1e22);
+      border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.12));
+      border-radius: 8px;
     }
     .info-title {
       font-size: 13px;

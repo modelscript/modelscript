@@ -1,0 +1,67 @@
+[
+  {
+    "namePath": "psse:SEXS",
+    "aliases": ["SEXS"],
+    "label": "Simplified Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 64,
+    "height": 40,
+    "ports": [
+      { "name": "Vterm", "kind": "signal", "side": "left", "dx": -32, "dy": 0 },
+      { "name": "Efd", "kind": "signal", "side": "right", "dx": 32, "dy": 0 }
+    ]
+  },
+  {
+    "namePath": "psse:ESAC1A",
+    "aliases": ["ESAC1A"],
+    "label": "IEEE Type AC1A Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      { "name": "Vterm", "kind": "signal", "side": "left", "dx": -36, "dy": 0 },
+      { "name": "Efd", "kind": "signal", "side": "right", "dx": 36, "dy": 0 }
+    ]
+  },
+  {
+    "namePath": "psse:TGOV1",
+    "aliases": ["TGOV1"],
+    "label": "Steam Turbine-Governor Model",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      { "name": "dOmega", "kind": "signal", "side": "left", "dx": -36, "dy": 0 },
+      { "name": "Pmech", "kind": "signal", "side": "right", "dx": 36, "dy": 0 }
+    ]
+  },
+  {
+    "namePath": "psse:GAST",
+    "aliases": ["GAST"],
+    "label": "Gas Turbine-Governor Model",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      { "name": "dOmega", "kind": "signal", "side": "left", "dx": -36, "dy": 0 },
+      { "name": "Pmech", "kind": "signal", "side": "right", "dx": 36, "dy": 0 }
+    ]
+  },
+  {
+    "namePath": "psse:PSS2B",
+    "aliases": ["PSS2B"],
+    "label": "Dual-Input Power System Stabilizer",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      { "name": "dOmega", "kind": "signal", "side": "left", "dx": -36, "dy": 0 },
+      { "name": "Vs", "kind": "signal", "side": "right", "dx": 36, "dy": 0 }
+    ]
+  }
+]

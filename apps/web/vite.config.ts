@@ -389,6 +389,36 @@ export default defineConfig({
         // The LSP server resolves paths as ${extensionUri}/server/dist/...
         // With extensionUri = origin + "/lsp", files are served at /lsp/server/dist/...
         {
+          content: fs
+            .readFileSync(path.resolve(import.meta.dirname, "../../node_modules/assemblyscript/dist/asc.js"), "utf-8")
+            .replace(/from"assemblyscript"/g, 'from"./assemblyscript.js"')
+            .replace(/from"binaryen"/g, 'from"./binaryen.js"')
+            .replace(/from"long"/g, 'from"./long.js"'),
+          dest: "assets/asc",
+          rename: "asc.js",
+        },
+        {
+          content: fs
+            .readFileSync(
+              path.resolve(import.meta.dirname, "../../node_modules/assemblyscript/dist/assemblyscript.js"),
+              "utf-8",
+            )
+            .replace(/from"binaryen"/g, 'from"./binaryen.js"')
+            .replace(/from"long"/g, 'from"./long.js"'),
+          dest: "assets/asc",
+          rename: "assemblyscript.js",
+        },
+        {
+          src: "../../node_modules/binaryen/index.js",
+          dest: "assets/asc",
+          rename: "binaryen.js",
+        },
+        {
+          src: "../../node_modules/long/index.js",
+          dest: "assets/asc",
+          rename: "long.js",
+        },
+        {
           src: "../../packages/lsp/dist/browserServerMain.js",
           dest: "lsp/server/dist",
         },

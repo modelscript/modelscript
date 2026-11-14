@@ -31,6 +31,8 @@ import { solveAcOpf, solveDcOpf } from "@modelscript/simulate/opf";
 import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
+import { requireCliEnterpriseModule } from "../ee-loader.js";
+import { buildGatekeeperPackageFromInput } from "./gatekeeper-package.js";
 
 export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "psse <action> [files...]",
@@ -57,6 +59,7 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
           "cpf",
           "sld",
           "idv",
+          "verify",
           "verify-nerc",
           "to-cgmes",
           "from-cgmes",
@@ -141,6 +144,14 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
         description: "Port to listen on when running HTTP server (default: 8080)",
         type: "number",
         default: 8080,
+      })
+      .option("ref-out", {
+        description: "Reference commercial PSS/E .out or CSV trajectory file for ground-truth verification",
+        type: "string",
+      })
+      .option("dyr", {
+        description: "Companion PSS/E .dyr dynamic data file",
+        type: "string",
       });
   },
   handler: async (argv) => {
@@ -157,15 +168,73 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
       const { BenchmarkCommand } = await import("./benchmark.js");
       await BenchmarkCommand.handler!({
         ...argv,
-        suite: "psse",
+        _: Array.isArray(argv["_"]) ? argv["_"] : [],
+        $0: typeof argv["$0"] === "string" ? argv["$0"] : "msx",
+        suite: "psse" as const,
         model: modelArg,
-      } as any);
+        contingencies: argv["contingencies"] as number | undefined,
+        durationMs: (argv["durationMs"] ?? argv["tstop"]) as number | undefined,
+        timeStepUs: (argv["timeStepUs"] ?? argv["dt"]) as number | undefined,
+        out: argv["out"] as string | undefined,
+        html: argv["html"] as string | undefined,
+        json: argv["json"] as string | undefined,
+        exportRaw: argv["exportRaw"] as string | undefined,
+        exportComtrade: argv["exportComtrade"] as string | undefined,
+        exportPsout: argv["exportPsout"] as string | undefined,
+      });
       return;
     }
 
     if (files.length === 0 && !(action === "gatekeeper" && argv["serve"])) {
       console.error("[psse] No PSS/E or CGMES files specified.");
       process.exit(1);
+    }
+
+    if (action === "verify") {
+      const refOutPath = argv["ref-out"] as string | undefined;
+      const dyrPath = (argv["dyr"] as string | undefined) ?? files.find((f) => f.toLowerCase().endsWith(".dyr"));
+      const rawPath = files.find((f) => f.toLowerCase().endsWith(".raw")) ?? files[0]!;
+      const {
+        calculateSotaDiscrepancy,
+        ensureBuiltInPsseLibraryRegistered,
+        parseDyr,
+        parsePsseOut,
+        parseRaw,
+        simulatePsseTransient,
+      } = await import("@modelscript/psse");
+      await ensureBuiltInPsseLibraryRegistered();
+
+      const psseCase = parseRaw(fs.readFileSync(rawPath, "utf-8"));
+      if (dyrPath && fs.existsSync(dyrPath)) {
+        psseCase.dyr = parseDyr(fs.readFileSync(dyrPath, "utf-8"));
+      }
+      const sim = simulatePsseTransient(psseCase, { stopTime: 2.0, timeStep: 0.01 });
+      const firstVar = Object.keys(sim.variables)[0];
+      const msSeries = firstVar ? (sim.variables[firstVar] ?? []) : [];
+
+      if (refOutPath && fs.existsSync(refOutPath)) {
+        let refSeries: number[] = [];
+        if (refOutPath.toLowerCase().endsWith(".out")) {
+          const parsedOut = parsePsseOut(new Uint8Array(fs.readFileSync(refOutPath)));
+          refSeries = Array.from(parsedOut.channels[0] ?? []);
+        } else {
+          const lines = fs.readFileSync(refOutPath, "utf-8").trim().split(/\r?\n/);
+          for (const line of lines.slice(1)) {
+            const cols = line.split(",").map((c) => Number.parseFloat(c.trim()));
+            if (cols.length >= 2 && Number.isFinite(cols[1])) refSeries.push(cols[1]!);
+          }
+        }
+        const n = Math.min(msSeries.length, refSeries.length);
+        const metrics = calculateSotaDiscrepancy(msSeries.slice(0, n), refSeries.slice(0, n));
+        console.log(
+          `[psse] Ground-Truth Verification (${firstVar ?? "channel"}): NRMSE=${metrics.nrmsePercent.toFixed(3)}%, Theil TIC=${metrics.theilTic.toFixed(4)}, Status=${metrics.status}`,
+        );
+      } else {
+        console.log(
+          `[psse] Simulated ${sim.t.length} steps (${Object.keys(sim.variables).length} channels). Pass --ref-out=<file.out|ref.csv> to compute NRMSE & Theil TIC vs commercial PSS/E.`,
+        );
+      }
+      return;
     }
 
     if (action === "calibrate" || action === "pmu-calibrate") {
@@ -418,16 +487,20 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
 
     if (action === "dossier") {
       console.log(`[psse] Building automated NERC RSAW & NIST OSCAL regulatory dossier...`);
-      const { buildRegulatoryDossier } = await import("@modelscript/ee");
+      const ee = await requireCliEnterpriseModule("msx psse dossier");
+      if (typeof ee.buildRegulatoryDossier !== "function") {
+        console.error("[Enterprise Edition Required] 'msx psse dossier' is unavailable in this build.");
+        process.exit(1);
+      }
       const manifestFile = files[0];
       if (!manifestFile) {
         console.error("[psse] 'dossier' requires a manifest JSON file.");
         process.exit(1);
       }
       const manifestText = fs.readFileSync(path.resolve(process.cwd(), manifestFile), "utf-8");
-      const manifestInput = JSON.parse(manifestText);
+      const manifestInput = JSON.parse(manifestText) as Record<string, unknown>;
 
-      const dossier = buildRegulatoryDossier(manifestInput);
+      const dossier = ee.buildRegulatoryDossier(manifestInput);
       console.log(`  ✔ Compiled NERC RSAW Markdown Document (${dossier.rsawMarkdown.length} bytes)`);
       console.log(`  ✔ Generated NIST OSCAL assessment results (${dossier.oscalAssessmentResultsJson.length} bytes)`);
       console.log(`  ✔ Attached FERC CEII header (18 CFR § 388.113)`);
@@ -451,11 +524,22 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
       if (isServe) {
         const port = (argv["port"] as number) ?? 8080;
         console.log(`[psse] Starting Grid Code Gatekeeper CI/CD service on port ${port}...`);
-        const { createGatekeeperRouter } = await import("@modelscript/ee");
-        const expressMod = (await import("express")) as unknown as { default?: () => any };
-        const createExpressApp = expressMod.default ?? (expressMod as unknown as () => any);
+        const ee = await requireCliEnterpriseModule("msx psse gatekeeper --serve");
+        if (typeof ee.createGatekeeperRouter !== "function") {
+          console.error("[Enterprise Edition Required] 'msx psse gatekeeper --serve' is unavailable in this build.");
+          process.exit(1);
+        }
+        const expressMod = (await import("express")) as unknown as {
+          default?: () => { use(p: string, h: unknown): void; listen(pNum: number, cb: () => void): void };
+        };
+        const createExpressApp =
+          expressMod.default ??
+          (expressMod as unknown as () => {
+            use(p: string, h: unknown): void;
+            listen(pNum: number, cb: () => void): void;
+          });
         const app = createExpressApp();
-        app.use("/api/v1", createGatekeeperRouter());
+        app.use("/api/v1", ee.createGatekeeperRouter());
         app.listen(port, () => {
           console.log(`  ✔ Gatekeeper service listening at http://localhost:${port}/api/v1/grid-gatekeeper/health`);
         });
@@ -463,27 +547,19 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
       }
 
       console.log(`[psse] Running automated 5-stage grid code gatekeeper screening...`);
-      const { runGatekeeperScreeningPipeline } = await import("@modelscript/ee");
+      const ee = await requireCliEnterpriseModule("msx psse gatekeeper");
+      if (typeof ee.runGatekeeperScreeningPipeline !== "function") {
+        console.error("[Enterprise Edition Required] 'msx psse gatekeeper' is unavailable in this build.");
+        process.exit(1);
+      }
       const subFile = files[0];
       if (!subFile) {
         console.error("[psse] 'gatekeeper' requires a submission package file or --serve.");
         process.exit(1);
       }
-      const subPath = path.resolve(process.cwd(), subFile);
-      const pkg = {
-        submissionId: path.basename(subPath),
-        developerOrganization: "Interconnection Customer",
-        plantName: path.basename(subPath, path.extname(subPath)),
-        gridInterconnection: "Western",
-        ratedMva: 100.0,
-        poiKv: 230.0,
-        hasRawPowerFlow: true,
-        hasDyrDynamics: true,
-        hasPscadModel: true,
-        hasWasmFirmware: true,
-      };
+      const pkg = buildGatekeeperPackageFromInput(subFile);
 
-      const scorecard = runGatekeeperScreeningPipeline(pkg);
+      const scorecard = ee.runGatekeeperScreeningPipeline(pkg);
 
       console.log(`\n=======================================================`);
       console.log(` GRID CODE GATEKEEPER SCORECARD: [${scorecard.overallVerdict}]`);

@@ -242,9 +242,9 @@ export const SpacesExplorePage: React.FC = () => {
                   padding: "10px 14px",
                   marginBottom: "-2px",
                   border: "none",
-                  borderBottom: isActive ? "2px solid var(--ms-brand, #3b82f6)" : "2px solid transparent",
+                  borderBottom: isActive ? "2px solid var(--ms-brand)" : "2px solid transparent",
                   background: "transparent",
-                  color: isActive ? "var(--ms-brand, #3b82f6)" : "var(--color-text-secondary)",
+                  color: isActive ? "var(--ms-brand)" : "var(--color-text-secondary)",
                   fontSize: "15px",
                   fontWeight: isActive ? 700 : 500,
                   cursor: "pointer",
@@ -261,9 +261,9 @@ export const SpacesExplorePage: React.FC = () => {
                       padding: "1px 7px",
                       borderRadius: "999px",
                       background: isActive
-                        ? "color-mix(in srgb, var(--ms-brand, #3b82f6) 15%, transparent)"
+                        ? "color-mix(in srgb, var(--ms-brand) 15%, transparent)"
                         : "var(--color-code-bg, var(--ms-surface-hover))",
-                      color: isActive ? "var(--ms-brand, #3b82f6)" : "var(--color-text-muted)",
+                      color: isActive ? "var(--ms-brand)" : "var(--color-text-muted)",
                       fontFamily: "var(--font-mono, monospace)",
                     }}
                   >
@@ -309,7 +309,7 @@ export const SpacesExplorePage: React.FC = () => {
                 padding: "8px 16px",
                 borderRadius: "8px",
                 border: "none",
-                background: "var(--ms-brand, #2563eb)",
+                background: "var(--ms-brand)",
                 color: "#ffffff",
                 fontSize: "13px",
                 fontWeight: 700,
@@ -448,8 +448,8 @@ export const SpacesExplorePage: React.FC = () => {
                 borderRadius: "7px",
                 border: "none",
                 background:
-                  viewMode === "grid" ? "color-mix(in srgb, var(--ms-brand, #3b82f6) 18%, transparent)" : "transparent",
-                color: viewMode === "grid" ? "var(--ms-brand, #3b82f6)" : "var(--color-text-muted)",
+                  viewMode === "grid" ? "color-mix(in srgb, var(--ms-brand) 18%, transparent)" : "transparent",
+                color: viewMode === "grid" ? "var(--ms-brand)" : "var(--color-text-muted)",
                 cursor: "pointer",
                 transition: "all 0.15s ease",
               }}
@@ -469,8 +469,8 @@ export const SpacesExplorePage: React.FC = () => {
                 borderRadius: "7px",
                 border: "none",
                 background:
-                  viewMode === "list" ? "color-mix(in srgb, var(--ms-brand, #3b82f6) 18%, transparent)" : "transparent",
-                color: viewMode === "list" ? "var(--ms-brand, #3b82f6)" : "var(--color-text-muted)",
+                  viewMode === "list" ? "color-mix(in srgb, var(--ms-brand) 18%, transparent)" : "transparent",
+                color: viewMode === "list" ? "var(--ms-brand)" : "var(--color-text-muted)",
                 cursor: "pointer",
                 transition: "all 0.15s ease",
               }}
@@ -496,12 +496,10 @@ export const SpacesExplorePage: React.FC = () => {
             style={{
               padding: "5px 12px",
               borderRadius: "999px",
-              border: selectedPreset === "all" ? "1px solid var(--ms-brand, #3b82f6)" : "1px solid var(--color-border)",
+              border: selectedPreset === "all" ? "1px solid var(--ms-brand)" : "1px solid var(--color-border)",
               background:
-                selectedPreset === "all"
-                  ? "color-mix(in srgb, var(--ms-brand, #3b82f6) 15%, transparent)"
-                  : "transparent",
-              color: selectedPreset === "all" ? "var(--ms-brand, #3b82f6)" : "var(--color-text-secondary)",
+                selectedPreset === "all" ? "color-mix(in srgb, var(--ms-brand) 15%, transparent)" : "transparent",
+              color: selectedPreset === "all" ? "var(--ms-brand)" : "var(--color-text-secondary)",
               fontSize: "12px",
               fontWeight: 600,
               cursor: "pointer",
@@ -599,7 +597,7 @@ export const SpacesExplorePage: React.FC = () => {
                   padding: "8px 18px",
                   borderRadius: "8px",
                   border: "none",
-                  background: "var(--ms-brand, #2563eb)",
+                  background: "var(--ms-brand)",
                   color: "#fff",
                   fontWeight: 700,
                   fontSize: "13px",

@@ -974,6 +974,51 @@ export class ArenaSimulator {
     };
 
     const simArena = this.arena as SimDAEBuilder;
+    let paramRuntimeVals: Float64Array | null = null;
+    const evalParamExpr = (exprId: number, varIdx: number): unknown => {
+      const rawVal = evaluateArenaExpression(this.arena, exprId, this.parameters);
+      if (typeof rawVal === "string" || Array.isArray(rawVal)) {
+        return rawVal;
+      }
+      if (rawVal !== null && rawVal !== undefined) {
+        const numVal = typeof rawVal === "boolean" ? (rawVal ? 1 : 0) : rawVal;
+        if (typeof numVal === "number" && Number.isFinite(numVal)) {
+          return rawVal;
+        }
+      }
+      if (varIdx >= 0 && this.arena.getVarType(varIdx) === VarType.String) {
+        return rawVal;
+      }
+      const neededLen = Math.max(this.arena.interner.size + 64, 4096);
+      if (!paramRuntimeVals || paramRuntimeVals.length < neededLen) {
+        paramRuntimeVals = new Float64Array(neededLen);
+      }
+      for (let v = 0; v < this.arena.varCount; v++) {
+        if (this.arena.isVarRemoved(v)) continue;
+        const vid = this.arena.getVarNameId(v);
+        if (vid >= 0 && vid < paramRuntimeVals.length) {
+          paramRuntimeVals[vid] = this.arena.getVarStartValue(v);
+        }
+      }
+      for (const [k, v] of this.parameters) {
+        if (typeof v === "number" && Number.isFinite(v)) {
+          const sid = this.arena.interner.intern(k);
+          if (sid >= 0 && sid < paramRuntimeVals.length) {
+            paramRuntimeVals[sid] = v;
+          }
+        }
+      }
+      try {
+        const rtVal = evaluateArenaRuntime(this.arena, exprId, paramRuntimeVals);
+        if (Number.isFinite(rtVal)) {
+          return rtVal;
+        }
+      } catch {
+        // Ignore domain/assertion errors while evaluating fallback parameter expressions
+      }
+      return rawVal;
+    };
+
     let existingBindingEqs: Map<number, Set<number>> | null = null;
     for (let i = 0; i < this.arena.varCount; i++) {
       if (this.arena.isVarRemoved(i)) continue;
@@ -1032,7 +1077,7 @@ export class ArenaSimulator {
       }
       let val: number | null = null;
       if (typeof exprId === "number" && exprId !== -1) {
-        const rawVal = evaluateArenaExpression(this.arena, exprId, this.parameters);
+        const rawVal = evalParamExpr(exprId, i);
         if (Array.isArray(rawVal)) {
           for (let idx = 0; idx < rawVal.length; idx++) {
             const elem = rawVal[idx];
@@ -1067,7 +1112,7 @@ export class ArenaSimulator {
         if (preOverrides && preOverrides.has(name)) continue;
         const exprId = typeof this.arena.getVarExpression === "function" ? this.arena.getVarExpression(i) : undefined;
         if (typeof exprId === "number" && exprId !== -1) {
-          const rawVal = evaluateArenaExpression(this.arena, exprId, this.parameters);
+          const rawVal = evalParamExpr(exprId, i);
           if (Array.isArray(rawVal)) {
             for (let idx = 0; idx < rawVal.length; idx++) {
               const elem = rawVal[idx];
@@ -1107,7 +1152,7 @@ export class ArenaSimulator {
         const vName = this.arena.getVarName(vIdx);
         if (preOverrides && preOverrides.has(vName)) continue;
         if (exprReferencesContinuous(rhs)) continue;
-        const rawVal = evaluateArenaExpression(this.arena, rhs, this.parameters);
+        const rawVal = evalParamExpr(rhs, vIdx);
         const numVal = typeof rawVal === "boolean" ? (rawVal ? 1 : 0) : rawVal;
         if (typeof numVal === "number" && isFinite(numVal)) {
           if (this.parameters.get(vName) !== numVal) {
@@ -1125,7 +1170,7 @@ export class ArenaSimulator {
       if (this.arena.isVarRemoved(vIdx) || this.parameterVars.has(vIdx)) continue;
       const startAttrId = this.arena.getVarAttr(vIdx, "start");
       if (typeof startAttrId === "number" && startAttrId >= 0) {
-        const rawStart = evaluateArenaExpression(this.arena, startAttrId, this.parameters);
+        const rawStart = evalParamExpr(startAttrId, vIdx);
         const numStart = typeof rawStart === "boolean" ? (rawStart ? 1 : 0) : rawStart;
         if (typeof numStart === "number" && isFinite(numStart)) {
           this.arena.setVarStartValue(vIdx, numStart);
@@ -2626,7 +2671,7 @@ export class ArenaSimulator {
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Scans the DAE arena for `assert(condition, message)` function-call equations
+   * Scans the DAE arena for `assert(condition, message [, level])` function-call equations
    * and populates `this.assertions` for runtime verification.
    */
   private extractAssertions() {
@@ -2642,14 +2687,41 @@ export class ArenaSimulator {
       const funcName = this.arena.interner.resolve(funcNameId);
       if (funcName !== "assert") continue;
 
-      // assert(condition, message): first arg = condition, second = message
+      // assert(condition, message [, level]): arg0=cond, arg1=msg, arg2=level
       const argCount = this.arena.getExprRight(callExprId);
       const firstArg = this.arena.getExprLeft(callExprId); // condition ExprId
       const secondArg = argCount >= 2 ? this.arena.getExprLeft(callExprId + 1) : -1; // message ExprId
+      const thirdArg = argCount >= 3 ? this.arena.getExprLeft(callExprId + 2) : -1; // level ExprId
+
+      let level: "warning" | "error" | undefined = "error";
+      let levelExprId: number | undefined;
+      if (thirdArg !== -1) {
+        const k3 = this.arena.getExprKind(thirdArg);
+        if (k3 === ExprKind.EnumLiteral) {
+          const enumPath = this.arena.interner.resolve(this.arena.getExprLeft(thirdArg));
+          const ordinal = this.arena.getExprData1(thirdArg);
+          level = enumPath?.endsWith(".warning") || ordinal === 1 ? "warning" : "error";
+        } else if (k3 === ExprKind.Name) {
+          const litName = this.arena.interner.resolve(this.arena.getExprData1(thirdArg));
+          if (litName === "AssertionLevel.warning" || litName === "warning") {
+            level = "warning";
+          } else if (litName === "AssertionLevel.error" || litName === "error") {
+            level = "error";
+          } else {
+            level = undefined;
+            levelExprId = thirdArg;
+          }
+        } else {
+          level = undefined;
+          levelExprId = thirdArg;
+        }
+      }
 
       this.assertions.push({
         conditionExprId: firstArg,
         messageExprId: secondArg,
+        level,
+        levelExprId,
       });
     }
   }
@@ -3152,19 +3224,60 @@ export class ArenaSimulator {
   // Assertion Checking
   // ─────────────────────────────────────────────────────────────────────────
 
+  private readonly warnedAssertions = new WeakSet<ArenaAssertion>();
+
   /**
-   * Evaluates all extracted Modelica `assert(condition, message)` clauses at time `t`
-   * and throws an error if any assertion condition evaluates to false (`0`).
+   * Formats a Modelica assertion message expression (supporting StringLiteral,
+   * string `+` concatenation, and `String(...)` calls).
+   */
+  private formatAssertionMessage(exprId: number, valuesByStringId: Float64Array, depth = 0): string {
+    if (exprId < 0 || depth > 16) return "";
+    const kind = this.arena.getExprKind(exprId);
+    if (kind === ExprKind.StringLiteral) {
+      return this.arena.interner.resolve(this.arena.getExprData1(exprId)) ?? "";
+    }
+    if (kind === ExprKind.Binary && this.arena.getExprData1(exprId) === BinOp.Add) {
+      const l = this.formatAssertionMessage(this.arena.getExprLeft(exprId), valuesByStringId, depth + 1);
+      const r = this.formatAssertionMessage(this.arena.getExprRight(exprId), valuesByStringId, depth + 1);
+      return `${l}${r}`;
+    }
+    if (kind === ExprKind.Call) {
+      const fn = this.arena.interner.resolve(this.arena.getExprData1(exprId));
+      const argc = this.arena.getExprRight(exprId);
+      if (fn === "String" && argc >= 1) {
+        const arg0 = this.arena.getExprLeft(exprId);
+        if (this.arena.getExprKind(arg0) === ExprKind.StringLiteral) {
+          return this.arena.interner.resolve(this.arena.getExprData1(arg0)) ?? "";
+        }
+        return String(evaluateArenaRuntime(this.arena, arg0, valuesByStringId));
+      }
+    }
+    return String(evaluateArenaRuntime(this.arena, exprId, valuesByStringId));
+  }
+
+  /**
+   * Evaluates all extracted Modelica `assert(condition, message [, level])` clauses at time `t`
+   * and throws an error for AssertionLevel.error (or warns once for AssertionLevel.warning).
    */
   private checkAssertions(valuesByStringId: Float64Array, t: number): void {
     for (const assertion of this.assertions) {
       const condVal = evaluateArenaRuntime(this.arena, assertion.conditionExprId, valuesByStringId);
       if (condVal === 0) {
-        let msg = `Assertion failed at t=${t}`;
-        if (assertion.messageExprId !== -1) {
-          const msgVal = evaluateArenaRuntime(this.arena, assertion.messageExprId, valuesByStringId);
-          msg = `Assertion failed at t=${t}: ${msgVal}`;
+        let level = assertion.level;
+        if (!level && assertion.levelExprId !== undefined) {
+          const lv = evaluateArenaRuntime(this.arena, assertion.levelExprId, valuesByStringId);
+          level = lv === 1 ? "warning" : "error";
         }
+        const detail =
+          assertion.messageExprId !== -1 ? this.formatAssertionMessage(assertion.messageExprId, valuesByStringId) : "";
+        if (level === "warning") {
+          if (!this.warnedAssertions.has(assertion)) {
+            this.warnedAssertions.add(assertion);
+            console.warn(detail ? `Assertion warning at t=${t}: ${detail}` : `Assertion warning at t=${t}`);
+          }
+          continue;
+        }
+        const msg = detail ? `Assertion failed at t=${t}: ${detail}` : `Assertion failed at t=${t}`;
         throw new Error(msg);
       }
     }

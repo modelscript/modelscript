@@ -111,16 +111,14 @@ export const NavCenter = styled.div`
   min-width: 0;
   gap: 6px;
 
-  /* Modernized, sleek engineering workbench segmented control */
   ul[data-size="small"] {
-    background: var(--ms-surface-hover, var(--color-canvas-subtle, rgba(0, 0, 0, 0.04)));
-    border: 1px solid var(--ms-divider, var(--color-border-subtle, rgba(15, 23, 42, 0.1)));
-    border-radius: var(--ms-radius-pill, 999px);
+    background: var(--bgColor-inset, var(--ms-bg-inset));
+    border: 1px solid var(--borderColor-muted, var(--ms-divider));
+    border-radius: 10px;
     padding: 2px;
     gap: 2px;
     height: 30px;
     box-sizing: border-box;
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
   }
 
   /* Segmented control items */
@@ -137,7 +135,7 @@ export const NavCenter = styled.div`
   li button {
     border: 1px solid transparent !important;
     outline: none !important;
-    border-radius: var(--ms-radius-pill, 999px) !important;
+    border-radius: 8px !important;
     font-size: 12px !important;
     font-weight: 500 !important;
     transition:
@@ -179,16 +177,14 @@ export const NavCenter = styled.div`
     color: var(--color-fg-default) !important;
   }
 
-  /* Active selected button styling matching ModelScript dialect chip background and brand blue border */
   ul[data-size="small"] button[aria-current="true"],
   li button[aria-current="true"] {
-    border: 1px solid var(--ms-brand, #0891b2) !important;
-    border-radius: var(--ms-radius-pill, 999px) !important;
+    border: 1px solid color-mix(in srgb, var(--ms-brand) 45%, transparent) !important;
+    border-radius: 8px !important;
     outline: none !important;
     font-weight: 600 !important;
-    background-color: var(--ms-brand-soft, rgba(8, 145, 178, 0.12)) !important;
-    color: var(--ms-brand, #0891b2) !important;
-    box-shadow: 0 1px 4px var(--ms-glow-cyan, rgba(8, 145, 178, 0.2)) !important;
+    background-color: var(--ms-brand-soft) !important;
+    color: var(--fgColor-accent, var(--ms-brand)) !important;
     padding: 0 10px !important;
   }
 
@@ -262,9 +258,7 @@ export const SplitToggleButton = styled.button<{ $active?: boolean }>`
       : "var(--ms-surface-hover, var(--color-canvas-subtle, rgba(0, 0, 0, 0.04)))"};
   border: 1px solid
     ${(props) =>
-      props.$active
-        ? "var(--ms-brand, #0891b2)"
-        : "var(--ms-divider, var(--color-border-subtle, rgba(15, 23, 42, 0.1)))"};
+      props.$active ? "var(--ms-brand, #0891b2)" : "var(--ms-divider, var(--color-border-subtle, rgba(0, 0, 0, 0.1)))"};
   color: ${(props) => (props.$active ? "var(--ms-brand, #0891b2)" : "var(--ms-text-2, var(--color-fg-muted))")};
   box-shadow: ${(props) =>
     props.$active ? "0 1px 4px var(--ms-glow-cyan, rgba(8, 145, 178, 0.2))" : "inset 0 1px 2px rgba(0, 0, 0, 0.03)"};
@@ -288,7 +282,7 @@ export const SplitToggleButton = styled.button<{ $active?: boolean }>`
     opacity: 0.38;
     cursor: not-allowed;
     background: var(--ms-surface-hover, var(--color-canvas-subtle, rgba(0, 0, 0, 0.04)));
-    border: 1px solid var(--ms-divider, var(--color-border-subtle, rgba(15, 23, 42, 0.06)));
+    border: 1px solid var(--ms-divider, var(--color-border-subtle, rgba(0, 0, 0, 0.06)));
     color: var(--ms-text-3, var(--color-fg-muted));
     box-shadow: none;
   }
@@ -376,7 +370,7 @@ export const EditorArea = styled.main`
 export const NavDivider = styled.span`
   width: 1px;
   height: 18px;
-  background: var(--color-border-subtle, var(--ms-border, rgba(15, 23, 42, 0.12)));
+  background: var(--color-border-subtle, var(--ms-border, rgba(0, 0, 0, 0.12)));
   flex-shrink: 0;
   margin: 0 2px;
   @container (max-width: 900px) {
@@ -406,7 +400,7 @@ export const NavBackLink = styled.a`
     text-decoration: none;
     color: var(--color-fg-default);
     background: var(--color-action-list-item-default-hover-bg, rgba(125, 125, 125, 0.08));
-    border-color: var(--color-border-subtle, rgba(15, 23, 42, 0.08));
+    border-color: var(--color-border-subtle, rgba(0, 0, 0, 0.08));
   }
 `;
 
@@ -417,7 +411,7 @@ export const SearchTrigger = styled.button`
   height: 32px;
   padding: 0 10px;
   border-radius: 6px;
-  border: 1px solid var(--color-border-subtle, var(--ms-border, rgba(15, 23, 42, 0.12)));
+  border: 1px solid var(--color-border-subtle, var(--ms-border, rgba(0, 0, 0, 0.12)));
   background: var(--color-canvas-subtle, var(--ms-bg-soft, rgba(0, 0, 0, 0.04)));
   color: var(--color-fg-muted);
   font-size: 12px;
@@ -429,7 +423,7 @@ export const SearchTrigger = styled.button`
   &:hover {
     color: var(--color-fg-default);
     background: var(--color-canvas-default, var(--ms-surface, transparent));
-    border-color: var(--color-border-default, var(--ms-border-active, rgba(15, 23, 42, 0.2)));
+    border-color: var(--color-border-default, var(--ms-border-active, rgba(0, 0, 0, 0.2)));
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   }
 

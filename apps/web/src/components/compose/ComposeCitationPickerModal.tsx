@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BookIcon, CheckIcon, FileIcon, LinkExternalIcon, PlusIcon, SearchIcon, XIcon } from "@primer/octicons-react";
-import React, { useEffect, useId, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { BookIcon, CheckIcon, FileIcon, LinkExternalIcon, PlusIcon, SearchIcon } from "@primer/octicons-react";
+import { Dialog } from "@primer/react";
+import React, { useEffect, useState } from "react";
 import {
   getReferenceLibrary,
   type ReferenceLibraryEntry,
@@ -10,7 +10,6 @@ import {
   searchScholarlyWorks,
 } from "../../api/references";
 import { useAuth } from "../../AuthContext";
-import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { buildSourcePageUrl, normalizeCitationUrn } from "../../util/citations";
 
 export type CitationInsertFormat = "urn-tag" | "markdown-link" | "doi-tag";
@@ -53,9 +52,6 @@ export const ComposeCitationPickerModal: React.FC<ComposeCitationPickerModalProp
   onInsertCitation,
 }) => {
   const { token } = useAuth();
-  const modalRef = useRef<HTMLDivElement>(null);
-  const titleId = useId();
-  useFocusTrap(modalRef, isOpen, onClose);
 
   const [activeTab, setActiveTab] = useState<"search" | "library" | "direct">("search");
   const [searchQuery, setSearchQuery] = useState("");
@@ -132,98 +128,44 @@ export const ComposeCitationPickerModal: React.FC<ComposeCitationPickerModalProp
     ? normalizeCitationUrn(directInput.trim())
     : "urn:doi:10.1137/0909014";
 
-  const content = (
-    <div
-      data-testid="compose-citation-picker-backdrop"
-      onClick={(e) => {
-        e.stopPropagation();
-        onClose();
-      }}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 10000,
-        backgroundColor: "rgba(3, 7, 18, 0.72)",
-        backdropFilter: "blur(6px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "16px",
-      }}
+  if (!isOpen) return null;
+
+  return (
+    <Dialog
+      title={
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div
+            style={{
+              width: "28px",
+              height: "28px",
+              borderRadius: "8px",
+              background: "rgba(6, 182, 212, 0.14)",
+              border: "1px solid rgba(6, 182, 212, 0.35)",
+              color: "var(--ms-accent, #06b6d4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <BookIcon size={15} />
+          </div>
+          <span>Insert Scholarly Citation</span>
+        </div>
+      }
+      subtitle="Search OpenAlex, pick from your library, or cite by URN / DOI / ArXiv ID"
+      width="large"
+      onClose={onClose}
     >
       <div
-        ref={modalRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
         data-testid="compose-citation-picker-modal"
-        onClick={(e) => e.stopPropagation()}
         style={{
-          width: "100%",
-          maxWidth: "680px",
-          maxHeight: "86vh",
+          maxHeight: "75vh",
           display: "flex",
           flexDirection: "column",
-          backgroundColor: "var(--color-bg-elevated, #0f172a)",
-          border: "1px solid var(--color-border-default, rgba(148, 163, 184, 0.22))",
-          borderRadius: "16px",
-          boxShadow: "0 24px 56px rgba(0, 0, 0, 0.55)",
           color: "var(--color-text-primary, #f8fafc)",
           overflow: "hidden",
         }}
       >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "16px 20px",
-            borderBottom: "1px solid var(--color-border-default, rgba(148, 163, 184, 0.16))",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div
-              style={{
-                width: "34px",
-                height: "34px",
-                borderRadius: "9px",
-                background: "rgba(6, 182, 212, 0.14)",
-                border: "1px solid rgba(6, 182, 212, 0.35)",
-                color: "var(--color-accent-cyan, #06b6d4)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <BookIcon size={17} />
-            </div>
-            <div>
-              <h2 id={titleId} style={{ margin: 0, fontSize: "15.5px", fontWeight: 700 }}>
-                Insert Scholarly Citation
-              </h2>
-              <div style={{ fontSize: "12px", color: "var(--color-text-muted, #94a3b8)" }}>
-                Search OpenAlex, pick from your library, or cite by URN / DOI / ArXiv ID
-              </div>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close citation picker"
-            style={{
-              background: "transparent",
-              border: "none",
-              color: "var(--color-text-muted, #94a3b8)",
-              cursor: "pointer",
-              padding: "6px",
-              borderRadius: "8px",
-            }}
-          >
-            <XIcon size={18} />
-          </button>
-        </div>
-
         {/* Mode Tabs & Insertion Format Selector */}
         <div
           style={{
@@ -684,13 +626,8 @@ export const ComposeCitationPickerModal: React.FC<ComposeCitationPickerModalProp
           </span>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
-
-  if (typeof document !== "undefined" && document.body) {
-    return createPortal(content, document.body);
-  }
-  return content;
 };
 
 export default ComposeCitationPickerModal;

@@ -199,3 +199,9 @@ msx easy5 to-ssp controller.ez5 --out=SystemStructure.ssd
 # Export SVG schematic diagram
 msx easy5 diagram controller.ez5 --out=schematic.svg
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="easy5" />

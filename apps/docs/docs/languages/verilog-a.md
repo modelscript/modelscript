@@ -70,3 +70,9 @@ msx verilog-a to-modelica MOS_Transistor.va -o MOS_Transistor.mo
 # Export to SPICE subcircuit with nonlinear behavioral sources
 msx verilog-a to-spice MOS_Transistor.va -o MOS_Transistor.sub
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="verilog-a" />

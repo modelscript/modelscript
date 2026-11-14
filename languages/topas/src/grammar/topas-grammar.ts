@@ -29,7 +29,7 @@ export const topasDeckGrammar = language({
         field("path", $.ParamPath),
         "=",
         field("value", choice($.NumberLiteral, $.StringLiteral, $.Identifier)),
-        optional(field("unit", $.UnitIdentifier)),
+        optional(field("unit", $.Identifier)),
       ),
 
     VectorAssignment: ($) =>
@@ -40,7 +40,7 @@ export const topasDeckGrammar = language({
         "=",
         field("count", choice($.NumberLiteral, $.Identifier)),
         repeat(field("item", choice($.NumberLiteral, $.StringLiteral, $.Identifier))),
-        optional(field("unit", $.UnitIdentifier)),
+        optional(field("unit", $.Identifier)),
       ),
 
     IncludeDirective: ($) =>
@@ -52,9 +52,8 @@ export const topasDeckGrammar = language({
     ScalarPrefix: () => choice("d", "i", "b", "s", "u"),
     VectorPrefix: () => choice("dv", "iv", "bv", "sv", "uv"),
 
-    ParamPath: () => /[a-zA-Z_][a-zA-Z0-9_/.-]*/,
+    ParamPath: () => /[a-zA-Z_][a-zA-Z0-9_.-]*\/[a-zA-Z0-9_/.-]*/,
     GatePath: () => /\/gate\/[a-zA-Z0-9_/.-]*/,
-    UnitIdentifier: () => /[a-zA-Zµ][a-zA-Z0-9/]*/,
 
     CommentLine: () => /([#].*)/,
     Identifier: () => /[a-zA-Z_][a-zA-Z0-9_.]*/,

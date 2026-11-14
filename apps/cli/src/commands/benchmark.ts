@@ -109,6 +109,24 @@ export const BenchmarkCommand: CommandModule<Record<string, unknown>, BenchmarkC
     const suite = (argv.suite ?? "all").toLowerCase();
     const model = (argv.model ?? "all").toLowerCase();
     const resultsSummary: Record<string, unknown> = {};
+    const formatSotaSummary = (
+      baselineName: string,
+      comp: {
+        parityStatus: string;
+        theilTic: number | null;
+        discrepancyNrmsePct: number | null;
+        speedupFactor: number | null;
+      },
+      includeNrmse: boolean,
+    ): string => {
+      if (comp.parityStatus === "UNVERIFIED" || comp.theilTic === null || comp.speedupFactor === null) {
+        return `  ℹ SOTA Parity vs ${baselineName}: UNVERIFIED (no reference trace provided)`;
+      }
+      const nrmsePart =
+        includeNrmse && comp.discrepancyNrmsePct !== null ? ` (NRMSE: ${comp.discrepancyNrmsePct.toFixed(2)}%)` : "";
+      const icon = comp.parityStatus === "FAIL" ? "✖" : comp.parityStatus === "WARN" ? "⚠" : "✔";
+      return `  ${icon} SOTA Parity vs ${baselineName}: Theil's TIC = ${comp.theilTic.toFixed(4)}${nrmsePart} | ${comp.speedupFactor.toFixed(1)}x Faster [${comp.parityStatus}]`;
+    };
 
     console.log(`\n========================================================================`);
     console.log(` ModelScript Industrial Benchmark Suite — SOTA Hardening & Verification `);
@@ -141,7 +159,7 @@ export const BenchmarkCommand: CommandModule<Record<string, unknown>, BenchmarkC
           `  ✔ Network Synthesized: ${res.totalBuses.toLocaleString()} buses, ${res.totalBranches.toLocaleString()} branches, ${res.totalGenerators} gens, ${res.totalLoads.toLocaleString()} loads`,
         );
         console.log(
-          `  ✔ Base Power Flow:     Converged in ${res.basePowerFlow.iterations} iters (${res.basePowerFlow.solveTimeMs.toFixed(1)} ms)`,
+          `  ${res.basePowerFlow.converged ? "✔" : "⚠"} Base Power Flow:     ${res.basePowerFlow.converged ? "Converged" : "Stopped"} in ${res.basePowerFlow.iterations} iters (${res.basePowerFlow.solveTimeMs.toFixed(1)} ms)`,
         );
         console.log(
           `  ✔ ACCC Screening:      ${res.accc.totalContingencies} contingencies evaluated in ${res.accc.executionTimeMs.toFixed(1)} ms (${res.accc.throughputSolvesPerSec.toLocaleString()} solves/sec)`,
@@ -149,9 +167,7 @@ export const BenchmarkCommand: CommandModule<Record<string, unknown>, BenchmarkC
         console.log(
           `  ✔ Worst Contingency:   ${res.accc.worstContingency} (Max Loading: ${res.accc.maxLoadingPercent.toFixed(1)}%)`,
         );
-        console.log(
-          `  ✔ SOTA Parity vs PSS/E: Theil's TIC = ${res.comparisonVsSota.theilTic.toFixed(4)} (NRMSE: ${res.comparisonVsSota.discrepancyNrmsePct.toFixed(2)}%) | ${res.comparisonVsSota.speedupFactor.toFixed(1)}x Faster [${res.comparisonVsSota.parityStatus}]`,
-        );
+        console.log(formatSotaSummary("PSS/E", res.comparisonVsSota, true));
 
         if (argv.out) {
           const outCsv = path.resolve(process.cwd(), argv.out);
@@ -192,15 +208,11 @@ export const BenchmarkCommand: CommandModule<Record<string, unknown>, BenchmarkC
         console.log(
           `  ✔ Network Synthesized: ${res.totalBuses.toLocaleString()} buses, ${res.totalBranches.toLocaleString()} branches, ${res.totalGenerators.toLocaleString()} gens, ${res.totalLoads.toLocaleString()} loads`,
         );
-        console.log(
-          `  ✔ Memory Footprint:    ${res.powerFlow.memoryRssMb.toFixed(1)} MB RSS (SOTA Baseline: >2,500 MB) — 0 heap allocations in inner loop`,
-        );
+        console.log(`  ✔ Memory Footprint:    ${res.powerFlow.memoryRssMb.toFixed(1)} MB RSS`);
         console.log(
           `  ✔ ACCC Screening:      ${res.accc.totalContingencies} contingencies evaluated (${res.accc.throughputSolvesPerSec.toLocaleString()} solves/sec)`,
         );
-        console.log(
-          `  ✔ SOTA Parity vs PSS/E: Theil's TIC = ${res.comparisonVsSota.theilTic.toFixed(4)} | ${res.comparisonVsSota.speedupFactor.toFixed(1)}x Faster [${res.comparisonVsSota.parityStatus}]`,
-        );
+        console.log(formatSotaSummary("PSS/E", res.comparisonVsSota, false));
 
         if (argv.html && res.htmlDashboard && model === "mmwg70k") {
           const outHtml = path.resolve(process.cwd(), argv.html);
@@ -234,14 +246,12 @@ export const BenchmarkCommand: CommandModule<Record<string, unknown>, BenchmarkC
           `  ✔ Conditioning Stress: R/X ratio spread [${res.rxRatioSpread.min} to ${res.rxRatioSpread.max}] | Condition estimate kappa(J) ~ ${res.conditionNumberEstimate.toExponential(1)}`,
         );
         console.log(
-          `  ✔ Base Power Flow:     Converged with sparse AMD LU ordering in ${res.basePowerFlow.solveTimeMs.toFixed(1)} ms`,
+          `  ${res.basePowerFlow.converged ? "✔" : "⚠"} Base Power Flow:     ${res.basePowerFlow.converged ? "Converged" : "Stopped"} in ${res.basePowerFlow.iterations} iters (${res.basePowerFlow.solveTimeMs.toFixed(1)} ms)`,
         );
         console.log(
           `  ✔ ACCC Screening:      ${res.accc.totalContingencies} contingencies screened (${res.accc.throughputSolvesPerSec.toLocaleString()} solves/sec)`,
         );
-        console.log(
-          `  ✔ SOTA Parity vs PSS/E: Theil's TIC = ${res.comparisonVsSota.theilTic.toFixed(4)} | ${res.comparisonVsSota.speedupFactor.toFixed(1)}x Faster [${res.comparisonVsSota.parityStatus}]`,
-        );
+        console.log(formatSotaSummary("PSS/E", res.comparisonVsSota, false));
 
         if (argv.html && res.htmlDashboard && model === "pegase9241") {
           const outHtml = path.resolve(process.cwd(), argv.html);
@@ -283,9 +293,7 @@ export const BenchmarkCommand: CommandModule<Record<string, unknown>, BenchmarkC
         console.log(
           `  ✔ Transient Response:  DC Fault Peak Overcurrent = ${res.peakDcOvercurrentKa.toFixed(2)} kA | Min Voltage = ${res.minDcVoltageKv.toFixed(1)} kV`,
         );
-        console.log(
-          `  ✔ SOTA Parity vs EMTDC: Theil's TIC = ${res.comparisonVsSota.theilTic.toFixed(4)} (NRMSE: ${res.comparisonVsSota.discrepancyNrmsePct.toFixed(2)}%) | ${res.comparisonVsSota.speedupFactor.toFixed(1)}x Faster [${res.comparisonVsSota.parityStatus}]`,
-        );
+        console.log(formatSotaSummary("EMTDC", res.comparisonVsSota, true));
 
         if (argv.exportComtrade) {
           const outCff = path.resolve(process.cwd(), argv.exportComtrade);
@@ -333,9 +341,7 @@ export const BenchmarkCommand: CommandModule<Record<string, unknown>, BenchmarkC
         console.log(
           `  ✔ Grid Code Response:  IEEE 2800 POI Residual Voltage = ${res.poiResidualVoltagePu.toFixed(3)} pu | THD = ${res.thdPercent.toFixed(2)}%`,
         );
-        console.log(
-          `  ✔ SOTA Parity vs PSCAD: Theil's TIC = ${res.comparisonVsSota.theilTic.toFixed(4)} (NRMSE: ${res.comparisonVsSota.discrepancyNrmsePct.toFixed(2)}%) | ${res.comparisonVsSota.speedupFactor.toFixed(1)}x Faster [${res.comparisonVsSota.parityStatus}]`,
-        );
+        console.log(formatSotaSummary("PSCAD", res.comparisonVsSota, true));
 
         if (argv.html && res.htmlDashboard && model === "wind100") {
           const outHtml = path.resolve(process.cwd(), argv.html);
@@ -372,9 +378,7 @@ export const BenchmarkCommand: CommandModule<Record<string, unknown>, BenchmarkC
         console.log(
           `  ✔ Transients & TRV:    Statistical SSOV V_2% = ${res.ssov98thPercentilePu.toFixed(3)} pu | Steepest TRV RRRV = ${res.steepestTrvRrrvKvPerUs.toFixed(2)} kV/μs`,
         );
-        console.log(
-          `  ✔ SOTA Parity vs PSCAD: Theil's TIC = ${res.comparisonVsSota.theilTic.toFixed(4)} (NRMSE: ${res.comparisonVsSota.discrepancyNrmsePct.toFixed(2)}%) | ${res.comparisonVsSota.speedupFactor.toFixed(1)}x Faster [${res.comparisonVsSota.parityStatus}]`,
-        );
+        console.log(formatSotaSummary("PSCAD", res.comparisonVsSota, true));
 
         if (argv.html && res.htmlDashboard && model === "ehv-corridor") {
           const outHtml = path.resolve(process.cwd(), argv.html);
@@ -391,7 +395,7 @@ export const BenchmarkCommand: CommandModule<Record<string, unknown>, BenchmarkC
     }
 
     console.log(`\n========================================================================`);
-    console.log(` Benchmark Run Completed Successfully — All Models Passed SOTA Parity `);
+    console.log(` Benchmark Run Completed `);
     console.log(`========================================================================\n`);
   },
 };

@@ -3,6 +3,7 @@
 
 import { parseUrdf } from "@modelscript/urdf";
 import React, { useMemo, useState } from "react";
+import { InspectorTabs } from "./InspectorTabs.js";
 
 export interface MultibodyInspectorProps {
   code: string;
@@ -287,7 +288,7 @@ export const MultibodyInspector: React.FC<MultibodyInspectorProps> = ({ code, li
   const [subView, setSubView] = useState<"mobility" | "inertia" | "limits">("mobility");
 
   const borderCol = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)";
-  const cardBg = isDark ? "rgba(22, 27, 34, 0.7)" : "rgba(255, 255, 255, 0.9)";
+  const cardBg = isDark ? "rgba(30, 30, 34, 0.75)" : "rgba(255, 255, 255, 0.9)";
   const textPrimary = isDark ? "#e6edf3" : "#1f2328";
   const textMuted = isDark ? "#8b949e" : "#59636e";
 
@@ -296,31 +297,16 @@ export const MultibodyInspector: React.FC<MultibodyInspectorProps> = ({ code, li
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {[
+      <InspectorTabs
+        ariaLabel="Multibody inspector views"
+        value={subView}
+        onChange={(id) => setSubView(id as typeof subView)}
+        tabs={[
           { id: "mobility", label: `🦾 Grübler-Kutzbach Mobility (M = ${grublerMobility})` },
           { id: "inertia", label: `⚖️ Rigid Bodies & Inertia (${bodies.length})` },
           { id: "limits", label: `🧭 Joint Topology & Limits (${joints.length})` },
-        ].map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setSubView(t.id as typeof subView)}
-            style={{
-              padding: "6px 12px",
-              fontSize: 12,
-              fontWeight: 600,
-              borderRadius: 6,
-              border: `1px solid ${borderCol}`,
-              cursor: "pointer",
-              backgroundColor: subView === t.id ? "#1f6feb" : cardBg,
-              color: subView === t.id ? "#ffffff" : textPrimary,
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+        ]}
+      />
 
       {subView === "mobility" && (
         <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
@@ -365,7 +351,7 @@ export const MultibodyInspector: React.FC<MultibodyInspectorProps> = ({ code, li
                   style={{
                     fontSize: 14,
                     fontWeight: 800,
-                    color: hasClosedLoops ? "#f0883e" : "#58a6ff",
+                    color: hasClosedLoops ? "#f0883e" : "var(--fgColor-accent, var(--ms-brand))",
                     marginTop: 4,
                   }}
                 >
@@ -408,7 +394,11 @@ export const MultibodyInspector: React.FC<MultibodyInspectorProps> = ({ code, li
                       onClick={() => onRevealLine?.(b.line, b.name)}
                       style={{ borderBottom: `1px solid ${borderCol}`, cursor: "pointer" }}
                     >
-                      <td style={{ padding: "6px 8px", fontWeight: 700, color: "#58a6ff" }}>{b.name}</td>
+                      <td
+                        style={{ padding: "6px 8px", fontWeight: 700, color: "var(--fgColor-accent, var(--ms-brand))" }}
+                      >
+                        {b.name}
+                      </td>
                       <td style={{ padding: "6px 8px" }}>{b.isGround ? "Ground" : b.mass.toFixed(3)}</td>
                       <td style={{ padding: "6px 8px" }}>
                         [{b.com[0]}, {b.com[1]}, {b.com[2]}]

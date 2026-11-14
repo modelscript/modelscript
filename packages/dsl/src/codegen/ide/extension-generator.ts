@@ -2605,9 +2605,12 @@ export function bundleExtension(
  * Builds the complete production ModelScript VS Code IDE extension to a target directory.
  */
 export async function buildIdeExtension(outDir: string, options?: ExtensionOptions): Promise<void> {
-  const fs = await import("fs");
-  const path = await import("path");
-  const esbuild = await import("esbuild");
+  const fsSpec = "fs";
+  const pathSpec = "path";
+  const esbuildSpec = "esbuild";
+  const fs = await import(fsSpec);
+  const path = await import(pathSpec);
+  const esbuild = await import(esbuildSpec);
 
   const shouldMinify = options?.minify ?? true;
   const shouldSourcemap = options?.sourcemap ?? false;

@@ -277,7 +277,8 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: colorMode === "dark" ? "rgba(13, 17, 23, 0.98)" : "rgba(255, 255, 255, 0.98)",
+            backgroundColor:
+              colorMode === "dark" ? "var(--overlay-bgColor, var(--ms-surface-glass))" : "rgba(255, 255, 255, 0.98)",
             zIndex: 9999,
             gap: 16,
             backdropFilter: "blur(12px)",
@@ -297,7 +298,7 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
               width: 300,
               height: 6,
               borderRadius: 3,
-              backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de",
+              backgroundColor: "var(--borderColor-muted, var(--ms-divider))",
               overflow: "hidden",
             }}
           >
@@ -306,12 +307,12 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
                 width: `${loadingProgress}%`,
                 height: "100%",
                 borderRadius: 3,
-                backgroundColor: "#1f6feb",
+                backgroundColor: "var(--ms-brand)",
                 transition: "width 0.3s ease",
               }}
             />
           </div>
-          <span style={{ fontSize: 13, color: colorMode === "dark" ? "#8b949e" : "#656d76" }}>{loadingMessage}</span>
+          <span style={{ fontSize: 13, color: "var(--fgColor-muted, var(--ms-text-2))" }}>{loadingMessage}</span>
         </div>
       )}
 

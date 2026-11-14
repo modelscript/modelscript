@@ -189,7 +189,34 @@ export class SqliteMigrationRunner {
   }
 
   #reconcileSquashedLedger(allMigrations: Migration[]): void {
-    const hasConsolidatedBaseline = allMigrations.length === 1 && allMigrations[0]?.name === "0001_baseline_schema";
+    const legacyPreSquashNames = new Set([
+      "0002_feature_flags",
+      "0003_package_lifecycle",
+      "0004_package_analytics",
+      "0005_organizations_and_rbac",
+      "0006_repo_webhooks",
+      "0007_auth_security_hardening",
+      "0008_auth_totp_and_audit",
+      "0009_notifications_metadata",
+      "0010_thread_governance",
+      "0011_concurrent_engineering",
+      "0012_granular_api_tokens",
+      "0013_social_llm_bots",
+      "0014_bot_byok",
+      "0015_repo_bot_reviews",
+      "0016_solutions",
+      "0017_commercial_hardening",
+      "0018_unified_page_analytics",
+      "0019_instance_admin_lifecycle",
+      "0020_ansatz_onboarding_and_referrals",
+      "0021_schema_consolidation",
+      "0022_instance_invites_columns",
+      "0023_mastodon_platform_parity",
+    ]);
+    const hasConsolidatedBaseline =
+      allMigrations.length >= 1 &&
+      allMigrations[0]?.name === "0001_baseline_schema" &&
+      !allMigrations.some((m) => legacyPreSquashNames.has(m.name));
     if (!hasConsolidatedBaseline) {
       return;
     }
@@ -257,7 +284,8 @@ export class SqliteMigrationRunner {
       const backupName = `${path.basename(this.#dbPath)}.bak-${timestamp}`;
       backupPath = path.join(backupDir, backupName);
       try {
-        fs.copyFileSync(this.#dbPath, backupPath);
+        this.#db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+        this.#db.prepare("VACUUM INTO ?").run(backupPath);
       } catch (err) {
         console.warn("[MigrationRunner] Pre-flight sync backup warning:", err);
         backupPath = null;

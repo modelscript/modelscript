@@ -189,22 +189,22 @@
   --ms-focus-ring: 0 0 0 3px rgba(34, 211, 238, 0.35);
   --ms-gradient-text: linear-gradient(110deg, #5eead4 0%, #22d3ee 45%, #a5b4fc 100%);
 
-  --ms-bg: #0a0f1c;
-  --ms-bg-alt: #070b15;
-  --ms-bg-elv: #0f1626;
-  --ms-bg-soft: #0f1728;
-  --ms-bg-inset: #050811;
-  --ms-surface-glass: rgba(10, 15, 28, 0.86);
-  --ms-surface-hover: rgba(148, 163, 184, 0.08);
+  --ms-bg: #18181b;
+  --ms-bg-alt: #121214;
+  --ms-bg-elv: #1e1e22;
+  --ms-bg-soft: #242429;
+  --ms-bg-inset: #0e0e10;
+  --ms-surface-glass: rgba(30, 30, 34, 0.9);
+  --ms-surface-hover: rgba(255, 255, 255, 0.06);
   --ms-surface-selected: rgba(34, 211, 238, 0.1);
-  --ms-divider: rgba(148, 163, 184, 0.14);
-  --ms-border: rgba(148, 163, 184, 0.2);
-  --ms-border-strong: rgba(148, 163, 184, 0.3);
+  --ms-divider: rgba(255, 255, 255, 0.08);
+  --ms-border: rgba(255, 255, 255, 0.12);
+  --ms-border-strong: rgba(255, 255, 255, 0.22);
 
-  --ms-text-1: #e2e8f0;
-  --ms-text-2: #94a3b8;
-  --ms-text-3: #7d8d9f;
-  --ms-text-heading: #f8fafc;
+  --ms-text-1: #f4f4f5;
+  --ms-text-2: #a1a1aa;
+  --ms-text-3: #71717a;
+  --ms-text-heading: #fafafa;
   --ms-link: #22d3ee;
   --ms-link-hover: #67e8f9;
 
@@ -285,9 +285,9 @@
   --hue-rose: #fb7185;
   --hue-violet: #a78bfa;
 
-  --ms-grid-line: rgba(148, 163, 184, 0.055);
-  --ms-grid-sub: rgba(148, 163, 184, 0.022);
-  --ms-dot-matrix: rgba(148, 163, 184, 0.14);
+  --ms-grid-line: rgba(255, 255, 255, 0.045);
+  --ms-grid-sub: rgba(255, 255, 255, 0.018);
+  --ms-dot-matrix: rgba(255, 255, 255, 0.14);
   --ms-glow-teal: rgba(20, 184, 166, 0.14);
   --ms-glow-cyan: rgba(34, 211, 238, 0.15);
   --ms-glow-indigo: rgba(99, 102, 241, 0.13);

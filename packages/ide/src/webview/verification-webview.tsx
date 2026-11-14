@@ -35,6 +35,65 @@ export interface VerificationStage {
   durationMs?: number;
 }
 
+export interface PolyglotDigitalThreadReport {
+  mode?: "generic" | "scenario";
+  scenarioId: string;
+  scenarioTitle: string;
+  status: string;
+  isSat: boolean;
+  fileCount?: number;
+  domains?: string[];
+  summaryText: string;
+  artifacts?: Array<{
+    index: number;
+    fileName: string;
+    uri?: string;
+    lang: string;
+    domain: string;
+    diagnostics?: Array<{
+      startLine?: number;
+      startCol?: number;
+      severity?: string;
+      code?: string;
+      message: string;
+    }>;
+  }>;
+  hypergraphNodes: Array<{
+    fileName: string;
+    uri?: string;
+    formatLabel: string;
+    domainName: string;
+    oracleName: string;
+    status: string;
+  }>;
+  variableLinks: Array<{
+    canonicalFqn: string;
+    bindingMechanism: string;
+    valueFormatted: string;
+    boundsFormatted: string;
+    status: string;
+    marginText: string;
+  }>;
+  portBindings: Array<{
+    portName: string;
+    cadFileName: string;
+    caeFileName: string;
+    caePatchSpec: string;
+    isBound: boolean;
+  }>;
+  suggestedEdits?: Array<{
+    fileIndex: number;
+    uri?: string;
+    fileName: string;
+    line: number;
+    startOffset?: number;
+    endOffset?: number;
+    newText: string;
+    description: string;
+  }>;
+  conflicts: Array<{ explanation?: string; theoryName?: string }>;
+}
+
 export interface UnifiedVerificationReport {
   summary?: {
     totalStages?: number;
@@ -42,6 +101,7 @@ export interface UnifiedVerificationReport {
     failedStages?: number;
   };
   stages?: Record<string, VerificationStage>;
+  polyglotDigitalThread?: PolyglotDigitalThreadReport;
 }
 
 export interface B2BResult {
@@ -487,6 +547,158 @@ export function VerificationApp() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Polyglot Digital Thread Coordinator */}
+      {unifiedReport?.polyglotDigitalThread && (
+        <div style={{ padding: "0 16px 12px 16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+            <div style={{ fontSize: "12px", fontWeight: 600, opacity: 0.9 }}>
+              Polyglot Digital Thread — {unifiedReport.polyglotDigitalThread.scenarioTitle}
+            </div>
+            <span
+              style={{
+                fontSize: "11px",
+                fontWeight: 700,
+                padding: "2px 8px",
+                borderRadius: "999px",
+                background: unifiedReport.polyglotDigitalThread.isSat
+                  ? "rgba(78, 201, 176, 0.16)"
+                  : "rgba(241, 76, 76, 0.16)",
+                color: unifiedReport.polyglotDigitalThread.isSat ? "#4ec9b0" : "#f14c4c",
+              }}
+            >
+              {unifiedReport.polyglotDigitalThread.status}
+            </span>
+          </div>
+          <div style={{ fontSize: "11px", opacity: 0.78, marginBottom: "8px" }}>
+            {unifiedReport.polyglotDigitalThread.summaryText}
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+              gap: "6px",
+              marginBottom: "8px",
+            }}
+          >
+            {unifiedReport.polyglotDigitalThread.hypergraphNodes.map((node, i) => (
+              <div
+                key={`${node.fileName}-${i}`}
+                onClick={() => node.uri && postMessageToExtension({ type: "openLocation", uri: node.uri, line: 1 })}
+                style={{
+                  cursor: node.uri ? "pointer" : "default",
+                  background: "rgba(255, 255, 255, 0.03)",
+                  border: "1px solid var(--vscode-panel-border, #333)",
+                  borderRadius: "6px",
+                  padding: "6px 10px",
+                  fontSize: "11px",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600 }}>
+                  <span>{node.fileName}</span>
+                  <span style={{ color: node.status === "SYNCED" ? "#4ec9b0" : "#f14c4c" }}>{node.status}</span>
+                </div>
+                <div style={{ opacity: 0.7, marginTop: "2px" }}>
+                  {node.formatLabel} · {node.oracleName}
+                </div>
+              </div>
+            ))}
+          </div>
+          {unifiedReport.polyglotDigitalThread.variableLinks.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px" }}>
+              {unifiedReport.polyglotDigitalThread.variableLinks.map((vl, idx) => (
+                <div
+                  key={`${vl.canonicalFqn}-${idx}`}
+                  style={{
+                    fontSize: "11px",
+                    padding: "4px 8px",
+                    borderRadius: "4px",
+                    border: "1px solid var(--vscode-panel-border, #333)",
+                    background: "rgba(255,255,255,0.02)",
+                  }}
+                >
+                  <strong style={{ color: vl.status === "SAT" ? "#4ec9b0" : "#f14c4c" }}>[{vl.status}]</strong>{" "}
+                  <code>{vl.canonicalFqn}</code> = {vl.valueFormatted} ({vl.boundsFormatted}) · {vl.marginText}
+                </div>
+              ))}
+            </div>
+          )}
+          {unifiedReport.polyglotDigitalThread.artifacts?.some((a) => (a.diagnostics?.length ?? 0) > 0) && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              {unifiedReport.polyglotDigitalThread.artifacts.flatMap((art) =>
+                (art.diagnostics ?? []).map((diag, dIdx) => (
+                  <button
+                    key={`${art.fileName}-${dIdx}`}
+                    type="button"
+                    onClick={() =>
+                      art.uri &&
+                      postMessageToExtension({
+                        type: "openLocation",
+                        uri: art.uri,
+                        line: diag.startLine ?? 1,
+                        column: diag.startCol ?? 1,
+                      })
+                    }
+                    style={{
+                      textAlign: "left",
+                      cursor: art.uri ? "pointer" : "default",
+                      background: "rgba(241, 76, 76, 0.08)",
+                      border: "1px solid rgba(241, 76, 76, 0.35)",
+                      borderRadius: "4px",
+                      padding: "5px 8px",
+                      color: "inherit",
+                      fontSize: "11px",
+                    }}
+                  >
+                    <strong>
+                      {art.fileName}:{diag.startLine ?? 1}
+                    </strong>{" "}
+                    [{diag.code ?? "THREAD"}] {diag.message}
+                  </button>
+                )),
+              )}
+            </div>
+          )}
+          {(unifiedReport.polyglotDigitalThread.suggestedEdits?.length ?? 0) > 0 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "8px",
+                marginTop: "6px",
+              }}
+            >
+              <span style={{ fontSize: "11px", opacity: 0.85 }}>
+                {unifiedReport.polyglotDigitalThread.suggestedEdits!.length} surgical sync edit
+                {unifiedReport.polyglotDigitalThread.suggestedEdits!.length === 1 ? "" : "s"} available across linked
+                files
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  postMessageToExtension({
+                    type: "applyDigitalThreadSync",
+                    suggestedEdits: unifiedReport.polyglotDigitalThread!.suggestedEdits,
+                  })
+                }
+                style={{
+                  cursor: "pointer",
+                  background: "var(--vscode-button-background, #0e639c)",
+                  color: "var(--vscode-button-foreground, #ffffff)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "4px 10px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                }}
+              >
+                Sync Digital Thread ({unifiedReport.polyglotDigitalThread.suggestedEdits!.length})
+              </button>
+            </div>
+          )}
         </div>
       )}
 

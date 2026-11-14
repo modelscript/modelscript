@@ -93,3 +93,9 @@ The `@modelscript/mcp` server and `@modelscript/modelica` MCP adapter expose 10 
   - **Modelica $\leftrightarrow$ SysML v2 (6 rules)**: `ModelicaModelToSysML2PartDef`, `ModelicaConnectorToSysML2PortDef`, `ModelicaComponentToSysML2Part`, `ModelicaParameterToSysML2Attribute`, `ModelicaConnectorInstanceToSysML2Port`, `ModelicaConnectToSysML2Connection`
   - **Modelica $\leftrightarrow$ OWL2 (2 rules)**: `ModelicaModelToOWL2Class`, `ModelicaParameterToOWL2DataProperty`
   - **Modelica $\leftrightarrow$ STEP (2 rules)**: `ModelicaRevoluteToStepRevolute`, `ModelicaPrismaticToStepPrismatic`
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="modelica" />

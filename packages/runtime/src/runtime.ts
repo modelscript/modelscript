@@ -27,6 +27,7 @@ export enum LanguageDomainId {
   SCAD = 0x09,
   CSV = 0x0a,
   PSCAD = 0x0b,
+  PSSE = 0x0c,
 }
 
 export function makePolyglotSymbolId(domain: LanguageDomainId | number, localSeq: number): SymbolId {
@@ -62,6 +63,7 @@ export function getLanguageDomainId(language: string): LanguageDomainId {
     norm.includes("psmx")
   )
     return LanguageDomainId.PSCAD;
+  if (norm.includes("psse") || norm.includes("raw") || norm.includes("dyr")) return LanguageDomainId.PSSE;
   return LanguageDomainId.Default;
 }
 

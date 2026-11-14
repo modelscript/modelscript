@@ -2,6 +2,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import React, { useMemo, useState } from "react";
+import { InspectorTabs } from "./InspectorTabs.js";
 
 export interface BiochemInspectorProps {
   code: string;
@@ -281,7 +282,7 @@ export const BiochemInspector: React.FC<BiochemInspectorProps> = ({ code, lines,
   const [subView, setSubView] = useState<"stoich" | "pathway" | "moieties">("stoich");
 
   const borderCol = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)";
-  const cardBg = isDark ? "rgba(22, 27, 34, 0.7)" : "rgba(255, 255, 255, 0.9)";
+  const cardBg = isDark ? "rgba(30, 30, 34, 0.75)" : "rgba(255, 255, 255, 0.9)";
   const textPrimary = isDark ? "#e6edf3" : "#1f2328";
   const textMuted = isDark ? "#8b949e" : "#59636e";
 
@@ -292,35 +293,20 @@ export const BiochemInspector: React.FC<BiochemInspectorProps> = ({ code, lines,
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {[
+      <InspectorTabs
+        ariaLabel="Biochemistry inspector views"
+        value={subView}
+        onChange={(id) => setSubView(id as typeof subView)}
+        tabs={[
           { id: "stoich", label: `🧬 Stoichiometric Matrix S (${species.length}×${reactions.length})` },
           { id: "pathway", label: `🕸️ Reaction Flux Graph (${reactions.length})` },
           { id: "moieties", label: `⚖️ Conserved Moieties (${conservedMoieties.length})` },
-        ].map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setSubView(t.id as typeof subView)}
-            style={{
-              padding: "6px 12px",
-              fontSize: 12,
-              fontWeight: 600,
-              borderRadius: 6,
-              border: `1px solid ${borderCol}`,
-              cursor: "pointer",
-              backgroundColor: subView === t.id ? "#1f6feb" : cardBg,
-              color: subView === t.id ? "#ffffff" : textPrimary,
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+        ]}
+      />
 
       {smilesFormula && (
         <div style={{ padding: 12, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
-          <div style={{ fontWeight: 700, fontSize: 12, color: "#58a6ff" }}>
+          <div style={{ fontWeight: 700, fontSize: 12, color: "var(--fgColor-accent, var(--ms-brand))" }}>
             SMILES Molecular Structure Detected: <code>{smilesFormula.smiles}</code>
           </div>
           <div style={{ fontSize: 12, color: textMuted, marginTop: 4, fontFamily: "monospace" }}>
@@ -348,7 +334,11 @@ export const BiochemInspector: React.FC<BiochemInspectorProps> = ({ code, lines,
                       <th
                         key={rxn.id}
                         onClick={() => onRevealLine?.(rxn.line, rxn.id)}
-                        style={{ padding: "6px 8px", cursor: "pointer", color: "#58a6ff" }}
+                        style={{
+                          padding: "6px 8px",
+                          cursor: "pointer",
+                          color: "var(--fgColor-accent, var(--ms-brand))",
+                        }}
                       >
                         {rxn.id}
                       </th>
@@ -414,7 +404,7 @@ export const BiochemInspector: React.FC<BiochemInspectorProps> = ({ code, lines,
                       {rxn.reactants.map((r) => (r.coeff !== 1 ? `${r.coeff} ${r.species}` : r.species)).join(" + ") ||
                         "∅"}
                     </span>
-                    <span style={{ color: "#58a6ff", fontWeight: 700, margin: "0 8px" }}>
+                    <span style={{ color: "var(--fgColor-accent, var(--ms-brand))", fontWeight: 700, margin: "0 8px" }}>
                       {rxn.reversible ? `⇄ [${rxn.id}] ⇄` : `──[${rxn.id}]──▶`}
                     </span>
                     <span style={{ color: "#3fb950" }}>

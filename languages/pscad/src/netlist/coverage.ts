@@ -17,6 +17,14 @@ const NON_SIMULATED = new Set([
   "datatap",
   "datamerge",
   "nodeloop",
+  "nodelabel",
+  "pin",
+  "bus",
+  "wire",
+  "wirelabel",
+  "mrun",
+  "graph",
+  "recorder2_0",
   "ground",
 ]);
 
@@ -51,6 +59,7 @@ function idsInNetlist(netlist: EmtNetlist): Set<string> {
     (netlist as unknown as Record<string, unknown>)["inductionMachines"],
     (netlist as unknown as Record<string, unknown>)["converterBridges"],
     (netlist as unknown as Record<string, unknown>)["controlBlocks"],
+    (netlist as unknown as Record<string, unknown>)["customFortranBlocks"],
   ];
   for (const list of lists) {
     if (!Array.isArray(list)) continue;

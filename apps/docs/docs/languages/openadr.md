@@ -11,11 +11,11 @@ description: "@modelscript/openadr (languages/openadr) provides native parsing, 
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.oadr` | OpenADR Unified Payload | Demand response program declarations, event intervals, and signal limits |
-| `.xml` | OpenADR 2.0b `oadrDistributeEvent` | Standard XML schema for utility-to-facility event distribution |
-| `.json` | OpenADR 3.0 REST/JSON | Lightweight JSON schema for cloud DR orchestrators and microgrid aggregators |
+| Extension | Format                             | Description                                                                  |
+| :-------- | :--------------------------------- | :--------------------------------------------------------------------------- |
+| `.oadr`   | OpenADR Unified Payload            | Demand response program declarations, event intervals, and signal limits     |
+| `.xml`    | OpenADR 2.0b `oadrDistributeEvent` | Standard XML schema for utility-to-facility event distribution               |
+| `.json`   | OpenADR 3.0 REST/JSON              | Lightweight JSON schema for cloud DR orchestrators and microgrid aggregators |
 
 ---
 
@@ -42,6 +42,12 @@ description: "@modelscript/openadr (languages/openadr) provides native parsing, 
 - Couples curtailment targets into `@modelscript/runtime`'s `DAEBuilder`:
   $$P_{\text{facility}}(t) \le P_{\text{limit}}(t) + \varepsilon_{\text{shed}}$$
   $$E_{\text{shed}} = \int_{t_{\text{start}}}^{t_{\text{end}}} \max(0, P_{\text{baseline}}(t) - P_{\text{facility}}(t)) \, dt$$
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="openadr" />
 
 ---
 

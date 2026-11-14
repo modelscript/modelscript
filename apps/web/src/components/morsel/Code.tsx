@@ -155,6 +155,7 @@ interface CodeEditorProps {
   languageId?: string | undefined;
   setEditor: (editor: editor.ICodeEditor) => void;
   onChange?: ((value: string) => void) | undefined;
+  onPaste?: ((pastedText: string, fullText: string) => void) | undefined;
   onProgress?: ((progress: number, message: string) => void) | undefined;
   onParsed?: (() => void) | undefined;
   onDiagnostics?: ((markers: editor.IMarkerData[]) => void) | undefined;
@@ -199,9 +200,11 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const uriRef = useRef(props.uri);
   const languageIdRef = useRef(props.languageId ?? "modelica");
   const lintOnTypeRef = useRef(lintOnType);
+  const onPasteRef = useRef(props.onPaste);
   uriRef.current = props.uri;
   languageIdRef.current = props.languageId ?? "modelica";
   lintOnTypeRef.current = lintOnType;
+  onPasteRef.current = props.onPaste;
 
   // ── Sync Monaco editor options when user preferences change ──
   useEffect(() => {
@@ -320,6 +323,16 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     }, 150);
 
     ed.onDidScrollChange(sendVisibleRanges);
+    ed.onDidPaste((pasteEvent) => {
+      const handler = onPasteRef.current;
+      if (!handler) return;
+      const m = ed.getModel();
+      if (!m) return;
+      const pastedText = m.getValueInRange(pasteEvent.range);
+      if (pastedText) {
+        handler(pastedText, m.getValue());
+      }
+    });
     ed.onDidBlurEditorText(() => {
       if (!lintOnTypeRef.current && lastValueRef.current !== undefined) {
         didChange(uriRef.current, lastValueRef.current);

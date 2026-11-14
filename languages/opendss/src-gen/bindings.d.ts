@@ -1363,23 +1363,24 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  Deck = 61,
-  Statement = 62,
-  CircuitDef = 63,
-  ElementDef = 64,
-  EditDirective = 65,
-  ElementClass = 66,
-  PropertyAssignment = 67,
-  ArrayLiteral = 68,
-  MatrixLiteral = 69,
-  SetDirective = 70,
-  CommandDirective = 71,
-  START = 72,
-  _START = 72,
-  CommentLine = 96,
-  Identifier = 97,
-  NumberLiteral = 98,
-  StringLiteral = 99,
+  Deck = 64,
+  Statement = 65,
+  ContinuationStatement = 66,
+  CircuitDef = 67,
+  ElementDef = 68,
+  EditDirective = 69,
+  ElementClass = 70,
+  PropertyAssignment = 71,
+  ArrayLiteral = 72,
+  MatrixLiteral = 73,
+  SetDirective = 74,
+  CommandDirective = 75,
+  START = 76,
+  _START = 76,
+  CommentLine = 101,
+  Identifier = 102,
+  NumberLiteral = 103,
+  StringLiteral = 104,
   EOF = 1023,
 }
 
@@ -1411,6 +1412,10 @@ export interface StatementNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Statement;
 }
 export declare function isStatement(node: SyntaxNode | null | undefined): node is StatementNode;
+export interface ContinuationStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ContinuationStatement;
+}
+export declare function isContinuationStatement(node: SyntaxNode | null | undefined): node is ContinuationStatementNode;
 export interface CircuitDefNode extends SyntaxNode {
   readonly typeId: SyntaxKind.CircuitDef;
 }
@@ -1475,6 +1480,11 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is StatementNode;
+  };
+  export const ContinuationStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ContinuationStatementNode;
   };
   export const CircuitDef: {
     readonly typeId: number;

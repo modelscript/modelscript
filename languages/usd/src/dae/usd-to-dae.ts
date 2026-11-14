@@ -25,6 +25,8 @@ export function lowerUsdToDae(stage: UsdStage, builder?: DAEBuilder, options?: U
   const stageName = stage.metadata.defaultPrim ?? "UsdPhysicsStage";
   const dae = builder ?? new DAEBuilder(undefined, stageName);
   const dampingD = options?.defaultDamping ?? 0.1;
+  const gravity = options?.gravity ?? 9.80665;
+  const upAxis = stage.metadata.upAxis === "Y" ? "y" : "z";
 
   // 1. Identify Rigid Bodies
   const rigidBodies = new Map<string, { prim: UsdPrim; mass: number; inertia: number }>();
@@ -130,17 +132,26 @@ export function lowerUsdToDae(stage: UsdStage, builder?: DAEBuilder, options?: U
     dae.addEquation(EqKind.Simple, lhs, dae.addNameExpr(`${jName}.tau`));
   }
 
-  // 4. Emit Cartesian tracking coordinates for rigid bodies
+  // 4. Emit 3D Cartesian translational kinematics & Newton-Euler dynamics for rigid bodies
   for (const b of rigidBodies.values()) {
     const bName = b.prim.name;
-    dae.addVariable(`${bName}.x`, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
-    dae.addVariable(`${bName}.y`, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
-    dae.addVariable(`${bName}.z`, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+    const mass = b.mass;
+    for (const axis of ["x", "y", "z"] as const) {
+      const posVar = `${bName}.${axis}`;
+      const velVar = `${bName}.v${axis}`;
+      dae.addVariable(posVar, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
+      dae.addVariable(velVar, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
 
-    // Static balance equation for untethered bodies
-    dae.addEquation(EqKind.Simple, dae.addNameExpr(`${bName}.z`), dae.addRealLiteral(0.0));
-    dae.addEquation(EqKind.Simple, dae.addNameExpr(`${bName}.x`), dae.addRealLiteral(0.0));
-    dae.addEquation(EqKind.Simple, dae.addNameExpr(`${bName}.y`), dae.addRealLiteral(0.0));
+      // Kinematic relation: der(pos) = vel
+      dae.addEquation(EqKind.Simple, dae.addDerExpr(dae.addNameExpr(posVar)), dae.addNameExpr(velVar));
+
+      // Newton 2nd law: mass * der(vel) + dampingD * vel = F_gravity
+      const accelTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(mass), dae.addDerExpr(dae.addNameExpr(velVar)));
+      const dampTerm = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(dampingD), dae.addNameExpr(velVar));
+      const lhsDyn = dae.addBinaryExpr(BinOp.Add, accelTerm, dampTerm);
+      const rhsForce = dae.addRealLiteral(axis === upAxis ? -(mass * gravity) : 0.0);
+      dae.addEquation(EqKind.Simple, lhsDyn, rhsForce);
+    }
   }
 
   return dae;

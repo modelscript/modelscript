@@ -116,3 +116,9 @@ msx cfd to-modelica transonic_wing.cfg --out=AeroDrag.mo
 ## Trademarks & Disclaimers
 
 SU2 and OpenFOAM are trademarks or registered trademarks of their respective owners (including the SU2 Foundation and OpenCFD Ltd / ESI Group). Reference to these marks is strictly for nominative identification of format compatibility, dictionary parsing, and data interchange. ModelScript is an independent open-core project not affiliated with or endorsed by these entities.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="cfd" />

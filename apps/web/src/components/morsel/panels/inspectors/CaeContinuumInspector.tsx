@@ -2,6 +2,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import React, { useMemo, useState } from "react";
+import { InspectorTabs } from "./InspectorTabs.js";
 
 export interface CaeContinuumInspectorProps {
   code: string;
@@ -213,40 +214,24 @@ export const CaeContinuumInspector: React.FC<CaeContinuumInspectorProps> = ({
   const [subView, setSubView] = useState<"euler" | "gdt" | "fea" | "cfd">("euler");
 
   const borderCol = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)";
-  const cardBg = isDark ? "rgba(22, 27, 34, 0.7)" : "rgba(255, 255, 255, 0.9)";
-  const textPrimary = isDark ? "#e6edf3" : "#1f2328";
+  const cardBg = isDark ? "rgba(30, 30, 34, 0.75)" : "rgba(255, 255, 255, 0.9)";
   const textMuted = isDark ? "#8b949e" : "#59636e";
 
   const { brep, gdt, fea, cfd } = useMemo(() => analyzeCaeContinuum(code, lines), [code, lines]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {[
+      <InspectorTabs
+        ariaLabel="CAE continuum inspector views"
+        value={subView}
+        onChange={(id) => setSubView(id as typeof subView)}
+        tabs={[
           { id: "euler", label: `📐 B-Rep Euler-Poincaré (χ = ${brep.eulerChi})` },
           { id: "gdt", label: `🎯 GD&T & Datums (${gdt.length})` },
           { id: "fea", label: `🕸️ FEA Mesh (${fea.elementCount} elems)` },
           { id: "cfd", label: `🌪️ CFD Boundary Layer (${cfd.markers.length} markers)` },
-        ].map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setSubView(t.id as typeof subView)}
-            style={{
-              padding: "6px 12px",
-              fontSize: 12,
-              fontWeight: 600,
-              borderRadius: 6,
-              border: `1px solid ${borderCol}`,
-              cursor: "pointer",
-              backgroundColor: subView === t.id ? "#1f6feb" : cardBg,
-              color: subView === t.id ? "#ffffff" : textPrimary,
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+        ]}
+      />
 
       {subView === "euler" && (
         <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
@@ -307,7 +292,8 @@ export const CaeContinuumInspector: React.FC<CaeContinuumInspectorProps> = ({
                     fontFamily: "monospace",
                   }}
                 >
-                  <strong style={{ color: "#58a6ff" }}>{p.kind}</strong>({p.params}) — L{p.line}
+                  <strong style={{ color: "var(--fgColor-accent, var(--ms-brand))" }}>{p.kind}</strong>({p.params}) — L
+                  {p.line}
                 </div>
               ))}
             </div>
@@ -341,7 +327,7 @@ export const CaeContinuumInspector: React.FC<CaeContinuumInspectorProps> = ({
                     fontFamily: "monospace",
                   }}
                 >
-                  <span style={{ color: "#58a6ff", fontWeight: 700 }}>{item.kind}</span>
+                  <span style={{ color: "var(--fgColor-accent, var(--ms-brand))", fontWeight: 700 }}>{item.kind}</span>
                   <span style={{ color: textMuted }}>{item.value}</span>
                 </div>
               ))}
@@ -368,7 +354,14 @@ export const CaeContinuumInspector: React.FC<CaeContinuumInspectorProps> = ({
               </div>
               <div style={{ padding: 10, borderRadius: 6, border: `1px solid ${borderCol}` }}>
                 <div style={{ fontSize: 11, color: textMuted }}>Elements</div>
-                <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "monospace", color: "#58a6ff" }}>
+                <div
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 800,
+                    fontFamily: "monospace",
+                    color: "var(--fgColor-accent, var(--ms-brand))",
+                  }}
+                >
                   {fea.elementCount}
                 </div>
                 <div style={{ fontSize: 10, color: textMuted }}>
@@ -431,7 +424,7 @@ export const CaeContinuumInspector: React.FC<CaeContinuumInspectorProps> = ({
                     justifyContent: "space-between",
                   }}
                 >
-                  <span style={{ color: "#58a6ff", fontWeight: 700 }}>{m.kind}</span>
+                  <span style={{ color: "var(--fgColor-accent, var(--ms-brand))", fontWeight: 700 }}>{m.kind}</span>
                   <span>{m.name}</span>
                 </div>
               ))}

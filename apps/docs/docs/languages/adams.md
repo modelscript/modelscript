@@ -70,3 +70,9 @@ msx adams mobility ExcavatorMechanism.adm
 ## Multibody Linters & Diagnostic Rules
 
 <LintRules lang="adams" />
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="adams" />

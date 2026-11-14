@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import { globalLibraryRegistry } from "@modelscript/runtime";
 
 /**
  * Semantic model of a PSCAD project (`.pscx`/`.pslx`) built on the lossless XML CST.
@@ -353,19 +354,36 @@ function resolvePorts(model: PscadProjectModel, external?: ExternalDefinitions):
         inst.lib === model.name || inst.lib === ""
           ? model.definitions.get(inst.defnName)
           : external?.(inst.lib, inst.defnName);
-      if (!target) continue;
-      inst.ports = target.ports.map((p) => {
-        const o = orientOffset({ x: p.x, y: p.y }, inst.orient);
-        return {
-          name: p.name,
-          x: inst.x + o.x,
-          y: inst.y + o.y,
-          source: "definition" as const,
-          dim: p.dim,
-          electype: p.electype,
-          mode: p.mode,
-        };
-      });
+      if (target) {
+        inst.ports = target.ports.map((p) => {
+          const o = orientOffset({ x: p.x, y: p.y }, inst.orient);
+          return {
+            name: p.name,
+            x: inst.x + o.x,
+            y: inst.y + o.y,
+            source: "definition" as const,
+            dim: p.dim,
+            electype: p.electype,
+            mode: p.mode,
+          };
+        });
+        continue;
+      }
+      const diagSpec = globalLibraryRegistry.getDiagramSpec("pscad", inst.defn);
+      if (diagSpec && diagSpec.ports.length > 0) {
+        inst.ports = diagSpec.ports.map((p) => {
+          const o = orientOffset({ x: p.dx, y: p.dy }, inst.orient);
+          return {
+            name: p.name,
+            x: inst.x + o.x,
+            y: inst.y + o.y,
+            source: "definition" as const,
+            dim: p.kind === "electrical" ? 3 : 1,
+            electype: p.kind === "electrical" ? 2 : 0,
+            mode: 0,
+          };
+        });
+      }
     }
   }
 }

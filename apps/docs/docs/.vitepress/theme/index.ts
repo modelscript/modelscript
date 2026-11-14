@@ -42,6 +42,10 @@ export default {
       defineAsyncComponent(() => import("./components/LanguageExample.vue")),
     );
     app.component(
+      "LanguageBenchmarks",
+      defineAsyncComponent(() => import("./components/LanguageBenchmarks.vue")),
+    );
+    app.component(
       "HomeStats",
       defineAsyncComponent(() => import("./components/HomeStats.vue")),
     );
@@ -60,6 +64,10 @@ export default {
     app.component(
       "HomeSemanticCoordinator",
       defineAsyncComponent(() => import("./components/HomeSemanticCoordinator.vue")),
+    );
+    app.component(
+      "HomePolyglotSandbox",
+      defineAsyncComponent(() => import("./components/HomePolyglotSandbox.vue")),
     );
     app.component(
       "HomeThread",

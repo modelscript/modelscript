@@ -3,6 +3,7 @@
 import * as assert from "node:assert";
 import test from "node:test";
 import { generateCigreB4HvdcNetlist, runCigreB4Benchmark } from "../src/benchmarking/cigre-b4-hvdc.js";
+import { EmtSolver } from "../src/solver/emt-solver.js";
 
 test("CIGRE B4 DC Grid: Multi-Terminal HVDC & MMC netlist synthesis", () => {
   const netlist = generateCigreB4HvdcNetlist();
@@ -41,13 +42,12 @@ test("CIGRE B4 DC Grid: Closed-loop EMT simulation, COMTRADE & PSOUT export", as
   assert.ok(res.throughputStepsPerSec > 500, `Throughput: ${res.throughputStepsPerSec} steps/s`);
   assert.ok(res.minDcVoltageKv < 200.0, `Min DC voltage must drop during fault: ${res.minDcVoltageKv} kV`);
 
-  // SOTA comparison statistics
-  assert.strictEqual(res.comparisonVsSota.parityStatus, "PASS");
-  assert.ok(
-    res.comparisonVsSota.speedupFactor > 5.0,
-    `Expected speedup > 5x, got ${res.comparisonVsSota.speedupFactor}`,
-  );
-  assert.ok(res.comparisonVsSota.theilTic < 0.02, `Theil's TIC must be < 0.02, got ${res.comparisonVsSota.theilTic}`);
+  // Without external reference data, SOTA comparison must remain UNVERIFIED and not fabricate baselines
+  assert.strictEqual(res.comparisonVsSota.parityStatus, "UNVERIFIED");
+  assert.strictEqual(res.comparisonVsSota.speedupFactor, null);
+  assert.strictEqual(res.comparisonVsSota.sotaWallClockMs, null);
+  assert.strictEqual(res.comparisonVsSota.theilTic, null);
+  assert.strictEqual(res.comparisonVsSota.discrepancyNrmsePct, null);
 
   // COMTRADE .cff verification
   assert.ok(res.comtradeCff.includes("--- file type: CFG ---"), "Must include COMTRADE CFG section");
@@ -60,5 +60,32 @@ test("CIGRE B4 DC Grid: Closed-loop EMT simulation, COMTRADE & PSOUT export", as
   // HTML Dashboard verification
   assert.ok(res.htmlDashboard, "Must generate HTML dashboard");
   assert.ok(res.htmlDashboard.includes("CIGRE B4 DC Grid Benchmark"));
-  assert.ok(res.htmlDashboard.includes("Execution Speedup"));
+  assert.ok(res.htmlDashboard.includes("Execution Time / Speedup"));
+  assert.ok(res.htmlDashboard.includes("UNVERIFIED"));
+
+  // With external reference trace & wall-clock timing, real comparison metrics must be computed
+  const refSolve = new EmtSolver(generateCigreB4HvdcNetlist(), {
+    timeStepSec: 50.0 * 1e-6,
+    durationSec: 30.0 * 1e-3,
+    enableCda: true,
+  }).solve();
+  const refDc2 = refSolve.busVoltages.get("DC_BUS_2")!;
+  const refCurve = new Float64Array(refDc2.length);
+  for (let i = 0; i < refDc2.length; i++) {
+    refCurve[i] = Math.abs(refDc2[i]!) / 1000.0;
+  }
+
+  const verified = await runCigreB4Benchmark({
+    timeStepUs: 50.0,
+    durationMs: 30.0,
+    generateHtml: false,
+    referenceTrace: refCurve,
+    referenceWallClockMs: 500.0,
+    referenceTool: "External PSCAD Reference",
+  });
+  assert.strictEqual(verified.comparisonVsSota.parityStatus, "PASS");
+  assert.strictEqual(verified.comparisonVsSota.sotaTool, "External PSCAD Reference");
+  assert.ok((verified.comparisonVsSota.speedupFactor ?? 0) > 0);
+  assert.ok((verified.comparisonVsSota.discrepancyRmse ?? 1) < 1e-12);
+  assert.ok((verified.comparisonVsSota.theilTic ?? 1) < 1e-12);
 });

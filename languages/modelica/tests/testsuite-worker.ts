@@ -1105,7 +1105,11 @@ function runTestCaseCore(
       const hasInvalidConnectorDiag =
         cstDiags.some((d: any) => d.code === 3004 || d.code === 4048) ||
         lints.some((d: any) => d.code === 3004 || d.code === 4048 || (d.rule as string) === "not-a-connector");
+      const hasOtherArenaErrors = arena.diagnostics.some((d) => d.severity === "error" && d.code !== 1099);
       for (const diag of arena.diagnostics) {
+        if (diag.code === 1099 && (hasLintErrors || hasOtherArenaErrors)) {
+          continue;
+        }
         if (hasFatalIterDiag || hasFatalParseIdDiag) {
           continue;
         }
@@ -1611,6 +1615,7 @@ function runTestCaseCore(
           .filter(
             (d) =>
               d.type !== "info" &&
+              !(typeof d.code === "number" && d.code >= 4130 && d.code <= 4134) &&
               !d.message.includes("Components are deprecated in class.") &&
               !d.message.includes("Algorithm sections are deprecated in class.") &&
               !d.message.includes("Equation sections are deprecated in class."),

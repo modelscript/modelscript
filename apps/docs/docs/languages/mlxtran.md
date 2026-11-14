@@ -78,3 +78,9 @@ const modelicaCode = mlxtranToModelica(doc);
 ## Trademarks & Disclaimers
 
 Monolix® and Lixoft® are registered trademarks of Lixoft SAS / Simulations Plus, Inc. Reference to these marks is strictly for nominative identification of MLXTRAN file format compatibility. ModelScript is an independent open-core project not affiliated with or endorsed by these entities.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="mlxtran" />

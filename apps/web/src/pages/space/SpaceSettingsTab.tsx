@@ -66,10 +66,10 @@ const SettingsLayout = styled.div`
 `;
 
 const SidebarCard = styled.div`
-  border: 1px solid var(--color-border-default);
+  border: 1px solid var(--ms-border-default, var(--color-border-default));
   border-radius: 8px;
   overflow: hidden;
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--ms-bg-canvas, var(--color-canvas-default));
   position: sticky;
   top: 24px;
 `;

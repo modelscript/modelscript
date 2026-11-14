@@ -80,3 +80,9 @@ msx urdf simulate robot.urdf --stop-time=2.0 -o sim.json
 ## Semantic Linter Rules (`USD1001`–`USD1007`)
 
 <LintRules lang="usd" />
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="usd" />

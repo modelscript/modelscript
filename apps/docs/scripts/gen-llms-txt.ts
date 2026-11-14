@@ -18,6 +18,7 @@ const llmsFullTxtPath = path.resolve(publicRoot, "llms-full.txt");
 const cliJsonPath = path.join(docsRoot, ".vitepress/theme/data/cli.generated.json");
 const lintJsonPath = path.join(docsRoot, ".vitepress/theme/data/lint-rules.generated.json");
 const langJsonPath = path.join(docsRoot, ".vitepress/theme/data/languages.generated.json");
+const benchJsonPath = path.join(docsRoot, ".vitepress/theme/data/benchmarks.generated.json");
 
 interface CliOpt {
   name: string;
@@ -69,12 +70,59 @@ interface LangData {
   };
 }
 
+interface LangBenchCase {
+  name: string;
+  scale: string;
+  referenceTool: string;
+  metricKind: string;
+  threshold: number;
+  measuredError: number | null;
+  passed: boolean;
+  durationMs: number;
+}
+
+interface LangBenchEntry {
+  slug: string;
+  tier: string;
+  reproduceCommand: string;
+  summary: { totalCases: number; passedCases: number; passRate: number };
+  timings: { parse: { status: string; medianMs: number; p95Ms: number } };
+  cases: LangBenchCase[];
+}
+
 const cliCommands: CliCmd[] = JSON.parse(fs.readFileSync(cliJsonPath, "utf8"));
 const lintCatalogs: LangRules[] = JSON.parse(fs.readFileSync(lintJsonPath, "utf8"));
 const langManifest: LangData[] = JSON.parse(fs.readFileSync(langJsonPath, "utf8"));
+const benchEntries: LangBenchEntry[] = fs.existsSync(benchJsonPath)
+  ? (JSON.parse(fs.readFileSync(benchJsonPath, "utf8")) as { languages: LangBenchEntry[] }).languages
+  : [];
 
 const cliMap = new Map<string, CliCmd>(cliCommands.map((c) => [c.name, c]));
 const lintMap = new Map<string, LangRules>(lintCatalogs.map((c) => [c.slug, c]));
+const benchMap = new Map<string, LangBenchEntry>(benchEntries.map((b) => [b.slug, b]));
+
+function formatBenchmarkBlock(slug: string): string {
+  const b = benchMap.get(slug);
+  if (!b) return "";
+  const parseStr =
+    b.timings.parse.status === "supported"
+      ? `${b.timings.parse.medianMs.toFixed(2)} ms (p95: ${b.timings.parse.p95Ms.toFixed(2)} ms)`
+      : "N/A";
+  const lines = [
+    `Tier: \`${b.tier}\` | Pass Rate: ${b.summary.passRate}% (${b.summary.passedCases}/${b.summary.totalCases}) | Parse Latency: ${parseStr}`,
+    "",
+    "| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |",
+    "| :--- | :--- | :--- | :--- | :--- | :---: |",
+  ];
+  for (const c of b.cases) {
+    const errStr = c.measuredError === null ? "—" : String(c.measuredError);
+    lines.push(
+      `| ${c.name} | ${c.scale} | ${c.referenceTool} | \`${c.metricKind} <= ${c.threshold}\` | \`${errStr}\` | ${c.passed ? "PASS" : "FAIL"} |`,
+    );
+  }
+  lines.push("", `Reproduce: \`${b.reproduceCommand}\``);
+  return lines.join("\n");
+}
 
 function formatCliBlock(cmdName: string, subName?: string): string {
   const root = cliMap.get(cmdName);
@@ -137,6 +185,9 @@ function cleanMarkdown(raw: string): string {
 
   // 3. Expand <LintRules lang="..." ... /> or <LintRules language="..." ... />
   text = text.replace(/<LintRules\s+(?:lang|language)="([^"]+)"[^>]*\/>/g, (_, lang) => formatLintBlock(lang));
+
+  // 3b. Expand <LanguageBenchmarks lang="..." />
+  text = text.replace(/<LanguageBenchmarks\s+lang="([^"]+)"[^>]*\/>/g, (_, lang) => formatBenchmarkBlock(lang));
 
   // 4. Expand <CapabilityMatrix />
   text = text.replace(/<CapabilityMatrix[^>]*\/>/g, () => {

@@ -134,7 +134,7 @@ export const PlaygroundShareModal: React.FC<PlaygroundShareModalProps> = ({
                   fontSize: "11px",
                   fontWeight: embedFormat === "iframe" ? 600 : 400,
                   cursor: "pointer",
-                  background: embedFormat === "iframe" ? "var(--color-accent-fg, #0969da)" : "transparent",
+                  background: embedFormat === "iframe" ? "var(--ms-accent, var(--color-accent-fg))" : "transparent",
                   color: embedFormat === "iframe" ? "#ffffff" : "var(--color-fg-muted)",
                 }}
               >
@@ -150,7 +150,7 @@ export const PlaygroundShareModal: React.FC<PlaygroundShareModalProps> = ({
                   fontFamily: "var(--font-mono, monospace)",
                   fontWeight: embedFormat === "morsel-tag" ? 600 : 400,
                   cursor: "pointer",
-                  background: embedFormat === "morsel-tag" ? "var(--color-accent-fg, #0969da)" : "transparent",
+                  background: embedFormat === "morsel-tag" ? "var(--ms-accent, var(--color-accent-fg))" : "transparent",
                   color: embedFormat === "morsel-tag" ? "#ffffff" : "var(--color-fg-muted)",
                 }}
               >
@@ -166,7 +166,7 @@ export const PlaygroundShareModal: React.FC<PlaygroundShareModalProps> = ({
                   fontFamily: "var(--font-mono, monospace)",
                   fontWeight: embedFormat === "custom-tag" ? 600 : 400,
                   cursor: "pointer",
-                  background: embedFormat === "custom-tag" ? "var(--color-accent-fg, #0969da)" : "transparent",
+                  background: embedFormat === "custom-tag" ? "var(--ms-accent, var(--color-accent-fg))" : "transparent",
                   color: embedFormat === "custom-tag" ? "#ffffff" : "var(--color-fg-muted)",
                 }}
               >

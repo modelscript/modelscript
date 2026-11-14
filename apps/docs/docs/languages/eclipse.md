@@ -80,3 +80,9 @@ msx eclipse to-dae NorthSeaReservoir.data
 # Project into Modelica 3.x porous medium flow model
 msx eclipse to-modelica NorthSeaReservoir.data -o ReservoirModel.mo
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="eclipse" />

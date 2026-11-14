@@ -83,3 +83,8 @@ msx fiber pole-loading --pole-class=4 --species=southern-yellow-pine --length=40
 msx fiber make-ready --prop-height=21
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="fiber" />

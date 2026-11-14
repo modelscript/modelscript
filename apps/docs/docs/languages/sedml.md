@@ -88,3 +88,9 @@ const result = executeSedml(doc);
 const dae = lowerSedmlToDae(doc);
 const modelicaSource = sedmlToModelica(doc);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="sedml" />

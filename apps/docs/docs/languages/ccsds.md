@@ -47,6 +47,12 @@ description: "@modelscript/ccsds (languages/ccsds) provides comprehensive compil
 
 ---
 
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="ccsds" />
+
+---
+
 ## Static Analysis & Pre-Flight Linter Rules
 
 The CCSDS analyzer enforces space mission integrity and flight safety constraints (`M8201`–`M8208`):

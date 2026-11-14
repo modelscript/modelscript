@@ -24,7 +24,7 @@ export const TerminalContainer = styled.div<{
   position: relative;
   display: flex;
   flex-direction: column;
-  background: var(--color-canvas-inset, #0d1117);
+  background: var(--color-canvas-inset, var(--ms-bg));
   border: 1px solid var(--color-border-default, #30363d);
   border-radius: 8px;
   overflow: hidden;
@@ -49,7 +49,7 @@ export const TerminalHeader = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 8px 14px;
-  background: var(--color-canvas-subtle, #161b22);
+  background: var(--color-canvas-subtle, var(--ms-bg-elv));
   border-bottom: 1px solid var(--color-border-default, #30363d);
   user-select: none;
   gap: 12px;
@@ -116,7 +116,7 @@ export const StatusPill = styled.div<{ $status: JobStatus | "streaming" }>`
       case "streaming":
         return css`
           background: rgba(56, 139, 253, 0.15);
-          color: var(--color-accent-fg, #58a6ff);
+          color: var(--ms-brand);
           border: 1px solid rgba(56, 139, 253, 0.3);
         `;
       case "completed":
@@ -155,14 +155,14 @@ export const ProcessingBeacon = styled.span`
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--color-accent-fg, #58a6ff);
+  background: var(--ms-brand);
   animation: ${pulseProcessing} 1.5s infinite ease-in-out;
 `;
 
 export const ToolbarButton = styled.button<{ $active?: boolean | undefined }>`
   background: ${(props) => (props.$active ? "rgba(56, 139, 253, 0.15)" : "transparent")};
   border: 1px solid ${(props) => (props.$active ? "rgba(56, 139, 253, 0.4)" : "var(--color-border-subtle, #21262d)")};
-  color: ${(props) => (props.$active ? "var(--color-accent-fg, #58a6ff)" : "var(--color-text-secondary, #8b949e)")};
+  color: ${(props) => (props.$active ? "var(--ms-brand)" : "var(--color-text-secondary, #8b949e)")};
   border-radius: 5px;
   padding: 3px 8px;
   font-size: 11px;
@@ -195,7 +195,7 @@ export const FilterIconSpan = styled.span`
 `;
 
 export const FilterInput = styled.input`
-  background: var(--color-canvas-inset, #0d1117);
+  background: var(--color-canvas-inset, var(--ms-bg));
   border: 1px solid var(--color-border-default, #30363d);
   border-radius: 5px;
   padding: 3px 24px 3px 26px;
@@ -207,7 +207,7 @@ export const FilterInput = styled.input`
 
   &:focus {
     outline: none;
-    border-color: var(--color-accent-fg, #58a6ff);
+    border-color: var(--ms-brand);
     width: 200px;
   }
 
@@ -242,7 +242,7 @@ export const TerminalScrollArea = styled.div<{
   overflow-y: auto;
   overflow-x: auto;
   padding: 10px 0;
-  background: var(--color-canvas-inset, #0d1117);
+  background: var(--color-canvas-inset, var(--ms-bg));
   scroll-behavior: smooth;
 
   /* Custom subtle scrollbar */
@@ -314,7 +314,7 @@ export const JumpToBottomPill = styled.button`
   bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--color-accent-fg, #1f6feb);
+  background: var(--ms-brand);
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 20px;
@@ -331,7 +331,7 @@ export const JumpToBottomPill = styled.button`
   transition: all 0.15s ease;
 
   &:hover {
-    background: #388bfd;
+    background: var(--ms-brand-strong, var(--ms-brand));
     transform: translateX(-50%) scale(1.03);
   }
 `;
@@ -341,7 +341,7 @@ export const CollapsedSummaryBar = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 8px 14px;
-  background: var(--color-canvas-subtle, #161b22);
+  background: var(--color-canvas-subtle, var(--ms-bg-elv));
   cursor: pointer;
   user-select: none;
 

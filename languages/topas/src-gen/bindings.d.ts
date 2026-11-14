@@ -1363,23 +1363,22 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  Deck = 22,
-  Statement = 23,
-  ParameterAssignment = 24,
-  VectorAssignment = 25,
-  IncludeDirective = 26,
-  GateCommand = 27,
-  ScalarPrefix = 28,
-  VectorPrefix = 29,
-  START = 30,
-  _START = 30,
-  ParamPath = 44,
-  GatePath = 45,
-  UnitIdentifier = 46,
-  CommentLine = 47,
-  Identifier = 48,
-  NumberLiteral = 49,
-  StringLiteral = 50,
+  Deck = 21,
+  Statement = 22,
+  ParameterAssignment = 23,
+  VectorAssignment = 24,
+  IncludeDirective = 25,
+  GateCommand = 26,
+  ScalarPrefix = 27,
+  VectorPrefix = 28,
+  START = 29,
+  _START = 29,
+  ParamPath = 43,
+  GatePath = 44,
+  CommentLine = 45,
+  Identifier = 46,
+  NumberLiteral = 47,
+  StringLiteral = 48,
   EOF = 1023,
 }
 
@@ -1447,10 +1446,6 @@ export interface GatePathNode extends SyntaxNode {
   readonly typeId: SyntaxKind.GatePath;
 }
 export declare function isGatePath(node: SyntaxNode | null | undefined): node is GatePathNode;
-export interface UnitIdentifierNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.UnitIdentifier;
-}
-export declare function isUnitIdentifier(node: SyntaxNode | null | undefined): node is UnitIdentifierNode;
 export interface CommentLineNode extends SyntaxNode {
   readonly typeId: SyntaxKind.CommentLine;
 }
@@ -1543,11 +1538,6 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is GatePathNode;
-  };
-  export const UnitIdentifier: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is UnitIdentifierNode;
   };
   export const CommentLine: {
     readonly typeId: number;

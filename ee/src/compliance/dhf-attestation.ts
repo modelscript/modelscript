@@ -132,13 +132,11 @@ export function signComplianceAttestation(
   },
   privateKeyPem?: string,
 ): SignedComplianceAttestation {
-  const isStrictProdEnforce = process.env["NODE_ENV"] === "production" && process.env["MSX_LICENSE_ENFORCE"] === "true";
+  const isTestEnv = process.env["NODE_ENV"] === "test";
   const resolvedPrivateKey =
     privateKeyPem || process.env["MSX_ATTESTATION_PRIVATE_KEY"] || process.env["MSX_LICENSE_PRIVATE_KEY"];
-  if (!resolvedPrivateKey && isStrictProdEnforce) {
-    throw new Error(
-      "Explicit privateKeyPem or MSX_ATTESTATION_PRIVATE_KEY is required when NODE_ENV=production and MSX_LICENSE_ENFORCE=true.",
-    );
+  if (!resolvedPrivateKey && !isTestEnv) {
+    throw new Error("Explicit privateKeyPem or MSX_ATTESTATION_PRIVATE_KEY is required when NODE_ENV is not 'test'.");
   }
   const signingKeyPem = resolvedPrivateKey || getDefaultAttestationPrivateKeyPem();
 
@@ -185,14 +183,14 @@ export function verifyComplianceAttestation(
     return { valid: false, reason: "Malformed attestation token." };
   }
 
-  const isStrictProdEnforce = process.env["NODE_ENV"] === "production" && process.env["MSX_LICENSE_ENFORCE"] === "true";
+  const isProd = process.env["NODE_ENV"] === "production";
+  const isTestEnv = process.env["NODE_ENV"] === "test";
   const explicitPublicKey =
     publicKeyPem || process.env["MSX_ATTESTATION_PUBLIC_KEY"] || process.env["MSX_LICENSE_PUBLIC_KEY"];
-  if (!explicitPublicKey && isStrictProdEnforce) {
+  if (!explicitPublicKey && isProd) {
     return {
       valid: false,
-      reason:
-        "Explicit publicKeyPem or MSX_ATTESTATION_PUBLIC_KEY is required when NODE_ENV=production and MSX_LICENSE_ENFORCE=true.",
+      reason: "Explicit publicKeyPem or MSX_ATTESTATION_PUBLIC_KEY is required when NODE_ENV=production.",
     };
   }
 
@@ -200,7 +198,9 @@ export function verifyComplianceAttestation(
   const sigB64 = body.slice(dotIdx + 1);
   const candidateKeys = explicitPublicKey
     ? [explicitPublicKey]
-    : [DEFAULT_ENTERPRISE_PUBLIC_KEY_PEM, getDefaultAttestationPublicKeyPem()];
+    : isTestEnv
+      ? [DEFAULT_ENTERPRISE_PUBLIC_KEY_PEM, getDefaultAttestationPublicKeyPem()]
+      : [DEFAULT_ENTERPRISE_PUBLIC_KEY_PEM];
 
   try {
     const sigBytes = Buffer.from(sigB64, "base64url");

@@ -153,3 +153,9 @@ msx compile MainModule kernel.msx --flattener=wasm --timing
 | :---------------------------------- | :-------------------- | :------------------------------ | :----------------------------------------------------------------------------------------------------- |
 | `ModelScriptStructToModelicaRecord` | `StructDeclaration`   | `ClassDefinition` (`record`)    | Synchronizes a `@unmanaged struct` declaration with a Modelica `record` definition                     |
 | `ModelScriptParamToModelicaMod`     | `VariableDeclaration` | `ComponentClause` (`parameter`) | Synchronizes a top-level constant or variable binding with a Modelica component parameter modification |
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="modelscript" />

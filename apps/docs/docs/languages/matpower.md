@@ -134,3 +134,9 @@ console.log(`DAE Variables: ${arena.getVarCount()}, Equations: ${arena.getEqCoun
 // 4. Export to PSS/E RAW
 const psseCase = matpowerToPsseRaw(mpc);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="matpower" />

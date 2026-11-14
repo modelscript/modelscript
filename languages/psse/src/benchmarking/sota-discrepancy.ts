@@ -187,6 +187,87 @@ export function calculateSotaDiscrepancy(
   };
 }
 
+export type PsseSotaParityStatus = "PASS" | "WARN" | "FAIL" | "UNVERIFIED";
+
+export interface PsseSotaComparisonOptions {
+  /** Optional external reference trajectory / bus voltage vector for parity verification. */
+  referenceTrace?: Float64Array | number[] | undefined;
+  /** Optional external reference solver wall-clock time in ms. */
+  referenceWallClockMs?: number | undefined;
+  /** Optional name of the external SOTA reference tool. */
+  referenceTool?: string | undefined;
+  /** Legacy alias for referenceWallClockMs. */
+  sotaBaselineDurationMs?: number | undefined;
+}
+
+export interface PsseSotaComparisonMetrics {
+  sotaTool: string;
+  sotaWallClockMs: number | null;
+  speedupFactor: number | null;
+  discrepancy: SotaDiscrepancyMetrics | null;
+  discrepancyRmse: number | null;
+  discrepancyNrmsePct: number | null;
+  theilTic: number | null;
+  theilUm: number | null;
+  theilUs: number | null;
+  theilUc: number | null;
+  parityStatus: PsseSotaParityStatus;
+}
+
+/**
+ * Computes benchmark parity & speedup strictly from caller-supplied external reference data.
+ * Without external reference values, returns `parityStatus: "UNVERIFIED"` and `null` scalars.
+ */
+export function computePsseSotaComparison(
+  modelscriptTrace: Float64Array | number[],
+  modelscriptWallClockMs: number,
+  options: PsseSotaComparisonOptions | undefined,
+  discrepancyOptions: SotaDiscrepancyOptions = {},
+  defaultSotaTool = "Siemens PSS/E v35.5",
+): PsseSotaComparisonMetrics {
+  const sotaTool = options?.referenceTool ?? defaultSotaTool;
+  const rawRefWall = options?.referenceWallClockMs ?? options?.sotaBaselineDurationMs;
+  const sotaWallClockMs =
+    typeof rawRefWall === "number" && Number.isFinite(rawRefWall) && rawRefWall > 0 ? rawRefWall : null;
+  const speedupFactor =
+    sotaWallClockMs !== null && Number.isFinite(modelscriptWallClockMs) && modelscriptWallClockMs > 0
+      ? sotaWallClockMs / modelscriptWallClockMs
+      : null;
+
+  const refTrace = options?.referenceTrace;
+  const n = refTrace ? Math.min(modelscriptTrace.length, refTrace.length) : 0;
+  if (!refTrace || n === 0) {
+    return {
+      sotaTool,
+      sotaWallClockMs,
+      speedupFactor,
+      discrepancy: null,
+      discrepancyRmse: null,
+      discrepancyNrmsePct: null,
+      theilTic: null,
+      theilUm: null,
+      theilUs: null,
+      theilUc: null,
+      parityStatus: "UNVERIFIED",
+    };
+  }
+
+  const discrepancy = calculateSotaDiscrepancy(modelscriptTrace.slice(0, n), refTrace.slice(0, n), discrepancyOptions);
+  return {
+    sotaTool,
+    sotaWallClockMs,
+    speedupFactor,
+    discrepancy,
+    discrepancyRmse: discrepancy.rmse,
+    discrepancyNrmsePct: discrepancy.nrmsePercent,
+    theilTic: discrepancy.theilTic,
+    theilUm: discrepancy.theilUm,
+    theilUs: discrepancy.theilUs,
+    theilUc: discrepancy.theilUc,
+    parityStatus: discrepancy.status,
+  };
+}
+
 export interface SotaDashboardReport {
   suiteTitle: string;
   benchmarkModel: string;
@@ -194,16 +275,16 @@ export interface SotaDashboardReport {
   timestampIso?: string;
   executionMetrics: {
     modelscriptTimeMs: number;
-    sotaTimeMs: number;
-    speedupFactor: number;
+    sotaTimeMs: number | null;
+    speedupFactor: number | null;
     throughputPerSec: number;
     throughputUnit: string;
     memoryPeakMb: number;
   };
-  metrics: SotaDiscrepancyMetrics;
+  metrics: SotaDiscrepancyMetrics | null;
   timeSec: Float64Array | number[];
   modelscriptCurve: Float64Array | number[];
-  sotaCurve: Float64Array | number[];
+  sotaCurve?: Float64Array | number[] | undefined;
   curveLabel: string;
   unit: string;
   notes?: string[];
@@ -214,28 +295,33 @@ export interface SotaDashboardReport {
  */
 export function generateSotaHtmlDashboard(report: SotaDashboardReport): string {
   const ts = report.timestampIso ?? new Date().toISOString();
-  const n = Math.min(report.timeSec.length, report.modelscriptCurve.length, report.sotaCurve.length);
+  const hasSotaCurve = Boolean(report.sotaCurve && report.sotaCurve.length > 0);
+  const n = hasSotaCurve
+    ? Math.min(report.timeSec.length, report.modelscriptCurve.length, report.sotaCurve!.length)
+    : Math.min(report.timeSec.length, report.modelscriptCurve.length);
   const sampleStride = Math.max(1, Math.floor(n / 1000)); // Downsample to ~1,000 points for smooth SVG rendering
 
   const svgPointsMS: string[] = [];
   const svgPointsSota: string[] = [];
-  const svgResiduals: string[] = [];
 
-  let tMin = report.timeSec[0] ?? 0;
-  let tMax = report.timeSec[n - 1] ?? 1;
+  const tMin = report.timeSec[0] ?? 0;
+  const tMax = n > 0 ? (report.timeSec[n - 1] ?? 1) : 1;
   let vMin = Infinity;
   let vMax = -Infinity;
-  let maxRes = 0;
 
   for (let i = 0; i < n; i += sampleStride) {
     const s = report.modelscriptCurve[i]!;
-    const r = report.sotaCurve[i]!;
     if (s < vMin) vMin = s;
     if (s > vMax) vMax = s;
-    if (r < vMin) vMin = r;
-    if (r > vMax) vMax = r;
-    const res = Math.abs(s - r);
-    if (res > maxRes) maxRes = res;
+    if (hasSotaCurve) {
+      const r = report.sotaCurve![i]!;
+      if (r < vMin) vMin = r;
+      if (r > vMax) vMax = r;
+    }
+  }
+  if (!Number.isFinite(vMin) || !Number.isFinite(vMax)) {
+    vMin = 0;
+    vMax = 1;
   }
 
   const vSpan = Math.max(1e-6, vMax - vMin);
@@ -247,20 +333,35 @@ export function generateSotaHtmlDashboard(report: SotaDashboardReport): string {
   for (let i = 0; i < n; i += sampleStride) {
     const t = report.timeSec[i]!;
     const s = report.modelscriptCurve[i]!;
-    const r = report.sotaCurve[i]!;
 
     const x = padding + ((t - tMin) / tSpan) * (width - 2 * padding);
     const yMS = height - padding - ((s - vMin) / vSpan) * (height - 2 * padding);
-    const ySota = height - padding - ((r - vMin) / vSpan) * (height - 2 * padding);
-    const yRes = height - padding - (Math.abs(s - r) / Math.max(1e-6, maxRes)) * (height - 2 * padding);
-
     svgPointsMS.push(`${x.toFixed(1)},${yMS.toFixed(1)}`);
-    svgPointsSota.push(`${x.toFixed(1)},${ySota.toFixed(1)}`);
-    svgResiduals.push(`${x.toFixed(1)},${yRes.toFixed(1)}`);
+
+    if (hasSotaCurve) {
+      const r = report.sotaCurve![i]!;
+      const ySota = height - padding - ((r - vMin) / vSpan) * (height - 2 * padding);
+      svgPointsSota.push(`${x.toFixed(1)},${ySota.toFixed(1)}`);
+    }
   }
 
+  const statusLabel = report.metrics ? report.metrics.status : "UNVERIFIED";
   const badgeColor =
-    report.metrics.status === "PASS" ? "#22c55e" : report.metrics.status === "WARN" ? "#eab308" : "#ef4444";
+    statusLabel === "PASS"
+      ? "#22c55e"
+      : statusLabel === "WARN"
+        ? "#eab308"
+        : statusLabel === "UNVERIFIED"
+          ? "#94a3b8"
+          : "#ef4444";
+
+  const m = report.metrics;
+  const sotaTimeMs = report.executionMetrics.sotaTimeMs;
+  const speedup = report.executionMetrics.speedupFactor;
+  const badgeText = m ? `${m.status}: ${m.nrmsePercent.toFixed(2)}% NRMSE` : "UNVERIFIED (No external reference)";
+  const umPct = m ? (m.theilUm * 100).toFixed(1) : "0.0";
+  const usPct = m ? (m.theilUs * 100).toFixed(1) : "0.0";
+  const ucPct = m ? (m.theilUc * 100).toFixed(1) : "0.0";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -436,18 +537,18 @@ export function generateSotaHtmlDashboard(report: SotaDashboardReport): string {
     <header>
       <div>
         <h1>${report.suiteTitle}</h1>
-        <div class="subtitle">Model: <strong>${report.benchmarkModel}</strong> &nbsp;|&nbsp; Ground Truth: <strong>${report.sotaComparator}</strong> &nbsp;|&nbsp; Generated: ${ts}</div>
+        <div class="subtitle">Model: <strong>${report.benchmarkModel}</strong> &nbsp;|&nbsp; Reference: <strong>${report.sotaComparator}</strong> &nbsp;|&nbsp; Generated: ${ts}</div>
       </div>
       <div>
-        <span class="badge">${report.metrics.status}: ${report.metrics.nrmsePercent.toFixed(2)}% NRMSE</span>
+        <span class="badge">${badgeText}</span>
       </div>
     </header>
 
     <div class="grid-kpi">
       <div class="card">
-        <div class="card-label">Speedup vs SOTA</div>
-        <div class="card-val">${report.executionMetrics.speedupFactor.toFixed(1)}&times;</div>
-        <div class="card-sub">${report.executionMetrics.modelscriptTimeMs.toFixed(1)} ms vs ${report.executionMetrics.sotaTimeMs.toFixed(1)} ms</div>
+        <div class="card-label">Execution Time / Speedup</div>
+        <div class="card-val">${speedup !== null ? `${speedup.toFixed(1)}&times;` : `${report.executionMetrics.modelscriptTimeMs.toFixed(1)} ms`}</div>
+        <div class="card-sub">${sotaTimeMs !== null ? `${report.executionMetrics.modelscriptTimeMs.toFixed(1)} ms vs ${sotaTimeMs.toFixed(1)} ms` : "No external timing baseline provided"}</div>
       </div>
       <div class="card">
         <div class="card-label">Throughput</div>
@@ -456,22 +557,22 @@ export function generateSotaHtmlDashboard(report: SotaDashboardReport): string {
       </div>
       <div class="card">
         <div class="card-label">Theil's TIC</div>
-        <div class="card-val">${report.metrics.theilTic.toFixed(4)}</div>
-        <div class="card-sub">${report.metrics.theilTic < 0.02 ? "✓ Strict SOTA Parity" : "Marginal Divergence"}</div>
+        <div class="card-val">${m ? m.theilTic.toFixed(4) : "N/A"}</div>
+        <div class="card-sub">${m ? (m.theilTic < 0.02 ? "✓ Strict SOTA Parity" : "Marginal Divergence") : "No external trace supplied"}</div>
       </div>
       <div class="card">
         <div class="card-label">Max Absolute Peak Error</div>
-        <div class="card-val">${report.metrics.maxAbsError.toFixed(4)} ${report.unit}</div>
-        <div class="card-sub">R²: ${report.metrics.rSquared.toFixed(5)}</div>
+        <div class="card-val">${m ? `${m.maxAbsError.toFixed(4)} ${report.unit}` : "N/A"}</div>
+        <div class="card-sub">${m ? `R²: ${m.rSquared.toFixed(5)}` : "No external trace supplied"}</div>
       </div>
     </div>
 
     <div class="chart-card">
       <div class="chart-title">
-        <span>Trajectory Overlay: ${report.curveLabel} (${report.unit})</span>
+        <span>Trajectory Profile: ${report.curveLabel} (${report.unit})</span>
         <div class="chart-legend">
-          <div class="legend-item"><div class="dot" style="background: var(--accent);"></div>ModelScript (WASM/GPU)</div>
-          <div class="legend-item"><div class="dot" style="background: var(--accent2);"></div>${report.sotaComparator} (Ground Truth)</div>
+          <div class="legend-item"><div class="dot" style="background: var(--accent);"></div>ModelScript Solver</div>
+          ${hasSotaCurve ? `<div class="legend-item"><div class="dot" style="background: var(--accent2);"></div>${report.sotaComparator} (Reference)</div>` : ""}
         </div>
       </div>
       <svg viewBox="0 0 ${width} ${height}">
@@ -488,14 +589,11 @@ export function generateSotaHtmlDashboard(report: SotaDashboardReport): string {
         <text x="${padding - 8}" y="${(padding + height - padding) / 2 + 4}" fill="#94a3b8" font-size="11" text-anchor="end">${((vMin + vMax) / 2).toFixed(2)}</text>
         <text x="${padding - 8}" y="${height - padding}" fill="#94a3b8" font-size="11" text-anchor="end">${vMin.toFixed(2)}</text>
         
-        <text x="${padding}" y="${height - padding + 18}" fill="#94a3b8" font-size="11">${tMin.toFixed(2)} s</text>
-        <text x="${width - padding}" y="${height - padding + 18}" fill="#94a3b8" font-size="11" text-anchor="end">${tMax.toFixed(2)} s</text>
+        <text x="${padding}" y="${height - padding + 18}" fill="#94a3b8" font-size="11">${tMin.toFixed(2)}</text>
+        <text x="${width - padding}" y="${height - padding + 18}" fill="#94a3b8" font-size="11" text-anchor="end">${tMax.toFixed(2)}</text>
         
-        <!-- SOTA Ground Truth Path -->
-        <polyline fill="none" stroke="var(--accent2)" stroke-width="2.5" stroke-opacity="0.85" points="${svgPointsSota.join(" ")}" />
-        
-        <!-- ModelScript Path -->
-        <polyline fill="none" stroke="var(--accent)" stroke-width="2.0" stroke-dasharray="5 2" points="${svgPointsMS.join(" ")}" />
+        ${hasSotaCurve ? `<polyline fill="none" stroke="var(--accent2)" stroke-width="2.5" stroke-opacity="0.85" points="${svgPointsSota.join(" ")}" />` : ""}
+        <polyline fill="none" stroke="var(--accent)" stroke-width="2.0" ${hasSotaCurve ? 'stroke-dasharray="5 2"' : ""} points="${svgPointsMS.join(" ")}" />
       </svg>
     </div>
 
@@ -507,20 +605,20 @@ export function generateSotaHtmlDashboard(report: SotaDashboardReport): string {
         Decomposes total mean squared error into Bias proportion (systematic offset Um), Variance proportion (amplitude variation Us), and Covariance proportion (unsystematic noise Uc). SOTA parity requires Um &asymp; 0 and Uc &asymp; 1.
       </p>
       <div class="theil-bar">
-        <div class="theil-seg" style="width: ${(report.metrics.theilUm * 100).toFixed(1)}%; background: #f43f5e;" title="Bias Um">
-          ${report.metrics.theilUm * 100 > 8 ? "Um: " + (report.metrics.theilUm * 100).toFixed(1) + "%" : ""}
+        <div class="theil-seg" style="width: ${umPct}%; background: #f43f5e;" title="Bias Um">
+          ${m && m.theilUm * 100 > 8 ? `Um: ${umPct}%` : ""}
         </div>
-        <div class="theil-seg" style="width: ${(report.metrics.theilUs * 100).toFixed(1)}%; background: #eab308;" title="Variance Us">
-          ${report.metrics.theilUs * 100 > 8 ? "Us: " + (report.metrics.theilUs * 100).toFixed(1) + "%" : ""}
+        <div class="theil-seg" style="width: ${usPct}%; background: #eab308;" title="Variance Us">
+          ${m && m.theilUs * 100 > 8 ? `Us: ${usPct}%` : ""}
         </div>
-        <div class="theil-seg" style="width: ${(report.metrics.theilUc * 100).toFixed(1)}%; background: #22c55e;" title="Covariance Uc">
-          ${report.metrics.theilUc * 100 > 8 ? "Uc: " + (report.metrics.theilUc * 100).toFixed(1) + "%" : ""}
+        <div class="theil-seg" style="width: ${ucPct}%; background: #22c55e;" title="Covariance Uc">
+          ${m && m.theilUc * 100 > 8 ? `Uc: ${ucPct}%` : ""}
         </div>
       </div>
       <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 8px; color: var(--text-muted);">
-        <span>Bias proportion (Um): <strong>${(report.metrics.theilUm * 100).toFixed(2)}%</strong></span>
-        <span>Variance proportion (Us): <strong>${(report.metrics.theilUs * 100).toFixed(2)}%</strong></span>
-        <span>Covariance proportion (Uc): <strong>${(report.metrics.theilUc * 100).toFixed(2)}%</strong></span>
+        <span>Bias proportion (Um): <strong>${m ? `${(m.theilUm * 100).toFixed(2)}%` : "N/A"}</strong></span>
+        <span>Variance proportion (Us): <strong>${m ? `${(m.theilUs * 100).toFixed(2)}%` : "N/A"}</strong></span>
+        <span>Covariance proportion (Uc): <strong>${m ? `${(m.theilUc * 100).toFixed(2)}%` : "N/A"}</strong></span>
       </div>
     </div>
 
@@ -538,46 +636,46 @@ export function generateSotaHtmlDashboard(report: SotaDashboardReport): string {
         <tbody>
           <tr>
             <td>Normalized Root Mean Square Error (NRMSE)</td>
-            <td><strong>${report.metrics.nrmsePercent.toFixed(3)}%</strong></td>
+            <td><strong>${m ? `${m.nrmsePercent.toFixed(3)}%` : "N/A"}</strong></td>
             <td>&lt; 1.50%</td>
-            <td><span style="color: ${report.metrics.nrmsePercent < 1.5 ? "var(--pass)" : "var(--fail)"};">● ${report.metrics.nrmsePercent < 1.5 ? "PASS" : "FAIL"}</span></td>
+            <td><span style="color: ${m ? (m.nrmsePercent < 1.5 ? "var(--pass)" : "var(--fail)") : "#94a3b8"};">● ${m ? (m.nrmsePercent < 1.5 ? "PASS" : "FAIL") : "UNVERIFIED"}</span></td>
           </tr>
           <tr>
             <td>Theil's Inequality Coefficient (TIC)</td>
-            <td><strong>${report.metrics.theilTic.toFixed(5)}</strong></td>
+            <td><strong>${m ? m.theilTic.toFixed(5) : "N/A"}</strong></td>
             <td>&lt; 0.0200</td>
-            <td><span style="color: ${report.metrics.theilTic < 0.02 ? "var(--pass)" : "var(--fail)"};">● ${report.metrics.theilTic < 0.02 ? "PASS" : "FAIL"}</span></td>
+            <td><span style="color: ${m ? (m.theilTic < 0.02 ? "var(--pass)" : "var(--fail)") : "#94a3b8"};">● ${m ? (m.theilTic < 0.02 ? "PASS" : "FAIL") : "UNVERIFIED"}</span></td>
           </tr>
           <tr>
             <td>Coefficient of Determination (R²)</td>
-            <td><strong>${report.metrics.rSquared.toFixed(5)}</strong></td>
+            <td><strong>${m ? m.rSquared.toFixed(5) : "N/A"}</strong></td>
             <td>&gt; 0.9900</td>
-            <td><span style="color: ${report.metrics.rSquared > 0.99 ? "var(--pass)" : "var(--warn)"};">● ${report.metrics.rSquared > 0.99 ? "PASS" : "WARN"}</span></td>
+            <td><span style="color: ${m ? (m.rSquared > 0.99 ? "var(--pass)" : "var(--warn)") : "#94a3b8"};">● ${m ? (m.rSquared > 0.99 ? "PASS" : "WARN") : "UNVERIFIED"}</span></td>
           </tr>
           <tr>
             <td>Pearson Correlation (r)</td>
-            <td><strong>${report.metrics.pearsonR.toFixed(5)}</strong></td>
+            <td><strong>${m ? m.pearsonR.toFixed(5) : "N/A"}</strong></td>
             <td>&gt; 0.9950</td>
-            <td><span style="color: ${report.metrics.pearsonR > 0.995 ? "var(--pass)" : "var(--warn)"};">● ${report.metrics.pearsonR > 0.995 ? "PASS" : "WARN"}</span></td>
+            <td><span style="color: ${m ? (m.pearsonR > 0.995 ? "var(--pass)" : "var(--warn)") : "#94a3b8"};">● ${m ? (m.pearsonR > 0.995 ? "PASS" : "WARN") : "UNVERIFIED"}</span></td>
           </tr>
           <tr>
             <td>Maximum Absolute Error</td>
-            <td><strong>${report.metrics.maxAbsError.toFixed(4)} ${report.unit}</strong></td>
+            <td><strong>${m ? `${m.maxAbsError.toFixed(4)} ${report.unit}` : "N/A"}</strong></td>
             <td>&lt; 0.0500 ${report.unit}</td>
-            <td><span style="color: var(--pass);">● PASS</span></td>
+            <td><span style="color: ${m ? "var(--pass)" : "#94a3b8"};">● ${m ? m.status : "UNVERIFIED"}</span></td>
           </tr>
           <tr>
             <td>Execution Wall Clock (Throughput)</td>
             <td><strong>${report.executionMetrics.modelscriptTimeMs.toFixed(1)} ms (${report.executionMetrics.throughputPerSec.toLocaleString()} ${report.executionMetrics.throughputUnit})</strong></td>
-            <td>&gt; 5.0&times; SOTA baseline</td>
-            <td><span style="color: var(--pass);">● ${report.executionMetrics.speedupFactor.toFixed(1)}&times; FASTER</span></td>
+            <td>${sotaTimeMs !== null ? `Baseline: ${sotaTimeMs.toFixed(1)} ms` : "External baseline required"}</td>
+            <td><span style="color: ${speedup !== null ? "var(--pass)" : "#94a3b8"};">● ${speedup !== null ? `${speedup.toFixed(1)}&times;` : "MEASURED"}</span></td>
           </tr>
         </tbody>
       </table>
     </div>
 
     <footer>
-      Produced by ModelScript SOTA Benchmarking Engine &bull; Validated against ${report.sotaComparator} &bull; Open-standard shareable artifact
+      Produced by ModelScript Benchmarking Engine &bull; ${report.sotaComparator} &bull; Open-standard shareable artifact
     </footer>
   </div>
 </body>

@@ -454,7 +454,7 @@ export const DiagramWrap = styled.div<{ $isDragging?: boolean | undefined; $isFu
       border-radius: 0;
       border: none;
       z-index: 1000;
-      background: var(--color-canvas-default, #0d1117);
+      background: var(--ms-bg-canvas, var(--color-canvas-default));
     `}
 `;
 

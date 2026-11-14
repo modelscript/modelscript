@@ -52,8 +52,8 @@ export const SimulationProgressSteps: React.FC<SimulationProgressStepsProps> = (
       <Box
         p={3}
         borderRadius="10px"
-        bg="var(--color-canvas-subtle, #161b22)"
-        border="1px solid var(--color-border-default, #30363d)"
+        bg="var(--ms-bg-surface, var(--color-canvas-subtle))"
+        border="1px solid var(--ms-border-default, var(--color-border-default))"
         display="flex"
         justifyContent="space-between"
         alignItems="center"
@@ -118,7 +118,7 @@ export const SimulationProgressSteps: React.FC<SimulationProgressStepsProps> = (
       {/* Live Telemetry Console Preview */}
       <Box
         borderRadius="8px"
-        border="1px solid var(--color-border-default, #30363d)"
+        border="1px solid var(--ms-border-default, var(--color-border-default))"
         bg="#090d16"
         p={3}
         style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.55 }}

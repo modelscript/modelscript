@@ -456,11 +456,16 @@ export interface EmtControlBlock {
     | "time_sig"
     | "inv_abcdq0_a"
     | "inv_abcdq0_b"
-    | "inv_abcdq0_c";
+    | "inv_abcdq0_c"
+    | "abs"
+    | "tdelay"
+    | "zminusone";
   inputs: string[];
   params: Record<string, number>;
   /** Bus id (`sensor_v`) or branch id (`sensor_i`) measured by a sensor block. */
   sensorTarget?: string | undefined;
+  /** Original schematic component ID for accurate lowering coverage tracking. */
+  componentId?: string | undefined;
   /** Drives a solver element from this block's output (breaker status: > 0.5 = open, otherwise closed). */
   actuator?: { type: "breaker_status"; targetId: string } | undefined;
 }

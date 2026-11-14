@@ -5,7 +5,7 @@ description: "@modelscript/ampl (languages/ampl) provides native algebraic model
 
 # AMPL-Compatible Mathematical Programming (`.mod`, `.dat`, `.run`, `.nl`, `.mps`)
 
-`@modelscript/ampl` (`languages/ampl`) provides first-class support for **AMPL-compatible** (*A Mathematical Programming Language*) modeling, the industry-standard algebraic modeling language for linear, mixed-integer, nonlinear, logical, and complementarity mathematical optimization.
+`@modelscript/ampl` (`languages/ampl`) provides first-class support for **AMPL-compatible** (_A Mathematical Programming Language_) modeling, the industry-standard algebraic modeling language for linear, mixed-integer, nonlinear, logical, and complementarity mathematical optimization.
 
 In ModelScript, AMPL bridges declarative operations research, supply chain planning, optimal control, and steady-state process design with the rest of the polyglot physical engineering ecosystem—connecting directly to ModelScript's in-WebAssembly COIN-OR solvers (CLP, CBC, IPOPT, Couenne), external commercial solvers (CPLEX, HiGHS, SCIP), and the linear-memory WebAssembly `DAEBuilder` arena.
 
@@ -13,14 +13,14 @@ In ModelScript, AMPL bridges declarative operations research, supply chain plann
 
 ## Supported Extensions & Document Models
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.mod` | AMPL Model File | Declarative model declarations defining `set`, `param`, `var`, `minimize`/`maximize`, `subject to`, `table`, and `check` statements with relational indexing comprehensions. |
-| `.dat` | AMPL Data File | Tabular parameter values, 2D matrix representations (`param (tr): ... :=`), $n$-D slices (`[*, *, k]`), and literal set membership definitions. |
-| `.run` | AMPL Script File | Imperative optimization scripting (`for`, `repeat while/until`, `if-then-else`, `let`, `fix`/`unfix`, `drop`/`restore`, `objective`, `solve`, `display`, `printf`, `read table`, `write table`). |
-| `.nl` | AMPL Solver Library | Universal ASCII intermediate representation with full prefix nonlinear expression opcode trees (`C<k>`, `O<k>`, `o0`–`o53`, `v<k>`, `n<c>`) for external and WASM solvers. |
-| `.sol` | AMPL Solution File | Standard solution vector, objective value, status code, and dual shadow price interchange format. |
-| `.mps` | MPS Format File | Industry-standard Mathematical Programming System fixed/free column-oriented format for LP, MILP, and `SOS1`/`SOS2` problems. |
+| Extension | Format              | Description                                                                                                                                                                                      |
+| :-------- | :------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.mod`    | AMPL Model File     | Declarative model declarations defining `set`, `param`, `var`, `minimize`/`maximize`, `subject to`, `table`, and `check` statements with relational indexing comprehensions.                     |
+| `.dat`    | AMPL Data File      | Tabular parameter values, 2D matrix representations (`param (tr): ... :=`), $n$-D slices (`[*, *, k]`), and literal set membership definitions.                                                  |
+| `.run`    | AMPL Script File    | Imperative optimization scripting (`for`, `repeat while/until`, `if-then-else`, `let`, `fix`/`unfix`, `drop`/`restore`, `objective`, `solve`, `display`, `printf`, `read table`, `write table`). |
+| `.nl`     | AMPL Solver Library | Universal ASCII intermediate representation with full prefix nonlinear expression opcode trees (`C<k>`, `O<k>`, `o0`–`o53`, `v<k>`, `n<c>`) for external and WASM solvers.                       |
+| `.sol`    | AMPL Solution File  | Standard solution vector, objective value, status code, and dual shadow price interchange format.                                                                                                |
+| `.mps`    | MPS Format File     | Industry-standard Mathematical Programming System fixed/free column-oriented format for LP, MILP, and `SOS1`/`SOS2` problems.                                                                    |
 
 ---
 
@@ -160,13 +160,13 @@ Decision variables and algebraic constraints lower directly into ModelScript's s
 
 The `@modelscript/ampl` test suite includes automated benchmark verification against canonical operations research and Netlib problems:
 
-| Benchmark ID | Problem Name | Class | Ground Truth Objective ($Z^*$) | ModelScript Status | Parity |
-| :--- | :--- | :---: | :---: | :---: | :---: |
-| `BM1_HITCHCOCK` | Hitchcock-Koopmans Transportation Network | LP | `1707.5000` | **PASS** | Exact ($< 10^{-4}$) |
-| `BM2_LOT_SIZING` | Wagner-Whitin Dynamic Production Lot-Sizing | LP | `10570.0000` | **PASS** | Exact ($< 10^{-2}$) |
-| `BM3_REFINERY_BLEND` | Petroleum Refinery Feedstock Blending | LP | `2113.6364` | **PASS** | Exact ($< 10^{-4}$) |
-| `BM4_CAPITAL_BUDGET` | Capital Budgeting 0-1 Knapsack | MILP | `38.0000` | **PASS** | Exact Integer |
-| `BM5_MARKOWITZ_RISK` | Markowitz Mean-Variance Portfolio Risk | NLP | `0.0355` | **PASS** | KKT Point ($< 10^{-3}$) |
+| Benchmark ID         | Problem Name                                | Class | Ground Truth Objective ($Z^*$) | ModelScript Status |         Parity          |
+| :------------------- | :------------------------------------------ | :---: | :----------------------------: | :----------------: | :---------------------: |
+| `BM1_HITCHCOCK`      | Hitchcock-Koopmans Transportation Network   |  LP   |          `1707.5000`           |      **PASS**      |   Exact ($< 10^{-4}$)   |
+| `BM2_LOT_SIZING`     | Wagner-Whitin Dynamic Production Lot-Sizing |  LP   |          `10570.0000`          |      **PASS**      |   Exact ($< 10^{-2}$)   |
+| `BM3_REFINERY_BLEND` | Petroleum Refinery Feedstock Blending       |  LP   |          `2113.6364`           |      **PASS**      |   Exact ($< 10^{-4}$)   |
+| `BM4_CAPITAL_BUDGET` | Capital Budgeting 0-1 Knapsack              | MILP  |           `38.0000`            |      **PASS**      |      Exact Integer      |
+| `BM5_MARKOWITZ_RISK` | Markowitz Mean-Variance Portfolio Risk      |  NLP  |            `0.0355`            |      **PASS**      | KKT Point ($< 10^{-3}$) |
 
 ---
 
@@ -226,3 +226,9 @@ Run automated benchmarks directly:
 ```bash
 npm run test:bench --workspace=@modelscript/ampl
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="ampl" />

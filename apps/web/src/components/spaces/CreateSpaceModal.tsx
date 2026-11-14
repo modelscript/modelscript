@@ -19,9 +19,9 @@ import {
   RocketIcon,
   ShieldCheckIcon,
   SparkleIcon,
-  XIcon,
   ZapIcon,
 } from "@primer/octicons-react";
+import { Button, Dialog, Flash } from "@primer/react";
 import React, { useEffect, useId, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -315,115 +315,17 @@ export const CreateSpaceModal: React.FC<CreateSpaceModalProps> = ({
   const domainPresets = presets.filter((p) => p.id !== "systems_general");
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1200,
-        backgroundColor: "rgba(3, 7, 18, 0.78)",
-        backdropFilter: "blur(12px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "20px 16px",
-        overflowY: "auto",
-      }}
-      onClick={onClose}
+    <Dialog
+      title="Create an Engineering Space"
+      subtitle="A unified home for your living specifications, simulation models, Git vault, and team discussions."
+      width="xlarge"
+      onClose={onClose}
     >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "1040px",
-          maxHeight: "92vh",
-          display: "flex",
-          flexDirection: "column",
-          background: "linear-gradient(180deg, #0e1526 0%, #0a0f1d 100%)",
-          border: "1px solid rgba(255, 255, 255, 0.1)",
-          borderRadius: "18px",
-          color: "var(--color-text-primary, #f8fafc)",
-          boxShadow:
-            "0 32px 64px -12px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.12)",
-          overflow: "hidden",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Top Header Bar */}
-        <div
-          style={{
-            padding: "20px 28px",
-            borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            background: "rgba(15, 23, 42, 0.4)",
-          }}
-        >
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <div
-                style={{
-                  width: "28px",
-                  height: "28px",
-                  borderRadius: "8px",
-                  background: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#ffffff",
-                  boxShadow: "0 2px 8px rgba(59, 130, 246, 0.4)",
-                }}
-              >
-                <SparkleIcon size={16} />
-              </div>
-              <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 700, letterSpacing: "-0.01em" }}>
-                Create an Engineering Space
-              </h2>
-            </div>
-            <p style={{ margin: "6px 0 0 36px", fontSize: "13px", color: "var(--color-text-muted, #94a3b8)" }}>
-              A unified home for your living specifications, simulation models, Git vault, and team discussions.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close dialog"
-            style={{
-              background: "rgba(255, 255, 255, 0.05)",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              borderRadius: "8px",
-              color: "var(--color-text-muted, #94a3b8)",
-              padding: "6px",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "all 0.15s ease",
-            }}
-          >
-            <XIcon size={18} />
-          </button>
-        </div>
-
+      <div style={{ display: "flex", flexDirection: "column", maxHeight: "76vh", overflow: "hidden" }}>
         {error && (
-          <div
-            style={{
-              margin: "16px 28px 0",
-              padding: "12px 16px",
-              borderRadius: "10px",
-              background: "rgba(239, 68, 68, 0.12)",
-              border: "1px solid rgba(239, 68, 68, 0.35)",
-              color: "#fca5a5",
-              fontSize: "13px",
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-            }}
-          >
-            <span>⚠️</span>
-            <span>{error}</span>
-          </div>
+          <Flash variant="danger" style={{ marginBottom: "12px" }}>
+            {error}
+          </Flash>
         )}
 
         {/* Modal Body: Split-Pane Studio (Form on Left, Live Manifest Preview on Right) */}
@@ -1394,25 +1296,33 @@ export const CreateSpaceModal: React.FC<CreateSpaceModalProps> = ({
         {/* Modal Footer */}
         <div
           style={{
-            padding: "16px 28px",
-            borderTop: "1px solid rgba(255, 255, 255, 0.08)",
-            background: "rgba(15, 23, 42, 0.6)",
+            padding: "14px 4px 0",
+            borderTop: "1px solid var(--ms-divider, var(--color-border))",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            flexShrink: 0,
           }}
         >
-          <div style={{ fontSize: "11px", color: "#64748b", display: "flex", alignItems: "center", gap: "6px" }}>
+          <div
+            style={{
+              fontSize: "11px",
+              color: "var(--color-text-muted)",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
             <span>Keyboard shortcut:</span>
             <kbd
               style={{
                 padding: "2px 6px",
                 borderRadius: "4px",
-                background: "rgba(255, 255, 255, 0.08)",
-                border: "1px solid rgba(255, 255, 255, 0.12)",
-                fontFamily: "monospace",
+                background: "var(--ms-surface-hover)",
+                border: "1px solid var(--ms-border, var(--color-border))",
+                fontFamily: "var(--ms-font-mono, monospace)",
                 fontSize: "10px",
-                color: "#94a3b8",
+                color: "var(--color-text-secondary)",
               }}
             >
               ⌘/Ctrl + Enter
@@ -1420,51 +1330,23 @@ export const CreateSpaceModal: React.FC<CreateSpaceModalProps> = ({
             <span>to provision</span>
           </div>
 
-          <div style={{ display: "flex", gap: "10px" }}>
-            <button
-              type="button"
-              onClick={onClose}
-              style={{
-                padding: "9px 16px",
-                borderRadius: "8px",
-                border: "1px solid rgba(255, 255, 255, 0.12)",
-                background: "transparent",
-                color: "inherit",
-                fontSize: "13px",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-            >
+          <div style={{ display: "flex", gap: "8px" }}>
+            <Button type="button" variant="default" onClick={onClose}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               form="create-space-form"
+              variant="primary"
               disabled={submitting}
-              style={{
-                padding: "9px 20px",
-                borderRadius: "8px",
-                border: "none",
-                background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
-                color: "#ffffff",
-                fontSize: "13px",
-                fontWeight: 700,
-                cursor: submitting ? "wait" : "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                boxShadow: "0 2px 10px rgba(37, 99, 235, 0.4)",
-                transition: "all 0.15s ease",
-              }}
+              trailingAction={!submitting ? ArrowRightIcon : undefined}
             >
-              <span>{submitting ? "Provisioning Git Vault & Channels..." : "Create Space"}</span>
-              {!submitting && <ArrowRightIcon size={14} />}
-            </button>
+              {submitting ? "Provisioning Git Vault & Channels..." : "Create Space"}
+            </Button>
           </div>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 };
 

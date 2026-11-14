@@ -7,7 +7,7 @@
  * enabling compilation into native WebAssembly GLR parse tables and linear-memory CST.
  */
 
-import { choice, field, language, optional, repeat, semanticToken, seq } from "@modelscript/dsl";
+import { choice, field, language, repeat, semanticToken, seq } from "@modelscript/dsl";
 
 export const pdbGrammar = language({
   name: "Pdb",
@@ -35,21 +35,21 @@ export const pdbGrammar = language({
         $.GenericRecord,
       ),
 
-    HeaderRecord: ($) => seq(semanticToken("keyword", "HEADER"), field("classification", $.RestOfLine)),
+    HeaderRecord: ($) => seq(semanticToken("keyword", "HEADER"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
 
-    TitleRecord: ($) => seq(semanticToken("keyword", "TITLE"), field("title", $.RestOfLine)),
+    TitleRecord: ($) => seq(semanticToken("keyword", "TITLE"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
 
-    HelixRecord: ($) => seq(semanticToken("keyword", "HELIX"), field("details", $.RestOfLine)),
+    HelixRecord: ($) => seq(semanticToken("keyword", "HELIX"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
 
-    SheetRecord: ($) => seq(semanticToken("keyword", "SHEET"), field("details", $.RestOfLine)),
+    SheetRecord: ($) => seq(semanticToken("keyword", "SHEET"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
 
-    SsbondRecord: ($) => seq(semanticToken("keyword", "SSBOND"), field("details", $.RestOfLine)),
+    SsbondRecord: ($) => seq(semanticToken("keyword", "SSBOND"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
 
-    AtomRecord: ($) => seq(semanticToken("keyword", "ATOM"), field("atomLine", $.RestOfLine)),
+    AtomRecord: ($) => seq(semanticToken("keyword", "ATOM"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
 
-    HetatmRecord: ($) => seq(semanticToken("keyword", "HETATM"), field("atomLine", $.RestOfLine)),
+    HetatmRecord: ($) => seq(semanticToken("keyword", "HETATM"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
 
-    TerRecord: ($) => seq(semanticToken("keyword", "TER"), optional($.RestOfLine)),
+    TerRecord: ($) => seq(semanticToken("keyword", "TER"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
 
     ConectRecord: ($) => seq(semanticToken("keyword", "CONECT"), repeat(choice($.NumberLiteral, $.Identifier))),
 
@@ -80,11 +80,10 @@ export const pdbGrammar = language({
             $.Identifier,
           ),
         ),
-        optional($.RestOfLine),
+        repeat(choice($.Identifier, $.NumberLiteral, "-")),
       ),
 
     CommentLine: () => /#[^\n]*/,
-    RestOfLine: () => /[^\n\r]+/,
     Identifier: () => /[a-zA-Z_][a-zA-Z0-9_]*/,
     NumberLiteral: () => /[-+]?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?/,
   },

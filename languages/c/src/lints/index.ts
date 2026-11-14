@@ -2,3 +2,5 @@
 
 export { CErrorCode, type CErrorCodeKey } from "../errors.js";
 export { lintCSource as lintC, lintCSource, type CDiagnostic, type CLintOptions } from "./rules.js";
+
+export * from "./workspace.js";

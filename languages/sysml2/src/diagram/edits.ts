@@ -210,8 +210,72 @@ export function findCstConnectionNodes(
 // ── Insert new element ──
 
 /**
+ * Options for inserting cross-language or typed SysML2 declarations via diagram drops.
+ */
+export interface SysML2CrossLanguageInsertOptions {
+  /** Explicit SysML2 type annotation (dots `.` are normalized to `::`). */
+  typeName?: string | undefined;
+  /** Semantic usage keyword when `typeName` or custom type is supplied. Defaults to `"part"`. */
+  usageKind?: "part" | "port" | "attribute" | "item" | undefined;
+  /** Optional SysML2 import path (e.g. `Pkg::Type` or `Pkg::*`) inserted if not already present. */
+  importPath?: string | undefined;
+  /** Optional unindented black-box definition stub inserted alongside the typed usage. */
+  stubBlock?: string | undefined;
+}
+
+function normalizeSysmlTypePath(raw: string): string {
+  return raw
+    .trim()
+    .replace(/\.+/g, "::")
+    .replace(/^:+|:+$/g, "");
+}
+
+function hasSysmlImport(docText: string, importTarget: string): boolean {
+  const clean = normalizeSysmlTypePath(importTarget).replace(/::\*$/, "");
+  if (!clean) return true;
+  const exactRe = new RegExp(
+    `(?:^|\\n)\\s*(?:(?:public|private)\\s+)?import\\s+(?:all\\s+)?${escapeRegex(importTarget)}\\s*;`,
+  );
+  if (exactRe.test(docText)) return true;
+  const segments = clean.split("::");
+  if (segments.length >= 2) {
+    const pkgPath = segments.slice(0, -1).join("::");
+    const wildcardRe = new RegExp(
+      `(?:^|\\n)\\s*(?:(?:public|private)\\s+)?import\\s+(?:all\\s+)?${escapeRegex(pkgPath)}::\\*\\s*;`,
+    );
+    if (wildcardRe.test(docText)) return true;
+  }
+  return false;
+}
+
+function findEnclosingOpenBraceLine(lines: string[], closingLine: number): number {
+  let depth = 0;
+  for (let i = Math.min(closingLine, lines.length - 1); i >= 0; i--) {
+    const line = lines[i]!;
+    for (let c = line.length - 1; c >= 0; c--) {
+      const ch = line[c]!;
+      if (ch === "}") {
+        depth++;
+      } else if (ch === "{") {
+        depth--;
+        if (depth < 0) return i;
+      }
+    }
+  }
+  return -1;
+}
+
+function indentBlockLines(block: string, indent: string): string {
+  return block
+    .split("\n")
+    .map((line) => (line.trim().length > 0 ? `${indent}${line}` : ""))
+    .join("\n")
+    .replace(/\n+$/, "");
+}
+
+/**
  * Insert a new SysML2 element declaration at the appropriate position.
- * Uses the parsed CST tree if available, falling back to brace counting.
+ * Uses the parsed CST tree if provided, falling back to brace counting.
  */
 export function computeSysML2ElementInsert(
   docText: string,
@@ -219,10 +283,17 @@ export function computeSysML2ElementInsert(
   elementName: string,
   insertionLine?: number,
   tree?: DiagramCstTree | null,
+  options?: SysML2CrossLanguageInsertOptions,
 ): TextEdit[] {
   const lines = docText.split("\n");
   const template = ELEMENT_TEMPLATES[elementType];
-  if (!template) {
+  const resolvedType = options?.typeName
+    ? normalizeSysmlTypePath(options.typeName)
+    : !template && (elementType.includes(".") || elementType.includes("::"))
+      ? normalizeSysmlTypePath(elementType)
+      : undefined;
+
+  if (!template && !resolvedType) {
     // Fallback: generic part usage
     return computeSysML2ElementInsert(docText, "PartUsage", elementName, insertionLine, tree);
   }
@@ -252,7 +323,7 @@ export function computeSysML2ElementInsert(
       if (targetLine === -1) {
         // No closing brace found — append at end
         targetLine = lines.length;
-        indent = INDENT;
+        indent = docText.trim().length === 0 ? "" : INDENT;
       } else {
         // Indent one level deeper than the closing brace
         const braceIndent = lines[targetLine]?.match(/^(\s*)/)?.[1] ?? "";
@@ -261,8 +332,55 @@ export function computeSysML2ElementInsert(
     }
   }
 
-  const snippet = template(elementName, indent);
-  return [TextEdit.insert({ line: targetLine, character: 0 }, snippet + "\n")];
+  let snippet: string;
+  if (resolvedType) {
+    const kw = options?.usageKind ?? "part";
+    const declKw = kw === "port" || kw === "attribute" || kw === "item" ? kw : "part";
+    snippet = `${indent}${declKw} ${elementName} : ${resolvedType};`;
+  } else {
+    snippet = template!(elementName, indent).replace(/\n$/, "");
+  }
+
+  const normalizedImport = options?.importPath ? normalizeSysmlTypePath(options.importPath) : undefined;
+  const needsImport = Boolean(normalizedImport && !hasSysmlImport(docText, normalizedImport));
+  const importStmt = needsImport ? `${indent}import ${normalizedImport};` : undefined;
+  const stubText = options?.stubBlock ? indentBlockLines(options.stubBlock, indent) : undefined;
+
+  const edits: TextEdit[] = [];
+  const openBraceLine = findEnclosingOpenBraceLine(lines, Math.max(0, targetLine - 1));
+  const targetLineText = lines[targetLine] ?? "";
+
+  if (
+    openBraceLine === -1 &&
+    targetLine < lines.length &&
+    targetLineText.includes("{") &&
+    targetLineText.includes("}")
+  ) {
+    // Single-line enclosing block like `package P { }`: insert inside `{ ... }`
+    const braceCol = targetLineText.indexOf("{") + 1;
+    const chunks = [importStmt, stubText, snippet].filter((c): c is string => Boolean(c));
+    edits.push(TextEdit.insert({ line: targetLine, character: braceCol }, `\n${chunks.join("\n")}\n`));
+    return edits;
+  }
+
+  if (importStmt && openBraceLine >= 0 && openBraceLine < targetLine) {
+    const openText = lines[openBraceLine] ?? "";
+    const braceIdx = openText.indexOf("{");
+    if (braceIdx >= 0) {
+      const trailing = openText.slice(braceIdx + 1);
+      const insertText = trailing.trim().length === 0 ? `\n${importStmt}` : `\n${importStmt}\n${indent}`;
+      edits.push(TextEdit.insert({ line: openBraceLine, character: braceIdx + 1 }, insertText));
+    }
+  } else if (importStmt) {
+    // No separate enclosing header line — include import right before stub/snippet
+    const chunks = [importStmt, stubText, snippet].filter((c): c is string => Boolean(c));
+    edits.push(TextEdit.insert({ line: targetLine, character: 0 }, `${chunks.join("\n")}\n`));
+    return edits;
+  }
+
+  const bodyChunks = [stubText, snippet].filter((c): c is string => Boolean(c));
+  edits.push(TextEdit.insert({ line: targetLine, character: 0 }, `${bodyChunks.join("\n")}\n`));
+  return edits;
 }
 
 // ── Delete element ──

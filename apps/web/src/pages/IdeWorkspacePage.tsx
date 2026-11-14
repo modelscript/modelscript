@@ -82,7 +82,7 @@ const ProviderSelectWrapper = styled.div`
   display: flex;
   align-items: center;
   gap: 6px;
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--color-canvas-default, var(--ms-bg));
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 0 8px;
@@ -108,7 +108,7 @@ const ProviderSelect = styled.select`
   padding: 0;
 
   option {
-    background: var(--color-canvas-overlay, #161b22);
+    background: var(--color-canvas-overlay, var(--ms-bg-elv));
     color: var(--color-text-primary);
   }
 `;
@@ -120,7 +120,7 @@ const RepoPathInputWrapper = styled.div`
   flex: 1;
   min-width: 0;
   height: 36px;
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--color-canvas-default, var(--ms-bg));
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 0 10px;
@@ -160,7 +160,7 @@ const BranchInputWrapper = styled.div`
   align-items: center;
   gap: 2px;
   height: 36px;
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--color-canvas-default, var(--ms-bg));
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 0 8px;

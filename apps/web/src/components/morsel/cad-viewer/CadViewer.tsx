@@ -339,7 +339,7 @@ function CadModel({
           <Html position={[0, 0, 0]} center style={{ pointerEvents: "none", zIndex: 10 }}>
             <div
               style={{
-                background: "rgba(22, 27, 34, 0.85)",
+                background: "var(--overlay-bgColor, var(--ms-surface-glass))",
                 backdropFilter: "blur(4px)",
                 color: "#e6edf3",
                 padding: "8px 12px",
@@ -357,7 +357,7 @@ function CadModel({
                   borderBottom: "1px solid rgba(255,255,255,0.1)",
                   paddingBottom: 4,
                   marginBottom: 4,
-                  color: "#58a6ff",
+                  color: "var(--fgColor-accent, var(--ms-brand))",
                 }}
               >
                 {component.name}
@@ -848,7 +848,7 @@ export default function CadViewer({
             alignItems: "center",
             gap: 10,
             padding: "8px 14px",
-            background: dark ? "rgba(22, 27, 34, 0.88)" : "rgba(255, 255, 255, 0.92)",
+            background: dark ? "var(--overlay-bgColor, var(--ms-surface-glass))" : "rgba(255, 255, 255, 0.92)",
             backdropFilter: "blur(12px)",
             WebkitBackdropFilter: "blur(12px)",
             borderRadius: "10px",
@@ -896,7 +896,7 @@ export default function CadViewer({
               alignItems: "center",
               gap: 5,
               padding: "4px 10px",
-              background: "#0969da",
+              background: "var(--ms-brand)",
               color: "#ffffff",
               border: "none",
               borderRadius: "6px",

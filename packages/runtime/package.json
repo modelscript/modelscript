@@ -266,6 +266,14 @@
       "types": "./dist/util/type_registry.d.ts",
       "default": "./dist/util/type_registry.js"
     },
+    "./symbol_roles.js": {
+      "types": "./dist/util/symbol_roles.d.ts",
+      "default": "./dist/util/symbol_roles.js"
+    },
+    "./port_signature.js": {
+      "types": "./dist/util/port_signature.d.ts",
+      "default": "./dist/util/port_signature.js"
+    },
     "./msl_ffi.js": {
       "types": "./dist/util/msl_ffi.d.ts",
       "default": "./dist/util/msl_ffi.js"
@@ -277,6 +285,10 @@
     "./pipeline.js": {
       "types": "./dist/pipeline.d.ts",
       "default": "./dist/pipeline.js"
+    },
+    "./benchmark": {
+      "types": "./dist/benchmark.d.ts",
+      "default": "./dist/benchmark.js"
     }
   },
   "main": "./dist/index.js",

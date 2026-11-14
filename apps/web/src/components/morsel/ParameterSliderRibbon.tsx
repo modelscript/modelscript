@@ -37,10 +37,10 @@ const RibbonContainer = styled.div<{
   z-index: 90;
   display: flex;
   flex-direction: column;
-  background: ${(props) => (props.$dark ? "rgba(13, 17, 23, 0.92)" : "rgba(255, 255, 255, 0.92)")};
+  background: var(--ms-surface-glass);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid ${(props) => (props.$dark ? "rgba(48, 54, 61, 0.85)" : "rgba(208, 215, 222, 0.85)")};
+  border: 1px solid var(--borderColor-default, var(--ms-border));
   border-radius: ${(props) => (props.$expanded ? "10px" : "999px")};
   box-shadow: 0 6px 24px rgba(0, 0, 0, ${(props) => (props.$dark ? "0.4" : "0.14")});
   overflow: hidden;
@@ -60,21 +60,20 @@ const RibbonHeader = styled.div<{ $dark: boolean; $expanded: boolean }>`
   padding: ${(props) => (props.$expanded ? "6px 12px" : "5px 10px 5px 12px")};
   cursor: pointer;
   user-select: none;
-  border-bottom: ${(props) =>
-    props.$expanded ? `1px solid ${props.$dark ? "rgba(48, 54, 61, 0.6)" : "rgba(208, 215, 222, 0.6)"}` : "none"};
-  background: ${(props) => (props.$dark ? "rgba(22, 27, 34, 0.6)" : "rgba(246, 248, 250, 0.6)")};
+  border-bottom: ${(props) => (props.$expanded ? "1px solid var(--borderColor-muted, var(--ms-divider))" : "none")};
+  background: var(--bgColor-muted, var(--ms-bg-elv));
   font-size: 11px;
   font-weight: 600;
   font-family: var(--font-mono, monospace);
-  color: ${(props) => (props.$dark ? "#f0f6fc" : "#1f2328")};
+  color: var(--fgColor-default, var(--ms-text-1));
 `;
 
 const Badge = styled.span<{ $dark: boolean }>`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: ${(props) => (props.$dark ? "rgba(56, 139, 253, 0.2)" : "rgba(9, 105, 218, 0.15)")};
-  color: ${(props) => (props.$dark ? "#58a6ff" : "#0969da")};
+  background: var(--ms-brand-soft);
+  color: var(--fgColor-accent, var(--ms-brand));
   padding: 1px 6px;
   border-radius: 10px;
   font-size: 10px;
@@ -123,7 +122,7 @@ const CardTop = styled.div<{ $dark: boolean }>`
 
 const ValueInput = styled.input<{ $dark: boolean }>`
   width: 54px;
-  background: ${(props) => (props.$dark ? "#0d1117" : "#ffffff")};
+  background: ${(props) => (props.$dark ? "var(--bgColor-inset, #121214)" : "#ffffff")};
   border: 1px solid ${(props) => (props.$dark ? "rgba(48, 54, 61, 0.8)" : "rgba(208, 215, 222, 0.8)")};
   border-radius: 4px;
   padding: 1px 4px;
@@ -235,7 +234,7 @@ export const ParameterSliderRibbon: React.FC<ParameterSliderRibbonProps> = ({
                 alignItems: "center",
                 gap: 4,
                 padding: "2px 8px",
-                background: "#0969da",
+                background: "var(--ms-brand)",
                 color: "#ffffff",
                 border: "none",
                 borderRadius: "999px",

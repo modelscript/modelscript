@@ -216,10 +216,20 @@ export function FeaMeshRenderer({ payload, position = [0, 0, 0], displacementSca
             userSelect: "none",
           }}
         >
-          <div style={{ fontWeight: "bold", color: "#58a6ff", marginBottom: 4 }}>FEA: Multi-Physics</div>
+          <div
+            style={{
+              fontWeight: "bold",
+              color: "var(--vscode-textLink-foreground, var(--ms-brand, #22d3ee))",
+              marginBottom: 4,
+            }}
+          >
+            FEA: Multi-Physics
+          </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
             <span>Time:</span>
-            <span style={{ color: "#79c0ff" }}>{payload.time.toFixed(3)} s</span>
+            <span style={{ color: "var(--vscode-textLink-foreground, var(--ms-brand, #22d3ee))" }}>
+              {payload.time.toFixed(3)} s
+            </span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
             <span>Max Stress:</span>
@@ -292,7 +302,12 @@ export function FeaMeshRenderer({ payload, position = [0, 0, 0], displacementSca
               max={maxWarpScale}
               value={activeScale}
               onChange={(e) => setActiveScale(Number(e.target.value))}
-              style={{ width: "100%", height: "4px", cursor: "pointer", accentColor: "#58a6ff" }}
+              style={{
+                width: "100%",
+                height: "4px",
+                cursor: "pointer",
+                accentColor: "var(--vscode-textLink-foreground, var(--ms-brand, #22d3ee))",
+              }}
             />
           </div>
         </div>

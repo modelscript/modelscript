@@ -112,3 +112,5 @@ export function lintAtpCase(atpCase: AtpCase): AtpDiagnostic[] {
 
   return diagnostics;
 }
+
+export * from "./workspace.js";

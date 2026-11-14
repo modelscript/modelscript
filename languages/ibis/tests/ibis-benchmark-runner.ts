@@ -14,7 +14,6 @@
 import assert from "node:assert/strict";
 import {
   calculateOutputResistance,
-  evaluateBufferCurrent,
   ibisToModelica,
   lowerIbisToDae,
   parseIbis,
@@ -114,9 +113,7 @@ export interface IbisBenchmarkMetrics {
   modelicaLines: number;
 }
 
-export function runIbisBenchmark(
-  deckContent = IBIS_SERDES_10G_BENCHMARK,
-): IbisBenchmarkMetrics {
+export function runIbisBenchmark(deckContent = IBIS_SERDES_10G_BENCHMARK): IbisBenchmarkMetrics {
   const deck: IbisDeck = parseIbis(deckContent, "serdes_benchmark.ibs");
 
   assert.equal(deck.components.size, 1);
@@ -151,10 +148,7 @@ export function runIbisBenchmark(
     equalized.eyeHeightV > unequalized.eyeHeightV,
     `Equalization must increase eye height: ${equalized.eyeHeightV} > ${unequalized.eyeHeightV}`,
   );
-  assert.ok(
-    equalized.eyeWidthPs > 20.0,
-    `Equalized eye width must be open (> 20 ps): ${equalized.eyeWidthPs} ps`,
-  );
+  assert.ok(equalized.eyeWidthPs > 20.0, `Equalized eye width must be open (> 20 ps): ${equalized.eyeWidthPs} ps`);
   assert.ok(
     equalized.eyeHeightBer1e12V > 0,
     `Statistical eye at BER 1e-12 must remain open: ${equalized.eyeHeightBer1e12V} > 0`,
@@ -189,3 +183,31 @@ export function runIbisBenchmark(
     modelicaLines: mo.split("\n").length,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const ibisBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "ibis",
+  referenceTool: "ANSI/EIA-656 IBIS-AMI 10 Gbps SerDes",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runIbisBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "serdes-10g-ami-eye-diagram",
+        name: "serdes-10g-ami-eye-diagram",
+        scale: "standard",
+        referenceTool: "ANSI/EIA-656 IBIS-AMI 10 Gbps SerDes",
+        passed: m.isSquare && m.equalizedEyeHeightV > m.unequalizedEyeHeightV && m.eyeHeightBer1e12V > 0,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.daeEqCount,
+        threshold: 0,
+        details: `eyeH=${m.equalizedEyeHeightV.toFixed(3)}V, eyeW=${m.equalizedEyeWidthPs.toFixed(1)}ps, ${m.daeVarCount}x${m.daeEqCount} DAE`,
+      },
+    ];
+  },
+};

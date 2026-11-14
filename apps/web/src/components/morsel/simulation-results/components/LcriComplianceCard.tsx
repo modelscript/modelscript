@@ -53,7 +53,7 @@ export interface LcriComplianceCardProps {
 const CardContainer = styled.div<{ $isDark: boolean }>`
   border: 1px solid var(--color-border-default, ${(p) => (p.$isDark ? "#30363d" : "#d0d7de")});
   border-radius: 10px;
-  background: var(--color-canvas-subtle, ${(p) => (p.$isDark ? "#0d1117" : "#f6f8fa")});
+  background: var(--bgColor-inset, ${(p) => (p.$isDark ? "#121214" : "#f6f8fa")});
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -127,7 +127,7 @@ const MetricGrid = styled.div`
 `;
 
 const MetricTile = styled.div<{ $isDark: boolean; $alert?: boolean }>`
-  background: var(--color-canvas-default, ${(p) => (p.$isDark ? "#161b22" : "#ffffff")});
+  background: var(--bgColor-muted, ${(p) => (p.$isDark ? "#1e1e22" : "#ffffff")});
   border: 1px solid
     ${(p) => (p.$alert ? "var(--color-danger-emphasis, #da3633)" : "var(--color-border-subtle, #eaecef)")};
   border-radius: 8px;
@@ -160,7 +160,7 @@ const MetricSub = styled.span`
 `;
 
 const InventorySection = styled.div<{ $isDark: boolean }>`
-  background: var(--color-canvas-default, ${(p) => (p.$isDark ? "#161b22" : "#ffffff")});
+  background: var(--bgColor-muted, ${(p) => (p.$isDark ? "#1e1e22" : "#ffffff")});
   border: 1px solid var(--color-border-subtle, #eaecef);
   border-radius: 8px;
   padding: 12px 14px;

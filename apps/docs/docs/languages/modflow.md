@@ -11,13 +11,13 @@ description: "@modelscript/modflow (languages/modflow) provides native block-bas
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.dis`, `.dis6` | MODFLOW Discretization Package | 3D layered regular grid dimensions ($\Delta r, \Delta c$, top, bottom elevations) |
-| `.npf` | Node Property Flow Package | Horizontal/vertical hydraulic conductivities ($K_{xx}, K_{33}$) and storage properties |
-| `.wel` | Well Package | Extraction and injection well pumping rates per grid cell |
-| `.riv` | River Package | Surface water-groundwater hydraulic exchange conductance and river stage |
-| `.chd` | Constant-Head Package | Fixed piezometric head boundary conditions |
+| Extension       | Format                         | Description                                                                            |
+| :-------------- | :----------------------------- | :------------------------------------------------------------------------------------- |
+| `.dis`, `.dis6` | MODFLOW Discretization Package | 3D layered regular grid dimensions ($\Delta r, \Delta c$, top, bottom elevations)      |
+| `.npf`          | Node Property Flow Package     | Horizontal/vertical hydraulic conductivities ($K_{xx}, K_{33}$) and storage properties |
+| `.wel`          | Well Package                   | Extraction and injection well pumping rates per grid cell                              |
+| `.riv`          | River Package                  | Surface water-groundwater hydraulic exchange conductance and river stage               |
+| `.chd`          | Constant-Head Package          | Fixed piezometric head boundary conditions                                             |
 
 ---
 
@@ -41,6 +41,12 @@ description: "@modelscript/modflow (languages/modflow) provides native block-bas
 - Lowers unconfined/confined transient head equations into `@modelscript/runtime`'s `DAEBuilder`:
   $$S_s \Delta V \frac{dh}{dt} = \sum Q_{\text{flux}}$$
 - Allows municipal water planners to evaluate sustained well yield against drinking water demand profiles (`@modelscript/epanet`).
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="modflow" />
 
 ---
 
@@ -68,4 +74,3 @@ msx modflow solve CentralValley.dis6
 # Lower aquifer cell conductance matrix to ModelScript linear DAE arena
 msx modflow to-dae CentralValley.dis6 --out=aquifer.dae
 ```
-

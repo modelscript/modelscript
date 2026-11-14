@@ -4,7 +4,7 @@
  * ModelScript Optical Fiber Outside Plant (OSP) & GIS Language Definition.
  */
 
-import { language } from "@modelscript/dsl";
+import { jsonRules, language } from "@modelscript/dsl";
 import { DAEBuilder } from "@modelscript/runtime";
 import { findNetworkSrlgSpofs, type SrlgNetwork, type SrlgPath } from "./analysis/srlg-analyzer.js";
 import { lowerFiberNetworkToDae } from "./dae/lowering.js";
@@ -15,12 +15,16 @@ export const fiberLanguage = language({
   name: "fiber",
   fileExtensions: [".fiber.geojson", ".osp.json"],
   maturity: "stable",
+  extras: () => [/[ \t\r\n]+/],
+  rules: jsonRules,
   indexing: {
     indexFile: indexFiberDocument,
     canIndex: canIndexFiber,
   },
   lsp: {
     fileExtensions: [".fiber.geojson", ".osp.json", ".geojson", ".json"],
+    folding: ["JsonObject", "JsonArray"],
+    outline: ["JsonPair"],
   },
 
   actions: [

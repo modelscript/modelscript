@@ -1319,16 +1319,27 @@ export async function fetchBenchmark(entry: BenchmarkEntry, options: FetchOption
     `[fetch-benchmarks] Ingesting ${entry.name} (${entry.version}) [lang: ${entry.language}, tier: ${entry.tier}]...`,
   );
 
-  // 1. If already extracted and not forced, return cached
+  // 1. If already extracted and not forced, return cached (unless --verify requires archive checksum validation)
   const existingFiles = fs.readdirSync(extractDir);
   if (existingFiles.length > 0 && !options.force) {
-    console.log(`[fetch-benchmarks] Using existing cached benchmarks at ${extractDir} (${existingFiles.length} items)`);
-    return true;
+    if (!options.verify || !entry.upstream?.sha256) {
+      console.log(
+        `[fetch-benchmarks] Using existing cached benchmarks at ${extractDir} (${existingFiles.length} items)`,
+      );
+      return true;
+    }
+    if (fs.existsSync(archivePath) && computeSha256(archivePath) === entry.upstream.sha256) {
+      console.log(`[fetch-benchmarks] Verified cached benchmark archive SHA-256 at ${archivePath}`);
+      return true;
+    }
+    console.warn(
+      `[fetch-benchmarks] Cached archive missing or checksum mismatch for ${entry.filename} under --verify; re-downloading...`,
+    );
   }
 
-  // 2. Download from upstream or fallback URLs
+  // 2. Download from upstream or fallback URLs (skip only in explicit --synthetic offline mode unless --force)
   let downloaded = false;
-  if (!options.ci || options.force) {
+  if (!options.offlineFallback || options.force) {
     const urls = [entry.upstream?.url, entry.upstream?.fallbackUrl, ...(entry.upstream?.mirrorUrls || [])].filter(
       Boolean,
     ) as string[];
@@ -1398,7 +1409,13 @@ export async function fetchBenchmark(entry: BenchmarkEntry, options: FetchOption
     }
   }
 
-  // 4. In CI or offline fallback mode, synthesize canonical reference fixtures
+  // 4. Only synthesize canonical reference fixtures when explicitly requested (--synthetic)
+  if (!options.offlineFallback) {
+    console.error(
+      `[fetch-benchmarks] Failed to fetch/verify real benchmark fixtures for ${entry.language} (${entry.name}); re-run with --synthetic only for offline smoke fixtures.`,
+    );
+    return false;
+  }
   console.log(`[fetch-benchmarks] Generating synthetic reference fixtures for ${entry.language} at ${extractDir}`);
   createSyntheticBenchmarkFixtures(entry, extractDir);
   return true;
@@ -1421,6 +1438,9 @@ export async function fetchBenchmarks(options: FetchOptions = {}): Promise<void>
   }
 
   console.log(`[fetch-benchmarks] Selected ${targets.length} benchmark suites for ingestion.`);
+  if (targets.length === 0) {
+    throw new Error(`[fetch-benchmarks] No benchmark suites matched the specified filter criteria.`);
+  }
 
   const results: Array<{ id: string; language: string; success: boolean; path: string }> = [];
 
@@ -1458,6 +1478,12 @@ export async function fetchBenchmarks(options: FetchOptions = {}): Promise<void>
     `[fetch-benchmarks] Completed: ${manifest.successful}/${manifest.totalBenchmarks} benchmark suites ready.`,
   );
   console.log(`[fetch-benchmarks] Cache manifest updated at ${manifestPath}`);
+
+  if ((options.ci || options.verify) && manifest.successful < manifest.totalBenchmarks) {
+    throw new Error(
+      `[fetch-benchmarks] ${manifest.totalBenchmarks - manifest.successful}/${manifest.totalBenchmarks} benchmark suite(s) failed in ${options.ci ? "--ci" : "--verify"} mode.`,
+    );
+  }
 }
 
 // CLI entrypoint
@@ -1482,9 +1508,10 @@ if (process.argv[1] === __filename) {
       options.verify = true;
     } else if (arg === "--force") {
       options.force = true;
+    } else if (arg === "--synthetic") {
+      options.offlineFallback = true;
     } else if (arg === "--ci") {
       options.ci = true;
-      options.offlineFallback = true;
     }
   }
 

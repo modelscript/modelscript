@@ -1440,7 +1440,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     }
     .badge.created { background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
     .badge.running { background: #2da44e20; color: #2da44e; }
-    .badge.completed { background: #0969da20; color: #0969da; }
+    .badge.completed { background: rgba(34, 211, 238, 0.14); color: var(--vscode-textLink-foreground, #22d3ee); }
     .badge.error { background: #cf222e20; color: #cf222e; }
     .empty-state {
       padding: 12px 0;
@@ -1527,14 +1527,14 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     }
     .progress-track {
       height: 4px;
-      background: var(--vscode-progressBar-background, #0969da);
+      background: var(--vscode-progressBar-background, #0891b2);
       opacity: 0.2;
       border-radius: 2px;
       overflow: hidden;
     }
     .progress-fill {
       height: 100%;
-      background: var(--vscode-progressBar-background, #0969da);
+      background: var(--vscode-progressBar-background, #0891b2);
       opacity: 1;
       border-radius: 2px;
       transition: width 0.3s ease;
@@ -1548,8 +1548,8 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
     /* ── Wrapper detection banner ── */
     .wrapper-banner {
-      background: var(--vscode-editorInfo-background, #0969da15);
-      border: 1px solid var(--vscode-editorInfo-border, #0969da40);
+      background: var(--vscode-editorInfo-background, rgba(34, 211, 238, 0.1));
+      border: 1px solid var(--vscode-editorInfo-border, rgba(34, 211, 238, 0.3));
       border-radius: 4px;
       padding: 8px 10px;
       margin-bottom: 8px;
@@ -1577,7 +1577,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     }
     .hil-badge.active {
       color: #fff;
-      background: var(--vscode-charts-blue, #0969da);
+      background: var(--vscode-charts-blue, #0891b2);
       animation: hilPulse 1.5s infinite ease-in-out;
     }
     @keyframes hilPulse {
@@ -1590,7 +1590,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       font-weight: bold;
     }
     .can-dir-tx {
-      color: var(--vscode-charts-blue, #0969da);
+      color: var(--vscode-textLink-foreground, #22d3ee);
       font-weight: bold;
     }
   </style>

@@ -81,3 +81,8 @@ msx ran antenna sector_65deg.adf
 msx ran fresnel --freq=11.0 --dist=15.0
 ```
 
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="ran" />

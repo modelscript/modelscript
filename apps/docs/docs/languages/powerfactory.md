@@ -11,13 +11,13 @@ The `@modelscript/powerfactory` language package (`languages/powerfactory`) prov
 
 ## Supported Object Classes & File Formats
 
-| Format / Class                  | Specification                      | Key Structural Features                                                                                  |
-| :------------------------------ | :--------------------------------- | :------------------------------------------------------------------------------------------------------- |
-| **`.dz` / `.pfd` / `.dgs`**     | Project Archive & Data Exchange    | Substations (`ElmSubstat`), terminals (`ElmTerm`), switches (`StaSwitch`, `ElmCoup`), graphic netboards  |
-| **`ElmLne` / `TypLne`**         | AC Transmission Lines & Cables     | Positive/zero-sequence impedance ($R_1, X_1, B_1, R_0, X_0, B_0$), thermal rating, parallel circuits     |
-| **`ElmTr2` / `ElmTr3`**         | 2- & 3-Winding Power Transformers  | HV/MV/LV nominal voltages, vector groups (`YNd11`, `Dyn5`), off-nominal tap changers, short-circuit $u_k$|
-| **`ElmSym` / `ElmGenstat`**     | Synchronous & Static IBR Generators| Active/reactive dispatch, voltage setpoint $u_{\text{setp}}$, capability curves, synchronous reactances  |
-| **`.dsl` (`BlkDef`)**           | DIgSILENT Simulation Language      | Continuous transfer functions, PI/lag/lead-lag blocks, state derivatives, and non-linear limiters        |
+| Format / Class              | Specification                       | Key Structural Features                                                                                   |
+| :-------------------------- | :---------------------------------- | :-------------------------------------------------------------------------------------------------------- |
+| **`.dz` / `.pfd` / `.dgs`** | Project Archive & Data Exchange     | Substations (`ElmSubstat`), terminals (`ElmTerm`), switches (`StaSwitch`, `ElmCoup`), graphic netboards   |
+| **`ElmLne` / `TypLne`**     | AC Transmission Lines & Cables      | Positive/zero-sequence impedance ($R_1, X_1, B_1, R_0, X_0, B_0$), thermal rating, parallel circuits      |
+| **`ElmTr2` / `ElmTr3`**     | 2- & 3-Winding Power Transformers   | HV/MV/LV nominal voltages, vector groups (`YNd11`, `Dyn5`), off-nominal tap changers, short-circuit $u_k$ |
+| **`ElmSym` / `ElmGenstat`** | Synchronous & Static IBR Generators | Active/reactive dispatch, voltage setpoint $u_{\text{setp}}$, capability curves, synchronous reactances   |
+| **`.dsl` (`BlkDef`)**       | DIgSILENT Simulation Language       | Continuous transfer functions, PI/lag/lead-lag blocks, state derivatives, and non-linear limiters         |
 
 ---
 
@@ -114,3 +114,9 @@ msx powerfactory diagram grid.pfd --out=grid-sld.svg
 msx powerfactory to-psse grid.pfd --out=grid.raw
 msx powerfactory to-modelica grid.pfd --out=GridModel.mo
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="powerfactory" />

@@ -297,8 +297,8 @@ export const ActionMenuDropdown = styled.div`
   position: absolute;
   right: 0;
   top: calc(100% + 4px);
-  background: var(--color-bg-primary, #0d1117);
-  border: 1px solid var(--color-border-default, #30363d);
+  background: var(--ms-bg-surface, var(--color-bg-primary));
+  border: 1px solid var(--ms-border-default, var(--color-border-default));
   border-radius: 8px;
   padding: 4px;
   min-width: 190px;

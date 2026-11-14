@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language } from "@modelscript/dsl";
+import { iniSectionRules, language } from "@modelscript/dsl";
 import { lowerSwmmToDae } from "./dae/swmm-to-dae.js";
 import { canIndexSwmmFile, indexSwmmFile } from "./indexing.js";
 import { lintSwmm } from "./lints/index.js";
@@ -15,12 +15,16 @@ export const swmmLanguage = language({
   name: "swmm",
   fileExtensions: [".swmm", ".inp", ".swmm.inp"],
   maturity: "experimental",
+  extras: ($) => [/[ \t\r\n]+/, $.IniComment],
+  rules: iniSectionRules,
   indexing: {
     indexFile: indexSwmmFile,
     canIndex: canIndexSwmmFile,
   },
   lsp: {
     fileExtensions: [".swmm", ".inp", ".swmm.inp"],
+    folding: ["IniSectionHeader"],
+    outline: ["IniSectionHeader"],
     icons: {
       light: "./assets/swmm/icon-light.png",
       dark: "./assets/swmm/icon-dark.png",

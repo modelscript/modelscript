@@ -14,7 +14,7 @@ import {
   WorkflowIcon,
   XIcon,
 } from "@primer/octicons-react";
-import { Button, IconButton, SegmentedControl } from "@primer/react";
+import { Breadcrumbs, Button, IconButton, SegmentedControl, UnderlineNav } from "@primer/react";
 import type { editor } from "monaco-editor";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useCapabilities } from "../../../CapabilitiesContext";
@@ -772,64 +772,31 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
       }}
     >
       {nestedModels.length > 1 && (
-        <div
+        <UnderlineNav
+          aria-label="Models"
           style={{
-            display: "flex",
-            alignItems: "center",
-            width: "100%",
-            gap: 0,
-            padding: "0 0",
-            overflowX: "auto",
             flexShrink: 0,
-            borderBottom:
-              colorMode === "dark" ? "1px solid rgba(255, 255, 255, 0.08)" : "1px solid rgba(0, 0, 0, 0.08)",
-            backgroundColor: colorMode === "dark" ? "rgba(22, 27, 34, 0.6)" : "rgba(246, 248, 250, 0.8)",
+            backgroundColor: "var(--bgColor-muted, var(--ms-bg-elv))",
+            borderBottom: "1px solid var(--borderColor-muted, var(--ms-divider))",
+            minHeight: 38,
+            paddingLeft: 8,
+            paddingRight: 8,
           }}
         >
           {nestedModels.map((model, index) => (
-            <button
+            <UnderlineNav.Item
               key={(model as any).name ?? index}
-              onClick={() => {
+              aria-current={selectedModelIndex === index ? "page" : undefined}
+              onSelect={(e) => {
+                e.preventDefault();
                 setSelectedModelIndex(index);
                 setSelectedTreeClassName(model.name);
               }}
-              style={{
-                padding: "6px 16px",
-                fontSize: 13,
-                fontWeight: selectedModelIndex === index ? 600 : 400,
-                border: "none",
-                borderBottom:
-                  selectedModelIndex === index ? "2px solid var(--ms-brand, #0891b2)" : "2px solid transparent",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                backgroundColor: "transparent",
-                color:
-                  selectedModelIndex === index
-                    ? "var(--ms-text-1, var(--color-fg-default))"
-                    : "var(--ms-text-2, var(--color-fg-muted))",
-                transition: "all 0.15s ease",
-                display: "inline-grid",
-                justifyItems: "center",
-              }}
-              onMouseEnter={(e) => {
-                if (selectedModelIndex !== index) {
-                  (e.currentTarget as HTMLElement).style.backgroundColor =
-                    colorMode === "dark" ? "rgba(255, 255, 255, 0.04)" : "rgba(0, 0, 0, 0.03)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (selectedModelIndex !== index) {
-                  (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                }
-              }}
             >
-              <span style={{ gridArea: "1 / 1", visibility: "hidden", fontWeight: 600 }} aria-hidden="true">
-                {(model as any).name ?? `Model ${index + 1}`}
-              </span>
-              <span style={{ gridArea: "1 / 1" }}>{(model as any).name ?? `Model ${index + 1}`}</span>
-            </button>
+              {(model as any).name ?? `Model ${index + 1}`}
+            </UnderlineNav.Item>
           ))}
-        </div>
+        </UnderlineNav>
       )}
 
       {/* Floating View Switcher & Actions (Only in standalone embedded mode without top workbench navbar) */}
@@ -865,12 +832,12 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 boxSizing: "border-box",
                 padding: isNarrow ? "4px 8px" : "6px 10px",
                 borderRadius: 12,
-                backgroundColor: colorMode === "dark" ? "rgba(15, 22, 38, 0.9)" : "rgba(255, 255, 255, 0.9)",
+                backgroundColor: "var(--ms-surface-glass)",
                 backdropFilter: "blur(12px)",
                 boxShadow:
                   colorMode === "dark"
-                    ? "0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(148, 163, 184, 0.16)"
-                    : "0 4px 24px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.08)",
+                    ? "0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--borderColor-muted, var(--ms-divider))"
+                    : "0 4px 24px rgba(0, 0, 0, 0.1), 0 0 0 1px var(--borderColor-muted, var(--ms-divider))",
               }}
             >
               {isPlaygroundRoute && !isNarrow && setTreeVisible && (
@@ -1093,12 +1060,12 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   gap: 6,
                   padding: "6px 12px",
                   borderRadius: 10,
-                  backgroundColor: colorMode === "dark" ? "rgba(22, 27, 34, 0.95)" : "rgba(255, 255, 255, 0.95)",
+                  backgroundColor: "var(--ms-surface-glass)",
                   backdropFilter: "blur(12px)",
                   boxShadow:
                     colorMode === "dark"
-                      ? "0 4px 16px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08)"
-                      : "0 4px 16px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.06)",
+                      ? "0 4px 16px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--borderColor-muted, var(--ms-divider))"
+                      : "0 4px 16px rgba(0, 0, 0, 0.1), 0 0 0 1px var(--borderColor-muted, var(--ms-divider))",
                 }}
               >
                 <span
@@ -1165,52 +1132,37 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 zIndex: 90,
                 display: "flex",
                 alignItems: "center",
-                gap: 6,
                 padding: "4px 10px",
                 borderRadius: 8,
-                backgroundColor: colorMode === "dark" ? "rgba(22, 27, 34, 0.9)" : "rgba(255, 255, 255, 0.92)",
-                border: colorMode === "dark" ? "1px solid rgba(255, 255, 255, 0.1)" : "1px solid rgba(0, 0, 0, 0.1)",
-                fontSize: 12,
+                backgroundColor: "var(--ms-surface-glass)",
+                border: "1px solid var(--borderColor-muted, var(--ms-divider))",
+                backdropFilter: "blur(12px)",
               }}
             >
-              <button
-                type="button"
-                onClick={() => onDrillRoot?.()}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  color: "var(--ms-brand, var(--color-accent-fg))",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  padding: "0 2px",
-                  fontSize: 12,
-                }}
-              >
-                Root
-              </button>
-              {drillDownPath.map((seg, idx) => (
-                <React.Fragment key={`${seg}-${idx}`}>
-                  <span style={{ color: "var(--ms-text-2, var(--color-fg-muted))" }}>›</span>
-                  <button
-                    type="button"
-                    onClick={() => onDrillUp?.(idx)}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      color:
-                        idx === drillDownPath.length - 1
-                          ? "var(--ms-text-1, var(--color-fg-default))"
-                          : "var(--ms-brand, var(--color-accent-fg))",
-                      fontWeight: idx === drillDownPath.length - 1 ? 600 : 500,
-                      cursor: "pointer",
-                      padding: "0 2px",
-                      fontSize: 12,
+              <Breadcrumbs>
+                <Breadcrumbs.Item
+                  href="#root"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onDrillRoot?.();
+                  }}
+                >
+                  Root
+                </Breadcrumbs.Item>
+                {drillDownPath.map((seg, idx) => (
+                  <Breadcrumbs.Item
+                    key={`${seg}-${idx}`}
+                    href={`#${seg}`}
+                    selected={idx === drillDownPath.length - 1}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onDrillUp?.(idx);
                     }}
                   >
                     {seg}
-                  </button>
-                </React.Fragment>
-              ))}
+                  </Breadcrumbs.Item>
+                ))}
+              </Breadcrumbs>
             </div>
           )}
 
@@ -1233,9 +1185,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   justifyContent: "space-between",
                   padding: "4px 12px",
                   minHeight: 36,
-                  borderBottom:
-                    colorMode === "dark" ? "1px solid rgba(255, 255, 255, 0.08)" : "1px solid rgba(0, 0, 0, 0.06)",
-                  backgroundColor: colorMode === "dark" ? "rgba(13, 17, 23, 0.65)" : "rgba(246, 248, 250, 0.75)",
+                  borderBottom: "1px solid var(--borderColor-muted, var(--ms-divider))",
+                  backgroundColor: "var(--bgColor-muted, var(--ms-bg-elv))",
                   backdropFilter: "blur(8px)",
                   gap: 8,
                   flexShrink: 0,
@@ -1260,46 +1211,30 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     />
                   )}
                   {drillDownPath && drillDownPath.length > 0 ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
-                      <button
-                        type="button"
-                        onClick={() => onDrillRoot?.()}
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          color: "var(--ms-brand, var(--color-accent-fg))",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          padding: "0 2px",
-                          fontSize: 12,
+                    <Breadcrumbs>
+                      <Breadcrumbs.Item
+                        href="#root"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          onDrillRoot?.();
                         }}
                       >
                         Root
-                      </button>
+                      </Breadcrumbs.Item>
                       {drillDownPath.map((seg, idx) => (
-                        <React.Fragment key={`${seg}-${idx}`}>
-                          <span style={{ color: "var(--ms-text-2, var(--color-fg-muted))" }}>›</span>
-                          <button
-                            type="button"
-                            onClick={() => onDrillUp?.(idx)}
-                            style={{
-                              border: "none",
-                              background: "transparent",
-                              color:
-                                idx === drillDownPath.length - 1
-                                  ? "var(--ms-text-1, var(--color-fg-default))"
-                                  : "var(--ms-brand, var(--color-accent-fg))",
-                              fontWeight: idx === drillDownPath.length - 1 ? 600 : 500,
-                              cursor: "pointer",
-                              padding: "0 2px",
-                              fontSize: 12,
-                            }}
-                          >
-                            {seg}
-                          </button>
-                        </React.Fragment>
+                        <Breadcrumbs.Item
+                          key={`${seg}-${idx}`}
+                          href={`#${seg}`}
+                          selected={idx === drillDownPath.length - 1}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            onDrillUp?.(idx);
+                          }}
+                        >
+                          {seg}
+                        </Breadcrumbs.Item>
                       ))}
-                    </div>
+                    </Breadcrumbs>
                   ) : (
                     <div
                       style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden" }}
@@ -1308,7 +1243,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                         style={{
                           fontSize: 12,
                           fontWeight: 600,
-                          color: "var(--color-fg-default, var(--ms-text-1))",
+                          color: "var(--fgColor-default, var(--ms-text-1))",
                           whiteSpace: "nowrap",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
@@ -1324,43 +1259,20 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 {/* Right: Diagram Type Selector (Diagram | Icon) */}
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                   {activeLangInfo.diagramTypes && activeLangInfo.diagramTypes.length > 1 && setDiagramType && (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 2,
-                        padding: 2,
-                        borderRadius: 6,
-                        backgroundColor: colorMode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
+                    <SegmentedControl
+                      aria-label="Diagram type"
+                      size="small"
+                      onChange={(idx) => {
+                        const dt = activeLangInfo.diagramTypes?.[idx];
+                        if (dt) setDiagramType(dt.id);
                       }}
                     >
-                      {activeLangInfo.diagramTypes.map((dt) => {
-                        const isSelected = effectiveDiagramType === dt.id;
-                        return (
-                          <button
-                            key={dt.id}
-                            type="button"
-                            onClick={() => setDiagramType(dt.id)}
-                            style={{
-                              border: "none",
-                              borderRadius: 4,
-                              padding: "2px 8px",
-                              fontSize: 11,
-                              fontWeight: isSelected ? 600 : 400,
-                              cursor: "pointer",
-                              backgroundColor: isSelected
-                                ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.16))"
-                                : "transparent",
-                              color: isSelected
-                                ? "var(--ms-brand, var(--color-accent-fg))"
-                                : "var(--ms-text-2, var(--color-fg-muted))",
-                            }}
-                          >
-                            {dt.label}
-                          </button>
-                        );
-                      })}
-                    </div>
+                      {activeLangInfo.diagramTypes.map((dt) => (
+                        <SegmentedControl.Button key={dt.id} selected={effectiveDiagramType === dt.id}>
+                          {dt.label}
+                        </SegmentedControl.Button>
+                      ))}
+                    </SegmentedControl>
                   )}
                 </div>
               </div>
@@ -1375,9 +1287,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   flexWrap: "wrap",
                   gap: 6,
                   padding: "6px 12px",
-                  borderBottom:
-                    colorMode === "dark" ? "1px solid rgba(255, 255, 255, 0.08)" : "1px solid rgba(0, 0, 0, 0.06)",
-                  backgroundColor: colorMode === "dark" ? "rgba(22, 27, 34, 0.95)" : "rgba(255, 255, 255, 0.95)",
+                  borderBottom: "1px solid var(--borderColor-muted, var(--ms-divider))",
+                  backgroundColor: "var(--bgColor-muted, var(--ms-bg-elv))",
                   backdropFilter: "blur(12px)",
                   flexShrink: 0,
                   zIndex: 9,
@@ -1509,11 +1420,10 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       gap: 6,
                       padding: "6px 14px",
                       borderRadius: "999px",
-                      background: colorMode === "dark" ? "rgba(22, 27, 34, 0.78)" : "rgba(255, 255, 255, 0.82)",
+                      background: "var(--ms-surface-glass)",
                       backdropFilter: "blur(8px)",
-                      border:
-                        colorMode === "dark" ? "1px solid rgba(255, 255, 255, 0.08)" : "1px solid rgba(0, 0, 0, 0.08)",
-                      color: "var(--color-fg-muted, #8b949e)",
+                      border: "1px solid var(--borderColor-muted, var(--ms-divider))",
+                      color: "var(--fgColor-muted, var(--ms-text-2))",
                       fontSize: 11,
                       fontWeight: 500,
                       zIndex: 5,
@@ -1542,9 +1452,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     width: "calc(100% - 48px)",
                     padding: "28px 24px 22px 24px",
                     borderRadius: "16px",
-                    background: colorMode === "dark" ? "rgba(13, 17, 23, 0.94)" : "rgba(255, 255, 255, 0.95)",
-                    border:
-                      colorMode === "dark" ? "1px solid rgba(48, 54, 61, 0.85)" : "1px solid rgba(208, 215, 222, 0.9)",
+                    background: "var(--ms-surface-glass)",
+                    border: "1px solid var(--borderColor-default, var(--ms-border))",
                     backdropFilter: "blur(20px)",
                     boxShadow:
                       colorMode === "dark"
@@ -1675,12 +1584,9 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                           justifyContent: "space-between",
                           padding: "10px 14px",
                           borderRadius: "10px",
-                          border:
-                            colorMode === "dark"
-                              ? "1px solid rgba(48, 54, 61, 0.8)"
-                              : "1px solid rgba(208, 215, 222, 0.9)",
-                          background: colorMode === "dark" ? "rgba(22, 27, 34, 0.6)" : "rgba(246, 248, 250, 0.8)",
-                          color: "var(--color-fg-default)",
+                          border: "1px solid var(--borderColor-default, var(--ms-border))",
+                          background: "var(--bgColor-muted, var(--ms-bg-elv))",
+                          color: "var(--fgColor-default, var(--ms-text-1))",
                           cursor: "pointer",
                           textAlign: "left",
                           transition: "all 0.15s ease",
@@ -1698,7 +1604,9 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                           e.currentTarget.style.borderColor =
                             colorMode === "dark" ? "rgba(48, 54, 61, 0.8)" : "rgba(208, 215, 222, 0.9)";
                           e.currentTarget.style.background =
-                            colorMode === "dark" ? "rgba(22, 27, 34, 0.6)" : "rgba(246, 248, 250, 0.8)";
+                            colorMode === "dark"
+                              ? "var(--bgColor-muted, var(--ms-bg-elv))"
+                              : "rgba(246, 248, 250, 0.8)";
                           e.currentTarget.style.transform = "none";
                           e.currentTarget.style.boxShadow = "none";
                         }}
@@ -2140,11 +2048,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                             minWidth: 140,
                             padding: 5,
                             borderRadius: 10,
-                            border:
-                              colorMode === "dark"
-                                ? "1px solid rgba(255, 255, 255, 0.15)"
-                                : "1px solid rgba(0, 0, 0, 0.12)",
-                            backgroundColor: colorMode === "dark" ? "#1f242c" : "#ffffff",
+                            border: "1px solid var(--borderColor-default, var(--ms-border))",
+                            backgroundColor: "var(--overlay-bgColor, var(--ms-bg-elv))",
                             boxShadow:
                               colorMode === "dark"
                                 ? "0 12px 32px rgba(0, 0, 0, 0.45)"
@@ -2396,11 +2301,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                           minWidth: 175,
                           padding: 6,
                           borderRadius: 10,
-                          border:
-                            colorMode === "dark"
-                              ? "1px solid rgba(255, 255, 255, 0.15)"
-                              : "1px solid rgba(0, 0, 0, 0.12)",
-                          backgroundColor: colorMode === "dark" ? "#1f242c" : "#ffffff",
+                          border: "1px solid var(--borderColor-default, var(--ms-border))",
+                          backgroundColor: "var(--overlay-bgColor, var(--ms-bg-elv))",
                           boxShadow:
                             colorMode === "dark"
                               ? "0 12px 32px rgba(0, 0, 0, 0.45)"

@@ -11,10 +11,10 @@ description: "@modelscript/tough (languages/tough) provides native card-based pa
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.tgh`, `.tough` | TOUGH Input Deck | Standard LBNL fixed-width ASCII block deck for reservoir modeling |
-| `.dat` | TOUGH / MULKOM Data File | Classic geothermal reservoir simulation deck |
+| Extension        | Format                   | Description                                                       |
+| :--------------- | :----------------------- | :---------------------------------------------------------------- |
+| `.tgh`, `.tough` | TOUGH Input Deck         | Standard LBNL fixed-width ASCII block deck for reservoir modeling |
+| `.dat`           | TOUGH / MULKOM Data File | Classic geothermal reservoir simulation deck                      |
 
 ---
 
@@ -45,6 +45,12 @@ description: "@modelscript/tough (languages/tough) provides native card-based pa
   where phase advection follows multiphase Darcy's law:
   $$\mathbf{F}_\beta = -k \frac{k_{r\beta}}{\mu_\beta} \rho_\beta (\nabla P_\beta - \rho_\beta \mathbf{g})$$
 - Directly connects geothermal district heating outputs into building heating loops (`@modelscript/energyplus`) and regional electrical grids (`@modelscript/opendss`).
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="tough" />
 
 ---
 

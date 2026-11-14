@@ -82,6 +82,7 @@ export default defineConfig([
       "packages/simulate/scripts/**",
       "packages/runtime/assembly/**",
       "**/assembly/**",
+      "languages/*/assets/**",
       "packages/runtime/src/wasm/**",
       "packages/runtime/build/**",
       "packages/dsl/src/codegen/runtime/**",
@@ -256,7 +257,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["packages/**/*.{ts,tsx}", "languages/**/*.{ts,tsx}"],
+    files: ["packages/**/*.{ts,tsx}", "languages/**/*.{ts,tsx}", "apps/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -264,7 +265,7 @@ export default defineConfig([
           patterns: [
             {
               group: ["@modelscript/ee", "@modelscript/ee/*", "**/ee/**"],
-              message: "AGPL-3.0 core packages and languages must never import from Enterprise Edition (ee/).",
+              message: "AGPL-3.0 core packages, languages, and apps must never import from Enterprise Edition (ee/).",
             },
           ],
         },

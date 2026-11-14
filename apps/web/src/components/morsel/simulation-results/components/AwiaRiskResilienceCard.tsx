@@ -45,7 +45,7 @@ export interface AwiaRiskResilienceCardProps {
 const CardContainer = styled.div<{ $isDark: boolean }>`
   border: 1px solid var(--color-border-default, ${(p) => (p.$isDark ? "#30363d" : "#d0d7de")});
   border-radius: 10px;
-  background: var(--color-canvas-subtle, ${(p) => (p.$isDark ? "#0d1117" : "#f6f8fa")});
+  background: var(--bgColor-inset, ${(p) => (p.$isDark ? "#121214" : "#f6f8fa")});
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -118,7 +118,7 @@ const ActionBtn = styled.button`
   font-size: 12px;
   font-weight: 600;
   border: 1px solid var(--color-border-default, #30363d);
-  background: var(--color-canvas-default, #161b22);
+  background: var(--bgColor-muted, var(--ms-bg-elv));
   color: var(--color-fg-default, #c9d1d9);
   cursor: pointer;
   transition: background 0.15s ease;
@@ -133,7 +133,7 @@ const MetaGrid = styled.div`
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 8px;
   padding: 10px 14px;
-  background: var(--color-canvas-default, #161b22);
+  background: var(--bgColor-muted, var(--ms-bg-elv));
   border: 1px solid var(--color-border-subtle, #21262d);
   border-radius: 6px;
   font-size: 12px;
@@ -170,7 +170,7 @@ const CheckRow = styled.div<{ $status: "PASS" | "FAIL" | "WARN"; $expanded: bool
     ${(p) =>
       p.$status === "FAIL" ? "rgba(218, 54, 51, 0.4)" : "var(--color-border-subtle, rgba(255, 255, 255, 0.08))"};
   border-radius: 6px;
-  background: var(--color-canvas-default, #161b22);
+  background: var(--bgColor-muted, var(--ms-bg-elv));
   overflow: hidden;
   transition: border-color 0.15s ease;
 `;
@@ -201,7 +201,7 @@ const SectionPill = styled.span`
   padding: 2px 6px;
   border-radius: 4px;
   background: var(--color-canvas-subtle, #21262d);
-  color: var(--color-accent-fg, #58a6ff);
+  color: var(--fgColor-accent, var(--ms-brand));
   font-weight: 600;
 `;
 
@@ -235,7 +235,7 @@ const MetricComparison = styled.div`
   gap: 12px;
   padding: 8px 12px;
   border-radius: 4px;
-  background: var(--color-canvas-default, #161b22);
+  background: var(--bgColor-muted, var(--ms-bg-elv));
   border: 1px solid var(--color-border-subtle, #30363d);
 `;
 

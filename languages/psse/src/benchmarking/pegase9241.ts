@@ -14,6 +14,7 @@
  * 7. Discrepancy analysis (RMSE, NRMSE, Theil's TIC) and self-contained interactive HTML dashboard.
  */
 
+import { solveMultiIslandPowerFlow } from "../solver/island-solver.js";
 import {
   BusType,
   type AreaRecord,
@@ -24,7 +25,14 @@ import {
   type PsseCase,
   type TransformerRecord,
 } from "../types.js";
-import { calculateSotaDiscrepancy, generateSotaHtmlDashboard, type SotaDashboardReport } from "./sota-discrepancy.js";
+import { runLinearAcccBenchmarkScreening } from "./accc-benchmarker.js";
+import {
+  computePsseSotaComparison,
+  generateSotaHtmlDashboard,
+  type PsseSotaComparisonOptions,
+  type PsseSotaParityStatus,
+  type SotaDashboardReport,
+} from "./sota-discrepancy.js";
 
 export const PEGASE_REGIONS: readonly string[] = [
   "North-West (FR-BE-NL)",
@@ -65,15 +73,15 @@ export interface Pegase9241BenchmarkResult {
   };
   comparisonVsSota: {
     sotaTool: string;
-    sotaEstimatedDurationMs: number;
-    speedupFactor: number;
-    discrepancyRmse: number;
-    discrepancyNrmsePct: number;
-    theilTic: number;
-    theilUm: number;
-    theilUs: number;
-    theilUc: number;
-    parityStatus: "PASS" | "WARN" | "FAIL";
+    sotaEstimatedDurationMs: number | null;
+    speedupFactor: number | null;
+    discrepancyRmse: number | null;
+    discrepancyNrmsePct: number | null;
+    theilTic: number | null;
+    theilUm: number | null;
+    theilUs: number | null;
+    theilUc: number | null;
+    parityStatus: PsseSotaParityStatus;
   };
   psseTabulatedCsv: string;
   htmlDashboard?: string | undefined;
@@ -409,6 +417,17 @@ export function generatePegase9241Case(options?: { stressMultiplier?: number }):
     });
   }
 
+  // Balance scheduled active power generation against nominal system load + ~1.5% loss margin
+  // so the multi-region network has a valid AC equilibrium for stressMultiplier == 1.0.
+  let totalNominalLoadMw = 0;
+  for (const l of loads) totalNominalLoadMw += l.pl / Math.max(1e-6, stressMultiplier);
+  let totalRawGenMw = 0;
+  for (const g of generators) totalRawGenMw += g.pg;
+  if (totalRawGenMw > 0 && totalNominalLoadMw > 0) {
+    const dispatchScale = (totalNominalLoadMw * 1.015) / totalRawGenMw;
+    for (const g of generators) g.pg = Number((g.pg * dispatchScale).toFixed(2));
+  }
+
   return {
     header: {
       ic: 0,
@@ -436,60 +455,61 @@ export function generatePegase9241Case(options?: { stressMultiplier?: number }):
 /**
  * Runs the PEGASE 9,241-Bus Pan-European Benchmark Suite.
  */
-export async function runPegase9241Benchmark(options?: {
-  stressMultiplier?: number;
-  contingencyScreenCount?: number;
-  generateHtml?: boolean;
-}): Promise<Pegase9241BenchmarkResult> {
+export async function runPegase9241Benchmark(
+  options?: PsseSotaComparisonOptions & {
+    stressMultiplier?: number;
+    contingencyScreenCount?: number;
+    generateHtml?: boolean;
+  },
+): Promise<Pegase9241BenchmarkResult> {
   const stressMultiplier = options?.stressMultiplier ?? 1.0;
   const psseCase = generatePegase9241Case({ stressMultiplier });
 
-  // 1. Solve Base Case AC Power Flow with Sparse Newton-Raphson & Generator Q-Limit Handling
-  const pfStart = performance.now();
-  // Simulated high-efficiency sparse LU solve with AMD minimum-degree ordering
-  const pfTimeMs = Math.max(16.5, performance.now() - pfStart + 18.0);
-
-  // 2. High-Throughput ACCC Contingency Screening
-  const branchCount = psseCase.branches.length;
-  const numScreen = Math.min(options?.contingencyScreenCount ?? 50, branchCount);
-
-  let convergedContingencies = 0;
-  let totalViolations = 0;
-  let worstContingencyLabel = "NONE";
-  let maxBranchLoadingPct = 0.0;
-
-  const acccStart = performance.now();
-  const csvRows: string[] = [
-    "CONTINGENCY LABEL,STATUS,ITERATIONS,MAX % LOADING,WORST MONITORED BRANCH,FLOW MVA,RATING MVA,LOWEST VOLTAGE PU,LOWEST VOLTAGE BUS,VOLTAGE VIOLATIONS COUNT,SEVERITY INDEX,EXECUTION TIME MS",
-  ];
-
-  for (let c = 0; c < numScreen; c++) {
-    const branchOut = psseCase.branches[c]!;
-    const cktLabel = `LINE_${branchOut.i}_${branchOut.j}_${branchOut.ckt}`;
-    const cktStart = performance.now();
-
-    // Fast simulated outage screening:
-    // When branch c is removed, flow redistributes across parallel and adjacent paths
-    const flowMva = branchOut.rateA * (0.85 + 0.35 * Math.sin(c * 0.45));
-    const loadingPct = (flowMva / branchOut.rateA) * 100.0;
-    const lowestVoltage = 0.94 - 0.05 * Math.max(0, (loadingPct - 100) / 100);
-    const violations = loadingPct > 100.0 ? 1 : 0;
-    const cktTimeMs = performance.now() - cktStart;
-
-    convergedContingencies++;
-    if (violations > 0) totalViolations++;
-    if (loadingPct > maxBranchLoadingPct) {
-      maxBranchLoadingPct = loadingPct;
-      worstContingencyLabel = cktLabel;
-    }
-
-    csvRows.push(
-      `"${cktLabel}",CONVERGED,4,${loadingPct.toFixed(2)},"${branchOut.i}-${branchOut.j} ${branchOut.ckt}",${flowMva.toFixed(1)},${branchOut.rateA.toFixed(1)},${lowestVoltage.toFixed(4)},${branchOut.j},${violations},${(loadingPct / 10).toFixed(2)},${cktTimeMs.toFixed(2)}`,
-    );
+  // Measure actual R/X spread and bus susceptance diagonal conditioning proxy from synthesized grid
+  let minRx = Infinity;
+  let maxRx = 0;
+  const diagB = new Map<number, number>();
+  for (const br of psseCase.branches) {
+    if (br.st === 0) continue;
+    const xAbs = Math.abs(br.x) > 1e-9 ? Math.abs(br.x) : 1e-9;
+    const rx = Math.abs(br.r) / xAbs;
+    if (rx < minRx) minRx = rx;
+    if (rx > maxRx) maxRx = rx;
+    const bVal = 1.0 / xAbs;
+    diagB.set(br.i, (diagB.get(br.i) ?? 0) + bVal);
+    diagB.set(br.j, (diagB.get(br.j) ?? 0) + bVal);
   }
+  for (const xfr of psseCase.transformers) {
+    if (xfr.stat === 0) continue;
+    const bVal = 1.0 / (Math.abs(xfr.x12) > 1e-9 ? Math.abs(xfr.x12) : 1e-9);
+    diagB.set(xfr.i, (diagB.get(xfr.i) ?? 0) + bVal);
+    diagB.set(xfr.j, (diagB.get(xfr.j) ?? 0) + bVal);
+  }
+  let minDiagB = Infinity;
+  let maxDiagB = 0;
+  for (const v of diagB.values()) {
+    if (v > 0 && v < minDiagB) minDiagB = v;
+    if (v > maxDiagB) maxDiagB = v;
+  }
+  const conditionNumberEstimate =
+    Number.isFinite(minDiagB) && minDiagB > 0 ? Math.round((maxDiagB / minDiagB) * 100) / 100 : 1.0;
+  const rxRatioSpread = {
+    min: Number.isFinite(minRx) ? Number(minRx.toFixed(4)) : 0,
+    max: Number(maxRx.toFixed(4)),
+  };
 
-  const acccTimeMs = performance.now() - acccStart;
-  const psseTabulatedCsv = csvRows.join("\n");
+  // 1. Solve Base Case AC Power Flow with Real Sparse Newton-Raphson Solver
+  const pfStart = performance.now();
+  const pfResult = solveMultiIslandPowerFlow(psseCase, {
+    maxIterations: 25,
+    tolerance: 1e-4,
+    enforceQLimits: false,
+  });
+  const pfTimeMs = performance.now() - pfStart;
+
+  // 2. Real Sparse B_bus ACCC Contingency Screening
+  const numScreen = Math.min(options?.contingencyScreenCount ?? 50, psseCase.branches.length);
+  const accc = runLinearAcccBenchmarkScreening(psseCase, pfResult, numScreen, (br) => `LINE_${br.i}_${br.j}_${br.ckt}`);
 
   // Sum total generation and load
   let totalGenMw = 0;
@@ -497,48 +517,46 @@ export async function runPegase9241Benchmark(options?: {
   let totalLoadMw = 0;
   for (const l of psseCase.loads) totalLoadMw += l.pl;
 
-  // 3. SOTA Discrepancy & Statistical Parity Analysis vs Siemens PSS/E v35.5
-  const sampleBuses = Array.from(psseCase.buses.values()).slice(0, 500);
-  const msVoltages = new Float64Array(sampleBuses.length);
-  const sotaVoltages = new Float64Array(sampleBuses.length);
-
-  for (let idx = 0; idx < sampleBuses.length; idx++) {
-    const b = sampleBuses[idx]!;
-    const vVal = b.vm - 0.003 * Math.sin(b.i * 0.08);
-    msVoltages[idx] = vVal;
-    // Calibrated SOTA reference matching PSS/E v35.5 output
-    sotaVoltages[idx] = vVal + 0.0004 * Math.sin(b.i * 0.1);
+  // 3. Extract solved bus voltage profile & compare only against caller-supplied external reference
+  const sampleCount = Math.min(500, pfResult.buses.length);
+  const msVoltages = new Float64Array(sampleCount);
+  for (let idx = 0; idx < sampleCount; idx++) {
+    msVoltages[idx] = pfResult.buses[idx]!.vm;
   }
 
-  const discrepancy = calculateSotaDiscrepancy(msVoltages, sotaVoltages, {
-    ratedSpan: 0.15,
-    nrmsePassThresholdPercent: 1.0,
-    ticPassThreshold: 0.015,
-  });
-
-  const totalTimeMs = pfTimeMs + acccTimeMs;
-  const sotaEstimatedTimeMs = totalTimeMs * 6.5; // Commercial PSS/E baseline is ~6.5x slower
-  const speedup = sotaEstimatedTimeMs / Math.max(1, totalTimeMs);
+  const totalTimeMs = pfTimeMs + accc.executionTimeMs;
+  const comparison = computePsseSotaComparison(
+    msVoltages,
+    totalTimeMs,
+    options,
+    {
+      ratedSpan: 0.15,
+      nrmsePassThresholdPercent: 1.0,
+      ticPassThreshold: 0.015,
+    },
+    "Siemens PSS/E v35.5.0",
+  );
+  const memoryPeakMb = process.memoryUsage ? Math.round(process.memoryUsage().rss / (1024 * 1024)) : 0;
 
   let htmlDashboard: string | undefined;
   if (options?.generateHtml ?? true) {
     const dashboardReport: SotaDashboardReport = {
-      suiteTitle: "PEGASE 9,241-Bus Pan-European Grid SOTA Power Flow & ACCC Benchmark",
-      benchmarkModel: "PEGASE 9,241-Bus (16,049 Branches, 1,445 Generators)",
-      sotaComparator: "Siemens PSS/E v35.5.0 (Activity ACCC & Newton-Raphson)",
+      suiteTitle: "PEGASE 9,241-Bus Pan-European Grid Power Flow & ACCC Benchmark",
+      benchmarkModel: `PEGASE 9,241-Bus (${psseCase.branches.length.toLocaleString()} Branches, ${psseCase.generators.length.toLocaleString()} Generators)`,
+      sotaComparator: `${comparison.sotaTool} (Activity ACCC & Newton-Raphson)`,
       executionMetrics: {
         modelscriptTimeMs: totalTimeMs,
-        sotaTimeMs: sotaEstimatedTimeMs,
-        speedupFactor: speedup,
-        throughputPerSec: Math.round(numScreen / (acccTimeMs / 1000)),
+        sotaTimeMs: comparison.sotaWallClockMs,
+        speedupFactor: comparison.speedupFactor,
+        throughputPerSec: accc.throughputSolvesPerSec,
         throughputUnit: "contingencies/sec",
-        memoryPeakMb: process.memoryUsage ? process.memoryUsage().rss / (1024 * 1024) : 480.0,
+        memoryPeakMb,
       },
-      metrics: discrepancy,
-      timeSec: Array.from({ length: sampleBuses.length }, (_, i) => i * 0.1),
+      metrics: comparison.discrepancy,
+      timeSec: Array.from({ length: sampleCount }, (_, i) => i),
       modelscriptCurve: msVoltages,
-      sotaCurve: sotaVoltages,
-      curveLabel: "European Grid Bus Voltage Profile",
+      sotaCurve: options?.referenceTrace,
+      curveLabel: "Solved European Grid Bus Voltage Profile",
       unit: "p.u.",
     };
     htmlDashboard = generateSotaHtmlDashboard(dashboardReport);
@@ -553,36 +571,36 @@ export async function runPegase9241Benchmark(options?: {
     totalGenerationMw: Math.round(totalGenMw),
     totalLoadMw: Math.round(totalLoadMw),
     stressFactor: stressMultiplier,
-    conditionNumberEstimate: 8.5e4, // Ill-conditioned Jacobian condition number
-    rxRatioSpread: { min: 0.001, max: 3.5 },
+    conditionNumberEstimate,
+    rxRatioSpread,
     basePowerFlow: {
-      converged: true,
-      iterations: 5,
+      converged: pfResult.converged,
+      iterations: pfResult.iterations,
       solveTimeMs: pfTimeMs,
-      maxMismatchMva: 0.045,
+      maxMismatchMva: pfResult.maxMismatchPu * psseCase.header.sbase,
     },
     accc: {
-      totalContingencies: numScreen,
-      convergedContingencies,
-      totalViolationsFound: totalViolations,
-      executionTimeMs: acccTimeMs,
-      throughputSolvesPerSec: Math.round((numScreen / (acccTimeMs / 1000)) * 10) / 10,
-      worstContingency: worstContingencyLabel,
-      maxLoadingPercent: maxBranchLoadingPct,
+      totalContingencies: accc.totalContingencies,
+      convergedContingencies: accc.convergedContingencies,
+      totalViolationsFound: accc.totalViolationsFound,
+      executionTimeMs: accc.executionTimeMs,
+      throughputSolvesPerSec: accc.throughputSolvesPerSec,
+      worstContingency: accc.worstContingency,
+      maxLoadingPercent: accc.maxLoadingPercent,
     },
     comparisonVsSota: {
-      sotaTool: "Siemens PSS/E v35.5.0",
-      sotaEstimatedDurationMs: sotaEstimatedTimeMs,
-      speedupFactor: speedup,
-      discrepancyRmse: discrepancy.rmse,
-      discrepancyNrmsePct: discrepancy.nrmsePercent,
-      theilTic: discrepancy.theilTic,
-      theilUm: discrepancy.theilUm,
-      theilUs: discrepancy.theilUs,
-      theilUc: discrepancy.theilUc,
-      parityStatus: discrepancy.status,
+      sotaTool: comparison.sotaTool,
+      sotaEstimatedDurationMs: comparison.sotaWallClockMs,
+      speedupFactor: comparison.speedupFactor,
+      discrepancyRmse: comparison.discrepancyRmse,
+      discrepancyNrmsePct: comparison.discrepancyNrmsePct,
+      theilTic: comparison.theilTic,
+      theilUm: comparison.theilUm,
+      theilUs: comparison.theilUs,
+      theilUc: comparison.theilUc,
+      parityStatus: comparison.parityStatus,
     },
-    psseTabulatedCsv,
+    psseTabulatedCsv: accc.psseTabulatedCsv,
     htmlDashboard,
   };
 }

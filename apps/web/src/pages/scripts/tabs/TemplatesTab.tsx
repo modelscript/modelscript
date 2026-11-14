@@ -470,7 +470,7 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
               type="button"
               onClick={() => onSelectTemplate("monte-carlo-sweep")}
               style={{
-                background: "linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)",
+                background: "var(--ms-accent, #06b6d4)",
                 color: "#ffffff",
                 border: "none",
                 borderRadius: "10px",
@@ -481,7 +481,7 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "8px",
-                boxShadow: "0 4px 14px rgba(37, 99, 235, 0.35)",
+                boxShadow: "0 4px 14px var(--ms-accent-subtle, rgba(6, 182, 212, 0.25))",
               }}
             >
               <BeakerIcon size={14} /> Open Interactive Study Wizard
@@ -1138,8 +1138,8 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
               maxWidth: "620px",
               maxHeight: "90vh",
               overflowY: "auto",
-              background: "var(--color-canvas-overlay, #161b22)",
-              border: "1px solid rgba(255, 255, 255, 0.15)",
+              background: "var(--ms-bg-surface, var(--color-canvas-overlay))",
+              border: "1px solid var(--ms-border-default, rgba(255, 255, 255, 0.15))",
               borderRadius: "16px",
               padding: "24px",
               display: "flex",
@@ -1348,9 +1348,13 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
                         fontSize: "11px",
                         fontWeight: 600,
                         cursor: "pointer",
-                        border: checked ? "1px solid #3b82f6" : "1px solid rgba(255, 255, 255, 0.12)",
-                        background: checked ? "rgba(59, 130, 246, 0.2)" : "rgba(255, 255, 255, 0.03)",
-                        color: checked ? "#93c5fd" : "var(--ms-text-3)",
+                        border: checked
+                          ? "1px solid var(--ms-accent)"
+                          : "1px solid var(--ms-border-default, rgba(255, 255, 255, 0.12))",
+                        background: checked
+                          ? "var(--ms-accent-subtle)"
+                          : "var(--ms-bg-surface, rgba(255, 255, 255, 0.03))",
+                        color: checked ? "var(--ms-accent)" : "var(--ms-text-3)",
                         textTransform: "uppercase",
                       }}
                     >
@@ -1466,7 +1470,7 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
                   padding: "8px 18px",
                   borderRadius: "8px",
                   border: "none",
-                  background: "linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)",
+                  background: "var(--ms-accent, #06b6d4)",
                   color: "#ffffff",
                   fontSize: "13px",
                   fontWeight: 700,

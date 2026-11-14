@@ -1,3 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./sbol-linter.js";
+
+export * from "./workspace.js";

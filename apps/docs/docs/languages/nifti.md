@@ -84,3 +84,9 @@ lowerNiftiToDae(volume, builder);
 const stepData = niftiToStep(volume);
 const scadCode = niftiToScad(volume);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="nifti" />

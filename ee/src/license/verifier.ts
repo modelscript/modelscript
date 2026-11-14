@@ -128,12 +128,10 @@ export function signEnterpriseLicense(
   },
   privateKeyPem?: string,
 ): string {
-  const isStrictProdEnforce = process.env["NODE_ENV"] === "production" && process.env["MSX_LICENSE_ENFORCE"] === "true";
+  const isTestEnv = process.env["NODE_ENV"] === "test";
   const resolvedPrivateKey = privateKeyPem || process.env["MSX_LICENSE_PRIVATE_KEY"];
-  if (!resolvedPrivateKey && isStrictProdEnforce) {
-    throw new Error(
-      "Explicit privateKeyPem or MSX_LICENSE_PRIVATE_KEY is required when NODE_ENV=production and MSX_LICENSE_ENFORCE=true.",
-    );
+  if (!resolvedPrivateKey && !isTestEnv) {
+    throw new Error("Explicit privateKeyPem or MSX_LICENSE_PRIVATE_KEY is required when NODE_ENV is not 'test'.");
   }
   const signingKeyPem = resolvedPrivateKey || DEFAULT_KEYPAIR.privateKeyPem;
 
@@ -204,9 +202,9 @@ export function verifyEnterpriseLicense(
   const sigB64 = body.slice(dotIdx + 1);
   const candidatePublicKeys = explicitKey
     ? [explicitKey]
-    : process.env["NODE_ENV"] === "production"
-      ? [PRODUCTION_ENTERPRISE_PUBLIC_KEY_PEM]
-      : [PRODUCTION_ENTERPRISE_PUBLIC_KEY_PEM, DEFAULT_KEYPAIR.publicKeyPem];
+    : process.env["NODE_ENV"] === "test"
+      ? [PRODUCTION_ENTERPRISE_PUBLIC_KEY_PEM, DEFAULT_KEYPAIR.publicKeyPem]
+      : [PRODUCTION_ENTERPRISE_PUBLIC_KEY_PEM];
 
   try {
     const signatureBytes = Buffer.from(sigB64, "base64url");
@@ -312,7 +310,7 @@ const LICENSE_CACHE_TTL_MS = 5_000;
 
 /**
  * Resolves the active Enterprise License from `MSX_LICENSE_KEY` or `MSX_LICENSE_FILE`.
- * In `NODE_ENV=production`, license enforcement is enabled by default unless `MSX_LICENSE_ENFORCE=false`.
+ * In `NODE_ENV=production`, license enforcement is always enabled and cannot be disabled via `MSX_LICENSE_ENFORCE=false`.
  * In local development/test mode, returns a permissive `dev-evaluation` result when `MSX_LICENSE_ENFORCE=true`
  * is not set and no invalid/expired key was supplied.
  */
@@ -355,7 +353,7 @@ export function resolveActiveEnterpriseLicense(): LicenseVerificationResult {
     return result;
   }
 
-  const strictEnforce = enforceEnv === "true" || (nodeEnv === "production" && enforceEnv !== "false");
+  const strictEnforce = enforceEnv === "true" || nodeEnv === "production";
   if (strictEnforce) {
     const result: LicenseVerificationResult = {
       valid: false,

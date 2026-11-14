@@ -6,8 +6,8 @@
  */
 
 import { DAEBuilder } from "@modelscript/runtime";
-import { lowerFortranToDae, type FortranDaeLoweringResult } from "../src/dae/lowering.js";
 import { simulateFortranRoutine } from "../src/codegen/step-compiler.js";
+import { lowerFortranToDae, type FortranDaeLoweringResult } from "../src/dae/lowering.js";
 import { verifyFortranSource, type FormalVerificationReport } from "../src/formal/verifier.js";
 
 export interface FortranBenchmarkResult {
@@ -133,3 +133,29 @@ export async function runFortranBenchmark(): Promise<FortranBenchmarkResult> {
     totalTimeMs,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const fortranBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "fortran",
+  referenceTool: "GFortran 6-DOF Orbital Dynamics + Formal Verifier",
+  defaultTolerance: 0,
+  metricKind: "exact",
+  async runCases() {
+    const res = await runFortranBenchmark();
+    return [
+      {
+        id: "orbital-6dof-propulsion-dae",
+        name: "orbital-6dof-propulsion-dae",
+        scale: "standard",
+        referenceTool: "GFortran 6-DOF Orbital Dynamics + Formal Verifier",
+        passed: res.isCertifiedSafe && res.definiteBugCount === 0 && res.simulationSteps > 0 && res.equationCount > 0,
+        durationMs: res.totalTimeMs,
+        metricKind: "exact",
+        measuredError: res.provenSafeCount,
+        threshold: 0,
+        details: `safe=${res.isCertifiedSafe}, ${res.variableCount} vars/${res.equationCount} eqs, ${res.simulationSteps} steps`,
+      },
+    ];
+  },
+};

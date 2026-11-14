@@ -24,7 +24,7 @@ const EmbedContainer = styled.div`
   height: 100dvh;
   position: relative;
   overflow: hidden;
-  background-color: var(--color-canvas-default, #0d1117);
+  background-color: var(--ms-bg-canvas, var(--color-canvas-default));
 `;
 
 const WatermarkPill = styled.a`
@@ -35,7 +35,7 @@ const WatermarkPill = styled.a`
   align-items: center;
   gap: 6px;
   background: rgba(13, 17, 23, 0.85);
-  border: 1px solid var(--color-border-default, #30363d);
+  border: 1px solid var(--ms-border-default, var(--color-border-default));
   padding: 4px 10px;
   border-radius: 999px;
   color: var(--color-fg-muted, #8b949e);

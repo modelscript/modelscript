@@ -167,9 +167,7 @@ export interface SedmlBenchmarkMetrics {
   modelicaLines: number;
 }
 
-export function runSedmlBenchmark(
-  xml = SEDML_INDUSTRIAL_EXPERIMENT,
-): SedmlBenchmarkMetrics {
+export function runSedmlBenchmark(xml = SEDML_INDUSTRIAL_EXPERIMENT): SedmlBenchmarkMetrics {
   const doc: SedmlDocument = parseSedml(xml, "industrial_experiment.sedml");
 
   assert.equal(doc.simulations.length, 2);
@@ -244,3 +242,31 @@ export function runSedmlBenchmark(
     modelicaLines: mo.split("\n").length,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const sedmlBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "sedml",
+  referenceTool: "SED-ML L1V4 / CVODE Metabolic Experiment",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runSedmlBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "metabolic-cvode-sweep-dae",
+        name: "Metabolic CVODE Sweep DAE",
+        scale: "standard",
+        referenceTool: "SED-ML L1V4 / CVODE Metabolic Experiment",
+        passed: m.isSquare && m.finalYieldPct > 75.0 && m.daeVarCount >= 10,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: 0,
+        threshold: 0,
+        details: `yield=${m.finalYieldPct.toFixed(1)}%, ${m.daeVarCount}x${m.daeEqCount} DAE, ${m.sweepPointCount} sweep pts`,
+      },
+    ];
+  },
+};

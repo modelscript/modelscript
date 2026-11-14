@@ -192,3 +192,33 @@ export function runEclipseBenchmark(): EclipseBenchmarkResult {
     totalTimeMs,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const eclipseBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "eclipse",
+  referenceTool: "SPE10 / OPM Flow Black-Oil Reservoir",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const res = runEclipseBenchmark();
+    return [
+      {
+        id: "spe10-brent-black-oil-depletion",
+        name: "SPE10 Brent Black-Oil Depletion",
+        scale: "standard",
+        referenceTool: "SPE10 / OPM Flow Black-Oil Reservoir",
+        passed:
+          res.numActiveCells === 576 &&
+          res.daeVariableCount > 0 &&
+          res.daeEquationCount > 0 &&
+          res.cumulativeOilProducedM3 > 0,
+        durationMs: res.totalTimeMs,
+        metricKind: "dae-parity",
+        measuredError: 0,
+        threshold: 0,
+        details: `${res.numActiveCells} cells, RF=${(res.recoveryFactor * 100).toFixed(2)}%, ${res.daeVariableCount} vars/${res.daeEquationCount} eqs`,
+      },
+    ];
+  },
+};

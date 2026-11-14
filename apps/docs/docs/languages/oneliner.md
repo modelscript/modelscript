@@ -78,3 +78,9 @@ msx oneliner to-dae utility_transmission.dxt
 ## MCP Agent Tool Integration
 
 - **`oneliner_calculate_fault`**: Computes Thevenin sequence impedances ($Z_1, Z_0$), 3-phase short-circuit current ($I_{\text{3ph}} = \frac{V_{\text{LN}}}{Z_1}$), SLG fault current ($I_{\text{slg}} = \frac{3 V_{\text{LN}}}{2 Z_1 + Z_0}$), and $X/R$ ratios directly for AI protective coordination agents.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="oneliner" />

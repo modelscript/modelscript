@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DiffEditor } from "@monaco-editor/react";
-import { GitCompareIcon, XIcon } from "@primer/octicons-react";
-import { Button, IconButton, Text } from "@primer/react";
+import { GitCompareIcon } from "@primer/octicons-react";
+import { Dialog, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import styled from "styled-components";
 import { getArtifactView } from "../../api";
 import { useTheme } from "../../theme";
@@ -19,47 +18,6 @@ interface ArtifactDiffModalProps {
   currentArtifact: any;
   forkedFromArtifactId: number | string;
 }
-
-const Overlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  z-index: 10000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  box-sizing: border-box;
-`;
-
-const ModalContainer = styled.div`
-  width: 100%;
-  max-width: 1100px;
-  height: 85vh;
-  background: var(--color-canvas-default, #0d1117);
-  border: 1px solid var(--color-border-default, #30363d);
-  border-radius: 12px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-`;
-
-const ModalHeader = styled.div`
-  height: 54px;
-  min-height: 54px;
-  padding: 0 20px;
-  border-bottom: 1px solid var(--color-border-default, #30363d);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--color-canvas-subtle, #161b22);
-`;
 
 const ModeButton = styled.button<{ $active: boolean }>`
   background: ${(props) => (props.$active ? "rgba(6, 182, 212, 0.2)" : "transparent")};
@@ -301,50 +259,46 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
 
   if (!isOpen) return null;
 
-  const modal = (
-    <Overlay
-      onClick={(e) => {
-        e.stopPropagation();
-        onClose();
-      }}
+  return (
+    <Dialog
+      title={
+        <Box display="flex" alignItems="center" gap={2}>
+          <GitCompareIcon size={18} fill="var(--ms-accent, #06b6d4)" />
+          <Text fontWeight="bold" fontSize="14px" color="var(--color-fg-default)">
+            Model Changes vs Upstream #{forkedFromArtifactId}
+          </Text>
+        </Box>
+      }
+      width="xlarge"
+      onClose={onClose}
     >
-      <ModalContainer onClick={(e) => e.stopPropagation()}>
-        <ModalHeader>
-          <Box display="flex" alignItems="center" gap={2}>
-            <GitCompareIcon size={18} fill="var(--color-accent-cyan, #06b6d4)" />
-            <Text fontWeight="bold" fontSize="14px" color="var(--color-fg-default)">
-              Model Changes vs Upstream #{forkedFromArtifactId}
-            </Text>
+      <Box display="flex" flexDirection="column" height="75vh" overflow="hidden">
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="flex-end"
+          pb={2}
+          mb={2}
+          borderBottom="1px solid var(--ms-border-subtle, var(--color-border-default))"
+        >
+          <Box
+            display="flex"
+            bg="var(--ms-surface-subtle, rgba(0, 0, 0, 0.3))"
+            p="3px"
+            borderRadius="8px"
+            border="1px solid var(--ms-border-subtle, var(--color-border-default))"
+          >
+            <ModeButton $active={activeTab === "studio"} onClick={() => setActiveTab("studio")}>
+              ⚡ Semantic Studio
+            </ModeButton>
+            <ModeButton $active={activeTab === "diff"} onClick={() => setActiveTab("diff")}>
+              Source Diff
+            </ModeButton>
+            <ModeButton $active={activeTab === "parameters"} onClick={() => setActiveTab("parameters")}>
+              Parameters ({parameterDeltas.length})
+            </ModeButton>
           </Box>
-
-          <Box display="flex" alignItems="center" gap={3}>
-            <Box
-              display="flex"
-              bg="rgba(0,0,0,0.3)"
-              p="3px"
-              borderRadius="8px"
-              border="1px solid var(--color-border-default)"
-            >
-              <ModeButton $active={activeTab === "studio"} onClick={() => setActiveTab("studio")}>
-                ⚡ Semantic Studio
-              </ModeButton>
-              <ModeButton $active={activeTab === "diff"} onClick={() => setActiveTab("diff")}>
-                Source Diff
-              </ModeButton>
-              <ModeButton $active={activeTab === "parameters"} onClick={() => setActiveTab("parameters")}>
-                Parameters ({parameterDeltas.length})
-              </ModeButton>
-            </Box>
-
-            <IconButton
-              aria-label="Close"
-              icon={XIcon}
-              variant="invisible"
-              onClick={onClose}
-              sx={{ color: "var(--color-fg-muted)" }}
-            />
-          </Box>
-        </ModalHeader>
+        </Box>
 
         <Box flex={1} position="relative" overflow="hidden">
           {loading ? (
@@ -509,11 +463,9 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
             </Box>
           )}
         </Box>
-      </ModalContainer>
-    </Overlay>
+      </Box>
+    </Dialog>
   );
-
-  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 };
 
 export default ArtifactDiffModal;

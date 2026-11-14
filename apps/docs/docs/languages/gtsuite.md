@@ -91,3 +91,9 @@ msx gtsuite diagram cases/Turbo4Cyl.gtm --view=schematic --out=engine_schematic.
 msx gtsuite to-modelica cases/Turbo4Cyl.gtm --out=Engine.mo
 msx gtsuite to-sysml2 cases/Turbo4Cyl.gtm --out=Engine.sysml
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="gtsuite" />

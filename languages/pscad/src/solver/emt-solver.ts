@@ -12,6 +12,7 @@
  * - Dynamic fault impedance injection (3PH, SLG, DLG, LL) & IBR LVRT current control
  */
 
+import type { FmiLsEmtCompanionInstance } from "@modelscript/exchange";
 import {
   SparseTripletBuilder,
   computeAmdOrdering,
@@ -29,6 +30,7 @@ import {
   type EmtdcWasmMachinaDllRunner,
 } from "../script/emtdc-abi-bridge.js";
 import type { EmtCustomFortranBlock, EmtNetlist } from "../types.js";
+import { CsmfControlEvaluator } from "./csmf-evaluator.js";
 import { OemLicenseError, OemLicensePreflightGuard, type OemLicensePreflightGuardOptions } from "./license-guard.js";
 import { createUniversalLineModel, stepUlmLine, type UniversalLineModelData } from "./universal-line-model.js";
 import { synthesizeFdLineModel } from "./vector-fitting.js";
@@ -108,6 +110,8 @@ export interface EmtSolverOptions {
    * Optional custom DRM license options or DongleManager instance to verify against.
    */
   drmLicenseOptions?: import("@modelscript/exchange").DrmLicenseOptions | undefined;
+  /** Optional `fmi-ls-emt` Norton-companion FMU/WASM callbacks keyed by FMU instance ID. */
+  fmuCompanions?: Map<string, FmiLsEmtCompanionInstance> | undefined;
 }
 
 export interface EmtSolverMetrics {
@@ -499,6 +503,9 @@ interface FmuState {
   ia: Float64Array;
   ib: Float64Array;
   ic: Float64Array;
+  companion?: FmiLsEmtCompanionInstance | undefined;
+  lastGEq?: Float64Array | undefined;
+  lastIHist?: Float64Array | undefined;
 }
 
 interface BusInfo {
@@ -556,6 +563,8 @@ export class EmtSolver {
   private iB = new Map<string, Float64Array>();
   private iC = new Map<string, Float64Array>();
   private controlSignals = new Map<string, Float64Array>();
+  private csmfEvaluator: CsmfControlEvaluator | null = null;
+  private readonly csmfBreakerOverrides = new Map<string, boolean>();
   private emtdcHostBridge: EmtdcHostBridge | null = null;
   private readonly licenseGuard: OemLicensePreflightGuard;
   private readonly customBlockStates: Array<{
@@ -679,6 +688,14 @@ export class EmtSolver {
         this.vA.set(busId, a);
         this.vB.set(busId, b);
         this.vC.set(busId, c);
+      }
+    }
+
+    const controlBlocks = this.netlist.controlBlocks ?? [];
+    if (controlBlocks.length > 0) {
+      this.csmfEvaluator = new CsmfControlEvaluator(controlBlocks);
+      for (const blk of controlBlocks) {
+        this.controlSignals.set(blk.id, new Float64Array(this.nSteps));
       }
     }
 
@@ -1237,7 +1254,19 @@ export class EmtSolver {
         (fmu.ratedKv > 0 ? fmu.ratedKv : 230.0);
       const iRatedPeak = ((fmu.ratedMva || 100.0) * 1e6) / (Math.max(0.1, busKv) * 1e3);
       const { ia, ib, ic } = this.registerBranchBuffers(fmu.id);
-      this.fmuStates.push({ fmu, busIdx, iRatedPeak, iqState: 0.0, ia, ib, ic });
+      const companion = this.options.fmuCompanions?.get(fmu.id);
+      this.fmuStates.push({
+        fmu,
+        busIdx,
+        iRatedPeak,
+        iqState: 0.0,
+        ia,
+        ib,
+        ic,
+        companion,
+        lastGEq: companion ? new Float64Array(9) : undefined,
+        lastIHist: companion ? new Float64Array(3) : undefined,
+      });
     }
 
     // Register sources
@@ -1766,6 +1795,7 @@ export class EmtSolver {
         branchIndices.length === 0 &&
         this.bergeronLines.length === 0 &&
         this.switchStates.length === 0 &&
+        !this.csmfEvaluator &&
         !this.options.onStep &&
         typeof wasm.emt_alloc_trajectory === "function" &&
         typeof wasm.emt_run_steps === "function" &&
@@ -2498,15 +2528,21 @@ export class EmtSolver {
       })),
     );
 
-    if (this.useWasm && this.syncGenerators.length === 0) {
-      const wasmRes = this.solveWithWasm();
-      if (wasmRes) return wasmRes;
-    }
-
     const startTime = performance.now();
     const n = this.nBuses;
 
     if (n === 0) {
+      if (this.csmfEvaluator) {
+        const controlBlocks = this.netlist.controlBlocks ?? [];
+        for (let k = 0; k < this.nSteps; k++) {
+          this.time[k] = k * this.timeStepSec;
+          const stepValues = this.csmfEvaluator.step(this.timeStepSec);
+          for (const blk of controlBlocks) {
+            const traj = this.controlSignals.get(blk.id);
+            if (traj) traj[k] = stepValues.get(blk.id) ?? 0;
+          }
+        }
+      }
       return {
         time: this.time,
         busVoltages: this.busVoltages,
@@ -2519,15 +2555,21 @@ export class EmtSolver {
         iA: this.iA,
         iB: this.iB,
         iC: this.iC,
+        controlSignals: this.controlSignals.size > 0 ? this.controlSignals : undefined,
         metrics: {
-          totalSteps: 0,
+          totalSteps: this.csmfEvaluator ? this.nSteps : 0,
           luFactorizations: 0,
           switchingEvents: 0,
           chatterDampedSteps: 0,
           interpolatedZeroCrossings: 0,
-          executionTimeMs: 0,
+          executionTimeMs: performance.now() - startTime,
         },
       };
+    }
+
+    if (this.useWasm && this.syncGenerators.length === 0) {
+      const wasmRes = this.solveWithWasm();
+      if (wasmRes) return wasmRes;
     }
 
     let cdaCounter = 0;
@@ -2621,8 +2663,9 @@ export class EmtSolver {
           }
           swState.currentClosed = swState.phaseClosed[0] || swState.phaseClosed[1] || swState.phaseClosed[2];
         } else {
+          const overrideClosed = this.csmfBreakerOverrides.get(swState.sw.id);
           const actionT = swState.sw.actionTimeSec;
-          const isClosed = t >= actionT ? !initClosed : initClosed;
+          const isClosed = overrideClosed !== undefined ? overrideClosed : t >= actionT ? !initClosed : initClosed;
           if (isClosed !== swState.currentClosed) {
             swState.currentClosed = isClosed;
             swState.phaseClosed[0] = isClosed;
@@ -2915,6 +2958,30 @@ export class EmtSolver {
       const alphaLvrtPre = 1.0 - Math.exp(-this.timeStepSec / tauLvrtPre);
       for (const fmuState of this.fmuStates) {
         const { busIdx, iRatedPeak } = fmuState;
+        if (fmuState.companion) {
+          const { gEq, iHist } = fmuState.companion.stampCompanion(t, this.timeStepSec);
+          const lastG = fmuState.lastGEq!;
+          const lastI = fmuState.lastIHist!;
+          let gChanged = false;
+          for (let r = 0; r < 3; r++) {
+            const ih = iHist[r] ?? 0;
+            lastI[r] = ih;
+            this.J3[3 * busIdx + r] = this.J3[3 * busIdx + r]! + ih;
+            for (let c = 0; c < 3; c++) {
+              const gVal = gEq[r * 3 + c] ?? 0;
+              if (gVal !== lastG[r * 3 + c]) {
+                this.stampEntry(3 * busIdx + r, 3 * busIdx + c, gVal - lastG[r * 3 + c]!);
+                lastG[r * 3 + c] = gVal;
+                gChanged = true;
+              }
+            }
+          }
+          if (gChanged) {
+            this.factorize3Phase(this.G3, this.LU3, this.piv3);
+            this.luFactorizationCount += 3;
+          }
+          continue;
+        }
         const vNomPeak = this.busList[busIdx]!.vPeak;
         let vPu = 1.0;
         if (k > 0) {
@@ -3282,10 +3349,19 @@ export class EmtSolver {
       const alphaLvrt = 1.0 - Math.exp(-this.timeStepSec / tauLvrt);
       for (const fmuState of this.fmuStates) {
         const { busIdx, iRatedPeak, ia, ib, ic } = fmuState;
-        const vNomPeak = this.busList[busIdx]!.vPeak;
         const vaInst = this.vaStep[busIdx]!;
         const vbInst = this.vbStep[busIdx]!;
         const vcInst = this.vcStep[busIdx]!;
+        if (fmuState.companion) {
+          fmuState.companion.doStep(t, this.timeStepSec, [vaInst, vbInst, vcInst]);
+          const g = fmuState.lastGEq!;
+          const ih = fmuState.lastIHist!;
+          ia[k] = ih[0]! - (g[0]! * vaInst + g[1]! * vbInst + g[2]! * vcInst);
+          ib[k] = ih[1]! - (g[3]! * vaInst + g[4]! * vbInst + g[5]! * vcInst);
+          ic[k] = ih[2]! - (g[6]! * vaInst + g[7]! * vbInst + g[8]! * vcInst);
+          continue;
+        }
+        const vNomPeak = this.busList[busIdx]!.vPeak;
         const vEnv = Math.sqrt((2.0 / 3.0) * (vaInst * vaInst + vbInst * vbInst + vcInst * vcInst));
         const vPu = vNomPeak > 0 ? vEnv / vNomPeak : 1.0;
 
@@ -3452,6 +3528,41 @@ export class EmtSolver {
           }
           for (const [port, traj] of cbs.signalTrajs) {
             traj[k] = cbs.udm.ports[port] ?? 0.0;
+          }
+        }
+      }
+
+      if (this.csmfEvaluator) {
+        const controlBlocks = this.netlist.controlBlocks ?? [];
+        for (const blk of controlBlocks) {
+          if (blk.kind === "sensor_v" && blk.sensorTarget) {
+            const bIdx = this.busIdxMap.get(blk.sensorTarget);
+            const v =
+              bIdx !== undefined ? (this.vaStep[bIdx] ?? 0) : (this.busPhaseVoltages.get(blk.sensorTarget)?.a[k] ?? 0);
+            this.csmfEvaluator.setSignal(blk.id, v);
+          } else if (blk.kind === "sensor_i" && blk.sensorTarget) {
+            const i = this.branchPhaseCurrents.get(blk.sensorTarget)?.a[k] ?? 0;
+            this.csmfEvaluator.setSignal(blk.id, i);
+          }
+        }
+        const stepValues = this.csmfEvaluator.step(this.timeStepSec);
+        for (const blk of controlBlocks) {
+          const val = stepValues.get(blk.id) ?? 0;
+          const traj = this.controlSignals.get(blk.id);
+          if (traj) traj[k] = val;
+          if (blk.actuator?.type === "breaker_status") {
+            const target = blk.actuator.targetId;
+            // Convention: signal > 0.5 trips/opens breaker (isClosed = false); <= 0.5 keeps closed
+            const isClosed = val <= 0.5;
+            for (const swState of this.switchStates) {
+              if (
+                swState.sw.id === target ||
+                swState.sw.id.startsWith(`${target}_`) ||
+                swState.sw.id.includes(target)
+              ) {
+                this.csmfBreakerOverrides.set(swState.sw.id, isClosed);
+              }
+            }
           }
         }
       }

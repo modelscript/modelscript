@@ -81,3 +81,9 @@ msx reqif to-modelica ThermalLimits.reqif --out=ThermalMonitors.mo
 ## Requirements Linters & Diagnostic Rules
 
 <LintRules lang="reqif" />
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="reqif" />

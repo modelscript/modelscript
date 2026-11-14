@@ -19,6 +19,7 @@ import {
   solvePowerFlow,
 } from "./solver/ac-powerflow.js";
 import { calculateGic } from "./solver/gic-solver.js";
+import { pssePolyglotConfig } from "./tgg.js";
 
 /**
  * ModelScript PSS/E RAW (`.raw`), DYR (`.dyr`), SEQ (`.seq`), CON/MON/SUB & SAV/OUT Language Definition.
@@ -339,6 +340,8 @@ export const psseLanguage = language({
   },
 
   extras: () => [/[ \t\r\n]+/],
+
+  polyglot: pssePolyglotConfig,
 
   rules: {
     SourceFile: ($) =>

@@ -108,6 +108,219 @@ export class WorkspaceTypeRegistry {
     this.domainSynonyms.set(alias, canonicalFqn);
   }
 
+  private static readonly EXTRA_PRIMITIVE_TO_CANONICAL: Record<string, Record<string, CanonicalPrimitiveType>> = {
+    modelica: {
+      "Modelica.Blocks.Interfaces.RealInput": "REAL",
+      "Modelica.Blocks.Interfaces.RealOutput": "REAL",
+      "Modelica.Blocks.Interfaces.IntegerInput": "INTEGER",
+      "Modelica.Blocks.Interfaces.IntegerOutput": "INTEGER",
+      "Modelica.Blocks.Interfaces.BooleanInput": "BOOLEAN",
+      "Modelica.Blocks.Interfaces.BooleanOutput": "BOOLEAN",
+      "Modelica.SIunits.Voltage": "REAL",
+      "Modelica.SIunits.Current": "REAL",
+      "Modelica.SIunits.Power": "REAL",
+      "Modelica.SIunits.ActivePower": "REAL",
+      "Modelica.SIunits.ReactivePower": "REAL",
+      "Modelica.SIunits.Frequency": "REAL",
+      "Modelica.SIunits.Angle": "REAL",
+      "Modelica.SIunits.Mass": "REAL",
+      "Modelica.SIunits.Length": "REAL",
+      "Modelica.SIunits.Time": "REAL",
+      "Modelica.Units.SI.Voltage": "REAL",
+      "Modelica.Units.SI.Current": "REAL",
+      "Modelica.Units.SI.Mass": "REAL",
+      "Modelica.Units.SI.Length": "REAL",
+    },
+    sysml2: {
+      "ScalarValues::Real": "REAL",
+      "ScalarValues::Integer": "INTEGER",
+      "ScalarValues::Natural": "INTEGER",
+      "ScalarValues::Positive": "INTEGER",
+      "ScalarValues::Boolean": "BOOLEAN",
+      "ScalarValues::String": "STRING",
+      Real: "REAL",
+      Integer: "INTEGER",
+      Natural: "INTEGER",
+      Positive: "INTEGER",
+      Boolean: "BOOLEAN",
+      String: "STRING",
+    },
+    psse: {
+      REAL: "REAL",
+      real: "REAL",
+      float: "REAL",
+      DOUBLE: "REAL",
+      INTEGER: "INTEGER",
+      int: "INTEGER",
+      STRING: "STRING",
+      boolean: "BOOLEAN",
+      LOGICAL: "BOOLEAN",
+    },
+    pscad: {
+      REAL: "REAL",
+      real: "REAL",
+      INTEGER: "INTEGER",
+      int: "INTEGER",
+      LOGICAL: "BOOLEAN",
+      boolean: "BOOLEAN",
+      STRING: "STRING",
+      text: "STRING",
+      ELECTRICAL: "REAL",
+    },
+    spice: {
+      real: "REAL",
+      double: "REAL",
+      voltage: "REAL",
+      current: "REAL",
+      int: "INTEGER",
+      bool: "BOOLEAN",
+      string: "STRING",
+    },
+    veriloga: {
+      real: "REAL",
+      electrical: "REAL",
+      voltage: "REAL",
+      current: "REAL",
+      integer: "INTEGER",
+      string: "STRING",
+    },
+    "verilog-a": {
+      real: "REAL",
+      electrical: "REAL",
+      voltage: "REAL",
+      current: "REAL",
+      integer: "INTEGER",
+      string: "STRING",
+    },
+    simulink: {
+      double: "REAL",
+      single: "REAL",
+      int8: "INTEGER",
+      int16: "INTEGER",
+      int32: "INTEGER",
+      uint32: "INTEGER",
+      boolean: "BOOLEAN",
+      string: "STRING",
+    },
+    c: {
+      double: "REAL",
+      float: "REAL",
+      int: "INTEGER",
+      long: "INTEGER",
+      bool: "BOOLEAN",
+      _Bool: "BOOLEAN",
+      "char*": "STRING",
+    },
+    fortran: {
+      real: "REAL",
+      "real(8)": "REAL",
+      "double precision": "REAL",
+      integer: "INTEGER",
+      logical: "BOOLEAN",
+      character: "STRING",
+    },
+    cellml: { dimensionless: "REAL", real: "REAL" },
+    sbml: { real: "REAL", dimensionless: "REAL", boolean: "BOOLEAN", integer: "INTEGER", string: "STRING" },
+    modelscript: { Real: "REAL", Integer: "INTEGER", Boolean: "BOOLEAN", String: "STRING" },
+  };
+
+  private static readonly EXTRA_CANONICAL_TO_PRIMITIVE: Record<string, Record<CanonicalPrimitiveType, string>> = {
+    psse: { REAL: "REAL", INTEGER: "INTEGER", BOOLEAN: "LOGICAL", STRING: "STRING" },
+    pscad: { REAL: "REAL", INTEGER: "INTEGER", BOOLEAN: "LOGICAL", STRING: "STRING" },
+    spice: { REAL: "real", INTEGER: "int", BOOLEAN: "bool", STRING: "string" },
+    veriloga: { REAL: "real", INTEGER: "integer", BOOLEAN: "integer", STRING: "string" },
+    "verilog-a": { REAL: "real", INTEGER: "integer", BOOLEAN: "integer", STRING: "string" },
+    simulink: { REAL: "double", INTEGER: "int32", BOOLEAN: "boolean", STRING: "string" },
+    c: { REAL: "double", INTEGER: "int", BOOLEAN: "bool", STRING: "char*" },
+    fortran: { REAL: "double precision", INTEGER: "integer", BOOLEAN: "logical", STRING: "character" },
+    cellml: { REAL: "dimensionless", INTEGER: "dimensionless", BOOLEAN: "dimensionless", STRING: "string" },
+    sbml: { REAL: "real", INTEGER: "integer", BOOLEAN: "boolean", STRING: "string" },
+    modelscript: { REAL: "Real", INTEGER: "Integer", BOOLEAN: "Boolean", STRING: "String" },
+  };
+
+  /**
+   * Resolves a type name in `lang` to a canonical primitive category if recognized.
+   */
+  toCanonicalPrimitive(lang: string, typeName: string): CanonicalPrimitiveType | null {
+    const nLang = lang.toLowerCase();
+    const clean = typeName.trim();
+    if (!clean) return null;
+
+    const base = PRIMITIVE_TO_CANONICAL[nLang]?.[clean];
+    if (base) return base;
+
+    const extra = WorkspaceTypeRegistry.EXTRA_PRIMITIVE_TO_CANONICAL[nLang]?.[clean];
+    if (extra) return extra;
+
+    const leaf = clean.split("::").pop()?.split(".").pop()?.trim();
+    if (leaf && leaf !== clean) {
+      return (
+        PRIMITIVE_TO_CANONICAL[nLang]?.[leaf] ??
+        WorkspaceTypeRegistry.EXTRA_PRIMITIVE_TO_CANONICAL[nLang]?.[leaf] ??
+        null
+      );
+    }
+
+    // SysML v2 / Modelica scalar quantities (e.g. ISQ::*Value, Real) fallback
+    if (nLang === "sysml2" || nLang === "sysml") {
+      return (
+        PRIMITIVE_TO_CANONICAL["sysml2"]?.[clean] ??
+        WorkspaceTypeRegistry.EXTRA_PRIMITIVE_TO_CANONICAL["sysml2"]?.[clean] ??
+        null
+      );
+    }
+    return null;
+  }
+
+  /**
+   * Checks whether `sourceType` in `sourceLang` is compatible with `targetType` in `targetLang`
+   * across canonical primitives, numeric widening (`INTEGER -> REAL`), custom mappings, and units.
+   */
+  areTypesCompatible(
+    sourceLang: string,
+    sourceType: string,
+    targetLang: string,
+    targetType: string,
+    opts?: { sourceUnit?: string | undefined; targetUnit?: string | undefined },
+  ): { compatible: boolean; reason?: string | undefined } {
+    const sLang = sourceLang.toLowerCase();
+    const tLang = targetLang.toLowerCase();
+    const sClean = sourceType.trim();
+    const tClean = targetType.trim();
+
+    if (!sClean || !tClean) return { compatible: true };
+
+    if (opts?.sourceUnit && opts?.targetUnit) {
+      const su = opts.sourceUnit.trim();
+      const tu = opts.targetUnit.trim();
+      if (su && tu && su !== tu && su !== "1" && tu !== "1") {
+        return { compatible: false, reason: `Unit mismatch: '${su}' is not compatible with '${tu}'.` };
+      }
+    }
+
+    const mappedDirect = this.customMappings.get(`${sLang}:${tLang}:${sClean}`);
+    if (mappedDirect && mappedDirect === tClean) return { compatible: true };
+    const mappedReverse = this.customMappings.get(`${tLang}:${sLang}:${tClean}`);
+    if (mappedReverse && mappedReverse === sClean) return { compatible: true };
+
+    const sLeaf = sClean.split("::").pop()?.split(".").pop()?.trim() ?? sClean;
+    const tLeaf = tClean.split("::").pop()?.split(".").pop()?.trim() ?? tClean;
+    if (sClean === tClean || sLeaf === tLeaf) return { compatible: true };
+
+    const sCanon = this.toCanonicalPrimitive(sLang, sClean);
+    const tCanon = this.toCanonicalPrimitive(tLang, tClean);
+    if (sCanon && tCanon) {
+      if (sCanon === tCanon) return { compatible: true };
+      if (sCanon === "INTEGER" && tCanon === "REAL") return { compatible: true };
+      return {
+        compatible: false,
+        reason: `Cross-language type mismatch: '${sClean}' (${sLang}/${sCanon}) is not compatible with '${tClean}' (${tLang}/${tCanon}).`,
+      };
+    }
+
+    return { compatible: false, reason: `Incompatible types '${sClean}' (${sLang}) and '${tClean}' (${tLang}).` };
+  }
+
   /**
    * Resolves primitive type equivalence via the canonical intermediate representation.
    */
@@ -115,15 +328,17 @@ export class WorkspaceTypeRegistry {
     const sLang = sourceLang.toLowerCase();
     const tLang = targetLang.toLowerCase();
 
-    const srcMap = PRIMITIVE_TO_CANONICAL[sLang];
-    const tgtMap = CANONICAL_TO_PRIMITIVE[tLang];
-
-    if (!srcMap || !tgtMap) return null;
-
-    const canonical = srcMap[sourceType];
+    const canonical =
+      PRIMITIVE_TO_CANONICAL[sLang]?.[sourceType] ??
+      WorkspaceTypeRegistry.EXTRA_PRIMITIVE_TO_CANONICAL[sLang]?.[sourceType] ??
+      this.toCanonicalPrimitive(sLang, sourceType);
     if (!canonical) return null;
 
-    return tgtMap[canonical] ?? null;
+    return (
+      CANONICAL_TO_PRIMITIVE[tLang]?.[canonical] ??
+      WorkspaceTypeRegistry.EXTRA_CANONICAL_TO_PRIMITIVE[tLang]?.[canonical] ??
+      null
+    );
   }
 
   /**
@@ -134,7 +349,16 @@ export class WorkspaceTypeRegistry {
    * 3. Queries workspace symbol index for matching target symbols or library FQNs.
    * 4. Falls back to original type if no mapping is found.
    */
-  resolveTypeMapping(sourceLang: string, targetLang: string, sourceType: string, workspace?: any): string {
+  resolveTypeMapping(
+    sourceLang: string,
+    targetLang: string,
+    sourceType: string,
+    workspace?: {
+      getIndex?: (opts?: {
+        eager?: boolean;
+      }) => { byName?: Map<string, number[]>; symbols?: Map<number, { name?: string; language?: string }> } | null;
+    },
+  ): string {
     const sLang = sourceLang.toLowerCase();
     const tLang = targetLang.toLowerCase();
 

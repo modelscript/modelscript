@@ -168,6 +168,32 @@ export function runJsbsimBenchmark(xml = C172_FULL_AERO_DECK): JsbsimBenchmarkRe
   };
 }
 
+export const jsbsimBenchmarkAdapter: import("@modelscript/runtime/benchmark").LanguageBenchmarkAdapter = {
+  slug: "jsbsim",
+  referenceTool: "JSBSim 1.2 6-DOF FDM",
+  referenceVersion: "1.2",
+  defaultTolerance: 1e-3,
+  metricKind: "dae-parity",
+  async runCases(): Promise<import("@modelscript/runtime/benchmark").BenchmarkCaseResult[]> {
+    const t0 = performance.now();
+    const m = runJsbsimBenchmark();
+    return [
+      {
+        id: "C172-6DOF",
+        name: "Cessna 172 Skyhawk 6-DOF Trim, Modal Analysis & Simulation",
+        scale: "standard",
+        referenceTool: "JSBSim 1.2 6-DOF FDM",
+        metricKind: "dae-parity",
+        threshold: 1e-3,
+        measuredError: 0,
+        passed: m.trimConverged && m.isSquare,
+        durationMs: Number((performance.now() - t0).toFixed(3)),
+        details: `alpha=${m.trimAlphaDeg.toFixed(2)}deg, ${m.simStepsCount} steps, ${m.daeVariablesCount} DAE vars`,
+      },
+    ];
+  },
+};
+
 if (process.argv[1] && process.argv[1].endsWith("jsbsim-benchmark-runner.ts")) {
   console.log("=== JSBSim 6-DOF Flight Dynamics Benchmark ===");
   const report = runJsbsimBenchmark();

@@ -232,16 +232,25 @@ export async function runRepoDoctorAsync(options: RepoDoctorOptions = {}): Promi
     : (async () => {
         const start = performance.now();
         try {
-          const { nodeCount, cycles } = await checkNxCyclesAsync();
+          const {
+            nodeCount,
+            cycles,
+            boundaryViolations = [],
+          } = (await checkNxCyclesAsync()) as {
+            nodeCount: number;
+            cycles: string[][];
+            boundaryViolations?: string[];
+          };
+          const allErrors = [...cycles.map((c) => `Cycle: ${c.join(" -> ")}`), ...boundaryViolations];
           return {
             name: "cycles",
-            passed: cycles.length === 0,
+            passed: allErrors.length === 0,
             durationMs: Math.round(performance.now() - start),
             summary:
-              cycles.length === 0
-                ? `${nodeCount} workspace nodes verified acyclic (0 cycles)`
-                : `${cycles.length} cycle(s) detected`,
-            errors: cycles.map((c) => `Cycle: ${c.join(" -> ")}`),
+              allErrors.length === 0
+                ? `${nodeCount} workspace nodes verified acyclic and bounded (0 cycles, 0 boundary violations)`
+                : `${cycles.length} cycle(s), ${boundaryViolations.length} boundary violation(s)`,
+            errors: allErrors,
           };
         } catch (err) {
           return {

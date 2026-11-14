@@ -1,0 +1,48 @@
+ANDES 2.0.0
+Copyright (C) 2015-2026 Hantao Cui
+
+ANDES comes with ABSOLUTELY NO WARRANTY
+Case file: /home/omar/git3/modelscript/languages/psse/testsuite/wecc_ibr.raw
+Report time: 11/14/2026 12:36:21 AM
+
+Power flow converged in 4 iterations.
+Flat-start: No
+
+Statistics:
+Buses                              4
+Generators                         2
+Committed Gens                     2
+Loads                              1
+Shunts                             0
+Lines                              3
+Transformers      
+Areas                              0
+
+EXTENDED SUMMARY:
+                              P (pu)            Q (pu)
+
+Generation                     1.809           0.38562
+Load                             1.8               0.3
+
+BUS DATA:
+                            Bus Name            Vm(pu)          Va(rad.)
+
+1                          SLACK_GEN              1.02        6.8286e-15
+2                            POI_BUS           0.99828         -0.033719
+3                           IBR_COLL           0.99893         0.0014651
+4                           IBR_TERM                 1          0.026544
+
+LINE DATA:
+                           Line Name     Fr. Bus (idx)      To Bus (idx)       P From (pu)       Q From (pu)         P To (pu)         Q To (pu)
+
+Line_1                        Line_1                 1                 2           0.80898           0.41009            -0.805          -0.38451
+Line_2                        Line_2                 3                 2             0.998         -0.049485            -0.995          0.084506
+Line_3                        Line_3                 4                 3                 1          -0.02447            -0.998          0.049485
+
+OTHER ALGEBRAIC VARIABLES:
+                                    
+
+q PV 2                      -0.02447
+q Slack 1                    0.41009
+p Slack 1                    0.80898
+

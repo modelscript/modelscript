@@ -12,8 +12,8 @@ import {
   TerminalIcon,
   TrashIcon,
   VerifiedIcon,
-  XIcon,
 } from "@primer/octicons-react";
+import { Dialog } from "@primer/react";
 import React, { useCallback, useEffect, useState } from "react";
 import styled from "styled-components";
 import {
@@ -78,7 +78,7 @@ const KeyCard = styled.div`
   transition: border-color 0.2s;
 
   &:hover {
-    border-color: var(--color-accent-fg, #0969da);
+    border-color: var(--ms-accent, var(--color-accent-fg));
   }
 `;
 
@@ -104,7 +104,7 @@ const AlgoTag = styled.span`
   border-radius: 12px;
   font-weight: 500;
   background-color: var(--color-accent-subtle, rgba(9, 105, 218, 0.1));
-  color: var(--color-accent-fg, #0969da);
+  color: var(--ms-accent, var(--color-accent-fg));
   font-family: var(--font-mono, monospace);
 `;
 
@@ -135,61 +135,6 @@ const CopyButton = styled.button`
   &:hover {
     color: var(--color-text-primary);
     border-color: var(--color-text-muted);
-  }
-`;
-
-const ModalOverlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 16px;
-`;
-
-const ModalContent = styled.div`
-  background-color: var(--color-canvas-default);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 24px;
-  max-width: 580px;
-  width: 100%;
-  box-shadow: var(--shadow-floating, 0 8px 24px rgba(0, 0, 0, 0.2));
-  max-height: 90vh;
-  overflow-y: auto;
-`;
-
-const ModalHeader = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-`;
-
-const ModalTitle = styled.h3`
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--color-text-heading);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`;
-
-const CloseButton = styled.button`
-  background: none;
-  border: none;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  padding: 4px;
-
-  &:hover {
-    color: var(--color-text-primary);
   }
 `;
 
@@ -625,7 +570,7 @@ export const SigningKeysSection: React.FC = () => {
               height: "48px",
               borderRadius: "50%",
               background: "var(--color-accent-subtle, rgba(9, 105, 218, 0.1))",
-              color: "var(--color-accent-fg, #0969da)",
+              color: "var(--ms-accent, var(--color-accent-fg))",
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
@@ -681,7 +626,10 @@ export const SigningKeysSection: React.FC = () => {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <ShieldCheckIcon size={18} style={{ color: "var(--color-accent-fg, #0969da)", flexShrink: 0 }} />
+                <ShieldCheckIcon
+                  size={18}
+                  style={{ color: "var(--ms-accent, var(--color-accent-fg))", flexShrink: 0 }}
+                />
                 <div>
                   <span style={{ fontWeight: 600, fontSize: "13px", color: "var(--color-text-primary)" }}>
                     Enable auto-signing on this device
@@ -712,7 +660,7 @@ export const SigningKeysSection: React.FC = () => {
                     <AlgoTag
                       style={{
                         background: "rgba(9, 105, 218, 0.12)",
-                        color: "var(--color-accent-fg, #0969da)",
+                        color: "var(--ms-accent, var(--color-accent-fg))",
                         border: "1px solid rgba(9, 105, 218, 0.3)",
                       }}
                     >
@@ -763,7 +711,7 @@ export const SigningKeysSection: React.FC = () => {
                         padding: "3px 8px",
                         fontSize: "12px",
                         fontWeight: 500,
-                        color: "var(--color-accent-fg, #0969da)",
+                        color: "var(--ms-accent, var(--color-accent-fg))",
                         cursor: "pointer",
                         display: "inline-flex",
                         alignItems: "center",
@@ -906,17 +854,16 @@ export const SigningKeysSection: React.FC = () => {
 
       {/* Register Key Modal */}
       {isRegisterModalOpen && (
-        <ModalOverlay onClick={() => setIsRegisterModalOpen(false)}>
-          <ModalContent onClick={(e) => e.stopPropagation()}>
-            <ModalHeader>
-              <ModalTitle>
-                <KeyIcon size={20} /> Register User Signing Key
-              </ModalTitle>
-              <CloseButton onClick={() => setIsRegisterModalOpen(false)}>
-                <XIcon size={18} />
-              </CloseButton>
-            </ModalHeader>
-
+        <Dialog
+          title={
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+              <KeyIcon size={18} /> Register User Signing Key
+            </span>
+          }
+          width="medium"
+          onClose={() => setIsRegisterModalOpen(false)}
+        >
+          <div style={{ maxHeight: "75vh", overflowY: "auto" }}>
             <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
               <SecondaryButton
                 onClick={() => setRegisterMode("paste")}
@@ -1004,23 +951,29 @@ export const SigningKeysSection: React.FC = () => {
                 </div>
               </div>
             )}
-          </ModalContent>
-        </ModalOverlay>
+          </div>
+        </Dialog>
       )}
 
       {/* Revocation Confirmation Modal */}
       {confirmingRevokeKey && (
-        <ModalOverlay onClick={() => setConfirmingRevokeKey(null)}>
-          <ModalContent onClick={(e) => e.stopPropagation()}>
-            <ModalHeader>
-              <ModalTitle style={{ color: "var(--color-danger-fg, #cf222e)" }}>
-                <AlertIcon size={20} /> Revoke Signing Key
-              </ModalTitle>
-              <CloseButton onClick={() => setConfirmingRevokeKey(null)}>
-                <XIcon size={18} />
-              </CloseButton>
-            </ModalHeader>
-
+        <Dialog
+          title={
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                color: "var(--color-danger-fg, #cf222e)",
+              }}
+            >
+              <AlertIcon size={18} /> Revoke Signing Key
+            </span>
+          }
+          width="medium"
+          onClose={() => setConfirmingRevokeKey(null)}
+        >
+          <div>
             <DetailSubtitle style={{ marginBottom: "12px" }}>
               Are you sure you want to revoke{" "}
               <strong>{confirmingRevokeKey.label || confirmingRevokeKey.fingerprint_sha256}</strong>? Once revoked,
@@ -1041,22 +994,28 @@ export const SigningKeysSection: React.FC = () => {
                 {revoking ? "Revoking..." : "Confirm Revocation"}
               </DangerButton>
             </div>
-          </ModalContent>
-        </ModalOverlay>
+          </div>
+        </Dialog>
       )}
       {/* Master Key Delegation Attestation Modal */}
       {delegatingDeviceKey && (
-        <ModalOverlay onClick={() => setDelegatingDeviceKey(null)}>
-          <ModalContent onClick={(e) => e.stopPropagation()}>
-            <ModalHeader>
-              <ModalTitle style={{ color: "var(--color-done-fg, #8250df)" }}>
-                <LinkIcon size={20} /> Master Key Delegation
-              </ModalTitle>
-              <CloseButton onClick={() => setDelegatingDeviceKey(null)}>
-                <XIcon size={18} />
-              </CloseButton>
-            </ModalHeader>
-
+        <Dialog
+          title={
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                color: "var(--color-done-fg, #8250df)",
+              }}
+            >
+              <LinkIcon size={18} /> Master Key Delegation
+            </span>
+          }
+          width="medium"
+          onClose={() => setDelegatingDeviceKey(null)}
+        >
+          <div style={{ maxHeight: "75vh", overflowY: "auto" }}>
             <DetailSubtitle style={{ marginBottom: "16px" }}>
               Attest and link device key{" "}
               <strong>{delegatingDeviceKey.label || delegatingDeviceKey.fingerprint_sha256}</strong> to your master GPG
@@ -1132,8 +1091,8 @@ export const SigningKeysSection: React.FC = () => {
                 </PrimaryButton>
               </div>
             </form>
-          </ModalContent>
-        </ModalOverlay>
+          </div>
+        </Dialog>
       )}
     </Box>
   );

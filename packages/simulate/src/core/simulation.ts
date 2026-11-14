@@ -36,12 +36,16 @@ export interface ArenaWhenClause {
   groupId?: number | undefined;
 }
 
-/** An arena assertion extracted from EqKind.FunctionCall assert(cond, msg). */
+/** An arena assertion extracted from EqKind.FunctionCall assert(cond, msg, level). */
 export interface ArenaAssertion {
   /** ExprId of the condition expression. */
   conditionExprId: number;
   /** ExprId of the message expression (or -1 if none). */
   messageExprId: number;
+  /** Severity level (defaults to "error" when omitted). */
+  level?: "warning" | "error" | undefined;
+  /** ExprId of dynamic level expression when not statically known. */
+  levelExprId?: number | undefined;
 }
 
 /** An arena event indicator for zero-crossing detection. */

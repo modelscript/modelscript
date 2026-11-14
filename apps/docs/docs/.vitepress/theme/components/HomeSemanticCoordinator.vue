@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import {
   COORDINATOR_SCENARIOS,
   evaluateCoordinatorScenario,
@@ -16,7 +16,11 @@ import {
   type Urdf3DVisualData,
   type Visual3DTriangle,
 } from "../util/semantic-coordinator-engine";
-import { highlightWorkflowCode } from "../util/workflow-highlighter";
+import {
+  evaluateCoordinatorScenarioAsync,
+  highlightAndLintCodeAsync,
+  plainLinesHtml,
+} from "../util/showcase-worker-client";
 import type { WorkflowMonacoInstance } from "../util/workflow-monaco";
 import MsIcon from "./MsIcon.vue";
 
@@ -82,15 +86,66 @@ const isModified = computed(() => {
 
 const allVisualActive = computed(() => paneViewModes.value.every((m) => m !== "code"));
 
-const highlightedPanes = computed<[string[], string[], string[], string[]]>(() => {
-  const p = currentScenario.value.panes;
-  return [
-    highlightWorkflowCode(paneCodes.value[0], p[0].lang),
-    highlightWorkflowCode(paneCodes.value[1], p[1].lang),
-    highlightWorkflowCode(paneCodes.value[2], p[2].lang),
-    highlightWorkflowCode(paneCodes.value[3], p[3].lang),
-  ];
-});
+const highlightedPanes = ref<[string[], string[], string[], string[]]>([
+  plainLinesHtml(paneCodes.value[0]),
+  plainLinesHtml(paneCodes.value[1]),
+  plainLinesHtml(paneCodes.value[2]),
+  plainLinesHtml(paneCodes.value[3]),
+]);
+
+let highlightSeq = 0;
+let prevHighlightScenarioId = currentScenario.value.id;
+watch(
+  [paneCodes, activeScenarioIdx],
+  ([codes]) => {
+    const scenario = currentScenario.value;
+    if (typeof window === "undefined") {
+      highlightedPanes.value = [
+        plainLinesHtml(codes[0]),
+        plainLinesHtml(codes[1]),
+        plainLinesHtml(codes[2]),
+        plainLinesHtml(codes[3]),
+      ];
+      return;
+    }
+    if (scenario.id !== prevHighlightScenarioId) {
+      prevHighlightScenarioId = scenario.id;
+      highlightedPanes.value = [
+        plainLinesHtml(codes[0]),
+        plainLinesHtml(codes[1]),
+        plainLinesHtml(codes[2]),
+        plainLinesHtml(codes[3]),
+      ];
+    }
+    const panes = scenario.panes;
+    const seq = ++highlightSeq;
+    void Promise.all([
+      highlightAndLintCodeAsync("coord:0", codes[0], panes[0].lang),
+      highlightAndLintCodeAsync("coord:1", codes[1], panes[1].lang),
+      highlightAndLintCodeAsync("coord:2", codes[2], panes[2].lang),
+      highlightAndLintCodeAsync("coord:3", codes[3], panes[3].lang),
+    ])
+      .then((results) => {
+        if (seq !== highlightSeq) return;
+        highlightedPanes.value = [
+          results[0]!.highlightedLines,
+          results[1]!.highlightedLines,
+          results[2]!.highlightedLines,
+          results[3]!.highlightedLines,
+        ];
+      })
+      .catch(() => {
+        if (seq !== highlightSeq) return;
+        highlightedPanes.value = [
+          plainLinesHtml(codes[0]),
+          plainLinesHtml(codes[1]),
+          plainLinesHtml(codes[2]),
+          plainLinesHtml(codes[3]),
+        ];
+      });
+  },
+  { immediate: true },
+);
 
 const allDiagnostics = computed(() => {
   const p = currentScenario.value.panes;
@@ -491,14 +546,15 @@ function cancelPendingEvaluation(): void {
 /** Set when the engine cannot evaluate the current text; cleared on the next successful run. */
 const evalError = ref<string | null>(null);
 
-function runCoordinatorEvaluation(editedIdx: number): void {
+async function runCoordinatorEvaluation(editedIdx: number): Promise<void> {
   cancelPendingEvaluation();
   lastEditedPaneIdx.value = editedIdx;
   const scenarioId = currentScenario.value.id;
   const user: [string, string, string, string] = [...paneCodes.value];
 
   try {
-    const first = evaluateCoordinatorScenario(scenarioId, user, editedIdx);
+    const first = await evaluateCoordinatorScenarioAsync(scenarioId, user, editedIdx);
+    if (scenarioId !== currentScenario.value.id) return;
     const merged = first.updatedCodes.map((eng, i) => mergeUserLines(baselineCodes[i]!, user[i]!, eng)) as [
       string,
       string,
@@ -508,7 +564,9 @@ function runCoordinatorEvaluation(editedIdx: number): void {
 
     // Re-evaluate against the merged text so diagnostics/visuals match exactly what is on screen.
     const changed = merged.some((c, i) => c !== user[i]);
-    evalResult.value = changed ? evaluateCoordinatorScenario(scenarioId, merged, editedIdx) : first;
+    const finalRes = changed ? await evaluateCoordinatorScenarioAsync(scenarioId, merged, editedIdx) : first;
+    if (scenarioId !== currentScenario.value.id) return;
+    evalResult.value = finalRes;
     evalError.value = null;
 
     paneCodes.value = merged;
@@ -571,7 +629,7 @@ function resetScenario(): void {
   applyPreset("nominal");
 }
 
-function selectScenario(idx: number): void {
+async function selectScenario(idx: number): Promise<void> {
   flushPendingEvaluation();
   activeScenarioIdx.value = idx;
   const s = COORDINATOR_SCENARIOS[idx]!;
@@ -594,11 +652,13 @@ function selectScenario(idx: number): void {
 
   let res: CoordinatorEvaluationResult;
   try {
-    res = evaluateCoordinatorScenario(s.id, startCodes, 0);
+    res = await evaluateCoordinatorScenarioAsync(s.id, startCodes, 0);
+    if (activeScenarioIdx.value !== idx) return;
     evalError.value = null;
   } catch {
     startCodes = [...defaultCodes];
-    res = evaluateCoordinatorScenario(s.id, startCodes, 0);
+    res = await evaluateCoordinatorScenarioAsync(s.id, startCodes, 0);
+    if (activeScenarioIdx.value !== idx) return;
     evalError.value = "Your previous edits for this scenario could not be evaluated, so it was reset to defaults.";
   }
   evalResult.value = res;

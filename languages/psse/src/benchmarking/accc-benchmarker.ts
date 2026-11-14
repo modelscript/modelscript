@@ -11,7 +11,16 @@
  * 5. Statistical Parity & Fidelity Comparison (false negatives, false positives, voltage blind spots, ranking correlation).
  */
 
-import { BusType, type BranchRecord, type BusRecord, type GeneratorRecord, type LoadRecord, type PsseCase } from "../types.js";
+import type { PowerFlowSolution } from "../solver/ac-powerflow.js";
+import { screenContingencies, type CandidateContingency } from "../solver/contingency-screener.js";
+import {
+  BusType,
+  type BranchRecord,
+  type BusRecord,
+  type GeneratorRecord,
+  type LoadRecord,
+  type PsseCase,
+} from "../types.js";
 
 export interface AcccRecord {
   contingencyLabel: string;
@@ -317,5 +326,120 @@ export function compareAcccReports(
     totalLowVoltageViolationsFound: lowVoltageViolations,
     minimumGridVoltagePu: Number(minV.toFixed(4)),
     perfectSafetyParity: falseNegatives === 0,
+  };
+}
+
+export interface LinearAcccBenchmarkSummary {
+  records: AcccRecord[];
+  totalContingencies: number;
+  convergedContingencies: number;
+  totalViolationsFound: number;
+  executionTimeMs: number;
+  throughputSolvesPerSec: number;
+  worstContingency: string;
+  maxLoadingPercent: number;
+  psseTabulatedCsv: string;
+}
+
+/**
+ * Executes real sparse B_bus / LODF contingency screening using `screenContingencies`
+ * and formats the results into both summary metrics and Siemens PSS/E tabulated CSV.
+ */
+export function runLinearAcccBenchmarkScreening(
+  psseCase: PsseCase,
+  baseSolution: PowerFlowSolution,
+  maxContingencies: number,
+  formatLabel: (br: BranchRecord, index: number) => string,
+): LinearAcccBenchmarkSummary {
+  const inServiceBranches = psseCase.branches.filter((b) => b.st === 1).slice(0, maxContingencies);
+
+  let baseMinV = Infinity;
+  let baseMinBus = 0;
+  let baseVoltViolations = 0;
+  for (const b of baseSolution.buses) {
+    if (b.vm < baseMinV) {
+      baseMinV = b.vm;
+      baseMinBus = b.busNumber;
+    }
+    if (b.vm < 0.95 || b.vm > 1.05) baseVoltViolations++;
+  }
+  if (!Number.isFinite(baseMinV)) baseMinV = 1.0;
+
+  const candidates: CandidateContingency[] = inServiceBranches.map((br, idx) => ({
+    id: `CTG_${idx}`,
+    name: formatLabel(br, idx),
+    events: [{ type: "trip_branch", fromBus: br.i, toBus: br.j, ckt: br.ckt }],
+  }));
+
+  const t0 = performance.now();
+  const report = screenContingencies(psseCase, candidates, {
+    topKAcConfirmation: 0,
+    baseSolution,
+  });
+  const executionTimeMs = Math.max(0.01, performance.now() - t0);
+  const perContingencyMs = candidates.length > 0 ? executionTimeMs / candidates.length : 0.0;
+
+  const linearMap = new Map((report.screenedLinearCandidates ?? []).map((c) => [c.id, c]));
+  const records: AcccRecord[] = [];
+  let convergedContingencies = 0;
+  let totalViolationsFound = 0;
+  let worstContingency = "NONE";
+  let maxLoadingPercent = 0.0;
+
+  for (let idx = 0; idx < candidates.length; idx++) {
+    const ctg = candidates[idx]!;
+    const br = inServiceBranches[idx]!;
+    const cand = linearMap.get(ctg.id);
+    const maxLoad = cand?.maxBranchLoadingPercent ?? 0.0;
+    const status: "CONVERGED" | "DIVERGED" = cand?.causesIslanding ? "DIVERGED" : "CONVERGED";
+    if (status === "CONVERGED") convergedContingencies++;
+    if (maxLoad > 100.0) totalViolationsFound++;
+    if (maxLoad > maxLoadingPercent) {
+      maxLoadingPercent = maxLoad;
+      worstContingency = ctg.name;
+    }
+
+    const worstBrLabel = cand?.worstBranch ?? `${br.i}-${br.j} ${br.ckt}`;
+    const flowMva = cand?.worstFlowMva ?? 0.0;
+    const ratingMva = cand?.worstRatingMva ?? br.rateA;
+
+    records.push({
+      contingencyLabel: ctg.name,
+      status,
+      iterations: 1, // Direct sparse B_bus linear sensitivity evaluation
+      maxLoadingPercent: maxLoad,
+      worstBranch: worstBrLabel,
+      flowMva,
+      ratingMva,
+      lowestVoltagePu: baseMinV,
+      lowestVoltageBus: baseMinBus,
+      voltageViolationsCount: baseVoltViolations,
+      severityIndex: cand?.severityIndex ?? 0.0,
+      executionTimeMs: perContingencyMs,
+    });
+  }
+
+  const csvLines: string[] = [
+    "CONTINGENCY LABEL,STATUS,ITERATIONS,MAX % LOADING,WORST MONITORED BRANCH,FLOW MVA,RATING MVA,LOWEST VOLTAGE PU,LOWEST VOLTAGE BUS,VOLTAGE VIOLATIONS COUNT,SEVERITY INDEX,EXECUTION TIME MS",
+  ];
+  for (const r of records) {
+    csvLines.push(
+      `"${r.contingencyLabel}",${r.status},${r.iterations},${r.maxLoadingPercent.toFixed(2)},"${r.worstBranch}",${r.flowMva.toFixed(1)},${r.ratingMva.toFixed(1)},${r.lowestVoltagePu.toFixed(4)},${r.lowestVoltageBus},${r.voltageViolationsCount},${r.severityIndex.toFixed(2)},${r.executionTimeMs.toFixed(2)}`,
+    );
+  }
+
+  const throughputSolvesPerSec =
+    executionTimeMs > 0 ? Math.round((records.length / (executionTimeMs / 1000)) * 10) / 10 : 0;
+
+  return {
+    records,
+    totalContingencies: records.length,
+    convergedContingencies,
+    totalViolationsFound,
+    executionTimeMs,
+    throughputSolvesPerSec,
+    worstContingency,
+    maxLoadingPercent,
+    psseTabulatedCsv: csvLines.join("\n"),
   };
 }

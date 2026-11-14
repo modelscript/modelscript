@@ -73,3 +73,9 @@ msx openscenario to-dae HighwayCutIn.xosc
 # Project into Modelica 3.x vehicle kinematics model
 msx openscenario to-modelica HighwayCutIn.xosc -o ScenarioSimulation.mo
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="openscenario" />

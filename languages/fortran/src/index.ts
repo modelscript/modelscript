@@ -183,3 +183,5 @@ export async function parseFortran(source: string): Promise<SyntaxNode | null> {
   const tree = parser.parse(source);
   return tree?.rootNode ?? null;
 }
+
+export * from "./lints/workspace.js";

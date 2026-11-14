@@ -119,9 +119,7 @@ export interface BnglBenchmarkMetrics {
   sbmlXmlBytes: number;
 }
 
-export function runBnglBenchmark(
-  content = BNGL_EGFR_SIGNALING_BENCHMARK,
-): BnglBenchmarkMetrics {
+export function runBnglBenchmark(content = BNGL_EGFR_SIGNALING_BENCHMARK): BnglBenchmarkMetrics {
   const doc: BnglDocument = parseBngl(content, "egfr_signaling.bngl");
   const m = doc.model;
 
@@ -189,3 +187,30 @@ export function runBnglBenchmark(
     sbmlXmlBytes: xml.length,
   };
 }
+
+export const bnglBenchmarkAdapter: import("@modelscript/runtime/benchmark").LanguageBenchmarkAdapter = {
+  slug: "bngl",
+  referenceTool: "BioNetGen 2.9 Rule-Based Simulator",
+  referenceVersion: "2.9",
+  defaultTolerance: 1e-4,
+  metricKind: "residual",
+  async runCases(): Promise<import("@modelscript/runtime/benchmark").BenchmarkCaseResult[]> {
+    const t0 = performance.now();
+    const m = runBnglBenchmark();
+    const ok = m.isSquare && m.egfrConservationError <= 1e-4;
+    return [
+      {
+        id: "EGFRSignalingCascade",
+        name: "EGFR Rule-Based Signaling Pathway Expansion & ODE Integration",
+        scale: "standard",
+        referenceTool: "BioNetGen 2.9 Rule-Based Simulator",
+        metricKind: "residual",
+        threshold: 1e-4,
+        measuredError: Number(m.egfrConservationError.toExponential(3)),
+        passed: ok,
+        durationMs: Number((performance.now() - t0).toFixed(3)),
+        details: `${m.expandedSpeciesCount} expanded species, ${m.expandedReactionsCount} reactions, ${m.daeVarCount} DAE vars/eqs`,
+      },
+    ];
+  },
+};

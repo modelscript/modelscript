@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import {
   BusType,
   calculateShortCircuit,
+  compileAssemblyScriptDyrInWorker,
   DYR_MODEL_SCHEMAS,
   executePythonPsspyScript,
   lowerPsseToDae,
@@ -487,5 +488,46 @@ psspy.run(0, 1.0, 1, 1, 1)
     assert.ok(seqDiags.some((d) => d.code === "P5101"));
     assert.ok(seqDiags.some((d) => d.code === "P5103"));
     assert.equal(psseLanguage.maturity, "stable");
+  });
+
+  it("500-bus transient RMS simulation completes within 2500ms using sparse CCS LU", () => {
+    const psseCase = buildSyntheticGridCase(500);
+    const dyrLines: string[] = [];
+    for (const gen of psseCase.generators.slice(0, 10)) {
+      dyrLines.push(`${gen.i} 'GENCLS' '${gen.id}' 5.0 1.5 /`);
+    }
+    psseCase.dyr = parseDyr(dyrLines.join("\n"));
+
+    const t0 = performance.now();
+    const sim = simulatePsseTransient(psseCase, {
+      stopTime: 0.5,
+      timeStep: 0.01,
+      faultBus: 250,
+      faultStartSec: 0.1,
+      faultClearSec: 0.2,
+      faultSusceptancePu: 5.0,
+    });
+    const elapsedMs = performance.now() - t0;
+
+    assert.ok(sim.t.length >= 45, `Expected >= 45 time steps, got ${sim.t.length}`);
+    assert.ok(elapsedMs < 2500, `500-bus transient took ${elapsedMs.toFixed(1)}ms (expected < 2500ms)`);
+  });
+
+  it("compiles custom AssemblyScript USRMDL via compileAssemblyScriptDyrInWorker into executable WASM", async () => {
+    const src = [
+      "export function MY_USRMDL_init(conPtr: usize, count: i32, statePtr: usize, ioPtr: usize): void {",
+      "  store<f64>(statePtr, load<f64>(ioPtr + 16));",
+      "}",
+      "export function MY_USRMDL_step(t: f64, dt: f64, conPtr: usize, statePtr: usize, ioPtr: usize): void {",
+      "  store<f64>(ioPtr + 16, 1.75);",
+      "}",
+    ].join("\n");
+    const res = await compileAssemblyScriptDyrInWorker(src);
+    assert.ok(res.wasmBytes && res.wasmBytes.byteLength > 0, `Expected WASM bytes, got: ${res.diagnostics.join("; ")}`);
+    const mod = new WebAssembly.Module(new Uint8Array(res.wasmBytes));
+    const inst = new WebAssembly.Instance(mod, { env: { abort: () => {} } });
+    const exports = inst.exports as Record<string, unknown>;
+    assert.equal(typeof exports["MY_USRMDL_init"], "function");
+    assert.equal(typeof exports["MY_USRMDL_step"], "function");
   });
 });

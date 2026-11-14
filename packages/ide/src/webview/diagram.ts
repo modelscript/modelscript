@@ -908,7 +908,15 @@ function initContextMenu() {
       }
       const el = document.createElement("div");
       el.className = "context-menu-item";
-      el.innerHTML = `<span>${item.label}</span>${item.shortcut ? `<span class="shortcut">${item.shortcut}</span>` : ""}`;
+      const labelSpan = document.createElement("span");
+      labelSpan.textContent = item.label;
+      el.appendChild(labelSpan);
+      if (item.shortcut) {
+        const shortcutSpan = document.createElement("span");
+        shortcutSpan.className = "shortcut";
+        shortcutSpan.textContent = item.shortcut;
+        el.appendChild(shortcutSpan);
+      }
       el.onclick = (e) => {
         e.stopPropagation();
         hideMenu();
@@ -1241,7 +1249,13 @@ function showSpotlight(x: number, y: number) {
     filtered.forEach((item, idx) => {
       const row = document.createElement("div");
       row.className = `spotlight-item${idx === selectedIdx ? " selected" : ""}`;
-      row.innerHTML = `<span>${item.name}</span><span class="spotlight-badge">${item.category}</span>`;
+      const nameSpan = document.createElement("span");
+      nameSpan.textContent = item.name;
+      const badgeSpan = document.createElement("span");
+      badgeSpan.className = "spotlight-badge";
+      badgeSpan.textContent = item.category;
+      row.appendChild(nameSpan);
+      row.appendChild(badgeSpan);
       row.onmouseenter = () => {
         selectedIdx = idx;
         renderResults();

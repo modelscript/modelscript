@@ -14,6 +14,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
+import { requireCliEnterpriseModule } from "../ee-loader.js";
+import { buildGatekeeperPackageFromInput } from "./gatekeeper-package.js";
+
+interface ExpressAppLike {
+  use(path: string, handler: unknown): void;
+  listen(port: number, cb: () => void): void;
+}
 
 export const GatekeeperCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "gatekeeper <action> [files...]",
@@ -68,11 +75,15 @@ export const GatekeeperCommand: CommandModule<Record<string, unknown>, Record<st
 
     if (action === "serve") {
       console.log(`[gatekeeper] Starting ISO Grid Code Gatekeeper CI/CD service on port ${port}...`);
-      const { createGatekeeperRouter } = await import("@modelscript/ee");
-      const expressMod = (await import("express")) as unknown as { default?: () => any };
-      const createExpressApp = expressMod.default ?? (expressMod as unknown as () => any);
+      const ee = await requireCliEnterpriseModule("msx gatekeeper serve");
+      if (typeof ee.createGatekeeperRouter !== "function") {
+        console.error("[Enterprise Edition Required] 'msx gatekeeper serve' is unavailable in this build.");
+        process.exit(1);
+      }
+      const expressMod = (await import("express")) as unknown as { default?: () => ExpressAppLike };
+      const createExpressApp = expressMod.default ?? (expressMod as unknown as () => ExpressAppLike);
       const app = createExpressApp();
-      app.use("/api/v1", createGatekeeperRouter());
+      app.use("/api/v1", ee.createGatekeeperRouter());
       app.listen(port, () => {
         console.log(`  ✔ Gatekeeper service listening at http://localhost:${port}/api/v1/grid-gatekeeper/health`);
         console.log(`  ℹ POST /api/v1/grid-gatekeeper/evaluate to submit interconnection models.`);
@@ -85,7 +96,11 @@ export const GatekeeperCommand: CommandModule<Record<string, unknown>, Record<st
       process.exit(1);
     }
 
-    const { runGatekeeperScreeningPipeline } = await import("@modelscript/ee");
+    const ee = await requireCliEnterpriseModule("msx gatekeeper");
+    if (typeof ee.runGatekeeperScreeningPipeline !== "function") {
+      console.error("[Enterprise Edition Required] 'msx gatekeeper' is unavailable in this build.");
+      process.exit(1);
+    }
 
     for (const file of files) {
       const absPath = path.resolve(process.cwd(), file);
@@ -97,20 +112,13 @@ export const GatekeeperCommand: CommandModule<Record<string, unknown>, Record<st
       const plantName = path.basename(file, path.extname(file));
       console.log(`[gatekeeper] Evaluating submission package for ${plantName}...`);
 
-      const pkg = {
-        submissionId: path.basename(absPath),
-        developerOrganization: "Interconnection Customer",
-        plantName,
+      const pkg = buildGatekeeperPackageFromInput(file, {
         gridInterconnection: interconnection,
         ratedMva,
         poiKv,
-        hasRawPowerFlow: true,
-        hasDyrDynamics: true,
-        hasPscadModel: true,
-        hasWasmFirmware: true,
-      };
+      });
 
-      const scorecard = runGatekeeperScreeningPipeline(pkg);
+      const scorecard = ee.runGatekeeperScreeningPipeline(pkg);
 
       console.log(`\n=======================================================`);
       console.log(` GRID CODE GATEKEEPER SCORECARD: [${scorecard.overallVerdict}]`);

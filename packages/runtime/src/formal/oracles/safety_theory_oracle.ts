@@ -25,6 +25,7 @@ import type {
   TheoryLiteral,
   TheoryOracle,
 } from "../theory_coordinator.js";
+import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
 
 export type SafetyStandard = "ISO26262" | "DO178C" | "ARP4754A" | "IEC61508";
 
@@ -160,17 +161,11 @@ export class SafetyTheoryOracle implements TheoryOracle {
 
   public retractLiteral(litId: number): void {
     const idx = this.activeLiterals.findIndex((l) => l.id === litId);
-    if (
-      idx === -1 &&
-      !this.sharedEqualities.some((eq) => (eq.justifications ?? eq.justification ?? []).includes(litId))
-    ) {
+    if (idx === -1 && !hasSharedEqualityWithLiteral(this.sharedEqualities, litId)) {
       return;
     }
     const remainingLits = this.activeLiterals.filter((l) => l.id !== litId);
-    const remainingEqs = this.sharedEqualities.filter((eq) => {
-      const justs = eq.justifications ?? eq.justification ?? [];
-      return !justs.includes(litId);
-    });
+    const remainingEqs = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
     const savedStack = this.levelStack;
     this.failureModes.clear();
     for (const [k, v] of this.baseFailureModes) {

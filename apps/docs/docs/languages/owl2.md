@@ -115,3 +115,9 @@ msx polyglot verify --strict
 ## Diagnostic Rules
 
 <LintRules lang="owl2" />
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="owl2" />

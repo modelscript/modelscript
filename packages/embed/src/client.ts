@@ -78,15 +78,23 @@ export class ModelScriptEmbed {
       ...(options.embedToken ? { embedToken: options.embedToken } : {}),
     };
 
-    const rawOrigin = options.embedOrigin ?? (typeof window !== "undefined" ? window.location.origin : "");
+    const fallbackOrigin =
+      typeof window !== "undefined" && window.location.origin && window.location.origin !== "null"
+        ? window.location.origin
+        : "";
+    const rawOrigin = options.embedOrigin ?? fallbackOrigin;
     let origin = rawOrigin;
     while (origin.endsWith("/")) {
       origin = origin.slice(0, -1);
     }
-    try {
-      this.targetOrigin = origin ? new URL(origin).origin : "*";
-    } catch {
-      this.targetOrigin = "*";
+    if (!origin) {
+      this.targetOrigin = "";
+    } else {
+      const parsed = fallbackOrigin ? new URL(origin, fallbackOrigin) : new URL(origin);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        throw new Error(`Invalid embedOrigin protocol: ${parsed.protocol}`);
+      }
+      this.targetOrigin = parsed.origin;
     }
 
     const queryParams = new URLSearchParams();
@@ -109,10 +117,10 @@ export class ModelScriptEmbed {
 
     this.messageHandler = (ev: MessageEvent) => {
       if (!ev.data || typeof ev.data !== "object") return;
-      if (this.iframe.contentWindow && ev.source && ev.source !== this.iframe.contentWindow) {
+      if (!this.targetOrigin || ev.origin !== this.targetOrigin) {
         return;
       }
-      if (this.targetOrigin !== "*" && ev.origin && ev.origin !== "null" && ev.origin !== this.targetOrigin) {
+      if (this.iframe.contentWindow && ev.source !== this.iframe.contentWindow) {
         return;
       }
       const msg = ev.data as EmbedToHostMessage;
@@ -131,7 +139,7 @@ export class ModelScriptEmbed {
   }
 
   private flushPendingMessages(): void {
-    if (!this.iframe.contentWindow || this.pendingMessages.length === 0) return;
+    if (!this.iframe.contentWindow || !this.targetOrigin || this.pendingMessages.length === 0) return;
     const queue = this.pendingMessages.splice(0, this.pendingMessages.length);
     for (const msg of queue) {
       this.iframe.contentWindow.postMessage(msg, this.targetOrigin);
@@ -142,7 +150,7 @@ export class ModelScriptEmbed {
     if (!this.isReady) {
       this.pendingMessages.push(msg);
     }
-    if (this.iframe.contentWindow) {
+    if (this.iframe.contentWindow && this.targetOrigin) {
       this.iframe.contentWindow.postMessage(msg, this.targetOrigin);
     }
   }

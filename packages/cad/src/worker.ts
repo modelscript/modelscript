@@ -121,9 +121,12 @@ export class CSGWorker {
       throw new Error("CSGWorker is only supported in Node.js environments.");
     }
     try {
-      const { createRequire } = await import(/* @vite-ignore */ "node:module");
-      const path = await import(/* @vite-ignore */ "node:path");
-      const fs = await import(/* @vite-ignore */ "node:fs");
+      const nodeModuleId = "node:module";
+      const nodePathId = "node:path";
+      const nodeFsId = "node:fs";
+      const { createRequire } = await import(nodeModuleId);
+      const path = await import(nodePathId);
+      const fs = await import(nodeFsId);
 
       const require = createRequire(import.meta.url);
       if (typeof (globalThis as { __dirname?: string | undefined }).__dirname === "undefined") {
@@ -154,8 +157,10 @@ export class CSGWorker {
     }
     if (!this.oc) await this.init();
 
-    const path = await import(/* @vite-ignore */ "node:path");
-    const fs = await import(/* @vite-ignore */ "node:fs");
+    const nodePathId = "node:path";
+    const nodeFsId = "node:fs";
+    const path = await import(nodePathId);
+    const fs = await import(nodeFsId);
 
     console.log(`[CSG] Processing graph with ${graph.nodes.length} nodes...`);
     fs.mkdirSync(outputDir, { recursive: true });

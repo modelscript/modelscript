@@ -80,6 +80,7 @@ export * from "./interop/oslc_gateway.js";
 export * from "./interop/polyglot-transformer.js";
 export * from "./interop/provenance.js";
 export * from "./interop/reqif.js";
+export * from "./interop/semantic_coordinator_pipeline.js";
 export * from "./interop/shape_refit.js";
 export * from "./interop/simplex_reconciler.js";
 export * from "./interop/tgg-pattern-interpreter.js";
@@ -137,8 +138,11 @@ export * from "./util/ctrf_reporter.js";
 export * from "./util/diff.js";
 export * from "./util/html_reporter.js";
 export * from "./util/msl_ffi.js";
+export * from "./util/port_signature.js";
 export * from "./util/sarif_reporter.js";
+export * from "./util/symbol_roles.js";
 export * from "./util/type_registry.js";
+export * from "./workspace/library-manifest.js";
 export * from "./workspace/wasm_cache_store.js";
 export * from "./workspace/wasm_container.js";
 export * from "./workspace/wasm_query_engine.js";
@@ -149,6 +153,7 @@ export {
   LanguageWorkspaceIndex as WasmWorkspaceIndex,
   LanguageWorkspaceIndex as WorkspaceIndex,
 } from "./workspace/wasm_workspace.js";
+export * from "./workspace/workspace_linter.js";
 export type { SyntaxNode };
 import type { SyntaxNode } from "@modelscript/dsl/utils";
 export type CSTNode = SyntaxNode;
@@ -165,6 +170,7 @@ export {
 export * from "./formal/abstract_interpretation/reduced_product.js";
 
 // Semantic Theory Coordinator & Theory Oracles
+export * from "./benchmark.js";
 export * from "./formal/candidate_filter.js";
 export * from "./formal/dae/affine_domain.js";
 export * from "./formal/dae/arena_dae_compiler.js";

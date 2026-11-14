@@ -11,8 +11,8 @@
  * 5. OpenIPSL Modelica projection for dynamic power grid simulation
  */
 
-import assert from "node:assert/strict";
 import { lowerPsseToDae, solvePowerFlow } from "@modelscript/psse";
+import assert from "node:assert/strict";
 import {
   cgmesToModelica,
   cgmesToPsse,
@@ -357,3 +357,31 @@ export function runCgmesBenchmark(
     modelicaLines: moLines,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const cgmesBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "cgmes",
+  referenceTool: "ENTSO-E CGMES v2.4.15 / PSS/E AC Power Flow",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runCgmesBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "entsoe-400kv-corridor-eq-ssh",
+        name: "entsoe-400kv-corridor-eq-ssh",
+        scale: "standard",
+        referenceTool: "ENTSO-E CGMES v2.4.15 / PSS/E AC Power Flow",
+        passed: m.powerFlowConverged && m.daeVarCount >= 10 && m.daeEqCount >= 6,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.daeEqCount,
+        threshold: 0,
+        details: `converged=${m.powerFlowConverged}, ${m.daeVarCount} vars/${m.daeEqCount} eqs, ${m.modelicaLines} Modelica lines`,
+      },
+    ];
+  },
+};

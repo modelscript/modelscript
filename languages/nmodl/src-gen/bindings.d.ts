@@ -1363,41 +1363,40 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  Document = 69,
-  Block = 70,
-  TitleBlock = 71,
-  NeuronBlock = 72,
-  NeuronStatement = 73,
-  UnitsBlock = 74,
-  UnitsDef = 75,
-  ParameterBlock = 76,
-  ParameterDecl = 77,
-  StateBlock = 78,
-  StateDecl = 79,
-  AssignedBlock = 80,
-  BreakpointBlock = 81,
-  DerivativeBlock = 82,
-  InitialBlock = 83,
-  ProcedureBlock = 84,
-  ProcedureArg = 85,
-  FunctionBlock = 86,
-  Statement = 87,
-  SolveStatement = 88,
-  DerivativeEquation = 89,
-  AssignmentEquation = 90,
-  CallStatement = 91,
-  IfStatement = 92,
-  Expression = 93,
-  BinaryExpr = 94,
-  UnaryExpr = 95,
-  CallExpr = 96,
-  PrimaryExpr = 97,
-  START = 98,
-  _START = 98,
-  CommentLine = 158,
-  RestOfLine = 159,
-  Identifier = 160,
-  NumberLiteral = 161,
+  Document = 68,
+  Block = 69,
+  TitleBlock = 70,
+  NeuronBlock = 71,
+  NeuronStatement = 72,
+  UnitsBlock = 73,
+  UnitsDef = 74,
+  ParameterBlock = 75,
+  ParameterDecl = 76,
+  StateBlock = 77,
+  StateDecl = 78,
+  AssignedBlock = 79,
+  BreakpointBlock = 80,
+  DerivativeBlock = 81,
+  InitialBlock = 82,
+  ProcedureBlock = 83,
+  ProcedureArg = 84,
+  FunctionBlock = 85,
+  Statement = 86,
+  SolveStatement = 87,
+  DerivativeEquation = 88,
+  AssignmentEquation = 89,
+  CallStatement = 90,
+  IfStatement = 91,
+  Expression = 92,
+  BinaryExpr = 93,
+  UnaryExpr = 94,
+  CallExpr = 95,
+  PrimaryExpr = 96,
+  START = 97,
+  _START = 97,
+  CommentLine = 161,
+  Identifier = 162,
+  NumberLiteral = 163,
   EOF = 1023,
 }
 
@@ -1555,10 +1554,6 @@ export interface CommentLineNode extends SyntaxNode {
   readonly typeId: SyntaxKind.CommentLine;
 }
 export declare function isCommentLine(node: SyntaxNode | null | undefined): node is CommentLineNode;
-export interface RestOfLineNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.RestOfLine;
-}
-export declare function isRestOfLine(node: SyntaxNode | null | undefined): node is RestOfLineNode;
 export interface IdentifierNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Identifier;
 }
@@ -1769,11 +1764,6 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is CommentLineNode;
-  };
-  export const RestOfLine: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is RestOfLineNode;
   };
   export const Identifier: {
     readonly typeId: number;

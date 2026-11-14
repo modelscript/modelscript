@@ -28,6 +28,7 @@ import {
 } from "../../constants.js";
 import { getShortClassSpecifierNode } from "../../queries.js";
 import { getFlatteningState, getNamedArrayShape } from "../support/state.js";
+import type { ComponentInstanceData } from "../types.js";
 import {
   castToRealExpr,
   evalDaeExpr,
@@ -3180,4 +3181,201 @@ export function isInsideForIndex(node: SyntaxNode | null | undefined): boolean {
     curr = curr.parent;
   }
   return false;
+}
+
+/**
+ * Resolves a dotted component member reference whose path traverses an array component
+ * (such as `rs.resistor.LossPower` -> `smee.rs.resistor[1..3].LossPower`) into an `ArrayCtor`
+ * expression ID, checking `DAEBuilder` first and falling back to `QueryDB` when the target
+ * array component has not yet been elaborated into the DAE.
+ */
+export function expandDottedArrayMemberRef(
+  rawName: string,
+  prefix: string,
+  dae: DAEBuilder,
+  db?: QueryDB,
+  currentClassId?: SymbolId | null,
+  rootClassId?: SymbolId | null,
+  evaluateCSTNum?: typeof evaluateCSTNumber,
+): { isArray: boolean; ctorId: number | null } {
+  const candidates =
+    prefix && !rawName.startsWith(`${prefix}.`) && rawName !== prefix ? [`${prefix}.${rawName}`, rawName] : [rawName];
+  for (const cand of candidates) {
+    if (dae.hasArrayElements(cand)) {
+      return { isArray: true, ctorId: expandVarToArrayCtor(cand, dae) };
+    }
+    const namedShape = getNamedArrayShape(dae, cand);
+    if (namedShape && namedShape.length > 0) {
+      return { isArray: true, ctorId: namedShape.some((d) => d === 0) ? dae.addArrayCtorExpr([]) : null };
+    }
+  }
+
+  if (!db || !rawName.includes(".")) {
+    return { isArray: false, ctorId: null };
+  }
+
+  const resolveClassAtPrefix = (pfx: string): SymbolId | null => {
+    const startId = rootClassId ?? currentClassId ?? null;
+    if (!pfx || startId === null) return currentClassId ?? rootClassId ?? null;
+    let cid: SymbolId | null = startId;
+    for (const seg of pfx.split(".")) {
+      const segName = seg.replace(/\[[^\]]*\]$/, "");
+      if (!segName || cid === null) return null;
+      const els: SymbolId[] = db.query<SymbolId[]>("instantiate", cid) ?? [];
+      const foundId: SymbolId | undefined = els.find((eid: SymbolId) => db.symbol(eid)?.name === segName);
+      if (foundId === undefined) return null;
+      const nextCls = db.query<SymbolId | { id?: SymbolId | null } | null>("classInstance", foundId);
+      const nextCid: SymbolId | null | undefined = typeof nextCls === "number" ? nextCls : nextCls?.id;
+      if (nextCid === undefined || nextCid === null) return null;
+      cid = nextCid;
+    }
+    return cid;
+  };
+
+  const relName = prefix && rawName.startsWith(`${prefix}.`) ? rawName.slice(prefix.length + 1) : rawName;
+  const startClassId = resolveClassAtPrefix(prefix) ?? currentClassId ?? rootClassId ?? null;
+  if (startClassId === null) return { isArray: false, ctorId: null };
+
+  let currClassId: SymbolId | null = startClassId;
+  let hasAnyArraySegment = false;
+  let currentEntries: { path: string; coords: number[] }[] = [{ path: prefix || "", coords: [] }];
+  let modMap = new Map<string, { expr: string; evalPrefix: string }>();
+
+  const evalDimExpr = (dimText: string, clsId: SymbolId, ownerPrefix: string): number | null => {
+    const clean = dimText.trim();
+    if (/^\d+$/.test(clean)) return parseInt(clean, 10);
+    const tryLookup = (varRef: string): number | null => {
+      for (const cand of [
+        ownerPrefix ? `${ownerPrefix}.${varRef}` : varRef,
+        prefix ? `${prefix}.${varRef}` : varRef,
+        varRef,
+      ]) {
+        const vIdx = dae.lookupVariable(cand);
+        if (vIdx >= 0) {
+          const vExpr = dae.getVarExpression(vIdx);
+          if (vExpr !== undefined && vExpr >= 0) {
+            const val = evalDaeExpr(vExpr, dae);
+            if (typeof val === "number" && Number.isInteger(val) && val >= 0) return val;
+          }
+        }
+      }
+      return null;
+    };
+    const directVal = tryLookup(clean);
+    if (directVal !== null) return directVal;
+    const mapped = modMap.get(clean);
+    if (mapped) {
+      if (/^\d+$/.test(mapped.expr)) return parseInt(mapped.expr, 10);
+      const mappedVal = tryLookup(mapped.expr);
+      if (mappedVal !== null) return mappedVal;
+      const evalMapped = (evaluateCSTNum ?? evaluateCSTNumber)(
+        mapped.expr,
+        undefined,
+        clsId,
+        db,
+        dae,
+        mapped.evalPrefix,
+      );
+      if (typeof evalMapped === "number" && Number.isInteger(evalMapped) && evalMapped >= 0) return evalMapped;
+    }
+    const evalRes = (evaluateCSTNum ?? evaluateCSTNumber)(clean, undefined, clsId, db, dae, ownerPrefix);
+    if (typeof evalRes === "number" && Number.isInteger(evalRes) && evalRes >= 0) return evalRes;
+    return null;
+  };
+
+  for (const part of relName.split(".")) {
+    if (currClassId === null) return { isArray: hasAnyArraySegment, ctorId: null };
+    const cleanPart = part.replace(/\[[^\]]*\]$/, "");
+    const hasExplicitSub = part.includes("[");
+    const els: SymbolId[] = db.query<SymbolId[]>("instantiate", currClassId) ?? [];
+    const compId: SymbolId | undefined = els.find((eid: SymbolId) => db.symbol(eid)?.name === cleanPart);
+    if (compId === undefined) return { isArray: hasAnyArraySegment, ctorId: null };
+
+    const rawDims = !hasExplicitSub
+      ? db.query<Array<string | { text?: string | undefined }> | null>("arrayDimensions", compId)
+      : null;
+    const ownerPrefix = currentEntries[0]?.path || prefix;
+    const nextModMap = new Map<string, { expr: string; evalPrefix: string }>();
+    const compData = db.query<ComponentInstanceData | null>("componentInstance", compId);
+    for (const a of compData?.modification?.args ?? []) {
+      if (!a?.isBreak && a?.name && a?.value?.text) {
+        nextModMap.set(a.name, { expr: a.value.text.trim(), evalPrefix: ownerPrefix });
+      }
+    }
+
+    if (rawDims && rawDims.length > 0) {
+      hasAnyArraySegment = true;
+      const dimSizes: number[] = [];
+      for (const rd of rawDims) {
+        const dText = typeof rd === "string" ? rd : rd?.text?.trim();
+        const sz = dText ? evalDimExpr(dText, currClassId, ownerPrefix) : null;
+        if (sz === null || sz < 0) {
+          return { isArray: true, ctorId: null };
+        }
+        if (sz === 0) {
+          return { isArray: true, ctorId: dae.addArrayCtorExpr([]) };
+        }
+        dimSizes.push(sz);
+      }
+      const totalNew = dimSizes.reduce((acc, d) => acc * d, 1);
+      if (currentEntries.length * totalNew > MAX_ARRAY_EXPANSION_LENGTH) {
+        return { isArray: true, ctorId: null };
+      }
+      const tuples: number[][] = [[]];
+      for (const d of dimSizes) {
+        const expanded: number[][] = [];
+        for (const t of tuples) {
+          for (let k = 1; k <= d; k++) expanded.push([...t, k]);
+        }
+        tuples.splice(0, tuples.length, ...expanded);
+      }
+      const nextEntries: { path: string; coords: number[] }[] = [];
+      for (const ent of currentEntries) {
+        const segBase = ent.path ? `${ent.path}.${cleanPart}` : cleanPart;
+        for (const t of tuples) {
+          nextEntries.push({
+            path: `${segBase}[${t.join(",")}]`,
+            coords: [...ent.coords, ...t],
+          });
+        }
+      }
+      currentEntries = nextEntries;
+    } else {
+      currentEntries = currentEntries.map((ent) => ({
+        path: ent.path ? `${ent.path}.${part}` : part,
+        coords: ent.coords,
+      }));
+    }
+
+    modMap = nextModMap;
+    const nextCls = db.query<SymbolId | { id?: SymbolId | null } | null>("classInstance", compId);
+    currClassId =
+      nextCls !== null && nextCls !== undefined ? (typeof nextCls === "number" ? nextCls : (nextCls.id ?? null)) : null;
+  }
+
+  if (!hasAnyArraySegment || currentEntries.length === 0) {
+    return { isArray: false, ctorId: null };
+  }
+  const rank = currentEntries[0]!.coords.length;
+  if (rank <= 1) {
+    return {
+      isArray: true,
+      ctorId: dae.addArrayCtorExpr(currentEntries.map((e) => dae.addNameExpr(e.path))),
+    };
+  }
+  const maxDims = new Array(rank).fill(0);
+  const byCoord = new Map<string, number>();
+  for (const ent of currentEntries) {
+    for (let d = 0; d < rank; d++) {
+      if (ent.coords[d]! > maxDims[d]!) maxDims[d] = ent.coords[d]!;
+    }
+    byCoord.set(ent.coords.join(","), dae.addNameExpr(ent.path));
+  }
+  const buildNested = (dim: number, prefixCoords: number[]): number => {
+    if (dim === rank) return byCoord.get(prefixCoords.join(",")) ?? dae.addRealLiteral(0.0);
+    const items: number[] = [];
+    for (let k = 1; k <= maxDims[dim]!; k++) items.push(buildNested(dim + 1, [...prefixCoords, k]));
+    return dae.addArrayCtorExpr(items);
+  };
+  return { isArray: true, ctorId: buildNested(0, []) };
 }

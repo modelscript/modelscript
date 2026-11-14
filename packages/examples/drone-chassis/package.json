@@ -7,7 +7,8 @@
   "type": "module",
   "main": "Chassis.mo",
   "scripts": {
-    "lint": "eslint . --no-warn-ignored"
+    "lint": "eslint . --no-warn-ignored",
+    "typecheck": "tsc --noEmit"
   },
   "modelscript": {
     "tier": "stable",

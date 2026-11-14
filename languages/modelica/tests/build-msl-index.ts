@@ -223,6 +223,40 @@ if (!isMsl) {
     console.log(`[build-msl-index] Pre-loading MSL dependency from: ${mslPath}`);
     await context.addLibrary(mslPath, { skipIndex: true });
   }
+} else {
+  const companionSpecs = [
+    {
+      name: "Complex",
+      candidates: [
+        path.join(repoRoot, "data", "libraries", "Complex", version, "extracted", "Complex"),
+        path.join(repoRoot, "data", "libraries", "Complex", "4.0.0", "extracted", "Complex"),
+        path.join(process.env.HOME || "", ".openmodelica", "libraries", `Complex ${version}+maint.om`),
+        path.join(process.env.HOME || "", ".openmodelica", "libraries", "Complex 4.0.0+maint.om"),
+        path.join(repoRoot, "scripts", "msl", "Complex.mo"),
+      ],
+      hasEntry: (p: string) =>
+        fs.existsSync(p) &&
+        (p.endsWith(".mo") || fs.existsSync(path.join(p, "package.mo")) || fs.existsSync(path.join(p, "Complex.mo"))),
+    },
+    {
+      name: "ModelicaServices",
+      candidates: [
+        path.join(repoRoot, "data", "libraries", "ModelicaServices", version, "extracted", "ModelicaServices"),
+        path.join(repoRoot, "data", "libraries", "ModelicaServices", "4.0.0", "extracted", "ModelicaServices"),
+        path.join(process.env.HOME || "", ".openmodelica", "libraries", `ModelicaServices ${version}+maint.om`),
+        path.join(process.env.HOME || "", ".openmodelica", "libraries", "ModelicaServices 4.0.0+maint.om"),
+        path.join(repoRoot, "scripts", "msl", `ModelicaServices ${version}`),
+      ],
+      hasEntry: (p: string) => fs.existsSync(p) && fs.existsSync(path.join(p, "package.mo")),
+    },
+  ];
+  for (const spec of companionSpecs) {
+    const depPath = spec.candidates.find(spec.hasEntry);
+    if (depPath) {
+      console.log(`[build-msl-index] Indexing companion library ${spec.name} from: ${depPath}`);
+      await context.addLibrary(depPath);
+    }
+  }
 }
 
 console.log(`[build-msl-index] Indexing ${rootPkgName} package tree...`);

@@ -225,7 +225,7 @@ jobs:
         run: |
           mkdir -p .v8-coverage languages/modelica/coverage/omc
           NODE_V8_COVERAGE=$(pwd)/.v8-coverage npm run test:modelica:both:allow-wasm
-          npx c8 report --temp-directory=.v8-coverage --reporter=lcov --reports-dir=languages/modelica/coverage/omc --include="languages/modelica/src/**" --include="packages/dsl/src/**" --include="packages/runtime/src/**" || true
+          npx c8 report --temp-directory=.v8-coverage --reporter=lcov --reports-dir=languages/modelica/coverage/omc --include="languages/modelica/src/**" --include="packages/dsl/src/**" --include="packages/runtime/src/**"
       - name: Upload CTRF Artifacts
         if: always() && steps.check-affected.outputs.run_suite == 'true'
         uses: actions/upload-artifact@v4
@@ -324,7 +324,6 @@ jobs:
           node-version-file: ".nvmrc"
       - name: Download All CTRF Artifacts
         uses: actions/download-artifact@v4
-        continue-on-error: true
         with:
           path: ctrf-artifacts
           pattern: ctrf-*
@@ -561,7 +560,7 @@ jobs:
         if: steps.check-affected.outputs.run_docker == 'true'
         run: |
           if [ ! -f "apps/docs/docs/public/modelscript-reference-manual.pdf" ]; then
-            npm run build:pdf --workspace=@modelscript/docs || true
+            npm run build:pdf --workspace=@modelscript/docs
           fi
       - name: Rebuild Unified Site & Docs with PDF Manual
         if: steps.check-affected.outputs.run_docker == 'true'
@@ -620,13 +619,21 @@ jobs:
           echo "  modelica_testsuite: ${{ needs.modelica_testsuite.result }}"
           echo "  cross_os_smoke: ${{ needs.cross_os_smoke.result }}"
           echo "  polyglot_benchmarks: ${{ needs.polyglot_benchmarks.result }}"
-          for res in "${{ needs.lint.result }}" "${{ needs.build.result }}" "${{ needs.test.result }}" "${{ needs.modelica_testsuite.result }}" "${{ needs.cross_os_smoke.result }}" "${{ needs.polyglot_benchmarks.result }}"; do
-            if [ "$res" != "success" ] && [ "$res" != "skipped" ]; then
+          IS_RELEASE_COMMIT=false
+          case "${{ github.event.head_commit.message }}" in
+            "chore(release):"*) IS_RELEASE_COMMIT=true ;;
+          esac
+          for res in "${{ needs.lint.result }}" "${{ needs.build.result }}" "${{ needs.test.result }}" "${{ needs.modelica_testsuite.result }}" "${{ needs.polyglot_benchmarks.result }}"; do
+            if [ "$res" != "success" ] && { [ "$IS_RELEASE_COMMIT" != "true" ] || [ "$res" != "skipped" ]; }; then
               echo "Error: Required job finished with status '$res'"
               exit 1
             fi
           done
-          echo "All required CI jobs succeeded or were skipped cleanly."
+          if [ "${{ needs.cross_os_smoke.result }}" != "success" ] && [ "${{ needs.cross_os_smoke.result }}" != "skipped" ]; then
+            echo "Error: cross_os_smoke finished with status '${{ needs.cross_os_smoke.result }}'"
+            exit 1
+          fi
+          echo "All required CI jobs succeeded."
 
   deploy_production:
     name: Deploy Stack to modelscript.org & ansatz.social
@@ -693,13 +700,14 @@ jobs:
           ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "which docker >/dev/null 2>&1 || (curl -fsSL https://get.docker.com | sh)"
 
           # 2. Ensure target directories exist
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "mkdir -p ${TARGET_DIR}/config ${TARGET_DIR}/scripts ${TARGET_DIR}/backups"
+          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "mkdir -p ${TARGET_DIR}/config ${TARGET_DIR}/scripts/ops ${TARGET_DIR}/backups"
 
           # 3. Synchronize compose files, configs, and ops deployment scripts
           scp docker-compose.yml docker-compose.prod.yml "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/"
           scp config/Caddyfile config/mosquitto.conf config/init-timescaledb.sql "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/config/"
+          scp scripts/ops/*.sh scripts/ops/preflight-audit.ts "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/scripts/ops/"
           scp scripts/ops/*.sh "${PROD_SSH_USER}@${PROD_SSH_HOST}:${TARGET_DIR}/scripts/"
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "chmod +x ${TARGET_DIR}/scripts/*.sh"
+          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "chmod +x ${TARGET_DIR}/scripts/ops/*.sh ${TARGET_DIR}/scripts/*.sh"
 
           # 4. Bootstrap / update .env.production from GitHub secret if provided
           if [ -n "$PROD_ENV_FILE" ]; then
@@ -729,6 +737,6 @@ jobs:
           fi
 
           # 5. Authenticate droplet to GHCR and execute production rollout sentinel with automated rollback
-          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin >/dev/null 2>&1 || true && \
+          ssh "${PROD_SSH_USER}@${PROD_SSH_HOST}" "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin && \
             docker system prune -af --filter 'until=24h' --volumes=false >/dev/null 2>&1 || true && \
-            IMAGE_TAG=sha-${GITHUB_SHA} TARGET_DIR=${TARGET_DIR} ${TARGET_DIR}/scripts/deploy.sh"
+            IMAGE_TAG=sha-${GITHUB_SHA} TARGET_DIR=${TARGET_DIR} ${TARGET_DIR}/scripts/ops/deploy.sh"

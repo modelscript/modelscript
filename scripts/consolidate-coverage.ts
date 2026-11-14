@@ -317,9 +317,9 @@ export function main() {
 
     const summaryJson = {
       summary: {
-        lines: { total: 0, hit: 0, percentage: 100 },
-        branches: { total: 0, hit: 0, percentage: 100 },
-        functions: { total: 0, hit: 0, percentage: 100 },
+        lines: { total: 0, hit: 0, percentage: 0 },
+        branches: { total: 0, hit: 0, percentage: 0 },
+        functions: { total: 0, hit: 0, percentage: 0 },
       },
       packages: [],
     };
@@ -339,8 +339,12 @@ export function main() {
 
     if (process.env["GITHUB_OUTPUT"]) {
       try {
-        fs.appendFileSync(process.env["GITHUB_OUTPUT"], `total_lines=0\nline_coverage=100\n`, "utf-8");
+        fs.appendFileSync(process.env["GITHUB_OUTPUT"], `total_lines=0\nline_coverage=0\n`, "utf-8");
       } catch {}
+    }
+    if (options.threshold !== undefined && options.threshold > 0) {
+      console.error(`[consolidate-coverage] Line coverage 0.0% is below required threshold ${options.threshold}%!`);
+      process.exit(1);
     }
     return;
   }
@@ -514,20 +518,9 @@ export function main() {
     console.log(`Coverage Summary JSON:       ${path.relative(repoRoot, outputJsonPath)}\n`);
   }
 
-  let effectiveThreshold = options.threshold;
-  const hasOmcCoverage = lcovFiles.some((f) => f.filePath.includes("omc") || f.filePath.includes("coverage-omc"));
-
-  if (!hasOmcCoverage && effectiveThreshold !== undefined && effectiveThreshold > 55) {
-    console.log(`[consolidate-coverage] Notice: OMC testsuite coverage was omitted (skipped on diff-aware execution).`);
-    console.log(
-      `[consolidate-coverage] Adjusting line coverage threshold from ${effectiveThreshold}% to 55% for unit-test baseline.`,
-    );
-    effectiveThreshold = 55;
-  }
-
-  if (effectiveThreshold !== undefined && overallLinePct < effectiveThreshold) {
+  if (options.threshold !== undefined && overallLinePct < options.threshold) {
     console.error(
-      `[consolidate-coverage] Line coverage ${overallLinePct.toFixed(1)}% is below required threshold ${effectiveThreshold}%!`,
+      `[consolidate-coverage] Line coverage ${overallLinePct.toFixed(1)}% is below required threshold ${options.threshold}%!`,
     );
     process.exit(1);
   }

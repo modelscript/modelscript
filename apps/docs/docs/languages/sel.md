@@ -78,3 +78,9 @@ msx sel to-dae sel421_line_protection.txt
 ## MCP Agent Tool Integration
 
 - **`sel_evaluate_protection`**: Evaluates SEL relay 50P/51P/Z1P elements, calculates inverse-time overcurrent trip durations under IEEE C37.112 curves, and iteratively resolves SELogic boolean equations for agent-driven protection analysis.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="sel" />

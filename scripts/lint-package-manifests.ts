@@ -20,10 +20,12 @@ type Violation = ManifestViolation;
 const STABLE_LANGUAGES = new Set([
   "adams",
   "ampl",
+  "cantera",
   "ccsds",
   "csv",
   "easy5",
   "epanet",
+  "fiber",
   "gensys",
   "lps",
   "modelica",
@@ -31,6 +33,7 @@ const STABLE_LANGUAGES = new Set([
   "olga",
   "opendrive",
   "owl2",
+  "powerfactory",
   "pscad",
   "psse",
   "relap5",
@@ -53,7 +56,6 @@ const BETA_LANGUAGES = new Set([
   "autosar",
   "bngl",
   "c",
-  "cantera",
   "cellml",
   "cfd",
   "cgmes",
@@ -64,7 +66,6 @@ const BETA_LANGUAGES = new Set([
   "energyplus",
   "fea",
   "febio",
-  "fiber",
   "fortran",
   "genbank",
   "gproms",
@@ -77,8 +78,10 @@ const BETA_LANGUAGES = new Set([
   "jsbsim",
   "landgem",
   "matpower",
+  "mlxtran",
   "modflow",
   "nifti",
+  "nmodl",
   "nmtran",
   "ocpp",
   "oneliner",
@@ -91,7 +94,6 @@ const BETA_LANGUAGES = new Set([
   "pdb",
   "phreeqc",
   "plcopen",
-  "powerfactory",
   "pslf",
   "qif",
   "ran",
@@ -313,27 +315,37 @@ export function checkPackageManifest(pkgJsonPath: string): Violation[] {
       rule: "required-maturity-metadata",
       message: `Package must declare "modelscript": { "tier": "stable" | "beta" | "preview", "category": "core" | "language" | "app" | "example" | "ee" }. Run "npx tsx scripts/lint-package-manifests.ts --sync-tiers".`,
     });
-  } else if (relDir.startsWith("languages/")) {
-    const slug = path.posix.basename(relDir);
-    const testCount = countPackageTestFiles(pkgDir);
-    if (meta.tier === "stable" && !CORE_FOUNDATIONAL_LANGUAGES.has(slug) && testCount < 8) {
+  } else {
+    const expected = getExpectedMetadata(relDir);
+    if (meta.tier !== expected.tier || meta.category !== expected.category) {
       violations.push({
         file: relPath,
-        rule: "tier-test-threshold",
-        message: `Language "${slug}" is marked "stable" but only has ${testCount} test file(s) (minimum 8 required for hardened stable tier).`,
+        rule: "maturity-metadata-mismatch",
+        message: `Declared modelscript metadata (${meta.category}:${meta.tier}) does not match expected (${expected.category}:${expected.tier}). Run "npx tsx scripts/lint-package-manifests.ts --sync-tiers".`,
       });
-    } else if (meta.tier === "beta" && testCount < 5) {
-      violations.push({
-        file: relPath,
-        rule: "tier-test-threshold",
-        message: `Language "${slug}" is marked "beta" but only has ${testCount} test file(s) (minimum 5 required for beta tier).`,
-      });
-    } else if (testCount < 1) {
-      violations.push({
-        file: relPath,
-        rule: "tier-test-threshold",
-        message: `Language "${slug}" must have at least 1 unit/integration test file in tests/.`,
-      });
+    }
+    if (relDir.startsWith("languages/")) {
+      const slug = path.posix.basename(relDir);
+      const testCount = countPackageTestFiles(pkgDir);
+      if (meta.tier === "stable" && !CORE_FOUNDATIONAL_LANGUAGES.has(slug) && testCount < 8) {
+        violations.push({
+          file: relPath,
+          rule: "tier-test-threshold",
+          message: `Language "${slug}" is marked "stable" but only has ${testCount} test file(s) (minimum 8 required for hardened stable tier).`,
+        });
+      } else if (meta.tier === "beta" && testCount < 5) {
+        violations.push({
+          file: relPath,
+          rule: "tier-test-threshold",
+          message: `Language "${slug}" is marked "beta" but only has ${testCount} test file(s) (minimum 5 required for beta tier).`,
+        });
+      } else if (testCount < 1) {
+        violations.push({
+          file: relPath,
+          rule: "tier-test-threshold",
+          message: `Language "${slug}" must have at least 1 unit/integration test file in tests/.`,
+        });
+      }
     }
   }
 

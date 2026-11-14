@@ -1551,6 +1551,49 @@ export const Lint: CommandModule<{}, LintArgs> = {
       }
     }
 
+    if (genericItems.length > 0) {
+      const { hasWorkspaceLinter, lintWorkspaceByLanguage } = await import("@modelscript/lsp");
+      const cliWorkspaceDocs: Record<string, string> = {};
+      const langRoots = new Map<string, string>();
+      for (const item of genericItems) {
+        cliWorkspaceDocs[item.uri] = item.text;
+        const langId = item.langId.toLowerCase();
+        if (hasWorkspaceLinter(langId) && !langRoots.has(langId)) {
+          langRoots.set(langId, item.uri);
+        }
+      }
+
+      for (const [langId, rootUri] of langRoots.entries()) {
+        try {
+          const wsDiags = await lintWorkspaceByLanguage(langId, cliWorkspaceDocs, rootUri);
+          for (const d of wsDiags) {
+            const targetUri = d.uri || rootUri;
+            const resPath = targetUri.replace(/^file:\/\//, "");
+            const alreadyPresent = diagnostics.some(
+              (ex) => ex.resourceId === resPath && String(ex.code ?? "") === String(d.code) && ex.message === d.message,
+            );
+            if (alreadyPresent) continue;
+
+            const docText = cliWorkspaceDocs[targetUri] ?? "";
+            const startOffset = d.line ? lineColToByte(docText, d.line, d.column ?? 1) : 0;
+            diagnostics.push({
+              severity: d.severity,
+              lintName: d.rule,
+              code: d.code,
+              domain: langId,
+              message: d.message,
+              symbolId: null,
+              resourceId: resPath,
+              startOffset,
+              endOffset: startOffset + 1,
+            });
+          }
+        } catch {
+          // Non-fatal workspace linter error
+        }
+      }
+    }
+
     const writeOutput = (content: string) => {
       if (args.out) {
         const outPath = path.resolve(process.cwd(), args.out);

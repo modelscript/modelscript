@@ -71,3 +71,9 @@ msx spice lint SensorFrontEnd.net
 ## Electrical Linters & Diagnostic Rules
 
 <LintRules lang="spice" />
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="spice" />

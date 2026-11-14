@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { LinkExternalIcon, ScreenFullIcon, ScreenNormalIcon, XIcon, ZapIcon } from "@primer/octicons-react";
-import { Button, IconButton, Text } from "@primer/react";
+import { LinkExternalIcon, ScreenFullIcon, ScreenNormalIcon, ZapIcon } from "@primer/octicons-react";
+import { Button, Dialog, IconButton, Text } from "@primer/react";
 import React, { useState } from "react";
-import { createPortal } from "react-dom";
 import styled from "styled-components";
 import { createArtifactView } from "../api";
 import { HERO_EXAMPLES } from "../pages/playground/constants";
@@ -11,76 +10,15 @@ import { getLanguageInfo, useVisibleMorselLanguages } from "./morsel/constants";
 import MorselEditor from "./morsel/Morsel";
 import { compressMorselPayload } from "./morsel/util/permalink";
 
-const ModalBackdrop = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(8px);
-  z-index: 10000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  box-sizing: border-box;
-`;
-
-const ModalContent = styled.div<{ $isFullScreen: boolean }>`
-  background: var(--color-canvas-default, #0d1117);
-  border: 1px solid var(--color-border-default, #30363d);
-  border-radius: ${(props) => (props.$isFullScreen ? "0" : "12px")};
-  width: ${(props) => (props.$isFullScreen ? "100vw" : "90vw")};
-  height: ${(props) => (props.$isFullScreen ? "100vh" : "85vh")};
-  max-width: ${(props) => (props.$isFullScreen ? "100vw" : "1400px")};
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
-  transition: all 0.2s ease-in-out;
-`;
-
-const ModalHeader = styled.div`
-  height: 48px;
-  min-height: 48px;
-  background: var(--color-canvas-subtle, #161b22);
-  border-bottom: 1px solid var(--color-border-default, #30363d);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  gap: 12px;
-`;
-
-const HeaderLeft = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-`;
-
-const HeaderRight = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`;
-
-const ModalBody = styled.div`
+const ModalBody = styled.div<{ $isFullScreen: boolean }>`
   flex: 1;
   width: 100%;
+  height: ${(props) => (props.$isFullScreen ? "76vh" : "62vh")};
+  min-height: 420px;
   position: relative;
   overflow: hidden;
-`;
-
-const ModalFooter = styled.div`
-  height: 52px;
-  min-height: 52px;
-  background: var(--color-canvas-subtle, #161b22);
-  border-top: 1px solid var(--color-border-default, #30363d);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
+  border: 1px solid var(--ms-border-subtle, var(--color-border-default));
+  border-radius: 8px;
 `;
 
 const Badge = styled.span`
@@ -216,12 +154,28 @@ end MySystem;`,
     window.open(`/morsel#m=${hash}`, "_blank", "noopener,noreferrer");
   };
 
-  const modal = (
-    <ModalBackdrop onClick={onClose}>
-      <ModalContent $isFullScreen={isFullScreen} onClick={(e) => e.stopPropagation()}>
-        <ModalHeader>
-          <HeaderLeft>
-            <Badge>⚡ Morsel</Badge>
+  return (
+    <Dialog
+      title={
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <Badge>⚡ Morsel</Badge>
+          <span>Interactive Model Workbench</span>
+        </div>
+      }
+      width="xlarge"
+      onClose={onClose}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "10px",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
             <input
               type="text"
               value={modelTitle}
@@ -232,12 +186,12 @@ end MySystem;`,
                 fontSize: "12px",
                 fontWeight: 600,
                 color: "var(--color-fg-default, #f0f6fc)",
-                background: "var(--color-canvas-default, #0d1117)",
-                border: "1px solid var(--color-border-default, #30363d)",
+                background: "var(--ms-surface-subtle, var(--color-canvas-default, #0d1117))",
+                border: "1px solid var(--ms-border-default, var(--color-border-default, #30363d))",
                 borderRadius: "6px",
-                padding: "3px 8px",
-                minWidth: "120px",
-                maxWidth: "180px",
+                padding: "4px 8px",
+                minWidth: "140px",
+                maxWidth: "200px",
                 outline: "none",
               }}
             />
@@ -275,9 +229,9 @@ end MySystem;`,
                 </option>
               ))}
             </DialectSelect>
-          </HeaderLeft>
+          </div>
 
-          <HeaderRight>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <IconButton
               aria-label="Open in full Morsel workbench"
               icon={LinkExternalIcon}
@@ -291,11 +245,10 @@ end MySystem;`,
               size="small"
               onClick={() => setIsFullScreen((prev) => !prev)}
             />
-            <IconButton aria-label="Close Modal" icon={XIcon} size="small" onClick={onClose} />
-          </HeaderRight>
-        </ModalHeader>
+          </div>
+        </div>
 
-        <ModalBody>
+        <ModalBody $isFullScreen={isFullScreen}>
           <MorselEditor
             dataUrl={null}
             initialCode={code}
@@ -309,7 +262,15 @@ end MySystem;`,
           />
         </ModalBody>
 
-        <ModalFooter>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingTop: "8px",
+            borderTop: "1px solid var(--ms-border-subtle, var(--color-border-default))",
+          }}
+        >
           {attachError ? (
             <Text role="alert" style={{ fontSize: "12px", color: "var(--color-danger-fg, #f85149)", fontWeight: 600 }}>
               {attachError}
@@ -328,12 +289,10 @@ end MySystem;`,
               {attaching ? "Attaching..." : "Attach to Post"}
             </Button>
           </div>
-        </ModalFooter>
-      </ModalContent>
-    </ModalBackdrop>
+        </div>
+      </div>
+    </Dialog>
   );
-
-  return typeof document !== "undefined" ? createPortal(modal, document.body) : modal;
 };
 
 export default MorselComposeModal;

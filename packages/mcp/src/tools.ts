@@ -201,6 +201,90 @@ function getErrorMessage(err: unknown): string {
   return String(err);
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isPathInsideRoot(root: string, target: string): boolean {
+  const rel = path.relative(root, target);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+function findAllowedWorkspaceRoot(): string {
+  const configured = process.env["MSX_MCP_WORKSPACE_ROOT"];
+  if (configured && configured.trim() !== "") {
+    return path.resolve(configured.trim());
+  }
+  const cwd = process.cwd();
+  let dir = cwd;
+  while (true) {
+    const pkgPath = path.join(dir, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const raw = fs.readFileSync(pkgPath, "utf-8");
+        const parsed = JSON.parse(raw) as { workspaces?: unknown };
+        if (parsed.workspaces) {
+          return dir;
+        }
+      } catch {
+        // Ignore unreadable/malformed package.json while resolving root
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return cwd;
+}
+
+function resolveWorkspacePath(inputPath: string): string {
+  if (!inputPath || inputPath.includes("\0")) {
+    throw new Error("Invalid file path: path must be a non-empty string without null bytes.");
+  }
+  const allowedRoot = findAllowedWorkspaceRoot();
+  const candidate = path.resolve(process.cwd(), inputPath);
+  if (!isPathInsideRoot(allowedRoot, candidate)) {
+    throw new Error(`Access denied: path '${inputPath}' resolves outside workspace root.`);
+  }
+  const realRoot = fs.existsSync(allowedRoot) ? fs.realpathSync(allowedRoot) : allowedRoot;
+  if (fs.existsSync(candidate)) {
+    const realTarget = fs.realpathSync(candidate);
+    if (!isPathInsideRoot(realRoot, realTarget)) {
+      throw new Error(`Access denied: path '${inputPath}' resolves outside workspace root via symlink.`);
+    }
+    return realTarget;
+  }
+  let probe = path.dirname(candidate);
+  while (!fs.existsSync(probe)) {
+    const parent = path.dirname(probe);
+    if (parent === probe) break;
+    probe = parent;
+  }
+  if (fs.existsSync(probe)) {
+    const realAncestor = fs.realpathSync(probe);
+    if (!isPathInsideRoot(realRoot, realAncestor)) {
+      throw new Error(`Access denied: path '${inputPath}' escapes workspace root via symlink ancestor.`);
+    }
+  }
+  return candidate;
+}
+
+function resolveSourceOrWorkspaceFile(source: string): string {
+  if (!source || source.includes("\n") || source.trimStart().startsWith("<")) {
+    return source;
+  }
+  const candidate = path.resolve(process.cwd(), source);
+  const allowedRoot = findAllowedWorkspaceRoot();
+  if ((path.isAbsolute(source) || source.includes("..")) && !isPathInsideRoot(allowedRoot, candidate)) {
+    throw new Error(`Access denied: path '${source}' resolves outside workspace root.`);
+  }
+  if (fs.existsSync(candidate)) {
+    const safePath = resolveWorkspacePath(source);
+    return fs.readFileSync(safePath, "utf-8");
+  }
+  return source;
+}
+
 /**
  * Resolves the active `PolyglotHostLike` instance from `ServerContext`, if present.
  */
@@ -351,7 +435,15 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
       const loaded: string[] = [];
       for (const p of paths) {
-        const resolved = path.resolve(p);
+        let resolved: string;
+        try {
+          resolved = resolveWorkspacePath(p);
+        } catch (err: unknown) {
+          return {
+            content: [{ type: "text" as const, text: getErrorMessage(err) }],
+            isError: true,
+          };
+        }
         const library = await context.addLibrary(resolved);
         if (library) {
           loaded.push(library.name ?? resolved);
@@ -494,7 +586,15 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
       let activeSource = code;
       if (!activeSource && filePath) {
-        const resolved = path.resolve(filePath);
+        let resolved: string;
+        try {
+          resolved = resolveWorkspacePath(filePath);
+        } catch (err: unknown) {
+          return {
+            content: [{ type: "text" as const, text: getErrorMessage(err) }],
+            isError: true,
+          };
+        }
         if (fs.existsSync(resolved)) {
           activeSource = fs.readFileSync(resolved, "utf-8");
         }
@@ -871,7 +971,15 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         const sIdx = createSysML2WorkspaceIndex();
 
         for (const p of paths) {
-          const resolved = path.resolve(p);
+          let resolved: string;
+          try {
+            resolved = resolveWorkspacePath(p);
+          } catch (err: unknown) {
+            return {
+              content: [{ type: "text" as const, text: getErrorMessage(err) }],
+              isError: true,
+            };
+          }
           if (resolved.endsWith(".sysml")) {
             try {
               const text = fs.readFileSync(resolved, "utf-8");
@@ -1221,13 +1329,24 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         .describe("Optional explicit SysML-to-Modelica symbol mapping"),
     },
     async ({ sysmlCode, modelicaCode, sysmlPath, modelicaPath }) => {
+      let safeSysmlPath: string | undefined;
+      let safeModelicaPath: string | undefined;
+      try {
+        safeSysmlPath = sysmlPath ? resolveWorkspacePath(sysmlPath) : undefined;
+        safeModelicaPath = modelicaPath ? resolveWorkspacePath(modelicaPath) : undefined;
+      } catch (err: unknown) {
+        return {
+          content: [{ type: "text" as const, text: getErrorMessage(err) }],
+          isError: true,
+        };
+      }
       let sCode = sysmlCode;
-      if (!sCode && sysmlPath && fs.existsSync(path.resolve(sysmlPath))) {
-        sCode = fs.readFileSync(path.resolve(sysmlPath), "utf-8");
+      if (!sCode && safeSysmlPath && fs.existsSync(safeSysmlPath)) {
+        sCode = fs.readFileSync(safeSysmlPath, "utf-8");
       }
       let mCode = modelicaCode;
-      if (!mCode && modelicaPath && fs.existsSync(path.resolve(modelicaPath))) {
-        mCode = fs.readFileSync(path.resolve(modelicaPath), "utf-8");
+      if (!mCode && safeModelicaPath && fs.existsSync(safeModelicaPath)) {
+        mCode = fs.readFileSync(safeModelicaPath, "utf-8");
       }
 
       // If SysML v2 or Modelica source/path was passed, run cross-domain port/unit/parameter validation
@@ -1738,13 +1857,25 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         };
       }
 
+      let safeSysmlPath: string | undefined;
+      let safeModelicaPath: string | undefined;
+      try {
+        safeSysmlPath = sysmlPath ? resolveWorkspacePath(sysmlPath) : undefined;
+        safeModelicaPath = modelicaPath ? resolveWorkspacePath(modelicaPath) : undefined;
+      } catch (err: unknown) {
+        return {
+          content: [{ type: "text" as const, text: getErrorMessage(err) }],
+          isError: true,
+        };
+      }
+
       let sCode = sysmlCode;
-      if (!sCode && sysmlPath && fs.existsSync(path.resolve(sysmlPath))) {
-        sCode = fs.readFileSync(path.resolve(sysmlPath), "utf-8");
+      if (!sCode && safeSysmlPath && fs.existsSync(safeSysmlPath)) {
+        sCode = fs.readFileSync(safeSysmlPath, "utf-8");
       }
       let mCode = modelicaCode;
-      if (!mCode && modelicaPath && fs.existsSync(path.resolve(modelicaPath))) {
-        mCode = fs.readFileSync(path.resolve(modelicaPath), "utf-8");
+      if (!mCode && safeModelicaPath && fs.existsSync(safeModelicaPath)) {
+        mCode = fs.readFileSync(safeModelicaPath, "utf-8");
       }
 
       const shortParam =
@@ -1752,13 +1883,14 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           .split(".")
           .pop()
           ?.replace(/^corr_[A-Za-z0-9]+_/, "") ?? targetId;
+      const escapedShortParam = escapeRegExp(shortParam);
       let { sourceVal, targetVal, unit } = lookupConflictValues(targetId);
 
       // Extract values from inline/file SysML or Modelica if provided
       if (sCode) {
         const sMatch = sCode.match(
           new RegExp(
-            `\\b${shortParam}\\s*(?::\\s*[A-Za-z0-9_:]+)?\\s*(?:=|<=|==)\\s*([+-]?\\d+(?:\\.\\d+)?(?:e[+-]?\\d+)?)\\s*(?:\\[([^\\]]+)\\])?`,
+            `\\b${escapedShortParam}\\s*(?::\\s*[A-Za-z0-9_:]+)?\\s*(?:=|<=|==)\\s*([+-]?\\d+(?:\\.\\d+)?(?:e[+-]?\\d+)?)\\s*(?:\\[([^\\]]+)\\])?`,
           ),
         );
         if (sMatch?.[1]) sourceVal = Number(sMatch[1]);
@@ -1767,7 +1899,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       if (mCode) {
         const mMatch = mCode.match(
           new RegExp(
-            `\\b${shortParam}\\s*(?:\\([^)]*unit\\s*=\\s*"([^"]+)"[^)]*\\))?\\s*=\\s*([+-]?\\d+(?:\\.\\d+)?(?:e[+-]?\\d+)?)`,
+            `\\b${escapedShortParam}\\s*(?:\\([^)]*unit\\s*=\\s*"([^"]+)"[^)]*\\))?\\s*=\\s*([+-]?\\d+(?:\\.\\d+)?(?:e[+-]?\\d+)?)`,
           ),
         );
         if (mMatch?.[2]) targetVal = Number(mMatch[2]);
@@ -1788,7 +1920,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       let patchedSysmlCode = sCode;
       if (patchedModelicaCode) {
         const specificRe = new RegExp(
-          `(\\b${shortParam}\\s*(?:\\([^)]*\\))?\\s*=\\s*)([+-]?\\d+(?:\\.\\d+)?(?:e[+-]?\\d+)?)`,
+          `(\\b${escapedShortParam}\\s*(?:\\([^)]*\\))?\\s*=\\s*)([+-]?\\d+(?:\\.\\d+)?(?:e[+-]?\\d+)?)`,
         );
         if (specificRe.test(patchedModelicaCode)) {
           patchedModelicaCode = patchedModelicaCode.replace(specificRe, `$1${resolvedValue}`);
@@ -1798,13 +1930,13 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             `$1${resolvedValue}`,
           );
         }
-        if (modelicaPath && fs.existsSync(path.resolve(modelicaPath))) {
-          fs.writeFileSync(path.resolve(modelicaPath), patchedModelicaCode, "utf-8");
+        if (safeModelicaPath && fs.existsSync(safeModelicaPath)) {
+          fs.writeFileSync(safeModelicaPath, patchedModelicaCode, "utf-8");
         }
       }
       if (patchedSysmlCode) {
         const specificSysmlRe = new RegExp(
-          `(\\b${shortParam}\\s*(?::\\s*[A-Za-z0-9_:]+)?\\s*=\\s*)([+-]?\\d+(?:\\.\\d+)?(?:e[+-]?\\d+)?)`,
+          `(\\b${escapedShortParam}\\s*(?::\\s*[A-Za-z0-9_:]+)?\\s*=\\s*)([+-]?\\d+(?:\\.\\d+)?(?:e[+-]?\\d+)?)`,
         );
         if (specificSysmlRe.test(patchedSysmlCode)) {
           patchedSysmlCode = patchedSysmlCode.replace(specificSysmlRe, `$1${resolvedValue}`);
@@ -1814,8 +1946,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             `$1${resolvedValue}`,
           );
         }
-        if (sysmlPath && fs.existsSync(path.resolve(sysmlPath))) {
-          fs.writeFileSync(path.resolve(sysmlPath), patchedSysmlCode, "utf-8");
+        if (safeSysmlPath && fs.existsSync(safeSysmlPath)) {
+          fs.writeFileSync(safeSysmlPath, patchedSysmlCode, "utf-8");
         }
       }
 
@@ -2162,13 +2294,18 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           } else if (lower.includes("kd")) {
             tunedParameters[pName] = Number(kdVal.toFixed(2));
           } else {
-            const match = new RegExp(`\\b${pName}\\s*=\\s*([0-9.]+)`).exec(certifiedCode);
+            const safeParamName = escapeRegExp(pName);
+            const match = new RegExp(`\\b${safeParamName}\\s*=\\s*([0-9.]+)`).exec(certifiedCode);
             const baseVal = match ? Number(match[1]) : 10.0;
             tunedParameters[pName] = Number((baseVal * 1.15).toFixed(3));
           }
 
           // Patch parameter binding in certifiedCode if present
-          const paramRegex = new RegExp(`(\\b${pName}\\s*(?:\\([^)]*\\))?\\s*=\\s*)(-?[0-9]+(?:\\.[0-9]+)?)`, "g");
+          const safeParamNameForPatch = escapeRegExp(pName);
+          const paramRegex = new RegExp(
+            `(\\b${safeParamNameForPatch}\\s*(?:\\([^)]*\\))?\\s*=\\s*)(-?[0-9]+(?:\\.[0-9]+)?)`,
+            "g",
+          );
           if (paramRegex.test(certifiedCode)) {
             certifiedCode = certifiedCode.replace(paramRegex, `$1${tunedParameters[pName]}`);
           }
@@ -2395,10 +2532,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async ({ filePath, searchBlock, replaceBlock }) => {
       try {
-        const fs = await import("node:fs/promises");
-        const path = await import("node:path");
-        const resolvedPath = path.resolve(process.cwd(), filePath);
-        const originalContent = await fs.readFile(resolvedPath, "utf-8");
+        const fsPromises = await import("node:fs/promises");
+        const resolvedPath = resolveWorkspacePath(filePath);
+        const originalContent = await fsPromises.readFile(resolvedPath, "utf-8");
 
         let idx = originalContent.indexOf(searchBlock);
         let matchedLen = searchBlock.length;
@@ -2430,7 +2566,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
         const newContent =
           originalContent.substring(0, idx) + replaceBlock + originalContent.substring(idx + matchedLen);
-        await fs.writeFile(resolvedPath, newContent, "utf-8");
+        await fsPromises.writeFile(resolvedPath, newContent, "utf-8");
 
         const deletedLines = searchBlock.split("\n").length;
         const addedLines = replaceBlock.split("\n").length;
@@ -2475,10 +2611,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async ({ filePath, startLine, endLine }) => {
       try {
-        const fs = await import("node:fs/promises");
-        const path = await import("node:path");
-        const resolvedPath = path.resolve(process.cwd(), filePath);
-        const content = await fs.readFile(resolvedPath, "utf-8");
+        const fsPromises = await import("node:fs/promises");
+        const resolvedPath = resolveWorkspacePath(filePath);
+        const content = await fsPromises.readFile(resolvedPath, "utf-8");
         const allLines = content.split("\n");
         const totalLines = allLines.length;
 
@@ -2531,9 +2666,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async ({ directory, extension, maxResults = 50 }) => {
       try {
-        const fs = await import("node:fs/promises");
-        const path = await import("node:path");
-        const rootDir = path.resolve(process.cwd(), directory ?? ".");
+        const fsPromises = await import("node:fs/promises");
+        const rootDir = resolveWorkspacePath(directory ?? ".");
         const matchedFiles: string[] = [];
         const validExts = extension
           ? [extension.startsWith(".") ? extension : `.${extension}`]
@@ -2546,7 +2680,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           if (depth > 6 || matchedFiles.length >= maxResults) return;
           let entries;
           try {
-            entries = await fs.readdir(dir, { withFileTypes: true });
+            entries = await fsPromises.readdir(dir, { withFileTypes: true });
           } catch {
             return;
           }
@@ -2764,7 +2898,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         const { parsePscx, lintPscx, extractEmtNetlist } = await import("@modelscript/pscad");
         const fsMod = await import("node:fs");
         let text = xmlContent;
-        let resolved = targetPath ? path.resolve(targetPath) : "<inline-pscx>";
+        const resolved = targetPath ? resolveWorkspacePath(targetPath) : "<inline-pscx>";
 
         if (!text) {
           if (!targetPath) {
@@ -2860,7 +2994,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       "pscad_simulate",
       async ({ path: filePath, dt, tstop, faultBus, faultStart, faultDuration, format }) => {
         try {
-          const resolved = path.resolve(filePath);
+          const resolved = resolveWorkspacePath(filePath);
           const { parsePscx, extractEmtNetlist, netlistToEmtCircuit, emtResultToComtrade, writeComtrade } =
             await import("@modelscript/pscad");
           const { EmtSolver } = await import("@modelscript/simulate");
@@ -3046,7 +3180,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
                 isError: true,
               };
             }
-            const resolved = path.resolve(targetPath);
+            const resolved = resolveWorkspacePath(targetPath);
             if (!fsMod.existsSync(resolved)) {
               return {
                 content: [{ type: "text" as const, text: `File not found: ${resolved}` }],
@@ -3195,7 +3329,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async ({ path: filePath, target, outputPath }) => {
       try {
-        const resolved = path.resolve(filePath);
+        const resolved = resolveWorkspacePath(filePath);
         const { parsePscx, pscadToModelica, pscadToSsd } = await import("@modelscript/pscad");
         const fsMod = await import("node:fs");
 
@@ -3217,7 +3351,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         }
 
         if (outputPath) {
-          const outResolved = path.resolve(outputPath);
+          const outResolved = resolveWorkspacePath(outputPath);
           fsMod.writeFileSync(outResolved, outputContent, "utf-8");
         }
 
@@ -3382,17 +3516,16 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       "olga_simulate",
       async ({ source, durationSeconds, timeStepSeconds, format, restart, checkpointOut, checkpointInterval }) => {
         try {
-          let content = source;
-          if (fs.existsSync(source)) {
-            content = fs.readFileSync(source, "utf-8");
-          }
+          const content = resolveSourceOrWorkspaceFile(source);
           const model = parseOlga(content);
 
+          const resolvedRestart = restart ? resolveWorkspacePath(restart) : undefined;
           let initialCheckpoint: OlgaCheckpointState | undefined;
-          if (restart && fs.existsSync(restart)) {
-            initialCheckpoint = loadCheckpoint(restart);
+          if (resolvedRestart && fs.existsSync(resolvedRestart)) {
+            initialCheckpoint = loadCheckpoint(resolvedRestart);
           }
 
+          const resolvedCheckpointOut = checkpointOut ? resolveWorkspacePath(checkpointOut) : undefined;
           let lastCheckpoint: OlgaCheckpointState | undefined;
           const result = simulateDriftFlux(model, {
             durationSeconds: durationSeconds ?? Math.min(model.endTime - model.startTime, 3600),
@@ -3401,14 +3534,14 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             checkpointIntervalSeconds: checkpointInterval,
             onCheckpoint: (cp) => {
               lastCheckpoint = cp;
-              if (checkpointOut && checkpointInterval) {
-                saveCheckpoint(cp, checkpointOut);
+              if (resolvedCheckpointOut && checkpointInterval) {
+                saveCheckpoint(cp, resolvedCheckpointOut);
               }
             },
           });
 
-          if (checkpointOut && lastCheckpoint) {
-            saveCheckpoint(lastCheckpoint, checkpointOut);
+          if (resolvedCheckpointOut && lastCheckpoint) {
+            saveCheckpoint(lastCheckpoint, resolvedCheckpointOut);
           }
 
           if (format === "csv") {
@@ -3471,10 +3604,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async ({ source }) => {
       try {
-        let content = source;
-        if (fs.existsSync(source)) {
-          content = fs.readFileSync(source, "utf-8");
-        }
+        const content = resolveSourceOrWorkspaceFile(source);
         const model = parseOlga(content);
         const diagnostics = lintOlgaModel(model);
         return { content: [{ type: "text" as const, text: JSON.stringify(diagnostics, null, 2) }] };
@@ -3506,10 +3636,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       "olga_verify",
       async ({ source, maopBar, hydrateMarginK, slugCatcherCapacityM3, minGasVelocityMs }) => {
         try {
-          let content = source;
-          if (fs.existsSync(source)) {
-            content = fs.readFileSync(source, "utf-8");
-          }
+          const content = resolveSourceOrWorkspaceFile(source);
           const model = parseOlga(content);
           const limits: FlowAssuranceLimits = {
             maop: (maopBar ?? 250) * 1e5,
@@ -3544,10 +3671,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async ({ source, view }) => {
       try {
-        let content = source;
-        if (fs.existsSync(source)) {
-          content = fs.readFileSync(source, "utf-8");
-        }
+        const content = resolveSourceOrWorkspaceFile(source);
         const model = parseOlga(content);
         let svg: string;
         if (view === "schematic") {
@@ -3582,10 +3706,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async ({ source, includeData }) => {
       try {
-        let content = source;
-        if (fs.existsSync(source)) {
-          content = fs.readFileSync(source, "utf-8");
-        }
+        const content = resolveSourceOrWorkspaceFile(source);
         const dataset = parseOlgaTplDataset(content);
         const variablesWithStats = dataset.variables.map((v, idx) => {
           const vals = dataset.data[idx] || [];
@@ -3654,10 +3775,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async ({ source, snapshotIndex }) => {
       try {
-        let content = source;
-        if (fs.existsSync(source)) {
-          content = fs.readFileSync(source, "utf-8");
-        }
+        const content = resolveSourceOrWorkspaceFile(source);
         const dataset = parseOlgaPpl(content);
         const snapshotSummaries = dataset.snapshots.map((s, idx) => {
           const xSpan = {
@@ -3731,14 +3849,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async ({ source, observations, parameters, maxEvaluations, outPath, reportPath }) => {
       try {
-        let content = source;
-        if (fs.existsSync(source)) {
-          content = fs.readFileSync(source, "utf-8");
-        }
-        let obsText = observations;
-        if (fs.existsSync(observations)) {
-          obsText = fs.readFileSync(observations, "utf-8");
-        }
+        const content = resolveSourceOrWorkspaceFile(source);
+        const obsText = resolveSourceOrWorkspaceFile(observations);
         const model = parseOlga(content);
         const obsData = parseObservationCsv(obsText);
         const result = calibrateOlgaModel(model, obsData, {
@@ -3746,18 +3858,20 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           maxEvaluations: maxEvaluations ?? 100,
         });
 
-        if (outPath) {
+        const resolvedOutPath = outPath ? resolveWorkspacePath(outPath) : undefined;
+        if (resolvedOutPath) {
           let serialized: string;
-          if (outPath.endsWith(".opi")) {
+          if (resolvedOutPath.endsWith(".opi")) {
             serialized = serializeOpi(result.calibratedModel);
           } else {
             serialized = serializeKeyDeck(result.calibratedModel);
           }
-          fs.writeFileSync(outPath, serialized, "utf-8");
+          fs.writeFileSync(resolvedOutPath, serialized, "utf-8");
         }
 
-        if (reportPath) {
-          fs.writeFileSync(reportPath, result.markdownReport, "utf-8");
+        const resolvedReportPath = reportPath ? resolveWorkspacePath(reportPath) : undefined;
+        if (resolvedReportPath) {
+          fs.writeFileSync(resolvedReportPath, result.markdownReport, "utf-8");
         }
 
         const summary = {
@@ -3817,10 +3931,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       reportPath,
     }) => {
       try {
-        let content = source;
-        if (fs.existsSync(source)) {
-          content = fs.readFileSync(source, "utf-8");
-        }
+        const content = resolveSourceOrWorkspaceFile(source);
         const model = parseOlga(content);
         const result = evaluateFlowAssuranceGate(model, {
           maxSurgeM3,
@@ -3832,8 +3943,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           durationSeconds,
         });
 
-        if (reportPath) {
-          fs.writeFileSync(reportPath, result.markdownReport, "utf-8");
+        const resolvedReportPath = reportPath ? resolveWorkspacePath(reportPath) : undefined;
+        if (resolvedReportPath) {
+          fs.writeFileSync(resolvedReportPath, result.markdownReport, "utf-8");
         }
 
         const summary = {
@@ -3870,17 +3982,15 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async ({ source, defaultDiameter, targetCellLength, outPath }) => {
       try {
-        let content = source;
-        if (fs.existsSync(source)) {
-          content = fs.readFileSync(source, "utf-8");
-        }
+        const content = resolveSourceOrWorkspaceFile(source);
         const surveyResult = importBathymetrySurvey(content, {
           defaultDiameter: defaultDiameter ?? 0.3048,
           targetCellLength: targetCellLength ?? 50.0,
         });
 
-        if (outPath) {
-          fs.writeFileSync(outPath, surveyResult.opiXmlSnippet, "utf-8");
+        const resolvedOutPath = outPath ? resolveWorkspacePath(outPath) : undefined;
+        if (resolvedOutPath) {
+          fs.writeFileSync(resolvedOutPath, surveyResult.opiXmlSnippet, "utf-8");
         }
 
         const summary = {
@@ -3912,8 +4022,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async ({ source }) => {
       try {
-        let content = source;
-        if (fs.existsSync(source)) content = fs.readFileSync(source, "utf-8");
+        const content = resolveSourceOrWorkspaceFile(source);
         const model = parseGensysDeck(content);
         const diags = lintGensysModel(model);
         return { content: [{ type: "text" as const, text: JSON.stringify(diags, null, 2) }] };
@@ -3987,8 +4096,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     },
     async ({ source }) => {
       try {
-        let content = source;
-        if (fs.existsSync(source)) content = fs.readFileSync(source, "utf-8");
+        const content = resolveSourceOrWorkspaceFile(source);
         const isXml = content.trimStart().startsWith("<");
         const model = isXml ? parseSpckXml(content) : parseSimDeck(content);
         const diags = lintSimpackModel(model);
@@ -4013,8 +4121,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       "simpack_mobility",
       async ({ source }) => {
         try {
-          let content = source;
-          if (fs.existsSync(source)) content = fs.readFileSync(source, "utf-8");
+          const content = resolveSourceOrWorkspaceFile(source);
           const isXml = content.trimStart().startsWith("<");
           const model = isXml ? parseSpckXml(content) : parseSimDeck(content);
           const mobility = analyzeMobility(model);
@@ -4147,13 +4254,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       // Extract dimensions from scadCode or stepPath when provided
       let fileSource = scadCode ?? "";
       if (!fileSource && stepPath) {
-        const resolvedStep = path.resolve(stepPath);
+        const resolvedStep = resolveWorkspacePath(stepPath);
         if (fs.existsSync(resolvedStep)) {
-          try {
-            fileSource = fs.readFileSync(resolvedStep, "utf-8");
-          } catch {
-            fileSource = "";
-          }
+          fileSource = fs.readFileSync(resolvedStep, "utf-8");
         }
       }
 
@@ -4286,7 +4389,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         scadCode ??
         `// Parametric CSG Solid: ${partName}\nrib_thickness_mm = ${initialRib};\nfillet_radius_mm = ${initialFillet};\ndifference() {\n  cube([64, 42, rib_thickness_mm]);\n  cylinder(h = rib_thickness_mm + 2, r = 6);\n}`;
       for (const [k, v] of Object.entries(tunedDimensions)) {
-        const re = new RegExp(`(\\b${k}\\s*=\\s*)(-?[0-9]+(?:\\.[0-9]+)?)`, "g");
+        const re = new RegExp(`(\\b${escapeRegExp(k)}\\s*=\\s*)(-?[0-9]+(?:\\.[0-9]+)?)`, "g");
         if (re.test(patchedCode)) {
           patchedCode = patchedCode.replace(re, `$1${v}`);
         }
@@ -4466,7 +4569,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         const batchCtx = Context.createBatch(new NodeFileSystem());
         const scratchDir = path.resolve(".cache/b2b");
         if (!fs.existsSync(scratchDir)) fs.mkdirSync(scratchDir, { recursive: true });
-        const tempModelPath = path.join(scratchDir, `${cleanName}_${Date.now()}.mo`);
+        const safeModelBase = cleanName.replace(/[^A-Za-z0-9_.-]/g, "_") || "Model";
+        const tempModelPath = path.join(scratchDir, `${safeModelBase}_${Date.now()}.mo`);
         fs.writeFileSync(tempModelPath, migratedModelicaCode, "utf-8");
         try {
           await batchCtx.addLibrary(tempModelPath);
@@ -4578,7 +4682,15 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         if (ssdPath.includes("<") && ssdPath.includes("Connection")) {
           xmlText = ssdPath;
         } else {
-          const resolvedSsd = path.resolve(ssdPath);
+          let resolvedSsd: string;
+          try {
+            resolvedSsd = resolveWorkspacePath(ssdPath);
+          } catch (err: unknown) {
+            return {
+              content: [{ type: "text" as const, text: getErrorMessage(err) }],
+              isError: true,
+            };
+          }
           if (fs.existsSync(resolvedSsd) && fs.statSync(resolvedSsd).isFile()) {
             try {
               xmlText = fs.readFileSync(resolvedSsd, "utf-8");
@@ -7298,7 +7410,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       try {
         let buffer: Buffer;
         if (args.filePath) {
-          buffer = fs.readFileSync(args.filePath);
+          const resolvedSorPath = resolveWorkspacePath(args.filePath);
+          buffer = fs.readFileSync(resolvedSorPath);
         } else if (args.base64Data) {
           buffer = Buffer.from(args.base64Data, "base64");
         } else {
@@ -8771,6 +8884,64 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         return {
           isError: true,
           content: [{ type: "text" as const, text: `ASM biokinetics evaluation error: ${getErrorMessage(err)}` }],
+        };
+      }
+    },
+  );
+
+  // ── workspace_lint ──────────────────────────────────────────────────────────
+  server.tool(
+    "workspace_lint",
+    "Run multi-file / workspace-graph linting across companion files for cross-file engineering languages (CGMES, PSS/E, PSLF, PSCAD, OpenDSS, SCL, SPICE, ATP, Verilog-A, SSP, OSCAL, AUTOSAR, AutomationML, PLCopen, Simulink, USD, URDF, OpenSCAD, C, Fortran, AMPL, MODFLOW, HEC-RAS, ECLIPSE, EnergyPlus, TOPAS, CellML, Antimony, SED-ML, SBOL).",
+    {
+      language: z.string().describe("Language ID (e.g. 'cgmes', 'spice', 'ssp', 'usd', 'antimony')"),
+      files: z
+        .record(z.string(), z.string())
+        .describe("Map of file URI/relative path to file text content across the workspace"),
+      rootUri: z.string().optional().describe("Optional entry-point URI/path in `files`"),
+    },
+    async ({ language, files, rootUri }) => {
+      try {
+        const langId = language.toLowerCase();
+        const { hasWorkspaceLinter, lintWorkspaceByLanguage, SUPPORTED_WORKSPACE_LINTER_LANGUAGES } =
+          await import("@modelscript/lsp");
+        if (!hasWorkspaceLinter(langId)) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text" as const,
+                text: `Unsupported workspace linter language '${language}'. Supported: ${SUPPORTED_WORKSPACE_LINTER_LANGUAGES.join(", ")}`,
+              },
+            ],
+          };
+        }
+        const diagnostics = await lintWorkspaceByLanguage(langId, files, rootUri);
+        const errorCount = diagnostics.filter((d) => d.severity === "error").length;
+        const warningCount = diagnostics.filter((d) => d.severity === "warning").length;
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  success: true,
+                  language: langId,
+                  totalDiagnostics: diagnostics.length,
+                  errorCount,
+                  warningCount,
+                  diagnostics,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `Workspace lint error: ${getErrorMessage(err)}` }],
         };
       }
     },

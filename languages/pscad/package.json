@@ -45,21 +45,29 @@
       "default": "./dist/src/psout/index.js"
     },
     "./psout.wasm": "./dist/psout.wasm",
-    "./dist/psout.wasm": "./dist/psout.wasm"
+    "./dist/psout.wasm": "./dist/psout.wasm",
+    "./parser.wasm": "./dist/parser.wasm",
+    "./wasm-parser": {
+      "types": "./src-gen/bindings.d.ts",
+      "default": "./src-gen/bindings.js"
+    }
   },
   "files": [
     "src/**",
     "dist/**",
-    "assembly/**"
+    "assets/**",
+    "assembly/**",
+    "src-gen/**"
   ],
   "scripts": {
-    "build": "npm run build:wasm && tsc",
+    "bench:pmr": "tsx tests/run-pmr-benchmark.ts",
+    "build": "node ../../scripts/build-language-parser.js && npm run build:wasm && tsc",
+    "build:parser": "node ../../scripts/build-language-parser.js --force",
     "build:wasm": "node scripts/build-wasm.js",
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js",
-    "typecheck": "tsc --noEmit",
-    "bench:pmr": "tsx tests/run-pmr-benchmark.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@modelscript/c": "*",

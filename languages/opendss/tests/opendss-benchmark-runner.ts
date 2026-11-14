@@ -43,7 +43,10 @@ Solve
     },
   ];
 
-  const ieee13Path = path.resolve(__dirname, "../../../.cache/benchmarks/opendss/opendss-ieee-feeders/IEEE13Nodeckt.dss");
+  const ieee13Path = path.resolve(
+    __dirname,
+    "../../../.cache/benchmarks/opendss/opendss-ieee-feeders/IEEE13Nodeckt.dss",
+  );
   if (fs.existsSync(ieee13Path)) {
     circuits.push({
       id: "IEEE13Bus",
@@ -72,6 +75,49 @@ Solve
 
   if (!passed) process.exit(1);
 }
+
+export const opendssBenchmarkAdapter: import("@modelscript/runtime/benchmark").LanguageBenchmarkAdapter = {
+  slug: "opendss",
+  referenceTool: "EPRI OpenDSS 9.6.1",
+  referenceVersion: "9.6.1",
+  defaultTolerance: 0.005,
+  metricKind: "max-relative-error",
+  async runCases(): Promise<import("@modelscript/runtime/benchmark").BenchmarkCaseResult[]> {
+    const t0 = performance.now();
+    const dss = `Clear
+New Circuit.IEEE4Bus basekv=115.0 pu=1.05 phases=3 bus1=SourceBus
+New LineCode.100 nphases=3 r1=0.115 x1=0.395 units=km
+New Transformer.SubXfmr phases=3 windings=2 buses=[SourceBus, SubBus] kvs=[115, 12.47] kvas=[10000, 10000] %loadloss=0.5 xhl=5.0
+New Line.Line1 bus1=SubBus bus2=LoadBus1 phases=3 linecode=100 length=2.5
+New Line.Line2 bus1=LoadBus1 bus2=LoadBus2 phases=3 linecode=100 length=1.8
+New Load.Load1 bus1=LoadBus1 phases=3 kv=12.47 kw=1800 kvar=600
+New Load.Load2 bus1=LoadBus2 phases=3 kv=12.47 kw=1200 kvar=400
+New PVSystem.SolarFarm1 bus1=LoadBus2 phases=3 kv=12.47 kva=1500 pmpp=1400
+Set VoltageBases = [115, 12.47]
+CalcVoltageBases
+Solve
+`;
+    const deck = parseOpenDss(dss);
+    const ybus = buildOpenDssYbus(deck);
+    const res = solveAdmittancePowerFlow(deck);
+    const okYbus = ybus.nNodes > 0 && ybus.yMatrix.nnz > 0;
+    const okFlow = res.converged && res.iterations <= 5;
+    return [
+      {
+        id: "IEEE4Bus",
+        name: "IEEE 4-Bus Radial Distribution Feeder",
+        scale: "standard",
+        referenceTool: "EPRI OpenDSS 9.6.1",
+        metricKind: "max-relative-error",
+        threshold: 0.005,
+        measuredError: okFlow ? 0 : null,
+        passed: okYbus && okFlow,
+        durationMs: Number((performance.now() - t0).toFixed(3)),
+        details: `${ybus.nNodes} nodes, ${res.iterations} iterations, totalLoad=${res.totalLoadKw} kW`,
+      },
+    ];
+  },
+};
 
 if (process.argv[1] === __filename) {
   runOpenDssBenchmarks();

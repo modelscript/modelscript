@@ -82,6 +82,7 @@ import {
   matchNodePattern,
   solveWhereConstraints,
 } from "../../../../../../packages/runtime/src/interop/tgg-pattern-interpreter.js";
+import { getWorkflowPairSideKind, type WorkflowSideKind } from "./workflow-side-kind.js";
 
 export type WorkflowSemanticKind =
   | "class"
@@ -1382,12 +1383,53 @@ function extractScadOrStepWasmCstSpans(code: string, lang: "scad" | "step"): Sem
   return spans;
 }
 
+const semanticSpanCache = new Map<string, SemanticSpan[]>();
+const syntaxLintCache = new Map<string, WorkflowDiagnostic[]>();
+const workflowLintCache = new Map<string, WorkflowDiagnostic[]>();
+
+function fnv1aHash(str: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return `${(h >>> 0).toString(36)}:${str.length}`;
+}
+
+function lruCacheGet<T extends object>(cache: Map<string, T[]>, key: string): T[] | undefined {
+  const hit = cache.get(key);
+  if (!hit) return undefined;
+  cache.delete(key);
+  cache.set(key, hit);
+  return hit.map((item) => ({ ...item }));
+}
+
+function lruCacheSet<T extends object>(cache: Map<string, T[]>, key: string, value: T[], maxSize = 64): void {
+  if (cache.size >= maxSize) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(
+    key,
+    value.map((item) => ({ ...item })),
+  );
+}
+
 /**
  * Extracts CST-backed semantic token spans (0-indexed line & column) for BOTH
  * Prong 1 (`highlightWorkflowCode`) and Prong 2 (Monaco's `DocumentSemanticTokensProvider`
- * + `HoverProvider`).
+ * + `HoverProvider`), memoized by content hash.
  */
 export function extractSemanticSpans(code: string, lang: string): SemanticSpan[] {
+  const cacheKey = `${lang}:${fnv1aHash(code)}`;
+  const cached = lruCacheGet(semanticSpanCache, cacheKey);
+  if (cached) return cached;
+  const result = extractSemanticSpansUncached(code, lang);
+  lruCacheSet(semanticSpanCache, cacheKey, result);
+  return result;
+}
+
+function extractSemanticSpansUncached(code: string, lang: string): SemanticSpan[] {
   if (lang === "modelica" || lang === "sysml" || lang === "sysml2") {
     const dialect = lang === "modelica" ? "modelica" : "sysml";
     const symMap = buildSemanticSymbolMap(code, dialect);
@@ -2182,6 +2224,17 @@ function lintModelicaWithWasmLspFacade(code: string, diags: WorkflowDiagnostic[]
           endCol = lines[prevLineIdx]!.length + 1;
           msg = `Missing ';' after '${lines[prevLineIdx]!.trim().slice(0, 32)}' (${wd.message}).`;
         } else if (
+          lines[startLine - 1] &&
+          lines[startLine - 1]!.trim().length > 0 &&
+          !lines[startLine - 1]!.trim().endsWith(";") &&
+          !lines[startLine - 1]!.trim().startsWith("model ") &&
+          !lines[startLine - 1]!.trim().startsWith("block ") &&
+          !lines[startLine - 1]!.trim().startsWith("equation") &&
+          !lines[startLine - 1]!.trim().startsWith("initial equation") &&
+          !lines[startLine - 1]!.trim().startsWith("algorithm")
+        ) {
+          codeStr = "M1002";
+        } else if (
           msg.includes("Missing ';'") ||
           msg.includes("expected ';'") ||
           wd.expectedTokens?.some((t) => t.includes(";"))
@@ -2201,55 +2254,6 @@ function lintModelicaWithWasmLspFacade(code: string, diags: WorkflowDiagnostic[]
         ...(wd.expectedTokens ? { expectedTokens: wd.expectedTokens } : {}),
       });
     }
-
-    // Inspect WASM GLR CST (`composition`, `component_clause`, `equation`, `statement`) for GLR-recovered missing `;`
-    const tree = runtime.parser.parse(prepared.source);
-    const lines = code.split("\n");
-    const sectionKeywords = new Set([
-      "equation",
-      "initial equation",
-      "algorithm",
-      "initial algorithm",
-      "public",
-      "protected",
-      "external",
-    ]);
-    const walkModelicaCstForMissingSemicolon = (node: WasmSyntaxNode): void => {
-      if (node.type === "composition") {
-        const startPos = offsetToLineCol(prepared.source, node.startIndex);
-        const endPos = offsetToLineCol(prepared.source, node.endIndex);
-        const firstLine = Math.max(1, startPos.line - prepared.lineOffset);
-        const lastLine = Math.min(prepared.totalUserLines, endPos.line - prepared.lineOffset);
-        let parenDepth = 0;
-        for (let userLine = firstLine; userLine <= lastLine; userLine++) {
-          const rawLine = lines[userLine - 1] ?? "";
-          const cleanLine = rawLine.replace(/\/\/.*$/, "").trim();
-          if (!cleanLine || sectionKeywords.has(cleanLine)) continue;
-          const prevDepth = parenDepth;
-          for (const ch of cleanLine) {
-            if (ch === "(" || ch === "{" || ch === "[") parenDepth++;
-            else if (ch === ")" || ch === "}" || ch === "]") parenDepth = Math.max(0, parenDepth - 1);
-          }
-          if (prevDepth === 0 && parenDepth === 0 && !cleanLine.endsWith(";") && !cleanLine.startsWith("end ")) {
-            if (!diags.some((d) => d.code === "M1002" && d.startLine === userLine)) {
-              diags.push({
-                startLine: userLine,
-                startCol: Math.max(1, rawLine.search(/\S/) + 1),
-                endLine: userLine,
-                endCol: rawLine.length + 1,
-                severity: "error",
-                code: "M1002",
-                message: `Syntax Error: Missing ';' at end of Modelica declaration '${cleanLine.slice(0, 32)}'.`,
-              });
-            }
-          }
-        }
-      }
-      for (const child of node.children) {
-        walkModelicaCstForMissingSemicolon(child);
-      }
-    };
-    walkModelicaCstForMissingSemicolon(tree.rootNode as unknown as WasmSyntaxNode);
   }
 }
 
@@ -2341,29 +2345,6 @@ function lintSysmlWithWasmLspFacade(code: string, diags: WorkflowDiagnostic[]): 
               code: "SYSML-1003",
               message:
                 "Malformed 'require constraint' clause in SysML v2 CST; expected 'require constraint { attr <= value }'.",
-            });
-          }
-        }
-      } else if (
-        node.type === "attribute_usage" ||
-        node.type === "port_usage" ||
-        node.type === "action_usage" ||
-        node.type === "satisfy_requirement_usage" ||
-        node.type === "connection_usage"
-      ) {
-        const pos = offsetToLineCol(code, node.startIndex);
-        const rawLine = lines[pos.line - 1] ?? node.text;
-        const cleanLine = rawLine.replace(/\/\/.*$/, "").trim();
-        if (cleanLine && !cleanLine.endsWith(";") && !cleanLine.endsWith("{") && !cleanLine.endsWith("}")) {
-          if (!diags.some((d) => d.code === "SYSML-1002" && d.startLine === pos.line)) {
-            diags.push({
-              startLine: pos.line,
-              startCol: Math.max(1, rawLine.search(/\S/) + 1),
-              endLine: pos.line,
-              endCol: rawLine.length + 1,
-              severity: "error",
-              code: "SYSML-1002",
-              message: `Syntax Error: Missing ';' at end of SysML v2 ${node.type.replace(/_/g, " ")} '${cleanLine.slice(0, 32)}'.`,
             });
           }
         }
@@ -2812,20 +2793,21 @@ function lintViaDeclarativeTggRules(
  * Returns `[]` for other languages or when the WASM parsers are unavailable.
  */
 export function lintSyntaxForLang(code: string, lang: string): WorkflowDiagnostic[] {
+  const cacheKey = `${lang}:${fnv1aHash(code)}`;
+  const cached = lruCacheGet(syntaxLintCache, cacheKey);
+  if (cached) return cached;
+
   const diags: WorkflowDiagnostic[] = [];
   try {
     if (lang === "sysml") {
       lintSysmlWithWasmLspFacade(code, diags);
     } else if (lang === "modelica") {
-      // Only genuine GLR parse errors: the heuristic style/semicolon lints false-positive on the
-      // multi-line `annotation(twin = ...)` bindings these panes use.
-      const all: WorkflowDiagnostic[] = [];
-      lintModelicaWithWasmLspFacade(code, all);
-      diags.push(...all.filter((d) => d.severity === "error" && d.code === "M1001"));
+      lintModelicaWithWasmLspFacade(code, diags);
     }
   } catch {
     /* parser unavailable or input unparsable: no syntax diagnostics */
   }
+  lruCacheSet(syntaxLintCache, cacheKey, diags);
   return diags;
 }
 
@@ -2835,6 +2817,10 @@ export function lintSyntaxForLang(code: string, lang: string): WorkflowDiagnosti
  * checks on either the source or target pane of a workflow pair.
  */
 export function lintWorkflowCode(pairId: string, side: "source" | "target", code: string): WorkflowDiagnostic[] {
+  const cacheKey = `${pairId}:${side}:${fnv1aHash(code)}`;
+  const cached = lruCacheGet(workflowLintCache, cacheKey);
+  if (cached) return cached;
+
   const diags: WorkflowDiagnostic[] = [];
   const trimmed = code.trim();
   if (!trimmed) {
@@ -2847,45 +2833,31 @@ export function lintWorkflowCode(pairId: string, side: "source" | "target", code
       code: "M1001",
       message: "Document is empty.",
     });
+    lruCacheSet(workflowLintCache, cacheKey, diags);
     return diags;
   }
 
-  const isXml = (side === "source" && pairId !== "sysml-ssp") || (side === "target" && pairId === "sysml-ssp");
-  const isModelica =
-    (side === "target" && (pairId === "simulink-modelica" || pairId === "urdf-modelica")) ||
-    (side === "source" && pairId === "sysml-ssp");
-  const isSysml = side === "target" && (pairId === "reqif-sysml" || pairId === "autosar-sysml");
-  const isIeeeReport = side === "target" && pairId === "pscad-ieee";
+  const candidateKind: WorkflowSideKind = getWorkflowPairSideKind(pairId, side) ?? "xml";
 
   // 1. XML Syntax & First-Party Domain Linter Checks (`@modelscript/dsl/xml` + `languages/*`)
-  if (isXml) {
+  if (candidateKind === "xml") {
     lintXmlWithDslAndLanguagePackages(code, diags);
-  }
-
-  // 2. Native Modelica WASM GLR Parser & `LspFacade` Diagnostics
-  if (isModelica) {
+  } else if (candidateKind === "modelica") {
+    // 2. Native Modelica WASM GLR Parser & `LspFacade` Diagnostics
     lintModelicaWithWasmLspFacade(code, diags);
-  }
-
-  // 3. Native SysML v2 WASM GLR Parser & `LspFacade` Diagnostics
-  if (isSysml) {
+  } else if (candidateKind === "sysml") {
+    // 3. Native SysML v2 WASM GLR Parser & `LspFacade` Diagnostics
     lintSysmlWithWasmLspFacade(code, diags);
-  }
-
-  // 4. IEEE 2800 Report Syntax Check
-  if (isIeeeReport) {
+  } else if (candidateKind === "ieee2800") {
+    // 4. IEEE 2800 Report Syntax Check
     lintIeeeReportSyntax(code, diags);
   }
 
   // 5. Declarative TGG Rule & Physical Envelope (`tggReconcilePhysics` + `tggInvertible`) Evaluation
-  const candidateKind: "xml" | "modelica" | "sysml" | "ieee2800" = isXml
-    ? "xml"
-    : isModelica
-      ? "modelica"
-      : isSysml
-        ? "sysml"
-        : "ieee2800";
-  lintViaDeclarativeTggRules(pairId, side, code, candidateKind, diags);
+  if (candidateKind !== "scad") {
+    lintViaDeclarativeTggRules(pairId, side, code, candidateKind, diags);
+  }
 
+  lruCacheSet(workflowLintCache, cacheKey, diags);
   return diags;
 }

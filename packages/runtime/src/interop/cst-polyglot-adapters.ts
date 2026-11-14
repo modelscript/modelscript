@@ -35,6 +35,7 @@ export interface ModelicaComponentNode {
   modifications: Record<string, string>;
   modifierNodes: ModelicaModifierNode[];
   bindingExpr?: string | undefined;
+  bindingSpan?: SourceByteSpan | undefined;
   description?: string | undefined;
   twinAnnotation?: string | undefined;
   span: SourceByteSpan;
@@ -189,10 +190,7 @@ export function splitTopLevelStatements(
  * Splits a comma-separated argument/modifier list at top-level depth 0,
  * respecting nested `(...)`, `{...}`, `[...]`, and `"..."`.
  */
-export function splitTopLevelCommaList(
-  text: string,
-  baseOffset = 0,
-): { text: string; start: number; end: number }[] {
+export function splitTopLevelCommaList(text: string, baseOffset = 0): { text: string; start: number; end: number }[] {
   const items: { text: string; start: number; end: number }[] = [];
   let depthParen = 0;
   let depthBrace = 0;
@@ -287,12 +285,15 @@ export function parseModelicaCst(source: string): ParsedModelicaCst {
   const equations: ModelicaEquationNode[] = [];
   const stateVars = new Set<string>();
 
-  const parseStatementAsComponentOrEquation = (stmt: {
-    maskedText: string;
-    rawText: string;
-    start: number;
-    end: number;
-  }, inEquationSection: boolean) => {
+  const parseStatementAsComponentOrEquation = (
+    stmt: {
+      maskedText: string;
+      rawText: string;
+      start: number;
+      end: number;
+    },
+    inEquationSection: boolean,
+  ) => {
     // Strip leading section keywords (`public`, `protected`, `equation`, `algorithm`)
     let localOffset = 0;
     let mText = stmt.maskedText;
@@ -337,7 +338,13 @@ export function parseModelicaCst(source: string): ParsedModelicaCst {
         const c = trimmedMasked[i];
         if (c === "(" || c === "[" || c === "{") dp++;
         else if (c === ")" || c === "]" || c === "}") dp = Math.max(0, dp - 1);
-        else if (c === "=" && dp === 0 && trimmedMasked[i - 1] !== "<" && trimmedMasked[i - 1] !== ">" && trimmedMasked[i + 1] !== "=") {
+        else if (
+          c === "=" &&
+          dp === 0 &&
+          trimmedMasked[i - 1] !== "<" &&
+          trimmedMasked[i - 1] !== ">" &&
+          trimmedMasked[i + 1] !== "="
+        ) {
           eqPos = i;
           break;
         }
@@ -406,9 +413,17 @@ export function parseModelicaCst(source: string): ParsedModelicaCst {
     }
     if (/\binput\b/.test(typePrefix)) causality = "input";
     else if (/\boutput\b/.test(typePrefix)) causality = "output";
-    else if (typeSpecifier.endsWith("RealInput") || typeSpecifier.endsWith("IntegerInput") || typeSpecifier.endsWith("BooleanInput")) {
+    else if (
+      typeSpecifier.endsWith("RealInput") ||
+      typeSpecifier.endsWith("IntegerInput") ||
+      typeSpecifier.endsWith("BooleanInput")
+    ) {
       causality = "input";
-    } else if (typeSpecifier.endsWith("RealOutput") || typeSpecifier.endsWith("IntegerOutput") || typeSpecifier.endsWith("BooleanOutput")) {
+    } else if (
+      typeSpecifier.endsWith("RealOutput") ||
+      typeSpecifier.endsWith("IntegerOutput") ||
+      typeSpecifier.endsWith("BooleanOutput")
+    ) {
       causality = "output";
     }
 
@@ -457,8 +472,13 @@ export function parseModelicaCst(source: string): ParsedModelicaCst {
     // Check for `= bindingExpr`
     while (cursor < maskedBody.length && /\s/.test(maskedBody[cursor]!)) cursor++;
     let bindingExpr: string | undefined;
+    let bindingSpan: SourceByteSpan | undefined;
     if (maskedBody[cursor] === "=") {
-      bindingExpr = rawClean.slice(cursor + 1).trim();
+      const rawAfterEq = rawClean.slice(cursor + 1);
+      const leadingWs = rawAfterEq.length - rawAfterEq.trimStart().length;
+      bindingExpr = rawAfterEq.trim();
+      const exprStart = stmt.start + localOffset + cursor + 1 + leadingWs;
+      bindingSpan = { start: exprStart, end: exprStart + bindingExpr.length };
     }
 
     components.push({
@@ -471,6 +491,7 @@ export function parseModelicaCst(source: string): ParsedModelicaCst {
       modifications,
       modifierNodes,
       bindingExpr,
+      bindingSpan,
       description,
       twinAnnotation: twinMap.get(compName),
       span: { start: stmt.start + localOffset, end: stmt.end },
@@ -504,11 +525,18 @@ export function parseModelicaCst(source: string): ParsedModelicaCst {
   };
 }
 
+export interface SysmlAttributeSpan {
+  declSpan: SourceByteSpan;
+  valueSpan: SourceByteSpan;
+}
+
 export interface SysmlRequirementNode {
   id: string;
   docText: string;
   attributes: Record<string, string>;
+  attributeSpans?: Record<string, SysmlAttributeSpan> | undefined;
   constraints: string[];
+  constraintSpans?: SourceByteSpan[] | undefined;
   span: SourceByteSpan;
 }
 
@@ -544,6 +572,7 @@ export interface SysmlPartDefNode {
   actions: SysmlActionNode[];
   connections: SysmlConnectionNode[];
   attributes: Record<string, string>;
+  attributeSpans?: Record<string, SysmlAttributeSpan> | undefined;
   span: SourceByteSpan;
 }
 
@@ -606,30 +635,53 @@ export function parseSysml2Cst(source: string): ParsedSysml2Cst {
       docText = docMatch[1].trim();
     }
 
+    const reqBodyBaseOffset = openBraceIdx + 1;
     const attributes: Record<string, string> = {};
+    const attributeSpans: Record<string, SysmlAttributeSpan> = {};
     const attrRegex = /\battribute\s+([A-Za-z_]\w*)(?:\s*:\s*[A-Za-z_]\w*)?\s*=\s*("[^"]*"|'[^']*'|[^;]+?)\s*;/g;
     let aMatch: RegExpExecArray | null;
     while ((aMatch = attrRegex.exec(maskedBody)) !== null) {
       const aName = aMatch[1]!.trim();
       const rawVal = rawBody.slice(aMatch.index, aMatch.index + aMatch[0].length);
       const eqIdx = rawVal.indexOf("=");
-      const valClean = rawVal
-        .slice(eqIdx + 1)
-        .replace(/;\s*$/, "")
-        .trim()
-        .replace(/^["']|["']$/g, "");
+      const afterEq = rawVal.slice(eqIdx + 1);
+      const leadingWs = afterEq.length - afterEq.trimStart().length;
+      const valWithoutSemi = afterEq.replace(/;\s*$/, "").trim();
+      const valClean = valWithoutSemi.replace(/^["']|["']$/g, "");
       attributes[aName] = valClean;
+      const valStart = reqBodyBaseOffset + aMatch.index + eqIdx + 1 + leadingWs;
+      attributeSpans[aName] = {
+        declSpan: {
+          start: reqBodyBaseOffset + aMatch.index,
+          end: reqBodyBaseOffset + aMatch.index + aMatch[0].length,
+        },
+        valueSpan: {
+          start: valStart,
+          end: valStart + valWithoutSemi.length,
+        },
+      };
     }
 
     const constraints: string[] = [];
+    const constraintSpans: SourceByteSpan[] = [];
     const constraintHeaderRegex = /\b(?:require|assert)\s+constraint\s*\{/g;
     let cMatch: RegExpExecArray | null;
     while ((cMatch = constraintHeaderRegex.exec(maskedBody)) !== null) {
       const cOpen = cMatch.index + cMatch[0].length - 1;
       const cClose = findMatchingCloseBrace(maskedBody, cOpen);
       if (cClose !== -1) {
-        const expr = maskedBody.slice(cOpen + 1, cClose).trim().replace(/;\s*$/, "").trim();
-        if (expr) constraints.push(expr);
+        const expr = maskedBody
+          .slice(cOpen + 1, cClose)
+          .trim()
+          .replace(/;\s*$/, "")
+          .trim();
+        if (expr) {
+          constraints.push(expr);
+          constraintSpans.push({
+            start: reqBodyBaseOffset + cOpen + 1,
+            end: reqBodyBaseOffset + cClose,
+          });
+        }
       }
     }
 
@@ -637,7 +689,9 @@ export function parseSysml2Cst(source: string): ParsedSysml2Cst {
       id,
       docText,
       attributes,
+      attributeSpans,
       constraints,
+      constraintSpans,
       span: { start: rMatch.index, end: closeBraceIdx + 1 },
     });
   }
@@ -666,8 +720,7 @@ export function parseSysml2Cst(source: string): ParsedSysml2Cst {
       const isConjugated = rawPortName.startsWith("~") || rawTypeName.startsWith("~");
       const cleanName = rawPortName.replace(/^~/, "");
       const cleanType = rawTypeName.replace(/^~/, "");
-      const direction: "in" | "out" | "inout" =
-        rawDir ?? (isConjugated ? "out" : "in");
+      const direction: "in" | "out" | "inout" = rawDir ?? (isConjugated ? "out" : "in");
       ports.push({
         name: cleanName,
         direction,
@@ -691,7 +744,8 @@ export function parseSysml2Cst(source: string): ParsedSysml2Cst {
     }
 
     const connections: SysmlConnectionNode[] = [];
-    const connRegex = /\b(?:connection\s+[A-Za-z_]\w*\s+)?connect\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)\s+to\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)\s*;/g;
+    const connRegex =
+      /\b(?:connection\s+[A-Za-z_]\w*\s+)?connect\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)\s+to\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)\s*;/g;
     let cnMatch: RegExpExecArray | null;
     while ((cnMatch = connRegex.exec(maskedBody)) !== null) {
       connections.push({
@@ -702,10 +756,28 @@ export function parseSysml2Cst(source: string): ParsedSysml2Cst {
     }
 
     const attributes: Record<string, string> = {};
+    const attributeSpans: Record<string, SysmlAttributeSpan> = {};
     const attrRegex = /\battribute\s+([A-Za-z_]\w*)(?:\s*:\s*[A-Za-z_]\w*)?\s*=\s*([^;]+?)\s*;/g;
     let atMatch: RegExpExecArray | null;
     while ((atMatch = attrRegex.exec(maskedBody)) !== null) {
-      attributes[atMatch[1]!.trim()] = atMatch[2]!.trim().replace(/^["']|["']$/g, "");
+      const aName = atMatch[1]!.trim();
+      const rawDecl = maskedBody.slice(atMatch.index, atMatch.index + atMatch[0].length);
+      const eqIdx = rawDecl.indexOf("=");
+      const afterEq = rawDecl.slice(eqIdx + 1);
+      const leadingWs = afterEq.length - afterEq.trimStart().length;
+      const valWithoutSemi = afterEq.replace(/;\s*$/, "").trim();
+      attributes[aName] = valWithoutSemi.replace(/^["']|["']$/g, "");
+      const valStart = bodyBaseOffset + atMatch.index + eqIdx + 1 + leadingWs;
+      attributeSpans[aName] = {
+        declSpan: {
+          start: bodyBaseOffset + atMatch.index,
+          end: bodyBaseOffset + atMatch.index + atMatch[0].length,
+        },
+        valueSpan: {
+          start: valStart,
+          end: valStart + valWithoutSemi.length,
+        },
+      };
     }
 
     partDefs.push({
@@ -714,12 +786,14 @@ export function parseSysml2Cst(source: string): ParsedSysml2Cst {
       actions,
       connections,
       attributes,
+      attributeSpans,
       span: { start: pMatch.index, end: closeBraceIdx + 1 },
     });
   }
 
   // 3. Parse `satisfy <reqId> by <target>;`
-  const satRegex = /\bsatisfy\s+(?:requirement\s+)?(?:'([^']+)'|"([^"]+)"|([A-Za-z0-9_.-]+))\s+by\s+([A-Za-z0-9_.:-]+)\s*;/g;
+  const satRegex =
+    /\bsatisfy\s+(?:requirement\s+)?(?:'([^']+)'|"([^"]+)"|([A-Za-z0-9_.-]+))\s+by\s+([A-Za-z0-9_.:-]+)\s*;/g;
   let sMatch: RegExpExecArray | null;
   while ((sMatch = satRegex.exec(masked)) !== null) {
     const reqId = (sMatch[1] || sMatch[2] || sMatch[3] || "").trim();
@@ -732,7 +806,8 @@ export function parseSysml2Cst(source: string): ParsedSysml2Cst {
   }
 
   // 4. Parse top-level `connect <from> to <to>;` outside `part def` blocks
-  const topConnRegex = /\b(?:connection\s+[A-Za-z_]\w*\s+)?connect\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)\s+to\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)\s*;/g;
+  const topConnRegex =
+    /\b(?:connection\s+[A-Za-z_]\w*\s+)?connect\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)\s+to\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)\s*;/g;
   let tcMatch: RegExpExecArray | null;
   while ((tcMatch = topConnRegex.exec(masked)) !== null) {
     const idx = tcMatch.index;

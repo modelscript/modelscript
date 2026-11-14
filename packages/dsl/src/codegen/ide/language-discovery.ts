@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import fs from "node:fs";
-import path from "node:path";
+import type * as FsTypes from "node:fs";
+import type * as PathTypes from "node:path";
 import type { NormalizedLanguage } from "./extension-generator.js";
 import { normalizeLanguages } from "./extension-generator.js";
 
@@ -35,6 +35,10 @@ export interface DiscoveredLanguagesResult {
  * Inspects package.json, language.ts, and dist/parser.wasm for each subdirectory.
  */
 export async function discoverWorkspaceLanguages(languagesDir: string): Promise<DiscoveredLanguagesResult> {
+  const fsId = "node:fs";
+  const pathId = "node:path";
+  const fs = (await import(fsId)) as typeof FsTypes;
+  const path = (await import(pathId)) as typeof PathTypes;
   const dynamicImport = (m: string): Promise<any> => import(m);
   const normalizedLangs: NormalizedLanguage[] = [];
   const wasmAssets: DiscoveredLanguageAsset[] = [];

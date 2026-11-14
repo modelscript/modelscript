@@ -90,3 +90,9 @@ lowerSmilesToDae(model, builder);
 const aspenInp = smilesToAspen(model);
 const modelicaMedia = smilesToModelica(model);
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="smiles" />

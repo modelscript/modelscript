@@ -134,15 +134,17 @@ class PersistentWorker {
   private activeResolve: ((res: WorkerResult) => void) | null = null;
   private activeTask: WorkerTask | null = null;
   private activeTimer: ReturnType<typeof setTimeout> | null = null;
+  private tasksCompleted = 0;
 
   private ensureProcess(): ReturnType<typeof spawn> {
     if (this.child && !this.child.killed && this.child.exitCode === null) {
       return this.child;
     }
+    this.tasksCompleted = 0;
     const workerScript = path.resolve(__dirname, "msl-comparison-worker.ts");
     const child = spawn(
       process.execPath,
-      ["--expose-gc", "--max-old-space-size=2048", "--import", "tsx", workerScript],
+      ["--expose-gc", "--max-old-space-size=4096", "--import", "tsx", workerScript],
       {
         cwd: path.resolve(__dirname, ".."),
         stdio: ["pipe", "pipe", "pipe"],
@@ -166,6 +168,10 @@ class PersistentWorker {
             this.activeResolve = null;
             this.activeTask = null;
             this.stderrBuf = "";
+            this.tasksCompleted++;
+            if (this.tasksCompleted >= 80) {
+              this.close();
+            }
             resolve(parsed);
           } catch {
             // ignore non-task JSON output
@@ -841,6 +847,29 @@ async function main() {
 
   // Resolve dependencies
   const extraLibraries: { name: string; path: string }[] = [];
+  const complexCandidates = [
+    path.join(repoRoot, "data", "libraries", "Complex", options.version, "extracted", "Complex"),
+    path.join(repoRoot, "data", "libraries", "Complex", "4.0.0", "extracted", "Complex"),
+    path.join(process.env.HOME || "", ".openmodelica", "libraries", `Complex ${options.version}+maint.om`),
+    path.join(process.env.HOME || "", ".openmodelica", "libraries", "Complex 4.0.0+maint.om"),
+    path.join(process.env.HOME || "", ".openmodelica", "libraries", "Complex 4.1.0+maint.om"),
+    path.join(repoRoot, "scripts", "msl", "Complex.mo"),
+  ];
+  const complexPath = complexCandidates.find((p) => p && fs.existsSync(p));
+  if (complexPath) extraLibraries.push({ name: "Complex", path: complexPath });
+
+  const servicesCandidates = [
+    path.join(repoRoot, "data", "libraries", "ModelicaServices", options.version, "extracted", "ModelicaServices"),
+    path.join(repoRoot, "data", "libraries", "ModelicaServices", "4.0.0", "extracted", "ModelicaServices"),
+    path.join(process.env.HOME || "", ".openmodelica", "libraries", `ModelicaServices ${options.version}+maint.om`),
+    path.join(process.env.HOME || "", ".openmodelica", "libraries", "ModelicaServices 4.0.0+maint.om"),
+    path.join(process.env.HOME || "", ".openmodelica", "libraries", "ModelicaServices 4.1.0+maint.om"),
+    path.join(repoRoot, "scripts", "msl", `ModelicaServices ${options.version}`),
+    path.join(repoRoot, "scripts", "msl", "ModelicaServices 4.0.0"),
+  ];
+  const servicesPath = servicesCandidates.find((p) => p && fs.existsSync(p));
+  if (servicesPath) extraLibraries.push({ name: "ModelicaServices", path: servicesPath });
+
   if (!isMsl) {
     const mslCandidates = [
       path.join(repoRoot, "data", "libraries", "Modelica", "4.0.0", "extracted", "Modelica"),
@@ -850,25 +879,6 @@ async function main() {
       path.join(repoRoot, "scripts", "msl", "Modelica 4.0.0"),
     ];
     const mslPath = mslCandidates.find((p) => p && fs.existsSync(p) && fs.existsSync(path.join(p, "package.mo")));
-
-    const complexCandidates = [
-      path.join(repoRoot, "data", "libraries", "Complex", "4.0.0", "extracted", "Complex"),
-      path.join(process.env.HOME || "", ".openmodelica", "libraries", "Complex 4.0.0+maint.om"),
-      path.join(process.env.HOME || "", ".openmodelica", "libraries", "Complex 4.1.0+maint.om"),
-      path.join(repoRoot, "scripts", "msl", "Complex.mo"),
-    ];
-    const complexPath = complexCandidates.find((p) => p && fs.existsSync(p));
-
-    const servicesCandidates = [
-      path.join(repoRoot, "data", "libraries", "ModelicaServices", "4.0.0", "extracted", "ModelicaServices"),
-      path.join(process.env.HOME || "", ".openmodelica", "libraries", "ModelicaServices 4.0.0+maint.om"),
-      path.join(process.env.HOME || "", ".openmodelica", "libraries", "ModelicaServices 4.1.0+maint.om"),
-      path.join(repoRoot, "scripts", "msl", "ModelicaServices 4.0.0"),
-    ];
-    const servicesPath = servicesCandidates.find((p) => p && fs.existsSync(p));
-
-    if (complexPath) extraLibraries.push({ name: "Complex", path: complexPath });
-    if (servicesPath) extraLibraries.push({ name: "ModelicaServices", path: servicesPath });
     if (mslPath) extraLibraries.push({ name: "Modelica", path: mslPath });
   }
 

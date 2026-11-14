@@ -40,6 +40,12 @@ description: "@modelscript/energyplus (languages/energyplus) provides compiler, 
 
 ---
 
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="energyplus" />
+
+---
+
 ## Static Analysis & Pre-Flight Linter Rules
 
 <LintRules lang="energyplus" />

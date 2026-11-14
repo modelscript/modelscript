@@ -194,7 +194,10 @@ export function CadBindingPickerModal({
                 Link 3D CAD Geometry to Simulation Variables
               </div>
               <div style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
-                Component: <code style={{ color: "#58a6ff", fontWeight: 600 }}>{component.name}</code>
+                Component:{" "}
+                <code style={{ color: "var(--fgColor-accent, var(--ms-brand))", fontWeight: 600 }}>
+                  {component.name}
+                </code>
                 {component.cad.uri && ` • Asset: ${component.cad.uri.split("/").pop()}`}
               </div>
             </div>
@@ -418,11 +421,11 @@ export function CadBindingPickerModal({
             alignItems: "center",
             justifyContent: "space-between",
             padding: "12px 16px",
-            background: dark ? "rgba(56, 139, 253, 0.08)" : "rgba(9, 105, 218, 0.04)",
-            border: `1px solid ${dark ? "rgba(56, 139, 253, 0.3)" : "rgba(9, 105, 218, 0.2)"}`,
+            background: "var(--ms-brand-soft)",
+            border: "1px solid var(--borderColor-accent-muted, var(--ms-brand))",
             borderRadius: "8px",
             fontSize: "12px",
-            color: dark ? "#79c0ff" : "#0969da",
+            color: "var(--fgColor-accent, var(--ms-brand))",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>

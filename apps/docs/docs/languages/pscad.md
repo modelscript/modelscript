@@ -237,3 +237,9 @@ When opening any `*.psout` file in Studio or VS Code, the custom editor provides
 2. **Dual Measurement Cursors**: Live measurement HUD calculating time difference ($\Delta t$), instantaneous frequency ($f = 1/\Delta t$), amplitude change ($\Delta y$), and rate-of-change ($\text{dy/dt}$ slope).
 3. **Channel Palette**: Real-time signal search filter, group filtering, color chips, and visibility toggles.
 4. **Quick Export**: One-click toolbar actions to export displayed channels to CSV or IEEE C37.111 COMTRADE.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="pscad" />

@@ -16,3 +16,5 @@ export * from "./semantic-diff.js";
 export * from "./semantic-merge.js";
 /** Analyzes symbol dependency graphs, strongly connected components, and topological ordering. */
 export * from "./topology.js";
+/** Generates grammar-driven test samples and verifies CST unparser round-trips. */
+export * from "./grammar-fuzzer.js";

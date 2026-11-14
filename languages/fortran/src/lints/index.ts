@@ -1152,3 +1152,5 @@ function splitTopLevelCommas(str: string): string[] {
   if (current.trim()) parts.push(current.trim());
   return parts;
 }
+
+export * from "./workspace.js";

@@ -167,7 +167,7 @@ const SpaceTabButton = styled.button<{ $active?: boolean; $accentColor?: string 
   }
 
   &:focus-visible {
-    outline: 2px solid var(--ms-brand, #3b82f6);
+    outline: 2px solid var(--ms-brand);
     outline-offset: -2px;
   }
 
@@ -532,7 +532,7 @@ export const SpacePage: React.FC = () => {
           style={{
             padding: "8px 16px",
             borderRadius: "8px",
-            background: "var(--ms-brand, #2563eb)",
+            background: "var(--ms-brand)",
             color: "#fff",
             textDecoration: "none",
             fontWeight: 600,
@@ -1616,7 +1616,7 @@ export const SpacePage: React.FC = () => {
                     style={{
                       background: "transparent",
                       border: "none",
-                      color: "var(--ms-brand, #3b82f6)",
+                      color: "var(--ms-brand)",
                       fontWeight: 800,
                       cursor: "pointer",
                     }}
@@ -1650,7 +1650,7 @@ export const SpacePage: React.FC = () => {
                       padding: "5px 8px",
                       borderRadius: "6px",
                       border: "none",
-                      background: "#2563eb",
+                      background: "var(--ms-brand)",
                       color: "#fff",
                       fontSize: "11px",
                       cursor: "pointer",
@@ -1805,7 +1805,7 @@ export const SpacePage: React.FC = () => {
                               borderRadius: "4px",
                               fontSize: "10px",
                               fontWeight: 700,
-                              background: "#2563eb",
+                              background: "var(--ms-brand)",
                               color: "#fff",
                             }}
                           >
@@ -1878,9 +1878,9 @@ export const SpacePage: React.FC = () => {
                           style={{
                             padding: "4px 10px",
                             borderRadius: "6px",
-                            border: "1px solid var(--color-accent-muted, rgba(59, 130, 246, 0.4))",
-                            background: "var(--color-accent-subtle, rgba(59, 130, 246, 0.15))",
-                            color: "var(--color-accent-fg, #0969da)",
+                            border: "1px solid var(--ms-accent, var(--color-accent-muted))",
+                            background: "var(--ms-accent-subtle, var(--color-accent-subtle))",
+                            color: "var(--ms-accent, var(--color-accent-fg))",
                             fontSize: "11.5px",
                             fontWeight: 700,
                             cursor: "pointer",
@@ -1893,7 +1893,7 @@ export const SpacePage: React.FC = () => {
                           style={{
                             padding: "4px 10px",
                             borderRadius: "6px",
-                            background: "#2563eb",
+                            background: "var(--ms-brand)",
                             color: "#fff",
                             textDecoration: "none",
                             fontSize: "11.5px",
@@ -2027,7 +2027,7 @@ export const SpacePage: React.FC = () => {
                     padding: "10px 18px",
                     borderRadius: "8px",
                     border: "none",
-                    background: "var(--ms-brand, #2563eb)",
+                    background: "var(--ms-brand)",
                     color: "#fff",
                     fontWeight: 700,
                     fontSize: "13px",
@@ -2104,7 +2104,7 @@ export const SpacePage: React.FC = () => {
                       padding: "6px 12px",
                       borderRadius: "6px",
                       border: "none",
-                      background: "#2563eb",
+                      background: "var(--ms-brand)",
                       color: "#fff",
                       fontSize: "12px",
                       fontWeight: 700,
@@ -2154,7 +2154,7 @@ export const SpacePage: React.FC = () => {
                       marginTop: "8px",
                       padding: "6px 12px",
                       borderRadius: "6px",
-                      background: "#2563eb",
+                      background: "var(--ms-brand)",
                       color: "#fff",
                       textDecoration: "none",
                       fontSize: "12px",
@@ -2208,7 +2208,7 @@ export const SpacePage: React.FC = () => {
                     borderRadius: "6px",
                     border: "1px solid var(--color-border)",
                     background: "transparent",
-                    color: "var(--ms-brand, #3b82f6)",
+                    color: "var(--ms-brand)",
                     fontSize: "11px",
                     fontWeight: 700,
                     cursor: "pointer",
@@ -2304,7 +2304,7 @@ export const SpacePage: React.FC = () => {
                       padding: "8px 16px",
                       borderRadius: "8px",
                       border: "none",
-                      background: "#2563eb",
+                      background: "var(--ms-brand)",
                       color: "#fff",
                       fontWeight: 700,
                       cursor: "pointer",

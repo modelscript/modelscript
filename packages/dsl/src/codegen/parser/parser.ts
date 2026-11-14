@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import * as fs from "node:fs";
-import * as path from "node:path";
+import type * as fsType from "node:fs";
+import type * as pathType from "node:path";
 import { GLRTable, LRAutomaton } from "../../dsl/automata.js";
 import { NormalizedGrammar } from "../../dsl/grammar.js";
 import { LanguageOptions, SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "../../dsl/language.js";
@@ -1229,10 +1229,22 @@ export function generateParserTables(
     outFiles.push({ filename: s.filename, content: s.content });
   }
 
+  const fs = (typeof process !== "undefined" ? (process as any).getBuiltinModule?.("node:fs") : undefined) as
+    | typeof fsType
+    | undefined;
+  const path = (typeof process !== "undefined" ? (process as any).getBuiltinModule?.("node:path") : undefined) as
+    | typeof pathType
+    | undefined;
   const sourcePath = (originalGrammar as any).sourcePath || (originalGrammar as any)[SOURCE_PATH_SYMBOL];
-  const sourceDir = sourcePath ? path.dirname(sourcePath) : process.cwd();
+  const sourceDir = sourcePath && path ? path.dirname(sourcePath) : typeof process !== "undefined" ? process.cwd() : "";
 
   const loadRuntimeFile = (rf: any): { filename: string; content: string } | null => {
+    if (!fs || !path) {
+      if (rf && typeof rf === "object" && rf.filename && rf.content !== undefined) {
+        return { filename: rf.filename, content: rf.content };
+      }
+      return null;
+    }
     if (typeof rf === "string") {
       let resolvedPath = path.isAbsolute(rf) ? rf : path.resolve(sourceDir, rf);
       if (!fs.existsSync(resolvedPath)) {
@@ -1293,7 +1305,7 @@ export function generateParserTables(
     }
   }
 
-  if (originalGrammar.runtimeDir) {
+  if (originalGrammar.runtimeDir && fs && path) {
     const resolvedDir = path.isAbsolute(originalGrammar.runtimeDir)
       ? originalGrammar.runtimeDir
       : path.resolve(sourceDir, originalGrammar.runtimeDir);

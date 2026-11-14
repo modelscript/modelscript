@@ -11,10 +11,10 @@
  *   npx tsx languages/febio/tests/febio-benchmark-runner.ts [options]
  */
 
-import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseFebio } from "../src/parser/index.js";
-import { solveHyperelasticMechanics, lowerFebioToDae } from "../src/solver/index.js";
+import { lowerFebioToDae, solveHyperelasticMechanics } from "../src/solver/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -115,6 +115,53 @@ export async function runFebioBenchmarks(): Promise<void> {
 
   if (!passed) process.exit(1);
 }
+
+export const febioBenchmarkAdapter: import("@modelscript/runtime/benchmark").LanguageBenchmarkAdapter = {
+  slug: "febio",
+  referenceTool: "FEBio 4.0 Nonlinear Mechanics",
+  referenceVersion: "4.0",
+  defaultTolerance: 1e-3,
+  metricKind: "residual",
+  async runCases(): Promise<import("@modelscript/runtime/benchmark").BenchmarkCaseResult[]> {
+    const t0 = performance.now();
+    const model = `
+        FEBIO 4.0 title="ArterialWallTensile"
+        MATERIAL id=1 name="ArterialMedia" type="Mooney-Rivlin" c1=15.0 c2=3.5 k=800.0 perm=0.002 phi0=0.20
+        NODE id=1 x=0.0 y=0.0 z=0.0
+        NODE id=2 x=1.0 y=0.0 z=0.0
+        NODE id=3 x=0.0 y=1.0 z=0.0
+        NODE id=4 x=0.0 y=0.0 z=1.0
+        ELEMENT id=1 type=tet4 mat=1 nodes=1,2,3,4
+        NODESET name="FixedBase" nodes=1,2,3
+        NODESET name="TensionApex" nodes=4
+        BC id=BC1 node_set="FixedBase" type="fix"
+        BC id=BC2 node_set="TensionApex" type="prescribed displacement" dofs=z value=0.30
+      `;
+    const doc = parseFebio(model);
+    const res = solveHyperelasticMechanics(doc);
+    const arena = lowerFebioToDae(doc);
+    const ok =
+      res.totalVolume > 0 &&
+      res.invertedElementCount === 0 &&
+      res.materials.every((m) => m.strainEnergyDensityW > 0 && m.vonMisesStress > 0) &&
+      arena.getVarCount() > 0 &&
+      arena.getEqCount() > 0;
+    return [
+      {
+        id: "ArterialMooneyRivlin",
+        name: "Nonlinear Mooney-Rivlin Arterial Wall Finite Tensile Extension",
+        scale: "standard",
+        referenceTool: "FEBio 4.0 Nonlinear Mechanics",
+        metricKind: "residual",
+        threshold: 1e-3,
+        measuredError: ok ? 0 : null,
+        passed: ok,
+        durationMs: Number((performance.now() - t0).toFixed(3)),
+        details: `W=${res.materials[0]?.strainEnergyDensityW.toFixed(2)} J/m^3, ${arena.getEqCount()} DAE eqs`,
+      },
+    ];
+  },
+};
 
 if (process.argv[1] === __filename) {
   runFebioBenchmarks();

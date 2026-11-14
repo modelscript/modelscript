@@ -1363,37 +1363,36 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  Deck = 48,
-  Card = 49,
-  TitleCard = 50,
-  ControlCard = 51,
-  TimeStepCard = 52,
-  VolumeCard = 53,
-  JunctionCard = 54,
-  HeatStructureCard = 55,
-  KineticsCard = 56,
-  TripCard = 57,
-  GenericCard = 58,
-  TerminalCard = 59,
-  START = 60,
-  _START = 60,
-  VolumeCardNum = 85,
-  JunctionCardNum = 86,
-  HeatCardNum = 87,
-  KineticsCardNum = 88,
-  TripCardNum = 89,
-  CardNumber = 90,
-  CommentLine = 91,
-  Identifier = 92,
-  NumberLiteral = 93,
-  StringLiteral = 94,
-  RestOfLine = 95,
+  Deck = 49,
+  Card = 50,
+  TitleCard = 51,
+  ControlCard = 52,
+  TimeStepCard = 53,
+  VolumeCard = 54,
+  JunctionCard = 55,
+  HeatStructureCard = 56,
+  KineticsCard = 57,
+  TripCard = 58,
+  GenericCard = 59,
+  TerminalCard = 60,
+  START = 61,
+  _START = 61,
+  VolumeCardNum = 88,
+  JunctionCardNum = 89,
+  HeatCardNum = 90,
+  KineticsCardNum = 91,
+  TripCardNum = 92,
+  CardNumber = 93,
+  CommentLine = 94,
+  Identifier = 95,
+  NumberLiteral = 96,
+  StringLiteral = 97,
   EOF = 1023,
 }
 
 export declare enum FieldId {
-  Title = 1,
-  title = 1,
+  TitleWord = 1,
+  titleWord = 1,
   CardNumber = 2,
   cardNumber = 2,
   ProblemType = 3,
@@ -1519,10 +1518,6 @@ export interface StringLiteralNode extends SyntaxNode {
   readonly typeId: SyntaxKind.StringLiteral;
 }
 export declare function isStringLiteral(node: SyntaxNode | null | undefined): node is StringLiteralNode;
-export interface RestOfLineNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.RestOfLine;
-}
-export declare function isRestOfLine(node: SyntaxNode | null | undefined): node is RestOfLineNode;
 export declare namespace Cst {
   export function kind(node: SyntaxNode | null | undefined): string;
   export function normalize(token: string | null | undefined): string;
@@ -1540,8 +1535,8 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is TitleCardNode;
-    title(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    titleList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    titleWord(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    titleWordList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ControlCard: {
     readonly typeId: number;
@@ -1693,10 +1688,5 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is StringLiteralNode;
-  };
-  export const RestOfLine: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is RestOfLineNode;
   };
 }

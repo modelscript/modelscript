@@ -339,7 +339,7 @@ export class CloudJobPanel {
       --btn-hover: var(--vscode-button-hoverBackground, #1177bb);
       --card-bg: var(--vscode-sideBar-background, #252526);
       --card-hover: var(--vscode-list-hoverBackground, #2a2d2e);
-      --accent: #388bfd;
+      --accent: var(--vscode-textLink-foreground, #22d3ee);
       --success: #3fb950;
       --warn: #d29922;
       --danger: #f85149;
@@ -407,7 +407,7 @@ export class CloudJobPanel {
     .profile-card.selected {
       border-color: var(--accent);
       box-shadow: 0 0 0 1px var(--accent);
-      background: rgba(56, 139, 253, 0.08);
+      background: rgba(34, 211, 238, 0.08);
     }
     .profile-name {
       font-weight: 600;
@@ -496,7 +496,7 @@ export class CloudJobPanel {
       text-transform: uppercase;
     }
     .status-queued { background: rgba(210, 153, 34, 0.2); color: var(--warn); }
-    .status-running { background: rgba(56, 139, 253, 0.2); color: var(--accent); }
+    .status-running { background: rgba(34, 211, 238, 0.16); color: var(--accent); }
     .status-completed { background: rgba(63, 185, 80, 0.2); color: var(--success); }
     .status-failed { background: rgba(248, 81, 73, 0.2); color: var(--danger); }
     .log-box {

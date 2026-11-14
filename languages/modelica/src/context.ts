@@ -15,6 +15,7 @@ import type { FileSystem, Parser, Tree } from "@modelscript/dsl/utils";
 import {
   computeEditRanges,
   isIdentChar,
+  isTypeLikeSymbol,
   MODELSCRIPT_CAS_PACKAGE,
   printArenaDAE,
   UnifiedWorkspace,
@@ -427,7 +428,11 @@ export class Context {
         return node;
       },
     };
-    (this.#workspaceIndex as any).unifiedIndex = index;
+    if (typeof this.#workspaceIndex.setUnifiedIndex === "function") {
+      this.#workspaceIndex.setUnifiedIndex(index);
+    } else {
+      (this.#workspaceIndex as unknown as { unifiedIndex?: unknown }).unifiedIndex = index;
+    }
     this.#queryEngine = createModelicaQueryEngine(index, contextTree);
 
     // Hydrate root classes
@@ -1369,7 +1374,9 @@ export class Context {
     const foreignIdx = this.#foreignWorkspace.getIndex({ eager: true });
     const byUri = new Map<string, any[]>();
     for (const entry of foreignIdx.symbols.values()) {
-      const resUri = entry.resourceId ?? "foreign://builtins";
+      // Never mirror Modelica's own symbols back from UnifiedWorkspace over #workspaceIndex
+      if (entry.language && entry.language.toLowerCase() === "modelica") continue;
+      const resUri = entry.resourceId ?? `foreign://${entry.language ?? "builtins"}`;
       let bucket = byUri.get(resUri);
       if (!bucket) {
         bucket = [];
@@ -1386,10 +1393,8 @@ export class Context {
 
     const db = this.#queryEngine.toQueryDB();
     for (const entry of foreignIdx.symbols.values()) {
-      if (
-        (entry.parentId === null || entry.parentId === 0 || entry.parentId === entry.id) &&
-        (entry.kind === "Class" || entry.kind === "Package")
-      ) {
+      if (entry.language && entry.language.toLowerCase() === "modelica") continue;
+      if ((entry.parentId === null || entry.parentId === 0 || entry.parentId === entry.id) && isTypeLikeSymbol(entry)) {
         if (!this.#classes.some((c) => c.id === entry.id)) {
           this.#classes.push({
             id: entry.id,
@@ -1408,6 +1413,23 @@ export class Context {
         }
       }
     }
+  }
+
+  /**
+   * Attaches an externally managed polyglot `UnifiedWorkspace` (such as the LSP workspace's
+   * unified symbol index) so Modelica queries, lints, and flattening resolve symbols from all
+   * open non-Modelica files immediately.
+   */
+  attachExternalUnifiedWorkspace(unifiedWorkspace: UnifiedWorkspace): void {
+    this.#foreignWorkspace = unifiedWorkspace;
+    this.#syncForeignSymbolsToIndex();
+  }
+
+  /**
+   * Re-synchronizes symbols from an attached external `UnifiedWorkspace` after foreign documents change.
+   */
+  syncExternalWorkspace(): void {
+    this.#syncForeignSymbolsToIndex();
   }
 
   /**

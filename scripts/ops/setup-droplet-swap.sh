@@ -81,7 +81,7 @@ echo "==> Detected insufficient swap (${CURRENT_SWAP_MB} MB). Provisioning ${SWA
     echo "==> Registering in /etc/fstab for reboot persistence..."
     echo "${SWAP_FILE} none swap sw 0 0" >> /etc/fstab
   fi
-fi
+
 
 # Optimize kernel virtual memory tunables for NVMe/SSD droplet reliability
 echo "==> Applying optimal kernel VM parameters (swappiness=10, vfs_cache_pressure=50)..."

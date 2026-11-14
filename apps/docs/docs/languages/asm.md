@@ -74,3 +74,9 @@ msx asm to-dae bsm1_plant.asm
 ## MCP Agent Tool Integration
 
 - **`asm_evaluate_biokinetics`**: Computes ASM1 biological process rates (aerobic growth, denitrification, autotrophic nitrification, decay, hydrolysis) and net soluble/particulate component conversion rates ($r_i$) for environmental engineering optimization.
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="asm" />

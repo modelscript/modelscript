@@ -225,9 +225,34 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
     }
   }
 
-  // 1. M6001: Check for isolated/floating buses
+  // 1. M6001: Check for isolated/floating buses (skip buses/components that are wired to unlowered blocks)
+  const wiredEntityIds = new Set<string>();
+  for (const mod of allModules) {
+    for (const w of mod.wires) {
+      for (const pid of w.connectedPortIds) {
+        wiredEntityIds.add(pid);
+        const underscore = pid.indexOf("_");
+        if (underscore > 0) wiredEntityIds.add(pid.slice(0, underscore));
+        const lastUnderscore = pid.lastIndexOf("_");
+        if (lastUnderscore > 0) wiredEntityIds.add(pid.slice(lastUnderscore + 1));
+      }
+    }
+  }
+  const isLibraryProject = project.projectType === "library";
+  const rootComponentIds = new Set(project.rootModule.components.map((c) => c.id));
   for (const [busId, bus] of netlist.buses) {
     if (bus.connectedBranchIds.length === 0) {
+      if (isLibraryProject) continue;
+      if (busId.includes(":") && (!bus.sourceComponentId || !rootComponentIds.has(bus.sourceComponentId))) continue;
+      if (/(?:^|[:_])Node_\d+$/i.test(busId) && !bus.sourceComponentId) continue;
+      const unprefixedBus = busId.includes("_") ? busId.slice(busId.lastIndexOf("_") + 1) : busId;
+      if (
+        wiredEntityIds.has(busId) ||
+        (busId.includes(":") && (wiredEntityIds.has(unprefixedBus) || wiredEntityIds.has(bus.name))) ||
+        (bus.sourceComponentId && wiredEntityIds.has(bus.sourceComponentId))
+      ) {
+        continue;
+      }
       const busLoc = busLocationMap.get(busId);
       const cmpLoc = !busLoc && bus.sourceComponentId ? cmpLocationMap.get(bus.sourceComponentId) : undefined;
       const loc = busLoc ?? cmpLoc;
@@ -290,6 +315,20 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
   for (const mod of allModules) {
     for (const cmp of mod.components) {
       const defn = cmp.definitionName.toLowerCase();
+      const isElectricalRlc =
+        defn.includes("resistor") ||
+        defn.includes("inductor") ||
+        defn.includes("capacitor") ||
+        defn.includes("rlc") ||
+        defn.includes("load") ||
+        defn.includes("line") ||
+        defn.includes("cable") ||
+        defn.includes("branch") ||
+        defn.includes("source") ||
+        defn.includes("xfmr") ||
+        defn.includes("breaker") ||
+        defn.includes("fault") ||
+        defn.includes("arrester");
       for (const [paramName, val] of Object.entries(cmp.parameters)) {
         if (typeof val === "number") {
           const lowerName = paramName.toLowerCase();
@@ -297,7 +336,7 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
           const line = pLoc?.line ?? cmp.line;
           const column = pLoc?.column ?? cmp.column;
           const endColumn = column !== undefined ? column + paramName.length : undefined;
-          if ((lowerName === "r" || lowerName === "resistance") && val < 0) {
+          if (isElectricalRlc && (lowerName === "r" || lowerName === "resistance") && val < 0) {
             diagnostics.push({
               code: PscadErrorCode.INVALID_PARAMETER.code,
               rule: PscadErrorCode.INVALID_PARAMETER.rule,
@@ -316,6 +355,7 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
             });
           }
           if (
+            isElectricalRlc &&
             (lowerName === "l" || lowerName === "inductance") &&
             (val < 0 || (defn.includes("inductor") && val <= 0))
           ) {
@@ -337,6 +377,7 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
             });
           }
           if (
+            isElectricalRlc &&
             (lowerName === "c" || lowerName === "capacitance") &&
             (val < 0 || (defn.includes("capacitor") && val <= 0))
           ) {
@@ -376,12 +417,7 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
               code: PscadErrorCode.INVALID_PARAMETER.code,
               rule: PscadErrorCode.INVALID_PARAMETER.rule,
               severity: PscadErrorCode.INVALID_PARAMETER.severity,
-              message: PscadErrorCode.INVALID_PARAMETER.message(
-                cmp.instanceName || cmp.id,
-                paramName,
-                val,
-                reason,
-              ),
+              message: PscadErrorCode.INVALID_PARAMETER.message(cmp.instanceName || cmp.id, paramName, val, reason),
               componentId: cmp.id,
               line,
               column,
@@ -453,9 +489,42 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
   // 5. M6005: Check CSMF control block upstream signal references
   if (netlist.controlBlocks && netlist.controlBlocks.length > 0) {
     const knownBlockIds = new Set(netlist.controlBlocks.map((cb) => cb.id));
+    for (const [bId, b] of netlist.buses) {
+      knownBlockIds.add(bId);
+      if (b.name) knownBlockIds.add(b.name);
+    }
+    for (const mod of allModules) {
+      for (const cmp of mod.components) {
+        knownBlockIds.add(cmp.id);
+        if (cmp.instanceName) knownBlockIds.add(cmp.instanceName);
+        if (cmp.definitionName) {
+          knownBlockIds.add(cmp.definitionName);
+          const defShort = cmp.definitionName.split(":").pop();
+          if (defShort) knownBlockIds.add(defShort);
+        }
+        for (const key of ["Name", "Symbol", "Tag"] as const) {
+          const val = cmp.parameters[key];
+          if (typeof val === "string" && val.trim()) knownBlockIds.add(val.trim());
+        }
+      }
+    }
+    const isResolvedInput = (inp: string): boolean => {
+      const noPhase = inp.replace(/(?:_phase[ABC])+$/i, "");
+      if (knownBlockIds.has(inp) || knownBlockIds.has(noPhase)) return true;
+      const colonIdx = noPhase.lastIndexOf(":");
+      const afterColon = colonIdx >= 0 ? noPhase.slice(colonIdx + 1) : noPhase;
+      if (knownBlockIds.has(afterColon)) return true;
+      let idx = afterColon.indexOf("_");
+      while (idx >= 0) {
+        if (knownBlockIds.has(afterColon.slice(idx + 1))) return true;
+        idx = afterColon.indexOf("_", idx + 1);
+      }
+      return false;
+    };
     for (const cb of netlist.controlBlocks) {
       for (const inp of cb.inputs) {
-        if (!knownBlockIds.has(inp)) {
+        if (!inp || !inp.trim()) continue;
+        if (!isResolvedInput(inp)) {
           const loc = cmpLocationMap.get(cb.id);
           diagnostics.push({
             code: PscadErrorCode.CSMF_UNRESOLVED_INPUT.code,
@@ -587,7 +656,7 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
     }
 
     const busById = new Map(mod.buses.map((b) => [b.id, b]));
-    const portMeta = new Map<string, { kind: string; isWirelessAdapter: boolean }>();
+    const portMeta = new Map<string, { kind: string; isWirelessAdapter: boolean; explicitDomain: boolean }>();
     for (const cmp of mod.components) {
       const cleanDef = (
         cmp.definitionName.includes(":") ? cmp.definitionName.split(":").pop()! : cmp.definitionName
@@ -597,9 +666,39 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
         cleanDef === "data_label" ||
         cleanDef === "xnode" ||
         cleanDef === "pin" ||
-        cleanDef === "radio_link";
+        cleanDef === "radio_link" ||
+        cleanDef === "pgb" ||
+        cleanDef === "breakout" ||
+        cleanDef === "datamerge" ||
+        cleanDef === "multimeter" ||
+        cleanDef === "ground" ||
+        cleanDef === "var" ||
+        cleanDef === "const" ||
+        cleanDef === "consti" ||
+        cleanDef === "emtconst" ||
+        cleanDef === "nodeloop";
+      const isKnownCsmf =
+        cleanDef === "pi_ctlr" ||
+        cleanDef === "realpole" ||
+        cleanDef === "gain" ||
+        cleanDef === "sum" ||
+        cleanDef === "limit" ||
+        cleanDef === "compar" ||
+        cleanDef === "integral" ||
+        cleanDef === "hardlimit";
+      const isKnown3Ph =
+        cleanDef === "source3" ||
+        cleanDef === "source_3" ||
+        cleanDef === "xfmr-3p2w" ||
+        cleanDef === "breaker3" ||
+        cleanDef === "tline" ||
+        cleanDef === "cable" ||
+        cleanDef === "sync_machine" ||
+        cleanDef === "ind_machine";
       for (const p of cmp.ports) {
-        portMeta.set(p.id, { kind: p.kind, isWirelessAdapter });
+        if (!p.name && p.kind === "electrical") continue;
+        const explicitDomain = (p.kind === "signal" && isKnownCsmf) || (p.kind === "electrical" && isKnown3Ph);
+        portMeta.set(p.id, { kind: p.kind, isWirelessAdapter, explicitDomain });
       }
     }
 
@@ -647,7 +746,7 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
             continue;
           }
           const meta = portMeta.get(pid);
-          if (!meta || meta.isWirelessAdapter) continue;
+          if (!meta || meta.isWirelessAdapter || !meta.explicitDomain) continue;
           if (meta.kind === "signal") sigPorts.push(pid);
           else if (meta.kind === "electrical") elecPorts.push(pid);
         }
@@ -745,9 +844,10 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
   }
 
   // 12. Component Parameter Checks (from <segment name="Checks">)
-  if (project.definitions) {
+  if (project.definitions && !isLibraryProject) {
     const allComponents = allModules.flatMap((m) => m.components);
     for (const cmp of allComponents) {
+      if (cmp.definitionName.startsWith("master:")) continue;
       const defName = cmp.definitionName.includes(":") ? cmp.definitionName.split(":").pop()! : cmp.definitionName;
       const def = project.definitions.get(defName) ?? project.definitions.get(cmp.definitionName);
       if (!def?.checks || def.checks.length === 0) continue;
@@ -763,6 +863,7 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
           portDims[port.name] = port.dimension ?? 1;
         }
       }
+      if (Object.keys(portDims).length === 0) continue;
 
       const failures = evaluateCheckRules(def.checks, params, portDims);
       for (const fail of failures) {
@@ -791,3 +892,5 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
 
   return diagnostics;
 }
+
+export * from "./workspace.js";

@@ -154,14 +154,14 @@ export class PsoutEditorProvider implements vscode.CustomReadonlyEditorProvider<
   <title>PSCAD PSOUT Waveform Studio</title>
   <style>
     :root {
-      --bg-primary: #0d1117;
-      --bg-secondary: #161b22;
-      --bg-tertiary: #21262d;
-      --border: #30363d;
-      --text-main: #c9d1d9;
-      --text-dim: #8b949e;
-      --accent: #58a6ff;
-      --accent-hover: #1f6feb;
+      --bg-primary: var(--vscode-editor-background, #18181b);
+      --bg-secondary: var(--vscode-sideBar-background, #1e1e22);
+      --bg-tertiary: var(--vscode-editorWidget-background, #242429);
+      --border: var(--vscode-panel-border, rgba(255, 255, 255, 0.12));
+      --text-main: var(--vscode-foreground, #f4f4f5);
+      --text-dim: var(--vscode-descriptionForeground, #a1a1aa);
+      --accent: var(--vscode-textLink-foreground, #22d3ee);
+      --accent-hover: var(--vscode-button-background, #0891b2);
       --success: #238636;
       --warning: #d29922;
       --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -523,7 +523,8 @@ export class PsoutEditorProvider implements vscode.CustomReadonlyEditorProvider<
       ctx.scale(dpr, dpr);
 
       // Background
-      ctx.fillStyle = "#0d1117";
+      const rootStyle = getComputedStyle(document.body);
+      ctx.fillStyle = rootStyle.getPropertyValue("--bg-primary").trim() || "#18181b";
       ctx.fillRect(0, 0, w, h);
 
       const padL = 60, padR = 30, padT = 30, padB = 40;
@@ -613,7 +614,7 @@ export class PsoutEditorProvider implements vscode.CustomReadonlyEditorProvider<
         const c1ScreenX = toX(cursor1X);
         const c2ScreenX = toX(cursor2X);
 
-        ctx.strokeStyle = "#58a6ff";
+        ctx.strokeStyle = rootStyle.getPropertyValue("--accent").trim() || "#22d3ee";
         ctx.setLineDash([4, 4]);
         ctx.lineWidth = 1;
         ctx.beginPath();

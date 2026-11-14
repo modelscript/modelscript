@@ -69,3 +69,9 @@ msx lint Controller.c
 # Generate Modelica external "C" bindings from header
 msx c to-modelica SensorDriver.h -o SensorDriver.mo
 ```
+
+---
+
+## Verification, Maturity & Benchmarks
+
+<LanguageBenchmarks lang="c" />

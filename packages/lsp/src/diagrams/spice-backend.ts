@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { DiagramBackend, DiagramDispatchDeps } from "../diagramApi.js";
+import type { TextEdit } from "vscode-languageserver";
+import {
+  computeSpiceComponentDropEdits,
+  createDropBatchState,
+  mergeCoincidentInsertEdits,
+} from "../cross-language-drop.js";
+import {
+  deduplicateAndSort,
+  getUnifiedIndexFromDeps,
+  type DiagramBackend,
+  type DiagramDispatchDeps,
+} from "../diagramApi.js";
 import type {
   ComponentPropertyData,
   DiagramApplyEditsParams,
@@ -142,7 +153,36 @@ export function createSpiceDiagramBackend(backends: DiagramDispatchDeps): Diagra
     },
 
     async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
-      return { seq: params.seq, edits: [], renderHint: "none" };
+      try {
+        const text = await readSpiceSource(params.uri);
+        if (!text) return { seq: params.seq, edits: [], renderHint: "none" };
+        const unifiedIndex = getUnifiedIndexFromDeps(backends);
+        const batchState = createDropBatchState();
+        const allEdits: TextEdit[] = [];
+        let renderHint: "none" | "immediate" | "debounced" = "none";
+
+        for (const action of params.actions) {
+          if (action.type === "addComponent") {
+            const edits = computeSpiceComponentDropEdits({
+              docText: text,
+              rawClassName: action.className,
+              instanceName: action.name,
+              unifiedIndex,
+              batchState,
+            });
+            allEdits.push(...edits);
+            if (edits.length > 0) renderHint = "immediate";
+          }
+        }
+
+        return {
+          seq: params.seq,
+          edits: deduplicateAndSort(mergeCoincidentInsertEdits(allEdits)),
+          renderHint,
+        };
+      } catch {
+        return { seq: params.seq, edits: [], renderHint: "none" };
+      }
     },
 
     async getPalette(): Promise<DiagramPalette> {

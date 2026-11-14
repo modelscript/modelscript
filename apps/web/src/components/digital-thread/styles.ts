@@ -23,10 +23,10 @@ export const MetricsGrid = styled.div`
 `;
 
 export const MetricCard = styled.div`
-  background: var(--color-canvas-subtle, rgba(22, 27, 34, 0.7));
+  background: var(--color-canvas-subtle, var(--ms-bg-elv));
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--color-border-default, #30363d);
+  border: 1px solid var(--color-border-default, var(--ms-border));
   border-radius: 12px;
   padding: 16px 20px;
   display: flex;
@@ -35,7 +35,7 @@ export const MetricCard = styled.div`
   transition: all 0.2s ease;
 
   &:hover {
-    border-color: var(--color-accent-emphasis, #0969da);
+    border-color: var(--ms-brand);
     transform: translateY(-1px);
   }
 `;
@@ -74,14 +74,13 @@ export const FilterPillGroup = styled.div`
 
 export const FilterPill = styled.button<{ $active: boolean; $color?: string | undefined }>`
   border: 1px solid
-    ${(props) =>
-      props.$active ? props.$color || "var(--color-accent-emphasis, #0969da)" : "var(--color-border-default, #30363d)"};
+    ${(props) => (props.$active ? props.$color || "var(--ms-brand)" : "var(--color-border-default, var(--ms-border))")};
   background: ${(props) =>
     props.$active
       ? props.$color
         ? `${props.$color}25`
-        : "var(--color-accent-subtle, rgba(56, 139, 253, 0.15))"
-      : "var(--color-canvas-subtle, #161b22)"};
+        : "var(--ms-brand-soft)"
+      : "var(--color-canvas-subtle, var(--ms-bg-elv))"};
   color: ${(props) => (props.$active ? "var(--color-fg-default, #f0f6fc)" : "var(--color-fg-muted, #8b949e)")};
   border-radius: 20px;
   padding: 6px 12px;
@@ -94,13 +93,13 @@ export const FilterPill = styled.button<{ $active: boolean; $color?: string | un
   transition: all 0.15s ease;
 
   &:hover {
-    border-color: ${(props) => props.$color || "var(--color-accent-emphasis, #0969da)"};
+    border-color: ${(props) => props.$color || "var(--ms-brand)"};
     color: var(--color-fg-default, #f0f6fc);
   }
 `;
 
 export const TwinCard = styled.div`
-  background: var(--color-canvas-subtle, rgba(22, 27, 34, 0.8));
+  background: var(--color-canvas-subtle, var(--ms-bg-elv));
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--color-border-default, #30363d);
@@ -133,7 +132,7 @@ export const ThreadVisualizer = styled.div`
   align-items: center;
   gap: 16px;
   padding: 16px;
-  background: var(--color-canvas-default, #0d1117);
+  background: var(--color-canvas-default, var(--ms-bg));
   border-radius: 10px;
   border: 1px solid var(--color-border-subtle, #21262d);
 

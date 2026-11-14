@@ -7,7 +7,7 @@ export const PageContainer = styled.div`
   flex-direction: column;
   width: 100%;
   height: calc(100vh - 54px - var(--dev-header-height, 0px));
-  background-color: var(--color-canvas-default, #0d1117);
+  background-color: var(--ms-bg-canvas, var(--color-canvas-default));
   overflow: hidden;
   position: relative;
 `;
@@ -15,8 +15,8 @@ export const PageContainer = styled.div`
 export const Toolbar = styled.div`
   height: 42px;
   min-height: 42px;
-  background-color: var(--color-canvas-subtle, #161b22);
-  border-bottom: 1px solid var(--color-border-default, #30363d);
+  background-color: var(--ms-bg-surface, var(--color-canvas-subtle));
+  border-bottom: 1px solid var(--ms-border-subtle, var(--color-border-default));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -138,7 +138,7 @@ export const LoadingOverlay = styled.div`
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: var(--color-canvas-default, #0d1117);
+  background-color: var(--ms-bg-canvas, var(--color-canvas-default));
   display: flex;
   flex-direction: column;
   align-items: center;

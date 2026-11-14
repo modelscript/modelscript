@@ -108,7 +108,7 @@ export function indexPscadDocument(ctx: DslIndexFileContext): void {
     }
     const iconSvg = renderPscadDefinitionIconSvg(dBody, 16, defName);
 
-    ctx.addSymbol(
+    const compId = ctx.addSymbol(
       defName,
       "Class",
       rootId,
@@ -127,6 +127,78 @@ export function indexPscadDocument(ctx: DslIndexFileContext): void {
         resourceId: uri,
       },
     );
+
+    const seenChildren = new Set<string>();
+
+    // Index child <port name="..." type="..." /> nodes inside definition body
+    const portRegex = /<port\b([^>]*?)(?:\/>|>[\s\S]*?<\/port>)/gi;
+    let portMatch: RegExpExecArray | null;
+    while ((portMatch = portRegex.exec(dBody)) !== null) {
+      const pAttrs = portMatch[1]!;
+      const pName = /\bname\s*=\s*["']([^"']+)["']/i.exec(pAttrs)?.[1]?.trim();
+      if (!pName || seenChildren.has(`port:${pName}`)) continue;
+      seenChildren.add(`port:${pName}`);
+      const pTypeRaw = /\btype\s*=\s*["']([^"']+)["']/i.exec(pAttrs)?.[1]?.trim() ?? "Real";
+      const pDir = /\b(?:dir|direction|kind)\s*=\s*["']([^"']+)["']/i.exec(pAttrs)?.[1]?.trim()?.toLowerCase();
+      const absStart = defMatch.index + portMatch.index;
+      ctx.addSymbol(
+        pName,
+        "Component",
+        compId,
+        absStart,
+        absStart + portMatch[0].length,
+        {
+          typeSpecifier: pTypeRaw,
+          variability: "continuous",
+          causality: pDir === "input" || pDir === "output" ? pDir : undefined,
+          direction: pDir || "inout",
+          isConnectorPort: true,
+          language: "pscad",
+        },
+        {
+          ruleName: "pscad_port",
+          namePath: `${projectName}.${defName}.${pName}`,
+          resourceId: uri,
+        },
+      );
+    }
+
+    // Index child <parameter .../> (from <form>) and <param .../> (from <paramlist>) entries
+    const paramTagRegex = /<(?:parameter|param)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:parameter|param)>)/gi;
+    let paramMatch: RegExpExecArray | null;
+    while ((paramMatch = paramTagRegex.exec(dBody)) !== null) {
+      const a = paramMatch[1]!;
+      const pName = /\bname\s*=\s*["']([^"']+)["']/i.exec(a)?.[1]?.trim();
+      if (!pName || pName === "Name" || pName === "Description" || seenChildren.has(`param:${pName}`)) continue;
+      seenChildren.add(`param:${pName}`);
+      const pType = /\btype\s*=\s*["']([^"']+)["']/i.exec(a)?.[1]?.trim() ?? "Real";
+      const rawVal =
+        /\b(?:default|value)\s*=\s*["']([^"']*)["']/i.exec(a)?.[1]?.trim() ??
+        (paramMatch[2] ? unwrapCdata(paramMatch[2]).trim() : undefined);
+      const numVal = rawVal !== undefined && rawVal !== "" ? Number(rawVal) : NaN;
+      const defaultValue: unknown = Number.isFinite(numVal) ? numVal : rawVal;
+      const unit = /\bunit\s*=\s*["']([^"']+)["']/i.exec(a)?.[1]?.trim();
+      const absStart = defMatch.index + paramMatch.index;
+      ctx.addSymbol(
+        pName,
+        "Component",
+        compId,
+        absStart,
+        absStart + paramMatch[0].length,
+        {
+          typeSpecifier: pType,
+          variability: "parameter",
+          ...(defaultValue !== undefined ? { defaultValue, value: defaultValue } : {}),
+          ...(unit ? { unit } : {}),
+          language: "pscad",
+        },
+        {
+          ruleName: "pscad_parameter",
+          namePath: `${projectName}.${defName}.${pName}`,
+          resourceId: uri,
+        },
+      );
+    }
   }
 }
 

@@ -11,12 +11,7 @@
  */
 
 import assert from "node:assert/strict";
-import {
-  parsePdb,
-  solveProteinBiophysics,
-  lowerPdbToDae,
-  type ProteinBiophysicsResult,
-} from "../src/index.js";
+import { lowerPdbToDae, parsePdb, solveProteinBiophysics, type ProteinBiophysicsResult } from "../src/index.js";
 
 /**
  * Idealized right-handed alpha-helical polypeptide in wwPDB v3.3 format with disulfide bridge.
@@ -122,6 +117,34 @@ export function runPdbBenchmark(pdbStr = ALPHA_HELIX_PDB_BENCHMARK): PdbBenchmar
     isSquare: varCount === eqCount,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const pdbBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "pdb",
+  referenceTool: "wwPDB v3.3 / ProDy GNM Elastic Network",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runPdbBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "alpha-helix-1hlx-gnm-dae",
+        name: "alpha-helix-1hlx-gnm-dae",
+        scale: "standard",
+        referenceTool: "wwPDB v3.3 / ProDy GNM Elastic Network",
+        passed: m.isSquare && m.daeVarCount === 65 && m.kirchhoffDim === 5,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.daeEqCount,
+        threshold: 0,
+        details: `Rg=${m.radiusOfGyration.toFixed(2)}A, ${m.daeVarCount}x${m.daeEqCount} DAE`,
+      },
+    ];
+  },
+};
 
 if (process.argv[1]?.endsWith("pdb-benchmark-runner.ts")) {
   const m = runPdbBenchmark();

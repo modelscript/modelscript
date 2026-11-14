@@ -223,7 +223,6 @@ const CE_UNSUPPORTED_PREFIXES = [
   "/api/v1/repos/:id/reviews",
   "/api/v1/libraries/:name/:version/export/kpar",
   "/api/v1/libraries/:scope/:name/:version/export/kpar",
-  "/api/v1/libraries/:name/:version/export/kpar",
   "/api/v1/libraries/:name/:version/export/aasx",
   "/api/v1/libraries/:scope/:name/:version/export/aasx",
   "/projects",

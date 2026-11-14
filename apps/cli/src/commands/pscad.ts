@@ -15,8 +15,10 @@
 
 import { diffPscadProjects, renderPscadSvg } from "@modelscript/diagram/pscad-diagram-builder";
 import {
+  buildFmuFromLibraryPackage,
   emtResultToComtrade,
   extractEmtNetlist,
+  extractPscadLibraryPackage,
   lintPscx,
   netlistToEmtCircuit,
   parsePscx,
@@ -28,6 +30,7 @@ import {
   writeComtrade,
   writeComtradeBinary,
   writeComtradeCff,
+  writeExtractedPscadPackage,
   writePscadOut,
   writePscadPsout,
 } from "@modelscript/pscad";
@@ -53,29 +56,31 @@ const PSCAD_ACTIONS = [
   "export-ssp",
   "to-ssp",
   "psout",
+  "extract",
+  "build-fmu",
   "benchmark",
 ] as const;
 
 export const PscadCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
   command: "pscad <action> [files...]",
-  describe: "Inspect, lint, diff, simulate, and verify PSCAD-compatible projects (.pscx, .pslx, .psout)",
+  describe: "Inspect, lint, diff, simulate, extract, and verify PSCAD-compatible projects (.pscx, .pslx, .psout)",
   builder: (yargs) => {
     return yargs
       .positional("action", {
         description:
-          "Action to perform (inspect, summary, lint, diagram, diff, sim/simulate, verify-ieee2800/verify, export-modelica/to-modelica, export-ssp/to-ssp, psout)",
+          "Action to perform (inspect, summary, lint, diagram, diff, sim/simulate, verify-ieee2800/verify, export-modelica, export-ssp, psout, extract, build-fmu)",
         type: "string",
         choices: PSCAD_ACTIONS,
         demandOption: true,
       })
       .positional("files", {
-        description: "Project file(s) to process",
+        description: "Project file(s) or library package directory to process",
         type: "string",
         array: true,
       })
       .option("out", {
         alias: ["o", "output"],
-        description: "Output file path (for diagram SVG, Modelica, SSD, CSV, or COMTRADE export)",
+        description: "Output file or directory path",
         type: "string",
       })
       .option("tstop", {
@@ -97,6 +102,35 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
         type: "string",
         choices: ["pscad", "psout", "comtrade", "comtrade-bin", "cff"],
         default: "pscad",
+      })
+      .option("name", {
+        description: "Package name for 'extract' (defaults to project name)",
+        type: "string",
+      })
+      .option("lang", {
+        description: "Stub implementation language for 'extract'",
+        type: "string",
+        choices: ["assemblyscript", "c", "fortran"],
+        default: "assemblyscript",
+      })
+      .option("component", {
+        description: "Component name to package for 'build-fmu'",
+        type: "string",
+      })
+      .option("include-comments", {
+        description: "Include FlyBy comments and parameter descriptions in 'extract' (default: stripped)",
+        type: "boolean",
+        default: false,
+      })
+      .option("include-graphics", {
+        description: "Include raw <graphic> primitives in 'extract' (default: stripped)",
+        type: "boolean",
+        default: false,
+      })
+      .option("include-scripts", {
+        description: "Include raw Fortran/Computations/Dsdyn/Dsout scripts in 'extract' (default: stripped)",
+        type: "boolean",
+        default: false,
       });
   },
   handler: async (args) => {
@@ -122,9 +156,20 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
       const { BenchmarkCommand } = await import("./benchmark.js");
       await BenchmarkCommand.handler!({
         ...args,
-        suite: "pscad",
+        _: Array.isArray(args["_"]) ? args["_"] : [],
+        $0: typeof args["$0"] === "string" ? args["$0"] : "msx",
+        suite: "pscad" as const,
         model: modelArg,
-      } as any);
+        contingencies: args["contingencies"] as number | undefined,
+        durationMs: (args["durationMs"] ?? args["tstop"]) as number | undefined,
+        timeStepUs: (args["timeStepUs"] ?? args["dt"]) as number | undefined,
+        out: args["out"] as string | undefined,
+        html: args["html"] as string | undefined,
+        json: args["json"] as string | undefined,
+        exportRaw: args["exportRaw"] as string | undefined,
+        exportComtrade: args["exportComtrade"] as string | undefined,
+        exportPsout: args["exportPsout"] as string | undefined,
+      });
       return;
     }
 
@@ -137,6 +182,38 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
     if (!fs.existsSync(firstFilePath)) {
       console.error(`Error: File not found: ${firstFilePath}`);
       process.exit(1);
+    }
+
+    if (action === "extract") {
+      const content = fs.readFileSync(firstFilePath, "utf-8");
+      const outDir = path.resolve(
+        process.cwd(),
+        (args["out"] as string | undefined) ?? `${path.basename(firstFilePath, path.extname(firstFilePath))}-lib`,
+      );
+      const extracted = extractPscadLibraryPackage(content, {
+        packageName: args["name"] as string | undefined,
+        implLang: (args["lang"] as "assemblyscript" | "c" | "fortran" | undefined) ?? "assemblyscript",
+        includeComments: Boolean(args["include-comments"]),
+        includeGraphics: Boolean(args["include-graphics"]),
+        includeScripts: Boolean(args["include-scripts"]),
+      });
+      writeExtractedPscadPackage(outDir, extracted);
+      console.log(
+        `✓ Extracted ${extracted.symbols.length} component(s) to ${outDir} (IP stripped: comments=${Boolean(args["include-comments"])}, graphics=${Boolean(args["include-graphics"])}, scripts=${Boolean(args["include-scripts"])})`,
+      );
+      return;
+    }
+
+    if (action === "build-fmu") {
+      const componentName = args["component"] as string | undefined;
+      if (!componentName) {
+        console.error("Error: 'build-fmu' requires --component=<Name>");
+        process.exit(1);
+      }
+      const outFmu = path.resolve(process.cwd(), (args["out"] as string | undefined) ?? `${componentName}.fmu`);
+      const bytes = buildFmuFromLibraryPackage(firstFilePath, componentName, outFmu);
+      console.log(`✓ Built FMU archive for '${componentName}' at ${outFmu} (${bytes.byteLength} bytes)`);
+      return;
     }
 
     if (action === "psout") {

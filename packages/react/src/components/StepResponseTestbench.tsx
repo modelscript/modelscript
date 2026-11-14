@@ -29,6 +29,7 @@ export function StepResponseTestbench({
   const [currentTime, setCurrentTime] = useState(0.0);
   const [stepSize, setStepSize] = useState(0.01);
   const [isRunning, setIsRunning] = useState(false);
+  const [stepError, setStepError] = useState<string | null>(null);
 
   // Input states
   const [inputValues, setInputValues] = useState<Record<string, number>>(() => {
@@ -57,52 +58,67 @@ export function StepResponseTestbench({
     setInputValues((prev) => ({ ...prev, [name]: val }));
   };
 
-  const executeSingleStep = async (dt = stepSize) => {
+  const executeSingleStep = async (dt = stepSize): Promise<boolean> => {
+    if (!Number.isFinite(dt) || dt <= 0) {
+      setStepError("Communication step size (dt) must be a positive finite number.");
+      return false;
+    }
+
     const nextTime = currentTime + dt;
-    let nextOutputs: Record<string, number> = {};
+    let nextOutputs: Record<string, number>;
 
     if (onStep) {
       try {
         nextOutputs = await onStep(currentTime, dt, inputValues);
       } catch (err) {
-        console.error("Step execution failed:", err);
+        const msg = err instanceof Error ? err.message : String(err);
+        setStepError(`Step execution failed: ${msg}`);
+        return false;
       }
     } else if (wasmRunner) {
       try {
         nextOutputs = wasmRunner.step(currentTime, dt, inputValues);
       } catch (err) {
-        console.error("WASM Runner step execution failed:", err);
+        const msg = err instanceof Error ? err.message : String(err);
+        setStepError(`WASM runner step execution failed: ${msg}`);
+        return false;
       }
     } else {
-      // Analytical mock response for visual testbench
-      for (const out of outputs) {
-        const lastVal = trajectory[trajectory.length - 1]?.values[out.name] ?? 0.0;
-        const drive = Object.values(inputValues)[0] ?? 1.0;
-        const alpha = Math.min(1.0, dt / 0.1);
-        nextOutputs[out.name] = lastVal + alpha * (drive - lastVal);
-      }
+      setStepError("No simulation runner ('wasmRunner' or 'onStep') attached.");
+      return false;
     }
 
+    setStepError(null);
     setCurrentTime(nextTime);
     setTrajectory((prev) => [...prev.slice(-300), { time: nextTime, values: nextOutputs }]);
+    return true;
   };
 
   const handleRun1Sec = async () => {
-    setIsRunning(true);
-    let t = currentTime;
     const dt = stepSize;
-    const target = t + 1.0;
-
-    while (t < target) {
-      await executeSingleStep(dt);
-      t += dt;
-      // Allow render frame
-      await new Promise((r) => setTimeout(r, 10));
+    if (!Number.isFinite(dt) || dt <= 0) {
+      setStepError("Communication step size (dt) must be a positive finite number.");
+      return;
     }
-    setIsRunning(false);
+    setIsRunning(true);
+    try {
+      let t = currentTime;
+      const target = t + 1.0;
+
+      while (t < target) {
+        const ok = await executeSingleStep(dt);
+        if (!ok) break;
+        t += dt;
+        // Allow render frame
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    } finally {
+      setIsRunning(false);
+    }
   };
 
   const handleReset = () => {
+    setStepError(null);
     setCurrentTime(0.0);
     setTrajectory([
       {
@@ -238,6 +254,23 @@ export function StepResponseTestbench({
           </button>
         </div>
       </div>
+
+      {stepError && (
+        <div
+          role="alert"
+          style={{
+            marginBottom: "14px",
+            padding: "8px 12px",
+            borderRadius: "6px",
+            border: "1px solid #ef4444",
+            backgroundColor: "rgba(239, 68, 68, 0.12)",
+            color: "#fca5a5",
+            fontSize: "12px",
+          }}
+        >
+          {stepError}
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: "20px", alignItems: "start" }}>
         {/* Waveform Chart */}

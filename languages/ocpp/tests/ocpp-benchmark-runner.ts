@@ -91,9 +91,7 @@ export interface OcppBenchmarkMetrics {
   isSquare: boolean;
 }
 
-export function runOcppBenchmark(
-  networkStr = OCPP_FLEET_DEPOT_BENCHMARK,
-): OcppBenchmarkMetrics {
+export function runOcppBenchmark(networkStr = OCPP_FLEET_DEPOT_BENCHMARK): OcppBenchmarkMetrics {
   const net: OcppNetwork = parseOcpp(networkStr);
 
   assert.equal(net.stations.length, 1);
@@ -148,6 +146,34 @@ export function runOcppBenchmark(
     isSquare: varCount === eqCount,
   };
 }
+
+import type { LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
+
+export const ocppBenchmarkAdapter: LanguageBenchmarkAdapter = {
+  slug: "ocpp",
+  referenceTool: "OCPP 2.0.1 Smart Charging EV Fleet",
+  defaultTolerance: 0,
+  metricKind: "dae-parity",
+  async runCases() {
+    const t0 = performance.now();
+    const m = runOcppBenchmark();
+    const elapsedMs = performance.now() - t0;
+    return [
+      {
+        id: "ev-fleet-depot-smart-charging",
+        name: "ev-fleet-depot-smart-charging",
+        scale: "standard",
+        referenceTool: "OCPP 2.0.1 Smart Charging EV Fleet",
+        passed: m.isSquare && m.gridLimitRespected && m.daeVarCount === 14,
+        durationMs: elapsedMs,
+        metricKind: "dae-parity",
+        measuredError: m.daeEqCount,
+        threshold: 0,
+        details: `${m.totalAllocatedPowerKW.toFixed(1)}/${m.gridLimitKW}kW, ${m.daeVarCount}x${m.daeEqCount} DAE`,
+      },
+    ];
+  },
+};
 
 if (process.argv[1]?.endsWith("ocpp-benchmark-runner.ts")) {
   const m = runOcppBenchmark();

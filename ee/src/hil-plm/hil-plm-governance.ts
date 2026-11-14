@@ -193,6 +193,10 @@ const CLI_COMMAND_TO_FEATURE: Readonly<Record<string, EnterpriseFeature>> = {
   eclipse: "plm_connectors",
   psse: "plm_connectors",
   pslf: "plm_connectors",
+  powerfactory: "plm_connectors",
+  pf: "plm_connectors",
+  dossier: "dhf_attestation",
+  gatekeeper: "plm_connectors",
   dhf: "dhf_attestation",
 };
 

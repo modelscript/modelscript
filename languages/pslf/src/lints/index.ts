@@ -237,3 +237,5 @@ export function lintPslfDyd(dydCase: PslfDydCase, epcCase?: PslfEpcCase): PslfDi
 
   return diagnostics;
 }
+
+export * from "./workspace.js";

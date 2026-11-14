@@ -277,3 +277,5 @@ export async function compileScadToUsdz(
   }
   return compileToUsdz(solid, options);
 }
+
+export * from "./workspace-lint.js";

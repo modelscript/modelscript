@@ -1066,9 +1066,10 @@ export const PlaygroundPage: React.FC = () => {
           },
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to save artifact:", err);
-      toast.error(err?.response?.data?.error || err?.message || "Failed to save artifact.");
+      const apiErr = err as { response?: { data?: { error?: string } }; message?: string };
+      toast.error(apiErr?.response?.data?.error || apiErr?.message || "Failed to save artifact.");
     }
   };
 
@@ -1423,8 +1424,8 @@ export const PlaygroundPage: React.FC = () => {
             alignItems: "center",
             gap: 4,
             padding: "4px 12px",
-            backgroundColor: "var(--color-canvas-subtle, #161b22)",
-            borderBottom: "1px solid var(--color-border-default, #30363d)",
+            backgroundColor: "var(--ms-bg-surface, var(--color-canvas-subtle))",
+            borderBottom: "1px solid var(--ms-border-subtle, var(--color-border-default))",
             overflowX: "auto",
             flexShrink: 0,
           }}

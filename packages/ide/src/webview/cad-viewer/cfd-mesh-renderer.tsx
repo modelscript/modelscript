@@ -279,7 +279,9 @@ export function CfdMeshRenderer({ payload, position = [0, 0, 0], field = "auto" 
           {payload.metadata?.maxVelocity !== undefined && (
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
               <span>Max Vel:</span>
-              <span style={{ color: "#58a6ff", fontWeight: "bold" }}>
+              <span
+                style={{ color: "var(--vscode-textLink-foreground, var(--ms-brand, #22d3ee))", fontWeight: "bold" }}
+              >
                 {payload.metadata.maxVelocity.toFixed(2)} m/s
               </span>
             </div>
