@@ -7,6 +7,7 @@ import HomeIndustries from "./HomeIndustries.vue";
 import MsIcon from "./MsIcon.vue";
 
 const activeGroup = ref<IndustryGroupId | "all">("all");
+const searchQuery = ref("");
 
 function countForGroup(id: IndustryGroupId): number {
   return INDUSTRIES.filter((i) => i.group === id).length;
@@ -30,6 +31,27 @@ function countForGroup(id: IndustryGroupId): number {
             Browse all languages <MsIcon name="arrowRight" :size="16" :stroke="2" />
           </a>
           <a class="ms-btn ms-btn-lg ms-btn-ghost" href="/guide/getting-started">Get started</a>
+        </div>
+
+        <div class="idx-search-wrap">
+          <label class="idx-search-box" aria-label="Search industries, file extensions, or standards">
+            <MsIcon name="search" :size="16" class="idx-search-icon" />
+            <input
+              v-model="searchQuery"
+              type="search"
+              class="idx-search-input"
+              placeholder="Filter by domain, file extension (.pscx, .opi, .r5, .va), or standard (IEEE 2800, EN 14363)..."
+            />
+            <button
+              v-if="searchQuery"
+              type="button"
+              class="idx-search-clear"
+              aria-label="Clear search"
+              @click="searchQuery = ''"
+            >
+              Clear
+            </button>
+          </label>
         </div>
 
         <div class="idx-filters" role="tablist" aria-label="Filter industries by sector">
@@ -61,7 +83,12 @@ function countForGroup(id: IndustryGroupId): number {
         </div>
       </div>
     </section>
-    <HomeIndustries :heading="false" :group-filter="activeGroup" />
+    <HomeIndustries
+      :heading="false"
+      :group-filter="activeGroup"
+      :search-query="searchQuery"
+      @clear-search="searchQuery = ''; activeGroup = 'all'"
+    />
   </div>
 </template>
 
@@ -104,8 +131,8 @@ function countForGroup(id: IndustryGroupId): number {
   margin: 0 0 18px;
   font-size: clamp(2rem, 4.6vw, 3.4rem);
   line-height: 1.08;
-  font-weight: 760;
-  letter-spacing: -0.028em;
+  font-weight: var(--ms-fw-bold);
+  letter-spacing: var(--ms-tracking-tight);
   color: var(--vp-c-text-1);
 }
 
@@ -192,5 +219,62 @@ function countForGroup(id: IndustryGroupId): number {
 
 .ind-index :deep(.home-industries) {
   padding-top: 40px;
+}
+
+.idx-search-wrap {
+  margin: 28px auto 0;
+  max-width: 620px;
+}
+
+.idx-search-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 14px;
+  border-radius: 12px;
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+  box-shadow: 0 4px 16px -8px rgba(15, 23, 42, 0.14);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.idx-search-box:focus-within {
+  border-color: var(--vp-c-brand-1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vp-c-brand-1) 14%, transparent);
+}
+
+.idx-search-icon {
+  color: var(--vp-c-text-3);
+  flex-shrink: 0;
+}
+
+.idx-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: 6px 0;
+  font-size: 0.92rem;
+  color: var(--vp-c-text-1);
+  outline: none;
+}
+
+.idx-search-input::placeholder {
+  color: var(--vp-c-text-3);
+}
+
+.idx-search-clear {
+  padding: 4px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+  background: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+  cursor: pointer;
+}
+
+.idx-search-clear:hover {
+  color: var(--vp-c-text-1);
 }
 </style>

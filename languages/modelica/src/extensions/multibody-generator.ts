@@ -25,10 +25,20 @@ export interface MultiBodyAssembly {
   }[];
 }
 
+import { isAsciiIdentContinue } from "../flattener/expressions/cst-utils.js";
+
+function sanitizeIdentifier(name: string): string {
+  let out = "";
+  for (let i = 0; i < name.length; i++) {
+    out += isAsciiIdentContinue(name.charCodeAt(i)) ? name[i] : "_";
+  }
+  return out;
+}
+
 export function generateMultiBodyModelica(assembly: MultiBodyAssembly, stepUri: string): string {
   const lines: string[] = [];
 
-  const modelName = assembly.name.replace(/[^a-zA-Z0-9_]/g, "_");
+  const modelName = sanitizeIdentifier(assembly.name);
 
   lines.push(`model ${modelName} "Auto-generated from ${stepUri}"`);
   lines.push(`  import Modelica.Mechanics.MultiBody.*;`);

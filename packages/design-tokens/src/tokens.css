@@ -145,26 +145,36 @@
   --ms-font-mono:
     "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 
-  /* ── Typography Scale (Option A: Slack/X Hybrid) ── */
-  --text-2xs: 11px;
-  --text-xs: 12.5px;
-  --text-sm: 13.5px;
-  --text-base: 15.5px;
-  --text-md: 16px;
-  --text-lg: 18px;
-  --text-xl: 22px;
-  --text-2xl: 28px;
-  --text-3xl: 34px;
+  /* ── Typography Scale (rem-based for accessibility fontScale & cross-app parity) ── */
+  --text-2xs: 0.6875rem; /* 11px — strict UI floor */
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.875rem; /* 14px */
+  --text-base: 0.9375rem; /* 15px — dense app UI body */
+  --text-md: 1rem; /* 16px — long-form docs prose */
+  --text-lg: 1.125rem; /* 18px */
+  --text-xl: 1.375rem; /* 22px */
+  --text-2xl: 1.75rem; /* 28px */
+  --text-3xl: 2.25rem; /* 36px */
 
-  --leading-2xs: 16px;
-  --leading-xs: 18px;
-  --leading-sm: 20px;
-  --leading-base: 23px;
-  --leading-md: 24px;
-  --leading-lg: 26px;
-  --leading-xl: 30px;
-  --leading-2xl: 36px;
-  --leading-3xl: 44px;
+  --leading-2xs: 1.27;
+  --leading-xs: 1.33;
+  --leading-sm: 1.43;
+  --leading-base: 1.53;
+  --leading-md: 1.65;
+  --leading-lg: 1.35;
+  --leading-xl: 1.3;
+  --leading-2xl: 1.2;
+  --leading-3xl: 1.12;
+
+  --ms-fw-regular: 400;
+  --ms-fw-medium: 500;
+  --ms-fw-semibold: 600;
+  --ms-fw-bold: 700;
+
+  --ms-tracking-tight: -0.025em;
+  --ms-tracking-snug: -0.015em;
+  --ms-tracking-normal: 0em;
+  --ms-tracking-wide: 0.06em;
 
   /* ── Shape ── */
   --ms-radius-sm: 6px;
@@ -293,4 +303,37 @@
   --ms-glow-indigo: rgba(99, 102, 241, 0.13);
   --ms-shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 30px -14px rgba(0, 0, 0, 0.6);
   --ms-shadow-pop: 0 20px 48px -12px rgba(0, 0, 0, 0.7);
+}
+
+/* ── Shared Base Typography & Rendering (apps/docs + apps/web) ── */
+html,
+body {
+  font-family: var(--ms-font-sans);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  font-optical-sizing: auto;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4,
+.ms-h2 {
+  text-rendering: optimizeLegibility;
+  text-wrap: balance;
+}
+
+code,
+pre,
+kbd,
+samp,
+.font-mono {
+  font-family: var(--ms-font-mono);
+  text-rendering: optimizeSpeed;
+}
+
+.ms-num {
+  font-variant-numeric: tabular-nums;
 }

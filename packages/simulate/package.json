@@ -35,6 +35,14 @@
       "types": "./dist/solvers/index.d.ts",
       "default": "./dist/solvers/index.js"
     },
+    "./surrogates": {
+      "types": "./dist/surrogates/index.d.ts",
+      "default": "./dist/surrogates/index.js"
+    },
+    "./wam": {
+      "types": "./dist/surrogates/wam.d.ts",
+      "default": "./dist/surrogates/wam.js"
+    },
     "./opf": {
       "types": "./dist/solvers/opf/index.d.ts",
       "default": "./dist/solvers/opf/index.js"
@@ -74,6 +82,10 @@
     "./jit": {
       "types": "./dist/jit/index.d.ts",
       "default": "./dist/jit/index.js"
+    },
+    "./charts": {
+      "types": "./dist/charts/index.d.ts",
+      "default": "./dist/charts/index.js"
     },
     "./*.js": {
       "types": "./dist/*.d.ts",

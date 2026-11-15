@@ -75,14 +75,28 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
     end: { line: Math.max(1, text.split("\n").length), character: 0 },
   };
 
+  const lines = text.split(/\r?\n/);
+  const clampedRange = (idx: number, labelLen: number): LspRange => {
+    const line = Math.min(idx, Math.max(0, lines.length - 1));
+    const endChar = Math.max(1, (lines[line] ?? "").trimEnd().length || labelLen);
+    return { start: { line, character: 0 }, end: { line, character: endChar } };
+  };
+
   // Bus section
-  const busChildren: LspDocumentSymbol[] = mpc.bus.map((b, idx) => ({
-    name: b.name ?? `Bus ${b.bus_i}`,
-    detail: `Type ${b.type}, V=${b.vm.toFixed(3)} p.u., P=${b.pd} MW, Q=${b.qd} MVAr`,
-    kind: LspSymbolKind.Struct,
-    range: { start: { line: idx + 5, character: 0 }, end: { line: idx + 5, character: 40 } },
-    selectionRange: { start: { line: idx + 5, character: 0 }, end: { line: idx + 5, character: 20 } },
-  }));
+  const busChildren: LspDocumentSymbol[] = mpc.bus.map((b, idx) => {
+    const label = b.name ?? `Bus ${b.bus_i}`;
+    const r = clampedRange(idx + 5, label.length);
+    return {
+      name: label,
+      detail: `Type ${b.type}, V=${b.vm.toFixed(3)} p.u., P=${b.pd} MW, Q=${b.qd} MVAr`,
+      kind: LspSymbolKind.Struct,
+      range: r,
+      selectionRange: {
+        start: r.start,
+        end: { line: r.start.line, character: Math.min(r.end.character, label.length) },
+      },
+    };
+  });
 
   symbols.push({
     name: "Buses",
@@ -94,13 +108,20 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
   });
 
   // Generator section
-  const genChildren: LspDocumentSymbol[] = mpc.gen.map((g, idx) => ({
-    name: `Gen @ Bus ${g.bus}`,
-    detail: `Pg=${g.pg} MW, Qg=${g.qg} MVAr, Vg=${g.vg} p.u., Stat=${g.status}`,
-    kind: LspSymbolKind.Function,
-    range: { start: { line: idx + 10, character: 0 }, end: { line: idx + 10, character: 40 } },
-    selectionRange: { start: { line: idx + 10, character: 0 }, end: { line: idx + 10, character: 20 } },
-  }));
+  const genChildren: LspDocumentSymbol[] = mpc.gen.map((g, idx) => {
+    const label = `Gen @ Bus ${g.bus}`;
+    const r = clampedRange(idx + 10, label.length);
+    return {
+      name: label,
+      detail: `Pg=${g.pg} MW, Qg=${g.qg} MVAr, Vg=${g.vg} p.u., Stat=${g.status}`,
+      kind: LspSymbolKind.Function,
+      range: r,
+      selectionRange: {
+        start: r.start,
+        end: { line: r.start.line, character: Math.min(r.end.character, label.length) },
+      },
+    };
+  });
 
   symbols.push({
     name: "Generators",
@@ -112,13 +133,20 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
   });
 
   // Branch section
-  const branchChildren: LspDocumentSymbol[] = mpc.branch.map((br, idx) => ({
-    name: `Branch ${br.fbus} -> ${br.tbus}`,
-    detail: `R=${br.r.toFixed(4)}, X=${br.x.toFixed(4)}, RateA=${br.rateA} MVA, Stat=${br.status}`,
-    kind: LspSymbolKind.Property,
-    range: { start: { line: idx + 15, character: 0 }, end: { line: idx + 15, character: 40 } },
-    selectionRange: { start: { line: idx + 15, character: 0 }, end: { line: idx + 15, character: 20 } },
-  }));
+  const branchChildren: LspDocumentSymbol[] = mpc.branch.map((br, idx) => {
+    const label = `Branch ${br.fbus} -> ${br.tbus}`;
+    const r = clampedRange(idx + 15, label.length);
+    return {
+      name: label,
+      detail: `R=${br.r.toFixed(4)}, X=${br.x.toFixed(4)}, RateA=${br.rateA} MVA, Stat=${br.status}`,
+      kind: LspSymbolKind.Property,
+      range: r,
+      selectionRange: {
+        start: r.start,
+        end: { line: r.start.line, character: Math.min(r.end.character, label.length) },
+      },
+    };
+  });
 
   symbols.push({
     name: "Branches",
@@ -137,12 +165,18 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
  */
 export function getDiagnostics(text: string): LspDiagnosticItem[] {
   const mpc = parseMatpowerCase(text);
+  const lines = text.split(/\r?\n/);
+  const lt = lines[0] ?? "";
+  let sChar = 0;
+  while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
+  const tok = lt.slice(sChar).match(/^[^\s;:,]+/);
+  const eChar = Math.min(lt.length, sChar + (tok ? tok[0].length : 1));
   const diags = lintMatpowerCase(mpc);
 
   return diags.map((d) => ({
     range: {
-      start: { line: 0, character: 0 },
-      end: { line: 0, character: 80 },
+      start: { line: 0, character: sChar },
+      end: { line: 0, character: eChar },
     },
     severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
     code: d.code,

@@ -1,36 +1,72 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { DslIndexFileContext } from "@modelscript/dsl";
+import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
 import { registerPscadSource } from "./model/workspace-registry.js";
 import { parseFlyBySegment } from "./script/script-parser.js";
 import type { PscadFlyByDoc } from "./types.js";
 
-function unwrapCdata(s: string): string {
-  let out = "";
-  let idx = 0;
-  while (idx < s.length) {
-    const cdataStart = s.indexOf("<![CDATA[", idx);
-    if (cdataStart === -1) {
-      out += s.slice(idx);
-      break;
+function getAttrCI(el: XmlElement | undefined, name: string): string | undefined {
+  if (!el) return undefined;
+  const target = name.toLowerCase();
+  for (const attr of el.attributes) {
+    if (attr.name === name || attr.name.toLowerCase() === target) {
+      return attr.value;
     }
-    out += s.slice(idx, cdataStart);
-    const contentStart = cdataStart + 9;
-    const cdataEnd = s.indexOf("]]>", contentStart);
-    if (cdataEnd === -1) {
-      out += s.slice(contentStart);
-      break;
-    }
-    out += s.slice(contentStart, cdataEnd);
-    idx = cdataEnd + 3;
   }
-  return out;
+  return undefined;
+}
+
+function getAttrAnyCI(el: XmlElement | undefined, names: readonly string[]): string | undefined {
+  for (const name of names) {
+    const val = getAttrCI(el, name);
+    if (val !== undefined) return val;
+  }
+  return undefined;
+}
+
+function elementText(el: XmlElement): string {
+  const raw = el.cdata.length > 0 ? el.cdata.map((c) => c.text).join("") : el.text;
+  return raw.trim();
+}
+
+function findFirstCI(root: XmlElement | null | undefined, tagName: string): XmlElement | undefined {
+  if (!root) return undefined;
+  const target = tagName.toLowerCase();
+  const stack: XmlElement[] = [root];
+  while (stack.length > 0) {
+    const cur = stack.shift()!;
+    if (cur.name.toLowerCase() === target) return cur;
+    for (const child of cur.children) stack.push(child);
+  }
+  return undefined;
+}
+
+function findDescendantsCI(root: XmlElement | null | undefined, tagNames: ReadonlySet<string>): XmlElement[] {
+  if (!root) return [];
+  const results: XmlElement[] = [];
+  const walk = (el: XmlElement) => {
+    for (const child of el.children) {
+      if (tagNames.has(child.name.toLowerCase())) {
+        results.push(child);
+      }
+      walk(child);
+    }
+  };
+  walk(root);
+  return results;
 }
 
 function deriveNameFromUri(uri: string): string {
   const raw = uri.split("/").pop() || uri;
   return raw.replace(/\.(pslx|pscx|pswx|psmx)$/i, "");
 }
+
+const DEFINITION_TAG_SET = new Set(["definition"]);
+const SEGMENT_TAG_SET = new Set(["segment"]);
+const PORT_TAG_SET = new Set(["port"]);
+const PARAM_TAG_SET = new Set(["parameter", "param"]);
+const ONLY_PARAM_TAG_SET = new Set(["param"]);
 
 /**
  * Indexes a PSCAD project or library file (`.pslx`, `.pscx`, `.pswx`, `.psmx`) into `UnifiedWorkspace`.
@@ -46,24 +82,28 @@ export function indexPscadDocument(ctx: DslIndexFileContext): void {
 
   registerPscadSource(uri, text);
 
+  const xmlDoc = parseXml(text);
+  const projectEl = xmlDoc.root
+    ? xmlDoc.root.name.toLowerCase() === "project"
+      ? xmlDoc.root
+      : findFirstCI(xmlDoc.root, "project")
+    : undefined;
+
   // 1. Extract project name and type
-  const projectMatch = /<project\b([^>]*?)>/i.exec(text);
-  const projAttrs = projectMatch ? projectMatch[1]! : "";
-  const nameMatch = /name\s*=\s*["']([^"']+)["']/i.exec(projAttrs);
-  const targetMatch =
-    /target\s*=\s*["']([^"']+)["']/i.exec(projAttrs) || /type\s*=\s*["']([^"']+)["']/i.exec(projAttrs);
+  const rawProjName = getAttrCI(projectEl, "name")?.trim();
+  const targetAttr = getAttrAnyCI(projectEl, ["target", "type"]);
 
   const isLibrary =
-    uri.toLowerCase().endsWith(".pslx") || (targetMatch ? targetMatch[1]!.toLowerCase().includes("library") : false);
+    uri.toLowerCase().endsWith(".pslx") || (targetAttr ? targetAttr.toLowerCase().includes("library") : false);
 
-  const projectName = nameMatch && nameMatch[1]!.trim() !== "" ? nameMatch[1]!.trim() : deriveNameFromUri(uri);
+  const projectName = rawProjName && rawProjName !== "" ? rawProjName : deriveNameFromUri(uri);
 
   // Root symbol (e.g. Component_Lib)
   const rootId = ctx.addSymbol(
     projectName,
     "Class",
     null,
-    projectMatch ? projectMatch.index : 0,
+    projectEl ? projectEl.start : 0,
     text.length,
     {
       classPrefixes: isLibrary ? "package" : "model",
@@ -77,28 +117,30 @@ export function indexPscadDocument(ctx: DslIndexFileContext): void {
     },
   );
 
-  // 2. Extract component definitions from <definitions>
-  const defRegex = /<Definition\b([^>]*?)>([\s\S]*?)<\/Definition>/gi;
-  let defMatch: RegExpExecArray | null;
+  if (!xmlDoc.root) return;
 
-  while ((defMatch = defRegex.exec(text)) !== null) {
-    const dAttrs = defMatch[1]!;
-    const dBody = defMatch[2]!;
-    const defName = /name\s*=\s*["']([^"']+)["']/i.exec(dAttrs)?.[1];
-    const classId = /classid\s*=\s*["']([^"']+)["']/i.exec(dAttrs)?.[1];
+  // 2. Extract component definitions from <definitions>
+  const defElements = findDescendantsCI(xmlDoc.root, DEFINITION_TAG_SET);
+  for (const defEl of defElements) {
+    const defName = getAttrCI(defEl, "name");
+    const classId = getAttrCI(defEl, "classid");
 
     // Only index user component definitions, and skip internal drawing station canvas
     if (!defName || classId !== "UserCmpDefn") continue;
     if (defName === "DS") continue;
 
-    const descMatch = /<param\s+name\s*=\s*["']Description["']\s+value\s*=\s*["']([^"']*)["']/i.exec(dBody);
-    let desc = descMatch ? descMatch[1] : undefined;
+    let desc: string | undefined;
+    for (const pEl of findDescendantsCI(defEl, ONLY_PARAM_TAG_SET)) {
+      if (getAttrCI(pEl, "name")?.toLowerCase() === "description") {
+        desc = getAttrCI(pEl, "value");
+        break;
+      }
+    }
+
     let flyByDoc: PscadFlyByDoc | undefined;
-    const segRegex = /<segment\b([^>]*)>([\s\S]*?)<\/segment>/gi;
-    let sm: RegExpExecArray | null;
-    while ((sm = segRegex.exec(dBody)) !== null) {
-      if (/name\s*=\s*["']FlyBy["']/i.test(sm[1]!)) {
-        const flyByText = unwrapCdata(sm[2]!).trim();
+    for (const segEl of findDescendantsCI(defEl, SEGMENT_TAG_SET)) {
+      if (getAttrCI(segEl, "name")?.toLowerCase() === "flyby") {
+        const flyByText = elementText(segEl);
         flyByDoc = parseFlyBySegment(flyByText);
         if ((!desc || !desc.trim()) && flyByDoc.summary) {
           desc = flyByDoc.summary.split("\n")[0]?.trim();
@@ -106,16 +148,18 @@ export function indexPscadDocument(ctx: DslIndexFileContext): void {
         break;
       }
     }
-    const iconSvg = renderPscadDefinitionIconSvg(dBody, 16, defName);
+
+    const iconSvg = renderPscadDefinitionIconSvg(defEl, 16, defName);
+    const hasSchematic = findFirstCI(defEl, "schematic") !== undefined;
 
     const compId = ctx.addSymbol(
       defName,
       "Class",
       rootId,
-      defMatch.index,
-      defMatch.index + defMatch[0].length,
+      defEl.start,
+      defEl.end,
       {
-        classPrefixes: dBody.includes("<schematic") ? "model" : "block",
+        classPrefixes: hasSchematic ? "model" : "block",
         language: "pscad",
         description: desc,
         iconSvg,
@@ -131,22 +175,18 @@ export function indexPscadDocument(ctx: DslIndexFileContext): void {
     const seenChildren = new Set<string>();
 
     // Index child <port name="..." type="..." /> nodes inside definition body
-    const portRegex = /<port\b([^>]*?)(?:\/>|>[\s\S]*?<\/port>)/gi;
-    let portMatch: RegExpExecArray | null;
-    while ((portMatch = portRegex.exec(dBody)) !== null) {
-      const pAttrs = portMatch[1]!;
-      const pName = /\bname\s*=\s*["']([^"']+)["']/i.exec(pAttrs)?.[1]?.trim();
+    for (const portEl of findDescendantsCI(defEl, PORT_TAG_SET)) {
+      const pName = getAttrCI(portEl, "name")?.trim();
       if (!pName || seenChildren.has(`port:${pName}`)) continue;
       seenChildren.add(`port:${pName}`);
-      const pTypeRaw = /\btype\s*=\s*["']([^"']+)["']/i.exec(pAttrs)?.[1]?.trim() ?? "Real";
-      const pDir = /\b(?:dir|direction|kind)\s*=\s*["']([^"']+)["']/i.exec(pAttrs)?.[1]?.trim()?.toLowerCase();
-      const absStart = defMatch.index + portMatch.index;
+      const pTypeRaw = getAttrCI(portEl, "type")?.trim() ?? "Real";
+      const pDir = getAttrAnyCI(portEl, ["dir", "direction", "kind"])?.trim().toLowerCase();
       ctx.addSymbol(
         pName,
         "Component",
         compId,
-        absStart,
-        absStart + portMatch[0].length,
+        portEl.start,
+        portEl.end,
         {
           typeSpecifier: pTypeRaw,
           variability: "continuous",
@@ -164,27 +204,23 @@ export function indexPscadDocument(ctx: DslIndexFileContext): void {
     }
 
     // Index child <parameter .../> (from <form>) and <param .../> (from <paramlist>) entries
-    const paramTagRegex = /<(?:parameter|param)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:parameter|param)>)/gi;
-    let paramMatch: RegExpExecArray | null;
-    while ((paramMatch = paramTagRegex.exec(dBody)) !== null) {
-      const a = paramMatch[1]!;
-      const pName = /\bname\s*=\s*["']([^"']+)["']/i.exec(a)?.[1]?.trim();
+    for (const paramEl of findDescendantsCI(defEl, PARAM_TAG_SET)) {
+      const pName = getAttrCI(paramEl, "name")?.trim();
       if (!pName || pName === "Name" || pName === "Description" || seenChildren.has(`param:${pName}`)) continue;
       seenChildren.add(`param:${pName}`);
-      const pType = /\btype\s*=\s*["']([^"']+)["']/i.exec(a)?.[1]?.trim() ?? "Real";
-      const rawVal =
-        /\b(?:default|value)\s*=\s*["']([^"']*)["']/i.exec(a)?.[1]?.trim() ??
-        (paramMatch[2] ? unwrapCdata(paramMatch[2]).trim() : undefined);
+      const pType = getAttrCI(paramEl, "type")?.trim() ?? "Real";
+      const attrVal = getAttrAnyCI(paramEl, ["default", "value"])?.trim();
+      const innerVal = elementText(paramEl);
+      const rawVal = attrVal ?? (innerVal !== "" ? innerVal : undefined);
       const numVal = rawVal !== undefined && rawVal !== "" ? Number(rawVal) : NaN;
       const defaultValue: unknown = Number.isFinite(numVal) ? numVal : rawVal;
-      const unit = /\bunit\s*=\s*["']([^"']+)["']/i.exec(a)?.[1]?.trim();
-      const absStart = defMatch.index + paramMatch.index;
+      const unit = getAttrCI(paramEl, "unit")?.trim();
       ctx.addSymbol(
         pName,
         "Component",
         compId,
-        absStart,
-        absStart + paramMatch[0].length,
+        paramEl.start,
+        paramEl.end,
         {
           typeSpecifier: pType,
           variability: "parameter",
@@ -224,7 +260,14 @@ function normalizeIconStroke(s?: string): string {
   return "currentColor";
 }
 
-export function renderPscadDefinitionIconSvg(dBody: string, size = 16, defName = ""): string | undefined {
+/**
+ * Renders a small 16x16 library outline SVG icon from a PSCAD `<Definition>` element or raw XML fragment.
+ */
+export function renderPscadDefinitionIconSvg(
+  dBodyOrEl: string | XmlElement,
+  size = 16,
+  defName = "",
+): string | undefined {
   interface VisualItem {
     type: "rect" | "line" | "circle" | "ellipse" | "path" | "polygon" | "text" | "raw";
     x1: number;
@@ -235,156 +278,153 @@ export function renderPscadDefinitionIconSvg(dBody: string, size = 16, defName =
   }
   const items: VisualItem[] = [];
 
+  const rootEl =
+    typeof dBodyOrEl === "string" ? parseXml(`<__pscad_icon__>${dBodyOrEl}</__pscad_icon__>`).root : dBodyOrEl;
+
   // 1. Try parsing <svg> section first (richest representation in modern PSCAD)
-  const svgMatch = /<svg\b[^>]*>([\s\S]*?)<\/svg>/i.exec(dBody);
-  if (svgMatch) {
-    const svgXml = svgMatch[1]!;
-    const tagRegex = /<(cond|rect|line|circle|ellipse|path|polygon|text)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
+  const svgEl = findFirstCI(rootEl, "svg");
+  if (svgEl) {
     let isCondActive = true;
-    let match: RegExpExecArray | null;
-
-    while ((match = tagRegex.exec(svgXml)) !== null) {
-      const tag = match[1]!.toLowerCase();
-      const attrsStr = match[2]!;
-      const bodyText = (match[3] ?? "").trim();
-
-      if (tag === "cond") {
-        if (bodyText.includes("Dim!=1") || bodyText.includes("Dim > 1") || bodyText.includes("CmplxParts")) {
-          isCondActive = false;
-        } else if (bodyText.includes("true") || bodyText === "") {
-          isCondActive = true;
+    const walkSvg = (parent: XmlElement) => {
+      for (const el of parent.children) {
+        const tag = el.name.toLowerCase();
+        if (tag === "cond") {
+          const condText = elementText(el);
+          if (condText.includes("Dim!=1") || condText.includes("Dim > 1") || condText.includes("CmplxParts")) {
+            isCondActive = false;
+          } else if (condText.includes("true") || condText === "") {
+            isCondActive = true;
+          }
+          walkSvg(el);
+          continue;
         }
-        continue;
+
+        if (isCondActive) {
+          if (tag === "rect") {
+            const x = parseFloat(getAttrCI(el, "x") || "0");
+            const y = parseFloat(getAttrCI(el, "y") || "0");
+            const w = parseFloat(getAttrCI(el, "width") || "0");
+            const h = parseFloat(getAttrCI(el, "height") || "0");
+            if (w > 0 && h > 0) {
+              const stroke = normalizeIconStroke(getAttrCI(el, "stroke"));
+              const fillStyle = (getAttrCI(el, "fill-style") || "").toLowerCase();
+              const fillFg = (getAttrCI(el, "fill-fg") || "").toLowerCase();
+              const fill =
+                fillStyle === "solid" && (fillFg === "black" || fillFg === "#000000") ? "currentColor" : "none";
+              items.push({
+                type: "rect",
+                x1: x,
+                y1: y,
+                x2: x + w,
+                y2: y + h,
+                svgMarkup: `<rect x="${x}" y="${y}" width="${w}" height="${h}" stroke="${stroke}" fill="${fill}" rx="1" ry="1" />`,
+              });
+            }
+          } else if (tag === "line") {
+            const x1 = parseFloat(getAttrCI(el, "x1") || "0");
+            const y1 = parseFloat(getAttrCI(el, "y1") || "0");
+            const x2 = parseFloat(getAttrCI(el, "x2") || "0");
+            const y2 = parseFloat(getAttrCI(el, "y2") || "0");
+            const stroke = normalizeIconStroke(getAttrCI(el, "stroke"));
+            items.push({
+              type: "line",
+              x1: Math.min(x1, x2),
+              y1: Math.min(y1, y2),
+              x2: Math.max(x1, x2),
+              y2: Math.max(y1, y2),
+              svgMarkup: `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" />`,
+            });
+          } else if (tag === "ellipse" || tag === "circle") {
+            const cx = parseFloat(getAttrAnyCI(el, ["cx", "x"]) || "0");
+            const cy = parseFloat(getAttrAnyCI(el, ["cy", "y"]) || "0");
+            const rx = parseFloat(getAttrAnyCI(el, ["rx", "r"]) || "5");
+            const ry = parseFloat(getAttrAnyCI(el, ["ry", "r"]) || "5");
+            const stroke = normalizeIconStroke(getAttrCI(el, "stroke"));
+            const fillStyle = (getAttrCI(el, "fill-style") || "").toLowerCase();
+            const fill = fillStyle === "solid" ? "currentColor" : "none";
+            items.push({
+              type: "ellipse",
+              x1: cx - rx,
+              y1: cy - ry,
+              x2: cx + rx,
+              y2: cy + ry,
+              svgMarkup: `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" stroke="${stroke}" fill="${fill}" />`,
+            });
+          } else if (tag === "path") {
+            const d = getAttrCI(el, "d") || "";
+            if (d) {
+              const nums = (d.match(/[-+]?\d*\.?\d+/g) || []).map(Number);
+              if (nums.length >= 2) {
+                const xs = nums.filter((_, i) => i % 2 === 0);
+                const ys = nums.filter((_, i) => i % 2 === 1);
+                const stroke = normalizeIconStroke(getAttrCI(el, "stroke"));
+                items.push({
+                  type: "path",
+                  x1: Math.min(...xs),
+                  y1: Math.min(...ys),
+                  x2: Math.max(...xs),
+                  y2: Math.max(...ys),
+                  svgMarkup: `<path d="${escapeXml(d)}" stroke="${stroke}" fill="none" />`,
+                });
+              }
+            }
+          } else if (tag === "polygon") {
+            const pointsRaw = getAttrCI(el, "points") || "";
+            const pts = pointsRaw
+              .trim()
+              .split(/\s+/)
+              .map((p) => p.split(",").map(Number));
+            if (pts.length >= 3) {
+              const xs = pts.map((p) => p[0] || 0);
+              const ys = pts.map((p) => p[1] || 0);
+              const stroke = normalizeIconStroke(getAttrCI(el, "stroke"));
+              items.push({
+                type: "polygon",
+                x1: Math.min(...xs),
+                y1: Math.min(...ys),
+                x2: Math.max(...xs),
+                y2: Math.max(...ys),
+                svgMarkup: `<polygon points="${escapeXml(pointsRaw)}" stroke="${stroke}" fill="none" />`,
+              });
+            }
+          } else if (tag === "text") {
+            const tx = parseFloat(getAttrCI(el, "x") || "0");
+            const ty = parseFloat(getAttrCI(el, "y") || "0");
+            const t = elementText(el);
+            if (t && !t.startsWith("%") && t.length <= 6) {
+              const stroke = normalizeIconStroke(getAttrAnyCI(el, ["stroke", "fill"]));
+              items.push({
+                type: "text",
+                x1: tx - 8,
+                y1: ty - 8,
+                x2: tx + 8,
+                y2: ty + 8,
+                svgMarkup: `<text x="${tx}" y="${ty}" fill="${stroke}" font-size="11" font-family="system-ui, sans-serif" font-weight="bold" text-anchor="middle" dominant-baseline="middle">${escapeXml(t)}</text>`,
+              });
+            }
+          }
+        }
+        walkSvg(el);
       }
-
-      if (!isCondActive) continue;
-
-      const getAttr = (name: string): string | undefined => {
-        const re = new RegExp(`\\b${name}=["']([^"']*)["']`, "i");
-        return re.exec(attrsStr)?.[1];
-      };
-
-      if (tag === "rect") {
-        const x = parseFloat(getAttr("x") || "0");
-        const y = parseFloat(getAttr("y") || "0");
-        const w = parseFloat(getAttr("width") || "0");
-        const h = parseFloat(getAttr("height") || "0");
-        if (w <= 0 || h <= 0) continue;
-        const stroke = normalizeIconStroke(getAttr("stroke"));
-        const fillStyle = (getAttr("fill-style") || "").toLowerCase();
-        const fillFg = (getAttr("fill-fg") || "").toLowerCase();
-        const fill = fillStyle === "solid" && (fillFg === "black" || fillFg === "#000000") ? "currentColor" : "none";
-        items.push({
-          type: "rect",
-          x1: x,
-          y1: y,
-          x2: x + w,
-          y2: y + h,
-          svgMarkup: `<rect x="${x}" y="${y}" width="${w}" height="${h}" stroke="${stroke}" fill="${fill}" rx="1" ry="1" />`,
-        });
-      } else if (tag === "line") {
-        const x1 = parseFloat(getAttr("x1") || "0");
-        const y1 = parseFloat(getAttr("y1") || "0");
-        const x2 = parseFloat(getAttr("x2") || "0");
-        const y2 = parseFloat(getAttr("y2") || "0");
-        const stroke = normalizeIconStroke(getAttr("stroke"));
-        items.push({
-          type: "line",
-          x1: Math.min(x1, x2),
-          y1: Math.min(y1, y2),
-          x2: Math.max(x1, x2),
-          y2: Math.max(y1, y2),
-          svgMarkup: `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" />`,
-        });
-      } else if (tag === "ellipse" || tag === "circle") {
-        const cx = parseFloat(getAttr("cx") || getAttr("x") || "0");
-        const cy = parseFloat(getAttr("cy") || getAttr("y") || "0");
-        const rx = parseFloat(getAttr("rx") || getAttr("r") || "5");
-        const ry = parseFloat(getAttr("ry") || getAttr("r") || "5");
-        const stroke = normalizeIconStroke(getAttr("stroke"));
-        const fillStyle = (getAttr("fill-style") || "").toLowerCase();
-        const fill = fillStyle === "solid" ? "currentColor" : "none";
-        items.push({
-          type: "ellipse",
-          x1: cx - rx,
-          y1: cy - ry,
-          x2: cx + rx,
-          y2: cy + ry,
-          svgMarkup: `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" stroke="${stroke}" fill="${fill}" />`,
-        });
-      } else if (tag === "path") {
-        const d = getAttr("d") || "";
-        if (!d) continue;
-        const nums = (d.match(/[-+]?\d*\.?\d+/g) || []).map(Number);
-        if (nums.length >= 2) {
-          const xs = nums.filter((_, i) => i % 2 === 0);
-          const ys = nums.filter((_, i) => i % 2 === 1);
-          const stroke = normalizeIconStroke(getAttr("stroke"));
-          items.push({
-            type: "path",
-            x1: Math.min(...xs),
-            y1: Math.min(...ys),
-            x2: Math.max(...xs),
-            y2: Math.max(...ys),
-            svgMarkup: `<path d="${d}" stroke="${stroke}" fill="none" />`,
-          });
-        }
-      } else if (tag === "polygon") {
-        const pts = (getAttr("points") || "")
-          .trim()
-          .split(/\s+/)
-          .map((p) => p.split(",").map(Number));
-        if (pts.length >= 3) {
-          const xs = pts.map((p) => p[0] || 0);
-          const ys = pts.map((p) => p[1] || 0);
-          const stroke = normalizeIconStroke(getAttr("stroke"));
-          items.push({
-            type: "polygon",
-            x1: Math.min(...xs),
-            y1: Math.min(...ys),
-            x2: Math.max(...xs),
-            y2: Math.max(...ys),
-            svgMarkup: `<polygon points="${getAttr("points")}" stroke="${stroke}" fill="none" />`,
-          });
-        }
-      } else if (tag === "text") {
-        const tx = parseFloat(getAttr("x") || "0");
-        const ty = parseFloat(getAttr("y") || "0");
-        const t = unwrapCdata(bodyText).trim();
-        if (t && !t.startsWith("%") && t.length <= 6) {
-          const stroke = normalizeIconStroke(getAttr("stroke") || getAttr("fill"));
-          items.push({
-            type: "text",
-            x1: tx - 8,
-            y1: ty - 8,
-            x2: tx + 8,
-            y2: ty + 8,
-            svgMarkup: `<text x="${tx}" y="${ty}" fill="${stroke}" font-size="11" font-family="system-ui, sans-serif" font-weight="bold" text-anchor="middle" dominant-baseline="middle">${escapeXml(t)}</text>`,
-          });
-        }
-      }
-    }
+    };
+    walkSvg(svgEl);
   }
 
   // 2. If no SVG items were parsed, fall back to <graphics> section
   if (items.length === 0) {
-    const graphicsMatch = /<graphics\b[^>]*>([\s\S]*?)<\/graphics>/i.exec(dBody);
-    if (graphicsMatch) {
-      const gXml = graphicsMatch[1]!;
-      const gfxRegex = /<Gfx\b([^>]*?)(?:\/>|>([\s\S]*?)<\/Gfx>)/gi;
-      let gMatch: RegExpExecArray | null;
-      while ((gMatch = gfxRegex.exec(gXml)) !== null) {
-        const attrs = gMatch[1]!;
-        const body = gMatch[2] ?? "";
-        const classMatch = attrs.match(/\bclassid=["']Graphics\.([A-Za-z]+)["']/i);
+    const graphicsEl = findFirstCI(rootEl, "graphics");
+    if (graphicsEl) {
+      for (const gfxEl of findDescendantsCI(graphicsEl, new Set(["gfx"]))) {
+        const classId = getAttrCI(gfxEl, "classid") ?? "";
+        const classMatch = /^Graphics\.([A-Za-z]+)$/i.exec(classId);
         if (!classMatch) continue;
         const kind = classMatch[1]!;
 
         if (kind === "Rectangle") {
-          const rx = parseFloat(attrs.match(/\bx=["']([^"']+)["']/i)?.[1] ?? "0");
-          const ry = parseFloat(attrs.match(/\by=["']([^"']+)["']/i)?.[1] ?? "0");
-          const rw = parseFloat(attrs.match(/\bw=["']([^"']+)["']/i)?.[1] ?? "0");
-          const rh = parseFloat(attrs.match(/\bh=["']([^"']+)["']/i)?.[1] ?? "0");
+          const rx = parseFloat(getAttrCI(gfxEl, "x") ?? "0");
+          const ry = parseFloat(getAttrCI(gfxEl, "y") ?? "0");
+          const rw = parseFloat(getAttrCI(gfxEl, "w") ?? "0");
+          const rh = parseFloat(getAttrCI(gfxEl, "h") ?? "0");
           items.push({
             type: "rect",
             x1: rx,
@@ -394,17 +434,14 @@ export function renderPscadDefinitionIconSvg(dBody: string, size = 16, defName =
             svgMarkup: `<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="1" ry="1" fill="none" stroke="currentColor" />`,
           });
         } else if (kind === "Line") {
-          const lx = parseFloat(attrs.match(/\bx=["']([^"']+)["']/i)?.[1] ?? "0");
-          const ly = parseFloat(attrs.match(/\by=["']([^"']+)["']/i)?.[1] ?? "0");
-          const vertRegex = /<vertex\b([^>]*)>/gi;
-          let vMatch: RegExpExecArray | null;
+          const lx = parseFloat(getAttrCI(gfxEl, "x") ?? "0");
+          const ly = parseFloat(getAttrCI(gfxEl, "y") ?? "0");
           const pts: string[] = [];
           const xs: number[] = [];
           const ys: number[] = [];
-          while ((vMatch = vertRegex.exec(body)) !== null) {
-            const vAttrs = vMatch[1]!;
-            const vx = lx + parseFloat(vAttrs.match(/\bx=["']([^"']+)["']/i)?.[1] ?? "0");
-            const vy = ly + parseFloat(vAttrs.match(/\by=["']([^"']+)["']/i)?.[1] ?? "0");
+          for (const vEl of findDescendantsCI(gfxEl, new Set(["vertex"]))) {
+            const vx = lx + parseFloat(getAttrCI(vEl, "x") ?? "0");
+            const vy = ly + parseFloat(getAttrCI(vEl, "y") ?? "0");
             xs.push(vx);
             ys.push(vy);
             pts.push(`${vx},${vy}`);

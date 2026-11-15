@@ -69,13 +69,17 @@ import {
   reduceNestedValues,
 } from "./comprehensions.js";
 import {
+  collapseAsciiWhitespace,
   copyExprBetweenDaes,
+  cstContainsNodeType,
   evalArithmeticText,
   evaluateCSTNumber,
   evaluateEnumRange,
   expandDottedArrayMemberRef,
   expandVarToArrayCtor,
+  extractBindingExprFromDeclCst,
   extractEnumLiteralsFromCst,
+  extractFunctionCallArgExprNodesCst,
   flattenColonNodes,
   getArrayLiteralItems,
   getBaseEnumSymbol,
@@ -85,12 +89,24 @@ import {
   getEnumLiteralIndex,
   getSymbolEnumLiterals,
   getVarPrefixSet,
+  isAsciiDigitsOnly,
+  isAsciiIdentContinue,
+  isAsciiIdentifier,
+  isAsciiIdentStart,
+  isAsciiWhitespaceCode,
+  isDottedIdentifierChain,
   isInsideForIndex,
   isIntegerTypeSpec,
+  isSignedAsciiNumberText,
   lookupDbConstant,
+  parseEnumLiteralsText,
   resolveEnumType,
   resolveScopedName,
   stripArraySubscripts,
+  stripLeadingDot,
+  stripLeadingDots,
+  stripOuterDoubleQuotes,
+  stripOuterSingleQuotes,
 } from "./cst-utils.js";
 import {
   addArenaValueAsExpr,
@@ -107,6 +123,124 @@ import {
   SCALAR_VECTORIZABLE_FUNCTIONS,
   vectorizeFunctionCall,
 } from "./functions.js";
+
+function collectCstIdentifiers(root: SyntaxNode | null | undefined): string[] {
+  const result: string[] = [];
+  if (!root) return result;
+  const stack: SyntaxNode[] = [root];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (cur.type === "identifier") {
+      const name = cur.text?.trim() ?? "";
+      if (name.length > 0) result.push(name);
+    }
+    for (let i = cur.childCount - 1; i >= 0; i--) {
+      const c = cur.child(i);
+      if (c) stack.push(c);
+    }
+  }
+  return result;
+}
+
+function cstHasTokenText(root: SyntaxNode | null | undefined, tokenText: string): boolean {
+  if (!root) return false;
+  const stack: SyntaxNode[] = [root];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (
+      cur.type === tokenText ||
+      stripOuterDoubleQuotes(cur.type ?? "") === tokenText ||
+      (cur.childCount === 0 && (cur.text?.trim() ?? "") === tokenText)
+    ) {
+      return true;
+    }
+    for (let i = cur.childCount - 1; i >= 0; i--) {
+      const c = cur.child(i);
+      if (c) stack.push(c);
+    }
+  }
+  return false;
+}
+
+function cstHasDerCall(root: SyntaxNode | null | undefined): boolean {
+  if (!root) return false;
+  const stack: SyntaxNode[] = [root];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (cur.type === "der") return true;
+    if (
+      (cur.type === "primary" || cur.type === "lhs_primary" || cur.type === "function_call") &&
+      stripOuterDoubleQuotes(cur.child(0)?.text?.trim() ?? cur.child(0)?.type ?? "") === "der"
+    ) {
+      return true;
+    }
+    for (let i = cur.childCount - 1; i >= 0; i--) {
+      const c = cur.child(i);
+      if (c) stack.push(c);
+    }
+  }
+  return false;
+}
+
+function readLeadingAsciiIdentifier(text: string): string {
+  if (text.length === 0 || !isAsciiIdentStart(text.charCodeAt(0))) return "";
+  let end = 1;
+  while (end < text.length && isAsciiIdentContinue(text.charCodeAt(end))) {
+    end++;
+  }
+  return text.slice(0, end);
+}
+
+function extractExternalBuiltinCall(externalDecl: string): { fnName: string; hasNonEmptyArg: boolean } | null {
+  let inQuote = false;
+  let i = 0;
+  while (i < externalDecl.length) {
+    const code = externalDecl.charCodeAt(i);
+    if (inQuote) {
+      if (code === 92 /* '\\' */) {
+        i += 2;
+        continue;
+      }
+      if (code === 34 /* '"' */) inQuote = false;
+      i++;
+      continue;
+    }
+    if (code === 34 /* '"' */) {
+      inQuote = true;
+      i++;
+      continue;
+    }
+    if (code === 61 /* '=' */) {
+      let j = i + 1;
+      while (j < externalDecl.length && isAsciiWhitespaceCode(externalDecl.charCodeAt(j))) j++;
+      const nameStart = j;
+      while (j < externalDecl.length && isAsciiIdentContinue(externalDecl.charCodeAt(j))) j++;
+      if (j > nameStart) {
+        const fnName = externalDecl.slice(nameStart, j);
+        while (j < externalDecl.length && isAsciiWhitespaceCode(externalDecl.charCodeAt(j))) j++;
+        if (j < externalDecl.length && externalDecl.charCodeAt(j) === 40 /* '(' */) {
+          let k = j + 1;
+          let hasNonEmptyArg = false;
+          let foundClose = false;
+          while (k < externalDecl.length) {
+            const innerCode = externalDecl.charCodeAt(k);
+            if (innerCode === 41 /* ')' */) {
+              foundClose = true;
+              break;
+            }
+            if (!isAsciiWhitespaceCode(innerCode)) hasNonEmptyArg = true;
+            k++;
+          }
+          if (foundClose) {
+            return { fnName, hasNonEmptyArg };
+          }
+        }
+      }
+    }
+    i++;
+  }
+  return null;
+}
 
 /**
  * Lowers a Modelica linear-memory CST expression node directly into a `DAEBuilder` arena expression ID.
@@ -241,7 +375,7 @@ export function lowerCSTExpression(
   // Binary expression: left op right
   if (node.childCount === 3) {
     const rawOp = node.child(1)?.text?.trim() ?? node.child(1)?.type ?? "";
-    const opToken = rawOp.replace(/^"|"$/g, "");
+    const opToken = stripOuterDoubleQuotes(rawOp);
     let binOp: BinOp | null = null;
     switch (opToken) {
       case "+":
@@ -330,8 +464,7 @@ function lowerPreBinaryCSTExpression(
     type === "unsigned_real" ||
     type === "number_literal" ||
     type === "NumberLiteral" ||
-    ((type.startsWith("/") || node.childCount === 0) &&
-      /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(node.text?.trim() ?? ""))
+    ((type.startsWith("/") || node.childCount === 0) && isSignedAsciiNumberText(node.text?.trim() ?? ""))
   ) {
     const text = node.text.trim();
     if (text.includes(".") || text.toLowerCase().includes("e")) {
@@ -342,7 +475,7 @@ function lowerPreBinaryCSTExpression(
   }
 
   // Boolean literal
-  const rawType = type.replace(/^"|"$/g, "");
+  const rawType = stripOuterDoubleQuotes(type);
   const trimmedText = node.text?.trim() ?? "";
   if (
     rawType === "true" ||
@@ -446,7 +579,7 @@ function lowerPreBinaryCSTExpression(
     }
   }
 
-  const firstChildToken = (node.child(0)?.text?.trim() ?? node.child(0)?.type ?? "").replace(/^"|"$/g, "");
+  const firstChildToken = stripOuterDoubleQuotes(node.child(0)?.text?.trim() ?? node.child(0)?.type ?? "");
 
   // ============================================================================
   // Symbolic Differentiation: der(...)
@@ -479,7 +612,7 @@ function lowerPreBinaryCSTExpression(
     }
     const rawName = argNode?.text?.trim() ?? "";
     let argVIdx = -1;
-    if (rawName && /^[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(rawName)) {
+    if (isDottedIdentifierChain(rawName)) {
       argVIdx = dae.getVarIdxByName(prefix ? `${prefix}.${rawName}` : rawName);
     }
     if (argVIdx >= 0) {
@@ -822,50 +955,49 @@ function lowerPreBinaryCSTExpression(
                 }
                 if (root) {
                   const leafName = vName.includes(".") ? vName.split(".").pop()! : vName;
-                  const re = new RegExp(`\\b${leafName}\\b`);
-                  const reinitRe = new RegExp(`\\breinit\\s*\\(\\s*${leafName}\\b`);
                   const stack = [root];
                   while (stack.length > 0) {
                     const n = stack.pop();
                     if (!n) continue;
                     if (n.type === "when_statement" || n.type === "when_equation") {
-                      const text = n.text ?? "";
-                      if (re.test(text)) {
-                        if (reinitRe.test(text)) {
-                          isAssignedInWhen = true;
-                          break;
-                        }
-                        const innerStack = [...(n.children || [])];
-                        while (innerStack.length > 0) {
-                          const inNode = innerStack.pop();
-                          if (!inNode) continue;
-                          if (
-                            inNode.type === "assignment_statement" ||
-                            inNode.type === "statement" ||
-                            inNode.type === "statement_or_procedure" ||
-                            inNode.type === "simple_equation" ||
-                            inNode.type === "some_equation"
-                          ) {
-                            const inText = inNode.text ?? "";
-                            const assignIdx = inText.indexOf(":=");
-                            const eqMatch = assignIdx < 0 ? /(?:^|[^:=<>!])=([^=]|$)/.exec(inText) : null;
-                            const opIdx =
-                              assignIdx >= 0
-                                ? assignIdx
-                                : eqMatch
-                                  ? eqMatch.index + (eqMatch[0].startsWith("=") ? 0 : 1)
-                                  : -1;
-                            if (opIdx >= 0) {
-                              const lhs = inText.slice(0, opIdx);
-                              if (re.test(lhs)) {
-                                isAssignedInWhen = true;
-                                break;
-                              }
+                      const innerStack = [...(n.children || [])];
+                      while (innerStack.length > 0) {
+                        const inNode = innerStack.pop();
+                        if (!inNode) continue;
+                        if (inNode.type === "function_call") {
+                          const calleeName = inNode.childForFieldName?.("name")?.text?.trim();
+                          if (calleeName === "reinit") {
+                            const argNodes = extractFunctionCallArgExprNodesCst(inNode);
+                            if (argNodes[0] && collectCstIdentifiers(argNodes[0]).includes(leafName)) {
+                              isAssignedInWhen = true;
+                              break;
                             }
                           }
-                          for (const c of inNode.children || []) {
-                            innerStack.push(c);
+                        } else if (inNode.type === "simple_equation") {
+                          const lhs = inNode.childForFieldName?.("lhs") ?? inNode.child?.(0);
+                          if (lhs && collectCstIdentifiers(lhs).includes(leafName)) {
+                            isAssignedInWhen = true;
+                            break;
                           }
+                        } else if (inNode.type === "assignment_statement") {
+                          const target = inNode.childForFieldName?.("target") ?? inNode.child?.(0);
+                          if (target && collectCstIdentifiers(target).includes(leafName)) {
+                            isAssignedInWhen = true;
+                            break;
+                          }
+                        } else if (
+                          inNode.type === "statement" &&
+                          inNode.childCount >= 4 &&
+                          inNode.child?.(0)?.text === "("
+                        ) {
+                          const outList = inNode.children?.find((ch: any) => ch.type === "output_expression_list");
+                          if (outList && collectCstIdentifiers(outList).includes(leafName)) {
+                            isAssignedInWhen = true;
+                            break;
+                          }
+                        }
+                        for (const c of inNode.children || []) {
+                          innerStack.push(c);
                         }
                       }
                       if (isAssignedInWhen) break;
@@ -898,12 +1030,10 @@ function lowerPreBinaryCSTExpression(
   // Builtin initial() and terminal()
   if (
     (type === "primary" || type === "lhs_primary") &&
-    node.childCount >= 1 &&
-    (firstChildToken === "initial" ||
-      firstChildToken === "terminal" ||
-      node.child(0)?.text === "initial" ||
-      node.child(0)?.text === "terminal") &&
-    (node.text?.replace(/\s+/g, "") === "initial()" || node.text?.replace(/\s+/g, "") === "terminal()")
+    node.childCount >= 2 &&
+    (node.child(0)?.text?.trim() === "initial" || node.child(0)?.text?.trim() === "terminal") &&
+    ((node.childCount === 3 && node.child(1)?.text === "(" && node.child(2)?.text === ")") ||
+      (node.childCount === 2 && node.child(1)?.type === "function_call_args" && node.child(1)?.childCount === 2))
   ) {
     const fnName = node.child(0)?.text?.trim() ?? "initial";
     return dae.addCallExpr(fnName, []);
@@ -971,8 +1101,8 @@ function lowerPreBinaryCSTExpression(
         if (crNode) {
           baseCompName = crNode.text?.split(".")[0].split("[")[0].trim() ?? "";
         } else if (bodyNode?.text) {
-          const match = bodyNode.text.match(/^[a-zA-Z_]\w*/);
-          if (match) baseCompName = match[0];
+          const leadingId = readLeadingAsciiIdentifier(bodyNode.text);
+          if (leadingId) baseCompName = leadingId;
         }
         if (baseCompName) {
           const compType = findOperatorRecordComponentType(baseCompName, dae, db, flattener);
@@ -1023,7 +1153,7 @@ function lowerPreBinaryCSTExpression(
               if (enumRange.length === 0) {
                 const cNodes = flattenColonNodes(rangeNode);
                 if (cNodes.length >= 1) {
-                  sampleValue = (cNodes[0].text?.trim() ?? "").replace(/^\.+/, "");
+                  sampleValue = stripLeadingDots(cNodes[0].text?.trim() ?? "");
                 }
               }
             } else {
@@ -1711,9 +1841,9 @@ function lowerPreBinaryCSTExpression(
         return a0;
       }
     }
-    const cleanFnName = typeof fnName === "string" ? fnName.replace(/^\.+/, "") : "";
+    const cleanFnName = typeof fnName === "string" ? stripLeadingDots(fnName) : "";
 
-    if (/\[[^\][]*\]/.test(node.child(0)?.text ?? "")) {
+    if (cstContainsNodeType(node.child(0), "array_subscripts")) {
       const callText = node.child(0)?.text?.trim() ?? cleanFnName;
       let cur: any = node;
       while (
@@ -1886,7 +2016,7 @@ function lowerPreBinaryCSTExpression(
               currentParentMods?.ownerClassId ??
               flattener?.currentClassId ??
               flattener?.currentRootClassId;
-            const pkgSpec = String(pkgRedecl.redeclaredTypeSpecifier).replace(/^\.+/, "");
+            const pkgSpec = stripLeadingDots(String(pkgRedecl.redeclaredTypeSpecifier));
             const pkgTarget =
               (evalScopeId
                 ? db.query<(n: string) => SymbolEntry | null>("resolveName", evalScopeId)?.(pkgSpec)
@@ -2035,14 +2165,16 @@ function lowerPreBinaryCSTExpression(
                       if (excludeNames?.has(ch.name)) continue;
                       const ci = db.query<ComponentInstanceData>("componentInstance", ch.id);
                       const cst = db.cstNode(ch.id) as any;
-                      const hasDefault = Boolean(
-                        ci?.modification?.bindingExpression || (cst?.text && /=/.test(cst.text)),
-                      );
-                      let defaultVal: string | undefined = undefined;
-                      if (hasDefault) {
-                        const m = cst?.text?.match(/=\s*([^;]+)/);
-                        if (m) defaultVal = m[1].trim();
-                      }
+                      const bindingText = extractBindingExprFromDeclCst(cst, ch.name)?.text?.trim();
+                      const ciBindingText = ci?.modification?.bindingExpression?.text?.trim();
+                      const resolvedDefault =
+                        ciBindingText && ciBindingText !== "break"
+                          ? ciBindingText
+                          : bindingText && bindingText !== "break"
+                            ? bindingText
+                            : undefined;
+                      const hasDefault = Boolean(ci?.modification?.bindingExpression || resolvedDefault !== undefined);
+                      const defaultVal: string | undefined = hasDefault ? resolvedDefault : undefined;
                       const t = ci?.typeSpecifier ?? "Real";
                       if (ci?.causality === "input") {
                         inParams.push({ name: ch.name, type: t, hasDefault, defaultVal });
@@ -2111,8 +2243,7 @@ function lowerPreBinaryCSTExpression(
                   };
 
                   const formatSig = (sym: any, prefixName: string, sig: { inParams: any[]; outParams: any[] }) => {
-                    const cstText = (db.cstNode(sym.id) as any)?.text ?? "";
-                    const hasAlg = /\balgorithm\b/.test(cstText);
+                    const hasAlg = cstContainsNodeType(db.cstNode(sym.id) as any, "algorithm_section");
                     const inStr = sig.inParams.map((p) => formatInParam(p, hasAlg)).join(", ");
                     let outStr = "";
                     if (sig.outParams.length === 0) {
@@ -2424,7 +2555,7 @@ function lowerPreBinaryCSTExpression(
         const diagRange = getElementDiagRange(cur ?? node);
         const vt = inferArenaExprVarType(dae, aid);
         const elemType = varTypeName(vt ?? VarType.Real);
-        const argText = argNodes[0]?.text?.trim()?.replace(/\s+/g, " ") ?? "";
+        const argText = collapseAsciiWhitespace(argNodes[0]?.text ?? "");
         dae.diagnostics.push({
           severity: "error",
           code: ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code,
@@ -2452,7 +2583,7 @@ function lowerPreBinaryCSTExpression(
         const diagRange = getElementDiagRange(cur ?? node);
         const vt = inferArenaExprVarType(dae, aid);
         const elemType = varTypeName(vt ?? VarType.Real);
-        const argText = argNodes[0]?.text?.trim()?.replace(/\s+/g, " ") ?? "";
+        const argText = collapseAsciiWhitespace(argNodes[0]?.text ?? "");
         dae.diagnostics.push({
           severity: "error",
           code: ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code,
@@ -2970,10 +3101,11 @@ function lowerPreBinaryCSTExpression(
             if (!hasExplicitSub && compCst) {
               const subNode = (compCst.children || []).find((c: any) => c.type === "array_subscripts");
               if (subNode) {
-                const numMatch = subNode.text?.match(/\d+/g);
-                if (numMatch) {
-                  for (const n of numMatch) {
-                    totalDims.push(parseInt(n, 10));
+                for (const sc of subNode.children || []) {
+                  if (sc.type !== "subscript") continue;
+                  const subText = sc.text?.trim() ?? "";
+                  if (isAsciiDigitsOnly(subText)) {
+                    totalDims.push(parseInt(subText, 10));
                   }
                 }
               }
@@ -2990,13 +3122,16 @@ function lowerPreBinaryCSTExpression(
                 db.byName(simpleTypeName).find((c: any) => c.kind === "Class");
               if (typeClass) {
                 currScopeId = typeClass.id;
-                const kind = String(
+                const typeClassCst = db.cstNode(typeClass.id) as any;
+                const classPrefixesNode = (typeClassCst?.children || []).find((c: any) => c.type === "class_prefixes");
+                const metaPrefix = String(
                   (typeClass.metadata as any)?.classKind ?? (typeClass.metadata as any)?.classPrefixes ?? "",
-                )
-                  .replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "")
-                  .trim();
+                );
+                const isConnectorPrefix =
+                  cstHasTokenText(classPrefixesNode, "connector") ||
+                  collapseAsciiWhitespace(metaPrefix).split(" ").includes("connector");
                 if (
-                  /\bconnector\b/.test(kind) ||
+                  isConnectorPrefix ||
                   db.query<boolean>("isConnector", typeClass.id) ||
                   db.query<boolean>("isConnector", comp.id)
                 ) {
@@ -4604,7 +4739,7 @@ function lowerPreBinaryCSTExpression(
       }
       if (dae.getExprKind(argExprIds[0]!) === ExprKind.ArrayCtor) {
         const rawArg0 = argNodes[0]?.text?.trim() ?? "";
-        if (rawArg0 && /^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(rawArg0)) {
+        if (isDottedIdentifierChain(rawArg0)) {
           argExprIds[0] = dae.addNameExpr(resolveScopedName(rawArg0, prefix, dae));
         }
       }
@@ -4893,7 +5028,7 @@ function lowerPreBinaryCSTExpression(
             const finalArgs: number[] = [];
             if (namedArgs.size > 0) {
               for (const param of inParams) {
-                const pType = param.typeSpec?.replace(/^\./, "");
+                const pType = param.typeSpec ? stripLeadingDot(param.typeSpec) : undefined;
                 if (namedArgs.has(param.name)) {
                   const aid = namedArgs.get(param.name)!;
                   finalArgs.push(pType === "Real" ? castToRealExpr(aid, dae) : aid);
@@ -4910,7 +5045,7 @@ function lowerPreBinaryCSTExpression(
                 if (p < argExprIds.length) {
                   const aid = argExprIds[p]!;
                   const akind = dae.getExprKind(aid);
-                  const pType = inParams[p].typeSpec?.replace(/^\./, "");
+                  const pType = inParams[p].typeSpec ? stripLeadingDot(inParams[p].typeSpec) : undefined;
                   if (
                     (akind === ExprKind.RealLiteral || akind === ExprKind.IntLiteral) &&
                     pType !== "Real" &&
@@ -5031,8 +5166,8 @@ function lowerPreBinaryCSTExpression(
       fnDae = undefined;
     }
     if (fnDae && fnDae.externalDecl && fnDae.externalDecl.includes('"builtin"')) {
-      const match = fnDae.externalDecl.match(/=\s*([a-zA-Z0-9_]+)\s*\(/);
-      fnName = match ? match[1]! : fnDae.name.split(".").pop()!;
+      const extCall = extractExternalBuiltinCall(fnDae.externalDecl);
+      fnName = extCall ? extCall.fnName : fnDae.name.split(".").pop()!;
       fnDae = undefined;
     }
     if (fnDae && flattener && db) {
@@ -5082,7 +5217,7 @@ function lowerPreBinaryCSTExpression(
               (a.isRedeclaration || a.redeclaredTypeSpecifier),
           );
       if (redeclArg?.redeclaredTypeSpecifier) {
-        const rawRedeclSpec = String(redeclArg.redeclaredTypeSpecifier).replace(/^\.+/, "");
+        const rawRedeclSpec = stripLeadingDots(String(redeclArg.redeclaredTypeSpecifier));
         const ownerScopeId = redeclArg.ownerClassId ?? currentParentMods?.ownerClassId ?? flattener?.currentClassId;
         const evalScopeId = redeclArg.evaluationScopeId ?? ownerScopeId;
         const redeclTarget =
@@ -5175,7 +5310,7 @@ function lowerPreBinaryCSTExpression(
                 const compPrefix = prefix ? `${prefix}.${prefixStr}` : prefixStr;
                 const compMod = db.query<any>("effectiveModification", prefixSym.id);
                 const hasCompMod = Boolean(compMod?.args && compMod.args.length > 0);
-                const specPrefix = hasCompMod ? `${classQual}$${compPrefix.replace(/\./g, "$")}` : classQual;
+                const specPrefix = hasCompMod ? `${classQual}$${compPrefix.replaceAll(".", "$")}` : classQual;
                 specializedQualifiedName = `${specPrefix}.${fnBaseName}`;
                 enclosingScopeId = compClassId;
                 componentInstancePrefix = compPrefix;
@@ -5201,7 +5336,7 @@ function lowerPreBinaryCSTExpression(
                 );
             let preResolvedRedeclPkgSym: SymbolEntry | null = null;
             if (outerPkgRedeclCandidate?.redeclaredTypeSpecifier) {
-              const pkgSpec = String(outerPkgRedeclCandidate.redeclaredTypeSpecifier).replace(/^\.+/, "");
+              const pkgSpec = stripLeadingDots(String(outerPkgRedeclCandidate.redeclaredTypeSpecifier));
               let pkgScopeId =
                 outerPkgRedeclCandidate.evaluationScopeId ??
                 outerPkgRedeclCandidate.ownerClassId ??
@@ -5308,7 +5443,7 @@ function lowerPreBinaryCSTExpression(
                       : getSymbolQualifiedName(db, effectivePrefixSym.id);
                 const specPkgPrefix =
                   prefix && (pkgRedeclArg || outerPkgRedeclArg)
-                    ? `${ownerQual}$${prefix.replace(/\./g, "$")}.${prefixStr}`
+                    ? `${ownerQual}$${prefix.replaceAll(".", "$")}.${prefixStr}`
                     : `${ownerQual}.${prefixStr}`;
                 specializedQualifiedName = `${specPkgPrefix}.${fnBaseName}`;
                 enclosingScopeId = redeclaredPkgSym?.id ?? pkgRedeclTarget.parentId ?? undefined;
@@ -5453,7 +5588,7 @@ function lowerPreBinaryCSTExpression(
                       )
                     ) {
                       const baseQual = getSymbolQualifiedName(db, qualScopeId);
-                      componentSpecializedPrefix = `${baseQual}$${prefix.replace(/\./g, "$")}`;
+                      componentSpecializedPrefix = `${baseQual}$${prefix.replaceAll(".", "$")}`;
                       componentInstancePrefix = prefix;
                     } else if (
                       dae.classKind === "function" &&
@@ -5698,8 +5833,8 @@ function lowerPreBinaryCSTExpression(
             fnDae = fn;
             fnName = qualifiedFnName;
           } else {
-            const match = fn.externalDecl!.match(/=\s*([a-zA-Z0-9_]+)\s*\(/);
-            fnName = match ? match[1]! : fnBase || fn.name.split(".").pop()!;
+            const extCall = extractExternalBuiltinCall(fn.externalDecl!);
+            fnName = extCall ? extCall.fnName : fnBase || fn.name.split(".").pop()!;
             fnDae = undefined;
           }
         }
@@ -6499,9 +6634,9 @@ function lowerPreBinaryCSTExpression(
             : fnDae.name.split(".").pop()!
           : fnDae.name;
       if (dae.extensionMetadata?.["isOldFrontend"] && fnDae.externalDecl) {
-        const builtinMatch = fnDae.externalDecl.match(/=\s*(sin|cos)\s*\(\s*[^)\s]/);
-        if (builtinMatch) {
-          targetFnCallName = builtinMatch[1]!;
+        const extCall = extractExternalBuiltinCall(fnDae.externalDecl);
+        if (extCall && extCall.hasNonEmptyArg && (extCall.fnName === "sin" || extCall.fnName === "cos")) {
+          targetFnCallName = extCall.fnName;
         }
       }
       let inIdx = 0;
@@ -6925,7 +7060,7 @@ function lowerPreBinaryCSTExpression(
       }
     }
 
-    const isIdentifierBase = /^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(baseName);
+    const isIdentifierBase = isDottedIdentifierChain(baseName);
     if (allNumeric && subVals.length > 0 && isIdentifierBase) {
       let candidate = `${baseName}[${subVals.join(",")}]`;
       if (prefix && !candidate.startsWith(prefix) && !candidate.includes(".")) {
@@ -7645,7 +7780,7 @@ function lowerPreBinaryCSTExpression(
     let i = 4;
     while (i < node.childCount) {
       const tok = node.child(i)?.text?.trim() ?? node.child(i)?.type ?? "";
-      const tokClean = tok.replace(/^"|"$/g, "");
+      const tokClean = stripOuterDoubleQuotes(tok);
       if (tokClean === "elseif" && i + 3 < node.childCount) {
         branches.push({ condNode: node.child(i + 1), thenNode: node.child(i + 3) });
         i += 4;
@@ -7663,8 +7798,7 @@ function lowerPreBinaryCSTExpression(
     let allFalseSoFar = true;
     const isOldFrontend = Boolean(dae.extensionMetadata?.["isOldFrontend"]);
     const hasBranchDer =
-      !isOldFrontend &&
-      (branches.some((br) => /\bder\s*\(/.test(br.thenNode?.text ?? "")) || /\bder\s*\(/.test(elseNode?.text ?? ""));
+      !isOldFrontend && (branches.some((br) => cstHasDerCall(br.thenNode)) || cstHasDerCall(elseNode));
     for (let b = 0; b < branches.length; b++) {
       const condId = lowerCSTExpression(branches[b]!.condNode, dae, prefix, substitutions, imports, db, flattener);
       const isRuntimeParam = hasBranchDer
@@ -7801,7 +7935,11 @@ function finishBinaryCSTExpression(
           binOp === BinOp.Gt ||
           binOp === BinOp.Gte) &&
         leftNode &&
-        /^not\b/.test(leftNode.text?.trim() ?? "") &&
+        (() => {
+          let cur: any = leftNode;
+          while (cur && cur.childCount === 1) cur = cur.child(0);
+          return cur?.type === "expression" && cur.childCount === 2 && cur.child(0)?.text?.trim() === "not";
+        })() &&
         dae.getExprKind(leftId) === ExprKind.Unary &&
         dae.getExprData1(leftId) === UnaryOp.Not
       ) {
@@ -8407,7 +8545,7 @@ function finishBinaryCSTExpression(
           rightDims.length > 0
         ) {
           const rRaw = rightNode?.text?.trim() ?? "";
-          if (rRaw && /^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(rRaw)) {
+          if (isDottedIdentifierChain(rRaw)) {
             rightId = dae.addNameExpr(resolveScopedName(rRaw, prefix, dae));
           }
         } else if (
@@ -8421,7 +8559,7 @@ function finishBinaryCSTExpression(
           leftDims.length > 0
         ) {
           const lRaw = leftNode?.text?.trim() ?? "";
-          if (lRaw && /^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(lRaw)) {
+          if (isDottedIdentifierChain(lRaw)) {
             leftId = dae.addNameExpr(resolveScopedName(lRaw, prefix, dae));
           }
         } else if (
@@ -9345,7 +9483,7 @@ function lowerPostBinaryCSTExpression(node: SyntaxNode, dae: DAEBuilder, ctx: Lo
   // Unary expression: -expr or +expr or not expr
   if (node.childCount === 2) {
     const rawOp = node.child(0)?.text?.trim() ?? node.child(0)?.type ?? "";
-    const op = rawOp.replace(/^"|"$/g, "");
+    const op = stripOuterDoubleQuotes(rawOp);
     if (op === "-" || op === "-.") {
       const operandId = lowerCSTExpression(node.child(1), dae, prefix, substitutions, imports, db, flattener);
       if (db && flattener) {
@@ -9561,7 +9699,7 @@ function lowerPostBinaryCSTExpression(node: SyntaxNode, dae: DAEBuilder, ctx: Lo
     type === "identifier" ||
     type === "name" ||
     type === "component_reference" ||
-    (node.childCount === 0 && /^[a-zA-Z_]\w*$/.test(node.text?.trim() ?? ""))
+    (node.childCount === 0 && isAsciiIdentifier(node.text?.trim() ?? ""))
   ) {
     let rawName = node.text.trim();
     // 1. Check active loop/comprehension/function-inlining substitution bindings first
@@ -9664,8 +9802,8 @@ function lowerPostBinaryCSTExpression(node: SyntaxNode, dae: DAEBuilder, ctx: Lo
               }
 
               if (isConnRef) {
-                const idMatches = subText.match(/\b[a-zA-Z_]\w*\b/g);
-                if (idMatches) {
+                const idMatches = collectCstIdentifiers(expr ?? sub);
+                if (idMatches.length > 0) {
                   for (const idm of idMatches) {
                     if (
                       idm === "true" ||
@@ -9755,7 +9893,7 @@ function lowerPostBinaryCSTExpression(node: SyntaxNode, dae: DAEBuilder, ctx: Lo
                 }
               }
               const dimIdx = lastPart.subscripts.length;
-              const needsDimSize = subText === ":" || /\bend\b/.test(subText);
+              const needsDimSize = subText === ":" || cstHasTokenText(expr ?? sub, "end");
               const fullIdent = needsDimSize ? rawParts.map((p) => p.ident).join(".") : "";
               const fullIdentWithSubs = needsDimSize
                 ? rawParts
@@ -9901,19 +10039,36 @@ function lowerPostBinaryCSTExpression(node: SyntaxNode, dae: DAEBuilder, ctx: Lo
 
               // 4. Scalar subscript
               let isLoopVar = false;
-              if (flattener?.activeLoopVars && flattener.activeLoopVars.size > 0) {
-                if (flattener.activeLoopVars.has(subText)) {
+              let isRealSub = false;
+              const checkSubNode = expr ?? sub;
+              const subWalkStack: any[] = checkSubNode ? [checkSubNode] : [];
+              while (subWalkStack.length > 0) {
+                const curNode = subWalkStack.pop();
+                if (!curNode) continue;
+                if (
+                  flattener?.activeLoopVars &&
+                  flattener.activeLoopVars.size > 0 &&
+                  curNode.type === "identifier" &&
+                  flattener.activeLoopVars.has(curNode.text?.trim() ?? "")
+                ) {
                   isLoopVar = true;
-                } else {
-                  const idRegex = /\b[a-zA-Z_]\w*\b/g;
-                  let m: RegExpExecArray | null;
-                  while ((m = idRegex.exec(subText)) !== null) {
-                    if (flattener.activeLoopVars.has(m[0])) {
-                      isLoopVar = true;
-                      break;
-                    }
-                  }
                 }
+                if (curNode.type === "unsigned_real") {
+                  isRealSub = true;
+                } else if (
+                  curNode.type === "expression" &&
+                  curNode.childCount === 3 &&
+                  stripOuterDoubleQuotes(curNode.child(1)?.text?.trim() ?? curNode.child(1)?.type ?? "") === "/"
+                ) {
+                  isRealSub = true;
+                }
+                for (let ci = (curNode.childCount ?? 0) - 1; ci >= 0; ci--) {
+                  const ch = curNode.child(ci);
+                  if (ch) subWalkStack.push(ch);
+                }
+              }
+              if (flattener?.activeLoopVars?.has(subText)) {
+                isLoopVar = true;
               }
               if (subsWithEnd && subsWithEnd.has(subText)) {
                 const sVal = subsWithEnd.get(subText)!;
@@ -9927,10 +10082,7 @@ function lowerPostBinaryCSTExpression(node: SyntaxNode, dae: DAEBuilder, ctx: Lo
                 continue;
               }
 
-              let isRealSub = false;
-              if (!isLoopVar && (/\b\d+\.\d+\b/.test(subText) || /[a-zA-Z0-9_)]\s*\/\s*[a-zA-Z0-9_(]/.test(subText))) {
-                isRealSub = true;
-              }
+              if (isLoopVar) isRealSub = false;
               const isBoolLiteralSub = subText === "false" || subText === "true";
               const evaluatedNum =
                 isLoopVar || isRealSub || isBoolLiteralSub
@@ -10166,13 +10318,7 @@ function lowerPostBinaryCSTExpression(node: SyntaxNode, dae: DAEBuilder, ctx: Lo
               const leafTypeName = enumTypeName.includes(".") ? enumTypeName.split(".").pop()! : enumTypeName;
               const typeTargets = db.byName(leafTypeName);
               for (const candidate of typeTargets) {
-                const cstText = (db.cstNode(candidate.id) as any)?.text ?? "";
-                const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
-                const literals: string[] | null = enumMatch
-                  ? enumMatch[1]!.split(",").map((s: string) => s.trim().split(/\s+/)[0])
-                  : Array.isArray(candidate.metadata?.["literals"])
-                    ? candidate.metadata["literals"]
-                    : null;
+                const literals = getSymbolEnumLiterals(db, candidate);
                 if (literals && literals.includes(litName)) {
                   expectedDimCount = 0;
                   break;
@@ -10719,7 +10865,7 @@ function lowerPostBinaryCSTExpression(node: SyntaxNode, dae: DAEBuilder, ctx: Lo
                   )
               : null;
           const redeclJoined = pkgRedeclForConst?.redeclaredTypeSpecifier
-            ? [String(pkgRedeclForConst.redeclaredTypeSpecifier).replace(/^\.+/, ""), ...parts.slice(1)].join(".")
+            ? [stripLeadingDots(String(pkgRedeclForConst.redeclaredTypeSpecifier)), ...parts.slice(1)].join(".")
             : null;
           const redeclScopeId = pkgRedeclForConst?.evaluationScopeId ?? pkgRedeclForConst?.ownerClassId ?? scopeId;
           const constRes =
@@ -10808,7 +10954,7 @@ function lowerPostBinaryCSTExpression(node: SyntaxNode, dae: DAEBuilder, ctx: Lo
                 )
             : null;
           const firstPart = pkgRedeclForClass?.redeclaredTypeSpecifier
-            ? String(pkgRedeclForClass.redeclaredTypeSpecifier).replace(/^\.+/, "")
+            ? stripLeadingDots(String(pkgRedeclForClass.redeclaredTypeSpecifier))
             : imports && imports.has(parts[0]!)
               ? imports.get(parts[0]!)!
               : parts[0]!;
@@ -10949,8 +11095,9 @@ function lowerPostBinaryCSTExpression(node: SyntaxNode, dae: DAEBuilder, ctx: Lo
                         let bText = bExpr?.text?.trim();
                         if (!bText) {
                           const childCst = db.cstNode(child.id) as any;
-                          const eqM = (childCst?.text ?? "").match(/=\s*([^\n;]+)/);
-                          if (eqM) bText = eqM[1].trim();
+                          const bindingNode = extractBindingExprFromDeclCst(childCst, child.name);
+                          const bindingText = bindingNode?.text?.trim();
+                          if (bindingText && bindingText !== "break") bText = bindingText;
                         }
                         if (bText && bText.startsWith(recSym.name) && bText.includes("(") && bText.endsWith(")")) {
                           const inside = bText.slice(bText.indexOf("(") + 1, -1).trim();
@@ -11210,12 +11357,8 @@ function lowerPostBinaryCSTExpression(node: SyntaxNode, dae: DAEBuilder, ctx: Lo
             a.redeclaredTypeSpecifier.startsWith("enumeration("),
         );
         if (redeclArg) {
-          const enumMatch = redeclArg.redeclaredTypeSpecifier.match(/enumeration\s*\(([^()]+)\)/);
-          if (enumMatch?.[1]) {
-            const redeclLits = enumMatch[1]
-              .split(",")
-              .map((p: string) => p.trim().split(/\s+/)[0]?.replace(/^'|'$/g, ""))
-              .filter(Boolean);
+          const redeclLits = parseEnumLiteralsText(redeclArg.redeclaredTypeSpecifier)?.map(stripOuterSingleQuotes);
+          if (redeclLits && redeclLits.length > 0) {
             if (!redeclLits.includes(litName)) {
               const classFqn = flattener.currentClassId
                 ? (getSymbolQualifiedName(db, flattener.currentClassId) ?? "")

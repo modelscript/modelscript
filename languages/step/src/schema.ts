@@ -193,7 +193,10 @@ export function parseStepReferences(text: string) {
  * EXPRESS schema catalog for common STEP AP203 / AP214 / AP242 geometric, topological,
  * product structure, and representation entities used for hover documentation and completion.
  */
-export const STEP_SCHEMA: Record<string, { description: string; parameters: { name: string; type: string }[] }> = {
+export const STEP_SCHEMA: Record<
+  string,
+  { description: string; minParameters?: number; parameters: { name: string; type: string }[] }
+> = {
   CARTESIAN_POINT: {
     description: "A point defined by its coordinates in a rectangular Cartesian coordinate system.",
     parameters: [
@@ -510,4 +513,135 @@ export const STEP_SCHEMA: Record<string, { description: string; parameters: { na
       { name: "description", type: "string" },
     ],
   },
+  LENGTH_MEASURE_WITH_UNIT: {
+    description: "A length measure paired with an associated unit.",
+    parameters: [
+      { name: "value_component", type: "any" },
+      { name: "unit_component", type: "any" },
+    ],
+  },
+  MASS_MEASURE_WITH_UNIT: {
+    description: "A mass measure paired with an associated unit.",
+    parameters: [
+      { name: "value_component", type: "any" },
+      { name: "unit_component", type: "any" },
+    ],
+  },
+  PLANE_ANGLE_MEASURE_WITH_UNIT: {
+    description: "A plane angle measure paired with an associated unit.",
+    parameters: [
+      { name: "value_component", type: "any" },
+      { name: "unit_component", type: "any" },
+    ],
+  },
+  REPRESENTATION: {
+    description: "A named collection of representation items in a geometric or measurement context.",
+    parameters: [
+      { name: "name", type: "string" },
+      { name: "items", type: "REPRESENTATION_ITEM[]" },
+      { name: "context_of_items", type: "REPRESENTATION_CONTEXT" },
+    ],
+  },
+  DEFINITIONAL_REPRESENTATION: {
+    description: "A representation that defines a geometric element within its local parameterization context.",
+    parameters: [
+      { name: "name", type: "string" },
+      { name: "items", type: "REPRESENTATION_ITEM[]" },
+      { name: "context_of_items", type: "REPRESENTATION_CONTEXT" },
+    ],
+  },
+  SHAPE_ASPECT: {
+    description: "An identifiable element of a product shape used for datums and geometric tolerances.",
+    parameters: [
+      { name: "name", type: "string" },
+      { name: "description", type: "string" },
+      { name: "of_shape", type: "PRODUCT_DEFINITION_SHAPE" },
+      { name: "product_definitional", type: "boolean" },
+    ],
+  },
+  PROPERTY_DEFINITION: {
+    description: "Associates a named property or engineering attribute with a product definition or shape aspect.",
+    parameters: [
+      { name: "name", type: "string" },
+      { name: "description", type: "string" },
+      { name: "definition", type: "any" },
+    ],
+  },
+  INERTIA_MATRIX: {
+    description: "Symmetric 3x3 inertia tensor components (Ixx, Iyy, Izz, Ixy, Ixz, Iyz).",
+    parameters: [
+      { name: "name", type: "string" },
+      { name: "components", type: "number[]" },
+    ],
+  },
+  DATUM: {
+    description: "An AP242 semantic GD&T datum reference derived from a datum feature or shape aspect.",
+    parameters: [
+      { name: "name", type: "string" },
+      { name: "description", type: "string" },
+      { name: "of_shape", type: "any" },
+      { name: "identification", type: "string" },
+    ],
+  },
+  DATUM_FEATURE: {
+    description: "A physical shape feature designated as an AP242 GD&T datum.",
+    minParameters: 2,
+    parameters: [
+      { name: "name", type: "string" },
+      { name: "description", type: "string" },
+      { name: "of_shape", type: "any" },
+      { name: "product_definitional", type: "boolean" },
+    ],
+  },
+  DATUM_TARGET: {
+    description: "A point, line, or limited area on a part used to establish a datum.",
+    parameters: [
+      { name: "name", type: "string" },
+      { name: "description", type: "string" },
+      { name: "of_shape", type: "any" },
+      { name: "product_definitional", type: "boolean" },
+    ],
+  },
+  DATUM_SYSTEM: {
+    description: "Ordered Datum Reference Frame (DRF) combining primary, secondary, and tertiary datums.",
+    parameters: [
+      { name: "name", type: "string" },
+      { name: "constituents", type: "DATUM[]" },
+    ],
+  },
+  ...Object.fromEntries(
+    [
+      ["GEOMETRIC_TOLERANCE", "Base ISO 10303-242 geometric tolerance entity."],
+      ["FLATNESS_TOLERANCE", "AP242 flatness tolerance controlling surface planar deviation."],
+      ["STRAIGHTNESS_TOLERANCE", "AP242 straightness tolerance controlling line or axis deviation."],
+      ["ROUNDNESS_TOLERANCE", "AP242 circularity (roundness) tolerance controlling cross-sectional form."],
+      ["CIRCULARITY_TOLERANCE", "AP242 circularity tolerance controlling cross-sectional form."],
+      ["CYLINDRICITY_TOLERANCE", "AP242 cylindricity tolerance controlling radial, circular, and straightness form."],
+      ["PERPENDICULARITY_TOLERANCE", "AP242 perpendicularity orientation tolerance relative to datum(s)."],
+      ["PARALLELISM_TOLERANCE", "AP242 parallelism orientation tolerance relative to datum(s)."],
+      ["ANGULARITY_TOLERANCE", "AP242 angularity orientation tolerance relative to datum(s)."],
+      ["POSITION_TOLERANCE", "AP242 true position tolerance zone relative to datum reference frame."],
+      ["SURFACE_PROFILE_TOLERANCE", "AP242 profile of a surface tolerance envelope."],
+      ["PROFILE_OF_SURFACE_TOLERANCE", "AP242 profile of a surface tolerance envelope."],
+      ["LINE_PROFILE_TOLERANCE", "AP242 profile of a line tolerance envelope."],
+      ["CONCENTRICITY_TOLERANCE", "AP242 concentricity / coaxiality tolerance relative to datum axis."],
+      ["COAXIALITY_TOLERANCE", "AP242 coaxiality tolerance relative to datum axis."],
+      ["SYMMETRY_TOLERANCE", "AP242 symmetry location tolerance relative to datum plane."],
+      ["RUNOUT_TOLERANCE", "AP242 circular runout tolerance relative to datum axis."],
+      ["TOTAL_RUNOUT_TOLERANCE", "AP242 total runout composite tolerance envelope relative to datum axis."],
+    ].map(([entityName, description]) => [
+      entityName,
+      {
+        description,
+        minParameters: 4,
+        parameters: [
+          { name: "name", type: "string" },
+          { name: "description", type: "string" },
+          { name: "magnitude", type: "LENGTH_MEASURE_WITH_UNIT" },
+          { name: "toleranced_shape_aspect", type: "SHAPE_ASPECT" },
+          { name: "datum_system", type: "DATUM_SYSTEM" },
+        ],
+      },
+    ]),
+  ),
 };

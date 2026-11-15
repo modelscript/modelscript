@@ -136,8 +136,8 @@ export const AiInsightRibbon = styled.div`
   border: 1px solid var(--color-accent-blue-border);
   border-radius: 8px;
   padding: 10px 14px;
-  font-size: 13.5px;
-  line-height: 1.55;
+  font-size: var(--text-sm);
+  line-height: var(--leading-base);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -157,8 +157,8 @@ export const AiInsightRibbon = styled.div`
 
 export const EngActionButton = styled.button`
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--text-xs);
+  font-weight: var(--ms-fw-semibold);
   height: 30px;
   padding: 0 14px;
   border-radius: var(--radius-pill);

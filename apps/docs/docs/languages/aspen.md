@@ -22,12 +22,26 @@ description: "@modelscript/aspen (languages/aspen) provides zero-regex parsing, 
 
 ### 1. Rachford-Rice Vapor-Liquid Equilibrium (VLE) Flash Solver
 
-- Solves isothermal ($T$-$P$) and adiabatic ($P$-$H$) flash equilibrium via the **Rachford-Rice equation**:
+- Solves isothermal ($T$-$P$) and adiabatic ($P$-$H$) flash equilibrium via the **Rachford-Rice equation**, which enforces that the sum of vapor and liquid mole fractions equals unity at phase equilibrium:
   $$f(\psi) = \sum_{i=1}^{C} \frac{z_i (K_i - 1)}{1 + \psi (K_i - 1)} = 0$$
-  where $\psi = V/F$ is the vapor fraction, $z_i$ is the feed mole fraction, and $K_i(T, P)$ is the equilibrium ratio:
+  and computes the vapor-liquid equilibrium ratio $K_i$ relating vapor and liquid compositions from component non-ideality and saturation pressure:
   $$K_i = \frac{y_i}{x_i} = \frac{\gamma_i P_i^{\text{sat}}(T)}{\phi_i P}$$
-- Uses modified **Antoine vapor pressure** equations:
+
+  | Symbol                | Meaning                                                     | Units / Domain                                  |
+  | :-------------------- | :---------------------------------------------------------- | :---------------------------------------------- |
+  | $\psi$                | Molar vapor fraction ($V/F$)                                | Dimensionless, $\psi \in [0, 1]$                |
+  | $C$                   | Number of chemical components in the mixture                | Positive integer                                |
+  | $z_i$                 | Overall feed mole fraction of component $i$                 | Dimensionless, $z_i \in [0, 1]$, $\sum z_i = 1$ |
+  | $K_i$                 | Vapor-liquid equilibrium $K$-value for component $i$        | Dimensionless ($K_i > 0$)                       |
+  | $y_i, x_i$            | Vapor and liquid phase mole fractions of component $i$      | Dimensionless, $[0, 1]$                         |
+  | $\gamma_i$            | Liquid-phase activity coefficient of component $i$          | Dimensionless ($\gamma_i > 0$)                  |
+  | $\phi_i$              | Vapor-phase fugacity coefficient of component $i$           | Dimensionless ($\phi_i > 0$)                    |
+  | $P_i^{\text{sat}}(T)$ | Pure-component saturation vapor pressure at temperature $T$ | $\text{Pa}$ or $\text{bar}$                     |
+  | $P$                   | System pressure                                             | $\text{Pa}$ or $\text{bar}$                     |
+
+- Uses modified **Antoine vapor pressure** equations to correlate each component's saturation pressure as a function of temperature:
   $$\ln P_i^{\text{sat}} = A_i - \frac{B_i}{T + C_i}$$
+  where $T$ is system temperature ($\text{K}$ or $^\circ\text{C}$), and $A_i, B_i, C_i$ are empirical Antoine constants specific to component $i$ (matching the pressure and temperature units).
 - Implements subcooled liquid ($\sum z_i K_i < 1$) and superheated vapor ($\sum z_i / K_i < 1$) state identification with monotonic Newton-Raphson bracket solving.
 
 ### 2. Unit Operations & Distillation Columns

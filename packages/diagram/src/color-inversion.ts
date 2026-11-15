@@ -491,16 +491,17 @@ export function adaptX6Markup(markup: unknown, options?: boolean | DarkModeColor
       attrs["style"] = adaptCssStyleProperty(attrs["style"], opts, isText ? "text" : "general");
     }
 
+    const wStr = String(attrs["width"] ?? "");
+    const hStr = String(attrs["height"] ?? "");
+    const w = parseFloat(wStr);
+    const h = parseFloat(hStr);
+    const isFullCanvas = isRect && (w >= 180 || wStr.includes("%")) && (h >= 180 || hStr.includes("%"));
+
     // Fill attribute
     if (typeof attrs["fill"] === "string") {
       const f = attrs["fill"].trim();
       if (f !== "none" && f !== "transparent" && !f.startsWith("url(")) {
-        const wStr = String(attrs["width"] ?? "");
-        const hStr = String(attrs["height"] ?? "");
-        const w = parseFloat(wStr);
-        const h = parseFloat(hStr);
-        const isFullCanvas = (w >= 180 || wStr.includes("%")) && (h >= 180 || hStr.includes("%"));
-        if (isRect && isFullCanvas && isLightPaperColor(f)) {
+        if (isFullCanvas && isLightPaperColor(f)) {
           attrs["fill"] = "none";
         } else {
           attrs["fill"] = adaptColorForDarkMode(f, opts, isText ? "text" : "fill");
@@ -512,7 +513,11 @@ export function adaptX6Markup(markup: unknown, options?: boolean | DarkModeColor
     if (typeof attrs["stroke"] === "string") {
       const s = attrs["stroke"].trim();
       if (s !== "none" && s !== "transparent" && !s.startsWith("url(")) {
-        attrs["stroke"] = adaptColorForDarkMode(s, opts, "stroke");
+        if (isFullCanvas) {
+          attrs["stroke"] = "none";
+        } else {
+          attrs["stroke"] = adaptColorForDarkMode(s, opts, "stroke");
+        }
       }
     }
 

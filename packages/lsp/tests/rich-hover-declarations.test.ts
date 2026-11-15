@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createModelicaQueryEngine, createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
+import { createWasmParser } from "@modelscript/modelica/parser";
 import assert from "node:assert";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -794,6 +797,151 @@ end A;`;
       const x1Offset = testText.indexOf("x1") + 1;
       const hoverX1 = testBridge.hover(x1Offset, testText);
       assert.strictEqual(hoverX1, null, "Undeclared variable 'x1' must return null, not match MSL interpolate.x1");
+    },
+  );
+
+  await t.test(
+    "Live WASM CST hover & import resolution: handles alias, wildcard, selective {}, multi-component clauses, and masked Documentation",
+    async () => {
+      const require = createRequire(import.meta.url);
+      const wasmPath = require.resolve("@modelscript/modelica/parser.wasm");
+      const { parser } = await createWasmParser(wasmPath);
+
+      const code = `package TestPkg
+  package Lib
+    type Voltage = Real(unit="V") "Electric potential";
+    model X "From selective import"
+      parameter Real k = 1;
+    end X;
+    model Y "Also in Lib"
+      parameter Real m = 2;
+    end Y;
+  end Lib;
+
+  model Demo "Demo model \\"with quotes\\""
+    // annotation(Documentation(info="fake-comment"))
+    import VAlias = TestPkg.Lib.Voltage;
+    import TestPkg.Lib.*;
+    import TestPkg.Lib.{X};
+
+    parameter VAlias R = 10, Z = 5 "Second reactance" annotation(Documentation(info="<html>component-doc</html>"));
+    X xComp "Selective instance";
+    Y yComp "Wildcard instance";
+  protected
+    constant String fakeDoc = "annotation(Documentation(info=\\"fake-desc\\"))";
+    Real secretState = 1;
+  equation
+    der(secretState) = 0;
+    annotation(Documentation(info="<html><p>Real class documentation</p></html>"));
+  end Demo;
+end TestPkg;`;
+
+      const uri = "file:///workspace/TestPkg.mo";
+      const tree = parser.parse(code);
+      const wsIndex = createModelicaWorkspaceIndex();
+      wsIndex.indexDocument(uri, () => tree.rootNode);
+      wsIndex.ensureIndexed(uri);
+      const index = wsIndex.getIndex({ eager: true });
+      const engine = createModelicaQueryEngine(index, tree);
+      const liveBridge = new LSPBridge(index, engine, new PositionIndex(code), uri);
+
+      // 1. Hover on `Demo`: CST signature + real class Documentation (ignores comment, protected string, and component Documentation)
+      const demoOffset = code.indexOf("model Demo") + "model ".length + 1;
+      const demoHover = liveBridge.hover(demoOffset, code);
+      assert.ok(demoHover, "Expected hover for live CST class Demo");
+      assert.ok(demoHover.contents.includes("model Demo"), "Must include class header");
+      assert.ok(
+        demoHover.contents.includes("Real class documentation"),
+        `Must extract class-level Documentation after equation section, got:\n${demoHover.contents}`,
+      );
+      assert.ok(!demoHover.contents.includes("fake-comment"), "Must ignore Documentation inside line comments");
+      assert.ok(!demoHover.contents.includes("fake-desc"), "Must ignore Documentation inside string literals");
+      assert.ok(!demoHover.contents.includes("component-doc"), "Must ignore Documentation inside child components");
+      assert.ok(!demoHover.contents.includes("secretState"), "Must exclude protected section from signature");
+      assert.ok(!demoHover.contents.includes("import VAlias"), "Must exclude import lines from signature");
+
+      // 2. Hover on second component `Z` in multi-component clause recovers `parameter VAlias` and resolves alias import
+      const zOffset = code.indexOf("Z = 5");
+      const zHover = liveBridge.hover(zOffset, code);
+      assert.ok(zHover, "Expected hover for multi-component declaration Z");
+      assert.ok(
+        zHover.contents.includes("parameter VAlias Z = 5"),
+        `Expected 'parameter VAlias Z = 5' from CST component_clause, got:\n${zHover.contents}`,
+      );
+      assert.ok(zHover.contents.includes("Second reactance"), "Expected description for Z");
+      assert.ok(
+        zHover.contents.includes("Electric potential"),
+        `Expected alias import VAlias -> TestPkg.Lib.Voltage type description, got:\n${zHover.contents}`,
+      );
+
+      // 3. Hover on `xComp` resolves selective import `import TestPkg.Lib.{X}`
+      const xCompOffset = code.indexOf("xComp") + 1;
+      const xCompHover = liveBridge.hover(xCompOffset, code);
+      assert.ok(xCompHover, "Expected hover for xComp");
+      assert.ok(
+        xCompHover.contents.includes("From selective import"),
+        `Expected selective import type description for X, got:\n${xCompHover.contents}`,
+      );
+
+      // 4. Hover on `yComp` resolves wildcard import `import TestPkg.Lib.*`
+      const yCompOffset = code.indexOf("yComp") + 1;
+      const yCompHover = liveBridge.hover(yCompOffset, code);
+      assert.ok(yCompHover, "Expected hover for yComp");
+      assert.ok(
+        yCompHover.contents.includes("Also in Lib"),
+        `Expected wildcard import type description for Y, got:\n${yCompHover.contents}`,
+      );
+    },
+  );
+
+  await t.test(
+    "Mock fallback hover ignores Documentation(info=...) inside strings/comments before real Documentation",
+    () => {
+      const mockCode = `model MaskedDoc "Masked doc model"
+  // annotation(Documentation(info="fake-line-comment"))
+  /* annotation(Documentation(info="fake-block-comment")) */
+  Real x;
+protected
+  constant String s = "annotation(Documentation(info=\\"fake-str\\"))";
+public
+  annotation(Documentation(info="<html><p>Real fallback documentation</p></html>"));
+end MaskedDoc;`;
+      const mockUri = "file:///workspace/MaskedDoc.mo";
+      const mockSymbols = new Map<number, any>([
+        [
+          1,
+          {
+            id: 1,
+            kind: "Class",
+            name: "MaskedDoc",
+            ruleName: "class_definition",
+            parentId: null,
+            resourceId: mockUri,
+            startOffset: 0,
+            endOffset: mockCode.length,
+          },
+        ],
+      ]);
+      const mockIndex: any = {
+        symbols: mockSymbols,
+        byName: new Map([["MaskedDoc", [1]]]),
+        childrenOf: new Map<number | null, number[]>([[null, [1]]]),
+        symbolsByResource: new Map([[mockUri, [1]]]),
+      };
+      const mockEng: any = {
+        index: mockIndex,
+        cstText: (s: number, e: number) => mockCode.slice(s, Math.min(e, mockCode.length)),
+      };
+      const mockBridge = new LSPBridge(mockIndex, mockEng, new PositionIndex(mockCode), mockUri);
+      const hover = mockBridge.hover(mockCode.indexOf("MaskedDoc"), mockCode);
+      assert.ok(hover, "Expected hover for MaskedDoc");
+      assert.ok(
+        hover.contents.includes("Real fallback documentation"),
+        `Expected real fallback Documentation, got:\n${hover.contents}`,
+      );
+      assert.ok(!hover.contents.includes("fake-str"), "Fallback must ignore Documentation in strings");
+      assert.ok(!hover.contents.includes("fake-line-comment"), "Fallback must ignore Documentation in // comments");
+      assert.ok(!hover.contents.includes("fake-block-comment"), "Fallback must ignore Documentation in /* */ comments");
     },
   );
 });

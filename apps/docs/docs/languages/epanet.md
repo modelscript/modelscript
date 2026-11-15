@@ -22,17 +22,28 @@ description: "@modelscript/epanet (languages/epanet) provides native parsing, hy
 ### 1. Todini Global Gradient Method (GGM) Hydraulic Solver
 
 - Implements the Todini Global Gradient Algorithm (`todini-ggm.ts`) for quadratic/nonlinear pipe network equilibrium:
-  - **Conservation of Mass at Junctions**:
+  - **Conservation of Mass at Junctions** (total inflow minus total outflow equals external nodal demand):
     $$\sum_{k \in \text{in}(i)} Q_k - \sum_{k \in \text{out}(i)} Q_k = D_i$$
-  - **Conservation of Energy across Pipe Loops**:
+  - **Conservation of Energy across Pipe Loops** (hydraulic head drop between nodes equals frictional head loss):
     $$h_i - h_j = h_{L,ij} = r Q_{ij} |Q_{ij}|^{\alpha - 1}$$
+
+  | Symbol        | Meaning                                                                      | Units / Domain                                                                 |
+  | :------------ | :--------------------------------------------------------------------------- | :----------------------------------------------------------------------------- |
+  | $Q_k, Q_{ij}$ | Volumetric flow rate in pipe $k$ or from node $i$ to node $j$                | $\text{m}^3\cdot\text{s}^{-1}$ (or $\text{L}\cdot\text{s}^{-1}$, $\text{gpm}$) |
+  | $D_i$         | External nodal water demand at junction $i$                                  | $\text{m}^3\cdot\text{s}^{-1}$ (or $\text{L}\cdot\text{s}^{-1}$, $\text{gpm}$) |
+  | $h_i, h_j$    | Hydraulic grade line (piezometric head) at nodes $i$ and $j$                 | $\text{m}$ (or $\text{ft}$)                                                    |
+  | $h_{L,ij}$    | Frictional head loss along pipe $(i, j)$                                     | $\text{m}$ (or $\text{ft}$)                                                    |
+  | $r$           | Pipe hydraulic resistance coefficient (from length, diameter, roughness)     | $\text{s}^{\alpha}\cdot\text{m}^{1-3\alpha}$ ($> 0$)                           |
+  | $\alpha$      | Flow exponent ($1.852$ Hazen-Williams, $2.0$ Darcy-Weisbach / Chezy-Manning) | Dimensionless ($> 0$)                                                          |
+
 - Supports **Hazen-Williams**, **Darcy-Weisbach**, and **Chezy-Manning** head loss friction models.
 
 ### 2. Multi-Component Hydraulic Elements
 
 - **Pumps**: Head gain curves modeled via 3-point polynomial and power-law relationships ($h_p = h_0 - a Q^b$).
-- **Tanks & Reservoirs**: Dynamic elevated storage tanks with hydrostatic pressure differential equations:
+- **Tanks & Reservoirs**: Dynamic elevated storage tanks with hydrostatic pressure differential equations, where the water level rises or falls in proportion to net volumetric inflow divided by tank cross-sectional area:
   $$A_{\text{tank}} \frac{dh}{dt} = \sum Q_{\text{in}} - \sum Q_{\text{out}}$$
+  where $A_{\text{tank}}$ is the tank cross-sectional area ($\text{m}^2$, $> 0$), $h$ is the water surface elevation ($\text{m}$), $t$ is time ($\text{s}$), and $Q_{\text{in}}, Q_{\text{out}}$ are incoming and outgoing pipe volumetric flow rates ($\text{m}^3\cdot\text{s}^{-1}$).
 - **Control Valves**: Pressure Reducing Valves (PRV), Pressure Sustaining Valves (PSV), and Flow Control Valves (FCV).
 
 ### 3. Extended-Period, Pressure-Driven, MOC Water Hammer, Quality & AWWA M36

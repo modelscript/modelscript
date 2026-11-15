@@ -20,7 +20,7 @@ import {
 } from "@modelscript/diagram";
 import type { Theme } from "@monaco-editor/react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { movePlacementGhost } from "./placement";
+import { clearPlacement, movePlacementGhost } from "./placement";
 
 export interface DiagramEditorHandle {
   fitContent: () => void;
@@ -392,6 +392,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     syncDiagramOptions();
   }, [props.theme]);
 
+  const hasFittedViewportRef = useRef(false);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -418,25 +420,35 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
               };
               if (g && (typeof zoomable.isDisposed === "function" ? !zoomable.isDisposed() : true)) {
                 g.resize(Math.round(width), Math.round(height));
-                if (propsRef.current.diagramData?.coordinateSystem) {
-                  const cs = propsRef.current.diagramData.coordinateSystem;
-                  const expandedRect = {
-                    x: cs.x - cs.width * 0.125,
-                    y: cs.y - cs.height * 0.125,
-                    width: cs.width * 1.25,
-                    height: cs.height * 1.25,
-                  };
-                  zoomable.zoomToRect?.(expandedRect, { viewportArea: { x: 0, y: 0, width, height } });
-                  const ox = cs.axesStyle?.origin?.[0] ?? 0;
-                  const oy = cs.axesStyle?.origin?.[1] ?? 0;
-                  if (typeof (g as any).centerPoint === "function") {
-                    (g as any).centerPoint(ox, oy);
-                  } else if (typeof zoomable.centerContent === "function") {
-                    zoomable.centerContent();
+                // Only fit/center automatically if the canvas had not yet been fitted in a visible viewport
+                // (e.g., transitioning from a 0x0 hidden tab). Subsequent resizes such as opening/closing the
+                // Properties panel on component selection must preserve the user's current pan and zoom.
+                if (
+                  !hasFittedViewportRef.current &&
+                  propsRef.current.diagramData &&
+                  !propsRef.current.diagramData.isLoading
+                ) {
+                  hasFittedViewportRef.current = true;
+                  if (propsRef.current.diagramData.coordinateSystem) {
+                    const cs = propsRef.current.diagramData.coordinateSystem;
+                    const expandedRect = {
+                      x: cs.x - cs.width * 0.125,
+                      y: cs.y - cs.height * 0.125,
+                      width: cs.width * 1.25,
+                      height: cs.height * 1.25,
+                    };
+                    zoomable.zoomToRect?.(expandedRect, { viewportArea: { x: 0, y: 0, width, height } });
+                    const ox = cs.axesStyle?.origin?.[0] ?? 0;
+                    const oy = cs.axesStyle?.origin?.[1] ?? 0;
+                    if (typeof (g as any).centerPoint === "function") {
+                      (g as any).centerPoint(ox, oy);
+                    } else if (typeof zoomable.centerContent === "function") {
+                      zoomable.centerContent();
+                    }
+                  } else if (typeof zoomable.zoomToFit === "function") {
+                    zoomable.zoomToFit({ maxScale: 1, padding: 24 });
+                    zoomable.centerContent?.();
                   }
-                } else if (typeof zoomable.zoomToFit === "function") {
-                  zoomable.zoomToFit({ maxScale: 1, padding: 24 });
-                  zoomable.centerContent?.();
                 }
                 if (typeof (g as any).zoom === "function") {
                   propsRef.current.onZoomChange?.(Math.round((g as any).zoom() * 100) / 100);
@@ -461,12 +473,17 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         syncDiagramOptions();
         renderDiagram(props.diagramData, props.theme === "vs-dark");
         attachGraphListeners();
+        const rect = (containerRef.current.parentElement ?? containerRef.current).getBoundingClientRect();
+        if (!props.diagramData.isLoading && rect.width > 0 && rect.height > 0) {
+          hasFittedViewportRef.current = true;
+        }
       } catch (err) {
         console.error("Failed to render diagram:", err);
       } finally {
         if (props.onRenderComplete) props.onRenderComplete(props.diagramData);
       }
     } else if (!props.diagramData && props.onRenderComplete) {
+      hasFittedViewportRef.current = false;
       props.onRenderComplete(null);
     }
   }, [props.diagramData, props.theme]);
@@ -588,6 +605,9 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
             const g = getGraph(containerRef.current) ?? initGraph(props.theme === "vs-dark", containerRef.current);
             if (!g) return;
             const p = g.clientToLocal(e.clientX, e.clientY);
+
+            // Clear drag placement ghost without dispatching Escape (which would destroy the drop placeholder)
+            clearPlacement();
 
             // Render the pop & bounce animation placeholder while the action queues
             dropComponentGhost(g, p.x, p.y, className, iconSvg, props.theme === "vs-dark");

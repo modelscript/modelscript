@@ -74,8 +74,16 @@ Solves stiff index-1 DAEs and method-of-lines continuum discretizations without 
 
 ### ModelScript Rationale & Modifications
 
-Physical systems operate under thermal noise, turbulence, and sensor fluctuations:
+Physical systems operate under thermal noise, turbulence, and sensor fluctuations, modeled as Itô stochastic differential equations combining deterministic drift and stochastic diffusion:
 $$dx = f(t, x) \, dt + g(t, x) \, dW_t$$
+
+| Symbol    | Meaning                                                   | Units / Domain                              |
+| :-------- | :-------------------------------------------------------- | :------------------------------------------ |
+| $t$       | Simulation time                                           | $\text{s}$                                  |
+| $x$       | Stochastic state vector                                   | $\mathbb{R}^n$                              |
+| $f(t, x)$ | Deterministic drift vector field                          | $\mathbb{R}^n/\text{s}$                     |
+| $g(t, x)$ | Diffusion (noise-intensity) matrix                        | $\mathbb{R}^{n \times m} / \sqrt{\text{s}}$ |
+| $W_t$     | $m$-dimensional standard Wiener process (Brownian motion) | $\mathbb{R}^m$ ($\sqrt{\text{s}}$)          |
 
 - **Modifications**: Employs an in-WASM `Xoshiro256pp` PRNG with Box-Muller transformation; provides both fixed-step Euler-Maruyama (strong order 0.5) and adaptive Rößler SRIW1 (strong order 1.5) integrators for Monte Carlo uncertainty rollouts.
 

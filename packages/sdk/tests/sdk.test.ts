@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   addGaussianNoise,
+  checkEnvelope,
   chirpSignal,
   clearCompileCache,
   clearTsCompileCache,
@@ -26,8 +27,10 @@ import {
   runTsKernel,
   runWasmKernel,
   sineSignal,
+  slidingPhasor,
   stepResponseMetrics,
   stepSignal,
+  symmetricalComponents,
 } from "../src/index.js";
 
 test("parseImplementationUri parses wasm://, ts://, and sysml:// bindings", () => {
@@ -666,4 +669,137 @@ test("parseDelimitedTable and parseComtradeAscii parse engineering profiles and 
   assert.equal(comtrade.sampleRateHz, 1000);
   assert.deepEqual(comtrade.time, [0, 0.001]);
   assert.deepEqual(comtrade.channels["VA"]?.values, [10, 15]);
+});
+
+test("checkEnvelope, slidingPhasor, and symmetricalComponents analyze envelopes and balanced/unbalanced 3-phase phasors", () => {
+  const env = [
+    { time: 0.0, min: 0.5, max: 1.2 },
+    { time: 1.0, min: 0.8, max: 1.1 },
+  ];
+  const passCheck = checkEnvelope([0.0, 0.5, 1.0], [0.6, 0.75, 0.9], env, { mode: "linear" });
+  assert.equal(passCheck.ok, true);
+  assert.equal(passCheck.checkedSamples, 3);
+  assert.equal(passCheck.violationCount, 0);
+  assert.ok(passCheck.worstMargin > 0.09);
+
+  const failCheck = checkEnvelope([0.0, 0.5, 1.0], [0.6, 0.4, 0.9], env, { mode: "hold" });
+  assert.equal(failCheck.ok, false);
+  assert.equal(failCheck.violationCount, 1);
+  assert.equal(failCheck.violations[0]?.bound, "min");
+  assert.ok(Math.abs(failCheck.worstMargin + 0.1) < 1e-9);
+
+  const fs = 1920; // 32 samples/cycle at 60 Hz
+  const dt = 1 / fs;
+  const n = 96;
+  const t = Array.from({ length: n }, (_, i) => i * dt);
+  const va = t.map((ti) => 1.0 * Math.cos(2 * Math.PI * 60 * ti));
+  const vb = t.map((ti) => 1.0 * Math.cos(2 * Math.PI * 60 * ti - (2 * Math.PI) / 3));
+  const vc = t.map((ti) => 1.0 * Math.cos(2 * Math.PI * 60 * ti + (2 * Math.PI) / 3));
+
+  const pa = slidingPhasor(t, va, 60, 1);
+  const pb = slidingPhasor(t, vb, 60, 1);
+  const pc = slidingPhasor(t, vc, 60, 1);
+  assert.ok(pa.magnitude.length > 10);
+  assert.ok(Math.abs(pa.magnitude[pa.magnitude.length - 1]! - 1.0) < 1e-3);
+
+  const sym = symmetricalComponents(
+    { mag: pa.magnitude, phaseRad: pa.phaseRad },
+    { mag: pb.magnitude, phaseRad: pb.phaseRad },
+    { mag: pc.magnitude, phaseRad: pc.phaseRad },
+  );
+  const last = sym.positiveMag.length - 1;
+  assert.ok(Math.abs(sym.positiveMag[last]! - 1.0) < 1e-3);
+  assert.ok(sym.negativeMag[last]! < 1e-3);
+  assert.ok(sym.zeroMag[last]! < 1e-3);
+  assert.ok(sym.unbalanceFactor[last]! < 1e-3);
+});
+
+test("runTsKernel supports extended KernelContext RPCs (inspect, readBinary, writeArtifact, runBatch) and upstream inputs in Worker and in-process modes", async () => {
+  const files = {
+    "src/multi_engine.ts": `
+      import {
+        ResultBuilder,
+        checkEnvelope,
+        type KernelContext,
+        type KernelInput,
+      } from "@modelscript/sdk";
+
+      export async function auditPipeline(input: KernelInput, ctx: KernelContext) {
+        const audit = await ctx.inspect("data/case.raw", {
+          companions: ["data/case.dyr"],
+          checks: ["companion-keys"],
+        });
+        const rawBytes = await ctx.readBinary("data/capture.bin");
+        const batch = await ctx.runBatch(
+          [
+            { id: "f1", modelPath: "data/case.pscx", options: { mode: "transient", stopTime: 0.2 } },
+            { id: "f2", modelPath: "data/case.pscx", options: { mode: "frequency-scan", stopTime: 0.2 } },
+          ],
+          2,
+        );
+        const f1 = batch[0]?.waveforms?.["v_pu"];
+        const envRes = f1
+          ? checkEnvelope(f1.x, f1.y, [
+              { time: 0, min: 0.5, max: 1.2 },
+              { time: 0.2, min: 0.85, max: 1.1 },
+            ])
+          : { ok: false, violationCount: 1, worstMargin: -1, checkedSamples: 0, violations: [] };
+        const writtenPath = await ctx.writeArtifact("reports/summary.json", JSON.stringify({ ok: envRes.ok }));
+        const upstreamScr = Number(input.upstream?.["UpstreamGate"]?.["scr"] ?? 0);
+
+        return new ResultBuilder("auditPipeline")
+          .metric("inspectedFormat", audit.format)
+          .metric("binaryLen", rawBytes.byteLength)
+          .metric("batchCount", batch.length)
+          .metric("batchOk", batch.every((b) => b.ok))
+          .metric("envelopeOk", envRes.ok)
+          .metric("writtenPath", writtenPath)
+          .metric("upstreamScr", upstreamScr)
+          .status(Boolean(audit.metrics["ok"]) && envRes.ok)
+          .summary(\`Inspect=\${audit.format}, bytes=\${rawBytes.byteLength}\`)
+          .build();
+      }
+    `,
+  };
+
+  const written: Record<string, string | Uint8Array> = {};
+  const host = {
+    readBinary: () => new Uint8Array([1, 2, 3, 4]),
+    writeArtifact: (relPath: string, data: string | Uint8Array) => {
+      written[relPath] = data;
+      return `artifacts/${relPath}`;
+    },
+    inspect: async (modelPath: string, opts?: { companions?: string[]; checks?: string[] }) => ({
+      format: "psse-raw",
+      metrics: { ok: true, companionCount: opts?.companions?.length ?? 0, modelPath },
+    }),
+    simulate: async (_modelPath: string, opts?: { mode?: string }) => ({
+      v_pu: {
+        x: [0, 0.1, 0.2],
+        y: opts?.mode === "frequency-scan" ? [1.0, 1.0, 1.0] : [0.9, 0.88, 0.95],
+      },
+    }),
+  };
+  const kernelInput = {
+    definitionName: "PipelineCheck",
+    parameters: {},
+    upstream: { UpstreamGate: { scr: 3.1 } },
+  };
+
+  for (const preemptible of [true, false]) {
+    const res = await runTsKernel("./src/multi_engine.ts", files, "auditPipeline", kernelInput, {
+      preemptible,
+      timeoutMs: 10_000,
+      host,
+    });
+    assert.equal(res.ok, true);
+    assert.equal(res.parameters?.["inspectedFormat"], "psse-raw");
+    assert.equal(res.parameters?.["binaryLen"], 4);
+    assert.equal(res.parameters?.["batchCount"], 2);
+    assert.equal(res.parameters?.["batchOk"], true);
+    assert.equal(res.parameters?.["envelopeOk"], true);
+    assert.equal(res.parameters?.["writtenPath"], "artifacts/reports/summary.json");
+    assert.equal(res.parameters?.["upstreamScr"], 3.1);
+    assert.equal(written["reports/summary.json"], JSON.stringify({ ok: true }));
+  }
 });

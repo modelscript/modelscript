@@ -1297,9 +1297,9 @@ export const PlaygroundPage: React.FC = () => {
   // Desktop-grade global keyboard shortcuts for workbench view navigation and actions
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
+      const target = e.target instanceof HTMLElement ? e.target : null;
       const isInputFocused =
-        target &&
+        target !== null &&
         (target.tagName === "INPUT" ||
           target.tagName === "TEXTAREA" ||
           target.isContentEditable ||
@@ -1562,6 +1562,14 @@ export const PlaygroundPage: React.FC = () => {
             <MorselEditor
               dataUrl={null}
               initialCode={currentCode}
+              projectFiles={projectFiles ?? undefined}
+              activeFileName={activeFile ?? undefined}
+              onUpdateProjectFile={(fileName, nextContent) => {
+                setProjectFiles((prev) => {
+                  if (!prev || prev[fileName] === nextContent) return prev;
+                  return { ...prev, [fileName]: nextContent };
+                });
+              }}
               embed={false}
               hideFloatingDock={true}
               hideCenterFloatingToolbar={true}

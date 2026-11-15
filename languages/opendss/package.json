@@ -68,6 +68,7 @@
   },
   "dependencies": {
     "@modelscript/dsl": "*",
+    "@modelscript/exchange": "*",
     "@modelscript/runtime": "*"
   },
   "devDependencies": {

@@ -25,18 +25,28 @@ description: "Native WebAssembly GLR parsing, Method-of-Lines (MOL) spatial fini
 `@modelscript/gproms` parses hierarchical `VARIABLE_TYPE`, `MODEL`, and `PROCESS` entities:
 
 - **`DISTRIBUTION_DOMAIN`**: Axial, radial, or crystal-size spatial domains (e.g., `Axial AS [0 : L]`) for tubular plug-flow reactors (PFR), pressure-swing adsorption (PSA) beds, and population-balance crystallizers.
-- **`PARTIAL(u, z)` & `INTEGRAL`**: First- and second-order spatial derivatives $\frac{\partial u}{\partial z}$ and $\frac{\partial^2 u}{\partial z^2}$ alongside time derivatives `$u` ($\frac{\partial u}{\partial t}$):
+- **`PARTIAL(u, z)` & `INTEGRAL`**: First- and second-order spatial derivatives $\frac{\partial u}{\partial z}$ and $\frac{\partial^2 u}{\partial z^2}$ alongside time derivatives `$u` ($\frac{\partial u}{\partial t}$), e.g., the 1D axial convection-dispersion-reaction balance stating that local species accumulation equals convective transport, axial dispersion, and net chemical reaction generation:
   $$\frac{\partial C_i}{\partial t} = -v_z \frac{\partial C_i}{\partial z} + D_{\text{ax}} \frac{\partial^2 C_i}{\partial z^2} + \sum_r \nu_{i,r} R_r(\mathbf{C}, T)$$
+
+  | Symbol               | Meaning                                                                                          | Units / Domain                                      |
+  | :------------------- | :----------------------------------------------------------------------------------------------- | :-------------------------------------------------- |
+  | $C_i$                | Molar concentration of chemical species $i$                                                      | $\text{mol}\cdot\text{m}^{-3}$ ($\ge 0$)            |
+  | $t, z$               | Time and axial spatial coordinate                                                                | $\text{s}$ ($t \ge 0$), $\text{m}$ ($z \in [0, L]$) |
+  | $v_z$                | Superficial or interstitial axial fluid velocity                                                 | $\text{m}\cdot\text{s}^{-1}$                        |
+  | $D_{\text{ax}}$      | Axial dispersion coefficient                                                                     | $\text{m}^2\cdot\text{s}^{-1}$ ($\ge 0$)            |
+  | $\nu_{i,r}$          | Stoichiometric coefficient of species $i$ in reaction $r$                                        | Dimensionless ($\mathbb{R}$)                        |
+  | $R_r(\mathbf{C}, T)$ | Volumetric rate of reaction $r$ as a function of concentrations $\mathbf{C}$ and temperature $T$ | $\text{mol}\cdot\text{m}^{-3}\cdot\text{s}^{-1}$    |
+
 - **`BOUNDARY` & `EQUATION`**: Danckwerts inlet/outlet boundary conditions ($v_z C_{i,\text{in}} = v_z C_i(0^+) - D_{\text{ax}} \frac{\partial C_i}{\partial z}\big|_{0^+}$) and coupled algebraic thermodynamic equilibrium relations.
 - **`ASSIGN`, `INITIAL`, & `SCHEDULE`**: Structural degrees-of-freedom specifications, differential initial conditions, and sequential operating procedures (`CONTINUE FOR`, `SWITCH`, `RESET`, `PARALLEL`).
 
 ### 2. Method-of-Lines (MOL) Discretization & Dynamic Solver
 
-For every distributed variable $u(z, t)$ defined over a `DISTRIBUTION_DOMAIN` $[z_0, z_N]$ with $N$ uniform grid intervals $\Delta z = (z_N - z_0)/N$, `@modelscript/gproms` discretizes spatial operators into node-indexed ODE/DAE equations:
+For every distributed variable $u(z, t)$ defined over a `DISTRIBUTION_DOMAIN` $[z_0, z_N]$ with $N$ uniform grid intervals $\Delta z = (z_N - z_0)/N$, `@modelscript/gproms` discretizes spatial operators into node-indexed ODE/DAE equations using finite-difference stencils on neighboring grid nodes:
 
 $$\left.\frac{\partial u}{\partial z}\right|_{z_k} \approx \frac{u_k - u_{k-1}}{\Delta z} \quad (\text{1st-order upwind}), \qquad \left.\frac{\partial^2 u}{\partial z^2}\right|_{z_k} \approx \frac{u_{k+1} - 2u_k + u_{k-1}}{\Delta z^2} \quad (\text{2nd-order central})$$
 
-This transforms the PDAE system into a semi-discrete index-1 DAE system over node variables $u_0(t), \dots, u_N(t)$, which is integrated in time and lowered directly into `@modelscript/runtime`'s `DAEBuilder` linear memory arena.
+where $u_k = u(z_k, t)$ is the field value at spatial node $z_k$ ($k \in \{0, \dots, N\}$) and $\Delta z$ is the uniform grid spacing ($\text{m}$, $> 0$). This transforms the PDAE system into a semi-discrete index-1 DAE system over node variables $u_0(t), \dots, u_N(t)$, which is integrated in time and lowered directly into `@modelscript/runtime`'s `DAEBuilder` linear memory arena.
 
 ### 3. Bidirectional Modelica 3.x Projection
 

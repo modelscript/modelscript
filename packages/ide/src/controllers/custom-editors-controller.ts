@@ -32,9 +32,11 @@ import { ReactionCoordinateEditorProvider } from "../reaction-coordinate-panel.j
 import { RequirementsEditorProvider } from "../requirements-editor-provider.js";
 import { RocetsEditorProvider } from "../rocets-editor-provider.js";
 import { SeismicViewerEditorProvider } from "../seismic-viewer-panel.js";
+import type { StepCompilationService } from "../services/step-compilation-service.js";
 import { SimaEditorProvider } from "../sima-editor-provider.js";
 import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "../ssp-document-provider.js";
 import { StepEditorProvider } from "../step-editor-provider.js";
+import { TabularPlotEditorProvider } from "../tabular-plot-editor-provider.js";
 import { TokamakEquilibriumEditorProvider } from "../tokamak-equilibrium-panel.js";
 import { WaterDiffEditorProvider } from "../water-diff-panel.js";
 
@@ -47,6 +49,7 @@ export interface CustomEditorsControllerResult {
 export function registerCustomEditors(
   context: vscode.ExtensionContext,
   client: LanguageClient,
+  stepCompilationService?: StepCompilationService,
 ): CustomEditorsControllerResult {
   // 1. Diagram Editor Provider
   const diagramProvider = new DiagramEditorProvider(context, client);
@@ -135,7 +138,7 @@ export function registerCustomEditors(
   );
 
   // 4. STEP, GCode, INP, CFG, RAW, OLGA
-  const stepEditor = new StepEditorProvider(context, client);
+  const stepEditor = new StepEditorProvider(context, client, stepCompilationService);
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(StepEditorProvider.viewType, stepEditor, {
       webviewOptions: { retainContextWhenHidden: true },
@@ -203,6 +206,13 @@ export function registerCustomEditors(
     }),
   );
 
+  const tabularPlotEditor = new TabularPlotEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(TabularPlotEditorProvider.viewType, tabularPlotEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
   const easy5Editor = new Easy5EditorProvider(context);
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(Easy5EditorProvider.viewType, easy5Editor, {
@@ -238,7 +248,7 @@ export function registerCustomEditors(
     }),
   );
 
-  const qifEditor = new QifEditorProvider(context);
+  const qifEditor = new QifEditorProvider(context, stepCompilationService);
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(QifEditorProvider.viewType, qifEditor, {
       webviewOptions: { retainContextWhenHidden: true },

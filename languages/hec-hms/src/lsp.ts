@@ -75,14 +75,27 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
     end: { line: Math.max(1, text.split("\n").length), character: 0 },
   };
 
+  const lines = text.split(/\r?\n/);
+  const makeLineRange = (idx: number, labelLen: number): LspRange => {
+    const line = Math.min(idx, Math.max(0, lines.length - 1));
+    const endChar = Math.max(1, (lines[line] ?? "").trimEnd().length || labelLen);
+    return { start: { line, character: 0 }, end: { line, character: endChar } };
+  };
+
   // Subbasins
-  const subbasinChildren: LspDocumentSymbol[] = Array.from(basin.subbasins.values()).map((sb, idx) => ({
-    name: sb.name,
-    detail: `Area: ${sb.area} ${basin.unitSystem === "Metric" ? "km²" : "mi²"}, CN=${sb.curveNumber ?? 75}`,
-    kind: LspSymbolKind.Struct,
-    range: { start: { line: idx + 5, character: 0 }, end: { line: idx + 5, character: 40 } },
-    selectionRange: { start: { line: idx + 5, character: 0 }, end: { line: idx + 5, character: 20 } },
-  }));
+  const subbasinChildren: LspDocumentSymbol[] = Array.from(basin.subbasins.values()).map((sb, idx) => {
+    const r = makeLineRange(idx + 5, sb.name.length);
+    return {
+      name: sb.name,
+      detail: `Area: ${sb.area} ${basin.unitSystem === "Metric" ? "km²" : "mi²"}, CN=${sb.curveNumber ?? 75}`,
+      kind: LspSymbolKind.Struct,
+      range: r,
+      selectionRange: {
+        start: r.start,
+        end: { line: r.start.line, character: Math.min(r.end.character, sb.name.length) },
+      },
+    };
+  });
 
   symbols.push({
     name: "Subbasins",
@@ -94,13 +107,19 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
   });
 
   // Reaches
-  const reachChildren: LspDocumentSymbol[] = Array.from(basin.reaches.values()).map((r, idx) => ({
-    name: r.name,
-    detail: `To: ${r.downstream}, Muskingum K=${r.muskingumK ?? 1} hr`,
-    kind: LspSymbolKind.Property,
-    range: { start: { line: idx + 15, character: 0 }, end: { line: idx + 15, character: 40 } },
-    selectionRange: { start: { line: idx + 15, character: 0 }, end: { line: idx + 15, character: 20 } },
-  }));
+  const reachChildren: LspDocumentSymbol[] = Array.from(basin.reaches.values()).map((rc, idx) => {
+    const r = makeLineRange(idx + 15, rc.name.length);
+    return {
+      name: rc.name,
+      detail: `To: ${rc.downstream}, Muskingum K=${rc.muskingumK ?? 1} hr`,
+      kind: LspSymbolKind.Property,
+      range: r,
+      selectionRange: {
+        start: r.start,
+        end: { line: r.start.line, character: Math.min(r.end.character, rc.name.length) },
+      },
+    };
+  });
 
   symbols.push({
     name: "Reaches",
@@ -119,12 +138,18 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
  */
 export function getDiagnostics(text: string): LspDiagnosticItem[] {
   const basin = parseHmsBasin(text);
+  const lines = text.split(/\r?\n/);
+  const lt = lines[0] ?? "";
+  let sChar = 0;
+  while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
+  const tok = lt.slice(sChar).match(/^[^\s;:,]+/);
+  const eChar = Math.min(lt.length, sChar + (tok ? tok[0].length : 1));
   const diags = lintHmsBasin(basin);
 
   return diags.map((d) => ({
     range: {
-      start: { line: 0, character: 0 },
-      end: { line: 0, character: 80 },
+      start: { line: 0, character: sChar },
+      end: { line: 0, character: eChar },
     },
     severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
     code: d.code,

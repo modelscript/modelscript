@@ -9,7 +9,7 @@ import {
   SidebarCollapseIcon,
   XIcon,
 } from "@primer/octicons-react";
-import { Button, IconButton, SegmentedControl, TextInput } from "@primer/react";
+import { Button, IconButton, TextInput } from "@primer/react";
 import React, { useRef, useState } from "react";
 import { useCapabilities } from "../../../CapabilitiesContext";
 import Spinner from "../../Spinner";
@@ -119,19 +119,14 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   const [isHovered, setIsHovered] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(true);
-  const [desktopTab, setDesktopTab] = useState<"components" | "libraries">("components");
   const [mobileSection, setMobileSection] = useState<MobileSidebarSection>(() =>
     simulationParameters.length > 0 ? "parameters" : showResultsView ? "variables" : "components",
   );
 
   if (!treeVisible) return null;
 
-  const showLibrariesSection = isNarrow
-    ? mobileSection === "libraries"
-    : !showResultsView && desktopTab === "libraries";
-  const showComponentsSection = isNarrow
-    ? mobileSection === "components"
-    : !showResultsView && desktopTab === "components";
+  const showLibrariesSection = isNarrow ? mobileSection === "libraries" : !showResultsView;
+  const showComponentsSection = isNarrow ? mobileSection === "components" : !showResultsView;
   const showVariablesSection = isNarrow ? mobileSection === "variables" : showResultsView;
   const showParametersSection = isNarrow
     ? mobileSection === "parameters"
@@ -156,32 +151,6 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
           backgroundColor: "var(--bgColor-muted, var(--ms-bg-elv))",
         }}
       >
-        {!isNarrow && !showResultsView && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "6px 10px",
-              borderBottom: "1px solid var(--borderColor-muted, var(--ms-divider))",
-              flexShrink: 0,
-            }}
-          >
-            <SegmentedControl
-              aria-label="Sidebar panel"
-              size="small"
-              fullWidth
-              onChange={(idx) => setDesktopTab(idx === 0 ? "components" : "libraries")}
-            >
-              <SegmentedControl.Button selected={desktopTab === "components"}>
-                {translations.components || "Components"}
-              </SegmentedControl.Button>
-              <SegmentedControl.Button selected={desktopTab === "libraries"}>
-                {translations.libraries || "Libraries"}
-              </SegmentedControl.Button>
-            </SegmentedControl>
-          </div>
-        )}
         {isNarrow && (
           <div
             role="tablist"
@@ -389,6 +358,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                 filter={debouncedFilter}
                 version={contextVersion}
                 language={language}
+                colorMode={_colorMode}
               />
             </div>
           </>
@@ -425,6 +395,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                   language={language}
                   translations={translations}
                   uri={documentUri}
+                  colorMode={_colorMode}
                 />
               ) : (
                 <VariablesTree

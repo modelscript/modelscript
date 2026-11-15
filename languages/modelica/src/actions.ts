@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { ActionExecutionContext } from "@modelscript/dsl";
-import { ExprKind, initBltWasm, printArenaDAE, Variability, VarType } from "@modelscript/runtime";
+import { ExprKind, initBltWasm, printArenaDAE, UnifiedWorkspace, Variability, VarType } from "@modelscript/runtime";
 import { simulateArenaAsync } from "@modelscript/simulate";
 import { Context } from "./context.js";
 import { createModelicaWorkspaceIndex } from "./factory.js";
 import { ModelicaFlattener } from "./flattener.js";
-
 import { injectPredefinedTypes } from "./predefined-types.js";
+import {
+  collapseSpaceTokens,
+  extractFirstClassFromCstNode,
+  extractWithinFromCstNode,
+  extractWithinFromSource,
+} from "./workspace-hooks.js";
 
 function resolveClassId(queryEngine: any, queryDB: any, className: string): number | undefined {
   let firstId: number | undefined;
@@ -128,11 +133,24 @@ function ensureClassIndexed(
           docTrees.set(effectiveUri, { text: docText, tree });
         }
 
+        const normalizeUriScheme = (rawUri: string): string => {
+          const colonSlash = rawUri.indexOf(":/");
+          if (colonSlash <= 0) return rawUri;
+          const scheme = rawUri.slice(0, colonSlash);
+          for (let k = 0; k < scheme.length; k++) {
+            const c = scheme.charCodeAt(k);
+            const ok = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c === 43 || c === 45;
+            if (!ok) return rawUri;
+          }
+          let after = colonSlash + 2;
+          while (after < rawUri.length && after < colonSlash + 4 && rawUri[after] === "/") after++;
+          return `${scheme}:///${rawUri.slice(after)}`;
+        };
         const prevTree = (queryEngine as any).tree;
         const cstWrapper = {
           getText: (s: number, e: number, entry?: any) => {
             const resUri = entry?.resourceId ?? effectiveUri;
-            const norm = resUri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+            const norm = normalizeUriScheme(resUri);
             const dt = docTrees?.get?.(resUri) ?? docTrees?.get?.(norm);
             if (dt?.text) return dt.text.substring(s, e);
             const sharedWrapper = (context as any).parserService?.getSharedCstTreeWrapper?.();
@@ -146,7 +164,7 @@ function ensureClassIndexed(
           },
           getNode: (s: number, e: number, entry?: any) => {
             const resUri = entry?.resourceId ?? effectiveUri;
-            const norm = resUri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+            const norm = normalizeUriScheme(resUri);
             const dt = docTrees?.get?.(resUri) ?? docTrees?.get?.(norm);
             const rNode = dt ? dt.tree?.rootNode : resUri === effectiveUri ? tree.rootNode : null;
             if (rNode) {
@@ -284,6 +302,44 @@ function ensureClassIndexed(
   return { firstId, queryDB };
 }
 
+const ACTION_TARGET_CLASS_KINDS = new Set(["model", "block", "class", "record"]);
+
+type MoCstRootLike = Parameters<typeof extractFirstClassFromCstNode>[0];
+type MoParserLike = { parse: (s: string) => { rootNode?: MoCstRootLike } | null };
+type ActionContextWithInternals = ActionExecutionContext & {
+  parserService?: { getParser?: (id: string) => MoParserLike | undefined; parser?: MoParserLike };
+  documentManager?: { documentTrees?: Map<string, { tree?: { rootNode?: MoCstRootLike } }> };
+  workspaceManager?: ActionExecutionContext["workspaceManager"] & {
+    parserService?: { getParser?: (id: string) => MoParserLike | undefined; parser?: MoParserLike };
+    documentManager?: { documentTrees?: Map<string, { tree?: { rootNode?: MoCstRootLike } }> };
+  };
+};
+
+function resolveActionMoParser(context: ActionExecutionContext): MoParserLike | undefined {
+  const ctx = context as ActionContextWithInternals;
+  const g = globalThis as { modelicaParser?: MoParserLike };
+  return (
+    g.modelicaParser ??
+    ctx.parserService?.getParser?.("modelica") ??
+    ctx.parserService?.parser ??
+    ctx.workspaceManager?.parserService?.getParser?.("modelica") ??
+    ctx.workspaceManager?.parserService?.parser ??
+    (Context._parsers.get(".mo") as MoParserLike | undefined) ??
+    (UnifiedWorkspace.getGlobalParser(".mo") as MoParserLike | undefined)
+  );
+}
+
+function getDocRootNode(context: ActionExecutionContext, docText: string, uri?: string): MoCstRootLike {
+  const ctx = context as ActionContextWithInternals;
+  const docTrees = ctx.documentManager?.documentTrees ?? ctx.workspaceManager?.documentManager?.documentTrees;
+  if (uri && docTrees && typeof docTrees.get === "function") {
+    const dt = docTrees.get(uri);
+    if (dt?.tree?.rootNode) return dt.tree.rootNode;
+  }
+  const moParser = resolveActionMoParser(context);
+  return moParser && typeof moParser.parse === "function" ? moParser.parse(docText)?.rootNode : null;
+}
+
 function extractClassName(context: ActionExecutionContext, inputs: any): string | undefined {
   let className = inputs?.name;
   let docText = context.documentText;
@@ -296,7 +352,13 @@ function extractClassName(context: ActionExecutionContext, inputs: any): string 
   if (!docText && typeof (context as any).documents?.all === "function") {
     for (const d of (context as any).documents.all()) {
       const t = d.getText();
-      if ((className && t.includes(className)) || /\b(?:model|block|class|record)\s+/.test(t)) {
+      if (className && t.includes(className)) {
+        docText = t;
+        if (!uri) uri = d.uri;
+        break;
+      }
+      const rootNode = getDocRootNode(context, t, d.uri);
+      if (extractFirstClassFromCstNode(rootNode, ACTION_TARGET_CLASS_KINDS)) {
         docText = t;
         if (!uri) uri = d.uri;
         break;
@@ -304,20 +366,22 @@ function extractClassName(context: ActionExecutionContext, inputs: any): string 
     }
   }
   if (docText) {
-    const wm = docText.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-    if (wm && wm[1]?.trim()) {
-      const pkg = wm[1].trim();
+    const moParser = resolveActionMoParser(context);
+    const rootNode = getDocRootNode(context, docText, uri);
+    const pkg =
+      (rootNode ? extractWithinFromCstNode(rootNode) : null)?.trim() ||
+      extractWithinFromSource(docText, moParser as Parameters<typeof extractWithinFromSource>[1])?.trim() ||
+      "";
+    const firstCls = extractFirstClassFromCstNode(rootNode, ACTION_TARGET_CLASS_KINDS);
+    if (pkg) {
       if (!className) {
-        const m = docText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-        if (m) className = `${pkg}.${m[1]}`;
+        if (firstCls) className = `${pkg}.${firstCls.name}`;
       } else if (!className.includes(".")) {
         className = `${pkg}.${className}`;
       }
+    } else if (!className && firstCls) {
+      className = firstCls.name;
     }
-  }
-  if (!className && docText) {
-    const m = docText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-    if (m) className = m[1];
   }
   return className;
 }
@@ -659,7 +723,9 @@ export const modelicaActionHandlers: Record<
   parse: async (context: ActionExecutionContext, inputs: Record<string, unknown>) => {
     const code = typeof inputs?.["code"] === "string" ? inputs["code"] : "";
     const parser =
-      (context as { parser?: { parse: (c: string) => { rootNode: unknown } } })?.parser ?? Context._parsers.get(".mo");
+      (context as { parser?: { parse: (c: string) => { rootNode: unknown } } })?.parser ??
+      Context._parsers.get(".mo") ??
+      (UnifiedWorkspace.getGlobalParser(".mo") as { parse: (c: string) => { rootNode: unknown } } | undefined);
     if (parser && typeof parser.parse === "function") {
       const tree = parser.parse(code);
       const wsIndex = createModelicaWorkspaceIndex();
@@ -669,7 +735,7 @@ export const modelicaActionHandlers: Record<
       for (const sym of unified.symbols.values()) {
         if (sym.kind === "Class") {
           const rawKind = String(sym.metadata?.["classPrefixes"] ?? sym.metadata?.["classKind"] ?? "class").trim();
-          const kind = rawKind.split(/\s+/).pop() || "class";
+          const kind = collapseSpaceTokens(rawKind).pop() || "class";
           classes.push({
             kind,
             name: sym.name,
@@ -705,14 +771,8 @@ export const modelicaActionHandlers: Record<
       };
     }
 
-    const classes: { name: string; kind: string }[] = [];
-    const classRegex = /\b(model|block|class|record|connector|function|package)\s+([A-Za-z0-9_]+)/g;
-    let m: RegExpExecArray | null;
-    while ((m = classRegex.exec(code)) !== null) {
-      classes.push({ kind: m[1]!, name: m[2]! });
-    }
     return {
-      classes,
+      classes: [],
       syntaxErrors: [],
     };
   },

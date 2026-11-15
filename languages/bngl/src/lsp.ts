@@ -124,9 +124,19 @@ export function getBnglDocumentSymbols(text: string): LspDocumentSymbol[] {
   const m = doc.model;
   const symbols: LspDocumentSymbol[] = [];
 
+  const lines = text.split(/\r?\n/);
+  const makeRange = (startLine: number, endLine: number): LspRange => {
+    const sLineText = lines[startLine] ?? "";
+    const eLineText = lines[endLine] ?? "";
+    const leadMatch = /\S/.exec(sLineText);
+    const startChar = leadMatch ? leadMatch.index : 0;
+    const endChar = Math.max(startChar, eLineText.trimEnd().length);
+    return { start: { line: startLine, character: startChar }, end: { line: endLine, character: endChar } };
+  };
+
   const rootRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: text.split("\n").length, character: 0 },
+    end: { line: lines.length, character: 0 },
   };
 
   const children: LspDocumentSymbol[] = [];
@@ -134,10 +144,7 @@ export function getBnglDocumentSymbols(text: string): LspDocumentSymbol[] {
   for (const mt of m.moleculeTypes.values()) {
     const startLine = mt.range ? Math.max(0, mt.range.startLine - 1) : 0;
     const endLine = mt.range ? Math.max(0, mt.range.endLine - 1) : startLine;
-    const r: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: endLine, character: 40 },
-    };
+    const r = makeRange(startLine, endLine);
     const siteList = mt.sites.map((s) => s.name).join(", ");
     children.push({
       name: mt.name,
@@ -151,10 +158,7 @@ export function getBnglDocumentSymbols(text: string): LspDocumentSymbol[] {
   for (const obs of m.observables.values()) {
     const startLine = obs.range ? Math.max(0, obs.range.startLine - 1) : 0;
     const endLine = obs.range ? Math.max(0, obs.range.endLine - 1) : startLine;
-    const r: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: endLine, character: 40 },
-    };
+    const r = makeRange(startLine, endLine);
     children.push({
       name: obs.name,
       detail: `Observable (${obs.type})`,
@@ -167,10 +171,7 @@ export function getBnglDocumentSymbols(text: string): LspDocumentSymbol[] {
   for (const rule of m.reactionRules.values()) {
     const startLine = rule.range ? Math.max(0, rule.range.startLine - 1) : 0;
     const endLine = rule.range ? Math.max(0, rule.range.endLine - 1) : startLine;
-    const r: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: endLine, character: 40 },
-    };
+    const r = makeRange(startLine, endLine);
     const lhs = rule.reactants.map((p) => serializeComplexPattern(p)).join(" + ") || "0";
     const rhs = rule.products.map((p) => serializeComplexPattern(p)).join(" + ") || "0";
     const arrow = rule.reversible ? "<->" : "->";

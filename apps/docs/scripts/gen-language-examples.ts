@@ -16,6 +16,7 @@ import * as zlib from "node:zlib";
 
 import type { DiagramData, DiagramEdge, DiagramNode } from "@modelscript/diagram/protocol";
 import { renderPolyglotDiagramToSvg } from "@modelscript/diagram/svg";
+import { createHighlighter, type Highlighter } from "shiki";
 import { LANGUAGES } from "../docs/.vitepress/theme/data/languages.js";
 
 // Seed Math.random deterministically so layout engines (e.g. ELK tie-breaking) produce identical SVGs across --check runs.
@@ -42,6 +43,7 @@ export interface GeneratedLanguageExample extends LanguageExampleSpec {
   name: string;
   ext: string;
   lineCount: number;
+  highlightedLines: string[];
   permalinkToken: string;
   svgDark: string;
   svgLight: string;
@@ -5672,7 +5674,88 @@ async function renderExampleSvgs(slug: string, code: string): Promise<{ svgDark:
   }
 }
 
+function escapeHtmlForCode(raw: string): string {
+  return raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+async function createExamplesHighlighter(): Promise<Highlighter> {
+  const ideSyntaxesDir = path.resolve(__dirname, "../../../apps/ide/dist/extension/syntaxes");
+  const languagesDir = path.resolve(__dirname, "../../../languages");
+  const customLangs: Record<string, unknown>[] = [];
+  const loadedSlugs = new Set<string>();
+  const skipBuiltins = new Set(["c", "fortran"]);
+
+  if (fs.existsSync(ideSyntaxesDir)) {
+    for (const file of fs.readdirSync(ideSyntaxesDir)) {
+      if (!file.endsWith(".tmLanguage.json")) continue;
+      const slug = file.replace(/\.tmLanguage\.json$/, "");
+      if (skipBuiltins.has(slug) || loadedSlugs.has(slug)) continue;
+      try {
+        const g = JSON.parse(fs.readFileSync(path.join(ideSyntaxesDir, file), "utf8")) as Record<string, unknown>;
+        g["name"] = slug;
+        g["scopeName"] = g["scopeName"] || `source.${slug}`;
+        customLangs.push(g);
+        loadedSlugs.add(slug);
+      } catch {
+        // ignore
+      }
+    }
+  }
+  if (fs.existsSync(languagesDir)) {
+    for (const entry of fs.readdirSync(languagesDir)) {
+      if (skipBuiltins.has(entry) || loadedSlugs.has(entry)) continue;
+      const tmPath = path.join(languagesDir, entry, "as-gen", "tmLanguage.json");
+      if (!fs.existsSync(tmPath)) continue;
+      try {
+        const g = JSON.parse(fs.readFileSync(tmPath, "utf8")) as Record<string, unknown>;
+        g["name"] = entry;
+        g["scopeName"] = g["scopeName"] || `source.${entry}`;
+        customLangs.push(g);
+        loadedSlugs.add(entry);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  return createHighlighter({
+    themes: ["github-light", "github-dark"],
+    langs: ["c", "f90", "yaml", "xml", "ini", "matlab", ...(customLangs as any[])],
+  });
+}
+
+const SHIKI_LANG_OVERRIDES: Record<string, string> = {
+  fortran: "f90",
+  cantera: "yaml",
+  matpower: "matlab",
+};
+
+function renderHighlightedLines(highlighter: Highlighter, slug: string, code: string): string[] {
+  const targetLang = SHIKI_LANG_OVERRIDES[slug] ?? slug;
+  const loaded = highlighter.getLoadedLanguages();
+  const lang = loaded.includes(targetLang) ? targetLang : "text";
+  const { tokens } = highlighter.codeToTokens(code, {
+    lang: lang as any,
+    themes: { light: "github-light", dark: "github-dark" },
+  });
+  return tokens.map((lineTokens) => {
+    if (lineTokens.length === 0) return " ";
+    return lineTokens
+      .map((tok) => {
+        const light = tok.htmlStyle?.["--shiki-light"] ?? tok.color ?? "";
+        const dark = tok.htmlStyle?.["--shiki-dark"] ?? tok.color ?? "";
+        const styleParts: string[] = [];
+        if (light) styleParts.push(`--shiki-light:${light}`);
+        if (dark) styleParts.push(`--shiki-dark:${dark}`);
+        const text = escapeHtmlForCode(tok.content);
+        return styleParts.length > 0 ? `<span style="${styleParts.join(";")}">${text}</span>` : text;
+      })
+      .join("");
+  });
+}
+
 async function generateAllExamples(): Promise<GeneratedLanguageExample[]> {
+  const highlighter = await createExamplesHighlighter();
   const results: GeneratedLanguageExample[] = [];
   for (const lang of LANGUAGES) {
     const spec = EXAMPLE_SPECS[lang.slug];
@@ -5697,16 +5780,91 @@ async function generateAllExamples(): Promise<GeneratedLanguageExample[]> {
       viewLabel: spec.viewLabel,
       code: trimmedCode,
       lineCount: trimmedCode.split("\n").length,
+      highlightedLines: renderHighlightedLines(highlighter, lang.slug, trimmedCode),
       permalinkToken: encodePermalinkToken(lang.slug, spec.filename, trimmedCode),
       svgDark: namespaceSvgIds(svgDark, `${lang.slug}-d`),
       svgLight: namespaceSvgIds(svgLight, `${lang.slug}-l`),
     });
   }
+  highlighter.dispose();
   return results;
+}
+
+interface MonarchGrammarSpec {
+  keywords: string[];
+  types: string[];
+  lineComments: string[];
+  blockComment?: [string, string];
+}
+
+function extractWordListFromTmMatch(matchPattern: unknown): string[] {
+  if (typeof matchPattern !== "string") return [];
+  const m = matchPattern.match(/^\\b\((.+)\)\\b$/);
+  if (!m?.[1]) return [];
+  return m[1]
+    .split("|")
+    .map((w) => w.replace(/\\(.)/g, "$1"))
+    .filter((w) => /^[A-Za-z_][A-Za-z0-9_.-]*$/.test(w));
+}
+
+function buildMonarchGrammarsMap(): Record<string, MonarchGrammarSpec> {
+  const ideSyntaxesDir = path.resolve(__dirname, "../../../apps/ide/dist/extension/syntaxes");
+  const languagesDir = path.resolve(__dirname, "../../../languages");
+  const map: Record<string, MonarchGrammarSpec> = {};
+
+  const ingest = (slug: string, tm: Record<string, any>) => {
+    if (map[slug] || slug === "sysml") return;
+    const repo = tm.repository ?? {};
+    const keywords = extractWordListFromTmMatch(repo.keywords?.patterns?.[0]?.match);
+    const types = extractWordListFromTmMatch(repo.types?.patterns?.[0]?.match);
+    const lineComments: string[] = [];
+    let blockComment: [string, string] | undefined;
+    for (const c of repo.comments?.patterns ?? []) {
+      if (typeof c?.match === "string") {
+        lineComments.push(c.match);
+      } else if (typeof c?.begin === "string" && typeof c?.end === "string" && !blockComment) {
+        blockComment = [c.begin, c.end];
+      }
+    }
+    map[slug] = {
+      keywords,
+      types,
+      lineComments,
+      ...(blockComment ? { blockComment } : {}),
+    };
+  };
+
+  if (fs.existsSync(ideSyntaxesDir)) {
+    for (const file of fs.readdirSync(ideSyntaxesDir).sort()) {
+      if (!file.endsWith(".tmLanguage.json")) continue;
+      const slug = file.replace(/\.tmLanguage\.json$/, "");
+      try {
+        ingest(slug, JSON.parse(fs.readFileSync(path.join(ideSyntaxesDir, file), "utf8")));
+      } catch {
+        // ignore
+      }
+    }
+  }
+  if (fs.existsSync(languagesDir)) {
+    for (const entry of fs.readdirSync(languagesDir).sort()) {
+      if (map[entry]) continue;
+      const tmPath = path.join(languagesDir, entry, "as-gen", "tmLanguage.json");
+      if (!fs.existsSync(tmPath)) continue;
+      try {
+        ingest(entry, JSON.parse(fs.readFileSync(tmPath, "utf8")));
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return map;
 }
 
 const examples = await generateAllExamples();
 const jsonOutput = JSON.stringify(examples, null, 2) + "\n";
+const monarchOutputPath = path.resolve(__dirname, "../docs/.vitepress/theme/data/monarch-grammars.generated.json");
+const monarchMap = buildMonarchGrammarsMap();
+const monarchOutput = JSON.stringify(monarchMap, null, 2) + "\n";
 
 if (process.argv.includes("--check")) {
   const current = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, "utf8") : "";
@@ -5716,10 +5874,20 @@ if (process.argv.includes("--check")) {
     );
     process.exit(1);
   }
+  const currentMonarch = fs.existsSync(monarchOutputPath) ? fs.readFileSync(monarchOutputPath, "utf8") : "";
+  if (currentMonarch !== monarchOutput) {
+    console.error(
+      "✖ monarch-grammars.generated.json is out of date. Run `npm run gen:examples --workspace=@modelscript/docs`.",
+    );
+    process.exit(1);
+  }
   console.log(`✓ language-examples.generated.json is up to date (${examples.length} languages).`);
   process.exit(0);
 }
 
 fs.writeFileSync(outputPath, jsonOutput, "utf8");
-console.log(`✓ Wrote ${examples.length} language examples + SVGs to ${path.relative(process.cwd(), outputPath)}`);
+fs.writeFileSync(monarchOutputPath, monarchOutput, "utf8");
+console.log(
+  `✓ Wrote ${examples.length} language examples + ${Object.keys(monarchMap).length} Monarch grammars to docs/.vitepress/theme/data/`,
+);
 process.exit(0);

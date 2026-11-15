@@ -31,15 +31,24 @@ $$
 \right)
 $$
 
-yielding $\phi_i = \theta(\text{C}_{i-1}, \text{N}_i, \text{C}_{\alpha,i}, \text{C}_i)$ and $\psi_i = \theta(\text{N}_i, \text{C}_{\alpha,i}, \text{C}_i, \text{N}_{i+1})$. The mass-weighted center of mass $\mathbf{R}_{\text{cm}}$ and radius of gyration $R_g$ over $N$ atoms with atomic masses $m_k$ are:
+This four-quadrant $\operatorname{atan2}$ projection computes the signed dihedral angle between the planes spanned by $(\mathbf{b}_1, \mathbf{b}_2)$ and $(\mathbf{b}_2, \mathbf{b}_3)$, yielding $\phi_i = \theta(\text{C}_{i-1}, \text{N}_i, \text{C}_{\alpha,i}, \text{C}_i)$ and $\psi_i = \theta(\text{N}_i, \text{C}_{\alpha,i}, \text{C}_i, \text{N}_{i+1})$. The mass-weighted center of mass $\mathbf{R}_{\text{cm}}$ and radius of gyration $R_g$ over $N$ atoms measure overall macromolecular compactness:
 
 $$
 \mathbf{R}_{\text{cm}} = \frac{\sum_{k=1}^N m_k \mathbf{r}_k}{\sum_{k=1}^N m_k}, \qquad R_g = \sqrt{\frac{\sum_{k=1}^N m_k \|\mathbf{r}_k - \mathbf{R}_{\text{cm}}\|^2}{\sum_{k=1}^N m_k}}
 $$
 
+| Symbol                                     | Meaning                                                                      | Units / Domain                             |
+| :----------------------------------------- | :--------------------------------------------------------------------------- | :----------------------------------------- |
+| $\theta$                                   | Signed backbone dihedral (torsion) angle                                     | $\text{rad}$ (or $^\circ$), $[-\pi, \pi]$  |
+| $\mathbf{b}_1, \mathbf{b}_2, \mathbf{b}_3$ | Consecutive backbone bond vectors                                            | $\text{\AA}$, $\mathbb{R}^3$               |
+| $\mathbf{R}_{\text{cm}}$                   | Mass-weighted center-of-mass position                                        | $\text{\AA}$, $\mathbb{R}^3$               |
+| $R_g$                                      | Radius of gyration (root-mean-square distance from $\mathbf{R}_{\text{cm}}$) | $\text{\AA}$, $\ge 0$                      |
+| $N$                                        | Total number of atoms in the structure                                       | dimensionless, $\mathbb{Z}_{>0}$           |
+| $m_k, \mathbf{r}_k$                        | Atomic mass and 3D coordinate vector of atom $k$                             | $\text{Da}$, $\text{\AA}$ ($\mathbb{R}^3$) |
+
 ### 2. Gaussian Network Model (GNM) & Crystallographic $B$-Factors
 
-In the coarse-grained Tirion / Bahar **Gaussian Network Model (GNM)**, each residue is represented by its $\text{C}_\alpha$ node ($i = 1, \dots, n$) connected by uniform harmonic springs $\gamma$ within a cutoff radius $r_c = 7.0\text{ \AA}$. The $n \times n$ Kirchhoff contact matrix $\boldsymbol{\Gamma}$ is defined by:
+In the coarse-grained Tirion / Bahar **Gaussian Network Model (GNM)**, each residue is represented by its $\text{C}_\alpha$ node ($i = 1, \dots, n$) connected by uniform harmonic springs $\gamma$ within a cutoff radius $r_c = 7.0\text{ \AA}$. The $n \times n$ Kirchhoff contact matrix $\boldsymbol{\Gamma}$ encodes the residue contact topology (with diagonal entries equal to each node's coordination degree):
 
 $$
 \Gamma_{ij} = \begin{cases}
@@ -49,11 +58,23 @@ $$
 \end{cases}
 $$
 
-Using the Moore-Penrose pseudoinverse $\boldsymbol{\Gamma}^+$ (excluding the trivial zero translational eigenmode $\lambda_1 = 0$), theoretical equilibrium mean-square residue fluctuations and isotropic X-ray Debye-Waller $B$-factors are:
+Using the Moore-Penrose pseudoinverse $\boldsymbol{\Gamma}^+$ (excluding the trivial zero translational eigenmode $\lambda_1 = 0$), theoretical equilibrium mean-square residue fluctuations and isotropic X-ray Debye-Waller $B$-factors relate structural flexibility directly to the inverse contact connectivity:
 
 $$
 \langle (\Delta \mathbf{R}_i)^2 \rangle = \frac{3 k_B T}{\gamma} \left[\boldsymbol{\Gamma}^+\right]_{ii}, \qquad B_i^{\text{calc}} = \frac{8 \pi^2}{3} \langle (\Delta \mathbf{R}_i)^2 \rangle
 $$
+
+| Symbol                                                         | Meaning                                                                           | Units / Domain                               |
+| :------------------------------------------------------------- | :-------------------------------------------------------------------------------- | :------------------------------------------- |
+| $\Gamma_{ij}$                                                  | $(i, j)$ entry of the $n \times n$ Kirchhoff contact matrix $\boldsymbol{\Gamma}$ | dimensionless, $\mathbb{Z}$                  |
+| $i, j, k$                                                      | Residue ($\text{C}_\alpha$ node) indices                                          | $1, \dots, n$                                |
+| $\mathbf{r}_{\text{C}\alpha,i}, \mathbf{r}_{\text{C}\alpha,j}$ | 3D Cartesian coordinates of $\text{C}_\alpha$ atoms $i$ and $j$                   | $\text{\AA}$, $\mathbb{R}^3$                 |
+| $r_c$                                                          | Spatial contact cutoff radius ($7.0\text{ \AA}$)                                  | $\text{\AA}$, $> 0$                          |
+| $\langle (\Delta \mathbf{R}_i)^2 \rangle$                      | Equilibrium mean-square fluctuation of residue $i$                                | $\text{\AA}^2$, $\ge 0$                      |
+| $k_B, T$                                                       | Boltzmann constant and absolute temperature                                       | $\text{kcal/(mol}\cdot\text{K)}$, $\text{K}$ |
+| $\gamma$                                                       | Uniform harmonic spring force constant                                            | $\text{kcal/(mol}\cdot\text{\AA}^2)$, $> 0$  |
+| $[\boldsymbol{\Gamma}^+]_{ii}$                                 | $i$-th diagonal entry of the Moore-Penrose pseudoinverse of $\boldsymbol{\Gamma}$ | dimensionless, $\ge 0$                       |
+| $B_i^{\text{calc}}$                                            | Calculated isotropic Debye-Waller $B$-factor of residue $i$                       | $\text{\AA}^2$, $\ge 0$                      |
 
 ---
 

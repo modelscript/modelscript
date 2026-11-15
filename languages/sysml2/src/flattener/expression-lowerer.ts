@@ -169,7 +169,13 @@ export function lowerDirectCstExpression(
       return arena.addRealLiteral(0.0);
 
     case "LiteralString": {
-      const clean = node.text.trim().replace(/^["']|["']$/g, "");
+      const trimmed = node.text.trim();
+      const q0 = trimmed[0];
+      const q1 = trimmed[trimmed.length - 1];
+      const clean =
+        trimmed.length >= 2 && ((q0 === '"' && q1 === '"') || (q0 === "'" && q1 === "'"))
+          ? trimmed.slice(1, -1)
+          : trimmed;
       return arena.addStringLiteral(clean);
     }
 

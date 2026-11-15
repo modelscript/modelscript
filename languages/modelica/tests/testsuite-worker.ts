@@ -799,7 +799,7 @@ function runTestCaseCore(
     let rawCstDiags: any[] = [];
     if (tree && facade && testCase.source.length < 100000) {
       try {
-        rawCstDiags = (facade as any).getDiagnostics(tree.rootNode.id) ?? [];
+        rawCstDiags = (facade as any).getDiagnostics(tree.rootNode.id, 0, 0, testCase.source) ?? [];
       } catch {
         rawCstDiags = [];
       }

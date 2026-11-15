@@ -14,8 +14,27 @@ import {
   type ScrapedCHeader,
 } from "./header-scraper.js";
 
+function normalizeCTypeText(raw: string): string {
+  const lower = raw.toLowerCase();
+  let out = "";
+  let inWs = false;
+  for (let i = 0; i < lower.length; i++) {
+    const code = lower.charCodeAt(i);
+    if (code === 32 || code === 9 || code === 10 || code === 13) {
+      if (out.length > 0) inWs = true;
+    } else {
+      if (inWs) {
+        out += " ";
+        inWs = false;
+      }
+      out += lower[i]!;
+    }
+  }
+  return out;
+}
+
 export function mapCTypeToModelica(cType: string, isPointer: boolean = false): string {
-  const normalized = cType.toLowerCase().replace(/\s+/g, " ").trim();
+  const normalized = normalizeCTypeText(cType);
 
   if (isPointer && normalized === "char") return "String";
   if (normalized === "double" || normalized === "float" || normalized === "real_t") return "Real";

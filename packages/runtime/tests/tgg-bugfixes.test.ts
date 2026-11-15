@@ -2,13 +2,13 @@
 
 import { tggComplement, tggCompute, tggEq, tggInvertible, tggNot, tggRule } from "@modelscript/dsl";
 import { compileTGGRules, planTGGRules } from "@modelscript/dsl/codegen/compile_tgg.js";
-import { compileWcojMatcher, planWcojPattern } from "@modelscript/dsl/codegen/rewriting/compile_wcoj.js";
-import { registerNodeDomain, runCPA } from "@modelscript/dsl/codegen/rewriting/cpa.js";
-import { PolyglotTransformer } from "@modelscript/runtime/polyglot-transformer.js";
-import { registerNodeNameKey, solveWhereConstraints } from "@modelscript/runtime/tgg-pattern-interpreter.js";
-import { ThreadDomain } from "@modelscript/runtime/thread_hypergraph.js";
+import { compileWcojMatcher, planWcojPattern } from "@modelscript/dsl/codegen/rewriting/compile_wcoj";
+import { registerNodeDomain, runCPA } from "@modelscript/dsl/codegen/rewriting/cpa";
 import assert from "node:assert";
 import { describe, it } from "node:test";
+import { PolyglotTransformer } from "../src/interop/polyglot-transformer.js";
+import { registerNodeNameKey, solveWhereConstraints } from "../src/interop/tgg-pattern-interpreter.js";
+import { ThreadDomain } from "../src/interop/thread_hypergraph.js";
 
 describe("TGG Engine Bugfix Regressions", () => {
   it("should auto-invert omitted backwardExpr and evaluate scientific notation safely in solveWhereConstraints", () => {

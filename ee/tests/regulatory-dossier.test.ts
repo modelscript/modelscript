@@ -6,7 +6,6 @@ import {
   buildRegulatoryDossier,
   compileNercRsawDocument,
   compileOscalAssessmentResults,
-  generateCeiiWatermarkHeader,
   verifyComplianceAttestation,
   type DossierCompilationInput,
 } from "../src/index.js";
@@ -131,5 +130,51 @@ describe("Automated Regulatory Dossier, NERC RSAW & NIST OSCAL 1.1 Compiler (@mo
     assert.equal(verifyResult.payload?.standard, "NERC-CIP-002-014");
     assert.equal(verifyResult.payload?.workspaceId, "SOLAR_DESERT_100MW");
     assert.equal(verifyResult.payload?.artifactSha256, dossier.manifestDigestSha256);
+  });
+
+  it("compiles ASME BPVC Section VIII compliance matrix dossier and signs ASME-BPVC-VIII-1 attestation", () => {
+    const asmeInput: DossierCompilationInput = {
+      organizationName: "Acme Pressure Equipment Corp",
+      plantName: "V-101-SEPARATOR",
+      standardProfile: "ASME-BPVC-VIII-1",
+      overallStatus: "NON-COMPLIANT",
+      findings: [
+        {
+          standard: "ASME-BPVC-VIII-1",
+          element: "V101.Shell",
+          rule: "UG-27(c)(1)",
+          severity: "violation",
+          description: "Cylindrical shell thickness below required UG-27 minimum wall at 500F.",
+          observedValue: "12.0 mm",
+          expectedRange: ">= 17.28 mm",
+          margin: "-5.28 mm",
+          verificationMethod: "formal-interval",
+        },
+        {
+          standard: "ASME-BPVC-VIII-1",
+          element: "V101.TopHead",
+          rule: "UG-32(d)",
+          severity: "pass",
+          description: "2:1 ellipsoidal head thickness meets UG-32(d) requirement.",
+          observedValue: "18.0 mm",
+          expectedRange: ">= 14.95 mm",
+          margin: "+3.05 mm",
+          verificationMethod: "smt-oracle",
+        },
+      ],
+      simulationArtifactHashes: {
+        "VesselSeparator.mo": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      },
+    };
+
+    const dossier = buildRegulatoryDossier(asmeInput);
+    assert.ok(dossier.rsawMarkdown.includes("ASME BPVC Section VIII Mechanical Integrity & Compliance Dossier"));
+    assert.ok(dossier.rsawMarkdown.includes("UG-27(c)(1)"));
+    assert.ok(dossier.rsawMarkdown.includes("-5.28 mm"));
+    assert.ok(dossier.rsawMarkdown.includes("formal-interval"));
+
+    const verifyRes = verifyComplianceAttestation(dossier.signedAttestation.bundleToken);
+    assert.equal(verifyRes.valid, true);
+    assert.equal(verifyRes.payload?.standard, "ASME-BPVC-VIII-1");
   });
 });

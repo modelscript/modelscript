@@ -1363,13 +1363,28 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  START = 2,
-  _START = 2,
-  Root = 3,
+  Document = 9,
+  Element = 10,
+  START = 11,
+  _START = 11,
+  EmptyTag = 16,
+  StartTag = 17,
+  CloseTag = 18,
+  Text = 19,
+  CData = 20,
+  COMMENT = 21,
+  PROCESSINGINSTRUCTION = 22,
+  PROCESSING_INSTRUCTION = 22,
   EOF = 1023,
 }
 
 export declare enum FieldId {
+  Open = 1,
+  open = 1,
+  Children = 2,
+  children = 2,
+  EndName = 3,
+  endName = 3,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1377,16 +1392,94 @@ export declare function normalizeToken(token: string | null | undefined): string
 
 /** Returns the normalized type of a CST node (stripped of quotes). */
 export declare function cstKind(node: SyntaxNode | null | undefined): string;
-export interface RootNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.Root;
+export interface DocumentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Document;
 }
-export declare function isRoot(node: SyntaxNode | null | undefined): node is RootNode;
+export declare function isDocument(node: SyntaxNode | null | undefined): node is DocumentNode;
+export interface ElementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Element;
+}
+export declare function isElement(node: SyntaxNode | null | undefined): node is ElementNode;
+export interface EmptyTagNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.EmptyTag;
+}
+export declare function isEmptyTag(node: SyntaxNode | null | undefined): node is EmptyTagNode;
+export interface StartTagNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.StartTag;
+}
+export declare function isStartTag(node: SyntaxNode | null | undefined): node is StartTagNode;
+export interface CloseTagNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CloseTag;
+}
+export declare function isCloseTag(node: SyntaxNode | null | undefined): node is CloseTagNode;
+export interface TextNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Text;
+}
+export declare function isText(node: SyntaxNode | null | undefined): node is TextNode;
+export interface CDataNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CData;
+}
+export declare function isCData(node: SyntaxNode | null | undefined): node is CDataNode;
+export interface COMMENTNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.COMMENT;
+}
+export declare function isCOMMENT(node: SyntaxNode | null | undefined): node is COMMENTNode;
+export interface PROCESSINGINSTRUCTIONNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.PROCESSINGINSTRUCTION;
+}
+export declare function isPROCESSINGINSTRUCTION(node: SyntaxNode | null | undefined): node is PROCESSINGINSTRUCTIONNode;
 export declare namespace Cst {
   export function kind(node: SyntaxNode | null | undefined): string;
   export function normalize(token: string | null | undefined): string;
-  export const Root: {
+  export const Document: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is RootNode;
+    is(node: SyntaxNode | null | undefined): node is DocumentNode;
+  };
+  export const Element: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ElementNode;
+    open(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    openList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    endName(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    endNameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    children(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    childrenList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const EmptyTag: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is EmptyTagNode;
+  };
+  export const StartTag: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is StartTagNode;
+  };
+  export const CloseTag: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is CloseTagNode;
+  };
+  export const Text: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is TextNode;
+  };
+  export const CData: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is CDataNode;
+  };
+  export const COMMENT: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is COMMENTNode;
+  };
+  export const PROCESSINGINSTRUCTION: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is PROCESSINGINSTRUCTIONNode;
   };
 }

@@ -1143,8 +1143,8 @@ onBeforeUnmount(() => {
 
 .ai-tab-title {
   margin-top: 2px;
-  font-size: 0.96rem;
-  font-weight: 680;
+  font-size: var(--text-base);
+  font-weight: var(--ms-fw-semibold);
   color: var(--vp-c-text-1);
 }
 

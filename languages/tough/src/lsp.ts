@@ -37,18 +37,26 @@ export interface LspDocumentSymbol {
 
 export function validateTough(text: string): LspDiagnostic[] {
   try {
+    const lines = text.split(/\r?\n/);
     const deck = parseTough(text);
     const diags = lintTough(deck);
-    return diags.map((d) => ({
-      range: {
-        start: { line: Math.max(0, d.line - 1), character: 0 },
-        end: { line: Math.max(0, d.line - 1), character: 80 },
-      },
-      severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
-      code: `T${d.code}`,
-      source: "tough",
-      message: d.message,
-    }));
+    return diags.map((d) => {
+      const l = Math.min(Math.max(0, d.line - 1), Math.max(0, lines.length - 1));
+      const lt = lines[l] ?? "";
+      let sChar = 0;
+      while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
+      const tok = lt.slice(sChar).match(/^[^\s,;]+/);
+      return {
+        range: {
+          start: { line: l, character: sChar },
+          end: { line: l, character: Math.min(lt.length, sChar + (tok ? tok[0].length : 1)) },
+        },
+        severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
+        code: `T${d.code}`,
+        source: "tough",
+        message: d.message,
+      };
+    });
   } catch (err) {
     return [
       {
@@ -76,8 +84,14 @@ export function getToughDocumentSymbols(input: string | ToughDeck): LspDocumentS
       name: r.name,
       detail: `Rock (porosity: ${r.porosity})`,
       kind: 5,
-      range: { start: { line: Math.max(0, r.line - 1), character: 0 }, end: { line: Math.max(0, r.line - 1), character: 80 } },
-      selectionRange: { start: { line: Math.max(0, r.line - 1), character: 0 }, end: { line: Math.max(0, r.line - 1), character: 5 } },
+      range: {
+        start: { line: Math.max(0, r.line - 1), character: 0 },
+        end: { line: Math.max(0, r.line - 1), character: 80 },
+      },
+      selectionRange: {
+        start: { line: Math.max(0, r.line - 1), character: 0 },
+        end: { line: Math.max(0, r.line - 1), character: 5 },
+      },
     });
   }
 
@@ -86,8 +100,14 @@ export function getToughDocumentSymbols(input: string | ToughDeck): LspDocumentS
       name: el.name,
       detail: `Grid Element (volume: ${el.volume} m^3)`,
       kind: 13,
-      range: { start: { line: Math.max(0, el.line - 1), character: 0 }, end: { line: Math.max(0, el.line - 1), character: 80 } },
-      selectionRange: { start: { line: Math.max(0, el.line - 1), character: 0 }, end: { line: Math.max(0, el.line - 1), character: 5 } },
+      range: {
+        start: { line: Math.max(0, el.line - 1), character: 0 },
+        end: { line: Math.max(0, el.line - 1), character: 80 },
+      },
+      selectionRange: {
+        start: { line: Math.max(0, el.line - 1), character: 0 },
+        end: { line: Math.max(0, el.line - 1), character: 5 },
+      },
     });
   }
 

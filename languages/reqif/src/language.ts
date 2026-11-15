@@ -8,7 +8,7 @@
  * SysML v2 and Modelica physical models.
  */
 
-import { language, type TabularMutationRequest } from "@modelscript/dsl";
+import { language, xmlRules, type TabularMutationRequest } from "@modelscript/dsl";
 import { buildReqIfDiagram, renderReqIfDiagramSvg, reqifDiagramConfig } from "./diagram.js";
 import { reqifIndexing } from "./indexing.js";
 import { parseReqIf } from "./parser/reqif-parser.js";
@@ -70,9 +70,12 @@ export const reqifLanguage = language({
       },
     },
   },
-  rules: {
-    Root: () => "reqif",
+  extras: ($) => {
+    const comment = $["COMMENT"];
+    const pi = $["PROCESSING_INSTRUCTION"];
+    return comment && pi ? [/[ \t\r\n]+/, comment, pi] : [/[ \t\r\n]+/];
   },
+  rules: xmlRules,
   diagram: reqifDiagramConfig,
   tabular: reqifTabularConfig,
   requirements: {

@@ -168,6 +168,8 @@ export class InpDialect implements FeaDialect {
           } else {
             data.steps![data.steps!.length - 1]!.analysisType = keyword;
           }
+        } else if (keyword === "INCLUDE" && currentOptions["INPUT"]) {
+          (data.includes ??= []).push(currentOptions["INPUT"]);
         }
 
         continue;

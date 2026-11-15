@@ -47,10 +47,25 @@ graph TD
   - **Hydrogen Blending**: Native support for $H_2$ blending in natural gas from 0% to 100%, capturing density drop, speed of sound increases, and compressor power shifts.
   - **Peng-Robinson Cubic EOS**: General flash calculation for heavy hydrocarbons and dense-phase supercritical $CO_2$ pipeline transport.
 - **Transient Compressible Gas Dynamics**:
-  - Solves 1D staggered-grid continuity and momentum equations:
+  - Solves 1D staggered-grid continuity and momentum equations, expressing mass conservation via pressure–flow-gradient coupling and momentum balance across pressure forces, Darcy–Weisbach friction, and elevation head:
     $$\frac{\partial P}{\partial t} = -\frac{a^2}{A} \frac{\partial w}{\partial x}$$
     $$\frac{\partial w}{\partial t} = -A \frac{\partial P}{\partial x} - \frac{f w |w|}{2 \rho D A} - \rho g A \sin\theta$$
+
+    | Symbol   | Meaning                                | Units / Domain                   |
+    | :------- | :------------------------------------- | :------------------------------- |
+    | $P$      | Gas pressure                           | $\text{Pa}$                      |
+    | $w$      | Mass flow rate                         | $\text{kg/s}$                    |
+    | $t, x$   | Time and axial distance along pipe     | $\text{s}$, $\text{m}$           |
+    | $a$      | Isothermal speed of sound in gas       | $\text{m/s}$                     |
+    | $A$      | Pipe cross-sectional area              | $\text{m}^2$                     |
+    | $f$      | Darcy–Weisbach friction factor         | $\text{dimensionless}$ ($f > 0$) |
+    | $\rho$   | Gas mass density                       | $\text{kg/m}^3$                  |
+    | $D$      | Pipe internal diameter                 | $\text{m}$                       |
+    | $g$      | Gravitational acceleration             | $\text{m/s}^2$                   |
+    | $\theta$ | Pipe inclination angle from horizontal | $\text{rad}$                     |
+
   - Simulates dynamic line packing, demand drafting, and decompression acoustic waves.
+
 - **Water Hammer & Surge Analysis**:
   - Solves Joukowsky acoustic wave propagation ($\Delta P = \rho a \Delta v$) during rapid emergency shutdown (ESD) valve closures and pump trips.
   - Monitors transient pressure spikes against ASME B31.4 limits ($P \le 1.1 \times \text{MAOP}$) and screens for liquid column separation / cavitation.
@@ -133,8 +148,17 @@ ModelScript supports non-dimensional head-flow parameterization ($\Psi$ vs $\Phi
 
 ### 2. Centrifugal Pump Station Curves & NPSH Verification
 
-Centrifugal pipeline booster pumps are modeled via cubic polynomial head $H(Q)$ and hydraulic efficiency $\eta(Q)$ curves with variable frequency drive (VFD) affinity scaling:
+Centrifugal pipeline booster pumps are modeled via cubic polynomial head $H(Q)$ and hydraulic efficiency $\eta(Q)$ curves with variable frequency drive (VFD) affinity scaling, which scales pump head quadratically and volumetric flow linearly with the speed ratio:
+
 $$H(Q, \alpha) = \alpha^2 H_{\text{rated}}(Q / \alpha), \quad \alpha = \omega / \omega_{\text{rated}}$$
+
+| Symbol                          | Meaning                                                             | Units / Domain                        |
+| :------------------------------ | :------------------------------------------------------------------ | :------------------------------------ |
+| $H(Q, \alpha)$                  | Pump head delivered at volumetric flow $Q$ and speed ratio $\alpha$ | $\text{m}$                            |
+| $H_{\text{rated}}$              | Rated pump head curve at nominal speed                              | $\text{m}$                            |
+| $Q$                             | Volumetric flow rate through the pump                               | $\text{m}^3/\text{s}$                 |
+| $\alpha$                        | Dimensionless speed ratio                                           | $\text{dimensionless}$ ($\alpha > 0$) |
+| $\omega, \omega_{\text{rated}}$ | Actual and rated pump shaft rotational speeds                       | $\text{rad/s}$ (or $\text{rpm}$)      |
 
 - Computes Net Positive Suction Head Available ($NPSHA$) against liquid vapor pressure.
 - Triggers diagnostic `M8011` if $NPSHA < NPSHR(Q)$, preventing catastrophic impeller cavitation.

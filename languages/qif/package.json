@@ -62,7 +62,8 @@
   },
   "dependencies": {
     "@modelscript/dsl": "*",
-    "@modelscript/runtime": "*"
+    "@modelscript/runtime": "*",
+    "@modelscript/step": "*"
   },
   "devDependencies": {
     "rimraf": "^6.1.0",

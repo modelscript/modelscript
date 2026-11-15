@@ -27,6 +27,7 @@ interface ComponentListProps {
   language?: string | null | undefined;
   translations?: Translations | undefined;
   uri?: string | undefined;
+  colorMode?: "dark" | "light" | undefined;
 }
 
 interface ComponentIconProps {
@@ -229,8 +230,10 @@ export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentI
 
 const ComponentList = React.memo(function ComponentList(props: ComponentListProps) {
   const { components, onSelect, onHighlight, selectedName } = props;
-  const { colorMode } = useTheme();
-  const isDark = colorMode === "dark";
+  const { colorMode, resolvedColorMode } = useTheme();
+  const isDark = props.colorMode
+    ? props.colorMode === "dark"
+    : colorMode === "dark" || colorMode === "night" || resolvedColorMode === "dark" || resolvedColorMode === "night";
 
   if (!components) {
     return (

@@ -1,34 +1,64 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { WritebackContext, WritebackEdit, WritebackHandler } from "@modelscript/dsl";
+import { isAsciiIdentContinue, isAsciiWhitespaceCode } from "./ascii.js";
 
-function escapeRegex(str: string): string {
-  let res = "";
-  for (let i = 0; i < str.length; i++) {
-    const ch = str.charAt(i);
-    if (
-      ch === "." ||
-      ch === "*" ||
-      ch === "+" ||
-      ch === "?" ||
-      ch === "^" ||
-      ch === "$" ||
-      ch === "{" ||
-      ch === "}" ||
-      ch === "(" ||
-      ch === ")" ||
-      ch === "|" ||
-      ch === "[" ||
-      ch === "]" ||
-      ch === "\\"
-    ) {
-      res += "\\" + ch;
+const trimTrailingTerminators = (s: string): string => {
+  let end = s.length;
+  while (end > 0) {
+    const ch = s[end - 1]!;
+    if (ch === ";" || ch === "\r" || ch === "\n") {
+      end--;
     } else {
-      res += ch;
+      break;
     }
   }
-  return res;
-}
+  return s.slice(0, end).trimEnd();
+};
+
+const readValueAfterEquals = (text: string, eqIdx: number): { valStart: number; valEnd: number } | null => {
+  let i = eqIdx + 1;
+  while (i < text.length && isAsciiWhitespaceCode(text.charCodeAt(i))) i++;
+  const start = i;
+  while (i < text.length) {
+    const ch = text[i]!;
+    if (ch === ";" || ch === '"' || ch === "\r" || ch === "\n") break;
+    i++;
+  }
+  if (i === start) return null;
+  const trimmed = text.slice(start, i).trimEnd();
+  return { valStart: start, valEnd: start + trimmed.length };
+};
+
+const findFirstSingleEqualsValue = (text: string): { valStart: number; valEnd: number } | null => {
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "=" && text[i + 1] !== "=") {
+      return readValueAfterEquals(text, i);
+    }
+  }
+  return null;
+};
+
+const findNamedAssignmentValue = (text: string, name: string): { valStart: number; valEnd: number } | null => {
+  let idx = 0;
+  while (idx <= text.length - name.length) {
+    const pos = text.indexOf(name, idx);
+    if (pos < 0) return null;
+    const prevOk = pos === 0 || !isAsciiIdentContinue(text.charCodeAt(pos - 1));
+    const afterName = pos + name.length;
+    const nextOk = afterName >= text.length || !isAsciiIdentContinue(text.charCodeAt(afterName));
+    if (prevOk && nextOk) {
+      let i = afterName;
+      while (i < text.length && isAsciiWhitespaceCode(text.charCodeAt(i))) i++;
+      if (i < text.length && text[i] === "=" && text[i + 1] !== "=") {
+        const span = readValueAfterEquals(text, i);
+        if (span) return span;
+      }
+    }
+    idx = pos + 1;
+  }
+  return null;
+};
 
 /**
  * First-class writeback handler for Modelica.
@@ -55,14 +85,12 @@ export const modelicaWriteback: WritebackHandler = (ctx: WritebackContext): Writ
       let valStart = valField.startOffset;
       let valEnd = valField.endOffset;
       const valSlice = fullText.substring(valStart, valEnd);
-      const opMatch = valSlice.match(/^(=(?!=))\s*/);
-      if (opMatch) {
-        valStart += opMatch[0].length;
+      if (valSlice.startsWith("=") && !valSlice.startsWith("==")) {
+        let adv = 1;
+        while (adv < valSlice.length && isAsciiWhitespaceCode(valSlice.charCodeAt(adv))) adv++;
+        valStart += adv;
       }
-      const trimmedVal = fullText
-        .substring(valStart, valEnd)
-        .replace(/[;\r\n]+$/, "")
-        .trimEnd();
+      const trimmedVal = trimTrailingTerminators(fullText.substring(valStart, valEnd));
       valEnd = valStart + trimmedVal.length;
       if (valEnd > valStart) {
         return {
@@ -77,16 +105,11 @@ export const modelicaWriteback: WritebackHandler = (ctx: WritebackContext): Writ
   // 1. Precise CST byte-range replacement within the indexed declaration
   if (entry.startOffset != null && entry.endOffset != null && entry.endOffset > entry.startOffset) {
     const declText = fullText.substring(entry.startOffset, entry.endOffset);
-    const eqMatch = declText.match(/(=(?!=))\s*([^;"\r\n]+)/);
-    if (eqMatch && eqMatch.index !== undefined) {
-      const rawVal = eqMatch[2]!.trimEnd();
-      const valOffsetInDecl = eqMatch.index + declText.substring(eqMatch.index).indexOf(rawVal);
-      const valStartByte = entry.startOffset + valOffsetInDecl;
-      const valEndByte = valStartByte + rawVal.length;
-
+    const span = findFirstSingleEqualsValue(declText);
+    if (span) {
       return {
-        startOffset: valStartByte,
-        endOffset: valEndByte,
+        startOffset: entry.startOffset + span.valStart,
+        endOffset: entry.startOffset + span.valEnd,
         newText: newValue.trim(),
       };
     }
@@ -101,15 +124,11 @@ export const modelicaWriteback: WritebackHandler = (ctx: WritebackContext): Writ
     const parent = typedQueryEngine.index.symbols.get(entry.parentId);
     if (parent && parent.startOffset != null && parent.endOffset != null && parent.endOffset > parent.startOffset) {
       const parentText = fullText.substring(parent.startOffset, parent.endOffset);
-      const regex = new RegExp(`(\\b${escapeRegex(name)}\\s*=\\s*)([^;"\\r\\n]+)`);
-      const match = parentText.match(regex);
-      if (match && match.index !== undefined) {
-        const valStart = parent.startOffset + match.index + match[1]!.length;
-        const valEnd = valStart + match[2]!.trimEnd().length;
-
+      const span = findNamedAssignmentValue(parentText, name);
+      if (span) {
         return {
-          startOffset: valStart,
-          endOffset: valEnd,
+          startOffset: parent.startOffset + span.valStart,
+          endOffset: parent.startOffset + span.valEnd,
           newText: newValue.trim(),
         };
       }

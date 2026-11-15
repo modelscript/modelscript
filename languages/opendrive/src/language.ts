@@ -7,7 +7,7 @@
  * analytical clothoid track sampling, DAE lowering, and GENSYS export.
  */
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { language, xmlRules, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerOpenDriveToDae } from "./dae/opendrive-to-dae.js";
 import { sampleRoadTrack } from "./geometry/clothoid.js";
 import { indexOpenDriveFile } from "./indexing.js";
@@ -28,9 +28,12 @@ export const opendriveLanguage = language({
   lsp: {
     fileExtensions: [".xodr", ".xml"],
   },
-  rules: {
-    Root: () => "opendrive",
+  extras: ($) => {
+    const comment = $["COMMENT"];
+    const pi = $["PROCESSING_INSTRUCTION"];
+    return comment && pi ? [/[ \t\r\n]+/, comment, pi] : [/[ \t\r\n]+/];
   },
+  rules: xmlRules,
 
   actions: [
     {

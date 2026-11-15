@@ -87,15 +87,7 @@ function tokenizeIdvLine(line: string): string[] {
 }
 
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createPsseWasmParserSync } from "./wasm-loader.js";
-
-let cachedParser: ReturnType<typeof createPsseWasmParserSync>["parser"] | undefined;
-function getPsseWasmParser() {
-  if (!cachedParser) {
-    cachedParser = createPsseWasmParserSync().parser;
-  }
-  return cachedParser;
-}
+import { getPsseWasmParser } from "./wasm-loader.js";
 
 /**
  * Parses an .idv script text into a sequence of executable IdvCommand objects.

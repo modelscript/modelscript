@@ -57,6 +57,7 @@ import { getIbisDocumentSymbols, getIbisHover, ibisLanguage, validateIbis } from
 import { getIgtlDocumentSymbols, getIgtlHover, igtlLanguage, validateIgtl } from "@modelscript/igtl";
 import { getJsbsimDocumentSymbols, getJsbsimHover, jsbsimLanguage, validateJsbsim } from "@modelscript/jsbsim";
 import { getLandgemDocumentSymbols, getLandgemHover, landgemLanguage, validateLandgem } from "@modelscript/landgem";
+import lasLangFallback from "@modelscript/las/language";
 import { getLpsDocumentSymbols, getLpsHover, lpsLanguage, validateLps } from "@modelscript/lps";
 import {
   getDiagnostics as getMatpowerDiagnostics,
@@ -384,6 +385,36 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
         const { lintCsv } = await import("@modelscript/csv/csv-parser");
         return lintCsv(text);
+      },
+    },
+  });
+
+  globalLanguageRegistry.register({
+    id: "las",
+    name: "LAS Well Log",
+    extensions: [".las"],
+    get parser() {
+      return parserService?.getParser("las");
+    },
+    set parser(val: unknown) {
+      if (parserService && parserService.getParser("las") !== val) {
+        parserService.registerParser("las", val);
+      }
+    },
+    get facade() {
+      return parserService?.getFacade("las");
+    },
+    set facade(val: unknown) {
+      if (parserService && parserService.getFacade("las") !== val) {
+        parserService.registerParser("las", parserService.getParser("las"), val);
+      }
+    },
+    languageDef: lasLangFallback,
+    customHandlers: {
+      validate: async (doc: { getText?(): string } | string) => {
+        const text = typeof doc === "string" ? doc : typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const { lintLas } = await import("@modelscript/las/las-parser");
+        return lintLas(text);
       },
     },
   });
@@ -1573,7 +1604,24 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extractTheoryConstraints: async (text: string) => {
       const { parseSpice, parseSpiceNumber } = await import("@modelscript/spice");
       const circuit = parseSpice(text);
-      const ns = circuit.title ? `SPICE::${circuit.title.replace(/\s+/g, "_")}` : "SPICE::Circuit";
+      const sanitizeNs = (raw: string) => {
+        let out = "";
+        let prevWs = false;
+        for (let i = 0; i < raw.length; i++) {
+          const ch = raw.charCodeAt(i);
+          if (ch === 32 || ch === 9 || ch === 10 || ch === 13) {
+            if (!prevWs) {
+              out += "_";
+              prevWs = true;
+            }
+          } else {
+            out += raw[i]!;
+            prevWs = false;
+          }
+        }
+        return out;
+      };
+      const ns = circuit.title ? `SPICE::${sanitizeNs(circuit.title)}` : "SPICE::Circuit";
       const parameters: any[] = [];
       const seenNodes = new Set<string>();
       const ports: any[] = [];

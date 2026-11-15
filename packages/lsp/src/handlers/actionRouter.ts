@@ -3,6 +3,7 @@
 import type { ActionExecutionContext, LanguageAction } from "@modelscript/dsl";
 import type { LspContext } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
+import { compileStepFromSources } from "./cadStepCompiler.js";
 
 const STOP_TOKENS = new Set(["to", "from", "case", "deck", "model", "network", "flowsheet", "system"]);
 
@@ -294,6 +295,10 @@ export function registerActionRouter(context: LspContext): void {
           });
         },
       };
+
+      if (plugin.id === "scad") {
+        (executionContext as unknown as Record<string, unknown>)["compileStepFromSources"] = compileStepFromSources;
+      }
 
       try {
         return await executeFn(executionContext, params.inputs || {});

@@ -16,6 +16,7 @@ import {
   isRelationshipOrImportSymbol,
   isTypeLikeSymbol,
   splitQualifiedPath,
+  UnifiedWorkspace,
   WorkspaceTypeRegistry,
   type QueryDB,
   type SymbolEntry,
@@ -29,15 +30,436 @@ import {
   evaluatePlacementWasm,
 } from "./diagram/annotation-evaluator.js";
 import { ModelicaErrorCode } from "./errors.js";
+import { type CstNodeLike } from "./flattener/expressions/cst-utils.js";
 import { runModelicaCfaAnalysis } from "./lints/cfa.js";
 import { findNonlinearTermsInCst } from "./lints/homotopy-synthesis.js";
 import { isBroken, mergeModArgs, type ModelicaModArgs } from "./modifications.js";
 import type { OperatorOverload, OperatorOverloadParam } from "./types.js";
+import { collapseSpaceTokens } from "./workspace-hooks.js";
 
-interface CstNodeLike {
-  type?: string;
-  text?: string;
-  children?: CstNodeLike[];
+function isIdentStartCode(code: number): boolean {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 95;
+}
+
+function isIdentCharCode(code: number): boolean {
+  return isIdentStartCode(code) || (code >= 48 && code <= 57);
+}
+
+function isAsciiIdentStr(text: string): boolean {
+  if (text.length === 0 || !isIdentStartCode(text.charCodeAt(0))) return false;
+  for (let i = 1; i < text.length; i++) {
+    if (!isIdentCharCode(text.charCodeAt(i))) return false;
+  }
+  return true;
+}
+
+function stripOuterChar(text: string, ch: string): string {
+  let out = text;
+  if (out.startsWith(ch)) out = out.slice(ch.length);
+  if (out.endsWith(ch)) out = out.slice(0, out.length - ch.length);
+  return out;
+}
+
+function stripTrailingBrackets(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed.endsWith("]")) return trimmed;
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i]!;
+    if (inSingle) {
+      if (ch === "\\") {
+        i++;
+        continue;
+      }
+      if (ch === "'") inSingle = false;
+      continue;
+    }
+    if (inDouble) {
+      if (ch === "\\") {
+        i++;
+        continue;
+      }
+      if (ch === '"') inDouble = false;
+      continue;
+    }
+    if (ch === "'") {
+      inSingle = true;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      continue;
+    }
+    if (ch === "[") {
+      return trimmed.slice(0, i).trim();
+    }
+  }
+  return trimmed;
+}
+
+function stripModelicaComments(raw: string): string {
+  if (!raw.includes("//") && !raw.includes("/*")) return raw;
+  let out = "";
+  let i = 0;
+  let inString = false;
+  while (i < raw.length) {
+    const ch = raw[i]!;
+    if (inString) {
+      out += ch;
+      if (ch === "\\" && i + 1 < raw.length) {
+        out += raw[i + 1]!;
+        i += 2;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      i++;
+      continue;
+    }
+    if (ch === "/" && raw[i + 1] === "/") {
+      out += " ";
+      i += 2;
+      while (i < raw.length && raw[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === "/" && raw[i + 1] === "*") {
+      out += " ";
+      i += 2;
+      while (i + 1 < raw.length && !(raw[i] === "*" && raw[i + 1] === "/")) i++;
+      i = Math.min(raw.length, i + 2);
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+function containsWord(text: string, word: string): boolean {
+  if (!text || !word) return false;
+  let pos = 0;
+  while (pos <= text.length - word.length) {
+    const idx = text.indexOf(word, pos);
+    if (idx < 0) return false;
+    const prevOk = idx === 0 || !isIdentCharCode(text.charCodeAt(idx - 1));
+    const end = idx + word.length;
+    const nextOk = end >= text.length || !isIdentCharCode(text.charCodeAt(end));
+    if (prevOk && nextOk) return true;
+    pos = idx + 1;
+  }
+  return false;
+}
+
+function hasLeadingEncapsulatedPrefix(text: string): boolean {
+  const skipPrefixes = new Set(["final", "inner", "outer", "redeclare", "replaceable"]);
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    while (i < n && (text[i] === " " || text[i] === "\t" || text[i] === "\n" || text[i] === "\r")) i++;
+    if (i >= n) return false;
+    const start = i;
+    while (i < n && isIdentCharCode(text.charCodeAt(i))) i++;
+    const word = text.slice(start, i);
+    if (!word) return false;
+    if (word === "encapsulated") return true;
+    if (word === "within") {
+      const semi = text.indexOf(";", i);
+      if (semi < 0) return false;
+      i = semi + 1;
+      continue;
+    }
+    if (skipPrefixes.has(word)) continue;
+    return false;
+  }
+  return false;
+}
+
+function findEnumerationSliceRange(cstText: string): { start: number; end: number; isColon: boolean } | null {
+  let pos = 0;
+  while (pos < cstText.length) {
+    const idx = cstText.indexOf("enumeration", pos);
+    if (idx < 0) return null;
+    const prevOk = idx === 0 || !isIdentCharCode(cstText.charCodeAt(idx - 1));
+    let j = idx + "enumeration".length;
+    const afterOk = j < cstText.length && !isIdentCharCode(cstText.charCodeAt(j));
+    if (prevOk && afterOk) {
+      while (
+        j < cstText.length &&
+        (cstText[j] === " " || cstText[j] === "\t" || cstText[j] === "\n" || cstText[j] === "\r")
+      ) {
+        j++;
+      }
+      if (cstText[j] === "(") {
+        let depth = 0;
+        let inSingle = false;
+        let inDouble = false;
+        let k = j;
+        while (k < cstText.length) {
+          const ch = cstText[k]!;
+          if (inSingle) {
+            if (ch === "\\") {
+              k += 2;
+              continue;
+            }
+            if (ch === "'") inSingle = false;
+            k++;
+            continue;
+          }
+          if (inDouble) {
+            if (ch === "\\") {
+              k += 2;
+              continue;
+            }
+            if (ch === '"') inDouble = false;
+            k++;
+            continue;
+          }
+          if (ch === "'") {
+            inSingle = true;
+            k++;
+            continue;
+          }
+          if (ch === '"') {
+            inDouble = true;
+            k++;
+            continue;
+          }
+          if (ch === "(") depth++;
+          else if (ch === ")") {
+            depth--;
+            if (depth === 0) {
+              const inner = cstText.slice(j + 1, k).trim();
+              return { start: idx, end: k + 1, isColon: inner === ":" || inner.length === 0 };
+            }
+          }
+          k++;
+        }
+      }
+    }
+    pos = idx + 1;
+  }
+  return null;
+}
+
+function hasEnumTypeText(text: string): boolean {
+  return findEnumerationSliceRange(text) !== null;
+}
+
+function parseEnumLiteralsFromText(
+  cstText: string,
+  baseOffset = 0,
+  stripSingleQuotes = true,
+): { name: string; startOffset: number; endOffset: number }[] {
+  const sliceRange = findEnumerationSliceRange(cstText);
+  if (!sliceRange || sliceRange.isColon) return [];
+  const parser = UnifiedWorkspace.getGlobalParser(".mo") as
+    | { parse?: (src: string) => { rootNode?: CstNodeLike } | null | undefined }
+    | undefined;
+  if (!parser || typeof parser.parse !== "function") return [];
+  const prefix = "type _E = ";
+  const enumSlice = cstText.slice(sliceRange.start, sliceRange.end);
+  const tree = parser.parse(`${prefix}${enumSlice};`);
+  if (!tree?.rootNode) return [];
+
+  const result: { name: string; startOffset: number; endOffset: number }[] = [];
+  const stack: CstNodeLike[] = [tree.rootNode];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (cur.type === "enumeration_literal" || cur.type === "EnumerationLiteral") {
+      const idNode = cur.children?.find((ch) => ch.type === "identifier" || ch.type === "Identifier") ?? cur;
+      const rawName = idNode?.text?.trim() ?? "";
+      const name = stripSingleQuotes ? stripOuterChar(rawName, "'") : rawName;
+      if (name) {
+        const sRel = (idNode?.startIndex ?? idNode?.startOffset ?? prefix.length) - prefix.length;
+        const eRel = (idNode?.endIndex ?? idNode?.endOffset ?? sRel + rawName.length) - prefix.length;
+        result.push({
+          name,
+          startOffset: baseOffset + sliceRange.start + Math.max(0, sRel),
+          endOffset: baseOffset + sliceRange.start + Math.max(0, eRel),
+        });
+      }
+      continue;
+    }
+    const children = cur.children || [];
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (children[i]) stack.push(children[i]!);
+    }
+  }
+  return result;
+}
+
+function hasNodePrefixKeyword(node: CstNodeLike | null | undefined, kw: string, stopAtParen = false): boolean {
+  if (!node) return false;
+  const quoted = `"${kw}"`;
+  if (node.children && node.children.length > 0) {
+    for (const ch of node.children) {
+      if (ch.type === kw || ch.type === quoted || ch.text?.trim() === kw) return true;
+      if (ch.type === "class_prefixes" || ch.type === "prefixes") {
+        if (hasNodePrefixKeyword(ch, kw, stopAtParen)) return true;
+      }
+      if (
+        ch.type === "component_clause" ||
+        ch.type === "class_definition" ||
+        ch.type === "class_modification" ||
+        (stopAtParen && (ch.type === "(" || ch.type === '"("' || ch.text?.trim() === "("))
+      ) {
+        break;
+      }
+    }
+    return false;
+  }
+  const raw = node.text ?? "";
+  const target = stopAtParen ? (raw.split("(")[0] ?? "") : raw;
+  return containsWord(target, kw);
+}
+
+function findAnnotationClearanceMin(cst: CstNodeLike | null | undefined): number | null {
+  if (!cst) return null;
+  const stack: CstNodeLike[] = [cst];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (cur.type === "annotation" || cur.type === "Annotation") {
+      const modStack: CstNodeLike[] = [cur];
+      while (modStack.length > 0) {
+        const mc = modStack.pop()!;
+        if (mc.type === "element_modification" || mc.type === "ElementModification") {
+          const nameNode = mc.childForFieldName?.("name") ?? mc.children?.find((c) => c.type === "name");
+          const modName = nameNode?.text?.trim().toLowerCase() ?? "";
+          if (modName === "clearance" || modName === "__modelscript_clearance") {
+            const innerMod =
+              mc.childForFieldName?.("modification") ?? mc.children?.find((c) => c.type === "modification");
+            if (innerMod) {
+              const subStack: CstNodeLike[] = [innerMod];
+              while (subStack.length > 0) {
+                const sc = subStack.pop()!;
+                if (sc.type === "element_modification") {
+                  const subName = sc.childForFieldName?.("name")?.text?.trim().toLowerCase();
+                  if (subName === "min") {
+                    const subMod = sc.children?.find((c) => c.type === "modification");
+                    const num = parseFloat((subMod?.text ?? "").replaceAll("=", "").trim());
+                    if (!isNaN(num) && num > 0) return num;
+                  }
+                } else if (
+                  sc.type === "unsigned_number" ||
+                  sc.type === "unsigned_real" ||
+                  sc.type === "unsigned_integer"
+                ) {
+                  const num = parseFloat(sc.text?.trim() ?? "");
+                  if (!isNaN(num) && num > 0) return num;
+                }
+                const scChildren = sc.children || [];
+                for (let i = scChildren.length - 1; i >= 0; i--) {
+                  if (scChildren[i]) subStack.push(scChildren[i]!);
+                }
+              }
+            }
+          }
+        }
+        const mcChildren = mc.children || [];
+        for (let i = mcChildren.length - 1; i >= 0; i--) {
+          if (mcChildren[i]) modStack.push(mcChildren[i]!);
+        }
+      }
+      continue;
+    }
+    const children = cur.children || [];
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (children[i]) stack.push(children[i]!);
+    }
+  }
+  return null;
+}
+
+function isClassExtendsInCst(cst: CstNodeLike | null | undefined): boolean {
+  if (!cst) return false;
+  const specContainer =
+    (Cst.ClassDefinition.classSpecifier(cst as SyntaxNode) as CstNodeLike | null) ??
+    cst.children?.find((c) => c.type === "class_specifier" || c.type === "ClassSpecifier") ??
+    cst;
+  const longSpec =
+    specContainer?.type === "long_class_specifier" || specContainer?.type === "LongClassSpecifier"
+      ? specContainer
+      : specContainer?.children?.find((c) => c.type === "long_class_specifier" || c.type === "LongClassSpecifier");
+  if (longSpec?.children && longSpec.children.length > 0) {
+    const first = longSpec.children[0];
+    return first?.type === "extends" || first?.type === '"extends"' || first?.text?.trim() === "extends";
+  }
+  const head = (cst.text ?? "").slice(0, 80);
+  const idx = head.indexOf("extends");
+  if (idx < 0) return false;
+  const after = head.slice(idx + "extends".length).trimStart();
+  return after.length > 0 && (isIdentCharCode(after.charCodeAt(0)) || after[0] === "'");
+}
+
+function isOperatorRecordSymbol(db: QueryDB, self: SymbolEntry): boolean {
+  const meta = (self.metadata as Record<string, unknown>) || {};
+  const rawKind = String(meta["classPrefixes"] ?? meta["classKind"] ?? "");
+  const metaWords = collapseSpaceTokens(stripModelicaComments(rawKind));
+  if (metaWords.includes("operator") && metaWords.includes("record")) return true;
+  const cst = db.cstNode(self.id) as CstNodeLike | null;
+  if (cst) {
+    const pfx = Cst.ClassDefinition.classPrefixes(cst as SyntaxNode);
+    const pfxWords = collapseSpaceTokens(stripModelicaComments(pfx?.text ?? ""));
+    if (pfxWords.includes("operator") && pfxWords.includes("record")) return true;
+    const headerWords = collapseSpaceTokens(stripModelicaComments((cst.text ?? "").slice(0, 120)));
+    let idx = 0;
+    while (idx < headerWords.length && (headerWords[idx] === "encapsulated" || headerWords[idx] === "partial")) {
+      idx++;
+    }
+    if (headerWords[idx] === "operator" && headerWords[idx + 1] === "record") return true;
+  }
+  return false;
+}
+
+function extractDeclBindingExprText(declOrCompNode: CstNodeLike | null | undefined): string | null {
+  if (!declOrCompNode) return null;
+  const stack: CstNodeLike[] = [declOrCompNode];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (cur.type === "modification_expression" || cur.type === "ModificationExpression") {
+      const exprChild = cur.children?.find((c) => c.type === "expression" || c.type === "Expression");
+      const target = exprChild ?? cur.children?.find((c) => c.text?.trim() !== "=");
+      const text = target?.text?.trim();
+      if (text) return text;
+      const raw = cur.text?.trim() ?? "";
+      return raw.startsWith("=") ? raw.slice(1).trim() : raw;
+    }
+    if (cur.type === "description" || cur.type === "annotation" || cur.type === "class_modification") {
+      continue;
+    }
+    const children = cur.children || [];
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (children[i]) stack.push(children[i]!);
+    }
+  }
+  return null;
+}
+
+function parseConnectRefCst(refText: string): CstNodeLike | null {
+  const parser = UnifiedWorkspace.getGlobalParser(".mo") as
+    | { parse?: (src: string) => { rootNode?: CstNodeLike } | null | undefined }
+    | undefined;
+  if (!parser || typeof parser.parse !== "function") return null;
+  const tree = parser.parse(`model _ConnectRefCheck equation connect(${refText}, _b); end _ConnectRefCheck;`);
+  if (!tree?.rootNode) return null;
+  const stack: CstNodeLike[] = [tree.rootNode];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (cur.type === "connect_equation" || cur.type === "ConnectEquation") {
+      return cur.childForFieldName?.("lhs") ?? cur.children?.find((c) => c.type === "component_reference") ?? cur;
+    }
+    const children = cur.children || [];
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (children[i]) stack.push(children[i]!);
+    }
+  }
+  return null;
 }
 
 let _sharedTypeRegistry: WorkspaceTypeRegistry | undefined;
@@ -693,7 +1115,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           modPosition: n ? { startPosition: n.startPosition, endPosition: n.endPosition } : undefined,
           modText: n.text?.trim() ?? "",
           each: false,
-          final: /\bfinal\b/.test((n.text ?? "").split("(")[0] ?? ""),
+          final: hasNodePrefixKeyword(n, "final", true),
           isRedeclaration: true,
           redeclaredKind: "component",
           redeclaredTypeSpecifier: typeName,
@@ -792,7 +1214,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
               modPosition: n ? { startPosition: n.startPosition, endPosition: n.endPosition } : undefined,
               modText: n.text?.trim() ?? "",
               each: false,
-              final: /\bfinal\b/.test((n.text ?? "").split("(")[0] ?? ""),
+              final: hasNodePrefixKeyword(n, "final", true),
               isRedeclaration: true,
               redeclaredKind: "class",
               redeclaredTypeSpecifier: typeName,
@@ -1105,7 +1527,12 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
           } else if (importListNode) {
             // Compound import: import A.B.{C, D};
             importKind = "compound";
-          } else if (/\.\s*\*/.test(cstText)) {
+          } else if (
+            (importCst.children || []).some(
+              (c: CstNodeLike) => c.type === "*" || c.type === '"*"' || c.text?.trim() === "*",
+            ) ||
+            cstText.trimEnd().endsWith("*")
+          ) {
             // Unqualified import: import A.B.*;
             // pkgName is already the name without .* (from name field)
             importKind = "unqualified";
@@ -1150,7 +1577,10 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
                 .filter(Boolean);
               if (names.length > 0) {
                 // Strip trailing ".{...}" from pkgName if present
-                pkgName = pkgName.replace(/\.\{[^}]*\}$/, "");
+                if (pkgName.endsWith("}")) {
+                  const braceIdx = pkgName.lastIndexOf(".{");
+                  if (braceIdx >= 0) pkgName = pkgName.slice(0, braceIdx);
+                }
                 compoundImports.push({ pkg: pkgName, names });
                 continue;
               }
@@ -1190,7 +1620,7 @@ export function isSymbolEncapsulated(db: QueryDB, sym: SymbolEntry): boolean {
     return true;
   }
   const rawKind = String((sym.metadata as any)?.classKind ?? (sym.metadata as any)?.classPrefixes ?? "");
-  if (/\bencapsulated\b/.test(rawKind)) {
+  if (collapseSpaceTokens(stripModelicaComments(rawKind)).includes("encapsulated")) {
     (sym as any)._isEncapsulated = true;
     return true;
   }
@@ -1216,13 +1646,13 @@ export function isSymbolEncapsulated(db: QueryDB, sym: SymbolEntry): boolean {
   if (sym.startOffset != null && sym.endOffset != null && typeof queryDbWithCst.cstText === "function") {
     const header = queryDbWithCst.cstText(sym.startOffset, Math.min(sym.endOffset, sym.startOffset + 120), sym);
     if (typeof header === "string" && header.length > 0) {
-      const res = /^(?:\s*(?:within\b[^;]*;|final|inner|outer|redeclare|replaceable)\b)*\s*encapsulated\b/.test(header);
+      const res = hasLeadingEncapsulatedPrefix(header);
       (sym as { _isEncapsulated?: boolean })._isEncapsulated = res;
       return res;
     }
   }
   const text = cst ? (cst.text ?? "").slice(0, 120) : "";
-  const res = /^(?:\s*(?:within\b[^;]*;|final|inner|outer|redeclare|replaceable)\b)*\s*encapsulated\b/.test(text);
+  const res = hasLeadingEncapsulatedPrefix(text);
   (sym as any)._isEncapsulated = res;
   return res;
 }
@@ -1339,16 +1769,15 @@ export function resolveSimpleNameHelper(
         cstText = (db.cstNode(unspecializedId) as { text?: string } | null)?.text;
       }
       const cstNode = db.cstNode(unspecializedId) as CstNodeLike | null;
+      const shortSpec = getShortClassSpecifierNode(cstNode) as CstNodeLike | null;
       const enumListNode =
-        cstNode?.children?.find((c) => c.type === "enum_list" || c.type === "EnumList") ??
-        cstNode?.children
-          ?.find((c) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier")
-          ?.children?.find((c) => c.type === "enum_list" || c.type === "EnumList");
+        shortSpec?.children?.find((c) => c.type === "enum_list" || c.type === "EnumList") ??
+        cstNode?.children?.find((c) => c.type === "enum_list" || c.type === "EnumList");
       if (enumListNode && enumListNode.children) {
         for (const c of enumListNode.children) {
           if (c.type === "enumeration_literal" || c.type === "EnumerationLiteral") {
             const idNode = c.children?.find((ch) => ch.type === "identifier" || ch.type === "Identifier") ?? c;
-            const litName = idNode?.text?.trim()?.replace(/^'|'$/g, "");
+            const litName = idNode?.text ? stripOuterChar(idNode.text.trim(), "'") : undefined;
             if (litName === name) {
               return {
                 ...unspecializedSym,
@@ -1362,14 +1791,8 @@ export function resolveSimpleNameHelper(
         }
       }
 
-      const enumMatch =
-        typeof cstText === "string" && cstText.includes("enumeration")
-          ? cstText.match(/enumeration\s*\(([^)]+)\)/)
-          : null;
-      if (enumMatch?.[1]) {
-        const hasLit = enumMatch[1]
-          .split(",")
-          .some((p: string) => p.trim().split(/\s+/)[0]?.replace(/^'|'$/g, "") === name);
+      if (typeof cstText === "string" && cstText.includes("enumeration")) {
+        const hasLit = parseEnumLiteralsFromText(cstText, 0, true).some((l) => l.name === name);
         if (hasLit) {
           return {
             ...unspecializedSym,
@@ -1646,7 +2069,7 @@ function getQualifiedTypeFailRange(
   let startOffset = targetNode?.startOffset ?? targetNode?.startIndex ?? fallbackStart;
   let endOffset = targetNode?.endOffset ?? targetNode?.endIndex ?? fallbackEnd;
 
-  const cleanType = typeName.replace(/\[.*\]$/, "").trim();
+  const cleanType = stripTrailingBrackets(typeName);
   const hasLeadingDot = cleanType.startsWith(".");
   const stripped = hasLeadingDot ? cleanType.slice(1) : cleanType;
   const parts = stripped.split(".");
@@ -1889,7 +2312,7 @@ function evaluateDimCSTNode(db: QueryDB, self: SymbolEntry, node: any): number |
   // Binary expression (+, -, *, /)
   if (type === "BinaryExpression" || (node.childCount === 3 && node.type === "expression")) {
     const rawOp = (node.child(1)?.text ?? "").trim();
-    const op = rawOp.replace(/^"|"$/g, "");
+    const op = stripOuterChar(rawOp, '"');
     const left = evaluateDimCSTNode(db, self, node.child(0));
     const right = evaluateDimCSTNode(db, self, node.child(2));
     if (left === null || right === null) return null;
@@ -1911,7 +2334,7 @@ function evaluateDimCSTNode(db: QueryDB, self: SymbolEntry, node: any): number |
   // Unary expression (-a, +a)
   if (type === "UnaryExpression" || (node.childCount === 2 && node.type === "expression")) {
     const rawOp = node.child(0)?.text?.trim() ?? "";
-    const op = rawOp.replace(/^"|"$/g, "");
+    const op = stripOuterChar(rawOp, '"');
     const val = evaluateDimCSTNode(db, self, node.child(1));
     if (val === null) return null;
     return op === "-" ? -val : val;
@@ -1944,7 +2367,7 @@ function evaluateDimCSTNode(db: QueryDB, self: SymbolEntry, node: any): number |
     type === "IDENT" ||
     type === "name" ||
     type === "identifier" ||
-    /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(node.text?.trim() ?? "")
+    isAsciiIdentStr(node.text?.trim() ?? "")
   ) {
     const refText = node.text?.trim();
     if (!refText) return null;
@@ -2165,32 +2588,26 @@ function evaluateDimNameRef(db: QueryDB, self: SymbolEntry, name: string): numbe
       visitedCls.add(curCls.id);
       const meta = curCls.metadata as Record<string, unknown>;
       const classPrefixes = meta?.["classPrefixes"];
-      const cstText = (db.cstNode(curCls.id) as any)?.text ?? "";
+      const cstNode = db.cstNode(curCls.id) as CstNodeLike | null;
+      const cstText = cstNode?.text ?? "";
+      const shortSpec = getShortClassSpecifierNode(cstNode) as CstNodeLike | null;
+      const enumListNode =
+        shortSpec?.children?.find((c) => c.type === "enum_list" || c.type === "EnumList") ??
+        cstNode?.children?.find((c) => c.type === "enum_list" || c.type === "EnumList");
       const isEnum =
         (typeof classPrefixes === "string" && classPrefixes.includes("enumeration")) ||
-        /\benumeration\s*\(/.test(cstText);
+        Boolean(enumListNode) ||
+        Boolean(shortSpec?.children?.some((c) => c.text?.trim() === "enumeration" || c.type === '"enumeration"')) ||
+        hasEnumTypeText(cstText);
       if (isEnum) {
-        const cstNode = db.cstNode(curCls.id) as CstNodeLike | null;
-        const enumListNode =
-          cstNode?.children?.find((c) => c.type === "enum_list" || c.type === "EnumList") ??
-          cstNode?.children
-            ?.find((c) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier")
-            ?.children?.find((c) => c.type === "enum_list" || c.type === "EnumList");
         if (enumListNode && enumListNode.children) {
           const lits = enumListNode.children.filter(
             (c) => c.type === "enumeration_literal" || c.type === "EnumerationLiteral",
           );
           if (lits.length > 0) return lits.length;
         }
-
-        const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
-        if (enumMatch) {
-          const lits = enumMatch[1]!
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean);
-          if (lits.length > 0) return lits.length;
-        }
+        const parsedLits = parseEnumLiteralsFromText(cstText, 0, true);
+        if (parsedLits.length > 0) return parsedLits.length;
         const children = db.childrenOf(curCls.id);
         return children.filter((c) => c.kind === "Component").length;
       }
@@ -2334,7 +2751,7 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
     for (const c of enumListNode.children) {
       if (c.type === "enumeration_literal" || (Cst?.EnumerationLiteral && Cst.EnumerationLiteral.is(c))) {
         const idNode = c.children?.find((ch: any) => ch.type === "identifier" || ch.type === "Identifier") ?? c;
-        const litName = idNode?.text?.trim() ?? c.text?.trim()?.split(/\s+/)[0];
+        const litName = idNode?.text?.trim() ?? (c.text ? collapseSpaceTokens(c.text)[0] : undefined);
         if (litName) {
           literals.push(litName);
           const s = idNode?.startIndex ?? idNode?.startOffset;
@@ -2346,22 +2763,9 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
       }
     }
   } else {
-    const enumMatch = /enumeration\s*\(([^)]+)\)/.exec(cstText);
-    if (enumMatch && enumMatch[1] && enumMatch[1].trim() !== ":") {
-      const innerStart = enumMatch.index + enumMatch[0].indexOf(enumMatch[1]);
-      let searchOffset = 0;
-      for (const part of enumMatch[1].split(",")) {
-        const litName = part.trim().split(/\s+/)[0];
-        if (litName) {
-          literals.push(litName);
-          const relIdx = enumMatch[1].indexOf(litName, searchOffset);
-          if (relIdx >= 0) {
-            const s = baseNodeStart + innerStart + relIdx;
-            literalRanges.push({ name: litName, startOffset: s, endOffset: s + litName.length });
-            searchOffset = relIdx + part.length;
-          }
-        }
-      }
+    for (const lit of parseEnumLiteralsFromText(cstText, baseNodeStart, false)) {
+      literals.push(lit.name);
+      literalRanges.push(lit);
     }
   }
 
@@ -2497,17 +2901,41 @@ function isRedeclareQuery(db: QueryDB, self: SymbolEntry): boolean {
 /**
  * Resolves whether a symbol is declared with the `inner` scoping prefix.
  */
-export function isInnerQuery(db: QueryDB, self: SymbolEntry): boolean {
+function stripDoubleQuotedStringsAndModTail(raw: string): string {
+  let out = "";
+  let inQuote = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i]!;
+    if (inQuote) {
+      if (ch === "\\") {
+        i++;
+        continue;
+      }
+      if (ch === '"') inQuote = false;
+      continue;
+    }
+    if (ch === '"') {
+      inQuote = true;
+      continue;
+    }
+    if (ch === "=" || ch === "(" || ch === ";") break;
+    out += ch;
+  }
+  return out;
+}
+
+function hasDynamicScopingPrefix(db: QueryDB, self: SymbolEntry, kw: "inner" | "outer"): boolean {
   if (!self) return false;
   const meta = self.metadata as any;
   const rawPrefixes = meta?.classPrefixes ?? meta?.prefixes;
-  if (typeof rawPrefixes === "string" && /\binner\b/.test(rawPrefixes)) {
+  if (typeof rawPrefixes === "string" && containsWord(rawPrefixes, kw)) {
     return true;
   }
   let current = db.cstNode(self.id) as any;
   if (current && (current.type === "class_definition" || current.type === "ClassDefinition")) {
     current = current.parent;
   }
+  const quotedKw = `"${kw}"`;
   while (current) {
     if (
       current.type === "Element" ||
@@ -2517,26 +2945,25 @@ export function isInnerQuery(db: QueryDB, self: SymbolEntry): boolean {
     ) {
       if (current.children && current.children.length > 0) {
         for (const ch of current.children) {
-          if (ch.type === "inner" || ch.type === '"inner"' || ch.text?.trim() === "inner") return true;
+          if (ch.type === kw || ch.type === quotedKw || ch.text?.trim() === kw) return true;
           if (ch.type === "component_clause" || ch.type === "class_definition") break;
         }
         return false;
       }
-      const prefixText = (current.text ?? "").replace(/"[^"]*"/g, "").split(/[=(;]/)[0] ?? "";
-      return /\binner\b/.test(prefixText);
+      return containsWord(stripDoubleQuotedStringsAndModTail(current.text ?? ""), kw);
     }
     if (current.type === "class_prefixes" || current.type === "prefixes") {
       if (current.children && current.children.length > 0) {
         for (const ch of current.children) {
-          if (ch.type === "inner" || ch.type === '"inner"' || ch.text?.trim() === "inner") return true;
+          if (ch.type === kw || ch.type === quotedKw || ch.text?.trim() === kw) return true;
         }
         return false;
       }
-      return /\binner\b/.test((current.text ?? "").replace(/"[^"]*"/g, ""));
+      return containsWord(stripDoubleQuotedStringsAndModTail(current.text ?? ""), kw);
     }
     if (current.children) {
       for (const ch of current.children) {
-        if (ch.type === "inner" || ch.type === '"inner"' || ch.text?.trim() === "inner") return true;
+        if (ch.type === kw || ch.type === quotedKw || ch.text?.trim() === kw) return true;
       }
     }
     if (
@@ -2552,62 +2979,15 @@ export function isInnerQuery(db: QueryDB, self: SymbolEntry): boolean {
   return false;
 }
 
+export function isInnerQuery(db: QueryDB, self: SymbolEntry): boolean {
+  return hasDynamicScopingPrefix(db, self, "inner");
+}
+
 /**
  * Resolves whether a symbol is declared with the `outer` scoping prefix.
  */
 export function isOuterQuery(db: QueryDB, self: SymbolEntry): boolean {
-  if (!self) return false;
-  const meta = self.metadata as any;
-  const rawPrefixes = meta?.classPrefixes ?? meta?.prefixes;
-  if (typeof rawPrefixes === "string" && /\bouter\b/.test(rawPrefixes)) {
-    return true;
-  }
-  let current = db.cstNode(self.id) as any;
-  if (current && (current.type === "class_definition" || current.type === "ClassDefinition")) {
-    current = current.parent;
-  }
-  while (current) {
-    if (
-      current.type === "Element" ||
-      current.type === "element" ||
-      current.type === "element_replaceable" ||
-      current.type === "ElementReplaceable"
-    ) {
-      if (current.children && current.children.length > 0) {
-        for (const ch of current.children) {
-          if (ch.type === "outer" || ch.type === '"outer"' || ch.text?.trim() === "outer") return true;
-          if (ch.type === "component_clause" || ch.type === "class_definition") break;
-        }
-        return false;
-      }
-      const prefixText = (current.text ?? "").replace(/"[^"]*"/g, "").split(/[=(;]/)[0] ?? "";
-      return /\bouter\b/.test(prefixText);
-    }
-    if (current.type === "class_prefixes" || current.type === "prefixes") {
-      if (current.children && current.children.length > 0) {
-        for (const ch of current.children) {
-          if (ch.type === "outer" || ch.type === '"outer"' || ch.text?.trim() === "outer") return true;
-        }
-        return false;
-      }
-      return /\bouter\b/.test((current.text ?? "").replace(/"[^"]*"/g, ""));
-    }
-    if (current.children) {
-      for (const ch of current.children) {
-        if (ch.type === "outer" || ch.type === '"outer"' || ch.text?.trim() === "outer") return true;
-      }
-    }
-    if (
-      current.type === "Composition" ||
-      current.type === "composition" ||
-      current.type === "stored_definition" ||
-      current.type === "StoredDefinition"
-    ) {
-      break;
-    }
-    current = current.parent;
-  }
-  return false;
+  return hasDynamicScopingPrefix(db, self, "outer");
 }
 
 /**
@@ -2641,14 +3021,7 @@ export const classDefinitionQueries: Record<string, any> = {
   /** Evaluates or derives the memoized 3D formal verification overlay payload for this class definition. */
   verification3DOverlay: (db: QueryDB, self: SymbolEntry): Verification3DOverlayPayload => {
     const cst = db.cstNode(self.id) as any;
-    const cstText = cst?.text || "";
-
-    const clearanceMatch = cstText.match(/annotation\s*\(\s*(?:__ModelScript_)?clearance\s*\(([^)]+)\)/i);
-    let minClearance = 10.0;
-    if (clearanceMatch && clearanceMatch[1]) {
-      const val = parseFloat(clearanceMatch[1].replace(/min\s*=\s*/i, ""));
-      if (!isNaN(val) && val > 0) minClearance = val;
-    }
+    const minClearance = findAnnotationClearanceMin(cst) ?? 10.0;
 
     const defaultPayload: Verification3DOverlayPayload = {
       version: 1,
@@ -2730,7 +3103,7 @@ export const classDefinitionQueries: Record<string, any> = {
         db.query<boolean>("isReplaceable", child.id) ||
         cst?.parent?.type === "element_replaceable" ||
         cst?.parent?.type === "ElementReplaceable" ||
-        /\breplaceable\b/.test(cst?.parent?.text ?? ""),
+        hasNodePrefixKeyword(cst?.parent, "replaceable"),
       );
 
       if (child.kind === "Extends") {
@@ -2747,7 +3120,7 @@ export const classDefinitionQueries: Record<string, any> = {
           text.startsWith("encapsulated pure function ") ||
           text.startsWith("encapsulated impure function ") ||
           (child.metadata as any)?.classKind === "function" ||
-          /\bfunction\b/.test(classPrefixes) ||
+          collapseSpaceTokens(classPrefixes).includes("function") ||
           child.ruleName === "function_definition";
 
         if (child.name === "constructor" && isFunction) {
@@ -2766,10 +3139,11 @@ export const classDefinitionQueries: Record<string, any> = {
 
     if (replaceableElements.length > 0) {
       const rep = replaceableElements[0]!;
+      const repRange = rep.fieldRanges?.["name"] ?? rep.fieldRanges?.["declaredName"];
       return [
         error(ModelicaErrorCode.EXTERNAL_OBJECT_NOT_REPLACEABLE.message(rep.name), {
-          startOffset: rep.startOffset,
-          endOffset: rep.endOffset,
+          startOffset: repRange?.startOffset ?? rep.startOffset,
+          endOffset: repRange?.endOffset ?? rep.endOffset,
           code: ModelicaErrorCode.EXTERNAL_OBJECT_NOT_REPLACEABLE.code,
         }),
       ];
@@ -2790,10 +3164,11 @@ export const classDefinitionQueries: Record<string, any> = {
     }
     const diags: any[] = [];
     for (const inv of invalidElements) {
+      const invRange = inv.entry.fieldRanges?.["name"] ?? inv.entry.fieldRanges?.["declaredName"];
       diags.push(
         error(ModelicaErrorCode.INVALID_EXTERNAL_OBJECT.message(self.name, inv.name), {
-          startOffset: inv.entry.startOffset,
-          endOffset: inv.entry.endOffset,
+          startOffset: invRange?.startOffset ?? inv.entry.startOffset,
+          endOffset: invRange?.endOffset ?? inv.entry.endOffset,
           code: ModelicaErrorCode.INVALID_EXTERNAL_OBJECT.code,
         }),
       );
@@ -2882,7 +3257,7 @@ export const classDefinitionQueries: Record<string, any> = {
     if (
       self.parentId !== null &&
       db.childrenOf(self.id).some((c) => c.kind === "Extends" && c.name === self.name) &&
-      /\bextends\s+[A-Za-z0-9_']/.test((cst.text ?? "").slice(0, 80))
+      isClassExtendsInCst(cst)
     ) {
       let hasIgnoreReplaceable = false;
       let currId: SymbolId | null = self.id;
@@ -3386,19 +3761,17 @@ export const classDefinitionQueries: Record<string, any> = {
    * Check if this class is an expandable connector type.
    */
   isExpandableConnector: (db: QueryDB, self: SymbolEntry) => {
-    let kind = String(
+    const rawKind = String(
       (self.metadata as Record<string, unknown>)?.["classPrefixes"] ??
         (self.metadata as Record<string, unknown>)?.["classKind"] ??
         "",
     );
-    kind = kind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-    const words = kind.split(/\s+/).filter(Boolean);
+    const words = collapseSpaceTokens(stripModelicaComments(rawKind));
     if (words.includes("expandable") && words.includes("connector")) return true;
     const cst = db.cstNode(self.id) as any;
     if (cst) {
       const pfx = Cst.ClassDefinition.classPrefixes(cst);
-      const pfxText = (pfx?.text ?? cst.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-      const pfxWords = pfxText.split(/\s+/).filter(Boolean);
+      const pfxWords = collapseSpaceTokens(stripModelicaComments(pfx?.text ?? cst.text ?? ""));
       if (pfxWords.includes("expandable") && pfxWords.includes("connector")) return true;
     }
     const base = db.query<SymbolEntry | null>("resolvedBaseClass", self.id);
@@ -3410,17 +3783,7 @@ export const classDefinitionQueries: Record<string, any> = {
   /**
    * Check if this class is an operator record type.
    */
-  isOperatorRecord: (db: QueryDB, self: SymbolEntry) => {
-    const meta = (self.metadata as Record<string, unknown>) || {};
-    const rawKind = String(meta["classPrefixes"] ?? meta["classKind"] ?? "");
-    if (rawKind.includes("operator") && rawKind.includes("record")) return true;
-    const cst = db.cstNode(self.id) as any;
-    if (cst) {
-      const text = (cst.text?.trim() ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-      if (/^(?:(?:encapsulated|partial)\s+)*operator\s+record\b/.test(text)) return true;
-    }
-    return false;
-  },
+  isOperatorRecord: (db: QueryDB, self: SymbolEntry) => isOperatorRecordSymbol(db, self),
   /**
    * For an `operator record` class, collect all operator functions.
    *
@@ -3438,19 +3801,7 @@ export const classDefinitionQueries: Record<string, any> = {
    *   end C;
    */
   operatorFunctions: (db: QueryDB, self: SymbolEntry): Map<string, OperatorOverload[]> | null => {
-    const meta = (self.metadata as Record<string, unknown>) || {};
-    const rawKind = String(meta["classPrefixes"] ?? meta["classKind"] ?? "");
-    const isOpRecord =
-      (rawKind.includes("operator") && rawKind.includes("record")) ||
-      (() => {
-        const cst = db.cstNode(self.id) as any;
-        if (cst) {
-          const text = (cst.text?.trim() ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-          return /^(?:(?:encapsulated|partial)\s+)*operator\s+record\b/.test(text);
-        }
-        return false;
-      })();
-    if (!isOpRecord) return null;
+    if (!isOperatorRecordSymbol(db, self)) return null;
 
     const recordName = self.name;
     const result = new Map<string, OperatorOverload[]>();
@@ -3460,7 +3811,7 @@ export const classDefinitionQueries: Record<string, any> = {
       list1.push(overload);
       result.set(opName, list1);
 
-      const clean = opName.replace(/^'|'$/g, "");
+      const clean = stripOuterChar(opName, "'");
       if (clean !== opName) {
         const list2 = result.get(clean) ?? [];
         list2.push(overload);
@@ -3489,7 +3840,7 @@ export const classDefinitionQueries: Record<string, any> = {
         let isArray = false;
         if (typeSpec.includes("[")) {
           isArray = true;
-          typeSpec = typeSpec.replace(/\[.*\]$/, "").trim();
+          typeSpec = stripTrailingBrackets(typeSpec);
         }
         if (param.name.includes("[")) {
           isArray = true;
@@ -3506,21 +3857,16 @@ export const classDefinitionQueries: Record<string, any> = {
           if (pText.includes("[:]")) {
             isArray = true;
           }
-          const eqIdx = pText.indexOf("=");
-          if (eqIdx >= 0) {
+          const bindingText = extractDeclBindingExprText(paramCst);
+          if (bindingText !== null) {
             hasDefault = true;
-            let defVal = pText.slice(eqIdx + 1).trim();
-            defVal = defVal
-              .replace(/;.*$/, "")
-              .replace(/"[^"]*"$/, "")
-              .trim();
-            defaultValue = defVal;
+            defaultValue = bindingText;
           }
         }
 
         if (causality === "input") {
           inputParams.push({
-            name: param.name.replace(/\[.*\]$/, ""),
+            name: stripTrailingBrackets(param.name),
             typeSpec,
             isArray,
             hasDefault,
@@ -3531,7 +3877,7 @@ export const classDefinitionQueries: Record<string, any> = {
         } else if (causality === "output") {
           outputType = typeSpec;
           outputParam = {
-            name: param.name.replace(/\[.*\]$/, ""),
+            name: stripTrailingBrackets(param.name),
             typeSpec,
             isArray,
             hasDefault,
@@ -3667,7 +4013,7 @@ export const classDefinitionQueries: Record<string, any> = {
         if (typeof queryDbWithCst.cstText === "function") {
           const hdr = queryDbWithCst.cstText(self.startOffset, Math.min(self.endOffset, self.startOffset + 160), self);
           if (typeof hdr === "string" && hdr.length > 0) {
-            mayBeClassExtends = /\bextends\b/.test(hdr);
+            mayBeClassExtends = containsWord(hdr, "extends");
           }
         }
       }
@@ -4342,10 +4688,7 @@ export const extendsClauseQueries: Record<string, any> = {
             if (resolved.kind === "Component") return null;
             if (resolved.kind === "Class") {
               const cst = db.cstNode(resolved.id) as any;
-              if (
-                cst?.text &&
-                /^[\s\S]*?\b(?:class|model|block|record|connector|type|package)\s+\w+\s*=/.test(cst.text)
-              ) {
+              if (getShortClassSpecifierNode(cst)) {
                 return null;
               }
             }
@@ -4414,7 +4757,8 @@ export const componentDeclarationQueries: Record<string, any> = {
             (typeof cmeta?.["typeName"] === "string" && cmeta["typeName"]) ||
             (typeof cmeta?.["target"] === "string" && cmeta["target"]) ||
             (typeof child.name === "string" && child.name && !child.name.startsWith("<") ? child.name : "");
-          const cleaned = raw.trim().replace(/^~\s*/, "");
+          const trimmedRaw = raw.trim();
+          const cleaned = trimmedRaw.startsWith("~") ? trimmedRaw.slice(1).trim() : trimmedRaw;
           if (cleaned) return cleaned;
         }
       }
@@ -4728,7 +5072,7 @@ export const componentDeclarationQueries: Record<string, any> = {
         }
         if (current.type === "element" || current.type === "Element") {
           const text = current.text || "";
-          if (/\bfinal\b/.test(text.slice(0, 50))) return true;
+          if (containsWord(text.slice(0, 50), "final")) return true;
           break;
         }
       }
@@ -5219,9 +5563,7 @@ export const componentDeclarationQueries: Record<string, any> = {
 
           const cycleStartIdx = evaluatingDimensionsStack.findIndex((frame) => {
             const name = db.symbol(frame.symbolId)?.name;
-            if (!name) return false;
-            const regex = new RegExp(`\\b${name}\\b`);
-            return regex.test(requestedExprText);
+            return Boolean(name && containsWord(requestedExprText, name));
           });
 
           const cycleFrames =
@@ -5605,7 +5947,7 @@ export const componentDeclarationQueries: Record<string, any> = {
     typeName = typeName.trim();
     if (!typeName) return null;
 
-    const baseType = typeName.replace(/\[.*\]$/, "").trim();
+    const baseType = stripTrailingBrackets(typeName);
     if (!baseType) return null;
 
     if (
@@ -5739,7 +6081,7 @@ export const componentDeclarationQueries: Record<string, any> = {
     typeName = typeName.trim();
     if (!typeName) return null;
 
-    const baseType = typeName.replace(/\[.*\]$/, "").trim();
+    const baseType = stripTrailingBrackets(typeName);
     if (!baseType) return null;
 
     if (
@@ -5777,8 +6119,7 @@ export const componentDeclarationQueries: Record<string, any> = {
     if (resolved) {
       const meta = resolved.metadata as Record<string, unknown> | undefined;
       const rawKind = String(meta?.["classPrefixes"] ?? meta?.["classKind"] ?? resolved.kind ?? "").toLowerCase();
-      const cleanKind = rawKind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-      const words = cleanKind.split(/\s+/).filter(Boolean);
+      const words = collapseSpaceTokens(stripModelicaComments(rawKind));
 
       if (words.includes("type")) {
         return null;
@@ -6070,7 +6411,7 @@ export const connectEquationQueries: Record<string, any> = {
       const compConnectors: boolean[] = [];
 
       for (let i = 0; i < rawSegments.length; i++) {
-        const seg = rawSegments[i]!.replace(/\[.*\]$/, "").trim();
+        const seg = stripTrailingBrackets(rawSegments[i]!);
         if (!seg) return { resolved: false, missingSegment: rawSegments[i], missingSegmentIndex: i };
 
         if (i > 0 && db.query<boolean>("isExpandableConnector", currentClassId)) {
@@ -6254,7 +6595,7 @@ export const connectEquationQueries: Record<string, any> = {
         let searchPos = 0;
         for (let i = 0; i <= segIdx; i++) {
           const rawSeg = rawSegments[i]!;
-          const cleanSeg = rawSeg.replace(/\[.*\]$/, "").trim();
+          const cleanSeg = stripTrailingBrackets(rawSeg);
           const idx = nodeText.indexOf(cleanSeg, searchPos);
           if (idx === -1) break;
           if (i === segIdx) {
@@ -6296,32 +6637,54 @@ export const connectEquationQueries: Record<string, any> = {
     if (diags.length > 0 || !lhsRes.resolved || !rhsRes.resolved) return diags;
 
     const checkSubscripts = (refText: string, node: any) => {
-      const rawSegments = refText.split(".");
-      for (const seg of rawSegments) {
-        const subMatch = seg.match(/\[(.*)\]$/);
-        if (subMatch) {
-          const subContent = subMatch[1]!;
-          const subExprs = subContent.split(",").map((s) => s.trim());
-          for (const subExpr of subExprs) {
-            const idMatches = subExpr.match(/\b[a-zA-Z_]\w*\b/g);
-            if (idMatches) {
-              for (const idm of idMatches) {
-                if (idm === "true" || idm === "false" || idm === "end") continue;
-                const resolver = db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", parentClassId);
-                const sym = resolver ? resolver(idm) : null;
-                if (sym) {
-                  const vari = db.query<string | null>("variability", sym.id);
-                  if (vari !== "parameter" && vari !== "constant") {
-                    return {
-                      invalid: true,
-                      subText: subExpr,
-                      refText,
-                      range: getRange(node),
-                    };
-                  }
+      let targetRoot = node;
+      if ((!targetRoot || !targetRoot.children || targetRoot.children.length === 0) && refText.includes("[")) {
+        targetRoot = parseConnectRefCst(refText);
+      }
+      if (!targetRoot) return null;
+      const resolver = db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", parentClassId);
+      if (!resolver) return null;
+
+      const subscripts: any[] = [];
+      const stack: any[] = [targetRoot];
+      while (stack.length > 0) {
+        const cur = stack.pop()!;
+        if (cur.type === "subscript" || cur.type === "Subscript") {
+          subscripts.push(cur);
+          continue;
+        }
+        const children = cur.children || [];
+        for (let i = children.length - 1; i >= 0; i--) {
+          stack.push(children[i]);
+        }
+      }
+
+      for (const subNode of subscripts) {
+        const subText = subNode.text?.trim() ?? "";
+        const idStack: any[] = [subNode];
+        while (idStack.length > 0) {
+          const cur = idStack.pop()!;
+          if (cur.type === "identifier" || cur.type === "Identifier" || cur.type === "IDENT") {
+            const idm = cur.text?.trim() ?? "";
+            if (idm && idm !== "true" && idm !== "false" && idm !== "end") {
+              const sym = resolver(idm);
+              if (sym) {
+                const vari = db.query<string | null>("variability", sym.id);
+                if (vari !== "parameter" && vari !== "constant") {
+                  return {
+                    invalid: true,
+                    subText,
+                    refText,
+                    range: getRange(node),
+                  };
                 }
               }
             }
+            continue;
+          }
+          const children = cur.children || [];
+          for (let i = children.length - 1; i >= 0; i--) {
+            idStack.push(children[i]);
           }
         }
       }

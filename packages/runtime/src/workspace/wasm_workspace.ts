@@ -123,8 +123,13 @@ function findDescendantByFieldName(node: any, fieldName: string): any | null {
   }
   for (const child of node.children || []) {
     const type = child.type || "";
+    if (type === "{" || type === "_DefinitionBody" || type === "_UsageBody") {
+      break;
+    }
     if (
       type.endsWith("Body") ||
+      type.endsWith("BodyItem") ||
+      type.endsWith("BodyElement") ||
       type.endsWith("Member") ||
       type.endsWith("Section") ||
       type === "class_body" ||
@@ -954,6 +959,9 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         }
         if (hook.metadataFieldPaths) {
           for (const [key, fieldPath] of Object.entries(hook.metadataFieldPaths)) {
+            if (/^is[A-Z]/.test(key)) {
+              continue;
+            }
             const fieldNode = resolveFieldPath(node, fieldPath);
             if (fieldNode) {
               const fStart = fieldNode.startOffset ?? fieldNode.startIndex;
@@ -2098,6 +2106,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     [".ofn", "owl2"],
     [".rdf", "owl2"],
     [".csv", "csv"],
+    [".las", "las"],
     [".scad", "scad"],
     [".inp", "fea"],
     [".bdf", "fea"],

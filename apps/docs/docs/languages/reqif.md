@@ -23,8 +23,9 @@ ModelScript delivers first-class support for **ReqIF** (Requirements Interchange
 - **Formal Contract Extraction:**
   - Automatically parses mathematical constraints from natural language requirement text (e.g. `latency <= 50 ms`, `pressure >= 15 bar`, `temp in [20, 80] C`).
 - **Nelson-Oppen Mathematical Entailment Prover:**
-  - Uses the SMT/Nelson-Oppen theory coordinator in `@modelscript/runtime` to prove whether child sub-requirements strictly entail parent system-level requirements:
+  - Uses the SMT/Nelson-Oppen theory coordinator in `@modelscript/runtime` to prove whether the conjunction of child sub-requirements logically guarantees (entails) the parent system-level requirement:
     $$\bigwedge_{i} \text{SubReq}_i \models \text{ParentReq}$$
+    where $\text{SubReq}_i$ is the formal mathematical constraint extracted from the $i$-th child requirement, $\text{ParentReq}$ is the parent requirement's constraint formula, and $\models$ denotes semantic entailment (every system state satisfying all $\text{SubReq}_i$ also satisfies $\text{ParentReq}$).
   - Generates concrete numeric counterexamples when an entailment gap exists (e.g. child requirements permit a state that violates the parent requirement).
 - **Bidirectional Tabular Editor & 2D Traceability Matrix (`@modelscript/reqif/tabular`):**
   - Powered by `@modelscript/dsl`'s declarative `TabularConfig`, ReqIF specifications project into 4 synchronized, bidirectional sheets:

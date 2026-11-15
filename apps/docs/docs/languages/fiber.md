@@ -34,16 +34,18 @@ description: "@modelscript/fiber (languages/fiber) provides ANSI/TIA-598-D color
 
 ### 3. Shared Risk Link Group (SRLG) Disjointness
 
-- Evaluates physical path isolation between primary and backup protection circuits:
+- Evaluates physical path isolation between primary and backup protection circuits, ensuring the two routes share no common physical failure-domain risk groups (ducts, poles, trenches, or manholes):
   $$\text{SRLG}(P_{\text{primary}}) \cap \text{SRLG}(P_{\text{backup}}) = \emptyset$$
+  where $P_{\text{primary}}$ and $P_{\text{backup}}$ are the primary and backup optical path sequences of links/nodes, and $\text{SRLG}(P)$ is the set of Shared Risk Link Group identifiers traversed by path $P$.
 - Detects physical Single Points of Failure (SPOFs) where supposedly diverse customer circuits share common trenches, duct banks, utility poles, or bridge crossings.
 - Calculates Jaccard physical diversity scores.
 
 ### 4. OTDR-to-GIS GPS Fault Geolocation
 
 - Pinpoints the physical GPS latitude/longitude of fiber breaks or high-loss anomalies detected by OTDR traces.
-- Applies cable helical twisting correction factor ($H = 1.01$–$1.05$):
+- Applies cable helical twisting correction factor ($H = 1.01$–$1.05$) to convert measured optical glass length into true physical cable sheath distance:
   $$d_{\text{physical}} = \frac{d_{\text{optical}}}{H}$$
+  where $d_{\text{physical}}$ is the physical cable sheath distance ($\text{m}$ or $\text{km}$, $\ge 0$), $d_{\text{optical}}$ is the OTDR-measured optical fiber length ($\text{m}$ or $\text{km}$, $\ge 0$), and $H$ is the dimensionless helical stranding / excess-fiber-length factor ($H \ge 1$).
 - Corrects for slack storage coils stored in vaults, manholes, and aerial snowshoes.
 - Identifies the closest upstream and downstream access enclosures to dispatch emergency restoration crews directly to the proper vault.
 

@@ -83,14 +83,38 @@ export function validateOlga(content: string, _uri: string = "model.genkey"): Ls
   try {
     const model = parseOlga(content);
     const rawDiags = lintOlgaModel(model);
+    const lines = content.split(/\r?\n/);
 
-    return rawDiags.map((d) => ({
-      range: DEFAULT_RANGE,
-      severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
-      code: d.code,
-      source: "modelscript-olga",
-      message: d.message,
-    }));
+    return rawDiags.map((d) => {
+      const hint = d.message.match(/'([^']+)'/)?.[1];
+      let lineIdx = 0;
+      let startChar = 0;
+      let endChar = 1;
+      if (hint) {
+        const found = lines.findIndex((l) => l.includes(hint));
+        if (found >= 0) {
+          lineIdx = found;
+          startChar = lines[found]!.indexOf(hint);
+          endChar = startChar + hint.length;
+        }
+      }
+      if (endChar <= startChar || (!hint && lines.length > 0)) {
+        const lt = lines[lineIdx] ?? "";
+        while (startChar < lt.length && (lt[startChar] === " " || lt[startChar] === "\t")) startChar++;
+        const tok = lt.slice(startChar).match(/^[^\s=,;]+/);
+        endChar = Math.min(lt.length, startChar + (tok ? tok[0].length : 1));
+      }
+      return {
+        range: {
+          start: { line: lineIdx, character: startChar },
+          end: { line: lineIdx, character: Math.max(startChar + 1, endChar) },
+        },
+        severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
+        code: d.code,
+        source: "modelscript-olga",
+        message: d.message,
+      };
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return [

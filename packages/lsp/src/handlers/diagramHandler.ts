@@ -4,6 +4,11 @@ import { cellsToDiagramData, renderPolyglotDiagramToSvg } from "@modelscript/dia
 import { DiagramApplyEditsParams, DiagramMethods } from "../diagramProtocol.js";
 import { LspContext } from "../lsp-context.js";
 import { getCompositeName } from "../utils/hierarchy-utils.js";
+import {
+  compileStepFromSources,
+  type CompileStepFromSourcesParams,
+  type CompileStepFromSourcesResult,
+} from "./cadStepCompiler.js";
 import { dispatchLanguageRequest } from "./languageProtocolRouter.js";
 
 function simpleHash(str: string): number {
@@ -331,7 +336,17 @@ export function registerDiagramHandlers(context: LspContext) {
     return await context.diagramService.getDiagramDispatch().drillDown(params);
   });
 
-  context.connection.onRequest("modelscript/getStepMeshes", async (params: { uri: string }): Promise<any[]> => {
-    return await dispatchLanguageRequest(context, "modelscript/getStepMeshes", params.uri, params, []);
-  });
+  context.connection.onRequest(
+    "modelscript/getStepMeshes",
+    async (params: { uri: string; documentText?: string }): Promise<any[]> => {
+      return await dispatchLanguageRequest(context, "modelscript/getStepMeshes", params.uri, params, []);
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/compileStepFromSources",
+    async (params: CompileStepFromSourcesParams): Promise<CompileStepFromSourcesResult> => {
+      return compileStepFromSources(params);
+    },
+  );
 }

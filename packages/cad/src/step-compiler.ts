@@ -15,23 +15,94 @@
  * separate MANIFOLD_SOLID_BREP.  Phase 4 will add exact BREP booleans.
  */
 
+import { computeSolidAABB, transformAABB } from "./clearance.js";
 import { ManifoldWorker } from "./manifold-worker.js";
+import { serializeStepProvenanceMeta, type StepProvenanceMeta } from "./step-provenance.js";
+import { IDENTITY } from "./transforms.js";
 import type { Assembly, Mat4, Solid, Vec3 } from "./types.js";
 import { SolidKind } from "./types.js";
 
+// ── Public PMI & STEP Options ────────────────────────────────────────────
+
+/** 3D surface or datum anchor extracted from `SolidKind.TaggedPatch` nodes during STEP compilation. */
+export interface StepFeatureAnchor {
+  readonly name: string;
+  readonly portType: string;
+  readonly anchor: Vec3;
+  readonly normal?: Vec3 | undefined;
+}
+
+/** AP242 datum specification synthesized during STEP compilation. */
+export interface StepPmiDatumSpec {
+  readonly label: string;
+  readonly featureName: string;
+  readonly anchor?: Vec3 | undefined;
+  readonly normal?: Vec3 | undefined;
+}
+
+/** AP242 geometric tolerance entity name supported by `step-linter.ts` schema validation. */
+export type StepToleranceEntityType =
+  | "POSITION_TOLERANCE"
+  | "PERPENDICULARITY_TOLERANCE"
+  | "PARALLELISM_TOLERANCE"
+  | "CONCENTRICITY_TOLERANCE"
+  | "FLATNESS_TOLERANCE"
+  | "CYLINDRICITY_TOLERANCE"
+  | "CIRCULARITY_TOLERANCE"
+  | "TOTAL_RUNOUT_TOLERANCE"
+  | "CIRCULAR_RUNOUT_TOLERANCE"
+  | "RUNOUT_TOLERANCE"
+  | "SURFACE_PROFILE_TOLERANCE"
+  | "LINE_PROFILE_TOLERANCE"
+  | "GEOMETRIC_TOLERANCE";
+
+/** AP242 GD&T characteristic specification bound to a symbolic feature name and/or 3D anchor. */
+export interface StepPmiToleranceSpec {
+  readonly id: string;
+  readonly name: string;
+  readonly description?: string | undefined;
+  readonly characteristic: StepToleranceEntityType;
+  readonly zoneValue: number;
+  readonly materialCondition?: "RFS" | "MMC" | "LMC" | undefined;
+  readonly datumRefs?: readonly string[] | undefined;
+  readonly featureName?: string | undefined;
+  readonly anchor?: Vec3 | undefined;
+}
+
+/** Optional AP242 PMI payload compiled alongside geometry. */
+export interface StepPmiSpec {
+  readonly datums?: readonly StepPmiDatumSpec[] | undefined;
+  readonly tolerances?: readonly StepPmiToleranceSpec[] | undefined;
+}
+
+/** Compilation options controlling STEP schema, units, part naming, and embedded PMI. */
+export interface StepCompileOptions {
+  readonly schema?: "AP214" | "AP242" | undefined;
+  readonly lengthUnit?: "mm" | "m" | undefined;
+  readonly uncertainty?: number | undefined;
+  readonly preservePartNames?: boolean | undefined;
+  readonly pmi?: StepPmiSpec | undefined;
+  /** Deterministic ISO timestamp override (useful for golden/snapshot diffs). */
+  readonly timeStamp?: string | undefined;
+  /** Optional ModelScript provenance metadata embedded inside STEP HEADER;. */
+  readonly provenance?: StepProvenanceMeta | undefined;
+}
+
 // ── Entity allocator ─────────────────────────────────────────────────────
 
-/** Mutable accumulator holding the next STEP entity ID (`#N`) and emitted DATA lines. */
+/** Mutable accumulator holding the next STEP entity ID (`#N`), emitted DATA lines, and discovered feature anchors. */
 interface StepContext {
   /** Next available 1-based STEP entity ID. */
   nextId: number;
   /** Emitted ISO-10303-21 entity assignment records (`#id=ENTITY(...);`). */
   entities: string[];
+  /** Deduplicated world-space anchors collected from `TaggedPatch` solids. */
+  featureAnchors: Map<string, StepFeatureAnchor>;
 }
 
 /** Creates an empty {@link StepContext} starting at entity ID `#10`. */
 function createContext(): StepContext {
-  return { nextId: 10, entities: [] };
+  return { nextId: 10, entities: [], featureAnchors: new Map() };
 }
 
 /** Allocates and returns the next sequential STEP entity ID in `ctx`. */
@@ -44,6 +115,11 @@ function ref(n: number): string {
   return `#${n}`;
 }
 
+/** Escapes single quotes for ISO-10303-21 string literals. */
+function escStepStr(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
 /** Appends a `#eid=body;` record to `ctx.entities` and returns `#eid`. */
 function emit(ctx: StepContext, eid: number, body: string): string {
   ctx.entities.push(`${ref(eid)}=${body};`);
@@ -52,10 +128,20 @@ function emit(ctx: StepContext, eid: number, body: string): string {
 
 // ── Number formatting ────────────────────────────────────────────────────
 
-/** Formats a floating-point coordinate or measure for ISO-10303-21 output. */
+/** Formats a floating-point coordinate or measure for strict ISO-10303-21 Part 21 syntax. */
 function fmt(n: number): string {
-  if (Number.isInteger(n) && Math.abs(n) < 1e6) return n.toFixed(1);
-  return n.toPrecision(15).replace(/\.?0+$/, "") || "0.";
+  if (!Number.isFinite(n) || Math.abs(n) < 1e-12) return "0.0";
+  if (Number.isInteger(n) && Math.abs(n) < 1e9) return n.toFixed(1);
+  const raw = Number(n.toPrecision(12));
+  if (Math.abs(raw) < 1e-12) return "0.0";
+  let s = raw.toString().replace("e", "E");
+  if (s.includes("E")) {
+    const [mant, exp] = s.split("E");
+    const fixedMant = (mant!.includes(".") ? mant! : `${mant}.`).replace(/(\.\d*?[1-9])0+$/, "$1");
+    return `${fixedMant}E${exp}`;
+  }
+  if (!s.includes(".")) s += ".0";
+  return s;
 }
 
 // ── Low-level STEP entity builders ───────────────────────────────────────
@@ -435,7 +521,232 @@ function buildCylinderBrep(
   const latFace2 = emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${latBound2}),${cylSurf},.T.)`);
 
   const shell = emit(ctx, allocId(ctx), `CLOSED_SHELL('',(${[botFace, topFace, latFace1, latFace2].join(",")}))`);
-  return emit(ctx, allocId(ctx), `MANIFOLD_SOLID_BREP('${name}',${shell})`);
+  return emit(ctx, allocId(ctx), `MANIFOLD_SOLID_BREP('${escStepStr(name)}',${shell})`);
+}
+
+/**
+ * Emits an exact analytical ISO-10303-21 `MANIFOLD_SOLID_BREP` for a coaxial annular hollow cylinder
+ * (`rInner < rOuter`, `height`), with `FACE_OUTER_BOUND` + inner `FACE_BOUND` planar annular end caps
+ * and inward-oriented `.F.` inner bore cylindrical walls.
+ */
+function buildHollowCylinderBrep(
+  ctx: StepContext,
+  name: string,
+  rOuter: number,
+  rInner: number,
+  height: number,
+  worldMatrix?: Mat4,
+): string {
+  const hh = height / 2;
+  const rOut = Math.max(1e-5, rOuter);
+  const rIn = Math.max(1e-6, Math.min(rInner, rOut - 1e-6));
+  const s = matrixScale(worldMatrix);
+  const effROut = rOut * s;
+  const effRIn = rIn * s;
+
+  const localV: Vec3[] = [
+    [-rOut, 0, -hh], // 0: outer bottom -x
+    [rOut, 0, -hh], // 1: outer bottom +x
+    [-rOut, 0, hh], // 2: outer top -x
+    [rOut, 0, hh], // 3: outer top +x
+    [-rIn, 0, -hh], // 4: inner bottom -x
+    [rIn, 0, -hh], // 5: inner bottom +x
+    [-rIn, 0, hh], // 6: inner top -x
+    [rIn, 0, hh], // 7: inner top +x
+  ];
+  const corners = worldMatrix ? localV.map((c) => transformPoint(worldMatrix, c)) : localV;
+  const vp = corners.map((c, i) => emit(ctx, allocId(ctx), `VERTEX_POINT('hcv${i}',${cartesianPoint(ctx, c)})`));
+
+  const effBottomCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, -hh]) : [0, 0, -hh];
+  const effTopCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, hh]) : [0, 0, hh];
+  const effZAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 0, 1]) : [0, 0, 1];
+  const effXAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [1, 0, 0]) : [1, 0, 0];
+  const effOppZAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 0, -1]) : [0, 0, -1];
+
+  const botOuterCircle = circle(ctx, effBottomCenter, effROut, effZAxis, effXAxis);
+  const topOuterCircle = circle(ctx, effTopCenter, effROut, effZAxis, effXAxis);
+  const botInnerCircle = circle(ctx, effBottomCenter, effRIn, effZAxis, effXAxis);
+  const topInnerCircle = circle(ctx, effTopCenter, effRIn, effZAxis, effXAxis);
+
+  const ec_ob0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[0]},${vp[1]},${botOuterCircle},.T.)`);
+  const ec_ob1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[1]},${vp[0]},${botOuterCircle},.T.)`);
+  const ec_ot0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[2]},${vp[3]},${topOuterCircle},.T.)`);
+  const ec_ot1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[3]},${vp[2]},${topOuterCircle},.T.)`);
+
+  const ec_ib0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[4]},${vp[5]},${botInnerCircle},.T.)`);
+  const ec_ib1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[5]},${vp[4]},${botInnerCircle},.T.)`);
+  const ec_it0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[6]},${vp[7]},${topInnerCircle},.T.)`);
+  const ec_it1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[7]},${vp[6]},${topInnerCircle},.T.)`);
+
+  function lineEdge(v0: number, v1: number): string {
+    const p0 = corners[v0] as Vec3;
+    const p1 = corners[v1] as Vec3;
+    const dx = p1[0] - p0[0];
+    const dy = p1[1] - p0[1];
+    const dz = p1[2] - p0[2];
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
+    const dir = direction(ctx, [dx / len, dy / len, dz / len]);
+    const vec = emit(ctx, allocId(ctx), `VECTOR('',${dir},${fmt(len)})`);
+    const line = emit(ctx, allocId(ctx), `LINE('',${cartesianPoint(ctx, p0)},${vec})`);
+    return emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[v0]},${vp[v1]},${line},.T.)`);
+  }
+
+  const ec_os0 = lineEdge(0, 2);
+  const ec_os1 = lineEdge(1, 3);
+  const ec_is0 = lineEdge(4, 6);
+  const ec_is1 = lineEdge(5, 7);
+
+  const oe = (ec: string, forward: boolean) =>
+    emit(ctx, allocId(ctx), `ORIENTED_EDGE('',*,*,${ec},${forward ? ".T." : ".F."})`);
+
+  // Bottom annular cap (normal -zAxis): outer CW around +Z, inner hole CCW around +Z
+  const botPlane = emit(
+    ctx,
+    allocId(ctx),
+    `PLANE('',${axis2Placement3d(ctx, effBottomCenter, effOppZAxis, effXAxis)})`,
+  );
+  const botOuterLoop = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${[oe(ec_ob1, false), oe(ec_ob0, false)].join(",")}))`);
+  const botInnerLoop = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${[oe(ec_ib0, true), oe(ec_ib1, true)].join(",")}))`);
+  const botOuterBound = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${botOuterLoop},.T.)`);
+  const botInnerBound = emit(ctx, allocId(ctx), `FACE_BOUND('',${botInnerLoop},.T.)`);
+  const botFace = emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${botOuterBound},${botInnerBound}),${botPlane},.T.)`);
+
+  // Top annular cap (normal +zAxis): outer CCW around +Z, inner hole CW around +Z
+  const topPlane = emit(ctx, allocId(ctx), `PLANE('',${axis2Placement3d(ctx, effTopCenter, effZAxis, effXAxis)})`);
+  const topOuterLoop = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${[oe(ec_ot0, true), oe(ec_ot1, true)].join(",")}))`);
+  const topInnerLoop = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${[oe(ec_it1, false), oe(ec_it0, false)].join(",")}))`);
+  const topOuterBound = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${topOuterLoop},.T.)`);
+  const topInnerBound = emit(ctx, allocId(ctx), `FACE_BOUND('',${topInnerLoop},.T.)`);
+  const topFace = emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${topOuterBound},${topInnerBound}),${topPlane},.T.)`);
+
+  // Outer cylindrical shell (.T.)
+  const outerCylSurf = cylindricalSurface(ctx, effBottomCenter, effROut, effZAxis, effXAxis);
+  const outLoop1 = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[oe(ec_ob0, true), oe(ec_os1, true), oe(ec_ot0, false), oe(ec_os0, false)].join(",")}))`,
+  );
+  const outFace1 = emit(
+    ctx,
+    allocId(ctx),
+    `ADVANCED_FACE('',(${emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${outLoop1},.T.)`)}),${outerCylSurf},.T.)`,
+  );
+  const outLoop2 = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[oe(ec_ob1, true), oe(ec_os0, true), oe(ec_ot1, false), oe(ec_os1, false)].join(",")}))`,
+  );
+  const outFace2 = emit(
+    ctx,
+    allocId(ctx),
+    `ADVANCED_FACE('',(${emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${outLoop2},.T.)`)}),${outerCylSurf},.T.)`,
+  );
+
+  // Inner cylindrical bore walls (.F. — reverses outward normal radially inward into bore)
+  const innerCylSurf = cylindricalSurface(ctx, effBottomCenter, effRIn, effZAxis, effXAxis);
+  const inLoop1 = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[oe(ec_it0, true), oe(ec_is1, false), oe(ec_ib0, false), oe(ec_is0, true)].join(",")}))`,
+  );
+  const inFace1 = emit(
+    ctx,
+    allocId(ctx),
+    `ADVANCED_FACE('',(${emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${inLoop1},.T.)`)}),${innerCylSurf},.F.)`,
+  );
+  const inLoop2 = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[oe(ec_it1, true), oe(ec_is0, false), oe(ec_ib1, false), oe(ec_is1, true)].join(",")}))`,
+  );
+  const inFace2 = emit(
+    ctx,
+    allocId(ctx),
+    `ADVANCED_FACE('',(${emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${inLoop2},.T.)`)}),${innerCylSurf},.F.)`,
+  );
+
+  const shell = emit(
+    ctx,
+    allocId(ctx),
+    `CLOSED_SHELL('',(${[botFace, topFace, outFace1, outFace2, inFace1, inFace2].join(",")}))`,
+  );
+  return emit(ctx, allocId(ctx), `MANIFOLD_SOLID_BREP('${escStepStr(name)}',${shell})`);
+}
+
+/** Unwraps nested Transform/TaggedPatch nodes around a leaf solid, collecting feature anchors and net matrix. */
+function unwrapLeafWithTags(ctx: StepContext, solid: Solid, parentMatrix: Mat4): { leaf: Solid; worldMatrix: Mat4 } {
+  let curr: Solid = solid;
+  let mat: Mat4 = parentMatrix;
+  while (curr.kind === SolidKind.Transform || curr.kind === SolidKind.TaggedPatch) {
+    if (curr.kind === SolidKind.Transform) {
+      mat = mat4Multiply(mat, curr.matrix);
+      curr = curr.child;
+    } else {
+      recordTaggedPatchAnchor(ctx, curr, mat);
+      curr = curr.child;
+    }
+  }
+  return { leaf: curr, worldMatrix: mat };
+}
+
+/**
+ * Recognizes `Subtract(Cylinder_outer, Cylinder_inner)` when both cylinders are right-circular,
+ * coaxial, and the cutter completely clears the outer cylinder's axial ends, emitting an exact
+ * analytical hollow cylinder B-Rep instead of faceted triangle CSG output.
+ */
+function tryBuildHollowCylinderBrep(
+  ctx: StepContext,
+  solid: Extract<Solid, { left: Solid; right: Solid }>,
+  parentMatrix: Mat4,
+  brepName: string,
+): string | null {
+  const outer = unwrapLeafWithTags(ctx, solid.left, parentMatrix);
+  const inner = unwrapLeafWithTags(ctx, solid.right, parentMatrix);
+  if (outer.leaf.kind !== SolidKind.Cylinder || inner.leaf.kind !== SolidKind.Cylinder) return null;
+
+  const rOutBot = outer.leaf.radiusBottom ?? outer.leaf.radius;
+  const rOutTop = outer.leaf.radiusTop ?? outer.leaf.radius;
+  const rInBot = inner.leaf.radiusBottom ?? inner.leaf.radius;
+  const rInTop = inner.leaf.radiusTop ?? inner.leaf.radius;
+  if (Math.abs(rOutBot - rOutTop) > 1e-6 || Math.abs(rInBot - rInTop) > 1e-6) return null;
+
+  const sOut = matrixScale(outer.worldMatrix);
+  const sIn = matrixScale(inner.worldMatrix);
+  const rOut = rOutBot * sOut;
+  const rIn = rInBot * sIn;
+  if (!(rIn > 1e-6 && rOut > rIn + 1e-6)) return null;
+
+  const cOut = transformPoint(outer.worldMatrix, [0, 0, 0]);
+  const cIn = transformPoint(inner.worldMatrix, [0, 0, 0]);
+  const zOut = transformDir(outer.worldMatrix, [0, 0, 1]);
+  const zIn = transformDir(inner.worldMatrix, [0, 0, 1]);
+  const crossMag = Math.hypot(
+    zOut[1] * zIn[2] - zOut[2] * zIn[1],
+    zOut[2] * zIn[0] - zOut[0] * zIn[2],
+    zOut[0] * zIn[1] - zOut[1] * zIn[0],
+  );
+  if (crossMag > 1e-4) return null;
+
+  const dx = cIn[0] - cOut[0];
+  const dy = cIn[1] - cOut[1];
+  const dz = cIn[2] - cOut[2];
+  const axialOffset = dx * zOut[0] + dy * zOut[1] + dz * zOut[2];
+  const radialOffset = Math.hypot(dx - axialOffset * zOut[0], dy - axialOffset * zOut[1], dz - axialOffset * zOut[2]);
+  if (radialOffset > 1e-4) return null;
+
+  const zTopOut = transformPoint(outer.worldMatrix, [0, 0, outer.leaf.height / 2]);
+  const zBotOut = transformPoint(outer.worldMatrix, [0, 0, -outer.leaf.height / 2]);
+  const hOutWorld = Math.hypot(zTopOut[0] - zBotOut[0], zTopOut[1] - zBotOut[1], zTopOut[2] - zBotOut[2]);
+
+  const zTopIn = transformPoint(inner.worldMatrix, [0, 0, inner.leaf.height / 2]);
+  const zBotIn = transformPoint(inner.worldMatrix, [0, 0, -inner.leaf.height / 2]);
+  const hInWorld = Math.hypot(zTopIn[0] - zBotIn[0], zTopIn[1] - zBotIn[1], zTopIn[2] - zBotIn[2]);
+
+  if (hOutWorld <= 1e-6) return null;
+  if (axialOffset - hInWorld / 2 > -hOutWorld / 2 + 1e-4) return null;
+  if (axialOffset + hInWorld / 2 < hOutWorld / 2 - 1e-4) return null;
+
+  return buildHollowCylinderBrep(ctx, brepName, rOutBot, rIn * (1 / sOut), outer.leaf.height, outer.worldMatrix);
 }
 
 // ── Sphere Analytical BREP ───────────────────────────────────────────────
@@ -592,7 +903,6 @@ function buildTorusBrep(ctx: StepContext, name: string, major: number, minor: nu
 // ── Solid tree → BREP refs ───────────────────────────────────────────────
 
 /** 4x4 column-major identity transformation matrix. */
-const IDENTITY: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
 /** Multiplies two 4x4 column-major homogeneous transformation matrices (`a * b`). */
 function mat4Multiply(a: Mat4, b: Mat4): Mat4 {
@@ -609,16 +919,72 @@ function mat4Multiply(a: Mat4, b: Mat4): Mat4 {
   return r as unknown as Mat4;
 }
 
+/** Computes and records the world-space surface anchor for a `TaggedPatch` boundary feature. */
+function recordTaggedPatchAnchor(
+  ctx: StepContext,
+  solid: Solid & { kind: SolidKind.TaggedPatch },
+  parentMatrix: Mat4,
+): void {
+  if (ctx.featureAnchors.has(solid.tag.portName)) return;
+  try {
+    const localBox = computeSolidAABB(solid.child);
+    const worldBox = transformAABB(localBox, parentMatrix);
+    const cx = (worldBox.min[0] + worldBox.max[0]) / 2;
+    const cy = (worldBox.min[1] + worldBox.max[1]) / 2;
+    const cz = (worldBox.min[2] + worldBox.max[2]) / 2;
+    const hx = (worldBox.max[0] - worldBox.min[0]) / 2;
+    const hy = (worldBox.max[1] - worldBox.min[1]) / 2;
+    const hz = (worldBox.max[2] - worldBox.min[2]) / 2;
+    let anchor: Vec3 = [cx, cy, cz];
+    const norm = solid.tag.normal;
+    if (norm) {
+      const nLen = Math.hypot(norm[0], norm[1], norm[2]);
+      if (nLen > 1e-9) {
+        const nx = norm[0] / nLen;
+        const ny = norm[1] / nLen;
+        const nz = norm[2] / nLen;
+        anchor = [cx + nx * hx, cy + ny * hy, cz + nz * hz];
+      }
+    }
+    ctx.featureAnchors.set(solid.tag.portName, {
+      name: solid.tag.portName,
+      portType: solid.tag.portType,
+      anchor,
+      normal: norm,
+    });
+  } catch {
+    // Fallback centroid from translation column if child AABB fails
+    const tx = parentMatrix[12] as number;
+    const ty = parentMatrix[13] as number;
+    const tz = parentMatrix[14] as number;
+    ctx.featureAnchors.set(solid.tag.portName, {
+      name: solid.tag.portName,
+      portType: solid.tag.portType,
+      anchor: [tx, ty, tz],
+      normal: solid.tag.normal,
+    });
+  }
+}
+
+/** Prefixes solid B-Rep names with their parent assembly part name when `partPrefix` is set so OCCT meshes retain stage routing. */
+function resolveBrepName(solidName: string, partPrefix?: string): string {
+  if (!partPrefix) return solidName;
+  if (!solidName || solidName === "unnamed" || solidName === partPrefix) return partPrefix;
+  if (solidName.startsWith(`${partPrefix}__`)) return solidName;
+  return `${partPrefix}__${solidName}`;
+}
+
 /**
- * Recursively walk the Solid tree and emit BREP entities for each leaf.
+ * Recursively walk the Solid tree and emit BREP entities for each constituent solid.
  * Returns an array of MANIFOLD_SOLID_BREP references.
  */
-function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): string[] {
+function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4, partPrefix?: string): string[] {
+  const brepName = resolveBrepName(solid.name, partPrefix);
   switch (solid.kind) {
     case SolidKind.Box: {
       const brepRef = buildBoxBrep(
         ctx,
-        solid.name,
+        brepName,
         0,
         0,
         0,
@@ -633,17 +999,17 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
     case SolidKind.Cylinder: {
       const rBot = solid.radiusBottom ?? solid.radius;
       const rTop = solid.radiusTop ?? solid.radius;
-      const brepRef = buildCylinderBrep(ctx, solid.name, rBot, rTop, solid.height, parentMatrix);
+      const brepRef = buildCylinderBrep(ctx, brepName, rBot, rTop, solid.height, parentMatrix);
       return [brepRef];
     }
 
     case SolidKind.Sphere: {
-      const brepRef = buildSphereBrep(ctx, solid.name, solid.radius, parentMatrix);
+      const brepRef = buildSphereBrep(ctx, brepName, solid.radius, parentMatrix);
       return [brepRef];
     }
 
     case SolidKind.Torus: {
-      const brepRef = buildTorusBrep(ctx, solid.name, solid.major, solid.minor, parentMatrix);
+      const brepRef = buildTorusBrep(ctx, brepName, solid.major, solid.minor, parentMatrix);
       return [brepRef];
     }
 
@@ -652,7 +1018,7 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
       if (solid.polygon.length >= 3) {
         const brepRef = buildExtrusionBrep(
           ctx,
-          solid.name,
+          brepName,
           solid.polygon,
           solid.height,
           solid.twist,
@@ -677,7 +1043,7 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
       const hw = Math.max(1e-3, (maxX - minX) / 2);
       const hh = Math.max(1e-3, (maxY - minY) / 2);
       const hd = Math.max(1e-3, solid.height / 2);
-      const brepRef = buildBoxBrep(ctx, solid.name, cx, cy, cz, hw, hh, hd, parentMatrix);
+      const brepRef = buildBoxBrep(ctx, brepName, cx, cy, cz, hw, hh, hd, parentMatrix);
       return [brepRef];
     }
 
@@ -685,7 +1051,7 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
       if (solid.points.length === 0) return [];
       // Emit faceted planar B-Rep when explicit face loops are provided; fallback to AABB box otherwise
       if (solid.faces && solid.faces.length > 0) {
-        const brepRef = buildPolyhedronBrep(ctx, solid.name, solid.points, solid.faces, parentMatrix);
+        const brepRef = buildPolyhedronBrep(ctx, brepName, solid.points, solid.faces, parentMatrix);
         if (brepRef) return [brepRef];
       }
       let minX = Infinity,
@@ -708,40 +1074,47 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
       const hw = Math.max(1e-3, (maxX - minX) / 2);
       const hh = Math.max(1e-3, (maxY - minY) / 2);
       const hd = Math.max(1e-3, (maxZ - minZ) / 2);
-      const brepRef = buildBoxBrep(ctx, solid.name, cx, cy, cz, hw, hh, hd, parentMatrix);
+      const brepRef = buildBoxBrep(ctx, brepName, cx, cy, cz, hw, hh, hd, parentMatrix);
       return [brepRef];
     }
 
     case SolidKind.Transform: {
       // Accumulate local transform into parentMatrix and recurse into child solid
       const combined = mat4Multiply(parentMatrix, solid.matrix);
-      return flattenSolid(ctx, solid.child, combined);
+      return flattenSolid(ctx, solid.child, combined, partPrefix);
     }
 
-    case SolidKind.Union:
-    case SolidKind.Subtract:
-    case SolidKind.Intersect: {
-      const left = flattenSolid(ctx, solid.left, parentMatrix);
-      const right = flattenSolid(ctx, solid.right, parentMatrix);
-      const opName =
-        solid.kind === SolidKind.Union ? "UNION" : solid.kind === SolidKind.Subtract ? "DIFFERENCE" : "INTERSECTION";
-      if (left[0] && right[0]) {
-        emit(ctx, allocId(ctx), `BOOLEAN_RESULT('${solid.name}',.${opName}.,${left[0]},${right[0]})`);
-      }
-      const brepRef = buildEvaluatedSolidBrep(ctx, solid, parentMatrix);
+    case SolidKind.Union: {
+      return [
+        ...flattenSolid(ctx, solid.left, parentMatrix, partPrefix),
+        ...flattenSolid(ctx, solid.right, parentMatrix, partPrefix),
+      ];
+    }
+
+    case SolidKind.Subtract: {
+      const hollowRef = tryBuildHollowCylinderBrep(ctx, solid, parentMatrix, brepName);
+      if (hollowRef) return [hollowRef];
+      const brepRef = buildEvaluatedSolidBrep(ctx, solid, parentMatrix, partPrefix);
       if (brepRef) return [brepRef];
-      return [...left, ...right];
+      return flattenSolid(ctx, solid.left, parentMatrix, partPrefix);
+    }
+
+    case SolidKind.Intersect: {
+      const brepRef = buildEvaluatedSolidBrep(ctx, solid, parentMatrix, partPrefix);
+      if (brepRef) return [brepRef];
+      return [];
     }
 
     case SolidKind.TaggedPatch: {
-      return flattenSolid(ctx, solid.child, parentMatrix);
+      recordTaggedPatchAnchor(ctx, solid, parentMatrix);
+      return flattenSolid(ctx, solid.child, parentMatrix, partPrefix);
     }
 
     case SolidKind.Fillet:
     case SolidKind.Chamfer: {
-      const brepRef = buildEvaluatedSolidBrep(ctx, solid, parentMatrix);
+      const brepRef = buildEvaluatedSolidBrep(ctx, solid, parentMatrix, partPrefix);
       if (brepRef) return [brepRef];
-      return flattenSolid(ctx, solid.child, parentMatrix);
+      return flattenSolid(ctx, solid.child, parentMatrix, partPrefix);
     }
   }
 }
@@ -750,7 +1123,12 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4): strin
  * Evaluates a solid (boolean CSG or fillet/chamfer) via {@link ManifoldWorker.evaluateSolid},
  * deduplicates its vertices, and emits a faceted `MANIFOLD_SOLID_BREP`.
  */
-function buildEvaluatedSolidBrep(ctx: StepContext, solid: Solid, worldMatrix?: Mat4): string | null {
+function buildEvaluatedSolidBrep(
+  ctx: StepContext,
+  solid: Solid,
+  worldMatrix?: Mat4,
+  partPrefix?: string,
+): string | null {
   const mesh = ManifoldWorker.evaluateSolid(solid);
   if (mesh.vertices.length < 9 || mesh.indices.length < 3) return null;
 
@@ -780,7 +1158,7 @@ function buildEvaluatedSolidBrep(ctx: StepContext, solid: Solid, worldMatrix?: M
   }
 
   if (points.length < 4 || faceLoops.length < 4) return null;
-  return buildPolyhedronBrep(ctx, solid.name, points, faceLoops, worldMatrix);
+  return buildPolyhedronBrep(ctx, resolveBrepName(solid.name, partPrefix), points, faceLoops, worldMatrix);
 }
 
 /**
@@ -978,7 +1356,24 @@ function buildExtrusionBrep(
   }
   faces.push(buildFace(topOes, localVerts[N]!, [0, 0, 1], [1, 0, 0]));
 
-  // Side quad faces
+  const triFace = (oes: string[], a: Vec3, b: Vec3, c: Vec3, fallbackNormal: Vec3, fallbackRefDir: Vec3): string => {
+    const e1x = b[0] - a[0],
+      e1y = b[1] - a[1],
+      e1z = b[2] - a[2];
+    const e2x = c[0] - a[0],
+      e2y = c[1] - a[1],
+      e2z = c[2] - a[2];
+    const nx = e1y * e2z - e1z * e2y;
+    const ny = e1z * e2x - e1x * e2z;
+    const nz = e1x * e2y - e1y * e2x;
+    const nLen = Math.hypot(nx, ny, nz);
+    const e1Len = Math.hypot(e1x, e1y, e1z);
+    const normal: Vec3 = nLen > 1e-10 ? [nx / nLen, ny / nLen, nz / nLen] : fallbackNormal;
+    const refDir: Vec3 = e1Len > 1e-10 ? [e1x / e1Len, e1y / e1Len, e1z / e1Len] : fallbackRefDir;
+    return buildFace(oes, a, normal, refDir);
+  };
+
+  // Side faces: planar quads when untwisted, two planar triangles when warped by twist
   for (let i = 0; i < N; i++) {
     const j = (i + 1) % N;
     const dx = pts2d[j]![0] - pts2d[i]![0];
@@ -986,19 +1381,63 @@ function buildExtrusionBrep(
     const len = Math.hypot(dx, dy) || 1.0;
     const sideNormal: Vec3 = [dy / len, -dx / len, 0];
     const sideRefDir: Vec3 = [dx / len, dy / len, 0];
-    faces.push(
-      buildFace(
-        [
-          orientedEdge(botEdges[i]!, true),
-          orientedEdge(vertEdges[j]!, true),
-          orientedEdge(topEdges[i]!, false),
-          orientedEdge(vertEdges[i]!, false),
-        ],
-        localVerts[i]!,
-        sideNormal,
-        sideRefDir,
-      ),
-    );
+
+    const p0 = localVerts[i]!;
+    const p1 = localVerts[j]!;
+    const p2 = localVerts[N + j]!;
+    const p3 = localVerts[N + i]!;
+    const v1x = p1[0] - p0[0],
+      v1y = p1[1] - p0[1],
+      v1z = p1[2] - p0[2];
+    const v2x = p2[0] - p0[0],
+      v2y = p2[1] - p0[1],
+      v2z = p2[2] - p0[2];
+    const v3x = p3[0] - p0[0],
+      v3y = p3[1] - p0[1],
+      v3z = p3[2] - p0[2];
+    const cx = v1y * v3z - v1z * v3y;
+    const cy = v1z * v3x - v1x * v3z;
+    const cz = v1x * v3y - v1y * v3x;
+    const cLen = Math.hypot(cx, cy, cz) || 1.0;
+    const nonPlanarity = Math.abs(v2x * cx + v2y * cy + v2z * cz) / cLen;
+
+    if (nonPlanarity > 1e-6) {
+      const diag = edgeCurve(i, N + j);
+      faces.push(
+        triFace(
+          [orientedEdge(botEdges[i]!, true), orientedEdge(vertEdges[j]!, true), orientedEdge(diag, false)],
+          p0,
+          p1,
+          p2,
+          sideNormal,
+          sideRefDir,
+        ),
+      );
+      faces.push(
+        triFace(
+          [orientedEdge(diag, true), orientedEdge(topEdges[i]!, false), orientedEdge(vertEdges[i]!, false)],
+          p0,
+          p2,
+          p3,
+          sideNormal,
+          sideRefDir,
+        ),
+      );
+    } else {
+      faces.push(
+        buildFace(
+          [
+            orientedEdge(botEdges[i]!, true),
+            orientedEdge(vertEdges[j]!, true),
+            orientedEdge(topEdges[i]!, false),
+            orientedEdge(vertEdges[i]!, false),
+          ],
+          p0,
+          sideNormal,
+          sideRefDir,
+        ),
+      );
+    }
   }
 
   const shell = emit(ctx, allocId(ctx), `CLOSED_SHELL('',(${faces.join(",")}))`);
@@ -1007,14 +1446,15 @@ function buildExtrusionBrep(
 
 // ── Product definition boilerplate ───────────────────────────────────────
 
-/** Emits STEP AP214 `PRODUCT_DEFINITION` and `ADVANCED_BREP_SHAPE_REPRESENTATION` entities linking `brepRefs`. */
+/** Emits STEP `PRODUCT_DEFINITION` and `ADVANCED_BREP_SHAPE_REPRESENTATION` entities linking `brepRefs`, returning the `PRODUCT_DEFINITION_SHAPE` ID. */
 function emitProductDefinition(
   ctx: StepContext,
   productName: string,
   brepRefs: string[],
   geomCtx: string,
   appCtx: string,
-): void {
+): string {
+  const safeName = escStepStr(productName);
   const placementId = allocId(ctx);
   const placement = emit(
     ctx,
@@ -1022,7 +1462,8 @@ function emitProductDefinition(
     `AXIS2_PLACEMENT_3D('placement',${cartesianPoint(ctx, [0, 0, 0])},${direction(ctx, [0, 0, 1])},${direction(ctx, [1, 0, 0])})`,
   );
   const shapeRepId = allocId(ctx);
-  const shapeRep = emit(ctx, shapeRepId, `ADVANCED_BREP_SHAPE_REPRESENTATION('',(${brepRefs.join(",")}),${geomCtx})`);
+  const brepList = brepRefs.length > 0 ? brepRefs.join(",") : placement;
+  const shapeRep = emit(ctx, shapeRepId, `ADVANCED_BREP_SHAPE_REPRESENTATION('',(${brepList}),${geomCtx})`);
   const shapeRep2Id = allocId(ctx);
   const shapeRep2 = emit(ctx, shapeRep2Id, `SHAPE_REPRESENTATION('',(${placement}),${geomCtx})`);
   emit(ctx, allocId(ctx), `SHAPE_REPRESENTATION_RELATIONSHIP('SRR','None',${shapeRep2},${shapeRep})`);
@@ -1030,35 +1471,55 @@ function emitProductDefinition(
   const prodCtxId = allocId(ctx);
   const prodCtx = emit(ctx, prodCtxId, `PRODUCT_CONTEXT('part definition',${appCtx},'mechanical')`);
   const prodId = allocId(ctx);
-  const prod = emit(ctx, prodId, `PRODUCT('${productName}','${productName}',$,(${prodCtx}))`);
+  const prod = emit(ctx, prodId, `PRODUCT('${safeName}','${safeName}',$,(${prodCtx}))`);
   const pdfId = allocId(ctx);
   const pdf = emit(ctx, pdfId, `PRODUCT_DEFINITION_FORMATION('',$,${prod})`);
   const pdcId = allocId(ctx);
   const pdc = emit(ctx, pdcId, `PRODUCT_DEFINITION_CONTEXT('part definition',${appCtx},'design')`);
   const pdId = allocId(ctx);
-  const pd = emit(ctx, pdId, `PRODUCT_DEFINITION('${productName}','${productName}',${pdf},${pdc})`);
+  const pd = emit(ctx, pdId, `PRODUCT_DEFINITION('${safeName}','${safeName}',${pdf},${pdc})`);
   const pdsId = allocId(ctx);
   const pds = emit(ctx, pdsId, `PRODUCT_DEFINITION_SHAPE('',$,${pd})`);
   emit(ctx, allocId(ctx), `SHAPE_DEFINITION_REPRESENTATION(${pds},${shapeRep2})`);
-  emit(ctx, allocId(ctx), `PRODUCT_RELATED_PRODUCT_CATEGORY('${productName}','${productName}',(${prod}))`);
+  emit(ctx, allocId(ctx), `PRODUCT_RELATED_PRODUCT_CATEGORY('${safeName}','${safeName}',(${prod}))`);
+  return pds;
 }
 
 // ── Global context entities ──────────────────────────────────────────────
 
-/** Emits SI unit (mm, rad, sr), uncertainty, and AP214 application context entities. */
-function emitGlobalContext(ctx: StepContext): { geomCtx: string; appCtx: string } {
+/** Emits SI length/angle/steradian units, global uncertainty, and AP214/AP242 application context entities. */
+function emitGlobalContext(
+  ctx: StepContext,
+  options?: StepCompileOptions,
+): { geomCtx: string; appCtx: string; pmiMmUnitRef: string } {
+  const isMetre = options?.lengthUnit === "m";
+  const isAp242 = options?.schema === "AP242" || options?.pmi !== undefined;
+  const unc = options?.uncertainty ?? (isMetre ? 1e-6 : 0.01);
+
   const luId = allocId(ctx);
-  emit(ctx, luId, `(\nLENGTH_UNIT()\nNAMED_UNIT(*)\nSI_UNIT(.MILLI.,.METRE.)\n)`);
+  emit(
+    ctx,
+    luId,
+    isMetre
+      ? `(\nLENGTH_UNIT()\nNAMED_UNIT(*)\nSI_UNIT($,.METRE.)\n)`
+      : `(\nLENGTH_UNIT()\nNAMED_UNIT(*)\nSI_UNIT(.MILLI.,.METRE.)\n)`,
+  );
   const auId = allocId(ctx);
   emit(ctx, auId, `(\nNAMED_UNIT(*)\nPLANE_ANGLE_UNIT()\nSI_UNIT($,.RADIAN.)\n)`);
   const sauId = allocId(ctx);
   emit(ctx, sauId, `(\nNAMED_UNIT(*)\nSI_UNIT($,.STERADIAN.)\nSOLID_ANGLE_UNIT()\n)`);
 
+  let pmiMmUnitRef = ref(luId);
+  if (isMetre) {
+    const mmId = allocId(ctx);
+    pmiMmUnitRef = emit(ctx, mmId, `(\nLENGTH_UNIT()\nNAMED_UNIT(*)\nSI_UNIT(.MILLI.,.METRE.)\n)`);
+  }
+
   const umId = allocId(ctx);
   emit(
     ctx,
     umId,
-    `UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(0.01),${ref(luId)},\n'DISTANCE_ACCURACY_VALUE',\n'Maximum model space distance between geometric entities at asserted connectivities')`,
+    `UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(${fmt(unc)}),${ref(luId)},\n'DISTANCE_ACCURACY_VALUE',\n'Maximum model space distance between geometric entities at asserted connectivities')`,
   );
 
   const gcId = allocId(ctx);
@@ -1069,14 +1530,90 @@ function emitGlobalContext(ctx: StepContext): { geomCtx: string; appCtx: string 
   );
 
   const acId = allocId(ctx);
-  const appCtx = emit(ctx, acId, `APPLICATION_CONTEXT('Core Data for Automotive Mechanical Design Process')`);
+  const appCtx = emit(
+    ctx,
+    acId,
+    isAp242
+      ? `APPLICATION_CONTEXT('managed model based 3d engineering')`
+      : `APPLICATION_CONTEXT('Core Data for Automotive Mechanical Design Process')`,
+  );
   emit(
     ctx,
     allocId(ctx),
-    `APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2009,${appCtx})`,
+    isAp242
+      ? `APPLICATION_PROTOCOL_DEFINITION('international standard','ap242_managed_model_based_3d_engineering',2014,${appCtx})`
+      : `APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2009,${appCtx})`,
   );
 
-  return { geomCtx, appCtx };
+  return { geomCtx, appCtx, pmiMmUnitRef };
+}
+
+/** Computes orthonormal `(zAxis, refDir)` for an anchor normal vector. */
+function resolveAnchorFrame(normal?: Vec3): { zAxis: Vec3; refDir: Vec3 } {
+  if (!normal) return { zAxis: [1, 0, 0], refDir: [0, 1, 0] };
+  const nLen = Math.hypot(normal[0], normal[1], normal[2]);
+  if (nLen < 1e-9) return { zAxis: [1, 0, 0], refDir: [0, 1, 0] };
+  const zAxis: Vec3 = [normal[0] / nLen, normal[1] / nLen, normal[2] / nLen];
+  const up: Vec3 = Math.abs(zAxis[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const rx = up[1] * zAxis[2] - up[2] * zAxis[1];
+  const ry = up[2] * zAxis[0] - up[0] * zAxis[2];
+  const rz = up[0] * zAxis[1] - up[1] * zAxis[0];
+  const rLen = Math.hypot(rx, ry, rz) || 1;
+  return { zAxis, refDir: [rx / rLen, ry / rLen, rz / rLen] };
+}
+
+/** Emits AP242 `DATUM_FEATURE` and `*_TOLERANCE` PMI entities grounded at extracted feature anchors. */
+function emitAp242Pmi(ctx: StepContext, pmi: StepPmiSpec, pmiMmUnitRef: string): void {
+  const datumRefsByLabel = new Map<string, string>();
+  const datumPlacementsByFeature = new Map<string, string>();
+
+  for (const datum of pmi.datums ?? []) {
+    const discovered = ctx.featureAnchors.get(datum.featureName);
+    const anchor: Vec3 = datum.anchor ?? discovered?.anchor ?? [0, 0, 0];
+    const { zAxis, refDir } = resolveAnchorFrame(datum.normal ?? discovered?.normal);
+    const pl = axis2Placement3d(ctx, anchor, zAxis, refDir);
+    const dfRef = emit(
+      ctx,
+      allocId(ctx),
+      `DATUM_FEATURE('${escStepStr(datum.featureName)}','${escStepStr(datum.label)}',${pl},.T.)`,
+    );
+    datumRefsByLabel.set(datum.label, dfRef);
+    datumPlacementsByFeature.set(datum.featureName, pl);
+  }
+
+  for (const tol of pmi.tolerances ?? []) {
+    const discovered = tol.featureName ? ctx.featureAnchors.get(tol.featureName) : undefined;
+    const anchor: Vec3 = tol.anchor ?? discovered?.anchor ?? [0, 0, 0];
+    let pl = tol.featureName ? datumPlacementsByFeature.get(tol.featureName) : undefined;
+    if (!pl) {
+      const { zAxis, refDir } = resolveAnchorFrame(discovered?.normal);
+      const pt = emit(ctx, allocId(ctx), `CARTESIAN_POINT('${escStepStr(tol.id)}',(${anchor.map(fmt).join(",")}))`);
+      const dirZ = direction(ctx, zAxis);
+      const dirX = direction(ctx, refDir);
+      pl = emit(
+        ctx,
+        allocId(ctx),
+        `AXIS2_PLACEMENT_3D('${escStepStr(tol.featureName ?? tol.name)}',${pt},${dirZ},${dirX})`,
+      );
+    }
+    const measRef = emit(
+      ctx,
+      allocId(ctx),
+      `LENGTH_MEASURE_WITH_UNIT(LENGTH_MEASURE(${fmt(tol.zoneValue)}),${pmiMmUnitRef})`,
+    );
+    const modPrefix = tol.materialCondition && tol.materialCondition !== "RFS" ? `[${tol.materialCondition}] ` : "";
+    const descText = `${modPrefix}${tol.description ?? tol.name}`.trim();
+    const resolvedDatumRefs = (tol.datumRefs ?? [])
+      .map((lbl) => datumRefsByLabel.get(lbl))
+      .filter((r): r is string => r !== undefined);
+
+    const baseArgs = `'${escStepStr(tol.name)}','${escStepStr(descText)}',${measRef},${pl}`;
+    const body =
+      resolvedDatumRefs.length > 0
+        ? `${tol.characteristic}(${baseArgs},(${resolvedDatumRefs.join(",")}))`
+        : `${tol.characteristic}(${baseArgs})`;
+    emit(ctx, allocId(ctx), body);
+  }
 }
 
 // ── Public API ───────────────────────────────────────────────────────────
@@ -1084,50 +1621,87 @@ function emitGlobalContext(ctx: StepContext): { geomCtx: string; appCtx: string 
 /**
  * Compile a single {@link Solid} to an ISO-10303-21 STEP string.
  */
-export function compileToStep(solid: Solid, productName?: string): string {
+export function compileToStep(solid: Solid, productName?: string, options?: StepCompileOptions): string {
   const ctx = createContext();
-  const { geomCtx, appCtx } = emitGlobalContext(ctx);
+  const { geomCtx, appCtx, pmiMmUnitRef } = emitGlobalContext(ctx, options);
   const brepRefs = flattenSolid(ctx, solid, IDENTITY);
   emitProductDefinition(ctx, productName ?? solid.name, brepRefs, geomCtx, appCtx);
-  return wrapStep(ctx, productName ?? solid.name);
+  if (options?.pmi) {
+    emitAp242Pmi(ctx, options.pmi, pmiMmUnitRef);
+  }
+  return wrapStep(ctx, productName ?? solid.name, options);
 }
 
 /**
  * Compile an {@link Assembly} to an ISO-10303-21 STEP string.
  */
-export function compileAssemblyToStep(asm: Assembly): string {
+export function compileAssemblyToStep(asm: Assembly, options?: StepCompileOptions): string {
+  return compileAssemblyToAp242Step(asm, options).stepText;
+}
+
+/**
+ * Compile an {@link Assembly} to an ISO-10303-21 STEP string along with all resolved 3D `TaggedPatch` feature anchors.
+ */
+export function compileAssemblyToAp242Step(
+  asm: Assembly,
+  options?: StepCompileOptions,
+): { stepText: string; featureAnchors: StepFeatureAnchor[] } {
   const ctx = createContext();
-  const { geomCtx, appCtx } = emitGlobalContext(ctx);
+  const effectiveOpts: StepCompileOptions = options ?? { schema: "AP214" };
+  const { geomCtx, appCtx, pmiMmUnitRef } = emitGlobalContext(ctx, effectiveOpts);
 
   for (let i = 0; i < asm.parts.length; i++) {
     const p = asm.parts[i];
     if (!p) continue;
-    const refs = flattenSolid(ctx, p.solid, IDENTITY);
-    const uniqueName = `${asm.name}_${p.solid.name}_${i}`;
+    const partPrefix = effectiveOpts.preservePartNames ? p.solid.name : undefined;
+    const refs = flattenSolid(ctx, p.solid, IDENTITY, partPrefix);
+    const uniqueName = effectiveOpts.preservePartNames ? p.solid.name : `${asm.name}_${p.solid.name}_${i}`;
     emitProductDefinition(ctx, uniqueName, refs, geomCtx, appCtx);
   }
 
-  return wrapStep(ctx, asm.name);
+  if (effectiveOpts.pmi) {
+    emitAp242Pmi(ctx, effectiveOpts.pmi, pmiMmUnitRef);
+  }
+
+  return {
+    stepText: wrapStep(ctx, asm.name, effectiveOpts),
+    featureAnchors: [...ctx.featureAnchors.values()],
+  };
 }
 
 /** Wraps emitted STEP entity records in an ISO-10303-21 `HEADER` and `DATA` envelope. */
-function wrapStep(ctx: StepContext, name: string): string {
+function wrapStep(ctx: StepContext, name: string, options?: StepCompileOptions): string {
+  const isAp242 = options?.schema === "AP242" || options?.pmi !== undefined;
+  const schemaStr = isAp242
+    ? "AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF"
+    : "AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }";
+  const timeStamp = options?.timeStamp ?? new Date().toISOString();
+  const safeName = escStepStr(name);
+
+  const provenanceBlock = options?.provenance
+    ? `${serializeStepProvenanceMeta({
+        ...options.provenance,
+        assemblyName: options.provenance.assemblyName ?? safeName,
+        ...(options.provenance.compiledAt ? {} : options.timeStamp ? { compiledAt: options.timeStamp } : {}),
+      })}\n`
+    : "";
+
   const header = `ISO-10303-21;
 HEADER;
-FILE_DESCRIPTION(
-/* description */ ('${name} - Generated by ModelScript Procedural CAD'),
+${provenanceBlock}FILE_DESCRIPTION(
+/* description */ ('${safeName} - Generated by ModelScript Procedural CAD'),
 /* implementation_level */ '2;1');
 
 FILE_NAME(
-/* name */ '${name}.stp',
-/* time_stamp */ '${new Date().toISOString()}',
+/* name */ '${safeName}.stp',
+/* time_stamp */ '${timeStamp}',
 /* author */ ('ModelScript'),
 /* organization */ ('ModelScript'),
 /* preprocessor_version */ 'ModelScript Procedural CAD v1',
 /* originating_system */ 'ModelScript IDE',
 /* authorisation */ '');
 
-FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));
+FILE_SCHEMA(('${schemaStr}'));
 ENDSEC;
 
 DATA;`;

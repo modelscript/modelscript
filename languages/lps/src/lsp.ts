@@ -94,11 +94,26 @@ export function validateLps(content: string, _uri: string = "network.lps"): LspD
         const found = lines.findIndex((l) => l.includes(targetStr));
         if (found >= 0) targetLine = found;
       }
+      const lt = lines[targetLine] ?? "";
+      let startChar = 0;
+      let endChar = 0;
+      if (targetStr) {
+        const idx = lt.indexOf(targetStr);
+        if (idx >= 0) {
+          startChar = idx;
+          endChar = idx + targetStr.length;
+        }
+      }
+      if (endChar <= startChar) {
+        while (startChar < lt.length && (lt[startChar] === " " || lt[startChar] === "\t")) startChar++;
+        const tok = lt.slice(startChar).match(/^<\/?[A-Za-z0-9_:-]+|^[^\s=,;]+/);
+        endChar = Math.min(lt.length, startChar + (tok ? tok[0].length : 1));
+      }
 
       return {
         range: {
-          start: { line: targetLine, character: 0 },
-          end: { line: targetLine, character: lines[targetLine]?.length ?? 1 },
+          start: { line: targetLine, character: startChar },
+          end: { line: targetLine, character: Math.max(startChar + 1, endChar) },
         },
         severity: issue.severity === "error" ? 1 : issue.severity === "warning" ? 2 : 3,
         code: issue.code,

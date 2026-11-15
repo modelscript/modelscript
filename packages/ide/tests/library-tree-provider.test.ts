@@ -183,4 +183,21 @@ describe("LibraryTreeProvider", () => {
     notifHandler!();
     assert.equal(refreshFired, true);
   });
+
+  it("assigns installedStandardPack contextValue for standard pack root nodes", () => {
+    const stdItem = new LibraryTreeItem(
+      {
+        id: "__LIB__:@modelscript/asme-bpvc-viii-1",
+        name: "@modelscript/asme-bpvc-viii-1",
+        compositeName: "__LIB__:@modelscript/asme-bpvc-viii-1",
+        classKind: "package",
+        hasChildren: true,
+        language: "sysml2",
+        icon: "shield",
+        description: "0.1.0 · ASME BPVC Section VIII Div. 1",
+      },
+      TreeItemCollapsibleState.Collapsed,
+    );
+    assert.equal(stdItem.contextValue, "installedStandardPack");
+  });
 });

@@ -178,9 +178,17 @@ msx opf to-exago <file> [options]
 ### 2. AC Optimal Power Flow (AC-OPF)
 
 - **Objective**: Non-linear fuel cost minimization subject to full AC physics.
-- **Active & Reactive Power Injections**:
+- **Active & Reactive Power Injections**: Enforce steady-state AC nodal power balance at each bus $i$:
   $$P_i = V_i \sum_{j} V_j (G_{ij} \cos \theta_{ij} + B_{ij} \sin \theta_{ij})$$
   $$Q_i = V_i \sum_{j} V_j (G_{ij} \sin \theta_{ij} - B_{ij} \cos \theta_{ij})$$
+
+  | Symbol                              | Meaning                                                                    | Units / Domain                               |
+  | :---------------------------------- | :------------------------------------------------------------------------- | :------------------------------------------- |
+  | $P_i, Q_i$                          | Net active and reactive power injections at bus $i$                        | $\text{pu}$ (or $\text{MW}, \; \text{MVAr}$) |
+  | $V_i, V_j$                          | Bus voltage magnitudes at buses $i$ and $j$                                | $\text{pu}$                                  |
+  | $\theta_{ij} = \theta_i - \theta_j$ | Voltage phase angle difference between buses $i$ and $j$                   | $\text{rad}$                                 |
+  | $G_{ij}, B_{ij}$                    | Real (conductance) and imaginary (susceptance) entries of $Y_{\text{bus}}$ | $\text{pu}$                                  |
+
 - **Voltage Band Limits**: $V_{i,\min} \le V_i \le V_{i,\max}$ across all transmission and load buses.
 - **Apparent Power Thermal Limits**: $S_{ij} = \sqrt{P_{ij}^2 + Q_{ij}^2} \le S_{ij,\max}$.
 
@@ -197,9 +205,25 @@ Multi-period binary generation commitment problem across $T$ hours:
 
 ### 4. Direct N-1 Security-Constrained OPF (`solveDirectScopf`)
 
-- **PTDF Calculation**: Inverts reduced $B_{\text{bus}}$ matrix to compute Power Transfer Distribution Factors:
+- **PTDF Calculation**: Inverts reduced $B_{\text{bus}}$ matrix to compute Power Transfer Distribution Factors, measuring the linear sensitivity of flow on branch $l$ to an injection at bus $i$:
   $$\text{PTDF}_{l, i} = \frac{1}{x_l} (X_{f(l), i} - X_{t(l), i})$$
-- **LODF Screening**: Line Outage Distribution Factors compute post-contingency flow on line $l$ following an outage of line $k$:
+
+  | Symbol               | Meaning                                                                        | Units / Domain |
+  | :------------------- | :----------------------------------------------------------------------------- | :------------- |
+  | $\text{PTDF}_{l, i}$ | Fraction of a 1 pu injection at bus $i$ (to slack) flowing on line $l$         | Dimensionless  |
+  | $x_l$                | Series reactance of transmission branch $l$                                    | $\text{pu}$    |
+  | $f(l), t(l)$         | "From" and "To" terminal bus indices of branch $l$                             | Bus indices    |
+  | $X_{b, i}$           | Entry $(b, i)$ of the inverse reduced susceptance matrix $B_{\text{bus}}^{-1}$ | $\text{pu}$    |
+
+- **LODF Screening**: Line Outage Distribution Factors compute the post-contingency active power flow on monitored line $l$ following a single-line outage of line $k$:
   $$\text{LODF}_{l, k} = \frac{\text{PTDF}_{l, f(k)} - \text{PTDF}_{l, t(k)}}{1 - (\text{PTDF}_{k, f(k)} - \text{PTDF}_{k, t(k)})}$$
   $$P_l^{(k)} = P_l^{(0)} + \text{LODF}_{l, k} P_k^{(0)}$$
+
+  | Symbol                 | Meaning                                                             | Units / Domain               |
+  | :--------------------- | :------------------------------------------------------------------ | :--------------------------- |
+  | $\text{LODF}_{l, k}$   | Fraction of pre-outage flow on line $k$ redistributed onto line $l$ | Dimensionless                |
+  | $P_l^{(0)}, P_k^{(0)}$ | Base-case (pre-contingency) active power flows on lines $l$ and $k$ | $\text{MW}$ (or $\text{pu}$) |
+  | $P_l^{(k)}$            | Post-contingency active power flow on line $l$ when line $k$ trips  | $\text{MW}$ (or $\text{pu}$) |
+  | $f(k), t(k)$           | "From" and "To" terminal bus indices of outaged branch $k$          | Bus indices                  |
+
 - **Iterative Redispatch**: Detects worst-case violations exceeding emergency ratings (`rateC`/`rateB`) and injects dynamic cutting-plane constraints until all $N-1$ contingencies are secure.

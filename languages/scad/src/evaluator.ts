@@ -37,6 +37,7 @@ import {
   ManifoldWorker,
   mirror,
   polyhedron,
+  resetNameCounter,
   rotate,
   scale,
   SolidKind,
@@ -1365,29 +1366,6 @@ export class ScadEvaluator {
         const first = childSolids[0]!;
         const profile = extract2DProfile(first);
         if (profile && profile.length >= 3) {
-          let sumR = 0;
-          let minR = Infinity;
-          let maxR = -Infinity;
-          let minZ = Infinity;
-          let maxZ = -Infinity;
-          for (const [px, py] of profile) {
-            const r = Math.abs(px);
-            sumR += r;
-            if (r < minR) minR = r;
-            if (r > maxR) maxR = r;
-            if (py < minZ) minZ = py;
-            if (py > maxZ) maxZ = py;
-          }
-          if (first.kind === SolidKind.Extrusion && minR > 1e-3 && angle >= 359) {
-            const majorR = sumR / profile.length;
-            const minorR = Math.max(0.5, (maxR - minR + (maxZ - minZ)) / 4);
-            return torus({
-              major: majorR,
-              minor: minorR,
-              majorSegments: fn,
-              minorSegments: Math.max(8, Math.floor(fn / 2)),
-            });
-          }
           const revolved = buildRotateExtrudeSolid(profile, angle, fn);
           if (revolved) return revolved;
         }
@@ -3615,6 +3593,7 @@ export function evaluateScad(
   sourceOrRoot: string | ScadCstNode,
   options?: ScadEvaluationOptions,
 ): ScadEvaluationResult {
+  resetNameCounter();
   const rootNode = typeof sourceOrRoot === "string" ? parseScadSource(sourceOrRoot) : sourceOrRoot;
   const evaluator = new ScadEvaluator(options);
   const solids = evaluator.evaluateParts(rootNode);

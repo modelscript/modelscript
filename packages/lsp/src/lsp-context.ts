@@ -51,6 +51,8 @@ export interface LspContext {
     lastSemanticDiagnostics: Map<string, unknown[]>;
     /** Whether all declared external package/library dependencies have finished loading. */
     dependenciesReady: boolean;
+    /** Explicit UI/LSP standard-pack activation overrides keyed by normalized package name. */
+    activeStandardOverrides?: Map<string, boolean> | undefined;
   };
 
   /** Live user configuration synchronized from VS Code settings (`modelscript.*`). */

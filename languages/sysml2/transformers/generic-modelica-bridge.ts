@@ -90,6 +90,68 @@ function hasAncestorType(node: any, type: string): boolean {
   return false;
 }
 
+const KNOWN_PORT_TYPES = new Set([
+  "Pin",
+  "PositivePin",
+  "NegativePin",
+  "Flange",
+  "Flange_a",
+  "Flange_b",
+  "Port",
+  "HeatPort_a",
+  "HeatPort_b",
+  "Terminal",
+  "Plug",
+  "RealInput",
+  "RealOutput",
+]);
+
+const MODELICA_PRIMITIVE_TYPES = new Set(["Real", "Integer", "Boolean", "String"]);
+
+function stripLeadingChars(text: string, chars: string): string {
+  let start = 0;
+  while (start < text.length) {
+    const ch = text[start]!;
+    if (chars.includes(ch) || ch.trim() === "") {
+      start++;
+    } else {
+      break;
+    }
+  }
+  return text.slice(start).trim();
+}
+
+function stripOuterBrackets(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("[") && trimmed.endsWith("]") && trimmed.length >= 2) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function extractSysMLConstraintText(node: any): string {
+  const exprNodes = findNodes(node, "OwnedExpression").concat(
+    findNodes(node, "_Expression"),
+    findNodes(node, "RelationalExpression"),
+    findNodes(node, "EqualityExpression"),
+  );
+  if (exprNodes.length > 0 && exprNodes[0]?.text?.trim()) {
+    return exprNodes[0].text.trim();
+  }
+  const resultMember = findNodes(node, "ResultExpressionMember")[0];
+  if (resultMember?.text?.trim()) {
+    return resultMember.text.trim();
+  }
+  let raw = node.text.trim();
+  if (raw.startsWith("assert")) raw = raw.slice("assert".length).trimStart();
+  if (raw.startsWith("constraint")) raw = raw.slice("constraint".length).trimStart();
+  if (raw.endsWith(";")) raw = raw.slice(0, -1).trimEnd();
+  if (raw.startsWith("{") && raw.endsWith("}") && raw.length >= 2) {
+    raw = raw.slice(1, -1);
+  }
+  return raw.trim();
+}
+
 function parseModelicaWithGLR(modelicaSource: string): SysML2GenericDefinition {
   const tree = moParser.parse(modelicaSource);
   const root = tree.rootNode;
@@ -129,7 +191,11 @@ function parseModelicaWithGLR(modelicaSource: string): SysML2GenericDefinition {
         "";
       const mod = decl.childForFieldName("modification");
       const modExpr = mod
-        ? (mod.childForFieldName("modification_expression")?.text || mod.text.replace(/^=\s*/, "")).trim()
+        ? (
+            mod.childForFieldName("modification_expression")?.text ||
+            findNodes(mod, "modification_expression")[0]?.text ||
+            stripLeadingChars(mod.text, "=")
+          ).trim()
         : undefined;
 
       // Extract array subscripts for multiplicity (e.g. Resistor r[2] or component_clause array_subscripts)
@@ -138,7 +204,7 @@ function parseModelicaWithGLR(modelicaSource: string): SysML2GenericDefinition {
         findNodes(decl, "array_subscripts")[0] ||
         cc.childForFieldName("array_subscripts") ||
         findNodes(cc, "array_subscripts")[0];
-      const multiplicity = subscriptsNode ? subscriptsNode.text.replace(/^\[|\]$/g, "").trim() : undefined;
+      const multiplicity = subscriptsNode ? stripOuterBrackets(subscriptsNode.text) : undefined;
 
       // Extract inline element modifications (e.g. Resistor r(R=100))
       const inlineAttrs: Record<string, string | number> = {};
@@ -159,10 +225,7 @@ function parseModelicaWithGLR(modelicaSource: string): SysML2GenericDefinition {
       }
 
       const rawType = typeSpec.split(".").pop() || typeSpec;
-      const isKnownPort =
-        /^(?:Pin|PositivePin|NegativePin|Flange|Flange_[ab]|Port|HeatPort_[ab]|Terminal|Plug|RealInput|RealOutput)$/.test(
-          rawType,
-        );
+      const isKnownPort = KNOWN_PORT_TYPES.has(rawType);
 
       if (isKnownPort) {
         const isConjugated = rawType.endsWith("_b") || rawType.includes("NegativePin") || rawType === "RealOutput";
@@ -178,7 +241,7 @@ function parseModelicaWithGLR(modelicaSource: string): SysML2GenericDefinition {
           direction: rawType === "RealInput" ? "in" : rawType === "RealOutput" ? "out" : "inout",
           isConjugated,
         });
-      } else if (/^(?:Real|Integer|Boolean|String)$/.test(rawType)) {
+      } else if (MODELICA_PRIMITIVE_TYPES.has(rawType)) {
         attributes.push({
           name: compName,
           type: rawType,
@@ -283,8 +346,12 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
     const valNode = findNodes(au, "FeatureValue")[0];
 
     const attrName = nameNode ? nameNode.text.trim() : "";
-    const attrType = typeNode ? typeNode.text.replace(/^[:\s]+/, "").trim() : "Real";
-    const attrVal = valNode ? valNode.text.replace(/^[=:\s]+/, "").trim() : undefined;
+    const attrType = typeNode
+      ? findNodes(typeNode, "QualifiedName")[0]?.text?.trim() || stripLeadingChars(typeNode.text, ":")
+      : "Real";
+    const attrVal = valNode
+      ? findNodes(valNode, "OwnedExpression")[0]?.text?.trim() || stripLeadingChars(valNode.text, "=:")
+      : undefined;
 
     attributes.push({
       name: attrName,
@@ -307,8 +374,8 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
       // Form: port ~housing : Flange;
       const firstNameNode = findNodes(featureTypings[0], "Name")[0];
       const secondNameNode = findNodes(featureTypings[1], "Name")[0];
-      portName = (firstNameNode ? firstNameNode.text.trim() : featureTypings[0].text.replace(/^[:\s~]+/, "")).trim();
-      portType = (secondNameNode ? secondNameNode.text.trim() : featureTypings[1].text.replace(/^[:\s~]+/, "")).trim();
+      portName = (firstNameNode ? firstNameNode.text.trim() : stripLeadingChars(featureTypings[0].text, ":~")).trim();
+      portType = (secondNameNode ? secondNameNode.text.trim() : stripLeadingChars(featureTypings[1].text, ":~")).trim();
       isConjugated = true;
     } else {
       // Standard: port p : Pin; or port n : ~Pin;
@@ -316,11 +383,11 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
       const typeNode = featureTypings[0];
 
       const rawName = nameNode ? nameNode.text.trim() : "";
-      const rawType = typeNode ? typeNode.text.replace(/^[:\s]+/, "").trim() : "";
+      const rawType = typeNode ? stripLeadingChars(typeNode.text, ":") : "";
 
       if (rawName.startsWith("~") || rawType.startsWith("~")) isConjugated = true;
-      portName = rawName.replace(/^~\s*/, "");
-      portType = rawType.replace(/^~\s*/, "");
+      portName = stripLeadingChars(rawName, "~");
+      portType = stripLeadingChars(rawType, "~");
     }
 
     const isInput = portType.toLowerCase().includes("in") && !portType.toLowerCase().includes("pin");
@@ -343,16 +410,19 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
     const multNode = findNodes(pu, "OwnedMultiplicity")[0];
 
     const partName = nameNode ? nameNode.text.trim() : "";
-    const partType = typeNode ? typeNode.text.replace(/^[:\s]+/, "").trim() : "";
-    const mult = multNode ? multNode.text.replace(/^\[|\]$/g, "").trim() : undefined;
+    const partType = typeNode
+      ? findNodes(typeNode, "QualifiedName")[0]?.text?.trim() || stripLeadingChars(typeNode.text, ":")
+      : "";
+    const mult = multNode ? stripOuterBrackets(multNode.text) : undefined;
 
     const inlineAttrs: Record<string, string | number> = {};
     const subAttrs = findNodes(pu, "AttributeUsage");
     for (const sa of subAttrs) {
       const saName = findNodes(sa, "Name")[0]?.text?.trim();
-      const saVal = findNodes(sa, "FeatureValue")[0]
-        ?.text?.replace(/^[=:\s]+/, "")
-        .trim();
+      const saValNode = findNodes(sa, "FeatureValue")[0];
+      const saVal = saValNode
+        ? findNodes(saValNode, "OwnedExpression")[0]?.text?.trim() || stripLeadingChars(saValNode.text, "=:")
+        : undefined;
       if (saName && saVal !== undefined) {
         const num = parseFloat(saVal);
         inlineAttrs[saName] = Number.isNaN(num) ? saVal : num;
@@ -381,17 +451,7 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
 
   const assertConstraints = findNodes(targetNode, "AssertConstraintUsage");
   for (const ac of assertConstraints) {
-    const exprNodes = findNodes(ac, "_Expression").concat(
-      findNodes(ac, "RelationalExpression"),
-      findNodes(ac, "EqualityExpression"),
-    );
-    const text =
-      exprNodes.length > 0
-        ? exprNodes[0].text.trim()
-        : ac.text
-            .replace(/^assert\s+constraint\s*\{?/, "")
-            .replace(/\}?;?$/, "")
-            .trim();
+    const text = extractSysMLConstraintText(ac);
     if (text && !constraints.includes(text)) {
       constraints.push(text);
     }
@@ -400,33 +460,16 @@ function parseSysML2WithGLR(sysmlSource: string): SysML2GenericDefinition {
   const constraintUsages = findNodes(targetNode, "ConstraintUsage");
   for (const cu of constraintUsages) {
     if (hasAncestorType(cu, "PartUsage")) continue;
-    const exprNodes = findNodes(cu, "_Expression").concat(
-      findNodes(cu, "RelationalExpression"),
-      findNodes(cu, "EqualityExpression"),
-    );
-    const text =
-      exprNodes.length > 0
-        ? exprNodes[0].text.trim()
-        : cu.text
-            .replace(/^constraint\s*\{?/, "")
-            .replace(/\}?;?$/, "")
-            .trim();
+    const text = extractSysMLConstraintText(cu);
     if (text && !constraints.includes(text)) {
       constraints.push(text);
-    }
-  }
-
-  if (constraints.length === 0) {
-    const constrMatches = Array.from(sysmlSource.matchAll(/\bassert\s+constraint\s*\{([^}]*)\}/g));
-    for (const m of constrMatches) {
-      constraints.push(m[1]!.trim());
     }
   }
 
   const superclasses: string[] = [];
   const subclassificationNodes = findNodes(targetNode, "OwnedSubclassification");
   for (const sc of subclassificationNodes) {
-    const scName = sc.text.replace(/^[:>\s]+/, "").trim();
+    const scName = findNodes(sc, "QualifiedName")[0]?.text?.trim() || stripLeadingChars(sc.text, ":>");
     if (scName && !superclasses.includes(scName)) {
       superclasses.push(scName);
     }

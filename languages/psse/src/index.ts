@@ -33,6 +33,7 @@ export * from "./parser/wasm-loader.js";
 export * from "./playback/pmu-smib-harness.js";
 export * from "./projections/fmu-to-psse.js";
 export * from "./projections/psse-to-modelica.js";
+export * from "./projections/psse-to-p3743.js";
 export * from "./projections/psse-to-pscad.js";
 export * from "./psspy-shim.js";
 export * from "./solver/ac-powerflow.js";

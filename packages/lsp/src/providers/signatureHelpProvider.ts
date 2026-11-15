@@ -3,6 +3,47 @@
 import { STEP_SCHEMA } from "@modelscript/step";
 import { Connection, ParameterInformation, SignatureInformation } from "vscode-languageserver";
 import type { SyntaxNode } from "../utils/cst-facade.js";
+import { isDigitCode, isWsCode } from "../utils/lexical-utils.js";
+
+function isStepUpperChar(code: number): boolean {
+  return (code >= 65 && code <= 90) || isDigitCode(code) || code === 95;
+}
+
+function findEnclosingStepCall(textBefore: string): { entityName: string; argsStr: string } | undefined {
+  let depth = 0;
+  let inStr = false;
+  for (let i = textBefore.length - 1; i >= 0; i--) {
+    const ch = textBefore[i]!;
+    if (ch === "'") {
+      inStr = !inStr;
+      continue;
+    }
+    if (inStr) continue;
+    if (ch === ")") {
+      depth++;
+    } else if (ch === "(") {
+      if (depth > 0) {
+        depth--;
+        continue;
+      }
+      let nameEnd = i;
+      while (nameEnd > 0 && isWsCode(textBefore.charCodeAt(nameEnd - 1))) nameEnd--;
+      let nameStart = nameEnd;
+      while (nameStart > 0 && isStepUpperChar(textBefore.charCodeAt(nameStart - 1))) nameStart--;
+      if (nameStart < nameEnd) {
+        const c0 = textBefore.charCodeAt(nameStart);
+        if (c0 >= 65 && c0 <= 90) {
+          return {
+            entityName: textBefore.slice(nameStart, nameEnd),
+            argsStr: textBefore.slice(i + 1),
+          };
+        }
+      }
+      return undefined;
+    }
+  }
+  return undefined;
+}
 
 function isStepDocument(document: any): boolean {
   return document.languageId === "step" || /\.(step|stp|p21)$/i.test(document.uri);
@@ -26,17 +67,13 @@ export function registerSignatureHelpProvider(
 
     // ── STEP-specific signature help (does NOT require bridge or parser) ──
     if (isStepDocument(document)) {
-      // Look backwards from cursor to find an entity type name followed by '('
       const searchStart = Math.max(0, offset - 2000);
       const textBefore = text.slice(searchStart, offset);
-      // Match STEP entity names like CARTESIAN_POINT, AXIS2_PLACEMENT_3D, etc.
-      const match = textBefore.match(/([A-Z][A-Z0-9_]*)\s*\([^)]*$/);
-      if (match) {
-        const entityName = match[1];
+      const call = findEnclosingStepCall(textBefore);
+      if (call) {
+        const { entityName, argsStr } = call;
         const schema = STEP_SCHEMA[entityName];
         if (schema) {
-          const openParenIdx = match.index! + match[0].indexOf("(");
-          const argsStr = textBefore.slice(openParenIdx + 1);
           let activeParameter = 0;
           let depth = 0;
           let inStr = false;

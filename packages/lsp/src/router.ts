@@ -42,10 +42,18 @@ export function registerAllLspProviders(context: LspContext): void {
     parserService.getDocumentTree.bind(parserService),
     () => parserService.getParser("sysml2"),
     () => parserService.isParserReady("sysml2"),
-    (ext, text) =>
-      parserService.sharedContext?.parse(ext, text) ??
-      parserService.getParserForUri(ext)?.parse(text) ??
-      parserService.getParser("modelica")?.parse(text),
+    (ext, text) => {
+      const direct = parserService.sharedContext?.parse(ext, text) ?? parserService.getParserForUri(ext)?.parse(text);
+      if (direct) return direct;
+      const plugin = globalLanguageRegistry.getPluginForUri(`file:///dummy${ext}`);
+      if (plugin?.id && plugin.id !== "modelica") {
+        return parserService.getParser(plugin.id)?.parse(text);
+      }
+      if (!plugin || plugin.id === "modelica") {
+        return parserService.getParser("modelica")?.parse(text);
+      }
+      return undefined;
+    },
   );
 
   registerCompletionProvider(connection, documents, validationService.documentLSPBridges);

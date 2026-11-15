@@ -2904,9 +2904,9 @@ export function evaluateArenaExpression(
           if (resolved) {
             if (resolved.kind === "Component") {
               if (resolved.metadata) {
-                const csvValue = resolved.metadata["csvValue"];
-                if (csvValue !== undefined) {
-                  return csvValue as ArenaValue;
+                const tabularValue = resolved.metadata["lasValue"] ?? resolved.metadata["csvValue"];
+                if (tabularValue !== undefined) {
+                  return tabularValue as ArenaValue;
                 }
               }
               const mod = db.query<any | null>("effectiveModification", resolved.id);

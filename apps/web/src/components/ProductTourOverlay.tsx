@@ -208,10 +208,10 @@ const DismissButton = styled.button`
 
 const StepTitle = styled.h3`
   margin: 0;
-  font-size: 16.5px;
-  font-weight: 750;
+  font-size: var(--text-md);
+  font-weight: var(--ms-fw-bold);
   color: var(--ms-text-heading, #0f172a);
-  letter-spacing: -0.01em;
+  letter-spacing: var(--ms-tracking-snug);
   line-height: 1.3;
 `;
 

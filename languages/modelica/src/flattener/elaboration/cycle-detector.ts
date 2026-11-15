@@ -2,6 +2,11 @@
 
 import { DAEBuilder, ExprKind, type QueryDB, type SymbolId, Variability } from "@modelscript/runtime";
 import { ModelicaErrorCode } from "../../errors.js";
+import {
+  collectReferencedRootIdentsFromExprCst,
+  extractBindingExprFromDeclCst,
+  parseStandaloneExpressionCst,
+} from "../expressions/cst-utils.js";
 import { extractCompilerOptions } from "../support/compiler-options.js";
 
 function stripLeafSubscript(name: string): string {
@@ -160,13 +165,15 @@ export function checkCyclicConstantsAndParameters(
             ci?.modification?.bindingExpression?.text ?? ci?.modification?.value?.text ?? ci?.bindingExpression?.text;
           if (ci?.variability === "constant" && rawBind) {
             const bText = rawBind.trim();
-            const ids = bText.match(/[a-zA-Z_]\w*/g) || [];
+            const declCst = db.cstNode(ch.id) as any;
+            const exprCst = extractBindingExprFromDeclCst(declCst, ch.name) ?? parseStandaloneExpressionCst(bText);
+            const ids = collectReferencedRootIdentsFromExprCst(exprCst);
             if (ids.some((id: string) => paramNames.has(id))) {
-              let clauseNode: any = db.cstNode(ch.id);
+              let clauseNode: any = declCst;
               while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.type !== "element") {
                 clauseNode = clauseNode.parent;
               }
-              const rNode = clauseNode ?? (db.cstNode(ch.id) as any);
+              const rNode = clauseNode ?? declCst;
               const rangeObj = rNode
                 ? {
                     startOffset: rNode.startIndex ?? rNode.startOffset,
@@ -255,14 +262,16 @@ export function checkCyclicConstantsAndParameters(
         if (ci?.variability !== "constant") continue;
         let rawBind =
           ci?.modification?.bindingExpression?.text ?? ci?.modification?.value?.text ?? ci?.bindingExpression?.text;
+        const cstNode = db.cstNode(ch.id) as any;
         if (!rawBind) {
-          const cstText = (db.cstNode(ch.id) as any)?.text ?? "";
+          const cstText = cstNode?.text ?? "";
           const eqIdx = cstText.indexOf("=");
           if (eqIdx >= 0) rawBind = cstText.slice(eqIdx + 1);
         }
-        if (rawBind) {
-          const cleanedBind = rawBind.replace(/\.\s*[a-zA-Z_]\w*/g, "").replace(/\bsize\s*\([^)]*\)/g, "");
-          const ids = cleanedBind.match(/[a-zA-Z_]\w*/g) || [];
+        const exprCst =
+          extractBindingExprFromDeclCst(cstNode, ch.name) ?? (rawBind ? parseStandaloneExpressionCst(rawBind) : null);
+        if (exprCst) {
+          const ids = collectReferencedRootIdentsFromExprCst(exprCst, { skipSizeCalls: true });
           const scopeDeps = rootVarToDeps.get(ch.name) ?? [];
           for (const id of ids) {
             if (rootVars.includes(id) && !scopeDeps.includes(id)) {

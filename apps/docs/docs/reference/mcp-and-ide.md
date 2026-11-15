@@ -1,6 +1,6 @@
 ---
 title: MCP Server & IDE Workbench Reference
-description: Complete reference for all 105 Model Context Protocol (@modelscript/mcp) engineering tools, MCP resources, and the 15 custom visual editors in the VS Code & Studio workbench.
+description: Complete reference for all 106 Model Context Protocol (@modelscript/mcp) engineering tools, MCP resources, and the 15 custom visual editors in the VS Code & Studio workbench.
 ---
 
 # MCP Server & IDE Workbench Reference
@@ -77,9 +77,9 @@ In browser workers and edge sandboxes (`packages/mcp/src/polyglot-server.ts`), `
 
 ---
 
-### 2. Complete Reference of All 105 Core MCP Tools
+### 2. Complete Reference of All 106 Core MCP Tools
 
-The canonical MCP server (`packages/mcp/src/tools.ts`) registers **105 specialized engineering tools** grouped across fifteen functional domains:
+The canonical MCP server (`packages/mcp/src/tools.ts`) registers **106 specialized engineering tools** grouped across fifteen functional domains:
 
 #### Domain 1: Modelica Compilation, Simulation, Linearization & Sensitivity (11 Tools)
 
@@ -123,7 +123,7 @@ The canonical MCP server (`packages/mcp/src/tools.ts`) registers **105 specializ
 | `rtm_suggest_links`    | `files: Record<string, string>`                                          | `threshold?: number` (`0.35`) | Analyze identifier lexical similarity, shared physical quantities/units, and structural proximity to recommend missing `@satisfies` and `@verifies` traceability links.      |
 | `rtm_diagnose_suspect` | `baseFiles: Record<string, string>`, `headFiles: Record<string, string>` | —                             | Compare two workspace snapshots via semantic AST fingerprinting to flag downstream `@satisfies`/`@verifies` links as `SUSPECT` when upstream requirement expressions change. |
 
-#### Domain 5: Autonomous Closed-Loop Synthesis, Calibration & Workspace Editing (5 Tools)
+#### Domain 5: Autonomous Closed-Loop Synthesis, Calibration & Workspace Editing (6 Tools)
 
 | Tool Name                            | Required Arguments                                                                                                                        | Optional Arguments                                                                                                                                                                                                                                                  | Description                                                                                                                                                                            |
 | :----------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -132,6 +132,7 @@ The canonical MCP server (`packages/mcp/src/tools.ts`) registers **105 specializ
 | `modelscript_read_file`              | `filePath: string`                                                                                                                        | `startLine?: number`, `endLine?: number`                                                                                                                                                                                                                            | Read source lines from a workspace file within the sandboxed root directory.                                                                                                           |
 | `modelscript_list_workspace_files`   | —                                                                                                                                         | `directory?: string`, `extensions?: string[]`                                                                                                                                                                                                                       | Recursively list engineering source files (`.mo`, `.sysml`, `.msx`, `.pscx`, `.scad`, `.stp`, `.owl`, `.ssp`, `.csv`) in the active workspace.                                         |
 | `modelica_diff_calibrate`            | `className: string`, `modelicaCode: string`, `parameters: string[]`, `referenceData: {time: number[], signals: Record<string, number[]>}` | `learningRate?: number` (`0.05`), `maxEpochs?: number` (`50`), `parameterBounds?: Record<string, [number, number]>`                                                                                                                                                 | Calibrate unknown physical parameters against experimental CSV/reference trajectories using differentiable simulation and gradient descent (Adam / L-BFGS) to minimize trajectory MSE. |
+| `workspace_lint`                     | `language: string`, `files: Record<string, string>`                                                                                       | `rootUri?: string`                                                                                                                                                                                                                                                  | Run multi-file / workspace-graph linting across companion files for cross-file engineering languages (`cgmes`, `psse`, `pscad`, `opendss`, `spice`, `ssp`, `oscal`, `usd`, etc.).      |
 
 #### Domain 6: PSCAD Power Systems & IEEE 2800 Grid Compliance (4 Tools)
 

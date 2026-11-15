@@ -1071,7 +1071,7 @@ msx opf to-exago case14.m --app=scopflow --mpi-ranks=16 --out=./case14_exago
 
 ### `powerfactory`
 
-Tooling for **DIgSILENT PowerFactory** control block definitions (`.dsl`) and DGS grid exchange schemas (`.dgs`), including DSL static linting (`PF1001`–`PF1008`), composite frame binding, Newton-Raphson AC power flow, and projections to Siemens PSS/E and Modelica (`pf` and `digsilent` are aliases for `powerfactory`).
+Tooling for **DIgSILENT PowerFactory** archives (`.dz`, `.pfd`), XML models (`.xml`), and DSL control blocks (`.dsl`), including static linting (`PF1001`–`PF1008`), AC Newton-Raphson power flow, short-circuit, modal stability, and projections to Siemens PSS/E and Modelica (`pf` is an alias for `powerfactory`).
 
 <CliCommand name="powerfactory" />
 

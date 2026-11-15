@@ -10,210 +10,328 @@ import {
   type TabularMutationResult,
   type TabularRow,
 } from "@modelscript/dsl";
+import {
+  collectCstLeaves,
+  extractDocCommentSpan,
+  findMatchingBraceLeaf,
+  findMatchingDelimiterLeaf,
+  isSysmlIdentLeaf,
+  parseSysmlSource,
+  readDottedChainFromLeaves,
+  sliceBetweenLeaves,
+  sliceLeavesInRange,
+  stripSurroundingQuotes,
+  type CstLeaf,
+} from "./cst-utils.js";
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+function findAttributeValueSpanInBody(
+  text: string,
+  leaves: readonly CstLeaf[],
+  bodyStartIdx: number,
+  bodyEndIdx: number,
+  attrName: string,
+): { startOffset: number; endOffset: number; valueText: string } | null {
+  for (let i = bodyStartIdx; i < bodyEndIdx; i++) {
+    const kw = leaves[i]!.text;
+    if (kw !== "attribute" && kw !== ":>>") continue;
+    const nameLeaf = leaves[i + 1];
+    if (!nameLeaf || nameLeaf.text !== attrName) continue;
 
-function extractDocComment(body: string): string {
-  let searchPos = 0;
-  while (searchPos < body.length) {
-    const docIdx = body.indexOf("doc", searchPos);
-    if (docIdx === -1) break;
-    const prevChar = docIdx > 0 ? body[docIdx - 1] : " ";
-    if (/[a-zA-Z0-9_]/.test(prevChar!)) {
-      searchPos = docIdx + 3;
-      continue;
+    let j = i + 2;
+    if (leaves[j]?.text === ":") {
+      j++;
+      while (j < bodyEndIdx && leaves[j]!.text !== "=" && leaves[j]!.text !== ":=" && leaves[j]!.text !== ";") {
+        j++;
+      }
     }
-    let afterDoc = docIdx + 3;
+    if (j >= bodyEndIdx || (leaves[j]!.text !== "=" && leaves[j]!.text !== ":=")) continue;
+    const valStartIdx = j + 1;
+    if (valStartIdx >= bodyEndIdx) continue;
+    let endIdx = valStartIdx;
     while (
-      afterDoc < body.length &&
-      (body[afterDoc] === " " || body[afterDoc] === "\t" || body[afterDoc] === "\n" || body[afterDoc] === "\r")
+      endIdx < bodyEndIdx &&
+      leaves[endIdx]!.text !== ";" &&
+      leaves[endIdx]!.text !== "}" &&
+      !text.slice(leaves[endIdx - 1]!.end, leaves[endIdx]!.start).includes("\n")
     ) {
-      afterDoc++;
+      endIdx++;
     }
-    if (body.slice(afterDoc, afterDoc + 2) === "/*") {
-      const commentStart = afterDoc + 2;
-      const commentEnd = body.indexOf("*/", commentStart);
-      if (commentEnd !== -1) {
-        return body.slice(commentStart, commentEnd).trim();
-      }
-    }
-    searchPos = docIdx + 3;
+    if (endIdx <= valStartIdx) continue;
+    const startOffset = leaves[valStartIdx]!.start;
+    const endOffset = leaves[endIdx - 1]!.end;
+    return {
+      startOffset,
+      endOffset,
+      valueText: text.slice(startOffset, endOffset).trim(),
+    };
   }
-  return "";
+  return null;
 }
 
-function findClosingBrace(text: string, openBraceIdx: number): number {
-  let depth = 0;
-  let inString = false;
-  let inLineComment = false;
-  let inBlockComment = false;
+interface ParsedBlockDecl {
+  kind: string;
+  name: string;
+  shortId: string;
+  typeName: string;
+  multiplicity: string;
+  startOffset: number;
+  endOffset: number;
+  delimiter: "{" | ";";
+  openBraceOffset: number;
+  closeBraceOffset: number;
+  bodyStartIdx: number;
+  bodyEndIdx: number;
+  docSpan: { commentBodyStart: number; commentBodyEnd: number; text: string } | null;
+}
 
-  for (let i = openBraceIdx; i < text.length; i++) {
-    const ch = text[i];
-    const next = i + 1 < text.length ? text[i + 1] : "";
+function scanPartDeclarations(text: string, leaves: readonly CstLeaf[]): ParsedBlockDecl[] {
+  const decls: ParsedBlockDecl[] = [];
+  for (let i = 0; i + 1 < leaves.length; i++) {
+    if (leaves[i]!.text !== "part") continue;
+    const isDef = leaves[i + 1]!.text === "def";
+    const nameIdx = isDef ? i + 2 : i + 1;
+    const nameLeaf = leaves[nameIdx];
+    if (!nameLeaf || !isSysmlIdentLeaf(nameLeaf.text)) continue;
 
-    if (inLineComment) {
-      if (ch === "\n") inLineComment = false;
-      continue;
-    }
-    if (inBlockComment) {
-      if (ch === "*" && next === "/") {
-        inBlockComment = false;
-        i++;
+    let j = nameIdx + 1;
+    let typeName = isDef ? "PartDefinition" : "";
+    if (leaves[j]?.text === ":") {
+      j++;
+      const typeParts: string[] = [];
+      while (j < leaves.length && (isSysmlIdentLeaf(leaves[j]!.text) || leaves[j]!.text === "::")) {
+        typeParts.push(leaves[j]!.text);
+        j++;
       }
-      continue;
-    }
-    if (inString) {
-      if (ch === "\\" && i + 1 < text.length) {
-        i++;
-      } else if (ch === '"') {
-        inString = false;
-      }
-      continue;
+      if (typeParts.length > 0) typeName = typeParts.join("");
     }
 
-    if (ch === "/" && next === "/") {
-      inLineComment = true;
-      i++;
-      continue;
-    }
-    if (ch === "/" && next === "*") {
-      inBlockComment = true;
-      i++;
-      continue;
-    }
-    if (ch === '"') {
-      inString = true;
-      continue;
+    let multiplicity = "[1]";
+    if (leaves[j]?.text === "[") {
+      const closeBracket = findMatchingDelimiterLeaf(leaves, j, "[", "]");
+      if (closeBracket < 0) continue;
+      const multInner = sliceBetweenLeaves(text, leaves[j]!, leaves[closeBracket]!);
+      multiplicity = `[${multInner}]`;
+      j = closeBracket + 1;
     }
 
-    if (ch === "{") {
-      depth++;
-    } else if (ch === "}") {
-      depth--;
-      if (depth === 0) {
-        return i;
+    const delimLeaf = leaves[j];
+    if (!delimLeaf || (delimLeaf.text !== "{" && delimLeaf.text !== ";")) continue;
+
+    const startOffset = leaves[i]!.start;
+    let endOffset = delimLeaf.end;
+    let bodyStartIdx = j + 1;
+    let bodyEndIdx = j + 1;
+    let openBraceOffset = delimLeaf.start;
+    let closeBraceOffset = delimLeaf.end;
+
+    if (delimLeaf.text === "{") {
+      const closeBraceIdx = findMatchingBraceLeaf(leaves, j);
+      if (closeBraceIdx !== -1) {
+        bodyEndIdx = closeBraceIdx;
+        openBraceOffset = delimLeaf.start;
+        closeBraceOffset = leaves[closeBraceIdx]!.end;
+        endOffset = closeBraceOffset;
       }
     }
+
+    const bodyLeaves = sliceLeavesInRange(leaves, openBraceOffset, closeBraceOffset);
+    const docSpan = delimLeaf.text === "{" ? extractDocCommentSpan(text, bodyLeaves) : null;
+
+    decls.push({
+      kind: isDef ? "part def" : "part",
+      name: nameLeaf.text,
+      shortId: "",
+      typeName,
+      multiplicity,
+      startOffset,
+      endOffset,
+      delimiter: delimLeaf.text,
+      openBraceOffset,
+      closeBraceOffset,
+      bodyStartIdx,
+      bodyEndIdx,
+      docSpan,
+    });
   }
-  return -1;
+  return decls;
+}
+
+function scanRequirementDeclarations(text: string, leaves: readonly CstLeaf[]): ParsedBlockDecl[] {
+  const decls: ParsedBlockDecl[] = [];
+  for (let i = 0; i + 1 < leaves.length; i++) {
+    if (leaves[i]!.text !== "requirement") continue;
+    const prevTok = i > 0 ? leaves[i - 1]!.text : "";
+    if (prevTok === "satisfy" || prevTok === "verify") continue;
+
+    const isDef = leaves[i + 1]!.text === "def";
+    let j = isDef ? i + 2 : i + 1;
+    let shortId = "";
+    let explicitName = "";
+
+    if (
+      j + 2 < leaves.length &&
+      leaves[j]!.text === "<" &&
+      leaves[j + 2]!.text === ">" &&
+      (leaves[j + 1]!.text.startsWith("'") || isSysmlIdentLeaf(leaves[j + 1]!.text))
+    ) {
+      shortId = stripSurroundingQuotes(leaves[j + 1]!.text);
+      j += 3;
+      if (j < leaves.length && isSysmlIdentLeaf(leaves[j]!.text)) {
+        explicitName = leaves[j]!.text;
+        j++;
+      }
+    } else if (j < leaves.length && isSysmlIdentLeaf(leaves[j]!.text)) {
+      explicitName = leaves[j]!.text;
+      j++;
+    } else {
+      continue;
+    }
+
+    const name = explicitName || shortId;
+    if (!name) continue;
+
+    let typeName = "";
+    if (leaves[j]?.text === ":") {
+      j++;
+      const typeParts: string[] = [];
+      while (j < leaves.length && (isSysmlIdentLeaf(leaves[j]!.text) || leaves[j]!.text === "::")) {
+        typeParts.push(leaves[j]!.text);
+        j++;
+      }
+      typeName = typeParts.join("");
+    }
+
+    const delimLeaf = leaves[j];
+    if (!delimLeaf || (delimLeaf.text !== "{" && delimLeaf.text !== ";")) continue;
+
+    const startOffset = leaves[i]!.start;
+    let endOffset = delimLeaf.end;
+    let bodyStartIdx = j + 1;
+    let bodyEndIdx = j + 1;
+    let openBraceOffset = delimLeaf.start;
+    let closeBraceOffset = delimLeaf.end;
+
+    if (delimLeaf.text === "{") {
+      const closeBraceIdx = findMatchingBraceLeaf(leaves, j);
+      if (closeBraceIdx !== -1) {
+        bodyEndIdx = closeBraceIdx;
+        openBraceOffset = delimLeaf.start;
+        closeBraceOffset = leaves[closeBraceIdx]!.end;
+        endOffset = closeBraceOffset;
+      }
+    }
+
+    const bodyLeaves = sliceLeavesInRange(leaves, openBraceOffset, closeBraceOffset);
+    const docSpan = delimLeaf.text === "{" ? extractDocCommentSpan(text, bodyLeaves) : null;
+
+    decls.push({
+      kind: isDef ? "requirement def" : "requirement",
+      name,
+      shortId,
+      typeName,
+      multiplicity: "[1]",
+      startOffset,
+      endOffset,
+      delimiter: delimLeaf.text,
+      openBraceOffset,
+      closeBraceOffset,
+      bodyStartIdx,
+      bodyEndIdx,
+      docSpan,
+    });
+  }
+  return decls;
 }
 
 /**
  * Extracts SysML v2 Part Definitions & Part Usages into a BOM / Element Table.
  */
 export function extractSysml2PartRows(text: string): TabularRow[] {
+  const leaves = collectCstLeaves(parseSysmlSource(text));
+  const decls = scanPartDeclarations(text, leaves);
   const rows: TabularRow[] = [];
-  const blockHeaderRegex =
-    /\b(part\s+def|part)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*([A-Za-z0-9_:]+))?(?:\s*\[([^\]]+)\])?\s*([{;])/g;
-  let match: RegExpExecArray | null;
-  while ((match = blockHeaderRegex.exec(text)) !== null) {
-    const kind = match[1]!.replace(/\s+/g, " ");
-    const name = match[2]!;
-    const typeName = match[3] ?? (kind === "part def" ? "PartDefinition" : "");
-    const multiplicity = match[4] ? `[${match[4]}]` : "[1]";
-    const delimiter = match[5]!;
-    const startOffset = match.index;
-    let body = ";";
-    let endOffset = match.index + match[0].length;
 
-    if (delimiter === "{") {
-      const openBraceIdx = match.index + match[0].length - 1;
-      const closeBraceIdx = findClosingBrace(text, openBraceIdx);
-      if (closeBraceIdx !== -1) {
-        body = text.slice(openBraceIdx, closeBraceIdx + 1);
-        endOffset = closeBraceIdx + 1;
-      }
-    }
-
-    const extractAttr = (attrName: string): string => {
-      const m = body.match(
-        new RegExp(`(?:attribute|:>>)\\s+${escapeRegex(attrName)}(?:\\s*:[^=;]+)?\\s*(?:=|:=)\\s*([^;\\r\\n}]+)`),
-      );
-      return m?.[1]?.trim() ?? "";
-    };
-
-    const docText = extractDocComment(body);
+  for (const decl of decls) {
+    const extractAttr = (attrName: string): string =>
+      decl.delimiter === "{"
+        ? (findAttributeValueSpanInBody(text, leaves, decl.bodyStartIdx, decl.bodyEndIdx, attrName)?.valueText ?? "")
+        : "";
 
     rows.push({
-      id: name,
-      depth: kind === "part def" ? 0 : 1,
-      span: { startOffset, endOffset },
+      id: decl.name,
+      depth: decl.kind === "part def" ? 0 : 1,
+      span: { startOffset: decl.startOffset, endOffset: decl.endOffset },
       cells: {
-        name,
-        kind,
-        type: typeName,
-        multiplicity,
+        name: decl.name,
+        kind: decl.kind,
+        type: decl.typeName,
+        multiplicity: decl.multiplicity,
         mass: extractAttr("mass"),
         power: extractAttr("power"),
         cost: extractAttr("cost"),
-        doc: docText,
+        doc: decl.docSpan?.text ?? "",
       },
     });
   }
   return rows;
 }
 
+function readSatisfyOrVerifyRef(leaves: readonly CstLeaf[], startIdx: number): { key: string; nextIdx: number } | null {
+  if (startIdx + 2 < leaves.length && leaves[startIdx]!.text === "<" && leaves[startIdx + 2]!.text === ">") {
+    return {
+      key: stripSurroundingQuotes(leaves[startIdx + 1]!.text),
+      nextIdx: startIdx + 3,
+    };
+  }
+  const chain = readDottedChainFromLeaves(leaves, startIdx);
+  if (chain) {
+    return { key: chain.text, nextIdx: chain.nextIdx };
+  }
+  return null;
+}
+
 /**
  * Extracts SysML v2 Requirement Definitions & Usages into a Requirements Table.
  */
 export function extractSysml2RequirementRows(text: string): TabularRow[] {
-  const rows: TabularRow[] = [];
+  const leaves = collectCstLeaves(parseSysmlSource(text));
   const satisfiedByMap = new Map<string, string[]>();
   const verifiedByMap = new Map<string, string[]>();
 
-  const satRegex = /\bsatisfy\s+(?:requirement\s+)?([A-Za-z0-9_.'<>-]+)\s+by\s+([A-Za-z0-9_.]+)/g;
-  let sm: RegExpExecArray | null;
-  while ((sm = satRegex.exec(text)) !== null) {
-    const reqKey = sm[1]!.replace(/^<'|'>$/g, "");
-    const list = satisfiedByMap.get(reqKey) ?? [];
-    list.push(sm[2]!);
-    satisfiedByMap.set(reqKey, list);
+  for (let i = 0; i + 2 < leaves.length; i++) {
+    const kw = leaves[i]!.text;
+    if (kw !== "satisfy" && kw !== "verify") continue;
+    let j = i + 1;
+    if (leaves[j]?.text === "requirement") j++;
+    const reqRef = readSatisfyOrVerifyRef(leaves, j);
+    if (!reqRef || leaves[reqRef.nextIdx]?.text !== "by") continue;
+    const targetChain = readDottedChainFromLeaves(leaves, reqRef.nextIdx + 1);
+    if (!targetChain) continue;
+    const map = kw === "satisfy" ? satisfiedByMap : verifiedByMap;
+    const list = map.get(reqRef.key) ?? [];
+    list.push(targetChain.text);
+    map.set(reqRef.key, list);
   }
 
-  const verRegex = /\bverify\s+(?:requirement\s+)?([A-Za-z0-9_.'<>-]+)\s+by\s+([A-Za-z0-9_.]+)/g;
-  let vm: RegExpExecArray | null;
-  while ((vm = verRegex.exec(text)) !== null) {
-    const reqKey = vm[1]!.replace(/^<'|'>$/g, "");
-    const list = verifiedByMap.get(reqKey) ?? [];
-    list.push(vm[2]!);
-    verifiedByMap.set(reqKey, list);
-  }
-
-  const reqHeaderRegex =
-    /\b(requirement\s+def|requirement)\s+(?:<'([^']+)'(?:\s+([A-Za-z_][A-Za-z0-9_]*))?|([A-Za-z_][A-Za-z0-9_]*))(?:\s*:\s*([A-Za-z0-9_:]+))?\s*([{;])/g;
-  let match: RegExpExecArray | null;
-  while ((match = reqHeaderRegex.exec(text)) !== null) {
-    const shortId = match[2] ?? "";
-    const name = match[3] ?? match[4] ?? shortId ?? "UnnamedRequirement";
-    if (!shortId && !match[3] && !match[4]) continue;
-    const delimiter = match[6]!;
-    const startOffset = match.index;
-    let body = ";";
-    let endOffset = match.index + match[0].length;
-
-    if (delimiter === "{") {
-      const openBraceIdx = match.index + match[0].length - 1;
-      const closeBraceIdx = findClosingBrace(text, openBraceIdx);
-      if (closeBraceIdx !== -1) {
-        body = text.slice(openBraceIdx, closeBraceIdx + 1);
-        endOffset = closeBraceIdx + 1;
-      }
-    }
-    const docText = extractDocComment(body);
-
-    const satisfiedBy = [...(satisfiedByMap.get(name) ?? []), ...(shortId ? (satisfiedByMap.get(shortId) ?? []) : [])];
-    const verifiedBy = [...(verifiedByMap.get(name) ?? []), ...(shortId ? (verifiedByMap.get(shortId) ?? []) : [])];
+  const reqDecls = scanRequirementDeclarations(text, leaves);
+  const rows: TabularRow[] = [];
+  for (const decl of reqDecls) {
+    const satisfiedBy = [
+      ...(satisfiedByMap.get(decl.name) ?? []),
+      ...(decl.shortId ? (satisfiedByMap.get(decl.shortId) ?? []) : []),
+    ];
+    const verifiedBy = [
+      ...(verifiedByMap.get(decl.name) ?? []),
+      ...(decl.shortId ? (verifiedByMap.get(decl.shortId) ?? []) : []),
+    ];
 
     rows.push({
-      id: name,
-      span: { startOffset, endOffset },
+      id: decl.name,
+      span: { startOffset: decl.startOffset, endOffset: decl.endOffset },
       cells: {
-        shortId: shortId || name,
-        name,
-        doc: docText,
+        shortId: decl.shortId || decl.name,
+        name: decl.name,
+        doc: decl.docSpan?.text ?? "",
         satisfiedBy: satisfiedBy.join(", "),
         verifiedBy: verifiedBy.join(", "),
         status:
@@ -238,38 +356,43 @@ export function updateSysml2TabularCell(
   columnId: string,
   newValue: string,
 ): TabularMutationResult {
-  const escapedId = escapeRegex(rowId);
+  const leaves = collectCstLeaves(parseSysmlSource(text));
+
   if (sheetId === "requirements" && columnId === "doc") {
-    const reqHeaderRe = new RegExp(
-      `\\b(?:requirement\\s+def|requirement)\\s+(?:<'[^']+'\\s*)?${escapedId}[^;{]*([{;])`,
-    );
-    const m = text.match(reqHeaderRe);
-    if (m && m.index !== undefined && m[1] === "{") {
-      const openBraceIdx = m.index + m[0].length - 1;
-      const closeBraceIdx = findClosingBrace(text, openBraceIdx);
-      if (closeBraceIdx !== -1) {
-        const body = text.slice(openBraceIdx, closeBraceIdx + 1);
-        const docMatch = body.match(/(doc\s*\/\*\s*)([\s\S]*?)(\s*\*\/)/);
-        if (docMatch && docMatch.index !== undefined) {
-          const startOffset = openBraceIdx + docMatch.index + docMatch[1]!.length;
-          const endOffset = startOffset + docMatch[2]!.length;
-          const edit = { startOffset, endOffset, newText: newValue };
-          return {
-            success: true,
-            newText: applyWritebackEdits(text, [edit]),
-            edits: [edit],
-          };
-        }
+    const reqDecl = scanRequirementDeclarations(text, leaves).find((d) => d.name === rowId);
+    if (reqDecl && reqDecl.delimiter === "{" && reqDecl.docSpan) {
+      let startOffset = reqDecl.docSpan.commentBodyStart;
+      let endOffset = reqDecl.docSpan.commentBodyEnd;
+      while (
+        startOffset < endOffset &&
+        (text[startOffset] === " " ||
+          text[startOffset] === "\t" ||
+          text[startOffset] === "\n" ||
+          text[startOffset] === "\r")
+      ) {
+        startOffset++;
       }
+      while (
+        endOffset > startOffset &&
+        (text[endOffset - 1] === " " ||
+          text[endOffset - 1] === "\t" ||
+          text[endOffset - 1] === "\n" ||
+          text[endOffset - 1] === "\r")
+      ) {
+        endOffset--;
+      }
+      const edit = { startOffset, endOffset, newText: newValue };
+      return {
+        success: true,
+        newText: applyWritebackEdits(text, [edit]),
+        edits: [edit],
+      };
     }
   }
 
   // Part attribute update (`mass`, `power`, `cost`)
-  const partHeaderRe = new RegExp(
-    `\\b(?:part\\s+def|part)\\s+${escapedId}(?:\\s*:\\s*[A-Za-z0-9_:]+)?(?:\\s*\\[[^\\]]+\\])?\\s*([{;])`,
-  );
-  const pm = text.match(partHeaderRe);
-  if (!pm || pm.index === undefined) {
+  const partDecl = scanPartDeclarations(text, leaves).find((d) => d.name === rowId);
+  if (!partDecl) {
     return {
       success: false,
       newText: text,
@@ -278,39 +401,18 @@ export function updateSysml2TabularCell(
     };
   }
 
-  const delimiter = pm[1]!;
-  const headerEnd = pm.index + pm[0].length;
-  let body = ";";
-  let bodyStart = headerEnd - 1;
-  let bodyEnd = headerEnd;
-
-  if (delimiter === "{") {
-    const openBraceIdx = headerEnd - 1;
-    const closeBraceIdx = findClosingBrace(text, openBraceIdx);
-    if (closeBraceIdx !== -1) {
-      body = text.slice(openBraceIdx, closeBraceIdx + 1);
-      bodyStart = openBraceIdx;
-      bodyEnd = closeBraceIdx + 1;
-    }
-  }
-
   if (columnId === "mass" || columnId === "power" || columnId === "cost") {
-    const attrRe = new RegExp(
-      `((?:attribute|:>>)\\s+${escapeRegex(columnId)}(?:\\s*:[^=;]+)?\\s*(?:=|:=)\\s*)([^;\\r\\n}]+)`,
-    );
-    const am = body.match(attrRe);
-    if (am && am.index !== undefined) {
-      const startOffset = bodyStart + am.index + am[1]!.length;
-      const endOffset = startOffset + am[2]!.trimEnd().length;
-      const edit = { startOffset, endOffset, newText: newValue };
-      return {
-        success: true,
-        newText: applyWritebackEdits(text, [edit]),
-        edits: [edit],
-      };
-    }
-    if (body.startsWith("{") && body.endsWith("}")) {
-      const closeBrace = bodyEnd - 1;
+    if (partDecl.delimiter === "{") {
+      const attrSpan = findAttributeValueSpanInBody(text, leaves, partDecl.bodyStartIdx, partDecl.bodyEndIdx, columnId);
+      if (attrSpan) {
+        const edit = { startOffset: attrSpan.startOffset, endOffset: attrSpan.endOffset, newText: newValue };
+        return {
+          success: true,
+          newText: applyWritebackEdits(text, [edit]),
+          edits: [edit],
+        };
+      }
+      const closeBrace = partDecl.closeBraceOffset - 1;
       const edit = {
         startOffset: closeBrace,
         endOffset: closeBrace,
@@ -322,10 +424,11 @@ export function updateSysml2TabularCell(
         edits: [edit],
       };
     }
-    if (body === ";") {
+
+    if (partDecl.delimiter === ";") {
       const edit = {
-        startOffset: bodyStart,
-        endOffset: bodyStart + 1,
+        startOffset: partDecl.openBraceOffset,
+        endOffset: partDecl.openBraceOffset + 1,
         newText: ` {\n  attribute ${columnId} = ${newValue};\n}`,
       };
       return {

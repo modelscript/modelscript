@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { choice, language, repeat, seq } from "@modelscript/dsl";
+import { language, xmlRules } from "@modelscript/dsl";
 import { indexAutosarDocument } from "./indexing.js";
 import { autosarPolyglotConfig } from "./tgg/index.js";
 
@@ -17,28 +17,9 @@ export const autosarLanguage = language({
   },
   lsp: {
     fileExtensions: [".arxml"],
+    folding: ["Element", "COMMENT"],
+    outline: ["Element"],
   },
-
-  rules: {
-    Document: ($) => repeat(choice($["XmlElement"]!, $["Comment"]!)),
-
-    XmlElement: ($) =>
-      seq(
-        "<",
-        $["TagName"]!,
-        repeat($["Attribute"]!),
-        choice(
-          "/>",
-          seq(">", repeat(choice($["XmlElement"]!, $["TextContent"]!, $["Comment"]!)), "</", $["TagName"]!, ">"),
-        ),
-      ),
-
-    Attribute: ($) => seq($["AttributeName"]!, "=", $["StringLiteral"]!),
-
-    TagName: () => /[A-Za-z_][A-Za-z0-9_-]*/,
-    AttributeName: () => /[A-Za-z_][A-Za-z0-9_:-]*/,
-    TextContent: () => /[^<]+/,
-    StringLiteral: () => /"[^"]*"|'[^']*'/,
-    Comment: () => /<!--[\s\S]*?-->/,
-  },
+  extras: ($) => [/[ \t\r\n]+/, $["COMMENT"]!, $["PROCESSING_INSTRUCTION"]!],
+  rules: xmlRules,
 });

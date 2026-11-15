@@ -20,8 +20,15 @@ description: "Implementation: packages/simulate/src/optimizer/solvers/"
 
 ### ModelScript Rationale & Modifications
 
-Solves large-scale bound-constrained non-linear minimization:
+Solves large-scale bound-constrained non-linear minimization over box-constrained decision vectors:
 $$\min_{x \in \mathbb{R}^n} f(x) \quad \text{subject to } l \le x \le u$$
+
+| Symbol | Meaning                                    | Units / Domain             |
+| :----- | :----------------------------------------- | :------------------------- |
+| $x$    | Decision / parameter vector to optimize    | $\mathbb{R}^n$             |
+| $f(x)$ | Scalar objective function to minimize      | $\mathbb{R}$               |
+| $l, u$ | Element-wise lower and upper bound vectors | $\mathbb{R}^n$ ($l \le u$) |
+
 Crucial for parameter identification and direct collocation optimal control where thousands of discretized states and control bounds must be optimized.
 
 - **Modifications**: Employs compact representation of the inverse Hessian approximation $H_k$ using history buffers $m \in [5, 20]$ in typed arrays; Cauchy point computation with piecewise linear path search; exact line search with strong Wolfe conditions.
@@ -71,8 +78,17 @@ Stochastic population-based global search algorithm utilizing vector differences
 
 ### ModelScript Rationale & Modifications
 
-Simulates social swarm dynamics for continuous global search:
+Simulates social swarm dynamics for continuous global search, updating each particle's velocity as a weighted combination of its inertia, personal best pull, and global best pull:
 $$v_i(t+1) = w v_i(t) + c_1 r_1 (p_i - x_i) + c_2 r_2 (g - x_i)$$
+
+| Symbol     | Meaning                                                               | Units / Domain       |
+| :--------- | :-------------------------------------------------------------------- | :------------------- |
+| $v_i(t)$   | Velocity vector of particle $i$ at iteration $t$                      | $\mathbb{R}^n$       |
+| $x_i$      | Current position of particle $i$                                      | $\mathbb{R}^n$       |
+| $p_i, g$   | Personal best position of particle $i$ and global swarm best position | $\mathbb{R}^n$       |
+| $w$        | Inertia weight controlling momentum                                   | $\mathbb{R}_{\ge 0}$ |
+| $c_1, c_2$ | Cognitive (personal) and social (swarm) acceleration coefficients     | $\mathbb{R}_{\ge 0}$ |
+| $r_1, r_2$ | Independent uniform random scalars                                    | $\mathcal{U}(0, 1)$  |
 
 - **Modifications**: Implements constriction factors and dynamically declining inertia weights $w(t)$ to transition smoothly from global exploration to local exploitation.
 

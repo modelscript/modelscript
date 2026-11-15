@@ -23,6 +23,10 @@ export interface HtmlReportStageInput {
         id?: string | undefined;
         message: string;
         severity?: "error" | "warning" | "note" | undefined;
+        standard?: string | undefined;
+        clauseId?: string | undefined;
+        margin?: number | undefined;
+        verificationMethod?: string | undefined;
         location?: { uri?: string | undefined; line?: number | undefined; column?: number | undefined } | undefined;
         witness?: any;
       }[]
@@ -70,6 +74,9 @@ export function generateHtmlReport(
                 (v, idx) => `
               <div class="violation-item">
                 <span class="v-num">#${idx + 1}</span>
+                ${v.standard || v.clauseId ? `<span class="v-compliance">${escapeHtml([v.standard, v.clauseId].filter(Boolean).join(" "))}</span>` : ""}
+                ${v.margin !== undefined && Number.isFinite(v.margin) ? `<span class="v-margin">margin: ${v.margin >= 0 ? "+" : ""}${v.margin.toFixed(4)}</span>` : ""}
+                ${v.verificationMethod ? `<span class="v-method">[${escapeHtml(v.verificationMethod)}]</span>` : ""}
                 <span class="v-msg">${escapeHtml(v.message)}</span>
                 ${v.location?.line ? `<span class="v-loc">${v.location.uri ? escapeHtml(v.location.uri) + ":" : ""}${v.location.line}:${v.location.column || 1}</span>` : ""}
                 ${v.witness ? `<pre class="v-witness">${escapeHtml(JSON.stringify(v.witness, null, 2))}</pre>` : ""}
@@ -236,6 +243,29 @@ export function generateHtmlReport(
       border-radius: 0 4px 4px 0;
     }
     .v-num { font-weight: bold; color: var(--fail); margin-right: 0.5rem; }
+    .v-compliance {
+      display: inline-block;
+      background: rgba(59, 130, 246, 0.2);
+      color: #93c5fd;
+      border: 1px solid rgba(59, 130, 246, 0.45);
+      border-radius: 4px;
+      padding: 0.1rem 0.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      margin-right: 0.4rem;
+    }
+    .v-margin {
+      display: inline-block;
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--warn);
+      border-radius: 4px;
+      padding: 0.1rem 0.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      margin-right: 0.4rem;
+    }
+    .v-method { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted); margin-right: 0.4rem; }
     .v-loc { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted); margin-left: 0.5rem; }
     .v-witness {
       margin-top: 0.5rem;

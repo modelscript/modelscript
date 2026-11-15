@@ -24,6 +24,7 @@ interface LanguageExampleItem {
   viewLabel: string;
   code: string;
   lineCount: number;
+  highlightedLines?: string[];
   permalinkToken: string;
   svgDark: string;
   svgLight: string;
@@ -305,11 +306,11 @@ function onPointerUp(e: PointerEvent) {
         </div>
 
         <div class="code-scroll-container">
-          <pre class="code-pre"><code><span
+          <pre class="code-pre shiki"><code><span
             v-for="(line, idx) in codeLines"
             :key="idx"
             class="code-line"
-          ><span class="line-num">{{ idx + 1 }}</span><span class="line-text" v-html="highlightLine(line)" />
+          ><span class="line-num">{{ idx + 1 }}</span><span class="line-text" v-html="example.highlightedLines?.[idx] ?? highlightLine(line)" />
 </span></code></pre>
         </div>
       </div>

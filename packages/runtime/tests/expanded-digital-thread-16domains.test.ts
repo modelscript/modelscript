@@ -16,9 +16,9 @@ import {
 import { ThreadSerializer } from "../src/interop/thread_serializer.js";
 
 describe("Expanded 16-Domain Digital Thread Hypergraph & Typed Relations", () => {
-  it("verifies linear-memory constants: 16 domains, 22-word stride", () => {
-    assert.strictEqual(MAX_THREAD_DOMAINS, 16);
-    assert.strictEqual(THREAD_STRIDE, 22);
+  it("verifies linear-memory constants: 18 domains, 24-word stride", () => {
+    assert.strictEqual(MAX_THREAD_DOMAINS, 18);
+    assert.strictEqual(THREAD_STRIDE, 24);
   });
 
   it("binds and retrieves across all 16 lifecycle domains", () => {

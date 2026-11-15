@@ -9,6 +9,7 @@
  * Go-to-Definition, Document Symbols, and 1-click Quick-Fix Code Actions (`M6001–M6008`).
  */
 
+import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
 import { lintPscx } from "../lints/index.js";
 import { readDefinitionForm } from "../model/definition-form.js";
 import type { ModelDefinition, ModelPort } from "../model/pscad-model.js";
@@ -629,60 +630,48 @@ export function getPscadHover(text: string, offset: number): { contents: string;
 
     // Check if cursor is on or inside a <Definition> element (e.g. inside a library file like master.pslx)
     if (project.definitions) {
-      const lines = text.split(/\r?\n/);
-      let defStartLine = -1;
-      let targetDefName: string | null = null;
-
-      for (let i = 0; i < lines.length; i++) {
-        const l = lines[i]!;
-        const defMatch = /<Definition\b[^>]*?\bname\s*=\s*["']([^"']+)["']/i.exec(l);
-        if (defMatch) {
-          defStartLine = i + 1;
-          targetDefName = defMatch[1]!;
-        }
-        if (defStartLine > 0 && /<\/Definition>/i.test(l)) {
-          const defEndLine = i + 1;
-          if (cursorLine >= defStartLine && cursorLine <= defEndLine && targetDefName) {
-            const def = project.definitions.get(targetDefName);
-            if (def) {
-              const md: string[] = [`### 📦 PSCAD Component Definition \`${targetDefName}\``, ""];
-              if (def.flyBy?.summary) {
-                md.push(def.flyBy.summary);
-                md.push("");
-              } else if (def.description) {
-                md.push(def.description);
-                md.push("");
-              }
-
-              if (def.flyBy?.ports && Object.keys(def.flyBy.ports).length > 0) {
-                md.push("**Terminals & Signals:**");
-                for (const [pName, pDoc] of Object.entries(def.flyBy.ports)) {
-                  md.push(`- **\`${pName}\`**: ${pDoc.replace(/\r?\n/g, " ")}`);
-                }
-                md.push("");
-              }
-
-              if (def.checks && def.checks.length > 0) {
-                md.push(`**Parameter Validation Rules (${def.checks.length} assertions):**`);
-                for (const rule of def.checks.slice(0, 5)) {
-                  md.push(
-                    `- *${rule.severity.toUpperCase()}*: ${rule.message}${rule.condition ? ` (\`${rule.condition}\`)` : ""}`,
-                  );
-                }
-                if (def.checks.length > 5) {
-                  md.push(`- *...and ${def.checks.length - 5} more rules*`);
-                }
-                md.push("");
-              }
-
-              return {
-                line: defStartLine,
-                contents: md.join("\n"),
-              };
-            }
+      const xmlDoc = parseXml(text);
+      const mapper = createXmlOffsetMapper(text);
+      const targetDefEl = xmlDoc.root ? findAncestorAtOffset(xmlDoc.root, offset, "definition") : undefined;
+      const targetDefName = findAttrCI(targetDefEl, "name")?.value;
+      if (targetDefEl && targetDefName) {
+        const def = project.definitions.get(targetDefName);
+        if (def) {
+          const defStartLine = mapper.toLineCol(targetDefEl.start).line + 1;
+          const md: string[] = [`### 📦 PSCAD Component Definition \`${targetDefName}\``, ""];
+          if (def.flyBy?.summary) {
+            md.push(def.flyBy.summary);
+            md.push("");
+          } else if (def.description) {
+            md.push(def.description);
+            md.push("");
           }
-          defStartLine = -1;
-          targetDefName = null;
+
+          if (def.flyBy?.ports && Object.keys(def.flyBy.ports).length > 0) {
+            md.push("**Terminals & Signals:**");
+            for (const [pName, pDoc] of Object.entries(def.flyBy.ports)) {
+              md.push(`- **\`${pName}\`**: ${pDoc.replace(/\r?\n/g, " ")}`);
+            }
+            md.push("");
+          }
+
+          if (def.checks && def.checks.length > 0) {
+            md.push(`**Parameter Validation Rules (${def.checks.length} assertions):**`);
+            for (const rule of def.checks.slice(0, 5)) {
+              md.push(
+                `- *${rule.severity.toUpperCase()}*: ${rule.message}${rule.condition ? ` (\`${rule.condition}\`)` : ""}`,
+              );
+            }
+            if (def.checks.length > 5) {
+              md.push(`- *...and ${def.checks.length - 5} more rules*`);
+            }
+            md.push("");
+          }
+
+          return {
+            line: defStartLine,
+            contents: md.join("\n"),
+          };
         }
       }
     }
@@ -690,6 +679,62 @@ export function getPscadHover(text: string, offset: number): { contents: string;
     // Ignore parse errors during hover
   }
   return null;
+}
+
+function createXmlOffsetMapper(text: string) {
+  const lineStarts: number[] = [0];
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === 10) lineStarts.push(i + 1);
+  }
+  const toLineCol = (offset: number): { line: number; character: number } => {
+    let lo = 0;
+    let hi = lineStarts.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (lineStarts[mid]! <= offset) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    const line = Math.max(0, hi);
+    return { line, character: Math.max(0, offset - lineStarts[line]!) };
+  };
+  const toRange = (start: number, end: number) => ({
+    start: toLineCol(start),
+    end: toLineCol(end),
+  });
+  return { toLineCol, toRange };
+}
+
+function findAttrCI(el: XmlElement | undefined, name: string) {
+  if (!el) return undefined;
+  const target = name.toLowerCase();
+  return el.attributes.find((a) => a.name === name || a.name.toLowerCase() === target);
+}
+
+function findElementAtOffset(root: XmlElement, offset: number): XmlElement | undefined {
+  if (offset < root.start || offset > root.end) return undefined;
+  for (const child of root.children) {
+    const nested = findElementAtOffset(child, offset);
+    if (nested) return nested;
+  }
+  return root;
+}
+
+function findAncestorAtOffset(root: XmlElement, offset: number, tagName: string): XmlElement | undefined {
+  let cur = findElementAtOffset(root, offset);
+  const target = tagName.toLowerCase();
+  while (cur) {
+    if (cur.name.toLowerCase() === target) return cur;
+    cur = cur.parent ?? undefined;
+  }
+  return undefined;
+}
+
+function walkXmlElements(el: XmlElement, visitor: (node: XmlElement) => unknown): boolean {
+  if (visitor(el) === true) return true;
+  for (const child of el.children) {
+    if (walkXmlElements(child, visitor)) return true;
+  }
+  return false;
 }
 
 /**
@@ -705,57 +750,64 @@ export function getPscadDefinitionLocation(
   uri: string;
   range: { start: { line: number; character: number }; end: { line: number; character: number } };
 } | null {
-  const lineStart = text.lastIndexOf("\n", offset - 1) + 1;
-  const lineEnd = text.indexOf("\n", offset);
-  const lineText = text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd);
+  const xmlDoc = parseXml(text);
+  if (!xmlDoc.root) return null;
+  const elAtCursor = findElementAtOffset(xmlDoc.root, offset);
+  if (!elAtCursor) return null;
 
   // 1. Check if cursor is on <param name="Name" value="NetOrInstanceName"/>
-  const paramValMatch = /<param\b[^>]*\bname\s*=\s*["']Name["'][^>]*\bvalue\s*=\s*["']([^"']+)["']/i.exec(lineText);
-  if (paramValMatch?.[1]) {
-    const netName = paramValMatch[1];
-    const lines = text.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      const l = lines[i]!;
-      if (l.includes(netName) && /<param\b/i.test(l)) {
-        const nMatch = /\bname\s*=\s*["']([^"']+)["']/i.exec(l);
-        const vMatch = /\bvalue\s*=\s*["']([^"']+)["']/i.exec(l);
-        if (nMatch?.[1]?.toLowerCase() === "name" && vMatch?.[1] === netName) {
-          const col = Math.max(0, l.indexOf(netName));
-          return {
-            uri,
-            range: {
-              start: { line: i, character: col },
-              end: { line: i, character: col + netName.length },
-            },
-          };
+  if (elAtCursor.name.toLowerCase() === "param" && findAttrCI(elAtCursor, "name")?.value.toLowerCase() === "name") {
+    const valAttrAtCursor = findAttrCI(elAtCursor, "value");
+    const netName = valAttrAtCursor?.value;
+    if (netName) {
+      const mapper = createXmlOffsetMapper(text);
+      let hit: {
+        uri: string;
+        range: { start: { line: number; character: number }; end: { line: number; character: number } };
+      } | null = null;
+      walkXmlElements(xmlDoc.root, (node) => {
+        if (node.name.toLowerCase() !== "param") return;
+        const nAttr = findAttrCI(node, "name");
+        const vAttr = findAttrCI(node, "value");
+        if (nAttr?.value.toLowerCase() === "name" && vAttr?.value === netName) {
+          hit = { uri, range: mapper.toRange(vAttr.valueStart, vAttr.valueEnd) };
+          return true;
         }
-      }
+        return false;
+      });
+      if (hit) return hit;
     }
   }
 
-  const nameMatch = /\b(?:name|defn)\s*=\s*["']([^"']+)["']/i.exec(lineText);
-  if (!nameMatch?.[1]) return null;
+  const targetAttr = findAttrCI(elAtCursor, "defn") ?? findAttrCI(elAtCursor, "name");
+  if (!targetAttr?.value) return null;
 
-  const rawTarget = nameMatch[1].includes(":") ? nameMatch[1].split(":").pop()! : nameMatch[1];
-  const escapedTarget = rawTarget.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const defAttrRe = new RegExp(`\\bname\\s*=\\s*["'](?:[^"']*:)?${escapedTarget}["']`, "i");
+  const rawTarget = targetAttr.value.includes(":") ? targetAttr.value.split(":").pop()! : targetAttr.value;
+  if (!rawTarget) return null;
+  const targetLower = rawTarget.toLowerCase();
 
   const searchInDocument = (docText: string, docUri: string) => {
-    const lines = docText.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      const l = lines[i]!;
-      if (/<Definition\b/i.test(l) && defAttrRe.test(l)) {
-        const col = Math.max(0, l.indexOf(rawTarget));
-        return {
-          uri: docUri,
-          range: {
-            start: { line: i, character: col },
-            end: { line: i, character: col + rawTarget.length },
-          },
-        };
+    const doc = parseXml(docText);
+    if (!doc.root) return null;
+    const mapper = createXmlOffsetMapper(docText);
+    let found: {
+      uri: string;
+      range: { start: { line: number; character: number }; end: { line: number; character: number } };
+    } | null = null;
+    walkXmlElements(doc.root, (node) => {
+      if (node.name.toLowerCase() !== "definition") return;
+      const nameAttr = findAttrCI(node, "name");
+      if (!nameAttr) return;
+      const valLower = nameAttr.value.toLowerCase();
+      if (valLower === targetLower || valLower.endsWith(`:${targetLower}`)) {
+        const spanEnd = nameAttr.valueEnd;
+        const spanStart = Math.max(nameAttr.valueStart, spanEnd - rawTarget.length);
+        found = { uri: docUri, range: mapper.toRange(spanStart, spanEnd) };
+        return true;
       }
-    }
-    return null;
+      return false;
+    });
+    return found;
   };
 
   // Search current file first, then linked workspace .pslx / .pscx files
@@ -786,32 +838,27 @@ export function getPscadReferences(
   uri: string;
   range: { start: { line: number; character: number }; end: { line: number; character: number } };
 }[] {
-  const lineStart = text.lastIndexOf("\n", offset - 1) + 1;
-  const lineEnd = text.indexOf("\n", offset);
-  const lineText = text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd);
-  const colOffset = offset - lineStart;
+  const curDoc = parseXml(text);
+  if (!curDoc.root) return [];
+  const elAtCursor = findElementAtOffset(curDoc.root, offset);
+  if (!elAtCursor) return [];
 
-  // Check if cursor is directly inside a quoted attribute value on this line
-  let quotedAtCursor: string | undefined;
-  const quoteRe = /\b(?:defn|name|value|id)\s*=\s*["']([^"']+)["']/gi;
-  let qm: RegExpExecArray | null;
-  while ((qm = quoteRe.exec(lineText)) !== null) {
-    if (colOffset >= qm.index && colOffset <= qm.index + qm[0].length) {
-      quotedAtCursor = qm[1];
-      break;
-    }
-  }
+  const targetAttrKeys = new Set(["defn", "name", "value", "id"]);
+  const quotedAtCursor = elAtCursor.attributes.find(
+    (a) => targetAttrKeys.has(a.name.toLowerCase()) && offset >= a.start && offset <= a.end,
+  )?.value;
 
-  const paramNameVal = /<param\b[^>]*\bname\s*=\s*["']Name["'][^>]*\bvalue\s*=\s*["']([^"']+)["']/i.exec(lineText)?.[1];
-  const defnOrNameVal = /\b(?:defn|name)\s*=\s*["']([^"']+)["']/i.exec(lineText)?.[1];
-  const idVal = /\bid\s*=\s*["']([^"']+)["']/i.exec(lineText)?.[1];
+  const isParamNameTag =
+    elAtCursor.name.toLowerCase() === "param" && findAttrCI(elAtCursor, "name")?.value.toLowerCase() === "name";
+  const paramNameVal = isParamNameTag ? findAttrCI(elAtCursor, "value")?.value : undefined;
+  const defnOrNameVal = (findAttrCI(elAtCursor, "defn") ?? findAttrCI(elAtCursor, "name"))?.value;
+  const idVal = findAttrCI(elAtCursor, "id")?.value;
   const targetRaw = quotedAtCursor ?? paramNameVal ?? defnOrNameVal ?? idVal;
   if (!targetRaw) return [];
 
   const cleanSymbol = targetRaw.includes(":") ? targetRaw.split(":").pop()! : targetRaw;
   if (!cleanSymbol) return [];
-  const escaped = cleanSymbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const matchRe = new RegExp(`(["':])(${escaped})(["'])`, "gi");
+  const cleanLower = cleanSymbol.toLowerCase();
 
   const results: {
     uri: string;
@@ -826,22 +873,22 @@ export function getPscadReferences(
   }
 
   for (const doc of allDocs) {
-    const lines = doc.text.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      const l = lines[i]!;
-      matchRe.lastIndex = 0;
-      let m: RegExpExecArray | null;
-      while ((m = matchRe.exec(l)) !== null) {
-        const startCol = m.index + (m[1]?.length ?? 1);
-        results.push({
-          uri: doc.uri,
-          range: {
-            start: { line: i, character: startCol },
-            end: { line: i, character: startCol + cleanSymbol.length },
-          },
-        });
+    const parsed = doc.uri === uri ? curDoc : parseXml(doc.text);
+    if (!parsed.root) continue;
+    const mapper = createXmlOffsetMapper(doc.text);
+    walkXmlElements(parsed.root, (node) => {
+      for (const attr of node.attributes) {
+        const valLower = attr.value.toLowerCase();
+        if (valLower === cleanLower || valLower.endsWith(`:${cleanLower}`)) {
+          const spanEnd = attr.valueEnd;
+          const spanStart = Math.max(attr.valueStart, spanEnd - cleanSymbol.length);
+          results.push({
+            uri: doc.uri,
+            range: mapper.toRange(spanStart, spanEnd),
+          });
+        }
       }
-    }
+    });
   }
 
   return results;
@@ -1402,9 +1449,25 @@ export function getPscadQuickFixes(text: string, uri: string) {
 export function getPscadFoldingRanges(
   text: string,
 ): { startLine: number; endLine: number; kind?: string | undefined }[] {
-  const lines = text.split(/\r?\n/);
   const ranges: { startLine: number; endLine: number; kind?: string | undefined }[] = [];
-  const stack: { tag: string; startLine: number }[] = [];
+  const { toLineCol } = createXmlOffsetMapper(text);
+  const offsetToLine = (offset: number) => toLineCol(offset).line;
+
+  // Multi-line XML comments via direct index scan
+  let cPos = 0;
+  while (cPos < text.length) {
+    const start = text.indexOf("<!--", cPos);
+    if (start === -1) break;
+    const end = text.indexOf("-->", start + 4);
+    if (end === -1) break;
+    const startLine = offsetToLine(start);
+    const endLine = offsetToLine(end + 2);
+    if (endLine > startLine) {
+      ranges.push({ startLine, endLine, kind: "comment" });
+    }
+    cPos = end + 3;
+  }
+
   const foldableTags = new Set([
     "definition",
     "schematic",
@@ -1418,60 +1481,19 @@ export function getPscadFoldingRanges(
     "definitions",
   ]);
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
-    // Check for multi-line XML comments
-    if (line.includes("<!--") && !line.includes("-->")) {
-      stack.push({ tag: "__comment__", startLine: i });
-      continue;
-    }
-    if (line.includes("-->")) {
-      let idx = -1;
-      for (let s = stack.length - 1; s >= 0; s--) {
-        if (stack[s]!.tag === "__comment__") {
-          idx = s;
-          break;
-        }
-      }
-      if (idx >= 0) {
-        const popped = stack.splice(idx, 1)[0]!;
-        if (i > popped.startLine) {
-          ranges.push({ startLine: popped.startLine, endLine: i, kind: "comment" });
-        }
-      }
-      continue;
-    }
-
-    // Match opening tags that are not self-closing on the same line
-    const openRegex = /<([a-zA-Z_][a-zA-Z0-9_-]*)\b[^>]*?>/g;
-    let m: RegExpExecArray | null;
-    while ((m = openRegex.exec(line)) !== null) {
-      const fullTag = m[0]!;
-      if (fullTag.endsWith("/>")) continue;
-      const tagLower = m[1]!.toLowerCase();
-      if (!foldableTags.has(tagLower)) continue;
-      // Ignore if closed on the same line
-      if (new RegExp(`</${m[1]}\\s*>`, "i").test(line.slice(m.index + fullTag.length))) {
-        continue;
-      }
-      stack.push({ tag: tagLower, startLine: i });
-    }
-
-    const closeRegex = /<\/([a-zA-Z_][a-zA-Z0-9_-]*)\s*>/g;
-    while ((m = closeRegex.exec(line)) !== null) {
-      const tagLower = m[1]!.toLowerCase();
-      if (!foldableTags.has(tagLower)) continue;
-      for (let s = stack.length - 1; s >= 0; s--) {
-        if (stack[s]!.tag === tagLower) {
-          const popped = stack.splice(s, 1)[0]!;
-          if (i > popped.startLine) {
-            ranges.push({ startLine: popped.startLine, endLine: i });
-          }
-          break;
-        }
+  const doc = parseXml(text);
+  const walk = (el: XmlElement) => {
+    if (foldableTags.has(el.name.toLowerCase())) {
+      const startLine = offsetToLine(el.start);
+      const endOffset = el.end > el.start ? el.end - 1 : el.end;
+      const endLine = offsetToLine(endOffset);
+      if (endLine > startLine) {
+        ranges.push({ startLine, endLine });
       }
     }
-  }
+    for (const child of el.children) walk(child);
+  };
+  if (doc.root) walk(doc.root);
 
   return ranges;
 }

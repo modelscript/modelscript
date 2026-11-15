@@ -697,8 +697,8 @@ async function copySecondaryMcpCmd(): Promise<void> {
 
 .feat-title {
   margin: 0 0 6px 0;
-  font-size: 0.98rem;
-  font-weight: 650;
+  font-size: var(--text-md);
+  font-weight: var(--ms-fw-semibold);
   color: var(--vp-c-text-1);
 }
 

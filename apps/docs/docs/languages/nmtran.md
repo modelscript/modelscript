@@ -34,10 +34,30 @@ description: Native WebAssembly GLR parsing, ADVAN1-ADVAN13 compartmental PK/PD 
 
 ### 2. Population Mixed-Effects (`$THETA`, `$OMEGA`, `$SIGMA`) & Exposure Metrics
 
-- Evaluates non-linear mixed-effects (NLME) individual parameter relationships in `$PK` and residual error structures in `$ERROR`:
+- Evaluates non-linear mixed-effects (NLME) individual parameter relationships in `$PK` (log-normal inter-individual variability) and combined proportional/additive residual error structures in `$ERROR`:
   $$\theta_{i,k} = \theta_{\text{pop},k} \cdot \exp(\eta_{i,k}), \qquad \boldsymbol{\eta}_i \sim \mathcal{N}(\mathbf{0}, \boldsymbol{\Omega}), \qquad Y_{ij} = F_{ij}(1 + \varepsilon_{1,ij}) + \varepsilon_{2,ij}, \qquad \boldsymbol{\varepsilon}_{ij} \sim \mathcal{N}(\mathbf{0}, \boldsymbol{\Sigma})$$
-- Simulates single-dose and steady-state multi-dose regimens (`AMT`, zero-order infusion `RATE`, inter-dose interval `II`, additional doses `ADDL`) and computes non-compartmental clinical exposure metrics via trapezoidal integration:
+
+  | Symbol                                                                  | Meaning                                                                  | Units / Domain                                                  |
+  | :---------------------------------------------------------------------- | :----------------------------------------------------------------------- | :-------------------------------------------------------------- |
+  | $\theta_{i,k}$                                                          | Individual parameter $k$ for subject $i$                                 | $\text{model-dependent}$                                        |
+  | $\theta_{\text{pop},k}$                                                 | Typical population median parameter $k$                                  | $\text{model-dependent}$                                        |
+  | $\eta_{i,k}, \boldsymbol{\eta}_i$                                       | Inter-individual random effect and subject random-effect vector          | $\text{dimensionless}$ ($\boldsymbol{\eta}_i \in \mathbb{R}^p$) |
+  | $\boldsymbol{\Omega}$                                                   | Inter-individual covariance matrix (`$OMEGA`)                            | $\text{symmetric PSD}$                                          |
+  | $Y_{ij}, F_{ij}$                                                        | Observed and model-predicted response for subject $i$ at observation $j$ | $\text{conc.}$ (e.g., $\text{mg/L}$)                            |
+  | $\varepsilon_{1,ij}, \varepsilon_{2,ij}, \boldsymbol{\varepsilon}_{ij}$ | Proportional and additive residual error terms and error vector          | $\text{dimensionless}$, $\text{conc.}$                          |
+  | $\boldsymbol{\Sigma}$                                                   | Residual error covariance matrix (`$SIGMA`)                              | $\text{symmetric PSD}$                                          |
+
+- Simulates single-dose and steady-state multi-dose regimens (`AMT`, zero-order infusion `RATE`, inter-dose interval `II`, additional doses `ADDL`) and computes non-compartmental clinical exposure metrics via trapezoidal integration of plasma concentration:
   $$\text{AUC}_{0\to t} = \int_0^t C_p(\tau)\,d\tau, \qquad t_{1/2,\beta} = \frac{\ln 2}{\lambda_z}, \qquad C_{\max} = \max_{t} C_p(t), \qquad T_{\max} = \arg\max_{t} C_p(t)$$
+
+  | Symbol                | Meaning                                                        | Units / Domain                    |
+  | :-------------------- | :------------------------------------------------------------- | :-------------------------------- |
+  | $\text{AUC}_{0\to t}$ | Area under the plasma concentration-time curve from $0$ to $t$ | $\text{mg}\cdot\text{h/L}$        |
+  | $C_p(t), \tau$        | Plasma drug concentration at time $t$ and integration variable | $\text{mg/L}$, $\text{h}$         |
+  | $t_{1/2,\beta}$       | Terminal elimination half-life                                 | $\text{h}$                        |
+  | $\lambda_z$           | Terminal elimination rate constant                             | $\text{h}^{-1}$ ($\lambda_z > 0$) |
+  | $C_{\max}$            | Peak observed plasma concentration                             | $\text{mg/L}$                     |
+  | $T_{\max}$            | Time at which $C_{\max}$ is reached                            | $\text{h}$                        |
 
 ### 3. DAE Lowering & Modelica / SBML Projection
 

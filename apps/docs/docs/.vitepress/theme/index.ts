@@ -121,6 +121,8 @@ export default {
     if (typeof window !== "undefined") {
       let lastReportedPath = "";
       const sendPageView = (rawPath: string) => {
+        const host = window.location.hostname;
+        if (host === "localhost" || host === "127.0.0.1") return;
         const cleanPath = (rawPath || window.location.pathname || "/").split(/[?#]/)[0] || "/";
         if (cleanPath === lastReportedPath) return;
         lastReportedPath = cleanPath;

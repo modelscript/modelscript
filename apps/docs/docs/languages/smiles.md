@@ -28,7 +28,7 @@ description: Zero-regex native WebAssembly GLR parsing, organic valence and Hüc
 
 ### 2. Joback & Reid (1987) Group-Contribution Property Estimator
 
-`@modelscript/smiles` decomposes molecular graphs into functional group frequencies $N_k$ (`-CH3`, `-CH2-`, `>CH-`, `>C<`, `=CH2`, `>C=O`, `-OH`, `-COOH`, `-COO-`, `-NH2`, aromatic ring carbons, and halogens) and evaluates the **Joback & Reid** group-contribution correlations for pure-component thermophysical properties:
+`@modelscript/smiles` decomposes molecular graphs into functional group frequencies $N_k$ (`-CH3`, `-CH2-`, `>CH-`, `>C<`, `=CH2`, `>C=O`, `-OH`, `-COOH`, `-COO-`, `-NH2`, aromatic ring carbons, and halogens) and evaluates the **Joback & Reid** additive group-contribution correlations to estimate pure-component phase-change temperatures and critical constants directly from molecular topology:
 
 $$
 \begin{aligned}
@@ -39,6 +39,16 @@ P_c &= \left(0.113 + 0.0032 \, N_{\text{atoms}} - \sum_k N_k \, \Delta P_{c,k}\r
 V_c &= 17.5 + \sum_k N_k \, \Delta V_{c,k} \quad [\text{cm}^3/\text{mol}]
 \end{aligned}
 $$
+
+| Symbol                           | Meaning                                                            | Units / Domain                                     |
+| :------------------------------- | :----------------------------------------------------------------- | :------------------------------------------------- |
+| $T_b, T_m$                       | Normal boiling point and normal melting point                      | $\text{K}$, $> 0$                                  |
+| $T_c, P_c, V_c$                  | Critical temperature, critical pressure, and critical molar volume | $\text{K}$, $\text{bar}$, $\text{cm}^3/\text{mol}$ |
+| $N_k$                            | Occurrence count of functional group $k$ in the molecular graph    | dimensionless, $\mathbb{Z}_{\ge 0}$                |
+| $N_{\text{atoms}}$               | Total number of atoms in the molecule                              | dimensionless, $\mathbb{Z}_{>0}$                   |
+| $\Delta T_{b,k}, \Delta T_{m,k}$ | Joback group increments for boiling and melting points             | $\text{K}$                                         |
+| $\Delta T_{c,k}$                 | Joback group increment for critical temperature                    | dimensionless                                      |
+| $\Delta P_{c,k}, \Delta V_{c,k}$ | Joback group increments for critical pressure and volume           | $\text{bar}^{-1/2}$, $\text{cm}^3/\text{mol}$      |
 
 Along with standard enthalpy of formation $\Delta H_{f,298}^\circ$, standard Gibbs energy of formation $\Delta G_{f,298}^\circ$ ($\text{kJ/mol}$), ideal-gas heat capacity polynomial $C_p^\circ(T) = A + BT + CT^2 + DT^3$, and the Lee-Kesler acentric factor $\omega$.
 

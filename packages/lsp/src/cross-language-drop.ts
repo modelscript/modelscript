@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { appendChildSplice, parseXmlSync, type Splice, type XmlElement } from "@modelscript/dsl/xml";
 import type { SymbolEntry, SymbolIndex } from "@modelscript/runtime";
+import { parseSpice } from "@modelscript/spice";
 import { TextEdit } from "vscode-languageserver";
 
 /**
@@ -75,29 +77,184 @@ const SYSML2_METACLASS_TYPES = new Set([
   "ActorUsage",
 ]);
 
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function isWsChar(ch: string): boolean {
+  return ch === " " || ch === "\t" || ch === "\r" || ch === "\n" || ch === "\f" || ch === "\v";
+}
+
+function isAsciiLetter(ch: string): boolean {
+  const c = ch.charCodeAt(0);
+  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+}
+
+function isIdentStartChar(ch: string): boolean {
+  return isAsciiLetter(ch) || ch === "_";
+}
+
+function isWordTokenChar(ch: string): boolean {
+  if (!ch) return false;
+  const c = ch.charCodeAt(0);
+  return isIdentStartChar(ch) || (c >= 48 && c <= 57);
+}
+
+function isSimpleAsciiIdent(s: string): boolean {
+  if (!s || !isIdentStartChar(s[0]!)) return false;
+  for (let i = 1; i < s.length; i++) {
+    if (!isWordTokenChar(s[i]!)) return false;
+  }
+  return true;
+}
+
+function isDigitsOnly(s: string): boolean {
+  if (!s) return false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 48 || c > 57) return false;
+  }
+  return true;
+}
+
+function hasWordMatch(text: string, word: string): boolean {
+  if (!word) return false;
+  const checkStart = isWordTokenChar(word[0]!);
+  const checkEnd = isWordTokenChar(word[word.length - 1]!);
+  let idx = text.indexOf(word);
+  while (idx !== -1) {
+    const beforeOk = !checkStart || idx === 0 || !isWordTokenChar(text[idx - 1]!);
+    const afterPos = idx + word.length;
+    const afterOk = !checkEnd || afterPos === text.length || !isWordTokenChar(text[afterPos]!);
+    if (beforeOk && afterOk) return true;
+    idx = text.indexOf(word, idx + 1);
+  }
+  return false;
+}
+
+function tokenizeAsciiWords(text: string, fromIndex = 0, maxTokens = Number.MAX_SAFE_INTEGER): string[] {
+  const tokens: string[] = [];
+  let i = fromIndex;
+  while (i < text.length && tokens.length < maxTokens) {
+    const ch = text[i]!;
+    if (isWsChar(ch)) {
+      i++;
+      continue;
+    }
+    if (isWordTokenChar(ch)) {
+      const start = i;
+      i++;
+      while (i < text.length && isWordTokenChar(text[i]!)) i++;
+      tokens.push(text.slice(start, i));
+    } else {
+      tokens.push(ch);
+      i++;
+    }
+  }
+  return tokens;
+}
+
+function splitPathDelimiters(value: string): string[] {
+  const out: string[] = [];
+  let start = 0;
+  for (let i = 0; i <= value.length; i++) {
+    const ch = i < value.length ? value[i]! : ".";
+    if (ch === "." || ch === ":" || ch === "/" || ch === "\\") {
+      if (i > start) out.push(value.slice(start, i));
+      start = i + 1;
+    }
+  }
+  return out;
+}
+
+function splitLanguagePrefix(rawClassName: string): string | null {
+  const sep = rawClassName.indexOf("::");
+  if (sep <= 0) return null;
+  for (let i = 0; i < sep; i++) {
+    const ch = rawClassName[i]!;
+    if (!isWordTokenChar(ch) && ch !== "-") return null;
+  }
+  return rawClassName.slice(0, sep);
+}
+
+function stripHashCommentOutsideQuotes(line: string): string {
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]!;
+    if (inQuotes) {
+      if (ch === "\\" && i + 1 < line.length) i++;
+      else if (ch === '"') inQuotes = false;
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === "#") {
+      return line.slice(0, i);
+    }
+  }
+  return line;
+}
+
+function findTrailingContainerCloseSuffix(text: string, tagNames: string[]): string | null {
+  let end = text.length;
+  while (end > 0 && isWsChar(text[end - 1]!)) end--;
+  if (end === 0 || text[end - 1] !== ">") return null;
+  const tagOpen = text.lastIndexOf("</", end - 1);
+  if (tagOpen <= 0) return null;
+  const tagName = text
+    .slice(tagOpen + 2, end - 1)
+    .trim()
+    .toLowerCase();
+  if (!tagNames.includes(tagName)) return null;
+  let lineStart = tagOpen;
+  while (lineStart > 0 && (text[lineStart - 1] === " " || text[lineStart - 1] === "\t")) {
+    lineStart--;
+  }
+  if (lineStart === 0 || text[lineStart - 1] !== "\n") return null;
+  return text.slice(lineStart - 1);
 }
 
 function sanitizeIdentifier(raw: string, fallback = "comp"): string {
-  const cleaned = raw.replace(/[^A-Za-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
-  if (!cleaned) return fallback;
-  return /^[A-Za-z_]/.test(cleaned) ? cleaned : `${fallback}_${cleaned}`;
+  let out = "";
+  let prevUnderscore = true;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i]!;
+    if (isWordTokenChar(ch) && ch !== "_") {
+      out += ch;
+      prevUnderscore = false;
+    } else if (!prevUnderscore) {
+      out += "_";
+      prevUnderscore = true;
+    }
+  }
+  if (out.endsWith("_")) out = out.slice(0, -1);
+  if (!out) return fallback;
+  return isIdentStartChar(out[0]!) ? out : `${fallback}_${out}`;
 }
+
+const DROP_URI_SCHEMES = ["modelica://", "sysml2://", "sysml://", "psse://", "pscad://"];
 
 /**
  * Strips library / URI prefixes while normalizing separator tokens (`.` vs `::`).
  */
 export function cleanDropClassName(rawClassName: string): string {
-  return rawClassName
-    .trim()
-    .replace(/^__LIB__:[^/]+\//, "")
-    .replace(/^__LIB__:/, "")
-    .replace(/^(?:modelica|sysml2?|psse|pscad):\/\//i, "");
+  let s = rawClassName.trim();
+  if (s.startsWith("__LIB__:")) {
+    const rest = s.slice("__LIB__:".length);
+    const slash = rest.indexOf("/");
+    s = slash !== -1 ? rest.slice(slash + 1) : rest;
+  }
+  const lower = s.toLowerCase();
+  for (const scheme of DROP_URI_SCHEMES) {
+    if (lower.startsWith(scheme)) {
+      return s.slice(scheme.length);
+    }
+  }
+  return s;
 }
 
 function splitSegments(qualifiedName: string): string[] {
-  return qualifiedName.split(/::|\./).filter((s) => s.length > 0);
+  const out: string[] = [];
+  for (const part of qualifiedName.split("::")) {
+    for (const seg of part.split(".")) {
+      if (seg.length > 0) out.push(seg);
+    }
+  }
+  return out;
 }
 
 function getQualifiedSegmentsFromIndex(index: SymbolIndex, entry: SymbolEntry): string[] {
@@ -138,7 +295,7 @@ function findSymbolInUnifiedIndex(index: SymbolIndex | null | undefined, cleanNa
   if (candidates.length === 0 && index.symbols) {
     const normClean = segments.join(".");
     for (const sym of index.symbols.values()) {
-      const np = (sym.namePath || "").replace(/::/g, ".");
+      const np = (sym.namePath || "").replaceAll("::", ".");
       if (np === normClean || sym.name === cleanName || sym.name === leaf) {
         candidates.push(sym);
       }
@@ -160,7 +317,7 @@ function findSymbolInUnifiedIndex(index: SymbolIndex | null | undefined, cleanNa
   const targetDot = segments.join(".");
   for (const cand of candidates) {
     const qual = getQualifiedSegmentsFromIndex(index, cand).join(".");
-    const np = (cand.namePath || "").replace(/::/g, ".");
+    const np = (cand.namePath || "").replaceAll("::", ".");
     if (qual === targetDot || qual.endsWith(`.${targetDot}`) || np === targetDot || np.endsWith(`.${targetDot}`)) {
       return cand;
     }
@@ -398,23 +555,41 @@ function buildSysmlBlackBoxStub(
   return lines.join("\n");
 }
 
+const MODELICA_STUB_KEYWORDS = new Set(["model", "block", "class", "connector", "record"]);
+
 function hasModelicaStubDeclared(docText: string, stubName: string): boolean {
-  return new RegExp(`\\b(?:model|block|class|connector|record)\\s+${escapeRegex(stubName)}\\b`).test(docText);
+  const tokens = tokenizeAsciiWords(docText, 0);
+  for (let i = 0; i + 1 < tokens.length; i++) {
+    if (MODELICA_STUB_KEYWORDS.has(tokens[i]!) && tokens[i + 1] === stubName) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function hasSysmlStubDeclared(docText: string, stubName: string): boolean {
-  return new RegExp(`\\bpart\\s+def\\s+${escapeRegex(stubName)}\\b`).test(docText);
+  const tokens = tokenizeAsciiWords(docText, 0);
+  for (let i = 0; i + 2 < tokens.length; i++) {
+    if (tokens[i] === "part" && tokens[i + 1] === "def" && tokens[i + 2] === stubName) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function hasModelicaImport(docText: string, importTarget: string): boolean {
-  const clean = importTarget.trim().replace(/\.$/, "");
+  let clean = importTarget.trim();
+  while (clean.endsWith(".")) clean = clean.slice(0, -1);
   if (!clean) return true;
-  const exactRe = new RegExp(`(?:^|\\n)\\s*import\\s+${escapeRegex(clean)}\\s*;`);
-  if (exactRe.test(docText)) return true;
   const parts = clean.split(".");
-  if (parts.length >= 2) {
-    const pkg = parts.slice(0, -1).join(".");
-    if (new RegExp(`(?:^|\\n)\\s*import\\s+${escapeRegex(pkg)}\\.\\*\\s*;`).test(docText)) {
+  const wildcardTarget = parts.length >= 2 ? `${parts.slice(0, -1).join(".")}.*` : null;
+  for (const rawLine of docText.split("\n")) {
+    const trimmed = rawLine.trimStart();
+    if (!trimmed.startsWith("import") || trimmed.length <= 6 || !isWsChar(trimmed[6]!)) continue;
+    const semiIdx = trimmed.indexOf(";");
+    if (semiIdx === -1) continue;
+    const target = trimmed.slice(6, semiIdx).trim();
+    if (target === clean || (wildcardTarget !== null && target === wildcardTarget)) {
       return true;
     }
   }
@@ -533,12 +708,44 @@ export function resolveCrossLanguageComponentDrop(
  * Generates an initial unique identifier that does not collide with names in `docText`.
  */
 export function generateUniqueNameInText(docText: string, baseName: string): string {
-  const cleanBase = sanitizeIdentifier(baseName, "comp");
-  let idx = 1;
-  while (new RegExp(`\\b${escapeRegex(`${cleanBase}${idx}`)}\\b`).test(docText)) {
-    idx++;
+  return allocateUniqueIdentifier(docText, baseName);
+}
+
+const MODELICA_CLASS_QUALIFIERS = new Set(["partial", "encapsulated", "replaceable"]);
+const MODELICA_CLASS_KEYWORDS = new Set(["model", "class", "block", "record", "package", "connector", "type"]);
+
+function matchModelicaClassHeaderIndent(line: string, targetClassName?: string): string | null {
+  let i = 0;
+  while (i < line.length && isWsChar(line[i]!)) i++;
+  const baseIndent = line.slice(0, i);
+  const tokens = tokenizeAsciiWords(line, i, 6);
+  let tokIdx = 0;
+  while (tokIdx < tokens.length && MODELICA_CLASS_QUALIFIERS.has(tokens[tokIdx]!)) {
+    tokIdx++;
   }
-  return `${cleanBase}${idx}`;
+  const kw = tokens[tokIdx];
+  if (!kw) return null;
+  const validKw = MODELICA_CLASS_KEYWORDS.has(kw) || (targetClassName !== undefined && kw === "function");
+  if (!validKw) return null;
+  const nameTok = tokens[tokIdx + 1];
+  if (!nameTok) return null;
+  if (targetClassName !== undefined) {
+    return nameTok === targetClassName ? baseIndent : null;
+  }
+  return isSimpleAsciiIdent(nameTok) ? baseIndent : null;
+}
+
+function countUnescapedDoubleQuotes(line: string): number {
+  let count = 0;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]!;
+    if (ch === "\\" && i + 1 < line.length) {
+      i++;
+      continue;
+    }
+    if (ch === '"') count++;
+  }
+  return count;
 }
 
 /**
@@ -546,25 +753,18 @@ export function generateUniqueNameInText(docText: string, baseName: string): str
  * inside a Modelica source buffer so `import` / nested stubs can be inserted cleanly.
  */
 function findModelicaClassHeaderEndLine(lines: string[], className?: string): { line: number; indent: string } | null {
-  const headerRe = className
-    ? new RegExp(
-        `^(\\s*)(?:partial\\s+|encapsulated\\s+|replaceable\\s+)?(?:model|class|block|record|package|connector|type|function)\\s+${escapeRegex(className)}\\b`,
-      )
-    : /^(\s*)(?:partial\s+|encapsulated\s+|replaceable\s+)?(?:model|class|block|record|package|connector|type)\s+[A-Za-z_][A-Za-z0-9_]*/;
-
   for (let i = 0; i < lines.length; i++) {
-    const m = headerRe.exec(lines[i]!);
-    if (!m) continue;
-    const baseIndent = m[1] ?? "";
+    const baseIndent = matchModelicaClassHeaderIndent(lines[i]!, className);
+    if (baseIndent === null) continue;
     const bodyIndent = `${baseIndent}  `;
     let afterLine = i;
     // Skip optional Modelica description string immediately following class header
     if (i + 1 < lines.length && lines[i + 1]!.trimStart().startsWith('"')) {
       afterLine = i + 1;
-      let quoteCount = (lines[afterLine]!.match(/(?<!\\)"/g) ?? []).length;
+      let quoteCount = countUnescapedDoubleQuotes(lines[afterLine]!);
       while (quoteCount % 2 === 1 && afterLine + 1 < lines.length) {
         afterLine++;
-        quoteCount += (lines[afterLine]!.match(/(?<!\\)"/g) ?? []).length;
+        quoteCount += countUnescapedDoubleQuotes(lines[afterLine]!);
       }
     }
     return { line: afterLine, indent: bodyIndent };
@@ -589,11 +789,15 @@ function formatPlacementAnnotation(x: number, y: number): string {
  * Derives a valid Modelica identifier from a document URI for scaffolding empty `.mo` files.
  */
 export function deriveModelNameFromUri(uri: string): string {
-  const fileName = decodeURIComponent(uri.split("/").pop() || "Model")
-    .replace(/\.mo$/i, "")
-    .replace(/[^A-Za-z0-9_]/g, "_");
+  const rawName = decodeURIComponent(uri.split("/").pop() || "Model");
+  const strippedExt = rawName.toLowerCase().endsWith(".mo") ? rawName.slice(0, -3) : rawName;
+  let fileName = "";
+  for (let i = 0; i < strippedExt.length; i++) {
+    const ch = strippedExt[i]!;
+    fileName += isWordTokenChar(ch) ? ch : "_";
+  }
   if (!fileName) return "Model";
-  return /^[A-Za-z_]/.test(fileName) ? fileName : `M_${fileName}`;
+  return isIdentStartChar(fileName[0]!) ? fileName : `M_${fileName}`;
 }
 
 /**
@@ -715,12 +919,8 @@ interface ResolvedForeignDrop {
   params: DropParamMember[];
 }
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function escapeXmlAttr(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return text.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 function normalizeLanguagePrefix(prefix: string): string {
@@ -729,9 +929,11 @@ function normalizeLanguagePrefix(prefix: string): string {
   return lower;
 }
 
+const DEFINITION_SYMBOL_KIND_PARTS = ["class", "definition", "subcircuit", "block", "model", "entity", "package"];
+
 function isDefinitionSymbol(sym: SymbolEntry): boolean {
-  const kind = String(sym.kind ?? "");
-  return /Class|Definition|Subcircuit|Block|Model|Entity|Package/i.test(kind);
+  const kind = String(sym.kind ?? "").toLowerCase();
+  return DEFINITION_SYMBOL_KIND_PARTS.some((part) => kind.includes(part));
 }
 
 function lookupSymbolInIndex(index: SymbolIndex | null | undefined, cleanName: string): SymbolEntry | null {
@@ -751,7 +953,7 @@ function lookupSymbolInIndex(index: SymbolIndex | null | undefined, cleanName: s
   const exact = pickBest(index.byName?.get(cleanName));
   if (exact) return exact;
 
-  const segments = cleanName.split(/[.:/\\]/).filter(Boolean);
+  const segments = splitPathDelimiters(cleanName);
   const shortName = segments[segments.length - 1] ?? cleanName;
   const byShort = index.byName?.get(shortName);
   if (byShort && byShort.length > 0) {
@@ -840,16 +1042,11 @@ function collectDropInterface(
 }
 
 function resolveForeignDropInfo(index: SymbolIndex | null | undefined, rawClassName: string): ResolvedForeignDrop {
-  const prefixMatch = rawClassName.match(/^([a-zA-Z0-9_-]+)::(.*)$/);
-  const explicitLanguage = prefixMatch ? normalizeLanguagePrefix(prefixMatch[1]!) : null;
+  const prefix = splitLanguagePrefix(rawClassName);
+  const explicitLanguage = prefix ? normalizeLanguagePrefix(prefix) : null;
   const cleanName = cleanDropClassName(rawClassName);
-  const rawShort =
-    cleanName
-      .split(/[.:/\\]/)
-      .filter(Boolean)
-      .pop() ||
-    cleanName ||
-    "Component";
+  const segments = splitPathDelimiters(cleanName);
+  const rawShort = segments[segments.length - 1] || cleanName || "Component";
   const shortName = sanitizeIdentifier(rawShort, "Component");
   const symbol = lookupSymbolInIndex(index, cleanName);
   const inferred = inferSymbolLanguage(symbol, cleanName);
@@ -870,10 +1067,7 @@ function resolveForeignDropInfo(index: SymbolIndex | null | undefined, rawClassN
 function allocateUniqueIdentifier(docText: string, baseName: string, batchState?: DropBatchState): string {
   const cleanBase = sanitizeIdentifier(baseName, "comp");
   let idx = 1;
-  while (
-    batchState?.usedNames.has(`${cleanBase}${idx}`) ||
-    new RegExp(`\\b${escapeRegExp(`${cleanBase}${idx}`)}\\b`).test(docText)
-  ) {
+  while (batchState?.usedNames.has(`${cleanBase}${idx}`) || hasWordMatch(docText, `${cleanBase}${idx}`)) {
     idx++;
   }
   const candidate = `${cleanBase}${idx}`;
@@ -881,14 +1075,60 @@ function allocateUniqueIdentifier(docText: string, baseName: string, batchState?
   return candidate;
 }
 
-function allocateUniqueNumericId(docText: string, seed: number, batchState?: DropBatchState): number {
-  const existing = new Set<number>(batchState?.usedIds);
-  const idRegex = /\bid="(\d+)"/g;
-  let m: RegExpExecArray | null;
-  while ((m = idRegex.exec(docText)) !== null) {
-    const n = Number.parseInt(m[1]!, 10);
-    if (!Number.isNaN(n)) existing.add(n);
+function findFirstXmlElement(root: XmlElement | null, predicate: (el: XmlElement) => boolean): XmlElement | null {
+  if (!root) return null;
+  if (predicate(root)) return root;
+  for (const ch of root.children) {
+    const found = findFirstXmlElement(ch, predicate);
+    if (found) return found;
   }
+  return null;
+}
+
+function findAllXmlElements(root: XmlElement | null, predicate: (el: XmlElement) => boolean): XmlElement[] {
+  const out: XmlElement[] = [];
+  const visit = (el: XmlElement) => {
+    if (predicate(el)) out.push(el);
+    for (const ch of el.children) visit(ch);
+  };
+  if (root) visit(root);
+  return out;
+}
+
+function getXmlAttr(el: XmlElement, name: string): string | undefined {
+  return el.attributes.find((a) => a.name.toLowerCase() === name.toLowerCase())?.value;
+}
+
+function xmlSpliceToTextEdit(docText: string, splice: Splice): TextEdit {
+  const lineStarts = [0];
+  for (let i = 0; i < docText.length; i++) {
+    if (docText[i] === "\n") lineStarts.push(i + 1);
+  }
+  const toPos = (offset: number) => {
+    let lo = 0;
+    let hi = lineStarts.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (lineStarts[mid]! <= offset) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    const line = hi;
+    return { line, character: offset - lineStarts[line]! };
+  };
+  return TextEdit.replace({ start: toPos(splice.start), end: toPos(splice.end) }, splice.text);
+}
+
+function allocateUniqueNumericId(xmlRoot: XmlElement | null, seed: number, batchState?: DropBatchState): number {
+  const existing = new Set<number>(batchState?.usedIds);
+  const visit = (el: XmlElement) => {
+    const idAttr = getXmlAttr(el, "id");
+    if (idAttr !== undefined && isDigitsOnly(idAttr)) {
+      const n = Number.parseInt(idAttr, 10);
+      if (!Number.isNaN(n)) existing.add(n);
+    }
+    for (const ch of el.children) visit(ch);
+  };
+  if (xmlRoot) visit(xmlRoot);
   let candidate = seed;
   while (existing.has(candidate)) {
     candidate++;
@@ -899,20 +1139,31 @@ function allocateUniqueNumericId(docText: string, seed: number, batchState?: Dro
 
 export function mergeCoincidentInsertEdits(edits: TextEdit[]): TextEdit[] {
   const merged: TextEdit[] = [];
-  const insertIdxByKey = new Map<string, number>();
+  const editIdxByKey = new Map<string, number>();
 
   for (const edit of edits) {
-    const isInsert =
+    const key = `${edit.range.start.line}:${edit.range.start.character}-${edit.range.end.line}:${edit.range.end.character}`;
+    const existingIdx = editIdxByKey.get(key);
+    const isZeroInsert =
       edit.range.start.line === edit.range.end.line && edit.range.start.character === edit.range.end.character;
-    if (isInsert) {
-      const key = `${edit.range.start.line}:${edit.range.start.character}`;
-      const existingIdx = insertIdxByKey.get(key);
-      if (existingIdx !== undefined) {
-        merged[existingIdx] = TextEdit.insert(edit.range.start, `${merged[existingIdx]!.newText}${edit.newText}`);
+    if (existingIdx !== undefined) {
+      const prev = merged[existingIdx]!;
+      if (isZeroInsert) {
+        merged[existingIdx] = TextEdit.insert(edit.range.start, `${prev.newText}${edit.newText}`);
         continue;
       }
-      insertIdxByKey.set(key, merged.length);
+      // Two expansions of the same self-closing XML container (e.g. <definitions />) in one batch
+      const closeSuffix = findTrailingContainerCloseSuffix(prev.newText, ["definitions", "schematic"]);
+      const innerStart = edit.newText.indexOf(">");
+      const innerEnd = edit.newText.lastIndexOf("</");
+      if (closeSuffix && innerStart !== -1 && innerEnd > innerStart) {
+        const innerFragment = edit.newText.slice(innerStart + 1, innerEnd).trimEnd();
+        const prevPrefix = prev.newText.slice(0, prev.newText.length - closeSuffix.length);
+        merged[existingIdx] = TextEdit.replace(edit.range, `${prevPrefix}${innerFragment}${closeSuffix}`);
+        continue;
+      }
     }
+    editIdxByKey.set(key, merged.length);
     merged.push(edit);
   }
   return merged;
@@ -938,22 +1189,30 @@ export interface PscadForeignDropOptions {
  * Returns `null` when the drop targets a native PSCAD master or local user component.
  */
 export function computePscadComponentDropEdits(opts: PscadForeignDropOptions): TextEdit[] | null {
-  const { docText, rawClassName, x, y, instanceName, hasNativeSchema, schematicEndLine, unifiedIndex, batchState } =
-    opts;
+  const {
+    docText,
+    rawClassName,
+    x,
+    y,
+    instanceName,
+    section,
+    hasNativeSchema,
+    schematicEndLine,
+    unifiedIndex,
+    batchState,
+  } = opts;
   if (hasNativeSchema) return null;
 
   const info = resolveForeignDropInfo(unifiedIndex, rawClassName);
   if (info.sourceLanguage === "pscad") return null;
 
-  // Check if docText already contains a UserCmpDefn matching this foreign symbol or @twin annotation
+  const xmlDoc = parseXmlSync(docText);
+  const defElements = findAllXmlElements(xmlDoc.root, (el) => el.name.toLowerCase() === "definition");
   const existingDefs: Array<{ name: string; body: string }> = [];
-  const defRegex = /<definition\b([^>]*)>([\s\S]*?)<\/definition>/gi;
-  let dm: RegExpExecArray | null;
-  while ((dm = defRegex.exec(docText)) !== null) {
-    const attrs = dm[1] ?? "";
-    const nameMatch = attrs.match(/\bname="([^"]+)"/);
-    if (nameMatch?.[1]) {
-      existingDefs.push({ name: nameMatch[1], body: dm[2] ?? "" });
+  for (const defEl of defElements) {
+    const defName = getXmlAttr(defEl, "name");
+    if (defName) {
+      existingDefs.push({ name: defName, body: docText.slice(defEl.openEnd, defEl.closeStart) });
     }
   }
 
@@ -977,8 +1236,8 @@ export function computePscadComponentDropEdits(opts: PscadForeignDropOptions): T
     (d) => d.body.includes(`@twin ${info.cleanName}`) || d.name === candidateStubName || d.name === info.shortName,
   );
 
-  const projectMatch = docText.match(/<project\b[^>]*\bname="([^"]*)"/);
-  const projectName = projectMatch?.[1]?.trim() || "";
+  const projectEl = findFirstXmlElement(xmlDoc.root, (el) => el.name.toLowerCase() === "project");
+  const projectName = (projectEl ? getXmlAttr(projectEl, "name") : "")?.trim() || "";
   const stubName = twinDef?.name ?? candidateStubName;
   const defnRef = projectName ? `${projectName}:${stubName}` : stubName;
 
@@ -988,13 +1247,13 @@ export function computePscadComponentDropEdits(opts: PscadForeignDropOptions): T
 
   if (!alreadyHasDef) {
     batchState?.emittedDefs.add(defBatchKey);
-    const defId = allocateUniqueNumericId(docText, 900100, batchState);
+    const defId = allocateUniqueNumericId(xmlDoc.root, 900100, batchState);
     const inPorts = info.ports.filter((p) => p.direction === "in");
     const outPorts = info.ports.filter((p) => p.direction === "out");
     const inoutPorts = info.ports.filter((p) => p.direction === "inout");
 
     const buildPortXml = (p: DropPortMember, px: number, py: number, mode: number) =>
-      `        <port name="${escapeXmlAttr(p.name)}" type="Real" dir="${p.direction}" x="${px}" y="${py}" dim="1" mode="${mode}" electype="0">` +
+      `    <port name="${escapeXmlAttr(p.name)}" type="Real" dir="${p.direction}" x="${px}" y="${py}" dim="1" mode="${mode}" electype="0">` +
       `<paramlist><param name="Name" value="${escapeXmlAttr(p.name)}" /><param name="dim" value="1" /><param name="mode" value="${mode}" /><param name="electype" value="0" /></paramlist></port>`;
 
     const portXmlLines: string[] = [];
@@ -1015,64 +1274,50 @@ export function computePscadComponentDropEdits(opts: PscadForeignDropOptions): T
       .map((p) => {
         const lowerT = p.typeName.toLowerCase();
         const pType = lowerT === "integer" || lowerT === "int" ? "Integer" : lowerT === "string" ? "Text" : "Real";
-        return `          <parameter name="${escapeXmlAttr(p.name)}" desc="${escapeXmlAttr(p.name)}" group="Parameters" type="${pType}" content_type="Literal" min="-1e+308" max="1e+308" default="${escapeXmlAttr(p.defaultValue)}" />`;
+        return `      <parameter name="${escapeXmlAttr(p.name)}" desc="${escapeXmlAttr(p.name)}" group="Parameters" type="${pType}" content_type="Literal" min="-1e+308" max="1e+308" default="${escapeXmlAttr(p.defaultValue)}" />`;
       })
       .join("\n");
 
     const formSection =
       info.params.length > 0
-        ? `      <form name="Parameters" w="320" h="240">\n        <category name="Parameters" visible="true">\n${formParamsXml}\n        </category>\n      </form>`
-        : `      <form name="Parameters" w="320" h="240" />`;
+        ? `  <form name="Parameters" w="320" h="240">\n    <category name="Parameters" visible="true">\n${formParamsXml}\n    </category>\n  </form>`
+        : `  <form name="Parameters" w="320" h="240" />`;
 
     const defXml = [
-      `    <Definition classid="UserCmpDefn" name="${escapeXmlAttr(stubName)}" id="${defId}" url="">`,
-      `      <paramlist>`,
-      `        <param name="Description" value="@twin ${escapeXmlAttr(info.cleanName)} (${escapeXmlAttr(info.sourceLanguage)})" />`,
-      `      </paramlist>`,
+      `<Definition classid="UserCmpDefn" name="${escapeXmlAttr(stubName)}" id="${defId}" url="">`,
+      `  <paramlist>`,
+      `    <param name="Description" value="@twin ${escapeXmlAttr(info.cleanName)} (${escapeXmlAttr(info.sourceLanguage)})" />`,
+      `  </paramlist>`,
       formSection,
-      `      <graphics>`,
-      `        <rect x="-36" y="-24" width="72" height="48" />`,
+      `  <graphics>`,
+      `    <rect x="-36" y="-24" width="72" height="48" />`,
       ...portXmlLines,
-      `      </graphics>`,
-      `    </Definition>`,
+      `  </graphics>`,
+      `</Definition>`,
     ].join("\n");
 
-    const lines = docText.split("\n");
-    const closeDefsIdx = docText.indexOf("</definitions>");
-    if (closeDefsIdx !== -1) {
-      const before = docText.slice(0, closeDefsIdx);
-      const lineIdx = before.split("\n").length - 1;
-      const col = before.length - before.lastIndexOf("\n") - 1;
-      edits.push(TextEdit.insert({ line: lineIdx, character: col }, `${defXml}\n    `));
+    const defsEl = findFirstXmlElement(xmlDoc.root, (el) => el.name.toLowerCase() === "definitions");
+    if (defsEl) {
+      edits.push(xmlSpliceToTextEdit(docText, appendChildSplice(defsEl, defXml, docText)));
     } else {
-      const selfCloseDefsMatch = docText.match(/<definitions\b[^>]*\/>/);
-      if (selfCloseDefsMatch && selfCloseDefsMatch.index !== undefined) {
-        const startOffset = selfCloseDefsMatch.index;
-        const endOffset = startOffset + selfCloseDefsMatch[0].length;
-        const startBefore = docText.slice(0, startOffset);
-        const startLine = startBefore.split("\n").length - 1;
-        const startCol = startBefore.length - startBefore.lastIndexOf("\n") - 1;
-        const endBefore = docText.slice(0, endOffset);
-        const endLine = endBefore.split("\n").length - 1;
-        const endCol = endBefore.length - endBefore.lastIndexOf("\n") - 1;
-        edits.push(
-          TextEdit.replace(
-            { start: { line: startLine, character: startCol }, end: { line: endLine, character: endCol } },
-            `<definitions>\n${defXml}\n  </definitions>`,
-          ),
-        );
-      } else {
-        const anchorLine = Math.max(
-          0,
-          lines.findIndex((l) => /<(?:schematic|hierarchy|\/project)\b/.test(l)),
-        );
-        edits.push(
-          TextEdit.insert(
-            { line: anchorLine > 0 ? anchorLine : lines.length - 1, character: 0 },
-            `  <definitions>\n${defXml}\n  </definitions>\n`,
-          ),
-        );
-      }
+      const anchor =
+        projectEl?.children.find((c) => {
+          const n = c.name.toLowerCase();
+          return n === "schematic" || n === "hierarchy";
+        }) ?? null;
+      const anchorOffset = anchor ? anchor.start : (projectEl?.closeStart ?? docText.length);
+      const lineStart = docText.lastIndexOf("\n", anchorOffset - 1) + 1;
+      const indentedDef = defXml
+        .split("\n")
+        .map((l) => `    ${l}`)
+        .join("\n");
+      edits.push(
+        xmlSpliceToTextEdit(docText, {
+          start: lineStart,
+          end: lineStart,
+          text: `  <definitions>\n${indentedDef}\n  </definitions>\n`,
+        }),
+      );
     }
   }
 
@@ -1080,17 +1325,31 @@ export function computePscadComponentDropEdits(opts: PscadForeignDropOptions): T
   const instName = instanceName
     ? sanitizeIdentifier(instanceName, "cmp")
     : allocateUniqueIdentifier(docText, baseInstName, batchState);
-  const instId = allocateUniqueNumericId(docText, 100100, batchState);
+  const instId = allocateUniqueNumericId(xmlDoc.root, 100100, batchState);
 
   const paramEntries = info.params
     .map((p) => `<param name="${escapeXmlAttr(p.name)}" value="${escapeXmlAttr(p.defaultValue)}" />`)
     .join("");
   const userXml =
-    `      <User classid="UserCmp" id="${instId}" name="${escapeXmlAttr(defnRef)}" defn="${escapeXmlAttr(defnRef)}" ` +
+    `<User classid="UserCmp" id="${instId}" name="${escapeXmlAttr(defnRef)}" defn="${escapeXmlAttr(defnRef)}" ` +
     `x="${Math.round(x)}" y="${Math.round(y)}" w="60" h="60" z="0" orient="0" link="-1" q="4" disable="false">` +
     `<paramlist><param name="Name" value="${escapeXmlAttr(instName)}" />${paramEntries}</paramlist></User>`;
 
-  edits.push(TextEdit.insert({ line: schematicEndLine, character: 0 }, `${userXml}\n`));
+  let targetSchematic: XmlElement | null = null;
+  if (section) {
+    const secDef = defElements.find((d) => getXmlAttr(d, "name") === section);
+    targetSchematic = secDef?.children.find((c) => c.name.toLowerCase() === "schematic") ?? null;
+  }
+  if (!targetSchematic) {
+    const schematics = findAllXmlElements(xmlDoc.root, (el) => el.name.toLowerCase() === "schematic");
+    targetSchematic = schematics[schematics.length - 1] ?? null;
+  }
+
+  if (targetSchematic) {
+    edits.push(xmlSpliceToTextEdit(docText, appendChildSplice(targetSchematic, userXml, docText)));
+  } else {
+    edits.push(TextEdit.insert({ line: schematicEndLine, character: 0 }, `      ${userXml}\n`));
+  }
   return edits;
 }
 
@@ -1131,7 +1390,7 @@ function findSimulinkTargetSystemInsertLine(docText: string, section?: string): 
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i]!;
-    const stripped = raw.replace(/#.*$/, "");
+    const stripped = stripHashCommentOutsideQuotes(raw);
     let j = 0;
     let inQuotes = false;
     let token = "";
@@ -1202,7 +1461,7 @@ function findSimulinkTargetSystemInsertLine(docText: string, section?: string): 
         j++;
         continue;
       }
-      if (/\s/.test(ch)) {
+      if (isWsChar(ch)) {
         flushToken();
       } else {
         token += ch;
@@ -1348,7 +1607,7 @@ export function computeSimulinkComponentDropEdits(opts: SimulinkDropOptions): Te
 
   const paramAttrs = info.params
     .slice(0, 8)
-    .map((p) => `      ${sanitizeIdentifier(p.name, "Param")} "${p.defaultValue.replace(/"/g, "'")}"`);
+    .map((p) => `      ${sanitizeIdentifier(p.name, "Param")} "${p.defaultValue.replaceAll('"', "'")}"`);
 
   const subBlock = [
     `    # @twin ${info.cleanName} (${info.sourceLanguage})`,
@@ -1389,7 +1648,18 @@ const SPICE_NATIVE_CATEGORY_MAP: Record<string, { prefix: string; defaultVal: st
   CURRENTSOURCE: { prefix: "I", defaultVal: "DC 1m", pins: 2 },
 };
 
-function findSpiceInsertPoint(docText: string): { line: number; character: number; prefixNewline: string } {
+function findSpiceInsertPoint(
+  docText: string,
+  directives?: ReadonlyArray<{ kind: string; span?: { startLine: number } | undefined }>,
+): { line: number; character: number; prefixNewline: string } {
+  if (directives) {
+    for (let i = directives.length - 1; i >= 0; i--) {
+      const d = directives[i]!;
+      if (d.kind === ".END" && d.span && d.span.startLine > 0) {
+        return { line: d.span.startLine - 1, character: 0, prefixNewline: "" };
+      }
+    }
+  }
   const lines = docText.split("\n");
   for (let i = lines.length - 1; i >= 0; i--) {
     if (lines[i]!.trim().toUpperCase() === ".END") {
@@ -1409,7 +1679,8 @@ function findSpiceInsertPoint(docText: string): { line: number; character: numbe
 export function computeSpiceComponentDropEdits(opts: SpiceDropOptions): TextEdit[] {
   const { docText, rawClassName, instanceName, unifiedIndex, batchState } = opts;
   const info = resolveForeignDropInfo(unifiedIndex, rawClassName);
-  const pt = findSpiceInsertPoint(docText);
+  const spiceCircuit = parseSpice(docText);
+  const pt = findSpiceInsertPoint(docText, spiceCircuit.directives);
 
   const upperShort = info.shortName.toUpperCase();
   const nativeSpec = SPICE_NATIVE_CATEGORY_MAP[upperShort];
@@ -1421,9 +1692,14 @@ export function computeSpiceComponentDropEdits(opts: SpiceDropOptions): TextEdit
       (!nativeSpec && info.cleanName.includes(".")));
 
   if (!isForeign && nativeSpec) {
-    const devName = instanceName
-      ? `${nativeSpec.prefix}${sanitizeIdentifier(instanceName, "1").replace(/^[a-zA-Z]/, "")}`
-      : allocateUniqueIdentifier(docText, `${nativeSpec.prefix}`, batchState);
+    let devName: string;
+    if (instanceName) {
+      const sanitized = sanitizeIdentifier(instanceName, "1");
+      const suffix = sanitized.length > 0 && isAsciiLetter(sanitized[0]!) ? sanitized.slice(1) : sanitized;
+      devName = `${nativeSpec.prefix}${suffix}`;
+    } else {
+      devName = allocateUniqueIdentifier(docText, `${nativeSpec.prefix}`, batchState);
+    }
     const nodes = Array.from({ length: nativeSpec.pins }, () => "0").join(" ");
     return [
       TextEdit.insert(
@@ -1433,23 +1709,10 @@ export function computeSpiceComponentDropEdits(opts: SpiceDropOptions): TextEdit
     ];
   }
 
-  // Parse existing .SUBCKT definitions in docText to reuse matching stub & pin count
+  // Reuse parsed .SUBCKT definitions from @modelscript/spice parser
   const existingSubckts = new Map<string, { name: string; portCount: number }>();
-  const lines = docText.split("\n");
-  for (const rawLine of lines) {
-    const trimmed = rawLine.trim();
-    if (/^\.SUBCKT\s+/i.test(trimmed)) {
-      const tokens = trimmed.split(/\s+/);
-      const sName = tokens[1];
-      if (!sName) continue;
-      let pCount = 0;
-      for (let idx = 2; idx < tokens.length; idx++) {
-        const tok = tokens[idx]!;
-        if (tok.toUpperCase() === "PARAMS:" || tok.toUpperCase() === "PARAMS" || tok.includes("=")) break;
-        pCount++;
-      }
-      existingSubckts.set(sName.toUpperCase(), { name: sName, portCount: pCount });
-    }
+  for (const sub of spiceCircuit.subcircuits.values()) {
+    existingSubckts.set(sub.name.toUpperCase(), { name: sub.name, portCount: sub.ports.length });
   }
 
   const candidateSubName = sanitizeIdentifier(info.shortName, "STUB").toUpperCase();

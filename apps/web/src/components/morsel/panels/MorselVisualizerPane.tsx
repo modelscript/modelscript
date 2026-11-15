@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { DynamicBindingConfig } from "@modelscript/cad";
+import type { DynamicBindingConfig, GdtOverlayPayload } from "@modelscript/cad";
 import {
   FlowchartIcon,
   PauseIcon,
@@ -316,6 +316,7 @@ export interface MorselVisualizerPaneProps {
   documentUri?: string | undefined;
   loadingProgress?: number | undefined;
   onLoadStarterExample?: ((code: string, title?: string) => void) | undefined;
+  gdtOverlay?: GdtOverlayPayload | null | undefined;
 }
 
 const isSplit = (v: MorselView) => v === MorselView.SPLIT_COLUMNS || v === MorselView.SPLIT_ROWS;
@@ -347,6 +348,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   showCadView,
   setShowCadView,
   cadComponents,
+  gdtOverlay = null,
   animationMode,
   animationControllerRef,
   diagramEditorRef,
@@ -2687,6 +2689,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 availableVariables={simulationVariables}
                 onSaveBindings={handleSaveCadBindings}
                 vtkBuffer={vtkBuffer ?? undefined}
+                gdtOverlay={gdtOverlay}
               />
             </Suspense>
           </div>

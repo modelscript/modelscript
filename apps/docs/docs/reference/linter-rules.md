@@ -1,6 +1,6 @@
 ---
 title: Linter Rules Reference
-description: Every diagnostic rule ModelScript ships — 1168 rules across 83 languages, with codes, severities and message templates generated from the source.
+description: Every diagnostic rule ModelScript ships — 1179 rules across 84 languages, with codes, severities and message templates generated from the source.
 outline: [2, 2]
 pageClass: lint-reference
 ---
@@ -9,7 +9,7 @@ pageClass: lint-reference
 
 # Linter Rules Reference
 
-ModelScript ships **1168 diagnostic rules** across **83 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **1179 diagnostic rules** across **84 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -32,7 +32,7 @@ The **CLI** column below shows which command reports each language's rules.
 | :---------------------------------------- | :-------------------------- | ----: | :---------------------- |
 | [Modelica](#modelica)                     | `@modelscript/modelica`     |   237 | `msx lint`              |
 | [AMPL](#ampl)                             | `@modelscript/ampl`         |    12 | `msx lint`              |
-| [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |    59 | `msx lint`              |
+| [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |    63 | `msx lint`              |
 | [ReqIF](#reqif)                           | `@modelscript/reqif`        |    13 | `msx reqif lint`        |
 | [NIST OSCAL](#oscal)                      | `@modelscript/oscal`        |    13 | Language server / API   |
 | [SSP](#ssp)                               | `@modelscript/ssp`          |    18 | `msx lint`              |
@@ -112,6 +112,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [NIfTI / NRRD](#nifti)                    | `@modelscript/nifti`        |    10 | Language server / API   |
 | [3MF Medical](#three-mf)                  | `@modelscript/three-mf`     |    10 | Language server / API   |
 | [OpenIGTLink / PLUS](#igtl)               | `@modelscript/igtl`         |    10 | Language server / API   |
+| [las](#las)                               | `@modelscript/las`          |     7 | `msx lint`              |
 | [modelscript](#modelscript)               | `@modelscript/modelscript`  |    11 | Language server / API   |
 
 ::: info Not yet listed
@@ -410,7 +411,7 @@ Mathematical programming & optimization (LP, MILP, NLP). **12 rules** · `@model
 
 ## SysML v2 / KerML {#sysml2}
 
-Systems architecture & requirements. **59 rules** · `@modelscript/sysml2` · Source: `languages/sysml2/src/errors.ts` · [Language guide](../languages/sysml2.md)
+Systems architecture & requirements. **63 rules** · `@modelscript/sysml2` · Source: `languages/sysml2/src/errors.ts` · [Language guide](../languages/sysml2.md)
 
 **`S1xxx` — Syntax, parsing & naming conventions**
 
@@ -474,27 +475,31 @@ Systems architecture & requirements. **59 rules** · `@modelscript/sysml2` · So
 
 **`S5xxx` — Behavior, state machines & formal verification**
 
-| Code                                   | Rule                                 | Severity                                | Message                                                                                                                                                           |
-| :------------------------------------- | :----------------------------------- | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| <span id="sysml2-s5001"></span>`S5001` | `constraint-violated`                | <Badge type="danger" text="error" />    | Constraint '<code>&lt;name&gt;</code>' evaluates to false                                                                                                         |
-| <span id="sysml2-s5002"></span>`S5002` | `requirement-failed`                 | <Badge type="danger" text="error" />    | Requirement '<code>&lt;name&gt;</code>' has constraint(s) that evaluate to false                                                                                  |
-| <span id="sysml2-s5003"></span>`S5003` | `broken-interface-contract`          | <Badge type="danger" text="error" />    | Broken interface contract on '<code>&lt;name&gt;</code>': <code>&lt;reason&gt;</code>                                                                             |
-| <span id="sysml2-s5004"></span>`S5004` | `activity-cfa-unreachable`           | <Badge type="warning" text="warning" /> | <code>&lt;detail&gt;</code>                                                                                                                                       |
-| <span id="sysml2-s5005"></span>`S5005` | `activity-soundness-violation`       | <Badge type="danger" text="error" />    | <code>&lt;detail&gt;</code>                                                                                                                                       |
-| <span id="sysml2-s5006"></span>`S5006` | `definite-assignment-violation`      | <Badge type="danger" text="error" />    | Variable '<code>&lt;name&gt;</code>' may be used before definite assignment                                                                                       |
-| <span id="sysml2-s5007"></span>`S5007` | `statemachine-nondeterministic`      | <Badge type="danger" text="error" />    | Non-deterministic guards detected: <code>&lt;detail&gt;</code>                                                                                                    |
-| <span id="sysml2-s5008"></span>`S5008` | `statemachine-deadlock`              | <Badge type="danger" text="error" />    | Deadlock gap detected in transition guards: <code>&lt;detail&gt;</code>                                                                                           |
-| <span id="sysml2-s5009"></span>`S5009` | `satisfying-violated-requirement`    | <Badge type="danger" text="error" />    | Part '<code>&lt;partName&gt;</code>' cannot satisfy requirement '<code>&lt;reqName&gt;</code>': <code>&lt;violations&gt;</code>                                   |
-| <span id="sysml2-s5010"></span>`S5010` | `conflicting-requirements`           | <Badge type="danger" text="error" />    | Conflicting requirements in '<code>&lt;pkgName&gt;</code>': <code>&lt;conflictNames&gt;</code> cannot be simultaneously satisfied.<code>&lt;witnessStr&gt;</code> |
-| <span id="sysml2-s5011"></span>`S5011` | `interprocedural-contract-violation` | <Badge type="danger" text="error" />    | <code>&lt;detail&gt;</code>                                                                                                                                       |
-| <span id="sysml2-s5012"></span>`S5012` | `loop-non-terminating`               | <Badge type="warning" text="warning" /> | <code>&lt;detail&gt;</code>                                                                                                                                       |
-| <span id="sysml2-s5013"></span>`S5013` | `decision-table-non-exhaustive`      | <Badge type="warning" text="warning" /> | Decision node '<code>&lt;decideName&gt;</code>' is not exhaustive: <code>&lt;detail&gt;</code>                                                                    |
-| <span id="sysml2-s5014"></span>`S5014` | `decision-table-nondeterministic`    | <Badge type="danger" text="error" />    | Decision node '<code>&lt;decideName&gt;</code>' has overlapping branch guards: <code>&lt;detail&gt;</code>                                                        |
-| <span id="sysml2-s5015"></span>`S5015` | `decision-table-dead-branch`         | <Badge type="warning" text="warning" /> | Decision node '<code>&lt;decideName&gt;</code>' has dead branch(es): <code>&lt;detail&gt;</code>                                                                  |
-| <span id="sysml2-s5016"></span>`S5016` | `activity-safety-violation`          | <Badge type="danger" text="error" />    | <code>&lt;detail&gt;</code>                                                                                                                                       |
-| <span id="sysml2-s5017"></span>`S5017` | `dead-state-transition`              | <Badge type="warning" text="warning" /> | State transition '<code>&lt;transName&gt;</code>' guard condition is tautologically false.                                                                        |
-| <span id="sysml2-s5018"></span>`S5018` | `non-deterministic-transitions`      | <Badge type="warning" text="warning" /> | State '<code>&lt;stateName&gt;</code>' has overlapping, unprioritized outgoing transition guards.                                                                 |
-| <span id="sysml2-s5019"></span>`S5019` | `state-transition-unreachable`       | <Badge type="warning" text="warning" /> | State transition '<code>&lt;transName&gt;</code>' originates from unreachable state '<code>&lt;stateName&gt;</code>'.                                             |
+| Code                                   | Rule                                 | Severity                                | Message                                                                                                                                                                              |
+| :------------------------------------- | :----------------------------------- | :-------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="sysml2-s5001"></span>`S5001` | `constraint-violated`                | <Badge type="danger" text="error" />    | Constraint '<code>&lt;name&gt;</code>' evaluates to false                                                                                                                            |
+| <span id="sysml2-s5002"></span>`S5002` | `requirement-failed`                 | <Badge type="danger" text="error" />    | Requirement '<code>&lt;name&gt;</code>' has constraint(s) that evaluate to false                                                                                                     |
+| <span id="sysml2-s5003"></span>`S5003` | `broken-interface-contract`          | <Badge type="danger" text="error" />    | Broken interface contract on '<code>&lt;name&gt;</code>': <code>&lt;reason&gt;</code>                                                                                                |
+| <span id="sysml2-s5004"></span>`S5004` | `activity-cfa-unreachable`           | <Badge type="warning" text="warning" /> | <code>&lt;detail&gt;</code>                                                                                                                                                          |
+| <span id="sysml2-s5005"></span>`S5005` | `activity-soundness-violation`       | <Badge type="danger" text="error" />    | <code>&lt;detail&gt;</code>                                                                                                                                                          |
+| <span id="sysml2-s5006"></span>`S5006` | `definite-assignment-violation`      | <Badge type="danger" text="error" />    | Variable '<code>&lt;name&gt;</code>' may be used before definite assignment                                                                                                          |
+| <span id="sysml2-s5007"></span>`S5007` | `statemachine-nondeterministic`      | <Badge type="danger" text="error" />    | Non-deterministic guards detected: <code>&lt;detail&gt;</code>                                                                                                                       |
+| <span id="sysml2-s5008"></span>`S5008` | `statemachine-deadlock`              | <Badge type="danger" text="error" />    | Deadlock gap detected in transition guards: <code>&lt;detail&gt;</code>                                                                                                              |
+| <span id="sysml2-s5009"></span>`S5009` | `satisfying-violated-requirement`    | <Badge type="danger" text="error" />    | Part '<code>&lt;partName&gt;</code>' cannot satisfy requirement '<code>&lt;reqName&gt;</code>': <code>&lt;violations&gt;</code>                                                      |
+| <span id="sysml2-s5010"></span>`S5010` | `conflicting-requirements`           | <Badge type="danger" text="error" />    | Conflicting requirements in '<code>&lt;pkgName&gt;</code>': <code>&lt;conflictNames&gt;</code> cannot be simultaneously satisfied.<code>&lt;witnessStr&gt;</code>                    |
+| <span id="sysml2-s5011"></span>`S5011` | `interprocedural-contract-violation` | <Badge type="danger" text="error" />    | <code>&lt;detail&gt;</code>                                                                                                                                                          |
+| <span id="sysml2-s5012"></span>`S5012` | `loop-non-terminating`               | <Badge type="warning" text="warning" /> | <code>&lt;detail&gt;</code>                                                                                                                                                          |
+| <span id="sysml2-s5013"></span>`S5013` | `decision-table-non-exhaustive`      | <Badge type="warning" text="warning" /> | Decision node '<code>&lt;decideName&gt;</code>' is not exhaustive: <code>&lt;detail&gt;</code>                                                                                       |
+| <span id="sysml2-s5014"></span>`S5014` | `decision-table-nondeterministic`    | <Badge type="danger" text="error" />    | Decision node '<code>&lt;decideName&gt;</code>' has overlapping branch guards: <code>&lt;detail&gt;</code>                                                                           |
+| <span id="sysml2-s5015"></span>`S5015` | `decision-table-dead-branch`         | <Badge type="warning" text="warning" /> | Decision node '<code>&lt;decideName&gt;</code>' has dead branch(es): <code>&lt;detail&gt;</code>                                                                                     |
+| <span id="sysml2-s5016"></span>`S5016` | `activity-safety-violation`          | <Badge type="danger" text="error" />    | <code>&lt;detail&gt;</code>                                                                                                                                                          |
+| <span id="sysml2-s5017"></span>`S5017` | `dead-state-transition`              | <Badge type="warning" text="warning" /> | State transition '<code>&lt;transName&gt;</code>' guard condition is tautologically false.                                                                                           |
+| <span id="sysml2-s5018"></span>`S5018` | `non-deterministic-transitions`      | <Badge type="warning" text="warning" /> | State '<code>&lt;stateName&gt;</code>' has overlapping, unprioritized outgoing transition guards.                                                                                    |
+| <span id="sysml2-s5019"></span>`S5019` | `state-transition-unreachable`       | <Badge type="warning" text="warning" /> | State transition '<code>&lt;transName&gt;</code>' originates from unreachable state '<code>&lt;stateName&gt;</code>'.                                                                |
+| <span id="sysml2-s5020"></span>`S5020` | `standard-compliance-violation`      | <Badge type="danger" text="error" />    | &#91;<code>&lt;clauseLabel&gt;</code>&#93; '<code>&lt;subjectName&gt;</code>' violates requirement '<code>&lt;reqName&gt;</code>': <code>&lt;detail&gt;</code>                       |
+| <span id="sysml2-s5021"></span>`S5021` | `standard-compliance-warning`        | <Badge type="warning" text="warning" /> | &#91;<code>&lt;clauseLabel&gt;</code>&#93; '<code>&lt;subjectName&gt;</code>' triggers advisory requirement '<code>&lt;reqName&gt;</code>': <code>&lt;detail&gt;</code>              |
+| <span id="sysml2-s5022"></span>`S5022` | `requirement-not-applicable`         | <Badge type="warning" text="warning" /> | &#91;<code>&lt;clauseLabel&gt;</code>&#93; Requirement '<code>&lt;reqName&gt;</code>' is not applicable to '<code>&lt;subjectName&gt;</code>': assume constraint evaluates to false. |
+| <span id="sysml2-s5023"></span>`S5023` | `standard-table-lookup-missing`      | <Badge type="warning" text="warning" /> | Standard table/calculator lookup '<code>&lt;calcName&gt;</code>' could not be evaluated: <code>&lt;reason&gt;</code>                                                                 |
 
 ## ReqIF {#reqif}
 
@@ -1897,6 +1902,20 @@ Image-guided surgical tracking, pivot calibration & TRE. **10 rules** · `@model
 | <span id="igtl-m9808"></span>`M9808` | `igtl-self-transform-identity-mismatch` | <Badge type="danger" text="error" />    | Self-transform '<code>&lt;frameName&gt;</code> -&gt; <code>&lt;frameName&gt;</code>' must be the 4x4 identity matrix.                                                                                                             |
 | <span id="igtl-m9809"></span>`M9809` | `igtl-invalid-server-port`              | <Badge type="danger" text="error" />    | OpenIGTLink server '<code>&lt;serverId&gt;</code>' ListeningPort '<code>&lt;port&gt;</code>' is outside valid TCP port range &#91;1024, 65535&#93;.                                                                               |
 | <span id="igtl-m9810"></span>`M9810` | `igtl-duplicate-transform-edge`         | <Badge type="danger" text="error" />    | Duplicate '<code>&lt;Transform&gt;</code>' defined for coordinate frame pair '(<code>&lt;from&gt;</code>, <code>&lt;to&gt;</code>)'.                                                                                              |
+
+## las {#las}
+
+**7 rules** · `@modelscript/las` · Source: `languages/las/src/errors.ts`
+
+| Code                                    | Rule                        | Severity                                | Message                                                                                                                                            |
+| :-------------------------------------- | :-------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="las-las1001"></span>`LAS1001` | `las-missing-version`       | <Badge type="danger" text="error" />    | Missing ~V (Version Information) section or VERS entry in LAS file.                                                                                |
+| <span id="las-las1002"></span>`LAS1002` | `las-missing-curves`        | <Badge type="danger" text="error" />    | Missing or empty ~C (Curve Information) section in LAS file.                                                                                       |
+| <span id="las-las1003"></span>`LAS1003` | `las-missing-ascii-data`    | <Badge type="danger" text="error" />    | Missing ~A (ASCII Log Data) section in LAS file.                                                                                                   |
+| <span id="las-las1004"></span>`LAS1004` | `las-column-count-mismatch` | <Badge type="danger" text="error" />    | Data record <code>&lt;row&gt;</code> has <code>&lt;actual&gt;</code> values, expected <code>&lt;expected&gt;</code> to match ~C curve definitions. |
+| <span id="las-las1005"></span>`LAS1005` | `las-invalid-numeric-value` | <Badge type="danger" text="error" />    | Invalid numeric value '<code>&lt;val&gt;</code>' for curve '<code>&lt;curve&gt;</code>' at data record <code>&lt;row&gt;</code>.                   |
+| <span id="las-las1006"></span>`LAS1006` | `las-duplicate-curve`       | <Badge type="danger" text="error" />    | Duplicate curve mnemonic '<code>&lt;mnemonic&gt;</code>' in ~C section (already defined on line <code>&lt;prevLine&gt;</code>).                    |
+| <span id="las-las1007"></span>`LAS1007` | `las-non-monotonic-index`   | <Badge type="warning" text="warning" /> | Non-monotonic index value <code>&lt;val&gt;</code> at record <code>&lt;row&gt;</code> (previous value was <code>&lt;prevVal&gt;</code>).           |
 
 ## modelscript {#modelscript}
 

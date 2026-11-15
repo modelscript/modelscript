@@ -38,7 +38,194 @@ import {
 } from "./index.js";
 
 import { Cst } from "../../src-gen/bindings.js";
+import {
+  collapseAsciiWhitespace,
+  containsWholeWordOutsideStrings,
+  expandModelicaTextMacros,
+  isAsciiDigitsOnly,
+  isAsciiIdentContinue,
+  isAsciiWhitespaceCode,
+  isSignedAsciiNumberText,
+  stripLeadingEquals,
+  stripOuterDoubleQuotes,
+} from "../flattener/expressions/index.js";
 import { ModelicaClassKind, ModelicaVariability } from "../types.js";
+
+function matchesCiKeywordAt(text: string, pos: number, kwLower: string): boolean {
+  const end = pos + kwLower.length;
+  if (end > text.length) return false;
+  if (pos > 0 && isAsciiIdentContinue(text.charCodeAt(pos - 1))) return false;
+  if (end < text.length && isAsciiIdentContinue(text.charCodeAt(end))) return false;
+  return text.slice(pos, end).toLowerCase() === kwLower;
+}
+
+function hasTrailingNumericArraySubscript(name: string): boolean {
+  if (!name.endsWith("]")) return false;
+  const open = name.lastIndexOf("[");
+  if (open === -1) return false;
+  const inner = name.slice(open + 1, -1).trim();
+  return inner.length > 0 && isAsciiDigitsOnly(inner);
+}
+
+function readValueAfterEqualsAt(
+  text: string,
+  eqPos: number,
+  stopChars: string,
+  trackBalancedParens: boolean,
+): string | undefined {
+  let start = eqPos + 1;
+  while (start < text.length && isAsciiWhitespaceCode(text.charCodeAt(start))) start++;
+  let pos = start;
+  let depth = 0;
+  while (pos < text.length) {
+    const ch = text[pos]!;
+    if (trackBalancedParens) {
+      if (ch === "(") {
+        depth++;
+        pos++;
+        continue;
+      }
+      if (ch === ")") {
+        if (depth > 0) {
+          depth--;
+          pos++;
+          continue;
+        }
+        break;
+      }
+    }
+    if (depth === 0 && stopChars.includes(ch)) break;
+    pos++;
+  }
+  const val = text.slice(start, pos).trim();
+  return val.length > 0 ? val : undefined;
+}
+
+function readValueAfterEqualsExcluding(
+  text: string,
+  stopChars: string,
+  stopOnUnbalancedParens = false,
+): string | undefined {
+  const eqPos = text.indexOf("=");
+  if (eqPos === -1) return undefined;
+  return readValueAfterEqualsAt(text, eqPos, stopChars, stopOnUnbalancedParens);
+}
+
+function extractNamedModAssignmentFallback(text: string, name: string, caseInsensitive: boolean): string | undefined {
+  if (!text || !name) return undefined;
+  const hay = caseInsensitive ? text.toLowerCase() : text;
+  const needle = caseInsensitive ? name.toLowerCase() : name;
+  let pos = 0;
+  while (pos <= hay.length - needle.length) {
+    const idx = hay.indexOf(needle, pos);
+    if (idx === -1) return undefined;
+    const prevOk = idx === 0 || !isAsciiIdentContinue(hay.charCodeAt(idx - 1));
+    const afterName = idx + needle.length;
+    const nextOk = afterName >= hay.length || !isAsciiIdentContinue(hay.charCodeAt(afterName));
+    if (prevOk && nextOk) {
+      let j = afterName;
+      while (j < text.length && isAsciiWhitespaceCode(text.charCodeAt(j))) j++;
+      if (j < text.length && text[j] === "=") {
+        const val = readValueAfterEqualsAt(text, j, ",", true);
+        if (val !== undefined) return val;
+      }
+    }
+    pos = idx + needle.length;
+  }
+  return undefined;
+}
+
+function stripLeadingEqualsAndTrailingSemi(s: string): string {
+  let res = stripLeadingEquals(s);
+  if (res.endsWith(";")) res = res.slice(0, -1).trim();
+  return res;
+}
+
+function stripTransformStyleDecls(style: string, fnName: "scale" | "rotate"): string {
+  let s = style;
+  let searchFrom = 0;
+  for (;;) {
+    const idx = s.indexOf("transform-origin:", searchFrom);
+    if (idx === -1) break;
+    const valStart = idx + "transform-origin:".length;
+    const semi = s.indexOf(";", valStart);
+    const end = semi === -1 ? s.length : semi + 1;
+    if ((semi === -1 ? s.length : semi) <= valStart) {
+      searchFrom = valStart;
+      continue;
+    }
+    s = s.slice(0, idx) + s.slice(end);
+    searchFrom = idx;
+  }
+  const fnPrefix = `${fnName}(`;
+  searchFrom = 0;
+  for (;;) {
+    const idx = s.indexOf("transform:", searchFrom);
+    if (idx === -1) break;
+    let p = idx + "transform:".length;
+    while (p < s.length && isAsciiWhitespaceCode(s.charCodeAt(p))) p++;
+    if (!s.startsWith(fnPrefix, p)) {
+      searchFrom = p;
+      continue;
+    }
+    const argStart = p + fnPrefix.length;
+    const closeParen = s.indexOf(")", argStart);
+    if (closeParen <= argStart) {
+      searchFrom = argStart;
+      continue;
+    }
+    let end = closeParen + 1;
+    if (end < s.length && s[end] === ";") end++;
+    s = s.slice(0, idx) + s.slice(end);
+    searchFrom = idx;
+  }
+  return s.trim();
+}
+
+function postfixSvgDefRefs(svg: string, openMarker: string, closeCh: string, suffix: string): string {
+  let out = "";
+  let pos = 0;
+  while (pos < svg.length) {
+    const idx = svg.indexOf(openMarker, pos);
+    if (idx === -1) {
+      out += svg.slice(pos);
+      break;
+    }
+    const valStart = idx + openMarker.length;
+    const endIdx = svg.indexOf(closeCh, valStart);
+    if (endIdx === -1) {
+      out += svg.slice(pos);
+      break;
+    }
+    const id = svg.slice(valStart, endIdx);
+    if (id.startsWith("gradient-") || id.startsWith("pattern-")) {
+      out += svg.slice(pos, endIdx) + suffix + closeCh;
+      pos = endIdx + closeCh.length;
+    } else {
+      out += svg.slice(pos, valStart);
+      pos = valStart;
+    }
+  }
+  return out;
+}
+
+function toDashedSlugId(label: string): string {
+  const lower = label.toLowerCase();
+  let out = "";
+  let lastDash = false;
+  for (let i = 0; i < lower.length; i++) {
+    const code = lower.charCodeAt(i);
+    const isAlnum = (code >= 97 && code <= 122) || (code >= 48 && code <= 57);
+    if (isAlnum) {
+      out += lower[i]!;
+      lastDash = false;
+    } else if (out.length > 0 && !lastDash) {
+      out += "-";
+      lastDash = true;
+    }
+  }
+  return out.endsWith("-") ? out.slice(0, -1) : out;
+}
 
 // Import canonical types from the protocol module and re-export for
 // backward compatibility with consumers that import from diagramData.
@@ -496,7 +683,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     const isArrayComponent =
       (component.dimensions && component.dimensions.length > 0) ||
       (Array.isArray(component.arraySubscripts) && component.arraySubscripts.length > 0) ||
-      /\[\s*\d+\s*\]$/.test(component.name ?? "");
+      hasTrailingNumericArraySubscript(component.name ?? "");
     if (isArrayComponent) {
       componentMarkup = {
         tagName: "g",
@@ -1800,15 +1987,83 @@ function findDeclarationsInCst(node: any): any[] {
 }
 
 export function stripCommentsAndStrings(text: string): string {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/\/\/.*$/gm, " ")
-    .replace(/"(?:[^"\\]|\\.)*"/g, " ");
+  let out = "";
+  let i = 0;
+  const len = text.length;
+  while (i < len) {
+    const ch = text[i]!;
+    if (ch === "/" && i + 1 < len && text[i + 1] === "*") {
+      const end = text.indexOf("*/", i + 2);
+      if (end !== -1) {
+        out += " ";
+        i = end + 2;
+        continue;
+      }
+    } else if (ch === "/" && i + 1 < len && text[i + 1] === "/") {
+      const nl = text.indexOf("\n", i + 2);
+      out += " ";
+      i = nl === -1 ? len : nl;
+      continue;
+    } else if (ch === '"') {
+      let j = i + 1;
+      let closed = false;
+      while (j < len) {
+        if (text[j] === "\\") {
+          j += 2;
+        } else if (text[j] === '"') {
+          j++;
+          closed = true;
+          break;
+        } else {
+          j++;
+        }
+      }
+      if (closed) {
+        out += " ";
+        i = j;
+        continue;
+      }
+    }
+    out += ch;
+    i++;
+  }
+  return out;
 }
 
 export function stripAnnotationsAndComments(text: string): string {
   const stripped = stripCommentsAndStrings(text);
-  return stripped.replace(/\bannotation\s*\([^;]*\)/gi, " ");
+  let out = "";
+  let i = 0;
+  const len = stripped.length;
+  while (i < len) {
+    if (matchesCiKeywordAt(stripped, i, "annotation")) {
+      let j = i + "annotation".length;
+      while (j < len && isAsciiWhitespaceCode(stripped.charCodeAt(j))) j++;
+      if (j < len && stripped[j] === "(") {
+        let depth = 1;
+        let k = j + 1;
+        let stoppedOnSemi = false;
+        while (k < len && depth > 0) {
+          const c = stripped[k]!;
+          if (c === ";") {
+            stoppedOnSemi = true;
+            break;
+          }
+          if (c === "(") depth++;
+          else if (c === ")") depth--;
+          k++;
+        }
+        if (!stoppedOnSemi && depth === 0) {
+          out += " ";
+          i = k;
+          continue;
+        }
+      }
+    }
+    out += stripped[i]!;
+    i++;
+  }
+  return out;
 }
 
 export function extractCstModifierValue(cstNode: any, paramName: string): string | undefined {
@@ -1834,7 +2089,7 @@ export function extractCstModifierValue(cstNode: any, paramName: string): string
       if (valModNode) {
         const text = valModNode.text?.trim() ?? valModNode.value;
         if (text?.startsWith("=")) {
-          return text.replace(/^=\s*/, "").trim();
+          return stripLeadingEquals(text);
         }
         if (text && !text.startsWith("(") && !text.startsWith("{")) {
           return text;
@@ -1859,7 +2114,7 @@ export function extractCstModifierValue(cstNode: any, paramName: string): string
       if (valModNode) {
         const text = valModNode.text?.trim() ?? valModNode.value;
         if (text?.startsWith("=")) {
-          return text.replace(/^=\s*/, "").trim();
+          return stripLeadingEquals(text);
         }
         return text;
       }
@@ -1904,7 +2159,7 @@ export function extractCstNestedModifierValue(
 
 export function parseIfThenElse(expr: string): { cond: string; thenVal: string; elseVal: string } | null {
   const trimmed = expr.trim();
-  if (!/^if\b/i.test(trimmed)) return null;
+  if (!matchesCiKeywordAt(trimmed, 0, "if")) return null;
 
   let pos = 2;
   const len = trimmed.length;
@@ -1948,20 +2203,19 @@ export function parseIfThenElse(expr: string): { cond: string; thenVal: string; 
     }
 
     if (parenDepth === 0) {
-      const rest = trimmed.slice(pos);
-      if (/^if\b/i.test(rest)) {
+      if (matchesCiKeywordAt(trimmed, pos, "if")) {
         ifDepth++;
         pos += 2;
         continue;
       }
-      if (/^then\b/i.test(rest)) {
+      if (matchesCiKeywordAt(trimmed, pos, "then")) {
         if (ifDepth === 1 && thenStart === -1) {
           thenStart = pos + 4;
         }
         pos += 4;
         continue;
       }
-      if (/^else\b/i.test(rest)) {
+      if (matchesCiKeywordAt(trimmed, pos, "else")) {
         if (ifDepth === 1 && thenStart !== -1 && elseStart === -1) {
           thenEnd = pos;
           elseStart = pos + 4;
@@ -2036,9 +2290,9 @@ export function evaluateMacroExpression(
     }
     if (!compVal && typeof compCst.text === "string") {
       const sanitized = stripAnnotationsAndComments(compCst.text);
-      const match = sanitized.match(new RegExp(`\\b${name}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i"));
-      if (match && match[1]) {
-        compVal = match[1].trim();
+      const extracted = extractNamedModAssignmentFallback(sanitized, name, true);
+      if (extracted) {
+        compVal = extracted;
       }
     }
   }
@@ -2048,9 +2302,9 @@ export function evaluateMacroExpression(
     compVal = formatPropertyValue(compArgExpr);
     if (!compVal && typeof compNode?.text === "string") {
       const sanitized = stripAnnotationsAndComments(compNode.text);
-      const match = sanitized.match(new RegExp(`\\b${name}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i"));
-      if (match && match[1]) {
-        compVal = match[1].trim();
+      const extracted = extractNamedModAssignmentFallback(sanitized, name, true);
+      if (extracted) {
+        compVal = extracted;
       }
     }
     const compInstanceVals = (componentInstance as { values?: Record<string, unknown> }).values;
@@ -2078,9 +2332,9 @@ export function evaluateMacroExpression(
         elemVal = extractCstModifierValue(elemCst, "start") ?? extractCstModifierValue(elemCst, name);
         if (!elemVal && typeof elemCst.text === "string" && elemCst.text.includes("=")) {
           const cleanText = stripAnnotationsAndComments(elemCst.text);
-          const matchEq = cleanText.match(/=\s*([^;()]+(?:\([^)]*\)[^;()]*)*);?/);
-          if (matchEq && matchEq[1]) {
-            elemVal = matchEq[1].replace(/;$/, "").trim();
+          const extracted = readValueAfterEqualsExcluding(cleanText, ";", true);
+          if (extracted) {
+            elemVal = extracted;
           }
         }
       } else {
@@ -2102,7 +2356,8 @@ export function evaluateMacroExpression(
   ) {
     const mod = (namedElement as ModelicaComponentInstance).classInstance?.["modification"] as any;
     const unitExpr = mod?.getModificationArgument?.("unit")?.expression;
-    const rawUnit = formatPropertyValue(unitExpr)?.replace(/^"|"$/g, "");
+    const rawUnitVal = formatPropertyValue(unitExpr);
+    const rawUnit = rawUnitVal !== undefined ? stripOuterDoubleQuotes(rawUnitVal) : undefined;
     if (rawUnit) unitString = " " + formatUnit(rawUnit);
   }
 
@@ -2147,21 +2402,12 @@ function renderTextX6(
   } else if (rawText === "%name") {
     textContent = componentInstance?.name ?? "";
   } else {
-    const replacer = (_match: string, expr: string): string => {
-      return evaluateMacroExpression(expr, classInstance, componentInstance);
-    };
-    const ESCAPED_PERCENT = "__PERCENT__";
     const nameText = componentInstance?.name ?? "";
     const classText = classInstance?.name ?? "";
     const commentText = componentInstance?.["description"] ?? classInstance?.["description"] ?? "";
-    textContent = rawText
-      .replace(/%%/g, ESCAPED_PERCENT)
-      .replace(/%name\b/g, nameText)
-      .replace(/%class\b/g, classText)
-      .replace(/%comment\b/g, commentText)
-      .replace(/%\{([^}]*)\}/g, replacer)
-      .replace(/%(\w+)\b/g, replacer)
-      .replace(/__PERCENT__/g, "%");
+    textContent = expandModelicaTextMacros(rawText, nameText, classText, commentText, (expr) =>
+      evaluateMacroExpression(expr, classInstance, componentInstance),
+    );
   }
 
   if (!textContent || textContent.trim().length === 0) {
@@ -2511,10 +2757,7 @@ function unflipText(node: X6Markup, sx: number, sy: number): void {
       const scaleTransform = `translate(${textX} ${textY}) scale(${sx} ${sy}) translate(${-textX} ${-textY})`;
       child.attrs["transform"] = existingTransform ? `${existingTransform} ${scaleTransform}` : scaleTransform;
       if (child.attrs["style"] && typeof child.attrs["style"] === "string") {
-        child.attrs["style"] = child.attrs["style"]
-          .replace(/transform-origin:[^;]+;?/g, "")
-          .replace(/transform:\s*scale\([^)]+\);?/g, "")
-          .trim();
+        child.attrs["style"] = stripTransformStyleDecls(child.attrs["style"], "scale");
       }
     }
     unflipText(child, sx, sy);
@@ -2538,10 +2781,7 @@ function unrotateText(node: X6Markup, rotateAngle: number): void {
       const rotTransform = `rotate(${rot} ${textX} ${textY})`;
       child.attrs["transform"] = existingTransform ? `${existingTransform} ${rotTransform}` : rotTransform;
       if (child.attrs["style"] && typeof child.attrs["style"] === "string") {
-        child.attrs["style"] = child.attrs["style"]
-          .replace(/transform-origin:[^;]+;?/g, "")
-          .replace(/transform:\s*rotate\([^)]+\);?/g, "")
-          .trim();
+        child.attrs["style"] = stripTransformStyleDecls(child.attrs["style"], "rotate");
       }
     }
     unrotateText(child, rotateAngle);
@@ -2594,7 +2834,7 @@ export function x6MarkupToSvg(markup: X6Markup): string {
   const attrs = markup.attrs
     ? Object.entries(markup.attrs)
         .filter(([, v]) => v !== undefined)
-        .map(([k, v]) => `${k}="${String(v).replace(/"/g, "&quot;")}"`)
+        .map(([k, v]) => `${k}="${String(v).replaceAll('"', "&quot;")}"`)
         .join(" ")
     : "";
   const open = attrs ? `<${markup.tagName} ${attrs}` : `<${markup.tagName}`;
@@ -2614,6 +2854,36 @@ export function hasGraphicElements(node: X6Markup): boolean {
   return Array.isArray(node.children) ? node.children.some(hasGraphicElements) : false;
 }
 
+function findStrokeWidthPxSpan(
+  style: string,
+  requireImportant: boolean,
+): { start: number; end: number; numStr: string } | null {
+  const key = "stroke-width:";
+  let from = 0;
+  while (from <= style.length - key.length) {
+    const start = style.indexOf(key, from);
+    if (start < 0) return null;
+    let i = start + key.length;
+    while (i < style.length && isAsciiWhitespaceCode(style.charCodeAt(i))) i++;
+    const numStart = i;
+    while (i < style.length && ((style.charCodeAt(i) >= 48 && style.charCodeAt(i) <= 57) || style[i] === ".")) i++;
+    const numStr = style.slice(numStart, i);
+    if (numStr.length > 0 && style.startsWith("px", i)) {
+      let end = i + 2;
+      if (!requireImportant) return { start, end, numStr };
+      let j = end;
+      while (j < style.length && isAsciiWhitespaceCode(style.charCodeAt(j))) j++;
+      if (style.startsWith("!important", j)) {
+        j += "!important".length;
+        if (style[j] === ";") j++;
+        return { start, end: j, numStr };
+      }
+    }
+    from = start + key.length;
+  }
+  return null;
+}
+
 function bakeVectorEffect(markup: X6Markup, scale: number): void {
   if (markup.attrs) {
     if (markup.attrs["vector-effect"] === "non-scaling-stroke") {
@@ -2623,18 +2893,21 @@ function bakeVectorEffect(markup: X6Markup, scale: number): void {
       if (markup.attrs["stroke-width"] !== undefined) {
         sw = parseFloat(String(markup.attrs["stroke-width"]));
       } else if (typeof markup.attrs["style"] === "string") {
-        const match = markup.attrs["style"].match(/stroke-width:\s*([\d.]+)px/);
-        if (match) sw = parseFloat(match[1]!);
+        const span = findStrokeWidthPxSpan(markup.attrs["style"], false);
+        if (span) sw = parseFloat(span.numStr);
       }
 
       const newSw = sw * scale;
       markup.attrs["stroke-width"] = newSw;
 
       if (typeof markup.attrs["style"] === "string") {
-        markup.attrs["style"] = markup.attrs["style"].replace(
-          /stroke-width:\s*[\d.]+px\s*!important;?/,
-          `stroke-width: ${newSw}px !important;`,
-        );
+        const span = findStrokeWidthPxSpan(markup.attrs["style"], true);
+        if (span) {
+          markup.attrs["style"] =
+            markup.attrs["style"].slice(0, span.start) +
+            `stroke-width: ${newSw}px !important;` +
+            markup.attrs["style"].slice(span.end);
+        }
       }
     }
 
@@ -2738,12 +3011,13 @@ export function getClassIconSvg(
       delete markup.attrs["style"];
 
       if (typeof markup.attrs["viewBox"] === "string") {
-        const vbMatch = markup.attrs["viewBox"].match(/^([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)$/);
-        if (vbMatch) {
-          const vx = parseFloat(vbMatch[1]!);
-          const vy = parseFloat(vbMatch[2]!);
-          const vw = parseFloat(vbMatch[3]!);
-          const vh = parseFloat(vbMatch[4]!);
+        const vbRaw = markup.attrs["viewBox"];
+        const vbParts = collapseAsciiWhitespace(vbRaw).split(" ");
+        if (vbRaw.trim() === vbRaw && vbParts.length === 4 && vbParts.every((p) => isSignedAsciiNumberText(p))) {
+          const vx = parseFloat(vbParts[0]!);
+          const vy = parseFloat(vbParts[1]!);
+          const vw = parseFloat(vbParts[2]!);
+          const vh = parseFloat(vbParts[3]!);
 
           // Pad the viewbox by 2% to ensure Chromium doesn't clip outer stroke bounds
           const padX = vw * 0.02;
@@ -2782,8 +3056,8 @@ export function getClassIconSvg(
     // Ensure all defs IDs are uniquely postfixed for this specific standalone icon rendering
     // to prevent Chromium SVG cache collisions across different image tags
     const uniqueSuffix = "-" + Math.random().toString(36).substring(2, 8);
-    svgString = svgString.replace(/id="(gradient-[^"]+|pattern-[^"]+)"/g, `id="$1${uniqueSuffix}"`);
-    svgString = svgString.replace(/url\(#(gradient-[^)]+|pattern-[^)]+)\)/g, `url(#$1${uniqueSuffix})`);
+    svgString = postfixSvgDefRefs(svgString, 'id="', '"', uniqueSuffix);
+    svgString = postfixSvgDefRefs(svgString, "url(#", ")", uniqueSuffix);
 
     if (identityKey) {
       standaloneIconSvgCache.set(identityKey, svgString);
@@ -2800,13 +3074,33 @@ export function getClassIconSvg(
 // Called lazily when the user clicks a component in the diagram.
 // This avoids the expensive parameter/doc/icon computation during initial diagram load.
 
+function stripEnvelopeTagPair(html: string, tagName: string): string {
+  let s = html.trim();
+  const lowerStart = `<${tagName}`;
+  if (s.toLowerCase().startsWith(lowerStart)) {
+    const nextCh = s[lowerStart.length];
+    if (nextCh === ">" || (nextCh !== undefined && isAsciiWhitespaceCode(s.charCodeAt(lowerStart.length)))) {
+      const closeBracket = s.indexOf(">", lowerStart.length);
+      if (closeBracket >= 0) {
+        s = s.slice(closeBracket + 1).trimStart();
+      }
+    }
+  }
+  const lowerClose = `</${tagName}`;
+  if (s.endsWith(">")) {
+    const closeIdx = s.toLowerCase().lastIndexOf(lowerClose);
+    if (closeIdx >= 0 && closeIdx + lowerClose.length < s.length) {
+      const between = s.slice(closeIdx + lowerClose.length, s.length - 1);
+      if (between.trim() === "") {
+        s = s.slice(0, closeIdx).trimEnd();
+      }
+    }
+  }
+  return s;
+}
+
 function stripHtmlEnvelope(html: string): string {
-  return html
-    .replace(/^\s*<html[^>]*>\s*/i, "")
-    .replace(/\s*<\/html>\s*$/i, "")
-    .replace(/^\s*<body[^>]*>\s*/i, "")
-    .replace(/\s*<\/body>\s*$/i, "")
-    .trim();
+  return stripEnvelopeTagPair(stripEnvelopeTagPair(html, "html"), "body").trim();
 }
 
 const bitmapDataUriCache = new Map<string, string | null>();
@@ -2828,16 +3122,23 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
     const rawLib = (classInstance as any)?.compositeName || classInstance?.name || "";
     const libName = rawLib.split(".")[0];
     if (libName) {
-      normalizedUri = `modelica://${libName}/${uri.replace(/^\.?\//, "")}`;
+      const cleanRel = uri.startsWith("./") ? uri.slice(2) : uri.startsWith("/") ? uri.slice(1) : uri;
+      normalizedUri = `modelica://${libName}/${cleanRel}`;
     }
   }
 
-  const match = normalizedUri.match(/^modelica:\/\/([^/]+)\/(.*)$/);
-  if (!match) {
+  if (!normalizedUri.startsWith("modelica://")) {
     bitmapDataUriCache.set(uri, null);
     return null;
   }
-  const [, libraryName, relativePath] = match;
+  const afterScheme = normalizedUri.slice("modelica://".length);
+  const slashIdx = afterScheme.indexOf("/");
+  if (slashIdx <= 0) {
+    bitmapDataUriCache.set(uri, null);
+    return null;
+  }
+  const libraryName = afterScheme.slice(0, slashIdx);
+  const relativePath = afterScheme.slice(slashIdx + 1);
 
   // 1. Try classInstance.context or classInstance.db?.context
   const ctx = (classInstance as any)?.context ?? (classInstance as any)?.db?.context;
@@ -2993,27 +3294,96 @@ function processHtml(html: string | undefined, context: any): string | undefined
   const stripped = stripHtmlEnvelope(html);
   if (!context) return stripped;
 
-  return stripped.replace(/<img\s+[^>]*src=(["'])modelica:\/\/([^"']+)\1[^>]*>/gi, (match, _quote, uriPath) => {
-    const uri = `modelica://${uriPath}`;
-    const resolvedPath = context.resolveURI(uri);
-    if (resolvedPath) {
-      try {
-        const binary = context.fs.readBinary(resolvedPath);
-        const chunks: string[] = [];
-        const chunkSize = 8192;
-        for (let i = 0; i < binary.length; i += chunkSize) {
-          chunks.push(String.fromCharCode(...binary.subarray(i, i + chunkSize)));
-        }
-        const base64 = btoa(chunks.join(""));
-        const ext = context.fs.extname(resolvedPath).toLowerCase().substring(1);
-        const mimeType = ext === "svg" ? "image/svg+xml" : `image/${ext}`;
-        return match.replace(`modelica://${uriPath}`, `data:${mimeType};base64,${base64}`);
-      } catch (e) {
-        console.warn(`Failed to read image ${uri}:`, e);
+  const lower = stripped.toLowerCase();
+  let out = "";
+  let pos = 0;
+
+  while (pos < stripped.length) {
+    const imgStart = lower.indexOf("<img", pos);
+    if (imgStart < 0) {
+      out += stripped.slice(pos);
+      break;
+    }
+    if (imgStart + 4 >= stripped.length || !isAsciiWhitespaceCode(stripped.charCodeAt(imgStart + 4))) {
+      out += stripped.slice(pos, imgStart + 4);
+      pos = imgStart + 4;
+      continue;
+    }
+    // Find tag closing '>' outside quotes
+    let quoteChar: string | null = null;
+    let tagEnd = -1;
+    for (let k = imgStart + 4; k < stripped.length; k++) {
+      const ch = stripped[k]!;
+      if (quoteChar) {
+        if (ch === quoteChar) quoteChar = null;
+      } else if (ch === '"' || ch === "'") {
+        quoteChar = ch;
+      } else if (ch === ">") {
+        tagEnd = k;
+        break;
       }
     }
-    return match.replace(/src=(["'])modelica:\/\/[^"']+\1/, 'style="display:none"');
-  });
+    if (tagEnd < 0) {
+      out += stripped.slice(pos);
+      break;
+    }
+
+    const tag = stripped.slice(imgStart, tagEnd + 1);
+    const tagLower = tag.toLowerCase();
+    let srcAttrStart = -1;
+    let srcValStart = -1;
+    let srcValEnd = -1;
+    let srcScan = 4;
+    while (srcScan < tagLower.length) {
+      const sIdx = tagLower.indexOf("src=", srcScan);
+      if (sIdx < 0) break;
+      const beforeWs = isAsciiWhitespaceCode(tagLower.charCodeAt(sIdx - 1));
+      const q = tag[sIdx + 4];
+      if (beforeWs && (q === '"' || q === "'")) {
+        const closeQ = tag.indexOf(q, sIdx + 5);
+        if (closeQ > sIdx + 5 && tag.startsWith("modelica://", sIdx + 5)) {
+          srcAttrStart = sIdx;
+          srcValStart = sIdx + 5;
+          srcValEnd = closeQ;
+          break;
+        }
+      }
+      srcScan = sIdx + 4;
+    }
+
+    out += stripped.slice(pos, imgStart);
+    if (srcAttrStart < 0) {
+      out += tag;
+    } else {
+      const fullUri = tag.slice(srcValStart, srcValEnd);
+      const resolvedPath = context.resolveURI(fullUri);
+      let replacement: string | null = null;
+      if (resolvedPath) {
+        try {
+          const binary = context.fs.readBinary(resolvedPath);
+          const chunks: string[] = [];
+          const chunkSize = 8192;
+          for (let i = 0; i < binary.length; i += chunkSize) {
+            chunks.push(String.fromCharCode(...binary.subarray(i, i + chunkSize)));
+          }
+          const base64 = btoa(chunks.join(""));
+          const ext = context.fs.extname(resolvedPath).toLowerCase().substring(1);
+          const mimeType = ext === "svg" ? "image/svg+xml" : `image/${ext}`;
+          replacement = tag.slice(0, srcValStart) + `data:${mimeType};base64,${base64}` + tag.slice(srcValEnd);
+        } catch (e) {
+          console.warn(`Failed to read image ${fullUri}:`, e);
+        }
+      }
+      if (replacement !== null) {
+        out += replacement;
+      } else {
+        out += tag.slice(0, srcAttrStart) + 'style="display:none"' + tag.slice(srcValEnd + 1);
+      }
+    }
+    pos = tagEnd + 1;
+  }
+
+  return out;
 }
 
 function extractFirstQuotedString(text?: string): string | undefined {
@@ -3129,7 +3499,7 @@ export function buildComponentProperties(
       if (!variability) {
         const text = node?.parent?.text || node?.text || "";
         const cleanText = stripCommentsAndStrings(text);
-        if (/\bparameter\b/.test(cleanText)) {
+        if (containsWholeWordOutsideStrings(cleanText, "parameter")) {
           variability = ModelicaVariability.PARAMETER;
         }
       }
@@ -3150,11 +3520,9 @@ export function buildComponentProperties(
       }
       if (!value && component["cstNode"]) {
         const compCstText = stripAnnotationsAndComments(component["cstNode"].text ?? "");
-        const escapedName = (element.name ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const argRegex = new RegExp(`\\b${escapedName}\\s*=\\s*([^,()]+(?:\\([^)]*\\)[^,()]*)*)`, "i");
-        const m = compCstText.match(argRegex);
-        if (m && m[1]) {
-          value = m[1].trim();
+        const extracted = extractNamedModAssignmentFallback(compCstText, element.name ?? "", true);
+        if (extracted) {
+          value = extracted;
         }
       }
 
@@ -3182,18 +3550,18 @@ export function buildComponentProperties(
         if (valModNode) {
           const modText = valModNode.text?.trim();
           if (modText?.startsWith("=")) {
-            value = modText.replace(/^=\s*/, "").replace(/;$/, "").trim();
+            value = stripLeadingEqualsAndTrailingSemi(modText);
           }
         }
         if (!value) {
           const elemText = stripAnnotationsAndComments(element.cstNode.text ?? "");
-          const startMatch = elemText.match(/\bstart\s*=\s*([^,()]+)/);
-          if (startMatch && startMatch[1]) {
-            value = startMatch[1].trim();
+          const startExtracted = extractNamedModAssignmentFallback(elemText, "start", false);
+          if (startExtracted) {
+            value = startExtracted;
           } else {
-            const assignMatch = elemText.match(/=\s*([^;"\n]+)/);
-            if (assignMatch && assignMatch[1]) {
-              value = assignMatch[1].trim();
+            const assignVal = readValueAfterEqualsExcluding(elemText, ';"\n');
+            if (assignVal) {
+              value = assignVal;
             }
           }
         }
@@ -3212,7 +3580,8 @@ export function buildComponentProperties(
       // Unit
       let unit: string | undefined = undefined;
       const unitExpr = (element.classInstance?.modification as any)?.getModificationArgument?.("unit")?.expression;
-      const rawUnit = formatPropertyValue(unitExpr)?.replace(/^"|"$/g, "");
+      const rawUnitVal = formatPropertyValue(unitExpr);
+      const rawUnit = rawUnitVal !== undefined ? stripOuterDoubleQuotes(rawUnitVal) : undefined;
       const metaUnit = element.declaration?.metadata?.unit ?? (element as { unit?: unknown }).unit;
       if (rawUnit) {
         unit = formatUnit(rawUnit);
@@ -3443,13 +3812,13 @@ export function buildComponentProperties(
     const groups: PropertyGroupConfig[] = [];
     for (const [groupId, fields] of groupsMap.entries()) {
       groups.push({
-        id: groupId.toLowerCase().replace(/\s+/g, "-"),
+        id: toDashedSlugId(groupId),
         label: groupId,
         fields,
       });
     }
     tabs.push({
-      id: tabId.toLowerCase().replace(/\s+/g, "-"),
+      id: toDashedSlugId(tabId),
       label: tabId,
       groups,
     });

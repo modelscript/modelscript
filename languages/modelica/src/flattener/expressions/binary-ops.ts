@@ -22,6 +22,14 @@ import {
 } from "@modelscript/runtime";
 import { ModelicaErrorCode } from "../../errors.js";
 import { getFlatteningState, setExprArrayShape } from "../support/state.js";
+import {
+  extractComponentNameFromClauseCst,
+  isValidDottedComponentPath,
+  stripLeadingDot,
+  stripOuterSingleQuotes,
+  stripTrailingArraySubscripts,
+  unwrapParenExprCst,
+} from "./cst-utils.js";
 import { castToRealExpr, evalDaeExpr, getExprDims, isRealExpr } from "./eval.js";
 
 export function exprReferencesRuntimeParameter(
@@ -1176,7 +1184,7 @@ export function findOperatorRecordComponentType(
 
   if (flattener?.currentFlatteningFunctionId) {
     const fnComps = db.childrenOf(flattener.currentFlatteningFunctionId).filter((c: any) => c.kind === "Component");
-    const compSym = fnComps.find((c: any) => c.name?.replace(/\[.*\]$/, "") === baseName);
+    const compSym = fnComps.find((c: any) => stripTrailingArraySubscripts(c.name ?? "") === baseName);
     if (compSym) {
       const compInst = db.query<any>("componentInstance", compSym.id);
       const typeSpec =
@@ -1263,9 +1271,7 @@ function unwrapOperatorRecordSym(classSym: any, db: QueryDB, flattener: any): an
     }
     break;
   }
-  const complexSym = db
-    .byName("Complex")
-    .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+  const complexSym = db.byName("Complex").find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
   return complexSym ?? curr;
 }
 
@@ -1330,14 +1336,14 @@ export function resolveOperatorRecord(
     arrayDim?: number | undefined;
     arrayDims?: number[] | undefined;
   } | null => {
-    if (!pathStr || !/^[a-zA-Z_]\w*(?:\s*\[[^\]]*\]|\.[a-zA-Z_]\w*)*$/.test(pathStr)) return null;
+    if (!pathStr || !isValidDottedComponentPath(pathStr)) return null;
     const currentPrefix = getFlatteningState(dae, flattener).currentPrefix ?? flattener?.currentPrefix;
     const hasComplexFields =
       (dae.getVarIdxByName(`${pathStr}.re`) >= 0 && dae.getVarIdxByName(`${pathStr}.im`) >= 0) ||
       Boolean(
         currentPrefix &&
-          dae.getVarIdxByName(`${currentPrefix}.${pathStr}.re`) >= 0 &&
-          dae.getVarIdxByName(`${currentPrefix}.${pathStr}.im`) >= 0,
+        dae.getVarIdxByName(`${currentPrefix}.${pathStr}.re`) >= 0 &&
+        dae.getVarIdxByName(`${currentPrefix}.${pathStr}.im`) >= 0,
       );
     if (hasComplexFields) {
       const complexSym = db
@@ -1399,20 +1405,24 @@ export function resolveOperatorRecord(
   };
 
   if (cstNode) {
-    let nodeText = cstNode.text?.trim() ?? "";
-    while (nodeText.startsWith("(") && nodeText.endsWith(")")) {
-      nodeText = nodeText.slice(1, -1).trim();
-    }
-    const isSubscripted = nodeText.endsWith("]");
-    const res = resolvePath(nodeText);
-    if (res) {
-      return {
-        name: res.name,
-        symId: res.symId,
-        isArray: isSubscripted ? false : res.isArray,
-        arrayDim: res.arrayDim,
-        arrayDims: isSubscripted ? undefined : res.arrayDims,
-      };
+    const unwrapped = unwrapParenExprCst(cstNode);
+    const nodeType = unwrapped?.type;
+    if (
+      unwrapped &&
+      (!nodeType || nodeType === "component_reference" || nodeType === "identifier" || nodeType === "name")
+    ) {
+      const nodeText = unwrapped.text?.trim() ?? "";
+      const isSubscripted = nodeText.endsWith("]");
+      const res = resolvePath(nodeText);
+      if (res) {
+        return {
+          name: res.name,
+          symId: res.symId,
+          isArray: isSubscripted ? false : res.isArray,
+          arrayDim: res.arrayDim,
+          arrayDims: isSubscripted ? undefined : res.arrayDims,
+        };
+      }
     }
   }
 
@@ -1540,7 +1550,7 @@ export function dispatchBinaryOperator(
 
   const recSym = (leftRec ?? rightRec)!;
   const ops = db.query<Map<string, any[]> | null>("operatorFunctions", recSym.symId);
-  const cleanOp = opName.replace(/^'|'$/g, "");
+  const cleanOp = stripOuterSingleQuotes(opName);
   const rawCandidates: any[] = ops ? [...(ops.get(opName) ?? []), ...(ops.get(cleanOp) ?? [])] : [];
   if (rightRec && rightRec.symId !== leftRec?.symId) {
     const rOps = db.query<Map<string, any[]> | null>("operatorFunctions", rightRec.symId);
@@ -1570,7 +1580,7 @@ export function dispatchBinaryOperator(
     }
     if (rec) {
       if (rec.isArray) return { matched: false, argId };
-      const cleanTypeSpec = param.typeSpec?.replace(/^\./, "");
+      const cleanTypeSpec = param.typeSpec ? stripLeadingDot(param.typeSpec) : undefined;
       if (cleanTypeSpec === rec.name || cleanTypeSpec?.split(".").pop() === rec.name) {
         return { matched: true, argId };
       }
@@ -1585,7 +1595,7 @@ export function dispatchBinaryOperator(
       return { matched: true, argId: finalArg };
     }
     // Try implicit constructor coercion to target operator record
-    const cleanTargetSpec = param.typeSpec?.replace(/^\./, "") ?? "";
+    const cleanTargetSpec = param.typeSpec ? stripLeadingDot(param.typeSpec) : "";
     const targetSym = db
       .byName(cleanTargetSpec)
       .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
@@ -1623,10 +1633,10 @@ export function dispatchBinaryOperator(
       const p0 = m.overload.inputParams[0];
       const p1 = m.overload.inputParams[1];
       const lDirect = leftRec
-        ? p0.typeSpec?.replace(/^\./, "") === leftRec.name
+        ? (p0.typeSpec ? stripLeadingDot(p0.typeSpec) : undefined) === leftRec.name
         : p0.typeSpec === "Real" || p0.typeSpec === "Integer";
       const rDirect = rightRec
-        ? p1.typeSpec?.replace(/^\./, "") === rightRec.name
+        ? (p1.typeSpec ? stripLeadingDot(p1.typeSpec) : undefined) === rightRec.name
         : p1.typeSpec === "Real" || p1.typeSpec === "Integer";
       return lDirect && rDirect;
     });
@@ -1738,9 +1748,8 @@ export function dispatchBinaryOperator(
             compClauseNode = compClauseNode.parent;
           }
           let compName = flattener?.currentBindingCompName;
-          if (!compName && compClauseNode?.text) {
-            const m = /^\s*(?:[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*\s+)+([a-zA-Z_]\w*)/.exec(compClauseNode.text);
-            if (m?.[1]) compName = m[1];
+          if (!compName && compClauseNode) {
+            compName = extractComponentNameFromClauseCst(compClauseNode);
           }
           if (compClauseNode && compName) {
             const printer = new ArenaDAEPrinter(new StringWriter(), dae, true);
@@ -1852,7 +1861,7 @@ export function dispatchUnaryOperator(
   const ops = db.query<Map<string, any[]> | null>("operatorFunctions", rec.symId);
   if (!ops) return null;
 
-  const cleanOp = opName.replace(/^'|'$/g, "");
+  const cleanOp = stripOuterSingleQuotes(opName);
   const rawCandidates: any[] = [...(ops.get(opName) ?? []), ...(ops.get(cleanOp) ?? [])];
   const seenCandidates = new Set<string>();
   const candidates: any[] = [];

@@ -22,9 +22,16 @@ description: "Implementation: PantelidesEngine in packages/runtime/src/wasm/stru
 
 ## ModelScript Architectural Rationale
 
-Object-oriented multi-domain physical models (such as constrained multi-body mechanics, closed kinematic linkages, and incompressible hydraulic loops) inherently generate high-index Differential-Algebraic Equations (DAEs) where the differential index satisfies $\text{ind} \ge 2$:
+Object-oriented multi-domain physical models (such as constrained multi-body mechanics, closed kinematic linkages, and incompressible hydraulic loops) inherently generate high-index Differential-Algebraic Equations (DAEs) in implicit residual form where the differential index satisfies $\text{ind} \ge 2$:
 
 $$F(t, x, \dot{x}, y) = 0$$
+
+| Symbol       | Meaning                                                       | Units / Domain                                   |
+| :----------- | :------------------------------------------------------------ | :----------------------------------------------- |
+| $t$          | Independent simulation time                                   | $\text{s}$                                       |
+| $x, \dot{x}$ | Differential state vector and its time derivative $dx/dt$     | $\mathbb{R}^{n_x}, \; \mathbb{R}^{n_x}/\text{s}$ |
+| $y$          | Algebraic variable vector (no time derivative appears in $F$) | $\mathbb{R}^{n_y}$                               |
+| $F(\cdot)$   | Implicit DAE residual vector                                  | $\mathbb{R}^{n_x + n_y}$                         |
 
 Standard numerical integrators (including BDF, Radau, and Runge-Kutta methods) become severely ill-conditioned or fail to converge on systems with differential index greater than 1.
 

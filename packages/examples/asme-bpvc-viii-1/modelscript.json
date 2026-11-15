@@ -1,0 +1,16 @@
+{
+  "name": "@modelscript/example-asme-bpvc-viii-1",
+  "version": "1.0.0",
+  "title": "ASME BPVC Section VIII Div 1 Pressure Vessel Compliance",
+  "description": "End-to-end standard-pack compliance example linking SysML v2 code clauses (UG-27, UG-32, UG-99, UG-125), synthetic stress lookup tables, Modelica separator sizing, and formal DAE verification.",
+  "license": "AGPL-3.0-or-later",
+  "standards": ["ASME-BPVC-VIII-1"],
+  "workspace": {
+    "standardPack": "pack/package.json",
+    "sysml": "pack/src/asme_viii_1.sysml",
+    "modelica": "src/VesselSeparator.mo"
+  },
+  "theoryCoordinator": {
+    "oracles": ["PressureVesselOracle", "CaeContractOracle"]
+  }
+}

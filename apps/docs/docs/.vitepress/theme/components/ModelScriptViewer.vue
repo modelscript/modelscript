@@ -145,7 +145,7 @@ watch(isDark, (dark) => {
 }
 
 .embed-title {
-  font-weight: 650;
+  font-weight: var(--ms-fw-semibold);
   color: var(--vp-c-text-1);
   white-space: nowrap;
   overflow: hidden;

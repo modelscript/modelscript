@@ -13,6 +13,7 @@ import { getModelicaErrorCodeDef } from "@modelscript/modelica";
 import {
   type CorrespondenceDiagnostic,
   cstLineText,
+  ExprKind,
   extractCrossLanguageLinks,
   groupAllCstTokensByLine,
   isTypeLikeSymbol,
@@ -34,8 +35,23 @@ import { parseStepReferences, STEP_SCHEMA } from "@modelscript/step";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { ThreadDiagnosticsProvider } from "../providers/threadDiagnosticsProvider.js";
 import { getArenaParameterInfo } from "../utils/arena-utils.js";
-import { computeTreeEdit } from "../utils/ast-utils.js";
+import {
+  computeTreeEdit,
+  type CstNodeLike,
+  type CstTreeLike,
+  isLargeXmlForWasm,
+  isWasmTreeActiveInFacade,
+  parseXmlFallbackTree,
+  type XmlFallbackTree,
+} from "../utils/ast-utils.js";
 import { LspWorkDoneProgressReporter } from "../utils/progress-reporter.js";
+import {
+  computeRequirementsFingerprint,
+  filterRequirementsForModel,
+  resolveActiveComplianceProfiles,
+  type SysmlDocSource,
+  type TaggedSysmlRequirement,
+} from "./compliance-profile-service.js";
 import { ReasonerService } from "./reasoner-service.js";
 
 import { globalLanguageRegistry, type LanguagePlugin } from "../registry/LanguageRegistry.js";
@@ -78,6 +94,640 @@ interface PolyglotTreeLike {
   rootNode?: SyntaxNode | null | undefined;
 }
 
+function isWsChar(ch: string): boolean {
+  return ch === " " || ch === "\t" || ch === "\r" || ch === "\n" || ch === "\f" || ch === "\v";
+}
+
+function findFirstNonWsIndex(line: string): number {
+  for (let i = 0; i < line.length; i++) {
+    if (!isWsChar(line[i]!)) return i;
+  }
+  return -1;
+}
+
+function isAsciiLetter(ch: string): boolean {
+  const c = ch.charCodeAt(0);
+  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+}
+
+function isIdentStartChar(ch: string): boolean {
+  return isAsciiLetter(ch) || ch === "_";
+}
+
+function isWordTokenChar(ch: string): boolean {
+  if (!ch) return false;
+  const c = ch.charCodeAt(0);
+  return isIdentStartChar(ch) || (c >= 48 && c <= 57);
+}
+
+function isSimpleAsciiIdent(s: string): boolean {
+  if (!s || !isIdentStartChar(s[0]!)) return false;
+  for (let i = 1; i < s.length; i++) {
+    if (!isWordTokenChar(s[i]!)) return false;
+  }
+  return true;
+}
+
+function isChainTokenChar(ch: string): boolean {
+  return isWordTokenChar(ch) || ch === "." || ch === ":";
+}
+
+function isDigitsOnly(s: string): boolean {
+  if (!s) return false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 48 || c > 57) return false;
+  }
+  return true;
+}
+
+function extractDigitsOnly(s: string): string {
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c >= 48 && c <= 57) out += s[i]!;
+  }
+  return out;
+}
+
+function parseFiniteDecimalLiteral(s: string): number | null {
+  const t = s.trim();
+  if (!t) return null;
+  let i = 0;
+  if (t[i] === "-" || t[i] === "+") i++;
+  let digitsBefore = 0;
+  while (i < t.length && t.charCodeAt(i) >= 48 && t.charCodeAt(i) <= 57) {
+    digitsBefore++;
+    i++;
+  }
+  if (i < t.length && t[i] === ".") {
+    i++;
+    let digitsAfter = 0;
+    while (i < t.length && t.charCodeAt(i) >= 48 && t.charCodeAt(i) <= 57) {
+      digitsAfter++;
+      i++;
+    }
+    if (digitsBefore === 0 && digitsAfter === 0) return null;
+  } else if (digitsBefore === 0) {
+    return null;
+  }
+  if (i !== t.length) return null;
+  const num = Number(t);
+  return Number.isFinite(num) ? num : null;
+}
+
+function readFloatTokenLength(text: string, start: number): number {
+  let i = start;
+  if (i < text.length && (text[i] === "+" || text[i] === "-")) i++;
+  let digits = 0;
+  while (i < text.length && text.charCodeAt(i) >= 48 && text.charCodeAt(i) <= 57) {
+    digits++;
+    i++;
+  }
+  if (i < text.length && text[i] === ".") {
+    i++;
+    while (i < text.length && text.charCodeAt(i) >= 48 && text.charCodeAt(i) <= 57) {
+      digits++;
+      i++;
+    }
+  }
+  if (digits === 0) return 0;
+  if (i < text.length && (text[i] === "e" || text[i] === "E")) {
+    let ePos = i + 1;
+    if (ePos < text.length && (text[ePos] === "+" || text[ePos] === "-")) ePos++;
+    let expDigits = 0;
+    while (ePos < text.length && text.charCodeAt(ePos) >= 48 && text.charCodeAt(ePos) <= 57) {
+      expDigits++;
+      ePos++;
+    }
+    if (expDigits > 0) i = ePos;
+  }
+  return i - start;
+}
+
+function splitLinesPreserve(text: string): string[] {
+  const lines: string[] = [];
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code === 10) {
+      const end = i > start && text.charCodeAt(i - 1) === 13 ? i - 1 : i;
+      lines.push(text.slice(start, end));
+      start = i + 1;
+    }
+  }
+  lines.push(text.slice(start));
+  return lines;
+}
+
+function stripFileExtension(fileName: string): string {
+  const dot = fileName.lastIndexOf(".");
+  return dot > 0 ? fileName.slice(0, dot) : fileName;
+}
+
+function extractFirstUpperWord(line: string): string {
+  let i = 0;
+  while (i < line.length && isWsChar(line[i]!)) i++;
+  const start = i;
+  while (i < line.length && isWordTokenChar(line[i]!)) i++;
+  return line.slice(start, i).toUpperCase();
+}
+
+function findNextWordMatchIndex(text: string, word: string, fromIndex = 0): number {
+  if (!word) return -1;
+  const checkStart = isWordTokenChar(word[0]!);
+  const checkEnd = isWordTokenChar(word[word.length - 1]!);
+  let idx = text.indexOf(word, fromIndex);
+  while (idx !== -1) {
+    const beforeOk = !checkStart || idx === 0 || !isWordTokenChar(text[idx - 1]!);
+    const afterPos = idx + word.length;
+    const afterOk = !checkEnd || afterPos === text.length || !isWordTokenChar(text[afterPos]!);
+    if (beforeOk && afterOk) return idx;
+    idx = text.indexOf(word, idx + 1);
+  }
+  return -1;
+}
+
+function hasWordMatch(text: string, word: string): boolean {
+  return findNextWordMatchIndex(text, word, 0) !== -1;
+}
+
+function hasConnectCallPrefix(stmtPrefix: string): boolean {
+  let pos = 0;
+  while (pos < stmtPrefix.length) {
+    const idx = findNextWordMatchIndex(stmtPrefix, "connect", pos);
+    if (idx === -1) return false;
+    let p = idx + "connect".length;
+    while (p < stmtPrefix.length && isWsChar(stmtPrefix[p]!)) p++;
+    if (stmtPrefix[p] === "(") return true;
+    pos = idx + "connect".length;
+  }
+  return false;
+}
+
+function collectCstNodesByTypes(root: SyntaxNode | null | undefined, types: string[]): SyntaxNode[] {
+  const out: SyntaxNode[] = [];
+  if (!root) return out;
+  const typeSet = new Set(types);
+  const visit = (n: SyntaxNode) => {
+    if (typeSet.has(n.type)) out.push(n);
+    for (const ch of n.children || []) visit(ch);
+  };
+  visit(root);
+  return out;
+}
+
+function stripLeadingKeywordPrefixes(text: string, phrases: string[]): string {
+  const trimmed = text.trimStart();
+  for (const phrase of phrases) {
+    const words = phrase.split(" ").filter(Boolean);
+    let p = 0;
+    let matched = true;
+    for (let wIdx = 0; wIdx < words.length; wIdx++) {
+      const w = words[wIdx]!;
+      while (p < trimmed.length && isWsChar(trimmed[p]!)) p++;
+      if (!trimmed.startsWith(w, p)) {
+        matched = false;
+        break;
+      }
+      p += w.length;
+      if (p >= trimmed.length || !isWsChar(trimmed[p]!)) {
+        matched = false;
+        break;
+      }
+      while (p < trimmed.length && isWsChar(trimmed[p]!)) p++;
+    }
+    if (matched) return trimmed.slice(p);
+  }
+  return text;
+}
+
+function unwrapDerName(name: string): string {
+  return name.startsWith("der(") && name.endsWith(")") ? name.slice(4, -1) : name;
+}
+
+function extractLeadingNumericAfterEquals(text: string): number | null {
+  const eq = text.indexOf("=");
+  if (eq === -1) return null;
+  let p = eq + 1;
+  while (p < text.length && isWsChar(text[p]!)) p++;
+  const start = p;
+  let sawDigit = false;
+  while (p < text.length) {
+    const c = text.charCodeAt(p);
+    if (c >= 48 && c <= 57) {
+      sawDigit = true;
+      p++;
+    } else if (text[p] === ".") {
+      p++;
+    } else {
+      break;
+    }
+  }
+  if (!sawDigit) return null;
+  const num = parseFloat(text.slice(start, p));
+  return Number.isFinite(num) ? num : null;
+}
+
+function extractParameterRealLine(line: string, targetName: string): { value: number; nameCol: number } | null {
+  let p = 0;
+  const skipWs = () => {
+    while (p < line.length && isWsChar(line[p]!)) p++;
+  };
+  const expectWord = (w: string): number | null => {
+    skipWs();
+    if (!line.startsWith(w, p)) return null;
+    const end = p + w.length;
+    if (end < line.length && isWordTokenChar(line[end]!)) return null;
+    const start = p;
+    p = end;
+    return start;
+  };
+  if (expectWord("parameter") === null) return null;
+  if (expectWord("Real") === null) return null;
+  const nameCol = expectWord(targetName);
+  if (nameCol === null) return null;
+  skipWs();
+  if (line[p] !== "=") return null;
+  p++;
+  skipWs();
+  const start = p;
+  let sawDigit = false;
+  while (p < line.length) {
+    const c = line.charCodeAt(p);
+    if (c >= 48 && c <= 57) {
+      sawDigit = true;
+      p++;
+    } else if (line[p] === ".") {
+      p++;
+    } else {
+      break;
+    }
+  }
+  if (!sawDigit) return null;
+  const value = parseFloat(line.slice(start, p));
+  return Number.isFinite(value) ? { value, nameCol } : null;
+}
+
+function extractScadTagPortFromText(text: string): { portName: string; portType: string } | null {
+  const idx = findNextWordMatchIndex(text, "tag_port");
+  if (idx === -1) return null;
+  let p = idx + "tag_port".length;
+  while (p < text.length && isWsChar(text[p]!)) p++;
+  if (text[p] !== "(") return null;
+  p++;
+  const readQuoted = (): string | null => {
+    while (p < text.length && isWsChar(text[p]!)) p++;
+    if (text[p] !== '"') return null;
+    p++;
+    const start = p;
+    while (p < text.length && text[p] !== '"') {
+      if (text[p] === "\\" && p + 1 < text.length) p += 2;
+      else p++;
+    }
+    if (p >= text.length) return null;
+    const out = text.slice(start, p);
+    p++;
+    return out;
+  };
+  const portName = readQuoted();
+  if (!portName) return null;
+  while (p < text.length && isWsChar(text[p]!)) p++;
+  if (text[p] !== ",") return null;
+  p++;
+  const portType = readQuoted();
+  if (!portType) return null;
+  return { portName, portType };
+}
+
+function parseScadNumericAssignmentLine(rawLine: string): { paramName: string; value: number } | null {
+  let p = 0;
+  while (p < rawLine.length && isWsChar(rawLine[p]!)) p++;
+  if (p >= rawLine.length || !isIdentStartChar(rawLine[p]!)) return null;
+  const nameStart = p;
+  p++;
+  while (p < rawLine.length && isWordTokenChar(rawLine[p]!)) p++;
+  const paramName = rawLine.slice(nameStart, p);
+  while (p < rawLine.length && isWsChar(rawLine[p]!)) p++;
+  if (rawLine[p] !== "=") return null;
+  p++;
+  while (p < rawLine.length && isWsChar(rawLine[p]!)) p++;
+  const len = readFloatTokenLength(rawLine, p);
+  if (len === 0) return null;
+  const value = parseFloat(rawLine.slice(p, p + len));
+  return Number.isFinite(value) ? { paramName, value } : null;
+}
+
+function parseScadBoundsComment(rawLine: string): { minVal: number; maxVal: number } | null {
+  const semiIdx = rawLine.indexOf(";");
+  const commentIdx = rawLine.indexOf("//", semiIdx >= 0 ? semiIdx : 0);
+  if (semiIdx === -1 || commentIdx === -1) return null;
+  let p = commentIdx + 2;
+  while (p < rawLine.length && isWsChar(rawLine[p]!)) p++;
+  if (
+    !rawLine
+      .slice(p, p + 7)
+      .toLowerCase()
+      .startsWith("@bounds")
+  )
+    return null;
+  p += 7;
+  while (p < rawLine.length && isWsChar(rawLine[p]!)) p++;
+  if (rawLine[p] !== ":") return null;
+  p++;
+  while (p < rawLine.length && isWsChar(rawLine[p]!)) p++;
+  if (rawLine[p] !== "[") return null;
+  p++;
+  while (p < rawLine.length && isWsChar(rawLine[p]!)) p++;
+  const len1 = readFloatTokenLength(rawLine, p);
+  if (len1 === 0) return null;
+  const minVal = parseFloat(rawLine.slice(p, p + len1));
+  p += len1;
+  while (p < rawLine.length && isWsChar(rawLine[p]!)) p++;
+  if (rawLine[p] !== ",") return null;
+  p++;
+  while (p < rawLine.length && isWsChar(rawLine[p]!)) p++;
+  const len2 = readFloatTokenLength(rawLine, p);
+  if (len2 === 0) return null;
+  const maxVal = parseFloat(rawLine.slice(p, p + len2));
+  p += len2;
+  while (p < rawLine.length && isWsChar(rawLine[p]!)) p++;
+  if (rawLine[p] !== "]") return null;
+  return Number.isFinite(minVal) && Number.isFinite(maxVal) ? { minVal, maxVal } : null;
+}
+
+function isDirectiveAssignmentLine(line: string, targetKey: string): boolean {
+  let p = 0;
+  while (p < line.length && isWsChar(line[p]!)) p++;
+  const endKey = p + targetKey.length;
+  if (endKey > line.length || line.slice(p, endKey).toUpperCase() !== targetKey.toUpperCase()) {
+    return false;
+  }
+  p = endKey;
+  while (p < line.length && isWsChar(line[p]!)) p++;
+  return line[p] === "=";
+}
+
+const isXmlTagIdentChar = (ch: string) => isWordTokenChar(ch) || ch === ":" || ch === "-";
+const isGeneralTokenChar = (ch: string) => isChainTokenChar(ch) || ch === "-";
+
+function measureSyntaxTokenLength(lineText: string, startCol: number): number {
+  if (startCol >= lineText.length) return 0;
+  const ch = lineText[startCol]!;
+  if (ch === "<") {
+    let p = startCol + 1;
+    if (lineText[p] === "/") p++;
+    const tagStart = p;
+    while (p < lineText.length && isXmlTagIdentChar(lineText[p]!)) p++;
+    if (p > tagStart) return p - startCol;
+  }
+  if (ch === "[") {
+    const close = lineText.indexOf("]", startCol + 1);
+    if (close !== -1) return close - startCol + 1;
+  }
+  if (ch === "$") {
+    let p = startCol + 1;
+    while (p < lineText.length && isWordTokenChar(lineText[p]!)) p++;
+    if (p > startCol + 1) return p - startCol;
+  }
+  let p = startCol;
+  while (p < lineText.length && isGeneralTokenChar(lineText[p]!)) p++;
+  return p - startCol;
+}
+
+function measureTokenLengthAt(text: string, startOffset: number): number {
+  if (startOffset >= text.length) return 0;
+  let p = startOffset;
+  if (isIdentStartChar(text[p]!)) {
+    p++;
+    while (p < text.length && (isWordTokenChar(text[p]!) || text[p] === ".")) p++;
+    return p - startOffset;
+  }
+  while (p < text.length && !isWsChar(text[p]!) && text[p] !== ";") p++;
+  return Math.max(1, p - startOffset);
+}
+
+const FEA_BDF_LEAD_KEYWORDS = new Set(["GRID", "MAT1", "CTETRA", "CHEXA", "PSOLID"]);
+const MODELICA_PRIMITIVE_TYPES = new Set(["Real", "Integer", "Boolean", "String"]);
+const MODELICA_VAR_QUALIFIERS = new Set(["parameter", "discrete", "constant"]);
+const MODELICA_CLASS_BLOCK_KW = new Set(["function", "block", "model", "class"]);
+
+function stripModelicaTrivia(text: string): string {
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i]!;
+    if (ch === "/" && text[i + 1] === "/") {
+      out += " ";
+      i += 2;
+      while (i < text.length && text[i] !== "\n") i++;
+    } else if (ch === "/" && text[i + 1] === "*") {
+      out += " ";
+      i += 2;
+      while (i + 1 < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++;
+      i += 2;
+    } else if (ch === '"') {
+      out += " ";
+      i++;
+      while (i < text.length && text[i] !== '"') {
+        if (text[i] === "\\" && i + 1 < text.length) i += 2;
+        else i++;
+      }
+      i++;
+    } else {
+      out += ch;
+      i++;
+    }
+  }
+  return out;
+}
+
+function tokenizeWordsAndPunct(text: string): Array<{ text: string; start: number; end: number }> {
+  const tokens: Array<{ text: string; start: number; end: number }> = [];
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i]!;
+    if (isWsChar(ch)) {
+      i++;
+      continue;
+    }
+    if (isWordTokenChar(ch)) {
+      const start = i;
+      i++;
+      while (i < text.length && isWordTokenChar(text[i]!)) i++;
+      tokens.push({ text: text.slice(start, i), start, end: i });
+    } else {
+      tokens.push({ text: ch, start: i, end: i + 1 });
+      i++;
+    }
+  }
+  return tokens;
+}
+
+function countModelicaInputPrimitives(text: string): number {
+  const clean = stripModelicaTrivia(text);
+  const tokens = tokenizeWordsAndPunct(clean);
+  let count = 0;
+  for (let i = 0; i + 1 < tokens.length; i++) {
+    if (tokens[i]!.text === "input" && MODELICA_PRIMITIVE_TYPES.has(tokens[i + 1]!.text)) {
+      count++;
+    }
+  }
+  return count;
+}
+
+function parseEquationsForVariablesCounts(msg: string): { eqCount: number; varCount: number } | null {
+  const tokens = tokenizeWordsAndPunct(msg);
+  for (let i = 0; i + 4 < tokens.length; i++) {
+    const tEq = tokens[i]!;
+    if (
+      isDigitsOnly(tEq.text) &&
+      tokens[i + 1]!.text === "equations" &&
+      tokens[i + 2]!.text === "for" &&
+      isDigitsOnly(tokens[i + 3]!.text) &&
+      tokens[i + 4]!.text === "variables"
+    ) {
+      return { eqCount: Number(tEq.text), varCount: Number(tokens[i + 3]!.text) };
+    }
+  }
+  return null;
+}
+
+function extractModelicaAlgorithmBlocksFromSource(
+  text: string,
+): Array<{ name: string; body: string; algText: string; algOffset: number }> {
+  const blocks: Array<{ name: string; body: string; algText: string; algOffset: number }> = [];
+  const tokens = tokenizeWordsAndPunct(text);
+  let tIdx = 0;
+  while (tIdx + 1 < tokens.length) {
+    const kwTok = tokens[tIdx]!;
+    const prevTok = tIdx > 0 ? tokens[tIdx - 1]!.text : "";
+    if (!MODELICA_CLASS_BLOCK_KW.has(kwTok.text) || prevTok === "end") {
+      tIdx++;
+      continue;
+    }
+    const nameTok = tokens[tIdx + 1]!;
+    if (!isSimpleAsciiIdent(nameTok.text)) {
+      tIdx++;
+      continue;
+    }
+    let endIdx = -1;
+    for (let j = tIdx + 2; j + 2 < tokens.length; j++) {
+      if (tokens[j]!.text === "end" && tokens[j + 1]!.text === nameTok.text && tokens[j + 2]!.text === ";") {
+        endIdx = j;
+        break;
+      }
+    }
+    if (endIdx === -1) {
+      tIdx++;
+      continue;
+    }
+    const bodyStart = nameTok.end;
+    const bodyEnd = tokens[endIdx]!.start;
+    const body = text.slice(bodyStart, bodyEnd);
+    let algTokIdx = -1;
+    for (let j = tIdx + 2; j < endIdx; j++) {
+      if (tokens[j]!.text === "algorithm") {
+        algTokIdx = j;
+        break;
+      }
+    }
+    if (algTokIdx !== -1) {
+      const hasInitial = algTokIdx > tIdx + 2 && tokens[algTokIdx - 1]!.text === "initial";
+      const algOffset = hasInitial ? tokens[algTokIdx - 1]!.start : tokens[algTokIdx]!.start;
+      blocks.push({
+        name: nameTok.text,
+        body,
+        algText: text.slice(algOffset, bodyEnd),
+        algOffset,
+      });
+    }
+    tIdx = endIdx + 3;
+  }
+  return blocks;
+}
+
+function parseVarDeclaratorItem(rawItem: string): {
+  name: string;
+  dimStr?: string | undefined;
+  initExpr?: string | undefined;
+} | null {
+  let s = rawItem.trim();
+  if (!s) return null;
+  let leadingDim: string | undefined;
+  if (s.startsWith("[")) {
+    const close = s.indexOf("]");
+    if (close === -1) return null;
+    leadingDim = s.slice(1, close);
+    s = s.slice(close + 1).trimStart();
+  }
+  let p = 0;
+  if (!s || !isIdentStartChar(s[0]!)) return null;
+  p++;
+  while (p < s.length && isWordTokenChar(s[p]!)) p++;
+  const name = s.slice(0, p);
+  s = s.slice(p).trimStart();
+  let trailingDim: string | undefined;
+  if (s.startsWith("[")) {
+    const close = s.indexOf("]");
+    if (close === -1) return null;
+    trailingDim = s.slice(1, close);
+    s = s.slice(close + 1).trimStart();
+  }
+  let initExpr: string | undefined;
+  if (s.startsWith("=")) {
+    initExpr = s.slice(1).trim();
+  } else if (s.length > 0) {
+    return null;
+  }
+  return { name, dimStr: leadingDim ?? trailingDim, initExpr };
+}
+
+function extractModelicaVarDeclsFromBody(body: string): any[] {
+  const variables: any[] = [];
+  for (const stmt of body.split(";")) {
+    const tokens = tokenizeWordsAndPunct(stmt);
+    if (tokens.length < 2) continue;
+    let idx = 0;
+    let io: "input" | "output" | undefined;
+    if (tokens[idx]!.text === "input" || tokens[idx]!.text === "output") {
+      io = tokens[idx]!.text as "input" | "output";
+      idx++;
+    }
+    while (idx < tokens.length && MODELICA_VAR_QUALIFIERS.has(tokens[idx]!.text)) idx++;
+    if (idx + 1 >= tokens.length || !MODELICA_PRIMITIVE_TYPES.has(tokens[idx]!.text)) continue;
+    const type = tokens[idx]!.text;
+    const declList = stmt.slice(tokens[idx]!.end);
+    for (const rawItem of declList.split(",")) {
+      const parsed = parseVarDeclaratorItem(rawItem);
+      if (!parsed) continue;
+      const isArray = Boolean(parsed.dimStr);
+      const dimTrimmed = parsed.dimStr?.trim();
+      const arrayDimension = dimTrimmed && isDigitsOnly(dimTrimmed) ? Number(dimTrimmed) : undefined;
+      const numBound = parsed.initExpr ? parseFiniteDecimalLiteral(parsed.initExpr) : null;
+      variables.push({
+        name: parsed.name,
+        type,
+        isInput: io === "input",
+        isOutput: io === "output",
+        isArray,
+        arrayDimension,
+        initialBound: numBound !== null ? ([numBound, numBound] as [number, number]) : undefined,
+      });
+    }
+  }
+  return variables;
+}
+
+function normalizeRuleToken(s: string): string {
+  return s.toLowerCase().replaceAll("-", "").replaceAll("_", "");
+}
+
+function parseMPrefixedCodeNumber(raw: string): number | null {
+  const digits = raw.startsWith("M") || raw.startsWith("m") ? raw.slice(1) : raw;
+  return isDigitsOnly(digits) ? Number(digits) : null;
+}
+
 /**
  * Canonical error code information extracted from diagnostic code or lint name.
  */
@@ -91,25 +741,24 @@ export function extractCanonicalErrorInfo(
 
   if (typeof code === "number") {
     const def = plugin?.languageDef?.errorCodes?.[code] ?? getModelicaErrorCodeDef(code);
-    const rule = def?.rule ? def.rule.toLowerCase().replace(/[-_]/g, "") : undefined;
+    const rule = def?.rule ? normalizeRuleToken(def.rule) : undefined;
     return { codeNum: code, ruleName: rule, raw };
   }
 
-  const numMatch = /^M?(\d+)$/i.exec(raw);
-  if (numMatch) {
-    const num = Number(numMatch[1]);
+  const num = parseMPrefixedCodeNumber(raw);
+  if (num !== null) {
     const def = plugin?.languageDef?.errorCodes?.[num] ?? getModelicaErrorCodeDef(num);
-    const rule = def?.rule ? def.rule.toLowerCase().replace(/[-_]/g, "") : undefined;
+    const rule = def?.rule ? normalizeRuleToken(def.rule) : undefined;
     return { codeNum: num, ruleName: rule, raw };
   }
 
   // Rule name string
-  const normalizedRule = raw.toLowerCase().replace(/[-_]/g, "");
+  const normalizedRule = normalizeRuleToken(raw);
   const def = getModelicaErrorCodeDef(raw);
   if (def) {
     return {
       codeNum: def.code,
-      ruleName: def.rule ? def.rule.toLowerCase().replace(/[-_]/g, "") : normalizedRule,
+      ruleName: def.rule ? normalizeRuleToken(def.rule) : normalizedRule,
       raw,
     };
   }
@@ -298,6 +947,12 @@ export class ValidationService {
   public lastSemanticDiagnostics = new Map<string, Diagnostic[]>();
   /** Last source text indexed into the workspace symbol table per normalized URI. */
   public lastIndexedText = new Map<string, string>();
+  /** Cached per-file STEP diagnostics keyed by URI so unchanged large STEP buffers skip duplicate GLR/OCCT passes. */
+  private lastStepOwnDiagnostics = new Map<string, { text: string; diagnostics: Diagnostic[] }>();
+  /** Cached per-file SCAD diagnostics keyed by URI so unchanged SCAD buffers skip duplicate WASM/CST passes during cascades. */
+  private lastScadOwnDiagnostics = new Map<string, { text: string; diagnostics: Diagnostic[] }>();
+  /** In-flight STEP validation promises keyed by URI to coalesce concurrent duplicate runs on identical text. */
+  private inFlightStepValidations = new Map<string, { text: string; promise: Promise<void> }>();
   /** Active `LSPBridge` instances keyed by document URI for hover, definition, and completion queries. */
   public documentLSPBridges = new Map<string, LSPBridge>();
   /** In-flight asynchronous semantic validation promises keyed by document URI. */
@@ -327,6 +982,45 @@ export class ValidationService {
   public verificationDiagnosticsByUri = new Map<string, Diagnostic[]>();
   /** Cached requirement verification case results per document URI. */
   public verificationResultsByUri = new Map<string, any[]>();
+  /** Explicit standard-pack activation overrides keyed by normalized package name. */
+  private activeStandardOverrides?: ReadonlyMap<string, boolean> | undefined;
+
+  public setStandardOverrides(overrides: ReadonlyMap<string, boolean> | undefined): void {
+    this.activeStandardOverrides = overrides;
+  }
+
+  private extractArenaStringParams(
+    arena:
+      | {
+          varCount?: number;
+          isVarRemoved?(i: number): boolean;
+          getVarName?(i: number): string | undefined;
+          getVarBindingExpr?(i: number): number | undefined;
+          getExprKind?(id: number): number | undefined;
+          getExprData1?(id: number): number;
+          interner?: { resolve?(id: number): string | undefined };
+        }
+      | null
+      | undefined,
+  ): Map<string, string> {
+    const out = new Map<string, string>();
+    if (!arena || typeof arena.varCount !== "number") return out;
+    for (let i = 0; i < arena.varCount; i++) {
+      if (arena.isVarRemoved?.(i)) continue;
+      const vName = arena.getVarName?.(i);
+      const bindExpr = arena.getVarBindingExpr?.(i);
+      if (
+        vName &&
+        bindExpr !== undefined &&
+        bindExpr >= 0 &&
+        arena.getExprKind?.(bindExpr) === ExprKind.StringLiteral
+      ) {
+        const s = arena.interner?.resolve?.(arena.getExprData1?.(bindExpr >>> 0) ?? 0);
+        if (s !== undefined) out.set(vName, s);
+      }
+    }
+    return out;
+  }
   /** Cached Modelica algorithm abstract interpretation proof results per URI and function name. */
   public modelicaProofResultsByUri = new Map<string, Map<string, any>>();
   /** Cached Modelica DAE reachability and BLT verification results per URI and class name. */
@@ -355,7 +1049,19 @@ export class ValidationService {
       (globalThis as any).clearDiagramCache?.();
       (globalThis as any).clearIconCache?.();
       if (this.documentManager?.documents) {
+        const isModelicaDep = name === "Modelica";
+        const isSysmlDep = name === "SysML";
         for (const doc of this.documentManager.documents.all()) {
+          const langId = (doc.languageId || "").toLowerCase();
+          if (isModelicaDep && langId !== "modelica" && langId !== "modelscript" && !/\.(mo|msx)$/i.test(doc.uri)) {
+            continue;
+          }
+          if (isSysmlDep && langId !== "sysml2" && langId !== "sysml" && !/\.(sysml|kerml)$/i.test(doc.uri)) {
+            continue;
+          }
+          if (langId === "step" || /\.(step|stp|p21|scad|qif)$/i.test(doc.uri)) {
+            continue;
+          }
           const eff = doc.uri.startsWith("modelscript-lib://global")
             ? "file://" + doc.uri.substring("modelscript-lib://global".length)
             : doc.uri;
@@ -518,6 +1224,12 @@ export class ValidationService {
     this.lastSemanticDiagnostics.delete(eff);
     this.lastIndexedText.delete(uri);
     this.lastIndexedText.delete(eff);
+    this.lastStepOwnDiagnostics.delete(uri);
+    this.lastStepOwnDiagnostics.delete(eff);
+    this.lastScadOwnDiagnostics.delete(uri);
+    this.lastScadOwnDiagnostics.delete(eff);
+    this.inFlightStepValidations.delete(uri);
+    this.inFlightStepValidations.delete(eff);
     this.lastNotifiedProjectTreeText.delete(uri);
     this.lastNotifiedProjectTreeText.delete(eff);
     this.documentRevisions.delete(uri);
@@ -649,7 +1361,7 @@ export class ValidationService {
         });
         const trimmed = lineText.trim();
         if (!trimmed) continue;
-        const startChar = line === range.start.line ? range.start.character : lineText.search(/\S/);
+        const startChar = line === range.start.line ? range.start.character : findFirstNonWsIndex(lineText);
         const endChar =
           line === range.end.line ? Math.max(range.end.character, startChar + 1) : lineText.trimEnd().length;
         if (endChar > startChar) {
@@ -665,6 +1377,27 @@ export class ValidationService {
         }
       }
     };
+
+    const treeMeta = rootNode?.tree as
+      | {
+          __isXmlCstFallback?: boolean;
+          __xmlErrors?: Array<{ start: number; end: number; message: string }>;
+        }
+      | undefined;
+    if (treeMeta?.__isXmlCstFallback) {
+      if (Array.isArray(treeMeta.__xmlErrors)) {
+        for (const err of treeMeta.__xmlErrors) {
+          pushSyntaxRange(
+            {
+              start: textDocument.positionAt(err.start),
+              end: textDocument.positionAt(Math.max(err.start, err.end)),
+            },
+            err.message || "XML syntax error",
+          );
+        }
+      }
+      return { syntaxDiags, wasmLintDiags };
+    }
 
     // 1. Native WASM GLR parser diagnostics
     const facade = plugin?.facade ?? rootNode?.tree?.facade ?? this.parserService.facade;
@@ -870,7 +1603,7 @@ export class ValidationService {
             if (!n) return;
             if (n.type === "component_clause" || n.type === "ComponentClause") {
               const hasInput = (n.children || []).some(
-                (c: any) => c.type === "input" || (c.type === "type_prefix" && /\binput\b/.test(c.text ?? "")),
+                (c: any) => c.type === "input" || (c.type === "type_prefix" && hasWordMatch(c.text ?? "", "input")),
               );
               if (hasInput) {
                 const compDecls = (n.children || []).filter(
@@ -885,21 +1618,13 @@ export class ValidationService {
           };
           countInputsInCst(root);
         } else {
-          // Mask comments and strings to prevent false positives from documentation
-          const cleanText = text
-            .replace(/\/\/[^\n]*/g, " ")
-            .replace(/\/\*[\s\S]*?\*\//g, " ")
-            .replace(/"(?:[^"\\]|\\.)*"/g, " ");
-          const inputMatches = cleanText.match(/\binput\s+(?:Real|Integer|Boolean|String)\b/g);
-          inputCount = inputMatches ? inputMatches.length : 0;
+          inputCount = countModelicaInputPrimitives(text);
         }
 
         const msgToCheck = message || d.message || "";
-        const m = msgToCheck.match(/\b(\d+)\s+equations\s+for\s+(\d+)\s+variables\b/);
-        if (m && inputCount > 0) {
-          const eqCount = Number(m[1]);
-          const rawVarCount = Number(m[2]);
-          if (eqCount === rawVarCount - inputCount) {
+        const counts = parseEquationsForVariablesCounts(msgToCheck);
+        if (counts && inputCount > 0) {
+          if (counts.eqCount === counts.varCount - inputCount) {
             continue;
           }
         }
@@ -961,7 +1686,7 @@ export class ValidationService {
               // Fallback
             }
             if (!message || message.startsWith("Linter Rule ") || message.startsWith("Linter rule ")) {
-              const ruleDisplay = matchedCodeDef.rule ? matchedCodeDef.rule.replace(/-/g, " ") : `rule ${code}`;
+              const ruleDisplay = matchedCodeDef.rule ? matchedCodeDef.rule.replaceAll("-", " ") : `rule ${code}`;
               const capitalizedRule = ruleDisplay.charAt(0).toUpperCase() + ruleDisplay.slice(1);
               message = tokenText ? `${capitalizedRule} for '${tokenText}'.` : `${capitalizedRule}.`;
             }
@@ -1076,32 +1801,38 @@ export class ValidationService {
 
       let tree: any;
       try {
-        const oldTree = cached?.tree as unknown as
-          | {
-              rootPtr?: number;
-              rootNode?: { id?: number; tree?: { facade?: unknown } };
-              facade?: unknown;
-              edit?: (e: unknown) => void;
-            }
-          | null
-          | undefined;
-        const oldRootPtr = oldTree?.rootPtr ?? oldTree?.rootNode?.id ?? 0;
-        const activeFacade = (plugin?.facade ??
-          oldTree?.facade ??
-          oldTree?.rootNode?.tree?.facade ??
-          this.parserService.facade) as { lastAstRoot?: number; loadSource?: (text: string) => void } | undefined;
-        const isOldTreeActiveInWasm = Boolean(oldRootPtr && activeFacade && activeFacade.lastAstRoot === oldRootPtr);
+        if (isLargeXmlForWasm(uri, processedText, plugin)) {
+          tree =
+            cached?.text === text && (cached?.tree as XmlFallbackTree | undefined)?.__isXmlCstFallback
+              ? cached.tree
+              : parseXmlFallbackTree(processedText);
+        } else {
+          const oldTree = cached?.tree as unknown as
+            | {
+                rootPtr?: number;
+                rootNode?: { id?: number; tree?: { facade?: unknown } };
+                facade?: unknown;
+                edit?: (e: unknown) => void;
+              }
+            | null
+            | undefined;
+          const activeFacade = (plugin?.facade ??
+            oldTree?.facade ??
+            oldTree?.rootNode?.tree?.facade ??
+            this.parserService.facade) as { lastAstRoot?: number; loadSource?: (text: string) => void } | undefined;
+          const isOldTreeActiveInWasm = isWasmTreeActiveInFacade(cached?.tree, activeFacade);
 
-        if (cached?.tree && cached.text !== text && isOldTreeActiveInWasm && parser) {
-          const edit = computeTreeEdit(cached.text, text);
-          if (typeof oldTree?.edit === "function") {
-            oldTree.edit(edit as never);
+          if (cached?.tree && cached.text !== text && isOldTreeActiveInWasm && parser) {
+            const edit = computeTreeEdit(cached.text, text);
+            if (typeof oldTree?.edit === "function") {
+              oldTree.edit(edit as never);
+            }
+            tree = parser.parse(processedText, cached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex, uri);
+          } else if (parser) {
+            tree = parser.parse(processedText);
+          } else if (this.parserService.sharedContext && isModelica) {
+            tree = this.parserService.sharedContext.parse(".mo", processedText);
           }
-          tree = parser.parse(processedText, cached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex, uri);
-        } else if (parser) {
-          tree = parser.parse(processedText);
-        } else if (this.parserService.sharedContext && isModelica) {
-          tree = this.parserService.sharedContext.parse(".mo", processedText);
         }
       } finally {
         releaseLock();
@@ -1317,30 +2048,68 @@ export class ValidationService {
 
     const normalizePluginDiagnostics = (rawDiags: any[], sourceId: string): Diagnostic[] => {
       if (!Array.isArray(rawDiags)) return [];
+      const lines = splitLinesPreserve(text);
       return rawDiags.map((d: any) => {
         let range = d.range;
+        const skipLeadingWs = (lineZero: number, colZero: number): number => {
+          const lt = lines[lineZero] ?? "";
+          let c = Math.max(0, Math.min(colZero, lt.length));
+          while (c < lt.length && (lt[c] === " " || lt[c] === "\t")) {
+            c++;
+          }
+          return c < lt.length ? c : Math.max(0, Math.min(colZero, lt.length));
+        };
         if (!range) {
           if (typeof d.startOffset === "number" && typeof d.endOffset === "number") {
-            range = {
-              start: textDocument.positionAt(d.startOffset),
-              end: textDocument.positionAt(Math.max(d.startOffset + 1, d.endOffset)),
-            };
+            const rawStart = textDocument.positionAt(d.startOffset);
+            const rawEnd = textDocument.positionAt(Math.max(d.startOffset + 1, d.endOffset));
+            if (rawStart.line === rawEnd.line) {
+              const sChar = skipLeadingWs(rawStart.line, rawStart.character);
+              const lt = lines[rawStart.line] ?? "";
+              let eChar = Math.min(Math.max(sChar + 1, rawEnd.character), lt.length);
+              while (eChar > sChar + 1 && (lt[eChar - 1] === " " || lt[eChar - 1] === "\t")) {
+                eChar--;
+              }
+              range = {
+                start: { line: rawStart.line, character: sChar },
+                end: { line: rawEnd.line, character: eChar },
+              };
+            } else {
+              range = { start: rawStart, end: rawEnd };
+            }
           } else {
-            const line = Math.max(0, (d.line ?? 1) - 1);
-            const col = Math.max(0, (d.column ?? d.col ?? 1) - 1);
-            const endLine = Math.max(line, (d.endLine ?? d.line ?? 1) - 1);
+            const line = Math.min(Math.max(0, (d.line ?? 1) - 1), Math.max(0, lines.length - 1));
+            const rawCol = Math.max(0, (d.column ?? d.col ?? 1) - 1);
+            const col = skipLeadingWs(line, rawCol);
+            const endLine = Math.min(Math.max(line, (d.endLine ?? d.line ?? 1) - 1), Math.max(0, lines.length - 1));
             const explicitEndCol1 = d.endColumn ?? d.endCol;
+            const endLineText = lines[endLine] ?? "";
             const endCol =
               endLine === line
                 ? explicitEndCol1 !== undefined
-                  ? Math.max(col + 1, explicitEndCol1 - 1)
+                  ? Math.min(Math.max(col + 1, explicitEndCol1 - 1), Math.max(col + 1, endLineText.length))
                   : this.computeTokenEndCharacter(text, line, col)
-                : Math.max(0, (explicitEndCol1 ?? 1) - 1);
+                : Math.min(Math.max(0, (explicitEndCol1 ?? 1) - 1), endLineText.length);
             range = {
               start: { line, character: col },
               end: { line: endLine, character: endCol },
             };
           }
+        } else if (range.start && range.end && range.start.line === range.end.line) {
+          const lineZero = Math.min(Math.max(0, range.start.line), Math.max(0, lines.length - 1));
+          const lt = lines[lineZero] ?? "";
+          let sChar = Math.max(0, Math.min(range.start.character ?? 0, lt.length));
+          if (sChar === 0) {
+            sChar = skipLeadingWs(lineZero, 0);
+          }
+          let eChar = Math.min(Math.max(sChar + 1, range.end.character ?? sChar + 1), Math.max(sChar + 1, lt.length));
+          while (eChar > sChar + 1 && (lt[eChar - 1] === " " || lt[eChar - 1] === "\t")) {
+            eChar--;
+          }
+          range = {
+            start: { line: lineZero, character: sChar },
+            end: { line: lineZero, character: eChar },
+          };
         }
         let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
         if (d.severity === 1 || d.severity === "error" || d.severity === DiagnosticSeverity.Error) {
@@ -1362,8 +2131,11 @@ export class ValidationService {
 
     // 1. Check custom validation handler (e.g. for specialized formats)
     if (plugin?.customHandlers?.validate) {
+      const revisionAtStart = this.documentRevisions.get(uri) ?? null;
+      const isStale = () => revisionAtStart !== null && (this.documentRevisions.get(uri) ?? 0) !== revisionAtStart;
       try {
         const res = await plugin.customHandlers.validate(textDocument);
+        if (isStale()) return;
         if (res !== undefined) {
           const diags = normalizePluginDiagnostics(res, plugin.id);
           const docTree = { rootNode: { text } } as any;
@@ -1399,6 +2171,7 @@ export class ValidationService {
             diagnostics: diags,
             hasSyntaxErrors: diags.some((d) => d.severity === DiagnosticSeverity.Error),
             contentChanged,
+            isStale,
           });
           return;
         }
@@ -1479,6 +2252,12 @@ export class ValidationService {
     const isCsv = textDocument.languageId === "csv" || /\.csv$/i.test(uri);
     if (isCsv) {
       await this.validateCsvDocument(textDocument, plugin);
+      return;
+    }
+
+    const isLas = textDocument.languageId === "las" || /\.las$/i.test(uri);
+    if (isLas) {
+      await this.validateLasDocument(textDocument, plugin);
       return;
     }
 
@@ -1578,59 +2357,65 @@ export class ValidationService {
 
     try {
       try {
-        const oldTree = oldCached?.tree as unknown as
-          | {
-              rootPtr?: number;
-              rootNode?: { id?: number; tree?: { facade?: unknown } };
-              facade?: unknown;
-              edit?: (e: unknown) => void;
-            }
-          | null
-          | undefined;
-        const oldRootPtr = oldTree?.rootPtr ?? oldTree?.rootNode?.id ?? 0;
-        const activeFacade = (plugin?.facade ??
-          oldTree?.facade ??
-          oldTree?.rootNode?.tree?.facade ??
-          this.parserService.facade) as { lastAstRoot?: number; loadSource?: (text: string) => void } | undefined;
-        const isOldTreeActiveInWasm = Boolean(oldRootPtr && activeFacade && activeFacade.lastAstRoot === oldRootPtr);
-
-        if (oldCached && oldCached.text !== text && isOldTreeActiveInWasm) {
-          const edit = computeTreeEdit(oldCached.text, text);
-          if (typeof oldTree?.edit === "function") {
-            oldTree.edit(edit as never);
-          }
-          if (parser) {
-            tree = parser.parse(
-              processedText,
-              oldCached.tree as never,
-              edit.startIndex,
-              edit.oldEndIndex,
-              edit.newEndIndex,
-              uri,
-            );
-          } else if (this.parserService.sharedContext && isModelica) {
-            tree = this.parserService.sharedContext.parse(".mo", processedText, oldCached.tree as never, {
-              editStart: edit.startIndex,
-              editOldEnd: edit.oldEndIndex,
-              editNewEnd: edit.newEndIndex,
-            });
-          }
-          editRanges = [
-            {
-              startOffset: edit.startIndex,
-              endOffset: edit.newEndIndex,
-            },
-          ];
-        } else if (oldCached && oldCached.text === text && isOldTreeActiveInWasm) {
-          tree = oldCached.tree;
-          if (activeFacade && typeof activeFacade.loadSource === "function") {
-            activeFacade.loadSource(text);
-          }
+        if (isLargeXmlForWasm(uri, processedText, plugin)) {
+          tree =
+            oldCached?.text === text && (oldCached?.tree as XmlFallbackTree | undefined)?.__isXmlCstFallback
+              ? oldCached.tree
+              : parseXmlFallbackTree(processedText);
         } else {
-          if (parser) {
-            tree = parser.parse(processedText);
-          } else if (this.parserService.sharedContext && isModelica) {
-            tree = this.parserService.sharedContext.parse(".mo", processedText);
+          const oldTree = oldCached?.tree as unknown as
+            | {
+                rootPtr?: number;
+                rootNode?: { id?: number; tree?: { facade?: unknown } };
+                facade?: unknown;
+                edit?: (e: unknown) => void;
+              }
+            | null
+            | undefined;
+          const activeFacade = (plugin?.facade ??
+            oldTree?.facade ??
+            oldTree?.rootNode?.tree?.facade ??
+            this.parserService.facade) as { lastAstRoot?: number; loadSource?: (text: string) => void } | undefined;
+          const isOldTreeActiveInWasm = isWasmTreeActiveInFacade(oldCached?.tree, activeFacade);
+
+          if (oldCached && oldCached.text !== text && isOldTreeActiveInWasm) {
+            const edit = computeTreeEdit(oldCached.text, text);
+            if (typeof oldTree?.edit === "function") {
+              oldTree.edit(edit as never);
+            }
+            if (parser) {
+              tree = parser.parse(
+                processedText,
+                oldCached.tree as never,
+                edit.startIndex,
+                edit.oldEndIndex,
+                edit.newEndIndex,
+                uri,
+              );
+            } else if (this.parserService.sharedContext && isModelica) {
+              tree = this.parserService.sharedContext.parse(".mo", processedText, oldCached.tree as never, {
+                editStart: edit.startIndex,
+                editOldEnd: edit.oldEndIndex,
+                editNewEnd: edit.newEndIndex,
+              });
+            }
+            editRanges = [
+              {
+                startOffset: edit.startIndex,
+                endOffset: edit.newEndIndex,
+              },
+            ];
+          } else if (oldCached && oldCached.text === text && isOldTreeActiveInWasm) {
+            tree = oldCached.tree;
+            if (activeFacade && typeof activeFacade.loadSource === "function") {
+              activeFacade.loadSource(text);
+            }
+          } else {
+            if (parser) {
+              tree = parser.parse(processedText);
+            } else if (this.parserService.sharedContext && isModelica) {
+              tree = this.parserService.sharedContext.parse(".mo", processedText);
+            }
           }
         }
       } catch (err: any) {
@@ -2244,7 +3029,7 @@ export class ValidationService {
    * Synchronizes all registered Salsa QueryEngines and Modelica's external UnifiedWorkspace
    * attachment after any document in any language is indexed or re-indexed.
    */
-  private syncWorkspaceStateAfterIndex(
+  public syncWorkspaceStateAfterIndex(
     effectiveUri?: string,
     changedIds?: Set<number> | null,
     structuralChangedIds?: Set<number> | null,
@@ -2310,10 +3095,25 @@ export class ValidationService {
       ).replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
     const sourceNorm = normUri(sourceEffectiveUri);
 
+    const sourceDoc =
+      this.documentManager.documents.get(sourceEffectiveUri) ??
+      Array.from(this.documentManager.documents.all()).find((d) => normUri(d.uri) === sourceNorm);
+    const sourceRevAtStart = sourceDoc ? (this.documentRevisions.get(sourceDoc.uri) ?? null) : null;
+    const sourceVerAtStart = sourceDoc?.version ?? null;
+    const isSourceSuperseded = (): boolean => {
+      if (!sourceDoc) return false;
+      if (sourceRevAtStart !== null && (this.documentRevisions.get(sourceDoc.uri) ?? 0) !== sourceRevAtStart) {
+        return true;
+      }
+      const latest = this.documentManager.documents.get(sourceDoc.uri);
+      return Boolean(latest && sourceVerAtStart !== null && latest.version !== sourceVerAtStart);
+    };
+
     this.isCascadeRevalidationActive = true;
     try {
       const peers = Array.from(this.documentManager.documents.all());
       for (const peerDoc of peers) {
+        if (isSourceSuperseded()) break;
         const peerNorm = normUri(peerDoc.uri);
         if (peerNorm === sourceNorm || this.revalidatingUris.has(peerNorm)) continue;
         this.revalidatingUris.add(peerNorm);
@@ -2376,7 +3176,7 @@ export class ValidationService {
       if (sym.kind !== "Import" || !sym.name) continue;
       const rawImp = String(sym.name).trim();
       if (rawImp.endsWith(".*") || rawImp.endsWith("::*")) {
-        const pkgPath = rawImp.replace(/(\.\*|::\*)$/, "");
+        const pkgPath = rawImp.endsWith("::*") ? rawImp.slice(0, -3) : rawImp.slice(0, -2);
         const parts = splitQualifiedPath(pkgPath);
         if (parts.length > 0) importedPrefixes.push(parts);
       } else {
@@ -2444,7 +3244,7 @@ export class ValidationService {
       const expected = parts.join(".").toLowerCase();
       for (const c of candidates) {
         if (parts.length === 1) return c;
-        const np = (c.namePath ?? c.name).replace(/::/g, ".").toLowerCase();
+        const np = (c.namePath ?? c.name).replaceAll("::", ".").toLowerCase();
         if (np === expected || np.endsWith(`.${expected}`)) return c;
       }
       return undefined;
@@ -2478,10 +3278,13 @@ export class ValidationService {
     const extractChainAround = (startOff: number, endOff: number): string => {
       let l = startOff;
       let r = endOff;
-      const isChainChar = (ch: string) => /[A-Za-z0-9_.:]/.test(ch);
-      while (l > 0 && isChainChar(text[l - 1]!)) l--;
-      while (r < text.length && isChainChar(text[r]!)) r++;
-      return text.slice(l, r).replace(/^[:.]+|[:.]+$/g, "");
+      while (l > 0 && isChainTokenChar(text[l - 1]!)) l--;
+      while (r < text.length && isChainTokenChar(text[r]!)) r++;
+      let s = l;
+      let e = r;
+      while (s < e && (text[s] === ":" || text[s] === ".")) s++;
+      while (e > s && (text[e - 1] === ":" || text[e - 1] === ".")) e--;
+      return text.slice(s, e);
     };
 
     const resolveMemberViaComponentType = (offset: number, fullChain: string): boolean => {
@@ -2536,7 +3339,7 @@ export class ValidationService {
 
     const engineHasOverlappingCode = (codeNum: number, startOff: number, endOff: number): boolean =>
       (engineDiags ?? []).some((ed) => {
-        const edCode = typeof ed.code === "number" ? ed.code : parseInt(String(ed.code ?? "").replace(/\D+/g, ""), 10);
+        const edCode = typeof ed.code === "number" ? ed.code : parseInt(extractDigitsOnly(String(ed.code ?? "")), 10);
         if (edCode !== codeNum) return false;
         const es = ed.startOffset ?? -1;
         const ee = ed.endOffset ?? es;
@@ -2578,7 +3381,7 @@ export class ValidationService {
       const stmtPrefix = text.slice(stmtStart, endOff);
       if (
         engineDiags !== null &&
-        /\bconnect\s*\(/.test(stmtPrefix) &&
+        hasConnectCallPrefix(stmtPrefix) &&
         engine &&
         typeof engine.runAllLintsAsync === "function"
       ) {
@@ -2670,6 +3473,7 @@ export class ValidationService {
     if (!uIdx?.symbols) return;
 
     const normLang = langId.toLowerCase();
+    if (normLang === "step" && text.length > 262_144) return;
     let links: ReturnType<typeof extractCrossLanguageLinks> = [];
     try {
       links = extractCrossLanguageLinks({
@@ -2795,7 +3599,7 @@ export class ValidationService {
     diagnostics: Diagnostic[],
   ): void {
     if (!text) return;
-    const lines = text.split(/\r?\n/);
+    const lines = splitLinesPreserve(text);
     const threadEntries = this.workspaceManager?.getThreadsForUri?.(uri) ?? [];
     let calibratedMass: number | undefined;
     let peerSysmlName: string | undefined;
@@ -2809,7 +3613,7 @@ export class ValidationService {
           }
         }
         if (!peerSysmlName && (el.domain === "sysml2" || el.domain === "sysml")) {
-          peerSysmlName = el.name.replace(/^(?:part\s+def|model)\s+/, "");
+          peerSysmlName = stripLeadingKeywordPrefixes(el.name, ["part def", "model"]);
         }
       }
       if (calibratedMass !== undefined && peerSysmlName !== undefined) break;
@@ -2842,21 +3646,13 @@ export class ValidationService {
       const rootNode = cachedTree?.tree?.rootNode;
       let handledViaCst = false;
       if (rootNode && textDocument) {
-        const findCstNodes = (n: SyntaxNode | null | undefined, type: string, out: SyntaxNode[] = []): SyntaxNode[] => {
-          if (!n) return out;
-          if (n.type === type) out.push(n);
-          for (const ch of n.children || []) findCstNodes(ch, type, out);
-          return out;
-        };
-        const compDecls = findCstNodes(rootNode, "component_declaration");
+        const compDecls = collectCstNodesByTypes(rootNode, ["component_declaration"]);
         for (const cd of compDecls) {
           const idNode = (cd.children || []).find((c: SyntaxNode) => c.type === "identifier");
           if (idNode?.text === "m") {
             const modNode = (cd.children || []).find((c: SyntaxNode) => c.type === "modification");
-            const modText = modNode?.text ?? "";
-            const valMatch = /=\s*([0-9.]+)/.exec(modText);
-            if (valMatch) {
-              const val = parseFloat(valMatch[1]!);
+            const val = modNode?.text ? extractLeadingNumericAfterEquals(modNode.text) : null;
+            if (val !== null) {
               const startPos = textDocument.positionAt(idNode.startIndex);
               const endPos = textDocument.positionAt(idNode.endIndex);
               handledViaCst = true;
@@ -2870,14 +3666,11 @@ export class ValidationService {
       if (!handledViaCst) {
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i]!;
-          const massMatch = /^\s*parameter\s+Real\s+m\s*=\s*([0-9.]+)/.exec(line);
-          if (massMatch) {
-            const val = parseFloat(massMatch[1]!);
-            const colMatch = /\bReal\s+(m)\b/.exec(line);
-            const col = colMatch ? colMatch.index + colMatch[0].lastIndexOf("m") : line.indexOf("m");
+          const parsed = extractParameterRealLine(line, "m");
+          if (parsed !== null) {
             pushMassParityDiag(
-              { start: { line: i, character: col }, end: { line: i, character: col + 1 } },
-              val,
+              { start: { line: i, character: parsed.nameCol }, end: { line: i, character: parsed.nameCol + 1 } },
+              parsed.value,
               targetMass,
             );
           }
@@ -2892,7 +3685,7 @@ export class ValidationService {
           const { slot, meta } = entry;
           const aligned = this.workspaceManager.findAlignedElementsBySlot?.(slot) ?? [];
           if (aligned.length > 1) {
-            const rawName = meta.name.replace(/^(?:part\s+def|model|package|def)\s+/, "").trim();
+            const rawName = stripLeadingKeywordPrefixes(meta.name, ["part def", "model", "package", "def"]).trim();
             for (let i = 0; i < lines.length; i++) {
               const line = lines[i]!;
               const col = rawName ? line.indexOf(rawName) : -1;
@@ -2968,7 +3761,10 @@ export class ValidationService {
 
     this.syncWorkspaceStateAfterIndex(effectiveUri, changedIds, structuralChangedIds, changedNames);
 
-    if (typeof this.workspaceManager?.discoverThreadsForDocument === "function") {
+    if (
+      (contentChanged || (langId !== "step" && text.length <= 262_144)) &&
+      typeof this.workspaceManager?.discoverThreadsForDocument === "function"
+    ) {
       try {
         this.workspaceManager.discoverThreadsForDocument(effectiveUri, text, langId, tree);
       } catch {
@@ -3059,6 +3855,11 @@ export class ValidationService {
     diagnostics: Diagnostic[],
     prevIndexedTextOverride?: string,
   ): Promise<void> {
+    const isStale = (): boolean => {
+      const latest = this.documentManager?.documents?.get(textDocument.uri);
+      return Boolean(latest && latest.version !== textDocument.version);
+    };
+    if (isStale()) return;
     const text = textDocument.getText();
     const prevText =
       prevIndexedTextOverride !== undefined ? prevIndexedTextOverride : this.lastIndexedText.get(textDocument.uri);
@@ -3074,6 +3875,7 @@ export class ValidationService {
       diagnostics,
       hasSyntaxErrors: diagnostics.some((d) => d.severity === DiagnosticSeverity.Error),
       contentChanged,
+      isStale,
     });
   }
 
@@ -3083,17 +3885,26 @@ export class ValidationService {
   public async validateScadDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const prevIndexedText = this.lastIndexedText.get(textDocument.uri);
+    const existingTreeEntry = this.documentManager.documentTrees.get(textDocument.uri);
+    const cachedScad = this.lastScadOwnDiagnostics.get(textDocument.uri);
+    if (cachedScad && cachedScad.text === text && prevIndexedText === text && existingTreeEntry?.text === text) {
+      await this.finalizeCustomDocument(textDocument, "scad", [...cachedScad.diagnostics], text);
+      return;
+    }
     const scadDiagnostics: Diagnostic[] = [];
+    let scadValidationFailed = false;
 
     try {
       this.connection.console.info(`[scad] Validating ${textDocument.uri} (${text.length} chars)`);
       this.lastIndexedText.set(textDocument.uri, text);
       await this.parserService?.ensureLanguageParserLoaded?.("scad");
       const { getScadParser, lintScadCst } = await import("@modelscript/scad");
+      let scadTreeRoot: SyntaxNode | null = null;
       const parser = plugin?.parser ?? this.parserService?.getParser?.("scad") ?? (await getScadParser());
       if (parser) {
         const tree = parser.parse(text);
         if (tree?.rootNode) {
+          scadTreeRoot = tree.rootNode;
           this.documentManager.documentTrees.set(textDocument.uri, {
             text,
             tree,
@@ -3126,26 +3937,49 @@ export class ValidationService {
       }
 
       const allowInfoBadges = this.diagnosticsConfig.showInformationalBadges !== false;
-      const lines = text.split(/\r?\n/);
+      const emitTagPortDiag = (portName: string, portType: string, range: Range): void => {
+        scadDiagnostics.push({
+          severity: DiagnosticSeverity.Information,
+          range,
+          message: `[Digital Thread CAD Port] Port '${portName}' (${portType}) tagged for CAE mesh boundary condition enforcement.`,
+          source: "scad",
+        });
+      };
+
+      let handledTagPortsViaCst = false;
+      if (scadTreeRoot && allowInfoBadges) {
+        const tagNodes = collectCstNodesByTypes(scadTreeRoot, ["TagPortOp"]);
+        for (const tn of tagNodes) {
+          const parsed = extractScadTagPortFromText(tn.text ?? "");
+          if (!parsed) continue;
+          handledTagPortsViaCst = true;
+          const relIdx = (tn.text ?? "").indexOf(parsed.portName);
+          const startOff = (tn.startIndex ?? 0) + Math.max(0, relIdx);
+          emitTagPortDiag(parsed.portName, parsed.portType, {
+            start: textDocument.positionAt(startOff),
+            end: textDocument.positionAt(startOff + parsed.portName.length),
+          });
+        }
+      }
+
+      const lines = splitLinesPreserve(text);
       for (let i = 0; i < lines.length; i++) {
         const rawLine = lines[i]!;
 
-        const tagMatch = /tag_port\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"/.exec(rawLine);
-        if (tagMatch && allowInfoBadges) {
-          const portName = tagMatch[1]!;
-          const portType = tagMatch[2];
-          const col = rawLine.indexOf(portName);
-          scadDiagnostics.push({
-            severity: DiagnosticSeverity.Information,
-            range: { start: { line: i, character: col }, end: { line: i, character: col + portName.length } },
-            message: `[Digital Thread CAD Port] Port '${portName}' (${portType}) tagged for CAE mesh boundary condition enforcement.`,
-            source: "scad",
-          });
+        if (!handledTagPortsViaCst && allowInfoBadges) {
+          const parsed = extractScadTagPortFromText(rawLine);
+          if (parsed) {
+            const col = rawLine.indexOf(parsed.portName);
+            emitTagPortDiag(parsed.portName, parsed.portType, {
+              start: { line: i, character: col },
+              end: { line: i, character: col + parsed.portName.length },
+            });
+          }
         }
 
-        const thicknessMatch = /arm_thickness\s*=\s*([0-9.]+)/.exec(rawLine);
-        if (thicknessMatch) {
-          const val = parseFloat(thicknessMatch[1]!);
+        const parsedAssign = parseScadNumericAssignmentLine(rawLine);
+        if (parsedAssign && parsedAssign.paramName === "arm_thickness") {
+          const val = parsedAssign.value;
           const col = rawLine.indexOf("arm_thickness");
           if (val < 3.8) {
             scadDiagnostics.push({
@@ -3164,15 +3998,10 @@ export class ValidationService {
           }
         }
 
-        const boundsMatch =
-          /^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*;.*\/\/\s*@bounds\s*:\s*\[\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*,\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*\]/i.exec(
-            rawLine,
-          );
-        if (boundsMatch) {
-          const paramName = boundsMatch[1]!;
-          const val = parseFloat(boundsMatch[2]!);
-          const minVal = parseFloat(boundsMatch[3]!);
-          const maxVal = parseFloat(boundsMatch[4]!);
+        const boundsSpec = parsedAssign ? parseScadBoundsComment(rawLine) : null;
+        if (parsedAssign && boundsSpec) {
+          const { paramName, value: val } = parsedAssign;
+          const { minVal, maxVal } = boundsSpec;
           const col = rawLine.indexOf(paramName);
           if (val < minVal || val > maxVal) {
             scadDiagnostics.push({
@@ -3192,9 +4021,14 @@ export class ValidationService {
         }
       }
     } catch (e: any) {
+      scadValidationFailed = true;
       this.connection.console.warn(`[scad] Validation failed for ${textDocument.uri}: ${e.message}`);
     }
 
+    const latestDoc = this.documentManager?.documents?.get(textDocument.uri);
+    if (!scadValidationFailed && (!latestDoc || latestDoc.version === textDocument.version)) {
+      this.lastScadOwnDiagnostics.set(textDocument.uri, { text, diagnostics: [...scadDiagnostics] });
+    }
     await this.finalizeCustomDocument(textDocument, "scad", scadDiagnostics, prevIndexedText);
   }
 
@@ -3215,7 +4049,7 @@ export class ValidationService {
     } as any;
     const filename = textDocument.uri.split("/").pop();
     if (filename) {
-      entity.name = filename.replace(/\.[tj]s$/, "");
+      entity.name = filename.endsWith(".ts") || filename.endsWith(".js") ? filename.slice(0, -3) : filename;
     }
     entity.instantiate();
     this.workspaceManager.workspaceInstances.set(textDocument.uri, [entity]);
@@ -3234,18 +4068,16 @@ export class ValidationService {
    * never spill across whitespace into attributes.
    */
   private computeTokenEndCharacter(text: string, lineZero: number, colZero: number): number {
-    const lines = text.split(/\r?\n/);
-    const lineText = lines[lineZero] ?? "";
-    const slice = lineText.slice(colZero);
-    const xmlTagMatch = slice.match(/^<\/?[A-Za-z0-9_:-]+/);
-    if (xmlTagMatch) {
-      return colZero + xmlTagMatch[0].length;
+    const lineText = splitLinesPreserve(text)[lineZero] ?? "";
+    let startCol = Math.max(0, Math.min(colZero, lineText.length));
+    while (startCol < lineText.length && (lineText[startCol] === " " || lineText[startCol] === "\t")) {
+      startCol++;
     }
-    const tokenMatch = slice.match(/^[A-Za-z0-9_:-]+/);
-    if (tokenMatch) {
-      return colZero + tokenMatch[0].length;
+    const tokenLen = measureSyntaxTokenLength(lineText, startCol);
+    if (tokenLen > 0) {
+      return startCol + tokenLen;
     }
-    return Math.min(Math.max(colZero + 1, lineText.length), colZero + 8);
+    return Math.min(lineText.length, startCol + 1);
   }
 
   public async validatePscadDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
@@ -3460,7 +4292,7 @@ export class ValidationService {
       this.connection.console.info(`[fortran] Validating ${textDocument.uri} (${text.length} chars)`);
       const { lintFortran, parseFortranScript, verifyFortranSource } = await import("@modelscript/fortran");
       const lints = lintFortran(text);
-      const rawLines = text.split(/\r?\n/);
+      const rawLines = splitLinesPreserve(text);
 
       for (const lint of lints) {
         const line = Math.max(0, (lint.line ?? 1) - 1);
@@ -3502,7 +4334,7 @@ export class ValidationService {
         );
         if (!alreadyReportedOnLine) {
           const lineText = rawLines[line0] ?? "";
-          const firstNonSpace = lineText.search(/\S/);
+          const firstNonSpace = findFirstNonWsIndex(lineText);
           const startChar = firstNonSpace >= 0 ? firstNonSpace : 0;
           fortranDiagnostics.push({
             severity: check.verdict === "definite_bug" ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
@@ -3634,20 +4466,26 @@ export class ValidationService {
     await this.finalizeCustomDocument(textDocument, "ssp", sspDiagnostics);
   }
 
-  /**
-   * Validates a CSV tabular data document using `@modelscript/csv`.
-   */
-  public async validateCsvDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+  private async validateTabularOffsetDocument(
+    textDocument: TextDocument,
+    langId: "csv" | "las",
+    lintFn: (text: string) => Array<{
+      severity: "error" | "warning" | "info";
+      startOffset: number;
+      endOffset: number;
+      code: string;
+      message: string;
+    }>,
+  ): Promise<void> {
     const text = textDocument.getText();
-    const csvDiagnostics: Diagnostic[] = [];
+    const diagnostics: Diagnostic[] = [];
 
     try {
-      this.connection.console.info(`[csv] Validating ${textDocument.uri} (${text.length} chars)`);
-      const { lintCsv } = await import("@modelscript/csv/csv-parser");
-      const lints = lintCsv(text);
+      this.connection.console.info(`[${langId}] Validating ${textDocument.uri} (${text.length} chars)`);
+      const lints = lintFn(text);
 
       for (const lint of lints) {
-        csvDiagnostics.push({
+        diagnostics.push({
           severity:
             lint.severity === "error"
               ? DiagnosticSeverity.Error
@@ -3660,7 +4498,7 @@ export class ValidationService {
           },
           code: lint.code,
           message: lint.message,
-          source: "csv",
+          source: langId,
         });
       }
 
@@ -3670,10 +4508,28 @@ export class ValidationService {
         classCache: new Map(),
       });
     } catch (err: any) {
-      this.connection.console.error(`[csv] Error validating CSV document ${textDocument.uri}: ${err.message}`);
+      this.connection.console.error(
+        `[${langId}] Error validating ${langId.toUpperCase()} document ${textDocument.uri}: ${err.message}`,
+      );
     }
 
-    await this.finalizeCustomDocument(textDocument, "csv", csvDiagnostics);
+    await this.finalizeCustomDocument(textDocument, langId, diagnostics);
+  }
+
+  /**
+   * Validates a CSV tabular data document using `@modelscript/csv`.
+   */
+  public async validateCsvDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+    const { lintCsv } = await import("@modelscript/csv/csv-parser");
+    await this.validateTabularOffsetDocument(textDocument, "csv", lintCsv);
+  }
+
+  /**
+   * Validates a LAS well-log document using `@modelscript/las`.
+   */
+  public async validateLasDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+    const { lintLas } = await import("@modelscript/las/las-parser");
+    await this.validateTabularOffsetDocument(textDocument, "las", lintLas);
   }
 
   /**
@@ -3865,7 +4721,7 @@ export class ValidationService {
             message: "Syntax Error: Missing directive keyword before '='",
             source: "cfd",
           });
-        } else if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+        } else if (!isSimpleAsciiIdent(key)) {
           const keyCol = rawLine.indexOf(key);
           cfdDiagnostics.push({
             severity: DiagnosticSeverity.Error,
@@ -3915,7 +4771,7 @@ export class ValidationService {
       if (this.diagnosticsConfig.showInformationalBadges !== false) {
         const cfdProps = extractCfdSlicingProperties(text);
         for (const { line: i, rawLine: line } of lineEntries) {
-          if (/^\s*REF_AREA\s*=/i.test(line)) {
+          if (isDirectiveAssignmentLine(line, "REF_AREA")) {
             cfdDiagnostics.push({
               severity: DiagnosticSeverity.Information,
               range: { start: { line: i, character: 0 }, end: { line: i, character: line.length } },
@@ -3961,7 +4817,8 @@ export class ValidationService {
       const isBdf =
         textDocument.uri.toLowerCase().endsWith(".bdf") ||
         (!text.includes("*NODE") &&
-          (text.includes("BEGIN BULK") || /^\s*(GRID|MAT1|CTETRA|CHEXA|PSOLID)\b/m.test(text)));
+          (text.includes("BEGIN BULK") ||
+            splitLinesPreserve(text).some((l) => FEA_BDF_LEAD_KEYWORDS.has(extractFirstUpperWord(l)))));
       const feaDialectId = isBdf ? "bdf" : "inp";
       const feaData =
         typeof parseFeaDeck === "function" ? parseFeaDeck(text, feaDialectId) : getFeaDialect(feaDialectId).parse(text);
@@ -4123,10 +4980,13 @@ export class ValidationService {
         const sf = sigmaMaxMPa > 0 ? yieldMPa / sigmaMaxMPa : 99.9;
         const cmp = sigmaMaxMPa <= yieldMPa ? "<=" : ">";
         if (this.diagnosticsConfig.showInformationalBadges !== false) {
-          const feaLines = text.split(/\r?\n/);
+          const feaLines = splitLinesPreserve(text);
           for (let i = 0; i < feaLines.length; i++) {
             const line = feaLines[i]!;
-            if (/^\*SOLID SECTION/i.test(line) || (isBdf && /^\s*PSOLID\b/i.test(line))) {
+            const upperTrimmed = line.trimStart().toUpperCase();
+            const isSolidSection = upperTrimmed.startsWith("*SOLID SECTION");
+            const isPsolidCard = isBdf && extractFirstUpperWord(upperTrimmed) === "PSOLID";
+            if (isSolidSection || isPsolidCard) {
               feaDiagnostics.push({
                 severity: DiagnosticSeverity.Information,
                 range: { start: { line: i, character: 0 }, end: { line: i, character: line.length } },
@@ -4161,174 +5021,221 @@ export class ValidationService {
    */
   private async validateStepDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
-    const buffer = new TextEncoder().encode(text);
-    const stepDiagnostics: Diagnostic[] = [];
+    const isLargeStep = text.length > 262_144;
+    const stepParser = isLargeStep ? undefined : (plugin?.parser ?? this.parserService.getParser("step"));
+    const existingTreeEntry = this.documentManager.documentTrees.get(textDocument.uri);
+    const cachedStep = this.lastStepOwnDiagnostics.get(textDocument.uri);
+    if (
+      cachedStep &&
+      cachedStep.text === text &&
+      this.lastIndexedText.get(textDocument.uri) === text &&
+      (isLargeStep || !stepParser || existingTreeEntry?.text === text)
+    ) {
+      await this.finalizeCrossLanguageValidation({
+        uri: textDocument.uri,
+        effectiveUri: textDocument.uri,
+        text,
+        langId: "step",
+        tree: existingTreeEntry?.tree,
+        textDocument,
+        diagnostics: [...cachedStep.diagnostics],
+        hasSyntaxErrors: cachedStep.diagnostics.some((d) => d.severity === DiagnosticSeverity.Error),
+        contentChanged: false,
+      });
+      return;
+    }
 
-    try {
-      this.connection.console.info(`[step] Validating ${textDocument.uri} (${text.length} chars)`);
-      let tree;
-      const stepParser = plugin?.parser ?? this.parserService.getParser("step");
-      if (stepParser) {
-        tree = stepParser.parse(text);
+    const inflight = this.inFlightStepValidations.get(textDocument.uri);
+    if (inflight && inflight.text === text) {
+      await inflight.promise;
+      return;
+    }
+
+    const run = async (): Promise<void> => {
+      const buffer = new TextEncoder().encode(text);
+      const stepDiagnostics: Diagnostic[] = [];
+      try {
+        this.connection.console.info(`[step] Validating ${textDocument.uri} (${text.length} chars)`);
+        let tree;
+        if (existingTreeEntry && existingTreeEntry.text === text && existingTreeEntry.tree) {
+          tree = existingTreeEntry.tree;
+        } else if (stepParser) {
+          tree = stepParser.parse(text);
+          if (tree) {
+            this.documentManager.documentTrees.set(textDocument.uri, { text, tree, classCache: new Map() });
+          }
+        }
+
+        const { indexStepDocument } = await import("@modelscript/step");
+        const serverDistBase = (this.parserService as any)?.serverDistBase ?? (globalThis as any).serverDistBase;
+        await indexStepDocument(
+          this.workspaceManager.unifiedWorkspace,
+          textDocument.uri,
+          buffer,
+          serverDistBase ? { serverDistBase } : undefined,
+        );
+
+        const unifiedIndex = this.workspaceManager.unifiedWorkspace.getIndex();
+        if (this.workspaceManager.globalModelicaQueryEngine) {
+          this.workspaceManager.globalModelicaQueryEngine.updateIndex(unifiedIndex);
+        }
+        if (this.workspaceManager.globalSysML2QueryEngine) {
+          this.workspaceManager.globalSysML2QueryEngine.updateIndex(unifiedIndex);
+        }
+
+        if (!this.workspaceManager.globalStepQueryEngine) {
+          this.workspaceManager.globalStepQueryEngine = new QueryEngine(unifiedIndex, {} as any);
+          this.workspaceManager.setQueryEngine?.("step", this.workspaceManager.globalStepQueryEngine);
+        } else {
+          this.workspaceManager.globalStepQueryEngine.updateIndex(unifiedIndex);
+        }
+        this.syncWorkspaceStateAfterIndex(textDocument.uri);
+
+        const engine = this.workspaceManager.globalStepQueryEngine;
+        const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), textDocument.uri, {
+          documentLSPBridges: this.documentLSPBridges,
+          documents: this.documentManager.documents,
+          sharedFs: this.parserService?.sharedContext?.fs ?? this.documentManager?.sharedContext?.fs,
+        });
+        this.documentLSPBridges.set(textDocument.uri, bridge);
+
         if (tree) {
-          this.documentManager.documentTrees.set(textDocument.uri, { text, tree, classCache: new Map() });
+          const collectErrors = (node: any) => {
+            if (!node) return;
+            if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
+            if (node.isMissing || node.type === "ERROR") {
+              const startOff = typeof node.startOffset === "number" ? node.startOffset : node.startIndex;
+              const endOff = typeof node.endOffset === "number" ? node.endOffset : node.endIndex;
+              const range = bridge["positions"].rangeFromOffsets(startOff, endOff);
+              stepDiagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                range,
+                message: node.isMissing ? "Missing syntax element" : "Syntax error",
+                source: "step",
+              });
+            }
+            const children = node.children || [];
+            for (let i = 0; i < children.length; i++) {
+              collectErrors(children[i]);
+            }
+          };
+          collectErrors(tree.rootNode);
+        }
+      } catch (e: any) {
+        this.connection.console.error(
+          `[step] Error in STEP pipeline for ${textDocument.uri}: ${e.message}\n${e.stack}`,
+        );
+      }
+
+      const { definitions, references } = parseStepReferences(text);
+      for (const ref of references) {
+        if (!definitions.has(ref.id)) {
+          const start = textDocument.positionAt(ref.startOffset);
+          const end = textDocument.positionAt(ref.endOffset);
+          stepDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: { start, end },
+            message: `Reference to undefined entity '${ref.id}'`,
+            source: "step",
+          });
         }
       }
 
-      const { indexStepDocument } = await import("@modelscript/step");
-      const serverDistBase = (this.parserService as any)?.serverDistBase ?? (globalThis as any).serverDistBase;
-      await indexStepDocument(
-        this.workspaceManager.unifiedWorkspace,
-        textDocument.uri,
-        buffer,
-        serverDistBase ? { serverDistBase } : undefined,
-      );
+      for (const [, def] of definitions.entries()) {
+        const schema = STEP_SCHEMA[def.type];
+        if (schema) {
+          const typeMatchIndex = def.text.indexOf(def.type);
+          const typeStartOffset = typeMatchIndex !== -1 ? def.startOffset + typeMatchIndex : def.startOffset;
+          let i = typeStartOffset + def.type.length;
+          while (i < def.endOffset && isWsChar(text[i]!)) i++;
+          if (text[i] === "(") {
+            const argsStart = i;
+            let depth = 0;
+            let inStr = false;
+            let argCount = 0;
+            let hasContent = false;
 
-      const unifiedIndex = this.workspaceManager.unifiedWorkspace.getIndex();
-      if (this.workspaceManager.globalModelicaQueryEngine) {
-        this.workspaceManager.globalModelicaQueryEngine.updateIndex(unifiedIndex);
-      }
-      if (this.workspaceManager.globalSysML2QueryEngine) {
-        this.workspaceManager.globalSysML2QueryEngine.updateIndex(unifiedIndex);
-      }
-
-      if (!this.workspaceManager.globalStepQueryEngine) {
-        this.workspaceManager.globalStepQueryEngine = new QueryEngine(unifiedIndex, {} as any);
-        this.workspaceManager.setQueryEngine?.("step", this.workspaceManager.globalStepQueryEngine);
-      } else {
-        this.workspaceManager.globalStepQueryEngine.updateIndex(unifiedIndex);
-      }
-      this.syncWorkspaceStateAfterIndex(textDocument.uri);
-
-      const engine = this.workspaceManager.globalStepQueryEngine;
-      const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), textDocument.uri, {
-        documentLSPBridges: this.documentLSPBridges,
-        documents: this.documentManager.documents,
-        sharedFs: this.parserService?.sharedContext?.fs ?? this.documentManager?.sharedContext?.fs,
-      });
-      this.documentLSPBridges.set(textDocument.uri, bridge);
-
-      if (tree) {
-        const collectErrors = (node: any) => {
-          if (!node) return;
-          if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
-          if (node.isMissing || node.type === "ERROR") {
-            const startOff = typeof node.startOffset === "number" ? node.startOffset : node.startIndex;
-            const endOff = typeof node.endOffset === "number" ? node.endOffset : node.endIndex;
-            const range = bridge["positions"].rangeFromOffsets(startOff, endOff);
-            stepDiagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              range,
-              message: node.isMissing ? "Missing syntax element" : "Syntax error",
-              source: "step",
-            });
-          }
-          const children = node.children || [];
-          for (let i = 0; i < children.length; i++) {
-            collectErrors(children[i]);
-          }
-        };
-        collectErrors(tree.rootNode);
-      }
-    } catch (e: any) {
-      this.connection.console.error(`[step] Error in STEP pipeline for ${textDocument.uri}: ${e.message}\n${e.stack}`);
-    }
-
-    const { definitions, references } = parseStepReferences(text);
-    for (const ref of references) {
-      if (!definitions.has(ref.id)) {
-        const start = textDocument.positionAt(ref.startOffset);
-        const end = textDocument.positionAt(ref.endOffset);
-        stepDiagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          range: { start, end },
-          message: `Reference to undefined entity '${ref.id}'`,
-          source: "step",
-        });
-      }
-    }
-
-    for (const [, def] of definitions.entries()) {
-      const schema = STEP_SCHEMA[def.type];
-      if (schema) {
-        const typeMatchIndex = def.text.indexOf(def.type);
-        const typeStartOffset = typeMatchIndex !== -1 ? def.startOffset + typeMatchIndex : def.startOffset;
-        let i = typeStartOffset + def.type.length;
-        while (i < def.endOffset && /\s/.test(text[i]!)) i++;
-        if (text[i] === "(") {
-          const argsStart = i;
-          let depth = 0;
-          let inStr = false;
-          let argCount = 0;
-          let hasContent = false;
-
-          for (i = argsStart; i < text.length; i++) {
-            const ch = text[i]!;
-            if (ch === "'") {
-              if (inStr && text[i + 1] === "'") {
-                i++;
-              } else {
-                inStr = !inStr;
+            for (i = argsStart; i < text.length; i++) {
+              const ch = text[i]!;
+              if (ch === "'") {
+                if (inStr && text[i + 1] === "'") {
+                  i++;
+                } else {
+                  inStr = !inStr;
+                }
+                hasContent = true;
+              } else if (!inStr && ch === "(") {
+                if (depth > 0) hasContent = true;
+                depth++;
+              } else if (!inStr && ch === ")") {
+                depth--;
+                if (depth === 0) {
+                  if (hasContent || argCount > 0) argCount++;
+                  break;
+                }
+                hasContent = true;
+              } else if (!inStr && depth === 1 && ch === ",") {
+                argCount++;
+                hasContent = false;
+              } else if (depth > 0 && !isWsChar(ch)) {
+                hasContent = true;
               }
-              hasContent = true;
-            } else if (!inStr && ch === "(") {
-              if (depth > 0) hasContent = true;
-              depth++;
-            } else if (!inStr && ch === ")") {
-              depth--;
-              if (depth === 0) {
-                if (hasContent || argCount > 0) argCount++;
-                break;
-              }
-              hasContent = true;
-            } else if (!inStr && depth === 1 && ch === ",") {
-              argCount++;
-              hasContent = false;
-            } else if (depth > 0 && !/\s/.test(ch)) {
-              hasContent = true;
+            }
+
+            const minArgs = schema.minParameters ?? schema.parameters.length;
+            const maxArgs = schema.parameters.length;
+            if (argCount < minArgs || argCount > maxArgs) {
+              const typeMatchIndex = def.text.indexOf(def.type);
+              const typeStartOffset = typeMatchIndex !== -1 ? def.startOffset + typeMatchIndex : def.startOffset;
+              const start = textDocument.positionAt(typeStartOffset);
+              const end = textDocument.positionAt(typeStartOffset + def.type.length);
+              const expectedLabel = minArgs === maxArgs ? `${maxArgs}` : `${minArgs}..${maxArgs}`;
+              stepDiagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                range: { start, end },
+                message: `Schema violation for ${def.type}: expected ${expectedLabel} arguments, got ${argCount}.`,
+                source: "step",
+              });
             }
           }
-
-          if (argCount !== schema.parameters.length) {
-            const typeMatchIndex = def.text.indexOf(def.type);
-            const typeStartOffset = typeMatchIndex !== -1 ? def.startOffset + typeMatchIndex : def.startOffset;
-            const start = textDocument.positionAt(typeStartOffset);
-            const end = textDocument.positionAt(typeStartOffset + def.type.length);
-            stepDiagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              range: { start, end },
-              message: `Schema violation for ${def.type}: expected ${schema.parameters.length} arguments, got ${argCount}.`,
-              source: "step",
-            });
-          }
+        } else if (def.type !== "COMPLEX_ENTITY") {
+          const typeMatchIndex = def.text.indexOf(def.type);
+          const typeStartOffset = typeMatchIndex !== -1 ? def.startOffset + typeMatchIndex : def.startOffset;
+          const start = textDocument.positionAt(typeStartOffset);
+          const end = textDocument.positionAt(typeStartOffset + def.type.length);
+          stepDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: { start, end },
+            message: `Undefined STEP entity type '${def.type}'`,
+            source: "step",
+          });
         }
-      } else if (def.type !== "COMPLEX_ENTITY") {
-        const typeMatchIndex = def.text.indexOf(def.type);
-        const typeStartOffset = typeMatchIndex !== -1 ? def.startOffset + typeMatchIndex : def.startOffset;
-        const start = textDocument.positionAt(typeStartOffset);
-        const end = textDocument.positionAt(typeStartOffset + def.type.length);
-        stepDiagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          range: { start, end },
-          message: `Undefined STEP entity type '${def.type}'`,
-          source: "step",
-        });
       }
-    }
 
-    const contentChanged = this.lastIndexedText.get(textDocument.uri) !== text;
-    this.lastIndexedText.set(textDocument.uri, text);
-    await this.finalizeCrossLanguageValidation({
-      uri: textDocument.uri,
-      effectiveUri: textDocument.uri,
-      text,
-      langId: "step",
-      tree: this.documentManager.documentTrees.get(textDocument.uri)?.tree,
-      textDocument,
-      diagnostics: stepDiagnostics,
-      hasSyntaxErrors: stepDiagnostics.some((d) => d.severity === DiagnosticSeverity.Error),
-      contentChanged,
+      const contentChanged = this.lastIndexedText.get(textDocument.uri) !== text;
+      this.lastIndexedText.set(textDocument.uri, text);
+      this.lastStepOwnDiagnostics.set(textDocument.uri, { text, diagnostics: [...stepDiagnostics] });
+      await this.finalizeCrossLanguageValidation({
+        uri: textDocument.uri,
+        effectiveUri: textDocument.uri,
+        text,
+        langId: "step",
+        tree: this.documentManager.documentTrees.get(textDocument.uri)?.tree,
+        textDocument,
+        diagnostics: stepDiagnostics,
+        hasSyntaxErrors: stepDiagnostics.some((d) => d.severity === DiagnosticSeverity.Error),
+        contentChanged,
+      });
+    };
+
+    const promise = run().finally(() => {
+      const current = this.inFlightStepValidations.get(textDocument.uri);
+      if (current?.promise === promise) {
+        this.inFlightStepValidations.delete(textDocument.uri);
+      }
     });
+    this.inFlightStepValidations.set(textDocument.uri, { text, promise });
+    await promise;
   }
 
   /**
@@ -4511,11 +5418,7 @@ export class ValidationService {
               : undefined);
           if (val !== undefined && typeof val === "number" && Number.isFinite(val)) {
             const parent = sym.parentId ? fIdx.symbols.get(sym.parentId) : undefined;
-            const fileBase =
-              fUri
-                .split("/")
-                .pop()
-                ?.replace(/\.[^.]+$/, "") || sym.name;
+            const fileBase = stripFileExtension(fUri.split("/").pop() || "") || sym.name;
             const compName = parent ? parent.name : fileBase;
             sources.push({
               lang: pId,
@@ -5090,6 +5993,12 @@ export class ValidationService {
     }
 
     this.isDigitalThreadRunning = true;
+    const docVersionsAtStart = new Map<string, number>();
+    if (this.documentManager?.documents && typeof this.documentManager.documents.all === "function") {
+      for (const d of this.documentManager.documents.all()) {
+        docVersionsAtStart.set(d.uri, d.version);
+      }
+    }
     try {
       const [{ createPolyglotCoordinator }, providers] = await Promise.all([
         import("@modelscript/runtime"),
@@ -5125,7 +6034,19 @@ export class ValidationService {
         }));
         diagsByUri.set(targetUri, mapped);
       }
-      this.mergeDigitalThreadDiagnostics(diagsByUri);
+      let isStale = false;
+      if (this.documentManager?.documents && typeof this.documentManager.documents.all === "function") {
+        for (const d of this.documentManager.documents.all()) {
+          const prev = docVersionsAtStart.get(d.uri);
+          if (prev !== undefined && d.version !== prev) {
+            isStale = true;
+            break;
+          }
+        }
+      }
+      if (!isStale) {
+        this.mergeDigitalThreadDiagnostics(diagsByUri);
+      }
     } catch {
       // Non-fatal background check
     } finally {
@@ -5144,7 +6065,7 @@ export class ValidationService {
   ): Promise<void> {
     try {
       const text = textDocument.getText();
-      if (!/\balgorithm\b/.test(text)) return;
+      if (!hasWordMatch(text, "algorithm")) return;
 
       const { ModelicaAlgorithmAnalyzer, ModelicaCFGLowerer, findCstNodesByType } =
         await import("@modelscript/modelica");
@@ -5152,10 +6073,17 @@ export class ValidationService {
       const proofMap = new Map<string, any>();
       this.modelicaProofResultsByUri.set(effectiveUri, proofMap);
 
-      // Prefer direct CST node traversal over regex matching when CST is available
+      // Prefer direct CST node traversal over text scanning when CST is available (or parseable synchronously)
       const cached = this.documentManager.documentTrees.get(effectiveUri);
-      if (cached?.tree?.rootNode && findCstNodesByType) {
-        const classNodes = findCstNodesByType(cached.tree.rootNode, "class_definition");
+      let cstRoot = cached?.tree?.rootNode;
+      if (!cstRoot) {
+        const moParser = this.parserService?.getParser?.("modelica");
+        const parsed = moParser?.parse?.(text);
+        if (parsed?.rootNode) cstRoot = parsed.rootNode;
+      }
+
+      if (cstRoot && findCstNodesByType) {
+        const classNodes = findCstNodesByType(cstRoot, "class_definition");
         for (const classNode of classNodes) {
           const idNodes = findCstNodesByType(classNode, "identifier");
           const name = idNodes[0]?.text?.trim() || "";
@@ -5196,8 +6124,14 @@ export class ValidationService {
           }
 
           for (const warn of result.potentialBugs) {
-            const warnStart = (warn as any).startOffset ?? warn.startOffset ?? algOffset;
-            const warnEnd = (warn as any).endOffset ?? warn.endOffset ?? warnStart + 10;
+            let warnStart = (warn as any).startOffset ?? warn.startOffset ?? algOffset;
+            let warnEnd = (warn as any).endOffset ?? warn.endOffset;
+            if (warnEnd === undefined) {
+              while (warnStart < text.length && (text[warnStart] === " " || text[warnStart] === "\t")) {
+                warnStart++;
+              }
+              warnEnd = warnStart + measureTokenLengthAt(text, warnStart);
+            }
             const startPos = textDocument.positionAt(warnStart);
             const endPos = textDocument.positionAt(warnEnd);
 
@@ -5220,67 +6154,11 @@ export class ValidationService {
         return;
       }
 
-      // Fallback: match class / function / block / model definitions with algorithms via text regex
-      const funcRegex = /\b(function|block|model|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)([\s\S]*?)\bend\s+\2\s*;/g;
-      let match: RegExpExecArray | null;
-      while ((match = funcRegex.exec(text)) !== null) {
-        const kind = match[1]!;
-        void kind;
-        const name = match[2]!;
-        const body = match[3]!;
-
-        const algMatch = /\b(?:initial\s+)?algorithm\b([\s\S]*)$/.exec(body);
-        if (!algMatch) continue;
-
-        const algText = algMatch[0];
-        const algOffset = match.index + match[0].indexOf(algText);
-
-        let variables: any[] = [];
+      // Headless fallback when WASM parser is unavailable: regex-free token scan for algorithm blocks
+      for (const blk of extractModelicaAlgorithmBlocksFromSource(text)) {
+        const { name, body, algText, algOffset } = blk;
+        const variables: any[] = extractModelicaVarDeclsFromBody(body);
         let statements: any[] = [];
-
-        // Fallback: extract declared variables via regex if CST extraction returned nothing
-        if (variables.length === 0) {
-          const varDeclRegex =
-            /\b(?:(input|output)\s+)?(?:(?:parameter|discrete|constant)\s+)?(Real|Integer|Boolean|String)\s+([^;]+);/g;
-          let vMatch: RegExpExecArray | null;
-          while ((vMatch = varDeclRegex.exec(body)) !== null) {
-            const io = vMatch[1];
-            const type = vMatch[2]!;
-            const declList = vMatch[3]!;
-
-            // Split comma-separated declarations (e.g. "x[5], y = 2")
-            const declItems = declList.split(",");
-            for (const item of declItems) {
-              const itemMatch = /^(?:\[(.*?)\]\s*)?([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\[(.*?)\])?(?:\s*=\s*([^,]+))?$/.exec(
-                item.trim(),
-              );
-              if (!itemMatch) continue;
-
-              const dimStr = itemMatch[1] || itemMatch[3];
-              const vName = itemMatch[2]!;
-              const initExpr = itemMatch[4];
-
-              const isArray = Boolean(dimStr);
-              const arrayDimension = dimStr && /^\d+$/.test(dimStr.trim()) ? Number(dimStr.trim()) : undefined;
-
-              let initialBound: [number, number] | undefined = undefined;
-              if (initExpr && /^-?\d+(?:\.\d+)?$/.test(initExpr.trim())) {
-                const val = Number(initExpr.trim());
-                initialBound = [val, val];
-              }
-
-              variables.push({
-                name: vName,
-                type,
-                isInput: io === "input",
-                isOutput: io === "output",
-                isArray,
-                arrayDimension,
-                initialBound,
-              });
-            }
-          }
-        }
 
         if (statements.length === 0) {
           statements = ModelicaCFGLowerer.parseStatements(algText, algOffset);
@@ -5435,7 +6313,11 @@ export class ValidationService {
 
       const text = textDocument.getText();
       const twinMap = extractModelicaTwinAnnotations(text);
-      const sysmlReqs: any[] = [];
+      const taggedSysmlReqs: TaggedSysmlRequirement[] = [];
+      const allSysmlDocs: SysmlDocSource[] = [];
+      const seenSysmlUris = new Set<string>();
+      const packageJsonTexts: string[] = [];
+
       let candidateDocs: any[] = [];
       if (typeof (this.documentManager.documents as any)?.all === "function") {
         candidateDocs = (this.documentManager.documents as any).all();
@@ -5445,27 +6327,50 @@ export class ValidationService {
       for (const d of candidateDocs) {
         const dUri = d?.uri || "";
         const lang = d?.languageId || "";
-        if (dUri.endsWith(".sysml") || dUri.endsWith(".kerml") || lang === "sysml2") {
-          const dText = typeof d.getText === "function" ? d.getText() : d.text;
-          if (typeof dText === "string") {
-            sysmlReqs.push(...parseSysmlRequirements(dText));
+        const dText = typeof d?.getText === "function" ? d.getText() : d?.text;
+        if (typeof dText !== "string") continue;
+        if (dUri.endsWith("/package.json") || dUri === "package.json") {
+          packageJsonTexts.push(dText);
+        } else if (
+          dUri.endsWith(".sysml") ||
+          dUri.endsWith(".sysml2") ||
+          dUri.endsWith(".kerml") ||
+          lang === "sysml2"
+        ) {
+          seenSysmlUris.add(dUri);
+          allSysmlDocs.push({ uri: dUri, text: dText });
+          for (const req of parseSysmlRequirements(dText)) {
+            taggedSysmlReqs.push({ req, sourceUri: dUri });
           }
         }
       }
       if (this.documentManager.documentTrees) {
         for (const [tUri, entry] of this.documentManager.documentTrees.entries()) {
-          if (tUri.endsWith(".sysml") || tUri.endsWith(".kerml")) {
-            if (entry?.text && typeof entry.text === "string") {
-              const found = parseSysmlRequirements(entry.text);
-              for (const req of found) {
-                if (!sysmlReqs.some((r) => r.id === req.id && r.targetAttribute === req.targetAttribute)) {
-                  sysmlReqs.push(req);
-                }
-              }
+          if (typeof entry?.text !== "string") continue;
+          if (tUri.endsWith("/package.json") || tUri === "package.json") {
+            packageJsonTexts.push(entry.text);
+          } else if (
+            !seenSysmlUris.has(tUri) &&
+            (tUri.endsWith(".sysml") || tUri.endsWith(".sysml2") || tUri.endsWith(".kerml"))
+          ) {
+            seenSysmlUris.add(tUri);
+            allSysmlDocs.push({ uri: tUri, text: entry.text });
+            for (const req of parseSysmlRequirements(entry.text)) {
+              taggedSysmlReqs.push({ req, sourceUri: tUri });
             }
           }
         }
       }
+
+      const activeCompliance = resolveActiveComplianceProfiles({
+        modelText: text,
+        allSysmlDocs,
+        packageJsonTexts,
+        twinAnnotations: twinMap,
+        activeStandardOverrides: this.activeStandardOverrides,
+      });
+      const sysmlReqs = filterRequirementsForModel(taggedSysmlReqs, activeCompliance);
+      const reqFingerprint = computeRequirementsFingerprint(sysmlReqs);
 
       try {
         await initBltWasm();
@@ -5487,7 +6392,7 @@ export class ValidationService {
 
         const key = `${effectiveUri}#${cls.name}`;
         liveKeys.add(key);
-        const fingerprint = arenaFingerprint(arena);
+        const fingerprint = `${arenaFingerprint(arena)}#${reqFingerprint}`;
         let record = this.daeVerificationCache.get(key)?.record;
         if (!record || this.daeVerificationCache.get(key)!.fingerprint !== fingerprint) {
           // Identify continuous state variables referenced by der(...)
@@ -5567,10 +6472,12 @@ export class ValidationService {
             continue;
           }
 
+          const stringParams = this.extractArenaStringParams(arena);
           const reachEngine = new DaeBltReachabilityEngine(arena, {
             budgetMs: this.daeVerificationBudgetMs,
             sysmlRequirements: sysmlReqs,
             twinMap,
+            stringParams,
             stateVars: stateVars.size > 0 ? stateVars : undefined,
           });
           const reachSummary = reachEngine.verify(bltResult);
@@ -5659,7 +6566,7 @@ export class ValidationService {
           // 1. Primary: resolve using CST nodes (exact AST positions)
           if (classCst && findCstNodesByType) {
             if (issue.varName) {
-              const cleanVar = issue.varName.replace(/^der\((.*)\)$/, "$1");
+              const cleanVar = unwrapDerName(issue.varName);
               const targetName = cleanVar.includes(".") ? cleanVar.split(".")[0]! : cleanVar;
               const compDecls = findCstNodesByType(classCst, "component_declaration");
               for (const cd of compDecls) {
@@ -5705,18 +6612,17 @@ export class ValidationService {
           // 2. Fallback: text-based heuristic when CST is unavailable (e.g. headless mock tests)
           if (!foundLoc) {
             if (issue.varName) {
-              const cleanVar = issue.varName.replace(/^der\((.*)\)$/, "$1");
-              const escapedVar = cleanVar.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-              const varMatch = new RegExp(`\\b${escapedVar}\\b`).exec(body);
-              if (varMatch) {
-                issueOffset = classStart + varMatch.index;
+              const cleanVar = unwrapDerName(issue.varName);
+              const varIdx = findNextWordMatchIndex(body, cleanVar);
+              if (varIdx !== -1) {
+                issueOffset = classStart + varIdx;
                 issueLength = cleanVar.length;
                 foundLoc = true;
               } else if (cleanVar.includes(".")) {
                 const compName = cleanVar.split(".")[0]!;
-                const compMatch = new RegExp(`\\b${compName}\\b`).exec(body);
-                if (compMatch) {
-                  issueOffset = classStart + compMatch.index;
+                const compIdx = findNextWordMatchIndex(body, compName);
+                if (compIdx !== -1) {
+                  issueOffset = classStart + compIdx;
                   issueLength = compName.length;
                   foundLoc = true;
                 }
@@ -5747,10 +6653,12 @@ export class ValidationService {
           const endPos = textDocument.positionAt(issueOffset + issueLength);
           const definite = issue.severity === "definite";
           const code: string = issue.kind;
+          const standardClause = (issue as any).standardClause as string | undefined;
+          const margin = (issue as any).margin as number | undefined;
           diagnostics.push({
             severity: definite ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
             range: { start: startPos, end: endPos },
-            message: `${definite ? "[DAE Formal Defect]" : "[DAE Invariant Warning]"} ${issue.message}`,
+            message: `${standardClause ? "[Standard Compliance]" : definite ? "[DAE Formal Defect]" : "[DAE Invariant Warning]"} ${issue.message}`,
             source: "modelscript-dae-verifier",
             code,
             data: {
@@ -5758,7 +6666,9 @@ export class ValidationService {
               severity: issue.severity,
               interval: issue.interval,
               varName: issue.varName,
-              rule: issue.kind === "div_by_zero" ? "M5101" : "M5103",
+              rule: standardClause ? (definite ? "S5020" : "S5021") : issue.kind === "div_by_zero" ? "M5101" : "M5103",
+              standardClause,
+              margin,
               suggestedValue: (issue as any).suggestedValue,
               requiredLimit: (issue as any).requiredLimit,
             },
@@ -5934,28 +6844,52 @@ export class ValidationService {
 
       progressReporter?.report(10, `Found ${fileNodes.length} verification case(s). Initializing engines...`);
 
+      const resolveLazyTree = (
+        entryUri: string,
+      ):
+        | {
+            tree:
+              | import("../utils/ast-utils.js").CstTreeLike
+              | import("../utils/ast-utils.js").XmlFallbackTree
+              | import("../utils/cst-facade.js").Tree;
+            text: string;
+          }
+        | undefined => {
+        let lazyCache = this.documentManager.lazyLibTrees.get(entryUri);
+        if (!lazyCache) {
+          try {
+            const fsPath = entryUri.startsWith("file://") ? entryUri.substring(7) : entryUri;
+            const text = this.parserService.sharedContext?.fs.read(fsPath);
+            if (text) {
+              const lower = entryUri.toLowerCase();
+              const isSysml = lower.endsWith(".sysml") || lower.endsWith(".sysml2") || lower.endsWith(".kerml");
+              const entryPlugin = globalLanguageRegistry.getPluginForUri(entryUri);
+              const parser = this.parserService.getParserForUri(entryUri);
+              const tree = isLargeXmlForWasm(entryUri, text, entryPlugin)
+                ? parseXmlFallbackTree(text)
+                : parser
+                  ? parser.parse(text)
+                  : this.parserService.sharedContext?.parse(isSysml ? ".sysml" : ".mo", text);
+              if (tree) {
+                lazyCache = { tree, text };
+                this.documentManager.lazyLibTrees.set(entryUri, lazyCache);
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        return lazyCache;
+      };
+
       const verifyCstTreeWrapper = {
-        getText: (startOffset: number, endOffset: number, entry?: any): string | null => {
+        getText: (startOffset: number, endOffset: number, entry?: { resourceId?: string }): string | null => {
           if (!entry || !entry.resourceId) return null;
           const entryUri = entry.resourceId;
           const docTree = this.documentManager.documentTrees.get(entryUri);
           if (docTree && docTree.text) return docTree.text.substring(startOffset, endOffset);
 
-          let lazyCache = this.documentManager.lazyLibTrees.get(entryUri);
-          if (!lazyCache && this.parserService.sharedContext) {
-            try {
-              const fsPath = entryUri.startsWith("file://") ? entryUri.substring(7) : entryUri;
-              const text = this.parserService.sharedContext.fs.read(fsPath);
-              if (text) {
-                const tree = this.parserService.sharedContext.parse(
-                  entryUri.endsWith(".sysml") ? ".sysml" : ".mo",
-                  text,
-                );
-                lazyCache = { tree, text };
-                this.documentManager.lazyLibTrees.set(entryUri, lazyCache);
-              }
-            } catch (e) {}
-          }
+          const lazyCache = resolveLazyTree(entryUri);
           if (lazyCache) return lazyCache.text.substring(startOffset, endOffset);
 
           const doc = this.documentManager.documents.get(entryUri);
@@ -5974,25 +6908,14 @@ export class ValidationService {
             return root ?? null;
           }
 
-          let lazyCache = this.documentManager.lazyLibTrees.get(entryUri);
-          if (!lazyCache && this.parserService.sharedContext) {
-            try {
-              const fsPath = entryUri.startsWith("file://") ? entryUri.substring(7) : entryUri;
-              const text = this.parserService.sharedContext.fs.read(fsPath);
-              if (text) {
-                const tree = this.parserService.sharedContext.parse(
-                  entryUri.endsWith(".sysml") ? ".sysml" : ".mo",
-                  text,
-                );
-                lazyCache = { tree, text };
-                this.documentManager.lazyLibTrees.set(entryUri, lazyCache);
-              }
-            } catch (e) {}
-          }
+          const lazyCache = resolveLazyTree(entryUri);
           if (lazyCache && lazyCache.tree) {
-            const root = lazyCache.tree.rootNode ?? (lazyCache.tree as any)?.tree?.rootNode;
-            if (root && typeof root.descendantForIndex === "function") {
-              return root.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
+            const root = lazyCache.tree.rootNode ?? (lazyCache.tree as { tree?: CstTreeLike }).tree?.rootNode;
+            const rootWithLookup = root as
+              | (CstNodeLike & { descendantForIndex?: (start: number, end: number) => CstNodeLike | null })
+              | undefined;
+            if (rootWithLookup && typeof rootWithLookup.descendantForIndex === "function") {
+              return rootWithLookup.descendantForIndex(startOffset, Math.max(startOffset, endOffset));
             }
             return root ?? null;
           }
@@ -6001,8 +6924,11 @@ export class ValidationService {
           if (doc) {
             const text = doc.getText();
             let tree: any;
+            const entryPlugin = globalLanguageRegistry.getPluginForUri(entryUri);
             const parser = this.parserService.getParserForUri(entryUri);
-            if (parser) {
+            if (isLargeXmlForWasm(entryUri, text, entryPlugin)) {
+              tree = parseXmlFallbackTree(text);
+            } else if (parser) {
               tree = parser.parse(text);
             } else if (this.parserService.sharedContext) {
               const ext = entryUri.includes(".") ? entryUri.substring(entryUri.lastIndexOf(".")) : ".mo";
@@ -6115,10 +7041,13 @@ export class ValidationService {
           return { ok: false };
         }
 
-        const simParameters: { name: string; value: number }[] = [];
+        const simParameters: { name: string; value: number | string | boolean }[] = [];
         const paramInfo = getArenaParameterInfo(arena);
         for (const p of paramInfo) {
           simParameters.push({ name: p.name, value: p.defaultValue });
+        }
+        for (const [sName, sVal] of this.extractArenaStringParams(arena).entries()) {
+          simParameters.push({ name: sName, value: sVal });
         }
 
         const simResult = {
@@ -6134,21 +7063,25 @@ export class ValidationService {
 
         const bridge = this.documentLSPBridges.get(uri);
         if (bridge) {
-          const diags: Diagnostic[] = vResults.map((v) => ({
-            range: this.findRangeForIri(v.constraintId as unknown as string, uri) || {
-              start: { line: 0, character: 0 },
-              end: { line: 0, character: 0 },
-            },
-            message: v.message || "Constraint violated",
-            severity: DiagnosticSeverity.Error,
-            source: "sysml2-verifier",
-            code: "M5102",
-            data: {
-              constraintId: v.constraintId,
-              requiredLimit: (v as any).requiredLimit,
-              suggestedValue: (v as any).suggestedValue,
-            },
-          }));
+          const diags: Diagnostic[] = vResults
+            .filter((v) => !v.isSatisfied)
+            .map((v) => ({
+              range: this.findRangeForIri(v.constraintId as unknown as string, uri) || {
+                start: { line: 0, character: 0 },
+                end: { line: 0, character: 0 },
+              },
+              message: v.message || "Constraint violated",
+              severity: DiagnosticSeverity.Error,
+              source: "sysml2-verifier",
+              code: v.standardClause ? "S5020" : "M5102",
+              data: {
+                constraintId: v.constraintId,
+                standardClause: v.standardClause,
+                margin: v.margin,
+                requiredLimit: (v as any).requiredLimit ?? v.limitValue,
+                suggestedValue: (v as any).suggestedValue ?? v.limitValue,
+              },
+            }));
           newDiagnostics.push(...diags);
         }
       }
@@ -6222,8 +7155,10 @@ export class ValidationService {
               (entry.resourceId && currentUri.endsWith(entry.resourceId)) ||
               (entry.resourceId && entry.resourceId.endsWith(currentUri));
             if (matchesUri) {
-              const startOff = entry.startOffset;
-              const endOff = entry.endOffset;
+              const idRange =
+                entry.fieldRanges?.["declaredName"] ?? entry.fieldRanges?.["name"] ?? entry.fieldRanges?.["id"];
+              const startOff = idRange?.startOffset ?? entry.startOffset;
+              const endOff = idRange?.endOffset ?? entry.endOffset;
               const docTree = this.documentManager.documentTrees.get(currentUri);
               if (docTree && docTree.tree) {
                 const root = docTree.tree.rootNode ?? (docTree.tree as any)?.tree?.rootNode;
@@ -6306,8 +7241,10 @@ export class ValidationService {
             (typeof entry.endOffset === "number" || typeof entry.endOffset === "number")
           ) {
             const entryUri = entry.resourceId;
-            const startOff = entry.startOffset;
-            const endOff = entry.endOffset;
+            const idRange =
+              entry.fieldRanges?.["declaredName"] ?? entry.fieldRanges?.["name"] ?? entry.fieldRanges?.["id"];
+            const startOff = idRange?.startOffset ?? entry.startOffset;
+            const endOff = idRange?.endOffset ?? entry.endOffset;
 
             const docTree = this.documentManager.documentTrees.get(entryUri);
             if (docTree && docTree.tree) {

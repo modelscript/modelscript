@@ -33,17 +33,36 @@ description: "@modelscript/optical (languages/optical) provides Telcordia GR-196
 
 ### 2. Generalized Gaussian Noise (EGN) Transmission Solver
 
-- Evaluates non-linear interference (NLI) power spectral density across multi-span optical routes:
+- Evaluates non-linear interference (NLI) power spectral density across multi-span optical routes and combines it with amplified spontaneous emission (ASE) noise to obtain the Generalized Signal-to-Noise Ratio (GSNR):
   $$G_{\text{nli}} = \frac{16}{27} \gamma^2 L_{\text{eff}} \frac{\text{asinh}\left(\frac{\pi^2}{2} |\beta_2| L_{\text{eff}} B_{\text{ch}}^2 N_{\text{ch}}^{2 \frac{B_{\text{ch}}}{\Delta f}}\right)}{\pi |\beta_2| B_{\text{ch}}}$$
-- Solves Generalized Signal-to-Noise Ratio (GSNR) accounting for ASE noise and Kerr non-linearity:
   $$\text{GSNR}^{-1} = \text{OSNR}_{\text{ase}}^{-1} + \text{SNR}_{\text{nli}}^{-1}$$
+
+  | Symbol                                              | Meaning                                                         | Units / Domain                                 |
+  | :-------------------------------------------------- | :-------------------------------------------------------------- | :--------------------------------------------- |
+  | $G_{\text{nli}}$                                    | Non-linear interference power spectral density per span         | $\text{W/Hz}$                                  |
+  | $\gamma$                                            | Fiber Kerr non-linearity coefficient                            | $\text{W}^{-1}\text{km}^{-1}$                  |
+  | $L_{\text{eff}}$                                    | Effective non-linear fiber interaction length                   | $\text{km}$                                    |
+  | $\beta_2$                                           | Group-velocity dispersion (GVD) parameter                       | $\text{ps}^2/\text{km}$                        |
+  | $B_{\text{ch}}, \Delta f$                           | WDM channel symbol-rate bandwidth and channel frequency spacing | $\text{GHz}$                                   |
+  | $N_{\text{ch}}$                                     | Number of active WDM channels                                   | $\text{dimensionless}$ ($N_{\text{ch}} \ge 1$) |
+  | $\text{GSNR}$                                       | Generalized signal-to-noise ratio (linear scale)                | $\text{dimensionless}$                         |
+  | $\text{OSNR}_{\text{ase}}, \text{SNR}_{\text{nli}}$ | Linear optical SNR from ASE noise and SNR from NLI              | $\text{dimensionless}$                         |
+
 - Computes accumulated chromatic dispersion ($\text{ps/nm}$), polarization mode dispersion (PMD), bit error rate (BER), and $Q$-factor.
 
 ### 3. Dynamic EDFA Gain Saturation DAE Lowering
 
-- Lowers dynamic Erbium-Doped Fiber Amplifier (EDFA) gain saturation state equations directly to `@modelscript/runtime`'s `DAEBuilder`:
+- Lowers dynamic Erbium-Doped Fiber Amplifier (EDFA) gain saturation state equations directly to `@modelscript/runtime`'s `DAEBuilder`, capturing upper-state population recovery toward small-signal gain $G_0$ and depletion by stimulated emission:
   $$\frac{dG}{dt} = \frac{G_0 - G}{\tau} - \frac{P_{\text{in}}}{P_{\text{sat}} \tau} G (G - 1)$$
   $$P_{\text{out}} = G \cdot P_{\text{in}}$$
+
+  | Symbol                          | Meaning                                                            | Units / Domain                     |
+  | :------------------------------ | :----------------------------------------------------------------- | :--------------------------------- |
+  | $G, G_0$                        | Instantaneous and unsaturated (small-signal) linear amplifier gain | $\text{dimensionless}$ ($G \ge 1$) |
+  | $t, \tau$                       | Time and effective erbium upper-state lifetime                     | $\text{s}$                         |
+  | $P_{\text{in}}, P_{\text{out}}$ | Total optical input and output power                               | $\text{W}$ (or $\text{mW}$)        |
+  | $P_{\text{sat}}$                | Amplifier internal saturation power                                | $\text{W}$ (or $\text{mW}$)        |
+
 - Allows continuous transient simulation of amplifier channel add/drop dynamics without wrapper AST overhead.
 
 ### 4. Precision Time Protocol (IEEE 1588 / SyncE) & Holdover

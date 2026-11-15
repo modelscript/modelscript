@@ -20,7 +20,7 @@ export const niftiLanguage = language({
   polyglot: niftiPolyglotConfig,
   name: "nifti",
   fileExtensions: [".nii.json", ".nii.gz", ".nii", ".nrrd", ".nhdr"],
-  maturity: "experimental",
+  maturity: "beta",
   lsp: {
     fileExtensions: [".nii.json", ".nii.gz", ".nii", ".nrrd", ".nhdr"],
   },

@@ -608,6 +608,10 @@ let selectedNodeId: string | null = null;
 let isRenderingDiagram = false;
 /** Tracks currently rendered sub-module / class name to detect transitions. */
 let lastRenderedModule: string | null = null;
+/** True when the last rendered diagram was a loading placeholder. */
+let lastRenderWasLoading = false;
+/** Monotonic generation counter to cancel stale delayed recentering callbacks. */
+let renderFitGeneration = 0;
 
 /** Cache for on-demand component properties (cleared on diagram re-render) */
 
@@ -4850,9 +4854,16 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
     }
   }
 
+  const myRenderGeneration = ++renderFitGeneration;
+  const isCurrentLoading = Boolean(data.isLoading);
+  const loadingCompleted = lastRenderWasLoading && !isCurrentLoading;
+  lastRenderWasLoading = isCurrentLoading;
+
   const currentModule = data.metadata?.currentModule ?? data.className ?? null;
   const moduleChanged = lastRenderedModule !== null && currentModule !== null && lastRenderedModule !== currentModule;
-  lastRenderedModule = currentModule;
+  if (!isCurrentLoading) {
+    lastRenderedModule = currentModule;
+  }
 
   // ── Diff-based incremental update ──
   // If the graph already has cells and the module hasn't changed,
@@ -4862,7 +4873,7 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
   const existingCells = g.getCells();
   const isFirstRender = existingCells.length === 0;
 
-  if (!isFirstRender && !moduleChanged) {
+  if (!isFirstRender && !moduleChanged && !loadingCompleted) {
     const existingNodeIds = new Set<string>();
     const existingEdgeIds = new Set<string>();
     for (const cell of existingCells) {
@@ -5115,8 +5126,8 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
 
   updateBreadcrumbs(data.breadcrumbs || data.metadata?.breadcrumbs);
 
-  // Only fit view on first render or when switching modules — preserve zoom/pan on subsequent updates
-  if (isFirstRender || moduleChanged) {
+  // Only fit view on first non-loading render, when switching modules, or when loading completes — preserve zoom/pan on subsequent updates
+  if (!isCurrentLoading && (isFirstRender || moduleChanged || loadingCompleted)) {
     const parent = g.container?.parentElement;
     const parentW = parent?.clientWidth ?? 0;
     const parentH = parent?.clientHeight ?? 0;
@@ -5156,6 +5167,7 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
     // Ensure the diagram is properly sized and centered once the layout completes.
     const checkAndRecenter = () => {
       try {
+        if (myRenderGeneration !== renderFitGeneration) return;
         if (g && (typeof g.isDisposed === "function" ? !g.isDisposed() : true)) {
           const p = g.container?.parentElement;
           const pw = p?.clientWidth ?? 0;

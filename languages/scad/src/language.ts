@@ -25,7 +25,9 @@ interface ScadLspActionContext {
           | undefined;
       }
     | undefined;
-  sharedFs?: { read(uri: string): Promise<string> } | undefined;
+  workspaceManager?: unknown;
+  sharedFs?: { read(uri: string): Promise<string> | string } | undefined;
+  compileStepFromSources?: unknown;
   parserService?:
     | {
         ensureLanguageParserLoaded?(lang: string): Promise<unknown>;
@@ -263,10 +265,125 @@ export const scadLanguage = language({
           throw new Error("Failed to compile OpenSCAD to solid geometry.");
         }
 
-        const { compileToStep } = await import("@modelscript/cad");
-        const step = compileToStep(solid);
         const filename = ctx.uri ? ctx.uri.split("/").pop() || "model" : "model";
         const name = filename.replace(/\.[^/.]+$/, "");
+        const {
+          assembly,
+          compileAssemblyToAp242Step,
+          dirnamePosix,
+          parseScadSpoolDirectives,
+          part,
+          relativePosix,
+          resolveStepPairingFromFileMap,
+        } = await import("@modelscript/cad");
+
+        const stripUri = (raw: string): string =>
+          decodeURIComponent(raw)
+            .replace(/^file:\/\//i, "")
+            .replace(/\\/g, "/");
+        const activePath = ctx.uri ? stripUri(ctx.uri) : `${name}.scad`;
+        const scadText =
+          ctx.documentText ??
+          (ctx.uri ? ctx.documents?.get(ctx.uri)?.getText() : undefined) ??
+          (ctx.uri ? ctx.documentManager?.documentTrees?.get(ctx.uri)?.text : undefined) ??
+          "";
+
+        const fileMap = new Map<string, string>();
+        const pathToUri = new Map<string, string>();
+        const registerDoc = (rawUri: string, text?: string): void => {
+          const p = stripUri(rawUri);
+          pathToUri.set(p, rawUri);
+          if (typeof text === "string") fileMap.set(p, text);
+        };
+
+        if (scadText) registerDoc(ctx.uri ?? activePath, scadText);
+
+        const unified = (
+          ctx.workspaceManager as
+            | {
+                unifiedWorkspace?:
+                  | { getAllUris?(): string[]; getDocumentText?(uri: string): string | undefined }
+                  | undefined;
+              }
+            | undefined
+        )?.unifiedWorkspace;
+        if (unified && typeof unified.getAllUris === "function") {
+          for (const u of unified.getAllUris()) {
+            if (!/\.(scad|qif|mo|step|stp)$/i.test(u)) continue;
+            let txt = typeof unified.getDocumentText === "function" ? unified.getDocumentText(u) : undefined;
+            if (!txt && ctx.sharedFs?.read) {
+              try {
+                txt = await ctx.sharedFs.read(stripUri(u));
+              } catch {
+                /* ignore unread workspace files */
+              }
+            }
+            registerDoc(u, txt ?? "");
+          }
+        }
+        if (typeof ctx.documentManager?.documents?.all === "function") {
+          for (const d of ctx.documentManager.documents.all()) {
+            if (/\.(scad|qif|mo|step|stp)$/i.test(d.uri)) {
+              registerDoc(d.uri, d.getText());
+            }
+          }
+        }
+
+        const pairing = fileMap.size > 0 ? resolveStepPairingFromFileMap(fileMap, activePath) : null;
+        const qifPath = pairing?.qifPath;
+        const qifText = qifPath ? fileMap.get(qifPath) : undefined;
+        const qifUri = qifPath ? (pathToUri.get(qifPath) ?? qifPath) : undefined;
+        const stepPath = pairing?.stepPath;
+        const stepUri = stepPath ? (pathToUri.get(stepPath) ?? stepPath) : undefined;
+        const moPath = pairing?.modelicaPath;
+        const modelicaUri = moPath ? (pathToUri.get(moPath) ?? moPath) : undefined;
+
+        const compileStepFn = ctx.compileStepFromSources as
+          | ((params: {
+              scadText: string;
+              qifText?: string | undefined;
+              assemblyName?: string | undefined;
+              scadUri?: string | undefined;
+              qifUri?: string | undefined;
+              stepUri?: string | undefined;
+              modelicaUri?: string | undefined;
+            }) => { stepText: string; error?: string | undefined })
+          | undefined;
+
+        let step = "";
+        if (typeof compileStepFn === "function" && scadText.trim().length > 0) {
+          const compiled = compileStepFn({
+            scadText,
+            ...(qifText ? { qifText } : {}),
+            assemblyName: name,
+            ...(ctx.uri ? { scadUri: ctx.uri } : {}),
+            ...(qifUri ? { qifUri } : {}),
+            ...(stepUri ? { stepUri } : {}),
+            ...(modelicaUri ? { modelicaUri } : {}),
+          });
+          if (!compiled.error && compiled.stepText) {
+            step = compiled.stepText;
+          }
+        }
+        if (!step) {
+          const spools = scadText ? parseScadSpoolDirectives(scadText) : [];
+          const stepBaseDir = dirnamePosix(stepPath ?? activePath);
+          const namedSolid = solid.name?.trim() ? solid : ({ ...solid, name } as Solid);
+          step = compileAssemblyToAp242Step(assembly(name, [part(namedSolid)]), {
+            schema: "AP242",
+            lengthUnit: "m",
+            preservePartNames: true,
+            provenance: {
+              version: 1,
+              generator: "modelscript-cad",
+              assemblyName: name,
+              ...(activePath ? { scadSource: relativePosix(stepBaseDir, activePath) } : {}),
+              ...(qifPath ? { qifSource: relativePosix(stepBaseDir, qifPath) } : {}),
+              ...(moPath ? { modelicaSource: relativePosix(stepBaseDir, moPath) } : {}),
+              ...(spools.length > 0 ? { spools } : {}),
+            },
+          }).stepText;
+        }
 
         return {
           step,

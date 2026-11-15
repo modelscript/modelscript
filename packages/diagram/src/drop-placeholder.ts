@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { adaptSvgColors } from "./color-inversion.js";
+
 export interface DropPlaceholderOptions {
   width?: number | undefined;
   height?: number | undefined;
@@ -666,6 +668,7 @@ export function dropComponentGhost(
   const halfH = h / 2;
 
   if (iconSvg) {
+    const displaySvg = isDark ? adaptSvgColors(iconSvg, isDark) : iconSvg;
     return g.addNode({
       id: "__drop_placeholder__",
       shape: "image",
@@ -674,7 +677,7 @@ export function dropComponentGhost(
       width: w,
       height: h,
       zIndex: 9999,
-      imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`,
+      imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(displaySvg)}`,
       attrs: {
         image: {
           preserveAspectRatio: "xMidYMid meet",

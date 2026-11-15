@@ -14,6 +14,7 @@ import {
   inferArenaExprVarType,
   simplifyArenaExpr,
   StmtKind,
+  UnifiedWorkspace,
   Variability,
   VarType,
   varTypeName,
@@ -24,6 +25,22 @@ import {
 import { Cst, FieldId, type SyntaxNode } from "../../../src-gen/bindings.js";
 import { ModelicaErrorCode } from "../../errors.js";
 import { isPredefinedType } from "../../predefined-types.js";
+import {
+  collapseAsciiWhitespace,
+  extractFunctionCallArgExprNodesCst,
+  firstAsciiToken,
+  isAsciiDigitsOnly,
+  isAsciiIdentContinue,
+  isAsciiIdentifier,
+  isAsciiIdentStart,
+  isSignedAsciiIntText,
+  isSignedAsciiNumberText,
+  parseStandaloneExpressionCst,
+  stripArraySubscripts,
+  stripAsciiWhitespace,
+  tokenizeCommentStrippedWords,
+  type CstNodeLike,
+} from "../expressions/cst-utils.js";
 import {
   addArenaValueAsExpr,
   addArrayBinaryExpr,
@@ -53,6 +70,200 @@ import { getElementDiagRange } from "../support/range-utils.js";
 import { getFlatteningState, getNamedArrayShape } from "../support/state.js";
 import type { ComponentInstanceData } from "../types.js";
 import { collectExtendsMods } from "./component-inst.js";
+
+function isAlnumOrUnderscoreCharCode(c: number): boolean {
+  return (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
+}
+
+function formatPlusOperatorSpacing(text: string): string {
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (
+      ch === "+" &&
+      i > 0 &&
+      i + 1 < text.length &&
+      isAlnumOrUnderscoreCharCode(text.charCodeAt(i - 1)) &&
+      isAlnumOrUnderscoreCharCode(text.charCodeAt(i + 1))
+    ) {
+      out += " + ";
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+function findDirectOrWrappedFunctionCallNode(node: CstNodeLike | null | undefined): CstNodeLike | null {
+  let cur: CstNodeLike | null | undefined = node;
+  for (let depth = 0; depth < 12 && cur; depth++) {
+    if (cur.type === "function_call") return cur;
+    const ch: CstNodeLike[] = cur.children || [];
+    const fcChild = ch.find((c) => c.type === "function_call");
+    if (fcChild && ch.every((c) => c === fcChild || c.text === ";" || c.type === ";")) {
+      return fcChild;
+    }
+    const meaningful = ch.filter((c) => c.type !== ";" && c.text?.trim() !== ";");
+    if (meaningful.length === 1) {
+      cur = meaningful[0];
+      continue;
+    }
+    for (let i = 0; i + 1 < ch.length; i++) {
+      if (
+        (ch[i]?.type === "component_reference" || ch[i]?.type === "name" || ch[i]?.type === "identifier") &&
+        ch[i + 1]?.type === "function_call_args"
+      ) {
+        return cur;
+      }
+    }
+    break;
+  }
+  return null;
+}
+
+function getFunctionCallInfoCst(node: CstNodeLike | null | undefined): { callee: string; args: SyntaxNode[] } | null {
+  if (!node) return null;
+  let callNode = findDirectOrWrappedFunctionCallNode(node);
+  if (!callNode) {
+    let txt = (node.text ?? "").trim();
+    if (txt.endsWith(";")) txt = txt.slice(0, -1).trim();
+    if (txt.includes("(")) {
+      const parsed = parseStandaloneExpressionCst(txt);
+      if (parsed) callNode = findDirectOrWrappedFunctionCallNode(parsed);
+    }
+  }
+  if (!callNode) return null;
+  const ch: CstNodeLike[] = callNode.children || [];
+  const calleeNode =
+    callNode.childForFieldName?.("name") ??
+    callNode.childForFieldName?.("callee") ??
+    ch.find((c) => c.type === "component_reference" || c.type === "name" || c.type === "identifier");
+  const callee = stripAsciiWhitespace(calleeNode?.text ?? "");
+  if (!callee) return null;
+  const args = extractFunctionCallArgExprNodesCst(callNode as SyntaxNode);
+  return { callee, args };
+}
+
+function isNamedFunctionCallCst(node: CstNodeLike | null | undefined, allowedCallees: readonly string[]): boolean {
+  const info = getFunctionCallInfoCst(node);
+  return info !== null && allowedCallees.includes(info.callee);
+}
+
+function isReinitCallNode(sNode: CstNodeLike | null | undefined): boolean {
+  if (!sNode) return false;
+  if (getFunctionCallInfoCst(sNode)?.callee === "reinit") return true;
+  const txt = (sNode.text ?? "").trimStart();
+  if (firstAsciiToken(txt) !== "reinit") return false;
+  return txt.slice("reinit".length).trimStart().startsWith("(");
+}
+
+function formatQualifiedIntArgCallFromCst(
+  stmtText: string,
+  fnCall: CstNodeLike | null | undefined,
+  rootClassName?: string,
+): string {
+  const info = getFunctionCallInfoCst(fnCall);
+  if (!info || !isAsciiIdentifier(info.callee) || info.args.length !== 1) return stmtText;
+  const argText = info.args[0]?.text?.trim() ?? "";
+  if (!isAsciiDigitsOnly(argText)) return stmtText;
+  const qual = rootClassName ? `${rootClassName}.${info.callee}` : info.callee;
+  const formattedFn = `${qual}(${Number(argText).toFixed(1)})`;
+  const rawCall = (fnCall?.text ?? "").trim();
+  return rawCall && stmtText.includes(rawCall) ? stmtText.replace(rawCall, formattedFn) : stmtText;
+}
+
+function hasCommandLineOptionInCst(rootNode: CstNodeLike | null | undefined, optionName: string): boolean {
+  if (!rootNode) return false;
+  const stack: CstNodeLike[] = [rootNode];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) continue;
+    if (cur.type === "annotation_clause") {
+      const modStack: CstNodeLike[] = [cur];
+      while (modStack.length > 0) {
+        const mNode = modStack.pop();
+        if (!mNode) continue;
+        if (mNode.type === "element_modification") {
+          const nameNode =
+            mNode.childForFieldName?.("name") ??
+            (mNode.children || []).find((c) => c.type === "name" || c.type === "identifier");
+          if (nameNode?.text?.trim() === "__OpenModelica_commandLineOptions") {
+            const modNode =
+              mNode.childForFieldName?.("modification") ??
+              (mNode.children || []).find((c) => c.type === "modification");
+            if (modNode?.text?.includes(optionName)) {
+              return true;
+            }
+          }
+        }
+        for (const ch of mNode.children || []) {
+          modStack.push(ch);
+        }
+      }
+      continue;
+    }
+    const children = cur.children || [];
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (children[i]) stack.push(children[i]!);
+    }
+  }
+  return false;
+}
+
+const connectPairCache = new Map<string, [string, string] | null>();
+
+function parseConnectPairCst(rawConnText: string): [string, string] | null {
+  const cached = connectPairCache.get(rawConnText);
+  if (cached !== undefined) return cached;
+
+  let stmt = rawConnText.trim();
+  if (stmt.startsWith("break") && stmt.length > 5) {
+    stmt = stmt.slice(5).trimStart();
+  }
+  if (!stmt.startsWith("connect")) {
+    connectPairCache.set(rawConnText, null);
+    return null;
+  }
+  const parser = UnifiedWorkspace.getGlobalParser(".mo");
+  if (!parser) {
+    connectPairCache.set(rawConnText, null);
+    return null;
+  }
+  const semiStmt = stmt.endsWith(";") ? stmt : `${stmt};`;
+  const tree = parser.parse(`model _M equation ${semiStmt} end _M;`);
+  const rootNode = tree?.rootNode as CstNodeLike | undefined;
+  const stack: CstNodeLike[] = rootNode ? [rootNode] : [];
+  let result: [string, string] | null = null;
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) continue;
+    if (cur.type === "connect_equation") {
+      const lhsNode = cur.childForFieldName?.("lhs");
+      const rhsNode = cur.childForFieldName?.("rhs");
+      const refs =
+        lhsNode && rhsNode
+          ? [lhsNode, rhsNode]
+          : (cur.children || []).filter(
+              (c) =>
+                c.type === "component_reference" ||
+                c.type === "expression" ||
+                c.type === "identifier" ||
+                c.type === "name",
+            );
+      if (refs.length >= 2) {
+        result = [stripAsciiWhitespace(refs[0]!.text ?? ""), stripAsciiWhitespace(refs[1]!.text ?? "")];
+      }
+      break;
+    }
+    const children = cur.children || [];
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (children[i]) stack.push(children[i]!);
+    }
+  }
+  tree?.delete?.();
+  connectPairCache.set(rawConnText, result);
+  return result;
+}
 
 /**
  * Determines whether a lowered arena function-call expression `callId` is a `assert(cond, ...)`
@@ -162,10 +373,11 @@ export function emitFunctionCallEquation(
   } | null,
 ): void {
   if (!node) return;
+  const reinitCall = getFunctionCallInfoCst(node);
   const isReinit =
+    reinitCall?.callee === "reinit" ||
     node.child?.(0)?.text?.trim() === "reinit" ||
-    node.children?.[0]?.text?.trim() === "reinit" ||
-    /^\s*reinit\s*\(/.test(node.text ?? "");
+    node.children?.[0]?.text?.trim() === "reinit";
   if (isReinit) {
     let startB = node.startIndex ?? node.startOffset;
     let endB = node.endIndex ?? node.endOffset;
@@ -192,9 +404,8 @@ export function emitFunctionCallEquation(
       return;
     }
 
-    const match = (node.text ?? "").match(/reinit\s*\(\s*([^,\s()]+)/);
-    if (match) {
-      const rawTarget = match[1]!.trim();
+    const rawTarget = reinitCall?.args?.[0]?.text?.trim() ?? "";
+    if (rawTarget) {
       if (flattener.activeLoopVars.has(rawTarget) || (substitutions && substitutions.has(rawTarget))) {
         dae.diagnostics.push({
           severity: "error",
@@ -205,7 +416,7 @@ export function emitFunctionCallEquation(
         return;
       }
 
-      if (/^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(rawTarget) || rawTarget === "true" || rawTarget === "false") {
+      if (isSignedAsciiNumberText(rawTarget) || rawTarget === "true" || rawTarget === "false") {
         dae.diagnostics.push({
           severity: "error",
           code: ModelicaErrorCode.REINIT_ARG1_NOT_VARIABLE.code,
@@ -340,8 +551,14 @@ export function emitFunctionCallEquation(
   };
 
   if (dae.getExprKind(callId) === ExprKind.BoolLiteral) {
-    const rawCallText = node.text?.trim() ?? "";
-    if (/^(?:Connections\.)?(?:isRoot|rooted)\s*\(/.test(rawCallText)) {
+    const callInfo = getFunctionCallInfoCst(node);
+    if (
+      callInfo &&
+      (callInfo.callee === "Connections.isRoot" ||
+        callInfo.callee === "Connections.rooted" ||
+        callInfo.callee === "isRoot" ||
+        callInfo.callee === "rooted")
+    ) {
       return;
     }
   }
@@ -892,7 +1109,7 @@ export function extractClassEquations(
                   const ownerQual = ownerClsId ? getSymbolQualifiedName(db, ownerClsId) : "";
                   if (!ownerQual) return undefined;
                   return prefix
-                    ? `${ownerQual}$${prefix.replace(/\./g, "$")}.${redeclPkgPrefix}`
+                    ? `${ownerQual}$${prefix.replaceAll(".", "$")}.${redeclPkgPrefix}`
                     : `${ownerQual}.${redeclPkgPrefix}`;
                 })()
               : parentMods?.specializedPkgPrefix;
@@ -1190,7 +1407,7 @@ export function extractClassEquations(
                     const n0Text = colonNodes[0]?.text?.trim() ?? "";
                     const n1Text = colonNodes[1]?.text?.trim() ?? "";
                     const v1Idx = dae.getVarIdxByName(prefix ? `${prefix}.${n1Text}` : n1Text);
-                    if (v1Idx >= 0 && dae.getVarType(v1Idx) === VarType.Real && /^\d+$/.test(n0Text)) {
+                    if (v1Idx >= 0 && dae.getVarType(v1Idx) === VarType.Real && isAsciiDigitsOnly(n0Text)) {
                       formattedRangeText = `${n0Text}.0:${n1Text}`;
                     }
                   }
@@ -1645,7 +1862,9 @@ export function extractClassEquations(
                       ? eq
                       : (eq.children || []).find((c: any) => c.type === "connect_equation");
                   if (connNode) {
-                    const connText = connNode.text?.trim()?.replace(/;$/, "") ?? "connect(...)";
+                    const rawConn = connNode.text?.trim();
+                    const connText =
+                      rawConn === undefined ? "connect(...)" : rawConn.endsWith(";") ? rawConn.slice(0, -1) : rawConn;
                     dae.diagnostics.push({
                       severity: "error",
                       code: ModelicaErrorCode.CONNECT_IN_NON_PARAM_IF.code,
@@ -2059,7 +2278,7 @@ export function extractClassEquations(
                 dae.getExprKind(lhsExprId) === ExprKind.Name
               ) {
                 const rawLhsText = expressions[0]?.text?.trim() ?? "";
-                if (/^[a-zA-Z_]\w*$/.test(rawLhsText) && classEntry && db) {
+                if (isAsciiIdentifier(rawLhsText) && classEntry && db) {
                   const vName = dae.interner.resolve(dae.getExprData1(lhsExprId)) ?? "";
                   if (
                     vName &&
@@ -2126,9 +2345,9 @@ export function extractClassEquations(
                   const lhsStr = printer.printExprToString(lhsExprId);
                   let formattedInStr = lhsStr;
                   if (dae.extensionMetadata?.["isOldFrontend"]) {
-                    const rawText = node.text ? node.text.trim().replace(/\s+/g, " ") : "";
+                    const rawText = node.text ? collapseAsciiWhitespace(node.text) : "";
                     const semiText = rawText.endsWith(";") ? rawText : `${rawText};`;
-                    formattedInStr = semiText.replace(/([A-Za-z0-9_]+)\+([A-Za-z0-9_]+)/g, "$1 + $2");
+                    formattedInStr = formatPlusOperatorSpacing(semiText);
                   }
                   dae.diagnostics.push({
                     severity: "error",
@@ -2283,7 +2502,10 @@ export function extractClassEquations(
                 }
                 let eqText = node.text?.trim() ?? "";
                 if (eqText.endsWith(";")) eqText = eqText.slice(0, -1).trim();
-                eqText = eqText.replace(/\s*=\s*/, " = ");
+                const eqPos = eqText.indexOf("=");
+                if (eqPos >= 0) {
+                  eqText = `${eqText.slice(0, eqPos).trimEnd()} = ${eqText.slice(eqPos + 1).trimStart()}`;
+                }
 
                 dae.diagnostics.push({
                   severity: ModelicaErrorCode.EQUATION_TYPE_MISMATCH.severity,
@@ -2951,8 +3173,8 @@ export function extractClassEquations(
                       c.type === "name",
                   );
             if (refs.length >= 2) {
-              const r0Raw = refs[0].text?.trim().replace(/\s+/g, "") ?? "";
-              const r1Raw = refs[1].text?.trim().replace(/\s+/g, "") ?? "";
+              const r0Raw = stripAsciiWhitespace(refs[0].text ?? "");
+              const r1Raw = stripAsciiWhitespace(refs[1].text ?? "");
               const r0Full = prefix ? `${prefix}.${r0Raw}` : r0Raw;
               const r1Full = prefix ? `${prefix}.${r1Raw}` : r1Raw;
 
@@ -2960,8 +3182,8 @@ export function extractClassEquations(
                 return;
               }
 
-              const r0Root = r0Raw.split(".")[0].split("[")[0];
-              const r1Root = r1Raw.split(".")[0].split("[")[0];
+              const r0Root = (r0Raw.split(".")[0] ?? "").split("[")[0] ?? "";
+              const r1Root = (r1Raw.split(".")[0] ?? "").split("[")[0] ?? "";
 
               if (curBreakContext.brokenComponents.has(r0Root) || curBreakContext.brokenComponents.has(r1Root)) {
                 return;
@@ -2971,20 +3193,32 @@ export function extractClassEquations(
               let r0Sub = r0Raw;
               let r1Sub = r1Raw;
               if (substitutions && substitutions.size > 0) {
-                const applySubs = (s: string) =>
-                  s.replace(/\b[a-zA-Z_]\w*\b/g, (match) => {
-                    const val = substitutions.get(match);
-                    return val !== undefined ? String(val) : match;
-                  });
+                const applySubs = (s: string) => {
+                  let out = "";
+                  let idx = 0;
+                  while (idx < s.length) {
+                    if (isAsciiIdentStart(s.charCodeAt(idx))) {
+                      const start = idx;
+                      idx++;
+                      while (idx < s.length && isAsciiIdentContinue(s.charCodeAt(idx))) idx++;
+                      const ident = s.slice(start, idx);
+                      const val = substitutions.get(ident);
+                      out += val !== undefined ? String(val) : ident;
+                    } else {
+                      out += s[idx]!;
+                      idx++;
+                    }
+                  }
+                  return out;
+                };
                 r0Sub = applySubs(r0Sub);
                 r1Sub = applySubs(r1Sub);
               }
 
               for (const bConn of curBreakContext.brokenConnections) {
-                const m = bConn.match(/connect\(([^,()]+),([^()]+)\)/);
-                if (m) {
-                  const bFrom = m[1]!.trim().replace(/\s+/g, "");
-                  const bTo = m[2]!.trim().replace(/\s+/g, "");
+                const pair = parseConnectPairCst(bConn);
+                if (pair) {
+                  const [bFrom, bTo] = pair;
                   if (
                     (r0Raw === bFrom && r1Raw === bTo) ||
                     (r0Raw === bTo && r1Raw === bFrom) ||
@@ -3106,16 +3340,19 @@ export function extractClassEquations(
                               } else {
                                 const resolved = db.byName(typeName)?.find((e) => e.kind === "Class");
                                 if (resolved) {
-                                  const src = (flattener.db as any).source
-                                    ? ((flattener.db as any).source(resolved.resourceId) ?? "")
-                                    : "";
-                                  const snippet =
-                                    src && resolved.startOffset !== undefined && resolved.endOffset !== undefined
-                                      ? src.substring(resolved.startOffset, resolved.endOffset)
-                                      : ((db.cstNode?.(resolved.id) as any)?.text ?? "");
-                                  const match = snippet.match(/=\s*([A-Za-z0-9_]+(\([^)]+\))?)/);
-                                  if (match) {
-                                    typeName = match[1];
+                                  const resolvedCst = db.cstNode?.(resolved.id) as CstNodeLike | null;
+                                  const shortSpec = getShortClassSpecifierNode(resolvedCst);
+                                  if (shortSpec) {
+                                    const typeSpecNode = (shortSpec.children || []).find(
+                                      (c: CstNodeLike) => c.type === "type_specifier" || c.type === "name",
+                                    );
+                                    const modNode = (shortSpec.children || []).find(
+                                      (c: CstNodeLike) => c.type === "class_modification",
+                                    );
+                                    if (typeSpecNode?.text) {
+                                      const base = typeSpecNode.text.trim();
+                                      typeName = modNode?.text ? `${base}${modNode.text.trim()}` : base;
+                                    }
                                   }
                                 }
                               }
@@ -3247,7 +3484,7 @@ export function extractClassEquations(
                           (k: any) => k.type === "lhs_expression" || k.type === "component_reference",
                         );
                         if (lhs) {
-                          const v = lhs.text.trim().replace(/\s+/g, "");
+                          const v = stripAsciiWhitespace(lhs.text);
                           if (!curBranch.includes(v)) curBranch.push(v);
                         }
                         return;
@@ -3308,8 +3545,7 @@ export function extractClassEquations(
 
             const isClockNode = (n: any): boolean => {
               if (!n) return false;
-              const txt = n.text?.trim() ?? "";
-              if (/^(?:\.?Clock)\s*\(/.test(txt)) return true;
+              if (isNamedFunctionCallCst(n, ["Clock", ".Clock"])) return true;
               try {
                 const eid = flattener.lowerExpr(n, dae, prefix, substitutions);
                 if (eid >= 0 && dae.getExprKind(eid) === ExprKind.Call) {
@@ -3476,7 +3712,9 @@ export function extractClassEquations(
               }
 
               if (n.type === "connect_equation") {
-                const connText = n.text?.trim()?.replace(/;$/, "") ?? "connect(...)";
+                const rawConn = n.text?.trim();
+                const connText =
+                  rawConn === undefined ? "connect(...)" : rawConn.endsWith(";") ? rawConn.slice(0, -1) : rawConn;
                 dae.diagnostics.push({
                   severity: "error",
                   code: ModelicaErrorCode.CONNECT_IN_WHEN.code,
@@ -3542,7 +3780,7 @@ export function extractClassEquations(
                     const out = new StringWriter();
                     const printer = new ArenaDAEPrinter(out, dae, true);
                     printer.printExpr(eq.lhsExprId);
-                    vars.add(out.toString().trim().replace(/\s+/g, ""));
+                    vars.add(stripAsciiWhitespace(out.toString()));
                   }
                 }
                 return Array.from(vars).sort();
@@ -3640,17 +3878,11 @@ export function extractClassEquations(
               const sText = (sNode.text ?? "").trim();
               let rootP: any = sNode;
               while (rootP?.parent) rootP = rootP.parent;
-              const fileSrc = rootP?.text ?? "";
               const allowsReinitInAlg =
                 dae.extensionMetadata?.["isOldFrontend"] ||
                 (flattener.options as any)?.allowNonStandardModelica?.includes("reinitInAlgorithms") ||
-                /annotation\s*\(\s*__OpenModelica_commandLineOptions\s*=\s*"[^"]*reinitInAlgorithms[^"]*"\s*\)/.test(
-                  fileSrc,
-                );
-              if (
-                (/^\s*reinit\s*\(/.test(sText) || (sNode.type === "function_call" && sText.startsWith("reinit"))) &&
-                !allowsReinitInAlg
-              ) {
+                hasCommandLineOptionInCst(rootP, "reinitInAlgorithms");
+              if (isReinitCallNode(sNode) && !allowsReinitInAlg) {
                 let startB = sNode.startIndex ?? sNode.startOffset;
                 let endB = sNode.endIndex ?? sNode.endOffset;
                 if (endB != null && sText.endsWith(";")) endB -= 1;
@@ -3717,14 +3949,10 @@ export function extractClassEquations(
                         } else if (vari === Variability.Parameter) {
                           fixedStr = "(fixed=true)";
                         }
-                        const formattedCall = stmtText.replace(
-                          /\b([a-zA-Z_]\w*)\s*\(\s*(\d+)\s*\)/,
-                          (_: string, fn: string, arg: string) => {
-                            const qual = flattener.currentRootClassId
-                              ? `${db.symbol(flattener.currentRootClassId)?.name}.${fn}`
-                              : fn;
-                            return `${qual}(${Number(arg).toFixed(1)})`;
-                          },
+                        const formattedCall = formatQualifiedIntArgCallFromCst(
+                          stmtText,
+                          fnCall,
+                          flattener.currentRootClassId ? db.symbol(flattener.currentRootClassId)?.name : undefined,
                         );
                         const startB = sNode.startIndex ?? sNode.startOffset;
                         const endB = sNode.endIndex ?? sNode.endOffset;
@@ -4270,7 +4498,7 @@ export function extractClassEquations(
 
                   // 2. Check assignment to non-assignable class specialization (model, package, block)
                   let targetCompSym: SymbolEntry | null = null;
-                  if (!targetText.replace(/\[[^\]]*\]/g, "").includes(".")) {
+                  if (!stripArraySubscripts(targetText).includes(".")) {
                     if (flattener.currentClassId) {
                       const children = db.childrenOf(flattener.currentClassId);
                       targetCompSym =
@@ -4305,8 +4533,7 @@ export function extractClassEquations(
                       const rawKind = String(
                         classMeta?.classKind ?? classMeta?.classPrefixes ?? classSym.kind ?? "",
                       ).toLowerCase();
-                      const cleanKind = rawKind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-                      const words = cleanKind.split(/\s+/).filter(Boolean);
+                      const words = tokenizeCommentStrippedWords(rawKind);
                       let specialization: string | null = null;
                       if (classSym.kind === "Package" || words.includes("package")) specialization = "package";
                       else if (classSym.kind === "Model" || words.includes("model")) specialization = "model";
@@ -4368,7 +4595,7 @@ export function extractClassEquations(
                     const variability = dae.getVarVariability(vIdx);
                     if (variability === Variability.Constant || variability === Variability.Parameter) {
                       const displayTarget = targetText || cleanTargetText || targetStr;
-                      if (dae.getVarType(vIdx) === VarType.Real && /^[+-]?\d+$/.test(valStr)) {
+                      if (dae.getVarType(vIdx) === VarType.Real && isSignedAsciiIntText(valStr)) {
                         valStr = `${valStr}.0`;
                       }
                       if (variability === Variability.Constant) {
@@ -4627,7 +4854,7 @@ export function extractClassEquations(
                   const getTarget = (s: any): string | null => {
                     if (s.type === "assignment_statement") {
                       const tgt = (s.children || []).find((k: any) => k.type === "component_reference");
-                      if (tgt) return tgt.text.trim().replace(/\s+/g, "");
+                      if (tgt) return stripAsciiWhitespace(tgt.text);
                     }
                     return null;
                   };
@@ -4929,7 +5156,7 @@ export function expandConnectorRef(refStr: string, dae: DAEBuilder): string[] {
     cache.set(refStr, res);
     return res;
   }
-  // 3. Fallback: regex scan when array elements exist in prefixes
+  // 3. Fallback: deterministic segment scan when array elements exist in prefixes
   const prefixSet = getVarPrefixSet(dae);
   const parts = refStr.split(".");
   const firstPart = parts[0]!;
@@ -4941,22 +5168,42 @@ export function expandConnectorRef(refStr: string, dae: DAEBuilder): string[] {
     cache.set(refStr, res);
     return res;
   }
-  const pattern = new RegExp(
-    "^(" +
-      parts.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?:\\[[\\d,\\s]+\\])?").join("\\.") +
-      ")(?:\\..*)?$",
-  );
   const found = new Set<string>();
   for (let i = 0; i < dae.varCount; i++) {
     if (dae.isVarRemoved(i)) continue;
     const vn = dae.getVarName(i);
-    const m = vn.match(pattern);
-    if (m && m[1]!.includes("[")) {
-      found.add(m[1]!);
+    const matchedPrefix = matchDottedArrayPrefix(vn, parts);
+    if (matchedPrefix && matchedPrefix.includes("[")) {
+      found.add(matchedPrefix);
     }
   }
   const res =
     found.size === 0 ? [refStr] : Array.from(found).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   cache.set(refStr, res);
   return res;
+}
+
+function isBracketIndexSuffix(text: string): boolean {
+  if (!text.startsWith("[") || !text.endsWith("]") || text.length <= 2) return false;
+  for (let i = 1; i < text.length - 1; i++) {
+    const c = text[i]!;
+    if ((c >= "0" && c <= "9") || c === "," || c === " " || c === "\t" || c === "\n" || c === "\r") {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+function matchDottedArrayPrefix(varName: string, parts: readonly string[]): string | null {
+  const vnParts = varName.split(".");
+  if (vnParts.length < parts.length) return null;
+  for (let i = 0; i < parts.length; i++) {
+    const seg = vnParts[i]!;
+    const expected = parts[i]!;
+    if (!seg.startsWith(expected)) return null;
+    const suffix = seg.slice(expected.length);
+    if (suffix !== "" && !isBracketIndexSuffix(suffix)) return null;
+  }
+  return vnParts.slice(0, parts.length).join(".");
 }

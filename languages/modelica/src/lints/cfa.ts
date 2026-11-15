@@ -15,6 +15,42 @@
 import { error, warning, type LintResult } from "@modelscript/dsl";
 import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
 import { ModelicaErrorCode } from "../errors.js";
+import {
+  isAsciiIdentContinue,
+  isAsciiIdentStart,
+  isAsciiWhitespaceCode,
+  tokenizeCommentStrippedWords,
+} from "../flattener/expressions/cst-utils.js";
+import { ModelicaCFGLowerer, type ModelicaStatement } from "../formal/modelica-cfg-lowerer.js";
+
+function unwrapOuterParens(s: string): string {
+  const start = s.startsWith("(") ? 1 : 0;
+  const end = s.endsWith(")") && s.length > start ? s.length - 1 : s.length;
+  return s.slice(start, end);
+}
+
+function extractBaseVarIdent(s: string): string {
+  let end = s.length;
+  const dotIdx = s.indexOf(".");
+  if (dotIdx >= 0 && dotIdx < end) end = dotIdx;
+  const bracketIdx = s.indexOf("[");
+  if (bracketIdx >= 0 && bracketIdx < end) end = bracketIdx;
+  return s.slice(0, end).trim();
+}
+
+function isAbortCallStatement(raw: string): boolean {
+  const trimmed = raw.trimStart();
+  const parenIdx = trimmed.indexOf("(");
+  if (parenIdx < 0) return false;
+  const callee = trimmed.slice(0, parenIdx).trimEnd();
+  if (callee === "assert") {
+    const afterParen = trimmed.slice(parenIdx + 1).trimStart();
+    if (!afterParen.startsWith("false")) return false;
+    const nextCh = afterParen.charCodeAt(5);
+    return Number.isNaN(nextCh) || !isAsciiIdentContinue(nextCh);
+  }
+  return callee === "error" || callee === "Modelica.Utilities.Streams.error";
+}
 
 /**
  * Metadata for a declared function or algorithm variable tracked during CFA.
@@ -40,7 +76,7 @@ interface VariableInfo {
  * Normalizes rule and node type names for case/underscore insensitive comparison.
  */
 function normType(t: string): string {
-  return (t || "").toLowerCase().replace(/_/g, "");
+  return (t || "").toLowerCase().replaceAll("_", "");
 }
 
 /**
@@ -326,7 +362,7 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
     for (const expr of exprs) {
       const varText = (expr.text || "").trim();
       if (varText) {
-        const base = varText.split(/[.[]/)[0]?.trim();
+        const base = extractBaseVarIdent(varText);
         if (base) targetVars.push(base);
       }
     }
@@ -359,7 +395,7 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
     const valExpr = valNode?.text || rawText.split(":=")[1]?.trim() || "";
     const valStartByte = valNode?.startIndex ?? sStart + Math.max(0, rawText.indexOf(":=") + 2);
 
-    const base = targetVar.split(/[.[]/)[0]?.trim();
+    const base = extractBaseVarIdent(targetVar);
     return {
       kind: "assignment",
       targetVars: base ? [base] : [],
@@ -391,11 +427,10 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
     const parts = rawText.split(":=");
     const targetVar = parts[0]?.trim() || "";
     const valExpr = parts.slice(1).join(":=").trim();
-    const baseVars = targetVar
-      .replace(/^\(|\)$/g, "")
+    const baseVars = unwrapOuterParens(targetVar)
       .split(",")
-      .map((s: string) => s.split(/[.[]/)[0]?.trim())
-      .filter((s: string | undefined): s is string => Boolean(s));
+      .map(extractBaseVarIdent)
+      .filter((s): s is string => Boolean(s));
 
     return {
       kind: "assignment",
@@ -422,23 +457,27 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
  */
 function extractStatementsFromCst(algNode: any, defaultStartByte: number): ParsedStatement[] {
   const statements: ParsedStatement[] = [];
-  if (!algNode || !algNode.children) {
+  if (!algNode || !algNode.children || algNode.children.length === 0) {
     return parseStatementsFromText(algNode?.text || "", defaultStartByte);
   }
 
+  let hasSyntaxError = Boolean(algNode.isError || algNode.type === "ERROR");
   const collectStmts = (node: any) => {
     for (const child of node.children || []) {
       const nt = normType(child.type);
+      if (child.isError || child.type === "ERROR") {
+        hasSyntaxError = true;
+      }
       if (nt === "statement") {
         statements.push(extractStatementFromNode(child));
-      } else if (nt === "statement_list" || nt === "statements") {
+      } else if (nt === "statementlist" || nt === "statements") {
         collectStmts(child);
       }
     }
   };
   collectStmts(algNode);
 
-  if (statements.length === 0 && algNode.text) {
+  if (statements.length === 0 && hasSyntaxError && algNode.text) {
     return parseStatementsFromText(algNode.text, defaultStartByte);
   }
 
@@ -452,269 +491,166 @@ function extractStatementsFromCst(algNode: any, defaultStartByte: number): Parse
  * @returns Masked string with identical length and line breaks.
  */
 function maskCommentsAndStringsPreservingLength(src: string): string {
-  return src.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:[^"\\]|\\.)*"/g, (m) =>
-    m.startsWith('"') ? `"${" ".repeat(Math.max(0, m.length - 2))}"` : m.replace(/[^\r\n]/g, " "),
-  );
+  const out: string[] = [];
+  let i = 0;
+  while (i < src.length) {
+    const ch = src[i]!;
+    if (ch === "/" && src[i + 1] === "/") {
+      out.push(" ", " ");
+      i += 2;
+      while (i < src.length && src[i] !== "\n") {
+        out.push(src[i] === "\r" ? "\r" : " ");
+        i++;
+      }
+      continue;
+    }
+    if (ch === "/" && src[i + 1] === "*") {
+      const closeIdx = src.indexOf("*/", i + 2);
+      if (closeIdx >= 0) {
+        const end = closeIdx + 2;
+        for (let j = i; j < end; j++) {
+          const c = src[j]!;
+          out.push(c === "\r" || c === "\n" ? c : " ");
+        }
+        i = end;
+        continue;
+      }
+    }
+    if (ch === '"') {
+      let j = i + 1;
+      let closed = false;
+      while (j < src.length) {
+        if (src[j] === "\\" && j + 1 < src.length) {
+          j += 2;
+          continue;
+        }
+        if (src[j] === '"') {
+          j++;
+          closed = true;
+          break;
+        }
+        j++;
+      }
+      if (closed) {
+        out.push('"');
+        for (let k = i + 1; k < j - 1; k++) {
+          out.push(" ");
+        }
+        out.push('"');
+        i = j;
+        continue;
+      }
+    }
+    out.push(ch);
+    i++;
+  }
+  return out.join("");
+}
+
+function toParsedStatement(stmt: ModelicaStatement, fallbackStart: number): ParsedStatement {
+  const startOffset = stmt.startOffset ?? fallbackStart;
+  const rawText = stmt.rawText ?? "";
+  const endOffset = stmt.endOffset ?? startOffset + rawText.length;
+
+  if (stmt.kind === "if") {
+    const thenStmts = (stmt.thenStmts ?? []).map((s) => toParsedStatement(s, startOffset));
+    const firstCondRel = stmt.condExpr && rawText ? rawText.indexOf(stmt.condExpr) : -1;
+    const branches: ParsedBranch[] = [
+      {
+        condExpr: stmt.condExpr,
+        condStartByte: startOffset + (firstCondRel >= 0 ? firstCondRel : 0),
+        stmts: thenStmts,
+      },
+      ...(stmt.elseIfs ?? []).map((ei) => {
+        const condRel = ei.condExpr && rawText ? rawText.indexOf(ei.condExpr) : -1;
+        return {
+          condExpr: ei.condExpr,
+          condStartByte: startOffset + (condRel >= 0 ? condRel : 0),
+          stmts: ei.stmts.map((s) => toParsedStatement(s, startOffset)),
+        };
+      }),
+    ];
+    const elseStmts = stmt.elseStmts?.map((s) => toParsedStatement(s, startOffset));
+    return {
+      kind: "if",
+      condExpr: branches[0]?.condExpr,
+      condStartByte: branches[0]?.condStartByte,
+      rawText,
+      startOffset,
+      endOffset,
+      branches,
+      elseStmts,
+      thenStmts: branches[0]?.stmts,
+    };
+  }
+
+  if (stmt.kind === "for") {
+    return {
+      kind: "for",
+      rawText,
+      startOffset,
+      endOffset,
+      loopVars: stmt.loopVar ? [stmt.loopVar] : [],
+      rangeExpr: stmt.rangeExpr,
+      loopBody: (stmt.loopBody ?? []).map((s) => toParsedStatement(s, startOffset)),
+    };
+  }
+
+  if (stmt.kind === "while") {
+    return {
+      kind: "while",
+      condExpr: stmt.condExpr,
+      rawText,
+      startOffset,
+      endOffset,
+      whileBody: (stmt.whileBody ?? []).map((s) => toParsedStatement(s, startOffset)),
+    };
+  }
+
+  if (stmt.kind === "when") {
+    return {
+      kind: "when",
+      condExpr: stmt.condExpr,
+      rawText,
+      startOffset,
+      endOffset,
+      whenBody: (stmt.whenBody ?? []).map((s) => toParsedStatement(s, startOffset)),
+    };
+  }
+
+  if (stmt.kind === "assignment") {
+    const targetVar = stmt.targetVar ?? "";
+    const baseVars = unwrapOuterParens(targetVar)
+      .split(",")
+      .map(extractBaseVarIdent)
+      .filter((s): s is string => Boolean(s));
+    const assignRel = rawText.indexOf(":=");
+    return {
+      kind: "assignment",
+      targetVars: baseVars,
+      targetVar,
+      valExpr: stmt.valExpr ?? "",
+      valStartByte: assignRel >= 0 ? startOffset + assignRel + 2 : startOffset,
+      rawText,
+      startOffset,
+      endOffset,
+    };
+  }
+
+  return {
+    kind: stmt.kind === "call" ? "other" : stmt.kind,
+    rawText,
+    startOffset,
+    endOffset,
+  };
 }
 
 /**
- * Fallback parser for raw statement strings within an algorithm section.
+ * Fallback parser for raw statement strings within an algorithm section,
+ * delegating to the WASM CST-backed {@link ModelicaCFGLowerer.parseStatements}.
  */
 function parseStatementsFromText(algText: string, algStartByte: number): ParsedStatement[] {
-  const statements: ParsedStatement[] = [];
-
-  let body = maskCommentsAndStringsPreservingLength(algText);
-  const algKwMatch = /^\s*(?:initial\s+)?algorithm\b/.exec(body);
-  let offset = 0;
-  if (algKwMatch) {
-    offset = algKwMatch[0].length;
-    body = body.slice(offset);
-  }
-
-  let i = 0;
-  while (i < body.length) {
-    while (i < body.length && /\s/.test(body[i]!)) i++;
-    if (i >= body.length) break;
-
-    const remaining = body.slice(i);
-
-    // 1. If statement
-    if (/^if\b/.test(remaining)) {
-      const ifStart = i;
-      let depth = 1;
-      let j = i + 2;
-      while (j < body.length && depth > 0) {
-        if (body.slice(j).startsWith("if") && /\bif\b/.test(body.slice(j, j + 3))) {
-          depth++;
-          j += 2;
-        } else if (body.slice(j).startsWith("end if") && /\bend\s+if\b/.test(body.slice(j, j + 7))) {
-          depth--;
-          j += 6;
-          if (depth === 0) {
-            while (j < body.length && (body[j] === ";" || /\s/.test(body[j]!))) {
-              if (body[j] === ";") {
-                j++;
-                break;
-              }
-              j++;
-            }
-            break;
-          }
-        } else {
-          j++;
-        }
-      }
-
-      const ifText = body.slice(ifStart, j);
-      const startOffset = algStartByte + offset + ifStart;
-      const endOffset = algStartByte + offset + j;
-
-      // Split into if / elseif / else branches
-      const branches: ParsedBranch[] = [];
-      let elseStmts: ParsedStatement[] | undefined = undefined;
-
-      // Extract parts between if/elseif/else/end if
-      const branchTokens = ifText.split(/\b(elseif|else)\b/);
-      // branchTokens[0] has 'if ... then ...'
-      const firstBranchMatch = /^if\b([\s\S]*?)\bthen\b([\s\S]*)$/.exec(branchTokens[0] || "");
-      if (firstBranchMatch) {
-        const condExpr = firstBranchMatch[1]?.trim() || "";
-        const thenBody = firstBranchMatch[2]?.trim() || "";
-        branches.push({
-          condExpr,
-          condStartByte: startOffset + (branchTokens[0]?.indexOf(condExpr) ?? 0),
-          stmts: parseStatementsFromText(thenBody, startOffset),
-        });
-      }
-
-      let k = 1;
-      while (k < branchTokens.length) {
-        const token = branchTokens[k]?.trim();
-        const content = branchTokens[k + 1] || "";
-        if (token === "elseif") {
-          const match = /^\s*([\s\S]*?)\bthen\b([\s\S]*)$/.exec(content);
-          if (match) {
-            const condExpr = match[1]?.trim() || "";
-            const bodyText = match[2]?.trim() || "";
-            branches.push({
-              condExpr,
-              condStartByte: startOffset,
-              stmts: parseStatementsFromText(bodyText, startOffset),
-            });
-          }
-        } else if (token === "else") {
-          const elseBody = content.replace(/\bend\s+if[\s\S]*$/, "").trim();
-          elseStmts = parseStatementsFromText(elseBody, startOffset);
-        }
-        k += 2;
-      }
-
-      statements.push({
-        kind: "if",
-        condExpr: branches[0]?.condExpr,
-        condStartByte: branches[0]?.condStartByte,
-        rawText: ifText,
-        startOffset,
-        endOffset,
-        branches,
-        elseStmts,
-        thenStmts: branches[0]?.stmts,
-      });
-
-      i = j;
-      continue;
-    }
-
-    // 2. For statement
-    if (/^for\b/.test(remaining)) {
-      const forStart = i;
-      let depth = 1;
-      let j = i + 3;
-      while (j < body.length && depth > 0) {
-        if (body.slice(j).startsWith("for") && /\bfor\b/.test(body.slice(j, j + 4))) {
-          depth++;
-          j += 3;
-        } else if (body.slice(j).startsWith("end for") && /\bend\s+for\b/.test(body.slice(j, j + 8))) {
-          depth--;
-          j += 7;
-          if (depth === 0) {
-            while (j < body.length && (body[j] === ";" || /\s/.test(body[j]!))) {
-              if (body[j] === ";") {
-                j++;
-                break;
-              }
-              j++;
-            }
-            break;
-          }
-        } else {
-          j++;
-        }
-      }
-
-      const forText = body.slice(forStart, j);
-      const startOffset = algStartByte + offset + forStart;
-      const endOffset = algStartByte + offset + j;
-
-      const forMatch = /^for\b([\s\S]*?)\bloop\b([\s\S]*?)\bend\s+for/i.exec(forText);
-      const header = forMatch ? forMatch[1] || "" : "";
-      const forBodyText = forMatch ? forMatch[2] || "" : "";
-
-      const loopVars: string[] = [];
-      let rangeExpr: string | undefined;
-      const idMatch = header.match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)/);
-      if (idMatch && idMatch[1]) loopVars.push(idMatch[1]);
-      const inMatch = header.match(/\bin\b([\s\S]*)$/);
-      if (inMatch && inMatch[1]) rangeExpr = inMatch[1].trim();
-
-      statements.push({
-        kind: "for",
-        rawText: forText,
-        startOffset,
-        endOffset,
-        loopVars,
-        rangeExpr,
-        loopBody: parseStatementsFromText(forBodyText, startOffset),
-      });
-
-      i = j;
-      continue;
-    }
-
-    // 3. While statement
-    if (/^while\b/.test(remaining)) {
-      const whileStart = i;
-      let depth = 1;
-      let j = i + 5;
-      while (j < body.length && depth > 0) {
-        if (body.slice(j).startsWith("while") && /\bwhile\b/.test(body.slice(j, j + 6))) {
-          depth++;
-          j += 5;
-        } else if (body.slice(j).startsWith("end while") && /\bend\s+while\b/.test(body.slice(j, j + 10))) {
-          depth--;
-          j += 9;
-          if (depth === 0) {
-            while (j < body.length && (body[j] === ";" || /\s/.test(body[j]!))) {
-              if (body[j] === ";") {
-                j++;
-                break;
-              }
-              j++;
-            }
-            break;
-          }
-        } else {
-          j++;
-        }
-      }
-
-      const whileText = body.slice(whileStart, j);
-      const startOffset = algStartByte + offset + whileStart;
-      const endOffset = algStartByte + offset + j;
-
-      const whileMatch = /^while\b([\s\S]*?)\bloop\b([\s\S]*?)\bend\s+while/i.exec(whileText);
-      const condExpr = whileMatch ? whileMatch[1]?.trim() || "" : "";
-      const whileBodyText = whileMatch ? whileMatch[2]?.trim() || "" : "";
-
-      statements.push({
-        kind: "while",
-        condExpr,
-        rawText: whileText,
-        startOffset,
-        endOffset,
-        whileBody: parseStatementsFromText(whileBodyText, startOffset),
-      });
-
-      i = j;
-      continue;
-    }
-
-    // 4. Simple statement up to ';'
-    const semiIdx = body.indexOf(";", i);
-    if (semiIdx === -1) {
-      break;
-    }
-
-    const stmtText = body.slice(i, semiIdx).trim();
-    const startOffset = algStartByte + offset + i;
-    const endOffset = algStartByte + offset + semiIdx + 1;
-
-    if (stmtText === "return" || stmtText.startsWith("return ") || stmtText.startsWith("return(")) {
-      statements.push({ kind: "return", rawText: stmtText, startOffset, endOffset });
-    } else if (stmtText === "break") {
-      statements.push({ kind: "break", rawText: stmtText, startOffset, endOffset });
-    } else if (stmtText.includes(":=")) {
-      const parts = stmtText.split(":=");
-      const targetVar = parts[0]?.trim() || "";
-      const valExpr = parts.slice(1).join(":=").trim();
-      const baseVars = targetVar
-        .replace(/^\(|\)$/g, "")
-        .split(",")
-        .map((s) => s.split(/[.[]/)[0]?.trim())
-        .filter((s): s is string => Boolean(s));
-
-      statements.push({
-        kind: "assignment",
-        targetVars: baseVars,
-        targetVar,
-        valExpr,
-        rawText: stmtText,
-        startOffset,
-        endOffset,
-      });
-    } else {
-      statements.push({
-        kind: "other",
-        rawText: stmtText,
-        startOffset,
-        endOffset,
-      });
-    }
-
-    i = semiIdx + 1;
-  }
-
-  return statements;
+  return ModelicaCFGLowerer.parseStatements(algText, algStartByte).map((s) => toParsedStatement(s, algStartByte));
 }
 
 /**
@@ -737,17 +673,14 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
 
   // Check if class is a function
   const meta = (self.metadata as any) || (self as any).attributes || {};
-  const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
-  const cleanKind = rawKind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-  const words = cleanKind.split(/\s+/).filter(Boolean);
+  const words = tokenizeCommentStrippedWords(String(meta.classKind ?? meta.classPrefixes ?? ""));
   let isFunction = words.includes("function");
   let isPartial = words.includes("partial");
 
   if (cst) {
     for (const child of cst.children || []) {
       if (child.type === "class_prefixes") {
-        const childText = (child.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-        const childWords = childText.split(/\s+/).filter(Boolean);
+        const childWords = tokenizeCommentStrippedWords(child.text ?? "");
         if (childWords.includes("function")) {
           isFunction = true;
         }
@@ -756,16 +689,21 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
         }
       }
     }
-    if (!isFunction) {
-      const trimmedText = (cst.text?.trim() ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-      if (/^(?:(?:encapsulated|partial|replaceable|pure|impure)\s+)*(?:operator\s+)?function\b/.test(trimmedText)) {
-        isFunction = true;
+    if (!isFunction || !isPartial) {
+      const hdrWords = tokenizeCommentStrippedWords(cst.text ?? "");
+      const optPrefixes = new Set(["encapsulated", "partial", "replaceable", "pure", "impure"]);
+      let idx = 0;
+      let sawPartial = false;
+      while (idx < hdrWords.length && optPrefixes.has(hdrWords[idx]!)) {
+        if (hdrWords[idx] === "partial") sawPartial = true;
+        idx++;
       }
-    }
-    if (!isPartial) {
-      const trimmedText = (cst.text?.trim() ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-      if (/\bpartial\s+(?:(?:encapsulated|replaceable|pure|impure)\s+)*(?:operator\s+)?function\b/.test(trimmedText)) {
-        isPartial = true;
+      if (hdrWords[idx] === "operator") idx++;
+      const nextWord = hdrWords[idx] ?? "";
+      const isFuncHeader = nextWord === "function" || nextWord.startsWith("function(");
+      if (isFuncHeader) {
+        if (!isFunction) isFunction = true;
+        if (sawPartial) isPartial = true;
       }
     }
   }
@@ -780,8 +718,12 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
   const compClauses = findNodesByType(cst, "component_clause");
   for (const comp of compClauses) {
     const compText = comp.text || "";
-    const isInput = /\binput\b/.test(compText);
-    const isOutput = /\boutput\b/.test(compText);
+    const typePrefixNode = (comp.children || []).find((c: any) => normType(c.type) === "typeprefix");
+    const prefixWords = typePrefixNode
+      ? tokenizeCommentStrippedWords(typePrefixNode.text || "")
+      : tokenizeCommentStrippedWords(compText).slice(0, 6);
+    const isInput = prefixWords.includes("input");
+    const isOutput = prefixWords.includes("output");
 
     // Use CST component_declaration or declaration children to extract declared variable names.
     // Each component_declaration has an IDENT for the variable name.
@@ -1005,20 +947,36 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
     activeLoopVars: Set<string> = new Set(),
   ) => {
     const maskedExpr = maskCommentsAndStringsPreservingLength(expr);
-    const identRegex = /\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
-    let m: RegExpExecArray | null;
-    while ((m = identRegex.exec(maskedExpr)) !== null) {
-      const varName = m[1];
-      if (!varName || activeLoopVars.has(varName)) continue;
-      // Ignore member access after '.' (e.g. rec.field) and named argument labels before '=' (e.g. f(x = 1))
-      const prevSlice = maskedExpr.slice(0, m.index).trimEnd();
-      const prevChar = prevSlice.length > 0 ? prevSlice[prevSlice.length - 1] : "";
-      if (prevChar === ".") continue;
-      const afterSlice = maskedExpr.slice(m.index + varName.length);
-      if (/^\s*=[^=]/.test(afterSlice)) continue;
-      if (monitoredVars.has(varName) && !currentAssigned.has(varName)) {
-        const sByte = exprStartByte + m.index;
-        const eByte = sByte + varName.length;
+    for (let idx = 0; idx < maskedExpr.length; ) {
+      if (!isAsciiIdentStart(maskedExpr.charCodeAt(idx))) {
+        idx++;
+        continue;
+      }
+      let end = idx + 1;
+      while (end < maskedExpr.length && isAsciiIdentContinue(maskedExpr.charCodeAt(end))) {
+        end++;
+      }
+      const varName = maskedExpr.slice(idx, end);
+      let prevIdx = idx - 1;
+      while (prevIdx >= 0 && isAsciiWhitespaceCode(maskedExpr.charCodeAt(prevIdx))) {
+        prevIdx--;
+      }
+      let afterIdx = end;
+      while (afterIdx < maskedExpr.length && isAsciiWhitespaceCode(maskedExpr.charCodeAt(afterIdx))) {
+        afterIdx++;
+      }
+      const isMember = prevIdx >= 0 && maskedExpr[prevIdx] === ".";
+      const isNamedArg =
+        afterIdx < maskedExpr.length && maskedExpr[afterIdx] === "=" && maskedExpr[afterIdx + 1] !== "=";
+      if (
+        !activeLoopVars.has(varName) &&
+        !isMember &&
+        !isNamedArg &&
+        monitoredVars.has(varName) &&
+        !currentAssigned.has(varName)
+      ) {
+        const sByte = exprStartByte + idx;
+        const eByte = exprStartByte + end;
         results.push(
           warning(ModelicaErrorCode.UNINITIALIZED_VARIABLE_READ.message(varName), {
             startOffset: sByte,
@@ -1027,6 +985,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
           }),
         );
       }
+      idx = end;
     }
   };
 
@@ -1088,12 +1047,16 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
       } else if (stmt.kind === "assignment") {
         // Check reads on RHS first
         if (stmt.valExpr) {
-          checkExprReads(
-            stmt.valExpr,
-            stmt.valStartByte ?? stmt.startOffset + Math.max(0, stmt.rawText.indexOf(":=") + 2),
-            cur,
-            activeLoopVars,
-          );
+          let fallbackStart = stmt.startOffset;
+          const assignIdx = stmt.rawText.indexOf(":=");
+          if (assignIdx >= 0) {
+            let k = assignIdx + 2;
+            while (k < stmt.rawText.length && isAsciiWhitespaceCode(stmt.rawText.charCodeAt(k))) {
+              k++;
+            }
+            fallbackStart = stmt.startOffset + k;
+          }
+          checkExprReads(stmt.valExpr, stmt.valStartByte ?? fallbackStart, cur, activeLoopVars);
         }
 
         // Add targets to assigned
@@ -1105,7 +1068,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
             }
           }
         } else if (stmt.targetVar) {
-          const baseIdent = stmt.targetVar.split(/[.[]/)[0]?.trim() || stmt.targetVar.trim();
+          const baseIdent = extractBaseVarIdent(stmt.targetVar) || stmt.targetVar.trim();
           if (baseIdent) {
             cur.add(baseIdent);
             allAssignedEver.add(baseIdent);
@@ -1204,10 +1167,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
       } else {
         // Other statement
         checkExprReads(stmt.rawText, stmt.startOffset, cur, activeLoopVars);
-        if (
-          /^\s*assert\s*\(\s*false\b/.test(stmt.rawText) ||
-          /^\s*(?:Modelica\.Utilities\.Streams\.)?error\s*\(/.test(stmt.rawText)
-        ) {
+        if (isAbortCallStatement(stmt.rawText)) {
           returned = true;
         }
       }

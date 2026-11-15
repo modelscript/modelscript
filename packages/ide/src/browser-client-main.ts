@@ -37,8 +37,10 @@ import { DebugAdapterService } from "./services/debug-adapter-service.js";
 import { HostBridgeService } from "./services/host-bridge-service.js";
 import { LspClientManager } from "./services/lsp-client-manager.js";
 import { MarkdownPreviewService } from "./services/markdown-preview-service.js";
+import { StepCompilationService } from "./services/step-compilation-service.js";
 import { initWorkspaceAndTree, registerVirtualFileSystems } from "./services/virtual-fs-service.js";
 import { StepEditorProvider } from "./step-editor-provider.js";
+import { TabularPlotEditorProvider } from "./tabular-plot-editor-provider.js";
 import {
   FEATURE_LABELS,
   type FeatureChannel,
@@ -84,11 +86,18 @@ export async function activate(context: vscode.ExtensionContext) {
   const markdownService = new MarkdownPreviewService(context, () => lspManager?.client);
   context.subscriptions.push(markdownService);
 
+  const stepCompilationService = new StepCompilationService(() => lspManager?.client);
+  context.subscriptions.push(stepCompilationService);
+
   // 2. Virtual File Systems (memfs:// and modelica://)
   const { memFs, memfsRootUri } = registerVirtualFileSystems(context, () => lspManager?.client);
 
   // 3. Custom Editors & Documents (Diagram, FMU, SSP, STEP, GCode, INP, CFG, RAW, OLGA, Requirements, ElementTable)
-  const { fmuContentProvider, diagramProvider } = registerCustomEditors(context, lspManager.client);
+  const { fmuContentProvider, diagramProvider } = registerCustomEditors(
+    context,
+    lspManager.client,
+    stepCompilationService,
+  );
 
   // 4. Tree View Controller (Library, Experiments, MQTT, Registry, SCM, OWL2)
   const treeController = new TreeViewController(context, () => lspManager!.client, diagramProvider);
@@ -342,7 +351,7 @@ export async function activate(context: vscode.ExtensionContext) {
     ...registerAnalyticalCommands(context, lspManager.client, markdownService.markdownVarCache, () =>
       markdownService.scheduleMarkdownRefresh(),
     ),
-    ...registerCadAndMeshingCommands(context, lspManager.client),
+    ...registerCadAndMeshingCommands(context, lspManager.client, stepCompilationService),
     ...registerSysmlRunnerCommands(context, lspManager.client),
     registerPolyglotActions(context, lspManager.client),
     registerMultiDomainScaffolding(context),
@@ -394,7 +403,9 @@ export async function activate(context: vscode.ExtensionContext) {
                         ? "pscad.diagramEditor"
                         : filePath.endsWith(".psout")
                           ? PsoutEditorProvider.viewType
-                          : DiagramEditorProvider.viewType;
+                          : filePath.endsWith(".las") || filePath.endsWith(".csv")
+                            ? TabularPlotEditorProvider.viewType
+                            : DiagramEditorProvider.viewType;
           try {
             await vscode.commands.executeCommand("vscode.openWith", docUri, targetViewType, vscode.ViewColumn.Beside);
           } catch {
@@ -415,7 +426,9 @@ export async function activate(context: vscode.ExtensionContext) {
       const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
       if (
         tab?.input instanceof vscode.TabInputCustom &&
-        (tab.input.viewType === DiagramEditorProvider.viewType || tab.input.viewType.endsWith(".diagramEditor"))
+        (tab.input.viewType === DiagramEditorProvider.viewType ||
+          tab.input.viewType === TabularPlotEditorProvider.viewType ||
+          tab.input.viewType.endsWith(".diagramEditor"))
       ) {
         vscode.window.showTextDocument(tab.input.uri, { viewColumn: vscode.ViewColumn.One });
       }

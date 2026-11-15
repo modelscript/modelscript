@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { patchModelicaCadAnnotation, type DynamicBindingConfig } from "@modelscript/cad";
+import {
+  patchModelicaCadAnnotation,
+  type DynamicBindingConfig,
+  type GdtOverlayPayload,
+  type ModelicaTelemetryParams,
+  type SpoolKinematicsSpec,
+} from "@modelscript/cad";
 import type { editor } from "monaco-editor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useModelingPreferences } from "../../../ModelingPreferencesContext";
@@ -10,8 +16,20 @@ import { AnimationController } from "../cad-viewer/animation-controller";
 import { extractCadComponents, parseSourceCadVariables } from "../cad-viewer/parse-cad-annotations";
 import { type HistorianSession } from "../CosimPanel";
 import { type ExperimentOverrides, type ParameterInfo, type SweepState } from "../SimulationParameters";
-import { extractPrimaryModelicaClassName, getCadComponents, simulate } from "../util/lsp-bridge";
+import {
+  compileStepFromSourcesInMorsel,
+  extractPrimaryModelicaClassName,
+  getCadComponents,
+  getStepMeshesInMorsel,
+  simulate,
+} from "../util/lsp-bridge";
 import { getMorselMqttClient } from "../util/mqtt-client";
+import {
+  buildMorselEffectiveFileMap,
+  compileMorselOptionAAssembly,
+  resolveSpoolRulesForMorsel,
+  type CachedMorselStepCompilation,
+} from "../util/step-pairing";
 import { useMqttSimulation } from "../util/use-mqtt-simulation";
 
 export interface UseMorselEngineProps {
@@ -32,6 +50,9 @@ export interface UseMorselEngineProps {
   initialSimulationVariables?: string[] | undefined;
   initialStartTime?: number | undefined;
   initialStopTime?: number | undefined;
+  projectFiles?: Record<string, string> | undefined;
+  activeFileName?: string | undefined;
+  onUpdateProjectFile?: ((fileName: string, content: string) => void) | undefined;
 }
 
 /** Extract STEP filename from // @step-file: annotation or ISO-10303-21 FILE_NAME header. */
@@ -894,6 +915,86 @@ export function tessellateScadSource(scadCode: string): {
   return { vtkBuffer, components };
 }
 
+function attachScadKinematicController(
+  scadCode: string,
+  components: CadComponent[],
+  ctrlRef: { current: AnimationController | null },
+  setAnimationMode: (mode: "stopped" | "playing" | "paused" | "live") => void,
+  structuredSpools?: readonly SpoolKinematicsSpec[],
+  telemetry?: ModelicaTelemetryParams,
+): CadComponent[] {
+  const spoolRules = resolveSpoolRulesForMorsel(scadCode, structuredSpools, telemetry);
+
+  if (spoolRules.length === 0 || components.length === 0) {
+    return components;
+  }
+
+  const enhanced = components.map((comp) => {
+    const nameLower = comp.name.toLowerCase();
+    const matched = spoolRules.filter(
+      (r) => !r.match || nameLower === r.match || nameLower.includes(r.match) || r.match.includes(nameLower),
+    );
+    if (matched.length === 0) return comp;
+    return {
+      ...comp,
+      dynamicBindings: [
+        ...(comp.dynamicBindings ?? []),
+        ...matched.map((r) => ({
+          property: "rotation" as const,
+          index: r.axisIndex,
+          variable: r.varName,
+        })),
+      ],
+    };
+  });
+
+  const anyBound = enhanced.some((c) => c.dynamicBindings && c.dynamicBindings.length > 0);
+  if (!anyBound) return components;
+
+  let ctrl = ctrlRef.current;
+  if (!ctrl) {
+    ctrl = new AnimationController();
+    ctrl.onStateChange((s) => setAnimationMode(s.mode));
+    ctrlRef.current = ctrl;
+  }
+
+  ctrl.setBindings(
+    enhanced
+      .filter((c) => c.dynamicBindings && c.dynamicBindings.length > 0)
+      .map((c) => ({
+        componentName: c.name,
+        bindings: c.dynamicBindings!.map((b) => ({
+          property: b.property,
+          index: b.index,
+          variable: b.variable,
+        })),
+      })),
+  );
+  for (const comp of enhanced) {
+    const cadObj = typeof comp.cad === "object" && comp.cad ? comp.cad : undefined;
+    ctrl.setDefault(comp.name, {
+      position: cadObj?.position ?? [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: cadObj?.scale ?? [1, 1, 1],
+    });
+  }
+
+  const dt = 0.05;
+  const steps = 200;
+  const t: number[] = [];
+  const y: number[][] = [];
+  const varNames = spoolRules.map((r) => r.varName);
+  for (let i = 0; i <= steps; i++) {
+    const ti = i * dt;
+    t.push(ti);
+    y.push(spoolRules.map((r) => ti * r.degPerSec));
+  }
+  ctrl.loadTimeseries(t, y, varNames);
+  ctrl.setLoop(true);
+  ctrl.play();
+  return enhanced;
+}
+
 /** Extract experiment(StartTime=..., StopTime=..., Tolerance=..., Interval=...) annotation from source. */
 export function extractExperimentFromCode(code: string): {
   StartTime?: number;
@@ -962,6 +1063,9 @@ export function useMorselEngine({
   initialSimulationVariables,
   initialStartTime,
   initialStopTime,
+  projectFiles,
+  activeFileName,
+  onUpdateProjectFile,
 }: UseMorselEngineProps) {
   const { preferences: modelingPrefs } = useModelingPreferences();
   const prefStopTime = modelingPrefs.defaultStopTime ?? 10;
@@ -1104,6 +1208,8 @@ export function useMorselEngine({
   const [cadComponents, setCadComponents] = useState<CadComponent[]>(() =>
     content ? extractCadComponents(parseSourceCadVariables(content)) : [],
   );
+  const [gdtOverlay, setGdtOverlay] = useState<GdtOverlayPayload | null>(null);
+  const lastCompiledStepRef = useRef<CachedMorselStepCompilation | null>(null);
   const [vtkBuffer, setVtkBuffer] = useState<Uint8Array | null>(null);
   const animationControllerRef = useRef<AnimationController | null>(null);
   const lastSimTrajectoryRef = useRef<{ t: number[]; y: number[][]; states: string[] } | null>(null);
@@ -1295,102 +1401,215 @@ export function useMorselEngine({
   useEffect(() => {
     let cancelled = false;
 
-    if (isStepSource(editorValue, dialect)) {
-      const { components: stepComps } = tessellateStepSource(editorValue);
+    const runClassicCad = () => {
+      const stepFileDirective = extractStepFilename(editorValue);
+      if (stepFileDirective && !selectedTreeClassName) {
+        const { components: stepComps } = tessellateStepSource(editorValue);
+        setVtkBuffer(null);
+        setCadComponents(stepComps);
+        return;
+      }
+
       setVtkBuffer(null);
-      setCadComponents(stepComps);
-      return;
-    }
 
-    if (dialect === "scad") {
-      const { components: scadComps } = tessellateScadSource(editorValue);
-      setVtkBuffer(null);
-      setCadComponents(scadComps);
-      return;
-    }
+      if (!selectedTreeClassName) {
+        const fallback = extractCadComponents(parseSourceCadVariables(editorValue));
+        setCadComponents(fallback);
+        return;
+      }
 
-    const stepFileDirective = extractStepFilename(editorValue);
-    if (stepFileDirective && !selectedTreeClassName) {
-      const { components: stepComps } = tessellateStepSource(editorValue);
-      setVtkBuffer(null);
-      setCadComponents(stepComps);
-      return;
-    }
-
-    setVtkBuffer(null);
-
-    if (!selectedTreeClassName) {
-      const fallback = extractCadComponents(parseSourceCadVariables(editorValue));
-      setCadComponents(fallback);
-      return;
-    }
-
-    getCadComponents(documentUri, selectedTreeClassName)
-      .then((components: any[]) => {
-        if (cancelled) return;
-        let parsed: CadComponent[] =
-          Array.isArray(components) && components.length > 0 ? extractCadComponents(components) : [];
-        if (!parsed || parsed.length === 0) {
-          const sourceVars = parseSourceCadVariables(editorValue);
-          parsed = extractCadComponents(sourceVars);
-        }
-        if ((!parsed || parsed.length === 0) && stepFileDirective) {
-          const { components: stepComps } = tessellateStepSource(editorValue);
-          setVtkBuffer(null);
-          parsed = stepComps;
-        }
-        setCadComponents(parsed);
-
-        let ctrl = animationControllerRef.current;
-        if (!ctrl && parsed.length > 0) {
-          ctrl = new AnimationController();
-          ctrl.onStateChange((s) => setAnimationMode(s.mode));
-          animationControllerRef.current = ctrl;
-        }
-
-        if (ctrl && parsed.length > 0) {
-          ctrl.setBindings(
-            parsed
-              .filter((c) => c.dynamicBindings && c.dynamicBindings.length > 0)
-              .map((c) => ({
-                componentName: c.name,
-                bindings: c.dynamicBindings!.map((b: any) => ({
-                  property: b.property,
-                  index: b.index,
-                  variable: b.variable,
-                  unit: b.unit,
-                  scaleFactor: b.scaleFactor ?? b.scale,
-                })),
-              })),
-          );
-          for (const comp of parsed) {
-            const cadObj = typeof comp.cad === "object" && comp.cad ? comp.cad : ({} as any);
-            ctrl.setDefault(comp.name, {
-              position: cadObj.position ?? [0, 0, 0],
-              rotation: cadObj.rotation ?? [0, 0, 0],
-              scale: cadObj.scale ?? [1, 1, 1],
-              ...(comp.defaults ?? {}),
-            });
+      getCadComponents(documentUri, selectedTreeClassName)
+        .then((components: any[]) => {
+          if (cancelled) return;
+          let parsed: CadComponent[] =
+            Array.isArray(components) && components.length > 0 ? extractCadComponents(components) : [];
+          if (!parsed || parsed.length === 0) {
+            const sourceVars = parseSourceCadVariables(editorValue);
+            parsed = extractCadComponents(sourceVars);
           }
-          if (lastSimTrajectoryRef.current && !ctrl.hasData) {
-            ctrl.loadTimeseries(
-              lastSimTrajectoryRef.current.t,
-              lastSimTrajectoryRef.current.y,
-              lastSimTrajectoryRef.current.states,
+          if ((!parsed || parsed.length === 0) && stepFileDirective) {
+            const { components: stepComps } = tessellateStepSource(editorValue);
+            setVtkBuffer(null);
+            parsed = stepComps;
+          }
+          setCadComponents(parsed);
+
+          let ctrl = animationControllerRef.current;
+          if (!ctrl && parsed.length > 0) {
+            ctrl = new AnimationController();
+            ctrl.onStateChange((s) => setAnimationMode(s.mode));
+            animationControllerRef.current = ctrl;
+          }
+
+          if (ctrl && parsed.length > 0) {
+            ctrl.setBindings(
+              parsed
+                .filter((c) => c.dynamicBindings && c.dynamicBindings.length > 0)
+                .map((c) => ({
+                  componentName: c.name,
+                  bindings: c.dynamicBindings!.map((b: any) => ({
+                    property: b.property,
+                    index: b.index,
+                    variable: b.variable,
+                    unit: b.unit,
+                    scaleFactor: b.scaleFactor ?? b.scale,
+                  })),
+                })),
             );
-            if (parsed.some((c) => c.dynamicBindings && c.dynamicBindings.length > 0)) {
-              ctrl.play();
+            for (const comp of parsed) {
+              const cadObj = typeof comp.cad === "object" && comp.cad ? comp.cad : ({} as any);
+              ctrl.setDefault(comp.name, {
+                position: cadObj.position ?? [0, 0, 0],
+                rotation: cadObj.rotation ?? [0, 0, 0],
+                scale: cadObj.scale ?? [1, 1, 1],
+                ...(comp.defaults ?? {}),
+              });
+            }
+            if (lastSimTrajectoryRef.current && !ctrl.hasData) {
+              ctrl.loadTimeseries(
+                lastSimTrajectoryRef.current.t,
+                lastSimTrajectoryRef.current.y,
+                lastSimTrajectoryRef.current.states,
+              );
+              if (parsed.some((c) => c.dynamicBindings && c.dynamicBindings.length > 0)) {
+                ctrl.play();
+              }
             }
           }
-        }
+        })
+        .catch((e: unknown) => {
+          if (!cancelled) console.error("Failed to fetch CAD components:", e);
+        });
+    };
+
+    const isStepText = isStepSource(editorValue, dialect);
+    const { files: effectiveFiles, activePath } = buildMorselEffectiveFileMap(
+      projectFiles,
+      activeFileName,
+      documentUri,
+      dialect,
+      editorValue,
+    );
+
+    const runScadLspFallback = () => {
+      getCadComponents(documentUri, undefined, editorValue)
+        .then((components) => {
+          if (cancelled || !Array.isArray(components) || components.length === 0) return;
+          const mapped: CadComponent[] = components.map((c, idx: number) => {
+            const cadObj =
+              typeof c.cad === "object" && c.cad
+                ? c.cad
+                : { uri: typeof c.cad === "string" ? c.cad : `scad://part_${idx}` };
+            return {
+              name: c.name || `part_${idx + 1}`,
+              cad: cadObj,
+              proceduralMesh: c.proceduralMesh,
+              ports: Array.isArray(c.ports) ? (c.ports as CadComponent["ports"]) : [],
+              dynamicBindings: Array.isArray(c.dynamicBindings) ? c.dynamicBindings : [],
+              defaults: c.defaults,
+              shapeType: c.shapeType,
+            };
+          });
+          setCadComponents(
+            attachScadKinematicController(editorValue, mapped, animationControllerRef, setAnimationMode),
+          );
+        })
+        .catch(() => {
+          // Retain fast client CSG preview if LSP evaluator errors or is still warming up
+        });
+    };
+
+    if (isStepText) {
+      const { components: stepComps } = tessellateStepSource(editorValue);
+      setVtkBuffer(null);
+      setCadComponents(stepComps);
+    } else if (dialect === "scad") {
+      const { components: scadComps } = tessellateScadSource(editorValue);
+      setVtkBuffer(null);
+      setCadComponents(attachScadKinematicController(editorValue, scadComps, animationControllerRef, setAnimationMode));
+    }
+
+    const hasPairedCadArtifacts = Object.keys(effectiveFiles).some((p) => /\.(scad|qif|step|stp|p21)$/i.test(p));
+    const shouldTryOptionA = dialect === "scad" || dialect === "qif" || isStepText || hasPairedCadArtifacts;
+
+    if (!shouldTryOptionA) {
+      setGdtOverlay(null);
+      runClassicCad();
+    } else {
+      void compileMorselOptionAAssembly({
+        files: effectiveFiles,
+        activePath,
+        dialect,
+        documentUri,
+        isStepText,
+        cachedCompilation: lastCompiledStepRef.current,
+        compileStepFromSources: compileStepFromSourcesInMorsel,
+        getStepMeshes: getStepMeshesInMorsel,
       })
-      .catch((e: unknown) => {
-        if (!cancelled) console.error("Failed to fetch CAD components:", e);
-      });
+        .then((outcome) => {
+          if (cancelled) return;
+          if (outcome) {
+            if (outcome.cachedCompilation) {
+              lastCompiledStepRef.current = outcome.cachedCompilation;
+            }
+            setGdtOverlay(outcome.gdtOverlay);
+            if (outcome.updatedStepArtifact) {
+              onUpdateProjectFile?.(outcome.stepPath, outcome.stepText);
+            }
+            if (outcome.components.length > 0) {
+              const scadCode =
+                (outcome.pairing?.scadPath ? effectiveFiles[outcome.pairing.scadPath] : undefined) ??
+                (dialect === "scad" ? editorValue : "");
+              setVtkBuffer(null);
+              setCadComponents(
+                attachScadKinematicController(
+                  scadCode,
+                  outcome.components,
+                  animationControllerRef,
+                  setAnimationMode,
+                  outcome.spools,
+                  outcome.telemetry,
+                ),
+              );
+              return;
+            }
+            if (isStepText || dialect === "qif") {
+              return;
+            }
+          } else {
+            setGdtOverlay(null);
+          }
+
+          if (dialect === "scad") {
+            runScadLspFallback();
+          } else if (!isStepText && dialect !== "qif") {
+            runClassicCad();
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setGdtOverlay(null);
+          if (dialect === "scad") {
+            runScadLspFallback();
+          } else if (!isStepText && dialect !== "qif") {
+            runClassicCad();
+          }
+        });
+    }
+
     return () => {
       cancelled = true;
     };
-  }, [selectedTreeClassName, contextVersion, editorValue, dialect, documentUri]);
+  }, [
+    selectedTreeClassName,
+    contextVersion,
+    editorValue,
+    dialect,
+    documentUri,
+    projectFiles,
+    activeFileName,
+    onUpdateProjectFile,
+  ]);
 
   // ── Live MQTT data bridge ──
   useEffect(() => {
@@ -1720,6 +1939,8 @@ export function useMorselEngine({
     setLocalSimulationData,
     cadComponents,
     setCadComponents,
+    gdtOverlay,
+    setGdtOverlay,
     vtkBuffer,
     setVtkBuffer,
     editorValue,

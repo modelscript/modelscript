@@ -1,7 +1,1079 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { SyntaxNode } from "@modelscript/dsl";
 import type { SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/runtime";
 import type { QueryEngine } from "@modelscript/runtime/wasm_query_engine.js";
+
+// ---------------------------------------------------------------------------
+// Shared Modelica Lexical & CST Helpers
+// ---------------------------------------------------------------------------
+
+const MODELICA_ELEMENT_PREFIXES = new Set(["redeclare", "final", "inner", "outer", "replaceable"]);
+
+const MODELICA_COMPONENT_PREFIXES = new Set([
+  "final",
+  "inner",
+  "outer",
+  "replaceable",
+  "redeclare",
+  "flow",
+  "stream",
+  "discrete",
+  "parameter",
+  "constant",
+  "input",
+  "output",
+]);
+
+const MODELICA_CLASS_MODIFIERS = new Set(["encapsulated", "partial", "expandable"]);
+
+const MODELICA_CLASS_KINDS = new Set([
+  "class",
+  "model",
+  "record",
+  "block",
+  "connector",
+  "package",
+  "function",
+  "type",
+  "operator",
+]);
+
+const MODELICA_CLAUSE_STOP_KEYWORDS = new Set([...MODELICA_CLASS_KINDS, "within", "extends", "equation", "algorithm"]);
+
+function isIdentStartChar(ch: string): boolean {
+  if (!ch) return false;
+  const c = ch.charCodeAt(0);
+  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
+}
+
+function isIdentChar(ch: string): boolean {
+  if (!ch) return false;
+  const c = ch.charCodeAt(0);
+  return (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
+}
+
+function isWsChar(ch: string): boolean {
+  return ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || ch === "\v" || ch === "\f";
+}
+
+function skipWs(src: string, idx: number): number {
+  let i = idx;
+  while (i < src.length && isWsChar(src[i]!)) i++;
+  return i;
+}
+
+function trimEndHorizontalWs(str: string): string {
+  let end = str.length;
+  while (end > 0 && (str[end - 1] === " " || str[end - 1] === "\t")) end--;
+  return end === str.length ? str : str.slice(0, end);
+}
+
+function stripWs(str: string): string {
+  let out = "";
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i]!;
+    if (!isWsChar(ch)) out += ch;
+  }
+  return out;
+}
+
+function collapseWs(str: string): string {
+  let out = "";
+  let inWs = false;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i]!;
+    if (isWsChar(ch)) {
+      if (out.length > 0) inWs = true;
+    } else {
+      if (inWs) {
+        out += " ";
+        inWs = false;
+      }
+      out += ch;
+    }
+  }
+  return out;
+}
+
+function normalizeHeaderWhitespace(str: string): string {
+  return str
+    .replaceAll("\r\n", "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function stripTrailingSemicolon(str: string): string {
+  let s = str.trim();
+  if (s.endsWith(";")) {
+    s = s.slice(0, -1).trimEnd();
+  }
+  return s;
+}
+
+function normalizeTrailingSemicolon(str: string): string {
+  const trimmed = str.trim();
+  if (trimmed.endsWith(";")) {
+    return `${trimmed.slice(0, -1).trimEnd()};`;
+  }
+  return trimmed;
+}
+
+function ensureTrailingSemicolon(str: string): string {
+  const trimmed = str.trim();
+  if (!trimmed) return "";
+  return trimmed.endsWith(";") ? `${trimmed.slice(0, -1).trimEnd()};` : `${trimmed};`;
+}
+
+function splitQualifiedPath(str: string): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  for (let i = 0; i < str.length; i++) {
+    if (str[i] === ".") {
+      if (i > start) parts.push(str.slice(start, i));
+      start = i + 1;
+    } else if (str[i] === ":" && str[i + 1] === ":") {
+      if (i > start) parts.push(str.slice(start, i));
+      start = i + 2;
+      i++;
+    }
+  }
+  if (start < str.length) parts.push(str.slice(start));
+  return parts;
+}
+
+function isWordBoundaryAt(src: string, idx: number, len: number): boolean {
+  const prev = idx > 0 ? src[idx - 1]! : "";
+  const next = idx + len < src.length ? src[idx + len]! : "";
+  return !isIdentChar(prev) && !isIdentChar(next);
+}
+
+function startsWithWordAt(src: string, idx: number, word: string, caseInsensitive = false): boolean {
+  if (idx + word.length > src.length) return false;
+  const slice = src.slice(idx, idx + word.length);
+  const matches = caseInsensitive ? slice.toLowerCase() === word.toLowerCase() : slice === word;
+  return matches && isWordBoundaryAt(src, idx, word.length);
+}
+
+function skipModelicaString(src: string, idx: number): number {
+  if (src[idx] !== '"') return idx;
+  let i = idx + 1;
+  while (i < src.length) {
+    if (src[i] === "\\") i += 2;
+    else if (src[i] === '"') return i + 1;
+    else i++;
+  }
+  return i;
+}
+
+function skipModelicaConcatString(src: string, idx: number): number {
+  let i = skipModelicaString(src, idx);
+  if (i === idx) return idx;
+  while (true) {
+    const plusIdx = skipWs(src, i);
+    if (src[plusIdx] === "+") {
+      const nextStr = skipWs(src, plusIdx + 1);
+      if (src[nextStr] === '"') {
+        i = skipModelicaString(src, nextStr);
+        continue;
+      }
+    }
+    break;
+  }
+  return i;
+}
+
+function skipModelicaTrivia(src: string, idx: number): number {
+  let i = idx;
+  const len = src.length;
+  while (i < len) {
+    const ch = src[i]!;
+    if (isWsChar(ch)) {
+      i++;
+      continue;
+    }
+    if (ch === "/" && src[i + 1] === "/") {
+      i += 2;
+      while (i < len && src[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === "/" && src[i + 1] === "*") {
+      i += 2;
+      while (i < len && !(src[i] === "*" && src[i + 1] === "/")) i++;
+      if (i < len) i += 2;
+      continue;
+    }
+    break;
+  }
+  return i;
+}
+
+function readIdentAt(src: string, idx: number): { ident: string; end: number } | null {
+  if (idx >= src.length) return null;
+  if (src[idx] === "'") {
+    let i = idx + 1;
+    while (i < src.length) {
+      if (src[i] === "\\") i += 2;
+      else if (src[i] === "'") return { ident: src.slice(idx, i + 1), end: i + 1 };
+      else i++;
+    }
+    return null;
+  }
+  if (!isIdentStartChar(src[idx]!)) return null;
+  let end = idx + 1;
+  while (end < src.length && isIdentChar(src[end]!)) end++;
+  return { ident: src.slice(idx, end), end };
+}
+
+function readQualifiedNameAt(src: string, idx: number): { name: string; end: number } | null {
+  let pos = idx;
+  let prefix = "";
+  if (src[pos] === ".") {
+    prefix = ".";
+    pos++;
+  }
+  const first = readIdentAt(src, pos);
+  if (!first) return null;
+  let end = first.end;
+  let name = prefix + first.ident;
+  while (end < src.length) {
+    if (src[end] === ".") {
+      const next = readIdentAt(src, end + 1);
+      if (!next) break;
+      name += `.${next.ident}`;
+      end = next.end;
+    } else if (src[end] === ":" && src[end + 1] === ":") {
+      const next = readIdentAt(src, end + 2);
+      if (!next) break;
+      name += `::${next.ident}`;
+      end = next.end;
+    } else {
+      break;
+    }
+  }
+  return { name, end };
+}
+
+function findWordOutsideStringsComments(src: string, word: string, maxOffset = src.length): number {
+  const limit = Math.min(src.length, maxOffset);
+  let i = 0;
+  while (i < limit) {
+    const ch = src[i]!;
+    if (ch === '"') {
+      i = skipModelicaString(src, i);
+      continue;
+    }
+    if (ch === "/" && (src[i + 1] === "/" || src[i + 1] === "*")) {
+      i = skipModelicaTrivia(src, i);
+      continue;
+    }
+    if (startsWithWordAt(src, i, word)) {
+      return i;
+    }
+    i++;
+  }
+  return -1;
+}
+
+function matchTrailingEndClass(src: string, className: string): number {
+  let end = src.length;
+  while (end > 0 && isWsChar(src[end - 1]!)) end--;
+  if (end > 0 && src[end - 1] === ";") end--;
+  while (end > 0 && isWsChar(src[end - 1]!)) end--;
+  if (end < className.length) return -1;
+  const nameStart = end - className.length;
+  if (src.slice(nameStart, end) !== className) return -1;
+  if (nameStart === 0 || !isWsChar(src[nameStart - 1]!)) return -1;
+  let endKeywordEnd = nameStart;
+  while (endKeywordEnd > 0 && isWsChar(src[endKeywordEnd - 1]!)) endKeywordEnd--;
+  if (endKeywordEnd < 3) return -1;
+  const endKeywordStart = endKeywordEnd - 3;
+  if (src.slice(endKeywordStart, endKeywordEnd) !== "end") return -1;
+  if (endKeywordStart > 0 && isIdentChar(src[endKeywordStart - 1]!)) return -1;
+  return endKeywordStart;
+}
+
+function matchNestedLongClassStart(body: string, startIdx: number): { name: string; end: number } | null {
+  if (startsWithWordAt(body, startIdx, "replaceable")) return null;
+  let i = startIdx;
+  while (i < body.length) {
+    const tok = readIdentAt(body, i);
+    if (!tok) return null;
+    if (MODELICA_CLASS_MODIFIERS.has(tok.ident)) {
+      const nextIdx = skipWs(body, tok.end);
+      if (nextIdx === tok.end) return null;
+      i = nextIdx;
+      continue;
+    }
+    if ((tok.ident === "pure" || tok.ident === "impure") && startsWithWordAt(body, skipWs(body, tok.end), "function")) {
+      i = skipWs(body, tok.end);
+      continue;
+    }
+    if (!MODELICA_CLASS_KINDS.has(tok.ident)) return null;
+    i = skipWs(body, tok.end);
+    if (i === tok.end) return null;
+    if (tok.ident === "operator") {
+      const sub = readIdentAt(body, i);
+      if (sub && (sub.ident === "record" || sub.ident === "function")) {
+        const afterSub = skipWs(body, sub.end);
+        if (afterSub === sub.end) return null;
+        i = afterSub;
+      }
+    }
+    const nameTok = readIdentAt(body, i);
+    if (!nameTok) return null;
+    const afterName = skipWs(body, nameTok.end);
+    if (body[afterName] === "=") return null;
+    return { name: nameTok.ident, end: nameTok.end };
+  }
+  return null;
+}
+
+function parseModelicaClausePrefixTokens(
+  trimmedClause: string,
+): { fullPrefix: string; typePrefix: string; typeSpecifier: string } | null {
+  let idx = 0;
+  const prefixes: string[] = [];
+  while (idx < trimmedClause.length) {
+    idx = skipWs(trimmedClause, idx);
+    const tok = readIdentAt(trimmedClause, idx);
+    if (tok) {
+      const afterTok = skipWs(trimmedClause, tok.end);
+      const hasSeparator = trimmedClause[afterTok] === "." || trimmedClause.startsWith("::", afterTok);
+      if (!hasSeparator && MODELICA_COMPONENT_PREFIXES.has(tok.ident)) {
+        prefixes.push(tok.ident);
+        idx = tok.end;
+        continue;
+      }
+    }
+    const qual = readQualifiedNameAt(trimmedClause, idx);
+    if (!qual) return null;
+    const typePrefix = prefixes.join(" ");
+    const typeSpecifier = qual.name;
+    return {
+      fullPrefix: typePrefix ? `${typePrefix} ${typeSpecifier}` : typeSpecifier,
+      typePrefix,
+      typeSpecifier,
+    };
+  }
+  return null;
+}
+
+function extractTrailingModelicaString(src: string): string | null {
+  let i = 0;
+  const len = src.length;
+  while (i < len) {
+    const ch = src[i]!;
+    if (ch === '"') {
+      const chainEnd = skipModelicaConcatString(src, i);
+      if (skipWs(src, chainEnd) === len) {
+        return src.slice(i, chainEnd);
+      }
+      i = chainEnd;
+      continue;
+    }
+    if (ch === "/" && (src[i + 1] === "/" || src[i + 1] === "*")) {
+      i = skipModelicaTrivia(src, i);
+      continue;
+    }
+    i++;
+  }
+  return null;
+}
+
+function pushFormattedMemberLines(memberLines: string[], cleanedStmt: string): void {
+  const stmtLines = cleanedStmt
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (stmtLines.length === 2 && stmtLines[1]!.startsWith('"')) {
+    memberLines.push(`  ${stmtLines[0]} ${stmtLines[1]}`);
+  } else if (stmtLines.length > 1) {
+    memberLines.push(stmtLines.map((l, idx) => (idx === 0 ? `  ${l}` : `      ${l}`)).join("\n"));
+  } else if (stmtLines.length === 1) {
+    memberLines.push(`  ${stmtLines[0]}`);
+  }
+}
+
+function assembleClassSignature(header: string, memberLines: string[], className: string): string {
+  const MAX_MEMBERS = 15;
+  let bodyLines = memberLines;
+  if (memberLines.length > MAX_MEMBERS) {
+    bodyLines = [
+      ...memberLines.slice(0, MAX_MEMBERS),
+      `  // ... (${memberLines.length - MAX_MEMBERS} more declarations)`,
+    ];
+  }
+  if (bodyLines.length > 0) {
+    return `${header}\n${bodyLines.join("\n")}\nend ${className};`;
+  }
+  return `${header}\nend ${className};`;
+}
+
+function getNodeStartOffset(node: SyntaxNode): number {
+  return (node as any).startOffset ?? node.startIndex;
+}
+
+function getNodeEndOffset(node: SyntaxNode): number {
+  return (node as any).endOffset ?? node.endIndex;
+}
+
+function findAncestorOrSelfByType(
+  node: SyntaxNode | null,
+  targetTypes: readonly string[],
+  stopTypes: readonly string[] = [],
+): SyntaxNode | null {
+  let curr: SyntaxNode | null = node;
+  let depth = 0;
+  while (curr && depth < 16) {
+    if (targetTypes.includes(curr.type)) return curr;
+    if (stopTypes.includes(curr.type)) return null;
+    curr = curr.parent;
+    depth++;
+  }
+  return null;
+}
+
+function findModelicaClassSpecNode(classNode: SyntaxNode): SyntaxNode | null {
+  const specWrapper = classNode.childForFieldName("class_specifier");
+  if (specWrapper) {
+    if (
+      specWrapper.type === "long_class_specifier" ||
+      specWrapper.type === "short_class_specifier" ||
+      specWrapper.type === "der_class_specifier"
+    ) {
+      return specWrapper;
+    }
+    for (const child of specWrapper.namedChildren) {
+      if (
+        child.type === "long_class_specifier" ||
+        child.type === "short_class_specifier" ||
+        child.type === "der_class_specifier"
+      ) {
+        return child;
+      }
+    }
+  }
+  for (const child of classNode.namedChildren) {
+    if (
+      child.type === "long_class_specifier" ||
+      child.type === "short_class_specifier" ||
+      child.type === "der_class_specifier"
+    ) {
+      return child;
+    }
+  }
+  return null;
+}
+
+function collectAnnotationClauseSpans(
+  node: SyntaxNode,
+  baseStart: number,
+  out: Array<{ start: number; end: number }>,
+): void {
+  if (node.type === "annotation_clause") {
+    out.push({
+      start: Math.max(0, getNodeStartOffset(node) - baseStart),
+      end: Math.max(0, getNodeEndOffset(node) - baseStart),
+    });
+    return;
+  }
+  for (const child of node.namedChildren) {
+    collectAnnotationClauseSpans(child, baseStart, out);
+  }
+}
+
+function stripAnnotationClausesFromCst(node: SyntaxNode, fallbackStripper: (s: string) => string): string {
+  const text = node.text ?? "";
+  if (!text) return "";
+  if (node.hasError) return fallbackStripper(text);
+  const baseStart = getNodeStartOffset(node);
+  const spans: Array<{ start: number; end: number }> = [];
+  collectAnnotationClauseSpans(node, baseStart, spans);
+  if (spans.length === 0) return text;
+
+  spans.sort((a, b) => a.start - b.start);
+  let out = "";
+  let cursor = 0;
+  for (const span of spans) {
+    const start = Math.max(cursor, Math.min(span.start, text.length));
+    const end = Math.max(start, Math.min(span.end, text.length));
+    out += text.slice(cursor, start);
+    out = trimEndHorizontalWs(out);
+    cursor = end;
+  }
+  out += text.slice(cursor);
+  return out;
+}
+
+function collectClassAnnotationClauses(classNode: SyntaxNode): SyntaxNode[] {
+  const specNode = findModelicaClassSpecNode(classNode);
+  if (!specNode) return [];
+  const results: SyntaxNode[] = [];
+  if (specNode.type === "long_class_specifier") {
+    const compNode = specNode.childForFieldName("composition");
+    if (compNode) {
+      for (const child of compNode.namedChildren) {
+        if (child.type === "annotation_clause") {
+          results.push(child);
+        } else if (
+          child.type === "element_list" ||
+          child.type === "equation_section" ||
+          child.type === "algorithm_section" ||
+          child.type === "external_clause"
+        ) {
+          for (const sub of child.namedChildren) {
+            if (sub.type === "annotation_clause") {
+              results.push(sub);
+            }
+          }
+        }
+      }
+    }
+  } else if (specNode.type === "short_class_specifier" || specNode.type === "der_class_specifier") {
+    const descNode = specNode.childForFieldName("description");
+    if (descNode) {
+      for (const child of descNode.namedChildren) {
+        if (child.type === "annotation_clause") {
+          results.push(child);
+        }
+      }
+    }
+  }
+  return results;
+}
+
+function findElementModificationByName(classModNode: SyntaxNode | null, targetLower: string): SyntaxNode | null {
+  if (!classModNode) return null;
+  const stack: SyntaxNode[] = [classModNode];
+  while (stack.length > 0) {
+    const curr = stack.pop()!;
+    for (const child of curr.namedChildren) {
+      if (child.type === "element_modification") {
+        const modName = child.childForFieldName("name")?.text.trim().toLowerCase();
+        if (modName === targetLower) return child;
+      } else if (
+        child.type === "argument_list" ||
+        child.type === "argument" ||
+        child.type === "element_modification_or_replaceable"
+      ) {
+        stack.push(child);
+      }
+    }
+  }
+  return null;
+}
+
+const IDENTIFIER_LEAF_NODE_TYPES = new Set([
+  "identifier",
+  "IDENT",
+  "Identifier",
+  "ID",
+  "simple_name",
+  "SimpleName",
+  "name",
+]);
+
+function extractWordSpanAtOffset(
+  text: string,
+  byteOffset: number,
+  cstRoot?: SyntaxNode | null,
+): { word: string; start: number; end: number } | null {
+  if (cstRoot && !cstRoot.hasError && text.length > 0) {
+    const probeOffset =
+      byteOffset < text.length && isIdentChar(text[byteOffset]!)
+        ? byteOffset
+        : byteOffset > 0 && isIdentChar(text[byteOffset - 1]!)
+          ? byteOffset - 1
+          : -1;
+    if (probeOffset >= 0) {
+      try {
+        const leaf = cstRoot.descendantForIndex(probeOffset, probeOffset);
+        if (leaf && !leaf.hasError && leaf.namedChildCount === 0 && IDENTIFIER_LEAF_NODE_TYPES.has(leaf.type)) {
+          const s = getNodeStartOffset(leaf);
+          const e = getNodeEndOffset(leaf);
+          if (e > s && s >= 0 && e <= text.length && byteOffset >= s && byteOffset <= e) {
+            let allIdent = true;
+            for (let i = s; i < e; i++) {
+              if (!isIdentChar(text[i]!)) {
+                allIdent = false;
+                break;
+              }
+            }
+            if (allIdent) {
+              return { word: text.slice(s, e), start: s, end: e };
+            }
+          }
+        }
+      } catch {
+        // fallback to lexical scan
+      }
+    }
+  }
+
+  let ws = byteOffset;
+  if (ws > 0 && (ws >= text.length || !isIdentChar(text[ws]!)) && isIdentChar(text[ws - 1]!)) {
+    ws--;
+  }
+  while (ws > 0 && isIdentChar(text[ws - 1]!)) ws--;
+  let we = ws;
+  while (we < text.length && isIdentChar(text[we]!)) we++;
+  if (ws >= we || byteOffset < ws || byteOffset > we) {
+    return null;
+  }
+  return { word: text.slice(ws, we), start: ws, end: we };
+}
+
+function isQualifiedIdentChainSlice(text: string, start: number, end: number): boolean {
+  if (start >= end || !isIdentChar(text[start]!) || !isIdentChar(text[end - 1]!)) return false;
+  let i = start;
+  while (i < end) {
+    if (isIdentChar(text[i]!)) {
+      i++;
+      continue;
+    }
+    if (text[i] === "." && i > start && i + 1 < end && isIdentChar(text[i - 1]!) && isIdentChar(text[i + 1]!)) {
+      i++;
+      continue;
+    }
+    if (
+      text[i] === ":" &&
+      text[i + 1] === ":" &&
+      i > start &&
+      i + 2 < end &&
+      isIdentChar(text[i - 1]!) &&
+      isIdentChar(text[i + 2]!)
+    ) {
+      i += 2;
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+function extractQualifiedPrefixAtOffset(
+  text: string,
+  wordStart: number,
+  wordEnd: number,
+  cstRoot?: SyntaxNode | null,
+): string {
+  if (cstRoot && !cstRoot.hasError) {
+    try {
+      const leaf = cstRoot.descendantForIndex(wordStart, wordEnd);
+      const qualNode = findAncestorOrSelfByType(
+        leaf,
+        ["type_specifier", "name", "component_reference", "QualifiedName", "FeatureChainExpression"],
+        ["element", "equation_section", "algorithm_section", "composition", "class_definition", "stored_definition"],
+      );
+      if (qualNode && !qualNode.hasError) {
+        let qStart = getNodeStartOffset(qualNode);
+        if (qStart < wordEnd && text[qStart] === ".") qStart++;
+        if (
+          qStart >= 0 &&
+          qStart <= wordStart &&
+          wordEnd <= text.length &&
+          isQualifiedIdentChainSlice(text, qStart, wordEnd)
+        ) {
+          return text.slice(qStart, wordEnd);
+        }
+      }
+    } catch {
+      // fallback to lexical backward scan
+    }
+  }
+
+  let qStart = wordStart;
+  while (qStart > 0) {
+    if (text[qStart - 1] === "." && qStart >= 2 && isIdentChar(text[qStart - 2]!)) {
+      qStart--;
+      while (qStart > 0 && isIdentChar(text[qStart - 1]!)) qStart--;
+    } else if (qStart >= 3 && text[qStart - 1] === ":" && text[qStart - 2] === ":" && isIdentChar(text[qStart - 3]!)) {
+      qStart -= 2;
+      while (qStart > 0 && isIdentChar(text[qStart - 1]!)) qStart--;
+    } else {
+      break;
+    }
+  }
+  return text.slice(qStart, wordEnd);
+}
+
+function extractDotAccessVarBefore(before: string, cstRoot?: SyntaxNode | null): string | null {
+  if (cstRoot && !cstRoot.hasError && before.length > 0) {
+    try {
+      const node = cstRoot.descendantForIndex(before.length - 1, before.length - 1);
+      const compRef = findAncestorOrSelfByType(
+        node,
+        ["component_reference", "FeatureChainExpression"],
+        ["equation", "statement", "element", "expression"],
+      );
+      if (compRef && !compRef.hasError) {
+        const relEnd = Math.min(compRef.text.length, before.length - getNodeStartOffset(compRef));
+        if (relEnd > 0) {
+          const slice = compRef.text.slice(0, relEnd);
+          const dotIdx = slice.lastIndexOf(".");
+          if (dotIdx > 0) {
+            const left = slice.slice(0, dotIdx).trim();
+            const tok = readIdentAt(left, 0);
+            if (tok && tok.end === left.length) {
+              return tok.ident;
+            }
+          }
+        }
+      }
+    } catch {
+      // fallback to lexical backward scan
+    }
+  }
+
+  let i = before.length;
+  while (i > 0 && isIdentChar(before[i - 1]!)) i--;
+  if (i < before.length && !isIdentStartChar(before[i]!)) {
+    return null;
+  }
+  while (i > 0 && isWsChar(before[i - 1]!)) i--;
+  if (i === 0 || before[i - 1] !== ".") return null;
+  i--;
+  while (i > 0 && isWsChar(before[i - 1]!)) i--;
+  const varEnd = i;
+  while (i > 0 && isIdentChar(before[i - 1]!)) i--;
+  if (i >= varEnd || !isIdentStartChar(before[i]!)) return null;
+  return before.slice(i, varEnd);
+}
+
+function isQualifiedTypeChar(ch: string): boolean {
+  return isIdentChar(ch) || ch === "." || ch === ":";
+}
+
+function extractModificationTargetType(
+  beforeParen: string,
+  allowExtends: boolean,
+  cstRoot?: SyntaxNode | null,
+  parenOffset?: number,
+): string | null {
+  if (cstRoot && parenOffset !== undefined) {
+    try {
+      const probe = cstRoot.descendantForIndex(parenOffset, parenOffset);
+      const classMod = findAncestorOrSelfByType(probe, ["class_modification"], ["element_list", "composition"]);
+      const modNode = classMod?.parent?.type === "modification" ? classMod.parent : classMod;
+      const declOrExt = modNode?.parent;
+      if (declOrExt) {
+        if (allowExtends && declOrExt.type === "extends_clause") {
+          const targetNode = declOrExt.childForFieldName("type") ?? declOrExt.childForFieldName("name");
+          if (targetNode && !targetNode.hasError) {
+            const cleaned = stripWs(targetNode.text);
+            if (cleaned) return cleaned;
+          }
+        }
+        const declNode =
+          declOrExt.type === "declaration" && declOrExt.parent?.type === "component_declaration"
+            ? declOrExt.parent
+            : declOrExt;
+        if (declNode.type === "component_declaration" && declNode.parent?.type === "component_clause") {
+          const typeNode = declNode.parent.childForFieldName("type_specifier");
+          if (typeNode && !typeNode.hasError) {
+            const cleaned = stripWs(typeNode.text);
+            if (cleaned) return cleaned;
+          }
+        } else if (declNode.type === "component_clause1") {
+          const typeNode = declNode.childForFieldName("type_specifier");
+          if (typeNode && !typeNode.hasError) {
+            const cleaned = stripWs(typeNode.text);
+            if (cleaned) return cleaned;
+          }
+        }
+      }
+    } catch {
+      // fallback to lexical backward scan
+    }
+  }
+
+  let i = beforeParen.length;
+  if (i === 0) return null;
+
+  if (allowExtends) {
+    const extTargetEnd = i;
+    let j = i;
+    while (j > 0 && isQualifiedTypeChar(beforeParen[j - 1]!)) j--;
+    if (j < extTargetEnd && isIdentStartChar(beforeParen[j]!)) {
+      let wsEnd = j;
+      while (wsEnd > 0 && isWsChar(beforeParen[wsEnd - 1]!)) wsEnd--;
+      if (
+        wsEnd < j &&
+        wsEnd >= 7 &&
+        beforeParen.slice(wsEnd - 7, wsEnd) === "extends" &&
+        (wsEnd === 7 || !isIdentChar(beforeParen[wsEnd - 8]!))
+      ) {
+        return beforeParen.slice(j, extTargetEnd);
+      }
+    }
+  }
+
+  // Optional trailing array subscripts: `[...]`
+  if (i > 0 && beforeParen[i - 1] === "]") {
+    const openBracket = beforeParen.lastIndexOf("[", i - 2);
+    if (openBracket === -1) return null;
+    i = openBracket;
+    while (i > 0 && isWsChar(beforeParen[i - 1]!)) i--;
+  }
+
+  // Trailing identifier (`varName`)
+  const varEnd = i;
+  while (i > 0 && isIdentChar(beforeParen[i - 1]!)) i--;
+  if (i >= varEnd || !isIdentStartChar(beforeParen[i]!)) return null;
+
+  // At least one whitespace separator
+  const wsEnd = i;
+  while (i > 0 && isWsChar(beforeParen[i - 1]!)) i--;
+  if (i >= wsEnd) return null;
+
+  // Preceding qualified type name (`[a-zA-Z_][a-zA-Z0-9_.:]*`)
+  const typeEnd = i;
+  while (i > 0 && isQualifiedTypeChar(beforeParen[i - 1]!)) i--;
+  if (i >= typeEnd || !isIdentStartChar(beforeParen[i]!)) return null;
+  return beforeParen.slice(i, typeEnd);
+}
+
+function stripOuterQuotes(str: string): string {
+  let start = 0;
+  let end = str.length;
+  if (end > start && str[start] === '"') start++;
+  if (end > start && str[end - 1] === '"') end--;
+  return str.slice(start, end);
+}
+
+function stripSysmlDocBlocks(src: string): string {
+  let out = "";
+  let i = 0;
+  const len = src.length;
+  while (i < len) {
+    const ch = src[i]!;
+    if (ch === '"' || ch === "'") {
+      const q = ch;
+      let j = i + 1;
+      while (j < len) {
+        if (src[j] === "\\") j += 2;
+        else if (src[j] === q) {
+          j++;
+          break;
+        } else j++;
+      }
+      out += src.slice(i, j);
+      i = j;
+      continue;
+    }
+    if (ch === "/" && src[i + 1] === "/") {
+      let j = i + 2;
+      while (j < len && src[j] !== "\n") j++;
+      out += src.slice(i, j);
+      i = j;
+      continue;
+    }
+    if (ch === "/" && src[i + 1] === "*") {
+      const closeIdx = src.indexOf("*/", i + 2);
+      const end = closeIdx === -1 ? len : closeIdx + 2;
+      out += src.slice(i, end);
+      i = end;
+      continue;
+    }
+    if (ch === "d" && startsWithWordAt(src, i, "doc")) {
+      const afterDoc = skipWs(src, i + 3);
+      if (src[afterDoc] === "/" && src[afterDoc + 1] === "*") {
+        const closeIdx = src.indexOf("*/", afterDoc + 2);
+        if (closeIdx !== -1) {
+          let end = skipWs(src, closeIdx + 2);
+          if (src[end] === ";") end++;
+          i = end;
+          continue;
+        }
+      }
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+function stripTrailingStringCommentAndSemi(str: string, _declNode?: SyntaxNode | null): string {
+  let s = str.trimEnd();
+  if (s.endsWith(";")) {
+    s = s.slice(0, -1).trimEnd();
+  }
+  if (s.endsWith('"')) {
+    const openIdx = s.lastIndexOf('"', s.length - 2);
+    if (openIdx !== -1) {
+      let beforeQuote = s.slice(0, openIdx).trimEnd();
+      if (beforeQuote.endsWith(";")) {
+        beforeQuote = beforeQuote.slice(0, -1).trimEnd();
+      }
+      return beforeQuote.trim();
+    }
+  }
+  return stripTrailingSemicolon(s);
+}
+
+function stripCommentBlockBody(rawBody: string): string {
+  let start = 0;
+  while (start < rawBody.length && rawBody[start] === "*") start++;
+  return rawBody
+    .slice(start)
+    .split("\n")
+    .map((line) => {
+      let i = 0;
+      while (i < line.length && isWsChar(line[i]!)) i++;
+      if (line[i] === "*") {
+        i++;
+        if (i < line.length && isWsChar(line[i]!)) i++;
+      } else {
+        i = 0;
+      }
+      return line.slice(i).trimEnd();
+    })
+    .join("\n")
+    .trim();
+}
+
+function extractLeadingCommentDoc(beforeDecl: string): string | null {
+  const closeIdx = beforeDecl.lastIndexOf("*/");
+  if (closeIdx !== -1) {
+    const tail = beforeDecl.slice(closeIdx + 2);
+    let sawNewline = false;
+    let onlyIndent = true;
+    for (let i = 0; i < tail.length; i++) {
+      const ch = tail[i]!;
+      if (ch === "\n") {
+        if (sawNewline) {
+          onlyIndent = false;
+          break;
+        }
+        sawNewline = true;
+      } else if (ch !== " " && ch !== "\t" && ch !== "\r") {
+        onlyIndent = false;
+        break;
+      }
+    }
+    if (onlyIndent) {
+      const openIdx = beforeDecl.lastIndexOf("/*", closeIdx);
+      if (openIdx !== -1) {
+        const rawComment = stripCommentBlockBody(beforeDecl.slice(openIdx + 2, closeIdx));
+        if (rawComment && !rawComment.includes("SPDX-License-Identifier")) {
+          return rawComment;
+        }
+      }
+      return null;
+    }
+  }
+
+  const linesBefore = beforeDecl.replaceAll("\r\n", "\n").split("\n");
+  if (linesBefore.length > 0 && linesBefore[linesBefore.length - 1]!.trim() === "") {
+    linesBefore.pop();
+  }
+  const docLines: string[] = [];
+  for (let i = linesBefore.length - 1; i >= 0; i--) {
+    const line = linesBefore[i]!.trim();
+    if (line.startsWith("//")) {
+      let j = 0;
+      while (j < line.length && line[j] === "/") j++;
+      if (j < line.length && isWsChar(line[j]!)) j++;
+      const content = line.slice(j);
+      if (content.includes("SPDX-License-Identifier")) break;
+      docLines.unshift(content);
+    } else {
+      break;
+    }
+  }
+  return docLines.length > 0 ? docLines.join("\n").trim() : null;
+}
+
+function extractSysmlDocBlockFromCst(node: SyntaxNode | null): string | null {
+  if (!node) return null;
+  const stack: SyntaxNode[] = [node];
+  while (stack.length > 0) {
+    const curr = stack.pop()!;
+    if (
+      curr.type === "Documentation" ||
+      curr.type === "documentation" ||
+      curr.type === "doc_comment" ||
+      curr.type === "documentation_comment"
+    ) {
+      const raw = curr.text ?? "";
+      const openIdx = raw.indexOf("/*");
+      const closeIdx = openIdx !== -1 ? raw.lastIndexOf("*/") : -1;
+      if (openIdx !== -1 && closeIdx > openIdx + 1) {
+        const cleaned = stripCommentBlockBody(raw.slice(openIdx + 2, closeIdx));
+        if (cleaned) return cleaned;
+      }
+    }
+    for (let i = curr.namedChildren.length - 1; i >= 0; i--) {
+      stack.push(curr.namedChildren[i]!);
+    }
+  }
+  return null;
+}
+
+function extractSysmlDocBlockContent(rawSpan: string): string | null {
+  let i = 0;
+  const len = rawSpan.length;
+  while (i < len) {
+    const ch = rawSpan[i]!;
+    if (ch === '"' || ch === "'") {
+      const q = ch;
+      i++;
+      while (i < len) {
+        if (rawSpan[i] === "\\") i += 2;
+        else if (rawSpan[i] === q) {
+          i++;
+          break;
+        } else i++;
+      }
+      continue;
+    }
+    if (ch === "d" && startsWithWordAt(rawSpan, i, "doc")) {
+      const afterDoc = skipWs(rawSpan, i + 3);
+      if (rawSpan[afterDoc] === "/" && rawSpan[afterDoc + 1] === "*") {
+        const closeIdx = rawSpan.indexOf("*/", afterDoc + 2);
+        if (closeIdx !== -1) {
+          const cleaned = stripCommentBlockBody(rawSpan.slice(afterDoc + 2, closeIdx));
+          return cleaned || null;
+        }
+      }
+    }
+    i++;
+  }
+  return null;
+}
+
+function extractWithinPackageFromSource(fullText: string | null, cstRoot?: SyntaxNode | null): string | null {
+  if (cstRoot && !cstRoot.hasError) {
+    for (const child of cstRoot.namedChildren) {
+      if (child.type === "within_clause" || child.type === "within") {
+        const nameNode = child.childForFieldName("name") ?? child.namedChildren[0];
+        if (nameNode) {
+          const cleaned = stripWs(nameNode.text);
+          if (cleaned) return cleaned;
+        }
+      }
+    }
+  }
+  if (!fullText) return null;
+  const prefix = fullText.slice(0, 300);
+  let i = skipModelicaTrivia(prefix, 0);
+  if (i < prefix.length && startsWithWordAt(prefix, i, "within")) {
+    const namePos = skipWs(prefix, i + 6);
+    if (namePos > i + 6) {
+      const qual = readQualifiedNameAt(prefix, namePos);
+      if (qual && qual.name && !qual.name.startsWith(".")) {
+        const afterName = skipWs(prefix, qual.end);
+        if (prefix[afterName] === ";") {
+          return qual.name;
+        }
+      }
+    }
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // LSP Protocol Types (minimal subset, avoids vscode-languageserver dep)
@@ -446,16 +1518,17 @@ export class LSPBridge {
     this.resolveDepth++;
 
     try {
-      if (typeof (this.engine as any)?.ensureFQNIndexed === "function") {
+      const engFqn = this.engine as unknown as { ensureFQNIndexed?(fqn: string): void } | undefined;
+      if (typeof engFqn?.ensureFQNIndexed === "function") {
         try {
-          (this.engine as any).ensureFQNIndexed(trimmed.replace(/::/g, "."));
+          engFqn.ensureFQNIndexed(trimmed.replaceAll("::", "."));
         } catch {
           // ignore
         }
       }
 
       if (trimmed.includes(".") || trimmed.includes("::")) {
-        const segments = trimmed.split(/\.|::/).filter(Boolean);
+        const segments = splitQualifiedPath(trimmed);
         if (segments.length > 1) {
           const resolved = this.resolveQualifiedSegments(segments, scopeId);
           if (resolved.length > 0) return resolved;
@@ -538,31 +1611,106 @@ export class LSPBridge {
       if (shortName && pkgName && shortName === name) {
         return this.resolveName(pkgName, null);
       }
-      const rawText = this.getEntrySourceSlice(importEntry, importEntry.startOffset, importEntry.endOffset);
-      const clause = (rawText || importEntry.name || "")
-        .replace(/^import\s+/, "")
-        .replace(/;\s*$/, "")
-        .trim();
-      if (!clause) return [];
 
-      // Alias import: `import SI = Modelica.Units.SI`
-      const aliasMatch = clause.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*([a-zA-Z_][a-zA-Z0-9_.:]*)/);
-      if (aliasMatch) {
-        if (aliasMatch[1] === name) {
-          return this.resolveName(aliasMatch[2]!, null);
+      const rawNode = this.getEntryCstNode(importEntry);
+      const importNode = findAncestorOrSelfByType(
+        rawNode,
+        ["import_clause"],
+        ["element_list", "stored_definition", "program"],
+      );
+      if (importNode && !importNode.hasError) {
+        const aliasNode = importNode.childForFieldName("alias");
+        const nameNode = importNode.childForFieldName("name");
+        const importListNode = importNode.childForFieldName("import_list");
+        if (aliasNode && nameNode) {
+          if (aliasNode.text.trim() === name) {
+            return this.resolveName(stripWs(nameNode.text), null);
+          }
+          return [];
+        }
+        if (nameNode && importListNode) {
+          const pkgPrefix = stripWs(nameNode.text);
+          for (const item of importListNode.namedChildren) {
+            if (item.text.trim() === name) {
+              return this.resolveName(`${pkgPrefix}.${name}`, null);
+            }
+          }
+          return [];
+        }
+        if (nameNode) {
+          const targetName = stripWs(nameNode.text);
+          const descNode = importNode.childForFieldName("description");
+          const limitStart = descNode ? getNodeStartOffset(descNode) : getNodeEndOffset(importNode);
+          const nameEnd = getNodeEndOffset(nameNode);
+          const isWildcard = importNode.children.some((child) => {
+            const cStart = getNodeStartOffset(child);
+            const t = child.text.trim();
+            return cStart >= nameEnd && cStart < limitStart && (t === ".*" || t === "*" || t === "::*");
+          });
+          if (isWildcard) {
+            if (!targetName || targetName === name) return [];
+            return this.resolveName(`${targetName}.${name}`, null);
+          }
+          const parts = splitQualifiedPath(targetName);
+          if (parts.length > 1 && parts[parts.length - 1] === name) {
+            return this.resolveName(targetName, null);
+          }
+          return [];
+        }
+      }
+
+      // Fallback when CST is unavailable (e.g. unit test mocks) or has syntax errors
+      const rawText = this.getEntrySourceSlice(importEntry, importEntry.startOffset, importEntry.endOffset);
+      const src = (rawText || importEntry.name || "").trim();
+      if (!src) return [];
+
+      let idx = 0;
+      if (startsWithWordAt(src, idx, "import")) {
+        idx = skipWs(src, idx + "import".length);
+      }
+
+      const firstIdent = readIdentAt(src, idx);
+      if (firstIdent) {
+        const eqIdx = skipWs(src, firstIdent.end);
+        if (src[eqIdx] === "=") {
+          if (firstIdent.ident !== name) return [];
+          const rhsStart = skipWs(src, eqIdx + 1);
+          const rhs = readQualifiedNameAt(src, rhsStart);
+          return rhs ? this.resolveName(rhs.name, null) : [];
+        }
+      }
+
+      const pkgPath = readQualifiedNameAt(src, idx);
+      if (!pkgPath) return [];
+      const afterPkg = skipWs(src, pkgPath.end);
+
+      // Selective import: `import Modelica.Units.SI.{Voltage, Current}`
+      if (src[afterPkg] === "." && src[skipWs(src, afterPkg + 1)] === "{") {
+        const braceStart = skipWs(src, afterPkg + 1) + 1;
+        const braceEnd = src.indexOf("}", braceStart);
+        const listSlice = braceEnd === -1 ? src.slice(braceStart) : src.slice(braceStart, braceEnd);
+        for (const item of listSlice.split(",")) {
+          if (item.trim() === name) {
+            return this.resolveName(`${pkgPath.name}.${name}`, null);
+          }
         }
         return [];
       }
-      // Wildcard import: `import Modelica.Electrical.Analog.Sources.*`
-      if (clause.endsWith(".*") || clause.endsWith("::*")) {
-        const prefix = clause.replace(/(?:\.\*|::\*)$/, "");
-        if (!prefix || prefix === name) return [];
-        return this.resolveName(`${prefix}.${name}`, null);
+
+      // Wildcard import: `import Modelica.Electrical.Analog.Sources.*` or `Pkg::*`
+      if (
+        src.startsWith(".*", afterPkg) ||
+        src.startsWith("::*", afterPkg) ||
+        (src[afterPkg] === "." && src[skipWs(src, afterPkg + 1)] === "*")
+      ) {
+        if (!pkgPath.name || pkgPath.name === name) return [];
+        return this.resolveName(`${pkgPath.name}.${name}`, null);
       }
+
       // Qualified import: `import Modelica.Electrical.Analog.Sources.SineVoltage`
-      const parts = clause.split(/\.|::/).filter(Boolean);
+      const parts = splitQualifiedPath(pkgPath.name);
       if (parts.length > 1 && parts[parts.length - 1] === name) {
-        return this.resolveName(clause, null);
+        return this.resolveName(pkgPath.name, null);
       }
       return [];
     } finally {
@@ -984,44 +2132,28 @@ export class LSPBridge {
   }
 
   /** Extracts the qualified identifier prefix up to `wordEnd` (e.g. `Modelica.Electrical.Analog` or `Vb.p`). */
-  private extractQualifiedPrefix(text: string, wordStart: number, wordEnd: number): string {
-    let qStart = wordStart;
-    while (qStart > 0) {
-      if (text[qStart - 1] === "." && qStart >= 2 && /[a-zA-Z0-9_]/.test(text[qStart - 2]!)) {
-        qStart--;
-        while (qStart > 0 && /[a-zA-Z0-9_]/.test(text[qStart - 1]!)) qStart--;
-      } else if (
-        qStart >= 3 &&
-        text[qStart - 1] === ":" &&
-        text[qStart - 2] === ":" &&
-        /[a-zA-Z0-9_]/.test(text[qStart - 3]!)
-      ) {
-        qStart -= 2;
-        while (qStart > 0 && /[a-zA-Z0-9_]/.test(text[qStart - 1]!)) qStart--;
-      } else {
-        break;
-      }
-    }
-    return text.slice(qStart, wordEnd);
+  private extractQualifiedPrefix(
+    text: string,
+    wordStart: number,
+    wordEnd: number,
+    cstRoot?: SyntaxNode | null,
+  ): string {
+    return extractQualifiedPrefixAtOffset(text, wordStart, wordEnd, cstRoot);
   }
 
   /** Returns the raw resolved symbol entry, preserving cross-document resourceIds */
   definitionRaw(byteOffset: number, sourceText?: string): SymbolEntry | null {
     const text = sourceText ?? this.positions.getSourceText();
     let word = "";
-    let ws = byteOffset;
-    let we = byteOffset;
     let qualifiedPrefix = "";
     if (text) {
-      if (ws > 0 && !/[a-zA-Z0-9_]/.test(text[ws]!) && /[a-zA-Z0-9_]/.test(text[ws - 1]!)) ws--;
-      while (ws > 0 && /[a-zA-Z0-9_]/.test(text[ws - 1]!)) ws--;
-      we = ws;
-      while (we < text.length && /[a-zA-Z0-9_]/.test(text[we]!)) we++;
-      if (ws >= we || byteOffset < ws || byteOffset > we) {
+      const cstRoot = this.getRootCstNode();
+      const span = extractWordSpanAtOffset(text, byteOffset, cstRoot);
+      if (!span) {
         return null;
       }
-      word = text.slice(ws, we);
-      qualifiedPrefix = this.extractQualifiedPrefix(text, ws, we);
+      word = span.word;
+      qualifiedPrefix = this.extractQualifiedPrefix(text, span.start, span.end, cstRoot);
     }
 
     const refEntry = this.findEntryAtOffset(byteOffset);
@@ -1082,9 +2214,8 @@ export class LSPBridge {
     // ------------------------------------------------------------------
     if (sourceText) {
       const before = sourceText.slice(0, byteOffset);
-      const dotMatch = before.match(/([a-zA-Z_][a-zA-Z0-9_]*)\s*\.\s*[a-zA-Z_]?[a-zA-Z0-9_]*$/);
-      if (dotMatch) {
-        const varName = dotMatch[1]!;
+      const varName = extractDotAccessVarBefore(before, this.getRootCstNode());
+      if (varName) {
         return this.completeDotAccess(varName, byteOffset);
       }
 
@@ -1312,11 +2443,8 @@ export class LSPBridge {
 
     // Text before the opening paren — look for `TypeName varName (`
     const beforeParen = before.slice(0, parenPos).trimEnd();
-    // Match: [TypeName] [varName] at end (with optional whitespace)
-    const declMatch = beforeParen.match(/([a-zA-Z_][a-zA-Z0-9_.:]*)\s+[a-zA-Z_][a-zA-Z0-9_]*(?:\s*\[[^\]]*\])?$/);
-    if (!declMatch) return null;
-
-    const typeName = declMatch[1]!;
+    const typeName = extractModificationTargetType(beforeParen, false, this.getRootCstNode(), parenPos);
+    if (!typeName) return null;
 
     // Resolve the type
     const scopeEntry = this.findScopeAtOffset(byteOffset);
@@ -1410,20 +2538,14 @@ export class LSPBridge {
 
     if (!text) return null;
 
-    let wordStart = byteOffset;
-    if (wordStart > 0 && !/[a-zA-Z0-9_]/.test(text[wordStart]!) && /[a-zA-Z0-9_]/.test(text[wordStart - 1]!)) {
-      wordStart--;
-    }
-    while (wordStart > 0 && /[a-zA-Z0-9_]/.test(text[wordStart - 1]!)) wordStart--;
-    let wordEnd = wordStart;
-    while (wordEnd < text.length && /[a-zA-Z0-9_]/.test(text[wordEnd]!)) wordEnd++;
-
-    if (wordStart >= wordEnd || byteOffset < wordStart || byteOffset > wordEnd) {
+    const cstRoot = this.getRootCstNode();
+    const span = extractWordSpanAtOffset(text, byteOffset, cstRoot);
+    if (!span) {
       return null;
     }
 
-    const word = text.slice(wordStart, wordEnd);
-    const qualifiedPrefix = this.extractQualifiedPrefix(text, wordStart, wordEnd);
+    const { word, start: wordStart, end: wordEnd } = span;
+    const qualifiedPrefix = this.extractQualifiedPrefix(text, wordStart, wordEnd, cstRoot);
     const hoverRange = this.positions.rangeFromOffsets(wordStart, wordEnd);
 
     const entry = this.findEntryAtOffset(byteOffset);
@@ -1604,17 +2726,148 @@ export class LSPBridge {
   }
 
   /**
+   * Resolves the backing WASM CST `SyntaxNode` for `entry` when a parser tree is available
+   * on the active `QueryEngine`, another open workspace bridge, or `env.documents`.
+   */
+  private getEntryCstNode(entry?: SymbolEntry | null): SyntaxNode | null {
+    if (!entry) return null;
+    type EngineCstAccess = {
+      cstNode?(id: SymbolId): SyntaxNode | null | undefined;
+      toQueryDB?(): { cstNode?(id: SymbolId): SyntaxNode | null | undefined } | null;
+    };
+    type BridgeGlobals = {
+      documentLSPBridges?: Map<string, { engine?: unknown }>;
+      documents?: Map<string, { tree?: { rootNode?: SyntaxNode } }>;
+    };
+    const globals = globalThis as unknown as BridgeGlobals;
+    try {
+      const eng = this.engine as unknown as EngineCstAccess | undefined;
+      if (eng && typeof eng.cstNode === "function") {
+        const node = eng.cstNode(entry.id);
+        if (node && typeof node.type === "string") return node;
+      }
+      const db = eng && typeof eng.toQueryDB === "function" ? eng.toQueryDB() : null;
+      if (db && typeof db.cstNode === "function") {
+        const node = db.cstNode(entry.id);
+        if (node && typeof node.type === "string") return node;
+      }
+      const uri = entry.resourceId || this.documentUri;
+      if (uri) {
+        const otherBridge = this.env?.documentLSPBridges?.get(uri) ?? globals.documentLSPBridges?.get(uri);
+        const otherEng = (otherBridge as unknown as { engine?: unknown } | undefined)?.engine as
+          | EngineCstAccess
+          | undefined;
+        if (otherEng && typeof otherEng.cstNode === "function") {
+          const node = otherEng.cstNode(entry.id);
+          if (node && typeof node.type === "string") return node;
+        }
+        const doc = this.env?.documents?.get(uri) ?? globals.documents?.get(uri);
+        const root = (doc as { tree?: { rootNode?: SyntaxNode } } | undefined)?.tree?.rootNode;
+        if (root && typeof root.descendantForIndex === "function" && entry.startOffset !== undefined) {
+          const node = root.descendantForIndex(entry.startOffset, entry.endOffset ?? entry.startOffset);
+          if (node && typeof node.type === "string") return node;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  /**
+   * Resolves the root WASM CST `SyntaxNode` for `resourceUri` (or the bridge's bound document).
+   */
+  private getRootCstNode(resourceUri?: string): SyntaxNode | null {
+    type EngineRootAccess = {
+      tree?: { rootNode?: SyntaxNode };
+      toQueryDB?(): { tree?: { rootNode?: SyntaxNode } } | null;
+    };
+    type BridgeGlobals = {
+      documentLSPBridges?: Map<string, { engine?: unknown }>;
+      documents?: Map<string, { tree?: { rootNode?: SyntaxNode } }>;
+    };
+    const globals = globalThis as unknown as BridgeGlobals;
+    try {
+      const eng = this.engine as unknown as EngineRootAccess | undefined;
+      if (!resourceUri || resourceUri === this.documentUri) {
+        const directRoot = eng?.tree?.rootNode ?? eng?.toQueryDB?.()?.tree?.rootNode;
+        if (directRoot && typeof directRoot.descendantForIndex === "function") {
+          return directRoot;
+        }
+      }
+      const uri = resourceUri || this.documentUri;
+      if (uri) {
+        const otherBridge = this.env?.documentLSPBridges?.get(uri) ?? globals.documentLSPBridges?.get(uri);
+        const otherEng = (otherBridge as unknown as { engine?: unknown } | undefined)?.engine as
+          | EngineRootAccess
+          | undefined;
+        const otherRoot = otherEng?.tree?.rootNode ?? otherEng?.toQueryDB?.()?.tree?.rootNode;
+        if (otherRoot && typeof otherRoot.descendantForIndex === "function") {
+          return otherRoot;
+        }
+        const doc = this.env?.documents?.get(uri) ?? globals.documents?.get(uri);
+        const docRoot = (doc as { tree?: { rootNode?: SyntaxNode } } | undefined)?.tree?.rootNode;
+        if (docRoot && typeof docRoot.descendantForIndex === "function") {
+          return docRoot;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  /**
    * Extracts the `type_prefix` and `type_specifier` from the enclosing Modelica `component_clause`
    * preceding `entry` when `entry` only spans `component_declaration` (e.g. `V(start=1) "..."`).
    */
   private extractComponentClausePrefix(
     entry: SymbolEntry,
   ): { fullPrefix: string; typePrefix: string; typeSpecifier: string; clauseStartOffset: number } | null {
+    const rawNode = this.getEntryCstNode(entry);
+    const clauseNode = findAncestorOrSelfByType(
+      rawNode,
+      ["component_clause", "component_clause1"],
+      ["element_list", "composition", "class_definition", "stored_definition", "program"],
+    );
+    if (clauseNode && !clauseNode.hasError) {
+      const elementNode = clauseNode.parent?.type === "element" ? clauseNode.parent : null;
+      const prefixes: string[] = [];
+      if (elementNode) {
+        const clauseStart = getNodeStartOffset(clauseNode);
+        for (const child of elementNode.children) {
+          if (getNodeStartOffset(child) >= clauseStart) break;
+          const kw = child.text.trim();
+          if (MODELICA_ELEMENT_PREFIXES.has(kw)) {
+            prefixes.push(kw);
+          }
+        }
+      }
+      const tpNode = clauseNode.childForFieldName("type_prefix");
+      if (tpNode) {
+        const tp = collapseWs(tpNode.text);
+        if (tp) prefixes.push(tp);
+      }
+      const tsNode = clauseNode.childForFieldName("type_specifier");
+      const typeSpecifier = tsNode ? collapseWs(tsNode.text) : "";
+      if (typeSpecifier) {
+        const typePrefix = collapseWs(prefixes.join(" "));
+        const fullPrefix = typePrefix ? `${typePrefix} ${typeSpecifier}` : typeSpecifier;
+        const outerNode = elementNode ?? clauseNode;
+        return {
+          fullPrefix,
+          typePrefix,
+          typeSpecifier,
+          clauseStartOffset: getNodeStartOffset(outerNode),
+        };
+      }
+    }
+
     const entryStart = entry.startOffset ?? 0;
     const fullText = this.getEntryFullSourceText(entry);
     if (!fullText || entryStart <= 0 || entryStart > fullText.length) return null;
 
-    // Scan backwards from entryStart to find the start of the component_clause
+    // Fallback: scan backwards from entryStart to find the start of the component_clause
     // (after the previous `;`, `{`, or class header string/name).
     const lookbackStart = Math.max(0, entryStart - 500);
     const before = fullText.slice(lookbackStart, entryStart);
@@ -1647,12 +2900,22 @@ export class LSPBridge {
     let clauseStartOffset = lookbackStart + clauseRelStart;
 
     // Strip leading comments and section keywords (`public`, `protected`)
-    const leadingMatch = rawClauseBefore.match(
-      /^(?:\s+|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*(?:(?:public|protected)\b(?:\s+|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*)*/,
-    );
-    if (leadingMatch && leadingMatch[0]) {
-      rawClauseBefore = rawClauseBefore.slice(leadingMatch[0].length);
-      clauseStartOffset += leadingMatch[0].length;
+    let leadingIdx = 0;
+    while (leadingIdx < rawClauseBefore.length) {
+      leadingIdx = skipModelicaTrivia(rawClauseBefore, leadingIdx);
+      if (startsWithWordAt(rawClauseBefore, leadingIdx, "public")) {
+        leadingIdx += "public".length;
+        continue;
+      }
+      if (startsWithWordAt(rawClauseBefore, leadingIdx, "protected")) {
+        leadingIdx += "protected".length;
+        continue;
+      }
+      break;
+    }
+    if (leadingIdx > 0) {
+      rawClauseBefore = rawClauseBefore.slice(leadingIdx);
+      clauseStartOffset += leadingIdx;
     }
 
     const trimmedClause = rawClauseBefore.trim();
@@ -1665,35 +2928,21 @@ export class LSPBridge {
       };
     }
 
-    // If comma-separated (`Pin p, n`), strip everything after the first component's identifier
-    // so we keep only the shared `[type_prefix] type_specifier`.
-    const prefixRegex =
-      /^((?:(?:final|inner|outer|replaceable|redeclare|flow|stream|discrete|parameter|constant|input|output)\s+)*)([a-zA-Z_][a-zA-Z0-9_.:]*)/;
-    const m = trimmedClause.match(prefixRegex);
-    if (!m) return null;
+    const parsed = parseModelicaClausePrefixTokens(trimmedClause);
+    if (!parsed) return null;
 
-    const typePrefix = (m[1] ?? "").replace(/\s+/g, " ").trim();
-    const typeSpecifier = (m[2] ?? "").trim();
     // Avoid matching class header keywords (`model Foo`) if there was no `;` after class header
-    if (
-      !typePrefix &&
-      /^(?:model|class|block|connector|record|package|function|type|operator|within|extends|equation|algorithm)$/.test(
-        typeSpecifier,
-      )
-    ) {
+    if (!parsed.typePrefix && MODELICA_CLAUSE_STOP_KEYWORDS.has(parsed.typeSpecifier)) {
       // Look after the last newline in `rawClauseBefore` instead
       const lastNl = rawClauseBefore.lastIndexOf("\n");
       if (lastNl !== -1) {
         const lineBefore = rawClauseBefore.slice(lastNl + 1).trim();
-        const mLine = lineBefore.match(prefixRegex);
-        if (mLine) {
-          const tp = (mLine[1] ?? "").replace(/\s+/g, " ").trim();
-          const ts = (mLine[2] ?? "").trim();
-          const full = tp ? `${tp} ${ts}` : ts;
+        const lineParsed = parseModelicaClausePrefixTokens(lineBefore);
+        if (lineParsed) {
           return {
-            fullPrefix: full,
-            typePrefix: tp,
-            typeSpecifier: ts,
+            fullPrefix: lineParsed.fullPrefix,
+            typePrefix: lineParsed.typePrefix,
+            typeSpecifier: lineParsed.typeSpecifier,
             clauseStartOffset: clauseStartOffset + lastNl + 1,
           };
         }
@@ -1701,20 +2950,22 @@ export class LSPBridge {
       return null;
     }
 
-    const fullPrefix = typePrefix ? `${typePrefix} ${typeSpecifier}` : typeSpecifier;
     return {
-      fullPrefix,
-      typePrefix,
-      typeSpecifier,
+      fullPrefix: parsed.fullPrefix,
+      typePrefix: parsed.typePrefix,
+      typeSpecifier: parsed.typeSpecifier,
       clauseStartOffset,
     };
   }
 
   /**
-   * Strips Modelica `annotation(...)` clauses from a declaration or statement string while
-   * preserving strings and other parenthesized modifications.
+   * Strips Modelica `annotation(...)` clauses from a declaration or statement string using
+   * CST `annotation_clause` spans when available, falling back to string/comment-aware scanning.
    */
-  private stripModelicaAnnotations(input: string): string {
+  private stripModelicaAnnotations(input: string, cstNode?: SyntaxNode): string {
+    if (cstNode && !cstNode.hasError && (cstNode.text ?? "") === input) {
+      return stripAnnotationClausesFromCst(cstNode, (text) => this.stripModelicaAnnotations(text));
+    }
     let result = "";
     let i = 0;
     const len = input.length;
@@ -1722,62 +2973,35 @@ export class LSPBridge {
       const ch = input[i]!;
       // String literal
       if (ch === '"') {
-        const start = i;
-        i++;
-        while (i < len) {
-          if (input[i] === "\\") i += 2;
-          else if (input[i] === '"') {
-            i++;
-            break;
-          } else i++;
-        }
-        result += input.slice(start, i);
+        const end = skipModelicaString(input, i);
+        result += input.slice(i, end);
+        i = end;
         continue;
       }
-      // Line comment
-      if (ch === "/" && input[i + 1] === "/") {
-        const start = i;
-        i += 2;
-        while (i < len && input[i] !== "\n") i++;
-        result += input.slice(start, i);
+      // Line or block comment
+      if (ch === "/" && (input[i + 1] === "/" || input[i + 1] === "*")) {
+        const end = skipModelicaTrivia(input, i);
+        result += input.slice(i, end);
+        i = end;
         continue;
       }
-      // Block comment
-      if (ch === "/" && input[i + 1] === "*") {
-        const start = i;
-        i += 2;
-        while (i < len && !(input[i] === "*" && input[i + 1] === "/")) i++;
-        if (i < len) i += 2;
-        result += input.slice(start, i);
-        continue;
-      }
-      // Check for `\bannotation\s*\(`
-      if (
-        ch === "a" &&
-        input.startsWith("annotation", i) &&
-        (i === 0 || !/[a-zA-Z0-9_]/.test(input[i - 1]!)) &&
-        !/[a-zA-Z0-9_]/.test(input[i + 10] ?? "")
-      ) {
-        let j = i + 10;
-        while (j < len && /\s/.test(input[j]!)) j++;
+      // Check for word `annotation` followed by `(`
+      if (ch === "a" && startsWithWordAt(input, i, "annotation")) {
+        let j = skipWs(input, i + "annotation".length);
         if (input[j] === "(") {
           // Advance to matching `)`
           let depth = 1;
           j++;
           while (j < len && depth > 0) {
-            if (input[j] === '"') {
-              j++;
-              while (j < len) {
-                if (input[j] === "\\") j += 2;
-                else if (input[j] === '"') {
-                  j++;
-                  break;
-                } else j++;
-              }
-            } else if (input[j] === "(") {
+            const inner = input[j]!;
+            if (inner === '"') {
+              j = skipModelicaString(input, j);
+            } else if (inner === "/" && (input[j + 1] === "/" || input[j + 1] === "*")) {
+              j = skipModelicaTrivia(input, j);
+            } else if (inner === "(") {
               depth++;
               j++;
-            } else if (input[j] === ")") {
+            } else if (inner === ")") {
               depth--;
               j++;
             } else {
@@ -1785,7 +3009,7 @@ export class LSPBridge {
             }
           }
           // Trim trailing horizontal whitespace before `annotation`
-          result = result.replace(/[ \t]+$/, "");
+          result = trimEndHorizontalWs(result);
           i = j;
           continue;
         }
@@ -1798,79 +3022,118 @@ export class LSPBridge {
 
   /**
    * Formats a clean, IDE-grade Modelica class/model/block/connector/record/function/type/package
-   * declaration signature from its raw CST source span, keeping the class header, public
-   * `extends` clauses, and public parameter/port/component declarations while stripping
-   * `annotation(...)` blocks and `protected`/`equation`/`algorithm` implementation sections.
+   * declaration signature from CST nodes when available (or its raw CST source span as fallback),
+   * keeping the class header, public `extends` clauses, and public parameter/port/component declarations
+   * while stripping `annotation(...)` blocks and `protected`/`equation`/`algorithm` implementation sections.
    */
   private formatModelicaClassSignature(rawClassText: string, entry: SymbolEntry): string {
-    const trimmed = rawClassText.trim().replace(/\r\n/g, "\n");
-    const escapedName = entry.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const endRegex = new RegExp(`\\bend\\s+${escapedName}\\s*;?\\s*$`);
+    const rawNode = this.getEntryCstNode(entry);
+    const classNode = findAncestorOrSelfByType(
+      rawNode,
+      ["class_definition", "short_class_definition"],
+      ["element_list", "stored_definition", "program"],
+    );
+    if (classNode && !classNode.hasError) {
+      const specNode = findModelicaClassSpecNode(classNode);
+      const specName = specNode?.childForFieldName("name")?.text.trim();
+      if (specNode && (!specName || specName === entry.name)) {
+        if (specNode.type === "short_class_specifier" || specNode.type === "der_class_specifier") {
+          const stripped = stripAnnotationClausesFromCst(classNode, (s) => this.stripModelicaAnnotations(s));
+          const normalized = collapseWs(stripped);
+          const withSemi =
+            rawClassText.trim().endsWith(";") && !normalized.endsWith(";") ? `${normalized};` : normalized;
+          return normalizeTrailingSemicolon(withSemi);
+        }
+
+        if (specNode.type === "long_class_specifier") {
+          const baseStart = getNodeStartOffset(classNode);
+          const compNode = specNode.childForFieldName("composition");
+          const headerEndNode =
+            specNode.childForFieldName("description") ??
+            specNode.childForFieldName("class_modification") ??
+            specNode.childForFieldName("name") ??
+            compNode;
+          const headerRelEnd = headerEndNode
+            ? headerEndNode === compNode
+              ? getNodeStartOffset(compNode) - baseStart
+              : getNodeEndOffset(headerEndNode) - baseStart
+            : classNode.text.length;
+          const clampedEnd = Math.max(0, Math.min(headerRelEnd, classNode.text.length));
+          const header = normalizeHeaderWhitespace(classNode.text.slice(0, clampedEnd));
+
+          const memberLines: string[] = [];
+          if (compNode) {
+            let inPublic = true;
+            for (const child of compNode.children) {
+              if (child.type === "public") {
+                inPublic = true;
+                continue;
+              }
+              if (child.type === "protected") {
+                inPublic = false;
+                continue;
+              }
+              if (
+                child.type === "equation_section" ||
+                child.type === "algorithm_section" ||
+                child.type === "external_clause"
+              ) {
+                break;
+              }
+              if (child.type === "element_list" && inPublic) {
+                for (const el of child.namedChildren) {
+                  if (el.type === "annotation_clause") continue;
+                  if (el.type === "element") {
+                    if (el.childForFieldName("import_clause")) continue;
+                    const nestedClass = el.childForFieldName("class_definition");
+                    const isReplaceable = el.children.some(
+                      (c) => c.type === "replaceable" || (!c.isNamed && c.text === "replaceable"),
+                    );
+                    if (nestedClass && !isReplaceable) {
+                      const nestedSpec = findModelicaClassSpecNode(nestedClass);
+                      if (nestedSpec?.type === "long_class_specifier") continue;
+                    }
+                  }
+                  const stripped = stripAnnotationClausesFromCst(el, (s) => this.stripModelicaAnnotations(s));
+                  const cleanedStmt = ensureTrailingSemicolon(stripped);
+                  if (cleanedStmt && cleanedStmt !== ";" && !startsWithWordAt(cleanedStmt, 0, "import")) {
+                    pushFormattedMemberLines(memberLines, cleanedStmt);
+                  }
+                }
+              }
+            }
+          }
+
+          return assembleClassSignature(header, memberLines, entry.name);
+        }
+      }
+    }
+
+    const trimmed = rawClassText.trim().replaceAll("\r\n", "\n");
+    const trailingEndIdx = matchTrailingEndClass(trimmed, entry.name);
 
     // 1. Short class definition (e.g. `type Voltage = ElectricPotential;` or `type V = Real(...) "...";`)
-    if (!endRegex.test(trimmed)) {
-      const cleaned = this.stripModelicaAnnotations(trimmed)
-        .replace(/\s+/g, " ")
-        .replace(/\s*;\s*$/, ";")
-        .trim();
-      return cleaned;
+    if (trailingEndIdx === -1) {
+      const cleaned = collapseWs(this.stripModelicaAnnotations(trimmed));
+      return normalizeTrailingSemicolon(cleaned);
     }
 
     // 2. Long class definition (`model Name "..." ... end Name;`)
-    const withoutEnd = trimmed.replace(endRegex, "").trimEnd();
+    const withoutEnd = trimmed.slice(0, trailingEndIdx).trimEnd();
 
     // Locate the end of the class header (`[prefixes] classKind Name ["description"]`)
-    const nameMatch = new RegExp(`\\b${escapedName}\\b`).exec(withoutEnd);
-    if (!nameMatch) {
+    const nameIdx = findWordOutsideStringsComments(withoutEnd, entry.name);
+    if (nameIdx === -1) {
       return `${entry.metadata?.["classPrefixes"] || entry.metadata?.["classKind"] || "class"} ${entry.name}`;
     }
 
-    let pos = nameMatch.index + entry.name.length;
-    const len = withoutEnd.length;
-    const skipWs = (p: number): number => {
-      while (p < len && /\s/.test(withoutEnd[p]!)) p++;
-      return p;
-    };
-    const scanStringLiteral = (p: number): number => {
-      if (withoutEnd[p] !== '"') return p;
-      p++;
-      while (p < len) {
-        if (withoutEnd[p] === "\\") p += 2;
-        else if (withoutEnd[p] === '"') {
-          p++;
-          break;
-        } else p++;
-      }
-      while (true) {
-        const nextP = skipWs(p);
-        if (withoutEnd[nextP] === "+") {
-          const afterPlus = skipWs(nextP + 1);
-          if (withoutEnd[afterPlus] === '"') {
-            p = afterPlus + 1;
-            while (p < len) {
-              if (withoutEnd[p] === "\\") p += 2;
-              else if (withoutEnd[p] === '"') {
-                p++;
-                break;
-              } else p++;
-            }
-            continue;
-          }
-        }
-        break;
-      }
-      return p;
-    };
-
-    const afterName = skipWs(pos);
+    let pos = nameIdx + entry.name.length;
+    const afterName = skipWs(withoutEnd, pos);
     if (withoutEnd[afterName] === '"') {
-      pos = scanStringLiteral(afterName);
+      pos = skipModelicaConcatString(withoutEnd, afterName);
     }
 
-    const header = withoutEnd
-      .slice(0, pos)
-      .replace(/\s*\n\s*/g, " ")
-      .trim();
+    const header = normalizeHeaderWhitespace(withoutEnd.slice(0, pos));
     const body = withoutEnd.slice(pos);
 
     // Scan top-level statements inside `body`
@@ -1883,38 +3146,16 @@ export class LSPBridge {
     let nestedClassDepth = 0;
     let nestedClassTargetEnd: string | null = null;
 
-    const isWordAt = (idx: number, word: string): boolean => {
-      if (!body.startsWith(word, idx)) return false;
-      const prev = idx > 0 ? body[idx - 1]! : " ";
-      const next = idx + word.length < bLen ? body[idx + word.length]! : " ";
-      return !/[a-zA-Z0-9_]/.test(prev) && !/[a-zA-Z0-9_]/.test(next);
-    };
-
     while (i < bLen) {
       const ch = body[i]!;
       // Strings
       if (ch === '"') {
-        i++;
-        while (i < bLen) {
-          if (body[i] === "\\") i += 2;
-          else if (body[i] === '"') {
-            i++;
-            break;
-          } else i++;
-        }
+        i = skipModelicaString(body, i);
         continue;
       }
-      // Line comment
-      if (ch === "/" && body[i + 1] === "/") {
-        i += 2;
-        while (i < bLen && body[i] !== "\n") i++;
-        continue;
-      }
-      // Block comment
-      if (ch === "/" && body[i + 1] === "*") {
-        i += 2;
-        while (i < bLen && !(body[i] === "*" && body[i + 1] === "/")) i++;
-        if (i < bLen) i += 2;
+      // Line or block comment
+      if (ch === "/" && (body[i + 1] === "/" || body[i + 1] === "*")) {
+        i = skipModelicaTrivia(body, i);
         continue;
       }
       if (ch === "(" || ch === "[" || ch === "{") {
@@ -1931,13 +3172,11 @@ export class LSPBridge {
       if (parenDepth === 0) {
         // Track nested long classes inside packages/models
         if (nestedClassDepth > 0) {
-          if (isWordAt(i, "end")) {
-            let j = i + 3;
-            while (j < bLen && /\s/.test(body[j]!)) j++;
-            const idMatch = body.slice(j).match(/^([a-zA-Z_][a-zA-Z0-9_]*)/);
-            if (idMatch && (!nestedClassTargetEnd || idMatch[1] === nestedClassTargetEnd)) {
-              j += idMatch[1]!.length;
-              while (j < bLen && /\s/.test(body[j]!)) j++;
+          if (startsWithWordAt(body, i, "end")) {
+            let j = skipWs(body, i + "end".length);
+            const idTok = readIdentAt(body, j);
+            if (idTok && (!nestedClassTargetEnd || idTok.ident === nestedClassTargetEnd)) {
+              j = skipWs(body, idTok.end);
               if (body[j] === ";") j++;
               nestedClassDepth = 0;
               nestedClassTargetEnd = null;
@@ -1953,43 +3192,41 @@ export class LSPBridge {
         // Check for top-level section keywords at statement start
         const leadingSlice = body.slice(stmtStart, i).trim();
         if (leadingSlice === "") {
-          if (isWordAt(i, "public")) {
+          if (startsWithWordAt(body, i, "public")) {
             inPublic = true;
-            i += 6;
+            i += "public".length;
             stmtStart = i;
             continue;
           }
-          if (isWordAt(i, "protected")) {
+          if (startsWithWordAt(body, i, "protected")) {
             inPublic = false;
-            i += 9;
+            i += "protected".length;
             stmtStart = i;
             continue;
           }
-          if (isWordAt(i, "equation") || isWordAt(i, "algorithm") || isWordAt(i, "external")) {
+          if (
+            startsWithWordAt(body, i, "equation") ||
+            startsWithWordAt(body, i, "algorithm") ||
+            startsWithWordAt(body, i, "external")
+          ) {
             break;
           }
-          if (isWordAt(i, "initial")) {
-            const afterInit = body.slice(i + 7).match(/^\s+(?:equation|algorithm)\b/);
-            if (afterInit) {
+          if (startsWithWordAt(body, i, "initial")) {
+            const afterInit = skipWs(body, i + "initial".length);
+            if (
+              afterInit > i + "initial".length &&
+              (startsWithWordAt(body, afterInit, "equation") || startsWithWordAt(body, afterInit, "algorithm"))
+            ) {
               break;
             }
           }
           // Check if a nested long class starts here
-          const nestedMatch = body
-            .slice(i)
-            .match(
-              /^(?:(?:encapsulated|partial|expandable)\s+)*(?:class|model|record|block|connector|package|function|type|operator)\s+([a-zA-Z_][a-zA-Z0-9_]*)\b/,
-            );
-          if (nestedMatch && !body.slice(i).startsWith("replaceable ")) {
-            const nestedName = nestedMatch[1]!;
-            const afterNestedName = body.slice(i + nestedMatch[0].length).trimStart();
-            // If not followed by `=` or `(`, it's a nested long class definition
-            if (!afterNestedName.startsWith("=")) {
-              nestedClassDepth = 1;
-              nestedClassTargetEnd = nestedName;
-              i += nestedMatch[0].length;
-              continue;
-            }
+          const nestedStart = matchNestedLongClassStart(body, i);
+          if (nestedStart) {
+            nestedClassDepth = 1;
+            nestedClassTargetEnd = nestedStart.name;
+            i = nestedStart.end;
+            continue;
           }
         }
 
@@ -1998,23 +3235,10 @@ export class LSPBridge {
           stmtStart = i + 1;
           if (inPublic) {
             // Strip leading comments from statement
-            const withoutLeadingComments = rawStmt.replace(/^(?:\s+|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)+/, "").trim();
-            const cleanedStmt = this.stripModelicaAnnotations(withoutLeadingComments)
-              .replace(/\s*;\s*$/, ";")
-              .trim();
-            if (cleanedStmt && cleanedStmt !== ";" && !/^import\b/.test(cleanedStmt)) {
-              // Collapse single-component multiline wrapping into clean indentation
-              const stmtLines = cleanedStmt
-                .split("\n")
-                .map((l) => l.trim())
-                .filter(Boolean);
-              if (stmtLines.length === 2 && stmtLines[1]!.startsWith('"')) {
-                memberLines.push(`  ${stmtLines[0]} ${stmtLines[1]}`);
-              } else if (stmtLines.length > 1) {
-                memberLines.push(stmtLines.map((l, idx) => (idx === 0 ? `  ${l}` : `      ${l}`)).join("\n"));
-              } else if (stmtLines.length === 1) {
-                memberLines.push(`  ${stmtLines[0]}`);
-              }
+            const withoutLeadingComments = rawStmt.slice(skipModelicaTrivia(rawStmt, 0)).trim();
+            const cleanedStmt = normalizeTrailingSemicolon(this.stripModelicaAnnotations(withoutLeadingComments));
+            if (cleanedStmt && cleanedStmt !== ";" && !startsWithWordAt(cleanedStmt, 0, "import")) {
+              pushFormattedMemberLines(memberLines, cleanedStmt);
             }
           }
         }
@@ -2022,19 +3246,7 @@ export class LSPBridge {
       i++;
     }
 
-    const MAX_MEMBERS = 15;
-    let bodyLines = memberLines;
-    if (memberLines.length > MAX_MEMBERS) {
-      bodyLines = [
-        ...memberLines.slice(0, MAX_MEMBERS),
-        `  // ... (${memberLines.length - MAX_MEMBERS} more declarations)`,
-      ];
-    }
-
-    if (bodyLines.length > 0) {
-      return `${header}\n${bodyLines.join("\n")}\nend ${entry.name};`;
-    }
-    return `${header}\nend ${entry.name};`;
+    return assembleClassSignature(header, memberLines, entry.name);
   }
 
   /**
@@ -2098,10 +3310,10 @@ export class LSPBridge {
             }
           }
           // For SysML v2 / ModelScript definitions/structs: strip `doc /* ... */` blocks and cap lines
-          const withoutDoc = source.replace(/\bdoc\s*\/\*[\s\S]*?\*\/\s*;?/g, "").trim();
+          const withoutDoc = stripSysmlDocBlocks(source).trim();
           const lines = withoutDoc
             .split("\n")
-            .map((l) => l.replace(/\s+$/, ""))
+            .map((l) => l.trimEnd())
             .filter((l, idx, arr) => !(l.trim() === "" && idx > 0 && arr[idx - 1]!.trim() === ""));
           if (lines.length > 18) {
             return [...lines.slice(0, 16), "  // ...", lines[lines.length - 1]!].join("\n");
@@ -2114,8 +3326,7 @@ export class LSPBridge {
           (meta && typeof meta["classPrefixes"] === "string" && meta["classPrefixes"]) ||
           (meta && typeof meta["classKind"] === "string" && meta["classKind"]) ||
           entry.kind.toLowerCase();
-        const rawDesc =
-          meta && typeof meta["description"] === "string" ? meta["description"].replace(/^"|"$/g, "") : "";
+        const rawDesc = meta && typeof meta["description"] === "string" ? stripOuterQuotes(meta["description"]) : "";
         declStr = `${classPrefix} ${entry.name}${rawDesc ? ` "${rawDesc}"` : ""}`;
 
         const childLines: string[] = [];
@@ -2140,11 +3351,11 @@ export class LSPBridge {
 
       // Component / Variable / Property / Field declaration
       if (source) {
-        let cleaned = this.stripModelicaAnnotations(source)
-          .replace(/\bdoc\s*\/\*[\s\S]*?\*\/\s*;?/g, "")
-          .replace(/\s*"[^"]*"\s*;?\s*$/, "")
-          .replace(/\s*;\s*$/, "")
-          .trim();
+        const declNode = lang === "modelica" ? this.getEntryCstNode(entry) : null;
+        let cleaned = stripTrailingStringCommentAndSemi(
+          stripSysmlDocBlocks(this.stripModelicaAnnotations(source, declNode ?? undefined)),
+          declNode,
+        );
 
         // In Modelica CST, `component_declaration` starts at the component name (`V(start=1)`)
         // while `parameter SI.Voltage` is on the parent `component_clause`.
@@ -2205,7 +3416,7 @@ export class LSPBridge {
     let i = 0;
     const len = trimmed.length;
     while (i < len) {
-      while (i < len && (/\s/.test(trimmed[i]!) || trimmed[i] === "+")) i++;
+      while (i < len && (isWsChar(trimmed[i]!) || trimmed[i] === "+")) i++;
       if (trimmed[i] !== '"') break;
       i++;
       let buf = "";
@@ -2230,7 +3441,7 @@ export class LSPBridge {
       parts.push(buf);
     }
     if (parts.length > 0) return parts.join("");
-    return trimmed.replace(/^"|"$/g, "");
+    return stripOuterQuotes(trimmed);
   }
 
   /**
@@ -2441,73 +3652,88 @@ export class LSPBridge {
   }
 
   /**
-   * Extracts the `Documentation(info="...")` HTML string from a Modelica class source span.
+   * Extracts the `Documentation(info="...")` HTML string from a Modelica class via its CST
+   * `annotation_clause` nodes, falling back to string/comment-aware lexical scanning.
    */
-  private extractModelicaDocumentationInfo(rawClassText: string): string | null {
-    const docMatch = /\bDocumentation\s*\(/i.exec(rawClassText);
-    if (!docMatch) return null;
+  private extractModelicaDocumentationInfo(rawClassText: string, entry?: SymbolEntry): string | null {
+    const rawNode = this.getEntryCstNode(entry);
+    const classNode = findAncestorOrSelfByType(
+      rawNode,
+      ["class_definition", "short_class_definition"],
+      ["element_list", "stored_definition", "program"],
+    );
+    if (classNode && !classNode.hasError) {
+      const annNodes = collectClassAnnotationClauses(classNode);
+      for (const annNode of annNodes) {
+        const outerClassMod = annNode.namedChildren.find((c) => c.type === "class_modification") ?? null;
+        const docMod = findElementModificationByName(outerClassMod, "documentation");
+        if (!docMod) continue;
+        const docClassMod = docMod.childForFieldName("modification")?.childForFieldName("class_modification") ?? null;
+        const infoMod = findElementModificationByName(docClassMod, "info");
+        if (!infoMod) continue;
+        const modExpr = infoMod.childForFieldName("modification")?.childForFieldName("modification_expression");
+        if (!modExpr) continue;
+        const exprText = modExpr.text;
+        const firstTokenIdx = skipModelicaTrivia(exprText, 0);
+        if (exprText[firstTokenIdx] === '"') {
+          return this.unescapeModelicaString(exprText.slice(firstTokenIdx));
+        }
+      }
+      return null;
+    }
 
-    let i = docMatch.index + docMatch[0].length;
+    // Fallback when CST is unavailable (e.g. unit test mocks) or has syntax errors
     const len = rawClassText.length;
-    let depth = 1;
-
-    while (i < len && depth > 0) {
+    let i = 0;
+    while (i < len) {
       const ch = rawClassText[i]!;
       if (ch === '"') {
-        i++;
-        while (i < len) {
-          if (rawClassText[i] === "\\") i += 2;
-          else if (rawClassText[i] === '"') {
-            i++;
-            break;
-          } else i++;
-        }
+        i = skipModelicaString(rawClassText, i);
         continue;
       }
-      if (ch === "(") {
-        depth++;
-        i++;
+      if (ch === "/" && (rawClassText[i + 1] === "/" || rawClassText[i + 1] === "*")) {
+        i = skipModelicaTrivia(rawClassText, i);
         continue;
       }
-      if (ch === ")") {
-        depth--;
-        i++;
-        continue;
-      }
-      if (
-        depth === 1 &&
-        (ch === "i" || ch === "I") &&
-        /^info\s*=\s*"/i.test(rawClassText.slice(i)) &&
-        (i === 0 || !/[a-zA-Z0-9_]/.test(rawClassText[i - 1]!))
-      ) {
-        const eqQuoteMatch = /^info\s*=\s*/i.exec(rawClassText.slice(i));
-        if (eqQuoteMatch) {
-          const strStart = i + eqQuoteMatch[0].length;
-          let j = strStart;
-          while (j < len) {
-            if (rawClassText[j] !== '"') break;
-            j++;
-            while (j < len) {
-              if (rawClassText[j] === "\\") j += 2;
-              else if (rawClassText[j] === '"') {
-                j++;
-                break;
-              } else j++;
+      if ((ch === "d" || ch === "D") && startsWithWordAt(rawClassText, i, "Documentation", true)) {
+        let j = skipModelicaTrivia(rawClassText, i + "Documentation".length);
+        if (rawClassText[j] === "(") {
+          j++;
+          let depth = 1;
+          while (j < len && depth > 0) {
+            const inner = rawClassText[j]!;
+            if (inner === '"') {
+              j = skipModelicaString(rawClassText, j);
+              continue;
             }
-            let k = j;
-            while (k < len && /\s/.test(rawClassText[k]!)) k++;
-            if (rawClassText[k] === "+") {
-              k++;
-              while (k < len && /\s/.test(rawClassText[k]!)) k++;
-              if (rawClassText[k] === '"') {
-                j = k;
-                continue;
+            if (inner === "/" && (rawClassText[j + 1] === "/" || rawClassText[j + 1] === "*")) {
+              j = skipModelicaTrivia(rawClassText, j);
+              continue;
+            }
+            if (inner === "(") {
+              depth++;
+              j++;
+              continue;
+            }
+            if (inner === ")") {
+              depth--;
+              j++;
+              continue;
+            }
+            if (depth === 1 && (inner === "i" || inner === "I") && startsWithWordAt(rawClassText, j, "info", true)) {
+              const afterInfo = skipModelicaTrivia(rawClassText, j + "info".length);
+              if (rawClassText[afterInfo] === "=") {
+                const strStart = skipModelicaTrivia(rawClassText, afterInfo + 1);
+                if (rawClassText[strStart] === '"') {
+                  const strEnd = skipModelicaConcatString(rawClassText, strStart);
+                  return this.unescapeModelicaString(rawClassText.slice(strStart, strEnd));
+                }
               }
             }
-            break;
+            j++;
           }
-          const rawStringLiteral = rawClassText.slice(strStart, j);
-          return this.unescapeModelicaString(rawStringLiteral);
+          i = j;
+          continue;
         }
       }
       i++;
@@ -2525,39 +3751,66 @@ export class LSPBridge {
       if (cleaned) return cleaned;
     }
 
+    const rawNode = this.getEntryCstNode(entry);
+    if (entry.kind === "Class" || entry.kind === "Function" || entry.kind === "Package" || entry.kind === "Type") {
+      const classNode = findAncestorOrSelfByType(
+        rawNode,
+        ["class_definition", "short_class_definition"],
+        ["element_list", "stored_definition", "program"],
+      );
+      if (classNode && !classNode.hasError) {
+        const specNode = findModelicaClassSpecNode(classNode);
+        if (specNode?.type === "long_class_specifier") {
+          const descStr = specNode.childForFieldName("description");
+          return descStr ? this.unescapeModelicaString(descStr.text) : null;
+        }
+        if (specNode?.type === "short_class_specifier" || specNode?.type === "der_class_specifier") {
+          const descContainer = specNode.childForFieldName("description");
+          const descStr = descContainer?.namedChildren.find((c) => c.type === "description_string") ?? null;
+          return descStr ? this.unescapeModelicaString(descStr.text) : null;
+        }
+      }
+    } else if (entry.kind === "Component" || entry.kind === "Variable") {
+      const compNode = findAncestorOrSelfByType(
+        rawNode,
+        ["component_declaration", "component_declaration1"],
+        ["component_list", "component_clause", "element_list", "class_definition"],
+      );
+      if (compNode && !compNode.hasError) {
+        const descContainer = compNode.childForFieldName("description");
+        const descStr = descContainer?.namedChildren.find((c) => c.type === "description_string") ?? null;
+        return descStr ? this.unescapeModelicaString(descStr.text) : null;
+      }
+    }
+
     const span = rawSpan !== undefined ? rawSpan : this.getEntrySourceSlice(entry, entry.startOffset, entry.endOffset);
     if (!span) return null;
 
     if (entry.kind === "Class" || entry.kind === "Function" || entry.kind === "Package" || entry.kind === "Type") {
-      const escapedName = entry.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const headerSlice = span.slice(0, 600);
-      // 1. Long class header: `model SineVoltage "Sine voltage source"`
-      const headerDescMatch = new RegExp(
-        `\\b${escapedName}\\s+("(?:[^"\\r\\n\\\\]|\\\\.)*"(?:\\s*\\+\\s*"(?:[^"\\r\\n\\\\]|\\\\.)*")*)`,
-      ).exec(headerSlice);
-      if (headerDescMatch && headerDescMatch.index < 200) {
-        return this.unescapeModelicaString(headerDescMatch[1]!);
+      const nameIdx = findWordOutsideStringsComments(headerSlice, entry.name);
+      if (nameIdx !== -1 && nameIdx < 200) {
+        const afterName = skipModelicaTrivia(span, nameIdx + entry.name.length);
+        if (span[afterName] === '"') {
+          const strEnd = skipModelicaConcatString(span, afterName);
+          return this.unescapeModelicaString(span.slice(afterName, strEnd));
+        }
       }
-      // 2. Short class definition: `type Voltage = Real(...) "Electric potential";`
-      if (span.length < 2000 && !new RegExp(`\\bend\\s+${escapedName}\\b`).test(span)) {
-        const strippedAnn = this.stripModelicaAnnotations(span)
-          .replace(/\s*;\s*$/, "")
-          .trim();
-        const trailMatch = strippedAnn.match(/("(?:[^"\\\r\n]|\\.)*")\s*$/);
-        if (trailMatch) {
-          return this.unescapeModelicaString(trailMatch[1]!);
+      if (span.length < 2000 && matchTrailingEndClass(span, entry.name) === -1) {
+        const strippedAnn = stripTrailingSemicolon(this.stripModelicaAnnotations(span));
+        const trailStr = extractTrailingModelicaString(strippedAnn);
+        if (trailStr) {
+          return this.unescapeModelicaString(trailStr);
         }
       }
       return null;
     }
 
     if (entry.kind === "Component" || entry.kind === "Variable") {
-      const strippedAnn = this.stripModelicaAnnotations(span)
-        .replace(/\s*;\s*$/, "")
-        .trim();
-      const trailMatch = strippedAnn.match(/("(?:[^"\\\r\n]|\\.)*"(?:\s*\+\s*"(?:[^"\\\r\n]|\\.)*")*)\s*$/);
-      if (trailMatch) {
-        return this.unescapeModelicaString(trailMatch[1]!);
+      const strippedAnn = stripTrailingSemicolon(this.stripModelicaAnnotations(span));
+      const trailStr = extractTrailingModelicaString(strippedAnn);
+      if (trailStr) {
+        return this.unescapeModelicaString(trailStr);
       }
     }
 
@@ -2588,56 +3841,23 @@ export class LSPBridge {
       }
 
       const beforeDecl = fullText.slice(Math.max(0, lineStart - 4000), lineStart);
-      const closeIdx = beforeDecl.lastIndexOf("*/");
-      if (closeIdx !== -1 && /^[ \t\r]*\n?[ \t]*$/.test(beforeDecl.slice(closeIdx + 2))) {
-        const openIdx = beforeDecl.lastIndexOf("/*", closeIdx);
-        if (openIdx !== -1) {
-          const rawComment = beforeDecl
-            .slice(openIdx + 2, closeIdx)
-            .replace(/^\*+/, "")
-            .split("\n")
-            .map((line) => line.replace(/^\s*\*\s?/, "").trimEnd())
-            .join("\n")
-            .trim();
-          if (rawComment && !rawComment.includes("SPDX-License-Identifier")) {
-            comments.push(rawComment);
-          }
-        }
-      } else {
-        // Check contiguous `//` lines immediately above `lineStart`
-        const linesBefore = beforeDecl.replace(/\r\n/g, "\n").split("\n");
-        if (linesBefore.length > 0 && linesBefore[linesBefore.length - 1]!.trim() === "") {
-          linesBefore.pop();
-        }
-        const docLines: string[] = [];
-        for (let i = linesBefore.length - 1; i >= 0; i--) {
-          const line = linesBefore[i]!.trim();
-          if (line.startsWith("//")) {
-            const content = line.replace(/^\/+\s?/, "");
-            if (content.includes("SPDX-License-Identifier")) break;
-            docLines.unshift(content);
-          } else {
-            break;
-          }
-        }
-        if (docLines.length > 0) {
-          comments.push(docLines.join("\n").trim());
-        }
+      const leadingDoc = extractLeadingCommentDoc(beforeDecl);
+      if (leadingDoc) {
+        comments.push(leadingDoc);
       }
     }
 
-    // 2. SysML v2 `doc /* ... */` inside the element body
-    if (rawSpan) {
-      const docBlockMatch = rawSpan.match(/\bdoc\s*\/\*([\s\S]*?)\*\//);
-      if (docBlockMatch && docBlockMatch[1]) {
-        const cleanedDoc = docBlockMatch[1]
-          .split("\n")
-          .map((line) => line.replace(/^\s*\*\s?/, "").trimEnd())
-          .join("\n")
-          .trim();
-        if (cleanedDoc && !comments.includes(cleanedDoc)) {
-          comments.push(cleanedDoc);
-        }
+    // 2. SysML v2 `doc /* ... */` inside the element body (CST first, lexical scan fallback)
+    const entryNode = this.getEntryCstNode(entry);
+    const cstDoc = extractSysmlDocBlockFromCst(entryNode);
+    if (cstDoc) {
+      if (!comments.includes(cstDoc)) {
+        comments.push(cstDoc);
+      }
+    } else if (rawSpan) {
+      const cleanedDoc = extractSysmlDocBlockContent(rawSpan);
+      if (cleanedDoc && !comments.includes(cleanedDoc)) {
+        comments.push(cleanedDoc);
       }
     }
 
@@ -2656,11 +3876,9 @@ export class LSPBridge {
       }
     }
     const fullText = this.getEntryFullSourceText(entry);
-    if (fullText) {
-      const withinMatch = fullText.slice(0, 300).match(/^\s*within\s+([a-zA-Z_][a-zA-Z0-9_.]*)\s*;/m);
-      if (withinMatch && withinMatch[1]) {
-        return withinMatch[1];
-      }
+    const withinName = extractWithinPackageFromSource(fullText, this.getRootCstNode(entry.resourceId));
+    if (withinName) {
+      return withinName;
     }
     return null;
   }
@@ -2714,7 +3932,7 @@ export class LSPBridge {
         rawSpan &&
         (entry.kind === "Class" || entry.kind === "Function" || entry.kind === "Package" || entry.kind === "Type")
       ) {
-        const docInfoHtml = this.extractModelicaDocumentationInfo(rawSpan);
+        const docInfoHtml = this.extractModelicaDocumentationInfo(rawSpan, entry);
         if (docInfoHtml) {
           const docInfoMd = this.modelicaHtmlToMarkdown(docInfoHtml);
           if (docInfoMd && docInfoMd !== shortDesc) {
@@ -2755,16 +3973,10 @@ export class LSPBridge {
    * Resolves hover documentation when the cursor is over a modifier name inside a component modification `(...)`.
    */
   private hoverModificationContext(byteOffset: number, sourceText: string): LSPHover | null {
-    let start = byteOffset;
-    if (start > 0 && !/[a-zA-Z0-9_]/.test(sourceText[start]!) && /[a-zA-Z0-9_]/.test(sourceText[start - 1]!)) {
-      start--;
-    }
-    while (start > 0 && /[a-zA-Z0-9_]/.test(sourceText[start - 1]!)) start--;
-    let end = start;
-    while (end < sourceText.length && /[a-zA-Z0-9_]/.test(sourceText[end]!)) end++;
-
-    if (start >= end) return null;
-    const word = sourceText.slice(start, end);
+    const cstRoot = this.getRootCstNode();
+    const span = extractWordSpanAtOffset(sourceText, byteOffset, cstRoot);
+    if (!span) return null;
+    const { word, start, end } = span;
 
     const before = sourceText.slice(0, start);
     let depth = 0;
@@ -2798,9 +4010,7 @@ export class LSPBridge {
     }
 
     const beforeParen = before.slice(0, parenPos).trimEnd();
-    const extendsMatch = beforeParen.match(/\bextends\s+([a-zA-Z_][a-zA-Z0-9_.:]*)$/);
-    const declMatch = beforeParen.match(/([a-zA-Z_][a-zA-Z0-9_.:]*)\s+[a-zA-Z_][a-zA-Z0-9_]*(?:\s*\[[^\]]*\])?$/);
-    const typeName = extendsMatch?.[1] ?? declMatch?.[1];
+    const typeName = extractModificationTargetType(beforeParen, true, cstRoot, parenPos);
     if (!typeName) return null;
 
     const scopeEntry = this.findScopeAtOffset(byteOffset);
@@ -2847,15 +4057,11 @@ export class LSPBridge {
     const text = sourceText ?? this.positions.getSourceText();
     let word = "";
     if (text) {
-      let ws = byteOffset;
-      if (ws > 0 && !/[a-zA-Z0-9_]/.test(text[ws]!) && /[a-zA-Z0-9_]/.test(text[ws - 1]!)) ws--;
-      while (ws > 0 && /[a-zA-Z0-9_]/.test(text[ws - 1]!)) ws--;
-      let we = ws;
-      while (we < text.length && /[a-zA-Z0-9_]/.test(text[we]!)) we++;
-      if (ws >= we || byteOffset < ws || byteOffset > we) {
+      const span = extractWordSpanAtOffset(text, byteOffset, this.getRootCstNode());
+      if (!span) {
         return null;
       }
-      word = text.slice(ws, we);
+      word = span.word;
     }
 
     const refEntry = this.findEntryAtOffset(byteOffset);

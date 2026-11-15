@@ -125,15 +125,15 @@ const pillars: { icon: IconName; title: string; body: string }[] = [
 
 .pillar h3 {
   margin: 2px 0 4px;
-  font-size: 1rem;
-  font-weight: 660;
+  font-size: var(--text-md);
+  font-weight: var(--ms-fw-semibold);
   color: var(--vp-c-text-1);
 }
 
 .pillar p {
   margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.5;
+  font-size: var(--text-sm);
+  line-height: var(--leading-base);
   color: var(--vp-c-text-2);
 }
 

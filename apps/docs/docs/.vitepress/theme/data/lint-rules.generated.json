@@ -1877,6 +1877,30 @@
         "rule": "state-transition-unreachable",
         "severity": "warning",
         "message": "State transition '<transName>' originates from unreachable state '<stateName>'."
+      },
+      {
+        "code": "S5020",
+        "rule": "standard-compliance-violation",
+        "severity": "error",
+        "message": "[<clauseLabel>] '<subjectName>' violates requirement '<reqName>': <detail>"
+      },
+      {
+        "code": "S5021",
+        "rule": "standard-compliance-warning",
+        "severity": "warning",
+        "message": "[<clauseLabel>] '<subjectName>' triggers advisory requirement '<reqName>': <detail>"
+      },
+      {
+        "code": "S5022",
+        "rule": "requirement-not-applicable",
+        "severity": "warning",
+        "message": "[<clauseLabel>] Requirement '<reqName>' is not applicable to '<subjectName>': assume constraint evaluates to false."
+      },
+      {
+        "code": "S5023",
+        "rule": "standard-table-lookup-missing",
+        "severity": "warning",
+        "message": "Standard table/calculator lookup '<calcName>' could not be evaluated: <reason>"
       }
     ]
   },
@@ -7840,6 +7864,59 @@
         "rule": "igtl-duplicate-transform-edge",
         "severity": "error",
         "message": "Duplicate '<Transform>' defined for coordinate frame pair '(<from>, <to>)'."
+      }
+    ]
+  },
+  {
+    "slug": "las",
+    "name": "las",
+    "packageName": "@modelscript/las",
+    "sources": [
+      "languages/las/src/errors.ts"
+    ],
+    "cli": "msx lint",
+    "rules": [
+      {
+        "code": "LAS1001",
+        "rule": "las-missing-version",
+        "severity": "error",
+        "message": "Missing ~V (Version Information) section or VERS entry in LAS file."
+      },
+      {
+        "code": "LAS1002",
+        "rule": "las-missing-curves",
+        "severity": "error",
+        "message": "Missing or empty ~C (Curve Information) section in LAS file."
+      },
+      {
+        "code": "LAS1003",
+        "rule": "las-missing-ascii-data",
+        "severity": "error",
+        "message": "Missing ~A (ASCII Log Data) section in LAS file."
+      },
+      {
+        "code": "LAS1004",
+        "rule": "las-column-count-mismatch",
+        "severity": "error",
+        "message": "Data record <row> has <actual> values, expected <expected> to match ~C curve definitions."
+      },
+      {
+        "code": "LAS1005",
+        "rule": "las-invalid-numeric-value",
+        "severity": "error",
+        "message": "Invalid numeric value '<val>' for curve '<curve>' at data record <row>."
+      },
+      {
+        "code": "LAS1006",
+        "rule": "las-duplicate-curve",
+        "severity": "error",
+        "message": "Duplicate curve mnemonic '<mnemonic>' in ~C section (already defined on line <prevLine>)."
+      },
+      {
+        "code": "LAS1007",
+        "rule": "las-non-monotonic-index",
+        "severity": "warning",
+        "message": "Non-monotonic index value <val> at record <row> (previous value was <prevVal>)."
       }
     ]
   },

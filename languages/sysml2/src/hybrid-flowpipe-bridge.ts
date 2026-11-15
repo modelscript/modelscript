@@ -25,6 +25,13 @@ import {
   TaylorModel,
   ZonotopeReachabilitySolver,
 } from "@modelscript/runtime";
+import {
+  collectCstLeaves,
+  findMatchingBraceLeaf,
+  isSysmlIdentLeaf,
+  parseSignedNumberFromLeaves,
+  parseSysmlSource,
+} from "./cst-utils.js";
 import { SysML2DaeLowerer } from "./sysml2-dae-lowerer.js";
 
 export interface HybridReachabilityBridgeOptions {
@@ -270,18 +277,23 @@ export async function verifyHybridSysml2Reachability(
 
   // Dynamically lower custom state definitions and equations when source text is provided
   const sourceText = options.sourceText || queryDB?.source || (queryDB?.doc?.text ? queryDB.doc.text : "");
+  const sourceLeaves = sourceText ? collectCstLeaves(parseSysmlSource(sourceText)) : [];
   const customModes: HybridMode[] = [];
   if (sourceText) {
     try {
-      const stateRegex = /\bstate\s+(?:def\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\{([^}]*)\}/g;
-      let sm: RegExpExecArray | null;
-      while ((sm = stateRegex.exec(sourceText)) !== null) {
-        const stateName = sm[1]!;
-        const stateBody = sm[2]!;
+      for (let i = 0; i < sourceLeaves.length; i++) {
+        if (sourceLeaves[i]!.text !== "state") continue;
+        let j = i + 1;
+        if (sourceLeaves[j]?.text === "def") j++;
+        const stateName = sourceLeaves[j]?.text;
+        if (!isSysmlIdentLeaf(stateName) || sourceLeaves[j + 1]?.text !== "{") continue;
+        const closeIdx = findMatchingBraceLeaf(sourceLeaves, j + 1);
+        const stateBody = sourceText.slice(sourceLeaves[j + 1]!.end, sourceLeaves[closeIdx]!.start);
         const lowered = await SysML2DaeLowerer.lowerConstraint(`constraint def ${stateName} { ${stateBody} }`);
         if (lowered.derivatives.length > 0) {
           customModes.push(buildHybridModeFromLoweredDae(stateName, lowered, order));
         }
+        i = closeIdx;
       }
       // If no `state def` blocks had derivatives, check if the model defines continuous ODEs in a constraint/part def
       if (customModes.length === 0) {
@@ -303,42 +315,61 @@ export async function verifyHybridSysml2Reachability(
     : [];
 
   if (sourceText && customModes.length >= 2) {
-    const transRegex = /\btransition\s+([^;{}]+)/g;
-    let tm: RegExpExecArray | null;
-    while ((tm = transRegex.exec(sourceText)) !== null) {
-      const stmt = tm[1]!.trim();
-      const thenParts = stmt.split(/\bthen\s+/);
-      if (thenParts.length < 2) continue;
-      const leftPart = thenParts[0]!.trim();
-      const dstMode = thenParts[1]!.trim().split(/\s+/)[0]!;
-
-      const firstParts = leftPart.split(/\bfirst\s+/);
-      if (firstParts.length < 2) continue;
-      const rawTransName = firstParts[0]!.trim();
-      const afterFirst = firstParts[1]!.trim();
-
-      const ifParts = afterFirst.split(/\bif\s+/);
-      const srcMode = ifParts[0]!.trim();
-      const guardExpr = (ifParts[1] ?? "").trim();
-      const transName = rawTransName || `${srcMode}To${dstMode}`;
-      if (!modeIdSet.has(srcMode) || !modeIdSet.has(dstMode)) continue;
-      const numMatch = guardExpr.match(/([<>]=?)\s*([+-]?\d+(?:\.\d+)?)/);
-      const op = numMatch?.[1] ?? ">=";
-      const thresholdVal = numMatch?.[2] !== undefined ? parseFloat(numMatch[2]) : 25.0;
-      const isGreater = op.startsWith(">");
-      validTransitions.push({
-        id: transName,
-        sourceModeId: srcMode,
-        targetModeId: dstMode,
-        guard: (y: TaylorModel[]) => {
-          const threshold = TaylorModel.constant(thresholdVal, y[0]!.numVars, y[0]!.domain, order);
-          return isGreater ? threshold.sub(y[0]!) : y[0]!.sub(threshold);
-        },
-        guardPoint: (pt: number[]) => (isGreater ? thresholdVal - pt[0]! : pt[0]! - thresholdVal),
-        reset: (preState: Interval[]) => preState.map((iv) => new Interval(iv.lo, iv.hi)),
-        resetPoint: (pt: number[]) => [...pt],
-        label: transName,
-      });
+    for (let i = 0; i < sourceLeaves.length; i++) {
+      if (sourceLeaves[i]!.text !== "transition") continue;
+      let endIdx = i + 1;
+      while (
+        endIdx < sourceLeaves.length &&
+        sourceLeaves[endIdx]!.text !== ";" &&
+        sourceLeaves[endIdx]!.text !== "{" &&
+        sourceLeaves[endIdx]!.text !== "}"
+      ) {
+        endIdx++;
+      }
+      const transSlice = sourceLeaves.slice(i + 1, endIdx);
+      const firstIdx = transSlice.findIndex((lf) => lf.text === "first");
+      const thenIdx = transSlice.findIndex((lf) => lf.text === "then");
+      if (firstIdx !== -1 && thenIdx > firstIdx && thenIdx + 1 < transSlice.length) {
+        const rawTransName =
+          firstIdx > 0 ? sourceText.slice(transSlice[0]!.start, transSlice[firstIdx - 1]!.end).trim() : "";
+        const srcMode = transSlice[firstIdx + 1]?.text ?? "";
+        const dstMode = transSlice[thenIdx + 1]!.text;
+        const transName = rawTransName || `${srcMode}To${dstMode}`;
+        if (modeIdSet.has(srcMode) && modeIdSet.has(dstMode)) {
+          let op = ">=";
+          let thresholdVal = 25.0;
+          const ifRelIdx = transSlice.slice(firstIdx + 1, thenIdx).findIndex((lf) => lf.text === "if");
+          if (ifRelIdx !== -1) {
+            const guardStart = firstIdx + 1 + ifRelIdx + 1;
+            for (let g = guardStart; g < thenIdx; g++) {
+              const gTok = transSlice[g]!.text;
+              if (gTok === "<=" || gTok === ">=" || gTok === "<" || gTok === ">") {
+                const parsedThresh = parseSignedNumberFromLeaves(transSlice.slice(0, thenIdx), g + 1);
+                if (parsedThresh) {
+                  op = gTok;
+                  thresholdVal = parsedThresh.value;
+                  break;
+                }
+              }
+            }
+          }
+          const isGreater = op.startsWith(">");
+          validTransitions.push({
+            id: transName,
+            sourceModeId: srcMode,
+            targetModeId: dstMode,
+            guard: (y: TaylorModel[]) => {
+              const threshold = TaylorModel.constant(thresholdVal, y[0]!.numVars, y[0]!.domain, order);
+              return isGreater ? threshold.sub(y[0]!) : y[0]!.sub(threshold);
+            },
+            guardPoint: (pt: number[]) => (isGreater ? thresholdVal - pt[0]! : pt[0]! - thresholdVal),
+            reset: (preState: Interval[]) => preState.map((iv) => new Interval(iv.lo, iv.hi)),
+            resetPoint: (pt: number[]) => [...pt],
+            label: transName,
+          });
+        }
+      }
+      i = endIdx;
     }
   }
 
@@ -369,26 +400,29 @@ export async function verifyHybridSysml2Reachability(
   const nominalInitial = [20.0];
 
   const extractedReqs: { stateIndex: number; stateName: string; operator: "<=" | ">="; limitValue: number }[] = [];
-  if (sourceText) {
-    const reqBlockRegex = /\brequirement\s+(?:def\s+)?[A-Za-z_][A-Za-z0-9_]*\s*\{([^}]*)\}/g;
-    let rm: RegExpExecArray | null;
-    while ((rm = reqBlockRegex.exec(sourceText)) !== null) {
-      const body = rm[1]!;
-      const boundRegex = /\b([A-Za-z_][A-Za-z0-9_]*)\s*(<=|>=|<|>)\s*([+-]?\d+(?:\.\d+)?)/g;
-      let bm: RegExpExecArray | null;
-      while ((bm = boundRegex.exec(body)) !== null) {
-        const varName = bm[1]!;
-        const rawOp = bm[2]!;
-        const limitVal = parseFloat(bm[3]!);
-        if (!isNaN(limitVal)) {
+  if (sourceText && sourceLeaves.length > 0) {
+    for (let i = 0; i < sourceLeaves.length; i++) {
+      if (sourceLeaves[i]!.text !== "requirement") continue;
+      let j = i + 1;
+      if (sourceLeaves[j]?.text === "def") j++;
+      if (!isSysmlIdentLeaf(sourceLeaves[j]?.text) || sourceLeaves[j + 1]?.text !== "{") continue;
+      const closeIdx = findMatchingBraceLeaf(sourceLeaves, j + 1);
+      for (let k = j + 2; k + 2 < closeIdx; k++) {
+        const varName = sourceLeaves[k]!.text;
+        const rawOp = sourceLeaves[k + 1]!.text;
+        if (!isSysmlIdentLeaf(varName)) continue;
+        if (rawOp !== "<=" && rawOp !== ">=" && rawOp !== "<" && rawOp !== ">") continue;
+        const parsedLimit = parseSignedNumberFromLeaves(sourceLeaves.slice(0, closeIdx), k + 2);
+        if (parsedLimit) {
           extractedReqs.push({
             stateIndex: 0,
             stateName: varName,
             operator: rawOp.startsWith("<") ? "<=" : ">=",
-            limitValue: limitVal,
+            limitValue: parsedLimit.value,
           });
         }
       }
+      i = closeIdx;
     }
   }
   const activeRequirements =

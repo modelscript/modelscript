@@ -6,6 +6,7 @@ import type { ClassHierarchyNode, ComponentTreeNode, TreeNodeInfo } from "@model
 import { printArenaDAE } from "@modelscript/runtime/dae-printer";
 import { computeModelicaComponentDropEdits, resolveCrossLanguageComponentDrop } from "../cross-language-drop.js";
 import { LspContext } from "../lsp-context.js";
+import type { CstNodeLike, CstParserLike, CstTreeLike } from "../utils/ast-utils.js";
 import { isClassInstance } from "../utils/ast-utils.js";
 import {
   buildClassHierarchy,
@@ -16,8 +17,93 @@ import {
   isTreeVisible,
   mountedLibraryMetadata,
 } from "../utils/hierarchy-utils.js";
+import { findModelicaClassKeywordOffset, isAsciiUpperCode } from "../utils/lexical-utils.js";
 import { loadPrebakedMslIcons } from "../utils/msl-icons-loader.js";
 import { iconCache } from "./treeHandler.js";
+
+function findClassStartOffsetInCst(root: CstNodeLike, className: string): number {
+  const stack: CstNodeLike[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node) continue;
+    if (node.type === "class_definition" || node.type === "Definition" || node.type === "Package") {
+      const inner: CstNodeLike[] = [...(node.children || [])];
+      let matched = false;
+      while (inner.length > 0) {
+        const cur = inner.pop();
+        if (!cur) continue;
+        if (
+          (cur.type === "identifier" || cur.type === "IDENT" || cur.type === "Identifier") &&
+          cur.text.trim() === className
+        ) {
+          matched = true;
+          break;
+        }
+        // Only descend into header/specifier nodes so nested component names do not falsely match
+        if (
+          cur.type === "class_specifier" ||
+          cur.type === "long_class_specifier" ||
+          cur.type === "short_class_specifier" ||
+          cur.type === "der_class_specifier" ||
+          cur.type === "Identification"
+        ) {
+          for (const c of cur.children || []) inner.push(c);
+        }
+      }
+      if (matched) {
+        return node.startIndex ?? -1;
+      }
+    }
+    for (let i = (node.children?.length ?? 0) - 1; i >= 0; i--) {
+      const ch = node.children?.[i];
+      if (ch) stack.push(ch);
+    }
+  }
+  return -1;
+}
+
+function resolveClassStartOffset(
+  context: LspContext,
+  uri: string,
+  text: string,
+  className: string,
+  fallbackOffset: number,
+): number {
+  const docMgr = (
+    context as unknown as { documentManager?: { documentTrees?: Map<string, { tree?: CstTreeLike | null }> } }
+  ).documentManager;
+  const existingTree = docMgr?.documentTrees?.get?.(uri)?.tree;
+  if (existingTree?.rootNode) {
+    const cstOff = findClassStartOffsetInCst(existingTree.rootNode, className);
+    if (cstOff >= 0) return cstOff;
+  }
+  let parsedTree: CstTreeLike | null = null;
+  try {
+    const sc = (context.state?.sharedContext ?? context.parserService?.sharedContext) as
+      | { parse?(ext: string, text: string): CstTreeLike | null }
+      | undefined;
+    if (sc && typeof sc.parse === "function") {
+      parsedTree = sc.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
+    } else {
+      const parser = context.parserService?.getParser?.(uri.endsWith(".sysml") ? "sysml2" : "modelica") as
+        | CstParserLike
+        | undefined;
+      if (parser && typeof parser.parse === "function") {
+        parsedTree = parser.parse(text) as CstTreeLike | null;
+      }
+    }
+    if (parsedTree?.rootNode) {
+      const cstOff = findClassStartOffsetInCst(parsedTree.rootNode, className);
+      if (cstOff >= 0) return cstOff;
+    }
+  } catch {
+    // Fall back to lexical header search when parser service is absent
+  } finally {
+    parsedTree?.delete?.();
+  }
+  const kwOff = findModelicaClassKeywordOffset(text, className);
+  return kwOff >= 0 ? kwOff : fallbackOffset;
+}
 
 export interface CatalogComponentInfo {
   fqn: string;
@@ -217,7 +303,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
           const parts = fqn.split(".");
           if (parts.some((p) => p === "Internal" || p === "UsersGuide")) continue;
           const leaf = parts[parts.length - 1] || fqn;
-          if (!/^[A-Z]/.test(leaf)) continue;
+          if (!isAsciiUpperCode(leaf.charCodeAt(0))) continue;
           const hasChildren = prefixes.has(fqn);
           seenFqns.add(fqn);
           results.push({
@@ -286,7 +372,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
           if (parts.length < 2) continue;
           if (parts.some((seg) => SKIP_CATALOG_SEGMENTS.has(seg))) continue;
           const leaf = parts[parts.length - 1]!;
-          if (!/^[A-Z]/.test(leaf)) continue;
+          if (!isAsciiUpperCode(leaf.charCodeAt(0))) continue;
 
           const rawRoot = parts[0]!;
           const packageName = ROOT_NAMESPACE_TO_PACKAGE[rawRoot] ?? rawRoot;
@@ -549,14 +635,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
           const doc = context.documents.get(uri);
           if (doc) {
             if (startOffset === 0 && lastName) {
-              const docText = doc.getText();
-              const regex = new RegExp(
-                `\\b(?:model|class|block|record|package|connector|function|type|operator|optimization)\\s+${lastName}\\b`,
-              );
-              const match = regex.exec(docText);
-              if (match && match.index !== undefined) {
-                startOffset = match.index;
-              }
+              startOffset = resolveClassStartOffset(context, uri, doc.getText(), lastName, startOffset);
             }
             const pos = doc.positionAt(startOffset);
             return { uri, line: pos.line, character: pos.character };
@@ -582,13 +661,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
           }
           if (text) {
             if (startOffset === 0 && lastName) {
-              const regex = new RegExp(
-                `\\b(?:model|class|block|record|package|connector|function|type|operator|optimization)\\s+${lastName}\\b`,
-              );
-              const match = regex.exec(text);
-              if (match && match.index !== undefined) {
-                startOffset = match.index;
-              }
+              startOffset = resolveClassStartOffset(context, uri, text, lastName, startOffset);
             }
             if (startOffset > 0) {
               const prefix = text.substring(0, startOffset);

@@ -21,17 +21,34 @@ description: "@modelscript/opendss (languages/opendss) provides zero-regex parsi
 
 ### 1. Multi-Phase Unbalanced AC Power Flow
 
-- Solves unbalanced radial and weakly meshed 3-phase/4-wire distribution networks via the **nodal admittance matrix ($Y_{\text{bus}}$)** formulation and **Forward-Backward Sweep (FBS)**:
+- Solves unbalanced radial and weakly meshed 3-phase/4-wire distribution networks via the **nodal admittance matrix ($Y_{\text{bus}}$)** formulation and **Forward-Backward Sweep (FBS)**, relating bus current injections to bus voltages and computing constant-power load currents:
   $$I_{\text{inj}}(V) = Y_{\text{bus}} V$$
-- Models constant power ($PQ$), constant current ($I$), and constant impedance ($Z$) loads:
   $$I_i(V_i) = \left( \frac{P_i + j Q_i}{V_i} \right)^*$$
+
+  | Symbol              | Meaning                                                       | Units / Domain                            |
+  | :------------------ | :------------------------------------------------------------ | :---------------------------------------- |
+  | $I_{\text{inj}}(V)$ | Vector of complex nodal current injections                    | $\text{A}$ (or $\text{p.u.}$)             |
+  | $Y_{\text{bus}}$    | Complex nodal admittance matrix                               | $\text{S}$ (or $\text{p.u.}$)             |
+  | $V, V_i$            | Vector of complex bus voltages and voltage phasor at node $i$ | $\text{V}$ (or $\text{p.u.}$)             |
+  | $I_i(V_i)$          | Complex load current drawn at node $i$                        | $\text{A}$ (or $\text{p.u.}$)             |
+  | $P_i, Q_i$          | Active and reactive power demand at node $i$                  | $\text{W}, \text{VAr}$ (or $\text{p.u.}$) |
+  | $j, (\cdot)^*$      | Imaginary unit ($\sqrt{-1}$) and complex conjugate operator   | $\text{dimensionless}$                    |
+
 - Accurately tracks mutual coupling across multi-conductor overhead lines and underground concentric neutral cables using Carson's equations for earth return path impedance.
 
 ### 2. DER Hosting Capacity & Reverse Power Flow
 
 - Models distributed solar photovoltaic (PVSystem) generators, battery energy storage systems (Storage), and wind generators.
-- Analyzes thermal line loading limits and voltage regulation limits (ANSI C84.1 Range A: $0.95 \le |V| \le 1.05\text{ p.u.}$):
+- Analyzes thermal line loading limits and voltage regulation limits (ANSI C84.1 Range A: $0.95 \le |V| \le 1.05\text{ p.u.}$), estimating the steady-state feeder voltage rise induced by distributed energy resource (DER) active and reactive injection:
   $$\Delta V \approx \frac{R P_{\text{DER}} + X Q_{\text{DER}}}{V_0}$$
+
+  | Symbol                           | Meaning                                                            | Units / Domain                            |
+  | :------------------------------- | :----------------------------------------------------------------- | :---------------------------------------- |
+  | $\Delta V$                       | Approximate voltage magnitude rise at the point of interconnection | $\text{V}$ (or $\text{p.u.}$)             |
+  | $R, X$                           | Equivalent upstream feeder resistance and reactance                | $\Omega$ (or $\text{p.u.}$)               |
+  | $P_{\text{DER}}, Q_{\text{DER}}$ | Net active and reactive power injected by the DER                  | $\text{W}, \text{VAr}$ (or $\text{p.u.}$) |
+  | $V_0$                            | Nominal (no-load) feeder voltage magnitude                         | $\text{V}$ (or $\text{p.u.}$)             |
+
 - Identifies reverse power flow hazards where generation exceeds local demand, pushing power back through substation transformers into the transmission bulk grid ([`@modelscript/psse`](./psse.md)).
 
 ### 3. Direct DAE Lowering

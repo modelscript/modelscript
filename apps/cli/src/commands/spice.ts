@@ -91,6 +91,24 @@ export const SpiceSimulateCommand: CommandModule<{}, SpiceSimulateArgs> = {
       }
     }
 
+    const resolveOutputFormat = (fmt: "table" | "json" | "csv", outFile?: string): "table" | "json" | "csv" => {
+      if (fmt === "table" && outFile) {
+        const lower = outFile.toLowerCase();
+        if (lower.endsWith(".csv")) return "csv";
+        if (lower.endsWith(".json")) return "json";
+      }
+      return fmt;
+    };
+
+    const writeOutputFile = (outFile: string, contentText: string, label: string) => {
+      const resolved = path.resolve(process.cwd(), outFile);
+      fs.mkdirSync(path.dirname(resolved), { recursive: true });
+      fs.writeFileSync(resolved, contentText, "utf-8");
+      console.log(`Saved ${label} to ${outFile}`);
+    };
+
+    const format = resolveOutputFormat(args.format, args.out);
+
     if (mode === "op") {
       const result = solveOp(circuit);
       if (!result.converged) {
@@ -98,7 +116,7 @@ export const SpiceSimulateCommand: CommandModule<{}, SpiceSimulateArgs> = {
         process.exit(1);
       }
 
-      if (args.format === "json") {
+      if (format === "json") {
         const payload = {
           converged: result.converged,
           iterations: result.iterations,
@@ -107,23 +125,36 @@ export const SpiceSimulateCommand: CommandModule<{}, SpiceSimulateArgs> = {
         };
         const jsonStr = JSON.stringify(payload, null, 2);
         if (args.out) {
-          fs.writeFileSync(path.resolve(process.cwd(), args.out), jsonStr, "utf-8");
-          console.log(`Saved OP results to ${args.out}`);
+          writeOutputFile(args.out, jsonStr, "OP results");
         } else {
           console.log(jsonStr);
         }
       } else {
+        const plainLines: string[] = [
+          `SPICE DC Operating Point (.OP): ${circuit.title}`,
+          `Iterations: ${result.iterations}`,
+          "",
+          "Node          Voltage (V)",
+        ];
         console.log(`\n\x1b[1mSPICE DC Operating Point (.OP):\x1b[0m ${circuit.title}`);
         console.log(`Iterations: ${result.iterations}\n`);
         console.log("\x1b[4mNode\x1b[0m          \x1b[4mVoltage (V)\x1b[0m");
         for (const [node, v] of result.nodeVoltages.entries()) {
-          console.log(`${node.padEnd(14)} ${v >= 0 ? " " : ""}${v.toFixed(6)} V`);
+          const line = `${node.padEnd(14)} ${v >= 0 ? " " : ""}${v.toFixed(6)} V`;
+          console.log(line);
+          plainLines.push(line);
         }
         if (result.branchCurrents.size > 0) {
+          plainLines.push("", "Source        Current (A)");
           console.log("\n\x1b[4mSource\x1b[0m        \x1b[4mCurrent (A)\x1b[0m");
           for (const [src, i] of result.branchCurrents.entries()) {
-            console.log(`${src.padEnd(14)} ${i >= 0 ? " " : ""}${i.toExponential(4)} A`);
+            const line = `${src.padEnd(14)} ${i >= 0 ? " " : ""}${i.toExponential(4)} A`;
+            console.log(line);
+            plainLines.push(line);
           }
+        }
+        if (args.out) {
+          writeOutputFile(args.out, plainLines.join("\n") + "\n", "OP results");
         }
       }
     } else if (mode === "tran") {
@@ -133,7 +164,7 @@ export const SpiceSimulateCommand: CommandModule<{}, SpiceSimulateArgs> = {
 
       const result = solveTran(circuit, opts);
 
-      if (args.format === "json") {
+      if (format === "json") {
         const payload = {
           time: result.time,
           nodeVoltages: Object.fromEntries(result.nodeVoltages),
@@ -141,12 +172,11 @@ export const SpiceSimulateCommand: CommandModule<{}, SpiceSimulateArgs> = {
         };
         const jsonStr = JSON.stringify(payload, null, 2);
         if (args.out) {
-          fs.writeFileSync(path.resolve(process.cwd(), args.out), jsonStr, "utf-8");
-          console.log(`Saved transient results to ${args.out}`);
+          writeOutputFile(args.out, jsonStr, "transient results");
         } else {
           console.log(jsonStr);
         }
-      } else if (args.format === "csv") {
+      } else if (format === "csv") {
         const nodes = Array.from(result.nodeVoltages.keys());
         const header = ["time", ...nodes.map((n) => `V(${n})`)].join(",");
         const rows = [header];
@@ -159,28 +189,39 @@ export const SpiceSimulateCommand: CommandModule<{}, SpiceSimulateArgs> = {
         }
         const csvStr = rows.join("\n");
         if (args.out) {
-          fs.writeFileSync(path.resolve(process.cwd(), args.out), csvStr, "utf-8");
-          console.log(`Saved CSV results to ${args.out}`);
+          writeOutputFile(args.out, csvStr, "CSV results");
         } else {
           console.log(csvStr);
         }
       } else {
+        const nodes = Array.from(result.nodeVoltages.keys());
+        const plainLines: string[] = [
+          `SPICE Transient Analysis (.TRAN): ${circuit.title}`,
+          `Time points simulated: ${result.time.length}`,
+          `Monitored nodes: ${nodes.join(", ")}`,
+        ];
         console.log(`\n\x1b[1mSPICE Transient Analysis (.TRAN):\x1b[0m ${circuit.title}`);
         console.log(`Time points simulated: ${result.time.length}`);
-        const nodes = Array.from(result.nodeVoltages.keys());
         console.log(`Monitored nodes: ${nodes.join(", ")}`);
         if (result.time.length > 0) {
           const lastIdx = result.time.length - 1;
-          console.log(`Final simulated time: ${result.time[lastIdx]!.toExponential(4)} s`);
+          const timeLine = `Final simulated time: ${result.time[lastIdx]!.toExponential(4)} s`;
+          console.log(timeLine);
+          plainLines.push(timeLine);
           for (const n of nodes) {
-            console.log(`  V(${n}) = ${result.nodeVoltages.get(n)![lastIdx]!.toFixed(6)} V`);
+            const valLine = `  V(${n}) = ${result.nodeVoltages.get(n)![lastIdx]!.toFixed(6)} V`;
+            console.log(valLine);
+            plainLines.push(valLine);
           }
+        }
+        if (args.out) {
+          writeOutputFile(args.out, plainLines.join("\n") + "\n", "transient results");
         }
       }
     } else if (mode === "ac") {
       const result = solveAc(circuit);
 
-      if (args.format === "json") {
+      if (format === "json") {
         const voltagesObj: Record<string, unknown> = {};
         for (const [k, v] of result.nodeVoltages.entries()) {
           voltagesObj[k] = v;
@@ -191,16 +232,46 @@ export const SpiceSimulateCommand: CommandModule<{}, SpiceSimulateArgs> = {
         };
         const jsonStr = JSON.stringify(payload, null, 2);
         if (args.out) {
-          fs.writeFileSync(path.resolve(process.cwd(), args.out), jsonStr, "utf-8");
-          console.log(`Saved AC results to ${args.out}`);
+          writeOutputFile(args.out, jsonStr, "AC results");
         } else {
           console.log(jsonStr);
         }
+      } else if (format === "csv") {
+        const nodes = Array.from(result.nodeVoltages.keys());
+        const header = [
+          "frequency_hz",
+          ...nodes.flatMap((n) => [`V(${n})_mag`, `V(${n})_db`, `V(${n})_phase_deg`]),
+        ].join(",");
+        const rows = [header];
+        for (let i = 0; i < result.frequency.length; i++) {
+          const rowVals = [
+            result.frequency[i]!.toExponential(5),
+            ...nodes.flatMap((n) => {
+              const sig = result.nodeVoltages.get(n)!;
+              return [sig.magnitude[i]!.toExponential(5), sig.magnitudeDb[i]!.toFixed(4), sig.phaseDeg[i]!.toFixed(4)];
+            }),
+          ];
+          rows.push(rowVals.join(","));
+        }
+        const csvStr = rows.join("\n");
+        if (args.out) {
+          writeOutputFile(args.out, csvStr, "AC CSV results");
+        } else {
+          console.log(csvStr);
+        }
       } else {
+        const nodes = Array.from(result.nodeVoltages.keys());
+        const plainLines: string[] = [
+          `SPICE AC Frequency Sweep (.AC): ${circuit.title}`,
+          `Frequency points: ${result.frequency.length}`,
+          `Monitored nodes: ${nodes.join(", ")}`,
+        ];
         console.log(`\n\x1b[1mSPICE AC Frequency Sweep (.AC):\x1b[0m ${circuit.title}`);
         console.log(`Frequency points: ${result.frequency.length}`);
-        const nodes = Array.from(result.nodeVoltages.keys());
         console.log(`Monitored nodes: ${nodes.join(", ")}`);
+        if (args.out) {
+          writeOutputFile(args.out, plainLines.join("\n") + "\n", "AC results");
+        }
       }
     }
   },

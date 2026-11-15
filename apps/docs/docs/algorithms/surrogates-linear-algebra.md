@@ -91,8 +91,16 @@ Solves small non-linear algebraic loops analytically to avoid numerical Newton i
 
 ### ModelScript Rationale & Modifications
 
-Extracts reduced-order models (ROM) from massive 3D CFD or FEA simulation field snapshots ($N > 10^6$ nodes):
+Extracts reduced-order models (ROM) from massive 3D CFD or FEA simulation field snapshots ($N > 10^6$ nodes) by projecting the full field onto a small basis of orthogonal spatial modes:
 $$u(x, t) \approx \bar{u}(x) + \sum_{k=1}^r a_k(t) \phi_k(x)$$
+
+| Symbol       | Meaning                                                                              | Units / Domain       |
+| :----------- | :----------------------------------------------------------------------------------- | :------------------- |
+| $u(x, t)$    | Full-order physical field (e.g., velocity, temperature) at position $x$ and time $t$ | Field-dependent      |
+| $\bar{u}(x)$ | Time-averaged mean field over the snapshot ensemble                                  | Same as $u$          |
+| $a_k(t)$     | Time-dependent modal amplitude (reduced coordinate) for mode $k$                     | $\mathbb{R}$         |
+| $\phi_k(x)$  | $k$-th orthonormal Proper Orthogonal Decomposition (POD) spatial basis mode          | Dimensionless        |
+| $r$          | Truncated reduced-order basis dimension ($r \ll N$)                                  | $\mathbb{N}_{\ge 1}$ |
 
 - **Modifications**: Employs Sirovich's snapshot method to compute eigenvalues of the small $M \times M$ temporal correlation matrix ($M \ll N$ snapshots), retaining $99\%$ cumulative kinetic energy in $\le 16$ spatial modes.
 
@@ -145,9 +153,19 @@ flowchart LR
 
 ### 1. Moving Horizon Estimation (MHE) over the Linear-Memory DAE Arena (`arena-mhe.ts`)
 
-`MovingHorizonEstimator` reconciles streaming physical sensor windows (`TelemetryWindow` over $[t - W, t]$) against the in-memory `DAEBuilder` arena by solving a box-constrained trajectory-tracking problem:
+`MovingHorizonEstimator` reconciles streaming physical sensor windows (`TelemetryWindow` over $[t - W, t]$) against the in-memory `DAEBuilder` arena by solving a box-constrained trajectory-tracking problem that balances measurement fit against parameter and neural-weight priors:
 $$\min_{\theta, w} \; \frac{1}{2} \sum_{k=0}^{N-1} \left\| y^{\text{sim}}(t_k; \theta, w) - y^{\text{meas}}(t_k) \right\|_2^2 + \frac{1}{2} \sum_{i} \lambda_i (\theta_i - \theta_i^{\text{prior}})^2 + \frac{\lambda_w}{2} \| w - w^{\text{prior}} \|_2^2$$
 $$\text{s.t.} \quad \theta_{\min} \le \theta \le \theta_{\max}, \quad F(\dot{x}, x, y, \theta, w, t) = 0$$
+
+| Symbol                            | Meaning                                                           | Units / Domain           |
+| :-------------------------------- | :---------------------------------------------------------------- | :----------------------- |
+| $\theta, \theta^{\text{prior}}$   | Estimated physical DAE parameters and their prior nominal values  | $\mathbb{R}^{N_p}$       |
+| $\theta_{\min}, \theta_{\max}$    | Lower and upper physical parameter bounds                         | $\mathbb{R}^{N_p}$       |
+| $w, w^{\text{prior}}$             | Neural surrogate (`ArenaNeuralBlock`) weights and their priors    | $\mathbb{R}^{N_w}$       |
+| $y^{\text{sim}}, y^{\text{meas}}$ | Simulated and measured output vectors at sample time $t_k$        | $\mathbb{R}^{N_y}$       |
+| $\lambda_i, \lambda_w$            | Tikhonov regularization weights for parameters and neural weights | $\mathbb{R}_{\ge 0}$     |
+| $N$                               | Number of telemetry samples in the moving horizon window          | $\mathbb{N}_{\ge 1}$     |
+| $F(\cdot)$                        | Implicit hybrid DAE system residual constraint                    | $\mathbb{R}^{N_x + N_y}$ |
 
 - **Joint Physical & Neural Hybrid Calibration**: Simultaneously estimates physical DAE parameters $\theta$ and embedded `ArenaNeuralBlock` surrogate weights $w$ inside the same optimization vector.
 - **Adjoint-Driven L-BFGS-B**: Evaluates exact objective gradients via `DaeAdjointSolver` (`solveDaeAdjoint`) and converges in $\le 25$ quasi-Newton `lbfgsbSolve` iterations, automatically warm-starting initial states from window boundaries $t_0$.
@@ -163,8 +181,15 @@ ModelScript provides two complementary calibration engines for offline test-stan
 
 `CusumDriftDetector` continuously monitors multi-channel innovation residuals $r_c(t) = y_{\text{meas}, c}(t) - y_{\text{twin}, c}(t)$ to detect incipient actuator degradation, sensor bias, or structural drift while rejecting zero-mean Gaussian measurement noise:
 
-- **Two-Sided Sequential Cumulative Sum**: Normalizes each channel residual $\tilde{z}_c = (r_c - \mu_c) / \sigma_c$ with minimum detectable shift slack $k_c = \frac{\delta_c}{2 \sigma_c}$ (default $\delta_c = 1.5 \sigma_c$) and updates positive and negative CUSUM statistics:
+- **Two-Sided Sequential Cumulative Sum**: Normalizes each channel residual $\tilde{z}_c = (r_c - \mu_c) / \sigma_c$ with minimum detectable shift slack $k_c = \frac{\delta_c}{2 \sigma_c}$ (default $\delta_c = 1.5 \sigma_c$) and updates positive and negative CUSUM statistics to accumulate persistent upward or downward mean shifts:
   $$S_c^+(t) = \max\!\left(0, \; S_c^+(t-1) + \tilde{z}_c(t) - k_c\right), \qquad S_c^-(t) = \max\!\left(0, \; S_c^-(t-1) - \tilde{z}_c(t) - k_c\right)$$
+
+  | Symbol               | Meaning                                                                      | Units / Domain            |
+  | :------------------- | :--------------------------------------------------------------------------- | :------------------------ |
+  | $S_c^+(t), S_c^-(t)$ | Upper and lower one-sided cumulative sum statistics for channel $c$          | Dimensionless ($\ge 0$)   |
+  | $\tilde{z}_c(t)$     | Standardized innovation residual $(r_c(t) - \mu_c) / \sigma_c$ at step $t$   | Dimensionless ($z$-score) |
+  | $k_c$                | Reference slack parameter ($\delta_c / (2\sigma_c)$) filtering nominal noise | Dimensionless ($> 0$)     |
+
 - **Adaptive Burn-In & Severity Classification**: Supports empirical baseline calibration (`calibrateFromData`) and triggers structured `DriftEvent` alerts when $\max(S_c^+, S_c^-) \ge h_c$, classifying severity (`low`, `medium`, `high`, `critical`) by threshold ratio $S_c / h_c$ alongside online shift magnitude estimation.
 
 ### 4. Virtual Sensor Synthesis & Remaining Useful Life (RUL) Prognostics (`prognostics.ts`)
@@ -174,8 +199,15 @@ ModelScript provides two complementary calibration engines for offline test-stan
   1. **Arrhenius Thermal Aging**: $\frac{dD}{dt} = A \exp\!\left(-\frac{E_a}{k_B T}\right)$
   2. **Miner's Power-Law / Basquin Fatigue**: $\frac{dD}{dt} = k_{\text{fat}} \, \sigma^m$
   3. **Archard Linear Mechanical Wear**: $\frac{dD}{dt} = k_{\text{wear}} \, \sigma$
-- **Probabilistic RUL Quantiles**: Given current damage $D(t) \in [0, D_{\text{crit}}]$ and operational duty-cycle load variability $\sigma_{\text{load}}$, projects log-normal survival quantiles:
+- **Probabilistic RUL Quantiles**: Given current damage $D(t) \in [0, D_{\text{crit}}]$ and operational duty-cycle load variability $\sigma_{\text{load}}$, projects median, 10th-percentile (conservative), and 90th-percentile log-normal survival quantiles:
   $$\text{RUL}_{P50} = \frac{D_{\text{crit}} - D(t)}{\dot{D}(\sigma_{\text{duty}})}, \qquad \text{RUL}_{P10} = \text{RUL}_{P50} \exp(-1.28155 \, \sigma_{\text{load}}), \qquad \text{RUL}_{P90} = \text{RUL}_{P50} \exp(+1.28155 \, \sigma_{\text{load}})$$
+
+  | Symbol                                                 | Meaning                                                                   | Units / Domain                                |
+  | :----------------------------------------------------- | :------------------------------------------------------------------------ | :-------------------------------------------- |
+  | $\text{RUL}_{P50}, \text{RUL}_{P10}, \text{RUL}_{P90}$ | 50th (median), 10th, and 90th percentile Remaining Useful Life            | $\text{s}$ or $\text{h}$                      |
+  | $D(t), D_{\text{crit}}$                                | Current accumulated damage and critical failure threshold                 | Dimensionless ($0 \le D \le D_{\text{crit}}$) |
+  | $\dot{D}(\sigma_{\text{duty}})$                        | Damage accumulation rate under nominal duty stress $\sigma_{\text{duty}}$ | $\text{s}^{-1}$ or $\text{h}^{-1}$            |
+  | $\sigma_{\text{load}}$                                 | Log-normal standard deviation of operational load variability             | Dimensionless ($\ge 0$)                       |
 
 ### 5. Subsurface PKN Hydraulic Fracturing & ISIP Real-Time Digital Twin (`hydraulic-fracturing.ts`)
 

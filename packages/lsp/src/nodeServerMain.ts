@@ -44,7 +44,7 @@ import { HierarchyService } from "./services/hierarchy-service.js";
 import { ParserService } from "./services/parser-service.js";
 import { deduplicateAllDiagnostics, ValidationService } from "./services/validation-service.js";
 import { WorkspaceManager } from "./services/workspace-manager.js";
-import { computeTreeEdit } from "./utils/ast-utils.js";
+import { parseTreeWithXmlGuard } from "./utils/ast-utils.js";
 import { LspWorkDoneProgressReporter } from "./utils/progress-reporter.js";
 import { BrowserFileSystem } from "./vfs/browser-file-system.js";
 
@@ -241,12 +241,14 @@ export function startNodeServer(input?: any, output?: any) {
     { id: "step", pkg: "@modelscript/step", name: "STEP" },
     { id: "owl2", pkg: "@modelscript/owl2", name: "OWL2" },
     { id: "csv", pkg: "@modelscript/csv", name: "CSV" },
+    { id: "las", pkg: "@modelscript/las", name: "LAS Well Log" },
     { id: "pscad", pkg: "@modelscript/pscad", name: "PSCAD" },
     { id: "psse", pkg: "@modelscript/psse", name: "PSSE" },
     { id: "scad", pkg: "@modelscript/scad", name: "OpenSCAD" },
     { id: "modelscript", pkg: "@modelscript/modelscript", name: "ModelScript" },
     { id: "fea", pkg: "@modelscript/fea", name: "FEA" },
     { id: "cfd", pkg: "@modelscript/cfd", name: "CFD" },
+    { id: "fortran", pkg: "@modelscript/fortran", name: "Fortran" },
     { id: "sima", pkg: "@modelscript/sima", name: "SIMA" },
     { id: "gtsuite", pkg: "@modelscript/gtsuite", name: "GT-SUITE" },
   ];
@@ -557,13 +559,21 @@ export function startNodeServer(input?: any, output?: any) {
     const plugin = globalLanguageRegistry.getPluginForUri(uri);
     const isCfd = plugin?.id === "cfd" || /\.(cfg|cfgt|su2|cfd)$/i.test(uri);
     const isFea = plugin?.id === "fea" || /\.(inp|inpt|bdf|fea)$/i.test(uri);
-    if (isCfd || isFea) {
+    const isLargeStep =
+      (plugin?.id === "step" || /\.(step|stp|p21)$/i.test(uri)) && change.document.getText().length > 32_768;
+    const hasCustomValidator = Boolean(plugin?.customHandlers?.validate);
+    if (isCfd || isFea || isLargeStep || hasCustomValidator) {
       activeSyntaxDebounceTimers.set(
         uri,
-        setTimeout(async () => {
-          activeSyntaxDebounceTimers.delete(uri);
-          await validationService.validateTextDocument(change.document);
-        }, 100),
+        setTimeout(
+          async () => {
+            activeSyntaxDebounceTimers.delete(uri);
+            if ((validationService.documentRevisions.get(uri) ?? 0) !== currentRevision) return;
+            const latestDoc = documents.get(uri);
+            await validationService.validateTextDocument(latestDoc ?? change.document);
+          },
+          hasCustomValidator ? 60 : 100,
+        ),
       );
       return;
     }
@@ -578,17 +588,14 @@ export function startNodeServer(input?: any, output?: any) {
       try {
         const text = change.document.getText();
         const oldCached = documentManager.documentTrees.get(uri);
-        let tree: any;
-
-        if (oldCached && oldCached.text !== text) {
-          const edit = computeTreeEdit(oldCached.text, text);
-          validationService.adjustDiagnostics(uri, edit);
-          tree = parser.parse(text, oldCached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex, uri);
-        } else if (oldCached) {
-          tree = oldCached.tree;
-        } else {
-          tree = parser.parse(text);
-        }
+        const tree: any = parseTreeWithXmlGuard({
+          uri,
+          text,
+          plugin,
+          parser,
+          oldCached,
+          onIncrementalEdit: (edit) => validationService.adjustDiagnostics(uri, edit),
+        });
 
         if (tree) {
           if (oldCached?.tree && oldCached.tree !== tree) {

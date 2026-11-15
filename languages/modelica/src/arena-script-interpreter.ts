@@ -7,6 +7,7 @@ import { ModelicaCalibrator } from "@modelscript/simulate/optimizer";
 import fs from "node:fs";
 import { evaluateCSTExpression } from "./diagram/annotation-evaluator.js";
 import { ModelicaFlattener } from "./flattener.js";
+import { stripOuterDoubleQuotes } from "./flattener/expressions/index.js";
 
 // Basic scope for script variables
 export class ScriptScope {
@@ -313,8 +314,9 @@ export class ArenaScriptInterpreter {
       if (funcName === "loadModel") {
         const { positional } = this.extractCallArguments(s);
         if (positional.length > 0) {
+          const rawPosText = positional[0]?.text?.trim();
           const rawName =
-            positional[0]?.text?.trim()?.replace(/^"|"$/g, "") || evaluateCSTExpression(positional[0], scope);
+            (rawPosText ? stripOuterDoubleQuotes(rawPosText) : "") || evaluateCSTExpression(positional[0], scope);
           if (typeof rawName === "string" && rawName.length > 0) {
             const exists = (this.queryEngine.index.byName.get(rawName)?.length ?? 0) > 0;
             const isBuiltinPackage = rawName === "Modelica" || rawName === "ModelicaServices" || rawName === "Complex";
@@ -332,7 +334,8 @@ export class ArenaScriptInterpreter {
         const { positional } = this.extractCallArguments(s);
         if (positional.length > 0) {
           const val = evaluateCSTExpression(positional[0], scope);
-          const code = typeof val === "string" ? val : positional[0]?.text?.trim()?.replace(/^"|"$/g, "");
+          const rawPosText = positional[0]?.text?.trim();
+          const code = typeof val === "string" ? val : rawPosText ? stripOuterDoubleQuotes(rawPosText) : undefined;
           if (typeof code === "string" && code.length > 0 && this.context?.load) {
             try {
               this.context.load(code, `mos-inline-${Date.now()}.mo`);
@@ -353,7 +356,8 @@ export class ArenaScriptInterpreter {
         const { positional } = this.extractCallArguments(s);
         if (positional.length > 0) {
           const val = evaluateCSTExpression(positional[0], scope);
-          const filePath = typeof val === "string" ? val : positional[0]?.text?.trim()?.replace(/^"|"$/g, "");
+          const rawPosText = positional[0]?.text?.trim();
+          const filePath = typeof val === "string" ? val : rawPosText ? stripOuterDoubleQuotes(rawPosText) : undefined;
           if (typeof filePath === "string" && filePath.length > 0 && this.context?.fs && this.context?.load) {
             try {
               const content = this.context.fs.read(filePath);
@@ -698,11 +702,13 @@ export class ArenaScriptInterpreter {
             }
           } else {
             const csvLines = rawContent
-              .split(/\r?\n/)
+              .replaceAll("\r\n", "\n")
+              .replaceAll("\r", "\n")
+              .split("\n")
               .map((l) => l.trim())
               .filter((l) => l.length > 0 && !l.startsWith("#") && !l.startsWith("//"));
             if (csvLines.length >= 2) {
-              const headers = csvLines[0]!.split(",").map((h) => h.replace(/^"|"$/g, "").trim());
+              const headers = csvLines[0]!.split(",").map((h) => stripOuterDoubleQuotes(h.trim()).trim());
               const timeIdx = headers.findIndex((h) => h === "time" || h === "t");
               if (timeIdx >= 0 && headers.length >= 2) {
                 const cols = headers.map(() => [] as number[]);

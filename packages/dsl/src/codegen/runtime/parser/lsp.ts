@@ -256,20 +256,15 @@ export function lsp_getBinaryLength(): u32 {
   return t_lspBinaryBuffer.length;
 }
 
-/**
- * Allocates an unmanaged diagnostic token into the binary buffer for LSP transfer.
- * Includes logic to merge adjacent or overlapping diagnostics with the same `lintId`.
- * If the buffer capacity is exceeded, it dynamically chunks a larger `t_lspBinaryBuffer`.
- */
-export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, arg0: u32 = 0, arg1: u32 = 0, arg2: u32 = 0, arg3: u32 = 0): void {
-  if (lintId > 0 && lintId < 0x7ffe && arg0 != 0 && arg0 != currentLintNode) {
-    let off = lsp_findNodeOffset(globalAstRoot, arg0, 0);
-    if (off >= 0) {
-      start = off as u32;
-      end = start + getNodeByteLength(arg0);
-    }
-  }
-
+function lsp_pushDiagnosticRecord(
+  start: u32,
+  end: u32,
+  lintId: u32,
+  arg0: u32 = 0,
+  arg1: u32 = 0,
+  arg2: u32 = 0,
+  arg3: u32 = 0,
+): void {
   let bufLen = t_lspBinaryBuffer.length;
   if (bufLen >= 10000 * 7) {
     // LSP2 fix: emit a meta-diagnostic once when limit is reached
@@ -304,6 +299,74 @@ export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, arg0: u32
   t_lspBinaryBuffer.push(arg1);
   t_lspBinaryBuffer.push(arg2);
   t_lspBinaryBuffer.push(arg3);
+}
+
+/**
+ * Allocates an unmanaged diagnostic token into the binary buffer for LSP transfer.
+ * Includes logic to merge adjacent or overlapping diagnostics with the same `lintId`.
+ * If the buffer capacity is exceeded, it dynamically chunks a larger `t_lspBinaryBuffer`.
+ */
+export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, arg0: u32 = 0, arg1: u32 = 0, arg2: u32 = 0, arg3: u32 = 0): void {
+  if (lintId > 0 && lintId < 0x7ffe && arg0 != 0 && arg0 != currentLintNode) {
+    let off = lsp_findNodeOffset(globalAstRoot, arg0, 0);
+    if (off >= 0) {
+      start = off as u32;
+      end = start + getNodeByteLength(arg0);
+    }
+  }
+  lsp_pushDiagnosticRecord(start, end, lintId, arg0, arg1, arg2, arg3);
+}
+
+/**
+ * Allocates a diagnostic highlighting `spanNode` while keeping `arg0` as the message target node.
+ */
+export function lsp_allocDiagnosticAt(
+  spanNode: u32,
+  fallbackStart: u32,
+  fallbackEnd: u32,
+  lintId: u32,
+  arg0: u32 = 0,
+  arg1: u32 = 0,
+  arg2: u32 = 0,
+  arg3: u32 = 0,
+): void {
+  let start: u32 = fallbackStart;
+  let end: u32 = fallbackEnd;
+  if (spanNode != 0) {
+    if (spanNode == currentLintNode) {
+      start = fallbackStart;
+      end = fallbackEnd;
+    } else {
+      let off = lsp_findNodeOffset(globalAstRoot, spanNode, 0);
+      if (off >= 0) {
+        start = off as u32;
+        end = start + getNodeByteLength(spanNode);
+      }
+    }
+  }
+  lsp_pushDiagnosticRecord(start, end, lintId, arg0, arg1, arg2, arg3);
+}
+
+/**
+ * Allocates a diagnostic highlighting the first `charLen` characters of the current node
+ * while keeping `arg0` as the message target node.
+ */
+export function lsp_allocDiagnosticPrefix(
+  charLen: u32,
+  fallbackStart: u32,
+  fallbackEnd: u32,
+  lintId: u32,
+  arg0: u32 = 0,
+  arg1: u32 = 0,
+  arg2: u32 = 0,
+  arg3: u32 = 0,
+): void {
+  let start: u32 = fallbackStart;
+  let end: u32 = start + charLen * getEncodingStep();
+  if (fallbackEnd > start && end > fallbackEnd) {
+    end = fallbackEnd;
+  }
+  lsp_pushDiagnosticRecord(start, end, lintId, arg0, arg1, arg2, arg3);
 }
 
 function ensureLspBuffers(): void {

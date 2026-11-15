@@ -122,13 +122,17 @@ export type {
 
 let cachedParser: TreeSitterParser | null = null;
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-function findFile(relativePaths: string[]): string {
-  if (typeof window === "undefined" && typeof process !== "undefined" && typeof require === "function") {
+async function findFile(relativePaths: string[]): Promise<string> {
+  if (
+    typeof window === "undefined" &&
+    typeof process !== "undefined" &&
+    typeof import.meta?.url === "string" &&
+    import.meta.url.startsWith("file:")
+  ) {
     try {
-      const nodePath = require("node:path");
-      const { fileURLToPath } = require("node:url");
-      const nodeFs = require("node:fs");
+      const nodePath = await import("node:path");
+      const { fileURLToPath } = await import("node:url");
+      const nodeFs = await import("node:fs");
       const currentDir = nodePath.dirname(fileURLToPath(import.meta.url));
       for (const rel of relativePaths) {
         const candidate = nodePath.resolve(currentDir, rel);
@@ -149,26 +153,30 @@ export async function getFortranParser(wasmUrlOrBytes?: Uint8Array | ArrayBuffer
   if (cachedParser) return cachedParser;
 
   let wasmInput: Uint8Array | ArrayBuffer | string | undefined = wasmUrlOrBytes;
-  if (!wasmInput) {
+  if (!wasmInput || (typeof wasmInput !== "string" && "byteLength" in wasmInput && wasmInput.byteLength === 0)) {
     if (
       typeof window === "undefined" &&
       typeof process !== "undefined" &&
-      typeof require === "function" &&
       typeof import.meta?.url === "string" &&
       import.meta.url.startsWith("file:")
     ) {
       try {
-        const nodeFs = require("node:fs");
-        const wasmPath = findFile(["../parser.wasm", "../dist/parser.wasm", "../../dist/parser.wasm", "parser.wasm"]);
+        const nodeFs = await import("node:fs");
+        const wasmPath = await findFile([
+          "../parser.wasm",
+          "../dist/parser.wasm",
+          "../../dist/parser.wasm",
+          "parser.wasm",
+        ]);
         wasmInput = nodeFs.readFileSync(wasmPath);
       } catch {
         wasmInput = "fortran.wasm";
       }
     } else {
-      wasmInput = "fortran.wasm";
+      const serverBase = (globalThis as { serverDistBase?: string | undefined }).serverDistBase;
+      wasmInput = serverBase ? `${serverBase.replace(/\/$/, "")}/fortran.wasm` : "fortran.wasm";
     }
   }
-  /* eslint-enable @typescript-eslint/no-require-imports */
 
   const { parser } = await createWasmParser(wasmInput ?? "fortran.wasm");
   cachedParser = parser;

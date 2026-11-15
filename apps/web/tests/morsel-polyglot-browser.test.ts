@@ -95,7 +95,8 @@ R1 in out 1k`,
     let browser: import("playwright").Browser | undefined;
     try {
       browser = await playwright.chromium.launch({ headless: true });
-      const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
+      const page = await context.newPage();
       const pageErrors: string[] = [];
       page.on("pageerror", (err) => pageErrors.push(err.message));
 
@@ -131,6 +132,261 @@ R1 in out 1k`,
       await page.waitForTimeout(1500);
 
       assert.deepStrictEqual(pageErrors, [], `Unexpected pageerror(s) in Morsel: ${pageErrors.join("; ")}`);
+    } finally {
+      await browser?.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+});
+
+const HERO_TEST_SCAD_CODE = `
+$fn = 24;
+module coax_ring(x0, len, r_out, r_in) {
+  translate([x0 + len / 2, 0, 0])
+  rotate([0, 90, 0])
+  difference() {
+    cylinder(h = len, r = r_out, center = true);
+    cylinder(h = len + 0.04, r = r_in, center = true);
+  }
+}
+color([0.52, 0.56, 0.62, 1.0]) coax_ring(-2.0, 2.2, 1.48, 1.32);
+color([0.82, 0.54, 0.34, 1.0]) coax_ring(0.3, 0.7, 0.64, 0.42);
+`.trim();
+
+const HERO_TEST_STEP_CODE = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('AP242 Turbofan Fan Ring'),'2;1');
+FILE_NAME('FanFrame.step','2026-11-14T00:00:00',('ModelScript'),('ModelScript'),'','','');
+FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF'));
+ENDSEC;
+DATA;
+#10=APPLICATION_CONTEXT('managed model based 3d engineering');
+#11=PRODUCT_CONTEXT('',#10,'mechanical');
+#12=PRODUCT('FanFrame','Fan Frame Assembly','Titanium Ring',(#11));
+#20=CARTESIAN_POINT('Origin',(0.0,0.0,0.0));
+#21=DIRECTION('AxisX',(1.0,0.0,0.0));
+#22=DIRECTION('RefY',(0.0,1.0,0.0));
+#23=AXIS2_PLACEMENT_3D('MainAxis',#20,#21,#22);
+#24=CARTESIAN_POINT('P0',(-1.0,-1.0,0.0));
+#25=CARTESIAN_POINT('P1',(1.0,-1.0,0.0));
+#26=CARTESIAN_POINT('P2',(1.0,1.0,0.0));
+#27=CARTESIAN_POINT('P3',(-1.0,1.0,0.0));
+#28=POLY_LOOP('FrameLoop',(#24,#25,#26,#27));
+#29=FACE_OUTER_BOUND('Outer',#28,.T.);
+#30=DATUM('Datum A','Primary Mounting Face',#23,'A');
+#31=DATUM_SYSTEM('DRF_A',(#30));
+#40=POSITION_TOLERANCE('Coax','Axis Coaxiality',0.025,#31);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+const CHROMIUM_WEBGL_ARGS = [
+  "--use-gl=angle",
+  "--use-angle=swiftshader",
+  "--enable-webgl",
+  "--enable-unsafe-swiftshader",
+  "--ignore-gpu-blocklist",
+];
+
+async function waitForLargeCanvasBox(page: import("playwright").Page, timeout = 15000) {
+  const handle = await page.waitForFunction(
+    () => {
+      for (const c of Array.from(document.querySelectorAll("canvas"))) {
+        const r = c.getBoundingClientRect();
+        if (r.width > 100 && r.height > 100) {
+          return { x: r.x, y: r.y, width: r.width, height: r.height };
+        }
+      }
+      return null;
+    },
+    { timeout },
+  );
+  return handle.jsonValue();
+}
+
+describe("@modelscript/web 3D CAD WebGL2 E2E (Morsel & Ansatz)", () => {
+  it("renders OpenSCAD (.scad) and STEP (.step) 3D CAD geometry in Morsel WebGL2 CadViewer with interactive CUT X / SPLIT HUD and zero pageerrors", async (t) => {
+    const indexHtml = path.join(DIST_DIR, "index.html");
+    if (!fs.existsSync(indexHtml)) {
+      t.skip("apps/web/dist/index.html not built; run npm run build --workspace=@modelscript/web first");
+      return;
+    }
+
+    const playwright = await import("playwright");
+    const { chromium } = playwright;
+    if (!fs.existsSync(chromium.executablePath())) {
+      t.skip(`Playwright Chromium binary not installed at ${chromium.executablePath()}`);
+      return;
+    }
+
+    const handoffUrl = await buildMorselHandoffUrl(
+      "http://127.0.0.1",
+      [
+        { fileName: "TurbofanRotor.scad", langSlug: "scad", code: HERO_TEST_SCAD_CODE },
+        { fileName: "FanFrame.step", langSlug: "step", code: HERO_TEST_STEP_CODE },
+      ],
+      0,
+    );
+    const hash = handoffUrl.slice(handoffUrl.indexOf("#"));
+
+    const { server, port } = await startSpaServer(DIST_DIR);
+    let browser: import("playwright").Browser | undefined;
+    try {
+      browser = await chromium.launch({ headless: true, args: CHROMIUM_WEBGL_ARGS });
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
+      const page = await context.newPage();
+      const pageErrors: string[] = [];
+      page.on("pageerror", (err) => pageErrors.push(err.stack || err.message));
+
+      await page.route("**/api/**", (route) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+      );
+
+      await page.goto(`http://127.0.0.1:${port}/morsel?view=split&subview=3d${hash}`, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+
+      // Wait for CadViewer HUD ("CUT X") first so Monaco's 14px minimap canvas is not matched
+      const cutXBtn = page.locator('button:has-text("CUT X")').first();
+      await cutXBtn.waitFor({ state: "visible", timeout: 25000 });
+
+      const box = await waitForLargeCanvasBox(page);
+      assert.ok(
+        box && box.width > 100 && box.height > 100,
+        `Expected non-zero WebGL2 canvas, got ${JSON.stringify(box)}`,
+      );
+      assert.strictEqual(await page.locator("text=3D Viewer Error").count(), 0);
+
+      // Toggle X-axis cutting plane and verify SPLIT/AUTO studio section HUD appears
+      await cutXBtn.click();
+      await page.locator('button:has-text("SPLIT")').first().waitFor({ state: "visible", timeout: 5000 });
+      await page.locator('button:has-text("AUTO")').first().waitFor({ state: "visible", timeout: 5000 });
+
+      // Switch to STEP tab and confirm 3D WebGL canvas stays healthy
+      const stepTab = page.locator('[role="tab"]:has-text("FanFrame.step"), button:has-text("FanFrame.step")').first();
+      await stepTab.waitFor({ state: "visible", timeout: 10000 });
+      await stepTab.click();
+      await page.waitForTimeout(800);
+      assert.strictEqual(await page.locator("text=3D Viewer Error").count(), 0);
+      await cutXBtn.waitFor({ state: "visible", timeout: 10000 });
+      const stepBox = await waitForLargeCanvasBox(page);
+      assert.ok(
+        stepBox && stepBox.width > 100 && stepBox.height > 100,
+        `Expected non-zero WebGL2 canvas after STEP switch, got ${JSON.stringify(stepBox)}`,
+      );
+
+      assert.deepStrictEqual(pageErrors, [], `Unexpected pageerror(s) in Morsel 3D WebGL2: ${pageErrors.join("; ")}`);
+    } finally {
+      await browser?.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("renders Ansatz PolyglotArtifactViewer (.scad) and CadStepViewer (.step + GD&T) on /render-artifact/:id in live WebGL2 with zero pageerrors", async (t) => {
+    const indexHtml = path.join(DIST_DIR, "index.html");
+    if (!fs.existsSync(indexHtml)) {
+      t.skip("apps/web/dist/index.html not built; run npm run build --workspace=@modelscript/web first");
+      return;
+    }
+
+    const playwright = await import("playwright");
+    const { chromium } = playwright;
+    if (!fs.existsSync(chromium.executablePath())) {
+      t.skip(`Playwright Chromium binary not installed at ${chromium.executablePath()}`);
+      return;
+    }
+
+    const { server, port } = await startSpaServer(DIST_DIR);
+    let browser: import("playwright").Browser | undefined;
+    try {
+      browser = await chromium.launch({ headless: true, args: CHROMIUM_WEBGL_ARGS });
+      const context = await browser.newContext({
+        viewport: { width: 1440, height: 900 },
+        serviceWorkers: "block",
+      });
+      const page = await context.newPage();
+      const pageErrors: string[] = [];
+      page.on("pageerror", (err) => pageErrors.push(err.stack || err.message));
+
+      await page.route("**/api/**", async (route) => {
+        const url = route.request().url();
+        if (url.includes("/social/artifact-views/101")) {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              artifactView: {
+                id: 101,
+                view_type: "scad",
+                title: "TurbofanRotor.scad",
+                view_config: JSON.stringify({
+                  dialect: "scad",
+                  filename: "TurbofanRotor.scad",
+                  code: HERO_TEST_SCAD_CODE,
+                }),
+              },
+            }),
+          });
+          return;
+        }
+        if (url.includes("/social/artifact-views/102")) {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              artifactView: {
+                id: 102,
+                view_type: "cad-step",
+                title: "FanFrame.step",
+                view_config: JSON.stringify({
+                  dialect: "step",
+                  filename: "FanFrame.step",
+                  code: HERO_TEST_STEP_CODE,
+                }),
+              },
+            }),
+          });
+          return;
+        }
+        await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+      });
+
+      // 1. Ansatz PolyglotArtifactViewer routing dialect === "scad" -> CadStepViewer
+      await page.goto(`http://127.0.0.1:${port}/render-artifact/101?chromeless=1`, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      await page.locator('button:has-text("SPLIT")').first().waitFor({ state: "visible", timeout: 25000 });
+      const scadBox = await waitForLargeCanvasBox(page);
+      assert.ok(
+        scadBox && scadBox.width > 100 && scadBox.height > 100,
+        `Expected SCAD WebGL2 canvas, got ${JSON.stringify(scadBox)}`,
+      );
+      await page.locator('button:has-text("SPLIT")').first().click();
+      await page.locator('button:has-text("AUTO")').first().waitFor({ state: "visible", timeout: 5000 });
+
+      // 2. Ansatz CadStepViewer (.step AP242 + GD&T HUD)
+      await page.goto(`http://127.0.0.1:${port}/render-artifact/102?chromeless=1`, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      await page.locator('button:has-text("SPLIT")').first().waitFor({ state: "visible", timeout: 25000 });
+      const stepBox = await waitForLargeCanvasBox(page);
+      assert.ok(
+        stepBox && stepBox.width > 100 && stepBox.height > 100,
+        `Expected STEP WebGL2 canvas, got ${JSON.stringify(stepBox)}`,
+      );
+      const gdtBtn = page.locator('button:has-text("GD&T")').first();
+      await gdtBtn.waitFor({ state: "visible", timeout: 10000 });
+      await gdtBtn.click();
+      await page.waitForTimeout(500);
+
+      assert.deepStrictEqual(
+        pageErrors,
+        [],
+        `Unexpected pageerror(s) in Ansatz CadStepViewer: ${pageErrors.join("; ")}`,
+      );
     } finally {
       await browser?.close();
       await new Promise<void>((resolve) => server.close(() => resolve()));

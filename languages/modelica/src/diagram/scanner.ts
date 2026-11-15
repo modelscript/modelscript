@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Position, Range, TextEdit } from "vscode-languageserver-types";
+import {
+  isAsciiDigitsOnly,
+  isAsciiIdentContinue,
+  isAsciiWhitespaceCode,
+  isSignedAsciiNumberText,
+  parseArrayLiteralElements,
+  stripAsciiWhitespace,
+} from "../flattener/expressions/index.js";
 import type { ModelicaClassInstance } from "./types.js";
 
 export type CompositionSectionKind =
@@ -774,7 +782,11 @@ export function scanModelicaClassLayout(
           let rhsEnd = closeParenOff;
           while (rhsEnd > rhsStart && maskedText[rhsEnd - 1]! <= " ") rhsEnd--;
 
-          const normRef = (s: string) => s.replace(/\s*\.\s*/g, ".").trim();
+          const normRef = (s: string) =>
+            s
+              .split(".")
+              .map((p) => p.trim())
+              .join(".");
           connects.push({
             source: normRef(docText.slice(lhsStart, lhsEnd)),
             target: normRef(docText.slice(rhsStart, rhsEnd)),
@@ -919,7 +931,7 @@ function tryParseComponentClause(
     idx += 2;
   }
   const typeEndOffset = tokens[idx - 1]!.end;
-  const typeName = docText.slice(tokens[typeStartIdx]!.start, typeEndOffset).replace(/\s+/g, "");
+  const typeName = stripAsciiWhitespace(docText.slice(tokens[typeStartIdx]!.start, typeEndOffset));
 
   // Optional type array subscripts `[...]`
   if (tokens[idx]?.text === "[") {
@@ -1133,48 +1145,125 @@ function tryParseComponentClause(
 
 // ── Lightweight Annotation Parsers for Syntax-Error Fallback ──
 
-function parseNumberPair(text: string): [number, number] | null {
-  const m = text.match(/\{\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*,\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*\}/);
-  if (!m) return null;
-  return [Number(m[1]), Number(m[2])];
+export function findKeywordCallOpenParen(
+  masked: string,
+  keyword: string,
+): { startIndex: number; openParenIndex: number } | null {
+  let pos = 0;
+  while (pos <= masked.length - keyword.length) {
+    const idx = masked.indexOf(keyword, pos);
+    if (idx < 0) return null;
+    const prevOk = idx === 0 || !isAsciiIdentContinue(masked.charCodeAt(idx - 1));
+    let j = idx + keyword.length;
+    if (prevOk) {
+      while (j < masked.length && isAsciiWhitespaceCode(masked.charCodeAt(j))) j++;
+      if (j < masked.length && masked[j] === "(") {
+        return { startIndex: idx, openParenIndex: j };
+      }
+    }
+    pos = idx + keyword.length;
+  }
+  return null;
 }
 
-function parseExtentMatrix(text: string): [[number, number], [number, number]] | null {
-  const m = text.match(
-    /extent\s*=\s*\{\s*\{\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\}\s*,\s*\{\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\}\s*\}/,
-  );
-  if (!m) return null;
-  return [
-    [Number(m[1]), Number(m[2])],
-    [Number(m[3]), Number(m[4])],
-  ];
+function findKeywordCallBody(
+  annSlice: string,
+  masked: string,
+  keyword: string,
+): { body: string; bodyMasked: string } | null {
+  const call = findKeywordCallOpenParen(masked, keyword);
+  if (!call) return null;
+  const closeParen = findBalancedClose(masked, call.openParenIndex);
+  if (closeParen === -1) return null;
+  return {
+    body: annSlice.slice(call.openParenIndex + 1, closeParen),
+    bodyMasked: masked.slice(call.openParenIndex + 1, closeParen),
+  };
+}
+
+function findNamedFieldValueSlice(maskedBody: string, rawBody: string, fieldName: string): string | null {
+  let pos = 0;
+  while (pos <= maskedBody.length - fieldName.length) {
+    const idx = maskedBody.indexOf(fieldName, pos);
+    if (idx < 0) return null;
+    const prevOk = idx === 0 || !isAsciiIdentContinue(maskedBody.charCodeAt(idx - 1));
+    const afterName = idx + fieldName.length;
+    const nextOk = afterName >= maskedBody.length || !isAsciiIdentContinue(maskedBody.charCodeAt(afterName));
+    if (prevOk && nextOk) {
+      let j = afterName;
+      while (j < maskedBody.length && isAsciiWhitespaceCode(maskedBody.charCodeAt(j))) j++;
+      if (j < maskedBody.length && maskedBody[j] === "=" && maskedBody[j + 1] !== "=") {
+        j++;
+        while (j < maskedBody.length && isAsciiWhitespaceCode(maskedBody.charCodeAt(j))) j++;
+        if (j >= rawBody.length) return null;
+        if (maskedBody[j] === "{") {
+          const closeBrace = findBalancedClose(maskedBody, j);
+          if (closeBrace !== -1) return rawBody.slice(j, closeBrace + 1);
+        } else {
+          let end = j;
+          while (
+            end < rawBody.length &&
+            rawBody[end] !== "," &&
+            rawBody[end] !== ")" &&
+            rawBody[end] !== ";" &&
+            !isAsciiWhitespaceCode(rawBody.charCodeAt(end))
+          ) {
+            end++;
+          }
+          if (end > j) return rawBody.slice(j, end);
+        }
+      }
+    }
+    pos = afterName;
+  }
+  return null;
+}
+
+function parseNumberPair(text: string): [number, number] | null {
+  const open = text.indexOf("{");
+  if (open < 0) return null;
+  const close = text.indexOf("}", open + 1);
+  if (close < 0) return null;
+  const elems = parseArrayLiteralElements(text.slice(open, close + 1)).map((s) => s.trim());
+  if (elems.length !== 2) return null;
+  if (!isSignedAsciiNumberText(elems[0]!) || !isSignedAsciiNumberText(elems[1]!)) return null;
+  return [Number(elems[0]), Number(elems[1])];
+}
+
+function parseExtentMatrix(rawBody: string, maskedBody: string): [[number, number], [number, number]] | null {
+  const extSlice = findNamedFieldValueSlice(maskedBody, rawBody, "extent");
+  if (!extSlice || !extSlice.startsWith("{")) return null;
+  const outer = parseArrayLiteralElements(extSlice);
+  if (outer.length !== 2) return null;
+  const p1 = parseNumberPair(outer[0]!);
+  const p2 = parseNumberPair(outer[1]!);
+  return p1 && p2 ? [p1, p2] : null;
 }
 
 function parseDiagramAnnotationFromSlice(annSlice: string): any | null {
   const masked = maskModelicaCommentsAndStrings(annSlice);
-  const diagMatch = masked.match(/\bDiagram\s*\(/);
-  if (!diagMatch || diagMatch.index === undefined) return null;
-  const openParen = diagMatch.index + diagMatch[0].length - 1;
-  const closeParen = findBalancedClose(masked, openParen);
-  if (closeParen === -1) return null;
-  const diagBody = annSlice.slice(openParen + 1, closeParen);
+  const call = findKeywordCallBody(annSlice, masked, "Diagram");
+  if (!call) return null;
+  const { body: diagBody, bodyMasked: diagMasked } = call;
 
-  const extent = parseExtentMatrix(diagBody) ?? [
+  const extent = parseExtentMatrix(diagBody, diagMasked) ?? [
     [-100, -100],
     [100, 100],
   ];
-  const parMatch = diagBody.match(/preserveAspectRatio\s*=\s*(true|false)/);
-  const scaleMatch = diagBody.match(/initialScale\s*=\s*(-?\d+(?:\.\d+)?)/);
-  const gridMatch = diagBody.match(/grid\s*=\s*(\{[^}]+\})/);
-  const grid = gridMatch ? parseNumberPair(gridMatch[1]!) : undefined;
+  const parVal = findNamedFieldValueSlice(diagMasked, diagBody, "preserveAspectRatio");
+  const hasPar = parVal === "true" || parVal === "false";
+  const scaleVal = findNamedFieldValueSlice(diagMasked, diagBody, "initialScale");
+  const hasScale = scaleVal !== null && isSignedAsciiNumberText(scaleVal);
+  const gridVal = findNamedFieldValueSlice(diagMasked, diagBody, "grid");
+  const grid = gridVal ? (parseNumberPair(gridVal) ?? undefined) : undefined;
 
   return {
     "@type": "Diagram",
     coordinateSystem: {
       "@type": "coordinateSystem",
       extent,
-      ...(parMatch ? { preserveAspectRatio: parMatch[1] === "true" } : {}),
-      ...(scaleMatch ? { initialScale: Number(scaleMatch[1]) } : {}),
+      ...(hasPar ? { preserveAspectRatio: parVal === "true" } : {}),
+      ...(hasScale ? { initialScale: Number(scaleVal) } : {}),
       ...(grid ? { grid } : {}),
     },
   };
@@ -1182,17 +1271,15 @@ function parseDiagramAnnotationFromSlice(annSlice: string): any | null {
 
 function parsePlacementAnnotationFromSlice(annSlice: string): any | null {
   const masked = maskModelicaCommentsAndStrings(annSlice);
-  const plMatch = masked.match(/\bPlacement\s*\(/);
-  if (!plMatch || plMatch.index === undefined) return null;
-  const openParen = plMatch.index + plMatch[0].length - 1;
-  const closeParen = findBalancedClose(masked, openParen);
-  if (closeParen === -1) return null;
-  const plBody = annSlice.slice(openParen + 1, closeParen);
+  const call = findKeywordCallBody(annSlice, masked, "Placement");
+  if (!call) return null;
+  const { body: plBody, bodyMasked: plMasked } = call;
 
-  const extent = parseExtentMatrix(plBody);
-  const originMatch = plBody.match(/origin\s*=\s*(\{[^}]+\})/);
-  const origin = originMatch ? parseNumberPair(originMatch[1]!) : undefined;
-  const rotMatch = plBody.match(/rotation\s*=\s*(-?\d+(?:\.\d+)?)/);
+  const extent = parseExtentMatrix(plBody, plMasked);
+  const originVal = findNamedFieldValueSlice(plMasked, plBody, "origin");
+  const origin = originVal ? (parseNumberPair(originVal) ?? undefined) : undefined;
+  const rotVal = findNamedFieldValueSlice(plMasked, plBody, "rotation");
+  const hasRot = rotVal !== null && isSignedAsciiNumberText(rotVal);
 
   return {
     "@type": "Placement",
@@ -1200,37 +1287,32 @@ function parsePlacementAnnotationFromSlice(annSlice: string): any | null {
       "@type": "transformation",
       ...(origin ? { origin } : {}),
       ...(extent ? { extent } : {}),
-      ...(rotMatch ? { rotation: Number(rotMatch[1]) } : {}),
+      ...(hasRot ? { rotation: Number(rotVal) } : {}),
     },
   };
 }
 
 function parseLineAnnotationFromSlice(annSlice: string): any | null {
   const masked = maskModelicaCommentsAndStrings(annSlice);
-  const lnMatch = masked.match(/\bLine\s*\(/);
-  if (!lnMatch || lnMatch.index === undefined) return null;
-  const openParen = lnMatch.index + lnMatch[0].length - 1;
-  const closeParen = findBalancedClose(masked, openParen);
-  if (closeParen === -1) return null;
-  const lnBody = annSlice.slice(openParen + 1, closeParen);
-  const lnMasked = masked.slice(openParen + 1, closeParen);
+  const call = findKeywordCallBody(annSlice, masked, "Line");
+  if (!call) return null;
+  const { body: lnBody, bodyMasked: lnMasked } = call;
 
   let points: [number, number][] | undefined;
-  const ptsMatch = lnMasked.match(/\bpoints\s*=\s*\{/);
-  if (ptsMatch && ptsMatch.index !== undefined) {
-    const braceOpen = ptsMatch.index + ptsMatch[0].length - 1;
-    const braceClose = findBalancedClose(lnMasked, braceOpen);
-    if (braceClose !== -1) {
-      const ptsInner = lnBody.slice(braceOpen + 1, braceClose);
-      const pairs = [...ptsInner.matchAll(/\{\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\}/g)];
-      points = pairs.map((m) => [Number(m[1]), Number(m[2])]);
-    }
+  const ptsSlice = findNamedFieldValueSlice(lnMasked, lnBody, "points");
+  if (ptsSlice && ptsSlice.startsWith("{")) {
+    points = parseArrayLiteralElements(ptsSlice)
+      .map((item) => parseNumberPair(item))
+      .filter((p): p is [number, number] => p !== null);
   }
 
   let color: [number, number, number] | undefined;
-  const colMatch = lnBody.match(/\bcolor\s*=\s*\{\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\}/);
-  if (colMatch) {
-    color = [Number(colMatch[1]), Number(colMatch[2]), Number(colMatch[3])];
+  const colSlice = findNamedFieldValueSlice(lnMasked, lnBody, "color");
+  if (colSlice && colSlice.startsWith("{")) {
+    const colElems = parseArrayLiteralElements(colSlice).map((s) => s.trim());
+    if (colElems.length === 3 && colElems.every((e) => isAsciiDigitsOnly(e))) {
+      color = [Number(colElems[0]), Number(colElems[1]), Number(colElems[2])];
+    }
   }
 
   return {

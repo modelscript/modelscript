@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type DefaultTheme } from "vitepress";
-import { INDUSTRIES } from "./theme/data/industries";
+import { INDUSTRIES, INDUSTRY_BY_SLUG } from "./theme/data/industries";
 import { LANGUAGES, PLATFORM_GROUPS, type LanguageGroupId } from "./theme/data/languages";
 
 const SITE_DESCRIPTION = `Open-core computable digital thread that imports ${LANGUAGES.length} simulation and CAE formats, links them to requirements, and lets you simulate, verify, and export — in the browser, CLI, VS Code, or air-gapped enterprise appliances.`;
@@ -43,20 +43,70 @@ function languagesSidebar(): DefaultTheme.SidebarItem[] {
   ];
 }
 
-let modelicaGrammar: Record<string, unknown> | null = null;
-const grammarPath = path.resolve(__dirname, "../../../../dist/extension/syntaxes/modelica.tmLanguage.json");
-if (fs.existsSync(grammarPath)) {
-  try {
-    modelicaGrammar = JSON.parse(fs.readFileSync(grammarPath, "utf-8"));
-    if (modelicaGrammar) {
-      modelicaGrammar["name"] = "modelica";
-      modelicaGrammar["scopeName"] = modelicaGrammar["scopeName"] || "source.modelica";
-      modelicaGrammar["aliases"] = ["Modelica", "mo"];
+function loadTmGrammar(
+  paths: string[],
+  name: string,
+  defaultScopeName: string,
+  aliases: string[],
+): Record<string, unknown> | null {
+  for (const p of paths) {
+    if (!fs.existsSync(p)) continue;
+    try {
+      const grammar = JSON.parse(fs.readFileSync(p, "utf-8")) as Record<string, unknown>;
+      grammar["name"] = name;
+      grammar["scopeName"] = grammar["scopeName"] || defaultScopeName;
+      grammar["aliases"] = aliases;
+      return grammar;
+    } catch {
+      // Try next candidate path
     }
-  } catch {
-    modelicaGrammar = null;
   }
+  return null;
 }
+
+const CUSTOM_GRAMMAR_ALIASES: Record<string, string[]> = {
+  modelica: ["Modelica", "mo"],
+  sysml: ["sysml2", "kerml", "SysML", "SysMLv2"],
+  owl2: ["owl"],
+  fea: ["abaqus"],
+  fortran: ["f90", "f77"],
+};
+
+const SKIP_BUILTIN_GRAMMARS = new Set(["c"]);
+
+function loadAllLanguageGrammars(): Record<string, unknown>[] {
+  const loaded = new Map<string, Record<string, unknown>>();
+  const ideSyntaxesDir = path.resolve(__dirname, "../../../../apps/ide/dist/extension/syntaxes");
+  const rootSyntaxesDir = path.resolve(__dirname, "../../../../dist/extension/syntaxes");
+  const languagesDir = path.resolve(__dirname, "../../../../languages");
+
+  // 1. Load from apps/ide/dist/extension/syntaxes (all 94 grammars) or fallback dist/extension/syntaxes
+  for (const dir of [ideSyntaxesDir, rootSyntaxesDir]) {
+    if (!fs.existsSync(dir)) continue;
+    for (const file of fs.readdirSync(dir)) {
+      if (!file.endsWith(".tmLanguage.json")) continue;
+      const slug = file.replace(/\.tmLanguage\.json$/, "");
+      if (slug === "sysml2" || SKIP_BUILTIN_GRAMMARS.has(slug) || loaded.has(slug)) continue;
+      const grammar = loadTmGrammar([path.join(dir, file)], slug, `source.${slug}`, CUSTOM_GRAMMAR_ALIASES[slug] ?? []);
+      if (grammar) loaded.set(slug, grammar);
+    }
+  }
+
+  // 2. Fallback to languages/*/as-gen/tmLanguage.json for any missing grammars
+  if (fs.existsSync(languagesDir)) {
+    for (const entry of fs.readdirSync(languagesDir)) {
+      const slug = entry === "sysml2" ? "sysml" : entry;
+      if (SKIP_BUILTIN_GRAMMARS.has(slug) || loaded.has(slug)) continue;
+      const tmPath = path.join(languagesDir, entry, "as-gen", "tmLanguage.json");
+      const grammar = loadTmGrammar([tmPath], slug, `source.${slug}`, CUSTOM_GRAMMAR_ALIASES[slug] ?? []);
+      if (grammar) loaded.set(slug, grammar);
+    }
+  }
+
+  return [...loaded.values()];
+}
+
+const customGrammars = loadAllLanguageGrammars();
 
 const examplesJsonPath = path.resolve(__dirname, "./theme/data/language-examples.generated.json");
 const examplesBySlug: Record<string, unknown> = fs.existsSync(examplesJsonPath)
@@ -80,18 +130,52 @@ function resolveEnvFlag(...keys: string[]): boolean {
   return resolveEnvFlagWithDefault(false, ...keys);
 }
 
+const NODE_BUILTIN_SPECIFIERS = new Set([
+  "path",
+  "node:path",
+  "url",
+  "node:url",
+  "fs",
+  "node:fs",
+  "node:fs/promises",
+  "child_process",
+  "node:child_process",
+  "os",
+  "node:os",
+  "crypto",
+  "node:crypto",
+  "http",
+  "node:http",
+  "module",
+  "node:module",
+  "worker_threads",
+  "node:worker_threads",
+  "tty",
+  "node:tty",
+]);
+
+function createBrowserNodeBuiltinsShimPlugin() {
+  const shimPath = path.resolve(__dirname, "./theme/util/node-shims.ts");
+  return {
+    name: "browser-node-builtins-shim",
+    enforce: "pre" as const,
+    resolveId(source: string, _importer: string | undefined, options?: { ssr?: boolean }) {
+      if (options?.ssr) return null;
+      if (NODE_BUILTIN_SPECIFIERS.has(source)) {
+        return shimPath;
+      }
+      return null;
+    },
+  };
+}
+
 export default defineConfig({
   markdown: {
     math: true,
 
-    languages: modelicaGrammar ? [modelicaGrammar as any] : [],
+    languages: customGrammars as any[],
     languageAlias: {
-      abaqus: "ini",
-      ampl: "python",
-      owl: "lisp",
-      rocets: "c",
-      scad: "c",
-      sysml: "rust",
+      ...(customGrammars.some((g) => g["name"] === "sysml") ? {} : { sysml: "rust" }),
     },
     config(md) {
       const defaultCodeInline = md.renderer.rules.code_inline;
@@ -156,42 +240,11 @@ export default defineConfig({
     esbuild: {
       target: ["es2020", "safari15"],
     },
-    plugins: [
-      {
-        name: "browser-node-builtins-shim",
-        enforce: "pre",
-        resolveId(source, _importer, options) {
-          if (options?.ssr) return null;
-          const nodeBuiltins = new Set([
-            "path",
-            "node:path",
-            "url",
-            "node:url",
-            "fs",
-            "node:fs",
-            "node:fs/promises",
-            "child_process",
-            "node:child_process",
-            "os",
-            "node:os",
-            "crypto",
-            "node:crypto",
-            "http",
-            "node:http",
-            "module",
-            "node:module",
-            "worker_threads",
-            "node:worker_threads",
-            "tty",
-            "node:tty",
-          ]);
-          if (nodeBuiltins.has(source)) {
-            return path.resolve(__dirname, "./theme/util/node-shims.ts");
-          }
-          return null;
-        },
-      },
-    ],
+    plugins: [createBrowserNodeBuiltinsShimPlugin()],
+    worker: {
+      format: "es",
+      plugins: () => [createBrowserNodeBuiltinsShimPlugin()],
+    },
     resolve: {
       dedupe: ["three"],
       alias: {
@@ -228,6 +281,13 @@ export default defineConfig({
     const langMatch = /^languages\/([a-z0-9-]+)\.md$/.exec(pageData.relativePath);
     if (langMatch?.[1] && langMatch[1] !== "overview" && examplesBySlug[langMatch[1]]) {
       pageData.frontmatter["_example"] = examplesBySlug[langMatch[1]];
+    }
+    const indMatch = /^industries\/([a-z0-9-]+)\.md$/.exec(pageData.relativePath);
+    const ind = indMatch?.[1] ? INDUSTRY_BY_SLUG[indMatch[1]] : undefined;
+    if (ind) {
+      pageData.frontmatter["_industryExamples"] = ind.featuredExamples
+        .map((slug) => examplesBySlug[slug])
+        .filter((e): e is NonNullable<typeof e> => Boolean(e));
     }
   },
   transformHead({ pageData, title, description }) {
@@ -271,6 +331,8 @@ export default defineConfig({
         reference: { name: "Reference", link: "https://modelscript.org/reference/linter-rules" },
         pricing: { name: "Pricing", link: "https://modelscript.org/pricing" },
         trademark: { name: "Trademark Policy", link: "https://modelscript.org/trademark" },
+        terms: { name: "Terms of Service", link: "https://modelscript.org/terms" },
+        privacy: { name: "Privacy Policy", link: "https://modelscript.org/privacy" },
       };
 
       const items: { "@type": string; position: number; name: string; item: string }[] = [
@@ -330,7 +392,7 @@ export default defineConfig({
       "link",
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:wght@400;500;600&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:wght@400;500;600;700&display=swap",
       },
     ],
     ["meta", { name: "theme-color", content: "#0a0f1c" }],
@@ -418,6 +480,8 @@ export default defineConfig({
             { text: "Enterprise Administration", link: "/guide/administration" },
             { text: "Pricing & Licensing", link: "/pricing" },
             { text: "Trademark Policy", link: "/trademark" },
+            { text: "Terms of Service", link: "/terms" },
+            { text: "Privacy Policy", link: "/privacy" },
           ],
         },
         {
@@ -514,6 +578,8 @@ export default defineConfig({
         "/reference/": docsSidebar,
         "/pricing": docsSidebar,
         "/trademark": docsSidebar,
+        "/terms": docsSidebar,
+        "/privacy": docsSidebar,
         "/architecture/": engineSidebar,
         "/algorithms/": engineSidebar,
         "/languages/": languagesSidebar(),
@@ -532,7 +598,7 @@ export default defineConfig({
     ],
     footer: {
       message:
-        'Open-Core under the GNU AGPL v3 License; Enterprise Edition (ee/) under the ModelScript Enterprise License. • <a href="/pricing">Pricing</a> • <a href="/trademark">Trademark Policy</a>',
+        'Open-Core under the GNU AGPL v3 License; Enterprise Edition (ee/) under the ModelScript Enterprise License. • <a href="/trademark">Trademark Policy</a> • <a href="/terms">Terms</a> • <a href="/privacy">Privacy</a>',
       copyright: "Copyright © 2025-2026 Mohamad Omar Nachawati and ModelScript Contributors.",
     },
   },

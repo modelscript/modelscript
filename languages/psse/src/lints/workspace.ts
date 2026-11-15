@@ -9,16 +9,8 @@ import {
 import { isLikelyDyrContent, parseDyr } from "../parser/dyr-parser.js";
 import { parseRaw } from "../parser/raw-parser.js";
 import { parseSeq } from "../parser/seq-parser.js";
-import { createPsseWasmParserSync } from "../parser/wasm-loader.js";
+import { getPsseWasmParser } from "../parser/wasm-loader.js";
 import { lintPsse } from "./index.js";
-
-let cachedParser: ReturnType<typeof createPsseWasmParserSync>["parser"] | undefined;
-function getPsseWasmParser() {
-  if (!cachedParser) {
-    cachedParser = createPsseWasmParserSync().parser;
-  }
-  return cachedParser;
-}
 
 /**
  * Performs multi-file PSS/E workspace linting across `.raw`, `.dyr`, and `.seq`

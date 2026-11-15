@@ -8,7 +8,7 @@
  * linear-memory DAE lowering, and Modelica / URDF projections.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, xmlRules } from "@modelscript/dsl";
 import { lowerOpenSimToDae } from "./dae/index.js";
 import { indexOpenSimFile } from "./indexing.js";
 import { lintOpenSimDocument } from "./lints/index.js";
@@ -28,9 +28,12 @@ export const openSimLanguage = language({
   lsp: {
     fileExtensions: [".osim"],
   },
-  rules: {
-    Root: () => "opensim",
+  extras: ($) => {
+    const comment = $["COMMENT"];
+    const pi = $["PROCESSING_INSTRUCTION"];
+    return comment && pi ? [/[ \t\r\n]+/, comment, pi] : [/[ \t\r\n]+/];
   },
+  rules: xmlRules,
 
   actions: [
     {

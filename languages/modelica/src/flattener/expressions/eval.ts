@@ -13,9 +13,25 @@ import {
   Variability,
   VarType,
 } from "@modelscript/runtime";
+import type { SyntaxNode } from "../../../src-gen/bindings.js";
 import { getExprArrayShape, getFlatteningState, getNamedArrayShape } from "../support/state.js";
 import { exprReferencesRuntimeParameter } from "./binary-ops.js";
-import { beginExternalCstEval, endExternalCstEval, evaluateCSTNumber, getSymbolEnumLiterals } from "./cst-utils.js";
+import {
+  beginExternalCstEval,
+  cstContainsNodeType,
+  endExternalCstEval,
+  evalBinaryNumericOp,
+  evaluateCSTNumber,
+  extractBracketSubscripts,
+  extractFunctionCallArgExprNodesCst,
+  getSymbolEnumLiterals,
+  parseStandaloneExpressionCst,
+  parseTrailingNumericSubscripts,
+  stripArraySubscripts,
+  stripLeadingDot,
+  stripOuterDoubleQuotes,
+  unwrapParenExprCst,
+} from "./cst-utils.js";
 import { SCALAR_VECTORIZABLE_FUNCTIONS } from "./functions.js";
 
 /**
@@ -931,7 +947,7 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
         const computeDbDims = (): number[] | null => {
           const hasDot = vName.includes(".");
           const simpleName = hasDot ? vName.split(".").pop()! : vName;
-          const cleanVName = vName.replace(/\[[^\][]*\]/g, "");
+          const cleanVName = stripArraySubscripts(vName);
           let sym: any = null;
           if (currentScopeId) {
             const resolver = ((db as any).query("resolveName", currentScopeId) ??
@@ -975,12 +991,12 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
                 }
                 if (dims) {
                   const lastSeg = vName.split(".").pop()!;
-                  const subMatches = [...lastSeg.matchAll(/\[([^\][]*)\]/g)];
+                  const subMatches = extractBracketSubscripts(lastSeg);
                   if (subMatches.length > 0) {
                     const remaining: number[] = [];
                     let dIdx = 0;
-                    for (const m of subMatches) {
-                      const indices = m[1]!.split(",").map((idx: string) => idx.trim());
+                    for (const subContent of subMatches) {
+                      const indices = subContent.split(",").map((idx: string) => idx.trim());
                       for (const idx of indices) {
                         if (idx === ":") {
                           if (dIdx < dims.length) remaining.push(dims[dIdx]!);
@@ -1317,10 +1333,9 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
               ? explicitShape
               : (fnState.deducedOutputShapes?.get(vName) ?? explicitShape);
           if (outShape && outShape.length > 0 && outShape.every((d) => d > 0)) return outShape;
-          const m = /^([^[\]]+)\[([0-9,\s]+)\]$/.exec(vName);
-          if (m) {
-            const base = m[1]!;
-            const indices = m[2]!.split(",").map((s) => Number.parseInt(s.trim(), 10));
+          const parsed = parseTrailingNumericSubscripts(vName);
+          if (parsed) {
+            const { base, indices } = parsed;
             const prev = scalarOutputCounts.get(base) ?? indices.map(() => 0);
             for (let k = 0; k < indices.length; k++) {
               if (indices[k]! > (prev[k] ?? 0)) prev[k] = indices[k]!;
@@ -1339,7 +1354,7 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
       const cleanFnName = fnName.includes(".") ? fnName.split(".").pop()! : fnName;
       let fnSyms = db.byName(cleanFnName).filter((s: any) => s.kind === "Function" || s.kind === "Class");
       if (fnName.includes(".") && fnSyms.length > 1) {
-        const normTarget = fnName.replace(/^\./, "");
+        const normTarget = stripLeadingDot(fnName);
         const qualifiedMatches = fnSyms.filter((s: any) => {
           const fqn = String((db as QueryDB).query("symbolFullName", s.id) ?? s.name);
           return fqn === normTarget || fqn.endsWith(`.${normTarget}`) || normTarget.endsWith(`.${fqn}`);
@@ -1380,50 +1395,138 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
                       continue;
                     }
                   }
-                  let subDimText = dimText;
-                  for (let iIdx = 0; iIdx < inputs.length; iIdx++) {
-                    const inpName = inputs[iIdx]!.name as string;
-                    const argExprId = iIdx === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + iIdx);
-                    if (subDimText.includes(`size(${inpName}`)) {
-                      const argDims = getExprDims(argExprId, dae, db, flattener);
-                      if (argDims && argDims.length > 0) {
-                        subDimText = subDimText.replace(
-                          new RegExp(`size\\(\\s*${inpName}\\s*(?:,\\s*(\\d+))?\\s*\\)`, "g"),
-                          (_m: string, dStr?: string) => {
-                            const k = dStr ? parseInt(dStr, 10) : 1;
-                            return k >= 1 && k <= argDims.length && argDims[k - 1]! > 0 ? String(argDims[k - 1]) : _m;
-                          },
-                        );
+                  const argDimCache = new Map<number, number[] | null>();
+                  const argValCache = new Map<number, number | null>();
+                  const getArgExprId = (iIdx: number): number =>
+                    iIdx === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + iIdx);
+                  const getArgVal = (iIdx: number): number | null => {
+                    if (argValCache.has(iIdx)) return argValCache.get(iIdx)!;
+                    const ev = evalDaeExpr(getArgExprId(iIdx), dae);
+                    const num = typeof ev === "number" ? ev : typeof ev === "boolean" ? (ev ? 1 : 0) : null;
+                    argValCache.set(iIdx, num);
+                    return num;
+                  };
+                  const getArgDims = (iIdx: number): number[] | null => {
+                    if (argDimCache.has(iIdx)) return argDimCache.get(iIdx)!;
+                    const dimsVal = getExprDims(getArgExprId(iIdx), dae, db, flattener);
+                    argDimCache.set(iIdx, dimsVal);
+                    return dimsVal;
+                  };
+                  const evalOutputDimNode = (node: SyntaxNode | null | undefined): number | null => {
+                    if (!node) return null;
+                    if (node.childCount === 3 && node.child(0)?.text === "(" && node.child(2)?.text === ")") {
+                      return evalOutputDimNode(node.child(1));
+                    }
+                    if (
+                      node.childCount === 1 &&
+                      node.type !== "component_reference" &&
+                      node.type !== "identifier" &&
+                      node.type !== "unsigned_integer" &&
+                      node.type !== "unsigned_real" &&
+                      node.type !== "unsigned_number"
+                    ) {
+                      return evalOutputDimNode(node.child(0));
+                    }
+                    const nText = node.text?.trim() ?? "";
+                    if (nText === "true") return 1;
+                    if (nText === "false") return 0;
+                    if (
+                      node.type === "unsigned_integer" ||
+                      node.type === "unsigned_real" ||
+                      node.type === "unsigned_number"
+                    ) {
+                      const num = Number(nText);
+                      return isNaN(num) ? null : num;
+                    }
+                    if (node.type === "expression" && node.child(0)?.text === "if") {
+                      const cond0 = evalOutputDimNode(node.child(1));
+                      if (cond0 === null) return null;
+                      if (cond0 !== 0) return evalOutputDimNode(node.child(3));
+                      let idx = 4;
+                      while (idx + 3 < node.childCount && node.child(idx)?.text === "elseif") {
+                        const condK = evalOutputDimNode(node.child(idx + 1));
+                        if (condK === null) return null;
+                        if (condK !== 0) return evalOutputDimNode(node.child(idx + 3));
+                        idx += 4;
+                      }
+                      if (idx + 1 < node.childCount && node.child(idx)?.text === "else") {
+                        return evalOutputDimNode(node.child(idx + 1));
+                      }
+                      return null;
+                    }
+                    if (
+                      node.type === "primary" &&
+                      node.childCount === 2 &&
+                      node.child(1)?.type === "function_call_args"
+                    ) {
+                      const callee = node.child(0)?.text?.trim();
+                      const callArgs = extractFunctionCallArgExprNodesCst(node);
+                      if (callee === "size") {
+                        const arrName = unwrapParenExprCst(callArgs[0])?.text?.trim();
+                        const dimIdx = callArgs[1] ? evalOutputDimNode(callArgs[1]) : 1;
+                        if (arrName && dimIdx !== null && dimIdx >= 1) {
+                          const iIdx = inputs.findIndex((inp: any) => inp.name === arrName);
+                          if (iIdx >= 0) {
+                            const argDims = getArgDims(iIdx);
+                            if (argDims && dimIdx <= argDims.length && argDims[dimIdx - 1]! > 0) {
+                              return argDims[dimIdx - 1]!;
+                            }
+                          }
+                        }
+                        return evaluateCSTNumber(node, undefined, c.parentId ?? fnSym.id, db, dae);
+                      }
+                      if ((callee === "min" || callee === "max") && callArgs.length > 0) {
+                        const vals: number[] = [];
+                        for (const ca of callArgs) {
+                          const v = evalOutputDimNode(ca);
+                          if (v === null) {
+                            vals.length = 0;
+                            break;
+                          }
+                          vals.push(v);
+                        }
+                        if (vals.length === callArgs.length) {
+                          return callee === "min" ? Math.min(...vals) : Math.max(...vals);
+                        }
+                      }
+                      if (callee === "integer" && callArgs[0]) {
+                        return evalOutputDimNode(callArgs[0]);
+                      }
+                      return evaluateCSTNumber(node, undefined, c.parentId ?? fnSym.id, db, dae);
+                    }
+                    if (node.type === "expression" && node.childCount === 2) {
+                      const op = stripOuterDoubleQuotes(node.child(0)?.text?.trim() ?? "");
+                      const v = evalOutputDimNode(node.child(1));
+                      if (v !== null) {
+                        if (op === "+") return v;
+                        if (op === "-") return -v;
+                        if (op === "not") return v === 0 ? 1 : 0;
                       }
                     }
-                    if (new RegExp(`\\b${inpName}\\b`).test(subDimText)) {
-                      const evalVal = evalDaeExpr(argExprId, dae);
-                      if (typeof evalVal === "number") {
-                        subDimText = subDimText.replace(new RegExp(`\\b${inpName}\\b`, "g"), String(evalVal));
+                    if (node.type === "expression" && node.childCount === 3) {
+                      const op = stripOuterDoubleQuotes(node.child(1)?.text?.trim() ?? "");
+                      const l = evalOutputDimNode(node.child(0));
+                      const r = evalOutputDimNode(node.child(2));
+                      if (l !== null && r !== null) {
+                        const res = evalBinaryNumericOp(op, l, r, false);
+                        if (res !== null) return res;
                       }
                     }
-                  }
-                  subDimText = subDimText.replace(
-                    /\(\s*if\s+([+-]?\d+(?:\.\d+)?)\s*(>=|<=|<>|==|>|<)\s*([+-]?\d+(?:\.\d+)?)\s+then\s+([^)]+?)\s+else\s+([^)]+?)\s*\)/g,
-                    (_m: string, lhsS: string, opS: string, rhsS: string, thenS: string, elseS: string) => {
-                      const l = Number(lhsS);
-                      const r = Number(rhsS);
-                      const cond =
-                        opS === ">"
-                          ? l > r
-                          : opS === ">="
-                            ? l >= r
-                            : opS === "<"
-                              ? l < r
-                              : opS === "<="
-                                ? l <= r
-                                : opS === "=="
-                                  ? l === r
-                                  : l !== r;
-                      return cond ? thenS.trim() : elseS.trim();
-                    },
-                  );
-                  const evalDim = evaluateCSTNumber(subDimText, undefined, undefined, db, dae);
+                    if (node.type === "component_reference" || node.type === "identifier") {
+                      const iIdx = inputs.findIndex((inp: any) => inp.name === nText);
+                      if (iIdx >= 0) {
+                        const v = getArgVal(iIdx);
+                        if (v !== null) return v;
+                      }
+                    }
+                    return evaluateCSTNumber(node, undefined, c.parentId ?? fnSym.id, db, dae);
+                  };
+                  const dimCst =
+                    (rd?.cstBytes ? (db as any).cstNodeRange?.(rd.cstBytes[0], rd.cstBytes[1], c) : null) ??
+                    parseStandaloneExpressionCst(dimText);
+                  const evalDim = dimCst
+                    ? evalOutputDimNode(dimCst)
+                    : evaluateCSTNumber(dimText, undefined, c.parentId ?? fnSym.id, db, dae);
                   if (typeof evalDim === "number" && evalDim > 0) {
                     resolved.push(Math.round(evalDim));
                     continue;
@@ -1773,7 +1876,15 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
                   compMod?.bindingExpression;
                 if (bExpr?.text) {
                   const bText = bExpr.text.trim();
-                  if (isArrayLiteral(bText) && !/\bfor\b/.test(bText)) {
+                  if (
+                    isArrayLiteral(bText) &&
+                    !cstContainsNodeType(
+                      (bExpr.cstBytes
+                        ? (db as any).cstNodeRange?.(bExpr.cstBytes[0], bExpr.cstBytes[1], cand)
+                        : null) ?? parseStandaloneExpressionCst(bText),
+                      "for_indices",
+                    )
+                  ) {
                     const elems = parseArrayLiteralElements(bText);
                     const parsedElems: any[] = [];
                     let allOk = true;

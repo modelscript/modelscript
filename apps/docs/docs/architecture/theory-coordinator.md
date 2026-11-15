@@ -80,10 +80,18 @@ flowchart TB
 ## The Verification Loop
 
 1. **Initialization**: Shared variables ($V_{\text{shared}}$) are initialized to $[-\infty, +\infty]$ or extracted from SysML v2 requirement bounds and `.ssv` parameter sets.
-2. **Domain Propagation (`propagate`)**: Each registered `TheoryOracle` inspects the current shared interval store and tightens bounds monotonically:
+2. **Domain Propagation (`propagate`)**: Each registered `TheoryOracle` inspects the current shared interval store and tightens bounds monotonically by intersecting all oracle outputs:
+
    $$
    I^{(k+1)}(x) = I^{(k)}(x) \cap \bigcap_{m=1}^{M} \text{Oracle}_m.\text{propagate}(I^{(k)})(x)
    $$
+
+   | Symbol                             | Meaning                                                                      | Units / Domain                                     |
+   | :--------------------------------- | :--------------------------------------------------------------------------- | :------------------------------------------------- |
+   | $I^{(k)}(x)$                       | Interval bound $[l, u]$ for shared variable $x$ at fixed-point iteration $k$ | Closed interval in $\mathbb{R} \cup \{\pm\infty\}$ |
+   | $M$                                | Total number of registered `TheoryOracle` instances                          | $\mathbb{N}_{\ge 1}$                               |
+   | $\text{Oracle}_m.\text{propagate}$ | Monotone interval contractor for the $m$-th domain theory                    | Interval map                                       |
+
 3. **Nelson-Oppen Equality Deduction**: Whenever $I^{(k+1)}(x) = [c, c]$ and $I^{(k+1)}(y) = [c, c]$ (or linear relational equalities $x - y \le 0 \land y - x \le 0$ hold in the Octagon DBM), the coordinator deduces the inter-theory equality $x = y$ and broadcasts it to all oracles.
 4. **Conflict & Unsat Core Extraction ($\text{CDCL}(\mathcal{T})$)**: If any oracle detects $I(x) = \emptyset$ (i.e., $\text{lo} > \text{hi}$) or an axiomatic contradiction, it emits a minimal **Unsatisfiable Core (`UnsatCore`)** pinpointing the exact offending AST nodes across files (e.g., `battery.mo:42`, `enclosure.step:118`, `thermal_req.sysml:15`).
 5. **CEGAR Counterexample Guided Refinement**: If all static/algebraic oracles return `SAT` or `UNKNOWN`, `DynamicSimulationOracle` synthesizes worst-case corner parameters from the narrowed interval box and executes a numerical DAE simulation to either confirm satisfaction or extract a concrete counterexample trajectory $\mathbf{x}(t)$.

@@ -28,8 +28,8 @@ const NotFoundCard = styled.div`
 
 const GlitchNumber = styled.div`
   font-size: 72px;
-  font-weight: 900;
-  letter-spacing: -2px;
+  font-weight: var(--ms-fw-bold, 700);
+  letter-spacing: var(--ms-tracking-tight, -0.025em);
   background: linear-gradient(135deg, #a485ff, #00d2ff);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;

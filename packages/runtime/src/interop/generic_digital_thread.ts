@@ -243,10 +243,16 @@ const EXT_TO_LANG: Array<{ ext: string; lang: string; domain: ThreadDomain }> = 
   { ext: ".raw", lang: "psse", domain: ThreadDomain.PowerRMS },
   { ext: ".dyr", lang: "psse", domain: ThreadDomain.PowerRMS },
   { ext: ".seq", lang: "psse", domain: ThreadDomain.PowerRMS },
+  { ext: ".cgmes", lang: "cgmes", domain: ThreadDomain.PowerRMS },
   { ext: ".pscx", lang: "pscad", domain: ThreadDomain.PowerEMT },
   { ext: ".dss", lang: "opendss", domain: ThreadDomain.PowerEMT },
   { ext: ".olr", lang: "oneliner", domain: ThreadDomain.PowerEMT },
   { ext: ".p3743", lang: "p3743", domain: ThreadDomain.PowerEMT },
+  { ext: ".cfg", lang: "comtrade", domain: ThreadDomain.Telemetry },
+  { ext: ".dat", lang: "comtrade", domain: ThreadDomain.Telemetry },
+  { ext: ".cff", lang: "comtrade", domain: ThreadDomain.Telemetry },
+  { ext: ".soe", lang: "comfede", domain: ThreadDomain.Telemetry },
+  { ext: ".comfede", lang: "comfede", domain: ThreadDomain.Telemetry },
   { ext: ".cir", lang: "spice", domain: ThreadDomain.Modelica },
   { ext: ".va", lang: "verilog-a", domain: ThreadDomain.Modelica },
   { ext: ".owl", lang: "owl2", domain: ThreadDomain.Safety },
@@ -255,6 +261,7 @@ const EXT_TO_LANG: Array<{ ext: string; lang: string; domain: ThreadDomain }> = 
   { ext: ".ssp", lang: "ssp", domain: ThreadDomain.FMU },
   { ext: ".oscal", lang: "oscal", domain: ThreadDomain.Verification },
   { ext: ".csv", lang: "csv", domain: ThreadDomain.Telemetry },
+  { ext: ".las", lang: "las", domain: ThreadDomain.Telemetry },
   { ext: ".sbml", lang: "sbml", domain: ThreadDomain.Modelica },
   { ext: ".cellml", lang: "cellml", domain: ThreadDomain.Modelica },
   { ext: ".c", lang: "c", domain: ThreadDomain.Software },
@@ -762,7 +769,68 @@ function extractGenericArtifact(
           }
         }
         const seenPortNames = new Set<string>();
-        for (const tag of scadEval.mesh?.tags ?? []) {
+        const collectSolidTags = (
+          root: unknown,
+          out: Array<{ portName: string; portType: string; normal?: readonly [number, number, number] | undefined }>,
+        ): void => {
+          const stack: unknown[] = [root];
+          while (stack.length > 0) {
+            const node = stack.pop() as
+              | {
+                  tag?: {
+                    portName?: string;
+                    portType?: string;
+                    normal?: readonly [number, number, number] | undefined;
+                  };
+                  child?: unknown;
+                  left?: unknown;
+                  right?: unknown;
+                  children?: unknown[];
+                }
+              | null
+              | undefined;
+            if (!node || typeof node !== "object") continue;
+            if (node.tag?.portName) {
+              out.push({
+                portName: node.tag.portName,
+                portType: node.tag.portType || "port",
+                normal: node.tag.normal,
+              });
+            }
+            if (node.child) stack.push(node.child);
+            if (node.left) stack.push(node.left);
+            if (node.right) stack.push(node.right);
+            if (Array.isArray(node.children)) {
+              for (const c of node.children) stack.push(c);
+            }
+          }
+        };
+        const scadAny = scadEval as unknown as {
+          solid?: unknown;
+          solids?: unknown[];
+          mesh?: {
+            tags?: ReadonlyArray<{
+              portName: string;
+              portType: string;
+              normal?: readonly [number, number, number] | undefined;
+            }>;
+          };
+        };
+        const collectedTags: Array<{
+          portName: string;
+          portType: string;
+          normal?: readonly [number, number, number] | undefined;
+        }> = [];
+        if (scadAny.solid) collectSolidTags(scadAny.solid, collectedTags);
+        if (Array.isArray(scadAny.solids)) {
+          for (const s of scadAny.solids) collectSolidTags(s, collectedTags);
+        }
+        // Only touch lazy .mesh getter when a test mock supplies prebuilt .mesh without .solid/.solids
+        const tagsSource =
+          collectedTags.length > 0 || scadAny.solid != null || Array.isArray(scadAny.solids)
+            ? collectedTags
+            : (scadAny.mesh?.tags ?? []);
+        for (const tag of tagsSource) {
           if (tag.portName && !seenPortNames.has(tag.portName)) {
             seenPortNames.add(tag.portName);
             const idxTag = file.content.indexOf(`"${tag.portName}"`);
@@ -924,12 +992,21 @@ function extractGenericArtifact(
     if (providers?.scanStepEntities) {
       try {
         stepEntities = providers.scanStepEntities(file.content);
+        const isLargeStep = file.content.length > 262_144;
         for (const ent of stepEntities) {
           const rawFirstArg = ent.args.split(",")[0]?.trim() ?? "";
           const firstArg = Number.parseFloat(rawFirstArg);
           if (Number.isFinite(firstArg)) {
+            const startOff = (ent as { startOffset?: number }).startOffset;
+            const searchChunk =
+              typeof startOff === "number" && startOff >= 0
+                ? file.content.slice(startOff, Math.min(file.content.length, startOff + 512))
+                : isLargeStep
+                  ? ""
+                  : file.content;
+            const chunkBase = typeof startOff === "number" && startOff >= 0 ? startOff : 0;
             const entRe = new RegExp(`${escRe(ent.id)}\\s*=\\s*[A-Z0-9_]+\\s*\\(\\s*([^,)\\s]+)`, "i");
-            const entMatch = entRe.exec(file.content);
+            const entMatch = searchChunk ? entRe.exec(searchChunk) : null;
             let valueStart: number | undefined;
             let valueEnd: number | undefined;
             let line = 1;
@@ -938,12 +1015,14 @@ function extractGenericArtifact(
             if (entMatch && entMatch[1] !== undefined) {
               const argIdx = entMatch[0].lastIndexOf(entMatch[1]);
               if (argIdx >= 0) {
-                valueStart = entMatch.index + argIdx;
+                valueStart = chunkBase + entMatch.index + argIdx;
                 valueEnd = valueStart + entMatch[1].length;
-                const lc = lineColAtOffset(file.content, valueStart);
-                line = lc.line;
-                startCol = lc.col;
-                endCol = lc.col + entMatch[1].length;
+                if (!isLargeStep) {
+                  const lc = lineColAtOffset(file.content, valueStart);
+                  line = lc.line;
+                  startCol = lc.col;
+                  endCol = lc.col + entMatch[1].length;
+                }
               }
             }
             parameters.set(ent.id, {

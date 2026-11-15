@@ -20,6 +20,7 @@ import {
   writePscadPsout,
 } from "@modelscript/pscad";
 import { EmtSolver, type EmtCircuitDefinition } from "@modelscript/simulate";
+import { PscadCommand } from "../src/commands/pscad.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -247,5 +248,28 @@ describe("PSCAD Microgrid & IBR Example Workspace", () => {
     const readBack = await readPscadPsout(written);
     expect(readBack.header.version).toBe(1);
     expect(readBack.run(0).traces.size).toBe(traces.length);
+  });
+
+  it("Phase 9: CLI verify-ieee2800 writes JSON compliance report when --out is provided", async () => {
+    const pscxPath = path.join(workspaceDir, "Microgrid_IBR.pscx");
+    const scratchDir = path.resolve(process.cwd(), "data/scratch_pscad_cli");
+    fs.mkdirSync(scratchDir, { recursive: true });
+    const outReportPath = path.join(scratchDir, "ieee2800-report.json");
+    try {
+      await PscadCommand.handler!({
+        _: [],
+        $0: "msx",
+        action: "verify-ieee2800",
+        files: [pscxPath],
+        out: outReportPath,
+      });
+      expect(fs.existsSync(outReportPath)).toBe(true);
+      const parsed = JSON.parse(fs.readFileSync(outReportPath, "utf-8"));
+      expect(parsed.overallStatus).toBe("PASS");
+      expect(Array.isArray(parsed.checks)).toBe(true);
+      expect(parsed.checks.length).toBe(7);
+    } finally {
+      fs.rmSync(scratchDir, { recursive: true, force: true });
+    }
   });
 });

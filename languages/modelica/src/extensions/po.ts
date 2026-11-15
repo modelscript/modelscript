@@ -59,8 +59,28 @@ function pushEntry(entries: PoEntry[], entry: Partial<PoEntry>) {
 }
 
 function parseStringValue(s: string): string {
-  const match = s.match(/"(.*)"/);
-  return (match?.[1] ?? "").replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+  const firstQuote = s.indexOf('"');
+  const lastQuote = s.lastIndexOf('"');
+  if (firstQuote < 0 || lastQuote <= firstQuote) return "";
+  const raw = s.slice(firstQuote + 1, lastQuote);
+  let out = "";
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === "\\" && i + 1 < raw.length) {
+      const next = raw[i + 1]!;
+      if (next === "n") {
+        out += "\n";
+        i++;
+        continue;
+      }
+      if (next === '"' || next === "\\") {
+        out += next;
+        i++;
+        continue;
+      }
+    }
+    out += raw[i];
+  }
+  return out;
 }
 
 /**

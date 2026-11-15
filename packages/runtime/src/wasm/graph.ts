@@ -29,7 +29,7 @@ import {
   getInputBuffer
 } from "./arena";
 import { UnmanagedUint32Array, ChunkedUint32Array, createChunkedUint32Array, ChunkedInt32Array } from "./array";
-import { globalAstRoot, globalEnclosingClassRoot, globalEnclosingClassNode, lsp_findNodeOffset, getEncodingStep, lsp_getNodeLeadingPad, lsp_allocDiagnostic } from "./lsp";
+import { globalAstRoot, globalEnclosingClassRoot, globalEnclosingClassNode, lsp_findNodeOffset, getEncodingStep, lsp_getNodeLeadingPad, lsp_allocDiagnostic, lsp_allocDiagnosticAt, lsp_allocDiagnosticPrefix } from "./lsp";
 import { getChildByFieldId, getChildrenByFieldId, getAncestors, getDescendants, getPathTokens, getSemanticChildren, debugLog, lintRunGeneration } from "./engine";
 import { FieldCursor, AncestorCursor, DescendantCursor, SemanticCursor } from "./engine";
 import { FieldId, SyntaxType, NodeFlag, Property } from "./parser";

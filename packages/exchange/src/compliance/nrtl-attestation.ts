@@ -10,6 +10,7 @@
  */
 
 import { createHash, sign, verify, type KeyObject } from "node:crypto";
+import type { PmviewBatchSummary } from "./pmview-report.js";
 
 export type CommissioningBoundaryMode = "PPC_VENDOR" | "MOD_TESTING_CONSULTANT" | "REAL_FIRMWARE_CODE" | "AS_BUILT_HIL";
 
@@ -89,4 +90,18 @@ export function verifyNrtlAttestation(attestation: SignedNrtlAttestation): {
     return { valid: false, reason: "Ed25519 signature verification failed." };
   }
   return { valid: true };
+}
+
+/**
+ * Attaches an ERCOT PMView batch test-suite summary to an NRTL compliance dossier.
+ */
+export function attachPmviewBatchToDossier(
+  dossier: NrtlComplianceDossier,
+  summary: PmviewBatchSummary,
+): NrtlComplianceDossier {
+  return {
+    ...dossier,
+    pmViewProfileName: summary.profileName,
+    pmViewPassed: summary.allPassed,
+  };
 }

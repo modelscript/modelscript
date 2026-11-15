@@ -1,11 +1,11 @@
 ---
 title: "Verilog-A & Verilog-AMS Compact Modeling (.va, .vams)"
-description: "@modelscript/verilog-a (languages/verilog-a) provides compiler, analog behavioral simulation, continuous DAE lowering, and SPICE netlist export for the IEEE 1857 Verilog-A and Verilog-AMS analog co..."
+description: "@modelscript/verilog-a (languages/verilog-a) provides compiler, analog behavioral simulation, continuous DAE lowering, and SPICE netlist export for the Accellera Verilog-A and Verilog-AMS analog co..."
 ---
 
 # Verilog-A & Verilog-AMS Compact Modeling (`.va`, `.vams`)
 
-`@modelscript/verilog-a` (`languages/verilog-a`) provides compiler, analog behavioral simulation, continuous DAE lowering, and SPICE netlist export for the **IEEE 1857 Verilog-A** and **Verilog-AMS** analog compact modeling language.
+`@modelscript/verilog-a` (`languages/verilog-a`) provides compiler, analog behavioral simulation, continuous DAE lowering, and SPICE netlist export for **Accellera Verilog-A** and **Verilog-AMS** compact device modeling.
 
 ---
 
@@ -13,7 +13,7 @@ description: "@modelscript/verilog-a (languages/verilog-a) provides compiler, an
 
 | Extension | Standard / Format             | Description                                                     |
 | :-------- | :---------------------------- | :-------------------------------------------------------------- |
-| `.va`     | **IEEE 1857 / OVI Verilog-A** | Continuous-time analog behavioral hardware description language |
+| `.va`     | **OVI / Accellera Verilog-A** | Continuous-time analog behavioral hardware description language |
 | `.vams`   | **Accellera Verilog-AMS**     | Mixed-signal analog/digital compact device modeling             |
 
 ---
@@ -30,8 +30,19 @@ description: "@modelscript/verilog-a (languages/verilog-a) provides compiler, an
 
 ### 2. Analog Contribution Statements & Dynamic Operators
 
-- Full evaluation of continuous-time analog contribution operators (`<+`):
+- Full evaluation of continuous-time analog contribution operators (`<+`), shown here for a p-n junction diode combining Shockley exponential conduction with dynamic junction capacitance charging current:
   $$I(p, n) <+ I_{\text{sat}} \left( \exp\left(\frac{V(p, n)}{n V_t}\right) - 1 \right) + \frac{d}{dt}\left( C_j V(p, n) \right)$$
+
+  | Symbol             | Meaning                                                                 | Units / Domain          |
+  | :----------------- | :---------------------------------------------------------------------- | :---------------------- |
+  | $I(p, n), V(p, n)$ | Branch current from node $p$ to $n$ and branch voltage ($V_p - V_n$)    | $\text{A}$, $\text{V}$  |
+  | $<+$               | Verilog-A analog contribution operator (accumulates onto branch)        | —                       |
+  | $I_{\text{sat}}$   | Reverse saturation current                                              | $\text{A}$, $> 0$       |
+  | $n$                | Diode emission (ideality) factor                                        | dimensionless, $[1, 2]$ |
+  | $V_t$              | Thermal voltage ($k_B T / q \approx 25.85\text{ mV}$ at $300\text{ K}$) | $\text{V}$, $> 0$       |
+  | $C_j$              | Junction depletion/diffusion capacitance                                | $\text{F}$, $\ge 0$     |
+  | $t$                | Simulation time                                                         | $\text{s}$, $\ge 0$     |
+
 - **Dynamic Operators**: Time derivative `ddt(x)`, time integration `idt(x)`, transport delay `absdelay(x, td)`, and transition filters.
 - **Transistor Compact Models**: Enables high-speed simulation of BSIM, EKV, diode, and custom micro-electro-mechanical (MEMS) behavioral models.
 

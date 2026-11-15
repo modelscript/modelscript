@@ -258,7 +258,7 @@ export const feaLanguage = language({
         },
       }),
 
-    CommentLine: ($) => seq(choice("**", "$", "#"), /.*/, $["_newline"]!),
+    CommentLine: () => /(?:\*\*|\$|#)[^\n]*/,
 
     _newline: () => /\n/,
 

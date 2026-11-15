@@ -11,8 +11,77 @@ import {
   createDiagramDispatch,
 } from "../diagramApi.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
+import { isIdentContCode, isWsCode, readIdentAt, skipWs } from "../utils/lexical-utils.js";
 import { DocumentManager } from "./document-manager.js";
 import { WorkspaceManager } from "./workspace-manager.js";
+
+function extractDocCommentBody(snippet: string): string | undefined {
+  let pos = 0;
+  while (pos < snippet.length) {
+    const idx = snippet.indexOf("doc", pos);
+    if (idx === -1) return undefined;
+    const prevOk = idx === 0 || !isIdentContCode(snippet.charCodeAt(idx - 1));
+    if (prevOk && !isIdentContCode(snippet.charCodeAt(idx + 3))) {
+      const wsEnd = skipWs(snippet, idx + 3);
+      if (snippet.startsWith("/*", wsEnd)) {
+        const close = snippet.indexOf("*/", wsEnd + 2);
+        if (close !== -1) {
+          return snippet.slice(wsEnd + 2, close).trim();
+        }
+      }
+    }
+    pos = idx + 3;
+  }
+  return undefined;
+}
+
+const MODELICA_CLASS_KINDS = new Set(["model", "block", "class"]);
+
+function hasModelicaDiagramHint(text: string): boolean {
+  let headerPos = -1;
+  let i = 0;
+  while (i < text.length) {
+    if (isWsCode(text.charCodeAt(i))) {
+      i++;
+      continue;
+    }
+    const prevOk = i === 0 || !isIdentContCode(text.charCodeAt(i - 1));
+    const tok = readIdentAt(text, i);
+    if (tok) {
+      if (prevOk && MODELICA_CLASS_KINDS.has(tok.token.toLowerCase())) {
+        headerPos = tok.next;
+        break;
+      }
+      i = tok.next;
+    } else {
+      i++;
+    }
+  }
+  if (headerPos === -1) return false;
+  const tail = text.slice(headerPos);
+  if (tail.includes("annotation") && tail.includes("Placement")) return true;
+  let j = 0;
+  while (j < tail.length) {
+    const t1 = readIdentAt(tail, j);
+    if (!t1) {
+      j++;
+      continue;
+    }
+    const prevOk = j === 0 || !isIdentContCode(tail.charCodeAt(j - 1));
+    if (prevOk) {
+      const ws1 = skipWs(tail, t1.next);
+      if (ws1 > t1.next) {
+        const t2 = readIdentAt(tail, ws1);
+        if (t2) {
+          const ws2 = skipWs(tail, t2.next);
+          if (tail[ws2] === "(" || tail[ws2] === ";") return true;
+        }
+      }
+    }
+    j = t1.next;
+  }
+  return false;
+}
 
 export interface DiagramServiceOptions {
   modelicaDiagramOps?: any;
@@ -241,10 +310,22 @@ export class DiagramService {
     const cached = this.diagramCache.get(cacheKey) ?? (globalThis as any).diagramCache?.get(cacheKey);
     if (cached && cached.version === version) {
       const text = indexedText ?? "";
-      const likelyHasComponents =
-        /\b(model|block|class)\b[\s\S]*?\b(?:annotation\s*\(\s*Placement|[A-Za-z_]\w*\s+[A-Za-z_]\w*\s*[(;])/i.test(
-          text,
-        );
+      let likelyHasComponents = false;
+      const treeRoot = this.documentManager.documentTrees.get(effectiveUri)?.tree?.rootNode;
+      if (treeRoot) {
+        const stack: import("../utils/ast-utils.js").CstNodeLike[] = [treeRoot];
+        while (stack.length > 0 && !likelyHasComponents) {
+          const n = stack.pop();
+          if (!n) continue;
+          if (n.type === "component_clause" || (n.type === "annotation_clause" && n.text.includes("Placement"))) {
+            likelyHasComponents = true;
+            break;
+          }
+          for (const c of n.children || []) stack.push(c);
+        }
+      } else {
+        likelyHasComponents = hasModelicaDiagramHint(text);
+      }
       if (!(likelyHasComponents && (!cached.data?.nodes || cached.data.nodes.length === 0))) {
         this.connection.console.info(`[diagram-perf] cache hit for ${params.uri}`);
         return cached.data;
@@ -257,7 +338,7 @@ export class DiagramService {
       return {
         nodes: [],
         edges: [],
-        coordinateSystem: { x: 0, y: 0, width: 1000, height: 1000 },
+        coordinateSystem: { x: -100, y: -100, width: 200, height: 200 },
         diagramBackground: null,
         isLoading: true,
       };
@@ -331,7 +412,7 @@ export class DiagramService {
         resolveClassInstance: (uri: string, name?: string) => this.workspaceManager.resolveClassInstance(uri, name),
         getUnifiedIndex: () => {
           try {
-            return this.workspaceManager.unifiedWorkspace?.getIndex?.({ eager: true }) ?? null;
+            return this.workspaceManager.unifiedWorkspace?.getIndex?.({ eager: false }) ?? null;
           } catch {
             return null;
           }
@@ -533,15 +614,40 @@ export class DiagramService {
                     });
                   }
                 }
-                // Try to extract doc comment from source text
+                // Try to extract doc comment from CST node or source slice
                 let description: string | undefined;
                 const docText = this.documentManager.documents.get(uri)?.getText();
                 const startOff = sym.startOffset;
                 const endOff = sym.endOffset;
-                if (docText && typeof startOff === "number" && typeof endOff === "number") {
-                  const snippet = docText.substring(startOff, endOff);
-                  const docMatch = snippet.match(/doc\s*\/\*\s*(.*?)\s*\*\//);
-                  if (docMatch) description = docMatch[1];
+                const treeRoot = this.documentManager.documentTrees.get(uri)?.tree?.rootNode;
+                if (treeRoot && typeof startOff === "number" && typeof endOff === "number") {
+                  const stack: import("../utils/ast-utils.js").CstNodeLike[] = [treeRoot];
+                  while (stack.length > 0) {
+                    const n = stack.pop();
+                    if (!n) continue;
+                    if (
+                      typeof n.startIndex === "number" &&
+                      n.startIndex >= startOff &&
+                      typeof n.endIndex === "number" &&
+                      n.endIndex <= endOff &&
+                      (n.type === "Documentation" || n.type === "DOC_COMMENT" || n.type === "COMMENT")
+                    ) {
+                      description = extractDocCommentBody(n.text);
+                      if (description !== undefined) break;
+                    }
+                    for (let i = (n.children?.length ?? 0) - 1; i >= 0; i--) {
+                      const ch = n.children?.[i];
+                      if (ch) stack.push(ch);
+                    }
+                  }
+                }
+                if (
+                  description === undefined &&
+                  docText &&
+                  typeof startOff === "number" &&
+                  typeof endOff === "number"
+                ) {
+                  description = extractDocCommentBody(docText.substring(startOff, endOff));
                 }
                 return {
                   ruleName: sym.ruleName,
@@ -559,7 +665,7 @@ export class DiagramService {
         },
         getUnifiedIndex: () => {
           try {
-            return this.workspaceManager.unifiedWorkspace?.getIndex?.({ eager: true }) ?? null;
+            return this.workspaceManager.unifiedWorkspace?.getIndex?.({ eager: false }) ?? null;
           } catch {
             return null;
           }
@@ -582,6 +688,7 @@ export class DiagramService {
             return undefined;
           }
         },
+        getParser: (langId) => this.parserService?.getParser(langId),
         getDiagramConfig: (uri) => {
           try {
             const plugin = globalLanguageRegistry.getPluginForUri(uri);

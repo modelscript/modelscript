@@ -124,6 +124,9 @@ export async function exportLspBundle(
         const fullPath = path.join(dir, entry.name);
         const relPath = relPrefix + entry.name;
         if (entry.isDirectory()) {
+          if (entry.name === "node_modules" || entry.name === ".git" || entry.name === ".cache") {
+            continue;
+          }
           walkDir(fullPath, relPath + "/");
         } else if (entry.isFile()) {
           const ext = path.extname(entry.name).toLowerCase();
@@ -136,6 +139,9 @@ export async function exportLspBundle(
             ext === ".csv" ||
             ext === ".mat" ||
             ext === ".txt" ||
+            ext === ".wasm" ||
+            (ext === ".json" && !entry.name.endsWith("tsconfig.json")) ||
+            entry.name === "package.json" ||
             entry.name === "package.order" ||
             entry.name === ".meta.json" ||
             entry.name === ".Index.json";

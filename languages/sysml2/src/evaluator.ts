@@ -62,183 +62,27 @@ export interface EvaluatedConstraintOutcome {
   violatedAtoms: string[];
 }
 
-interface Token {
-  type: "number" | "ident" | "string" | "op" | "punct" | "eof";
-  text: string;
-}
-
-function tokenizeSysML2Expr(input: string): Token[] {
-  const tokens: Token[] = [];
-  let i = 0;
-  const n = input.length;
-
-  while (i < n) {
-    const ch = input[i]!;
-    if (/\s/.test(ch)) {
-      i++;
-      continue;
-    }
-    if (ch === "/" && input[i + 1] === "/") {
-      i += 2;
-      while (i < n && input[i] !== "\n") i++;
-      continue;
-    }
-    if (ch === "/" && input[i + 1] === "*") {
-      i += 2;
-      while (i < n && !(input[i] === "*" && input[i + 1] === "/")) i++;
-      i += 2;
-      continue;
-    }
-    // Strip SI unit bracket annotations like `100 [kg]` or `[N*m]` when preceded by a number
-    if (ch === "[") {
-      const prev = tokens[tokens.length - 1];
-      if (prev && prev.type === "number") {
-        i++;
-        while (i < n && input[i] !== "]") i++;
-        if (i < n) i++;
-        continue;
-      }
-    }
-    if (ch === '"' || ch === "'") {
-      const quote = ch;
-      const start = ++i;
-      while (i < n && input[i] !== quote) {
-        if (input[i] === "\\") i++;
-        i++;
-      }
-      const str = input.slice(start, i);
-      if (i < n) i++;
-      tokens.push({ type: "string", text: str });
-      continue;
-    }
-    if (/[0-9]/.test(ch) || (ch === "." && /[0-9]/.test(input[i + 1] ?? ""))) {
-      const start = i;
-      while (i < n && /[0-9]/.test(input[i]!)) i++;
-      if (i < n && input[i] === ".") {
-        i++;
-        while (i < n && /[0-9]/.test(input[i]!)) i++;
-      }
-      if (i < n && (input[i] === "e" || input[i] === "E")) {
-        i++;
-        if (i < n && (input[i] === "+" || input[i] === "-")) i++;
-        while (i < n && /[0-9]/.test(input[i]!)) i++;
-      }
-      tokens.push({ type: "number", text: input.slice(start, i) });
-      continue;
-    }
-    if (/[A-Za-z_]/.test(ch)) {
-      const start = i;
-      i++;
-      while (i < n && /[A-Za-z0-9_.]/.test(input[i]!)) {
-        // Don't consume trailing dot if not followed by identifier char
-        if (input[i] === "." && !/[A-Za-z_]/.test(input[i + 1] ?? "")) break;
-        i++;
-      }
-      const word = input.slice(start, i);
-      const lower = word.toLowerCase();
-      if (lower === "and" || lower === "or" || lower === "xor" || lower === "implies" || lower === "not") {
-        tokens.push({ type: "op", text: lower });
-      } else {
-        tokens.push({ type: "ident", text: word });
-      }
-      continue;
-    }
-    const two = input.slice(i, i + 2);
-    if (
-      two === "<=" ||
-      two === ">=" ||
-      two === "==" ||
-      two === "!=" ||
-      two === "<>" ||
-      two === "&&" ||
-      two === "||" ||
-      two === "=>" ||
-      two === "->" ||
-      two === "**"
-    ) {
-      const norm =
-        two === "&&"
-          ? "and"
-          : two === "||"
-            ? "or"
-            : two === "=>" || two === "->"
-              ? "implies"
-              : two === "<>"
-                ? "!="
-                : two === "**"
-                  ? "^"
-                  : two;
-      tokens.push({ type: "op", text: norm });
-      i += 2;
-      continue;
-    }
-    if ("+-*/%^<>!=".includes(ch)) {
-      const norm = ch === "!" ? "not" : ch === "=" ? "==" : ch;
-      tokens.push({ type: "op", text: norm });
-      i++;
-      continue;
-    }
-    if ("(),?:;{}".includes(ch)) {
-      tokens.push({ type: "punct", text: ch });
-      i++;
-      continue;
-    }
-    i++;
-  }
-
-  tokens.push({ type: "eof", text: "" });
-  return tokens;
-}
+import { type SysmlExprToken, tokenizeSysmlExpressionCst, unwrapSysmlConstraintBodyCst } from "./cst-utils.js";
 
 /**
  * Strips outer `require constraint { ... }` or `assert constraint name { ... }` wrappers
  * and joins multiple semicolon-separated statements inside a constraint block with `and`.
  */
 export function unwrapConstraintBody(rawText: string): string {
-  let text = rawText.trim();
-  const openBrace = text.indexOf("{");
-  const closeBrace = text.lastIndexOf("}");
-  if (openBrace !== -1 && closeBrace > openBrace) {
-    text = text.slice(openBrace + 1, closeBrace).trim();
-  }
-  // Remove inner doc/comment statements or attribute declarations if present, keeping expression statements
-  const parts = text
-    .split(";")
-    .map((s) => s.trim())
-    .filter((s) => {
-      if (!s) return false;
-      if (/^(?:doc|comment|attribute|in|out|inout|subject|objective)\b/i.test(s)) return false;
-      return true;
-    })
-    .map((s) =>
-      s
-        .replace(/^(?:require\s+constraint|assert\s+constraint|assume\s+constraint|constraint)\b[^{]*\{?/i, "")
-        .replace(/\}$/, "")
-        .trim(),
-    )
-    .filter(Boolean);
-
-  if (parts.length === 0) {
-    let s = text.trim();
-    while (s.endsWith(";")) {
-      s = s.slice(0, -1).trimEnd();
-    }
-    return s.trim();
-  }
-  if (parts.length === 1) return parts[0]!;
-  return parts.map((p) => `(${p})`).join(" and ");
+  return unwrapSysmlConstraintBodyCst(rawText);
 }
 
 /**
- * Parses a SysML v2 boolean/arithmetic expression string into a typed `SysML2ExprAst`.
+ * Parses a SysML v2 boolean/arithmetic expression string into a typed `SysML2ExprAst`
+ * using the native WebAssembly GLR parser (`@modelscript/sysml2/parser`).
  */
 export function parseSysML2Expression(exprText: string): SysML2ExprAst {
   const cleaned = unwrapConstraintBody(exprText);
-  const tokens = tokenizeSysML2Expr(cleaned);
+  const tokens: SysmlExprToken[] = tokenizeSysmlExpressionCst(cleaned);
   let pos = 0;
 
-  const peek = (): Token => tokens[pos] ?? tokens[tokens.length - 1]!;
-  const next = (): Token => {
+  const peek = (): SysmlExprToken => tokens[pos] ?? tokens[tokens.length - 1]!;
+  const next = (): SysmlExprToken => {
     const t = peek();
     if (pos < tokens.length - 1) pos++;
     return t;
@@ -258,13 +102,13 @@ export function parseSysML2Expression(exprText: string): SysML2ExprAst {
       left = { kind: "BinaryExpr", op: "implies", left, right };
     } else if (match("?")) {
       const thenExpr = parseImplies();
-      match(":");
+      if (!match(":")) match("else");
       const elseExpr = parseImplies();
       left = { kind: "ConditionalExpr", condition: left, thenExpr, elseExpr };
     } else if (peek().type === "ident" && peek().text === "if") {
       next();
       const cond = parseImplies();
-      if (peek().text === "then") next();
+      if (peek().text === "then" || peek().text === "?") next();
       const thenExpr = parseImplies();
       if (peek().text === "else") next();
       const elseExpr = parseImplies();
@@ -429,6 +273,94 @@ export function formatSysML2Expr(ast: SysML2ExprAst): string {
       return `if ${formatSysML2Expr(ast.condition)} then ${formatSysML2Expr(ast.thenExpr)} else ${formatSysML2Expr(ast.elseExpr)}`;
     case "CallExpr":
       return `${ast.callee}(${ast.args.map(formatSysML2Expr).join(", ")})`;
+  }
+}
+
+/**
+ * Returns true if `predicate` holds for any node in `ast`.
+ */
+export function sysmlAstSome(ast: SysML2ExprAst, predicate: (node: SysML2ExprAst) => boolean): boolean {
+  if (predicate(ast)) return true;
+  switch (ast.kind) {
+    case "UnaryExpr":
+      return sysmlAstSome(ast.operand, predicate);
+    case "BinaryExpr":
+      return sysmlAstSome(ast.left, predicate) || sysmlAstSome(ast.right, predicate);
+    case "ConditionalExpr":
+      return (
+        sysmlAstSome(ast.condition, predicate) ||
+        sysmlAstSome(ast.thenExpr, predicate) ||
+        sysmlAstSome(ast.elseExpr, predicate)
+      );
+    case "CallExpr":
+      return ast.args.some((a) => sysmlAstSome(a, predicate));
+    default:
+      return false;
+  }
+}
+
+/**
+ * Collects all variable/feature identifier paths referenced inside `ast`.
+ */
+export function collectExpressionIdentifiers(node: SysML2ExprAst, out = new Set<string>()): Set<string> {
+  if (node.kind === "Identifier") {
+    out.add(node.name);
+  } else if (node.kind === "UnaryExpr") {
+    collectExpressionIdentifiers(node.operand, out);
+  } else if (node.kind === "BinaryExpr") {
+    collectExpressionIdentifiers(node.left, out);
+    collectExpressionIdentifiers(node.right, out);
+  } else if (node.kind === "ConditionalExpr") {
+    collectExpressionIdentifiers(node.condition, out);
+    collectExpressionIdentifiers(node.thenExpr, out);
+    collectExpressionIdentifiers(node.elseExpr, out);
+  } else if (node.kind === "CallExpr") {
+    for (const a of node.args) collectExpressionIdentifiers(a, out);
+  }
+  return out;
+}
+
+/**
+ * Rewrites identifier references inside `ast` using `renames` (supporting both exact matches and dotted prefix matches).
+ */
+export function rewriteExpressionIdentifiers(
+  node: SysML2ExprAst,
+  renames: ReadonlyArray<readonly [string, string]>,
+): SysML2ExprAst {
+  switch (node.kind) {
+    case "Identifier": {
+      for (const [src, dst] of renames) {
+        if (node.name === src) return { kind: "Identifier", name: dst };
+        if (node.name.startsWith(`${src}.`)) {
+          return { kind: "Identifier", name: `${dst}${node.name.slice(src.length)}` };
+        }
+      }
+      return node;
+    }
+    case "UnaryExpr":
+      return { kind: "UnaryExpr", op: node.op, operand: rewriteExpressionIdentifiers(node.operand, renames) };
+    case "BinaryExpr":
+      return {
+        kind: "BinaryExpr",
+        op: node.op,
+        left: rewriteExpressionIdentifiers(node.left, renames),
+        right: rewriteExpressionIdentifiers(node.right, renames),
+      };
+    case "ConditionalExpr":
+      return {
+        kind: "ConditionalExpr",
+        condition: rewriteExpressionIdentifiers(node.condition, renames),
+        thenExpr: rewriteExpressionIdentifiers(node.thenExpr, renames),
+        elseExpr: rewriteExpressionIdentifiers(node.elseExpr, renames),
+      };
+    case "CallExpr":
+      return {
+        kind: "CallExpr",
+        callee: node.callee,
+        args: node.args.map((a) => rewriteExpressionIdentifiers(a, renames)),
+      };
+    default:
+      return node;
   }
 }
 

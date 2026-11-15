@@ -24,7 +24,7 @@ import DOMPurify from "dompurify";
 import React from "react";
 import { getKindBadgeStyle } from "../ClassTree";
 import { getSemanticKindIcon } from "./ComponentList";
-import { startPlacement } from "./placement";
+import { clearPlacement, startPlacement } from "./placement";
 import {
   getClassIcon,
   getLibraryTree,
@@ -52,6 +52,7 @@ interface TreeWidgetProps {
   version?: number | undefined;
   language?: string | null | undefined;
   selectedClassName?: string | null | undefined;
+  colorMode?: "dark" | "light" | undefined;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -131,16 +132,20 @@ function ClassIcon({
   nodeId,
   depth = 0,
   iconSvg: propSvg,
+  colorMode: propColorMode,
 }: {
   className: string;
   classKind?: string | undefined;
   nodeId?: string | undefined;
   depth?: number | undefined;
   iconSvg?: string | null | undefined;
+  colorMode?: "dark" | "light" | undefined;
 }) {
   const cleanClassName = className.startsWith("__LIB__:") ? className.slice("__LIB__:".length) : className;
   const { colorMode, resolvedColorMode } = useTheme();
-  const isDark = colorMode === "dark" || resolvedColorMode === "dark";
+  const isDark = propColorMode
+    ? propColorMode === "dark"
+    : colorMode === "dark" || colorMode === "night" || resolvedColorMode === "dark" || resolvedColorMode === "night";
   const [svg, setSvg] = React.useState<string | null>(propSvg ?? iconCache.get(cleanClassName) ?? null);
   const requested = React.useRef(false);
 
@@ -207,9 +212,10 @@ interface TreeNodeProps {
   depth: number;
   showQualifiedName?: boolean | undefined;
   selectedClassName?: string | null | undefined;
+  colorMode?: "dark" | "light" | undefined;
 }
 
-function setDragPreview(e: React.DragEvent, iconSvg: string | null | undefined, className: string) {
+function setDragPreview(e: React.DragEvent, iconSvg: string | null | undefined, className: string, isDark = false) {
   if (typeof document === "undefined") return;
   const ghost = document.createElement("div");
   ghost.style.position = "fixed";
@@ -220,7 +226,7 @@ function setDragPreview(e: React.DragEvent, iconSvg: string | null | undefined, 
   ghost.style.display = "flex";
   ghost.style.alignItems = "center";
   ghost.style.justifyContent = "center";
-  ghost.style.backgroundColor = "rgba(255, 255, 255, 0.95)";
+  ghost.style.backgroundColor = isDark ? "rgba(30, 34, 42, 0.95)" : "rgba(255, 255, 255, 0.95)";
   ghost.style.borderRadius = "8px";
   ghost.style.border = "1.5px solid var(--ms-brand, #0891b2)";
   ghost.style.boxShadow = "0 6px 16px rgba(0, 0, 0, 0.25)";
@@ -229,7 +235,8 @@ function setDragPreview(e: React.DragEvent, iconSvg: string | null | undefined, 
   ghost.style.overflow = "hidden";
 
   if (iconSvg && iconSvg.includes("<svg")) {
-    ghost.innerHTML = DOMPurify.sanitize(iconSvg, {
+    const adaptedSvg = invertSvgColors(iconSvg, isDark);
+    ghost.innerHTML = DOMPurify.sanitize(adaptedSvg, {
       USE_PROFILES: { svg: true, svgFilters: true },
     });
     const svgEl = ghost.querySelector("svg");
@@ -263,7 +270,23 @@ function setDragPreview(e: React.DragEvent, iconSvg: string | null | undefined, 
 }
 
 const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
-  const { node, uri, onSelect, onHighlight, depth, showQualifiedName, selectedClassName } = props;
+  const {
+    node,
+    uri,
+    onSelect,
+    onHighlight,
+    depth,
+    showQualifiedName,
+    selectedClassName,
+    colorMode: propColorMode,
+  } = props;
+  const { colorMode: themeColorMode, resolvedColorMode } = useTheme();
+  const isDark = propColorMode
+    ? propColorMode === "dark"
+    : themeColorMode === "dark" ||
+      themeColorMode === "night" ||
+      resolvedColorMode === "dark" ||
+      resolvedColorMode === "night";
   const [expanded, setExpanded] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [children, setChildren] = React.useState<TreeNodeInfo[] | null>(null);
@@ -435,7 +458,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
           }
           e.dataTransfer.effectAllowed = "copy";
 
-          setDragPreview(e, iconSvg, cleanCompositeName);
+          setDragPreview(e, iconSvg, cleanCompositeName, isDark);
 
           // Tell diagram editor that placement/drag mode started
           startPlacement({
@@ -445,7 +468,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
           });
         }}
         onDragEnd={() => {
-          window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+          clearPlacement();
         }}
       >
         <span style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
@@ -491,6 +514,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
               nodeId={node.id}
               depth={depth}
               iconSvg={node.iconSvg}
+              colorMode={propColorMode}
             />
           </span>
         </span>
@@ -569,6 +593,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
             onHighlight={onHighlight}
             depth={depth + 1}
             selectedClassName={selectedClassName}
+            colorMode={propColorMode}
           />
         ))}
     </>
@@ -735,6 +760,7 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
           depth={0}
           showQualifiedName={true}
           selectedClassName={props.selectedClassName}
+          colorMode={props.colorMode}
         />,
       );
     }
@@ -830,6 +856,7 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
           onHighlight={props.onHighlight}
           depth={0}
           selectedClassName={props.selectedClassName}
+          colorMode={props.colorMode}
         />,
       );
     }

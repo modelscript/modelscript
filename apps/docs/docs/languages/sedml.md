@@ -21,13 +21,21 @@ description: Compiler reference for COMBINE SED-ML reproducible simulation exper
 
 ### 1. Uniform Time-Course Discretization & KiSAO Solver Mapping
 
-A SED-ML `uniformTimeCourse` specifies an initial integration start time $t_0 = t_{\text{initial}}$, an output recording window $[t_{\text{start}}, t_{\text{end}}]$ with $t_0 \le t_{\text{start}} < t_{\text{end}}$, and $N_{\text{pts}} = \text{numberOfPoints}$ uniform sampling intervals of step size:
+A SED-ML `uniformTimeCourse` specifies an initial integration start time $t_0 = t_{\text{initial}}$, an output recording window $[t_{\text{start}}, t_{\text{end}}]$ with $t_0 \le t_{\text{start}} < t_{\text{end}}$, and $N_{\text{pts}} = \text{numberOfPoints}$ uniform sampling intervals, partitioning the output horizon into evenly spaced reporting timestamps:
 
 $$
 \Delta t = \frac{t_{\text{end}} - t_{\text{start}}}{N_{\text{pts}}}, \qquad t_k = t_{\text{start}} + k\,\Delta t \quad (k = 0, 1, \dots, N_{\text{pts}})
 $$
 
-Each `algorithm` element references an ontology term from the **Kinetic Simulation Algorithm Ontology (KiSAO)**alongside `algorithmParameter` tolerances (`KISAO:0000209` relative tolerance $\varepsilon_{\text{rel}}$, `KISAO:0000211` absolute tolerance $\varepsilon_{\text{abs}}$):
+| Symbol                             | Meaning                                       | Units / Domain                                               |
+| :--------------------------------- | :-------------------------------------------- | :----------------------------------------------------------- |
+| $\Delta t$                         | Uniform output sampling step size             | time units ($\text{s}$), $> 0$                               |
+| $t_{\text{start}}, t_{\text{end}}$ | Output recording window start and end times   | time units ($\text{s}$), $t_{\text{start}} < t_{\text{end}}$ |
+| $N_{\text{pts}}$                   | Number of output intervals (`numberOfPoints`) | dimensionless, $\mathbb{Z}_{>0}$                             |
+| $t_k$                              | $k$-th discrete output timestamp              | time units ($\text{s}$)                                      |
+| $k$                                | Output sample index                           | $\{0, 1, \dots, N_{\text{pts}}\}$                            |
+
+Each `algorithm` element references an ontology term from the **Kinetic Simulation Algorithm Ontology (KiSAO)** alongside `algorithmParameter` tolerances (`KISAO:0000209` relative tolerance $\varepsilon_{\text{rel}}$, `KISAO:0000211` absolute tolerance $\varepsilon_{\text{abs}}$):
 
 | KiSAO Term      | Algorithm Name                               | `@modelscript/simulate` Target |
 | :-------------- | :------------------------------------------- | :----------------------------- |
@@ -40,11 +48,19 @@ Each `algorithm` element references an ontology term from the **Kinetic Simulati
 
 ### 2. Model Pre-Processing (`changeAttribute` & `computeChange`) and `DataGenerator` Normalization
 
-Before task execution, `computeChange` evaluates a functional parameter override $p_{\text{new}} = g(\mathbf{p}_0)$ over XPath/SBML target identifiers. After trajectory integration $\mathbf{x}(t_k)$, each `dataGenerator` $d_j$ evaluates a post-processing functional over raw model variables $v_i(t_k)$:
+Before task execution, `computeChange` evaluates a functional parameter override $p_{\text{new}} = g(\mathbf{p}_0)$ over XPath/SBML target identifiers. After trajectory integration $\mathbf{x}(t_k)$, each `dataGenerator` $d_j$ evaluates a post-processing MathML expression over raw model variables and optionally rescales the resulting observable into $[0, 1]$ via min-max normalization:
 
 $$
 y_j(t_k) = f_j\!\left(v_1(t_k), \dots, v_m(t_k), \mathbf{c}_j\right), \qquad \tilde{y}_j(t_k) = \frac{y_j(t_k) - \min_k y_j(t_k)}{\max_k y_j(t_k) - \min_k y_j(t_k)}
 $$
+
+| Symbol                      | Meaning                                                        | Units / Domain                                    |
+| :-------------------------- | :------------------------------------------------------------- | :------------------------------------------------ |
+| $y_j(t_k)$                  | Derived observable value for `dataGenerator` $j$ at time $t_k$ | observable units, $\mathbb{R}$                    |
+| $f_j$                       | MathML post-processing function for `dataGenerator` $j$        | $\mathbb{R}^m \times \mathbb{R}^p \to \mathbb{R}$ |
+| $v_1(t_k), \dots, v_m(t_k)$ | Raw simulated model variable values at $t_k$                   | model units, $\mathbb{R}$                         |
+| $\mathbf{c}_j$              | Vector of constant parameters used by `dataGenerator` $j$      | $\mathbb{R}^p$                                    |
+| $\tilde{y}_j(t_k)$          | Min-max normalized observable trajectory                       | dimensionless, $[0, 1]$                           |
 
 ---
 

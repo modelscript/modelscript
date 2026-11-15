@@ -46,12 +46,16 @@ export function lint__nmtranProblemBlock(db: QueryDB, entry: SymbolEntry): LintR
   if (!doc) return null;
 
   if (!doc.controlStream.problem) {
+    const text = (db.cstNode(entry.id) as { text?: string } | null | undefined)?.text ?? "";
+    const firstTok = text.match(/\S+/);
+    const startOffset = firstTok?.index !== undefined ? entry.startOffset + firstTok.index : entry.startOffset;
+    const endOffset = firstTok ? startOffset + firstTok[0].length : Math.min(entry.endOffset, entry.startOffset + 1);
     return {
       code: NmtranErrorCode.MISSING_PROBLEM_RECORD.code,
       message: NmtranErrorCode.MISSING_PROBLEM_RECORD.message(),
       severity: NmtranErrorCode.MISSING_PROBLEM_RECORD.severity,
-      startOffset: doc.controlStream.range?.startOffset,
-      endOffset: doc.controlStream.range?.endOffset,
+      startOffset,
+      endOffset,
     };
   }
   return null;
@@ -98,12 +102,24 @@ export function lint__nmtranGeneralAdvanDes(db: QueryDB, entry: SymbolEntry): Li
 
   const advan = (doc.controlStream.subroutines?.advan || "").toUpperCase();
   if (GENERAL_ODE_ADVANS.has(advan) && !doc.controlStream.hasDesBlock) {
+    const subRange = (
+      doc.controlStream.subroutines as { range?: { startOffset?: number; endOffset?: number } } | undefined
+    )?.range;
+    const text = (db.cstNode(entry.id) as { text?: string } | null | undefined)?.text ?? "";
+    const advanMatch = text.match(/\bADVAN\d+\b/i) ?? text.match(/\$SUBROUTINES?\b/i);
+    const startOffset =
+      advanMatch?.index !== undefined
+        ? entry.startOffset + advanMatch.index
+        : (subRange?.startOffset ?? entry.startOffset);
+    const endOffset = advanMatch
+      ? startOffset + advanMatch[0].length
+      : (subRange?.endOffset ?? Math.min(entry.endOffset, entry.startOffset + 1));
     return {
       code: NmtranErrorCode.MISSING_DES_BLOCK_FOR_GENERAL_ADVAN.code,
       message: NmtranErrorCode.MISSING_DES_BLOCK_FOR_GENERAL_ADVAN.message(advan),
       severity: NmtranErrorCode.MISSING_DES_BLOCK_FOR_GENERAL_ADVAN.severity,
-      startOffset: doc.controlStream.range?.startOffset,
-      endOffset: doc.controlStream.range?.endOffset,
+      startOffset,
+      endOffset,
     };
   }
   return null;

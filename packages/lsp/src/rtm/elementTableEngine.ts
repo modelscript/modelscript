@@ -11,6 +11,7 @@ import {
   type TabularMutationRequest,
 } from "@modelscript/dsl";
 import type { SymbolEntry, SymbolIndex } from "@modelscript/runtime";
+import { countChar, isIdentContCode, leadingWhitespace, skipWs, splitLines } from "../utils/lexical-utils.js";
 
 export interface TableColumnDefinition {
   id: string;
@@ -321,7 +322,7 @@ export class ElementTableEngine {
     attributeName: string,
     newValue: string,
   ): TextEditLike[] {
-    const lines = documentText.split(/\r?\n/);
+    const lines = splitLines(documentText);
     const shortName = qualifiedName.split(".").pop() ?? qualifiedName;
 
     // 1. Locate the declaration line for this element
@@ -349,19 +350,27 @@ export class ElementTableEngine {
     // 2. If editing type directly on a single-line usage: e.g. "part p : OldType;"
     if (attributeName === "type" && lines[declLineIndex]!.includes(":")) {
       const line = lines[declLineIndex]!;
-      const match = line.match(/(:\s*)([A-Za-z0-9_:]+)/);
-      if (match && match.index !== undefined) {
-        const startChar = match.index + match[1]!.length;
-        const endChar = startChar + match[2]!.length;
-        return [
-          {
-            range: {
-              start: { line: declLineIndex, character: startChar },
-              end: { line: declLineIndex, character: endChar },
+      const colonIdx = line.indexOf(":");
+      if (colonIdx !== -1) {
+        const startChar = skipWs(line, colonIdx + 1);
+        let endChar = startChar;
+        while (
+          endChar < line.length &&
+          (isIdentContCode(line.charCodeAt(endChar)) || line.charCodeAt(endChar) === 58)
+        ) {
+          endChar++;
+        }
+        if (endChar > startChar) {
+          return [
+            {
+              range: {
+                start: { line: declLineIndex, character: startChar },
+                end: { line: declLineIndex, character: endChar },
+              },
+              newText: newValue,
             },
-            newText: newValue,
-          },
-        ];
+          ];
+        }
       }
     }
 
@@ -389,8 +398,7 @@ export class ElementTableEngine {
       // Check if this line defines the target attribute
       if (foundOpenBrace && (line.includes(`attribute ${attributeName}`) || line.includes(`${attributeName} =`))) {
         // Replace existing attribute line
-        const indentMatch = line.match(/^(\s*)/);
-        const indent = indentMatch ? indentMatch[1] : "    ";
+        const indent = leadingWhitespace(line);
         return [
           {
             range: {
@@ -405,8 +413,7 @@ export class ElementTableEngine {
 
     // 4. If element has an open block `{ ... }`, insert before closing brace
     if (blockEndIndex !== -1) {
-      const indentMatch = lines[blockEndIndex]!.match(/^(\s*)/);
-      const baseIndent = indentMatch ? indentMatch[1] : "";
+      const baseIndent = leadingWhitespace(lines[blockEndIndex]!);
       const childIndent = baseIndent + "    ";
 
       return [
@@ -515,9 +522,7 @@ export class ElementTableEngine {
 
     // Check balanced unit brackets e.g. "25.4 [kg]"
     if (trimmed.includes("[") || trimmed.includes("]")) {
-      const openCount = (trimmed.match(/\[/g) || []).length;
-      const closeCount = (trimmed.match(/\]/g) || []).length;
-      if (openCount !== closeCount) {
+      if (countChar(trimmed, "[") !== countChar(trimmed, "]")) {
         return { valid: false, error: "Unbalanced unit brackets '[' and ']'" };
       }
     }

@@ -1137,7 +1137,9 @@ function SchemaFieldRow({
 }
 
 export default function PropertiesWidget(props: PropertiesWidgetProps) {
-  const { colorMode } = useTheme();
+  const { colorMode, resolvedColorMode } = useTheme();
+  const isDark =
+    colorMode === "dark" || colorMode === "night" || resolvedColorMode === "dark" || resolvedColorMode === "night";
   const { properties, isLoading, onNameChange, onDescriptionChange, onParameterChange, translations } = props;
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     info: true,
@@ -1474,7 +1476,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
                   border: "1px solid var(--color-border-subtle, var(--ms-border))",
                 }}
               >
-                <ComponentIcon iconSvg={liveIconSvg || properties.iconSvg} size={64} darkMode={colorMode === "dark"} />
+                <ComponentIcon iconSvg={liveIconSvg || properties.iconSvg} size={64} darkMode={isDark} />
               </div>
             )}
             <div

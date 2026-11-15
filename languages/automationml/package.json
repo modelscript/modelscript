@@ -45,6 +45,11 @@
     "./wasm-parser": {
       "types": "./src-gen/bindings.d.ts",
       "default": "./src-gen/bindings.js"
+    },
+    "./aml-dsl-parser.wasm": "./dist/aml-dsl-parser.wasm",
+    "./aml-dsl-wasm-parser": {
+      "types": "./src-gen/aml-dsl/bindings.d.ts",
+      "default": "./src-gen/aml-dsl/bindings.js"
     }
   },
   "files": [
@@ -53,8 +58,8 @@
     "src-gen/**"
   ],
   "scripts": {
-    "build": "node ../../scripts/build-language-parser.js && tsc",
-    "build:parser": "node ../../scripts/build-language-parser.js --force",
+    "build": "node ../../scripts/build-language-parser.js && node ./scripts/build-dsl-parser.js && tsc",
+    "build:parser": "node ../../scripts/build-language-parser.js --force && node ./scripts/build-dsl-parser.js --force",
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js",

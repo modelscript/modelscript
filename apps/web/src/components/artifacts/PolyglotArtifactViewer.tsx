@@ -34,6 +34,7 @@ import StudyTemplateViewer from "./StudyTemplateViewer";
 import { useWheelZoom, ZoomHintBadge } from "./useArtifactZoom";
 
 const MonacoEditor = React.lazy(() => import("@monaco-editor/react"));
+const CadStepViewer = React.lazy(() => import("./CadStepViewer"));
 
 export interface PolyglotArtifactViewerProps {
   viewConfig: any;
@@ -1291,7 +1292,7 @@ export function highlightPolyglotLine(line: string, dialect: string): React.Reac
   return out.length > 0 ? out : line;
 }
 
-const CODE_ONLY_DIALECTS = new Set(["fortran", "f90", "f95", "f08", "f18", "c", "scad", "csg", "ccsds", "energyplus"]);
+const CODE_ONLY_DIALECTS = new Set(["fortran", "f90", "f95", "f08", "f18", "c", "ccsds", "energyplus"]);
 
 function stripSyntheticDiagramComments(raw: string): string {
   if (!raw) return "";
@@ -1458,6 +1459,29 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
         }}
         isFullScreen={isFullScreen}
       />
+    );
+  }
+
+  if (dialect === "scad" || dialect === "csg") {
+    return (
+      <Suspense
+        fallback={
+          <Box display="flex" justifyContent="center" alignItems="center" height="320px">
+            <Spinner size="medium" />
+          </Box>
+        }
+      >
+        <CadStepViewer
+          artifactId={typeof artifactId === "number" ? artifactId : undefined}
+          dialect="scad"
+          viewConfig={{
+            ...viewConfig,
+            dialect: "scad",
+            code: rawCode || inlineCode,
+          }}
+          isFullScreen={isFullScreen}
+        />
+      </Suspense>
     );
   }
 

@@ -368,9 +368,9 @@ const BrandTitle = styled.div`
 
   .brand-name {
     font-family: var(--ms-font-sans);
-    font-size: 16px;
-    font-weight: 680;
-    letter-spacing: -0.02em;
+    font-size: var(--text-md);
+    font-weight: var(--ms-fw-bold);
+    letter-spacing: var(--ms-tracking-tight);
     color: var(--color-text-heading);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -381,10 +381,10 @@ const BrandTitle = styled.div`
     align-items: center;
     gap: 6px;
     font-family: var(--ms-font-sans);
-    font-size: 12px;
-    font-weight: 500;
+    font-size: var(--text-xs);
+    font-weight: var(--ms-fw-medium);
     line-height: 1.2;
-    letter-spacing: 0;
+    letter-spacing: var(--ms-tracking-normal);
     font-variant-numeric: tabular-nums;
     color: var(--color-text-muted);
     overflow: hidden;
@@ -406,16 +406,16 @@ const BrandTitle = styled.div`
   }
 
   .brand-badge {
-    font-size: 9.5px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
+    font-size: var(--text-2xs);
+    font-weight: var(--ms-fw-bold);
+    letter-spacing: var(--ms-tracking-wide);
     text-transform: uppercase;
     padding: 1px 5px;
     border-radius: 4px;
     background: var(--ms-brand-soft);
     border: 1px solid var(--color-accent-blue-border);
     color: var(--ms-brand);
-    line-height: 1.3;
+    line-height: var(--leading-2xs);
     flex-shrink: 0;
   }
 

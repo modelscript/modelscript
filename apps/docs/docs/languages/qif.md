@@ -29,8 +29,18 @@ description: "@modelscript/qif (languages/qif) provides native WebAssembly parsi
 
 ### 2. Statistical Process Control (SPC) & Test Uncertainty Ratio (TUR)
 
-- Evaluates measured Coordinate Measuring Machine (CMM) actuals (`MeasurementsResults`) against nominal tolerances:
+- Evaluates measured Coordinate Measuring Machine (CMM) actuals (`MeasurementsResults`) against nominal tolerances using process capability indices ($C_p$, $C_{pk}$) and the metrology Test Uncertainty Ratio ($\text{TUR}$):
   $$C_p = \frac{\text{USL} - \text{LSL}}{6\sigma}, \qquad C_{pk} = \min\left(\frac{\text{USL} - \mu}{3\sigma}, \frac{\mu - \text{LSL}}{3\sigma}\right), \qquad \text{TUR} = \frac{\text{Tolerance}}{2 U_{\text{cal}}}$$
+
+  | Symbol                   | Meaning                                                       | Units / Domain                          |
+  | :----------------------- | :------------------------------------------------------------ | :-------------------------------------- |
+  | $C_p, C_{pk}$            | Potential and centered (actual) process capability indices    | dimensionless, $\mathbb{R}$             |
+  | $\text{USL}, \text{LSL}$ | Upper and lower specification limits                          | characteristic units (e.g. $\text{mm}$) |
+  | $\mu, \sigma$            | Sample mean and standard deviation of measured actuals        | characteristic units ($\sigma > 0$)     |
+  | $\text{TUR}$             | Test uncertainty ratio (tolerance-to-uncertainty margin)      | dimensionless, $> 0$                    |
+  | $\text{Tolerance}$       | Total bilateral tolerance width ($\text{USL} - \text{LSL}$)   | characteristic units, $> 0$             |
+  | $U_{\text{cal}}$         | Expanded calibration uncertainty ($k = 2$, $95\%$ confidence) | characteristic units, $> 0$             |
+
 - Flags processes with $C_{pk} < 1.33$ or measurement devices violating the $4:1$ $\text{TUR}$ metrology rule.
 
 ### 3. STEP AP242 Reconciliation & DAE Lowering

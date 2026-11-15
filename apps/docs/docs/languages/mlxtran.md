@@ -21,14 +21,32 @@ description: Native WebAssembly GLR parsing, compartmental PK/PD ODE and macro s
 
 ### 1. Structural Sections, PK Macros & Differential Equations (`EQUATION:`)
 
-`@modelscript/mlxtran` parses `[LONGITUDINAL]` blocks with `input = {...}` parameter declarations, `PK:` compartmental macro statements (`compartment`, `absorption`, `depot`, `elimination`, `transfer`), `EQUATION:` differential equations (`ddt_<state>`), and `OUTPUT:` declarations:
+`@modelscript/mlxtran` parses `[LONGITUDINAL]` blocks with `input = {...}` parameter declarations, `PK:` compartmental macro statements (`compartment`, `absorption`, `depot`, `elimination`, `transfer`), `EQUATION:` differential equations (`ddt_<state>`), and `OUTPUT:` declarations, modeling first-order oral absorption from a depot into central and peripheral compartments:
 
 $$\frac{dA_d}{dt} = -k_a A_d, \qquad \frac{dA_c}{dt} = k_a A_d - \frac{CL}{V} A_c - \frac{Q}{V} A_c + \frac{Q}{V_2} A_p, \qquad \frac{dA_p}{dt} = \frac{Q}{V} A_c - \frac{Q}{V_2} A_p$$
 
+| Symbol          | Meaning                                                     | Units / Domain                 |
+| :-------------- | :---------------------------------------------------------- | :----------------------------- |
+| $A_d, A_c, A_p$ | Drug amounts in depot, central, and peripheral compartments | $\text{mg}$ (or $\text{mass}$) |
+| $t$             | Time                                                        | $\text{h}$ (or $\text{time}$)  |
+| $k_a$           | First-order absorption rate constant                        | $\text{h}^{-1}$                |
+| $CL$            | Systemic clearance from central compartment                 | $\text{L/h}$                   |
+| $V, V_2$        | Central and peripheral compartment distribution volumes     | $\text{L}$                     |
+| $Q$             | Inter-compartmental clearance                               | $\text{L/h}$                   |
+
 ### 2. Deterministic PK Simulation & Non-Compartmental Analysis (NCA)
 
-- Integrates 1- and 2-compartment oral/IV dosing models (`solveMlxtranPk`) and computes trapezoidal exposure metrics:
+- Integrates 1- and 2-compartment oral/IV dosing models (`solveMlxtranPk`) and computes trapezoidal exposure and elimination metrics from the central plasma concentration curve:
   $$\text{AUC}_{0\to t} = \int_0^t C_c(\tau)\,d\tau, \qquad C_{\max} = \max_t C_c(t), \qquad T_{\max} = \arg\max_t C_c(t), \qquad t_{1/2} = \frac{\ln 2}{k_{10}}$$
+
+  | Symbol                | Meaning                                                                | Units / Domain             |
+  | :-------------------- | :--------------------------------------------------------------------- | :------------------------- |
+  | $\text{AUC}_{0\to t}$ | Area under the concentration-time curve from $0$ to $t$                | $\text{mg}\cdot\text{h/L}$ |
+  | $C_c(t), \tau$        | Central compartment concentration at time $t$ and integration variable | $\text{mg/L}$, $\text{h}$  |
+  | $C_{\max}$            | Peak observed plasma concentration                                     | $\text{mg/L}$              |
+  | $T_{\max}$            | Time at which $C_{\max}$ occurs                                        | $\text{h}$                 |
+  | $t_{1/2}$             | Terminal elimination half-life                                         | $\text{h}$                 |
+  | $k_{10}$              | First-order elimination rate constant ($CL/V$)                         | $\text{h}^{-1}$            |
 
 ### 3. DAE Arena Lowering & Modelica Projection
 

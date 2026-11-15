@@ -31,6 +31,8 @@ export function createEmptyCgmesModel(): CgmesModel {
     svVoltages: new Map(),
     svFlows: new Map(),
     baseVoltages: new Map(),
+    dynamicModels: new Map(),
+    linePhases: new Map(),
   };
 }
 
@@ -359,9 +361,55 @@ export function parseCgmesRdf(xmlSource: string, targetModel?: CgmesModel): Cgme
         break;
       }
 
-      default:
-        // Other CIM classes are ignored or handled in extensions
+      case "ACLineSegmentPhase": {
+        const name = getPropertyText(el, "name") ?? mRID;
+        const segId = getResourceRef(el, "ACLineSegment") ?? "";
+        const phase = getPropertyText(el, "phase") ?? "A";
+        model.linePhases ??= new Map();
+        model.linePhases.set(mRID, {
+          mRID,
+          name,
+          acLineSegmentId: segId,
+          phase,
+        });
         break;
+      }
+
+      default: {
+        const isDynamic =
+          type === "SynchronousMachineTimeConstantReactance" ||
+          type === "PowerElectronicsConnection" ||
+          type.startsWith("Exc") ||
+          type.startsWith("Gov") ||
+          type.startsWith("Pss") ||
+          type.startsWith("Wecc");
+        if (isDynamic) {
+          const name = getPropertyText(el, "name") ?? mRID;
+          const targetEquipmentId =
+            getResourceRef(el, "SynchronousMachine") ??
+            getResourceRef(el, "RotatingMachineDynamics.SynchronousMachine") ??
+            getResourceRef(el, "ExcitationSystemDynamics.SynchronousMachineDynamics");
+          const parameters: Record<string, number> = {};
+          for (const child of el.children) {
+            const prop = localName(child.name);
+            const dot = prop.indexOf(".");
+            const key = dot >= 0 ? prop.slice(dot + 1) : prop;
+            const val = Number.parseFloat(child.text.trim());
+            if (Number.isFinite(val)) {
+              parameters[key] = val;
+            }
+          }
+          model.dynamicModels ??= new Map();
+          model.dynamicModels.set(mRID, {
+            mRID,
+            name,
+            profileClass: type,
+            targetEquipmentId,
+            parameters,
+          });
+        }
+        break;
+      }
     }
   }
 

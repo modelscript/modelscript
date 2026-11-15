@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BasicBlock, CFGEdgeKind, GenericCFG } from "@modelscript/runtime";
+import { BasicBlock, CFGEdgeKind, GenericCFG, UnifiedWorkspace } from "@modelscript/runtime";
+import {
+  isAsciiIdentContinue,
+  isAsciiIdentStart,
+  isAsciiIdentifier,
+  isAsciiWhitespaceCode,
+  parseNamedCallArgsFromText,
+} from "../flattener/expressions/cst-utils.js";
 
 export interface ModelicaStatement {
   kind: "assignment" | "if" | "for" | "while" | "when" | "return" | "break" | "call";
@@ -8,6 +15,7 @@ export interface ModelicaStatement {
   valExpr?: string | undefined;
   condExpr?: string | undefined;
   loopVar?: string | undefined;
+  rangeExpr?: string | undefined;
   rangeStart?: string | undefined;
   rangeEnd?: string | undefined;
   rangeStep?: string | undefined;
@@ -32,6 +40,271 @@ function trimSemicolons(s: string): string {
   return s.slice(start, end);
 }
 
+function readIdentLength(s: string, pos: number): number {
+  if (pos >= s.length || !isAsciiIdentStart(s.charCodeAt(pos))) return 0;
+  let j = pos + 1;
+  while (j < s.length && isAsciiIdentContinue(s.charCodeAt(j))) j++;
+  return j - pos;
+}
+
+function hasWordAt(s: string, pos: number, word: string): boolean {
+  if (!s.startsWith(word, pos)) return false;
+  if (pos > 0 && isAsciiIdentContinue(s.charCodeAt(pos - 1))) return false;
+  const end = pos + word.length;
+  if (end < s.length && isAsciiIdentContinue(s.charCodeAt(end))) return false;
+  return true;
+}
+
+function skipStringOrComment(s: string, i: number): number {
+  const ch = s[i];
+  if (ch === '"' || ch === "'") {
+    const q = ch;
+    let j = i + 1;
+    while (j < s.length) {
+      if (s[j] === "\\" && j + 1 < s.length) {
+        j += 2;
+        continue;
+      }
+      if (s[j] === q) return j + 1;
+      j++;
+    }
+    return s.length;
+  }
+  if (ch === "/" && s[i + 1] === "/") {
+    let j = i + 2;
+    while (j < s.length && s[j] !== "\n") j++;
+    return j;
+  }
+  if (ch === "/" && s[i + 1] === "*") {
+    const closeIdx = s.indexOf("*/", i + 2);
+    return closeIdx >= 0 ? closeIdx + 2 : s.length;
+  }
+  return -1;
+}
+
+function skipAlgorithmSectionPrefix(algText: string): number {
+  let i = 0;
+  while (i < algText.length && isAsciiWhitespaceCode(algText.charCodeAt(i))) i++;
+  if (hasWordAt(algText, i, "initial")) {
+    let j = i + 7;
+    while (j < algText.length && isAsciiWhitespaceCode(algText.charCodeAt(j))) j++;
+    if (hasWordAt(algText, j, "algorithm")) return j + 9;
+  }
+  if (hasWordAt(algText, i, "algorithm")) return i + 9;
+  return 0;
+}
+
+function hasCstSyntaxError(node: any): boolean {
+  if (!node) return false;
+  if (node.isError || node.type === "ERROR") return true;
+  if (Array.isArray(node.children)) {
+    for (const ch of node.children) {
+      if (hasCstSyntaxError(ch)) return true;
+    }
+  }
+  return false;
+}
+
+function shiftStatementOffsets(stmt: ModelicaStatement, delta: number, minOffset: number): ModelicaStatement {
+  const clamp = (v: number | undefined): number | undefined =>
+    v !== undefined ? Math.max(minOffset, v + delta) : undefined;
+  return {
+    ...stmt,
+    startOffset: clamp(stmt.startOffset),
+    endOffset: clamp(stmt.endOffset),
+    thenStmts: stmt.thenStmts?.map((s) => shiftStatementOffsets(s, delta, minOffset)),
+    elseStmts: stmt.elseStmts?.map((s) => shiftStatementOffsets(s, delta, minOffset)),
+    elseIfs: stmt.elseIfs?.map((ei) => ({
+      condExpr: ei.condExpr,
+      stmts: ei.stmts.map((s) => shiftStatementOffsets(s, delta, minOffset)),
+    })),
+    loopBody: stmt.loopBody?.map((s) => shiftStatementOffsets(s, delta, minOffset)),
+    whileBody: stmt.whileBody?.map((s) => shiftStatementOffsets(s, delta, minOffset)),
+    whenBody: stmt.whenBody?.map((s) => shiftStatementOffsets(s, delta, minOffset)),
+  };
+}
+
+function matchEndKwAt(s: string, pos: number, kw: string): number {
+  if (!hasWordAt(s, pos, "end")) return -1;
+  let j = pos + 3;
+  if (j >= s.length || !isAsciiWhitespaceCode(s.charCodeAt(j))) return -1;
+  while (j < s.length && isAsciiWhitespaceCode(s.charCodeAt(j))) j++;
+  if (!hasWordAt(s, j, kw)) return -1;
+  return j + kw.length;
+}
+
+function findBlockEndPos(body: string, start: number, kw: string): number {
+  let depth = 1;
+  let j = start + kw.length;
+  while (j < body.length && depth > 0) {
+    const skipped = skipStringOrComment(body, j);
+    if (skipped >= 0) {
+      j = skipped;
+      continue;
+    }
+    const endPos = matchEndKwAt(body, j, kw);
+    if (endPos >= 0) {
+      depth--;
+      j = endPos;
+      if (depth === 0) {
+        while (j < body.length && (body[j] === ";" || isAsciiWhitespaceCode(body.charCodeAt(j)))) {
+          if (body[j] === ";") {
+            j++;
+            break;
+          }
+          j++;
+        }
+        return j;
+      }
+      continue;
+    }
+    if (hasWordAt(body, j, kw)) {
+      depth++;
+      j += kw.length;
+      continue;
+    }
+    j++;
+  }
+  return j;
+}
+
+function findWordOutsideQuotes(s: string, start: number, word: string, respectBlocks = false): number {
+  let parenDepth = 0;
+  let blockDepth = 0;
+  let i = start;
+  while (i < s.length) {
+    const skipped = skipStringOrComment(s, i);
+    if (skipped >= 0) {
+      i = skipped;
+      continue;
+    }
+    const ch = s[i];
+    if (ch === "(" || ch === "[" || ch === "{") {
+      parenDepth++;
+      i++;
+      continue;
+    }
+    if (ch === ")" || ch === "]" || ch === "}") {
+      if (parenDepth > 0) parenDepth--;
+      i++;
+      continue;
+    }
+    if (respectBlocks && parenDepth === 0) {
+      let matchedEndBlock = false;
+      for (const bkw of ["if", "for", "while", "when"]) {
+        const endPos = matchEndKwAt(s, i, bkw);
+        if (endPos >= 0) {
+          if (blockDepth > 0) blockDepth--;
+          i = endPos;
+          matchedEndBlock = true;
+          break;
+        }
+      }
+      if (matchedEndBlock) continue;
+      if (blockDepth === 0 && hasWordAt(s, i, word)) return i;
+      if (hasWordAt(s, i, "if") || hasWordAt(s, i, "for") || hasWordAt(s, i, "while") || hasWordAt(s, i, "when")) {
+        blockDepth++;
+        i += hasWordAt(s, i, "if") ? 2 : hasWordAt(s, i, "for") ? 3 : hasWordAt(s, i, "when") ? 4 : 5;
+        continue;
+      }
+    } else if (parenDepth === 0 && blockDepth === 0 && hasWordAt(s, i, word)) {
+      return i;
+    }
+    i++;
+  }
+  return -1;
+}
+
+function stripTrailingEndKw(s: string, kw: string): string {
+  for (let i = s.length - 1; i >= 0; i--) {
+    const endPos = matchEndKwAt(s, i, kw);
+    if (endPos >= 0) {
+      return s.slice(0, i);
+    }
+  }
+  return s;
+}
+
+function splitHeaderAndBody(
+  blockText: string,
+  openKw: string,
+  midKw: string,
+  endKw: string,
+): { header: string; body: string } | null {
+  if (!hasWordAt(blockText, 0, openKw)) return null;
+  const midIdx = findWordOutsideQuotes(blockText, openKw.length, midKw, true);
+  if (midIdx < 0) return null;
+  const header = blockText.slice(openKw.length, midIdx);
+  const body = stripTrailingEndKw(blockText.slice(midIdx + midKw.length), endKw);
+  return { header, body };
+}
+
+function splitIfBranchesDeterministic(
+  ifText: string,
+): { cond: string; thenBody: string; elseIfs: { cond: string; body: string }[]; elseBody?: string } | null {
+  if (!hasWordAt(ifText, 0, "if")) return null;
+  const firstThen = findWordOutsideQuotes(ifText, 2, "then", true);
+  if (firstThen < 0) return null;
+  const cond = ifText.slice(2, firstThen).trim();
+  const afterThen = stripTrailingEndKw(ifText.slice(firstThen + 4), "if");
+
+  const splitMarkers: { pos: number; kind: "elseif" | "else" }[] = [];
+  let scanPos = 0;
+  while (scanPos < afterThen.length) {
+    const nextElseIf = findWordOutsideQuotes(afterThen, scanPos, "elseif", true);
+    const nextElse = findWordOutsideQuotes(afterThen, scanPos, "else", true);
+    if (nextElseIf < 0 && nextElse < 0) break;
+    if (nextElseIf >= 0 && (nextElse < 0 || nextElseIf < nextElse)) {
+      splitMarkers.push({ pos: nextElseIf, kind: "elseif" });
+      scanPos = nextElseIf + 6;
+    } else {
+      splitMarkers.push({ pos: nextElse, kind: "else" });
+      break;
+    }
+  }
+
+  const thenBody = splitMarkers.length > 0 ? afterThen.slice(0, splitMarkers[0]!.pos) : afterThen;
+  const elseIfs: { cond: string; body: string }[] = [];
+  let elseBody: string | undefined;
+
+  for (let m = 0; m < splitMarkers.length; m++) {
+    const cur = splitMarkers[m]!;
+    const segEnd = m + 1 < splitMarkers.length ? splitMarkers[m + 1]!.pos : afterThen.length;
+    if (cur.kind === "elseif") {
+      const seg = afterThen.slice(cur.pos + 6, segEnd);
+      const tIdx = findWordOutsideQuotes(seg, 0, "then", true);
+      if (tIdx >= 0) {
+        elseIfs.push({ cond: seg.slice(0, tIdx).trim(), body: seg.slice(tIdx + 4) });
+      }
+    } else {
+      elseBody = afterThen.slice(cur.pos + 4);
+    }
+  }
+
+  return elseBody !== undefined ? { cond, thenBody, elseIfs, elseBody } : { cond, thenBody, elseIfs };
+}
+
+function findTopLevelSemicolon(s: string, start: number): number {
+  let depth = 0;
+  let i = start;
+  while (i < s.length) {
+    const skipped = skipStringOrComment(s, i);
+    if (skipped >= 0) {
+      i = skipped;
+      continue;
+    }
+    const ch = s[i];
+    if (ch === "(" || ch === "[" || ch === "{") depth++;
+    else if (ch === ")" || ch === "]" || ch === "}") {
+      if (depth > 0) depth--;
+    } else if (ch === ";" && depth === 0) {
+      return i;
+    }
+    i++;
+  }
+  return -1;
+}
+
 /**
  * Lowers structured Modelica statements into a language-agnostic GenericCFG.
  */
@@ -48,97 +321,72 @@ export class ModelicaCFGLowerer {
   }
 
   /**
-   * Parses raw Modelica algorithmic source text into structured ModelicaStatement nodes.
+   * Parses raw Modelica algorithmic source text via the native WASM CST parser when available,
+   * falling back to a deterministic keyword scanner when running without a registered parser.
    */
   static parseStatements(algText: string, defaultStartByte: number = 0): ModelicaStatement[] {
-    const statements: ModelicaStatement[] = [];
-
-    let body = algText;
-    const algKwMatch = /^\s*(?:initial\s+)?algorithm\b/.exec(body);
-    let offset = 0;
-    if (algKwMatch) {
-      offset = algKwMatch[0].length;
-      body = body.slice(offset);
+    const parser = UnifiedWorkspace.getGlobalParser(".mo") as { parse?: (s: string) => any } | undefined;
+    if (parser && typeof parser.parse === "function" && algText.trim().length > 0) {
+      const algPrefixLen = skipAlgorithmSectionPrefix(algText);
+      const needsHeader = algPrefixLen === 0;
+      const wrapperPrefix = needsHeader ? "model _CfgTmp\nalgorithm\n" : "model _CfgTmp\n";
+      try {
+        const tree = parser.parse(`${wrapperPrefix}${algText}\nend _CfgTmp;`);
+        const root = tree?.rootNode ?? tree;
+        if (root && !hasCstSyntaxError(root)) {
+          const algNode = findCstNodesByType(root, "algorithm_section")[0];
+          if (algNode) {
+            const stmts = this.extractStatementsFromCst(algNode, 0);
+            const delta = defaultStartByte - wrapperPrefix.length;
+            return stmts.map((s) => shiftStatementOffsets(s, delta, defaultStartByte));
+          }
+          return [];
+        }
+      } catch {
+        // Fall through to deterministic scanner if standalone parser throws on partial snippet.
+      }
     }
+    return this.parseStatementsFallback(algText, defaultStartByte);
+  }
+
+  private static parseStatementsFallback(algText: string, defaultStartByte: number = 0): ModelicaStatement[] {
+    const statements: ModelicaStatement[] = [];
+    const offset = skipAlgorithmSectionPrefix(algText);
+    const body = algText.slice(offset);
 
     let i = 0;
     while (i < body.length) {
-      while (i < body.length && /\s/.test(body[i]!)) i++;
+      while (i < body.length && isAsciiWhitespaceCode(body.charCodeAt(i))) i++;
       if (i >= body.length) break;
 
-      const remaining = body.slice(i);
-
-      // 1. If statement
-      if (/^if\b/.test(remaining)) {
-        const ifStart = i;
-        let depth = 1;
-        let j = i + 2;
-        while (j < body.length && depth > 0) {
-          if (body.slice(j).startsWith("if") && /\bif\b/.test(body.slice(j, j + 3))) {
-            depth++;
-            j += 2;
-          } else if (body.slice(j).startsWith("end if") && /\bend\s+if\b/.test(body.slice(j, j + 7))) {
-            depth--;
-            j += 6;
-            if (depth === 0) {
-              while (j < body.length && (body[j] === ";" || /\s/.test(body[j]!))) {
-                if (body[j] === ";") {
-                  j++;
-                  break;
-                }
-                j++;
-              }
-              break;
-            }
-          } else {
-            j++;
-          }
+      if (hasWordAt(body, i, "if")) {
+        const blockEnd = findBlockEndPos(body, i, "if");
+        const ifText = body.slice(i, blockEnd);
+        const startOffset = defaultStartByte + offset + i;
+        const endOffset = defaultStartByte + offset + blockEnd;
+        const parsedIf = splitIfBranchesDeterministic(ifText);
+        const thenRel = parsedIf ? ifText.indexOf(parsedIf.thenBody) : -1;
+        const thenStmts = parsedIf
+          ? ModelicaCFGLowerer.parseStatementsFallback(parsedIf.thenBody, startOffset + (thenRel >= 0 ? thenRel : 0))
+          : [];
+        const elseIfs = (parsedIf?.elseIfs ?? []).map((ei) => {
+          const eRel = ifText.indexOf(ei.body);
+          return {
+            condExpr: ei.cond,
+            stmts: ModelicaCFGLowerer.parseStatementsFallback(ei.body, startOffset + (eRel >= 0 ? eRel : 0)),
+          };
+        });
+        let elseStmts: ModelicaStatement[] | undefined;
+        if (parsedIf?.elseBody !== undefined) {
+          const elseRel = ifText.indexOf(parsedIf.elseBody);
+          elseStmts = ModelicaCFGLowerer.parseStatementsFallback(
+            parsedIf.elseBody,
+            startOffset + (elseRel >= 0 ? elseRel : 0),
+          );
         }
-
-        const ifText = body.slice(ifStart, j);
-        const startOffset = defaultStartByte + offset + ifStart;
-        const endOffset = defaultStartByte + offset + j;
-
-        const branchTokens = ifText.split(/\b(elseif|else)\b/);
-        const firstBranchMatch = /^if\b([\s\S]*?)\bthen\b([\s\S]*)$/.exec(branchTokens[0] || "");
-        let thenStmts: ModelicaStatement[] = [];
-        let condExpr = "";
-        if (firstBranchMatch) {
-          condExpr = firstBranchMatch[1]?.trim() || "";
-          const thenBody = firstBranchMatch[2] || "";
-          const thenRel = ifText.indexOf(thenBody);
-          thenStmts = ModelicaCFGLowerer.parseStatements(thenBody, startOffset + (thenRel >= 0 ? thenRel : 0));
-        }
-
-        const elseIfs: { condExpr: string; stmts: ModelicaStatement[] }[] = [];
-        let elseStmts: ModelicaStatement[] | undefined = undefined;
-
-        let k = 1;
-        while (k < branchTokens.length) {
-          const token = branchTokens[k]?.trim();
-          const content = branchTokens[k + 1] || "";
-          if (token === "elseif") {
-            const match = /^\s*([\s\S]*?)\bthen\b([\s\S]*)$/.exec(content);
-            if (match) {
-              const eCond = match[1]?.trim() || "";
-              const eBody = match[2] || "";
-              const eRel = ifText.indexOf(eBody);
-              elseIfs.push({
-                condExpr: eCond,
-                stmts: ModelicaCFGLowerer.parseStatements(eBody, startOffset + (eRel >= 0 ? eRel : 0)),
-              });
-            }
-          } else if (token === "else") {
-            const elseBody = content.replace(/\bend\s+if[\s\S]*$/, "");
-            const elseRel = ifText.indexOf(elseBody);
-            elseStmts = ModelicaCFGLowerer.parseStatements(elseBody, startOffset + (elseRel >= 0 ? elseRel : 0));
-          }
-          k += 2;
-        }
-
         statements.push({
           kind: "if",
-          condExpr,
+          condExpr: parsedIf?.cond ?? "",
           thenStmts,
           elseIfs,
           elseStmts,
@@ -146,57 +394,28 @@ export class ModelicaCFGLowerer {
           startOffset,
           endOffset,
         });
-
-        i = j;
+        i = blockEnd;
         continue;
       }
 
-      // 2. For statement
-      if (/^for\b/.test(remaining)) {
-        const forStart = i;
-        let depth = 1;
-        let j = i + 3;
-        while (j < body.length && depth > 0) {
-          if (body.slice(j).startsWith("for") && /\bfor\b/.test(body.slice(j, j + 4))) {
-            depth++;
-            j += 3;
-          } else if (body.slice(j).startsWith("end for") && /\bend\s+for\b/.test(body.slice(j, j + 8))) {
-            depth--;
-            j += 7;
-            if (depth === 0) {
-              while (j < body.length && (body[j] === ";" || /\s/.test(body[j]!))) {
-                if (body[j] === ";") {
-                  j++;
-                  break;
-                }
-                j++;
-              }
-              break;
-            }
-          } else {
-            j++;
-          }
-        }
-
-        const forText = body.slice(forStart, j);
-        const startOffset = defaultStartByte + offset + forStart;
-        const endOffset = defaultStartByte + offset + j;
-
-        const forMatch = /^for\b([\s\S]*?)\bloop\b([\s\S]*?)\bend\s+for/i.exec(forText);
-        const header = forMatch ? forMatch[1] || "" : "";
-        const forBodyText = forMatch ? forMatch[2] || "" : "";
-
-        let loopVar = "i";
-        const idMatch = header.match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)/);
-        if (idMatch && idMatch[1]) loopVar = idMatch[1];
-
+      if (hasWordAt(body, i, "for")) {
+        const blockEnd = findBlockEndPos(body, i, "for");
+        const forText = body.slice(i, blockEnd);
+        const startOffset = defaultStartByte + offset + i;
+        const endOffset = defaultStartByte + offset + blockEnd;
+        const split = splitHeaderAndBody(forText, "for", "loop", "for");
+        const header = split?.header ?? "";
+        const forBodyText = split?.body ?? "";
+        const trimmedHeader = header.trimStart();
+        const idEnd = readIdentLength(trimmedHeader, 0);
+        const loopVar = idEnd > 0 ? trimmedHeader.slice(0, idEnd) : "i";
+        const inIdx = findWordOutsideQuotes(header, 0, "in");
+        const rangeExpr = inIdx >= 0 ? header.slice(inIdx + 2).trim() : "";
         let rangeStart = "1";
         let rangeEnd = "10";
         let rangeStep = "1";
-
-        const inMatch = header.match(/\bin\b([\s\S]*)$/);
-        if (inMatch && inMatch[1]) {
-          const parts = inMatch[1].trim().split(":");
+        if (rangeExpr) {
+          const parts = rangeExpr.split(":");
           if (parts.length === 2) {
             rangeStart = parts[0]?.trim() || "1";
             rangeEnd = parts[1]?.trim() || "10";
@@ -206,134 +425,64 @@ export class ModelicaCFGLowerer {
             rangeEnd = parts[2]?.trim() || "10";
           }
         }
-
-        const bodyRel = forMatch ? forText.indexOf(forBodyText) : 0;
+        const bodyRel = split ? forText.indexOf(forBodyText) : 0;
         const loopBodyStart = startOffset + (bodyRel >= 0 ? bodyRel : 0);
         statements.push({
           kind: "for",
           loopVar,
+          rangeExpr: rangeExpr || undefined,
           rangeStart,
           rangeEnd,
           rangeStep,
-          loopBody: ModelicaCFGLowerer.parseStatements(forBodyText, loopBodyStart),
+          loopBody: ModelicaCFGLowerer.parseStatementsFallback(forBodyText, loopBodyStart),
           rawText: forText,
           startOffset,
           endOffset,
         });
-
-        i = j;
+        i = blockEnd;
         continue;
       }
 
-      // 3. While statement
-      if (/^while\b/.test(remaining)) {
-        const whileStart = i;
-        let depth = 1;
-        let j = i + 5;
-        while (j < body.length && depth > 0) {
-          if (body.slice(j).startsWith("while") && /\bwhile\b/.test(body.slice(j, j + 6))) {
-            depth++;
-            j += 5;
-          } else if (body.slice(j).startsWith("end while") && /\bend\s+while\b/.test(body.slice(j, j + 10))) {
-            depth--;
-            j += 9;
-            if (depth === 0) {
-              while (j < body.length && (body[j] === ";" || /\s/.test(body[j]!))) {
-                if (body[j] === ";") {
-                  j++;
-                  break;
-                }
-                j++;
-              }
-              break;
-            }
-          } else {
-            j++;
-          }
+      if (hasWordAt(body, i, "while") || hasWordAt(body, i, "when")) {
+        const kw = hasWordAt(body, i, "while") ? "while" : "when";
+        const midKw = kw === "while" ? "loop" : "then";
+        const blockEnd = findBlockEndPos(body, i, kw);
+        const blockText = body.slice(i, blockEnd);
+        const startOffset = defaultStartByte + offset + i;
+        const endOffset = defaultStartByte + offset + blockEnd;
+        const split = splitHeaderAndBody(blockText, kw, midKw, kw);
+        const condExpr = split?.header.trim() ?? "";
+        const innerBody = split?.body.trim() ?? "";
+        const bodyRel = split ? blockText.indexOf(innerBody) : 0;
+        const parsedInner = ModelicaCFGLowerer.parseStatementsFallback(
+          innerBody,
+          startOffset + (bodyRel >= 0 ? bodyRel : 0),
+        );
+        if (kw === "while") {
+          statements.push({
+            kind: "while",
+            condExpr,
+            whileBody: parsedInner,
+            rawText: blockText,
+            startOffset,
+            endOffset,
+          });
+        } else {
+          statements.push({
+            kind: "when",
+            condExpr,
+            whenBody: parsedInner,
+            rawText: blockText,
+            startOffset,
+            endOffset,
+          });
         }
-
-        const whileText = body.slice(whileStart, j);
-        const startOffset = defaultStartByte + offset + whileStart;
-        const endOffset = defaultStartByte + offset + j;
-
-        const whileMatch = /^while\b([\s\S]*?)\bloop\b([\s\S]*?)\bend\s+while/i.exec(whileText);
-        const condExpr = whileMatch ? whileMatch[1]?.trim() || "" : "";
-        const whileBodyText = whileMatch ? whileMatch[2]?.trim() || "" : "";
-
-        const whileBodyRel = whileMatch ? whileText.indexOf(whileBodyText) : 0;
-        statements.push({
-          kind: "while",
-          condExpr,
-          whileBody: ModelicaCFGLowerer.parseStatements(
-            whileBodyText,
-            startOffset + (whileBodyRel >= 0 ? whileBodyRel : 0),
-          ),
-          rawText: whileText,
-          startOffset,
-          endOffset,
-        });
-
-        i = j;
+        i = blockEnd;
         continue;
       }
 
-      // 4. When statement
-      if (/^when\b/.test(remaining)) {
-        const whenStart = i;
-        let depth = 1;
-        let j = i + 4;
-        while (j < body.length && depth > 0) {
-          if (body.slice(j).startsWith("when") && /\bwhen\b/.test(body.slice(j, j + 5))) {
-            depth++;
-            j += 4;
-          } else if (body.slice(j).startsWith("end when") && /\bend\s+when\b/.test(body.slice(j, j + 9))) {
-            depth--;
-            j += 8;
-            if (depth === 0) {
-              while (j < body.length && (body[j] === ";" || /\s/.test(body[j]!))) {
-                if (body[j] === ";") {
-                  j++;
-                  break;
-                }
-                j++;
-              }
-              break;
-            }
-          } else {
-            j++;
-          }
-        }
-
-        const whenText = body.slice(whenStart, j);
-        const startOffset = defaultStartByte + offset + whenStart;
-        const endOffset = defaultStartByte + offset + j;
-
-        const whenMatch = /^when\b([\s\S]*?)\bthen\b([\s\S]*?)\bend\s+when/i.exec(whenText);
-        const condExpr = whenMatch ? whenMatch[1]?.trim() || "" : "";
-        const whenBodyText = whenMatch ? whenMatch[2]?.trim() || "" : "";
-
-        const whenBodyRel = whenMatch ? whenText.indexOf(whenBodyText) : 0;
-        statements.push({
-          kind: "when",
-          condExpr,
-          whenBody: ModelicaCFGLowerer.parseStatements(
-            whenBodyText,
-            startOffset + (whenBodyRel >= 0 ? whenBodyRel : 0),
-          ),
-          rawText: whenText,
-          startOffset,
-          endOffset,
-        });
-
-        i = j;
-        continue;
-      }
-
-      // 5. Simple statement up to ';'
-      const semiIdx = body.indexOf(";", i);
-      if (semiIdx === -1) {
-        break;
-      }
+      const semiIdx = findTopLevelSemicolon(body, i);
+      if (semiIdx === -1) break;
 
       const stmtText = body.slice(i, semiIdx).trim();
       const startOffset = defaultStartByte + offset + i;
@@ -341,40 +490,27 @@ export class ModelicaCFGLowerer {
 
       if (stmtText === "return" || stmtText.startsWith("return ") || stmtText.startsWith("return(")) {
         const retVal = stmtText.slice(6).trim();
-        statements.push({
-          kind: "return",
-          valExpr: retVal || undefined,
-          rawText: stmtText,
-          startOffset,
-          endOffset,
-        });
+        statements.push({ kind: "return", valExpr: retVal || undefined, rawText: stmtText, startOffset, endOffset });
       } else if (stmtText === "break") {
         statements.push({ kind: "break", rawText: stmtText, startOffset, endOffset });
       } else if (stmtText.includes(":=")) {
         const parts = stmtText.split(":=");
         const targetVar = parts[0]?.trim() || "";
         const valExpr = parts.slice(1).join(":=").trim();
-
-        statements.push({
-          kind: "assignment",
-          targetVar,
-          valExpr,
-          rawText: stmtText,
-          startOffset,
-          endOffset,
-        });
-      } else if (/^([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)$/.test(stmtText)) {
-        const callMatch = /^([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)$/.exec(stmtText)!;
-        const callFn = callMatch[1]!;
-        const callArgs = callMatch[2] ? callMatch[2].split(",").map((s) => s.trim()) : [];
-        statements.push({
-          kind: "call",
-          callFn,
-          callArgs,
-          rawText: stmtText,
-          startOffset,
-          endOffset,
-        });
+        statements.push({ kind: "assignment", targetVar, valExpr, rawText: stmtText, startOffset, endOffset });
+      } else {
+        const parsedCall = parseNamedCallArgsFromText(stmtText);
+        if (parsedCall && isAsciiIdentifier(parsedCall.callee)) {
+          const callArgs = parsedCall.argsText ? parsedCall.argsText.split(",").map((s) => s.trim()) : [];
+          statements.push({
+            kind: "call",
+            callFn: parsedCall.callee,
+            callArgs,
+            rawText: stmtText,
+            startOffset,
+            endOffset,
+          });
+        }
       }
 
       i = semiIdx + 1;
@@ -390,7 +526,7 @@ export class ModelicaCFGLowerer {
     if (!algNode) return [];
     if (!algNode.children || algNode.children.length === 0) {
       if (algNode.text) {
-        return this.parseStatements(algNode.text, algNode.startIndex ?? defaultStartByte);
+        return this.parseStatementsFallback(algNode.text, algNode.startIndex ?? defaultStartByte);
       }
       return [];
     }
@@ -401,11 +537,13 @@ export class ModelicaCFGLowerer {
       if (type === "statement") {
         const stmt = this.extractSingleStatementFromCst(child);
         if (stmt) statements.push(stmt);
+      } else if (type === "statementlist" || type === "statements") {
+        statements.push(...this.extractStatementsFromCst(child, child.startIndex ?? defaultStartByte));
       }
     }
 
-    if (statements.length === 0 && algNode.text) {
-      return this.parseStatements(algNode.text, algNode.startIndex ?? defaultStartByte);
+    if (statements.length === 0 && hasCstSyntaxError(algNode) && algNode.text) {
+      return this.parseStatementsFallback(algNode.text, algNode.startIndex ?? defaultStartByte);
     }
 
     return statements;
@@ -486,7 +624,7 @@ export class ModelicaCFGLowerer {
       }
 
       if (thenStmts.length === 0 && elseStmts.length === 0 && rawText) {
-        const parsed = this.parseStatements(rawText, startOffset);
+        const parsed = this.parseStatementsFallback(rawText, startOffset);
         if (parsed.length > 0) return parsed[0]!;
       }
 
@@ -552,7 +690,7 @@ export class ModelicaCFGLowerer {
       }
 
       if (loopBody.length === 0 && rawText) {
-        const parsed = this.parseStatements(rawText, startOffset);
+        const parsed = this.parseStatementsFallback(rawText, startOffset);
         if (parsed.length > 0) return parsed[0]!;
       }
 
@@ -587,7 +725,7 @@ export class ModelicaCFGLowerer {
       }
 
       if (whileBody.length === 0 && rawText) {
-        const parsed = this.parseStatements(rawText, startOffset);
+        const parsed = this.parseStatementsFallback(rawText, startOffset);
         if (parsed.length > 0) return parsed[0]!;
       }
 
@@ -619,7 +757,7 @@ export class ModelicaCFGLowerer {
       }
 
       if (whenBody.length === 0 && rawText) {
-        const parsed = this.parseStatements(rawText, startOffset);
+        const parsed = this.parseStatementsFallback(rawText, startOffset);
         if (parsed.length > 0) return parsed[0]!;
       }
 
@@ -667,7 +805,8 @@ export class ModelicaCFGLowerer {
     }
 
     // 6. Return / Break
-    const trimmed = rawText.trim().replace(/;$/, "");
+    const rawTrimmed = rawText.trim();
+    const trimmed = rawTrimmed.endsWith(";") ? rawTrimmed.slice(0, -1) : rawTrimmed;
     if (trimmed === "return" || trimmed.startsWith("return ") || trimmed.startsWith("return(")) {
       return { kind: "return", rawText, startOffset, endOffset };
     }
@@ -676,10 +815,10 @@ export class ModelicaCFGLowerer {
     }
 
     // 7. Function call
-    const callMatch = /^([a-zA-Z_][a-zA-Z0-9_]*)\((.*)\)$/.exec(trimmed);
-    if (callMatch) {
-      const callFn = callMatch[1]!;
-      const callArgs = callMatch[2] ? callMatch[2].split(",").map((s) => s.trim()) : [];
+    const parsedCall = parseNamedCallArgsFromText(trimmed);
+    if (parsedCall && isAsciiIdentifier(parsedCall.callee)) {
+      const callFn = parsedCall.callee;
+      const callArgs = parsedCall.argsText ? parsedCall.argsText.split(",").map((s) => s.trim()) : [];
       return { kind: "call", callFn, callArgs, rawText, startOffset, endOffset };
     }
 
@@ -761,17 +900,19 @@ export class ModelicaCFGLowerer {
       case "assignment": {
         const target = stmt.targetVar ?? "";
         // Check if target is array element assignment: arr[idx] or arr[i, j]
-        const arrMatch = /^([a-zA-Z_][a-zA-Z0-9_]*)\[(.*)\]$/.exec(target);
-        if (arrMatch) {
-          const arrName = arrMatch[1]!;
-          const idxExpr = arrMatch[2]!;
-          const inst = this.cfg.createInstruction("ASSIGN_ARRAY", arrName, [idxExpr, stmt.valExpr ?? "0"], {
-            startOffset: stmt.startOffset,
-            endOffset: stmt.endOffset,
-            rawText: stmt.rawText,
-          });
-          curr.addInstruction(inst);
-          return curr;
+        const openBracket = target.indexOf("[");
+        if (openBracket > 0 && target.endsWith("]")) {
+          const arrName = target.slice(0, openBracket);
+          if (isAsciiIdentifier(arrName)) {
+            const idxExpr = target.slice(openBracket + 1, -1);
+            const inst = this.cfg.createInstruction("ASSIGN_ARRAY", arrName, [idxExpr, stmt.valExpr ?? "0"], {
+              startOffset: stmt.startOffset,
+              endOffset: stmt.endOffset,
+              rawText: stmt.rawText,
+            });
+            curr.addInstruction(inst);
+            return curr;
+          }
         }
 
         const inst = this.cfg.createInstruction("ASSIGN", stmt.targetVar, stmt.valExpr ? [stmt.valExpr] : [], {
@@ -939,7 +1080,16 @@ export class ModelicaCFGLowerer {
 }
 
 function normCstType(t: string | undefined): string {
-  return (t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!t) return "";
+  let out = "";
+  const lower = t.toLowerCase();
+  for (let i = 0; i < lower.length; i++) {
+    const c = lower.charCodeAt(i);
+    if ((c >= 97 && c <= 122) || (c >= 48 && c <= 57)) {
+      out += lower[i]!;
+    }
+  }
+  return out;
 }
 
 export function findCstNodesByType(root: any, typeName: string): any[] {

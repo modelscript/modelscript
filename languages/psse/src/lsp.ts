@@ -114,19 +114,49 @@ function spanToRange(span: SourceSpan | undefined, lines: string[], extraLines =
   };
 }
 
+function firstTokenRange(lines: string[]): LspRange {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    const match = /\S+/.exec(line);
+    if (match) {
+      return {
+        start: { line: i, character: match.index },
+        end: { line: i, character: match.index + match[0].length },
+      };
+    }
+  }
+  return DEFAULT_RANGE;
+}
+
+function findSeqRecordRange(lines: string[], busNum: number): LspRange {
+  const re = new RegExp(`^\\s*(${busNum})\\b`);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    const m = re.exec(line);
+    if (m && m[1]) {
+      const startChar = line.indexOf(m[1], m.index);
+      return {
+        start: { line: i, character: startChar },
+        end: { line: i, character: startChar + m[1].length },
+      };
+    }
+  }
+  return firstTokenRange(lines);
+}
+
 /**
  * Validates a PSS/E RAW power flow deck or DYR dynamic data file and returns diagnostics.
  */
 export function validatePsse(content: string, uri: string = "model.raw"): LspDiagnostic[] {
+  const lines = content.split(/\r?\n/);
   try {
-    const lines = content.split(/\r?\n/);
     if (uri.toLowerCase().endsWith(".seq")) {
       const seq = parseSeq(content);
       const diags: LspDiagnostic[] = [];
       for (const g of seq.generators) {
         if (g.zxpos <= 0 || g.zxneg <= 0 || g.zx0 <= 0) {
           diags.push({
-            range: DEFAULT_RANGE,
+            range: findSeqRecordRange(lines, g.i),
             severity: 2,
             code: "P5101",
             source: "modelscript-psse",
@@ -137,7 +167,7 @@ export function validatePsse(content: string, uri: string = "model.raw"): LspDia
       for (const br of seq.branches) {
         if (Math.abs(br.r0) < 1e-9 && Math.abs(br.x0) < 1e-9) {
           diags.push({
-            range: DEFAULT_RANGE,
+            range: findSeqRecordRange(lines, br.i),
             severity: 2,
             code: "P5102",
             source: "modelscript-psse",
@@ -148,7 +178,7 @@ export function validatePsse(content: string, uri: string = "model.raw"): LspDia
       for (const xf of seq.transformers) {
         if (xf.cc < 1 || xf.cc > 9) {
           diags.push({
-            range: DEFAULT_RANGE,
+            range: findSeqRecordRange(lines, xf.i),
             severity: 1,
             code: "P5103",
             source: "modelscript-psse",
@@ -217,7 +247,7 @@ export function validatePsse(content: string, uri: string = "model.raw"): LspDia
   } catch (err: unknown) {
     return [
       {
-        range: DEFAULT_RANGE,
+        range: firstTokenRange(lines),
         severity: 1,
         code: "P1001",
         source: "modelscript-psse",
@@ -896,11 +926,14 @@ export function getPsseDefinition(
       if (companion) {
         const bus = companion.psseCase.buses.get(rec.ibus);
         if (bus?.span) {
+          const busLine = Math.max(0, bus.span.line - 1);
+          const busStartCol = Math.max(0, (bus.span.column ?? 1) - 1);
+          const busEndCol = busStartCol + String(rec.ibus).length;
           return {
             uri: companion.uri,
             range: {
-              start: { line: Math.max(0, bus.span.line - 1), character: 0 },
-              end: { line: Math.max(0, bus.span.line - 1), character: 40 },
+              start: { line: busLine, character: busStartCol },
+              end: { line: busLine, character: busEndCol },
             },
           };
         }

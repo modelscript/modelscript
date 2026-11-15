@@ -14,6 +14,7 @@ import {
   BinOp,
   DAEBuilder,
   matchVarPath,
+  UnifiedWorkspace,
   Variability,
   VarType,
   type QueryDB,
@@ -21,6 +22,15 @@ import {
   type SymbolId,
 } from "@modelscript/runtime";
 import { Cst, type SyntaxNode } from "../../../src-gen/bindings.js";
+import {
+  collapseAsciiWhitespace,
+  firstAsciiToken,
+  isAsciiDigitsOnly,
+  isAsciiIdentContinue,
+  isAsciiIdentifier,
+  isAsciiIdentStart,
+  isAsciiWhitespaceCode,
+} from "../../ascii.js";
 import {
   BARE_SINGLE_LETTER_MODELICA_CONSTANTS,
   MAX_ARRAY_EXPANSION_LENGTH,
@@ -37,6 +47,37 @@ import {
   parseArrayLiteralElements,
 } from "./eval.js";
 import { getSymbolQualifiedName } from "./functions.js";
+
+export {
+  collapseAsciiWhitespace,
+  firstAsciiToken,
+  isAsciiDigitsOnly,
+  isAsciiIdentContinue,
+  isAsciiIdentifier,
+  isAsciiIdentStart,
+  isAsciiWhitespaceCode,
+};
+
+export interface CstNodeLike {
+  type?: string;
+  typeId?: number;
+  text?: string;
+  isNamed?: boolean;
+  isMissing?: boolean;
+  hasError?: boolean;
+  children?: CstNodeLike[];
+  namedChildren?: CstNodeLike[];
+  childCount?: number;
+  parent?: CstNodeLike | null;
+  startIndex?: number;
+  endIndex?: number;
+  startOffset?: number;
+  endOffset?: number;
+  startPosition?: { row: number; column: number };
+  endPosition?: { row: number; column: number };
+  child?: (index: number) => CstNodeLike | null;
+  childForFieldName?: (name: string) => CstNodeLike | null;
+}
 
 export function stripArraySubscripts(s: string): string {
   let result = "";
@@ -268,13 +309,21 @@ export function checkIfExprTypeMismatch(
   return false;
 }
 
-export function escapeRegExp(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 export function stripAnnotation(str: string): string {
-  const idx = str.search(/\bannotation\b/);
-  return idx >= 0 ? str.slice(0, idx) : str;
+  const needle = "annotation";
+  let from = 0;
+  while (from <= str.length - needle.length) {
+    const idx = str.indexOf(needle, from);
+    if (idx < 0) return str;
+    const beforeOk = idx === 0 || !isAsciiIdentContinue(str.charCodeAt(idx - 1));
+    const afterIdx = idx + needle.length;
+    const afterOk = afterIdx === str.length || !isAsciiIdentContinue(str.charCodeAt(afterIdx));
+    if (beforeOk && afterOk) {
+      return str.slice(0, idx);
+    }
+    from = idx + 1;
+  }
+  return str;
 }
 
 export function copyExprBetweenDaes(
@@ -505,6 +554,42 @@ export function getIndexedElementText(text: string, indices: number[]): string {
   return curr;
 }
 
+function extractLiteralsFromEnumListNode(enumListNode: SyntaxNode | null | undefined): string[] {
+  if (!enumListNode) return [];
+  const lits: string[] = [];
+  for (const c of enumListNode.children || []) {
+    if (c.type === "enumeration_literal" || Cst.EnumerationLiteral.is(c)) {
+      const identNode = c.children?.find((ch) => ch.type === "identifier") ?? c.child(0);
+      const litText = identNode?.text?.trim() || firstAsciiToken(c.text ?? "");
+      if (litText) lits.push(litText);
+    }
+  }
+  return lits;
+}
+
+/** Parses an enum type definition or `enumeration(...)` specifier with the WASM parser to extract its literal names. */
+export function parseEnumLiteralsText(rawText: string): string[] | null {
+  const parser = UnifiedWorkspace.getGlobalParser(".mo");
+  if (!parser) return null;
+  const trimmed = rawText.trim();
+  if (!trimmed) return null;
+  const body = trimmed.endsWith(";") ? trimmed.slice(0, -1).trim() : trimmed;
+  const src = body.startsWith("enumeration") ? `type _Tmp = ${body};` : `${body};`;
+  const tree = parser.parse(src);
+  if (!tree?.rootNode || cstHasError(tree.rootNode)) return null;
+  const findEnumList = (n: SyntaxNode): SyntaxNode | null => {
+    if (n.type === "enum_list") return n;
+    for (const ch of n.children || []) {
+      const found = findEnumList(ch);
+      if (found) return found;
+    }
+    return null;
+  };
+  const enumList = findEnumList(tree.rootNode);
+  const lits = extractLiteralsFromEnumListNode(enumList);
+  return lits.length > 0 ? lits : null;
+}
+
 export function extractEnumLiteralsFromCst(cstNode: any, targetMeta?: any): string[] | null {
   if (Array.isArray(targetMeta?.literals) && targetMeta.literals.length > 0) {
     return targetMeta.literals;
@@ -512,25 +597,12 @@ export function extractEnumLiteralsFromCst(cstNode: any, targetMeta?: any): stri
   const shortSpec = getShortClassSpecifierNode(cstNode);
   const enumListNode = shortSpec ? Cst.ShortClassSpecifier.enumList(shortSpec) : null;
   if (enumListNode) {
-    const lits: string[] = [];
-    for (const c of enumListNode.children || []) {
-      if (c.type === "enumeration_literal" || Cst.EnumerationLiteral.is(c)) {
-        const litText = c.text?.trim()?.split(/\s+/)[0];
-        if (litText) lits.push(litText);
-      }
-    }
+    const lits = extractLiteralsFromEnumListNode(enumListNode);
     if (lits.length > 0) return lits;
   }
   const cstText = stripComments(cstNode?.text ?? "").trim();
-  const enumMatch =
-    /^(?:(?:encapsulated|partial|final|replaceable|redeclare|inner|outer)\s+)*(?:type|class)\s+[A-Za-z_]\w*\s*=\s*enumeration\s*\(([^()]+)\)/.exec(
-      cstText,
-    );
-  if (enumMatch) {
-    return enumMatch[1]!
-      .split(",")
-      .map((x: string) => x.trim().split(/\s+/)[0]!)
-      .filter(Boolean);
+  if (cstText) {
+    return parseEnumLiteralsText(cstText);
   }
   return null;
 }
@@ -606,7 +678,7 @@ export function flattenColonNodes(n: any): any[] {
     return flattenColonNodes(n.child(1));
   }
   if (n.childCount === 3) {
-    const op = (n.child(1)?.text?.trim() ?? n.child(1)?.type ?? "").replace(/^"|"$/g, "");
+    const op = stripOuterDoubleQuotes(n.child(1)?.text?.trim() ?? n.child(1)?.type ?? "");
     if (op === ":") {
       return [...flattenColonNodes(n.child(0)), ...flattenColonNodes(n.child(2))];
     }
@@ -693,7 +765,7 @@ export function resolveEnumType(
   db: QueryDB | undefined,
 ): { sym: SymbolEntry; literals: string[]; qual: string } | null {
   if (!db) return null;
-  const cleanName = typeName.replace(/^\.+/, "").trim();
+  const cleanName = stripLeadingDots(typeName).trim();
   if (!cleanName) return null;
 
   let resolvedSym: SymbolEntry | null = null;
@@ -751,7 +823,7 @@ export function evaluateEnumRange(
     if (items.length > 0) {
       const lits: string[] = [];
       for (const item of items) {
-        let t = (item.text?.trim() ?? "").replace(/^\.+/, "");
+        let t = stripLeadingDots(item.text?.trim() ?? "");
         if (substitutions && substitutions.has(t)) {
           const s = substitutions.get(t);
           if (typeof s === "string") t = s;
@@ -774,8 +846,8 @@ export function evaluateEnumRange(
 
   const colonNodes = flattenColonNodes(rangeNode);
   if (colonNodes.length >= 2) {
-    let startText = (colonNodes[0].text?.trim() ?? "").replace(/^\.+/, "");
-    let stopText = (colonNodes[colonNodes.length - 1].text?.trim() ?? "").replace(/^\.+/, "");
+    let startText = stripLeadingDots(colonNodes[0].text?.trim() ?? "");
+    let stopText = stripLeadingDots(colonNodes[colonNodes.length - 1].text?.trim() ?? "");
     if (substitutions && substitutions.has(startText)) {
       const s = substitutions.get(startText);
       if (typeof s === "string") startText = s;
@@ -814,7 +886,7 @@ export function evaluateEnumRange(
   }
 
   // Single node (e.g. `for i in E`)
-  let typeText = (rangeNode.text?.trim() ?? "").replace(/^\.+/, "");
+  let typeText = stripLeadingDots(rangeNode.text?.trim() ?? "");
   if (substitutions && substitutions.has(typeText)) {
     const s = substitutions.get(typeText);
     if (typeof s === "string") typeText = s;
@@ -922,7 +994,7 @@ export function formatArenaValForMod(val: any, targetType?: any): string {
   return String(val);
 }
 
-export function evalArithmeticString(expr: string, allowFloat = false): number | null {
+export function evalArithmeticString(expr: string, allowFloat = false, subs?: Map<string, number>): number | null {
   let pos = 0;
   const len = expr.length;
 
@@ -963,7 +1035,13 @@ export function evalArithmeticString(expr: string, allowFloat = false): number |
       }
       const fnName = expr.slice(idStart, pos);
       skipWhitespace();
-      if (pos >= len || expr.charCodeAt(pos) !== 40) return null;
+      if (pos >= len || expr.charCodeAt(pos) !== 40) {
+        if (subs && subs.has(fnName)) {
+          const sv = subs.get(fnName);
+          if (typeof sv === "number" && Number.isFinite(sv)) return sv;
+        }
+        return null;
+      }
       pos++; // skip '('
       const args: number[] = [];
       skipWhitespace();
@@ -982,36 +1060,7 @@ export function evalArithmeticString(expr: string, allowFloat = false): number |
       }
       if (pos >= len || expr.charCodeAt(pos) !== 41) return null;
       pos++; // skip ')'
-      if (args.length === 1) {
-        const a0 = args[0]!;
-        switch (fnName) {
-          case "abs":
-            return Math.abs(a0);
-          case "ceil":
-            return Math.ceil(a0);
-          case "floor":
-          case "integer":
-            return Math.floor(a0);
-          case "sign":
-            return Math.sign(a0);
-        }
-      } else if (args.length === 2) {
-        const a0 = args[0]!;
-        const a1 = args[1]!;
-        switch (fnName) {
-          case "min":
-            return Math.min(a0, a1);
-          case "max":
-            return Math.max(a0, a1);
-          case "div":
-            return a1 !== 0 ? Math.trunc(a0 / a1) : null;
-          case "mod":
-            return a1 !== 0 ? a0 - Math.floor(a0 / a1) * a1 : null;
-          case "rem":
-            return a1 !== 0 ? a0 % a1 : null;
-        }
-      }
-      return null;
+      return evalScalarBuiltinCall(fnName, args);
     }
     const start = pos;
     while (pos < len) {
@@ -1101,14 +1150,7 @@ export function evalArithmeticString(expr: string, allowFloat = false): number |
 
 export function evalArithmeticText(str: string, subs?: Map<string, number>, allowFloat = false): number | null {
   if (!str) return null;
-  let s = str.trim();
-  if (subs && subs.size > 0) {
-    s = s.replace(/\b[a-zA-Z_]\w*\b/g, (id) => {
-      const v = subs.get(id);
-      return v !== undefined ? String(v) : id;
-    });
-  }
-  return evalArithmeticString(s, allowFloat);
+  return evalArithmeticString(str.trim(), allowFloat, subs);
 }
 
 export function getVarPrefixSet(dae: DAEBuilder): Set<string> {
@@ -1258,7 +1300,7 @@ export function evaluateCSTNumber(
   const num = parseInt(text, 10);
   if (!isNaN(num) && String(num) === text) return num;
   const floatNum = parseFloat(text);
-  if (!isNaN(floatNum) && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return floatNum;
+  if (!isNaN(floatNum) && isSignedAsciiNumberText(text)) return floatNum;
 
   const evalCycleKey = `${subs?.size ? 1 : 0}:${scopeId ?? 0}:${prefix}:${text}`;
   const cached = _cstNumberMemo.get(evalCycleKey);
@@ -1292,21 +1334,30 @@ function evaluateCSTNumberInner(
   dae?: DAEBuilder,
   prefix = "",
 ): number | null {
-  if (text.startsWith("if ")) {
-    const normalizedIf = text.replace(/\belseif\b/g, "else if");
-    const ifMatch = normalizedIf.match(/^if\s+(.+?)\s+then\s+(.+?)\s+else\s+([\s\S]+)$/);
-    if (ifMatch) {
-      const condVal = evaluateCSTNumber(ifMatch[1]!.trim(), subs, scopeId, db, dae, prefix);
-      if (condVal !== null) {
-        return evaluateCSTNumber(
-          condVal !== 0 ? ifMatch[2]!.trim() : ifMatch[3]!.trim(),
-          subs,
-          scopeId,
-          db,
-          dae,
-          prefix,
-        );
+  const ifCstCandidate = unwrapParenExprCst(
+    typeof node === "string" ? (text.startsWith("if ") ? parseStandaloneExpressionCst(text) : null) : node,
+  );
+  if (ifCstCandidate && ifCstCandidate.type === "expression" && ifCstCandidate.child(0)?.text === "if") {
+    let i = 0;
+    while (i < ifCstCandidate.childCount) {
+      const tok = ifCstCandidate.child(i)?.text;
+      if (
+        (tok === "if" || tok === "elseif") &&
+        i + 3 < ifCstCandidate.childCount &&
+        ifCstCandidate.child(i + 2)?.text === "then"
+      ) {
+        const condVal = evaluateCSTNumber(ifCstCandidate.child(i + 1)!, subs, scopeId, db, dae, prefix);
+        if (condVal === null) break;
+        if (condVal !== 0) {
+          return evaluateCSTNumber(ifCstCandidate.child(i + 3)!, subs, scopeId, db, dae, prefix);
+        }
+        i += 4;
+        continue;
       }
+      if (tok === "else" && i + 1 < ifCstCandidate.childCount) {
+        return evaluateCSTNumber(ifCstCandidate.child(i + 1)!, subs, scopeId, db, dae, prefix);
+      }
+      i++;
     }
   }
 
@@ -1361,16 +1412,17 @@ function evaluateCSTNumberInner(
   };
 
   const evalArrayBindingDim = (rawBText: string, dim: number, evalSid: SymbolId | undefined): number | null => {
-    const cleanB = stripAnnotation(rawBText).replace(/^=/, "").trim();
+    const strippedB = stripAnnotation(rawBText).trim();
+    const cleanB = (strippedB.startsWith("=") ? strippedB.slice(1) : strippedB).trim();
     if (dim === 1 && cleanB.startsWith("{") && cleanB.endsWith("}")) {
       const inner = cleanB.slice(1, -1).trim();
       return inner === "" ? 0 : parseArrayLiteralElements(cleanB).length;
     }
-    const fillMatch = cleanB.match(/^fill\s*\(([\s\S]+)\)$/);
-    if (fillMatch) {
-      const fillArgs = parseArrayLiteralElements(`{${fillMatch[1]!}}`);
+    const fillNode = unwrapParenExprCst(parseStandaloneExpressionCst(cleanB));
+    if (fillNode?.type === "primary" && fillNode.childForFieldName("callee")?.text?.trim() === "fill") {
+      const fillArgs = extractFunctionCallArgExprNodesCst(fillNode);
       if (fillArgs.length >= 1 + dim) {
-        return evaluateCSTNumber(fillArgs[dim]!.trim(), subs, evalSid, db, dae, prefix);
+        return evaluateCSTNumber(fillArgs[dim]!, subs, evalSid, db, dae, prefix);
       }
     }
     return null;
@@ -1577,84 +1629,184 @@ function evaluateCSTNumberInner(
     return null;
   };
 
-  const sizeMatch = text.match(/^size\(\s*([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)(?:\s*,\s*(\d+))?\s*\)$/);
-  if (sizeMatch) {
-    const arrName = sizeMatch[1]!;
-    const dim = sizeMatch[2] ? parseInt(sizeMatch[2], 10) : 1;
-    const sizeVal = resolveSizeCall(arrName, dim);
-    if (sizeVal !== null) return sizeVal;
-  }
-
-  let minMaxFn: string | null = null;
-  let minMaxInner: string | null = null;
-  if ((text.startsWith("min(") || text.startsWith("max(")) && text.endsWith(")")) {
-    minMaxFn = text.startsWith("min(") ? "min" : "max";
-    let inner = text.slice(4, -1).trim();
-    if ((inner.startsWith("[") && inner.endsWith("]")) || (inner.startsWith("{") && inner.endsWith("}"))) {
-      inner = inner.slice(1, -1).trim();
-    }
-    minMaxInner = inner;
-  }
-  if (minMaxFn && minMaxInner !== null) {
-    const fn = minMaxFn;
-    const argsList = minMaxInner.split(",").map((s) => s.trim());
-    const argVals: number[] = [];
-    for (const argStr of argsList) {
-      const av = evaluateCSTNumber(argStr, subs, scopeId, db, dae, prefix);
-      if (av === null) {
-        argVals.length = 0;
-        break;
+  const collectArrayCtorElements = (arrNode: SyntaxNode): SyntaxNode[] => {
+    const out: SyntaxNode[] = [];
+    const collect = (n: SyntaxNode): void => {
+      if (n.type === "expression") {
+        out.push(n);
+        return;
       }
-      argVals.push(av);
+      if (n.type === "expression_list" || n.type === "array_arguments" || n.type === "array_arguments_non_first") {
+        for (let i = 0; i < n.childCount; i++) {
+          const ch = n.child(i);
+          if (ch) collect(ch);
+        }
+        return;
+      }
+      for (let i = 0; i < n.childCount; i++) {
+        const ch = n.child(i);
+        if (ch) collect(ch);
+      }
+    };
+    collect(arrNode);
+    return out;
+  };
+
+  const evalCstExprNode = (rawExprNode: SyntaxNode, requireConstOrParam: boolean): number | null => {
+    let cur = unwrapParenExprCst(rawExprNode);
+    while (
+      cur &&
+      cur.childCount === 1 &&
+      cur.type !== "component_reference" &&
+      cur.type !== "identifier" &&
+      cur.type !== "unsigned_number" &&
+      cur.type !== "unsigned_integer" &&
+      cur.type !== "unsigned_real"
+    ) {
+      const next = cur.child(0);
+      if (!next) break;
+      cur = unwrapParenExprCst(next);
     }
-    if (argVals.length > 0) {
-      return fn === "min" ? Math.min(...argVals) : Math.max(...argVals);
+    if (!cur) return null;
+    const rawCurText = cur.text?.trim() ?? "";
+    if (rawCurText === "true") return 1;
+    if (rawCurText === "false") return 0;
+    if (subs && subs.has(rawCurText)) {
+      const sv: unknown = subs.get(rawCurText);
+      if (typeof sv === "number") return sv;
+      if (typeof sv === "string" && sv.startsWith("expr:") && dae) {
+        const ev = evalDaeExpr(Number(sv.slice(5)), dae);
+        if (typeof ev === "number") return ev;
+      }
+      return null;
     }
-  }
-
-  // Binary expression
-  if (typeof node !== "string" && node.childCount === 3 && node.type === "expression") {
-    const op = (node.child(1)?.text?.trim() ?? node.child(1)?.type ?? "").replace(/^"|"$/g, "");
-    const left = evaluateCSTNumber(node.child(0), subs, scopeId, db, dae, prefix);
-    const right = evaluateCSTNumber(node.child(2), subs, scopeId, db, dae, prefix);
-    if (left !== null && right !== null) {
-      if (op === "+") return left + right;
-      if (op === "-") return left - right;
-      if (op === "*") return left * right;
-      if (op === "/") return right !== 0 ? Math.floor(left / right) : null;
+    if (cur.type === "unsigned_number" || cur.type === "unsigned_integer" || cur.type === "unsigned_real") {
+      const parsed = Number(rawCurText);
+      return Number.isFinite(parsed) ? parsed : null;
     }
-  }
-
-  // Unary expression
-  if (typeof node !== "string" && node.childCount === 2 && node.type === "expression") {
-    const op = (node.child(0)?.text?.trim() ?? "").replace(/^"|"$/g, "");
-    const val = evaluateCSTNumber(node.child(1), subs, scopeId, db, dae, prefix);
-    if (val !== null) {
-      if (op === "-") return -val;
-      if (op === "+") return val;
+    if (cur.type === "expression" && cur.child(0)?.text === "if") {
+      let i = 0;
+      while (i < cur.childCount) {
+        const tok = cur.child(i)?.text;
+        if ((tok === "if" || tok === "elseif") && i + 3 < cur.childCount && cur.child(i + 2)?.text === "then") {
+          const condVal = evalCstExprNode(cur.child(i + 1)!, requireConstOrParam);
+          if (condVal === null) return null;
+          if (condVal !== 0) {
+            return evalCstExprNode(cur.child(i + 3)!, requireConstOrParam);
+          }
+          i += 4;
+          continue;
+        }
+        if (tok === "else" && i + 1 < cur.childCount) {
+          return evalCstExprNode(cur.child(i + 1)!, requireConstOrParam);
+        }
+        i++;
+      }
+      return null;
     }
-  }
+    if (cur.type === "expression" && cur.childCount === 3) {
+      const op = stripOuterDoubleQuotes(cur.child(1)?.text?.trim() ?? cur.child(1)?.type ?? "");
+      const left = evalCstExprNode(cur.child(0)!, requireConstOrParam);
+      const right = evalCstExprNode(cur.child(2)!, requireConstOrParam);
+      if (left !== null && right !== null) {
+        return evalBinaryNumericOp(op, left, right, true);
+      }
+      return null;
+    }
+    if (cur.type === "expression" && cur.childCount === 2) {
+      const op = stripOuterDoubleQuotes(cur.child(0)?.text?.trim() ?? cur.child(0)?.type ?? "");
+      const val = evalCstExprNode(cur.child(1)!, requireConstOrParam);
+      if (val !== null) {
+        if (op === "-") return -val;
+        if (op === "+") return val;
+        if (op === "not") return val === 0 ? 1 : 0;
+      }
+      return null;
+    }
+    if (cur.type === "primary") {
+      const calleeText = stripLeadingDot(cur.childForFieldName("callee")?.text?.trim() ?? "");
+      if (calleeText) {
+        const argNodes = extractFunctionCallArgExprNodesCst(cur);
+        if (calleeText === "size" && (argNodes.length === 1 || argNodes.length === 2)) {
+          const arrName = stripLeadingDot(argNodes[0]!.text?.trim() ?? "");
+          if (isDottedIdentifierChain(arrName)) {
+            const dimVal = argNodes.length === 2 ? evalCstExprNode(argNodes[1]!, requireConstOrParam) : 1;
+            if (dimVal !== null && Number.isInteger(dimVal)) {
+              const sizeVal = resolveSizeCall(arrName, dimVal);
+              if (sizeVal !== null) return sizeVal;
+            }
+          }
+          return null;
+        }
+        if ((calleeText === "min" || calleeText === "max") && argNodes.length >= 1) {
+          let elemNodes = argNodes;
+          if (argNodes.length === 1) {
+            const unwrappedArg = unwrapParenExprCst(argNodes[0]!);
+            const firstTok = unwrappedArg?.child(0)?.text;
+            if (unwrappedArg && (firstTok === "{" || firstTok === "[")) {
+              elemNodes = collectArrayCtorElements(unwrappedArg);
+            }
+          }
+          if (elemNodes.length > 0) {
+            const vals: number[] = [];
+            for (const elem of elemNodes) {
+              const v = evalCstExprNode(elem, requireConstOrParam);
+              if (v === null) {
+                vals.length = 0;
+                break;
+              }
+              vals.push(v);
+            }
+            if (vals.length > 0) {
+              return calleeText === "min" ? Math.min(...vals) : Math.max(...vals);
+            }
+          }
+          return null;
+        }
+        const evaledArgs: number[] = [];
+        for (const arg of argNodes) {
+          const av = evalCstExprNode(arg, requireConstOrParam);
+          if (av === null) return null;
+          evaledArgs.push(av);
+        }
+        return evalScalarBuiltinCall(calleeText, evaledArgs);
+      }
+    }
+    if (cur.type === "component_reference" || cur.type === "identifier") {
+      return resolveIdentConstant(rawCurText, requireConstOrParam);
+    }
+    if (cur.childCount === 0) {
+      if (isSignedAsciiNumberText(rawCurText)) {
+        const parsed = Number(rawCurText);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      if (
+        isDottedIdentifierChain(stripLeadingDot(rawCurText)) ||
+        (rawCurText.startsWith("'") && rawCurText.endsWith("'"))
+      ) {
+        return resolveIdentConstant(rawCurText, requireConstOrParam);
+      }
+    }
+    return null;
+  };
 
-  const directIdentVal = resolveIdentConstant(text, true);
-  if (directIdentVal !== null) return directIdentVal;
-
-  if (/[+\-*/]/.test(text)) {
-    let exprStr = text;
-    exprStr = exprStr.replace(
-      /size\(\s*([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\s*,\s*(\d+)\s*\)/g,
-      (full, arrName, dimStr) => {
-        const dim = parseInt(dimStr, 10);
-        const sizeVal = resolveSizeCall(arrName, dim);
-        return sizeVal !== null ? String(sizeVal) : full;
-      },
-    );
-
-    exprStr = exprStr.replace(/\b([a-zA-Z_]\w*)\b/g, (match) => {
-      const identVal = resolveIdentConstant(match, false);
-      return identVal !== null ? String(identVal) : match;
-    });
-
-    const arithVal = evalArithmeticText(exprStr);
+  const exprCst = typeof node === "string" ? parseStandaloneExpressionCst(text) : node;
+  if (exprCst) {
+    const strictVal = evalCstExprNode(exprCst, true);
+    if (strictVal !== null) return strictVal;
+    const unwrappedExpr = unwrapParenExprCst(exprCst);
+    const isCompoundOp =
+      unwrappedExpr !== null &&
+      unwrappedExpr.type === "expression" &&
+      (unwrappedExpr.childCount === 2 || unwrappedExpr.childCount === 3);
+    if (isCompoundOp) {
+      const relaxedVal = evalCstExprNode(exprCst, false);
+      if (relaxedVal !== null) return relaxedVal;
+    }
+  } else {
+    const directIdentVal = resolveIdentConstant(text, true);
+    if (directIdentVal !== null) return directIdentVal;
+    const arithVal = evalArithmeticText(text, subs, false);
     if (arithVal !== null) return arithVal;
   }
 
@@ -1675,18 +1827,12 @@ export function resolveScopedName(
       const isStateOut = !state.isInsidePrevious && state.stateOutputVars?.has(candidate);
       if (!isStateOut) return state.outerToInner.get(candidate)!;
     }
-    const baseCand = candidate.replace(/\[[^\][]*\]/g, "");
+    const baseCand = stripArraySubscripts(candidate);
     if (baseCand !== candidate && state.outerToInner.has(baseCand)) {
       const isStateOut = !state.isInsidePrevious && state.stateOutputVars?.has(baseCand);
       if (!isStateOut) {
         const mapped = state.outerToInner.get(baseCand)!;
-        let tailStart = candidate.length;
-        while (tailStart > 0 && candidate[tailStart - 1] === "]") {
-          const open = candidate.lastIndexOf("[", tailStart - 1);
-          if (open === -1) break;
-          tailStart = open;
-        }
-        const candTail = candidate.slice(tailStart);
+        const candTail = extractTrailingBrackets(candidate);
         if (candTail && !mapped.endsWith("]")) return mapped + candTail;
         return mapped;
       }
@@ -1694,7 +1840,7 @@ export function resolveScopedName(
     let dot = candidate.lastIndexOf(".");
     while (dot > 0) {
       const sub = candidate.slice(0, dot);
-      const baseSub = sub.replace(/\[[^\][]*\]/g, "");
+      const baseSub = stripArraySubscripts(sub);
       const exactMapped = state.outerToInner.get(sub);
       const baseMapped = exactMapped === undefined ? state.outerToInner.get(baseSub) : undefined;
       const mapped = exactMapped ?? baseMapped;
@@ -1702,7 +1848,7 @@ export function resolveScopedName(
         const isStateOut =
           !state.isInsidePrevious && (state.stateOutputVars?.has(sub) || state.stateOutputVars?.has(baseSub));
         if (!isStateOut) {
-          const subTail = exactMapped === undefined ? (sub.match(/(\[[^\]]*\])+$/)?.[0] ?? "") : "";
+          const subTail = exactMapped === undefined ? extractTrailingBrackets(sub) : "";
           const effectiveMapped = subTail && !mapped.endsWith("]") ? mapped + subTail : mapped;
           return effectiveMapped + candidate.slice(dot);
         }
@@ -1823,7 +1969,7 @@ export function resolveScopedName(
             }
           }
         } else {
-          const baseP = p.replace(/\[[^\][]+\]/g, "");
+          const baseP = stripArraySubscripts(p);
           if (scopeDeclaredNames?.get(p)?.has(rootComp) || scopeDeclaredNames?.get(baseP)?.has(rootComp)) {
             resolvedName = target;
             break;
@@ -1884,10 +2030,24 @@ export function isIntegerTypeSpec(
         }
         const meta = tm.metadata as Record<string, unknown> | undefined;
         if (meta?.["baseType"] === "Integer" || meta?.["primitiveType"] === "Integer") return true;
-        const cst = db.cstNode(tm.id) as any;
-        const txt = cst?.text ?? "";
-        if (/\b(?:extends\s+)?(?:Modelica\.Icons\.)?TypeInteger\b/.test(txt) || /\bextends\s+Integer\b/.test(txt))
-          return true;
+        const isIntTypeRef = (rawType: string | null | undefined): boolean => {
+          const clean = stripLeadingDot(rawType?.trim() ?? "");
+          return (
+            clean === "Integer" ||
+            clean === "TypeInteger" ||
+            clean === "Modelica.Icons.TypeInteger" ||
+            clean.endsWith(".TypeInteger")
+          );
+        };
+        const shortSpec = getShortClassSpecifierNode(db.cstNode(tm.id) as CstNodeLike | null);
+        if (shortSpec && isIntTypeRef(shortSpec.childForFieldName?.("type_specifier")?.text)) return true;
+        for (const extCh of db.childrenOf(tm.id) || []) {
+          if (extCh.kind === "Extends") {
+            const extType =
+              (db.cstNode(extCh.id) as CstNodeLike | null)?.childForFieldName?.("type_specifier")?.text ?? extCh.name;
+            if (isIntTypeRef(extType)) return true;
+          }
+        }
       }
     }
   }
@@ -1926,8 +2086,16 @@ function canSubstituteBareSingleLetterConstant(
         return false;
       }
       if (ch.kind === "Import") {
-        const impText = (db.cstNode(ch.id) as any)?.text ?? ch.name ?? "";
-        if (/\b(?:Modelica\.)?Constants\b/.test(impText)) {
+        const impNode = db.cstNode(ch.id) as CstNodeLike | null;
+        const impMetaPath = (ch.metadata as Record<string, unknown> | undefined)?.["path"];
+        const rawImpName =
+          impNode?.childForFieldName?.("name")?.text?.trim() ??
+          (typeof impMetaPath === "string" ? impMetaPath : ch.name) ??
+          "";
+        const impSegs = stripLeadingDot(rawImpName)
+          .split(".")
+          .map((seg: string) => seg.trim());
+        if (impSegs.includes("Constants")) {
           hasConstantsImport = true;
         }
       }
@@ -1985,115 +2153,62 @@ function evalKnownConstantExprText(exprText: string, db?: QueryDB, scopeId?: Sym
   if (canSubstituteBareSingleLetterConstant(s, s, db, scopeId)) {
     return BARE_SINGLE_LETTER_MODELICA_CONSTANTS[s]!;
   }
-  let pos = 0;
-  const skipWs = () => {
-    while (pos < s.length && /\s/.test(s[pos]!)) pos++;
-  };
-  const parseExpr = (): number | null => {
-    let left = parseTerm();
-    if (left === null) return null;
-    while (true) {
-      skipWs();
-      const ch = s[pos];
-      if (ch === "+" || ch === "-") {
-        pos++;
-        const right = parseTerm();
-        if (right === null) return null;
-        left = ch === "+" ? left + right : left - right;
-      } else {
-        break;
-      }
+  const rootCst = parseStandaloneExpressionCst(s);
+  if (!rootCst) {
+    if (isSignedAsciiNumberText(s)) {
+      const n = Number(s);
+      return Number.isFinite(n) ? n : null;
     }
-    return left;
-  };
-  const parseTerm = (): number | null => {
-    let left = parsePower();
-    if (left === null) return null;
-    while (true) {
-      skipWs();
-      const ch = s[pos];
-      if (ch === "*" || ch === "/") {
-        pos++;
-        const right = parsePower();
-        if (right === null) return null;
-        if (ch === "/" && right === 0) return null;
-        left = ch === "*" ? left * right : left / right;
-      } else {
-        break;
-      }
+    if (Object.prototype.hasOwnProperty.call(KNOWN_MODELICA_CONSTANTS, s)) {
+      return KNOWN_MODELICA_CONSTANTS[s]!;
     }
-    return left;
-  };
-  const parsePower = (): number | null => {
-    const base = parseUnary();
-    if (base === null) return null;
-    skipWs();
-    if (s[pos] === "^") {
-      pos++;
-      const exp = parsePower();
-      if (exp === null) return null;
-      return Math.pow(base, exp);
+    return null;
+  }
+
+  const evalCstNode = (rawNode: SyntaxNode): number | null => {
+    const cur = unwrapParenExprCst(rawNode);
+    if (!cur) return null;
+    if (cur.type === "unsigned_number" || cur.type === "unsigned_integer" || cur.type === "unsigned_real") {
+      const n = Number(cur.text);
+      return Number.isFinite(n) ? n : null;
     }
-    return base;
-  };
-  const parseUnary = (): number | null => {
-    skipWs();
-    if (s[pos] === "+") {
-      pos++;
-      return parseUnary();
+    if (cur.type === "expression" && cur.childCount === 2) {
+      const op = stripOuterDoubleQuotes(cur.child(0)?.text?.trim() ?? cur.child(0)?.type ?? "");
+      const val = evalCstNode(cur.child(1)!);
+      if (val === null) return null;
+      if (op === "+") return val;
+      if (op === "-") return -val;
+      return null;
     }
-    if (s[pos] === "-") {
-      pos++;
-      const v = parseUnary();
-      return v === null ? null : -v;
+    if (cur.type === "expression" && cur.childCount === 3) {
+      const op = stripOuterDoubleQuotes(cur.child(1)?.text?.trim() ?? cur.child(1)?.type ?? "");
+      if (op !== "+" && op !== "-" && op !== "*" && op !== "/" && op !== "^") return null;
+      const left = evalCstNode(cur.child(0)!);
+      const right = evalCstNode(cur.child(2)!);
+      if (left === null || right === null) return null;
+      return evalBinaryNumericOp(op, left, right, false);
     }
-    return parsePrimary();
-  };
-  const parsePrimary = (): number | null => {
-    skipWs();
-    if (s[pos] === "(") {
-      pos++;
-      const val = parseExpr();
-      skipWs();
-      if (s[pos] !== ")") return null;
-      pos++;
-      return val;
-    }
-    const numMatch = s.slice(pos).match(/^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/);
-    if (numMatch) {
-      pos += numMatch[0].length;
-      const n = Number(numMatch[0]);
-      return Number.isNaN(n) ? null : n;
-    }
-    const idMatch = s.slice(pos).match(/^[a-zA-Z_][a-zA-Z0-9_.]*/);
-    if (idMatch) {
-      const ident = idMatch[0];
-      pos += ident.length;
-      skipWs();
-      if (s[pos] === "(") {
-        pos++;
-        const arg1 = parseExpr();
-        if (arg1 === null) return null;
-        skipWs();
-        const shortFn = ident.replace(
-          /^(?:(?:Modelica\.)?(?:Math|(?:SIunits|Units)\.Conversions)|Cv|Conversions)\./,
-          "",
-        );
-        if (s[pos] === "," && shortFn === "atan2") {
-          pos++;
-          const arg2 = parseExpr();
-          if (arg2 === null) return null;
-          skipWs();
-          if (s[pos] !== ")") return null;
-          pos++;
-          return Math.atan2(arg1, arg2);
+    if (cur.type === "primary") {
+      const calleeText = cur.childForFieldName("callee")?.text?.trim();
+      if (calleeText) {
+        const shortFn = stripMathPackagePrefix(stripLeadingDot(calleeText));
+        const args = extractFunctionCallArgExprNodesCst(cur);
+        if (shortFn === "atan2" && args.length === 2) {
+          const arg1 = evalCstNode(args[0]!);
+          const arg2 = evalCstNode(args[1]!);
+          return arg1 !== null && arg2 !== null ? Math.atan2(arg1, arg2) : null;
         }
-        if (s[pos] !== ")") return null;
-        pos++;
-        const fn = KNOWN_MATH_UNARY_FUNCS[shortFn];
-        if (!fn) return null;
-        return fn(arg1);
+        if (args.length === 1) {
+          const fn = KNOWN_MATH_UNARY_FUNCS[shortFn];
+          if (!fn) return null;
+          const arg1 = evalCstNode(args[0]!);
+          return arg1 !== null ? fn(arg1) : null;
+        }
+        return null;
       }
+    }
+    if (cur.type === "component_reference" || cur.type === "identifier") {
+      const ident = stripLeadingDot(cur.text.trim());
       if (Object.prototype.hasOwnProperty.call(KNOWN_MODELICA_CONSTANTS, ident)) {
         return KNOWN_MODELICA_CONSTANTS[ident]!;
       }
@@ -2104,12 +2219,9 @@ function evalKnownConstantExprText(exprText: string, db?: QueryDB, scopeId?: Sym
     }
     return null;
   };
-  const result = parseExpr();
-  skipWs();
-  if (result === null || pos !== s.length || !Number.isFinite(result)) {
-    return null;
-  }
-  return result;
+
+  const result = evalCstNode(rootCst);
+  return result !== null && Number.isFinite(result) ? result : null;
 }
 
 /**
@@ -2124,13 +2236,22 @@ function evaluateMediumPropertyConstant(
   evalExprStr: (s: string) => { value: any; isInteger: boolean } | null,
 ): { value: number; isInteger: boolean } | null {
   if (!evalScope) return null;
-  const specEnthMatch = str.match(
-    /^(?:([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\.)?specificEnthalpy_pTX\s*\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^)]+)\s*\)$/,
-  );
-  if (!specEnthMatch) return null;
-  const callPkgPrefix = specEnthMatch[1]?.trim();
-  const stripNamed = (s: string) => s.replace(/^[a-zA-Z_]\w*\s*=\s*/, "").trim();
-  const tArg = stripNamed(specEnthMatch[3]!);
+  const callNode = unwrapParenExprCst(parseStandaloneExpressionCst(str));
+  if (!callNode || callNode.type !== "primary") return null;
+  const rawCallee = callNode.childForFieldName("callee")?.text?.trim() ?? "";
+  let callPkgPrefix: string | undefined;
+  if (rawCallee === "specificEnthalpy_pTX") {
+    callPkgPrefix = undefined;
+  } else if (rawCallee.endsWith(".specificEnthalpy_pTX")) {
+    const pfx = rawCallee.slice(0, -".specificEnthalpy_pTX".length);
+    if (!isDottedIdentifierChain(pfx)) return null;
+    callPkgPrefix = pfx;
+  } else {
+    return null;
+  }
+  const argNodes = extractFunctionCallArgExprNodesCst(callNode);
+  if (argNodes.length !== 3) return null;
+  const tArg = argNodes[1]!.text.trim();
   let mediumScopeId: SymbolId | undefined = evalScope;
   if (callPkgPrefix) {
     const resolvedPkg =
@@ -2237,49 +2358,73 @@ export function extractDbConstantValue(
     if (str.startsWith('"') && str.endsWith('"') && !str.slice(1, -1).includes('"')) {
       return { value: str.slice(1, -1), isInteger: false };
     }
-    const ifMatch = str.match(/^if\s+(.+?)\s+then\s+(.+?)\s+else\s+(.+)$/);
-    if (ifMatch) {
-      const condStr = ifMatch[1]!.trim();
-      const thenStr = ifMatch[2]!.trim();
-      const elseStr = ifMatch[3]!.trim();
-      const condVal =
-        condStr === "true"
-          ? 1
-          : condStr === "false"
-            ? 0
-            : (lookupDbConstant(condStr, db, evalScope)?.value ?? evalExprStr(condStr)?.value ?? null);
-      if (typeof condVal === "number") {
-        return evalExprStr(condVal !== 0 ? thenStr : elseStr);
+    const exprCst = unwrapParenExprCst(parseStandaloneExpressionCst(str));
+    if (exprCst && exprCst.type === "expression" && exprCst.child(0)?.text === "if") {
+      let idx = 0;
+      let matchedBranch: SyntaxNode | null = null;
+      while (idx < exprCst.childCount) {
+        const tok = exprCst.child(idx)?.text;
+        if (
+          (tok === "if" || tok === "elseif") &&
+          idx + 3 < exprCst.childCount &&
+          exprCst.child(idx + 2)?.text === "then"
+        ) {
+          const condStr = exprCst.child(idx + 1)!.text.trim();
+          const condVal =
+            condStr === "true"
+              ? 1
+              : condStr === "false"
+                ? 0
+                : (lookupDbConstant(condStr, db, evalScope)?.value ?? evalExprStr(condStr)?.value ?? null);
+          if (typeof condVal !== "number") break;
+          if (condVal !== 0) {
+            matchedBranch = exprCst.child(idx + 3)!;
+            break;
+          }
+          idx += 4;
+          continue;
+        }
+        if (tok === "else" && idx + 1 < exprCst.childCount) {
+          matchedBranch = exprCst.child(idx + 1)!;
+          break;
+        }
+        idx++;
+      }
+      if (matchedBranch) {
+        return evalExprStr(matchedBranch.text.trim());
       }
     }
-    const sizeMatch = str.match(/^size\s*\(\s*([^,)]+)(?:\s*,\s*([^,)]+))?\s*\)$/);
-    if (sizeMatch) {
-      const arrRes = lookupDbConstant(sizeMatch[1]!.trim(), db, evalScope) ?? evalExprStr(sizeMatch[1]!.trim());
-      if (arrRes && Array.isArray(arrRes.value)) {
-        const dimRes = sizeMatch[2] ? evalExprStr(sizeMatch[2]!.trim()) : { value: 1 };
-        const dimIdx = dimRes && typeof dimRes.value === "number" ? Math.round(dimRes.value) : 1;
-        if (dimIdx === 1) {
-          return { value: arrRes.value.length, isInteger: true };
+    if (exprCst && exprCst.type === "primary") {
+      const calleeText = exprCst.childForFieldName("callee")?.text?.trim();
+      const argNodes = calleeText ? extractFunctionCallArgExprNodesCst(exprCst) : [];
+      if (calleeText === "size" && (argNodes.length === 1 || argNodes.length === 2)) {
+        const targetText = argNodes[0]!.text.trim();
+        const arrRes = lookupDbConstant(targetText, db, evalScope) ?? evalExprStr(targetText);
+        if (arrRes && Array.isArray(arrRes.value)) {
+          const dimRes = argNodes[1] ? evalExprStr(argNodes[1].text.trim()) : { value: 1 };
+          const dimIdx = dimRes && typeof dimRes.value === "number" ? Math.round(dimRes.value) : 1;
+          if (dimIdx === 1) {
+            return { value: arrRes.value.length, isInteger: true };
+          }
         }
       }
-    }
-    const fillMatch = str.match(/^fill\s*\(\s*([^,]+)\s*,\s*([^,)]+)\s*\)$/);
-    if (fillMatch) {
-      const elemRes = evalExprStr(fillMatch[1]!.trim());
-      const countRes = evalExprStr(fillMatch[2]!.trim());
-      if (
-        elemRes &&
-        (typeof elemRes.value === "number" || typeof elemRes.value === "string") &&
-        countRes &&
-        typeof countRes.value === "number"
-      ) {
-        const cnt = Math.round(countRes.value);
-        if (cnt >= 0 && cnt <= MAX_ARRAY_EXPANSION_LENGTH) {
-          return {
-            value: Array(cnt).fill(elemRes.value),
-            isInteger,
-            ...(elemRes.isBoolean ? { isBoolean: true } : {}),
-          };
+      if (calleeText === "fill" && argNodes.length === 2) {
+        const elemRes = evalExprStr(argNodes[0]!.text.trim());
+        const countRes = evalExprStr(argNodes[1]!.text.trim());
+        if (
+          elemRes &&
+          (typeof elemRes.value === "number" || typeof elemRes.value === "string") &&
+          countRes &&
+          typeof countRes.value === "number"
+        ) {
+          const cnt = Math.round(countRes.value);
+          if (cnt >= 0 && cnt <= MAX_ARRAY_EXPANSION_LENGTH) {
+            return {
+              value: Array(cnt).fill(elemRes.value),
+              isInteger,
+              ...(elemRes.isBoolean ? { isBoolean: true } : {}),
+            };
+          }
         }
       }
     }
@@ -2315,10 +2460,10 @@ export function extractDbConstantValue(
       }
     }
     const num = parseFloat(str);
-    if (!isNaN(num) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(str)) {
+    if (!isNaN(num) && isSignedAsciiNumberText(str)) {
       return { value: num, isInteger: isInteger && Number.isInteger(num) };
     }
-    if (/^\.?[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(str)) {
+    if (isDottedIdentifierChain(stripLeadingDot(str))) {
       const chained = lookupDbConstant(str, db, evalScope);
       if (chained) {
         return {
@@ -2419,15 +2564,11 @@ export function extractDbConstantValue(
       }
       const ownerCst = db.cstNode(curOwnerId) as any;
       const shortSpec = getShortClassSpecifierNode(ownerCst);
-      const ownerCstText = stripAnnotation(shortSpec?.text ?? "");
-      const parenIdx = ownerCstText.indexOf("(");
-      if (parenIdx >= 0) {
-        const modSlice = ownerCstText.slice(parenIdx);
-        const argMatch = modSlice.match(new RegExp(`\\b${c.name}\\s*=\\s*([^,)]+)`));
-        if (argMatch) {
-          const res = evalExprStr(argMatch[1]!.trim());
-          if (res) return res;
-        }
+      const argExprNode = extractModArgBindingExprCst(shortSpec, c.name);
+      const argExprText = argExprNode ? stripAnnotation(argExprNode.text ?? "").trim() : "";
+      if (argExprText && argExprText !== "break") {
+        const res = evalExprStr(argExprText);
+        if (res) return res;
       }
       const nextBase = db.query<SymbolEntry | null>("resolvedBaseClass", curOwnerId);
       if (nextBase && nextBase.id === c.parentId) {
@@ -2451,12 +2592,10 @@ export function extractDbConstantValue(
     if (res) return res;
   }
   const cst = db.cstNode(c.id) as any;
-  const cstText = cst?.text ?? "";
-  // Strip attributes in parentheses so min=0 inside (min=0) doesn't match the binding '='
-  const strippedCstText = stripAnnotation(cstText).replace(/\([^()]*\)/g, " ");
-  const eqMatch = strippedCstText.match(/=\s*([^;,]+)/);
-  if (eqMatch) {
-    const res = evalExprStr(eqMatch[1]!.trim());
+  const bindingNode = extractBindingExprFromDeclCst(cst, c.name);
+  const bindingText = bindingNode ? stripAnnotation(bindingNode.text ?? "").trim() : "";
+  if (bindingText && bindingText !== "break") {
+    const res = evalExprStr(bindingText);
     if (res) return res;
   }
   return null;
@@ -2487,11 +2626,11 @@ export function lookupDbConstant(
   cache.set(cacheKey, null);
 
   const compute = (): { value: any; isInteger: boolean; isBoolean?: boolean } | null => {
-    const subMatch = rawFullName.match(/^(.+)\[(\d+)\]$/);
+    const subMatch = parseTrailingSingleIntSubscript(rawFullName);
     if (subMatch) {
-      const arrRes = lookupDbConstant(subMatch[1]!, db, scopeId);
+      const arrRes = lookupDbConstant(subMatch.base, db, scopeId);
       if (arrRes && Array.isArray(arrRes.value)) {
-        const idx = parseInt(subMatch[2]!, 10);
+        const idx = subMatch.index;
         if (idx >= 1 && idx <= arrRes.value.length) {
           return {
             value: arrRes.value[idx - 1],
@@ -2514,7 +2653,7 @@ export function lookupDbConstant(
         return { value: valText.slice(1, -1), isInteger: false };
       }
       const num = parseFloat(valText);
-      if (!isNaN(num) && /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(valText)) {
+      if (!isNaN(num) && isSignedAsciiNumberText(valText)) {
         return {
           value: num,
           isInteger: forceIsInt !== undefined ? forceIsInt : Number.isInteger(num) && !valText.includes("."),
@@ -2817,7 +2956,7 @@ export function getCompDeclSubEnumInfo(
       const declSubs = arrSubsNode?.children?.filter((c: any) => c.type === "subscript") ?? [];
       for (const ds of declSubs) {
         const dimSubText = ds.text?.trim() ?? "";
-        if (!dimSubText || dimSubText === ":" || /^\d+$/.test(dimSubText)) {
+        if (!dimSubText || dimSubText === ":" || isAsciiDigitsOnly(dimSubText)) {
           cache.push(null);
         } else {
           cache.push(resolveEnumType(dimSubText, classId, db));
@@ -3092,7 +3231,7 @@ export function expandVarToArrayCtor(baseName: string, dae: DAEBuilder): number 
           shapeExprs.some((se: any) =>
             typeof se === "number"
               ? se >= 0 && dae.getExprKind(se) !== ExprKind.IntLiteral
-              : Boolean(se && !/^\d+$/.test(String(se).trim())),
+              : Boolean(se && !isAsciiDigitsOnly(String(se).trim())),
           ),
         );
       if (!hasSymbolicDim && shape && shape.length > 0 && shape.every((d) => d > 0)) {
@@ -3219,7 +3358,7 @@ export function expandDottedArrayMemberRef(
     if (!pfx || startId === null) return currentClassId ?? rootClassId ?? null;
     let cid: SymbolId | null = startId;
     for (const seg of pfx.split(".")) {
-      const segName = seg.replace(/\[[^\]]*\]$/, "");
+      const segName = stripTrailingArraySubscripts(seg);
       if (!segName || cid === null) return null;
       const els: SymbolId[] = db.query<SymbolId[]>("instantiate", cid) ?? [];
       const foundId: SymbolId | undefined = els.find((eid: SymbolId) => db.symbol(eid)?.name === segName);
@@ -3243,7 +3382,7 @@ export function expandDottedArrayMemberRef(
 
   const evalDimExpr = (dimText: string, clsId: SymbolId, ownerPrefix: string): number | null => {
     const clean = dimText.trim();
-    if (/^\d+$/.test(clean)) return parseInt(clean, 10);
+    if (isAsciiDigitsOnly(clean)) return parseInt(clean, 10);
     const tryLookup = (varRef: string): number | null => {
       for (const cand of [
         ownerPrefix ? `${ownerPrefix}.${varRef}` : varRef,
@@ -3265,7 +3404,7 @@ export function expandDottedArrayMemberRef(
     if (directVal !== null) return directVal;
     const mapped = modMap.get(clean);
     if (mapped) {
-      if (/^\d+$/.test(mapped.expr)) return parseInt(mapped.expr, 10);
+      if (isAsciiDigitsOnly(mapped.expr)) return parseInt(mapped.expr, 10);
       const mappedVal = tryLookup(mapped.expr);
       if (mappedVal !== null) return mappedVal;
       const evalMapped = (evaluateCSTNum ?? evaluateCSTNumber)(
@@ -3285,7 +3424,7 @@ export function expandDottedArrayMemberRef(
 
   for (const part of relName.split(".")) {
     if (currClassId === null) return { isArray: hasAnyArraySegment, ctorId: null };
-    const cleanPart = part.replace(/\[[^\]]*\]$/, "");
+    const cleanPart = stripTrailingArraySubscripts(part);
     const hasExplicitSub = part.includes("[");
     const els: SymbolId[] = db.query<SymbolId[]>("instantiate", currClassId) ?? [];
     const compId: SymbolId | undefined = els.find((eid: SymbolId) => db.symbol(eid)?.name === cleanPart);
@@ -3378,4 +3517,1187 @@ export function expandDottedArrayMemberRef(
     return dae.addArrayCtorExpr(items);
   };
   return { isArray: true, ctorId: buildNested(0, []) };
+}
+
+/** Checks whether `s` matches a signed decimal/scientific number literal without regexes. */
+export function isSignedAsciiNumberText(s: string): boolean {
+  const n = s.length;
+  if (n === 0) return false;
+  let i = 0;
+  if (s[i] === "+" || s[i] === "-") i++;
+  if (i >= n) return false;
+  let intDigits = 0;
+  while (i < n && s.charCodeAt(i) >= 48 && s.charCodeAt(i) <= 57) {
+    intDigits++;
+    i++;
+  }
+  let fracDigits = 0;
+  if (i < n && s[i] === ".") {
+    i++;
+    while (i < n && s.charCodeAt(i) >= 48 && s.charCodeAt(i) <= 57) {
+      fracDigits++;
+      i++;
+    }
+  }
+  if (intDigits === 0 && fracDigits === 0) return false;
+  if (i < n && (s[i] === "e" || s[i] === "E")) {
+    i++;
+    if (i < n && (s[i] === "+" || s[i] === "-")) i++;
+    let expDigits = 0;
+    while (i < n && s.charCodeAt(i) >= 48 && s.charCodeAt(i) <= 57) {
+      expDigits++;
+      i++;
+    }
+    if (expDigits === 0) return false;
+  }
+  return i === n;
+}
+
+/** Strips a single leading dot from a Modelica qualified name if present. */
+export function stripLeadingDot(s: string): string {
+  return s.startsWith(".") ? s.slice(1) : s;
+}
+
+/** Strips all leading dots from a Modelica path if present. */
+export function stripLeadingDots(s: string): string {
+  let i = 0;
+  while (i < s.length && s[i] === ".") i++;
+  return i > 0 ? s.slice(i) : s;
+}
+
+/** Strips a single leading and/or trailing `'` from a quoted Modelica operator/identifier. */
+export function stripOuterSingleQuotes(s: string): string {
+  let res = s;
+  if (res.startsWith("'")) res = res.slice(1);
+  if (res.endsWith("'")) res = res.slice(0, -1);
+  return res;
+}
+
+/** Strips a single leading and/or trailing `"` from a string token. */
+export function stripOuterDoubleQuotes(s: string): string {
+  let res = s;
+  if (res.startsWith('"')) res = res.slice(1);
+  if (res.endsWith('"')) res = res.slice(0, -1);
+  return res;
+}
+
+/** Strips a trailing `[...]` suffix from a component name if present (equivalent to `/\[.*\]$/`). */
+export function stripTrailingArraySubscripts(s: string): string {
+  if (!s.endsWith("]")) return s;
+  const idx = s.indexOf("[");
+  return idx >= 0 ? s.slice(0, idx) : s;
+}
+
+/** Extracts each flat `[...]` subscript substring (without nested brackets inside) in left-to-right order. */
+export function extractBracketSubscripts(s: string): string[] {
+  const out: string[] = [];
+  let start = -1;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === "[") {
+      start = i + 1;
+    } else if (ch === "]" && start >= 0) {
+      out.push(s.slice(start, i));
+      start = -1;
+    }
+  }
+  return out;
+}
+
+/**
+ * Parses a scalarized DAE variable name of the form `base[i1, i2, ...]` where `base` has no brackets
+ * and the subscript contains only decimal digits, commas, and whitespace.
+ */
+export function parseTrailingNumericSubscripts(s: string): { base: string; indices: number[] } | null {
+  const openIdx = s.indexOf("[");
+  if (openIdx <= 0 || !s.endsWith("]")) return null;
+  const base = s.slice(0, openIdx);
+  if (base.includes("]")) return null;
+  const inner = s.slice(openIdx + 1, -1);
+  if (inner.length === 0) return null;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i]!;
+    const code = ch.charCodeAt(0);
+    const isDigit = code >= 48 && code <= 57;
+    const isSpace = ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || ch === "\v" || ch === "\f";
+    if (!isDigit && ch !== "," && !isSpace) return null;
+  }
+  const indices = inner.split(",").map((part) => Number.parseInt(part.trim(), 10));
+  return { base, indices };
+}
+
+/**
+ * Validates that a runtime component path string matches `[A-Za-z_]\w*(?:\s*\[[^\]]*\]|\.[A-Za-z_]\w*)*`.
+ */
+export function isValidDottedComponentPath(pathStr: string): boolean {
+  const len = pathStr.length;
+  if (len === 0 || !isAsciiIdentStart(pathStr.charCodeAt(0))) return false;
+  let i = 1;
+  while (i < len && isAsciiIdentContinue(pathStr.charCodeAt(i))) i++;
+  while (i < len) {
+    const ch = pathStr[i]!;
+    if (ch === ".") {
+      i++;
+      if (i >= len || !isAsciiIdentStart(pathStr.charCodeAt(i))) return false;
+      i++;
+      while (i < len && isAsciiIdentContinue(pathStr.charCodeAt(i))) i++;
+      continue;
+    }
+    let j = i;
+    while (j < len) {
+      const ws = pathStr[j]!;
+      if (ws === " " || ws === "\t" || ws === "\n" || ws === "\r" || ws === "\v" || ws === "\f") {
+        j++;
+      } else {
+        break;
+      }
+    }
+    if (j >= len || pathStr[j] !== "[") return false;
+    const closeIdx = pathStr.indexOf("]", j + 1);
+    if (closeIdx < 0) return false;
+    i = closeIdx + 1;
+  }
+  return true;
+}
+
+/** Checks iteratively whether a CST node or any descendant has a given node `type`. */
+export function cstContainsNodeType(node: SyntaxNode | null | undefined, targetType: string): boolean {
+  if (!node) return false;
+  const stack: SyntaxNode[] = [node];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (cur.type === targetType) return true;
+    const count = cur.childCount;
+    for (let i = count - 1; i >= 0; i--) {
+      const ch = cur.child(i);
+      if (ch) stack.push(ch);
+    }
+  }
+  return false;
+}
+
+/** Checks whether a CST subtree contains any syntax error or missing node. */
+export function cstHasError(node: SyntaxNode | null | undefined): boolean {
+  if (!node) return true;
+  if (typeof node.hasError === "boolean") return node.hasError;
+  const stack: SyntaxNode[] = [node];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (cur.type === "ERROR" || cur.isMissing) return true;
+    const count = cur.childCount;
+    for (let i = count - 1; i >= 0; i--) {
+      const ch = cur.child(i);
+      if (ch) stack.push(ch);
+    }
+  }
+  return false;
+}
+
+/**
+ * Unwraps single-child expression wrappers and parenthesized `( expr )` primary nodes down to the
+ * inner core CST expression node.
+ */
+export function unwrapParenExprCst(node: SyntaxNode | null | undefined): SyntaxNode | null {
+  let cur: SyntaxNode | null | undefined = node;
+  while (cur) {
+    if (cur.childCount === 3 && cur.child(0)?.text === "(" && cur.child(2)?.text === ")") {
+      cur = cur.child(1);
+      continue;
+    }
+    if (
+      cur.childCount === 1 &&
+      cur.type !== "component_reference" &&
+      cur.type !== "identifier" &&
+      cur.type !== "unsigned_integer" &&
+      cur.type !== "unsigned_real" &&
+      cur.type !== "string_literal"
+    ) {
+      cur = cur.child(0);
+      continue;
+    }
+    break;
+  }
+  return cur ?? null;
+}
+
+/** Extracts the first declared component identifier name directly from a `component_clause` CST node. */
+export function extractComponentNameFromClauseCst(compClauseNode: SyntaxNode | null | undefined): string | null {
+  if (!compClauseNode) return null;
+  const compList =
+    Cst.ComponentClause.componentList(compClauseNode) ??
+    compClauseNode.children.find((c) => c.type === "component_list") ??
+    null;
+  const compDecl =
+    (compList ? Cst.ComponentList.componentDeclaration(compList) : null) ??
+    compList?.children.find((c) => c.type === "component_declaration") ??
+    compClauseNode.children.find((c) => c.type === "component_declaration") ??
+    null;
+  const decl =
+    (compDecl ? Cst.ComponentDeclaration.declaration(compDecl) : null) ??
+    compDecl?.children.find((c) => c.type === "declaration") ??
+    null;
+  const ident =
+    (decl ? Cst.Declaration.name(decl) : null) ??
+    decl?.childForFieldName("name") ??
+    decl?.children.find((c) => c.type === "identifier") ??
+    null;
+  const text = ident?.text?.trim();
+  return text || null;
+}
+
+/** Extracts top-level argument expression CST nodes from a Modelica call `primary` or `function_call_args`. */
+export function extractFunctionCallArgExprNodesCst(callNode: SyntaxNode | null | undefined): SyntaxNode[] {
+  if (!callNode) return [];
+  const argsNode =
+    callNode.type === "function_call_args"
+      ? callNode
+      : (callNode.childForFieldName("args") ?? callNode.children.find((c) => c.type === "function_call_args") ?? null);
+  if (!argsNode) return [];
+  const out: SyntaxNode[] = [];
+  const collectArgList = (listNode: SyntaxNode | null | undefined): void => {
+    if (!listNode) return;
+    for (const ch of listNode.children) {
+      if (ch.type === "function_argument") {
+        const expr = ch.children.find((gc) => gc.type === "expression") ?? ch.child(0);
+        if (expr) out.push(expr);
+      } else if (ch.type === "named_argument") {
+        const val = ch.childForFieldName("value") ?? ch.children.find((gc) => gc.type === "function_argument");
+        const expr = val?.children.find((gc) => gc.type === "expression") ?? val?.child(0) ?? val;
+        if (expr) out.push(expr);
+      } else if (
+        ch.type === "function_arguments" ||
+        ch.type === "function_arguments_non_first" ||
+        ch.type === "named_arguments"
+      ) {
+        collectArgList(ch);
+      }
+    }
+  };
+  const fnArgs = argsNode.children.find((c) => c.type === "function_arguments");
+  if (fnArgs) collectArgList(fnArgs);
+  return out;
+}
+
+const STANDALONE_EXPR_CACHE_LIMIT = 512;
+const standaloneExprCstCache = new Map<string, { tree: unknown; node: SyntaxNode | null }>();
+
+/**
+ * Parses a standalone Modelica expression string with the native WASM GLR parser (caching up to 512
+ * parsed expressions with their backing `Tree`). Returns `null` if no parser is registered or if the
+ * expression fails to parse cleanly.
+ */
+export function parseStandaloneExpressionCst(exprText: string): SyntaxNode | null {
+  const trimmed = exprText.trim();
+  if (!trimmed) return null;
+  const cached = standaloneExprCstCache.get(trimmed);
+  if (cached !== undefined) return cached.node;
+  const parser = UnifiedWorkspace.getGlobalParser(".mo");
+  if (!parser) return null;
+  try {
+    const prefix = "model _Tmp equation _x = ";
+    const suffix = "; end _Tmp;";
+    const tree = parser.parse(`${prefix}${trimmed}${suffix}`);
+    if (!tree?.rootNode || cstHasError(tree.rootNode)) {
+      if (standaloneExprCstCache.size >= STANDALONE_EXPR_CACHE_LIMIT) standaloneExprCstCache.clear();
+      standaloneExprCstCache.set(trimmed, { tree, node: null });
+      return null;
+    }
+    const findRhs = (n: SyntaxNode): SyntaxNode | null => {
+      if (n.type === "simple_equation") {
+        return n.children.find((c) => c.type === "expression") ?? null;
+      }
+      for (const ch of n.children) {
+        const res = findRhs(ch);
+        if (res) return res;
+      }
+      return null;
+    };
+    const rhs = findRhs(tree.rootNode);
+    const valid =
+      rhs && rhs.startOffset === prefix.length && rhs.endOffset <= prefix.length + trimmed.length ? rhs : null;
+    if (standaloneExprCstCache.size >= STANDALONE_EXPR_CACHE_LIMIT) standaloneExprCstCache.clear();
+    standaloneExprCstCache.set(trimmed, { tree, node: valid });
+    return valid;
+  } catch {
+    return null;
+  }
+}
+
+/** Evaluates a binary Modelica numeric/relational/logical operator over two numeric values (`true=1, false=0`). */
+export function evalBinaryNumericOp(op: string, left: number, right: number, integerDivision = false): number | null {
+  switch (op) {
+    case "+":
+    case ".+":
+      return left + right;
+    case "-":
+    case ".-":
+      return left - right;
+    case "*":
+    case ".*":
+      return left * right;
+    case "/":
+    case "./":
+      if (right === 0) return null;
+      return integerDivision ? Math.floor(left / right) : left / right;
+    case "^":
+    case ".^":
+      return Math.pow(left, right);
+    case ">":
+      return left > right ? 1 : 0;
+    case ">=":
+      return left >= right ? 1 : 0;
+    case "<":
+      return left < right ? 1 : 0;
+    case "<=":
+      return left <= right ? 1 : 0;
+    case "==":
+      return left === right ? 1 : 0;
+    case "<>":
+      return left !== right ? 1 : 0;
+    case "and":
+      return left !== 0 && right !== 0 ? 1 : 0;
+    case "or":
+      return left !== 0 || right !== 0 ? 1 : 0;
+    default:
+      return null;
+  }
+}
+
+/** Checks whether `s` is a non-empty dot-separated chain of ASCII identifiers (`A(.B)*`). */
+export function isDottedIdentifierChain(s: string): boolean {
+  if (!s) return false;
+  const parts = s.split(".");
+  for (const part of parts) {
+    if (!isAsciiIdentifier(part)) return false;
+  }
+  return true;
+}
+
+/** Extracts all trailing balanced `[...]` bracket groups from the end of `s` (e.g., `a[1][2]` -> `[1][2]`). */
+export function extractTrailingBrackets(s: string): string {
+  let tailStart = s.length;
+  while (tailStart > 0 && s[tailStart - 1] === "]") {
+    const open = s.lastIndexOf("[", tailStart - 1);
+    if (open === -1) break;
+    tailStart = open;
+  }
+  return s.slice(tailStart);
+}
+
+/** Parses `base[N]` with a single non-empty unsigned integer subscript at the end of `s`. */
+export function parseTrailingSingleIntSubscript(s: string): { base: string; index: number } | null {
+  if (!s.endsWith("]")) return null;
+  const open = s.lastIndexOf("[");
+  if (open <= 0) return null;
+  const base = s.slice(0, open);
+  if (base.includes("\n") || base.includes("\r")) return null;
+  const inner = s.slice(open + 1, -1);
+  if (!isAsciiDigitsOnly(inner)) return null;
+  return { base, index: Number.parseInt(inner, 10) };
+}
+
+const KNOWN_MATH_PKG_PREFIXES = [
+  "Modelica.Math.",
+  "Math.",
+  "Modelica.SIunits.Conversions.",
+  "SIunits.Conversions.",
+  "Modelica.Units.Conversions.",
+  "Units.Conversions.",
+  "Cv.",
+  "Conversions.",
+];
+
+/** Strips a known Modelica math or unit conversion package qualifier from `ident`. */
+export function stripMathPackagePrefix(ident: string): string {
+  for (const prefix of KNOWN_MATH_PKG_PREFIXES) {
+    if (ident.startsWith(prefix)) return ident.slice(prefix.length);
+  }
+  return ident;
+}
+
+/** Returns the length of an unsigned decimal/scientific number starting at `start` in `s`, or `0`. */
+export function readUnsignedNumberLength(s: string, start: number): number {
+  const n = s.length;
+  let i = start;
+  let intDigits = 0;
+  while (i < n && s.charCodeAt(i) >= 48 && s.charCodeAt(i) <= 57) {
+    intDigits++;
+    i++;
+  }
+  let fracDigits = 0;
+  if (i < n && s[i] === ".") {
+    i++;
+    while (i < n && s.charCodeAt(i) >= 48 && s.charCodeAt(i) <= 57) {
+      fracDigits++;
+      i++;
+    }
+  }
+  if (intDigits === 0 && fracDigits === 0) return 0;
+  if (i < n && (s[i] === "e" || s[i] === "E")) {
+    const expMarker = i;
+    i++;
+    if (i < n && (s[i] === "+" || s[i] === "-")) i++;
+    let expDigits = 0;
+    while (i < n && s.charCodeAt(i) >= 48 && s.charCodeAt(i) <= 57) {
+      expDigits++;
+      i++;
+    }
+    if (expDigits === 0) i = expMarker;
+  }
+  return i - start;
+}
+
+/** Evaluates Modelica scalar integer/real builtin functions over pre-evaluated numeric arguments. */
+export function evalScalarBuiltinCall(fnName: string, args: number[]): number | null {
+  if (args.length === 1) {
+    const a0 = args[0]!;
+    switch (fnName) {
+      case "abs":
+        return Math.abs(a0);
+      case "ceil":
+        return Math.ceil(a0);
+      case "floor":
+      case "integer":
+        return Math.floor(a0);
+      case "sign":
+        return Math.sign(a0);
+    }
+  } else if (args.length === 2) {
+    const a0 = args[0]!;
+    const a1 = args[1]!;
+    switch (fnName) {
+      case "min":
+        return Math.min(a0, a1);
+      case "max":
+        return Math.max(a0, a1);
+      case "div":
+        return a1 !== 0 ? Math.trunc(a0 / a1) : null;
+      case "mod":
+        return a1 !== 0 ? a0 - Math.floor(a0 / a1) * a1 : null;
+      case "rem":
+        return a1 !== 0 ? a0 % a1 : null;
+    }
+  }
+  return null;
+}
+
+function getBindingExprFromModificationCst(modNode: SyntaxNode | null | undefined): SyntaxNode | null {
+  if (!modNode || modNode.type !== "modification") return null;
+  const modExpr =
+    modNode.childForFieldName("modification_expression") ??
+    modNode.children.find((c) => c.type === "modification_expression") ??
+    null;
+  if (!modExpr) return null;
+  return modExpr.children.find((c) => c.type === "expression") ?? modExpr;
+}
+
+/** Extracts the `modification_expression` (`= expr`) CST node from a declaration or component clause CST node. */
+export function extractBindingExprFromDeclCst(
+  declOrCompNode: SyntaxNode | null | undefined,
+  compName?: string,
+): SyntaxNode | null {
+  if (!declOrCompNode) return null;
+  const findInDecl = (declNode: SyntaxNode): SyntaxNode | null => {
+    if (compName) {
+      const nameNode = declNode.childForFieldName("name") ?? declNode.children.find((c) => c.type === "identifier");
+      if (nameNode && nameNode.text.trim() !== compName) return null;
+    }
+    const modNode =
+      declNode.childForFieldName("modification") ?? declNode.children.find((c) => c.type === "modification");
+    return getBindingExprFromModificationCst(modNode);
+  };
+  if (declOrCompNode.type === "declaration") return findInDecl(declOrCompNode);
+  if (declOrCompNode.type === "component_declaration") {
+    const decl =
+      declOrCompNode.childForFieldName("declaration") ?? declOrCompNode.children.find((c) => c.type === "declaration");
+    return decl ? findInDecl(decl) : null;
+  }
+  const stack: SyntaxNode[] = [declOrCompNode];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (cur.type === "declaration") {
+      const found = findInDecl(cur);
+      if (found) return found;
+      continue;
+    }
+    for (let i = cur.childCount - 1; i >= 0; i--) {
+      const ch = cur.child(i);
+      if (ch) stack.push(ch);
+    }
+  }
+  return null;
+}
+
+/** Extracts the `= expr` CST binding for argument `argName` inside a `class_modification` / `short_class_specifier`. */
+export function extractModArgBindingExprCst(
+  ownerOrShortSpecNode: SyntaxNode | null | undefined,
+  argName: string,
+): SyntaxNode | null {
+  if (!ownerOrShortSpecNode || !argName) return null;
+  const classMod =
+    ownerOrShortSpecNode.type === "class_modification"
+      ? ownerOrShortSpecNode
+      : (ownerOrShortSpecNode.childForFieldName("class_modification") ??
+        ownerOrShortSpecNode.children.find((c) => c.type === "class_modification") ??
+        null);
+  if (!classMod) return null;
+  const stack: SyntaxNode[] = [classMod];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (cur.type === "element_modification") {
+      const nameNode = cur.childForFieldName("name") ?? cur.children.find((c) => c.type === "name");
+      if (nameNode?.text?.trim() === argName) {
+        const modNode = cur.childForFieldName("modification") ?? cur.children.find((c) => c.type === "modification");
+        const expr = getBindingExprFromModificationCst(modNode);
+        if (expr) return expr;
+      }
+      continue;
+    }
+    for (let i = cur.childCount - 1; i >= 0; i--) {
+      const ch = cur.child(i);
+      if (ch) stack.push(ch);
+    }
+  }
+  return null;
+}
+
+/** Checks whether `s` is an optional sign followed by one or more ASCII decimal digits. */
+export function isSignedAsciiIntText(s: string, allowPlus = true): boolean {
+  if (!s) return false;
+  let start = 0;
+  if (s[0] === "-" || (allowPlus && s[0] === "+")) start = 1;
+  return start < s.length && isAsciiDigitsOnly(s.slice(start));
+}
+
+/** Removes all ASCII whitespace characters from `s`. */
+export function stripAsciiWhitespace(s: string): string {
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    if (!isAsciiWhitespaceCode(s.charCodeAt(i))) {
+      out += s[i];
+    }
+  }
+  return out;
+}
+
+/** Strips Modelica comments and splits remaining tokens by ASCII whitespace. */
+export function tokenizeCommentStrippedWords(s: string): string[] {
+  const collapsed = collapseAsciiWhitespace(stripComments(s));
+  return collapsed ? collapsed.split(" ") : [];
+}
+
+/**
+ * Extracts referenced root variable identifiers from an expression CST node,
+ * ignoring dotted field qualifiers and string literals, and optionally skipping `size(...)`.
+ */
+export function collectReferencedRootIdentsFromExprCst(
+  exprCst: SyntaxNode | null | undefined,
+  options?: { skipSizeCalls?: boolean },
+): string[] {
+  if (!exprCst) return [];
+  const skipSizeCalls = options?.skipSizeCalls ?? false;
+  const result: string[] = [];
+  const stack: SyntaxNode[] = [exprCst];
+
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    const t = cur.type;
+
+    if (t === "string_literal" || t === "STRING" || t === "comment" || t === "line_comment" || t === "block_comment") {
+      continue;
+    }
+
+    if (skipSizeCalls && t === "function_call") {
+      const callee = cur.childForFieldName("function") ?? cur.children[0];
+      if (callee?.text?.trim() === "size") {
+        continue;
+      }
+    }
+
+    if (t === "component_reference") {
+      let baseIdent: string | null = null;
+      for (let i = 0; i < cur.childCount; i++) {
+        const ch = cur.child(i);
+        if (!ch) continue;
+        if (!baseIdent && ch.type === "identifier") {
+          baseIdent = ch.text.trim();
+        } else if (ch.type === "array_subscripts") {
+          stack.push(ch);
+        }
+      }
+      if (!baseIdent) {
+        const raw = stripLeadingDot(cur.text.trim());
+        let end = 0;
+        if (raw.length > 0 && isAsciiIdentStart(raw.charCodeAt(0))) {
+          end = 1;
+          while (end < raw.length && isAsciiIdentContinue(raw.charCodeAt(end))) end++;
+          baseIdent = raw.slice(0, end);
+        }
+      }
+      if (baseIdent) result.push(baseIdent);
+      continue;
+    }
+
+    if (t === "identifier" || (cur.childCount === 0 && isAsciiIdentifier(cur.text))) {
+      const idText = cur.text.trim();
+      if (idText) result.push(idText);
+      continue;
+    }
+
+    for (let i = cur.childCount - 1; i >= 0; i--) {
+      const ch = cur.child(i);
+      if (ch) stack.push(ch);
+    }
+  }
+
+  return result;
+}
+
+/** Trims `s`, removes a single leading `=`, and trims again. */
+export function stripLeadingEquals(s: string): string {
+  const t = s.trim();
+  return t.startsWith("=") ? t.slice(1).trim() : t;
+}
+
+/** Removes a single leading `-` and any immediately following whitespace. */
+export function stripLeadingMinusWs(s: string): string {
+  return s.startsWith("-") ? s.slice(1).trimStart() : s;
+}
+
+/** Inserts a single space after commas followed immediately by non-whitespace. */
+export function spaceAfterCommas(s: string): string {
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!;
+    out += ch;
+    if (ch === "," && i + 1 < s.length && !isAsciiWhitespaceCode(s.charCodeAt(i + 1))) {
+      out += " ";
+    }
+  }
+  return out;
+}
+
+/** Extracts whole ASCII identifiers (or dotted chains when `includeDots` is true) from `s`. */
+export function extractAsciiIdentifiers(s: string, includeDots = false): string[] {
+  const out: string[] = [];
+  let i = 0;
+  const n = s.length;
+  while (i < n) {
+    const c = s.charCodeAt(i);
+    if (isAsciiIdentStart(c)) {
+      const start = i++;
+      while (i < n && isAsciiIdentContinue(s.charCodeAt(i))) i++;
+      if (includeDots) {
+        while (i + 1 < n && s[i] === "." && isAsciiIdentStart(s.charCodeAt(i + 1))) {
+          i++;
+          while (i < n && isAsciiIdentContinue(s.charCodeAt(i))) i++;
+        }
+      }
+      out.push(s.slice(start, i));
+    } else if (c >= 48 && c <= 57) {
+      i++;
+      while (i < n && isAsciiIdentContinue(s.charCodeAt(i))) i++;
+    } else {
+      i++;
+    }
+  }
+  return out;
+}
+
+/** Counts whole-word occurrences of `target` outside string literals and Modelica comments. */
+export function countWordOccurrencesOutsideStrings(text: string, target: string, stopAfterOne = false): number {
+  if (!text || !target) return 0;
+  const n = text.length;
+  const tLen = target.length;
+  let count = 0;
+  let i = 0;
+  while (i < n) {
+    const ch = text[i]!;
+    if (ch === "/" && text[i + 1] === "/") {
+      const nl = text.indexOf("\n", i + 2);
+      i = nl === -1 ? n : nl + 1;
+    } else if (ch === "/" && text[i + 1] === "*") {
+      const end = text.indexOf("*/", i + 2);
+      i = end === -1 ? n : end + 2;
+    } else if (ch === '"') {
+      i++;
+      while (i < n) {
+        if (text[i] === "\\") i += 2;
+        else if (text[i] === '"') {
+          i++;
+          break;
+        } else {
+          i++;
+        }
+      }
+    } else if (
+      text.startsWith(target, i) &&
+      (i === 0 || !isAsciiIdentContinue(text.charCodeAt(i - 1))) &&
+      (i + tLen === n || !isAsciiIdentContinue(text.charCodeAt(i + tLen)))
+    ) {
+      count++;
+      if (stopAfterOne) return 1;
+      i += tLen;
+    } else {
+      i++;
+    }
+  }
+  return count;
+}
+
+/** Returns true if `target` appears as a whole word/dotted-token outside string literals and comments. */
+export function containsWholeWordOutsideStrings(text: string, target: string): boolean {
+  return countWordOccurrencesOutsideStrings(text, target, true) > 0;
+}
+
+/** Replaces whole-word occurrences of `word` outside string literals and comments. */
+export function replaceWordOutsideStrings(
+  text: string,
+  word: string,
+  replacement: string,
+  skipDottedAccess = true,
+): string {
+  if (!text || !word) return text;
+  const n = text.length;
+  const wLen = word.length;
+  let out = "";
+  let i = 0;
+  while (i < n) {
+    const ch = text[i]!;
+    if (ch === "/" && text[i + 1] === "/") {
+      const nl = text.indexOf("\n", i + 2);
+      const end = nl === -1 ? n : nl + 1;
+      out += text.slice(i, end);
+      i = end;
+    } else if (ch === "/" && text[i + 1] === "*") {
+      const endIdx = text.indexOf("*/", i + 2);
+      const end = endIdx === -1 ? n : endIdx + 2;
+      out += text.slice(i, end);
+      i = end;
+    } else if (ch === '"') {
+      const start = i++;
+      while (i < n) {
+        if (text[i] === "\\") i += 2;
+        else if (text[i] === '"') {
+          i++;
+          break;
+        } else {
+          i++;
+        }
+      }
+      out += text.slice(start, i);
+    } else if (
+      text.startsWith(word, i) &&
+      (i === 0 || !isAsciiIdentContinue(text.charCodeAt(i - 1))) &&
+      (i + wLen === n || !isAsciiIdentContinue(text.charCodeAt(i + wLen))) &&
+      !(skipDottedAccess && i > 0 && text[i - 1] === ".")
+    ) {
+      out += replacement;
+      i += wLen;
+    } else {
+      out += ch;
+      i++;
+    }
+  }
+  return out;
+}
+
+/** Parses a call expression `<callee>(<args>)` whose outer `(` closes at the end of trimmed `s`. */
+export function parseNamedCallArgsFromText(s: string): { callee: string; argsText: string } | null {
+  const t = s.trim();
+  if (!t.endsWith(")")) return null;
+  let i = 0;
+  while (i < t.length) {
+    const ch = t[i]!;
+    const code = t.charCodeAt(i);
+    if (isAsciiIdentContinue(code) || ch === "." || ch === "$") {
+      i++;
+    } else {
+      break;
+    }
+  }
+  if (i === 0) return null;
+  const callee = t.slice(0, i);
+  let j = i;
+  while (j < t.length && isAsciiWhitespaceCode(t.charCodeAt(j))) j++;
+  if (j >= t.length || t[j] !== "(") return null;
+  let depth = 0;
+  let inStr = false;
+  for (let k = j; k < t.length; k++) {
+    const ch = t[k]!;
+    if (inStr) {
+      if (ch === "\\") k++;
+      else if (ch === '"') inStr = false;
+    } else if (ch === '"') {
+      inStr = true;
+    } else if (ch === "(") {
+      depth++;
+    } else if (ch === ")") {
+      depth--;
+      if (depth === 0) {
+        if (k !== t.length - 1) return null;
+        return { callee, argsText: t.slice(j + 1, k) };
+      }
+    }
+  }
+  return null;
+}
+
+/** Parses `size(<ident>, <digits>)` into `{ target, dim, dimStr }`, or returns null. */
+export function parseSizeCallIdentDim(s: string): { target: string; dim: number; dimStr: string } | null {
+  const call = parseNamedCallArgsFromText(s);
+  if (!call || call.callee !== "size") return null;
+  const commaIdx = call.argsText.indexOf(",");
+  if (commaIdx < 0 || call.argsText.indexOf(",", commaIdx + 1) >= 0) return null;
+  const target = call.argsText.slice(0, commaIdx).trim();
+  const dimStr = call.argsText.slice(commaIdx + 1).trim();
+  if (!isAsciiIdentifier(target) || !isAsciiDigitsOnly(dimStr)) return null;
+  return { target, dim: Number(dimStr), dimStr };
+}
+
+/** Parses a named call/modification argument `name = expr` (rejecting `==`). */
+export function parseNamedArgAssignment(s: string): { name: string; valueText: string } | null {
+  const t = s.trim();
+  if (t.length === 0 || !isAsciiIdentStart(t.charCodeAt(0))) return null;
+  let i = 1;
+  while (i < t.length && isAsciiIdentContinue(t.charCodeAt(i))) i++;
+  const name = t.slice(0, i);
+  while (i < t.length && isAsciiWhitespaceCode(t.charCodeAt(i))) i++;
+  if (i >= t.length || t[i] !== "=" || t[i + 1] === "=") return null;
+  const valueText = t.slice(i + 1);
+  if (valueText.length === 0) return null;
+  return { name, valueText };
+}
+
+/** Checks `ident([subscripts])(.ident([subscripts]))*` with either numeric comma lists or arbitrary non-empty subscripts. */
+export function isDottedComponentRefWithSubscripts(s: string, numericOnlySubscripts = true): boolean {
+  const len = s.length;
+  if (len === 0 || !isAsciiIdentStart(s.charCodeAt(0))) return false;
+  let i = 1;
+  while (i < len && isAsciiIdentContinue(s.charCodeAt(i))) i++;
+  while (i < len) {
+    if (s[i] === "[") {
+      const closeIdx = s.indexOf("]", i + 1);
+      if (closeIdx <= i + 1) return false;
+      const inner = s.slice(i + 1, closeIdx);
+      if (numericOnlySubscripts) {
+        const parts = inner.split(",");
+        for (const p of parts) {
+          if (!isAsciiDigitsOnly(p)) return false;
+        }
+      }
+      i = closeIdx + 1;
+      if (i >= len) return true;
+    }
+    if (s[i] !== ".") return false;
+    i++;
+    if (i >= len || !isAsciiIdentStart(s.charCodeAt(i))) return false;
+    i++;
+    while (i < len && isAsciiIdentContinue(s.charCodeAt(i))) i++;
+  }
+  return true;
+}
+
+/** Parses `<ident> [ <subscript> ]` at the full-string level. */
+export function parseIdentSubscriptText(s: string): { base: string; subscript: string } | null {
+  if (s.length === 0 || !isAsciiIdentStart(s.charCodeAt(0)) || !s.endsWith("]")) return null;
+  let i = 1;
+  while (i < s.length && isAsciiIdentContinue(s.charCodeAt(i))) i++;
+  const base = s.slice(0, i);
+  while (i < s.length && isAsciiWhitespaceCode(s.charCodeAt(i))) i++;
+  if (i >= s.length || s[i] !== "[") return null;
+  const inner = s.slice(i + 1, -1);
+  if (inner.includes("]")) return null;
+  return { base, subscript: inner };
+}
+
+/** Returns leading identifier before a dot (`foo.bar` -> `foo`), or null. */
+export function leadingIdentifierBeforeDot(s: string): string | null {
+  const dotIdx = s.indexOf(".");
+  if (dotIdx <= 0) return null;
+  const head = s.slice(0, dotIdx);
+  return isAsciiIdentifier(head) ? head : null;
+}
+
+/** Returns the first `[ident]` identifier inside `s`, or null. */
+export function firstBracketedIdentifier(s: string): string | null {
+  let pos = 0;
+  while (pos < s.length) {
+    const open = s.indexOf("[", pos);
+    if (open < 0) return null;
+    const close = s.indexOf("]", open + 1);
+    if (close < 0) return null;
+    const inner = s.slice(open + 1, close);
+    if (isAsciiIdentifier(inner)) return inner;
+    pos = open + 1;
+  }
+  return null;
+}
+
+/** Returns true if `s` contains `[:]` or `[:,:]` with optional whitespace inside brackets. */
+export function hasColonSubscript(s: string, allowMultiDim = false): boolean {
+  let pos = 0;
+  while (pos < s.length) {
+    const open = s.indexOf("[", pos);
+    if (open < 0) return false;
+    const close = s.indexOf("]", open + 1);
+    if (close > open) {
+      const inner = s.slice(open + 1, close);
+      const parts = allowMultiDim ? inner.split(",") : [inner];
+      if (parts.length > 0 && parts.every((p) => p.trim() === ":")) return true;
+    }
+    pos = open + 1;
+  }
+  return false;
+}
+
+/** Parses `<dottedIdentA> - <dottedIdentB>` into `[a, b]`, or returns null. */
+export function parseBinaryIdentSubtraction(s: string): [string, string] | null {
+  const minusIdx = s.indexOf("-");
+  if (minusIdx <= 0) return null;
+  if (s.indexOf("-", minusIdx + 1) >= 0) return null;
+  const lhs = s.slice(0, minusIdx).trim();
+  const rhs = s.slice(minusIdx + 1).trim();
+  if (!isDottedIdentifierChain(lhs) || !isDottedIdentifierChain(rhs)) return null;
+  return [lhs, rhs];
+}
+
+/** Splits `s` on `{`, `}`, and `,`, trims tokens, and omits empty entries. */
+export function splitBraceCommasAndTrim(s: string): string[] {
+  const out: string[] = [];
+  let start = 0;
+  for (let i = 0; i <= s.length; i++) {
+    const ch = i < s.length ? s[i] : ",";
+    if (ch === "{" || ch === "}" || ch === ",") {
+      const tok = s.slice(start, i).trim();
+      if (tok) out.push(tok);
+      start = i + 1;
+    }
+  }
+  return out;
+}
+
+/** Returns true if trimmed `s` starts with an optional sign and `digits.digits`. */
+export function startsWithSignedDecimalFloat(s: string): boolean {
+  let i = 0;
+  if (s[i] === "+" || s[i] === "-") i++;
+  let intDigits = 0;
+  while (i < s.length && s.charCodeAt(i) >= 48 && s.charCodeAt(i) <= 57) {
+    intDigits++;
+    i++;
+  }
+  if (intDigits === 0 || i >= s.length || s[i] !== ".") return false;
+  i++;
+  return i < s.length && s.charCodeAt(i) >= 48 && s.charCodeAt(i) <= 57;
+}
+
+/** Extracts call target names (`ident` or `pkg.fn`) from Modelica CST or expression text outside strings/comments. */
+export function extractCallTargetsFromExpr(text: string, cst?: SyntaxNode | null, requireDot = false): string[] {
+  const out: string[] = [];
+  if (cst) {
+    const stack: SyntaxNode[] = [cst];
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      const t = cur.type;
+      if (
+        t === "string_literal" ||
+        t === "STRING" ||
+        t === "comment" ||
+        t === "line_comment" ||
+        t === "block_comment"
+      ) {
+        continue;
+      }
+      if (t === "function_call" || (t === "primary" && cur.children.some((c) => c.type === "function_call_args"))) {
+        const calleeNode =
+          cur.childForFieldName?.("function") ??
+          cur.children.find((c) => c.type === "component_reference" || c.type === "name" || c.type === "identifier") ??
+          cur.children[0];
+        const rawCallee = calleeNode?.text?.trim() ?? "";
+        const cleanCallee = stripLeadingDot(rawCallee);
+        if (cleanCallee && (!requireDot || cleanCallee.includes(".")) && isDottedIdentifierChain(cleanCallee)) {
+          out.push(cleanCallee);
+        }
+      }
+      for (let i = cur.childCount - 1; i >= 0; i--) {
+        const ch = cur.child(i);
+        if (ch) stack.push(ch);
+      }
+    }
+    if (out.length > 0) return out;
+  }
+
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    const ch = text[i]!;
+    if (ch === "/" && text[i + 1] === "/") {
+      const nl = text.indexOf("\n", i + 2);
+      i = nl === -1 ? n : nl + 1;
+    } else if (ch === "/" && text[i + 1] === "*") {
+      const end = text.indexOf("*/", i + 2);
+      i = end === -1 ? n : end + 2;
+    } else if (ch === '"') {
+      i++;
+      while (i < n) {
+        if (text[i] === "\\") i += 2;
+        else if (text[i] === '"') {
+          i++;
+          break;
+        } else {
+          i++;
+        }
+      }
+    } else if (isAsciiIdentStart(text.charCodeAt(i)) && (i === 0 || !isAsciiIdentContinue(text.charCodeAt(i - 1)))) {
+      const start = i++;
+      while (i < n && isAsciiIdentContinue(text.charCodeAt(i))) i++;
+      while (i + 1 < n && text[i] === "." && isAsciiIdentStart(text.charCodeAt(i + 1))) {
+        i++;
+        while (i < n && isAsciiIdentContinue(text.charCodeAt(i))) i++;
+      }
+      const cand = text.slice(start, i);
+      let j = i;
+      while (j < n && isAsciiWhitespaceCode(text.charCodeAt(j))) j++;
+      if (j < n && text[j] === "(" && (!requireDot || cand.includes("."))) {
+        out.push(cand);
+      }
+    } else if (text.charCodeAt(i) >= 48 && text.charCodeAt(i) <= 57) {
+      i++;
+      while (i < n && isAsciiIdentContinue(text.charCodeAt(i))) i++;
+    } else {
+      i++;
+    }
+  }
+  return out;
+}
+
+/** Checks via CST (or token fallback) whether `classCst` has an enumeration short-class specifier. */
+export function isEnumClassDefCst(cstNode: SyntaxNode | null | undefined): boolean {
+  if (!cstNode) return false;
+  const shortSpec = getShortClassSpecifierNode(cstNode);
+  if (shortSpec) {
+    if (Cst.ShortClassSpecifier.enumList(shortSpec)) return true;
+    for (const c of shortSpec.children || []) {
+      if (c.text === "enumeration" || c.type === "enum_list") return true;
+    }
+  }
+  const clean = collapseAsciiWhitespace(stripComments(cstNode.text ?? ""));
+  const eqIdx = clean.indexOf("=");
+  if (eqIdx > 0) {
+    const rhs = clean.slice(eqIdx + 1).trimStart();
+    if (rhs.startsWith("enumeration")) {
+      const after = rhs.slice("enumeration".length).trimStart();
+      if (after.startsWith("(")) return true;
+    }
+  }
+  return false;
+}
+
+/** Collects header keyword tokens (`partial`, `type`, `model`, `record`, `block`, `connector`, `package`, `function`) from a class CST node. */
+export function hasClassHeaderKeywordCst(cstNode: SyntaxNode | null | undefined, keyword: string): boolean {
+  if (!cstNode) return false;
+  if (cstNode.type === "class_definition") {
+    for (const c of cstNode.children || []) {
+      if (c.type === "class_specifier") break;
+      if (c.text === keyword) return true;
+      if (c.type === "class_prefixes" || c.type === "class_prefix") {
+        for (const sub of c.children || []) {
+          if (sub.text === keyword) return true;
+        }
+        const words = tokenizeCommentStrippedWords(c.text ?? "");
+        if (words.includes(keyword)) return true;
+      }
+    }
+    return false;
+  }
+  const words = tokenizeCommentStrippedWords(cstNode.text ?? "");
+  for (const w of words) {
+    if (w === keyword) return true;
+    if (w === "=" || w === ";") break;
+  }
+  return false;
+}
+
+/** Checks whether `classCst` contains an equation-section assignment involving whole identifier `name = ...`. */
+export function hasEquationAssignmentForNameCst(classCst: SyntaxNode | null | undefined, name: string): boolean {
+  if (!classCst || !name) return false;
+  const stack: SyntaxNode[] = [classCst];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (cur.type === "equation_section" || cur.type === "initial_equation_section") {
+      const innerStack: SyntaxNode[] = [cur];
+      while (innerStack.length > 0) {
+        const node = innerStack.pop()!;
+        if (node.type === "simple_equation") {
+          const lhs = node.child(0);
+          if (lhs && containsWholeWordOutsideStrings(lhs.text ?? "", name)) {
+            return true;
+          }
+          continue;
+        }
+        for (let i = node.childCount - 1; i >= 0; i--) {
+          const ch = node.child(i);
+          if (ch) innerStack.push(ch);
+        }
+      }
+      continue;
+    }
+    for (let i = cur.childCount - 1; i >= 0; i--) {
+      const ch = cur.child(i);
+      if (ch) stack.push(ch);
+    }
+  }
+  return false;
+}
+
+/**
+ * Expands Modelica `Text(textString=...)` dynamic macros (`%%`, `%name`, `%class`, `%comment`, `%{expr}`, `%ident`)
+ * in a single left-to-right pass without intermediate placeholders or regular expressions.
+ */
+export function expandModelicaTextMacros(
+  rawText: string,
+  nameText: string,
+  classText: string,
+  commentText: string,
+  evaluateExpr: (expr: string) => string,
+): string {
+  let out = "";
+  let i = 0;
+  const n = rawText.length;
+  while (i < n) {
+    const ch = rawText[i]!;
+    if (ch !== "%" || i + 1 >= n) {
+      out += ch;
+      i++;
+      continue;
+    }
+    const next = rawText[i + 1]!;
+    if (next === "%") {
+      out += "%";
+      i += 2;
+      continue;
+    }
+    if (next === "{") {
+      const closeIdx = rawText.indexOf("}", i + 2);
+      if (closeIdx >= 0) {
+        out += evaluateExpr(rawText.slice(i + 2, closeIdx));
+        i = closeIdx + 1;
+        continue;
+      }
+    }
+    if (isAsciiIdentContinue(rawText.charCodeAt(i + 1))) {
+      let end = i + 2;
+      while (end < n && isAsciiIdentContinue(rawText.charCodeAt(end))) end++;
+      const ident = rawText.slice(i + 1, end);
+      if (ident === "name") out += nameText;
+      else if (ident === "class") out += classText;
+      else if (ident === "comment") out += commentText;
+      else out += evaluateExpr(ident);
+      i = end;
+      continue;
+    }
+    out += "%";
+    i++;
+  }
+  return out;
 }

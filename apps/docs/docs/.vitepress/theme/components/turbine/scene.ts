@@ -4,6 +4,13 @@
 // the camera rig, the moving section plane and the DOM callouts. The Vue
 // component only wires props / lifecycle to this class.
 
+import {
+  ALLOY_MATERIAL_PRESETS,
+  type AlloyPresetKey,
+  classifyAlloyPreset,
+  SECTION_CAP_FRAGMENT_SHADER,
+  SECTION_CAP_VERTEX_SHADER,
+} from "@modelscript/cad/studio-pbr";
 import * as THREE from "three";
 import {
   bladeGeometry,
@@ -25,6 +32,29 @@ export interface CalloutElements {
   label: HTMLElement;
   line: SVGLineElement;
   dot: SVGCircleElement;
+}
+
+export interface ProjectedPoint2D {
+  x: number;
+  y: number;
+  visible: boolean;
+  depth: number;
+}
+
+export interface ScadOverlayMesh {
+  name?: string;
+  vertices: number[];
+  indices: number[];
+  normals?: number[];
+  color?: [number, number, number] | [number, number, number, number];
+  unit?: "m" | "mm";
+  fromOcct?: boolean;
+}
+
+export interface StepSpoolBinding {
+  part: string;
+  spool: "n1" | "n2";
+  axis?: [number, number, number];
 }
 
 interface Palette {
@@ -488,6 +518,13 @@ export class TurbineScene {
   private readonly n1 = new THREE.Group();
   private readonly n2 = new THREE.Group();
   private readonly section = new THREE.Group();
+  private readonly stepStaticGroup = new THREE.Group();
+  private readonly stepN1Group = new THREE.Group();
+  private readonly stepN2Group = new THREE.Group();
+  private readonly stepStencilObjs: THREE.Mesh[] = [];
+  private readonly stepAlloyMats = new Map<AlloyPresetKey, THREE.MeshPhysicalMaterial>();
+  private readonly proceduralObjs: THREE.Object3D[] = [];
+  private readonly combustorLight = new THREE.PointLight(0xff6b1a, 2.2, 2.4, 1.5);
   private readonly contours: THREE.LineLoop[] = [];
   private readonly intervals = new Float32Array(MAX_INTERVALS * 2);
   private readonly capIv: THREE.Vector2[] = Array.from({ length: MAX_INTERVALS }, () => new THREE.Vector2());
@@ -497,6 +534,16 @@ export class TurbineScene {
     uColor: { value: new THREE.Color() },
     uOpacity: { value: 1 },
   };
+  private readonly stencilCapUniforms = {
+    uColor: { value: new THREE.Color() },
+    uOpacity: { value: 1 },
+    uPitch: { value: 0.048 },
+  };
+  private readonly stencilBackMat: THREE.MeshBasicMaterial;
+  private readonly stencilFrontMat: THREE.MeshBasicMaterial;
+  private readonly stencilCapMat: THREE.ShaderMaterial;
+  private proceduralCapMesh!: THREE.Mesh;
+  private stencilCapMesh!: THREE.Mesh;
   private readonly gridUniforms = { uColor: { value: new THREE.Color() }, uOpacity: { value: 1 } };
 
   private readonly callouts: CalloutElements[];
@@ -509,6 +556,11 @@ export class TurbineScene {
   private reducedMotion: boolean;
   private dark: boolean;
   private manualSectionPct: number | null = null;
+  private n1SpeedScale = 1;
+  private n2SpeedScale = 1;
+  private compiledStepMeshes: readonly ScadOverlayMesh[] | null = null;
+  private compiledStepSpools: readonly StepSpoolBinding[] = [];
+  private stepWireHighlight = false;
 
   private s = -0.35;
   private time = SWEEP_PERIOD * 0.22;
@@ -518,6 +570,7 @@ export class TurbineScene {
   private disposed = false;
   private firstFrame = true;
   private onFirstFrame: (() => void) | undefined;
+  private onAfterRender: (() => void) | undefined;
   private onError: ((err: unknown) => void) | undefined;
   private width = 1;
   private height = 1;
@@ -539,10 +592,57 @@ export class TurbineScene {
     this.onFirstFrame = opts.onFirstFrame;
     this.onError = opts.onError;
 
+    this.stencilBackMat = new THREE.MeshBasicMaterial({
+      colorWrite: false,
+      depthWrite: false,
+      depthTest: false,
+      side: THREE.BackSide,
+      clippingPlanes: [this.solidPlane],
+      stencilWrite: true,
+      stencilRef: 0,
+      stencilFunc: THREE.AlwaysStencilFunc,
+      stencilFail: THREE.IncrementWrapStencilOp,
+      stencilZFail: THREE.IncrementWrapStencilOp,
+      stencilZPass: THREE.IncrementWrapStencilOp,
+    });
+    this.stencilFrontMat = new THREE.MeshBasicMaterial({
+      colorWrite: false,
+      depthWrite: false,
+      depthTest: false,
+      side: THREE.FrontSide,
+      clippingPlanes: [this.solidPlane],
+      stencilWrite: true,
+      stencilRef: 0,
+      stencilFunc: THREE.AlwaysStencilFunc,
+      stencilFail: THREE.DecrementWrapStencilOp,
+      stencilZFail: THREE.DecrementWrapStencilOp,
+      stencilZPass: THREE.DecrementWrapStencilOp,
+    });
+    this.stencilCapMat = new THREE.ShaderMaterial({
+      vertexShader: SECTION_CAP_VERTEX_SHADER,
+      fragmentShader: SECTION_CAP_FRAGMENT_SHADER,
+      uniforms: this.stencilCapUniforms,
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+      side: THREE.DoubleSide,
+      stencilWrite: true,
+      stencilRef: 0,
+      stencilFunc: THREE.NotEqualStencilFunc,
+      stencilFail: THREE.ZeroStencilOp,
+      stencilZFail: THREE.ZeroStencilOp,
+      stencilZPass: THREE.ZeroStencilOp,
+      fog: false,
+    });
+
     this.renderer = new THREE.WebGLRenderer({
       canvas: opts.canvas,
       antialias: true,
       alpha: true,
+      stencil: true,
       powerPreference: "high-performance",
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
@@ -564,9 +664,8 @@ export class TurbineScene {
     rimLight.position.set(4.2, 5.2, -5.5);
     const fillLight = new THREE.DirectionalLight(0xe0f2fe, 0.35);
     fillLight.position.set(-6.5, -1.8, 3.8);
-    const combustorLight = new THREE.PointLight(0xff6b1a, 2.2, 2.4, 1.5);
-    combustorLight.position.set(0.75, 0.0, 0.0);
-    this.scene.add(keyLight, rimLight, fillLight, combustorLight);
+    this.combustorLight.position.set(0.75, 0.0, 0.0);
+    this.scene.add(keyLight, rimLight, fillLight, this.combustorLight);
 
     const pal = PALETTES[this.dark ? "dark" : "light"];
     this.frameFillOpacity = pal.frameFillOpacity;
@@ -713,14 +812,26 @@ export class TurbineScene {
 
   private build(): void {
     const engine = new THREE.Group();
-    this.scene.add(engine, this.n1, this.n2, this.section);
+    this.stepStaticGroup.visible = false;
+    this.stepN1Group.visible = false;
+    this.stepN2Group.visible = false;
+    this.n1.add(this.stepN1Group);
+    this.n2.add(this.stepN2Group);
+    this.scene.add(engine, this.n1, this.n2, this.section, this.stepStaticGroup);
 
     for (const body of BODIES) {
       const parent = body.spool === "n1" ? this.n1 : body.spool === "n2" ? this.n2 : engine;
-      parent.add(new THREE.Mesh(latheGeometry(body.profile, body.segments, body.material), this.mats[body.material]));
+      const solidMesh = new THREE.Mesh(
+        latheGeometry(body.profile, body.segments, body.material),
+        this.mats[body.material],
+      );
+      parent.add(solidMesh);
+      this.proceduralObjs.push(solidMesh);
       const wire = new THREE.BufferGeometry();
       wire.setAttribute("position", new THREE.BufferAttribute(latheWire(body.profile, body.meridians), 3));
-      parent.add(new THREE.LineSegments(wire, this.mats.wireBody));
+      const wireSegs = new THREE.LineSegments(wire, this.mats.wireBody);
+      parent.add(wireSegs);
+      this.proceduralObjs.push(wireSegs);
     }
 
     for (const row of ROWS) {
@@ -731,15 +842,22 @@ export class TurbineScene {
       mesh.instanceMatrix.needsUpdate = true;
       mesh.computeBoundingSphere();
       parent.add(mesh);
+      this.proceduralObjs.push(mesh);
       const wire = new THREE.BufferGeometry();
       wire.setAttribute("position", new THREE.BufferAttribute(bladeWire(row), 3));
-      parent.add(new THREE.LineSegments(wire, this.mats.wireBlade));
+      const wireSegs = new THREE.LineSegments(wire, this.mats.wireBlade);
+      parent.add(wireSegs);
+      this.proceduralObjs.push(wireSegs);
     }
 
-    // Section cap (hatched), contour rings and cut-plane frame.
+    // Section cap (procedural analytical + generic WebGL stencil cap), contour rings and cut-plane frame.
     const capGeo = new THREE.PlaneGeometry(3.4, 3.4);
     capGeo.rotateY(Math.PI / 2);
-    this.section.add(new THREE.Mesh(capGeo, this.mats.cap));
+    this.proceduralCapMesh = new THREE.Mesh(capGeo, this.mats.cap);
+    this.stencilCapMesh = new THREE.Mesh(capGeo, this.stencilCapMat);
+    this.stencilCapMesh.renderOrder = 3;
+    this.stencilCapMesh.visible = false;
+    this.section.add(this.proceduralCapMesh, this.stencilCapMesh);
 
     const ringPts: THREE.Vector3[] = [];
     for (let i = 0; i < 160; i++) {
@@ -779,6 +897,281 @@ export class TurbineScene {
       this.manualSectionPct = Math.min(1, Math.max(0, pct01));
     }
     this.wake();
+  }
+
+  setManualSectionCutX(xMeters: number | null): void {
+    if (xMeters === null || !Number.isFinite(xMeters)) {
+      this.manualSectionPct = null;
+    } else {
+      const pct = (xMeters - SWEEP_MIN) / (SWEEP_MAX - SWEEP_MIN);
+      this.manualSectionPct = Math.min(1, Math.max(0, pct));
+    }
+    this.wake();
+  }
+
+  setSpoolRpms(n1Rpm: number, n2Rpm: number): void {
+    this.n1SpeedScale = THREE.MathUtils.clamp(n1Rpm / 3850, 0, 4);
+    this.n2SpeedScale = THREE.MathUtils.clamp(n2Rpm / 14200, 0, 4);
+    this.wake();
+  }
+
+  setCombustorIntensity(t04K: number): void {
+    const norm = THREE.MathUtils.clamp((t04K - 600) / 1400, 0, 1.8);
+    this.mats.liner.emissiveIntensity = 0.04 + 0.15 * norm;
+    this.mats.turbineBlade.emissiveIntensity = 0.015 + 0.065 * norm;
+    this.combustorLight.intensity = 0.6 + 2.1 * norm;
+    const hotMix = THREE.MathUtils.clamp((t04K - 1650) / 700, 0, 1);
+    this.mats.liner.emissive.setHex(0xff4d0a).lerp(new THREE.Color(0xffb454), hotMix * 0.65);
+
+    const stepLiner = this.stepAlloyMats.get("combustor-liner");
+    if (stepLiner) {
+      stepLiner.emissiveIntensity = 0.12 + 0.28 * norm;
+      stepLiner.emissive.setHex(0x6b2806).lerp(new THREE.Color(0xff9c42), hotMix * 0.72);
+    }
+    const stepTurb = this.stepAlloyMats.get("nickel-superalloy");
+    if (stepTurb) {
+      stepTurb.emissiveIntensity = 0.02 + 0.07 * norm;
+      stepTurb.emissive.setHex(0x4a1904);
+    }
+    this.wake();
+  }
+
+  setAfterRender(cb?: (() => void) | undefined): void {
+    this.onAfterRender = cb;
+  }
+
+  projectWorldPoints(points: readonly (readonly [number, number, number])[]): ProjectedPoint2D[] {
+    const w = this.width;
+    const h = this.height;
+    this.camera.updateMatrixWorld();
+    return points.map(([x, y, z]) => {
+      const p = this.tmp.set(x, y, z).project(this.camera);
+      return {
+        x: (p.x * 0.5 + 0.5) * w,
+        y: (-p.y * 0.5 + 0.5) * h,
+        visible: p.z >= -1 && p.z <= 1,
+        depth: p.z,
+      };
+    });
+  }
+
+  private clearStepGroups(): void {
+    const sharedMats = new Set<THREE.Material>([
+      ...(Object.values(this.mats) as THREE.Material[]),
+      this.stencilBackMat,
+      this.stencilFrontMat,
+      ...this.stepAlloyMats.values(),
+    ]);
+    this.stepStencilObjs.length = 0;
+    for (const grp of [this.stepStaticGroup, this.stepN1Group, this.stepN2Group]) {
+      while (grp.children.length > 0) {
+        const child = grp.children[0]!;
+        grp.remove(child);
+        if (child instanceof THREE.Mesh || child instanceof THREE.LineSegments) {
+          child.geometry.dispose();
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          for (const mat of mats) {
+            if (!sharedMats.has(mat)) mat.dispose();
+          }
+        }
+      }
+      grp.visible = false;
+    }
+  }
+
+  private selectStepMaterial(name: string, colorRgba?: readonly number[]): THREE.MeshPhysicalMaterial {
+    const key = classifyAlloyPreset(name, colorRgba);
+    const cached = this.stepAlloyMats.get(key);
+    if (cached) return cached;
+
+    const spec = ALLOY_MATERIAL_PRESETS[key];
+    const pal = PALETTES[this.dark ? "dark" : "light"];
+    const mat = new THREE.MeshPhysicalMaterial({
+      color: this.dark ? spec.colorDark : spec.colorLight,
+      metalness: spec.metalness,
+      roughness: spec.roughness,
+      anisotropy: spec.anisotropy,
+      anisotropyRotation: spec.anisotropyRotation,
+      normalScale: new THREE.Vector2(spec.normalScale[0], spec.normalScale[1]),
+      normalMap: this.pbrMaps.normal,
+      roughnessMap: this.pbrMaps.roughness,
+      aoMap: this.pbrMaps.ao,
+      aoMapIntensity: 0.92,
+      vertexColors: true,
+      side: THREE.DoubleSide,
+      clippingPlanes: [this.solidPlane],
+      fog: false,
+      envMapIntensity: pal.envIntensity,
+      ...(spec.iridescence !== undefined
+        ? {
+            iridescence: spec.iridescence,
+            iridescenceIOR: spec.iridescenceIOR ?? 1.5,
+            iridescenceThicknessMap: this.pbrMaps.iridescence,
+            iridescenceThicknessRange: spec.iridescenceThicknessRange
+              ? [spec.iridescenceThicknessRange[0], spec.iridescenceThicknessRange[1]]
+              : ([200, 360] as [number, number]),
+          }
+        : {}),
+      ...(spec.emissiveDark !== undefined
+        ? {
+            emissive: this.dark ? spec.emissiveDark : (spec.emissiveLight ?? spec.emissiveDark),
+            emissiveIntensity: spec.emissiveIntensity ?? 0.25,
+          }
+        : {}),
+    });
+    this.stepAlloyMats.set(key, mat);
+    return mat;
+  }
+
+  private resolveStepSpoolGroup(name: string, spools: readonly StepSpoolBinding[]): THREE.Group {
+    const lower = name.toLowerCase();
+    const matched = spools.find((s) => {
+      const sp = s.part.toLowerCase();
+      return lower === sp || lower.includes(sp) || sp.includes(lower);
+    });
+    if (matched) {
+      return matched.spool === "n1" ? this.stepN1Group : this.stepN2Group;
+    }
+    if (/^(fan|lpt)/i.test(lower)) return this.stepN1Group;
+    if (/^(hpc|compressor)/i.test(lower)) return this.stepN2Group;
+    return this.stepStaticGroup;
+  }
+
+  setCompiledStepScene(meshes: readonly ScadOverlayMesh[] | null, spools: readonly StepSpoolBinding[] = []): void {
+    this.compiledStepMeshes = meshes && meshes.length > 0 ? meshes : null;
+    this.compiledStepSpools = spools;
+    this.rebuildCompiledStepScene();
+  }
+
+  setStepWireHighlight(enabled: boolean): void {
+    this.stepWireHighlight = enabled;
+    if (this.compiledStepMeshes) {
+      this.rebuildCompiledStepScene();
+    }
+  }
+
+  private rebuildCompiledStepScene(): void {
+    this.clearStepGroups();
+    const meshes = this.compiledStepMeshes;
+    if (!meshes || meshes.length === 0) {
+      for (const obj of this.proceduralObjs) obj.visible = true;
+      this.wake();
+      return;
+    }
+
+    const highlightWireMat = this.stepWireHighlight
+      ? new THREE.LineBasicMaterial({
+          color: this.dark ? 0x38bdf8 : 0x0284c7,
+          transparent: true,
+          opacity: 0.45,
+          depthWrite: false,
+          clippingPlanes: [this.solidPlane],
+        })
+      : null;
+
+    const sectionActive = this.section.visible;
+    let builtCount = 0;
+    for (const m of meshes) {
+      if (!m.vertices?.length || !m.indices?.length) continue;
+
+      let maxAbs = 0;
+      for (let i = 0; i < m.vertices.length; i++) {
+        const av = Math.abs(m.vertices[i]!);
+        if (av > maxAbs) maxAbs = av;
+      }
+      // OCCT always emits millimeters even when SI_UNIT($,.METRE.) is declared; scale mm -> m for scene coords.
+      const scale = m.unit === "m" && (m.fromOcct || maxAbs > 20) ? 0.001 : 1;
+
+      const name = m.name || "";
+      const isHotSection = /combust|liner|turbine|hpt|lpt|nozzle/i.test(name);
+      const isBladePart = /fan|blade|stator|rotor|stage/i.test(name);
+
+      const vCount = (m.vertices.length / 3) | 0;
+      const pos = new Float32Array(vCount * 3);
+      const colors = new Float32Array(vCount * 3);
+      const uvs = new Float32Array(vCount * 2);
+      const uv1 = new Float32Array(vCount * 2);
+
+      for (let v = 0; v < vCount; v++) {
+        const x = m.vertices[v * 3]! * scale;
+        const y = m.vertices[v * 3 + 1]! * scale;
+        const z = m.vertices[v * 3 + 2]! * scale;
+        pos[v * 3] = x;
+        pos[v * 3 + 1] = y;
+        pos[v * 3 + 2] = z;
+
+        // Ambient occlusion & alloy contrast gradient matching procedural hero shading
+        const r = Math.hypot(y, z);
+        const radialNorm = Math.min(1, r / 1.6);
+        const ao = isBladePart ? 0.84 + 0.16 * radialNorm : 0.78 + 0.22 * radialNorm;
+        const hotZone = isHotSection ? Math.max(0, 1 - Math.abs(x - 0.8) / 0.85) * 0.08 : 0;
+        colors[v * 3] = Math.min(1.04, ao + hotZone * 1.1);
+        colors[v * 3 + 1] = Math.min(1.02, ao + hotZone * 0.45);
+        colors[v * 3 + 2] = Math.min(1.0, ao - hotZone * 0.35);
+
+        // Cylindrical parameterization so anisotropic brushed alloy maps follow circumferentially
+        const theta = Math.atan2(z, y) / (Math.PI * 2) + 0.5;
+        uvs[v * 2] = x * 0.45 + 0.5;
+        uvs[v * 2 + 1] = theta * 2.0;
+
+        uv1[v * 2] = 0.88 + 0.1 * radialNorm;
+        uv1[v * 2 + 1] = 0.5;
+      }
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+      geo.setAttribute("uv1", new THREE.BufferAttribute(uv1, 2));
+      geo.setIndex(m.indices);
+      if (m.normals && m.normals.length === m.vertices.length) {
+        geo.setAttribute("normal", new THREE.Float32BufferAttribute(m.normals, 3));
+      } else {
+        geo.computeVertexNormals();
+      }
+
+      const targetGroup = this.resolveStepSpoolGroup(name, this.compiledStepSpools);
+      const solidMat = this.selectStepMaterial(name, m.color);
+      const solidMesh = new THREE.Mesh(geo, solidMat);
+      solidMesh.renderOrder = 0;
+      targetGroup.add(solidMesh);
+
+      const stencilBack = new THREE.Mesh(geo, this.stencilBackMat);
+      stencilBack.renderOrder = 1;
+      stencilBack.frustumCulled = false;
+      stencilBack.visible = sectionActive;
+      targetGroup.add(stencilBack);
+      this.stepStencilObjs.push(stencilBack);
+
+      const stencilFront = new THREE.Mesh(geo, this.stencilFrontMat);
+      stencilFront.renderOrder = 2;
+      stencilFront.frustumCulled = false;
+      stencilFront.visible = sectionActive;
+      targetGroup.add(stencilFront);
+      this.stepStencilObjs.push(stencilFront);
+
+      const edges = new THREE.EdgesGeometry(geo, 26);
+      targetGroup.add(new THREE.LineSegments(edges, this.mats.wireBody));
+      if (highlightWireMat) {
+        targetGroup.add(new THREE.LineSegments(edges, highlightWireMat));
+      }
+      builtCount++;
+    }
+
+    if (builtCount > 0) {
+      for (const obj of this.proceduralObjs) obj.visible = false;
+      this.stepStaticGroup.visible = true;
+      this.stepN1Group.visible = true;
+      this.stepN2Group.visible = true;
+    } else {
+      highlightWireMat?.dispose();
+      for (const obj of this.proceduralObjs) obj.visible = true;
+    }
+    this.wake();
+  }
+
+  setScadMeshOverlay(meshes: readonly ScadOverlayMesh[] | null, spools: readonly StepSpoolBinding[] = []): void {
+    this.setCompiledStepScene(meshes, spools);
   }
 
   setPaused(paused: boolean): void {
@@ -822,6 +1215,8 @@ export class TurbineScene {
 
   dispose(): void {
     this.disposed = true;
+    this.onAfterRender = undefined;
+    this.setScadMeshOverlay(null);
     cancelAnimationFrame(this.raf);
     const canvas = this.renderer.domElement;
     canvas.removeEventListener("pointerdown", this.onPointerDown);
@@ -835,6 +1230,11 @@ export class TurbineScene {
     });
     geos.forEach((g) => g.dispose());
     Object.values(this.mats).forEach((m) => m.dispose());
+    this.stencilBackMat.dispose();
+    this.stencilFrontMat.dispose();
+    this.stencilCapMat.dispose();
+    this.stepAlloyMats.forEach((m) => m.dispose());
+    this.stepAlloyMats.clear();
     this.pbrMaps.normal.dispose();
     this.pbrMaps.roughness.dispose();
     this.pbrMaps.ao.dispose();
@@ -860,6 +1260,15 @@ export class TurbineScene {
     m.contour.color.setHex(pal.accent);
     m.frame.color.setHex(pal.wire);
 
+    for (const [key, stepMat] of this.stepAlloyMats.entries()) {
+      const spec = ALLOY_MATERIAL_PRESETS[key];
+      stepMat.color.setHex(this.dark ? spec.colorDark : spec.colorLight);
+      stepMat.envMapIntensity = pal.envIntensity;
+      if (spec.emissiveDark !== undefined) {
+        stepMat.emissive.setHex(this.dark ? spec.emissiveDark : (spec.emissiveLight ?? spec.emissiveDark));
+      }
+    }
+
     // Section cross square background matching the beta badge (--ms-brand-soft)
     let fillColor = pal.frameFill;
     let fillOpacity = pal.frameFillOpacity;
@@ -875,6 +1284,7 @@ export class TurbineScene {
     this.frameFillOpacity = fillOpacity;
 
     this.capUniforms.uColor.value.setHex(pal.accent);
+    this.stencilCapUniforms.uColor.value.setHex(pal.accent);
     this.gridUniforms.uColor.value.setHex(pal.grid);
     this.gridUniforms.uOpacity.value = pal.gridOpacity;
     this.renderer.toneMappingExposure = pal.exposure;
@@ -934,8 +1344,8 @@ export class TurbineScene {
 
     if (animate) {
       this.time += dt;
-      this.n1.rotation.x += N1_SPEED * dt;
-      this.n2.rotation.x += N2_SPEED * dt;
+      this.n1.rotation.x += N1_SPEED * this.n1SpeedScale * dt;
+      this.n2.rotation.x += N2_SPEED * this.n2SpeedScale * dt;
     }
 
     // Section plane position.
@@ -978,6 +1388,7 @@ export class TurbineScene {
       this.updateSection();
       this.renderer.render(this.scene, this.camera);
       this.updateCallouts();
+      this.onAfterRender?.();
 
       if (this.firstFrame) {
         this.firstFrame = false;
@@ -1007,6 +1418,23 @@ export class TurbineScene {
     this.mats.frame.opacity = 0.55 * inside;
     this.mats.frameFill.opacity = this.frameFillOpacity * inside;
     this.mats.contour.opacity = 0.95 * inside;
+
+    const stepActive = Boolean(this.compiledStepMeshes && this.stepStaticGroup.visible);
+    if (stepActive) {
+      this.proceduralCapMesh.visible = false;
+      this.stencilCapMesh.visible = inside > 0.001;
+      this.stencilCapUniforms.uOpacity.value = inside;
+      for (const sObj of this.stepStencilObjs) {
+        sObj.visible = inside > 0.001;
+      }
+      for (const ring of this.contours) {
+        ring.visible = false;
+      }
+      return;
+    }
+
+    this.proceduralCapMesh.visible = inside > 0.001;
+    this.stencilCapMesh.visible = false;
     this.capUniforms.uOpacity.value = inside;
 
     const n = sliceBodies(s, this.intervals, MAX_INTERVALS);

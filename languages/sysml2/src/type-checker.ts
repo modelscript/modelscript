@@ -13,6 +13,7 @@ import {
   type SymbolEntry,
 } from "@modelscript/runtime";
 import { kermlStdlibEntries } from "../src-gen/kerml-snapshot.js";
+import { collectCstLeaves, parseSysmlSource, readDottedChainFromLeaves, stripLeadingTilde } from "./cst-utils.js";
 import { KNOWN_DIMENSIONS } from "./dimensions.js";
 import { SysML2ErrorCode } from "./errors.js";
 import type { SysmlCstNode } from "./flattener/cst-lowerer.js";
@@ -289,7 +290,7 @@ for (const pkg of FUNCTION_FAMILY_PACKAGES) {
  */
 export function isStdlibOrBuiltinSymbol(name: string): boolean {
   if (!name) return true;
-  let clean = name.trim().replace(/^~\s*/, "");
+  let clean = stripLeadingTilde(name);
   while (clean.endsWith("::*")) clean = clean.slice(0, -3);
   if (!clean || clean === "<anonymous>" || clean === "*") return true;
   if (clean.includes("::")) {
@@ -820,7 +821,7 @@ function isCrossLanguageEndpoint(db: QueryDB, entry: SymbolEntry): boolean {
     .find((c) => c.ruleName === "OwnedFeatureTyping" || c.ruleName === "ConjugatedPortTyping");
   const rawType = typeChild?.name ?? (entry.metadata?.["typeSpecifier"] ? String(entry.metadata["typeSpecifier"]) : "");
   if (!rawType) return false;
-  const norm = normalizeTypeName(rawType.replace(/^~\s*/, ""));
+  const norm = normalizeTypeName(stripLeadingTilde(rawType));
   return db.byName(norm).some((c) => isTypeLikeSymbol(c) && c.language && c.language.toLowerCase() !== "sysml2");
 }
 
@@ -916,35 +917,36 @@ export function checkPortConjugationMismatch(db: QueryDB, self: SymbolEntry): Li
     const children = db.childrenOf(entry.id);
     const conjChild = children.find((c) => c.ruleName === "ConjugatedPortTyping");
     if (conjChild) {
-      const raw = (conjChild.name || db.cstText(conjChild.startOffset, conjChild.endOffset, conjChild) || "")
-        .replace(/^~\s*/, "")
-        .trim();
+      const raw = stripLeadingTilde(
+        conjChild.name || db.cstText(conjChild.startOffset, conjChild.endOffset, conjChild) || "",
+      );
       return { baseType: raw ? normalizeTypeName(raw) : null, isConjugated: true };
     }
     const text = db.cstText(entry.startOffset, entry.endOffset, entry) || "";
-    const tildeMatch = /:\s*~\s*([A-Za-z_][A-Za-z0-9_:]*)/.exec(text);
-    if (tildeMatch?.[1]) {
-      return { baseType: normalizeTypeName(tildeMatch[1]), isConjugated: true };
+    const leaves = collectCstLeaves(parseSysmlSource(text));
+    const colonIdx = leaves.findIndex((l) => l.text === ":");
+    if (colonIdx !== -1 && leaves[colonIdx + 1]?.text === "~") {
+      const chain = readDottedChainFromLeaves(leaves, colonIdx + 2);
+      if (chain) {
+        return { baseType: normalizeTypeName(chain.text), isConjugated: true };
+      }
     }
     if (entry.inherits?.some((inh) => inh.trim().startsWith("~"))) {
-      const raw = entry.inherits
-        .find((inh) => inh.trim().startsWith("~"))!
-        .replace(/^~\s*/, "")
-        .trim();
+      const raw = stripLeadingTilde(entry.inherits.find((inh) => inh.trim().startsWith("~"))!);
       return { baseType: raw ? normalizeTypeName(raw) : null, isConjugated: true };
     }
     const typeChild = children.find((c) => c.ruleName === "OwnedFeatureTyping");
     if (typeChild?.name) {
       const raw = typeChild.name.trim();
       if (raw.startsWith("~")) {
-        return { baseType: normalizeTypeName(raw.replace(/^~\s*/, "")), isConjugated: true };
+        return { baseType: normalizeTypeName(stripLeadingTilde(raw)), isConjugated: true };
       }
       return { baseType: normalizeTypeName(raw), isConjugated: false };
     }
     if (entry.metadata?.["typeSpecifier"]) {
       const raw = String(entry.metadata["typeSpecifier"]).trim();
       return {
-        baseType: normalizeTypeName(raw.replace(/^~\s*/, "")),
+        baseType: normalizeTypeName(stripLeadingTilde(raw)),
         isConjugated: raw.startsWith("~"),
       };
     }
@@ -958,7 +960,8 @@ export function checkPortConjugationMismatch(db: QueryDB, self: SymbolEntry): Li
         const dir = member.metadata?.["direction"] ?? member.metadata?.["causality"];
         if (dir === "in" || dir === "out" || dir === "input" || dir === "output") return true;
         const memberText = (db.cstText(member.startOffset, member.endOffset, member) || "").trim();
-        if (/^(?:in|out)\b/.test(memberText)) return true;
+        const mLeaves = collectCstLeaves(parseSysmlSource(memberText));
+        if (mLeaves[0]?.text === "in" || mLeaves[0]?.text === "out") return true;
       }
     }
     return false;
@@ -976,7 +979,7 @@ export function checkPortConjugationMismatch(db: QueryDB, self: SymbolEntry): Li
       const rhsSig = extractPortSignature(portLookupDb, targetEntry, { registry });
       if (lhsSig && rhsSig) {
         const compat = checkPortPlugCompatibility(lhsSig, rhsSig, registry);
-        if (!compat.compatible && /direction mismatch/i.test(compat.reason ?? "")) {
+        if (!compat.compatible && (compat.reason ?? "").toLowerCase().includes("direction mismatch")) {
           return error(
             SysML2ErrorCode.PORT_CONJUGATION_MISMATCH.message(
               sourceName,
@@ -1044,8 +1047,10 @@ export function checkBindingConnectorTypeMismatch(db: QueryDB, self: SymbolEntry
     if (typeChild?.name) return normalizeTypeName(typeChild.name);
     if (entry.metadata?.["typeSpecifier"]) return normalizeTypeName(String(entry.metadata["typeSpecifier"]));
     const text = db.cstText(entry.startOffset, entry.endOffset, entry) || "";
-    const m = /:\s*([A-Za-z_][A-Za-z0-9_:]*)/.exec(text);
-    if (m?.[1]) return normalizeTypeName(m[1]);
+    const leaves = collectCstLeaves(parseSysmlSource(text));
+    const colonIdx = leaves.findIndex((l) => l.text === ":");
+    const typeChain = colonIdx !== -1 ? readDottedChainFromLeaves(leaves, colonIdx + 1) : null;
+    if (typeChain) return normalizeTypeName(typeChain.text);
     return null;
   };
 
@@ -1056,9 +1061,14 @@ export function checkBindingConnectorTypeMismatch(db: QueryDB, self: SymbolEntry
     }
   } else {
     const text = db.cstText(self.startOffset, self.endOffset, self) || "";
-    const m = /\bbind\s+([A-Za-z_][A-Za-z0-9_.]*)\s*=\s*([A-Za-z_][A-Za-z0-9_.]*)/.exec(text);
-    if (m?.[1] && m?.[2]) {
-      pairs.push([m[1].trim(), m[2].trim()]);
+    const leaves = collectCstLeaves(parseSysmlSource(text));
+    const bindIdx = leaves.findIndex((l) => l.text === "bind");
+    if (bindIdx !== -1) {
+      const lhs = readDottedChainFromLeaves(leaves, bindIdx + 1);
+      if (lhs && leaves[lhs.nextIdx]?.text === "=") {
+        const rhs = readDottedChainFromLeaves(leaves, lhs.nextIdx + 1);
+        if (rhs) pairs.push([lhs.text, rhs.text]);
+      }
     }
   }
 
@@ -1103,7 +1113,7 @@ export function checkSymbolResolution(db: QueryDB, self: SymbolEntry): LintResul
       child.ruleName === "Subclassification"
     ) {
       const rawName = (child.name || db.cstText(child.startOffset, child.endOffset, child) || "").trim();
-      const cleanName = rawName.replace(/^~\s*/, "").trim();
+      const cleanName = stripLeadingTilde(rawName);
       if (!cleanName || cleanName === "<anonymous>" || isStdlibOrBuiltinSymbol(cleanName)) continue;
 
       const resolved =
@@ -1122,7 +1132,7 @@ export function checkSymbolResolution(db: QueryDB, self: SymbolEntry): LintResul
     }
   }
   for (const inh of self.inherits || []) {
-    const cleanName = inh.replace(/^~\s*/, "").trim();
+    const cleanName = stripLeadingTilde(inh);
     if (!cleanName || cleanName === "<anonymous>" || isStdlibOrBuiltinSymbol(cleanName)) continue;
     const resolved =
       resolvePathInScope(db, self.parentId ?? self.id, cleanName) ??
@@ -1153,9 +1163,13 @@ export function checkImportResolution(db: QueryDB, self: SymbolEntry): LintResul
       rawImport = refChild.name.trim();
     } else {
       const text = db.cstText(self.startOffset, self.endOffset, self) || "";
-      const m = /\bimport\s+(?:all\s+)?([A-Za-z_][A-Za-z0-9_:.]*)/.exec(text);
-      if (m?.[1]) {
-        rawImport = m[1].replace(/(?:::|\.)\*+.*$/, "").trim();
+      const leaves = collectCstLeaves(parseSysmlSource(text));
+      const impIdx = leaves.findIndex((l) => l.text === "import");
+      if (impIdx !== -1) {
+        let k = impIdx + 1;
+        if (leaves[k]?.text === "all") k++;
+        const impChain = readDottedChainFromLeaves(leaves, k);
+        if (impChain) rawImport = impChain.text;
       }
     }
   }

@@ -41,6 +41,10 @@ export type ViewportCameraPreset = "iso" | "front" | "side" | "top" | "focus" | 
 export interface MultibodyViewport3DProps {
   nodes: MultibodyNode3D[];
   links?: MultibodyLink3D[] | undefined;
+  ghostNodes?: MultibodyNode3D[] | undefined;
+  ghostLinks?: MultibodyLink3D[] | undefined;
+  ghostUrdfVisuals?: UrdfVisualPose3D[] | undefined;
+  ghostOpacity?: number | undefined;
   urdfVisuals?: UrdfVisualPose3D[] | undefined;
   urdfCollisions?: UrdfVisualPose3D[] | undefined;
   environment?: DigitalTwinEnvironmentAsset[] | undefined;
@@ -86,6 +90,11 @@ const FallbackContainer = styled.div`
 `;
 
 const UP_AXIS = new THREE.Vector3(0, 1, 0);
+const _p1 = new THREE.Vector3();
+const _p2 = new THREE.Vector3();
+const _dir = new THREE.Vector3();
+const SHARED_UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
+const SHARED_UNIT_CYLINDER = new THREE.CylinderGeometry(1, 1, 1, 8);
 
 function computeSegmentTransform(
   fromUrdf: [number, number, number],
@@ -96,17 +105,17 @@ function computeSegmentTransform(
   quaternion: THREE.Quaternion;
   scale: [number, number, number];
 } | null {
-  const [x1, y1, z1] = fromUrdf;
-  const [x2, y2, z2] = toUrdf;
-  const p1 = new THREE.Vector3(x1, z1, -y1);
-  const p2 = new THREE.Vector3(x2, z2, -y2);
-  const dir = p2.clone().sub(p1);
-  const dist = dir.length();
+  _p1.set(fromUrdf[0], fromUrdf[2], -fromUrdf[1]);
+  _p2.set(toUrdf[0], toUrdf[2], -toUrdf[1]);
+  _dir.copy(_p2).sub(_p1);
+  const dist = _dir.length();
   if (dist < 1e-5) return null;
-  const mid = p1.add(p2).multiplyScalar(0.5);
-  const quat = new THREE.Quaternion().setFromUnitVectors(UP_AXIS, dir.divideScalar(dist));
+  const mx = (_p1.x + _p2.x) * 0.5;
+  const my = (_p1.y + _p2.y) * 0.5;
+  const mz = (_p1.z + _p2.z) * 0.5;
+  const quat = new THREE.Quaternion().setFromUnitVectors(UP_AXIS, _dir.divideScalar(dist));
   return {
-    position: [mid.x, mid.y, mid.z],
+    position: [mx, my, mz],
     quaternion: quat,
     scale: [radius, dist, radius],
   };
@@ -194,6 +203,10 @@ const SceneContent: React.FC<{
 }> = ({
   nodes,
   links,
+  ghostNodes,
+  ghostLinks,
+  ghostUrdfVisuals,
+  ghostOpacity = 0.28,
   urdfVisuals,
   urdfCollisions,
   environment,
@@ -235,6 +248,27 @@ const SceneContent: React.FC<{
         } => item !== null,
       );
   }, [links, hasRichUrdfVisuals, showFrames]);
+
+  const ghostLinkSegments = useMemo(() => {
+    if (!ghostLinks || ghostLinks.length === 0) return [];
+    const radius = 0.022;
+    return ghostLinks
+      .map((link) => {
+        const transform = computeSegmentTransform(link.from, link.to, radius);
+        if (!transform) return null;
+        return { link, ...transform };
+      })
+      .filter(
+        (
+          item,
+        ): item is {
+          link: MultibodyLink3D;
+          position: [number, number, number];
+          quaternion: THREE.Quaternion;
+          scale: [number, number, number];
+        } => item !== null,
+      );
+  }, [ghostLinks]);
 
   const allToolpaths = useMemo(() => {
     const list: DigitalTwinToolpathTrace[] = [];
@@ -529,6 +563,65 @@ const SceneContent: React.FC<{
         );
       })}
 
+      {/* Render Translucent Ghost Robot Overlay */}
+      {ghostUrdfVisuals && ghostUrdfVisuals.length > 0 ? (
+        <group>
+          {ghostUrdfVisuals.map((v, idx) => (
+            <UrdfVisualMesh
+              key={`ghost-vis-${v.linkName}-${idx}`}
+              visual={{
+                ...v,
+                color: v.color || "#38bdf8",
+                opacity: v.opacity ?? ghostOpacity,
+              }}
+              gripperOpeningMm={gripperOpeningMm}
+            />
+          ))}
+        </group>
+      ) : (
+        ghostNodes &&
+        ghostNodes.length > 0 && (
+          <group>
+            {ghostNodes.map((node) => {
+              const [x, y, z] = node.position;
+              const [dx, dy, dz] = node.dimensions || [0.1, 0.1, 0.1];
+              const nodeQuat = node.rotationMatrix
+                ? urdfPoseToThree([0, 0, 0], node.rotationMatrix).quaternion
+                : undefined;
+              const color = node.color || "#38bdf8";
+              return (
+                <group
+                  key={`ghost-${node.id}`}
+                  position={[x, z, -y]}
+                  scale={[dx, dz, dy]}
+                  {...(nodeQuat ? { quaternion: nodeQuat } : {})}
+                >
+                  <mesh geometry={SHARED_UNIT_BOX}>
+                    <meshStandardMaterial color={color} transparent opacity={ghostOpacity} depthWrite={false} />
+                  </mesh>
+                </group>
+              );
+            })}
+            {ghostLinkSegments.map(({ link, position, quaternion, scale }) => (
+              <mesh
+                key={`ghost-link-${link.id}`}
+                position={position}
+                quaternion={quaternion}
+                scale={scale}
+                geometry={SHARED_UNIT_CYLINDER}
+              >
+                <meshStandardMaterial
+                  color={link.color || "#38bdf8"}
+                  transparent
+                  opacity={ghostOpacity}
+                  depthWrite={false}
+                />
+              </mesh>
+            ))}
+          </group>
+        )
+      )}
+
       <SafeOrbitControls controlsRef={controlsRef} isFullScreen={isFullScreen} enableDamping dampingFactor={0.05} />
       <GizmoHelper alignment="bottom-left" margin={[56, 56]}>
         <GizmoViewport axisColors={["#ef4444", "#22c55e", "#3b82f6"]} labelColor="#ffffff" />
@@ -560,6 +653,10 @@ function checkWebGLAvailable(): boolean {
 export const MultibodyViewport3D: React.FC<MultibodyViewport3DProps> = ({
   nodes,
   links = [],
+  ghostNodes,
+  ghostLinks,
+  ghostUrdfVisuals,
+  ghostOpacity,
   urdfVisuals,
   urdfCollisions,
   environment = [],
@@ -587,6 +684,10 @@ export const MultibodyViewport3D: React.FC<MultibodyViewport3DProps> = ({
           <SceneContent
             nodes={nodes}
             links={links}
+            ghostNodes={ghostNodes}
+            ghostLinks={ghostLinks}
+            ghostUrdfVisuals={ghostUrdfVisuals}
+            ghostOpacity={ghostOpacity}
             urdfVisuals={urdfVisuals}
             urdfCollisions={urdfCollisions}
             environment={environment}

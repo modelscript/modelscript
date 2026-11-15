@@ -42,12 +42,44 @@ Parses OpenSim 3.x and 4.x XML (`<OpenSimDocument>`, `<Model>`, `<BodySet>`, `<J
 
 ### Mathematical Foundations
 
-1. **Neural Excitation-Contraction Activation Dynamics (Thelen 2003 / Millard 2012)**:
-   $$\frac{da}{dt} = \frac{u - a}{\tau(a, u)}, \quad \tau(a, u) = \begin{cases} \tau_{\text{act}} (0.5 + 1.5 a) & u > a \\ \dfrac{\tau_{\text{deact}}}{0.5 + 1.5 a} & u \le a \end{cases}$$
+OpenSim models couple **neural excitation-to-activation dynamics**, **Hill-type muscle-tendon force generation**, and **articulated rigid-body skeletal dynamics**:
 
-2. **Active & Passive Force-Length and Force-Velocity Equilibrium**:
-   $$f_L(\tilde{l}^M) = \exp\!\left(-\frac{(\tilde{l}^M - 1)^2}{\gamma}\right), \quad f_{PE}(\tilde{l}^M) = \frac{\exp(k_{PE}(\tilde{l}^M - 1)/\epsilon_0^M) - 1}{\exp(k_{PE}) - 1}$$
-   $$F^T = F_0^M \left(a \, f_L(\tilde{l}^M) \, f_V(\tilde{v}^M) + f_{PE}(\tilde{l}^M)\right) \cos\alpha$$
+1. **Neural Excitation-Contraction Activation Dynamics (Thelen 2003 / Millard 2012)**
+
+   Models the biochemical delay (calcium ion release and reuptake in the sarcoplasmic reticulum) between a normalized neural excitation signal $u(t)$ and the resulting muscle activation level $a(t)$. Activation rises rapidly with time constant $\tau_{\text{act}}$ and decays more slowly with $\tau_{\text{deact}}$:
+
+   $$\frac{da}{dt} = \frac{u - a}{\tau(a, u)}, \qquad \tau(a, u) = \begin{cases} \tau_{\text{act}} (0.5 + 1.5 a) & u > a \\ \dfrac{\tau_{\text{deact}}}{0.5 + 1.5 a} & u \le a \end{cases}$$
+
+2. **Active & Passive Force-Length, Force-Velocity, and Tendon Equilibrium**
+
+   Total force transmitted along the tendon $F^T$ equals the active contractile force (scaled by activation $a$, the Gaussian active force-length curve $f_L$, and the hyperbolic force-velocity curve $f_V$) plus the exponential passive elastic restoring force $f_{PE}$ when the muscle fiber is stretched beyond its optimal length, projected onto the tendon line of action via the pennation angle $\alpha$:
+
+   $$f_L(\tilde{l}^M) = \exp\!\left(-\frac{(\tilde{l}^M - 1)^2}{\gamma}\right), \qquad f_{PE}(\tilde{l}^M) = \frac{\exp\!\left(k_{PE}(\tilde{l}^M - 1)/\epsilon_0^M\right) - 1}{\exp(k_{PE}) - 1}$$
+
+   $$F^T = F_0^M \left(a \, f_L(\tilde{l}^M) \, f_V(\tilde{v}^M) + f_{PE}(\tilde{l}^M)\right) \cos\alpha = F_0^M \, f_{SE}(\tilde{l}^T)$$
+
+3. **Articulated Multibody Equations of Motion**
+
+   Muscle-tendon forces $\mathbf{F}^T$ act across anatomical joints through the configuration-dependent moment-arm matrix $\mathbf{R}(\mathbf{q})$ to accelerate the skeletal segments:
+
+   $$\mathbf{M}(\mathbf{q})\ddot{\mathbf{q}} + \mathbf{C}(\mathbf{q}, \dot{\mathbf{q}})\dot{\mathbf{q}} + \mathbf{G}(\mathbf{q}) = \mathbf{R}(\mathbf{q}) \, \mathbf{F}^T + \boldsymbol{\tau}_{\text{ext}}$$
+
+| Symbol                                                   | Meaning                                                                                                 | Units / Domain                                                                                 |
+| :------------------------------------------------------- | :------------------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------- |
+| $u, a$                                                   | Neural excitation and muscle activation level                                                           | Dimensionless, $u \in [0, 1]$, $a \in [a_{\min}, 1]$                                           |
+| $\tau_{\text{act}}, \tau_{\text{deact}}$                 | Activation and deactivation time constants (typically $\approx 10\text{ ms}$, $40\text{ ms}$)           | $\text{s}$ ($\tau_{\text{act}}, \tau_{\text{deact}} > 0$)                                      |
+| $l^M, l_0^M, \tilde{l}^M$                                | Muscle fiber length, optimal fiber length, and normalized fiber length ($\tilde{l}^M = l^M / l_0^M$)    | $\text{m}$, $\text{m}$, dimensionless                                                          |
+| $\tilde{v}^M$                                            | Normalized fiber contraction velocity ($\dot{l}^M / v_{\max}^M$)                                        | Dimensionless                                                                                  |
+| $\gamma$                                                 | Active force-length curve width shape factor                                                            | Dimensionless ($\gamma > 0$)                                                                   |
+| $k_{PE}, \epsilon_0^M$                                   | Passive exponential shape factor and passive strain at maximum isometric force                          | Dimensionless                                                                                  |
+| $f_L, f_V, f_{PE}, f_{SE}$                               | Normalized active force-length, force-velocity, parallel passive, and series tendon elastic multipliers | Dimensionless                                                                                  |
+| $F_0^M, F^T$                                             | Maximum isometric muscle force and transmitted tendon force                                             | $\text{N}$ ($F_0^M > 0$)                                                                       |
+| $\alpha$                                                 | Muscle fiber pennation angle relative to the tendon                                                     | $\text{rad}$, $\alpha \in [0, \pi/2)$                                                          |
+| $\mathbf{q}, \dot{\mathbf{q}}, \ddot{\mathbf{q}}$        | Generalized joint coordinates, velocities, and accelerations                                            | $\text{rad}$ or $\text{m}$, $\text{rad/s}$ or $\text{m/s}$, $\text{rad/s}^2$ or $\text{m/s}^2$ |
+| $\mathbf{M}, \mathbf{C}, \mathbf{G}$                     | Generalized mass/inertia matrix, Coriolis/centrifugal matrix, and gravitational torque vector           | SI consistent                                                                                  |
+| $\mathbf{R}(\mathbf{q}), \boldsymbol{\tau}_{\text{ext}}$ | Muscle moment-arm matrix and external/contact joint torques                                             | $\text{m}$ or dimensionless, $\text{N}\cdot\text{m}$ or $\text{N}$                             |
+
+**ModelScript Usage & Diagnostics:** `@modelscript/opensim` enforces positive body mass and inertia (`M9102`), positive muscle parameters (`M9105`), valid pennation angles $\alpha \in [0, \pi/2)$ (`M9106`), and physical time-constant ordering $\tau_{\text{act}} \le \tau_{\text{deact}}$ (`M9109`), while `lowerOpenSimToDae` and `opensim_analyze` lower and integrate these ODEs in `DAEBuilder`.
 
 ### Diagnostic Rules (`M9101`–`M9110`)
 
@@ -72,12 +104,32 @@ Models DICOM-RT treatment plans, anatomical ROI contour stacks, linac Multi-Leaf
 
 ### Mathematical Foundations
 
-1. **Linear-Quadratic (LQ) Biologically Effective Dose (BED) & EQD2**:
-   $$\text{BED} = n d \left(1 + \frac{d}{\alpha/\beta}\right), \quad \text{EQD2} = \frac{\text{BED}}{1 + \dfrac{2}{\alpha/\beta}}$$
-   where $n$ is the number of fractions, $d = D / n$ is the dose per fraction in Gy, and $\alpha/\beta$ is the tissue fractionation sensitivity ($\alpha/\beta = 10\text{ Gy}$ for tumors, $\alpha/\beta = 3\text{ Gy}$ for late-responding normal tissues).
+Clinical radiotherapy plan evaluation combines **radiobiological fractionation equivalence** with **geometric dose-volume quality metrics**:
 
-2. **ICRU Report 83 Homogeneity Index (HI) & Paddick Conformity Index (CI)**:
-   $$\text{HI} = \frac{D_{2\%} - D_{98\%}}{D_{50\%}}, \quad \text{CI}_{\text{RTOG}} = \frac{V_{\text{PIV}}}{V_{\text{PTV}}}, \quad \text{CI}_{\text{Paddick}} = \frac{(V_{\text{PTV}} \cap V_{\text{PIV}})^2}{V_{\text{PTV}} \cdot V_{\text{PIV}}}$$
+1. **Linear-Quadratic (LQ) Biologically Effective Dose (BED) & EQD2**
+
+   Because DNA double-strand break repair differs between acute-responding tumors and late-responding normal tissues, two regimens with the same physical total dose $D = n d$ can have very different biological effects. $\text{BED}$ expresses the theoretical total dose required if delivered in infinitely small fractions, while $\text{EQD2}$ converts any fractionation schedule into the equivalent total dose delivered in standard $2\text{ Gy}$ fractions:
+
+   $$\text{BED} = n d \left(1 + \frac{d}{\alpha/\beta}\right), \qquad \text{EQD2} = \frac{\text{BED}}{1 + \dfrac{2}{\alpha/\beta}}$$
+
+2. **ICRU Report 83 Homogeneity Index (HI) & Paddick Conformity Index (CI)**
+
+   $\text{HI}$ measures dose uniformity inside the Planning Target Volume (PTV), where $\text{HI} = 0$ represents a perfectly uniform dose. $\text{CI}_{\text{RTOG}}$ compares the prescription isodose volume to the target volume, whereas $\text{CI}_{\text{Paddick}} \in [0, 1]$ penalizes both target under-coverage and normal-tissue over-irradiation (with $\text{CI}_{\text{Paddick}} = 1$ ideal):
+
+   $$\text{HI} = \frac{D_{2\%} - D_{98\%}}{D_{50\%}}, \qquad \text{CI}_{\text{RTOG}} = \frac{V_{\text{PIV}}}{V_{\text{PTV}}}, \qquad \text{CI}_{\text{Paddick}} = \frac{(V_{\text{PTV}} \cap V_{\text{PIV}})^2}{V_{\text{PTV}} \cdot V_{\text{PIV}}}$$
+
+| Symbol                               | Meaning                                                                                                                                               | Units / Domain                          |
+| :----------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------- |
+| $n$                                  | Number of treatment fractions                                                                                                                         | Dimensionless ($n \in \mathbb{Z}_{>0}$) |
+| $d, D$                               | Dose per fraction ($d = D/n$) and total physical prescribed dose                                                                                      | $\text{Gy}$                             |
+| $\alpha/\beta$                       | Linear-quadratic tissue fractionation sensitivity ratio ($\approx 10\text{ Gy}$ for tumors, $\approx 3\text{ Gy}$ for late-responding normal tissues) | $\text{Gy}$                             |
+| $\text{BED}, \text{EQD2}$            | Biologically Effective Dose and Equivalent Dose in $2\text{ Gy}$ fractions                                                                            | $\text{Gy}$                             |
+| $D_{2\%}, D_{98\%}, D_{50\%}$        | Near-maximum (2% volume), near-minimum (98% volume), and median absorbed dose to the PTV                                                              | $\text{Gy}$                             |
+| $V_{\text{PTV}}$                     | Volume of the Planning Target Volume                                                                                                                  | $\text{cm}^3$                           |
+| $V_{\text{PIV}}$                     | Prescription Isodose Volume (total tissue volume receiving $\ge$ the prescribed dose)                                                                 | $\text{cm}^3$                           |
+| $V_{\text{PTV}} \cap V_{\text{PIV}}$ | Target volume covered by the prescription isodose surface                                                                                             | $\text{cm}^3$                           |
+
+**ModelScript Usage & Diagnostics:** `msx dicom-rt dosimetry` and `dicom_rt_verify_dvh` compute cumulative DVHs, $\text{BED}$, $\text{EQD2}$, $\text{HI}$, and $\text{CI}$ while enforcing QUANTEC OAR dose limits (`M9205`), PTV $D_{95\%}$ coverage (`M9210`), and linac MLC physical constraints (`M9202`–`M9204`).
 
 ### Diagnostic Rules (`M9201`–`M9210`)
 
@@ -102,7 +154,32 @@ Supports CellML 1.0, 1.1, and 2.0 component networks, 7-dimensional SI unit veri
 
 ### Mathematical Foundations
 
-$$\mathbf{d}(u) = \begin{bmatrix} d_{\text{A}} & d_{\text{K}} & d_{\text{kg}} & d_{\text{m}} & d_{\text{mol}} & d_{\text{s}} & d_{\text{cd}} \end{bmatrix}^T \in \mathbb{R}^7, \quad C_m \frac{dV_m}{dt} = -\sum_{k} g_k m_k^{p_k} h_k^{q_k} (V_m - E_k) + I_{\text{stim}}(t)$$
+CellML combines **static dimensional analysis** across component interfaces with **conductance-based cellular electrophysiology ODEs**:
+
+1. **7-Dimensional SI Base Unit Vector**
+
+   Every CellML unit definition $u$ is mapped to an exponent vector over the seven SI base dimensions (length, mass, time, electric current, thermodynamic temperature, amount of substance, and luminous intensity). Multiplying units adds their dimension vectors, and connecting two variables requires $\mathbf{d}(u_1) = \mathbf{d}(u_2)$:
+
+   $$\mathbf{d}(u) = \begin{bmatrix} d_{\text{m}} & d_{\text{kg}} & d_{\text{s}} & d_{\text{A}} & d_{\text{K}} & d_{\text{mol}} & d_{\text{cd}} \end{bmatrix}^T \in \mathbb{R}^7$$
+
+2. **Hodgkin-Huxley / Cardiac Action Potential Membrane ODE**
+
+   Models the cell membrane as a parallel RC circuit: the rate of change of transmembrane voltage $V_m$ equals the negative sum of voltage-gated ionic currents (each governed by activation/inactivation gating variables $m_k, h_k \in [0, 1]$ and Nernst reversal potential $E_k$) plus any external stimulus current $I_{\text{stim}}(t)$:
+
+   $$C_m \frac{dV_m}{dt} = -\sum_{k} g_k \, m_k^{p_k} h_k^{q_k} (V_m - E_k) + I_{\text{stim}}(t)$$
+
+| Symbol               | Meaning                                                                                                                          | Units / Domain                            |
+| :------------------- | :------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------- |
+| $\mathbf{d}(u)$      | 7-element SI base-unit exponent vector for unit $u$ ($\text{m}, \text{kg}, \text{s}, \text{A}, \text{K}, \text{mol}, \text{cd}$) | $\mathbb{R}^7$ (typically $\mathbb{Z}^7$) |
+| $C_m$                | Specific membrane capacitance                                                                                                    | $\mu\text{F}/\text{cm}^2$                 |
+| $V_m$                | Transmembrane electrical potential                                                                                               | $\text{mV}$                               |
+| $g_k$                | Maximum specific conductance of ion channel $k$ ($\text{Na}^+, \text{K}^+, \text{Ca}^{2+}$, etc.)                                | $\text{mS}/\text{cm}^2$                   |
+| $m_k, h_k$           | Activation and inactivation gating probabilities for channel $k$                                                                 | Dimensionless, $[0, 1]$                   |
+| $p_k, q_k$           | Integer gating exponents for channel $k$ (e.g. $p=3, q=1$ for $I_{\text{Na}}$)                                                   | Dimensionless ($\mathbb{Z}_{\ge 0}$)      |
+| $E_k$                | Nernst equilibrium (reversal) potential for ion species $k$                                                                      | $\text{mV}$                               |
+| $I_{\text{stim}}(t)$ | Applied external pacing or stimulus current density                                                                              | $\mu\text{A}/\text{cm}^2$                 |
+
+**ModelScript Usage & Diagnostics:** `@modelscript/cellml` verifies unit existence (`M9302`), dimensional vector equality across `<map_variables>` (`M9304`), and state initialization (`M9305`), while `cellml_simulate` lowers Content MathML 2.0 ODEs into `DAEBuilder`.
 
 ### Diagnostic Rules (`M9301`–`M9310`)
 
@@ -127,7 +204,39 @@ Parses FEBio 2.5–4.0 (`.feb`) continuum biomechanics models and SOFA Framework
 
 ### Mathematical Foundations
 
-$$\Psi_{\text{MR}}(\bar{I}_1, \bar{I}_2, J) = c_1 (\bar{I}_1 - 3) + c_2 (\bar{I}_2 - 3) + \frac{K}{2} (\ln J)^2, \quad \mathbf{q} = -\mathbf{k} \nabla p$$
+Soft biological tissues undergo large, nearly incompressible deformations and contain interstitial fluid. FEBio models these behaviors using **uncoupled hyperelastic strain-energy functions** and **biphasic poroelasticity**:
+
+1. **Compressible Mooney-Rivlin Hyperelastic Strain Energy**
+
+   Decomposes elastic energy storage into an isochoric (shape-changing) response governed by the first and second deviatoric strain invariants ($\bar{I}_1, \bar{I}_2$) and a volumetric (volume-changing) penalty governed by the bulk modulus $K$ and volume ratio $J$:
+
+   $$\Psi_{\text{MR}}(\bar{I}_1, \bar{I}_2, J) = c_1 (\bar{I}_1 - 3) + c_2 (\bar{I}_2 - 3) + \frac{K}{2} (\ln J)^2$$
+
+2. **Darcy's Law for Biphasic Interstitial Fluid Flow**
+
+   In hydrated tissues (e.g., articular cartilage, liver parenchyma, intervertebral discs), interstitial fluid flux $\mathbf{q}$ flows down the pore fluid pressure gradient $\nabla p$ proportional to the hydraulic permeability tensor $\mathbf{k}$:
+
+   $$\mathbf{q} = -\mathbf{k} \nabla p$$
+
+3. **Element Orientation & Mesh Invertibility**
+
+   Every tetrahedral (`tet4`) or hexahedral (`hex8`) finite element must preserve positive orientation from reference to spatial coordinates so that volume integrals remain physically valid:
+
+   $$\det(\mathbf{J}) > 0$$
+
+| Symbol                 | Meaning                                                                                                                   | Units / Domain                         |
+| :--------------------- | :------------------------------------------------------------------------------------------------------------------------ | :------------------------------------- |
+| $\Psi_{\text{MR}}$     | Helmholtz hyperelastic strain-energy density per unit reference volume                                                    | $\text{Pa}$ ($\text{J/m}^3$)           |
+| $\bar{I}_1, \bar{I}_2$ | First and second deviatoric invariants of the right Cauchy-Green deformation tensor ($\bar{I}_1 = \bar{I}_2 = 3$ at rest) | Dimensionless                          |
+| $J$                    | Local volume ratio ($J = \det(\mathbf{F})$, where $\mathbf{F}$ is the deformation gradient)                               | Dimensionless ($J > 0$)                |
+| $c_1, c_2$             | Mooney-Rivlin material stiffness constants ($c_1 + c_2 > 0$ for positive shear modulus)                                   | $\text{Pa}$                            |
+| $K$                    | Elastic bulk modulus controlling compressibility                                                                          | $\text{Pa}$ ($K > 0$)                  |
+| $\mathbf{q}$           | Relative interstitial fluid volumetric flux vector (Darcy velocity)                                                       | $\text{m/s}$                           |
+| $\mathbf{k}$           | Hydraulic permeability tensor                                                                                             | $\text{m}^4 / (\text{N}\cdot\text{s})$ |
+| $p$                    | Interstitial fluid pore pressure                                                                                          | $\text{Pa}$                            |
+| $\mathbf{J}$           | Element isoparametric Jacobian matrix mapping reference to physical coordinates                                           | $\text{m}$ (or $\text{mm}$)            |
+
+**ModelScript Usage & Diagnostics:** `@modelscript/febio` checks material stability ($c_1 + c_2 > 0$, `M9401`), element Jacobian positivity (`M9402`), and biphasic permeability and solid volume fraction bounds (`M9405`) prior to `msx febio solve` or CalculiX/Abaqus `.inp` export.
 
 ### Diagnostic Rules (`M9401`–`M9410`)
 
@@ -152,7 +261,31 @@ Parses NIfTI-1/NIfTI-2 headers and NRRD volumetric descriptors, validates `qform
 
 ### Mathematical Foundations
 
-$$\begin{bmatrix} x_{\text{RAS}} \\ y_{\text{RAS}} \\ z_{\text{RAS}} \\ 1 \end{bmatrix} = \begin{bmatrix} \mathbf{R}(\mathbf{q}) \, \text{diag}(\Delta x, \Delta y, q_{\text{fac}} \Delta z) & \mathbf{q}_{\text{offset}} \\ \mathbf{0}^T & 1 \end{bmatrix} \begin{bmatrix} i \\ j \\ k \\ 1 \end{bmatrix}, \quad a = \sqrt{\max(0, 1 - (b^2 + c^2 + d^2))}$$
+Medical imaging volumes store intensities on an integer voxel grid $(i, j, k)$ that must be mapped into physical **RAS** (**R**ight, **A**nterior, **S**uperior) patient coordinates in millimeters for surgical navigation and 3D CAD reconstruction:
+
+1. **NIfTI `qform` Rigid-Body + Scaling Affine Transform**
+
+   Scales each voxel index by its physical spacing ($\Delta x, \Delta y, \Delta z$), applies the slice-direction handedness factor $q_{\text{fac}}$, rotates the axes into RAS space via the unit quaternion rotation matrix $\mathbf{R}(\mathbf{q})$, and translates by the scanner origin offset $\mathbf{q}_{\text{offset}}$:
+
+   $$\begin{bmatrix} x_{\text{RAS}} \\ y_{\text{RAS}} \\ z_{\text{RAS}} \\ 1 \end{bmatrix} = \begin{bmatrix} \mathbf{R}(\mathbf{q}) \, \text{diag}(\Delta x, \Delta y, q_{\text{fac}} \Delta z) & \mathbf{q}_{\text{offset}} \\ \mathbf{0}^T & 1 \end{bmatrix} \begin{bmatrix} i \\ j \\ k \\ 1 \end{bmatrix}$$
+
+2. **Unit Quaternion Scalar Component Recovery**
+
+   NIfTI headers store only the three imaginary quaternion components $(b, c, d)$ (`quatern_b`, `quatern_c`, `quatern_d`) and reconstruct the non-negative real scalar component $a$ assuming unit norm $a^2 + b^2 + c^2 + d^2 = 1$:
+
+   $$a = \sqrt{\max\!\left(0,\; 1 - (b^2 + c^2 + d^2)\right)}$$
+
+| Symbol                                           | Meaning                                                                  | Units / Domain                                   |
+| :----------------------------------------------- | :----------------------------------------------------------------------- | :----------------------------------------------- |
+| $i, j, k$                                        | Discrete 0-based voxel grid indices along the volume axes                | Dimensionless ($\mathbb{Z}_{\ge 0}$)             |
+| $x_{\text{RAS}}, y_{\text{RAS}}, z_{\text{RAS}}$ | Physical patient coordinates (+X Right, +Y Anterior, +Z Superior)        | $\text{mm}$                                      |
+| $\Delta x, \Delta y, \Delta z$                   | Physical voxel spacings (`pixdim[1..3]`)                                 | $\text{mm}$ ($\Delta x, \Delta y, \Delta z > 0$) |
+| $q_{\text{fac}}$                                 | Slice-axis handedness sign (`pixdim[0]`, $+1$ or $-1$)                   | Dimensionless, $\{-1, +1\}$                      |
+| $\mathbf{q} = (a, b, c, d)$                      | Unit orientation quaternion ($a \ge 0$, $b^2 + c^2 + d^2 \le 1$)         | Dimensionless                                    |
+| $\mathbf{R}(\mathbf{q})$                         | $3 \times 3$ proper orthogonal rotation matrix derived from $\mathbf{q}$ | Dimensionless ($SO(3)$)                          |
+| $\mathbf{q}_{\text{offset}}$                     | $3 \times 1$ physical origin translation vector (`qoffset_x/y/z`)        | $\text{mm}$                                      |
+
+**ModelScript Usage & Diagnostics:** `@modelscript/nifti` validates positive voxel spacing (`M9502`), non-singular `sform` matrices (`M9503`), valid quaternion norms $b^2 + c^2 + d^2 \le 1$ (`M9504`), `qform`/`sform` handedness agreement (`M9505`), and slice anisotropy (`M9510`) before iso-surface meshing (`msx nifti mesh`) and STEP export.
 
 ### Diagnostic Rules (`M9501`–`M9510`)
 
@@ -177,7 +310,32 @@ Parses TOPAS (`Ge/`, `So/`, `Sc/`, `Ph/`, `Ma/`, `Tf/`) parameter files and GATE
 
 ### Mathematical Foundations
 
-$$R_0 = \alpha E_0^p \quad (\alpha \approx 0.0022\text{ cm}\cdot\text{MeV}^{-p},\; p \approx 1.77), \quad -\frac{dE}{dz} \propto \frac{z^2}{\beta^2} \left[\ln\!\left(\frac{2 m_e c^2 \beta^2}{I (1 - \beta^2)}\right) - \beta^2\right]$$
+Unlike photons, heavy charged particles (protons and carbon ions) deposit most of their energy in a sharp, localized **Bragg peak** just before coming to rest, sparing healthy tissue beyond the tumor:
+
+1. **Bragg-Kleeman Range-Energy Relation**
+
+   Relates the initial beam kinetic energy $E_0$ to the continuous-slowing-down-approximation (CSDA) penetration depth $R_0$ in water-equivalent tissue using empirical power-law constants ($\alpha, p$):
+
+   $$R_0 = \alpha \, E_0^p \qquad (\alpha \approx 0.0022\text{ cm}\cdot\text{MeV}^{-p},\; p \approx 1.77\text{ for protons in water})$$
+
+2. **Bethe-Bloch Linear Stopping Power**
+
+   Describes the mean rate of energy loss per unit path length ($-\frac{dE}{dz}$) due to inelastic Coulomb collisions with atomic electrons. Because stopping power scales inversely with $\beta^2$, energy deposition spikes sharply as the ion decelerates ($\beta \to 0$) near depth $R_0$:
+
+   $$-\frac{dE}{dz} \propto \frac{z^2}{\beta^2} \left[\ln\!\left(\frac{2 m_e c^2 \beta^2}{I (1 - \beta^2)}\right) - \beta^2\right]$$
+
+| Symbol           | Meaning                                                                                       | Units / Domain                                 |
+| :--------------- | :-------------------------------------------------------------------------------------------- | :--------------------------------------------- |
+| $R_0$            | Mean CSDA range (Bragg peak depth) in the target medium                                       | $\text{cm}$                                    |
+| $E_0$            | Initial incident beam kinetic energy                                                          | $\text{MeV}$ ($E_0 > 0$)                       |
+| $\alpha, p$      | Empirical Bragg-Kleeman range-energy fit constants                                            | $\text{cm}\cdot\text{MeV}^{-p}$, dimensionless |
+| $-\frac{dE}{dz}$ | Linear stopping power (energy loss per unit depth)                                            | $\text{MeV}/\text{cm}$                         |
+| $z$              | Atomic charge number of the projectile ion ($z = 1$ for protons, $z = 6$ for $^{12}\text{C}$) | Dimensionless ($\mathbb{Z}_{>0}$)              |
+| $\beta$          | Relativistic particle speed ($\beta = v / c$, where $c$ is the speed of light)                | Dimensionless, $(0, 1)$                        |
+| $m_e c^2$        | Electron rest-mass energy ($\approx 0.511\text{ MeV}$)                                        | $\text{MeV}$                                   |
+| $I$              | Mean excitation potential of the absorbing medium ($\approx 75\text{ eV}$ for liquid water)   | $\text{eV}$ (converted to $\text{MeV}$ in log) |
+
+**ModelScript Usage & Diagnostics:** `@modelscript/topas` enforces positive beam energy and non-negative energy spread (`M9606`) as well as CSG beamline containment (`M9603`–`M9604`), while `msx topas bragg-peak` evaluates Bortfeld (1997) analytical depth-dose profiles from these parameters.
 
 ### Diagnostic Rules (`M9601`–`M9610`)
 
@@ -202,7 +360,30 @@ Parses ISO/ASTM 52915 3MF models (`<model>`, `<resources>`, `<mesh>`, `<vertices
 
 ### Mathematical Foundations
 
-$$\chi = V - E + F = 2 - 2g, \quad V_{\text{signed}} = \frac{1}{6} \sum_{k=1}^{F} \mathbf{v}_{k,1} \cdot (\mathbf{v}_{k,2} \times \mathbf{v}_{k,3}) > 0$$
+3D-printed surgical guides and patient-specific implants must be **watertight 2-manifolds** with **outward-facing surface normals** so that additive manufacturing slicers and STEP kernels can distinguish solid material from empty space:
+
+1. **Euler-Poincaré Characteristic for Closed 2-Manifold Meshes**
+
+   For a closed triangle mesh with no boundary edges or non-manifold junctions (every edge shared by exactly 2 triangles), the Euler characteristic $\chi$ relates vertex, edge, and face counts to the number of disconnected shells $S$ and topological genus $g$ (handles/through-holes, e.g., drill-guide cannulas):
+
+   $$\chi = V - E + F = 2(S - g)$$
+
+2. **Divergence-Theorem Signed Mesh Volume**
+
+   By the discrete divergence theorem, summing the signed volumes of tetrahedra formed between each oriented triangle $(\mathbf{v}_{k,1}, \mathbf{v}_{k,2}, \mathbf{v}_{k,3})$ and the origin yields the enclosed volume. A positive result ($V_{\text{signed}} > 0$) confirms consistent outward-pointing right-hand-rule face normals, whereas $V_{\text{signed}} \le 0$ indicates inverted normals or a degenerate self-intersecting shell:
+
+   $$V_{\text{signed}} = \frac{1}{6} \sum_{k=1}^{F} \mathbf{v}_{k,1} \cdot (\mathbf{v}_{k,2} \times \mathbf{v}_{k,3}) > 0$$
+
+| Symbol                                                 | Meaning                                                                                                         | Units / Domain                          |
+| :----------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------- | :-------------------------------------- |
+| $\chi$                                                 | Euler-Poincaré topological invariant                                                                            | Dimensionless ($\mathbb{Z}$)            |
+| $V, E, F$                                              | Total number of mesh vertices, unique edges, and triangular faces                                               | Dimensionless ($\mathbb{Z}_{\ge 0}$)    |
+| $S$                                                    | Number of disconnected closed surface shells ($S = 1$ for a single solid guide)                                 | Dimensionless ($\mathbb{Z}_{\ge 1}$)    |
+| $g$                                                    | Topological genus (number of through-holes / handles, e.g., $g = 0$ for a sphere, $g = 1$ for a single cannula) | Dimensionless ($\mathbb{Z}_{\ge 0}$)    |
+| $\mathbf{v}_{k,1}, \mathbf{v}_{k,2}, \mathbf{v}_{k,3}$ | Ordered 3D position vectors of the three vertices of triangle $k$                                               | $\text{mm}$ ($\mathbb{R}^3$)            |
+| $V_{\text{signed}}$                                    | Enclosed signed volume of the triangle mesh                                                                     | $\text{mm}^3$ ($V_{\text{signed}} > 0$) |
+
+**ModelScript Usage & Diagnostics:** `@modelscript/three-mf` (`msx three-mf topology` and `three_mf_verify_guide`) checks 2-manifold edge incidence (`M9701`), non-degenerate triangle area (`M9702`), positive signed volume (`M9703`), and minimum $0.8\text{ mm}$ surgical guide wall thickness (`M9705`).
 
 ### Diagnostic Rules (`M9701`–`M9710`)
 
@@ -227,11 +408,35 @@ Parses PLUS Toolkit (`<PlusConfiguration>`, `<DeviceSet>`, `<CoordinateDefinitio
 
 ### Mathematical Foundations
 
-1. **Least-Squares Stylus Pivot Calibration**:
+Image-guided surgery relies on **$SE(3)$ rigid-body coordinate chains**, **instrument tip calibration**, and **statistical registration accuracy bounds**:
+
+1. **Least-Squares Stylus Pivot Calibration**
+
+   When a tracked pointer stylus is pivoted in a fixed spherical divot across $M$ poses $(\mathbf{R}_i, \mathbf{t}_i)$, the physical pivot point $\mathbf{p}_{\text{pivot}}$ remains stationary in tracker coordinates while the stylus tip $\mathbf{p}_{\text{tip}}$ remains fixed in the stylus's local sensor frame ($\mathbf{R}_i \mathbf{p}_{\text{tip}} + \mathbf{t}_i = \mathbf{p}_{\text{pivot}}$). Stacking all $M$ poses yields an overdetermined linear least-squares system solved via pseudoinverse or SVD:
+
    $$\begin{bmatrix} \mathbf{R}_1 & -\mathbf{I}_3 \\ \vdots & \vdots \\ \mathbf{R}_M & -\mathbf{I}_3 \end{bmatrix} \begin{bmatrix} \mathbf{p}_{\text{tip}} \\ \mathbf{p}_{\text{pivot}} \end{bmatrix} = \begin{bmatrix} -\mathbf{t}_1 \\ \vdots \\ -\mathbf{t}_M \end{bmatrix}$$
 
-2. **Fitzpatrick (1998) Target Registration Error (TRE)**:
-   $$\langle \text{TRE}^2(\mathbf{r}) \rangle = \frac{\langle \text{FLE}^2 \rangle}{N} \left(1 + \frac{1}{3} \sum_{k=1}^{3} \frac{d_k^2}{f_k^2}\right), \quad \langle \text{FRE}^2 \rangle = \left(1 - \frac{2}{N}\right) \langle \text{FLE}^2 \rangle$$
+2. **Fitzpatrick (1998) Target Registration Error (TRE) & Fiducial Registration Error (FRE)**
+
+   Because fiducial markers cannot be localized with infinite precision, isotropic Fiducial Localization Error ($\text{FLE}$) propagates into residual marker mismatch ($\text{FRE}$) and clinical targeting error at an anatomical target $\mathbf{r}$ ($\text{TRE}$). Placing fiducials widely around the target (maximizing principal radii $f_k$ while keeping the target-to-centroid distance $d_k$ small) minimizes $\text{TRE}$:
+
+   $$\langle \text{TRE}^2(\mathbf{r}) \rangle = \frac{\langle \text{FLE}^2 \rangle}{N} \left(1 + \frac{1}{3} \sum_{k=1}^{3} \frac{d_k^2}{f_k^2}\right), \qquad \langle \text{FRE}^2 \rangle = \left(1 - \frac{2}{N}\right) \langle \text{FLE}^2 \rangle$$
+
+| Symbol                       | Meaning                                                                                                              | Units / Domain                                        |
+| :--------------------------- | :------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------- |
+| $\mathbf{R}_i, \mathbf{t}_i$ | $3 \times 3$ rotation matrix and $3 \times 1$ translation vector of the tracked stylus at pose $i \in \{1,\dots,M\}$ | Dimensionless ($SO(3)$), $\text{mm}$ ($\mathbb{R}^3$) |
+| $\mathbf{I}_3$               | $3 \times 3$ identity matrix                                                                                         | Dimensionless                                         |
+| $\mathbf{p}_{\text{tip}}$    | Unknown stylus tip offset in the stylus local sensor frame                                                           | $\text{mm}$ ($\mathbb{R}^3$)                          |
+| $\mathbf{p}_{\text{pivot}}$  | Unknown stationary divot pivot position in the tracker reference frame                                               | $\text{mm}$ ($\mathbb{R}^3$)                          |
+| $M$                          | Number of recorded pivot poses ($M \ge 2$, typically $M \ge 30$)                                                     | Dimensionless ($\mathbb{Z}_{\ge 2}$)                  |
+| $\text{FLE}$                 | Fiducial Localization Error (RMS uncertainty in locating each fiducial marker)                                       | $\text{mm}$                                           |
+| $\text{FRE}$                 | Fiducial Registration Error (RMS residual alignment error across the $N$ fiducials)                                  | $\text{mm}$                                           |
+| $\text{TRE}(\mathbf{r})$     | Target Registration Error at surgical target point $\mathbf{r}$                                                      | $\text{mm}$                                           |
+| $N$                          | Number of non-collinear registration fiducials ($N \ge 3$)                                                           | Dimensionless ($\mathbb{Z}_{\ge 3}$)                  |
+| $d_k$                        | Distance from target $\mathbf{r}$ to the $k$-th principal axis of the fiducial configuration                         | $\text{mm}$                                           |
+| $f_k$                        | RMS distance of the $N$ fiducials from their $k$-th principal axis                                                   | $\text{mm}$ ($f_k > 0$)                               |
+
+**ModelScript Usage & Diagnostics:** `@modelscript/igtl` (`msx igtl calibrate`, `igtl_verify_calibration`, and `IgtlEditorProvider`) audits rotation orthogonality (`M9801`), homogeneous matrix structure (`M9802`), transform graph connectivity (`M9803`–`M9804`), and flags RMS $\text{FRE}$/$\text{TRE}$ exceeding $2.0\text{ mm}$ (`M9805`).
 
 ### Diagnostic Rules (`M9801`–`M9810`)
 
@@ -253,6 +458,31 @@ Parses PLUS Toolkit (`<PlusConfiguration>`, `<DeviceSet>`, `<CoordinateDefinitio
 ## 10. `@modelscript/owl2` (`ontospm`) — OntoSPM Surgical Process Ontology
 
 Models surgical workflows (`Procedure` $\to$ `Phase` $\to$ `Step` $\to$ `Action` + `Instrument` + `AnatomicalStructure`), enforces **Critical View of Safety (CVS)** verification before irreversible tissue division, and detects monopolar thermal spread hazards near critical neurovascular structures.
+
+### Mathematical Foundations
+
+OntoSPM surgical safety verification combines **directed graph acyclicity/reachability** with **spatial proximity constraints**:
+
+1. **Workflow Phase Graph Acyclicity & Reachability**
+
+   A surgical procedure's phase transition graph $G_{\text{phase}} = (V_P, E_P)$ must form a directed acyclic graph (DAG) rooted at the initial preparation/exposure phase $p_0 \in V_P$, ensuring every phase $p \in V_P$ is reachable without cyclic loops:
+
+   $$p_0 \xrightarrow{*} p \quad \forall p \in V_P, \qquad \nexists\, p \in V_P \text{ such that } p \xrightarrow{+} p$$
+
+2. **Monopolar Electrosurgical Thermal-Spread Safety Radius**
+
+   Energized monopolar instruments can cause lateral thermal injury to adjacent nerves and arteries. For any active monopolar tip position $\mathbf{p}_{\text{tip}}$ and critical neurovascular structure $\mathbf{p}_{\text{crit}}$, the Euclidean separation must satisfy the safety clearance $d_{\min} = 5.0\text{ mm}$:
+
+   $$\|\mathbf{p}_{\text{tip}} - \mathbf{p}_{\text{crit}}\|_2 \ge d_{\min} = 5.0\text{ mm}$$
+
+| Symbol                                              | Meaning                                                                         | Units / Domain               |
+| :-------------------------------------------------- | :------------------------------------------------------------------------------ | :--------------------------- |
+| $G_{\text{phase}} = (V_P, E_P)$                     | Directed graph of surgical phases $V_P$ and transition edges $E_P$              | Discrete graph               |
+| $p_0, p$                                            | Initial preparation/exposure phase and arbitrary surgical phase                 | $p_0, p \in V_P$             |
+| $\mathbf{p}_{\text{tip}}, \mathbf{p}_{\text{crit}}$ | 3D positions of the energized monopolar electrode tip and critical nerve/artery | $\text{mm}$ ($\mathbb{R}^3$) |
+| $d_{\min}$                                          | Minimum safe thermal-spread clearance radius ($5.0\text{ mm}$)                  | $\text{mm}$                  |
+
+**ModelScript Usage & Diagnostics:** `@modelscript/owl2` (`ontospm`) enforces phase acyclicity (`M9903`), phase reachability (`M9909`), Critical View of Safety checkpoint ordering (`M9901`), and the $5.0\text{ mm}$ monopolar proximity guard (`M9907`).
 
 ### Diagnostic Rules (`M9901`–`M9910`)
 

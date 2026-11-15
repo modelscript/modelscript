@@ -1363,28 +1363,28 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  SourceFile = 24,
-  CommentLine = 25,
-  KeywordCard = 26,
-  ParameterAssignment = 27,
-  OptionFlag = 28,
-  DataLine = 29,
-  DataItem = 30,
-  EmbeddedExpression = 31,
-  Expression = 32,
-  BinaryExpression = 33,
-  UnaryExpression = 34,
-  PrimaryExpression = 35,
-  QualifiedIdentifier = 36,
-  START = 37,
-  _START = 37,
-  Newline = 41,
-  _newline = 41,
-  CARDNAME = 63,
-  CARD_NAME = 63,
-  IDENTIFIER = 64,
-  NUMBER = 65,
-  STRING = 66,
+  SourceFile = 21,
+  KeywordCard = 22,
+  ParameterAssignment = 23,
+  OptionFlag = 24,
+  DataLine = 25,
+  DataItem = 26,
+  EmbeddedExpression = 27,
+  Expression = 28,
+  BinaryExpression = 29,
+  UnaryExpression = 30,
+  PrimaryExpression = 31,
+  QualifiedIdentifier = 32,
+  START = 33,
+  _START = 33,
+  CommentLine = 36,
+  Newline = 37,
+  _newline = 37,
+  CARDNAME = 59,
+  CARD_NAME = 59,
+  IDENTIFIER = 60,
+  NUMBER = 61,
+  STRING = 62,
   EOF = 1023,
 }
 
@@ -1412,10 +1412,6 @@ export interface SourceFileNode extends SyntaxNode {
   readonly typeId: SyntaxKind.SourceFile;
 }
 export declare function isSourceFile(node: SyntaxNode | null | undefined): node is SourceFileNode;
-export interface CommentLineNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.CommentLine;
-}
-export declare function isCommentLine(node: SyntaxNode | null | undefined): node is CommentLineNode;
 export interface KeywordCardNode extends SyntaxNode {
   readonly typeId: SyntaxKind.KeywordCard;
 }
@@ -1460,6 +1456,10 @@ export interface QualifiedIdentifierNode extends SyntaxNode {
   readonly typeId: SyntaxKind.QualifiedIdentifier;
 }
 export declare function isQualifiedIdentifier(node: SyntaxNode | null | undefined): node is QualifiedIdentifierNode;
+export interface CommentLineNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CommentLine;
+}
+export declare function isCommentLine(node: SyntaxNode | null | undefined): node is CommentLineNode;
 export interface CARDNAMENode extends SyntaxNode {
   readonly typeId: SyntaxKind.CARDNAME;
 }
@@ -1483,11 +1483,6 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is SourceFileNode;
-  };
-  export const CommentLine: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is CommentLineNode;
   };
   export const KeywordCard: {
     readonly typeId: number;
@@ -1555,6 +1550,11 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is QualifiedIdentifierNode;
+  };
+  export const CommentLine: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is CommentLineNode;
   };
   export const CARDNAME: {
     readonly typeId: number;

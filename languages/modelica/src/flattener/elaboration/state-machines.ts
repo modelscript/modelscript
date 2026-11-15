@@ -139,6 +139,7 @@ export function extractStateMachines(dae: DAEBuilder, options?: { omcCompatibili
         ignored.add(t.eqIdx);
       }
       state.ignoredEqIndices = ignored;
+      (dae as unknown as { ignoredEqIndices?: Set<number> }).ignoredEqIndices = ignored;
       for (let v = 0; v < dae.varCount; v++) {
         const vName = dae.getVarName(v);
         for (const st of orphanStates) {

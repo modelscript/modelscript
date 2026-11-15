@@ -92,12 +92,26 @@ export function validateSima(content: string, uri: string = "model.inp"): LspDia
         const found = lines.findIndex((l) => l.includes(d.target!));
         if (found >= 0) matchedLine = found;
       }
-      const lineLen = lines[matchedLine]?.length ?? 1;
+      const lt = lines[matchedLine] ?? "";
+      let startChar = 0;
+      let endChar = 0;
+      if (d.target) {
+        const idx = lt.indexOf(d.target);
+        if (idx >= 0) {
+          startChar = idx;
+          endChar = idx + d.target.length;
+        }
+      }
+      if (endChar <= startChar) {
+        while (startChar < lt.length && (lt[startChar] === " " || lt[startChar] === "\t")) startChar++;
+        const tok = lt.slice(startChar).match(/^<\/?[A-Za-z0-9_:-]+|^[^\s=,;]+/);
+        endChar = Math.min(lt.length, startChar + (tok ? tok[0].length : 1));
+      }
 
       return {
         range: {
-          start: { line: matchedLine, character: 0 },
-          end: { line: matchedLine, character: Math.max(1, lineLen) },
+          start: { line: matchedLine, character: startChar },
+          end: { line: matchedLine, character: Math.max(startChar + 1, endChar) },
         },
         severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
         code: String(d.code),

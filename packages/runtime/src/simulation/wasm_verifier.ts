@@ -7,8 +7,16 @@
  * integrating symbol/CST resolution with zero-allocation in-WASM vector checking.
  */
 
+import {
+  type ConstraintExprAst,
+  type InlineCalcDef,
+  evaluateConstraintExprScalar,
+  parseConstraintComparisonAst,
+  parseConstraintExprAst,
+} from "../formal/requirement_binder.js";
 import { DigitalThreadHypergraph, ThreadDomain } from "../interop/thread_hypergraph.js";
 import type { QueryDB, SymbolEntry } from "../runtime.js";
+import { globalLibraryRegistry } from "../workspace/library-manifest.js";
 
 export interface SimulationResult {
   t: number[];
@@ -42,6 +50,10 @@ export interface VerificationResult {
   verdict?: string | undefined;
   /** Rigor level of the formal verification verdict. */
   rigor?: string | undefined;
+  /** Standard clause identifier if constraint belongs to a standard pack rule (e.g. "ASME BPVC VIII-1 UG-27"). */
+  standardClause?: string | undefined;
+  /** Signed safety margin (positive = headroom, negative = exceedance). */
+  margin?: number | undefined;
 }
 
 export type ComparisonOp = "<" | "<=" | "==" | ">=" | ">" | "!=";
@@ -193,12 +205,151 @@ export class VerificationRunner {
       return simResult.y[timeIndex][stateIdx];
     }
 
-    // 2. Check parameters (constant over time)
+    // 2. Check numeric parameters (constant over time)
     if (simResult.parameters) {
-      const pIdx = simResult.parameters.findIndex((p) => p.name === varName);
+      const pIdx = simResult.parameters.findIndex((p) => p.name === varName && typeof p.value === "number");
       if (pIdx !== -1) return simResult.parameters[pIdx]?.value as number;
     }
     return undefined;
+  }
+
+  private findStringInSimulation(simResult: SimulationResult, varName: string): string | undefined {
+    if (!simResult.parameters) return undefined;
+    const p = simResult.parameters.find((param) => param.name === varName && typeof param.value === "string");
+    return p && typeof p.value === "string" ? p.value : undefined;
+  }
+
+  private resolveStringOperand(path: string, constraint: SymbolEntry, simResult: SimulationResult): string | undefined {
+    const trimmed = path.trim();
+    const mapped = this.variableMap.get(trimmed);
+    if (mapped) {
+      const s = this.findStringInSimulation(simResult, mapped);
+      if (s !== undefined) return s;
+    }
+
+    const segments = trimmed.split(".");
+    for (let i = 0; i < segments.length; i++) {
+      const cand = segments.slice(i).join(".");
+      const s = this.findStringInSimulation(simResult, cand);
+      if (s !== undefined) return s;
+    }
+
+    const leafName = segments[segments.length - 1];
+    if (leafName) {
+      const candidateIds = new Set<number>();
+      if (constraint.parentId !== null) {
+        for (const c of this.db.childrenOf(constraint.parentId)) candidateIds.add(c.id);
+      }
+      for (const e of this.db.byName(leafName)) candidateIds.add(e.id);
+
+      for (const id of candidateIds) {
+        const entry = this.db.symbol(id);
+        if (!entry || entry.name !== leafName) continue;
+        const text = this.db.cstText(entry.startOffset, entry.endOffset, entry);
+        const strMatch = text?.match(/=\s*(?:"([^"]*)"|'([^']*)')/);
+        if (strMatch) return strMatch[1] ?? strMatch[2] ?? "";
+      }
+    }
+    return undefined;
+  }
+
+  private collectWorkspaceCalculators(): Record<string, InlineCalcDef> {
+    const calculators: Record<string, InlineCalcDef> = {};
+    for (const entry of this.db.allEntries()) {
+      if (entry.ruleName !== "CalculationDefinition" || !entry.name) continue;
+      const text = this.db.cstText(entry.startOffset, entry.endOffset, entry);
+      if (!text) continue;
+
+      const params: string[] = [];
+      const inRe = /\bin\s+(?:attribute\s+)?([a-zA-Z0-9_]+)\b/g;
+      let pm: RegExpExecArray | null;
+      while ((pm = inRe.exec(text)) !== null) params.push(pm[1]!);
+
+      let externalCalculator: string | undefined;
+      const extMatch = text.match(/@(?:ExternalCalculator|LookupTable)\b\s*(?:\{([^}]*)\}|\(([^)]*)\))/);
+      if (extMatch) {
+        const body = extMatch[1] ?? extMatch[2] ?? "";
+        const prop = body.match(/(?:calculator|table|name|id)\s*=\s*(?:"([^"]*)"|'([^']*)'|([a-zA-Z0-9_.:/-]+))/);
+        if (prop) externalCalculator = prop[1] ?? prop[2] ?? prop[3];
+      }
+
+      let bodyAst: ConstraintExprAst | undefined;
+      const retMatch = text.match(/return\b[^=;]*=\s*([\s\S]*?);/);
+      if (retMatch && retMatch[1]) {
+        bodyAst = parseConstraintExprAst(retMatch[1]);
+      }
+
+      const def: InlineCalcDef = { name: entry.name, params, bodyAst, externalCalculator };
+      calculators[entry.name] = def;
+      if (entry.parentId !== null) {
+        const parent = this.db.symbol(entry.parentId);
+        if (parent?.name) calculators[`${parent.name}::${entry.name}`] = def;
+      }
+    }
+    return calculators;
+  }
+
+  private collectNumericAttrsForExpr(
+    ast: ConstraintExprAst,
+    constraint: SymbolEntry,
+    simResult: SimulationResult,
+    timeIndex: number,
+    out: Map<string, number>,
+    strOut: Map<string, string>,
+  ): void {
+    if (ast.kind === "var") {
+      if (!out.has(ast.path) && !strOut.has(ast.path)) {
+        const strVal = this.resolveStringOperand(ast.path, constraint, simResult);
+        if (strVal !== undefined) {
+          strOut.set(ast.path, strVal);
+          return;
+        }
+        const numVal = this.resolveOperand(ast.path, constraint, simResult, timeIndex);
+        if (numVal !== undefined && Number.isFinite(numVal)) out.set(ast.path, numVal);
+      }
+      return;
+    }
+    if (ast.kind === "unary") {
+      this.collectNumericAttrsForExpr(ast.operand, constraint, simResult, timeIndex, out, strOut);
+    } else if (ast.kind === "bin") {
+      this.collectNumericAttrsForExpr(ast.left, constraint, simResult, timeIndex, out, strOut);
+      this.collectNumericAttrsForExpr(ast.right, constraint, simResult, timeIndex, out, strOut);
+    } else if (ast.kind === "call") {
+      for (const a of ast.args) this.collectNumericAttrsForExpr(a, constraint, simResult, timeIndex, out, strOut);
+    }
+  }
+
+  private evaluateExprAstAtTime(
+    exprText: string,
+    constraint: SymbolEntry,
+    simResult: SimulationResult,
+    timeIndex: number,
+  ): number | undefined {
+    const ast = parseConstraintExprAst(exprText);
+    if (!ast || ast.kind === "var" || ast.kind === "str") return undefined;
+
+    const numMap = new Map<string, number>();
+    const strMap = new Map<string, string>();
+    this.collectNumericAttrsForExpr(ast, constraint, simResult, timeIndex, numMap, strMap);
+
+    const calcs = this.collectWorkspaceCalculators();
+    if (ast.kind === "call" && !calcs[ast.name]) {
+      // Allow direct external registry call even when no `calc def` CST wrapper exists in scope
+      const directExt = globalLibraryRegistry.invokeCalculator(
+        ast.name,
+        ast.args.map((a) =>
+          a.kind === "str"
+            ? a.value
+            : a.kind === "var" && strMap.has(a.path)
+              ? strMap.get(a.path)!
+              : evaluateConstraintExprScalar(a, numMap, strMap, calcs),
+        ),
+      );
+      if (typeof directExt === "number" && Number.isFinite(directExt)) return directExt;
+    }
+
+    const val = evaluateConstraintExprScalar(ast, numMap, strMap, calcs);
+    return Number.isFinite(val) ? val : undefined;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -212,9 +363,10 @@ export class VerificationRunner {
    *   1. Numeric literal
    *   2. Explicit variableMap → simulation lookup
    *   3. Progressive path stripping → simulation lookup
-   *   4. QueryDB expression evaluation
-   *   5. Scope-walking for dotted paths (e.g. "req.maxLimit")
-   *   6. Leaf-name CST text fallback (= <number>)
+   *   4. Arithmetic / calc def / lookup-table AST evaluation
+   *   5. QueryDB expression evaluation
+   *   6. Scope-walking for dotted paths (e.g. "req.maxLimit")
+   *   7. Leaf-name CST text fallback (= <number>)
    */
   public resolveOperand(
     path: string,
@@ -222,40 +374,50 @@ export class VerificationRunner {
     simResult: SimulationResult,
     timeIndex: number,
   ): number | undefined {
-    // 1. Literal number
-    const num = parseFloat(path);
-    if (!isNaN(num) && isFinite(num)) return num;
+    const trimmed = path.trim();
+
+    // 1. Literal number (strictly numeric so expressions like "2 * P" do not truncate to 2)
+    if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(trimmed)) {
+      const num = Number(trimmed);
+      if (Number.isFinite(num)) return num;
+    }
 
     // 2. Explicit variableMap lookup
-    const mapped = this.variableMap.get(path);
+    const mapped = this.variableMap.get(trimmed);
     if (mapped !== undefined) {
       const val = this.findValueInSimulation(simResult, mapped, timeIndex);
       if (val !== undefined) return val;
     }
 
     // 3. Progressive path stripping: "circuit.C.v" → "C.v" → "v"
-    const segments = path.split(".");
+    const segments = trimmed.split(".");
     for (let i = 0; i < segments.length; i++) {
       const candidate = segments.slice(i).join(".");
       const val = this.findValueInSimulation(simResult, candidate, timeIndex);
       if (val !== undefined) return val;
     }
 
-    // 4. QueryDB expression evaluation
+    // 4. Symbolic arithmetic, calc def, and external lookup-table call evaluation
+    if (/[+\-*/^()]/.test(trimmed)) {
+      const astVal = this.evaluateExprAstAtTime(trimmed, constraint, simResult, timeIndex);
+      if (astVal !== undefined) return astVal;
+    }
+
+    // 5. QueryDB expression evaluation
     try {
-      const result = this.db.evaluate(path, constraint.parentId);
+      const result = this.db.evaluate(trimmed, constraint.parentId);
       if (typeof result === "number") return result;
     } catch {
       // continue fallback
     }
 
-    // 5. Scope-walking for dotted paths like "req.maxLimit"
+    // 6. Scope-walking for dotted paths like "req.maxLimit"
     if (segments.length >= 2) {
       const resolved = this.resolveQualifiedPath(segments, constraint);
       if (resolved !== undefined) return resolved;
     }
 
-    // 6. Leaf-name CST text fallback
+    // 7. Leaf-name CST text fallback
     const leafName = segments[segments.length - 1];
     if (leafName) {
       let candidates = this.db.byName(leafName);
@@ -402,7 +564,43 @@ export class VerificationRunner {
       const res = this.extractComparison(child);
       if (res) return res;
     }
+
+    if (typeof node.text === "string") {
+      const text: string = node.text;
+      const openBrace = text.indexOf("{");
+      const closeBrace = text.lastIndexOf("}");
+      const inner = openBrace >= 0 && closeBrace > openBrace ? text.slice(openBrace + 1, closeBrace) : text;
+      const parts = inner
+        .split(/[;\n]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const candidate of [inner.trim(), ...parts]) {
+        const opMatch = candidate.match(/^([\s\S]+?)\s*(<=|>=|==|!=|<|>)\s*([\s\S]+)$/);
+        if (opMatch && parseConstraintComparisonAst(candidate)) {
+          return {
+            lhs: opMatch[1]!.trim(),
+            op: opMatch[2]!.trim() as ComparisonOp,
+            rhs: opMatch[3]!.trim(),
+          };
+        }
+      }
+    }
+
     return null;
+  }
+
+  private extractRequirementStandardClause(requirementId: number): string | undefined {
+    const reqEntry = this.db.symbol(requirementId);
+    if (!reqEntry) return undefined;
+    const text = this.db.cstText(reqEntry.startOffset, reqEntry.endOffset, reqEntry);
+    if (!text) return undefined;
+    const metaMatch = text.match(/@(?:StandardClause|ComplianceRule|Standard)\b\s*(?:\{([^}]*)\}|\(([^)]*)\))/);
+    if (!metaMatch) return undefined;
+    const body = metaMatch[1] ?? metaMatch[2] ?? "";
+    const stdMatch = body.match(/(?:standard|code)\s*=\s*(?:"([^"]*)"|'([^']*)')/);
+    const clsMatch = body.match(/(?:clauseId|clause|id)\s*=\s*(?:"([^"]*)"|'([^']*)')/);
+    const parts = [stdMatch?.[1] ?? stdMatch?.[2], clsMatch?.[1] ?? clsMatch?.[2]].filter(Boolean);
+    return parts.length > 0 ? parts.join(" ") : undefined;
   }
 
   private isConstraintEntry(entry: SymbolEntry): boolean {
@@ -491,6 +689,7 @@ export class VerificationRunner {
   ): VerificationResult {
     const cst = constraint.id ? (this.db.cstNode(constraint.id) as unknown) : null;
     const comp = cst ? this.extractComparison(cst) : null;
+    const standardClause = this.extractRequirementStandardClause(requirementId);
 
     if (comp) {
       const metricMatch = comp.lhs.match(/^(max|min|peak|settlingTime|overshoot|steadyState|integral)\s*\((.+)\)$/);
@@ -555,10 +754,17 @@ export class VerificationRunner {
             break;
         }
 
+        const clausePrefix = standardClause ? `[${standardClause}] ` : "";
         let message: string | undefined;
         if (!passed) {
-          message = `Requirement violated: ${comp.lhs} was ${computedMetric.toFixed(2)} (limit: ${comp.op} ${rhsVal.toFixed(2)})`;
+          message = `${clausePrefix}Requirement violated: ${comp.lhs} was ${computedMetric.toFixed(2)} (limit: ${comp.op} ${rhsVal.toFixed(2)})`;
         }
+        const metricMargin =
+          comp.op === "<=" || comp.op === "<"
+            ? rhsVal - computedMetric
+            : comp.op === ">=" || comp.op === ">"
+              ? computedMetric - rhsVal
+              : undefined;
 
         return {
           requirementId,
@@ -571,6 +777,8 @@ export class VerificationRunner {
           lhsName: comp.lhs,
           metricName,
           metricValue: computedMetric,
+          standardClause,
+          margin: metricMargin,
         };
       }
     }
@@ -581,6 +789,7 @@ export class VerificationRunner {
     let peakLhs = -Infinity;
     let limitRhs: number | undefined;
     let firstViolationTime: number | undefined;
+    let minMargin = Infinity;
 
     for (let i = 0; i < simResult.t.length; i++) {
       const res = this.evaluateConstraintAtTime(constraint, simResult, i);
@@ -591,6 +800,15 @@ export class VerificationRunner {
         const rVal = this.resolveOperand(comp.rhs, constraint, simResult, i);
         if (lVal !== undefined && lVal > peakLhs) peakLhs = lVal;
         if (rVal !== undefined) limitRhs = rVal;
+        if (lVal !== undefined && rVal !== undefined) {
+          const marginAtT =
+            comp.op === "<=" || comp.op === "<"
+              ? rVal - lVal
+              : comp.op === ">=" || comp.op === ">"
+                ? lVal - rVal
+                : undefined;
+          if (marginAtT !== undefined && marginAtT < minMargin) minMargin = marginAtT;
+        }
       }
 
       if (!res.isSatisfied) {
@@ -607,8 +825,10 @@ export class VerificationRunner {
     const peakStr = isFinite(peakLhs) ? peakLhs.toFixed(1) : "?";
 
     if (!allMet) {
+      const clausePrefix = standardClause ? `[${standardClause}] ` : "";
       const timeStr = firstViolationTime !== undefined ? `at t=${firstViolationTime.toFixed(2)}s` : "";
-      message = `Requirement violated: ${lhsName ?? "value"} reached ${peakStr} (limit: ${limitStr}) ${timeStr}`.trim();
+      message =
+        `${clausePrefix}Requirement violated: ${lhsName ?? "value"} reached ${peakStr} (limit: ${limitStr}) ${timeStr}`.trim();
     }
 
     return {
@@ -622,6 +842,8 @@ export class VerificationRunner {
       violationTime: firstViolationTime,
       lhsName: lhsName ?? undefined,
       metricName: "pointwise",
+      standardClause,
+      margin: Number.isFinite(minMargin) ? minMargin : undefined,
     };
   }
 
@@ -670,9 +892,25 @@ export class VerificationRunner {
 
       const allChildren = db.childrenOf(reqTarget.id);
       const reqConstraints = allChildren.filter((c) => this.isConstraintEntry(c));
+      const assumeConstraints = reqConstraints.filter((c) =>
+        (db.cstText(c.startOffset, c.endOffset, c) ?? "").trimStart().startsWith("assume"),
+      );
+      const requireConstraints = reqConstraints.filter((c) => !assumeConstraints.includes(c));
 
-      for (const constraint of reqConstraints) {
-        results.push(this.evaluateConstraintOverTime(constraint, reqTarget.id, simResult));
+      if (assumeConstraints.length > 0) {
+        const assumeAnyActive = assumeConstraints.every((ac) => {
+          const aRes = this.evaluateConstraintOverTime(ac, reqTarget.id, simResult);
+          return aRes.isSatisfied || (aRes.timeSeriesResult?.some(Boolean) ?? false);
+        });
+        if (!assumeAnyActive) {
+          continue;
+        }
+      }
+
+      for (const constraint of requireConstraints) {
+        const res = this.evaluateConstraintOverTime(constraint, reqTarget.id, simResult);
+        res.requirementName = res.requirementName ?? reqTarget.name;
+        results.push(res);
       }
     }
 

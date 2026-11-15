@@ -9,6 +9,9 @@
  * on missing entities), and synthesizes QIF 3.0 inspection documents from STEP models.
  */
 
+import { collectCstNodes, extractCstLeafNodes, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "@modelscript/step/parser";
+import { createRequire } from "node:module";
 import { MATHEMATICAL_MIN_POINTS, QifErrorCode } from "../lints/rules.js";
 import { computeLineOffsets, isDefaultFeatureOfSize, makeRange } from "../parser/index.js";
 import type {
@@ -21,6 +24,82 @@ import type {
   QifGdtType,
   QifPlanStep,
 } from "../types.js";
+
+const require = createRequire(import.meta.url);
+let cachedStepParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+
+function getStepWasmParser() {
+  if (!cachedStepParser) {
+    const wasmPath = require.resolve("@modelscript/step/parser.wasm");
+    cachedStepParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedStepParser;
+}
+
+function stripLeadingHash(s: string): string {
+  const trimmed = s.trim();
+  return trimmed.startsWith("#") ? trimmed.slice(1) : trimmed;
+}
+
+function unquoteStepString(raw: string): string {
+  if (raw.length >= 2 && raw.startsWith("'") && raw.endsWith("'")) {
+    return raw.slice(1, -1).split("''").join("'");
+  }
+  return raw;
+}
+
+function unwrapParens(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length >= 2 && trimmed.startsWith("(") && trimmed.endsWith(")")) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function parseStepNumericParams(paramNode: CstNodeLike): {
+  firstStringName: string | undefined;
+  referencedIds: string[];
+  numericParams: number[];
+} {
+  let firstStringName: string | undefined;
+  const referencedIds: string[] = [];
+  const numericParams: number[] = [];
+
+  const leaves = extractCstLeafNodes(paramNode);
+  let pendingSign = "";
+  for (const leaf of leaves) {
+    const text = leaf.text ?? "";
+    if (leaf.type === "STRING") {
+      pendingSign = "";
+      if (firstStringName === undefined) {
+        const trimmed = unquoteStepString(text).trim();
+        if (trimmed) firstStringName = trimmed;
+      }
+      continue;
+    }
+    if (leaf.type === "ENTITY_INSTANCE_NAME") {
+      pendingSign = "";
+      const refId = text.trim();
+      if (refId.startsWith("#")) referencedIds.push(refId);
+      continue;
+    }
+    if (text === "-" || text === "+") {
+      pendingSign = text;
+      continue;
+    }
+    if (leaf.type === "REAL" || leaf.type === "INTEGER") {
+      const val = Number(pendingSign + text.trim());
+      pendingSign = "";
+      if (!Number.isNaN(val)) {
+        numericParams.push(val);
+      }
+      continue;
+    }
+    pendingSign = "";
+  }
+
+  return { firstStringName, referencedIds, numericParams };
+}
 
 // Re-export helper if needed
 export interface StepAp242Entity {
@@ -59,42 +138,47 @@ export interface StepReconciliationResult {
 
 export function extractStepEntities(stepText: string): Map<string, StepAp242Entity> {
   const entityMap = new Map<string, StepAp242Entity>();
-  let pos = 0;
-  while (pos < stepText.length) {
-    const nextSemi = stepText.indexOf(";", pos);
-    if (nextSemi === -1) break;
-    const stmt = stepText.slice(pos, nextSemi);
-    pos = nextSemi + 1;
-    const m = /#(\d+)\s*=\s*([A-Za-z0-9_]+)\s*\(([\s\S]*)\)/.exec(stmt);
-    if (!m) continue;
+  const parser = getStepWasmParser();
 
-    const numStr = m[1] ?? "0";
-    const id = `#${numStr}`;
+  let tree = parser.parse(stepText);
+  let rootNode = tree ? ((tree.rootNode ?? tree) as unknown as CstNodeLike) : undefined;
+  let instances = rootNode ? collectCstNodes(rootNode, ["EntityInstance"]) : [];
+
+  if (instances.length === 0 && stepText.includes("#")) {
+    const upper = stepText.toUpperCase();
+    let normalizedStep = stepText;
+    if (!upper.includes("ISO-10303-21")) {
+      normalizedStep = `ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n${stepText}\nENDSEC;\nEND-ISO-10303-21;\n`;
+    } else if (upper.includes("DATA;") && !upper.includes("HEADER;")) {
+      const dataIdx = upper.indexOf("DATA;");
+      normalizedStep = `${stepText.slice(0, dataIdx)}HEADER;\nENDSEC;\n${stepText.slice(dataIdx)}`;
+    }
+    if (normalizedStep !== stepText) {
+      tree = parser.parse(normalizedStep);
+      rootNode = tree ? ((tree.rootNode ?? tree) as unknown as CstNodeLike) : undefined;
+      instances = rootNode ? collectCstNodes(rootNode, ["EntityInstance"]) : [];
+    }
+  }
+
+  for (const inst of instances) {
+    const children = inst.namedChildren ?? inst.children ?? [];
+    const idNode = children.find((c) => c.type === "ENTITY_INSTANCE_NAME");
+    const simpleRec = collectCstNodes(inst, ["SimpleRecord"])[0];
+    if (!idNode || !simpleRec) continue;
+
+    const id = idNode.text.trim();
+    const numStr = stripLeadingHash(id);
     const rawId = Number(numStr);
-    const entityType = (m[2] ?? "").toUpperCase();
-    const argsRaw = (m[3] ?? "").trim();
 
-    const nameMatch = /'([^']*)'/.exec(argsRaw);
-    const name = nameMatch?.[1]?.trim() || `${entityType}_${numStr}`;
+    const recChildren = simpleRec.namedChildren ?? simpleRec.children ?? [];
+    const kwNode = recChildren.find((c) => c.type === "KEYWORD");
+    const entityType = (kwNode?.text ?? "").trim().toUpperCase();
+    if (!entityType) continue;
 
-    const referencedIds: string[] = [];
-    const refRegex = /#(\d+)/g;
-    let rm: RegExpExecArray | null;
-    while ((rm = refRegex.exec(argsRaw)) !== null) {
-      referencedIds.push(`#${rm[1]}`);
-    }
-
-    // Extract standalone floating point or integer numbers outside quotes and #refs
-    const argsWithoutStringsAndRefs = argsRaw.replace(/'[^']*'/g, " ").replace(/#\d+/g, " ");
-    const numericParams: number[] = [];
-    const numRegex = /[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?/g;
-    let nm: RegExpExecArray | null;
-    while ((nm = numRegex.exec(argsWithoutStringsAndRefs)) !== null) {
-      const val = Number(nm[0]);
-      if (!Number.isNaN(val)) {
-        numericParams.push(val);
-      }
-    }
+    const paramListNode = recChildren.find((c) => c.type === "ParameterList") ?? simpleRec;
+    const argsRaw = paramListNode !== simpleRec ? unwrapParens(paramListNode.text) : "";
+    const { firstStringName, referencedIds, numericParams } = parseStepNumericParams(paramListNode);
+    const name = firstStringName || `${entityType}_${numStr}`;
 
     const mappedFeatureType = mapStepTypeToFeatureType(entityType);
     const mappedGdtType = mapStepTypeToGdtType(entityType);
@@ -197,11 +281,22 @@ export function reconcileStepWithQif(stepText: string, qifDoc: QifDocument): Ste
 
   // Pass 2: Semantic Name Matching for unassigned features
   const stillUnassigned: QifFeature[] = [];
-  const normalizeForMatch = (s: string) =>
-    s
-      .toLowerCase()
-      .replace(/[_\s-]+/g, "")
-      .replace(/(face|adv|cyl|plane|surf|surface|hole|bore)$/g, "");
+  const matchSuffixes = ["surface", "plane", "face", "hole", "bore", "surf", "adv", "cyl"];
+  const normalizeForMatch = (s: string) => {
+    const lower = s.toLowerCase();
+    let cleaned = "";
+    for (let i = 0; i < lower.length; i++) {
+      const ch = lower[i]!;
+      if (ch === "_" || ch === "-" || ch.trim() === "") continue;
+      cleaned += ch;
+    }
+    for (const suffix of matchSuffixes) {
+      if (cleaned.endsWith(suffix)) {
+        return cleaned.slice(0, -suffix.length);
+      }
+    }
+    return cleaned;
+  };
 
   for (const feat of unassignedFeatures) {
     const featNorm = normalizeForMatch(feat.name);
@@ -826,7 +921,7 @@ export function synthesizeStepAp242FromQif(doc: QifDocument): string {
   const usedIds = new Set<number>([1, 2, 3, 4]);
   for (const feat of doc.features) {
     if (feat.stepEntityId) {
-      const n = Number(feat.stepEntityId.replace(/^#/, ""));
+      const n = Number(stripLeadingHash(feat.stepEntityId));
       if (Number.isFinite(n) && n > 0) usedIds.add(n);
     }
   }
@@ -871,7 +966,7 @@ export function synthesizeStepAp242FromQif(doc: QifDocument): string {
       lines.push(`#${surfId} = PLANE('${feat.name}_Surface',#${axId});`);
     }
 
-    const faceNum = feat.stepEntityId ? Number(feat.stepEntityId.replace(/^#/, "")) : allocId();
+    const faceNum = feat.stepEntityId ? Number(stripLeadingHash(feat.stepEntityId)) : allocId();
     const faceIdStr = `#${Number.isFinite(faceNum) && faceNum > 0 ? faceNum : allocId()}`;
     lines.push(`${faceIdStr} = ADVANCED_FACE('${feat.name}',(),#${surfId},.T.);`);
     faceIds.push(faceIdStr);

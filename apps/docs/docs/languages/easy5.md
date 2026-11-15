@@ -111,21 +111,39 @@ The linear control package provides exact numerical state-space modeling for con
 
 ### State-Space Extraction ($A, B, C, D$)
 
-Linearizes the continuous non-linear system around an operating point $(x_0, u_0)$:
+Linearizes the continuous non-linear system around an operating point $(x_0, u_0)$ into standard linear time-invariant (LTI) state-space form, where state derivatives and outputs are linear combinations of state and input perturbations:
 
 $$\dot{x} = A x + B u,\quad y = C x + D u$$
 
-Where:
+Each matrix entry is a partial derivative of the state rate $\dot{x} = f(x, u)$ or output map $y(x, u)$ with respect to a state or input component:
 $$A_{ij} = \frac{\partial \dot{x}_i}{\partial x_j},\quad B_{ik} = \frac{\partial \dot{x}_i}{\partial u_k},\quad C_{pj} = \frac{\partial y_p}{\partial x_j},\quad D_{pk} = \frac{\partial y_p}{\partial u_k}$$
 
-Computed via central finite differences:
+Partial derivatives are approximated numerically via central finite differences by perturbing each coordinate by $\pm \varepsilon$:
 $$\frac{\partial f_i}{\partial x_j} \approx \frac{f_i(x_0 + \varepsilon e_j, u_0) - f_i(x_0 - \varepsilon e_j, u_0)}{2\varepsilon}$$
+
+| Symbol        | Meaning                                                     | Units / Domain                                                                                   |
+| :------------ | :---------------------------------------------------------- | :----------------------------------------------------------------------------------------------- |
+| $x, \dot{x}$  | State perturbation vector and its time derivative $dx/dt$   | $\mathbb{R}^n$ (state units / $\text{s}^{-1}$)                                                   |
+| $u, y$        | Input and output perturbation vectors                       | $\mathbb{R}^m, \mathbb{R}^p$                                                                     |
+| $A, B, C, D$  | State, input, output, and feedthrough Jacobian matrices     | $\mathbb{R}^{n\times n}, \mathbb{R}^{n\times m}, \mathbb{R}^{p\times n}, \mathbb{R}^{p\times m}$ |
+| $f_i, y_p$    | $i$-th state derivative function and $p$-th output function | State rate / output units                                                                        |
+| $x_0, u_0$    | Operating (trim) point state and input vectors              | $\mathbb{R}^n, \mathbb{R}^m$                                                                     |
+| $\varepsilon$ | Finite-difference perturbation step size                    | Positive real ($\varepsilon > 0$)                                                                |
+| $e_j$         | $j$-th standard basis unit vector in $\mathbb{R}^n$         | Dimensionless                                                                                    |
 
 ### Equilibrium Operating Point Trim Solver
 
-Solves $\dot{x}(x, u) = 0$ using Levenberg-Marquardt damped least-squares:
+Solves $\dot{x}(x, u) = 0$ to find a steady-state operating point using Levenberg-Marquardt damped least-squares, iteratively updating the state vector along a regularized Gauss-Newton step:
 
 $$(J^T J + \lambda I) \Delta x = -J^T \dot{x}(x, u)$$
+
+| Symbol          | Meaning                                                            | Units / Domain                      |
+| :-------------- | :----------------------------------------------------------------- | :---------------------------------- |
+| $J$             | Jacobian matrix $\partial \dot{x} / \partial x$ at current iterate | $\mathbb{R}^{n \times n}$           |
+| $\lambda$       | Levenberg-Marquardt damping (regularization) parameter             | Non-negative real ($\lambda \ge 0$) |
+| $I$             | $n \times n$ identity matrix                                       | Dimensionless                       |
+| $\Delta x$      | State update step vector                                           | $\mathbb{R}^n$                      |
+| $\dot{x}(x, u)$ | State derivative residual vector                                   | $\mathbb{R}^n$                      |
 
 ### Eigenvalue & Stability Analysis
 
@@ -137,8 +155,10 @@ Computes closed-loop poles $s_i = \sigma_i \pm j \omega_i$ using the **QR algori
 
 ### Bode Frequency Response Sweeps
 
-Solves the complex resolvent system $(j \omega I - A) X(j\omega) = B$ at logarithmically spaced frequencies:
+Solves the complex resolvent system $(j \omega I - A) X(j\omega) = B$ at logarithmically spaced frequencies to obtain the complex frequency response transfer matrix $G(j\omega)$:
 $$G(j\omega) = C X(j\omega) + D$$
+
+where $\omega$ is angular frequency ($\text{rad}\cdot\text{s}^{-1}$), $j = \sqrt{-1}$, $X(j\omega) = (j\omega I - A)^{-1} B \in \mathbb{C}^{n \times m}$ is the complex state frequency response, and $G(j\omega) \in \mathbb{C}^{p \times m}$ is the input-to-output transfer matrix.
 
 - Magnitude (dB): $20 \log_{10} |G(j\omega)|$
 - Phase (degrees): $\operatorname{atan2}(\operatorname{Im} G(j\omega), \operatorname{Re} G(j\omega)) \cdot \frac{180}{\pi}$

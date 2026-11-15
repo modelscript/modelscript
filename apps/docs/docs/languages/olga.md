@@ -192,9 +192,16 @@ ModelScript includes a native WebAssembly cubic equation of state solver executi
 
 ### Governing Thermodynamic Formulations
 
-The general two-parameter cubic EOS takes the form:
+The general two-parameter cubic equation of state (EOS) relates pressure $P$, temperature $T$, and molar volume $v$ via attraction and co-volume parameters:
 
 $$P = \frac{R T}{v - b} - \frac{a(T)}{v^2 + u b v + w b^2}$$
+
+| Symbol    | Meaning                                                            | Units / Domain                                                   |
+| :-------- | :----------------------------------------------------------------- | :--------------------------------------------------------------- |
+| $P, T, v$ | Pressure, absolute temperature, and molar volume                   | $\text{Pa}$, $\text{K}$, $\text{m}^3/\text{mol}$                 |
+| $R$       | Universal gas constant ($8.31446$)                                 | $\text{J}/(\text{mol}\cdot\text{K})$                             |
+| $a(T), b$ | Temperature-dependent attraction parameter and co-volume parameter | $\text{Pa}\cdot\text{m}^6/\text{mol}^2$, $\text{m}^3/\text{mol}$ |
+| $u, w$    | EOS-specific dimensionless constants                               | $\text{dimensionless}$                                           |
 
 | EOS Model                     | $u$ | $w$  | $\Omega_a$ | $\Omega_b$ | Temperature Correction $\alpha(T_r, \omega)$                                                    |
 | :---------------------------- | :-: | :--: | :--------: | :--------: | :---------------------------------------------------------------------------------------------- |
@@ -203,24 +210,52 @@ $$P = \frac{R T}{v - b} - \frac{a(T)}{v^2 + u b v + w b^2}$$
 
 ### Van der Waals Mixing Rules with Binary Interaction ($k_{ij}$)
 
-For multicomponent reservoir and hydrocarbon fluids:
+For multicomponent reservoir and hydrocarbon fluids, mixture EOS parameters are aggregated from pure-component values using quadratic mixing for attraction and linear mixing for co-volume:
 
 $$a = \sum_{i=1}^N \sum_{j=1}^N z_i z_j \sqrt{a_i a_j} (1 - k_{ij}), \quad b = \sum_{i=1}^N z_i b_i$$
 
+| Symbol     | Meaning                                                     | Units / Domain                                                   |
+| :--------- | :---------------------------------------------------------- | :--------------------------------------------------------------- |
+| $a, b$     | Mixture attraction and co-volume parameters                 | $\text{Pa}\cdot\text{m}^6/\text{mol}^2$, $\text{m}^3/\text{mol}$ |
+| $i, j, N$  | Component indices and total number of fluid components      | $\text{dimensionless}$ ($i, j = 1, \dots, N$)                    |
+| $z_i, z_j$ | Overall feed mole fractions of components $i$ and $j$       | $\text{dimensionless}$ ($\sum z_i = 1$)                          |
+| $a_i, b_i$ | Pure-component attraction and co-volume parameters          | $\text{Pa}\cdot\text{m}^6/\text{mol}^2$, $\text{m}^3/\text{mol}$ |
+| $k_{ij}$   | Binary interaction parameter between components $i$ and $j$ | $\text{dimensionless}$                                           |
+
 ### Rachford-Rice Vapor-Liquid Equilibrium (VLE) Flash
 
-Isothermal-isobaric flash equilibrium is determined by solving the objective function for vapor fraction $\beta = V/F$:
+Isothermal-isobaric flash equilibrium is determined by solving the objective function for vapor mole fraction $\beta = V/F$, enforcing equal fugacities across liquid and vapor phases:
 
 $$\sum_{i=1}^N \frac{z_i (K_i - 1)}{1 + \beta (K_i - 1)} = 0, \quad \text{where } K_i = \frac{y_i}{x_i} = \frac{\phi_i^L}{\phi_i^V}$$
+
+| Symbol               | Meaning                                                               | Units / Domain                               |
+| :------------------- | :-------------------------------------------------------------------- | :------------------------------------------- |
+| $z_i$                | Overall feed mole fraction of component $i$                           | $\text{dimensionless}$                       |
+| $K_i$                | Equilibrium $K$-value (vapor-liquid partition ratio) of component $i$ | $\text{dimensionless}$ ($K_i > 0$)           |
+| $\beta$              | Vapor mole fraction ($V/F$)                                           | $\text{dimensionless}$ ($0 \le \beta \le 1$) |
+| $y_i, x_i$           | Vapor and liquid phase mole fractions of component $i$                | $\text{dimensionless}$                       |
+| $\phi_i^L, \phi_i^V$ | Liquid and vapor phase fugacity coefficients of component $i$         | $\text{dimensionless}$                       |
 
 Accelerated by successive substitution initialized via Wilson's heuristic $K$-value correlations and accelerated by Cardano analytical cubic root solving.
 
 ### Dense Fluid Transport Properties
 
-- **Lohrenz-Bray-Clark (LBC) Viscosity:** Computes high-pressure gas and liquid dynamic viscosities from reduced mixture densities $\rho_r = \rho / \rho_c$:
+- **Lohrenz-Bray-Clark (LBC) Viscosity:** Computes high-pressure gas and liquid dynamic viscosities from a 4th-order polynomial in reduced mixture density $\rho_r = \rho / \rho_c$:
   $$[(\mu - \mu_0)\xi + 10^{-4}]^{1/4} = a_0 + a_1 \rho_r + a_2 \rho_r^2 + a_3 \rho_r^3 + a_4 \rho_r^4$$
-- **Macleod-Sugden Parachor Surface Tension:** Evaluates gas-liquid interfacial tension $\sigma$ from parachors $P_i$:
+- **Macleod-Sugden Parachor Surface Tension:** Evaluates gas-liquid interfacial tension $\sigma$ from component parachors $P_i$ and phase molar densities:
   $$\sigma = \left[ \sum_{i=1}^N P_i \left( x_i \frac{\rho_L}{M_L} - y_i \frac{\rho_G}{M_G} \right) \right]^4$$
+
+  | Symbol           | Meaning                                          | Units / Domain                                   |
+  | :--------------- | :----------------------------------------------- | :----------------------------------------------- |
+  | $\mu, \mu_0$     | Dense-fluid and dilute-gas dynamic viscosities   | $\text{cP}$ ($\text{mPa}\cdot\text{s}$)          |
+  | $\xi$            | Viscosity-reducing parameter                     | $\text{cP}^{-1}$                                 |
+  | $\rho_r$         | Reduced mixture density ($\rho / \rho_c$)        | $\text{dimensionless}$                           |
+  | $a_0 \dots a_4$  | Empirical LBC polynomial coefficients            | $\text{dimensionless}$                           |
+  | $\sigma$         | Gas-liquid interfacial surface tension           | $\text{mN/m}$ ($\text{dyn/cm}$)                  |
+  | $P_i$            | Parachor constant of component $i$               | $(\text{mN/m})^{1/4}\cdot\text{cm}^3/\text{mol}$ |
+  | $x_i, y_i$       | Liquid and vapor mole fractions of component $i$ | $\text{dimensionless}$                           |
+  | $\rho_L, \rho_G$ | Liquid and gas mass densities                    | $\text{g/cm}^3$                                  |
+  | $M_L, M_G$       | Liquid and gas average molar masses              | $\text{g/mol}$                                   |
 
 ### Command Line EOS Flash & Grid Synthesis
 
@@ -254,14 +289,25 @@ graph LR
 ### Mathematical Architecture
 
 1. **Subsea PT Feedback Error:** $e(t) = P_{\text{sp}} - P_{\text{inlet}}(t)$
-2. **Washout High-Pass Filter:** Isolates oscillatory slug resonance from slow reservoir depletion:
+2. **Washout High-Pass Filter:** Passes high-frequency slugging oscillations while attenuating slow reservoir pressure drift:
    $$\tau_w \frac{d e_f}{dt} + e_f = \tau_w \frac{d e}{dt}$$
-3. **Gain-Scheduled PI Control:** Compensates for non-linear choke valve flow characteristics:
+3. **Gain-Scheduled PI Control:** Scales proportional gain with valve position $Z$ to compensate for non-linear choke valve flow characteristics, then drives the valve via proportional-integral feedback:
    $$K_p(Z) = K_{p0} \cdot [1 + \gamma (1 - Z)]$$
    $$Z(t) = Z_{\text{baseline}} + K_p(Z) \left[ e_f(t) + \frac{1}{\tau_i} \int_0^t e_f(\tau) d\tau \right]$$
 4. **Physical Actuator Slew-Rate Constraints:** Clamps valve motion rate to realistic hydraulic actuator speeds:
    $$\left| \frac{dZ}{dt} \right| \le R_{\max} \quad (\text{e.g. } 5\% / \text{s})$$
 5. **Slug Catcher Surge Override:** Emergency high-liquid override closes choke if topside separator approaches liquid carryover capacity ($V_{\text{surge}} > 0.8 V_{\text{cap}}$).
+
+| Symbol                               | Meaning                                                     | Units / Domain                           |
+| :----------------------------------- | :---------------------------------------------------------- | :--------------------------------------- |
+| $e(t), e_f(t)$                       | Raw subsea pressure error and high-pass filtered error      | $\text{Pa}$ (or $\text{bar}$)            |
+| $P_{\text{sp}}, P_{\text{inlet}}(t)$ | Subsea pressure setpoint and measured inlet pressure        | $\text{Pa}$ (or $\text{bar}$)            |
+| $\tau_w, \tau_i$                     | Washout filter time constant and PI integral time constant  | $\text{s}$ ($\tau_w, \tau_i > 0$)        |
+| $t, \tau$                            | Simulation time and integration variable                    | $\text{s}$                               |
+| $K_p(Z), K_{p0}$                     | Valve-position-scheduled proportional gain and nominal gain | $\text{Pa}^{-1}$                         |
+| $\gamma$                             | Gain-scheduling slope factor                                | $\text{dimensionless}$                   |
+| $Z(t), Z_{\text{baseline}}$          | Topside choke valve opening fraction and baseline opening   | $\text{dimensionless}$ ($0 \le Z \le 1$) |
+| $R_{\max}$                           | Maximum physical valve slew rate                            | $\text{s}^{-1}$                          |
 
 ### CLI Anti-Slug Simulation
 
@@ -295,13 +341,26 @@ graph LR
 
 ### Governing Manifold Dynamic Balances
 
-1. **Dynamic Junction Mass Continuity:**
+1. **Dynamic Junction Mass Continuity:** Balances liquid and gas holdup mass inside manifold accumulator volume $V_J$ against incoming and outgoing branch mass flow rates:
    $$V_J \frac{d(\rho_L \alpha_L)_J}{dt} = \sum_{\text{in}} \dot{m}_{L,\text{in}} - \sum_{\text{out}} \dot{m}_{L,\text{out}}$$
    $$V_J \frac{d(\rho_G \alpha_G)_J}{dt} = \sum_{\text{in}} \dot{m}_{G,\text{in}} - \sum_{\text{out}} \dot{m}_{G,\text{out}}$$
-2. **Mixture Thermal Energy Accumulation:**
+2. **Mixture Thermal Energy Accumulation:** Tracks total internal energy change inside the junction from advected stream enthalpies:
    $$\frac{d(m u)_J}{dt} = \sum_{\text{in}} (\dot{m}_{\text{in}} h_{\text{in}}) - \sum_{\text{out}} (\dot{m}_{\text{out}} h_J)$$
-3. **Acoustic Pressure Relaxation:**
+3. **Acoustic Pressure Relaxation:** Relates junction pressure rate of change to net mass imbalance via the multiphase mixture speed of sound $c_m$:
    $$\frac{dP_J}{dt} = \frac{c_m^2}{V_J} \left( \sum \dot{m}_{\text{in}} - \sum \dot{m}_{\text{out}} \right)$$
+
+| Symbol                                          | Meaning                                                       | Units / Domain                                     |
+| :---------------------------------------------- | :------------------------------------------------------------ | :------------------------------------------------- |
+| $V_J$                                           | Manifold junction accumulator volume                          | $\text{m}^3$ ($V_J > 0$)                           |
+| $\rho_L, \rho_G$                                | Liquid and gas phase densities at junction $J$                | $\text{kg/m}^3$                                    |
+| $\alpha_L, \alpha_G$                            | Liquid and gas volume fractions (holdups) at junction $J$     | $\text{dimensionless}$ ($\alpha_L + \alpha_G = 1$) |
+| $\dot{m}_{L,\text{in}}, \dot{m}_{L,\text{out}}$ | Incoming and outgoing liquid mass flow rates                  | $\text{kg/s}$                                      |
+| $\dot{m}_{G,\text{in}}, \dot{m}_{G,\text{out}}$ | Incoming and outgoing gas mass flow rates                     | $\text{kg/s}$                                      |
+| $m, u$                                          | Total fluid mass and specific internal energy in junction $J$ | $\text{kg}$, $\text{J/kg}$                         |
+| $\dot{m}_{\text{in}}, \dot{m}_{\text{out}}$     | Total incoming and outgoing mixture mass flow rates           | $\text{kg/s}$                                      |
+| $h_{\text{in}}, h_J$                            | Specific enthalpy of incoming stream and junction mixture     | $\text{J/kg}$                                      |
+| $P_J, c_m$                                      | Junction pressure and effective mixture speed of sound        | $\text{Pa}$, $\text{m/s}$                          |
+| $t$                                             | Simulation time                                               | $\text{s}$                                         |
 
 ### Well Trip & Flowline Shut-In Redistribution
 

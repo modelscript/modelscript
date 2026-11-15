@@ -10,11 +10,17 @@ import { Position, Range, TextEdit } from "vscode-languageserver";
 
 import type { EdgeUpdate as EdgeItem, PlacementItem } from "@modelscript/diagram/protocol";
 import { Cst } from "../../src-gen/bindings.js";
+import {
+  containsWholeWordOutsideStrings,
+  isAsciiIdentContinue,
+  isAsciiWhitespaceCode,
+} from "../flattener/expressions/index.js";
 import { inferModelicaDomainColor } from "./data.js";
 import {
   buildFallbackClassInstance,
   computeMinimalNonOverlappingEdits,
   findBalancedClose,
+  findKeywordCallOpenParen,
   healStrandedClassAnnotationsInText,
   maskModelicaCommentsAndStrings,
   offsetToPosition,
@@ -32,6 +38,129 @@ export {
   scanModelicaClassLayout,
 };
 
+function findKeywordBraceAssignmentStart(
+  text: string,
+  keyword: string,
+): { startIndex: number; openBraceIndex: number } | null {
+  let pos = 0;
+  while (pos <= text.length - keyword.length) {
+    const idx = text.indexOf(keyword, pos);
+    if (idx < 0) return null;
+    const prevOk = idx === 0 || !isAsciiIdentContinue(text.charCodeAt(idx - 1));
+    let j = idx + keyword.length;
+    const afterWordOk = j < text.length && !isAsciiIdentContinue(text.charCodeAt(j));
+    if (prevOk && afterWordOk) {
+      while (j < text.length && isAsciiWhitespaceCode(text.charCodeAt(j))) j++;
+      if (j < text.length && text[j] === "=") {
+        j++;
+        while (j < text.length && isAsciiWhitespaceCode(text.charCodeAt(j))) j++;
+        if (j < text.length && text[j] === "{") {
+          return { startIndex: idx, openBraceIndex: j };
+        }
+      }
+    }
+    pos = idx + keyword.length;
+  }
+  return null;
+}
+
+function stripWhitespaceAroundDots(s: string): string {
+  if (!s.includes(".")) return s;
+  let out = "";
+  let i = 0;
+  while (i < s.length) {
+    const ch = s[i]!;
+    if (ch === ".") {
+      out += ".";
+      i++;
+      while (i < s.length && isAsciiWhitespaceCode(s.charCodeAt(i))) i++;
+      continue;
+    }
+    if (isAsciiWhitespaceCode(s.charCodeAt(i))) {
+      let j = i;
+      while (j < s.length && isAsciiWhitespaceCode(s.charCodeAt(j))) j++;
+      if (j < s.length && s[j] === ".") {
+        i = j;
+        continue;
+      }
+      out += s.slice(i, j);
+      i = j;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+function rewriteAnnotationLineInText(
+  src: string,
+  newPointsCore: string,
+  colorCore: string,
+  defaultLineAnnotation: string,
+  annCall: { startIndex: number; openParenIndex: number },
+): string | null {
+  const annContentStart = annCall.openParenIndex + 1;
+  const annEndIndex = findMatchingParen(src, annContentStart);
+  if (annEndIndex === -1) return null;
+
+  let annotationContent = src.substring(annContentStart, annEndIndex);
+  const contentMasked = maskModelicaCommentsAndStrings(annotationContent);
+  let updatedLine = defaultLineAnnotation;
+
+  const lineCall = findKeywordCallOpenParen(contentMasked, "Line");
+  if (lineCall) {
+    const lineStart = lineCall.startIndex;
+    const lineInner = lineCall.openParenIndex + 1;
+    const lineEnd = findMatchingParen(annotationContent, lineInner);
+    if (lineEnd !== -1) {
+      const existingLine = annotationContent.substring(lineStart, lineEnd + 1);
+      updatedLine = updateLineAnnotationText(existingLine, newPointsCore, colorCore);
+      const before = annotationContent.substring(0, lineStart);
+      const after = annotationContent.substring(lineEnd + 1);
+      if (before.trimEnd().endsWith(",")) {
+        annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
+      } else if (after.trimStart().startsWith(",")) {
+        annotationContent = before + after.trimStart().slice(1).trimStart();
+      } else {
+        annotationContent = before + after;
+      }
+    }
+  }
+
+  const trimmed = annotationContent.trim();
+  const separator = trimmed.length > 0 ? ", " : "";
+  return src.substring(0, annContentStart) + trimmed + separator + updatedLine + src.substring(annEndIndex);
+}
+
+function matchesModificationArgHead(headSlice: string, paramName: string): boolean {
+  let pos = 0;
+  const len = headSlice.length;
+  while (pos < len) {
+    while (pos < len && isAsciiWhitespaceCode(headSlice.charCodeAt(pos))) pos++;
+    if (
+      headSlice.startsWith("each", pos) &&
+      (pos + 4 === len || isAsciiWhitespaceCode(headSlice.charCodeAt(pos + 4)))
+    ) {
+      pos += 4;
+      continue;
+    }
+    if (
+      headSlice.startsWith("final", pos) &&
+      (pos + 5 === len || isAsciiWhitespaceCode(headSlice.charCodeAt(pos + 5)))
+    ) {
+      pos += 5;
+      continue;
+    }
+    break;
+  }
+  if (!headSlice.startsWith(paramName, pos)) return false;
+  const end = pos + paramName.length;
+  if (end === len) return true;
+  const ch = headSlice[end]!;
+  return isAsciiWhitespaceCode(headSlice.charCodeAt(end)) || ch === "=" || ch === "(" || ch === "[";
+}
+
 function findDescendantModification(node: any, name: string): any {
   if (!node) return null;
   const isModificationNode =
@@ -43,9 +172,14 @@ function findDescendantModification(node: any, name: string): any {
     (typeof (Cst as any).kind === "function" &&
       ((Cst as any).kind(node) === "element_modification" || (Cst as any).kind(node) === "argument"));
 
-  const nameRegex = new RegExp(`^${name}(?:[\\s(=]|$)`);
+  const trimmedNodeText = node.text?.trimStart() ?? "";
+  const boundaryChar = trimmedNodeText.charCodeAt(name.length);
   const matchesName =
-    nameRegex.test(node.text?.trimStart() ?? "") ||
+    (trimmedNodeText.startsWith(name) &&
+      (trimmedNodeText.length === name.length ||
+        isAsciiWhitespaceCode(boundaryChar) ||
+        boundaryChar === 40 || // '('
+        boundaryChar === 61)) || // '='
     node.children?.some(
       (c: any) => (Cst.Identifier.is(c) || c.type === "identifier" || c.name === name) && c.text?.trim() === name,
     );
@@ -185,15 +319,15 @@ function updateLineAnnotationText(
     return `Line(${newPointsCore}, ${fallbackColorCore})`;
   }
   const trimmed = existingLineText.trim();
-  const lineMatch = trimmed.match(/^Line\s*\(/);
-  if (!lineMatch || !trimmed.endsWith(")")) {
+  const lineCall = findKeywordCallOpenParen(trimmed, "Line");
+  if (!lineCall || lineCall.startIndex !== 0 || !trimmed.endsWith(")")) {
     return `Line(${newPointsCore}, ${fallbackColorCore})`;
   }
 
-  const pointsMatch = trimmed.match(/\bpoints\s*=\s*\{/);
-  if (pointsMatch && pointsMatch.index !== undefined) {
-    const pStart = pointsMatch.index;
-    const openBraceIdx = pStart + pointsMatch[0].length - 1;
+  const pointsAssign = findKeywordBraceAssignmentStart(trimmed, "points");
+  if (pointsAssign) {
+    const pStart = pointsAssign.startIndex;
+    const openBraceIdx = pointsAssign.openBraceIndex;
     let depth = 0;
     let pEnd = -1;
     for (let i = openBraceIdx; i < trimmed.length; i++) {
@@ -211,7 +345,7 @@ function updateLineAnnotationText(
     }
   }
 
-  const innerStart = lineMatch[0].length;
+  const innerStart = lineCall.openParenIndex + 1;
   const innerContent = trimmed.slice(innerStart, -1).trim();
   if (innerContent.length === 0) {
     return `Line(${newPointsCore}, ${fallbackColorCore})`;
@@ -356,10 +490,10 @@ function applyScannedPlacementEdit(
     const annInnerStart = scannedComp.annotationOpenParenOffset + 1;
     const annClose = scannedComp.annotationCloseParenOffset;
     const maskedInner = maskedText.slice(annInnerStart, annClose);
-    const plMatch = maskedInner.match(/\bPlacement\s*\(/);
-    if (plMatch && plMatch.index !== undefined) {
-      const plStartOff = annInnerStart + plMatch.index;
-      const plOpenParen = plStartOff + plMatch[0].length - 1;
+    const plCall = findKeywordCallOpenParen(maskedInner, "Placement");
+    if (plCall) {
+      const plStartOff = annInnerStart + plCall.startIndex;
+      const plOpenParen = annInnerStart + plCall.openParenIndex;
       const plCloseParen = findBalancedClose(maskedText, plOpenParen, annClose);
       if (plCloseParen !== -1) {
         return TextEdit.replace(
@@ -414,8 +548,7 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
   if (compRange) {
     const { startLine, startCol, endLine, endCol } = compRange;
     const text = getTextInRange(lines, startLine, startCol, endLine, endCol);
-    const escName = item.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const hasExactIdentifier = new RegExp(`\\b${escName}\\b`).test(maskModelicaCommentsAndStrings(text));
+    const hasExactIdentifier = containsWholeWordOutsideStrings(maskModelicaCommentsAndStrings(text), item.name);
 
     if (hasExactIdentifier) {
       const annotationClause = getAnnotationClauseNode(abstractNode);
@@ -460,7 +593,10 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
             const cmSlice = cmRange
               ? getTextInRange(lines, cmRange.startLine, cmRange.startCol, cmRange.endLine, cmRange.endCol)
               : "";
-            if (cmSlice.startsWith("(") && !/\bPlacement\s*\(/.test(maskModelicaCommentsAndStrings(cmSlice))) {
+            if (
+              cmSlice.startsWith("(") &&
+              !findKeywordCallOpenParen(maskModelicaCommentsAndStrings(cmSlice), "Placement")
+            ) {
               const patchRes = CstUnparser.patchAndUnparse({
                 target: classModNode,
                 insertChildren: [
@@ -533,7 +669,7 @@ function getPlacementEditIfMissing(
     const compRange = getNodeRange(abstractNode);
     if (compRange) {
       const text = getTextInRange(lines, compRange.startLine, compRange.startCol, compRange.endLine, compRange.endCol);
-      if (/\bPlacement\s*\(/.test(maskModelicaCommentsAndStrings(text))) return null;
+      if (findKeywordCallOpenParen(maskModelicaCommentsAndStrings(text), "Placement")) return null;
     }
   }
 
@@ -550,7 +686,7 @@ function getPlacementEditIfMissing(
       scannedComp.annotationOpenParenOffset + 1,
       scannedComp.annotationCloseParenOffset,
     );
-    if (/\bPlacement\s*\(/.test(maskedInner)) return null;
+    if (findKeywordCallOpenParen(maskedInner, "Placement")) return null;
   }
 
   // Component lacks Placement — add one using the current diagram position
@@ -714,8 +850,8 @@ function findBestConnectMatch<T>(
 
 function verifyConnectSliceMatches(slice: string, source: string, target: string): boolean {
   const masked = maskModelicaCommentsAndStrings(slice);
-  if (!/\bconnect\s*\(/.test(masked)) return false;
-  const norm = slice.replace(/\s*\.\s*/g, ".");
+  if (!findKeywordCallOpenParen(masked, "connect")) return false;
+  const norm = stripWhitespaceAroundDots(slice);
   return norm.includes(source) && norm.includes(target);
 }
 
@@ -800,15 +936,33 @@ export function computeComponentsDelete(
         // Multi-declarator clause (e.g. `Resistor R1, R2;`): remove only this declarator + adjacent comma!
         let delStart = comp.identStartOffset;
         let delEnd = comp.declEndOffset;
-        const after = layout.maskedText.slice(delEnd, comp.clauseEndOffset);
-        const trailingComma = after.match(/^\s*,\s*/);
-        if (trailingComma) {
-          delEnd += trailingComma[0].length;
+        let scanEnd = delEnd;
+        while (scanEnd < comp.clauseEndOffset && isAsciiWhitespaceCode(layout.maskedText.charCodeAt(scanEnd))) {
+          scanEnd++;
+        }
+        if (scanEnd < comp.clauseEndOffset && layout.maskedText[scanEnd] === ",") {
+          scanEnd++;
+          while (scanEnd < comp.clauseEndOffset && isAsciiWhitespaceCode(layout.maskedText.charCodeAt(scanEnd))) {
+            scanEnd++;
+          }
+          delEnd = scanEnd;
         } else {
-          const before = layout.maskedText.slice(comp.clauseStartOffset, delStart);
-          const leadingComma = before.match(/\s*,\s*$/);
-          if (leadingComma) {
-            delStart -= leadingComma[0].length;
+          let scanStart = delStart;
+          while (
+            scanStart > comp.clauseStartOffset &&
+            isAsciiWhitespaceCode(layout.maskedText.charCodeAt(scanStart - 1))
+          ) {
+            scanStart--;
+          }
+          if (scanStart > comp.clauseStartOffset && layout.maskedText[scanStart - 1] === ",") {
+            scanStart--;
+            while (
+              scanStart > comp.clauseStartOffset &&
+              isAsciiWhitespaceCode(layout.maskedText.charCodeAt(scanStart - 1))
+            ) {
+              scanStart--;
+            }
+            delStart = scanStart;
           }
         }
         const sPos = offsetToPosition(layout.lineStarts, delStart);
@@ -866,10 +1020,10 @@ function applyScannedConnectPointEdit(
     const annInnerStart = scannedConn.annotationOpenParenOffset + 1;
     const annClose = scannedConn.annotationCloseParenOffset;
     const maskedInner = maskedText.slice(annInnerStart, annClose);
-    const lnMatch = maskedInner.match(/\bLine\s*\(/);
-    if (lnMatch && lnMatch.index !== undefined) {
-      const lnStartOff = annInnerStart + lnMatch.index;
-      const lnOpenParen = lnStartOff + lnMatch[0].length - 1;
+    const lnCall = findKeywordCallOpenParen(maskedInner, "Line");
+    if (lnCall) {
+      const lnStartOff = annInnerStart + lnCall.startIndex;
+      const lnOpenParen = annInnerStart + lnCall.openParenIndex;
       const lnCloseParen = findBalancedClose(maskedText, lnOpenParen, annClose);
       if (lnCloseParen !== -1) {
         const existingLine = docText.slice(lnStartOff, lnCloseParen + 1);
@@ -989,7 +1143,10 @@ export function computeEdgePointEdits(
                 const cmSlice = cmRange
                   ? getTextInRange(lines, cmRange.startLine, cmRange.startCol, cmRange.endLine, cmRange.endCol)
                   : "";
-                if (cmSlice.startsWith("(") && !/\bLine\s*\(/.test(maskModelicaCommentsAndStrings(cmSlice))) {
+                if (
+                  cmSlice.startsWith("(") &&
+                  !findKeywordCallOpenParen(maskModelicaCommentsAndStrings(cmSlice), "Line")
+                ) {
                   const patchRes = CstUnparser.patchAndUnparse({
                     target: classModNode,
                     insertChildren: [
@@ -1031,45 +1188,17 @@ export function computeEdgePointEdits(
               annRangeInfo.endLine,
               annRangeInfo.endCol,
             );
-            const annMasked = maskModelicaCommentsAndStrings(annText);
-            const annotationMatch = annMasked.match(/\bannotation\s*\(/);
-            if (annotationMatch && annotationMatch.index !== undefined) {
-              const annStartIndex = annotationMatch.index;
-              const annContentStart = annStartIndex + annotationMatch[0].length;
-              const annEndIndex = findMatchingParen(annText, annContentStart);
-              if (annEndIndex !== -1) {
-                let annotationContent = annText.substring(annContentStart, annEndIndex);
-                const contentMasked = maskModelicaCommentsAndStrings(annotationContent);
-                let updatedLine = defaultLineAnnotation;
-
-                const lineMatch = contentMasked.match(/\bLine\s*\(/);
-                if (lineMatch && lineMatch.index !== undefined) {
-                  const lineStart = lineMatch.index;
-                  const lineInner = lineStart + lineMatch[0].length;
-                  const lineEnd = findMatchingParen(annotationContent, lineInner);
-                  if (lineEnd !== -1) {
-                    const existingLine = annotationContent.substring(lineStart, lineEnd + 1);
-                    updatedLine = updateLineAnnotationText(existingLine, newPointsCore, colorCore);
-                    const before = annotationContent.substring(0, lineStart);
-                    const after = annotationContent.substring(lineEnd + 1);
-                    if (before.trimEnd().endsWith(",")) {
-                      annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
-                    } else if (after.trimStart().startsWith(",")) {
-                      annotationContent = before + after.trimStart().slice(1).trimStart();
-                    } else {
-                      annotationContent = before + after;
-                    }
-                  }
-                }
-
-                const trimmed = annotationContent.trim();
-                const separator = trimmed.length > 0 ? ", " : "";
-                newText =
-                  annText.substring(0, annContentStart) +
-                  trimmed +
-                  separator +
-                  updatedLine +
-                  annText.substring(annEndIndex);
+            const annCall = findKeywordCallOpenParen(maskModelicaCommentsAndStrings(annText), "annotation");
+            if (annCall) {
+              const rewritten = rewriteAnnotationLineInText(
+                annText,
+                newPointsCore,
+                colorCore,
+                defaultLineAnnotation,
+                annCall,
+              );
+              if (rewritten !== null) {
+                newText = rewritten;
                 if (newText !== annText) {
                   edits.push(TextEdit.replace(annRange, newText));
                 }
@@ -1077,56 +1206,33 @@ export function computeEdgePointEdits(
               }
             }
           }
-        } else if (/\bannotation\s*\(/.test(maskModelicaCommentsAndStrings(text))) {
+        } else {
           const textMasked = maskModelicaCommentsAndStrings(text);
-          const annotationMatch = textMasked.match(/\bannotation\s*\(/);
-          if (annotationMatch && annotationMatch.index !== undefined) {
-            const annStartIndex = annotationMatch.index;
-            const annContentStart = annStartIndex + annotationMatch[0].length;
-            const annEndIndex = findMatchingParen(text, annContentStart);
-            if (annEndIndex !== -1) {
-              let annotationContent = text.substring(annContentStart, annEndIndex);
-              const contentMasked = maskModelicaCommentsAndStrings(annotationContent);
-              let updatedLine = defaultLineAnnotation;
-
-              const lineMatch = contentMasked.match(/\bLine\s*\(/);
-              if (lineMatch && lineMatch.index !== undefined) {
-                const lineStart = lineMatch.index;
-                const lineInner = lineStart + lineMatch[0].length;
-                const lineEnd = findMatchingParen(annotationContent, lineInner);
-                if (lineEnd !== -1) {
-                  const existingLine = annotationContent.substring(lineStart, lineEnd + 1);
-                  updatedLine = updateLineAnnotationText(existingLine, newPointsCore, colorCore);
-                  const before = annotationContent.substring(0, lineStart);
-                  const after = annotationContent.substring(lineEnd + 1);
-                  if (before.trimEnd().endsWith(",")) {
-                    annotationContent = before.trimEnd().slice(0, -1).trimEnd() + after;
-                  } else if (after.trimStart().startsWith(",")) {
-                    annotationContent = before + after.trimStart().slice(1).trimStart();
-                  } else {
-                    annotationContent = before + after;
-                  }
-                }
-              }
-
-              const trimmed = annotationContent.trim();
-              const separator = trimmed.length > 0 ? ", " : "";
-              newText =
-                text.substring(0, annContentStart) + trimmed + separator + updatedLine + text.substring(annEndIndex);
+          const annCall = findKeywordCallOpenParen(textMasked, "annotation");
+          if (annCall) {
+            const rewritten = rewriteAnnotationLineInText(
+              text,
+              newPointsCore,
+              colorCore,
+              defaultLineAnnotation,
+              annCall,
+            );
+            if (rewritten !== null) {
+              newText = rewritten;
               if (newText !== text) {
                 edits.push(TextEdit.replace(range, newText));
               }
               handledViaCst = true;
             }
+          } else {
+            const semiIndex = findStatementSemicolon(text);
+            const insert = ` annotation(${defaultLineAnnotation})`;
+            newText = semiIndex !== -1 ? text.slice(0, semiIndex) + insert + text.slice(semiIndex) : text + insert;
+            if (newText !== text) {
+              edits.push(TextEdit.replace(range, newText));
+            }
+            handledViaCst = true;
           }
-        } else {
-          const semiIndex = findStatementSemicolon(text);
-          const insert = ` annotation(${defaultLineAnnotation})`;
-          newText = semiIndex !== -1 ? text.slice(0, semiIndex) + insert + text.slice(semiIndex) : text + insert;
-          if (newText !== text) {
-            edits.push(TextEdit.replace(range, newText));
-          }
-          handledViaCst = true;
         }
       }
     }
@@ -1322,8 +1428,10 @@ function makeDeleteRange(
   }
 
   // If followed immediately by a statement semicolon on the same line, include the semicolon in the deletion
-  const semiMatch = rawSuffix.match(/^\s*;/);
-  const adjustedEndCol = semiMatch ? endCol + semiMatch[0].length : endCol;
+  let semiOffset = 0;
+  while (semiOffset < rawSuffix.length && isAsciiWhitespaceCode(rawSuffix.charCodeAt(semiOffset))) semiOffset++;
+  const adjustedEndCol =
+    semiOffset < rawSuffix.length && rawSuffix[semiOffset] === ";" ? endCol + semiOffset + 1 : endCol;
 
   return TextEdit.del(Range.create(startLine, startCol, endLine, adjustedEndCol));
 }
@@ -1435,18 +1543,20 @@ export function computeNameEdit(
       // Also update all connect(oldName.port, ...) / connect(oldName, ...) references in the class!
       const replaceEndpointPrefix = (refStart: number, refEnd: number) => {
         const rawRef = effectiveDocText.slice(refStart, refEnd);
-        const escOld = oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const m = rawRef.match(new RegExp(`^(${escOld})(?=\\s*(?:\\.|\\[|$))`));
-        if (m) {
-          edits.push(
-            TextEdit.replace(
-              Range.create(
-                offsetToPosition(layout.lineStarts, refStart),
-                offsetToPosition(layout.lineStarts, refStart + m[1]!.length),
+        if (rawRef.startsWith(oldName)) {
+          let after = oldName.length;
+          while (after < rawRef.length && isAsciiWhitespaceCode(rawRef.charCodeAt(after))) after++;
+          if (after === rawRef.length || rawRef[after] === "." || rawRef[after] === "[") {
+            edits.push(
+              TextEdit.replace(
+                Range.create(
+                  offsetToPosition(layout.lineStarts, refStart),
+                  offsetToPosition(layout.lineStarts, refStart + oldName.length),
+                ),
+                newName,
               ),
-              newName,
-            ),
-          );
+            );
+          }
         }
       };
 
@@ -1508,7 +1618,7 @@ export function computeDescriptionEdit(
   componentName: string,
   newDescription: string,
 ): TextEdit[] {
-  const escapedDescription = newDescription.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const escapedDescription = newDescription.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
   const component = Array.from(classInstance?.components ?? []).find((c: any) => c.name === componentName);
 
   if (component) {
@@ -1738,10 +1848,9 @@ function computeScannedParameterEdit(
     const innerStart = scannedComp.modOpenParenOffset + 1;
     const innerEnd = scannedComp.modCloseParenOffset;
     const segments = splitTopLevelModificationSegments(docText, maskedText, innerStart, innerEnd);
-    const escParam = parameterName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const argHeadRegex = new RegExp(`^(?:(?:each|final|redeclare|replaceable)\\s+)*${escParam}\\s*(?:=|\\(|$)`);
-
-    const argIndex = segments.findIndex((seg) => argHeadRegex.test(maskedText.slice(seg.trimmedStart, seg.trimmedEnd)));
+    const argIndex = segments.findIndex((seg) =>
+      matchesModificationArgHead(maskedText.slice(seg.trimmedStart, seg.trimmedEnd), parameterName),
+    );
 
     if (argIndex !== -1) {
       const seg = segments[argIndex]!;
@@ -1779,7 +1888,7 @@ function computeScannedParameterEdit(
 
       if (eqOffset !== -1) {
         const afterEq = docText.slice(eqOffset + 1, seg.trimmedEnd);
-        const hasSpace = /^\s+/.test(afterEq);
+        const hasSpace = afterEq.length > 0 && isAsciiWhitespaceCode(afterEq.charCodeAt(0));
         const startPos = offsetToPosition(lineStarts, eqOffset);
         const endPos = offsetToPosition(lineStarts, seg.trimmedEnd);
         return [TextEdit.replace(Range.create(startPos, endPos), `${hasSpace ? "= " : "="}${newValue}`)];
@@ -1837,8 +1946,7 @@ export function computeParameterEdit(
         declRange.endLine,
         declRange.endCol,
       );
-      const escComp = componentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      if (!new RegExp(`\\b${escComp}\\b`).test(actualSlice)) {
+      if (!containsWholeWordOutsideStrings(actualSlice, componentName)) {
         return computeScannedParameterEdit(docText!, classInstance, componentName, parameterName, newValue);
       }
     }
@@ -1901,7 +2009,9 @@ export function computeParameterEdit(
 
       // Update existing argument value
       if (existingArg.valueModNode) {
-        const hasSpaceAfterEq = /^=\s+/.test(existingArg.valueModNode.text || "");
+        const modStr = existingArg.valueModNode.text || "";
+        const hasSpaceAfterEq =
+          modStr.startsWith("=") && modStr.length > 1 && isAsciiWhitespaceCode(modStr.charCodeAt(1));
         const newModText = hasSpaceAfterEq ? `= ${newValue}` : `=${newValue}`;
         const patchRes = CstUnparser.patchAndUnparse({
           target: existingArg.valueModNode,
@@ -2224,19 +2334,19 @@ export function computeCoordinateSystemEdits(
       const annInnerStart = ca.openParenOffset + 1;
       const annClose = ca.closeParenOffset;
       const maskedAnnInner = maskedText.slice(annInnerStart, annClose);
-      const diagramMatch = maskedAnnInner.match(/\bDiagram\s*\(/);
-      if (!diagramMatch || diagramMatch.index === undefined) continue;
+      const diagramCall = findKeywordCallOpenParen(maskedAnnInner, "Diagram");
+      if (!diagramCall) continue;
 
-      const diagOpenOffset = annInnerStart + diagramMatch.index + diagramMatch[0].length - 1;
+      const diagOpenOffset = annInnerStart + diagramCall.openParenIndex;
       const diagCloseOffset = findBalancedClose(maskedText, diagOpenOffset, annClose);
       if (diagCloseOffset === -1) continue;
 
       const diagInnerStart = diagOpenOffset + 1;
       const maskedDiagInner = maskedText.slice(diagInnerStart, diagCloseOffset);
-      const csMatch = maskedDiagInner.match(/\bcoordinateSystem\s*\(/);
-      if (csMatch && csMatch.index !== undefined) {
-        const csStartOffset = diagInnerStart + csMatch.index;
-        const csOpenOffset = csStartOffset + csMatch[0].length - 1;
+      const csCall = findKeywordCallOpenParen(maskedDiagInner, "coordinateSystem");
+      if (csCall) {
+        const csStartOffset = diagInnerStart + csCall.startIndex;
+        const csOpenOffset = diagInnerStart + csCall.openParenIndex;
         const csCloseOffset = findBalancedClose(maskedText, csOpenOffset, diagCloseOffset);
         if (csCloseOffset !== -1) {
           const startPos = offsetToPosition(lineStarts, csStartOffset);

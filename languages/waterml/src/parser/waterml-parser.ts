@@ -7,6 +7,7 @@
  * (compliant with OGC 12-031r4, WMO 1083, USGS NWIS, and Copernicus EFAS/GloFAS).
  */
 
+import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
 import type {
   WaterInterpolationType,
   WaterMlDocument,
@@ -15,16 +16,46 @@ import type {
   WaterTimeSeries,
 } from "../types.js";
 
-/** Helper to parse attributes on an XML tag */
-function parseXmlAttrs(attrString: string): Record<string, string> {
-  const attrs: Record<string, string> = {};
-  const attrRegex = /([a-zA-Z0-9_:-]+)\s*=\s*["']([^"']*)["']/g;
-  let match: RegExpExecArray | null;
-  while ((match = attrRegex.exec(attrString)) !== null) {
-    const key = match[1]!;
-    attrs[key] = match[2]!;
+function localName(name: string): string {
+  const idx = name.indexOf(":");
+  return idx >= 0 ? name.slice(idx + 1) : name;
+}
+
+function matchTag(el: XmlElement, target: string): boolean {
+  const local = localName(el.name);
+  return local === target || local.toLowerCase() === target.toLowerCase();
+}
+
+function getAttr(el: XmlElement, name: string): string | undefined {
+  const exact = el.attributes.find((a) => a.name === name);
+  if (exact) return exact.value;
+  const targetLocal = localName(name);
+  return el.attributes.find((a) => localName(a.name) === targetLocal)?.value;
+}
+
+function getExactAttr(el: XmlElement, name: string): string | undefined {
+  return el.attributes.find((a) => a.name === name)?.value;
+}
+
+function findFirst(root: XmlElement, tagName: string): XmlElement | undefined {
+  if (matchTag(root, tagName)) return root;
+  for (const child of root.children) {
+    const found = findFirst(child, tagName);
+    if (found) return found;
   }
-  return attrs;
+  return undefined;
+}
+
+function findDescendants(root: XmlElement, tagName: string): XmlElement[] {
+  const out: XmlElement[] = [];
+  if (matchTag(root, tagName)) {
+    out.push(root);
+    return out;
+  }
+  for (const child of root.children) {
+    out.push(...findDescendants(child, tagName));
+  }
+  return out;
 }
 
 /**
@@ -43,29 +74,32 @@ export function parseWaterMl(content: string): WaterMlDocument {
  */
 export function parseWaterMlXml(xmlText: string): WaterMlDocument {
   let docId = "WaterML2_Collection";
-  const colMatch = /<[a-zA-Z0-9_:-]*Collection\b([^>]*)>/i.exec(xmlText);
-  if (colMatch && colMatch[1]) {
-    const attrs = parseXmlAttrs(colMatch[1]);
-    docId = attrs["gml:id"] || attrs["id"] || docId;
-  }
-
   const timeSeriesList: WaterTimeSeries[] = [];
 
-  // Find all OM_Observation blocks
-  const obsRegex = /<[a-zA-Z0-9_:-]*OM_Observation\b([^>]*)>([\s\S]*?)<\/[a-zA-Z0-9_:-]*OM_Observation>/gi;
-  let obsMatch: RegExpExecArray | null;
+  const xmlDoc = parseXml(xmlText);
+  const root = xmlDoc.root;
+  if (!root) {
+    return {
+      id: docId,
+      generationDate: new Date(),
+      timeSeriesList,
+    };
+  }
 
-  while ((obsMatch = obsRegex.exec(xmlText)) !== null) {
-    const obsAttrs = parseXmlAttrs(obsMatch[1] || "");
-    const obsContent = obsMatch[2] || "";
-    const seriesId = obsAttrs["gml:id"] || `TS_${timeSeriesList.length + 1}`;
+  const colEl = findFirst(root, "Collection");
+  if (colEl) {
+    docId = getExactAttr(colEl, "gml:id") || getAttr(colEl, "id") || docId;
+  }
+
+  // Find all OM_Observation blocks
+  for (const obsEl of findDescendants(root, "OM_Observation")) {
+    const seriesId = getExactAttr(obsEl, "gml:id") || `TS_${timeSeriesList.length + 1}`;
 
     // Observed property
     let observedProperty = "Discharge";
-    const propMatch = /<[a-zA-Z0-9_:-]*observedProperty\b([^>]*)\/?>/i.exec(obsContent);
-    if (propMatch && propMatch[1]) {
-      const pAttrs = parseXmlAttrs(propMatch[1]);
-      observedProperty = pAttrs["xlink:title"] || pAttrs["title"] || "Discharge";
+    const propEl = findFirst(obsEl, "observedProperty");
+    if (propEl) {
+      observedProperty = getExactAttr(propEl, "xlink:title") || getAttr(propEl, "title") || "Discharge";
     }
 
     // Monitoring Point
@@ -75,23 +109,22 @@ export function parseWaterMlXml(xmlText: string): WaterMlDocument {
     let longitude: number | undefined;
     let elevationM: number | undefined;
 
-    const mpMatch = /<[a-zA-Z0-9_:-]*MonitoringPoint\b([^>]*)>([\s\S]*?)<\/[a-zA-Z0-9_:-]*MonitoringPoint>/i.exec(
-      obsContent,
-    );
-    if (mpMatch) {
-      const mpAttrs = parseXmlAttrs(mpMatch[1] || "");
-      const mpContent = mpMatch[2] || "";
-      stationId = mpAttrs["gml:id"] || stationId;
+    const mpEl = findFirst(obsEl, "MonitoringPoint");
+    if (mpEl) {
+      stationId = getExactAttr(mpEl, "gml:id") || stationId;
 
-      const idMatch = /<[a-zA-Z0-9_:-]*identifier\b[^>]*>([^<]*)<\/[a-zA-Z0-9_:-]*identifier>/i.exec(mpContent);
-      if (idMatch && idMatch[1]) stationId = idMatch[1].trim();
+      const idEl = findFirst(mpEl, "identifier");
+      const idText = idEl?.text.trim();
+      if (idText) stationId = idText;
 
-      const nameMatch = /<[a-zA-Z0-9_:-]*name\b[^>]*>([^<]*)<\/[a-zA-Z0-9_:-]*name>/i.exec(mpContent);
-      if (nameMatch && nameMatch[1]) stationName = nameMatch[1].trim();
+      const nameEl = findFirst(mpEl, "name");
+      const nameText = nameEl?.text.trim();
+      if (nameText) stationName = nameText;
 
-      const posMatch = /<[a-zA-Z0-9_:-]*pos\b[^>]*>([^<]*)<\/[a-zA-Z0-9_:-]*pos>/i.exec(mpContent);
-      if (posMatch && posMatch[1]) {
-        const parts = posMatch[1].trim().split(/\s+/);
+      const posEl = findFirst(mpEl, "pos");
+      const posText = posEl?.text.trim();
+      if (posText) {
+        const parts = posText.split(/\s+/);
         if (parts.length >= 2) {
           latitude = parseFloat(parts[0]!);
           longitude = parseFloat(parts[1]!);
@@ -104,16 +137,14 @@ export function parseWaterMlXml(xmlText: string): WaterMlDocument {
     let unit = "m3/s";
     let interpolationType: WaterInterpolationType = "Instantaneous";
 
-    const uomMatch = /<[a-zA-Z0-9_:-]*uom\b([^>]*)\/?>/i.exec(obsContent);
-    if (uomMatch && uomMatch[1]) {
-      const uAttrs = parseXmlAttrs(uomMatch[1]);
-      unit = uAttrs["code"] || uAttrs["uom"] || unit;
+    const uomEl = findFirst(obsEl, "uom");
+    if (uomEl) {
+      unit = getAttr(uomEl, "code") || getAttr(uomEl, "uom") || unit;
     }
 
-    const interMatch = /<[a-zA-Z0-9_:-]*interpolationType\b([^>]*)\/?>/i.exec(obsContent);
-    if (interMatch && interMatch[1]) {
-      const iAttrs = parseXmlAttrs(interMatch[1]);
-      const rawType = iAttrs["xlink:title"] || iAttrs["title"] || "Instantaneous";
+    const interEl = findFirst(obsEl, "interpolationType");
+    if (interEl) {
+      const rawType = getExactAttr(interEl, "xlink:title") || getAttr(interEl, "title") || "Instantaneous";
       if (rawType.includes("Continuous")) interpolationType = "Continuous";
       else if (rawType.includes("Total")) interpolationType = "Total";
       else if (rawType.includes("Average")) interpolationType = "Average";
@@ -121,24 +152,18 @@ export function parseWaterMlXml(xmlText: string): WaterMlDocument {
 
     // Points: MeasurementTVP
     const points: WaterObservation[] = [];
-    const tvpRegex = /<[a-zA-Z0-9_:-]*MeasurementTVP\b[^>]*>([\s\S]*?)<\/[a-zA-Z0-9_:-]*MeasurementTVP>/gi;
-    let tvpMatch: RegExpExecArray | null;
+    for (const tvpEl of findDescendants(obsEl, "MeasurementTVP")) {
+      const timeText = findFirst(tvpEl, "time")?.text.trim();
+      const valText = findFirst(tvpEl, "value")?.text.trim();
 
-    while ((tvpMatch = tvpRegex.exec(obsContent)) !== null) {
-      const tvpContent = tvpMatch[1] || "";
-
-      const timeMatch = /<[a-zA-Z0-9_:-]*time\b[^>]*>([^<]*)<\/[a-zA-Z0-9_:-]*time>/i.exec(tvpContent);
-      const valMatch = /<[a-zA-Z0-9_:-]*value\b[^>]*>([^<]*)<\/[a-zA-Z0-9_:-]*value>/i.exec(tvpContent);
-
-      if (timeMatch && timeMatch[1] && valMatch && valMatch[1]) {
-        const time = new Date(timeMatch[1].trim());
-        const value = parseFloat(valMatch[1].trim());
+      if (timeText && valText) {
+        const time = new Date(timeText);
+        const value = parseFloat(valText);
 
         let quality: WaterQualityCode = "good";
-        const qualMatch = /<[a-zA-Z0-9_:-]*qualifier\b([^>]*)\/?>/i.exec(tvpContent);
-        if (qualMatch && qualMatch[1]) {
-          const qAttrs = parseXmlAttrs(qualMatch[1]);
-          const qVal = (qAttrs["xlink:title"] || qAttrs["title"] || "").toLowerCase();
+        const qualEl = findFirst(tvpEl, "qualifier");
+        if (qualEl) {
+          const qVal = (getExactAttr(qualEl, "xlink:title") || getAttr(qualEl, "title") || "").toLowerCase();
           if (qVal.includes("suspect")) quality = "suspect";
           else if (qVal.includes("estimate")) quality = "estimate";
           else if (qVal.includes("missing")) quality = "missing";

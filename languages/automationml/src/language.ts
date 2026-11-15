@@ -26,8 +26,10 @@ export const automationMLLanguage = language({
   },
   lsp: {
     fileExtensions: [".aml", ".caex"],
+    folding: ["Element", "COMMENT"],
+    outline: ["Element"],
   },
-  extras: () => [/[ \t\r\n]+/],
+  extras: ($) => [/[ \t\r\n]+/, $["COMMENT"]!, $["PROCESSING_INSTRUCTION"]!],
   rules: xmlRules,
 
   actions: [

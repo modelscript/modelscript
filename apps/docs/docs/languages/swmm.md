@@ -22,19 +22,39 @@ description: "@modelscript/swmm (languages/swmm) provides zero-regex parsing, 1D
 ### 1. 1D Saint-Venant Dynamic Wave Routing
 
 - Models open-channel and pressurized sewer hydraulics via the one-dimensional **Saint-Venant equations of unsteady flow**:
-  - **Conservation of Mass (Continuity)**:
+  - **Conservation of Mass (Continuity)** (balances local cross-sectional storage change and axial discharge gradient against lateral inflow):
     $$\frac{\partial A}{\partial t} + \frac{\partial Q}{\partial x} = q_{\text{lateral}}$$
-  - **Conservation of Momentum**:
+  - **Conservation of Momentum** (balances fluid acceleration and convective momentum flux against pressure/gravity head gradients and frictional resistance):
     $$\frac{\partial Q}{\partial t} + \frac{\partial}{\partial x} \left( \frac{Q^2}{A} \right) + g A \frac{\partial H}{\partial x} + g A S_f = 0$$
-    where $H = z + d$ is hydraulic head, $S_f$ is friction slope, and $S_0$ is conduit bed slope.
-- Uses **Manning's open-channel equation** for friction slope:
+- Uses **Manning's open-channel equation** to relate discharge to friction slope $S_f$ via conduit roughness and hydraulic radius:
   $$Q = \frac{k_m}{n} A R_h^{2/3} S_f^{1/2} \quad \implies \quad S_f = \frac{n^2 Q |Q|}{k_m^2 A^2 R_h^{4/3}}$$
-  where $n$ is Manning roughness, $A$ is flow cross-sectional area, and $R_h = A / P_{\text{wetted}}$ is hydraulic radius.
+
+  | Symbol               | Meaning                                                 | Units / Domain                                            |
+  | :------------------- | :------------------------------------------------------ | :-------------------------------------------------------- |
+  | $t, x$               | Time and longitudinal distance along conduit            | $\text{s}$, $\text{m}$                                    |
+  | $A$                  | Wetted cross-sectional flow area                        | $\text{m}^2$, $> 0$                                       |
+  | $Q$                  | Volumetric flow rate (discharge)                        | $\text{m}^3/\text{s}$                                     |
+  | $q_{\text{lateral}}$ | Lateral inflow per unit conduit length                  | $\text{m}^2/\text{s}$                                     |
+  | $g$                  | Gravitational acceleration ($9.81\text{ m/s}^2$)        | $\text{m/s}^2$                                            |
+  | $H$                  | Hydraulic head ($z + d$, invert elevation plus depth)   | $\text{m}$                                                |
+  | $S_f$                | Friction slope (energy grade line slope)                | dimensionless                                             |
+  | $n$                  | Manning roughness coefficient                           | $\text{s/m}^{1/3}$ (or US equiv.), $> 0$                  |
+  | $k_m$                | Unit conversion factor ($1.0$ SI, $1.486$ US customary) | $\text{m}^{1/3}/\text{s}$ (or $\text{ft}^{1/3}/\text{s}$) |
+  | $R_h$                | Hydraulic radius ($A / P_{\text{wetted}}$)              | $\text{m}$, $> 0$                                         |
 
 ### 2. Node & Link Hydraulic Structures
 
-- **Junctions & Storage Units**: Continuous water stage mass conservation:
+- **Junctions & Storage Units**: Enforces continuous water-surface elevation mass conservation at each node by balancing net link inflows, external runoff/dry-weather inflows, and surface flooding losses:
   $$A_{\text{node}} \frac{dH_i}{dt} = \sum Q_{\text{in}} - \sum Q_{\text{out}} + Q_{\text{inflow}} - Q_{\text{flood}}$$
+
+  | Symbol                          | Meaning                                              | Units / Domain                 |
+  | :------------------------------ | :--------------------------------------------------- | :----------------------------- |
+  | $A_{\text{node}}$               | Effective nodal surface plan area                    | $\text{m}^2$, $> 0$            |
+  | $H_i$                           | Hydraulic head (water surface elevation) at node $i$ | $\text{m}$                     |
+  | $Q_{\text{in}}, Q_{\text{out}}$ | Incoming and outgoing conduit/regulator flows        | $\text{m}^3/\text{s}$, $\ge 0$ |
+  | $Q_{\text{inflow}}$             | External subcatchment runoff and dry-weather inflow  | $\text{m}^3/\text{s}$, $\ge 0$ |
+  | $Q_{\text{flood}}$              | Surface ponding or street flooding overflow rate     | $\text{m}^3/\text{s}$, $\ge 0$ |
+
 - **Conduits**: Circular, rectangular, trapezoidal, and irregular natural river cross-sections with entrance/exit minor head loss coefficients.
 - **Outfalls**: Free, normal, tidal, and fixed water elevation boundary conditions.
 - **Regulators**: Orifices, transverse/side-flow weirs, and variable-speed lift pumps.

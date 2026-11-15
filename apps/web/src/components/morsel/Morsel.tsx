@@ -80,6 +80,9 @@ export interface MorselEditorProps {
   onActiveViewChange?: ((view: "diagram" | "simulation" | "3d" | "inspector" | "code" | "split") => void) | undefined;
   onParametersChange?: ((params: Record<string, number>) => void) | undefined;
   onSave?: ((code: string) => void) | undefined;
+  projectFiles?: Record<string, string> | undefined;
+  activeFileName?: string | undefined;
+  onUpdateProjectFile?: ((fileName: string, content: string) => void) | undefined;
 }
 
 const isSplit = (v: View) => v === View.SPLIT_COLUMNS || v === View.SPLIT_ROWS;
@@ -434,6 +437,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     localSimulationData,
     setLocalSimulationData,
     cadComponents,
+    gdtOverlay,
     vtkBuffer,
     editorValue,
     animationControllerRef,
@@ -464,6 +468,9 @@ export default function MorselEditor(props: MorselEditorProps) {
     initialSimulationVariables: props.initialSimulationVariables,
     initialStartTime: props.initialStartTime,
     initialStopTime: props.initialStopTime,
+    projectFiles: props.projectFiles,
+    activeFileName: props.activeFileName,
+    onUpdateProjectFile: props.onUpdateProjectFile,
   });
 
   const lastSimulatedTriggerRef = useRef(0);
@@ -1043,14 +1050,17 @@ export default function MorselEditor(props: MorselEditorProps) {
       setDrillDownPath([]);
       setDiagramType(nextInfo.diagramTypes?.[0]?.id ?? "diagram");
 
-      if (nextInfo.supports3d && !nextInfo.supportsDiagram) {
+      const keep3dView =
+        nextInfo.supports3d && (showCadView || props.initialVisualizerSubview === "3d" || props.initialView === "3d");
+      if ((nextInfo.supports3d && !nextInfo.supportsDiagram) || keep3dView) {
         setShowCadView(true);
         setShowResultsView(false);
+        setShowAnalysisView(false);
       } else if (nextInfo.supportsDiagram) {
         setShowCadView(false);
       }
 
-      const currentVal = editorRef.current?.getValue() ?? "";
+      const currentVal = editorRef.current?.getValue() || props.initialCode || "";
       const isDefaultOrEmpty =
         !currentVal.trim() ||
         currentVal === prevInfo.defaultCode ||
@@ -1061,6 +1071,7 @@ export default function MorselEditor(props: MorselEditorProps) {
         editorRef.current.setValue(nextCode);
       }
       setLastLoadedContent(nextCode);
+      lastSyncedCodeRef.current = nextCode;
       didOpen(nextUri, nextCode, nextInfo.id);
       const primary = nextInfo.id === "modelica" || !nextInfo.id ? extractPrimaryModelicaClassName(nextCode) : null;
       if (primary) {
@@ -1069,7 +1080,15 @@ export default function MorselEditor(props: MorselEditorProps) {
       setContextVersion((v) => v + 1);
       props.onDialectChange?.(nextInfo.id);
     },
-    [dialect, instanceDocPrefix, props.onDialectChange],
+    [
+      dialect,
+      instanceDocPrefix,
+      props.initialCode,
+      props.initialView,
+      props.initialVisualizerSubview,
+      props.onDialectChange,
+      showCadView,
+    ],
   );
 
   const [detectedDialectHint, setDetectedDialectHint] = useState<{
@@ -1155,8 +1174,10 @@ export default function MorselEditor(props: MorselEditorProps) {
   );
 
   useEffect(() => {
-    if (resolvedInitialDialect && resolvedInitialDialect !== dialect) {
-      handleSelectDialect(resolvedInitialDialect);
+    if (!resolvedInitialDialect) return;
+    const canonical = getLanguageInfo(resolvedInitialDialect).id;
+    if (canonical !== dialect) {
+      handleSelectDialect(canonical);
     }
   }, [resolvedInitialDialect, dialect, handleSelectDialect]);
 
@@ -1840,6 +1861,7 @@ export default function MorselEditor(props: MorselEditorProps) {
               showCadView={showCadView}
               setShowCadView={setShowCadView}
               cadComponents={cadComponents}
+              gdtOverlay={gdtOverlay}
               animationMode={animationMode}
               animationControllerRef={animationControllerRef}
               diagramEditorRef={diagramEditorRef}

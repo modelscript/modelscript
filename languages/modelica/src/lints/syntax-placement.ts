@@ -981,7 +981,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       // Disallow `connect_equation` nested inside any `when_equation` or `when_statement`
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(anc) == $.when_equation || db.ast.getType(anc) == $.when_statement) {
-          db.diagnostic(node);
+          db.diagnosticPrefix(7, node);
           return;
         }
       }
@@ -1002,7 +1002,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         if (db.ast.getType(anc) == $.equation_section) {
           const firstChild = db.ast.getFirstChild(anc);
           if (firstChild != 0 && db.ast.textEquals(firstChild, "initial")) {
-            db.diagnostic(node);
+            db.diagnosticPrefix(7, node);
             return;
           }
         }
@@ -1766,7 +1766,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
             }
           }
           if (!hasMod) {
-            db.diagnostic(node);
+            db.diagnosticAt(nameId != 0 ? nameId : node, node);
           }
         }
         break;
@@ -1791,7 +1791,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
           const type = db.ast.getType(anc);
           if (type == $.if_equation || type == $.if_statement) return;
         }
-        db.diagnostic(node);
+        db.diagnosticAt(name, node);
       }
     },
   },
@@ -1815,7 +1815,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
             if (varb == VARIABILITY_CONTINUOUS) {
               for (const conn of db.ast.getDescendants(anc, $.connect_equation)) {
                 if (conn === node) {
-                  db.diagnostic(node);
+                  db.diagnosticPrefix(7, node);
                 }
                 return;
               }
@@ -1996,7 +1996,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         }
       }
       if (isIllegal) {
-        db.diagnostic(node);
+        db.diagnosticPrefix(4, node);
       }
     },
   },
@@ -2032,7 +2032,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         }
       }
       if (!isInsideFunction) {
-        db.diagnostic(node);
+        db.diagnosticPrefix(6, node);
       }
     },
   },
@@ -2070,7 +2070,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         }
       }
       if (!isInsideLoop) {
-        db.diagnostic(node);
+        db.diagnosticPrefix(5, node);
       }
     },
   },

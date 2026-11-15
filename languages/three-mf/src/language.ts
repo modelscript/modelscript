@@ -8,7 +8,7 @@
  * topology verification, DAE lowering, and STEP AP242 / OpenSCAD projections.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, xmlRules } from "@modelscript/dsl";
 import { indexThreeMfFile } from "./indexing.js";
 import { lintThreeMfDocument } from "./lints/rules.js";
 import { parseThreeMf } from "./parser/index.js";
@@ -27,9 +27,12 @@ export const threeMfLanguage = language({
   lsp: {
     fileExtensions: [".3mf"],
   },
-  rules: {
-    Root: () => "three-mf",
+  extras: ($) => {
+    const comment = $["COMMENT"];
+    const pi = $["PROCESSING_INSTRUCTION"];
+    return comment && pi ? [/[ \t\r\n]+/, comment, pi] : [/[ \t\r\n]+/];
   },
+  rules: xmlRules,
 
   actions: [
     {

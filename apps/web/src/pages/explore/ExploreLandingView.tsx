@@ -7,6 +7,7 @@ import {
   HashIcon,
   LawIcon,
   MarkGithubIcon,
+  PackageIcon,
   RepoIcon,
   SearchIcon,
   StarIcon,

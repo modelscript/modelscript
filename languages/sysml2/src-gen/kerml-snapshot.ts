@@ -54,10 +54,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 605,
         "endOffset": 609
-      },
-      "isAbstract": {
-        "startOffset": 582,
-        "endOffset": 590
       }
     },
     "exports": [
@@ -89,10 +85,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 638,
         "endOffset": 645
-      },
-      "isAbstract": {
-        "startOffset": 615,
-        "endOffset": 623
       }
     },
     "exports": [
@@ -124,10 +116,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 674,
         "endOffset": 681
-      },
-      "isAbstract": {
-        "startOffset": 651,
-        "endOffset": 659
       }
     },
     "exports": [
@@ -159,10 +147,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 710,
         "endOffset": 716
-      },
-      "isAbstract": {
-        "startOffset": 687,
-        "endOffset": 695
       }
     },
     "exports": [
@@ -194,10 +178,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 745,
         "endOffset": 752
-      },
-      "isAbstract": {
-        "startOffset": 722,
-        "endOffset": 730
       },
       "shortName": {
         "startOffset": 756,
@@ -263,10 +243,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 792,
         "endOffset": 800
       },
-      "isAbstract": {
-        "startOffset": 769,
-        "endOffset": 777
-      },
       "shortName": {
         "startOffset": 804,
         "endOffset": 811
@@ -331,10 +307,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 840,
         "endOffset": 856
       },
-      "isAbstract": {
-        "startOffset": 817,
-        "endOffset": 825
-      },
       "shortName": {
         "startOffset": 860,
         "endOffset": 867
@@ -398,10 +370,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 896,
         "endOffset": 903
-      },
-      "isAbstract": {
-        "startOffset": 873,
-        "endOffset": 881
       }
     },
     "exports": [
@@ -433,10 +401,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 932,
         "endOffset": 940
-      },
-      "isAbstract": {
-        "startOffset": 909,
-        "endOffset": 917
       }
     },
     "exports": [
@@ -495,10 +459,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 982,
         "endOffset": 990
-      },
-      "isAbstract": {
-        "startOffset": 964,
-        "endOffset": 972
       }
     },
     "exports": [
@@ -530,10 +490,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 1014,
         "endOffset": 1021
-      },
-      "isAbstract": {
-        "startOffset": 996,
-        "endOffset": 1004
       },
       "shortName": {
         "startOffset": 1025,
@@ -599,10 +555,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 1057,
         "endOffset": 1064
       },
-      "isAbstract": {
-        "startOffset": 1039,
-        "endOffset": 1047
-      },
       "shortName": {
         "startOffset": 1068,
         "endOffset": 1075
@@ -666,10 +618,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 1099,
         "endOffset": 1103
-      },
-      "isAbstract": {
-        "startOffset": 1081,
-        "endOffset": 1089
       },
       "shortName": {
         "startOffset": 1107,
@@ -735,10 +683,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 1138,
         "endOffset": 1148
       },
-      "isAbstract": {
-        "startOffset": 1120,
-        "endOffset": 1128
-      },
       "shortName": {
         "startOffset": 1152,
         "endOffset": 1156
@@ -802,10 +746,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 1180,
         "endOffset": 1188
-      },
-      "isAbstract": {
-        "startOffset": 1162,
-        "endOffset": 1170
       },
       "shortName": {
         "startOffset": 1192,
@@ -871,10 +811,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 1226,
         "endOffset": 1231
       },
-      "isAbstract": {
-        "startOffset": 1208,
-        "endOffset": 1216
-      },
       "shortName": {
         "startOffset": 1235,
         "endOffset": 1245
@@ -938,10 +874,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 1269,
         "endOffset": 1278
-      },
-      "isAbstract": {
-        "startOffset": 1251,
-        "endOffset": 1259
       },
       "shortName": {
         "startOffset": 1282,
@@ -1007,10 +939,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 1311,
         "endOffset": 1319
       },
-      "isAbstract": {
-        "startOffset": 1293,
-        "endOffset": 1301
-      },
       "shortName": {
         "startOffset": 1323,
         "endOffset": 1328
@@ -1074,10 +1002,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 1352,
         "endOffset": 1362
-      },
-      "isAbstract": {
-        "startOffset": 1334,
-        "endOffset": 1342
       },
       "shortName": {
         "startOffset": 1366,
@@ -1143,10 +1067,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 1395,
         "endOffset": 1399
       },
-      "isAbstract": {
-        "startOffset": 1377,
-        "endOffset": 1385
-      },
       "shortName": {
         "startOffset": 1403,
         "endOffset": 1413
@@ -1210,10 +1130,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 1437,
         "endOffset": 1445
-      },
-      "isAbstract": {
-        "startOffset": 1419,
-        "endOffset": 1427
       },
       "shortName": {
         "startOffset": 1449,
@@ -1279,10 +1195,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 1483,
         "endOffset": 1487
       },
-      "isAbstract": {
-        "startOffset": 1465,
-        "endOffset": 1473
-      },
       "shortName": {
         "startOffset": 1491,
         "endOffset": 1503
@@ -1346,10 +1258,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 1527,
         "endOffset": 1539
-      },
-      "isAbstract": {
-        "startOffset": 1509,
-        "endOffset": 1517
       },
       "shortName": {
         "startOffset": 1543,
@@ -1415,10 +1323,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 1574,
         "endOffset": 1585
       },
-      "isAbstract": {
-        "startOffset": 1556,
-        "endOffset": 1564
-      },
       "shortName": {
         "startOffset": 1589,
         "endOffset": 1599
@@ -1482,10 +1386,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 1623,
         "endOffset": 1632
-      },
-      "isAbstract": {
-        "startOffset": 1605,
-        "endOffset": 1613
       },
       "shortName": {
         "startOffset": 1636,
@@ -1551,10 +1451,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 1667,
         "endOffset": 1676
       },
-      "isAbstract": {
-        "startOffset": 1649,
-        "endOffset": 1657
-      },
       "shortName": {
         "startOffset": 1680,
         "endOffset": 1687
@@ -1618,10 +1514,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 1711,
         "endOffset": 1719
-      },
-      "isAbstract": {
-        "startOffset": 1693,
-        "endOffset": 1701
       },
       "shortName": {
         "startOffset": 1723,
@@ -1742,10 +1634,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 1798,
         "endOffset": 1802
       },
-      "isAbstract": {
-        "startOffset": 1780,
-        "endOffset": 1788
-      },
       "shortName": {
         "startOffset": 1806,
         "endOffset": 1815
@@ -1809,10 +1697,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 1839,
         "endOffset": 1843
-      },
-      "isAbstract": {
-        "startOffset": 1821,
-        "endOffset": 1829
       },
       "shortName": {
         "startOffset": 1847,
@@ -1878,10 +1762,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 1880,
         "endOffset": 1884
       },
-      "isAbstract": {
-        "startOffset": 1862,
-        "endOffset": 1870
-      },
       "shortName": {
         "startOffset": 1888,
         "endOffset": 1895
@@ -1945,10 +1825,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 1921,
         "endOffset": 1927
-      },
-      "isAbstract": {
-        "startOffset": 1901,
-        "endOffset": 1909
       }
     },
     "exports": [
@@ -2005,10 +1881,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 1964,
         "endOffset": 1969
-      },
-      "isAbstract": {
-        "startOffset": 1945,
-        "endOffset": 1953
       }
     },
     "exports": [],
@@ -2063,10 +1935,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2011,
         "endOffset": 2021
-      },
-      "isAbstract": {
-        "startOffset": 1987,
-        "endOffset": 1995
       }
     },
     "exports": [
@@ -2123,10 +1991,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2057,
         "endOffset": 2068
-      },
-      "isAbstract": {
-        "startOffset": 2039,
-        "endOffset": 2047
       }
     },
     "exports": [
@@ -2183,10 +2047,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2111,
         "endOffset": 2122
-      },
-      "isAbstract": {
-        "startOffset": 2086,
-        "endOffset": 2094
       }
     },
     "exports": [
@@ -2298,10 +2158,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2206,
         "endOffset": 2216
-      },
-      "isAbstract": {
-        "startOffset": 2188,
-        "endOffset": 2196
       }
     },
     "exports": [
@@ -2333,10 +2189,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2240,
         "endOffset": 2244
-      },
-      "isAbstract": {
-        "startOffset": 2222,
-        "endOffset": 2230
       },
       "shortName": {
         "startOffset": 2248,
@@ -2402,10 +2254,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 2282,
         "endOffset": 2285
       },
-      "isAbstract": {
-        "startOffset": 2264,
-        "endOffset": 2272
-      },
       "shortName": {
         "startOffset": 2289,
         "endOffset": 2299
@@ -2469,10 +2317,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2323,
         "endOffset": 2326
-      },
-      "isAbstract": {
-        "startOffset": 2305,
-        "endOffset": 2313
       },
       "shortName": {
         "startOffset": 2330,
@@ -2538,10 +2382,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 2364,
         "endOffset": 2369
       },
-      "isAbstract": {
-        "startOffset": 2346,
-        "endOffset": 2354
-      },
       "shortName": {
         "startOffset": 2373,
         "endOffset": 2383
@@ -2605,10 +2445,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2407,
         "endOffset": 2410
-      },
-      "isAbstract": {
-        "startOffset": 2389,
-        "endOffset": 2397
       },
       "shortName": {
         "startOffset": 2414,
@@ -2700,10 +2536,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2471,
         "endOffset": 2482
-      },
-      "isAbstract": {
-        "startOffset": 2451,
-        "endOffset": 2459
       }
     },
     "exports": [
@@ -2735,10 +2567,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2508,
         "endOffset": 2517
-      },
-      "isAbstract": {
-        "startOffset": 2488,
-        "endOffset": 2496
       }
     },
     "exports": [
@@ -2795,10 +2623,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2558,
         "endOffset": 2570
-      },
-      "isAbstract": {
-        "startOffset": 2538,
-        "endOffset": 2546
       }
     },
     "exports": [
@@ -2855,10 +2679,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2611,
         "endOffset": 2619
-      },
-      "isAbstract": {
-        "startOffset": 2591,
-        "endOffset": 2599
       }
     },
     "exports": [
@@ -2915,10 +2735,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2660,
         "endOffset": 2668
-      },
-      "isAbstract": {
-        "startOffset": 2640,
-        "endOffset": 2648
       }
     },
     "exports": [
@@ -3030,10 +2846,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2751,
         "endOffset": 2759
-      },
-      "isAbstract": {
-        "startOffset": 2733,
-        "endOffset": 2741
       }
     },
     "exports": [
@@ -3065,10 +2877,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2783,
         "endOffset": 2787
-      },
-      "isAbstract": {
-        "startOffset": 2765,
-        "endOffset": 2773
       },
       "shortName": {
         "startOffset": 2791,
@@ -3133,10 +2941,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2823,
         "endOffset": 2830
-      },
-      "isAbstract": {
-        "startOffset": 2805,
-        "endOffset": 2813
       },
       "shortName": {
         "startOffset": 2834,
@@ -3228,10 +3032,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2894,
         "endOffset": 2905
-      },
-      "isAbstract": {
-        "startOffset": 2874,
-        "endOffset": 2882
       }
     },
     "exports": [
@@ -3263,10 +3063,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2931,
         "endOffset": 2941
-      },
-      "isAbstract": {
-        "startOffset": 2911,
-        "endOffset": 2919
       }
     },
     "exports": [
@@ -3323,10 +3119,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 2982,
         "endOffset": 2991
-      },
-      "isAbstract": {
-        "startOffset": 2962,
-        "endOffset": 2970
       }
     },
     "exports": [
@@ -3439,10 +3231,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 3128,
         "endOffset": 3132
       },
-      "isAbstract": {
-        "startOffset": 3105,
-        "endOffset": 3113
-      },
       "shortName": {
         "startOffset": 3136,
         "endOffset": 3140
@@ -3506,10 +3294,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 3169,
         "endOffset": 3177
-      },
-      "isAbstract": {
-        "startOffset": 3146,
-        "endOffset": 3154
       },
       "shortName": {
         "startOffset": 3181,
@@ -3575,10 +3359,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 3214,
         "endOffset": 3220
       },
-      "isAbstract": {
-        "startOffset": 3191,
-        "endOffset": 3199
-      },
       "shortName": {
         "startOffset": 3224,
         "endOffset": 3228
@@ -3642,10 +3422,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 3257,
         "endOffset": 3263
-      },
-      "isAbstract": {
-        "startOffset": 3234,
-        "endOffset": 3242
       },
       "shortName": {
         "startOffset": 3267,
@@ -3711,10 +3487,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 3300,
         "endOffset": 3305
       },
-      "isAbstract": {
-        "startOffset": 3277,
-        "endOffset": 3285
-      },
       "shortName": {
         "startOffset": 3309,
         "endOffset": 3315
@@ -3778,10 +3550,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 3344,
         "endOffset": 3350
-      },
-      "isAbstract": {
-        "startOffset": 3321,
-        "endOffset": 3329
       },
       "shortName": {
         "startOffset": 3354,
@@ -3847,10 +3615,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 3389,
         "endOffset": 3397
       },
-      "isAbstract": {
-        "startOffset": 3366,
-        "endOffset": 3374
-      },
       "shortName": {
         "startOffset": 3401,
         "endOffset": 3407
@@ -3914,10 +3678,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 3436,
         "endOffset": 3444
-      },
-      "isAbstract": {
-        "startOffset": 3413,
-        "endOffset": 3421
       },
       "shortName": {
         "startOffset": 3448,
@@ -3983,10 +3743,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 3483,
         "endOffset": 3495
       },
-      "isAbstract": {
-        "startOffset": 3460,
-        "endOffset": 3468
-      },
       "shortName": {
         "startOffset": 3499,
         "endOffset": 3505
@@ -4050,10 +3806,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 3534,
         "endOffset": 3540
-      },
-      "isAbstract": {
-        "startOffset": 3511,
-        "endOffset": 3519
       },
       "shortName": {
         "startOffset": 3544,
@@ -4119,10 +3871,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 3579,
         "endOffset": 3587
       },
-      "isAbstract": {
-        "startOffset": 3556,
-        "endOffset": 3564
-      },
       "shortName": {
         "startOffset": 3591,
         "endOffset": 3597
@@ -4186,10 +3934,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 3626,
         "endOffset": 3635
-      },
-      "isAbstract": {
-        "startOffset": 3603,
-        "endOffset": 3611
       },
       "shortName": {
         "startOffset": 3639,
@@ -4255,10 +3999,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 3674,
         "endOffset": 3678
       },
-      "isAbstract": {
-        "startOffset": 3651,
-        "endOffset": 3659
-      },
       "shortName": {
         "startOffset": 3682,
         "endOffset": 3686
@@ -4322,10 +4062,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 3715,
         "endOffset": 3721
-      },
-      "isAbstract": {
-        "startOffset": 3692,
-        "endOffset": 3700
       },
       "shortName": {
         "startOffset": 3725,
@@ -4391,10 +4127,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 3758,
         "endOffset": 3763
       },
-      "isAbstract": {
-        "startOffset": 3735,
-        "endOffset": 3743
-      },
       "shortName": {
         "startOffset": 3767,
         "endOffset": 3771
@@ -4458,10 +4190,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 3800,
         "endOffset": 3810
-      },
-      "isAbstract": {
-        "startOffset": 3777,
-        "endOffset": 3785
       },
       "shortName": {
         "startOffset": 3814,
@@ -4527,10 +4255,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 3847,
         "endOffset": 3855
       },
-      "isAbstract": {
-        "startOffset": 3824,
-        "endOffset": 3832
-      },
       "shortName": {
         "startOffset": 3859,
         "endOffset": 3863
@@ -4594,10 +4318,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 3892,
         "endOffset": 3906
-      },
-      "isAbstract": {
-        "startOffset": 3869,
-        "endOffset": 3877
       },
       "shortName": {
         "startOffset": 3910,
@@ -4663,10 +4383,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 3947,
         "endOffset": 3952
       },
-      "isAbstract": {
-        "startOffset": 3924,
-        "endOffset": 3932
-      },
       "shortName": {
         "startOffset": 3956,
         "endOffset": 3964
@@ -4730,10 +4446,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 3993,
         "endOffset": 4008
-      },
-      "isAbstract": {
-        "startOffset": 3970,
-        "endOffset": 3978
       },
       "shortName": {
         "startOffset": 4012,
@@ -4799,10 +4511,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 4045,
         "endOffset": 4057
       },
-      "isAbstract": {
-        "startOffset": 4022,
-        "endOffset": 4030
-      },
       "shortName": {
         "startOffset": 4061,
         "endOffset": 4065
@@ -4866,10 +4574,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 4094,
         "endOffset": 4112
-      },
-      "isAbstract": {
-        "startOffset": 4071,
-        "endOffset": 4079
       },
       "shortName": {
         "startOffset": 4116,
@@ -4935,10 +4639,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 4157,
         "endOffset": 4176
       },
-      "isAbstract": {
-        "startOffset": 4134,
-        "endOffset": 4142
-      },
       "shortName": {
         "startOffset": 4180,
         "endOffset": 4184
@@ -5002,10 +4702,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 4213,
         "endOffset": 4238
-      },
-      "isAbstract": {
-        "startOffset": 4190,
-        "endOffset": 4198
       },
       "shortName": {
         "startOffset": 4242,
@@ -5071,10 +4767,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 4283,
         "endOffset": 4292
       },
-      "isAbstract": {
-        "startOffset": 4260,
-        "endOffset": 4268
-      },
       "shortName": {
         "startOffset": 4296,
         "endOffset": 4300
@@ -5138,10 +4830,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 4329,
         "endOffset": 4348
-      },
-      "isAbstract": {
-        "startOffset": 4306,
-        "endOffset": 4314
       },
       "shortName": {
         "startOffset": 4352,
@@ -5207,10 +4895,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 4433,
         "endOffset": 4437
       },
-      "isAbstract": {
-        "startOffset": 4410,
-        "endOffset": 4418
-      },
       "shortName": {
         "startOffset": 4441,
         "endOffset": 4445
@@ -5274,10 +4958,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 4474,
         "endOffset": 4485
-      },
-      "isAbstract": {
-        "startOffset": 4451,
-        "endOffset": 4459
       },
       "shortName": {
         "startOffset": 4489,
@@ -5343,10 +5023,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 4522,
         "endOffset": 4536
       },
-      "isAbstract": {
-        "startOffset": 4499,
-        "endOffset": 4507
-      },
       "shortName": {
         "startOffset": 4540,
         "endOffset": 4544
@@ -5410,10 +5086,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 4573,
         "endOffset": 4581
-      },
-      "isAbstract": {
-        "startOffset": 4550,
-        "endOffset": 4558
       },
       "shortName": {
         "startOffset": 4585,
@@ -5479,10 +5151,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 4618,
         "endOffset": 4633
       },
-      "isAbstract": {
-        "startOffset": 4595,
-        "endOffset": 4603
-      },
       "shortName": {
         "startOffset": 4637,
         "endOffset": 4641
@@ -5546,10 +5214,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 4670,
         "endOffset": 4685
-      },
-      "isAbstract": {
-        "startOffset": 4647,
-        "endOffset": 4655
       },
       "shortName": {
         "startOffset": 4689,
@@ -5615,10 +5279,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 4722,
         "endOffset": 4727
       },
-      "isAbstract": {
-        "startOffset": 4699,
-        "endOffset": 4707
-      },
       "shortName": {
         "startOffset": 4731,
         "endOffset": 4735
@@ -5682,10 +5342,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 4764,
         "endOffset": 4770
-      },
-      "isAbstract": {
-        "startOffset": 4741,
-        "endOffset": 4749
       },
       "shortName": {
         "startOffset": 4774,
@@ -5751,10 +5407,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 4808,
         "endOffset": 4814
       },
-      "isAbstract": {
-        "startOffset": 4785,
-        "endOffset": 4793
-      },
       "shortName": {
         "startOffset": 4818,
         "endOffset": 4822
@@ -5818,10 +5470,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 4851,
         "endOffset": 4864
-      },
-      "isAbstract": {
-        "startOffset": 4828,
-        "endOffset": 4836
       },
       "shortName": {
         "startOffset": 4868,
@@ -5887,10 +5535,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 4903,
         "endOffset": 4911
       },
-      "isAbstract": {
-        "startOffset": 4880,
-        "endOffset": 4888
-      },
       "shortName": {
         "startOffset": 4915,
         "endOffset": 4919
@@ -5954,10 +5598,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 4948,
         "endOffset": 4954
-      },
-      "isAbstract": {
-        "startOffset": 4925,
-        "endOffset": 4933
       },
       "shortName": {
         "startOffset": 4958,
@@ -6023,10 +5663,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 4995,
         "endOffset": 5007
       },
-      "isAbstract": {
-        "startOffset": 4972,
-        "endOffset": 4980
-      },
       "shortName": {
         "startOffset": 5011,
         "endOffset": 5017
@@ -6090,10 +5726,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 5046,
         "endOffset": 5057
-      },
-      "isAbstract": {
-        "startOffset": 5023,
-        "endOffset": 5031
       },
       "shortName": {
         "startOffset": 5061,
@@ -6159,10 +5791,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 5096,
         "endOffset": 5102
       },
-      "isAbstract": {
-        "startOffset": 5073,
-        "endOffset": 5081
-      },
       "shortName": {
         "startOffset": 5106,
         "endOffset": 5110
@@ -6226,10 +5854,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 5139,
         "endOffset": 5143
-      },
-      "isAbstract": {
-        "startOffset": 5116,
-        "endOffset": 5124
       },
       "shortName": {
         "startOffset": 5147,
@@ -6295,10 +5919,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 5180,
         "endOffset": 5186
       },
-      "isAbstract": {
-        "startOffset": 5157,
-        "endOffset": 5165
-      },
       "shortName": {
         "startOffset": 5190,
         "endOffset": 5194
@@ -6362,10 +5982,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 5223,
         "endOffset": 5236
-      },
-      "isAbstract": {
-        "startOffset": 5200,
-        "endOffset": 5208
       },
       "shortName": {
         "startOffset": 5240,
@@ -6431,10 +6047,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 5275,
         "endOffset": 5290
       },
-      "isAbstract": {
-        "startOffset": 5252,
-        "endOffset": 5260
-      },
       "shortName": {
         "startOffset": 5294,
         "endOffset": 5300
@@ -6498,10 +6110,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 5329,
         "endOffset": 5334
-      },
-      "isAbstract": {
-        "startOffset": 5306,
-        "endOffset": 5314
       },
       "shortName": {
         "startOffset": 5338,
@@ -6567,10 +6175,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 5371,
         "endOffset": 5381
       },
-      "isAbstract": {
-        "startOffset": 5348,
-        "endOffset": 5356
-      },
       "shortName": {
         "startOffset": 5385,
         "endOffset": 5389
@@ -6634,10 +6238,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 5450,
         "endOffset": 5466
-      },
-      "isAbstract": {
-        "startOffset": 5427,
-        "endOffset": 5435
       },
       "shortName": {
         "startOffset": 5470,
@@ -6703,10 +6303,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 5503,
         "endOffset": 5521
       },
-      "isAbstract": {
-        "startOffset": 5480,
-        "endOffset": 5488
-      },
       "shortName": {
         "startOffset": 5525,
         "endOffset": 5529
@@ -6770,10 +6366,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 5558,
         "endOffset": 5572
-      },
-      "isAbstract": {
-        "startOffset": 5535,
-        "endOffset": 5543
       },
       "shortName": {
         "startOffset": 5576,
@@ -6839,10 +6431,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 5609,
         "endOffset": 5623
       },
-      "isAbstract": {
-        "startOffset": 5586,
-        "endOffset": 5594
-      },
       "shortName": {
         "startOffset": 5627,
         "endOffset": 5631
@@ -6906,10 +6494,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 5660,
         "endOffset": 5672
-      },
-      "isAbstract": {
-        "startOffset": 5637,
-        "endOffset": 5645
       },
       "shortName": {
         "startOffset": 5676,
@@ -6975,10 +6559,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 5709,
         "endOffset": 5723
       },
-      "isAbstract": {
-        "startOffset": 5686,
-        "endOffset": 5694
-      },
       "shortName": {
         "startOffset": 5727,
         "endOffset": 5731
@@ -7042,10 +6622,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 5760,
         "endOffset": 5770
-      },
-      "isAbstract": {
-        "startOffset": 5737,
-        "endOffset": 5745
       },
       "shortName": {
         "startOffset": 5774,
@@ -7111,10 +6687,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 5855,
         "endOffset": 5879
       },
-      "isAbstract": {
-        "startOffset": 5832,
-        "endOffset": 5840
-      },
       "shortName": {
         "startOffset": 5883,
         "endOffset": 5887
@@ -7178,10 +6750,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 5916,
         "endOffset": 5934
-      },
-      "isAbstract": {
-        "startOffset": 5893,
-        "endOffset": 5901
       },
       "shortName": {
         "startOffset": 5938,
@@ -7247,10 +6815,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 5971,
         "endOffset": 5975
       },
-      "isAbstract": {
-        "startOffset": 5948,
-        "endOffset": 5956
-      },
       "shortName": {
         "startOffset": 5979,
         "endOffset": 5985
@@ -7314,10 +6878,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 6014,
         "endOffset": 6026
-      },
-      "isAbstract": {
-        "startOffset": 5991,
-        "endOffset": 5999
       },
       "shortName": {
         "startOffset": 6030,
@@ -7383,10 +6943,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 6064,
         "endOffset": 6083
       },
-      "isAbstract": {
-        "startOffset": 6041,
-        "endOffset": 6049
-      },
       "shortName": {
         "startOffset": 6087,
         "endOffset": 6091
@@ -7450,10 +7006,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 6120,
         "endOffset": 6132
-      },
-      "isAbstract": {
-        "startOffset": 6097,
-        "endOffset": 6105
       },
       "shortName": {
         "startOffset": 6136,
@@ -7519,10 +7071,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 6169,
         "endOffset": 6189
       },
-      "isAbstract": {
-        "startOffset": 6146,
-        "endOffset": 6154
-      },
       "shortName": {
         "startOffset": 6193,
         "endOffset": 6197
@@ -7586,10 +7134,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 6226,
         "endOffset": 6233
-      },
-      "isAbstract": {
-        "startOffset": 6203,
-        "endOffset": 6211
       },
       "shortName": {
         "startOffset": 6237,
@@ -7655,10 +7199,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 6270,
         "endOffset": 6278
       },
-      "isAbstract": {
-        "startOffset": 6247,
-        "endOffset": 6255
-      },
       "shortName": {
         "startOffset": 6282,
         "endOffset": 6288
@@ -7722,10 +7262,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 6317,
         "endOffset": 6331
-      },
-      "isAbstract": {
-        "startOffset": 6294,
-        "endOffset": 6302
       },
       "shortName": {
         "startOffset": 6335,
@@ -7791,10 +7327,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 6420,
         "endOffset": 6435
       },
-      "isAbstract": {
-        "startOffset": 6397,
-        "endOffset": 6405
-      },
       "shortName": {
         "startOffset": 6439,
         "endOffset": 6443
@@ -7858,10 +7390,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 6472,
         "endOffset": 6486
-      },
-      "isAbstract": {
-        "startOffset": 6449,
-        "endOffset": 6457
       },
       "shortName": {
         "startOffset": 6490,
@@ -7927,10 +7455,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 6523,
         "endOffset": 6530
       },
-      "isAbstract": {
-        "startOffset": 6500,
-        "endOffset": 6508
-      },
       "shortName": {
         "startOffset": 6534,
         "endOffset": 6538
@@ -7994,10 +7518,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 6567,
         "endOffset": 6584
-      },
-      "isAbstract": {
-        "startOffset": 6544,
-        "endOffset": 6552
       },
       "shortName": {
         "startOffset": 6588,
@@ -8063,10 +7583,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 6624,
         "endOffset": 6642
       },
-      "isAbstract": {
-        "startOffset": 6601,
-        "endOffset": 6609
-      },
       "shortName": {
         "startOffset": 6646,
         "endOffset": 6653
@@ -8130,10 +7646,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 6682,
         "endOffset": 6703
-      },
-      "isAbstract": {
-        "startOffset": 6659,
-        "endOffset": 6667
       },
       "shortName": {
         "startOffset": 6707,
@@ -8199,10 +7711,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 6740,
         "endOffset": 6752
       },
-      "isAbstract": {
-        "startOffset": 6717,
-        "endOffset": 6725
-      },
       "shortName": {
         "startOffset": 6756,
         "endOffset": 6760
@@ -8266,10 +7774,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 6789,
         "endOffset": 6807
-      },
-      "isAbstract": {
-        "startOffset": 6766,
-        "endOffset": 6774
       },
       "shortName": {
         "startOffset": 6811,
@@ -8335,10 +7839,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 6844,
         "endOffset": 6855
       },
-      "isAbstract": {
-        "startOffset": 6821,
-        "endOffset": 6829
-      },
       "shortName": {
         "startOffset": 6859,
         "endOffset": 6863
@@ -8402,10 +7902,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 6892,
         "endOffset": 6903
-      },
-      "isAbstract": {
-        "startOffset": 6869,
-        "endOffset": 6877
       },
       "shortName": {
         "startOffset": 6907,
@@ -8471,10 +7967,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 6940,
         "endOffset": 6952
       },
-      "isAbstract": {
-        "startOffset": 6917,
-        "endOffset": 6925
-      },
       "shortName": {
         "startOffset": 6956,
         "endOffset": 6960
@@ -8538,10 +8030,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 6989,
         "endOffset": 7000
-      },
-      "isAbstract": {
-        "startOffset": 6966,
-        "endOffset": 6974
       },
       "shortName": {
         "startOffset": 7004,
@@ -8607,10 +8095,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 7037,
         "endOffset": 7049
       },
-      "isAbstract": {
-        "startOffset": 7014,
-        "endOffset": 7022
-      },
       "shortName": {
         "startOffset": 7053,
         "endOffset": 7057
@@ -8674,10 +8158,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 7086,
         "endOffset": 7098
-      },
-      "isAbstract": {
-        "startOffset": 7063,
-        "endOffset": 7071
       },
       "shortName": {
         "startOffset": 7102,
@@ -8743,10 +8223,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 7135,
         "endOffset": 7154
       },
-      "isAbstract": {
-        "startOffset": 7112,
-        "endOffset": 7120
-      },
       "shortName": {
         "startOffset": 7158,
         "endOffset": 7162
@@ -8810,10 +8286,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 7191,
         "endOffset": 7212
-      },
-      "isAbstract": {
-        "startOffset": 7168,
-        "endOffset": 7176
       },
       "shortName": {
         "startOffset": 7216,
@@ -8879,10 +8351,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 7249,
         "endOffset": 7261
       },
-      "isAbstract": {
-        "startOffset": 7226,
-        "endOffset": 7234
-      },
       "shortName": {
         "startOffset": 7265,
         "endOffset": 7269
@@ -8946,10 +8414,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 7298,
         "endOffset": 7308
-      },
-      "isAbstract": {
-        "startOffset": 7275,
-        "endOffset": 7283
       },
       "shortName": {
         "startOffset": 7312,
@@ -9015,10 +8479,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 7345,
         "endOffset": 7354
       },
-      "isAbstract": {
-        "startOffset": 7322,
-        "endOffset": 7330
-      },
       "shortName": {
         "startOffset": 7358,
         "endOffset": 7362
@@ -9082,10 +8542,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 7391,
         "endOffset": 7400
-      },
-      "isAbstract": {
-        "startOffset": 7368,
-        "endOffset": 7376
       },
       "shortName": {
         "startOffset": 7404,
@@ -9151,10 +8607,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 7492,
         "endOffset": 7509
       },
-      "isAbstract": {
-        "startOffset": 7469,
-        "endOffset": 7477
-      },
       "shortName": {
         "startOffset": 7513,
         "endOffset": 7517
@@ -9218,10 +8670,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 7546,
         "endOffset": 7555
-      },
-      "isAbstract": {
-        "startOffset": 7523,
-        "endOffset": 7531
       },
       "shortName": {
         "startOffset": 7559,
@@ -9287,10 +8735,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 7592,
         "endOffset": 7609
       },
-      "isAbstract": {
-        "startOffset": 7569,
-        "endOffset": 7577
-      },
       "shortName": {
         "startOffset": 7613,
         "endOffset": 7617
@@ -9354,10 +8798,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 7646,
         "endOffset": 7658
-      },
-      "isAbstract": {
-        "startOffset": 7623,
-        "endOffset": 7631
       },
       "shortName": {
         "startOffset": 7662,
@@ -9423,10 +8863,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 7695,
         "endOffset": 7706
       },
-      "isAbstract": {
-        "startOffset": 7672,
-        "endOffset": 7680
-      },
       "shortName": {
         "startOffset": 7710,
         "endOffset": 7714
@@ -9490,10 +8926,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 7743,
         "endOffset": 7752
-      },
-      "isAbstract": {
-        "startOffset": 7720,
-        "endOffset": 7728
       },
       "shortName": {
         "startOffset": 7756,
@@ -9614,10 +9046,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 7843,
         "endOffset": 7849
       },
-      "isAbstract": {
-        "startOffset": 7820,
-        "endOffset": 7828
-      },
       "shortName": {
         "startOffset": 7853,
         "endOffset": 7857
@@ -9681,10 +9109,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 7886,
         "endOffset": 7894
-      },
-      "isAbstract": {
-        "startOffset": 7863,
-        "endOffset": 7871
       },
       "shortName": {
         "startOffset": 7898,
@@ -9750,10 +9174,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 7931,
         "endOffset": 7936
       },
-      "isAbstract": {
-        "startOffset": 7908,
-        "endOffset": 7916
-      },
       "shortName": {
         "startOffset": 7940,
         "endOffset": 7944
@@ -9817,10 +9237,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 7973,
         "endOffset": 7979
-      },
-      "isAbstract": {
-        "startOffset": 7950,
-        "endOffset": 7958
       },
       "shortName": {
         "startOffset": 7983,
@@ -9886,10 +9302,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 8016,
         "endOffset": 8022
       },
-      "isAbstract": {
-        "startOffset": 7993,
-        "endOffset": 8001
-      },
       "shortName": {
         "startOffset": 8026,
         "endOffset": 8030
@@ -9954,10 +9366,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 8059,
         "endOffset": 8063
       },
-      "isAbstract": {
-        "startOffset": 8036,
-        "endOffset": 8044
-      },
       "shortName": {
         "startOffset": 8067,
         "endOffset": 8071
@@ -10021,10 +9429,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 8100,
         "endOffset": 8107
-      },
-      "isAbstract": {
-        "startOffset": 8077,
-        "endOffset": 8085
       },
       "shortName": {
         "startOffset": 8111,
@@ -10145,10 +9549,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 8201,
         "endOffset": 8207
       },
-      "isAbstract": {
-        "startOffset": 8178,
-        "endOffset": 8186
-      },
       "shortName": {
         "startOffset": 8211,
         "endOffset": 8215
@@ -10212,10 +9612,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 8244,
         "endOffset": 8250
-      },
-      "isAbstract": {
-        "startOffset": 8221,
-        "endOffset": 8229
       },
       "shortName": {
         "startOffset": 8254,
@@ -10281,10 +9677,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 8287,
         "endOffset": 8292
       },
-      "isAbstract": {
-        "startOffset": 8264,
-        "endOffset": 8272
-      },
       "shortName": {
         "startOffset": 8296,
         "endOffset": 8300
@@ -10348,10 +9740,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 8329,
         "endOffset": 8333
-      },
-      "isAbstract": {
-        "startOffset": 8306,
-        "endOffset": 8314
       },
       "shortName": {
         "startOffset": 8337,
@@ -10417,10 +9805,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 8370,
         "endOffset": 8374
       },
-      "isAbstract": {
-        "startOffset": 8347,
-        "endOffset": 8355
-      },
       "shortName": {
         "startOffset": 8378,
         "endOffset": 8382
@@ -10484,10 +9868,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 8411,
         "endOffset": 8418
-      },
-      "isAbstract": {
-        "startOffset": 8388,
-        "endOffset": 8396
       },
       "shortName": {
         "startOffset": 8422,
@@ -10553,10 +9933,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 8455,
         "endOffset": 8458
       },
-      "isAbstract": {
-        "startOffset": 8432,
-        "endOffset": 8440
-      },
       "shortName": {
         "startOffset": 8462,
         "endOffset": 8466
@@ -10620,10 +9996,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 8495,
         "endOffset": 8502
-      },
-      "isAbstract": {
-        "startOffset": 8472,
-        "endOffset": 8480
       },
       "shortName": {
         "startOffset": 8506,
@@ -10689,10 +10061,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 8539,
         "endOffset": 8544
       },
-      "isAbstract": {
-        "startOffset": 8516,
-        "endOffset": 8524
-      },
       "shortName": {
         "startOffset": 8548,
         "endOffset": 8552
@@ -10756,10 +10124,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 8581,
         "endOffset": 8586
-      },
-      "isAbstract": {
-        "startOffset": 8558,
-        "endOffset": 8566
       },
       "shortName": {
         "startOffset": 8590,
@@ -10825,10 +10189,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 8623,
         "endOffset": 8628
       },
-      "isAbstract": {
-        "startOffset": 8600,
-        "endOffset": 8608
-      },
       "shortName": {
         "startOffset": 8632,
         "endOffset": 8636
@@ -10892,10 +10252,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 8665,
         "endOffset": 8670
-      },
-      "isAbstract": {
-        "startOffset": 8642,
-        "endOffset": 8650
       },
       "shortName": {
         "startOffset": 8674,
@@ -10961,10 +10317,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 8707,
         "endOffset": 8712
       },
-      "isAbstract": {
-        "startOffset": 8684,
-        "endOffset": 8692
-      },
       "shortName": {
         "startOffset": 8716,
         "endOffset": 8720
@@ -11028,10 +10380,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 8749,
         "endOffset": 8755
-      },
-      "isAbstract": {
-        "startOffset": 8726,
-        "endOffset": 8734
       },
       "shortName": {
         "startOffset": 8759,
@@ -11097,10 +10445,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 8792,
         "endOffset": 8801
       },
-      "isAbstract": {
-        "startOffset": 8769,
-        "endOffset": 8777
-      },
       "shortName": {
         "startOffset": 8805,
         "endOffset": 8809
@@ -11164,10 +10508,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 8838,
         "endOffset": 8843
-      },
-      "isAbstract": {
-        "startOffset": 8815,
-        "endOffset": 8823
       },
       "shortName": {
         "startOffset": 8847,
@@ -11233,10 +10573,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 8880,
         "endOffset": 8883
       },
-      "isAbstract": {
-        "startOffset": 8857,
-        "endOffset": 8865
-      },
       "shortName": {
         "startOffset": 8887,
         "endOffset": 8891
@@ -11300,10 +10636,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 8920,
         "endOffset": 8929
-      },
-      "isAbstract": {
-        "startOffset": 8897,
-        "endOffset": 8905
       },
       "shortName": {
         "startOffset": 8933,
@@ -11369,10 +10701,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 8966,
         "endOffset": 8970
       },
-      "isAbstract": {
-        "startOffset": 8943,
-        "endOffset": 8951
-      },
       "shortName": {
         "startOffset": 8974,
         "endOffset": 8978
@@ -11436,10 +10764,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 9007,
         "endOffset": 9014
-      },
-      "isAbstract": {
-        "startOffset": 8984,
-        "endOffset": 8992
       },
       "shortName": {
         "startOffset": 9018,
@@ -11505,10 +10829,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 9051,
         "endOffset": 9056
       },
-      "isAbstract": {
-        "startOffset": 9028,
-        "endOffset": 9036
-      },
       "shortName": {
         "startOffset": 9060,
         "endOffset": 9064
@@ -11572,10 +10892,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 9093,
         "endOffset": 9106
-      },
-      "isAbstract": {
-        "startOffset": 9070,
-        "endOffset": 9078
       },
       "shortName": {
         "startOffset": 9110,
@@ -11752,10 +11068,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 9273,
         "endOffset": 9274
       },
-      "isAbstract": {
-        "startOffset": 9250,
-        "endOffset": 9258
-      },
       "shortName": {
         "startOffset": 9278,
         "endOffset": 9284
@@ -11819,10 +11131,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 9313,
         "endOffset": 9315
-      },
-      "isAbstract": {
-        "startOffset": 9290,
-        "endOffset": 9298
       },
       "shortName": {
         "startOffset": 9319,
@@ -11888,10 +11196,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 9356,
         "endOffset": 9357
       },
-      "isAbstract": {
-        "startOffset": 9333,
-        "endOffset": 9341
-      },
       "shortName": {
         "startOffset": 9361,
         "endOffset": 9366
@@ -11955,10 +11259,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 9395,
         "endOffset": 9396
-      },
-      "isAbstract": {
-        "startOffset": 9372,
-        "endOffset": 9380
       },
       "shortName": {
         "startOffset": 9400,
@@ -12024,10 +11324,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 9435,
         "endOffset": 9436
       },
-      "isAbstract": {
-        "startOffset": 9412,
-        "endOffset": 9420
-      },
       "shortName": {
         "startOffset": 9440,
         "endOffset": 9446
@@ -12091,10 +11387,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 9475,
         "endOffset": 9478
-      },
-      "isAbstract": {
-        "startOffset": 9452,
-        "endOffset": 9460
       },
       "shortName": {
         "startOffset": 9482,
@@ -12160,10 +11452,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 9515,
         "endOffset": 9517
       },
-      "isAbstract": {
-        "startOffset": 9492,
-        "endOffset": 9500
-      },
       "shortName": {
         "startOffset": 9521,
         "endOffset": 9528
@@ -12227,10 +11515,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 9600,
         "endOffset": 9601
-      },
-      "isAbstract": {
-        "startOffset": 9577,
-        "endOffset": 9585
       },
       "shortName": {
         "startOffset": 9605,
@@ -12296,10 +11580,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 9638,
         "endOffset": 9640
       },
-      "isAbstract": {
-        "startOffset": 9615,
-        "endOffset": 9623
-      },
       "shortName": {
         "startOffset": 9644,
         "endOffset": 9648
@@ -12363,10 +11643,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 9677,
         "endOffset": 9679
-      },
-      "isAbstract": {
-        "startOffset": 9654,
-        "endOffset": 9662
       },
       "shortName": {
         "startOffset": 9683,
@@ -12432,10 +11708,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 9716,
         "endOffset": 9718
       },
-      "isAbstract": {
-        "startOffset": 9693,
-        "endOffset": 9701
-      },
       "shortName": {
         "startOffset": 9722,
         "endOffset": 9726
@@ -12499,10 +11771,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 9755,
         "endOffset": 9757
-      },
-      "isAbstract": {
-        "startOffset": 9732,
-        "endOffset": 9740
       },
       "shortName": {
         "startOffset": 9761,
@@ -12568,10 +11836,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 9794,
         "endOffset": 9795
       },
-      "isAbstract": {
-        "startOffset": 9771,
-        "endOffset": 9779
-      },
       "shortName": {
         "startOffset": 9799,
         "endOffset": 9805
@@ -12635,10 +11899,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 9834,
         "endOffset": 9836
-      },
-      "isAbstract": {
-        "startOffset": 9811,
-        "endOffset": 9819
       },
       "shortName": {
         "startOffset": 9840,
@@ -12704,10 +11964,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 9873,
         "endOffset": 9875
       },
-      "isAbstract": {
-        "startOffset": 9850,
-        "endOffset": 9858
-      },
       "shortName": {
         "startOffset": 9879,
         "endOffset": 9885
@@ -12771,10 +12027,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 9914,
         "endOffset": 9917
-      },
-      "isAbstract": {
-        "startOffset": 9891,
-        "endOffset": 9899
       },
       "shortName": {
         "startOffset": 9921,
@@ -12840,10 +12092,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 9954,
         "endOffset": 9957
       },
-      "isAbstract": {
-        "startOffset": 9931,
-        "endOffset": 9939
-      },
       "shortName": {
         "startOffset": 9961,
         "endOffset": 9965
@@ -12907,10 +12155,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 9994,
         "endOffset": 9997
-      },
-      "isAbstract": {
-        "startOffset": 9971,
-        "endOffset": 9979
       },
       "shortName": {
         "startOffset": 10001,
@@ -12976,10 +12220,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 10034,
         "endOffset": 10035
       },
-      "isAbstract": {
-        "startOffset": 10011,
-        "endOffset": 10019
-      },
       "shortName": {
         "startOffset": 10039,
         "endOffset": 10044
@@ -13043,10 +12283,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 10073,
         "endOffset": 10075
-      },
-      "isAbstract": {
-        "startOffset": 10050,
-        "endOffset": 10058
       },
       "shortName": {
         "startOffset": 10079,
@@ -13112,10 +12348,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 10112,
         "endOffset": 10114
       },
-      "isAbstract": {
-        "startOffset": 10089,
-        "endOffset": 10097
-      },
       "shortName": {
         "startOffset": 10118,
         "endOffset": 10122
@@ -13179,10 +12411,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 10151,
         "endOffset": 10152
-      },
-      "isAbstract": {
-        "startOffset": 10128,
-        "endOffset": 10136
       },
       "shortName": {
         "startOffset": 10156,
@@ -13248,10 +12476,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 10189,
         "endOffset": 10191
       },
-      "isAbstract": {
-        "startOffset": 10166,
-        "endOffset": 10174
-      },
       "shortName": {
         "startOffset": 10195,
         "endOffset": 10199
@@ -13315,10 +12539,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 10228,
         "endOffset": 10230
-      },
-      "isAbstract": {
-        "startOffset": 10205,
-        "endOffset": 10213
       },
       "shortName": {
         "startOffset": 10234,
@@ -13384,10 +12604,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 10267,
         "endOffset": 10268
       },
-      "isAbstract": {
-        "startOffset": 10244,
-        "endOffset": 10252
-      },
       "shortName": {
         "startOffset": 10272,
         "endOffset": 10276
@@ -13451,10 +12667,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 10305,
         "endOffset": 10307
-      },
-      "isAbstract": {
-        "startOffset": 10282,
-        "endOffset": 10290
       },
       "shortName": {
         "startOffset": 10311,
@@ -13520,10 +12732,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 10344,
         "endOffset": 10346
       },
-      "isAbstract": {
-        "startOffset": 10321,
-        "endOffset": 10329
-      },
       "shortName": {
         "startOffset": 10350,
         "endOffset": 10354
@@ -13587,10 +12795,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 10383,
         "endOffset": 10384
-      },
-      "isAbstract": {
-        "startOffset": 10360,
-        "endOffset": 10368
       },
       "shortName": {
         "startOffset": 10388,
@@ -13656,10 +12860,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 10424,
         "endOffset": 10427
       },
-      "isAbstract": {
-        "startOffset": 10401,
-        "endOffset": 10409
-      },
       "shortName": {
         "startOffset": 10431,
         "endOffset": 10434
@@ -13723,10 +12923,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 10463,
         "endOffset": 10467
-      },
-      "isAbstract": {
-        "startOffset": 10440,
-        "endOffset": 10448
       },
       "shortName": {
         "startOffset": 10471,
@@ -13792,10 +12988,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 10504,
         "endOffset": 10508
       },
-      "isAbstract": {
-        "startOffset": 10481,
-        "endOffset": 10489
-      },
       "shortName": {
         "startOffset": 10512,
         "endOffset": 10516
@@ -13859,10 +13051,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 10545,
         "endOffset": 10546
-      },
-      "isAbstract": {
-        "startOffset": 10522,
-        "endOffset": 10530
       },
       "shortName": {
         "startOffset": 10550,
@@ -13928,10 +13116,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 10584,
         "endOffset": 10586
       },
-      "isAbstract": {
-        "startOffset": 10561,
-        "endOffset": 10569
-      },
       "shortName": {
         "startOffset": 10590,
         "endOffset": 10594
@@ -13995,10 +13179,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 10623,
         "endOffset": 10625
-      },
-      "isAbstract": {
-        "startOffset": 10600,
-        "endOffset": 10608
       },
       "shortName": {
         "startOffset": 10629,
@@ -14064,10 +13244,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 10662,
         "endOffset": 10664
       },
-      "isAbstract": {
-        "startOffset": 10639,
-        "endOffset": 10647
-      },
       "shortName": {
         "startOffset": 10668,
         "endOffset": 10672
@@ -14131,10 +13307,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 10701,
         "endOffset": 10702
-      },
-      "isAbstract": {
-        "startOffset": 10678,
-        "endOffset": 10686
       },
       "shortName": {
         "startOffset": 10706,
@@ -14200,10 +13372,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 10740,
         "endOffset": 10742
       },
-      "isAbstract": {
-        "startOffset": 10717,
-        "endOffset": 10725
-      },
       "shortName": {
         "startOffset": 10746,
         "endOffset": 10750
@@ -14267,10 +13435,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 10779,
         "endOffset": 10781
-      },
-      "isAbstract": {
-        "startOffset": 10756,
-        "endOffset": 10764
       },
       "shortName": {
         "startOffset": 10785,
@@ -14336,10 +13500,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 10818,
         "endOffset": 10820
       },
-      "isAbstract": {
-        "startOffset": 10795,
-        "endOffset": 10803
-      },
       "shortName": {
         "startOffset": 10824,
         "endOffset": 10829
@@ -14403,10 +13563,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 10858,
         "endOffset": 10861
-      },
-      "isAbstract": {
-        "startOffset": 10835,
-        "endOffset": 10843
       },
       "shortName": {
         "startOffset": 10865,
@@ -14472,10 +13628,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 10898,
         "endOffset": 10901
       },
-      "isAbstract": {
-        "startOffset": 10875,
-        "endOffset": 10883
-      },
       "shortName": {
         "startOffset": 10905,
         "endOffset": 10909
@@ -14539,10 +13691,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 10938,
         "endOffset": 10941
-      },
-      "isAbstract": {
-        "startOffset": 10915,
-        "endOffset": 10923
       },
       "shortName": {
         "startOffset": 10945,
@@ -14608,10 +13756,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 10978,
         "endOffset": 10981
       },
-      "isAbstract": {
-        "startOffset": 10955,
-        "endOffset": 10963
-      },
       "shortName": {
         "startOffset": 10985,
         "endOffset": 10991
@@ -14675,10 +13819,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 11020,
         "endOffset": 11022
-      },
-      "isAbstract": {
-        "startOffset": 10997,
-        "endOffset": 11005
       },
       "shortName": {
         "startOffset": 11026,
@@ -14744,10 +13884,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 11064,
         "endOffset": 11067
       },
-      "isAbstract": {
-        "startOffset": 11041,
-        "endOffset": 11049
-      },
       "shortName": {
         "startOffset": 11071,
         "endOffset": 11076
@@ -14811,10 +13947,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 11105,
         "endOffset": 11108
-      },
-      "isAbstract": {
-        "startOffset": 11082,
-        "endOffset": 11090
       },
       "shortName": {
         "startOffset": 11112,
@@ -14880,10 +14012,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 11145,
         "endOffset": 11149
       },
-      "isAbstract": {
-        "startOffset": 11122,
-        "endOffset": 11130
-      },
       "shortName": {
         "startOffset": 11153,
         "endOffset": 11166
@@ -14947,10 +14075,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 11229,
         "endOffset": 11239
-      },
-      "isAbstract": {
-        "startOffset": 11206,
-        "endOffset": 11214
       },
       "shortName": {
         "startOffset": 11243,
@@ -15016,10 +14140,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 11277,
         "endOffset": 11287
       },
-      "isAbstract": {
-        "startOffset": 11254,
-        "endOffset": 11262
-      },
       "shortName": {
         "startOffset": 11291,
         "endOffset": 11296
@@ -15083,10 +14203,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 11325,
         "endOffset": 11334
-      },
-      "isAbstract": {
-        "startOffset": 11302,
-        "endOffset": 11310
       },
       "shortName": {
         "startOffset": 11338,
@@ -15152,10 +14268,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 11372,
         "endOffset": 11376
       },
-      "isAbstract": {
-        "startOffset": 11349,
-        "endOffset": 11357
-      },
       "shortName": {
         "startOffset": 11380,
         "endOffset": 11384
@@ -15219,10 +14331,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 11413,
         "endOffset": 11422
-      },
-      "isAbstract": {
-        "startOffset": 11390,
-        "endOffset": 11398
       },
       "shortName": {
         "startOffset": 11426,
@@ -15288,10 +14396,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 11459,
         "endOffset": 11470
       },
-      "isAbstract": {
-        "startOffset": 11436,
-        "endOffset": 11444
-      },
       "shortName": {
         "startOffset": 11474,
         "endOffset": 11480
@@ -15355,10 +14459,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 11509,
         "endOffset": 11515
-      },
-      "isAbstract": {
-        "startOffset": 11486,
-        "endOffset": 11494
       },
       "shortName": {
         "startOffset": 11519,
@@ -15424,10 +14524,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 11552,
         "endOffset": 11556
       },
-      "isAbstract": {
-        "startOffset": 11529,
-        "endOffset": 11537
-      },
       "shortName": {
         "startOffset": 11560,
         "endOffset": 11564
@@ -15491,10 +14587,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 11593,
         "endOffset": 11596
-      },
-      "isAbstract": {
-        "startOffset": 11570,
-        "endOffset": 11578
       },
       "shortName": {
         "startOffset": 11600,
@@ -15560,10 +14652,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 11633,
         "endOffset": 11641
       },
-      "isAbstract": {
-        "startOffset": 11610,
-        "endOffset": 11618
-      },
       "shortName": {
         "startOffset": 11645,
         "endOffset": 11649
@@ -15627,10 +14715,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 11678,
         "endOffset": 11686
-      },
-      "isAbstract": {
-        "startOffset": 11655,
-        "endOffset": 11663
       },
       "shortName": {
         "startOffset": 11690,
@@ -15696,10 +14780,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 11723,
         "endOffset": 11732
       },
-      "isAbstract": {
-        "startOffset": 11700,
-        "endOffset": 11708
-      },
       "shortName": {
         "startOffset": 11736,
         "endOffset": 11741
@@ -15763,10 +14843,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 11770,
         "endOffset": 11779
-      },
-      "isAbstract": {
-        "startOffset": 11747,
-        "endOffset": 11755
       },
       "shortName": {
         "startOffset": 11783,
@@ -15832,10 +14908,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 11817,
         "endOffset": 11827
       },
-      "isAbstract": {
-        "startOffset": 11794,
-        "endOffset": 11802
-      },
       "shortName": {
         "startOffset": 11831,
         "endOffset": 11837
@@ -15899,10 +14971,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 11866,
         "endOffset": 11876
-      },
-      "isAbstract": {
-        "startOffset": 11843,
-        "endOffset": 11851
       },
       "shortName": {
         "startOffset": 11880,
@@ -15968,10 +15036,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 11915,
         "endOffset": 11918
       },
-      "isAbstract": {
-        "startOffset": 11892,
-        "endOffset": 11900
-      },
       "shortName": {
         "startOffset": 11922,
         "endOffset": 11926
@@ -16035,10 +15099,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 11955,
         "endOffset": 11960
-      },
-      "isAbstract": {
-        "startOffset": 11932,
-        "endOffset": 11940
       },
       "shortName": {
         "startOffset": 11964,
@@ -16104,10 +15164,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 11997,
         "endOffset": 12007
       },
-      "isAbstract": {
-        "startOffset": 11974,
-        "endOffset": 11982
-      },
       "shortName": {
         "startOffset": 12011,
         "endOffset": 12015
@@ -16171,10 +15227,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 12064,
         "endOffset": 12069
-      },
-      "isAbstract": {
-        "startOffset": 12041,
-        "endOffset": 12049
       },
       "shortName": {
         "startOffset": 12073,
@@ -16240,10 +15292,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 12106,
         "endOffset": 12111
       },
-      "isAbstract": {
-        "startOffset": 12083,
-        "endOffset": 12091
-      },
       "shortName": {
         "startOffset": 12115,
         "endOffset": 12119
@@ -16307,10 +15355,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 12148,
         "endOffset": 12151
-      },
-      "isAbstract": {
-        "startOffset": 12125,
-        "endOffset": 12133
       },
       "shortName": {
         "startOffset": 12155,
@@ -16376,10 +15420,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 12188,
         "endOffset": 12192
       },
-      "isAbstract": {
-        "startOffset": 12165,
-        "endOffset": 12173
-      },
       "shortName": {
         "startOffset": 12196,
         "endOffset": 12200
@@ -16443,10 +15483,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 12229,
         "endOffset": 12233
-      },
-      "isAbstract": {
-        "startOffset": 12206,
-        "endOffset": 12214
       },
       "shortName": {
         "startOffset": 12237,
@@ -16512,10 +15548,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 12270,
         "endOffset": 12274
       },
-      "isAbstract": {
-        "startOffset": 12247,
-        "endOffset": 12255
-      },
       "shortName": {
         "startOffset": 12278,
         "endOffset": 12282
@@ -16579,10 +15611,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 12311,
         "endOffset": 12315
-      },
-      "isAbstract": {
-        "startOffset": 12288,
-        "endOffset": 12296
       },
       "shortName": {
         "startOffset": 12319,
@@ -16648,10 +15676,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 12352,
         "endOffset": 12356
       },
-      "isAbstract": {
-        "startOffset": 12329,
-        "endOffset": 12337
-      },
       "shortName": {
         "startOffset": 12360,
         "endOffset": 12364
@@ -16715,10 +15739,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 12393,
         "endOffset": 12398
-      },
-      "isAbstract": {
-        "startOffset": 12370,
-        "endOffset": 12378
       },
       "shortName": {
         "startOffset": 12402,
@@ -16784,10 +15804,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 12435,
         "endOffset": 12439
       },
-      "isAbstract": {
-        "startOffset": 12412,
-        "endOffset": 12420
-      },
       "shortName": {
         "startOffset": 12443,
         "endOffset": 12447
@@ -16851,10 +15867,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 12476,
         "endOffset": 12480
-      },
-      "isAbstract": {
-        "startOffset": 12453,
-        "endOffset": 12461
       },
       "shortName": {
         "startOffset": 12484,
@@ -16920,10 +15932,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 12517,
         "endOffset": 12522
       },
-      "isAbstract": {
-        "startOffset": 12494,
-        "endOffset": 12502
-      },
       "shortName": {
         "startOffset": 12526,
         "endOffset": 12530
@@ -16987,10 +15995,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 12559,
         "endOffset": 12564
-      },
-      "isAbstract": {
-        "startOffset": 12536,
-        "endOffset": 12544
       },
       "shortName": {
         "startOffset": 12568,
@@ -17056,10 +16060,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 12601,
         "endOffset": 12606
       },
-      "isAbstract": {
-        "startOffset": 12578,
-        "endOffset": 12586
-      },
       "shortName": {
         "startOffset": 12610,
         "endOffset": 12614
@@ -17123,10 +16123,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 12643,
         "endOffset": 12647
-      },
-      "isAbstract": {
-        "startOffset": 12620,
-        "endOffset": 12628
       },
       "shortName": {
         "startOffset": 12651,
@@ -17192,10 +16188,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 12684,
         "endOffset": 12688
       },
-      "isAbstract": {
-        "startOffset": 12661,
-        "endOffset": 12669
-      },
       "shortName": {
         "startOffset": 12692,
         "endOffset": 12696
@@ -17259,10 +16251,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 12725,
         "endOffset": 12730
-      },
-      "isAbstract": {
-        "startOffset": 12702,
-        "endOffset": 12710
       },
       "shortName": {
         "startOffset": 12734,
@@ -17328,10 +16316,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 12767,
         "endOffset": 12771
       },
-      "isAbstract": {
-        "startOffset": 12744,
-        "endOffset": 12752
-      },
       "shortName": {
         "startOffset": 12775,
         "endOffset": 12779
@@ -17395,10 +16379,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 12809,
         "endOffset": 12813
-      },
-      "isAbstract": {
-        "startOffset": 12786,
-        "endOffset": 12794
       },
       "shortName": {
         "startOffset": 12817,
@@ -17464,10 +16444,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 12850,
         "endOffset": 12854
       },
-      "isAbstract": {
-        "startOffset": 12827,
-        "endOffset": 12835
-      },
       "shortName": {
         "startOffset": 12858,
         "endOffset": 12862
@@ -17531,10 +16507,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 12891,
         "endOffset": 12895
-      },
-      "isAbstract": {
-        "startOffset": 12868,
-        "endOffset": 12876
       },
       "shortName": {
         "startOffset": 12899,
@@ -17600,10 +16572,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 12932,
         "endOffset": 12937
       },
-      "isAbstract": {
-        "startOffset": 12909,
-        "endOffset": 12917
-      },
       "shortName": {
         "startOffset": 12941,
         "endOffset": 12946
@@ -17667,10 +16635,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 12975,
         "endOffset": 12980
-      },
-      "isAbstract": {
-        "startOffset": 12952,
-        "endOffset": 12960
       },
       "shortName": {
         "startOffset": 12984,
@@ -17736,10 +16700,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 13018,
         "endOffset": 13022
       },
-      "isAbstract": {
-        "startOffset": 12995,
-        "endOffset": 13003
-      },
       "shortName": {
         "startOffset": 13026,
         "endOffset": 13030
@@ -17803,10 +16763,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 13059,
         "endOffset": 13063
-      },
-      "isAbstract": {
-        "startOffset": 13036,
-        "endOffset": 13044
       },
       "shortName": {
         "startOffset": 13067,
@@ -17927,10 +16883,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 13183,
         "endOffset": 13187
       },
-      "isAbstract": {
-        "startOffset": 13160,
-        "endOffset": 13168
-      },
       "shortName": {
         "startOffset": 13191,
         "endOffset": 13195
@@ -17994,10 +16946,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 13224,
         "endOffset": 13228
-      },
-      "isAbstract": {
-        "startOffset": 13201,
-        "endOffset": 13209
       },
       "shortName": {
         "startOffset": 13232,
@@ -18063,10 +17011,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 13265,
         "endOffset": 13269
       },
-      "isAbstract": {
-        "startOffset": 13242,
-        "endOffset": 13250
-      },
       "shortName": {
         "startOffset": 13273,
         "endOffset": 13277
@@ -18130,10 +17074,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 13306,
         "endOffset": 13310
-      },
-      "isAbstract": {
-        "startOffset": 13283,
-        "endOffset": 13291
       },
       "shortName": {
         "startOffset": 13314,
@@ -18199,10 +17139,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 13347,
         "endOffset": 13359
       },
-      "isAbstract": {
-        "startOffset": 13324,
-        "endOffset": 13332
-      },
       "shortName": {
         "startOffset": 13363,
         "endOffset": 13367
@@ -18266,10 +17202,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 13396,
         "endOffset": 13406
-      },
-      "isAbstract": {
-        "startOffset": 13373,
-        "endOffset": 13381
       },
       "shortName": {
         "startOffset": 13410,
@@ -18335,10 +17267,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 13443,
         "endOffset": 13447
       },
-      "isAbstract": {
-        "startOffset": 13420,
-        "endOffset": 13428
-      },
       "shortName": {
         "startOffset": 13451,
         "endOffset": 13455
@@ -18402,10 +17330,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 13485,
         "endOffset": 13489
-      },
-      "isAbstract": {
-        "startOffset": 13462,
-        "endOffset": 13470
       },
       "shortName": {
         "startOffset": 13493,
@@ -18471,10 +17395,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 13526,
         "endOffset": 13528
       },
-      "isAbstract": {
-        "startOffset": 13503,
-        "endOffset": 13511
-      },
       "shortName": {
         "startOffset": 13532,
         "endOffset": 13536
@@ -18538,10 +17458,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 13565,
         "endOffset": 13567
-      },
-      "isAbstract": {
-        "startOffset": 13542,
-        "endOffset": 13550
       },
       "shortName": {
         "startOffset": 13571,
@@ -18607,10 +17523,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 13604,
         "endOffset": 13606
       },
-      "isAbstract": {
-        "startOffset": 13581,
-        "endOffset": 13589
-      },
       "shortName": {
         "startOffset": 13610,
         "endOffset": 13614
@@ -18674,10 +17586,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 13669,
         "endOffset": 13674
-      },
-      "isAbstract": {
-        "startOffset": 13646,
-        "endOffset": 13654
       },
       "shortName": {
         "startOffset": 13678,
@@ -18743,10 +17651,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 13711,
         "endOffset": 13716
       },
-      "isAbstract": {
-        "startOffset": 13688,
-        "endOffset": 13696
-      },
       "shortName": {
         "startOffset": 13720,
         "endOffset": 13724
@@ -18810,10 +17714,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 13753,
         "endOffset": 13762
-      },
-      "isAbstract": {
-        "startOffset": 13730,
-        "endOffset": 13738
       },
       "shortName": {
         "startOffset": 13766,
@@ -18879,10 +17779,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 13800,
         "endOffset": 13810
       },
-      "isAbstract": {
-        "startOffset": 13777,
-        "endOffset": 13785
-      },
       "shortName": {
         "startOffset": 13814,
         "endOffset": 13818
@@ -18946,10 +17842,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 13847,
         "endOffset": 13851
-      },
-      "isAbstract": {
-        "startOffset": 13824,
-        "endOffset": 13832
       },
       "shortName": {
         "startOffset": 13855,
@@ -19015,10 +17907,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 13888,
         "endOffset": 13891
       },
-      "isAbstract": {
-        "startOffset": 13865,
-        "endOffset": 13873
-      },
       "shortName": {
         "startOffset": 13895,
         "endOffset": 13899
@@ -19082,10 +17970,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 13929,
         "endOffset": 13931
-      },
-      "isAbstract": {
-        "startOffset": 13906,
-        "endOffset": 13914
       },
       "shortName": {
         "startOffset": 13935,
@@ -19151,10 +18035,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 13969,
         "endOffset": 13971
       },
-      "isAbstract": {
-        "startOffset": 13946,
-        "endOffset": 13954
-      },
       "shortName": {
         "startOffset": 13975,
         "endOffset": 13980
@@ -19218,10 +18098,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 14009,
         "endOffset": 14012
-      },
-      "isAbstract": {
-        "startOffset": 13986,
-        "endOffset": 13994
       },
       "shortName": {
         "startOffset": 14016,
@@ -19287,10 +18163,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 14073,
         "endOffset": 14079
       },
-      "isAbstract": {
-        "startOffset": 14050,
-        "endOffset": 14058
-      },
       "shortName": {
         "startOffset": 14083,
         "endOffset": 14087
@@ -19354,10 +18226,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 14116,
         "endOffset": 14121
-      },
-      "isAbstract": {
-        "startOffset": 14093,
-        "endOffset": 14101
       },
       "shortName": {
         "startOffset": 14125,
@@ -19423,10 +18291,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 14158,
         "endOffset": 14162
       },
-      "isAbstract": {
-        "startOffset": 14135,
-        "endOffset": 14143
-      },
       "shortName": {
         "startOffset": 14166,
         "endOffset": 14170
@@ -19490,10 +18354,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 14199,
         "endOffset": 14202
-      },
-      "isAbstract": {
-        "startOffset": 14176,
-        "endOffset": 14184
       },
       "shortName": {
         "startOffset": 14206,
@@ -19559,10 +18419,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 14239,
         "endOffset": 14249
       },
-      "isAbstract": {
-        "startOffset": 14216,
-        "endOffset": 14224
-      },
       "shortName": {
         "startOffset": 14253,
         "endOffset": 14257
@@ -19626,10 +18482,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 14286,
         "endOffset": 14289
-      },
-      "isAbstract": {
-        "startOffset": 14263,
-        "endOffset": 14271
       },
       "shortName": {
         "startOffset": 14293,
@@ -19695,10 +18547,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 14348,
         "endOffset": 14366
       },
-      "isAbstract": {
-        "startOffset": 14325,
-        "endOffset": 14333
-      },
       "shortName": {
         "startOffset": 14370,
         "endOffset": 14374
@@ -19762,10 +18610,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 14403,
         "endOffset": 14406
-      },
-      "isAbstract": {
-        "startOffset": 14380,
-        "endOffset": 14388
       },
       "shortName": {
         "startOffset": 14410,
@@ -19831,10 +18675,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 14457,
         "endOffset": 14460
       },
-      "isAbstract": {
-        "startOffset": 14434,
-        "endOffset": 14442
-      },
       "shortName": {
         "startOffset": 14464,
         "endOffset": 14468
@@ -19898,10 +18738,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 14530,
         "endOffset": 14548
-      },
-      "isAbstract": {
-        "startOffset": 14507,
-        "endOffset": 14515
       },
       "shortName": {
         "startOffset": 14552,
@@ -19967,10 +18803,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 14585,
         "endOffset": 14588
       },
-      "isAbstract": {
-        "startOffset": 14562,
-        "endOffset": 14570
-      },
       "shortName": {
         "startOffset": 14592,
         "endOffset": 14610
@@ -20034,10 +18866,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 14639,
         "endOffset": 14648
-      },
-      "isAbstract": {
-        "startOffset": 14616,
-        "endOffset": 14624
       },
       "shortName": {
         "startOffset": 14652,
@@ -20103,10 +18931,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 14685,
         "endOffset": 14695
       },
-      "isAbstract": {
-        "startOffset": 14662,
-        "endOffset": 14670
-      },
       "shortName": {
         "startOffset": 14699,
         "endOffset": 14703
@@ -20170,10 +18994,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 14732,
         "endOffset": 14734
-      },
-      "isAbstract": {
-        "startOffset": 14709,
-        "endOffset": 14717
       },
       "shortName": {
         "startOffset": 14738,
@@ -20239,10 +19059,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 14777,
         "endOffset": 14788
       },
-      "isAbstract": {
-        "startOffset": 14754,
-        "endOffset": 14762
-      },
       "shortName": {
         "startOffset": 14792,
         "endOffset": 14796
@@ -20306,10 +19122,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 14825,
         "endOffset": 14828
-      },
-      "isAbstract": {
-        "startOffset": 14802,
-        "endOffset": 14810
       },
       "shortName": {
         "startOffset": 14832,
@@ -20375,10 +19187,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 14895,
         "endOffset": 14911
       },
-      "isAbstract": {
-        "startOffset": 14872,
-        "endOffset": 14880
-      },
       "shortName": {
         "startOffset": 14915,
         "endOffset": 14919
@@ -20443,10 +19251,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 14948,
         "endOffset": 14952
       },
-      "isAbstract": {
-        "startOffset": 14925,
-        "endOffset": 14933
-      },
       "shortName": {
         "startOffset": 14956,
         "endOffset": 14972
@@ -20510,10 +19314,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 15001,
         "endOffset": 15008
-      },
-      "isAbstract": {
-        "startOffset": 14978,
-        "endOffset": 14986
       },
       "shortName": {
         "startOffset": 15012,
@@ -20661,10 +19461,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 15114,
         "endOffset": 15119
-      },
-      "isAbstract": {
-        "startOffset": 15096,
-        "endOffset": 15104
       }
     },
     "exports": [
@@ -20696,10 +19492,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 15143,
         "endOffset": 15149
-      },
-      "isAbstract": {
-        "startOffset": 15125,
-        "endOffset": 15133
       }
     },
     "exports": [
@@ -20731,10 +19523,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 15173,
         "endOffset": 15182
-      },
-      "isAbstract": {
-        "startOffset": 15155,
-        "endOffset": 15163
       },
       "shortName": {
         "startOffset": 15186,
@@ -20800,10 +19588,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 15222,
         "endOffset": 15238
       },
-      "isAbstract": {
-        "startOffset": 15204,
-        "endOffset": 15212
-      },
       "shortName": {
         "startOffset": 15242,
         "endOffset": 15254
@@ -20867,10 +19651,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 15278,
         "endOffset": 15284
-      },
-      "isAbstract": {
-        "startOffset": 15260,
-        "endOffset": 15268
       },
       "shortName": {
         "startOffset": 15288,
@@ -20936,10 +19716,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 15322,
         "endOffset": 15333
       },
-      "isAbstract": {
-        "startOffset": 15304,
-        "endOffset": 15312
-      },
       "shortName": {
         "startOffset": 15337,
         "endOffset": 15347
@@ -21004,10 +19780,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 15371,
         "endOffset": 15376
       },
-      "isAbstract": {
-        "startOffset": 15353,
-        "endOffset": 15361
-      },
       "shortName": {
         "startOffset": 15380,
         "endOffset": 15390
@@ -21071,10 +19843,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 15414,
         "endOffset": 15428
-      },
-      "isAbstract": {
-        "startOffset": 15396,
-        "endOffset": 15404
       }
     },
     "exports": [
@@ -21106,10 +19874,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 15452,
         "endOffset": 15456
-      },
-      "isAbstract": {
-        "startOffset": 15434,
-        "endOffset": 15442
       }
     },
     "exports": [
@@ -21141,10 +19905,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 15480,
         "endOffset": 15494
-      },
-      "isAbstract": {
-        "startOffset": 15462,
-        "endOffset": 15470
       }
     },
     "exports": [
@@ -21176,10 +19936,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 15518,
         "endOffset": 15528
-      },
-      "isAbstract": {
-        "startOffset": 15500,
-        "endOffset": 15508
       }
     },
     "exports": [
@@ -21211,10 +19967,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 15552,
         "endOffset": 15562
-      },
-      "isAbstract": {
-        "startOffset": 15534,
-        "endOffset": 15542
       }
     },
     "exports": [
@@ -21246,10 +19998,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 15586,
         "endOffset": 15603
-      },
-      "isAbstract": {
-        "startOffset": 15568,
-        "endOffset": 15576
       },
       "shortName": {
         "startOffset": 15607,
@@ -21397,10 +20145,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 15718,
         "endOffset": 15730
-      },
-      "isAbstract": {
-        "startOffset": 15700,
-        "endOffset": 15708
       }
     },
     "exports": [
@@ -21432,10 +20176,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 15754,
         "endOffset": 15764
-      },
-      "isAbstract": {
-        "startOffset": 15736,
-        "endOffset": 15744
       },
       "shortName": {
         "startOffset": 15768,
@@ -21501,10 +20241,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 15804,
         "endOffset": 15819
       },
-      "isAbstract": {
-        "startOffset": 15786,
-        "endOffset": 15794
-      },
       "shortName": {
         "startOffset": 15823,
         "endOffset": 15835
@@ -21568,10 +20304,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 15859,
         "endOffset": 15873
-      },
-      "isAbstract": {
-        "startOffset": 15841,
-        "endOffset": 15849
       },
       "shortName": {
         "startOffset": 15877,
@@ -21637,10 +20369,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 15916,
         "endOffset": 15932
       },
-      "isAbstract": {
-        "startOffset": 15898,
-        "endOffset": 15906
-      },
       "shortName": {
         "startOffset": 15936,
         "endOffset": 15950
@@ -21704,10 +20432,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 15974,
         "endOffset": 15990
-      },
-      "isAbstract": {
-        "startOffset": 15956,
-        "endOffset": 15964
       },
       "shortName": {
         "startOffset": 15994,
@@ -21773,10 +20497,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 16032,
         "endOffset": 16048
       },
-      "isAbstract": {
-        "startOffset": 16014,
-        "endOffset": 16022
-      },
       "shortName": {
         "startOffset": 16052,
         "endOffset": 16067
@@ -21841,10 +20561,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
         "startOffset": 16091,
         "endOffset": 16105
       },
-      "isAbstract": {
-        "startOffset": 16073,
-        "endOffset": 16081
-      },
       "shortName": {
         "startOffset": 16109,
         "endOffset": 16124
@@ -21908,10 +20624,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16154,
         "endOffset": 16168
-      },
-      "isAbstract": {
-        "startOffset": 16131,
-        "endOffset": 16139
       }
     },
     "exports": [
@@ -21943,10 +20655,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16197,
         "endOffset": 16214
-      },
-      "isAbstract": {
-        "startOffset": 16174,
-        "endOffset": 16182
       }
     },
     "exports": [
@@ -21978,10 +20686,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16243,
         "endOffset": 16254
-      },
-      "isAbstract": {
-        "startOffset": 16220,
-        "endOffset": 16228
       }
     },
     "exports": [
@@ -22013,10 +20717,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16283,
         "endOffset": 16301
-      },
-      "isAbstract": {
-        "startOffset": 16260,
-        "endOffset": 16268
       }
     },
     "exports": [
@@ -22048,10 +20748,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16330,
         "endOffset": 16344
-      },
-      "isAbstract": {
-        "startOffset": 16307,
-        "endOffset": 16315
       }
     },
     "exports": [
@@ -22083,10 +20779,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16373,
         "endOffset": 16383
-      },
-      "isAbstract": {
-        "startOffset": 16350,
-        "endOffset": 16358
       }
     },
     "exports": [
@@ -22118,10 +20810,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16412,
         "endOffset": 16421
-      },
-      "isAbstract": {
-        "startOffset": 16389,
-        "endOffset": 16397
       }
     },
     "exports": [
@@ -22153,10 +20841,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16450,
         "endOffset": 16461
-      },
-      "isAbstract": {
-        "startOffset": 16427,
-        "endOffset": 16435
       },
       "shortName": {
         "startOffset": 16465,
@@ -22221,10 +20905,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16503,
         "endOffset": 16510
-      },
-      "isAbstract": {
-        "startOffset": 16480,
-        "endOffset": 16488
       }
     },
     "exports": [
@@ -22339,10 +21019,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16608,
         "endOffset": 16623
-      },
-      "isAbstract": {
-        "startOffset": 16589,
-        "endOffset": 16597
       }
     },
     "exports": [],
@@ -22397,10 +21073,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16656,
         "endOffset": 16666
-      },
-      "isAbstract": {
-        "startOffset": 16638,
-        "endOffset": 16646
       }
     },
     "exports": [
@@ -22432,10 +21104,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16690,
         "endOffset": 16697
-      },
-      "isAbstract": {
-        "startOffset": 16672,
-        "endOffset": 16680
       }
     },
     "exports": [
@@ -22467,10 +21135,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16721,
         "endOffset": 16726
-      },
-      "isAbstract": {
-        "startOffset": 16703,
-        "endOffset": 16711
       }
     },
     "exports": [
@@ -22502,10 +21166,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16752,
         "endOffset": 16763
-      },
-      "isAbstract": {
-        "startOffset": 16732,
-        "endOffset": 16740
       }
     },
     "exports": [
@@ -22562,10 +21222,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16799,
         "endOffset": 16809
-      },
-      "isAbstract": {
-        "startOffset": 16779,
-        "endOffset": 16787
       }
     },
     "exports": [
@@ -22622,10 +21278,6 @@ export const kermlStdlibEntries: SymbolEntry[] = [
       "declaredName": {
         "startOffset": 16845,
         "endOffset": 16853
-      },
-      "isAbstract": {
-        "startOffset": 16825,
-        "endOffset": 16833
       }
     },
     "exports": [

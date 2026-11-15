@@ -39,9 +39,18 @@ description: "@modelscript/openadr (languages/openadr) provides native parsing, 
 
 ### 3. DAE Formulation for Microgrid Peak Shaving
 
-- Couples curtailment targets into `@modelscript/runtime`'s `DAEBuilder`:
+- Couples curtailment targets into `@modelscript/runtime`'s `DAEBuilder`, bounding facility demand to the active OpenADR limit (with soft-slack $\varepsilon_{\text{shed}}$) and integrating total energy curtailed over the event window:
   $$P_{\text{facility}}(t) \le P_{\text{limit}}(t) + \varepsilon_{\text{shed}}$$
   $$E_{\text{shed}} = \int_{t_{\text{start}}}^{t_{\text{end}}} \max(0, P_{\text{baseline}}(t) - P_{\text{facility}}(t)) \, dt$$
+
+  | Symbol                                | Meaning                                                | Units / Domain                                  |
+  | :------------------------------------ | :----------------------------------------------------- | :---------------------------------------------- |
+  | $P_{\text{facility}}(t)$              | Actual facility electrical power demand at time $t$    | $\text{kW}$                                     |
+  | $P_{\text{limit}}(t)$                 | Active OpenADR curtailment power threshold             | $\text{kW}$                                     |
+  | $\varepsilon_{\text{shed}}$           | Non-negative soft-slack violation variable             | $\text{kW}$ ($\varepsilon_{\text{shed}} \ge 0$) |
+  | $E_{\text{shed}}$                     | Total energy curtailed below baseline during the event | $\text{kWh}$                                    |
+  | $t_{\text{start}}, t_{\text{end}}, t$ | Event start time, end time, and integration time       | $\text{h}$                                      |
+  | $P_{\text{baseline}}(t)$              | Counterfactual baseline facility load without DR event | $\text{kW}$                                     |
 
 ---
 

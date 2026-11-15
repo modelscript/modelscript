@@ -18,6 +18,7 @@ import {
   scalarizeArena,
   type SymbolEntry,
   type SymbolId,
+  UnifiedWorkspace,
   Variability,
   VarType,
 } from "@modelscript/runtime";
@@ -72,17 +73,28 @@ import {
   validateFunctionComponentDeclaration,
 } from "./elaboration/index.js";
 import {
-  escapeRegExp,
+  cstHasError,
   extractEnumLiteralsFromCst,
+  extractFunctionCallArgExprNodesCst,
+  firstAsciiToken,
   getSymbolQualifiedName,
+  isAsciiDigitsOnly,
+  isAsciiIdentContinue,
+  isAsciiIdentifier,
+  isAsciiIdentStart,
+  isAsciiWhitespaceCode,
   lowerCSTExpression,
   SCALAR_VECTORIZABLE_FUNCTIONS,
-  stripComments,
+  stripArraySubscripts,
   stripCommentsAndStrings,
+  stripLeadingDot,
+  stripOuterDoubleQuotes,
+  stripOuterSingleQuotes,
+  tokenizeCommentStrippedWords,
 } from "./expressions/index.js";
 import { extractCompilerOptions } from "./support/compiler-options.js";
 import { extractAndRegisterFmuMetadata, findDirectAnnotationClause } from "./support/fmu-lowering.js";
-import { getElementDiagRange } from "./support/range-utils.js";
+import { type DiagnosticRange, getElementDiagRange } from "./support/range-utils.js";
 import { type FlatteningState, getFlatteningState } from "./support/state.js";
 import {
   describeWasmBail,
@@ -96,8 +108,874 @@ import type { FlattenerBackend, FlattenOptions } from "./types.js";
 interface CstNodeLike {
   type?: string | undefined;
   text?: string | undefined;
-  children?: CstNodeLike[] | undefined;
-  [key: string]: unknown;
+  startIndex?: number | undefined;
+  endIndex?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+  startPosition?: { row: number; column: number } | undefined;
+  endPosition?: { row: number; column: number } | undefined;
+  children?: readonly CstNodeLike[] | null | undefined;
+  parent?: CstNodeLike | null | undefined;
+}
+
+const TRIVIA_COMMENT_TYPES = new Set(["comment", "line_comment", "block_comment"]);
+const PRIMITIVE_TYPE_WORDS = new Set(["Real", "Integer", "Boolean", "String"]);
+const CLASS_HEADER_PREFIX_WORDS = new Set([
+  "final",
+  "inner",
+  "outer",
+  "redeclare",
+  "replaceable",
+  "encapsulated",
+  "partial",
+  "expandable",
+  "pure",
+  "impure",
+  "operator",
+  "class",
+  "model",
+  "record",
+  "block",
+  "connector",
+  "type",
+  "package",
+  "function",
+  "uniontype",
+]);
+
+function parseStandaloneMoCst(code: string): SyntaxNode | null {
+  const parser = UnifiedWorkspace.getGlobalParser(".mo");
+  if (!parser) return null;
+  try {
+    return parser.parse(code).rootNode;
+  } catch {
+    return null;
+  }
+}
+
+function collectCstLeafTokens(
+  node: CstNodeLike | null | undefined,
+  options?: { skipStrings?: boolean; skipDescription?: boolean },
+): CstNodeLike[] {
+  const out: CstNodeLike[] = [];
+  if (!node) return out;
+  const skipStrings = options?.skipStrings ?? true;
+  const skipDescription = options?.skipDescription ?? false;
+  const visit = (n: CstNodeLike): void => {
+    const t = n.type ?? "";
+    if (TRIVIA_COMMENT_TYPES.has(t)) return;
+    if (skipStrings && (t === "string_literal" || t === "STRING")) return;
+    if (skipDescription && (t === "description" || t === "description_string" || t === "annotation_clause")) return;
+    if (!Array.isArray(n.children) || n.children.length === 0) {
+      if (n.text?.trim()) out.push(n);
+      return;
+    }
+    for (const c of n.children) visit(c);
+  };
+  visit(node);
+  return out;
+}
+
+function collectCstLeafTexts(
+  node: CstNodeLike | null | undefined,
+  options?: { skipStrings?: boolean; skipDescription?: boolean },
+): string[] {
+  return collectCstLeafTokens(node, options).map((n) => n.text!.trim());
+}
+
+function findFirstCstNode(
+  node: CstNodeLike | null | undefined,
+  predicate: (n: CstNodeLike) => boolean,
+): CstNodeLike | null {
+  if (!node) return null;
+  if (predicate(node)) return node;
+  if (Array.isArray(node.children)) {
+    for (const c of node.children) {
+      const found = findFirstCstNode(c, predicate);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function consumeStringOrCommentEnd(s: string, i: number): number {
+  const ch = s[i];
+  if (ch === '"' || ch === "'") {
+    let j = i + 1;
+    while (j < s.length) {
+      if (s[j] === "\\") {
+        j += 2;
+        continue;
+      }
+      if (s[j] === ch) return j + 1;
+      j++;
+    }
+    return s.length;
+  }
+  if (ch === "/" && s[i + 1] === "/") {
+    let j = i + 2;
+    while (j < s.length && s[j] !== "\n" && s[j] !== "\r") j++;
+    return j;
+  }
+  if (ch === "/" && s[i + 1] === "*") {
+    const closeIdx = s.indexOf("*/", i + 2);
+    return closeIdx >= 0 ? closeIdx + 2 : s.length;
+  }
+  return -1;
+}
+
+function readAsciiIdentEnd(s: string, i: number): number {
+  if (i >= s.length || !isAsciiIdentStart(s.charCodeAt(i))) return i;
+  let j = i + 1;
+  while (j < s.length && isAsciiIdentContinue(s.charCodeAt(j))) j++;
+  return j;
+}
+
+function getClassHeaderWordsCst(cst: CstNodeLike | null | undefined): string[] {
+  if (!cst) return [];
+  if (cst.type === "class_definition" && Array.isArray(cst.children) && cst.children.length > 0) {
+    const words: string[] = [];
+    for (const ch of cst.children) {
+      if (ch.type === "class_specifier") break;
+      words.push(...tokenizeCommentStrippedWords(ch.text ?? ""));
+    }
+    if (words.length > 0) return words;
+  }
+  const pfxNode =
+    Cst.ClassDefinition.classPrefixes(cst as unknown as SyntaxNode) ??
+    cst.children?.find((c) => c.type === "class_prefixes");
+  if (pfxNode) {
+    return tokenizeCommentStrippedWords(pfxNode.text ?? "");
+  }
+  const leaves = collectCstLeafTexts(cst, { skipStrings: true });
+  const words: string[] = [];
+  for (const tok of leaves) {
+    if (!CLASS_HEADER_PREFIX_WORDS.has(tok)) break;
+    words.push(tok);
+  }
+  return words;
+}
+
+function hasClassPrefixWordCst(cst: CstNodeLike | null | undefined, word: string): boolean {
+  return getClassHeaderWordsCst(cst).includes(word);
+}
+
+function hasOperatorRecordPrefixCst(cst: CstNodeLike | null | undefined): boolean {
+  const words = getClassHeaderWordsCst(cst);
+  return words.some((w, i) => w === "operator" && words[i + 1] === "record");
+}
+
+function cstHasUnqualifiedImportWildcard(importCst: CstNodeLike | null | undefined): boolean {
+  const leaves = collectCstLeafTexts(importCst, { skipStrings: true, skipDescription: true });
+  return leaves.some((t) => t === "*" || t === ".*");
+}
+
+function collectDottedPrefixRootIdentsCst(cst: CstNodeLike | null | undefined): string[] {
+  const out: string[] = [];
+  if (!cst) return out;
+  const leaves = collectCstLeafTexts(cst, { skipStrings: true });
+  for (let i = 0; i + 2 < leaves.length; i++) {
+    const a = leaves[i]!;
+    if (isAsciiIdentifier(a) && leaves[i + 1] === "." && isAsciiIdentifier(leaves[i + 2]!)) {
+      out.push(a);
+    }
+  }
+  return out;
+}
+
+function cstHasKeywordToken(cst: CstNodeLike | null | undefined, keyword: string): boolean {
+  if (!cst) return false;
+  const t = cst.type ?? "";
+  if (TRIVIA_COMMENT_TYPES.has(t) || t === "string_literal" || t === "STRING") return false;
+  if (!Array.isArray(cst.children) || cst.children.length === 0) {
+    return cst.text?.trim() === keyword;
+  }
+  for (const c of cst.children) {
+    if (cstHasKeywordToken(c, keyword)) return true;
+  }
+  return false;
+}
+
+function hasUnsupportedTypeOrConnectorAliasCst(cst: CstNodeLike | null | undefined): boolean {
+  if (!cst) return false;
+  let found = false;
+  const visit = (n: CstNodeLike): void => {
+    if (found) return;
+    if (n.type === "class_definition") {
+      const words = getClassHeaderWordsCst(n);
+      const isTypeOrConnector = words.includes("connector") || words.includes("type");
+      if (isTypeOrConnector) {
+        const shortSpec = getShortClassSpecifierNode(n as unknown as SyntaxNode);
+        if (shortSpec && cstHasError(shortSpec)) {
+          found = true;
+          return;
+        }
+      }
+    }
+    for (const c of n.children ?? []) visit(c);
+  };
+  visit(cst);
+  return found;
+}
+
+function hasNonStandardEnumKeywordCst(cst: CstNodeLike | null | undefined): boolean {
+  const leaves = collectCstLeafTexts(cst, { skipStrings: true });
+  for (let i = 0; i + 2 < leaves.length; i++) {
+    if (
+      leaves[i] === "enum" &&
+      isAsciiIdentifier(leaves[i + 1]!) &&
+      (leaves[i + 2] === "(" || leaves[i + 2] === "=" || leaves[i + 2] === ";")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasConnectionsOrEqualityConstraintCst(cst: CstNodeLike | null | undefined): boolean {
+  const leaves = collectCstLeafTexts(cst, { skipStrings: true });
+  for (let i = 0; i < leaves.length; i++) {
+    if (leaves[i] === "equalityConstraint") return true;
+    if (
+      i + 2 < leaves.length &&
+      leaves[i] === "Connections" &&
+      leaves[i + 1] === "." &&
+      isAsciiIdentifier(leaves[i + 2]!)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function cstHasWholeSliceAssign(cst: CstNodeLike | null | undefined): boolean {
+  const leaves = collectCstLeafTexts(cst, { skipStrings: true });
+  for (let i = 0; i < leaves.length; i++) {
+    if (
+      i + 3 < leaves.length &&
+      leaves[i] === "[" &&
+      leaves[i + 1] === ":" &&
+      leaves[i + 2] === "]" &&
+      leaves[i + 3] === "="
+    ) {
+      return true;
+    }
+    if (i + 1 < leaves.length && leaves[i] === "[:]" && leaves[i + 1] === "=") {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isDecimalFloatTokenText(s: string): boolean {
+  const dotIdx = s.indexOf(".");
+  if (dotIdx <= 0 || dotIdx >= s.length - 1) return false;
+  const intPart = s.slice(0, dotIdx);
+  if (!isAsciiDigitsOnly(intPart)) return false;
+  return s.charCodeAt(dotIdx + 1) >= 48 && s.charCodeAt(dotIdx + 1) <= 57;
+}
+
+function cstHasFloatFillArg(cst: CstNodeLike | null | undefined): boolean {
+  if (!cst) return false;
+  let found = false;
+  const visit = (n: CstNodeLike): void => {
+    if (found) return;
+    if (
+      n.type === "function_call" ||
+      (n.type === "primary" && n.children?.some((c) => c.type === "function_call_args"))
+    ) {
+      const callee = n.children?.find((c) => c.type === "component_reference" || c.type === "identifier");
+      if (callee?.text?.trim() === "fill") {
+        const argNodes = extractFunctionCallArgExprNodesCst(n as unknown as SyntaxNode);
+        if (argNodes.length >= 2) {
+          const arg2Leaves = collectCstLeafTexts(argNodes[1], { skipStrings: true });
+          if (arg2Leaves.some((t) => isDecimalFloatTokenText(t))) {
+            found = true;
+            return;
+          }
+        }
+      }
+    }
+    for (const c of n.children ?? []) visit(c);
+  };
+  visit(cst);
+  if (found) return true;
+  // Token-level fallback if call wasn't structured
+  const leaves = collectCstLeafTexts(cst, { skipStrings: true });
+  for (let i = 0; i + 4 < leaves.length; i++) {
+    if (leaves[i] === "fill" && leaves[i + 1] === "(") {
+      let depth = 1;
+      let argIdx = 0;
+      for (let j = i + 2; j < leaves.length && depth > 0; j++) {
+        const t = leaves[j]!;
+        if (t === "(") depth++;
+        else if (t === ")") depth--;
+        else if (t === "," && depth === 1) argIdx++;
+        else if (depth === 1 && argIdx === 1 && isDecimalFloatTokenText(t)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function cstHasExternalLanguage(cst: CstNodeLike | null | undefined, lang: string): boolean {
+  if (!cst) return false;
+  const want = lang.toLowerCase();
+  let found = false;
+  const visit = (n: CstNodeLike): void => {
+    if (found) return;
+    if (n.type === "external_clause") {
+      const langNode = n.children?.find(
+        (c) => c.type === "language_specification" || c.type === "string_literal" || c.type === "STRING",
+      );
+      if (langNode && stripOuterDoubleQuotes(langNode.text?.trim() ?? "").toLowerCase() === want) {
+        found = true;
+        return;
+      }
+    }
+    for (const c of n.children ?? []) visit(c);
+  };
+  visit(cst);
+  if (found) return true;
+  const leaves = collectCstLeafTexts(cst, { skipStrings: false });
+  for (let i = 0; i + 1 < leaves.length; i++) {
+    if (leaves[i] === "external" && leaves[i + 1]!.startsWith('"')) {
+      if (stripOuterDoubleQuotes(leaves[i + 1]!).toLowerCase() === want) return true;
+    }
+  }
+  return false;
+}
+
+function cstHasLeadingDotAfterEqOrParen(cst: CstNodeLike | null | undefined): boolean {
+  const leaves = collectCstLeafTexts(cst, { skipStrings: true });
+  for (let i = 0; i + 1 < leaves.length; i++) {
+    if (leaves[i] !== "=" && leaves[i] !== "(") continue;
+    const next = leaves[i + 1]!;
+    if (next === "." && i + 2 < leaves.length && isAsciiIdentifier(leaves[i + 2]!)) {
+      return true;
+    }
+    if (next.startsWith(".") && isAsciiIdentifier(next.slice(1))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function cstHasComponentMethodCall(cst: CstNodeLike | null | undefined, compNames: Set<string>): boolean {
+  const leaves = collectCstLeafTexts(cst, { skipStrings: true });
+  for (let i = 0; i + 3 < leaves.length; i++) {
+    if (
+      compNames.has(leaves[i]!) &&
+      leaves[i + 1] === "." &&
+      isAsciiIdentifier(leaves[i + 2]!) &&
+      leaves[i + 3] === "("
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function cstHasEqualsRhsIdent(cst: CstNodeLike | null | undefined, idents: Set<string>): boolean {
+  const leaves = collectCstLeafTexts(cst, { skipStrings: true });
+  for (let i = 0; i + 1 < leaves.length; i++) {
+    if (leaves[i] === "=" && idents.has(leaves[i + 1]!)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function cstHasExternalBuiltinOrDerivative(cst: CstNodeLike | null | undefined): boolean {
+  if (!cst) return false;
+  if (cstHasExternalLanguage(cst, "builtin")) return true;
+  let found = false;
+  const visit = (n: CstNodeLike): void => {
+    if (found) return;
+    if (n.type === "element_modification") {
+      const nameNode = n.children?.find((c) => c.type === "name" || c.type === "identifier");
+      if (nameNode?.text?.trim() === "derivative") {
+        found = true;
+        return;
+      }
+    }
+    for (const c of n.children ?? []) visit(c);
+  };
+  visit(cst);
+  return found;
+}
+
+function optStringContainsFlag(rawOpt: string, flag: string): boolean {
+  const unquoted = stripOuterDoubleQuotes(rawOpt.trim());
+  let start = 0;
+  for (let i = 0; i <= unquoted.length; i++) {
+    const ch = unquoted[i];
+    if (i === unquoted.length || ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || ch === ",") {
+      if (i > start && unquoted.slice(start, i) === flag) return true;
+      start = i + 1;
+    }
+  }
+  return false;
+}
+
+function cstDirectNodeHasCommandLineFlag(node: CstNodeLike, flag: string, stopAtNestedClasses: boolean): boolean {
+  const visit = (n: CstNodeLike): boolean => {
+    if (stopAtNestedClasses && n !== node && n.type === "class_definition") return false;
+    if (n.type === "element_modification") {
+      const nameNode = n.children?.find((c) => c.type === "name" || c.type === "identifier");
+      if (nameNode?.text?.trim() === "__OpenModelica_commandLineOptions") {
+        const modNode = n.children?.find((c) => c.type === "modification" || c.type === "modification_expression");
+        const strNode = findFirstCstNode(modNode ?? n, (c) => c.type === "string_literal" || c.type === "STRING");
+        if (strNode?.text && optStringContainsFlag(strNode.text, flag)) {
+          return true;
+        }
+      }
+    }
+    for (const c of n.children ?? []) {
+      if (visit(c)) return true;
+    }
+    return false;
+  };
+  return visit(node);
+}
+
+function hasCommandLineFlagInCst(cst: CstNodeLike | null | undefined, flag: string): boolean {
+  if (!cst) return false;
+  return cstDirectNodeHasCommandLineFlag(cst, flag, true);
+}
+
+function hasNestedCommandLineFlagCst(cst: CstNodeLike | null | undefined, flag: string): boolean {
+  if (!cst) return false;
+  let found = false;
+  const visit = (n: CstNodeLike): void => {
+    if (found) return;
+    if (n !== cst && n.type === "class_definition") {
+      if (cstDirectNodeHasCommandLineFlag(n, flag, false)) {
+        found = true;
+        return;
+      }
+      return;
+    }
+    for (const c of n.children ?? []) visit(c);
+  };
+  visit(cst);
+  return found;
+}
+
+function findRedeclareTypeSpecRangeCst(
+  rootCst: CstNodeLike | null | undefined,
+  name: string,
+  redeclaredTypeSpecifier: string,
+): DiagnosticRange | undefined {
+  if (!rootCst) return undefined;
+  const cleanSpec = stripLeadingDot(redeclaredTypeSpecifier);
+  let matchedNode: CstNodeLike | null = null;
+  const visit = (n: CstNodeLike): void => {
+    if (matchedNode) return;
+    if (n.type === "element_redeclaration") {
+      const leaves = collectCstLeafTexts(n, { skipStrings: true });
+      const redeclIdx = leaves.indexOf("redeclare");
+      const typeIdx = redeclIdx >= 0 ? leaves.indexOf("type", redeclIdx + 1) : -1;
+      const eqIdx = typeIdx >= 0 ? leaves.indexOf("=", typeIdx + 1) : -1;
+      const nameIdx = typeIdx >= 0 ? leaves.indexOf(name, typeIdx + 1) : -1;
+      const hasBlockingToken =
+        typeIdx > redeclIdx &&
+        leaves
+          .slice(redeclIdx + 1, typeIdx)
+          .some(
+            (tok) =>
+              tok === "=" ||
+              tok === ";" ||
+              tok === "function" ||
+              tok === "model" ||
+              tok === "block" ||
+              tok === "record" ||
+              tok === "connector" ||
+              tok === "package",
+          );
+      if (!hasBlockingToken && nameIdx > typeIdx && (eqIdx < 0 || nameIdx < eqIdx)) {
+        const typeNode = findFirstCstNode(n, (c) => {
+          if (c.type !== "type_specifier" && c.type !== "name") return false;
+          const t = stripLeadingDot(c.text?.trim() ?? "");
+          return t === cleanSpec || t.endsWith(`.${cleanSpec}`);
+        });
+        if (typeNode) {
+          matchedNode = n;
+          return;
+        }
+      }
+    }
+    for (const c of n.children ?? []) visit(c);
+  };
+  visit(rootCst);
+  return matchedNode ? getElementDiagRange(matchedNode) : undefined;
+}
+
+function findRedeclareSameNameRangeCst(
+  extCst: CstNodeLike | null | undefined,
+  name: string,
+): DiagnosticRange | undefined {
+  if (!extCst) return undefined;
+  let matched: CstNodeLike | null = null;
+  const visit = (n: CstNodeLike): void => {
+    if (matched) return;
+    if (n.type === "element_redeclaration") {
+      const leaves = collectCstLeafTexts(n, { skipStrings: true });
+      if (leaves.includes(name)) {
+        matched = n;
+        return;
+      }
+    }
+    for (const c of n.children ?? []) visit(c);
+  };
+  visit(extCst);
+  return getElementDiagRange(matched ?? extCst);
+}
+
+function stripTrailingSemicolon(s: string): string {
+  const trimmed = s.trim();
+  return trimmed.endsWith(";") ? trimmed.slice(0, -1).trimEnd() : trimmed;
+}
+
+function sliceIfMatchesNodeText(wrapped: string, node: CstNodeLike | null | undefined): [number, number] | null {
+  if (!node) return null;
+  const s = node.startIndex ?? node.startOffset;
+  const e = node.endIndex ?? node.endOffset;
+  if (typeof s !== "number" || typeof e !== "number") return null;
+  if (wrapped.slice(s, e) !== (node.text ?? "")) return null;
+  return [s, e];
+}
+
+function findComponentClausePartsInText(text: string): {
+  wrapped: string;
+  base: string;
+  typeSpec: [number, number];
+  typeArr: [number, number] | null;
+  compIdent: [number, number];
+  compArr: [number, number] | null;
+} | null {
+  const base = stripTrailingSemicolon(text);
+  const prefix = "model _M\n  ";
+  const wrapped = `${prefix}${base};\nend _M;`;
+  const root = parseStandaloneMoCst(wrapped);
+  if (!root) return null;
+  const clause = findFirstCstNode(root, (n) => n.type === "component_clause" || n.type === "component_clause1");
+  if (!clause || cstHasError(clause as unknown as SyntaxNode)) return null;
+  const typeSpecNode = clause.children?.find((c) => c.type === "type_specifier");
+  const typeArrNode = clause.children?.find((c) => c.type === "array_subscripts") ?? null;
+  const declNode = findFirstCstNode(clause, (n) => n.type === "declaration");
+  const identNode = declNode?.children?.find((c) => c.type === "identifier") ?? null;
+  const compArrNode = declNode?.children?.find((c) => c.type === "array_subscripts") ?? null;
+  const ts = sliceIfMatchesNodeText(wrapped, typeSpecNode);
+  const ci = sliceIfMatchesNodeText(wrapped, identNode);
+  if (!ts || !ci) return null;
+  const ta = sliceIfMatchesNodeText(wrapped, typeArrNode);
+  const ca = sliceIfMatchesNodeText(wrapped, compArrNode);
+  return { wrapped, base, typeSpec: ts, typeArr: ta, compIdent: ci, compArr: ca };
+}
+
+function mergeArrayDimText(firstDim: string, secondDim: string): string {
+  const a = firstDim.trim();
+  const b = secondDim.trim();
+  if (a.startsWith("[") && a.endsWith("]") && b.startsWith("[") && b.endsWith("]")) {
+    return `[${a.slice(1, -1)}, ${b.slice(1, -1)}]`;
+  }
+  return `${a}${b}`;
+}
+
+function moveTypeArrayDimToCompName(text: string): string {
+  const info = findComponentClausePartsInText(text);
+  if (!info || !info.typeArr) return text;
+  const [taS, taE] = info.typeArr;
+  const [ciS, ciE] = info.compIdent;
+  if (taE > ciS) return text;
+  const typeDimTxt = info.wrapped.slice(taS, taE);
+  const pLen = "model _M\n  ".length;
+  const relTaS = taS - pLen;
+  const relTaE = taE - pLen;
+  const relCiE = ciE - pLen;
+  if (!info.compArr) {
+    const before = info.base.slice(0, relTaS).trimEnd();
+    const mid = info.base.slice(relTaE, relCiE).trimStart();
+    const after = info.base.slice(relCiE);
+    return `${before} ${mid}${typeDimTxt}${after}`;
+  }
+  const [caS, caE] = info.compArr;
+  const relCaS = caS - pLen;
+  const relCaE = caE - pLen;
+  const compDimTxt = info.wrapped.slice(caS, caE);
+  const before = info.base.slice(0, relTaS).trimEnd();
+  const mid = info.base.slice(relTaE, relCaS).trimStart();
+  const after = info.base.slice(relCaE);
+  return `${before} ${mid}${mergeArrayDimText(typeDimTxt, compDimTxt)}${after}`;
+}
+
+function moveCompArrayDimToTypeName(text: string): string {
+  const info = findComponentClausePartsInText(text);
+  if (!info || !info.compArr) return text;
+  const [, tsE] = info.typeSpec;
+  const [caS, caE] = info.compArr;
+  if (tsE > caS) return text;
+  const compDimTxt = info.wrapped.slice(caS, caE);
+  const pLen = "model _M\n  ".length;
+  const relTsE = tsE - pLen;
+  const relCaS = caS - pLen;
+  const relCaE = caE - pLen;
+  if (!info.typeArr) {
+    return `${info.base.slice(0, relTsE)}${compDimTxt}${info.base.slice(relTsE, relCaS)}${info.base.slice(relCaE)}`;
+  }
+  const [taS, taE] = info.typeArr;
+  const relTaS = taS - pLen;
+  const relTaE = taE - pLen;
+  const typeDimTxt = info.wrapped.slice(taS, taE);
+  return `${info.base.slice(0, relTaS)}${mergeArrayDimText(typeDimTxt, compDimTxt)}${info.base.slice(relTaE, relCaS)}${info.base.slice(relCaE)}`;
+}
+
+function replaceAliasDotPrefix(text: string, alias: string, target: string): { text: string; changed: boolean } {
+  let out = "";
+  let changed = false;
+  let i = 0;
+  while (i < text.length) {
+    const skipEnd = consumeStringOrCommentEnd(text, i);
+    if (skipEnd > i) {
+      out += text.slice(i, skipEnd);
+      i = skipEnd;
+      continue;
+    }
+    const idEnd = readAsciiIdentEnd(text, i);
+    if (idEnd > i) {
+      const word = text.slice(i, idEnd);
+      const prevChar = i > 0 ? text[i - 1] : "";
+      if (word === alias && prevChar !== "." && text[idEnd] === ".") {
+        out += target;
+        changed = true;
+      } else {
+        out += word;
+      }
+      i = idEnd;
+      continue;
+    }
+    out += text[i]!;
+    i++;
+  }
+  return { text: changed ? out : text, changed };
+}
+
+function startsWithPrimitiveTypeWord(text: string): boolean {
+  const trimmed = text.trimStart();
+  const tok = firstAsciiToken(trimmed);
+  return PRIMITIVE_TYPE_WORDS.has(tok) && trimmed[tok.length] !== ".";
+}
+
+function dotPrefixPrimitiveTypeWords(text: string): string {
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    const skipEnd = consumeStringOrCommentEnd(text, i);
+    if (skipEnd > i) {
+      out += text.slice(i, skipEnd);
+      i = skipEnd;
+      continue;
+    }
+    const idEnd = readAsciiIdentEnd(text, i);
+    if (idEnd > i) {
+      const word = text.slice(i, idEnd);
+      const prevChar = i > 0 ? text[i - 1] : "";
+      if (PRIMITIVE_TYPE_WORDS.has(word) && prevChar !== ".") {
+        out += `.${word}`;
+      } else {
+        out += word;
+      }
+      i = idEnd;
+      continue;
+    }
+    out += text[i]!;
+    i++;
+  }
+  return out;
+}
+
+function startsWithDottedIdentifierPair(text: string): boolean {
+  let i = 0;
+  while (i < text.length && isAsciiWhitespaceCode(text.charCodeAt(i))) i++;
+  if (i >= text.length || text[i] === ".") return false;
+  const end1 = readAsciiIdentEnd(text, i);
+  if (end1 === i || text[end1] !== ".") return false;
+  const end2 = readAsciiIdentEnd(text, end1 + 1);
+  return end2 > end1 + 1;
+}
+
+function formatParenModArgEquals(text: string): string {
+  let out = "";
+  let depth = 0;
+  let i = 0;
+  while (i < text.length) {
+    const skipEnd = consumeStringOrCommentEnd(text, i);
+    if (skipEnd > i) {
+      out += text.slice(i, skipEnd);
+      i = skipEnd;
+      continue;
+    }
+    const ch = text[i]!;
+    if (ch === "(") {
+      depth++;
+      out += ch;
+      i++;
+      continue;
+    }
+    if (ch === ")") {
+      if (depth > 0) depth--;
+      out += ch;
+      i++;
+      continue;
+    }
+    if (depth > 0 && ch === "=") {
+      const prev = i > 0 ? text[i - 1]! : "";
+      const next = text[i + 1] ?? "";
+      if (prev !== "=" && prev !== "!" && prev !== "<" && prev !== ">" && prev !== ":" && next !== "=") {
+        while (out.length > 0 && (out[out.length - 1] === " " || out[out.length - 1] === "\t")) {
+          out = out.slice(0, -1);
+        }
+        out += " = ";
+        i++;
+        while (i < text.length && (text[i] === " " || text[i] === "\t")) i++;
+        continue;
+      }
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+function parseComponentDeclTokensCst(
+  rawFallback: string,
+  stripDescAndAnn: boolean,
+  isTrivialTrueCond: (n: CstNodeLike | null | undefined) => boolean,
+): string[] | null {
+  const base = stripTrailingSemicolon(rawFallback);
+  if (!base) return null;
+  const root = parseStandaloneMoCst(`model _M\n  ${base};\nend _M;`);
+  if (!root) return null;
+  const clause = findFirstCstNode(root, (n) => n.type === "component_clause" || n.type === "component_clause1");
+  if (!clause || cstHasError(clause as unknown as SyntaxNode)) return null;
+  const tokens: string[] = [];
+  const collect = (n: CstNodeLike): void => {
+    const t = n.type ?? "";
+    if (TRIVIA_COMMENT_TYPES.has(t)) return;
+    if (isTrivialTrueCond(n)) return;
+    if (
+      stripDescAndAnn &&
+      (t === "comment" ||
+        t === "Comment" ||
+        t === "string_comment" ||
+        t === "StringComment" ||
+        t === "description" ||
+        t === "Description" ||
+        t === "description_string" ||
+        t === "DescriptionString" ||
+        t === "annotation" ||
+        t === "Annotation" ||
+        t === "annotation_clause")
+    ) {
+      return;
+    }
+    if (!Array.isArray(n.children) || n.children.length === 0) {
+      const txt = n.text?.trim();
+      if (txt && txt !== ";") tokens.push(txt);
+      return;
+    }
+    for (const c of n.children) collect(c);
+  };
+  collect(clause);
+  return tokens;
+}
+
+function extractBuiltinSinCosCalleeCst(externalDecl: string): "sin" | "cos" | null {
+  const base = stripTrailingSemicolon(externalDecl);
+  if (!base) return null;
+  const root = parseStandaloneMoCst(`function _f\n  ${base};\nend _f;`);
+  if (!root) return null;
+  const ext = findFirstCstNode(root, (n) => n.type === "external_clause");
+  if (!ext) return null;
+  const langNode = ext.children?.find(
+    (c) => c.type === "language_specification" || c.type === "string_literal" || c.type === "STRING",
+  );
+  if (!langNode || stripOuterDoubleQuotes(langNode.text?.trim() ?? "") !== "builtin") return null;
+  const extCall = findFirstCstNode(ext, (n) => n.type === "external_function_call");
+  if (!extCall) return null;
+  const leaves = collectCstLeafTexts(extCall, { skipStrings: true });
+  const eqIdx = leaves.indexOf("=");
+  const callee = eqIdx >= 0 ? leaves[eqIdx + 1] : leaves[0];
+  return callee === "sin" || callee === "cos" ? callee : null;
+}
+
+function findDeclElementModificationValueCst(
+  modRoot: CstNodeLike | null | undefined,
+  modName: string,
+): string | undefined {
+  if (!modRoot) return undefined;
+  let found: string | undefined;
+  const visit = (n: CstNodeLike): void => {
+    if (found !== undefined) return;
+    if (n !== modRoot && n.type === "class_definition") return;
+    if (n.type === "element_modification" || n.type === "named_argument") {
+      const nameNode = n.children?.find((c) => c.type === "name" || c.type === "identifier");
+      if (nameNode?.text?.trim() === modName) {
+        const modNode = n.children?.find((c) => c.type === "modification") ?? n;
+        const valNode =
+          modNode.children?.find(
+            (c) =>
+              c.type === "modification_expression" ||
+              c.type === "expression" ||
+              c.type === "simple_expression" ||
+              c.type === "string_literal" ||
+              c.type === "STRING",
+          ) ??
+          (() => {
+            const kids = modNode.children ?? [];
+            const eqIdx = kids.findIndex((c) => c.text?.trim() === "=");
+            return eqIdx >= 0 ? kids.slice(eqIdx + 1).find((c) => c.type !== "comment") : undefined;
+          })();
+        if (valNode?.text) {
+          found = valNode.text.trim();
+          return;
+        }
+      }
+    }
+    for (const c of n.children ?? []) visit(c);
+  };
+  visit(modRoot);
+  return found;
+}
+
+function extractNamedOrModArgValueCst(valText: string, fieldName: string): string | undefined {
+  let trimmed = valText.trim();
+  if (trimmed.startsWith("=")) trimmed = trimmed.slice(1).trim();
+  if (!trimmed) return undefined;
+  const identEnd = readAsciiIdentEnd(trimmed, 0);
+  let afterIdent = identEnd;
+  while (afterIdent < trimmed.length && isAsciiWhitespaceCode(trimmed.charCodeAt(afterIdent))) afterIdent++;
+  const declSnippet = trimmed.startsWith("(")
+    ? `_T _x${trimmed}`
+    : identEnd > 0 && trimmed[afterIdent] === "("
+      ? `_T _x = ${trimmed}`
+      : `_T _x(${trimmed})`;
+  const root = parseStandaloneMoCst(`model _M\n  ${declSnippet};\nend _M;`);
+  if (!root) return undefined;
+  const targetNode = findFirstCstNode(root, (n) => n.type === "component_clause" || n.type === "class_definition");
+  return findDeclElementModificationValueCst(targetNode ?? root, fieldName);
+}
+
+function extractFirstDeclToken(text: string | undefined): string {
+  if (!text) return "";
+  const trimmed = text.trimStart();
+  if (!trimmed) return "";
+  if (trimmed.startsWith("'")) {
+    const end = consumeStringOrCommentEnd(trimmed, 0);
+    return trimmed.slice(0, end);
+  }
+  return firstAsciiToken(trimmed);
 }
 
 export class ModelicaFlattener {
@@ -365,19 +1243,18 @@ export class ModelicaFlattener {
     if ((sym as any)._isOperatorRecord !== undefined) return (sym as any)._isOperatorRecord;
     const meta = (sym.metadata as any) || {};
     const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
-    const cleanKind = stripComments(rawKind).trim();
-    if (/\boperator\s+record\b/.test(cleanKind)) {
+    const kindWords = tokenizeCommentStrippedWords(rawKind);
+    if (kindWords.some((w, idx) => w === "operator" && kindWords[idx + 1] === "record")) {
       (sym as any)._isOperatorRecord = true;
       return true;
     }
-    if (cleanKind.length > 0 && !/\b(?:operator|record)\b/.test(cleanKind)) {
+    if (kindWords.length > 0 && !kindWords.includes("operator") && !kindWords.includes("record")) {
       (sym as any)._isOperatorRecord = false;
       return false;
     }
     const cst = this.db.cstNode(sym.id) as any;
     if (cst) {
-      const text = stripComments(cst.text?.trim() ?? "").trim();
-      if (/^(?:(?:encapsulated|partial)\s+)*operator\s+record\b/.test(text)) {
+      if (hasOperatorRecordPrefixCst(cst)) {
         (sym as any)._isOperatorRecord = true;
         return true;
       }
@@ -393,23 +1270,10 @@ export class ModelicaFlattener {
     if (!sym || (sym.kind !== "Class" && sym.kind !== "Package" && sym.kind !== "Function")) return false;
     const meta = (sym.metadata as any) || {};
     const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
-    const cleanKind = rawKind.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-    if (/\bpartial\b/.test(cleanKind)) return true;
+    if (tokenizeCommentStrippedWords(rawKind).includes("partial")) return true;
     const cst = this.db.cstNode(classId) as any;
     if (cst) {
-      const pfxNode = Cst.ClassDefinition.classPrefixes(cst);
-      if (pfxNode) {
-        const pfxText = (pfxNode.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-        if (/\bpartial\b/.test(pfxText)) return true;
-      } else {
-        const text = (cst.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-        const headerMatch = text.match(
-          /^(?:(?:final|inner|outer|redeclare|replaceable|encapsulated|partial|expandable|pure|impure|operator)\s+)+/,
-        );
-        if (headerMatch && /\bpartial\b/.test(headerMatch[0])) {
-          return true;
-        }
-      }
+      if (hasClassPrefixWordCst(cst, "partial")) return true;
       const shortSpec = getShortClassSpecifierNode(cst);
       if (shortSpec && !(this.options as any)?.isOldFrontend) {
         const typeSpecNode = shortSpec.children?.find((c: any) => c.type === "type_specifier" || c.type === "name");
@@ -486,27 +1350,24 @@ export class ModelicaFlattener {
           childPrefix.includes("operator") ||
           child.name.startsWith("'") ||
           childText.startsWith("operator") ||
-          /^(?:(?:encapsulated|partial)\s+)*operator\b/.test(childText);
+          hasClassPrefixWordCst(childCst, "operator");
 
         if (!isOperator) continue;
 
         const recMeta = (rec.metadata as Record<string, unknown>) || {};
         const recPrefix = String(recMeta?.["classPrefixes"] ?? recMeta?.["classKind"] ?? "");
-        const cleanChildPrefix = childPrefix.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
-        const cleanChildText = childText.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
-        const cleanRecPrefix = recPrefix.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
-        const checkEncapsulated = (s: string) => /\bencapsulated\b/.test(s) && !/\bnon-encapsulated\b/.test(s);
+        const checkEncapsulated = (s: string) => {
+          const words = tokenizeCommentStrippedWords(s);
+          return words.includes("encapsulated") && !words.includes("non-encapsulated");
+        };
         const isEncapsulated =
-          checkEncapsulated(cleanRecPrefix) ||
-          checkEncapsulated(cleanChildPrefix) ||
-          checkEncapsulated(cleanChildText) ||
+          checkEncapsulated(recPrefix) ||
+          checkEncapsulated(childPrefix) ||
+          hasClassPrefixWordCst(childCst, "encapsulated") ||
           this.db.childrenOf(child.id).some((c) => {
             if (c.kind !== "Class") return false;
             const meta = (c.metadata as any) || {};
-            const pfx = String(meta.classPrefixes ?? meta.classKind ?? "").replace(
-              /\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g,
-              "",
-            );
+            const pfx = String(meta.classPrefixes ?? meta.classKind ?? "");
             return checkEncapsulated(pfx);
           });
 
@@ -517,7 +1378,7 @@ export class ModelicaFlattener {
           dae.diagnostics.push({
             severity: "error",
             code: ModelicaErrorCode.NON_ENCAPSULATED_OPERATOR.code,
-            message: `Operator ${rec.name}.'${child.name.replace(/^'|'$/g, "")}' is not encapsulated.`,
+            message: `Operator ${rec.name}.'${stripOuterSingleQuotes(child.name)}' is not encapsulated.`,
             range: cRange,
           });
         }
@@ -547,7 +1408,7 @@ export class ModelicaFlattener {
             } else {
               const out = outputs[0]!;
               const outType = this.db.query<string | null>("typeSpecifier", out.id);
-              const cleanType = outType?.replace(/^\./, "") ?? "";
+              const cleanType = stripLeadingDot(outType ?? "");
               if (cleanType !== rec.name) {
                 dae.diagnostics.push({
                   severity: "error",
@@ -568,8 +1429,7 @@ export class ModelicaFlattener {
     if ((sym as any)._isRecord !== undefined) return (sym as any)._isRecord;
     const meta = (sym.metadata as any) || {};
     const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
-    const cleanKind = stripComments(rawKind).trim();
-    const words = cleanKind.split(/\s+/).filter(Boolean);
+    const words = tokenizeCommentStrippedWords(rawKind);
     if (words.includes("record")) {
       (sym as any)._isRecord = true;
       return true;
@@ -582,17 +1442,13 @@ export class ModelicaFlattener {
     if (cst) {
       const pfx = Cst.ClassDefinition.classPrefixes(cst);
       if (pfx) {
-        const pfxWords = stripComments(pfx.text ?? "")
-          .trim()
-          .split(/\s+/)
-          .filter(Boolean);
+        const pfxWords = tokenizeCommentStrippedWords(pfx.text ?? "");
         if (pfxWords.includes("record")) {
           (sym as any)._isRecord = true;
           return true;
         }
       }
-      const text = (cst.text?.trim() ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-      if (/^(?:(?:encapsulated|partial)\s+)*record\b/.test(text)) {
+      if (hasClassPrefixWordCst(cst, "record")) {
         (sym as any)._isRecord = true;
         return true;
       }
@@ -627,12 +1483,7 @@ export class ModelicaFlattener {
     for (const cls of fileClasses) {
       const clsSym = cls;
       const rawKind = String(clsSym?.metadata?.["classKind"] ?? clsSym?.metadata?.["classPrefixes"] ?? "");
-      const cleanKind =
-        rawKind
-          .replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ")
-          .trim()
-          .split(/\s+/)
-          .pop() ?? "";
+      const cleanKind = tokenizeCommentStrippedWords(rawKind).pop() ?? "";
       const cst = this.db.cstNode(cls.id) as any;
       if (!cst) continue;
 
@@ -816,14 +1667,12 @@ export class ModelicaFlattener {
           if (importCst) {
             const aliasNode = Cst.ImportClause.alias(importCst);
             const importListNode = Cst.ImportClause.importList(importCst);
-            const cstText: string = importCst.text ?? "";
-
             if (aliasNode) {
               aliasName = aliasNode.text;
               importKind = "simple";
             } else if (importListNode) {
               importKind = "compound";
-            } else if (/\.\s*\*/.test(cstText)) {
+            } else if (cstHasUnqualifiedImportWildcard(importCst)) {
               importKind = "unqualified";
             } else {
               importKind = "simple";
@@ -1045,11 +1894,11 @@ export class ModelicaFlattener {
       }
       if (shortMod.args.length > 0) {
         const sym = this.db.symbol(classId);
-        const cstText = (this.db.cstNode(classId) as any)?.text ?? "";
+        const clsCst = this.db.cstNode(classId) as any;
         if (
           sym?.kind === "Package" ||
           (sym?.metadata as any)?.classKind === "package" ||
-          /^\s*(?:(?:encapsulated|partial|replaceable)\s+)*package\b/.test(cstText)
+          hasClassPrefixWordCst(clsCst, "package")
         ) {
           return cacheAndReturn(true);
         }
@@ -1098,13 +1947,12 @@ export class ModelicaFlattener {
     }
 
     const cst = this.db.cstNode(classId) as any;
-    if (cst?.text) {
-      const matches = (cst.text as string).match(/\b([a-zA-Z_]\w*)\.[a-zA-Z_]\w*/g);
-      if (matches) {
+    if (cst) {
+      const prefixNames = collectDottedPrefixRootIdentsCst(cst);
+      if (prefixNames.length > 0) {
         const sym = this.db.symbol(classId);
         const seenPrefixes = new Set<string>();
-        for (const m of matches) {
-          const prefixName = m.split(".")[0]!;
+        for (const prefixName of prefixNames) {
           if (prefixName === "Modelica" || seenPrefixes.has(prefixName)) continue;
           seenPrefixes.add(prefixName);
           const prefixSym = this.db.byName(prefixName).find((e) => e.kind === "Class" || e.kind === "Package");
@@ -1180,57 +2028,31 @@ export class ModelicaFlattener {
       this._unsupportedWasmCache.set(classId, true);
       return true;
     }
-    let rawText = "";
-    if (sym && sym.startOffset != null && sym.endOffset != null) {
-      if (typeof (this.db as any).cstText === "function") {
-        rawText = (this.db as any).cstText(sym.startOffset, sym.endOffset, sym) ?? "";
-      }
-      if (!rawText && sym.resourceId) {
-        const s = (this.db as any).source?.(sym.resourceId);
-        if (typeof s === "string") {
-          rawText = s.slice(sym.startOffset, sym.endOffset);
-        }
-      }
-    }
-    if (!rawText) {
-      const cst = this.db.cstNode(classId) as any;
-      rawText = cst?.text ?? "";
-    }
-
-    // Strip comments and strings from class text to avoid spurious keyword matches
-    const text = stripCommentsAndStrings(rawText);
-
-    if (
-      /\bconnector\s+[a-zA-Z_]\w*\s*=\s*(?!(?:(?:input|output|flow|parameter)\s+)?\.?(?:[a-zA-Z_]\w*\.)*[a-zA-Z_]\w*(?:\[[^\]]*\])?\b)[a-zA-Z_]/.test(
-        text,
-      ) ||
-      /\btype\s+[a-zA-Z_]\w*\s*=\s*(?!enumeration\b|(?:(?:input|output|flow|parameter)\s+)?\.?(?:[a-zA-Z_]\w*\.)*[a-zA-Z_]\w*(?:\[[^\]]*\])?\b)[a-zA-Z_]/.test(
-        text,
-      )
-    ) {
+    const cstNode = this.db.cstNode(classId) as any;
+    if (cstNode && hasUnsupportedTypeOrConnectorAliasCst(cstNode)) {
       this._unsupportedWasmCache.set(classId, true);
       return true;
     }
-    const cstNode = this.db.cstNode(classId) as any;
     if (cstNode && this.cstContainsAnyIdentifier(cstNode, ModelicaFlattener.UNSUPPORTED_WASM_IDENTIFIERS)) {
       this._unsupportedWasmCache.set(classId, true);
       return true;
     }
 
     if (
-      /\benum\s+[a-zA-Z_]\w*\s*[(=;]/.test(text) ||
-      /\[\s*:\s*\]\s*=/.test(text) ||
-      /\bfill\s*\([^,]+,\s*\d+\.\d+/.test(text) ||
-      /\bexternal\s+"FORTRAN 77"/i.test(text) ||
-      /(?:=|\()\s*\.[a-zA-Z_]\w*/.test(text) ||
-      (sym?.parentId != null && /\bconstant\s+/.test(text))
+      cstNode &&
+      (hasNonStandardEnumKeywordCst(cstNode) ||
+        cstHasWholeSliceAssign(cstNode) ||
+        cstHasFloatFillArg(cstNode) ||
+        cstHasExternalLanguage(cstNode, "FORTRAN 77") ||
+        cstHasLeadingDotAfterEqOrParen(cstNode) ||
+        (sym?.parentId != null && cstHasKeywordToken(cstNode, "constant")))
     ) {
       this._unsupportedWasmCache.set(classId, true);
       return true;
     }
 
-    if (text.includes("for")) {
-      const cst = this.db.cstNode(classId) as any;
+    if (cstNode && cstHasKeywordToken(cstNode, "for")) {
+      const cst = cstNode;
       if (cst) {
         const forEqs: any[] = [];
         const findForEqs = (n: any) => {
@@ -1290,13 +2112,9 @@ export class ModelicaFlattener {
 
     const children = this.db.childrenOf(classId);
     const localCompNames = new Set(children.filter((c) => c.kind === "Component").map((c) => c.name));
-    if (localCompNames.size > 0) {
-      for (const compName of localCompNames) {
-        if (new RegExp(`\\b${escapeRegExp(compName)}\\.[a-zA-Z_]\\w*\\s*\\(`).test(text)) {
-          this._unsupportedWasmCache.set(classId, true);
-          return true;
-        }
-      }
+    if (localCompNames.size > 0 && cstNode && cstHasComponentMethodCall(cstNode, localCompNames)) {
+      this._unsupportedWasmCache.set(classId, true);
+      return true;
     }
     for (const child of children) {
       if (child.kind === "Extends") {
@@ -1439,14 +2257,9 @@ export class ModelicaFlattener {
           (targetClass.kind === "Type" || String(targetClass.metadata?.classKind ?? "").toLowerCase() === "type");
         if (targetClass && !isTypeTarget && localCompNames.size > 0) {
           const targetCst = this.db.cstNode(targetClass.id) as any;
-          const targetText = targetCst?.text ? stripCommentsAndStrings(targetCst.text) : "";
-          if (targetText && !/\bouter\b/.test(targetText)) {
-            for (const ln of localCompNames) {
-              if (new RegExp(`=[^;]*\\b${escapeRegExp(ln)}\\b`).test(targetText)) {
-                this._unsupportedWasmCache.set(classId, true);
-                return true;
-              }
-            }
+          if (targetCst && !cstHasKeywordToken(targetCst, "outer") && cstHasEqualsRhsIdent(targetCst, localCompNames)) {
+            this._unsupportedWasmCache.set(classId, true);
+            return true;
           }
         }
         if (
@@ -1473,11 +2286,9 @@ export class ModelicaFlattener {
       }
     }
     {
-      const src = (sym?.resourceId ? (this.db as any).source?.(sym.resourceId) : undefined) || text;
-      if (
-        typeof src === "string" &&
-        (/\bexternal\s+"builtin"/.test(src) || /\bderivative\s*(?:\([^)]*\))?\s*=/.test(src))
-      ) {
+      let fileRootCst: any = cstNode;
+      while (fileRootCst?.parent) fileRootCst = fileRootCst.parent;
+      if (fileRootCst && cstHasExternalBuiltinOrDerivative(fileRootCst)) {
         this._unsupportedWasmCache.set(classId, true);
         return true;
       }
@@ -1491,14 +2302,8 @@ export class ModelicaFlattener {
         }
         topNames.add(s.name);
         if (s.kind === "Function" || s.kind === "Class" || s.kind === "Package") {
-          let fnText = "";
-          if (s.startOffset != null && s.endOffset != null && typeof (this.db as any).cstText === "function") {
-            fnText = (this.db as any).cstText(s.startOffset, s.endOffset, s) ?? "";
-          }
-          if (!fnText) {
-            fnText = (this.db.cstNode(s.id) as any)?.text ?? "";
-          }
-          if (/\bexternal\s+"builtin"/.test(fnText) || /\bderivative\s*(?:\([^)]*\))?\s*=/.test(fnText)) {
+          const sCst = this.db.cstNode(s.id) as any;
+          if (cstHasExternalBuiltinOrDerivative(sCst)) {
             this._unsupportedWasmCache.set(classId, true);
             return true;
           }
@@ -1516,39 +2321,15 @@ export class ModelicaFlattener {
     visited.add(classId);
 
     const sym = this.db.symbol(classId);
-    let rawText = "";
-    if (sym && sym.startOffset != null && sym.endOffset != null) {
-      if (typeof (this.db as any).cstText === "function") {
-        rawText = (this.db as any).cstText(sym.startOffset, sym.endOffset, sym) ?? "";
-      }
-      if (!rawText && sym.resourceId) {
-        const s = (this.db as any).source?.(sym.resourceId);
-        if (typeof s === "string") {
-          rawText = s.slice(sym.startOffset, sym.endOffset);
-        }
-      }
-    }
-    if (!rawText) {
-      const cst = this.db.cstNode(classId) as any;
-      rawText = cst?.text ?? "";
-    }
+    const cst = this.db.cstNode(classId) as any;
 
-    const text = stripCommentsAndStrings(rawText);
-
-    if (
-      /\bconnector\s+[a-zA-Z_]\w*\s*=\s*(?!(?:(?:input|output|flow|parameter)\s+)?\.?(?:[a-zA-Z_]\w*\.)*[a-zA-Z_]\w*(?:\[[^\]]*\])?\b)[a-zA-Z_]/.test(
-        text,
-      ) ||
-      /\btype\s+[a-zA-Z_]\w*\s*=\s*(?!enumeration\b|(?:(?:input|output|flow|parameter)\s+)?\.?(?:[a-zA-Z_]\w*\.)*[a-zA-Z_]\w*(?:\[[^\]]*\])?\b)[a-zA-Z_]/.test(
-        text,
-      )
-    ) {
+    if (cst && hasUnsupportedTypeOrConnectorAliasCst(cst)) {
       reasons.push("type-or-connector-alias");
     }
-    if (/\benum\s+[a-zA-Z_]\w*\s*[(=;]/.test(text)) {
+    if (cst && hasNonStandardEnumKeywordCst(cst)) {
       reasons.push("enumeration");
     }
-    if (/\bConnections\s*\./.test(text) || /\bequalityConstraint\b/.test(text)) {
+    if (cst && hasConnectionsOrEqualityConstraintCst(cst)) {
       reasons.push("overconstrained-connections");
     }
 
@@ -1670,8 +2451,7 @@ export class ModelicaFlattener {
     const rawKind = (rootSym?.metadata as any)?.classKind ?? (rootSym?.metadata as any)?.classPrefixes ?? "model";
     let specKind: string | null = null;
     if (typeof rawKind === "string") {
-      const cleanKind = rawKind.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-      const words = cleanKind.split(/\s+/).filter(Boolean);
+      const words = tokenizeCommentStrippedWords(rawKind);
       if (words.includes("package")) specKind = "package";
       else if (words.includes("function")) specKind = "function";
       else if (words.includes("type")) specKind = "type";
@@ -1690,11 +2470,11 @@ export class ModelicaFlattener {
     (dae.extensionMetadata as any).hasOldInstOption = compilerOpts.hasOldInstAnnotation;
     // Check for non-instantiable class specializations (package, function, etc.)
     const classCstForCheck = classCst as SyntaxNode | null;
-    const ownOldInstText: string = classCst?.text ?? "";
-    const optIdx = ownOldInstText.lastIndexOf("-d=-newInst");
-    const optIsNested = optIdx >= 0 && /\bend\s+[A-Za-z_]\w*\s*;[\s\S]*\bend\s/.test(ownOldInstText.slice(optIdx));
+    const optIsNested = hasNestedCommandLineFlagCst(classCstForCheck, "-d=-newInst");
     const hasExtendsInPkg =
-      specKind === "package" && optIdx < 0 && this.db.childrenOf(rootClassId).some((c) => c.kind === "Extends");
+      specKind === "package" &&
+      !hasCommandLineFlagInCst(classCstForCheck, "-d=-newInst") &&
+      this.db.childrenOf(rootClassId).some((c) => c.kind === "Extends");
     const allowOldInstSpec = isOldInst && !(specKind === "package" && (optIsNested || hasExtendsInPkg));
     if (specKind && !((specKind === "function" || specKind === "package") && allowOldInstSpec)) {
       let startPos = classCstForCheck?.startPosition;
@@ -1730,11 +2510,7 @@ export class ModelicaFlattener {
     }
 
     // Check for partial root class
-    const isPartialRoot =
-      this.isClassPartial(rootClassId) ||
-      Boolean(
-        classCstForCheck?.text && /^(?:(?:encapsulated|pure|impure)\s+)*partial\b/.test(classCstForCheck.text.trim()),
-      );
+    const isPartialRoot = this.isClassPartial(rootClassId) || hasClassPrefixWordCst(classCstForCheck, "partial");
     if (isPartialRoot) {
       let startPos = classCstForCheck?.startPosition;
       let startB = classCstForCheck?.startIndex ?? (classCstForCheck as any)?.startOffset ?? 0;
@@ -2037,24 +2813,16 @@ export class ModelicaFlattener {
           if (targetClass && !this.isClassType(targetClass.id)) {
             const targetCst = this.db.cstNode(targetClass.id) as any;
             const prefixes = Cst.ClassDefinition.classPrefixes(targetCst);
-            const cleanPrefixes = (prefixes?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
+            const prefixWords = tokenizeCommentStrippedWords(prefixes?.text ?? "");
             let kindDesc = "a new def";
-            if (/\bmodel\b/.test(cleanPrefixes)) kindDesc = "a model";
-            else if (/\bblock\b/.test(cleanPrefixes)) kindDesc = "a block";
-            else if (/\brecord\b/.test(cleanPrefixes)) kindDesc = "a record";
-            else if (/\bconnector\b/.test(cleanPrefixes)) kindDesc = "a connector";
+            if (prefixWords.includes("model")) kindDesc = "a model";
+            else if (prefixWords.includes("block")) kindDesc = "a block";
+            else if (prefixWords.includes("record")) kindDesc = "a record";
+            else if (prefixWords.includes("connector")) kindDesc = "a connector";
 
             const rootCst = this.db.cstNode(rootClassId) as any;
-            const rootCstText = rootCst?.text ?? "";
-            const redeclMatch = rootCstText.match(
-              new RegExp(
-                `redeclare\\s+type\\s+${escapeRegExp(arg.name)}\\s*=\\s*${escapeRegExp(arg.redeclaredTypeSpecifier)}`,
-              ),
-            );
-            if (redeclMatch) {
-              const startIdx = rootCstText.indexOf(redeclMatch[0]);
-              const r =
-                startIdx >= 0 ? { startOffset: startIdx, endOffset: startIdx + redeclMatch[0].length } : undefined;
+            const r = findRedeclareTypeSpecRangeCst(rootCst, arg.name, arg.redeclaredTypeSpecifier);
+            if (r) {
               dae.diagnostics.push({
                 severity: "error",
                 code: ModelicaErrorCode.CLASS_SPECIALIZATION_VIOLATION.code,
@@ -2168,23 +2936,21 @@ export class ModelicaFlattener {
             };
             const prevCl = getClause(prevCst);
             const currCl = getClause(currCst);
-            let prevText = (prevCl?.text?.trim() ?? "").replace(/;$/, "");
-            const currText = (currCl?.text?.trim() ?? "").replace(/;$/, "");
-            prevText = prevText.replace(/^([a-zA-Z_]\w*)\[([^\]]+)\]\s+([a-zA-Z_]\w*)/, "$1 $3[$2]");
+            let prevText = stripTrailingSemicolon(prevCl?.text ?? "");
+            const currText = stripTrailingSemicolon(currCl?.text ?? "");
+            prevText = moveTypeArrayDimToCompName(prevText);
             const classImports = this.collectClassImports(classId);
             const resolveImportText = (txt: string) => {
               let res = txt;
               for (const [alias, target] of classImports) {
-                res = res.replace(new RegExp(`\\b${escapeRegExp(alias)}\\.`, "g"), `${target}.`);
+                res = replaceAliasDotPrefix(res, alias, target).text;
               }
               return res;
             };
             const resolvedPrev = resolveImportText(prevText);
             const resolvedCurr = resolveImportText(currText);
             if (resolvedPrev === resolvedCurr) {
-              const fmtPrev = /^(?:Real|Integer|Boolean|String)\b/.test(resolvedPrev)
-                ? resolvedPrev
-                : `.${resolvedPrev}`;
+              const fmtPrev = startsWithPrimitiveTypeWord(resolvedPrev) ? resolvedPrev : `.${resolvedPrev}`;
               dae.diagnostics.push({
                 severity: "error",
                 code: ModelicaErrorCode.DUPLICATE_ELEMENT.code,
@@ -2274,18 +3040,7 @@ export class ModelicaFlattener {
       for (const arg of extendsModParsed) {
         if (arg.isRedeclaration && arg.redeclaredTypeSpecifier) {
           if (!arg.redeclaredTypeSpecifier.includes(".") && arg.name === arg.redeclaredTypeSpecifier) {
-            let redeclRange: any = undefined;
-            if (extCst) {
-              const extText = extCst.text ?? "";
-              const m = extText.match(
-                new RegExp(`redeclare\\s+${escapeRegExp(arg.name)}\\s+${escapeRegExp(arg.name)}`),
-              );
-              if (m && m.index != null) {
-                const sByte = (extCst.startIndex ?? extCst.startOffset ?? 0) + m.index;
-                const eByte = sByte + m[0].length;
-                redeclRange = { startOffset: sByte, endOffset: eByte };
-              }
-            }
+            const redeclRange = findRedeclareSameNameRangeCst(extCst, arg.name);
             dae.diagnostics.push({
               severity: "error",
               code: ModelicaErrorCode.SAME_NAME_TYPE_SHADOWING.code,
@@ -2333,8 +3088,7 @@ export class ModelicaFlattener {
               endOffset: fallbackCst?.endIndex ?? fallbackCst?.endOffset ?? 0,
             };
 
-      const formatArrayDimBeforeName = (txt: string) =>
-        txt.replace(/^([a-zA-Z_.][\w.]*)\s+([a-zA-Z_]\w*)(\[[^\]]+\])/, "$1$3 $2");
+      const formatArrayDimBeforeName = (txt: string) => moveCompArrayDimToTypeName(txt);
 
       for (const ext of targetExtends) {
         const baseClass =
@@ -2440,14 +3194,13 @@ export class ModelicaFlattener {
           const prevInh = seenInheritedComps.get(baseElem.name);
           if (prevInh && prevInh.elem.id !== baseElem.id) {
             if ((prevInh.modText !== null) !== (currModVal !== null)) {
-              const prevRaw = formatArrayDimBeforeName((prevInh.clause?.text ?? "").trim().replace(/;$/, ""));
-              const currRaw = formatArrayDimBeforeName(
-                (baseClause?.text ?? baseCst?.text ?? "").trim().replace(/;$/, ""),
-              );
+              const prevRaw = formatArrayDimBeforeName(stripTrailingSemicolon(prevInh.clause?.text ?? ""));
+              const currRaw = formatArrayDimBeforeName(stripTrailingSemicolon(baseClause?.text ?? baseCst?.text ?? ""));
               const applyModBinding = (raw: string, modVal: string | null) => {
                 if (!modVal) return raw;
-                if (raw.includes("=")) {
-                  return raw.replace(/=\s*[^;]+$/, `= ${modVal}`);
+                const eqIdx = raw.indexOf("=");
+                if (eqIdx >= 0 && !raw.slice(eqIdx + 1).includes(";")) {
+                  return `${raw.slice(0, eqIdx)}= ${modVal}`;
                 }
                 return `${raw} = ${modVal}`;
               };
@@ -2486,16 +3239,16 @@ export class ModelicaFlattener {
               const localRange = toRange(localClause, localCst);
               const extStart = extCst?.startIndex ?? extCst?.startOffset ?? 0;
 
-              const localText = (localClause?.text ?? localCst?.text ?? "").trim().replace(/;$/, "");
-              const baseText = (baseClause?.text ?? baseCst?.text ?? "").trim().replace(/;$/, "");
+              const localText = stripTrailingSemicolon(localClause?.text ?? localCst?.text ?? "");
+              const baseText = stripTrailingSemicolon(baseClause?.text ?? baseCst?.text ?? "");
 
               let resolvedLocalText = localText;
               let usedImportAlias = false;
               for (const [alias, target] of targetImports) {
-                const re = new RegExp(`\\b${escapeRegExp(alias)}\\.`, "g");
-                if (re.test(resolvedLocalText)) {
+                const replaced = replaceAliasDotPrefix(resolvedLocalText, alias, target);
+                if (replaced.changed) {
                   usedImportAlias = true;
-                  resolvedLocalText = resolvedLocalText.replace(re, `${target}.`);
+                  resolvedLocalText = replaced.text;
                 }
               }
 
@@ -2530,7 +3283,8 @@ export class ModelicaFlattener {
                       n.type === "description_string" ||
                       n.type === "DescriptionString" ||
                       n.type === "annotation" ||
-                      n.type === "Annotation")
+                      n.type === "Annotation" ||
+                      n.type === "annotation_clause")
                   ) {
                     return;
                   }
@@ -2545,15 +3299,18 @@ export class ModelicaFlattener {
                 if (clauseNode && Array.isArray(clauseNode.children) && clauseNode.children.length > 0) {
                   collectTokens(clauseNode);
                 } else {
-                  let s = rawFallback.trim();
-                  if (!isOldFE) {
-                    s = s
-                      .replace(/\s*annotation\s*\([\s\S]*?\)\s*$/, "")
-                      .replace(/\s*"[^"]*"\s*$/, "")
-                      .trim();
+                  const parsedTokens = parseComponentDeclTokensCst(rawFallback, !isOldFE, isTrivialTrueCond);
+                  if (parsedTokens !== null) {
+                    tokens.push(...parsedTokens);
+                  } else {
+                    const s = rawFallback.trim();
+                    const trimmed = s.endsWith("if true") ? s.slice(0, -7).trim() : s;
+                    for (const tok of trimmed.split(" ")) {
+                      for (const sub of tok.split("\t")) {
+                        if (sub) tokens.push(sub);
+                      }
+                    }
                   }
-                  if (s.endsWith("if true")) s = s.slice(0, -7).trim();
-                  tokens.push(...s.split(/\s+/).filter(Boolean));
                 }
 
                 let joined = "";
@@ -2629,14 +3386,12 @@ export class ModelicaFlattener {
               let secondText = baseText;
 
               if (isOldFE) {
-                let localDisp = resolvedLocalText.replace(/\(\s*([a-zA-Z_]\w*)\s*=\s*/g, "($1 = ");
+                let localDisp = formatParenModArgEquals(resolvedLocalText);
                 if (usedImportAlias && !localDisp.startsWith(".")) {
                   localDisp = `.${localDisp}`;
                 }
-                let baseDisp = baseText
-                  .replace(/\(\s*([a-zA-Z_]\w*)\s*=\s*/g, "($1 = ")
-                  .replace(/\b(Real|Integer|Boolean|String)\b/g, ".$1");
-                if (/^[a-zA-Z_]\w*\.[a-zA-Z_]\w*/.test(baseDisp)) {
+                let baseDisp = dotPrefixPrimitiveTypeWords(formatParenModArgEquals(baseText));
+                if (startsWithDottedIdentifierPair(baseDisp)) {
                   baseDisp = `.${baseDisp}`;
                 }
                 firstText = localDisp;
@@ -2687,7 +3442,7 @@ export class ModelicaFlattener {
               const isPkg =
                 member.kind === "Package" ||
                 String((member.metadata as any)?.classKind ?? "").toLowerCase() === "package" ||
-                /\bpackage\b/.test(memberCst?.text ?? "");
+                hasClassPrefixWordCst(memberCst, "package");
               if (isPkg) {
                 for (const nestedArg of nestedArgs) {
                   if (!nestedArg?.name) continue;
@@ -2892,9 +3647,9 @@ export class ModelicaFlattener {
                     let targetFnCallName =
                       fnDae.externalDecl && fnDae.externalDecl.includes('"builtin"') ? rawCallName : fnDae.name;
                     if (isOldInst && fnDae.externalDecl) {
-                      const builtinMatch = fnDae.externalDecl.match(/=\s*(sin|cos)\s*\(\s*[^)\s]/);
-                      if (builtinMatch) {
-                        targetFnCallName = builtinMatch[1]!;
+                      const builtinCallee = extractBuiltinSinCosCalleeCst(fnDae.externalDecl);
+                      if (builtinCallee) {
+                        targetFnCallName = builtinCallee;
                       }
                     }
                     if (targetFnCallName && targetFnCallName !== rawCallName) {
@@ -3444,8 +4199,7 @@ export class ModelicaFlattener {
                 for (let pIdx = 3; pIdx < parts.length && valText; pIdx++) {
                   const bIdxSub = parts[pIdx]!.indexOf("[");
                   const subField = bIdxSub >= 0 ? parts[pIdx]!.slice(0, bIdxSub) : parts[pIdx]!;
-                  const m = new RegExp(`\\b${subField}\\s*=\\s*([^,)]+)`).exec(valText);
-                  valText = m ? m[1]!.trim() : undefined;
+                  valText = extractNamedOrModArgValueCst(valText, subField);
                 }
                 if (valText !== undefined) {
                   const parsed = Number(valText);
@@ -3482,6 +4236,7 @@ export class ModelicaFlattener {
     dae.extensionMetadata.expandableBuses = Array.from(this.expandableBuses.keys());
 
     if (shouldScalarize) {
+      (dae as any).flattener = this;
       dae = scalarizeArena(dae);
       this.state = getFlatteningState(dae, this);
       this.state.db = this.db;
@@ -3700,9 +4455,10 @@ export class ModelicaFlattener {
         if (!comp) break;
         const ann = findCompAnnText(this.db.cstNode(comp.id));
         if (ann) {
-          const hideMatch = ann.match(/^HideResult\s*=\s*(.+)$/);
-          if (hideMatch) {
-            let rhs = hideMatch[1]!.trim();
+          const afterHide = ann.startsWith("HideResult") ? ann.slice("HideResult".length).trimStart() : "";
+          const hideRhs = afterHide.startsWith("=") ? afterHide.slice(1).trim() : "";
+          if (hideRhs && !hideRhs.includes("\n") && !hideRhs.includes("\r")) {
+            let rhs = hideRhs;
             if (rhs !== "true" && rhs !== "false") {
               const pIdx = dae.getVarIdxByName(rhs);
               if (pIdx >= 0) {
@@ -3946,7 +4702,7 @@ export class ModelicaFlattener {
     for (let i = 0; i < dae.varCount; i++) {
       if (dae.getVarVariability(i) !== Variability.Parameter) continue;
       const vName = dae.getVarName(i);
-      const cleanName = vName.replace(/\[[^\][]*\]/g, "");
+      const cleanName = stripArraySubscripts(vName);
       const parts = cleanName.split(".");
       const leaf = parts[parts.length - 1]!.split("[")[0]!;
       if (parts.length === 1) {
@@ -4086,7 +4842,7 @@ export class ModelicaFlattener {
 
         for (const declNode of declNodes) {
           const idChild = (declNode.children || []).find((c: any) => c.type === "identifier");
-          const name = idChild ? idChild.text?.trim() : declNode.text?.trim()?.split(/\s|=|\[|\(/)[0];
+          const name = idChild ? idChild.text?.trim() : extractFirstDeclToken(declNode.text);
           if (name) {
             let varIdx = dae.getVarIdxByName(name);
             if (varIdx < 0) {
@@ -4113,7 +4869,12 @@ export class ModelicaFlattener {
             while (p && p.type !== "element" && p.type !== "composition") {
               p = p.parent;
             }
-            if (p && p.type === "element" && /\bfinal\b/.test((p.text ?? "").split("(")[0] ?? "")) {
+            const isFinalElement =
+              p &&
+              p.type === "element" &&
+              ((p.children || []).some((c: any) => c.type === "final" || c.text?.trim() === "final") ||
+                tokenizeCommentStrippedWords((p.text ?? "").split("(")[0] ?? "").includes("final"));
+            if (isFinalElement) {
               if (varIdx >= 0) {
                 dae.setVarFinal(varIdx, true);
               }
@@ -4129,11 +4890,11 @@ export class ModelicaFlattener {
               }
             }
             if (varIdx >= 0) {
-              const rawText = declNode.text ?? node.text ?? "";
-              const qMatch = rawText.match(/\bquantity\s*=\s*("([^"\\]|\\.)*")/);
-              if (qMatch) {
+              const targetModRoot = declNode ?? node;
+              const qValRaw = findDeclElementModificationValueCst(targetModRoot, "quantity");
+              if (qValRaw && qValRaw.startsWith('"') && qValRaw.endsWith('"')) {
                 try {
-                  const qStr = JSON.parse(qMatch[1]);
+                  const qStr = JSON.parse(qValRaw);
                   const qId = dae.addExpression(ExprKind.StringLiteral, dae.interner.intern(qStr));
                   dae.setVarAttr(varIdx, "quantity", qId);
                   const arrayIndices = dae.getArrayElementIndices(name);
@@ -4142,7 +4903,7 @@ export class ModelicaFlattener {
                   }
                 } catch {
                   // Fallback for non-standard string escapes in Modelica quantity attribute
-                  const qStr = qMatch[1].slice(1, -1);
+                  const qStr = qValRaw.slice(1, -1);
                   const qId = dae.addExpression(ExprKind.StringLiteral, dae.interner.intern(qStr));
                   dae.setVarAttr(varIdx, "quantity", qId);
                   const arrayIndices = dae.getArrayElementIndices(name);
@@ -4151,12 +4912,13 @@ export class ModelicaFlattener {
                   }
                 }
               }
-              const ssMatch = rawText.match(/\bstateSelect\s*=\s*(?:StateSelect\.)?([a-zA-Z]+)/);
-              if (ssMatch) {
+              const ssValRaw = findDeclElementModificationValueCst(targetModRoot, "stateSelect");
+              if (ssValRaw) {
+                const ssShort = ssValRaw.startsWith("StateSelect.") ? ssValRaw.slice("StateSelect.".length) : ssValRaw;
                 const ssLiterals = ["never", "avoid", "default", "prefer", "always"];
-                const ssIdx = ssLiterals.indexOf(ssMatch[1]);
+                const ssIdx = ssLiterals.indexOf(ssShort);
                 if (ssIdx >= 0) {
-                  const enumExprId = dae.addEnumLiteral(ssIdx + 1, `StateSelect.${ssMatch[1]}`);
+                  const enumExprId = dae.addEnumLiteral(ssIdx + 1, `StateSelect.${ssShort}`);
                   dae.setVarAttr(varIdx, "stateSelect", enumExprId);
                   const arrayIndices = dae.getArrayElementIndices(name);
                   for (const idx of arrayIndices) {

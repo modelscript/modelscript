@@ -34,7 +34,10 @@
   },
   "dependencies": {
     "@modelscript/dsl": "*",
-    "@modelscript/runtime": "*"
+    "@modelscript/modelica": "*",
+    "@modelscript/runtime": "*",
+    "@modelscript/step": "*",
+    "@modelscript/sysml2": "*"
   },
   "devDependencies": {
     "rimraf": "^6.1.0",

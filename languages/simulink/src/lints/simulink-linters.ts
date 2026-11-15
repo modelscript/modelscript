@@ -165,17 +165,20 @@ function lintSystem(system: SimulinkSystem, diagnostics: SimulinkDiagnostic[]): 
   }
 
   // Check 1: Duplicate block names in same scope (M7208)
-  const nameCounts = new Map<string, number>();
+  const blocksByName = new Map<string, SimulinkBlock[]>();
   for (const block of blockMap.values()) {
-    nameCounts.set(block.name, (nameCounts.get(block.name) ?? 0) + 1);
+    const list = blocksByName.get(block.name) ?? [];
+    list.push(block);
+    blocksByName.set(block.name, list);
   }
-  for (const [name, count] of nameCounts.entries()) {
-    if (count > 1) {
+  for (const [name, list] of blocksByName.entries()) {
+    if (list.length > 1) {
+      const dupBlock = list[1] ?? list[0];
       diagnostics.push({
         code: "M7208",
         severity: "error",
         message: `Duplicate block name '${name}' found in subsystem scope '${system.name}'. Block names within a system must be unique.`,
-        range: DEFAULT_RANGE,
+        range: dupBlock?.range ?? DEFAULT_RANGE,
         blockName: name,
       });
     }

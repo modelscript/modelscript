@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { XmlElement } from "@modelscript/dsl/xml";
 import { createZip, generateFmiLsEmtAnnotationXml } from "@modelscript/exchange";
 import type { DiagramComponentSpec, LibrarySymbolStub, ModelscriptLibraryManifest } from "@modelscript/runtime";
 import * as fs from "node:fs";
@@ -240,9 +241,18 @@ export function extractPscadLibraryPackage(
 
     let svgSnippet: string | undefined;
     if (includeGraphics) {
-      const defXml = pscxOrPslxText.slice(def.element.start, def.element.end);
-      const gMatch = defXml.match(/<graphic\b[\s\S]*?<\/graphic>/i);
-      if (gMatch) svgSnippet = gMatch[0];
+      const findGraphic = (el: XmlElement): XmlElement | undefined => {
+        for (const ch of el.children) {
+          if (ch.name.toLowerCase() === "graphic") return ch;
+          const nested = findGraphic(ch);
+          if (nested) return nested;
+        }
+        return undefined;
+      };
+      const graphicEl = findGraphic(def.element);
+      if (graphicEl) {
+        svgSnippet = pscxOrPslxText.slice(graphicEl.start, graphicEl.end);
+      }
     }
 
     diagrams.push({

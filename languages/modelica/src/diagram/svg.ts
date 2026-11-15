@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { computeSolderDots, type EdgePath } from "@modelscript/diagram/solder-dots";
+import { expandModelicaTextMacros } from "../flattener/expressions/cst-utils.js";
 import { ModelicaClassKind } from "../types.js";
 import { evaluateCondition } from "./annotation-evaluator.js";
 import { evaluateMacroExpression, inferModelicaDomainColor, resolveModelicaBitmapUri } from "./data.js";
@@ -215,24 +216,16 @@ function evaluateTextMacros(
     ? (compInst?.classInstance as ModelicaClassInstance | undefined)
     : (classInstance as ModelicaClassInstance | undefined);
 
-  const ESCAPED_PERCENT = "__PERCENT__";
   const nameText = compInst?.name ?? "";
   const classText = compInst?.["typeSpecifier"] ?? clsInst?.name ?? classInstance?.name ?? "";
   const commentText = compInst?.["description"] ?? clsInst?.["description"] ?? classInstance?.["description"] ?? "";
 
-  const replacer = (_match: string, expr: string): string => {
-    return evaluateMacroExpression(expr, clsInst, compInst);
-  };
-
-  return rawText
-    .replace(/%%/g, ESCAPED_PERCENT)
-    .replace(/%name\b/g, nameText)
-    .replace(/%class\b/g, classText)
-    .replace(/%comment\b/g, commentText)
-    .replace(/%\{([^}]*)\}/g, replacer)
-    .replace(/%(\w+)\b/g, replacer)
-    .replace(new RegExp(ESCAPED_PERCENT, "g"), "%");
+  return expandModelicaTextMacros(rawText, nameText, classText, commentText, (expr) =>
+    evaluateMacroExpression(expr, clsInst, compInst),
+  );
 }
+
+export { expandModelicaTextMacros } from "../flattener/expressions/cst-utils.js";
 
 export function computeHeight(extent?: IExtent, defaultValue = 200): number {
   if (!extent) return defaultValue;
@@ -396,7 +389,7 @@ function createSvgStringContext(): SvgStringContext {
 }
 
 function escapeSvgXml(str: string): string {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return str.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
 
 function allocDefId(ctx: SvgStringContext, key: string, buildDefXml: (id: string) => string): string {

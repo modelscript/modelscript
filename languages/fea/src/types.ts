@@ -93,6 +93,7 @@ export interface FeaModelData {
   materialLines?: Map<string, number> | undefined;
   sectionLines?: Map<string, number> | undefined;
   boundaryLines?: number[] | undefined;
+  includes?: string[] | undefined;
 }
 
 export type ParameterLookup = (name: string) => number | string | undefined;

@@ -76,7 +76,13 @@ Solves propositional satisfiability for discrete mode selection, architectural s
 
 Given unsatisfiable mutually contradictory formulas $A \land B \models \bot$, Craig interpolation synthesizes an interpolant $I$ such that:
 $$A \implies I \quad \text{and} \quad I \land B \models \bot$$
-where $\text{vars}(I) \subseteq \text{vars}(A) \cap \text{vars}(B)$.
+where $\text{vars}(I) \subseteq \text{vars}(A) \cap \text{vars}(B)$. In plain terms, $I$ serves as a compact interface summary that is implied by $A$ yet remains contradictory with $B$, using only variables shared by both subsystems so proprietary internal equations stay hidden.
+
+| Symbol | Meaning                                                                                                  | Units / Domain         |
+| :----- | :------------------------------------------------------------------------------------------------------- | :--------------------- |
+| $A, B$ | Mutually unsatisfiable logical formulas ($A \land B \models \bot$)                                       | Boolean / SMT formulas |
+| $I$    | Craig interpolant over shared vocabulary ($\text{vars}(I) \subseteq \text{vars}(A) \cap \text{vars}(B)$) | Boolean / SMT formula  |
+| $\bot$ | Logical falsehood (unsatisfiability / contradiction)                                                     | Boolean constant       |
 
 - **Modifications**: Employs Pudlák-McMillan resolution graph traversal to generate certified interpolants explaining cross-domain requirement violations without revealing proprietary subsystem equations.
 
@@ -110,7 +116,14 @@ Evaluates non-linear algebraic constraints over interval domains without discret
 
 Monitors simulation trajectories against temporal specifications (e.g. "overshoot must remain below 5% for at least 2 seconds after step input"):
 $$\rho(\varphi, s, t) \in \mathbb{R}$$
-Computes real-valued **quantitative robustness** indicating how far a trajectory is from violating safety boundaries.
+Computes real-valued **quantitative robustness** indicating how far a trajectory is from violating safety boundaries: positive values ($\rho > 0$) certify satisfaction with safety margin $|\rho|$, negative values ($\rho < 0$) quantify violation severity, and $\rho = 0$ marks the exact satisfaction threshold.
+
+| Symbol                | Meaning                                                               | Units / Domain                          |
+| :-------------------- | :-------------------------------------------------------------------- | :-------------------------------------- |
+| $\rho(\varphi, s, t)$ | Quantitative robustness degree of $\varphi$ on signal $s$ at time $t$ | $\mathbb{R}$ (signal units)             |
+| $\varphi$             | Signal Temporal Logic (STL) specification formula                     | STL formula                             |
+| $s$                   | Continuous-time simulation trajectory (signal)                        | $\mathbb{R}_{\ge 0} \to \mathbb{R}^n$   |
+| $t$                   | Evaluation timestamp along the trajectory                             | $\text{s}$ (time, $\mathbb{R}_{\ge 0}$) |
 
 ---
 

@@ -1,0 +1,1820 @@
+{
+  "adams": {
+    "keywords": [
+      "BUSHING",
+      "GFORCE",
+      "JOINT",
+      "MARKER",
+      "MOTION",
+      "PART",
+      "SFORCE",
+      "SIMULATE",
+      "SPRINGDAMPER",
+      "VFORCE",
+      "joint",
+      "marker",
+      "motion",
+      "part",
+      "simulate"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "ampl": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "#.*$"
+    ]
+  },
+  "antimony": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "asm": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "aspen": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "atp": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "automationml": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "autosar": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "bngl": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "[;#].*$"
+    ]
+  },
+  "c": {
+    "keywords": [
+      "DT",
+      "FIRST_STEP",
+      "TIME",
+      "auto",
+      "break",
+      "case",
+      "const",
+      "continue",
+      "default",
+      "do",
+      "else",
+      "enum",
+      "extern",
+      "for",
+      "goto",
+      "if",
+      "inline",
+      "register",
+      "restrict",
+      "return",
+      "sizeof",
+      "static",
+      "struct",
+      "switch",
+      "typedef",
+      "union",
+      "volatile",
+      "while"
+    ],
+    "types": [
+      "_Bool",
+      "_Complex",
+      "_Imaginary",
+      "bool",
+      "char",
+      "double",
+      "float",
+      "float32_t",
+      "float64_t",
+      "int",
+      "int16_t",
+      "int32_t",
+      "int64_t",
+      "int8_t",
+      "long",
+      "short",
+      "signed",
+      "size_t",
+      "uint16_t",
+      "uint32_t",
+      "uint64_t",
+      "uint8_t",
+      "unsigned",
+      "void"
+    ],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "cantera": {
+    "keywords": [
+      "composition",
+      "description",
+      "duplicate",
+      "element",
+      "elements",
+      "equation",
+      "falloff_reaction",
+      "gas",
+      "generator",
+      "ideal_gas",
+      "name",
+      "note",
+      "orders",
+      "phases",
+      "plog_reaction",
+      "reaction",
+      "reactions",
+      "reversible",
+      "species",
+      "thermo",
+      "three_body_reaction",
+      "transport",
+      "troe",
+      "type",
+      "units"
+    ],
+    "types": [],
+    "lineComments": [
+      "#.*$"
+    ]
+  },
+  "ccsds": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "cellml": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "cfd": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "%.*$"
+    ]
+  },
+  "cgmes": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "comtrade": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "csv": {
+    "keywords": [
+      "CSVVirtualComponent"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "dicom-rt": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "dnp3": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "easy5": {
+    "keywords": [
+      "COMPONENTS",
+      "CONNECT",
+      "CONNECTIONS",
+      "LINEAR",
+      "MODEL",
+      "PORTS",
+      "S0",
+      "SIMULATION",
+      "TITLE",
+      "TO",
+      "TYPE",
+      "XP",
+      "bidirectional",
+      "input",
+      "output"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "eclipse": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "energyplus": {
+    "keywords": [
+      "BUILDING",
+      "Building",
+      "CONSTRUCTION",
+      "Construction",
+      "INTERNALMASS",
+      "InternalMass",
+      "MATERIAL",
+      "Material",
+      "ZONE",
+      "Zone",
+      "building",
+      "construction",
+      "material",
+      "zone"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "epanet": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "[;#].*$"
+    ]
+  },
+  "fea": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "\\*\\*.*$"
+    ]
+  },
+  "febio": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "fiber": {
+    "keywords": [],
+    "types": [],
+    "lineComments": []
+  },
+  "fortran": {
+    "keywords": [
+      "ALLOCATABLE",
+      "ALLOCATE",
+      "CALL",
+      "CASE",
+      "COMMON",
+      "CONTAINS",
+      "CONTINUE",
+      "CYCLE",
+      "DEALLOCATE",
+      "DEFAULT",
+      "DELT",
+      "DIMENSION",
+      "DO",
+      "ELEMENTAL",
+      "ELSE",
+      "ELSEIF",
+      "END",
+      "ENDDO",
+      "ENDIF",
+      "EXIT",
+      "FIRSTSTEP",
+      "FUNCTION",
+      "IF",
+      "IMPLICIT",
+      "IN",
+      "INOUT",
+      "INTENT",
+      "INTERFACE",
+      "MODULE",
+      "NONE",
+      "ONLY",
+      "OPTIONAL",
+      "OUT",
+      "PARAMETER",
+      "PROGRAM",
+      "PURE",
+      "RECURSIVE",
+      "RESULT",
+      "RETURN",
+      "SAVE",
+      "SELECT",
+      "STOP",
+      "SUBROUTINE",
+      "THEN",
+      "TIME",
+      "USE",
+      "VALUE",
+      "WHILE",
+      "allocatable",
+      "allocate",
+      "call",
+      "case",
+      "common",
+      "contains",
+      "continue",
+      "cycle",
+      "deallocate",
+      "default",
+      "dimension",
+      "do",
+      "elemental",
+      "else",
+      "elseif",
+      "end",
+      "enddo",
+      "endif",
+      "exit",
+      "function",
+      "if",
+      "implicit",
+      "in",
+      "inout",
+      "intent",
+      "interface",
+      "module",
+      "none",
+      "only",
+      "optional",
+      "out",
+      "parameter",
+      "program",
+      "pure",
+      "recursive",
+      "result",
+      "return",
+      "save",
+      "select",
+      "stop",
+      "subroutine",
+      "then",
+      "use",
+      "value",
+      "while"
+    ],
+    "types": [
+      "CHARACTER",
+      "COMPLEX",
+      "DOUBLE",
+      "INTEGER",
+      "LOGICAL",
+      "PRECISION",
+      "REAL",
+      "STORF",
+      "STORI",
+      "character",
+      "complex",
+      "double",
+      "integer",
+      "logical",
+      "precision",
+      "real",
+      "storf",
+      "stori"
+    ],
+    "lineComments": [
+      "!.*$"
+    ]
+  },
+  "genbank": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "[;#].*$"
+    ]
+  },
+  "gensys": {
+    "keywords": [
+      "body",
+      "bogie",
+      "coupl",
+      "coupling",
+      "damper",
+      "damper_c",
+      "linear",
+      "nonlinear",
+      "run",
+      "series",
+      "set",
+      "speed",
+      "spring",
+      "spring_k",
+      "sub_body",
+      "sub_bogie",
+      "sub_system",
+      "sub_wheelset",
+      "subsystem",
+      "track",
+      "wheelset"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "gproms": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "gtfs": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "gtsuite": {
+    "keywords": [
+      "COMPONENTS",
+      "CONNECTIONS",
+      "END",
+      "ENDMAP",
+      "LAMBDA",
+      "MODEL",
+      "NAME",
+      "SPEED",
+      "TO"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "hec-hms": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "[;#].*$"
+    ]
+  },
+  "hec-ras": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "ibis": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "igtl": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "jsbsim": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "landgem": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "[;#].*$"
+    ]
+  },
+  "las": {
+    "keywords": [
+      "LASVirtualComponent"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "lps": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "matpower": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "%.*$"
+    ]
+  },
+  "mlxtran": {
+    "keywords": [
+      "COVARIATE",
+      "FIT",
+      "INDIVIDUAL",
+      "LONGITUDINAL",
+      "POPULATION",
+      "compartment",
+      "ddt_",
+      "elimination",
+      "input",
+      "iv",
+      "oral",
+      "output",
+      "transfer"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "modelica": {
+    "keywords": [
+      "Clock",
+      "algorithm",
+      "and",
+      "annotation",
+      "backSample",
+      "block",
+      "break",
+      "class",
+      "connect",
+      "connector",
+      "constant",
+      "constrainedby",
+      "der",
+      "discrete",
+      "each",
+      "else",
+      "elseif",
+      "elsewhen",
+      "encapsulated",
+      "end",
+      "enumeration",
+      "equation",
+      "expandable",
+      "extends",
+      "external",
+      "false",
+      "final",
+      "flow",
+      "for",
+      "function",
+      "hold",
+      "if",
+      "import",
+      "impure",
+      "in",
+      "initial",
+      "inner",
+      "input",
+      "interval",
+      "loop",
+      "model",
+      "noClock",
+      "not",
+      "operator",
+      "or",
+      "outer",
+      "output",
+      "package",
+      "parameter",
+      "partial",
+      "previous",
+      "protected",
+      "public",
+      "pure",
+      "record",
+      "redeclare",
+      "replaceable",
+      "return",
+      "sample",
+      "shiftSample",
+      "stream",
+      "subSample",
+      "superSample",
+      "then",
+      "time",
+      "true",
+      "type",
+      "when",
+      "while",
+      "within"
+    ],
+    "types": [
+      "AssertionLevel",
+      "Boolean",
+      "Integer",
+      "Real",
+      "StateSelect",
+      "String"
+    ],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "modelscript": {
+    "keywords": [
+      "Array",
+      "Slice",
+      "as",
+      "asc",
+      "ascending",
+      "bool",
+      "by",
+      "const",
+      "desc",
+      "descending",
+      "else",
+      "f32",
+      "f64",
+      "false",
+      "for",
+      "from",
+      "function",
+      "i32",
+      "i64",
+      "if",
+      "import",
+      "in",
+      "let",
+      "new",
+      "order",
+      "ptr",
+      "return",
+      "string",
+      "struct",
+      "true",
+      "u32",
+      "u64",
+      "usize",
+      "void",
+      "where",
+      "while"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "modflow": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "[;#].*$"
+    ]
+  },
+  "nifti": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "nmodl": {
+    "keywords": [
+      "ASSIGNED",
+      "BREAKPOINT",
+      "DERIVATIVE",
+      "ELSE",
+      "FUNCTION",
+      "GLOBAL",
+      "IF",
+      "INITIAL",
+      "METHOD",
+      "NEURON",
+      "NONSPECIFIC_CURRENT",
+      "PARAMETER",
+      "PROCEDURE",
+      "RANGE",
+      "READ",
+      "SOLVE",
+      "STATE",
+      "SUFFIX",
+      "TITLE",
+      "UNITS",
+      "USEION",
+      "VALENCE",
+      "WRITE",
+      "assigned",
+      "breakpoint",
+      "derivative",
+      "else",
+      "function",
+      "global",
+      "if",
+      "initial",
+      "method",
+      "neuron",
+      "nonspecific_current",
+      "parameter",
+      "procedure",
+      "range",
+      "read",
+      "solve",
+      "state",
+      "suffix",
+      "title",
+      "units",
+      "useion",
+      "valence",
+      "write"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "nmtran": {
+    "keywords": [
+      "BLOCK",
+      "DADT",
+      "ELSE",
+      "ENDIF",
+      "FIXED",
+      "IF",
+      "INF",
+      "SAME",
+      "THEN",
+      "else",
+      "endif",
+      "if",
+      "then"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "ocpp": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "olga": {
+    "keywords": [
+      "FLOWPATH",
+      "Flowpath",
+      "NODE",
+      "Node",
+      "VALVE",
+      "Valve"
+    ],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "oneliner": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "openadr": {
+    "keywords": [
+      "event",
+      "interval",
+      "program"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "opendrive": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "opendss": {
+    "keywords": [
+      "BusCoords",
+      "CalcVoltageBases",
+      "Capacitor",
+      "Clear",
+      "Compile",
+      "Edit",
+      "EnergyMeter",
+      "Fuse",
+      "Generator",
+      "Line",
+      "LineCode",
+      "Load",
+      "LoadShape",
+      "Monitor",
+      "New",
+      "PVSystem",
+      "Reactor",
+      "Recloser",
+      "Redirect",
+      "Relay",
+      "Set",
+      "Solve",
+      "Storage",
+      "Transformer",
+      "buscoords",
+      "calcvoltagebases",
+      "capacitor",
+      "clear",
+      "compile",
+      "edit",
+      "energymeter",
+      "fuse",
+      "generator",
+      "line",
+      "linecode",
+      "load",
+      "loadshape",
+      "monitor",
+      "new",
+      "pvsystem",
+      "reactor",
+      "recloser",
+      "redirect",
+      "relay",
+      "set",
+      "solve",
+      "storage",
+      "transformer"
+    ],
+    "types": [
+      "Circuit",
+      "circuit"
+    ],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "openscenario": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "opensim": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "optical": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "oscal": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "owl2": {
+    "keywords": [
+      "AsymmetricObjectProperty",
+      "Class",
+      "ClassAssertion",
+      "DataAllValuesFrom",
+      "DataExactCardinality",
+      "DataHasValue",
+      "DataIntersectionOf",
+      "DataMaxCardinality",
+      "DataMinCardinality",
+      "DataOneOf",
+      "DataProperty",
+      "DataPropertyAssertion",
+      "DataPropertyDomain",
+      "DataPropertyRange",
+      "DataSomeValuesFrom",
+      "DataUnionOf",
+      "DatatypeRestriction",
+      "Declaration",
+      "DifferentIndividuals",
+      "DisjointClasses",
+      "DisjointObjectProperties",
+      "DisjointUnion",
+      "EquivalentClasses",
+      "FunctionalDataProperty",
+      "FunctionalObjectProperty",
+      "Import",
+      "InverseFunctionalObjectProperty",
+      "InverseObjectProperties",
+      "IrreflexiveObjectProperty",
+      "NamedIndividual",
+      "NegativeDataPropertyAssertion",
+      "NegativeObjectPropertyAssertion",
+      "ObjectAllValuesFrom",
+      "ObjectComplementOf",
+      "ObjectExactCardinality",
+      "ObjectHasSelf",
+      "ObjectHasValue",
+      "ObjectIntersectionOf",
+      "ObjectMaxCardinality",
+      "ObjectMinCardinality",
+      "ObjectOneOf",
+      "ObjectProperty",
+      "ObjectPropertyAssertion",
+      "ObjectPropertyChain",
+      "ObjectPropertyDomain",
+      "ObjectPropertyRange",
+      "ObjectSomeValuesFrom",
+      "ObjectUnionOf",
+      "Ontology",
+      "Prefix",
+      "ReflexiveObjectProperty",
+      "SameIndividual",
+      "SubClassOf",
+      "SubDataPropertyOf",
+      "SubObjectPropertyOf",
+      "SymmetricObjectProperty",
+      "TransitiveObjectProperty"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "pdb": {
+    "keywords": [
+      "ATOM",
+      "AUTHOR",
+      "COMPND",
+      "CONECT",
+      "CRYST1",
+      "END",
+      "ENDMDL",
+      "EXPDTA",
+      "HEADER",
+      "HELIX",
+      "HETATM",
+      "JRNL",
+      "KEYWDS",
+      "MASTER",
+      "MODEL",
+      "ORIGX1",
+      "ORIGX2",
+      "ORIGX3",
+      "REMARK",
+      "REVDAT",
+      "SCALE1",
+      "SCALE2",
+      "SCALE3",
+      "SHEET",
+      "SOURCE",
+      "SSBOND",
+      "TER",
+      "TITLE"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "phreeqc": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "[;#].*$"
+    ]
+  },
+  "plcopen": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "powerfactory": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "!.*$"
+    ]
+  },
+  "pscad": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "pslf": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "psse": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "/.*$"
+    ]
+  },
+  "qif": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "ran": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "relap5": {
+    "keywords": [
+      "END",
+      "annulus",
+      "branch",
+      "end",
+      "eq",
+      "ge",
+      "gt",
+      "latch",
+      "le",
+      "lt",
+      "ne",
+      "new",
+      "nlat",
+      "pipe",
+      "pump",
+      "restart",
+      "single_volume",
+      "sngljn",
+      "snglvol",
+      "tmdj",
+      "tmdpvol",
+      "tmdv",
+      "transnt",
+      "valve"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "reqif": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "rocets": {
+    "keywords": [
+      "BI",
+      "COMBUSTION_GAS",
+      "COMPONENTS",
+      "CONNECTIONS",
+      "ENGINE",
+      "FLUID",
+      "GH2",
+      "GOX",
+      "HELIUM",
+      "IN",
+      "LCH4",
+      "LH2",
+      "LOX",
+      "MODEL",
+      "MODULE",
+      "MODULES",
+      "NITROGEN",
+      "OUT",
+      "PARAMS",
+      "PORTS",
+      "RP1",
+      "S0",
+      "STREAMS",
+      "TITLE",
+      "TO",
+      "TYPE",
+      "XP"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "sbml": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "sbol": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "scad": {
+    "keywords": [
+      "chamfer",
+      "circle",
+      "color",
+      "cube",
+      "cylinder",
+      "difference",
+      "else",
+      "false",
+      "fillet",
+      "for",
+      "function",
+      "hull",
+      "if",
+      "intersection",
+      "let",
+      "linear_extrude",
+      "minkowski",
+      "mirror",
+      "module",
+      "multmatrix",
+      "offset",
+      "polygon",
+      "polyhedron",
+      "rotate",
+      "rotate_extrude",
+      "scale",
+      "sphere",
+      "square",
+      "tag_port",
+      "translate",
+      "true",
+      "union"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "scl": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "sedml": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "sel": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "sima": {
+    "keywords": [
+      "ATTACH",
+      "BODY",
+      "CRS",
+      "CURR",
+      "CURRENT",
+      "DYNMOD",
+      "FAIRLEAD",
+      "LINE",
+      "MOORING",
+      "SEGM",
+      "SEGMENT",
+      "SYS",
+      "SYSTEM",
+      "TIME",
+      "VESSEL",
+      "WAVE",
+      "WIND"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "simpack": {
+    "keywords": [
+      "BODY",
+      "JOINT",
+      "MARKER",
+      "body",
+      "joint",
+      "marker"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "simulink": {
+    "keywords": [
+      "Block",
+      "Branch",
+      "Line",
+      "System",
+      "block",
+      "branch",
+      "line",
+      "system"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "smiles": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "spice": {
+    "keywords": [
+      "AC",
+      "DC",
+      "DEC",
+      "GND",
+      "LIN",
+      "OCT",
+      "PULSE",
+      "SINE",
+      "gnd"
+    ],
+    "types": [],
+    "lineComments": [
+      "^\\s*\\*.*$",
+      "[;$].*$"
+    ]
+  },
+  "ssp": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "step": {
+    "keywords": [
+      "DATA",
+      "END-ISO-10303-21",
+      "ENDSEC",
+      "HEADER",
+      "ISO-10303-21"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "swmm": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "[;#].*$"
+    ]
+  },
+  "sysml2": {
+    "keywords": [
+      "about",
+      "abstract",
+      "accept",
+      "action",
+      "actor",
+      "alias",
+      "all",
+      "allocate",
+      "allocation",
+      "analysis",
+      "and",
+      "assert",
+      "assign",
+      "assume",
+      "attribute",
+      "bind",
+      "binding",
+      "by",
+      "calc",
+      "case",
+      "comment",
+      "concern",
+      "connect",
+      "connection",
+      "constant",
+      "constraint",
+      "crosses",
+      "decide",
+      "def",
+      "default",
+      "defined",
+      "dependency",
+      "derived",
+      "do",
+      "doc",
+      "else",
+      "end",
+      "entry",
+      "enum",
+      "exhibit",
+      "exit",
+      "false",
+      "filter",
+      "first",
+      "flow",
+      "for",
+      "fork",
+      "from",
+      "hastype",
+      "if",
+      "implies",
+      "import",
+      "in",
+      "include",
+      "individual",
+      "inout",
+      "interface",
+      "istype",
+      "item",
+      "join",
+      "language",
+      "library",
+      "locale",
+      "loop",
+      "merge",
+      "metadata",
+      "new",
+      "nonunique",
+      "not",
+      "null",
+      "objective",
+      "occurrence",
+      "of",
+      "or",
+      "ordered",
+      "out",
+      "package",
+      "parallel",
+      "part",
+      "perform",
+      "port",
+      "private",
+      "protected",
+      "public",
+      "redefine",
+      "redefines",
+      "ref",
+      "reference",
+      "references",
+      "rendering",
+      "rep",
+      "require",
+      "requirement",
+      "return",
+      "satisfy",
+      "send",
+      "snapshot",
+      "specializes",
+      "stakeholder",
+      "standard",
+      "state",
+      "subject",
+      "subset",
+      "subsets",
+      "succession",
+      "then",
+      "timeslice",
+      "to",
+      "transition",
+      "true",
+      "until",
+      "use",
+      "variant",
+      "variation",
+      "verification",
+      "verify",
+      "via",
+      "view",
+      "viewpoint",
+      "while",
+      "xor"
+    ],
+    "types": [
+      "Boolean",
+      "Complex",
+      "Integer",
+      "Natural",
+      "Number",
+      "Positive",
+      "Real",
+      "ScalarValue",
+      "String"
+    ],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "three-mf": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  },
+  "topas": {
+    "keywords": [
+      "bv",
+      "dv",
+      "includeFile",
+      "iv",
+      "sv",
+      "uv"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "touchstone": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "tough": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "[;#].*$"
+    ]
+  },
+  "urdf": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "usd": {
+    "keywords": [
+      "append",
+      "class",
+      "def",
+      "false",
+      "over",
+      "prepend",
+      "rel",
+      "true",
+      "uniform"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "verilog-a": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "waterml": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [],
+    "blockComment": [
+      "<!--",
+      "-->"
+    ]
+  }
+}

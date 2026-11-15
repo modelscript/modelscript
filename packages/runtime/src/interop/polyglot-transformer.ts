@@ -781,7 +781,20 @@ export class PolyglotTransformer {
     // Sync with linear-memory Struct-of-Arrays hypergraph using collision-free interned IDs
     let numericId = this.threadNumericIds.get(threadId);
     if (numericId === undefined) {
-      numericId = this.nextThreadNumericId++;
+      const numMatch = /^(?:thread_)?(\d+)$/.exec(threadId);
+      const explicitId = numMatch ? Number(numMatch[1]) : NaN;
+      if (
+        Number.isSafeInteger(explicitId) &&
+        explicitId > 0 &&
+        this.hypergraph.findSlotByThreadId(explicitId) === undefined
+      ) {
+        numericId = explicitId;
+      } else {
+        while (this.hypergraph.findSlotByThreadId(this.nextThreadNumericId) !== undefined) {
+          this.nextThreadNumericId++;
+        }
+        numericId = this.nextThreadNumericId++;
+      }
       this.threadNumericIds.set(threadId, numericId);
     }
     const slot = this.hypergraph.createThread(numericId);

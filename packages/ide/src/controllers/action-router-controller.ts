@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { IndexedDataset } from "@modelscript/simulate/charts";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
 import { SimulationPanel } from "../simulation-panel.js";
+import { TabularPlotEditorProvider } from "../tabular-plot-editor-provider.js";
 import { detectLanguageIdFromUri, extractModelNameFromText } from "./simulation-controller.js";
 
 const STATIC_ACTION_COMMANDS = new Set([
@@ -355,7 +357,7 @@ export async function registerDynamicActions(
               cancellable: false,
             },
             async () => {
-              const res = await client.sendRequest<ActionExecutionResult | string | unknown[]>(
+              const res = await client.sendRequest<ActionExecutionResult | IndexedDataset | string | unknown[]>(
                 "modelscript/executeAction",
                 {
                   actionId: action.id,
@@ -364,6 +366,27 @@ export async function registerDynamicActions(
                   inputs,
                 },
               );
+
+              const candidate =
+                res !== null && typeof res === "object" && !Array.isArray(res)
+                  ? (res as Record<string, unknown>)
+                  : null;
+              if (
+                candidate &&
+                typeof candidate["indexAxis"] === "object" &&
+                candidate["indexAxis"] !== null &&
+                Array.isArray(candidate["indexValues"]) &&
+                Array.isArray(candidate["series"])
+              ) {
+                const dataset = res as IndexedDataset;
+                TabularPlotEditorProvider.createOrShowDataset(
+                  context.extensionUri,
+                  dataset,
+                  targetUri || undefined,
+                  action.title || dataset.title,
+                );
+                return dataset;
+              }
 
               const traj = normalizeToTrajectory(res);
               if (traj) {

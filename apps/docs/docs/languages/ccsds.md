@@ -24,8 +24,19 @@ description: "@modelscript/ccsds (languages/ccsds) provides comprehensive compil
 
 ### 1. Perturbed 6-DOF Cowell Orbit Propagator
 
-- Integrates high-fidelity gravitational and environmental perturbations in Cartesian J2000 / GCRF coordinates:
+- Integrates high-fidelity gravitational and environmental perturbations in Cartesian J2000 / GCRF coordinates, summing central-body two-body gravity with oblateness, drag, solar radiation pressure, and third-body accelerations:
   $$\ddot{\mathbf{r}} = -\frac{\mu}{r^3}\mathbf{r} + \mathbf{a}_{J_2} + \mathbf{a}_{\text{drag}} + \mathbf{a}_{\text{SRP}} + \mathbf{a}_{\text{3rd}}$$
+
+  | Symbol                          | Meaning                                                           | Units / Domain                                                                  |
+  | :------------------------------ | :---------------------------------------------------------------- | :------------------------------------------------------------------------------ |
+  | $\mathbf{r}, \ddot{\mathbf{r}}$ | Inertial position vector and acceleration vector in J2000 / GCRF  | $\text{km}$ (or $\text{m}$), $\text{km}\cdot\text{s}^{-2}$ ($\in \mathbb{R}^3$) |
+  | $r$                             | Radial distance $\|\mathbf{r}\|$ from central body center of mass | $\text{km}$ (or $\text{m}$), $r > 0$                                            |
+  | $\mu$                           | Standard gravitational parameter ($GM$) of the central body       | $\text{km}^3\cdot\text{s}^{-2}$                                                 |
+  | $\mathbf{a}_{J_2}$              | Perturbing acceleration due to $J_2$ zonal harmonic oblateness    | $\text{km}\cdot\text{s}^{-2}$ ($\in \mathbb{R}^3$)                              |
+  | $\mathbf{a}_{\text{drag}}$      | Atmospheric drag deceleration                                     | $\text{km}\cdot\text{s}^{-2}$ ($\in \mathbb{R}^3$)                              |
+  | $\mathbf{a}_{\text{SRP}}$       | Solar radiation pressure acceleration                             | $\text{km}\cdot\text{s}^{-2}$ ($\in \mathbb{R}^3$)                              |
+  | $\mathbf{a}_{\text{3rd}}$       | Third-body gravitational perturbations (Sun, Moon)                | $\text{km}\cdot\text{s}^{-2}$ ($\in \mathbb{R}^3$)                              |
+
 - **$J_2$ Earth Oblateness**: Evaluates central body oblateness forces from zonal harmonic coefficients.
 - **Atmospheric Drag**: Exponential barometric and Jacchia-Roberts atmospheric density models coupled with satellite cross-sectional area and drag coefficient $C_D$.
 - **Solar Radiation Pressure (SRP)**: Cannonball radiation pressure models with cylindrical and dual-cone solar eclipse shadowing.

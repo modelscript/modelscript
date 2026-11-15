@@ -74,6 +74,7 @@
   "dependencies": {
     "@modelscript/dsl": "*",
     "@modelscript/fortran": "*",
+    "@modelscript/modelica": "*",
     "@modelscript/runtime": "*"
   },
   "devDependencies": {

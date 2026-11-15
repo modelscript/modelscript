@@ -20,8 +20,8 @@
   border: 1px solid transparent;
   border-radius: var(--ms-radius-pill);
   font-family: var(--ms-font-sans);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: var(--ms-fw-semibold);
   line-height: 1;
   white-space: nowrap;
   text-decoration: none !important;
@@ -57,14 +57,14 @@
 .ms-btn-sm {
   height: var(--ms-control-sm);
   padding: 0 12px;
-  font-size: 13px;
+  font-size: var(--text-xs);
   gap: 6px;
 }
 
 .ms-btn-lg {
   height: var(--ms-control-lg);
   padding: 0 22px;
-  font-size: 14.5px;
+  font-size: var(--text-base);
 }
 
 .ms-btn-block {
@@ -137,8 +137,8 @@
   background: transparent;
   color: var(--ms-text-2);
   font-family: var(--ms-font-sans);
-  font-size: 13px;
-  font-weight: 550;
+  font-size: var(--text-xs);
+  font-weight: var(--ms-fw-medium);
   white-space: nowrap;
   cursor: pointer;
   transition:

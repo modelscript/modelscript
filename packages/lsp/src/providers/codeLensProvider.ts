@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parseCfdConfig } from "@modelscript/cfd";
 import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
+import { parseFeaDeck } from "@modelscript/fea";
 import { CodeLens, Range } from "vscode-languageserver";
 import { type LspContext, resolveFeatureFlags } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
@@ -8,6 +10,320 @@ import { CadMetricsService } from "../services/cad-metrics-service.js";
 import { findCstNodesByType } from "../utils/ast-utils.js";
 
 const defaultCadMetricsService = new CadMetricsService();
+
+type SysmlDefKind = "part" | "requirement" | "verification" | "action" | "state";
+
+const MODELICA_CLASS_KINDS = new Set(["model", "block", "study", "process", "class", "function", "record"]);
+const SYSML_DEF_KEYWORD_MAP: Record<string, SysmlDefKind> = {
+  part: "part",
+  requirement: "requirement",
+  verification: "verification",
+  action: "action",
+  calc: "action",
+  state: "state",
+  activity: "state",
+};
+
+function isWsCharCode(code: number): boolean {
+  return code === 32 || code === 9 || code === 13 || code === 10 || code === 11 || code === 12;
+}
+
+function isIdentStartCode(code: number): boolean {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 95;
+}
+
+function isIdentContCode(code: number): boolean {
+  return isIdentStartCode(code) || (code >= 48 && code <= 57);
+}
+
+function skipWs(text: string, idx: number): number {
+  let i = idx;
+  while (i < text.length && isWsCharCode(text.charCodeAt(i))) i++;
+  return i;
+}
+
+function splitLinesPreserve(text: string): string[] {
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (line.endsWith("\r")) {
+      lines[i] = line.slice(0, -1);
+    }
+  }
+  return lines;
+}
+
+function splitWsTokens(text: string): string[] {
+  const tokens: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    while (i < text.length && isWsCharCode(text.charCodeAt(i))) i++;
+    const start = i;
+    while (i < text.length && !isWsCharCode(text.charCodeAt(i))) i++;
+    if (i > start) tokens.push(text.slice(start, i));
+  }
+  return tokens;
+}
+
+function hasWordMatch(text: string, word: string): boolean {
+  if (!word) return false;
+  let pos = 0;
+  while (pos <= text.length - word.length) {
+    const idx = text.indexOf(word, pos);
+    if (idx === -1) return false;
+    const beforeOk = idx === 0 || !isIdentContCode(text.charCodeAt(idx - 1));
+    const afterIdx = idx + word.length;
+    const afterOk = afterIdx >= text.length || !isIdentContCode(text.charCodeAt(afterIdx));
+    if (beforeOk && afterOk) return true;
+    pos = idx + 1;
+  }
+  return false;
+}
+
+function containsCaseInsensitiveAny(text: string, needles: readonly string[]): boolean {
+  const lower = text.toLowerCase();
+  return needles.some((needle) => lower.includes(needle));
+}
+
+function humanizeActionId(actionId: string): string {
+  const spaced = actionId.split("_").join(" ");
+  let out = "";
+  let prevWasWord = false;
+  for (let i = 0; i < spaced.length; i++) {
+    const ch = spaced[i]!;
+    const isWord = isIdentContCode(ch.charCodeAt(0));
+    out += !prevWasWord && isWord ? ch.toUpperCase() : ch;
+    prevWasWord = isWord;
+  }
+  return out;
+}
+
+function stripLeadingKeywords(text: string, keywords: readonly string[]): string {
+  let pos = 0;
+  for (const kw of keywords) {
+    if (!text.startsWith(kw, pos)) return text;
+    pos += kw.length;
+    const afterWs = skipWs(text, pos);
+    if (afterWs === pos) return text;
+    pos = afterWs;
+  }
+  return text.slice(pos);
+}
+
+function readAlnumIdent(text: string, idx: number): { token: string; next: number } | undefined {
+  let i = idx;
+  while (i < text.length && isIdentContCode(text.charCodeAt(i))) i++;
+  return i > idx ? { token: text.slice(idx, i), next: i } : undefined;
+}
+
+function readStrictIdent(text: string, idx: number): { token: string; next: number } | undefined {
+  if (idx >= text.length || !isIdentStartCode(text.charCodeAt(idx))) return undefined;
+  return readAlnumIdent(text, idx + 1)
+    ? { token: text.slice(idx, readAlnumIdent(text, idx + 1)!.next), next: readAlnumIdent(text, idx + 1)!.next }
+    : { token: text[idx]!, next: idx + 1 };
+}
+
+function isNumericTokenChar(code: number): boolean {
+  return (code >= 48 && code <= 57) || code === 46 || code === 101 || code === 69 || code === 43 || code === 45;
+}
+
+function extractFirstNumberAfterEquals(text: string): string | undefined {
+  const eqIdx = text.indexOf("=");
+  if (eqIdx === -1) return undefined;
+  const start = skipWs(text, eqIdx + 1);
+  let i = start;
+  while (i < text.length && isNumericTokenChar(text.charCodeAt(i))) i++;
+  return i > start ? text.slice(start, i) : undefined;
+}
+
+function extractQuotedAnnotationAttr(text: string, keys: readonly string[]): string | undefined {
+  const lower = text.toLowerCase();
+  for (const key of keys) {
+    let pos = 0;
+    while (pos <= lower.length - key.length) {
+      const idx = lower.indexOf(key, pos);
+      if (idx === -1) break;
+      let i = skipWs(text, idx + key.length);
+      if (text[i] === "=") {
+        i = skipWs(text, i + 1);
+        if (text[i] === '"') {
+          const valStart = i + 1;
+          const valEnd = text.indexOf('"', valStart);
+          if (valEnd > valStart) {
+            return text.slice(valStart, valEnd);
+          }
+        }
+      }
+      pos = idx + 1;
+    }
+  }
+  return undefined;
+}
+
+function extractScadTagPortFromLine(line: string): { portName: string; portType: string } | undefined {
+  let pos = 0;
+  while (pos < line.length) {
+    const idx = line.indexOf("tag_port", pos);
+    if (idx === -1) return undefined;
+    let i = skipWs(line, idx + 8);
+    if (line[i] === "(") {
+      i = skipWs(line, i + 1);
+      if (line[i] === '"') {
+        const nameStart = i + 1;
+        const nameEnd = line.indexOf('"', nameStart);
+        if (nameEnd > nameStart) {
+          i = skipWs(line, nameEnd + 1);
+          if (line[i] === ",") {
+            i = skipWs(line, i + 1);
+            if (line[i] === '"') {
+              const typeStart = i + 1;
+              const typeEnd = line.indexOf('"', typeStart);
+              if (typeEnd > typeStart) {
+                return {
+                  portName: line.slice(nameStart, nameEnd),
+                  portType: line.slice(typeStart, typeEnd),
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+    pos = idx + 1;
+  }
+  return undefined;
+}
+
+function extractFeaSolidSectionMaterial(line: string): string | undefined {
+  if (!line.slice(0, 14).toUpperCase().startsWith("*SOLID SECTION")) return undefined;
+  const upper = line.toUpperCase();
+  let pos = 14;
+  while (pos <= upper.length - 8) {
+    const idx = upper.indexOf("MATERIAL", pos);
+    if (idx === -1) break;
+    const beforeOk = idx === 0 || !isIdentContCode(upper.charCodeAt(idx - 1));
+    if (beforeOk) {
+      let i = skipWs(line, idx + 8);
+      if (line[i] === "=") {
+        const start = skipWs(line, i + 1);
+        let end = start;
+        while (end < line.length && line[end] !== "," && !isWsCharCode(line.charCodeAt(end))) {
+          end++;
+        }
+        if (end > start) {
+          return line.slice(start, end).split("_").join(" ");
+        }
+      }
+    }
+    pos = idx + 1;
+  }
+  return "Solid Section";
+}
+
+function countStepEntities(text: string): number {
+  let count = 0;
+  let i = 0;
+  while (i < text.length) {
+    const hashIdx = text.indexOf("#", i);
+    if (hashIdx === -1) break;
+    let p = hashIdx + 1;
+    const digitStart = p;
+    while (p < text.length) {
+      const code = text.charCodeAt(p);
+      if (code < 48 || code > 57) break;
+      p++;
+    }
+    if (p > digitStart) {
+      const afterWs = skipWs(text, p);
+      if (text[afterWs] === "=") {
+        count++;
+        i = afterWs + 1;
+        continue;
+      }
+    }
+    i = hashIdx + 1;
+  }
+  return count;
+}
+
+function matchModelicaClassDeclLine(line: string): { kind: string; name: string } | undefined {
+  let pos = skipWs(line, 0);
+  const kw = readAlnumIdent(line, pos);
+  if (!kw || !MODELICA_CLASS_KINDS.has(kw.token)) return undefined;
+  pos = skipWs(line, kw.next);
+  if (pos === kw.next) return undefined;
+  const name = readAlnumIdent(line, pos);
+  return name ? { kind: kw.token, name: name.token } : undefined;
+}
+
+function isModelicaEndClassLine(line: string, className: string): boolean {
+  let pos = skipWs(line, 0);
+  if (!line.startsWith("end", pos)) return false;
+  pos += 3;
+  const nameStart = skipWs(line, pos);
+  if (nameStart === pos) return false;
+  if (!line.startsWith(className, nameStart)) return false;
+  pos = skipWs(line, nameStart + className.length);
+  return line[pos] === ";";
+}
+
+function matchModelicaForLoopLine(line: string): boolean {
+  let pos = skipWs(line, 0);
+  if (!line.startsWith("for", pos)) return false;
+  pos += 3;
+  const varStart = skipWs(line, pos);
+  if (varStart === pos) return false;
+  const loopVar = readStrictIdent(line, varStart);
+  if (!loopVar) return false;
+  const inStart = skipWs(line, loopVar.next);
+  if (inStart === loopVar.next || !line.startsWith("in", inStart)) return false;
+  const rangeStart = skipWs(line, inStart + 2);
+  if (rangeStart === inStart + 2) return false;
+  let rangeEnd = rangeStart;
+  while (rangeEnd < line.length && !isWsCharCode(line.charCodeAt(rangeEnd))) rangeEnd++;
+  if (rangeEnd === rangeStart) return false;
+  const loopStart = skipWs(line, rangeEnd);
+  if (loopStart === rangeEnd || !line.startsWith("loop", loopStart)) return false;
+  const afterLoop = loopStart + 4;
+  return afterLoop >= line.length || !isIdentContCode(line.charCodeAt(afterLoop));
+}
+
+function matchModelicaParamRealLine(line: string): { name: string; value: string } | undefined {
+  let pos = skipWs(line, 0);
+  if (!line.startsWith("parameter", pos)) return undefined;
+  const realStart = skipWs(line, pos + 9);
+  if (realStart === pos + 9 || !line.startsWith("Real", realStart)) return undefined;
+  const nameStart = skipWs(line, realStart + 4);
+  if (nameStart === realStart + 4) return undefined;
+  const paramName = readAlnumIdent(line, nameStart);
+  if (!paramName) return undefined;
+  const eqIdx = skipWs(line, paramName.next);
+  if (line[eqIdx] !== "=") return undefined;
+  const valStart = skipWs(line, eqIdx + 1);
+  let valEnd = valStart;
+  while (valEnd < line.length && isNumericTokenChar(line.charCodeAt(valEnd))) valEnd++;
+  return valEnd > valStart ? { name: paramName.token, value: line.slice(valStart, valEnd) } : undefined;
+}
+
+function matchSysmlDefLine(line: string): { kind: SysmlDefKind; name: string } | undefined {
+  let pos = skipWs(line, 0);
+  let word = readAlnumIdent(line, pos);
+  if (!word) return undefined;
+  if (word.token === "abstract") {
+    pos = skipWs(line, word.next);
+    if (pos === word.next) return undefined;
+    word = readAlnumIdent(line, pos);
+    if (!word) return undefined;
+  }
+  const kind = SYSML_DEF_KEYWORD_MAP[word.token];
+  if (!kind) return undefined;
+  const defStart = skipWs(line, word.next);
+  if (defStart === word.next || !line.startsWith("def", defStart)) return undefined;
+  const nameStart = skipWs(line, defStart + 3);
+  if (nameStart === defStart + 3) return undefined;
+  const name = readAlnumIdent(line, nameStart);
+  return name ? { kind, name: name.token } : undefined;
+}
 
 function resolveDigitalTwinLens(
   context: LspContext,
@@ -46,7 +362,7 @@ function resolveDigitalTwinLens(
       const isParity = Math.abs(numVal - expectedMass) < 0.01;
       const feaName = feaPeer?.name ?? feaPeer?.meta?.name ?? "FEA";
       const rawSysmlName = sysmlPeer?.name ?? sysmlPeer?.meta?.name ?? "SysML";
-      const sysmlName = rawSysmlName.replace(/^part\s+def\s+/, "");
+      const sysmlName = stripLeadingKeywords(rawSysmlName, ["part", "def"]);
       const title = isParity
         ? `🔗 Digital Thread Parity: ${param} = ${numVal.toFixed(2)} kg [Aligned with FEA ${feaName} & SysML ${sysmlName}]`
         : `⚠ Digital Thread Drift: ${param} = ${val} kg (FEA Structural Mass: ${Number(expectedMass).toFixed(2)} kg) | Reconcile`;
@@ -194,10 +510,10 @@ export function registerCodeLensProvider(context: LspContext) {
             const prefixesNode = findCstNodesByType(classNode, "class_prefixes")[0];
             let rawKind = "class";
             if (prefixesNode?.text) {
-              const words = prefixesNode.text.trim().split(/\s+/);
+              const words = splitWsTokens(prefixesNode.text);
               rawKind = words[words.length - 1] || "class";
             } else {
-              const firstWord = classNode.text?.trim()?.split(/\s+/)[0];
+              const firstWord = splitWsTokens(classNode.text || "")[0];
               if (firstWord) rawKind = firstWord;
             }
 
@@ -358,7 +674,7 @@ export function registerCodeLensProvider(context: LspContext) {
               const compClauses = findCstNodesByType(classNode, "component_clause");
               for (const comp of compClauses) {
                 const compText = comp.text || "";
-                if (!/\bparameter\b/.test(compText) || !/\bReal\b/.test(compText)) continue;
+                if (!hasWordMatch(compText, "parameter") || !hasWordMatch(compText, "Real")) continue;
                 const compDecls = findCstNodesByType(comp, "component_declaration");
                 for (const cd of compDecls) {
                   const compIdNode = findCstNodesByType(cd, "identifier")[0];
@@ -366,23 +682,13 @@ export function registerCodeLensProvider(context: LspContext) {
                   const param = compIdNode.text?.trim();
                   if (!param) continue;
 
-                  let val: string | undefined;
                   const modNode = findCstNodesByType(cd, "modification")[0];
-                  if (modNode?.text) {
-                    const valMatch = /=\s*([0-9.eE+-]+)/.exec(modNode.text);
-                    if (valMatch) val = valMatch[1];
-                  }
-                  if (!val) {
-                    const valMatch = /=\s*([0-9.eE+-]+)/.exec(cd.text || "");
-                    if (valMatch) val = valMatch[1];
-                  }
+                  const val =
+                    (modNode?.text ? extractFirstNumberAfterEquals(modNode.text) : undefined) ??
+                    extractFirstNumberAfterEquals(cd.text || "");
                   if (!val) continue;
 
-                  let twinTarget: string | undefined;
-                  const twinMatch = /(?:twin|counterpart)\s*=\s*"([^"]+)"/i.exec(cd.text || compText);
-                  if (twinMatch) {
-                    twinTarget = twinMatch[1];
-                  }
+                  const twinTarget = extractQuotedAnnotationAttr(cd.text || compText, ["twin", "counterpart"]);
                   if (!twinTarget) continue;
 
                   const paramLine = compIdNode.startPosition?.row ?? 0;
@@ -398,21 +704,19 @@ export function registerCodeLensProvider(context: LspContext) {
       }
 
       if (!usedCst && text) {
-        const lines = text.split(/\r?\n/);
+        const lines = splitLinesPreserve(text);
         let currentClassName: string | undefined = undefined;
 
         for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
           const line = lines[lineIdx]!;
 
           // Model / Block / Study / Class / Function / Record declaration
-          const classMatch = /^\s*(?:model|block|study|process|class|function|record)\s+([A-Za-z0-9_]+)/.exec(line);
-          if (classMatch) {
-            const name = classMatch[1]!;
+          const classDecl = matchModelicaClassDeclLine(line);
+          if (classDecl) {
+            const { kind: rawKind, name } = classDecl;
             currentClassName = name;
             const col = line.indexOf(name);
             const range = Range.create(lineIdx, col, lineIdx, col + name.length);
-
-            const rawKind = classMatch[0].trim().split(/\s+/)[0]!;
             if (
               showSimulate &&
               (rawKind === "model" || rawKind === "block" || rawKind === "study" || rawKind === "process")
@@ -520,13 +824,12 @@ export function registerCodeLensProvider(context: LspContext) {
           }
 
           // Reset current class when leaving its definition
-          if (currentClassName && new RegExp(`^\\s*end\\s+${currentClassName}\\s*;`).test(line)) {
+          if (currentClassName && isModelicaEndClassLine(line, currentClassName)) {
             currentClassName = undefined;
           }
 
           // For loop formal verification lens (positioned above the loop)
-          const forMatch = /^\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+([^\s]+)\s+loop\b/.exec(line);
-          if (forMatch && currentClassName) {
+          if (matchModelicaForLoopLine(line) && currentClassName) {
             const proof = proofMap?.get(currentClassName);
             if (shouldEmitModelicaProof(proof)) {
               const col = line.indexOf("for");
@@ -569,24 +872,19 @@ export function registerCodeLensProvider(context: LspContext) {
           }
 
           // Twin / Digital Thread Parameter inspection (only when parameter has an explicit twin/counterpart annotation)
-          const paramMatch = /^\s*parameter\s+Real\s+([A-Za-z0-9_]+)\s*=\s*([0-9.eE+-]+)/.exec(line);
-          if (showPolyglotLinks && paramMatch) {
-            const param = paramMatch[1]!;
-            const val = paramMatch[2]!;
+          const paramDecl = matchModelicaParamRealLine(line);
+          if (showPolyglotLinks && paramDecl) {
+            const { name: param, value: val } = paramDecl;
             const col = line.indexOf(param);
             const range = Range.create(lineIdx, col, lineIdx, col + param.length);
 
             // Check for twin annotation
-            let twinTarget: string | undefined;
             let scanWindow = line;
             for (let j = 1; j <= 3 && lineIdx + j < lines.length; j++) {
               if (scanWindow.includes(";")) break;
               scanWindow += " " + lines[lineIdx + j]!;
             }
-            const twinMatch = /(?:twin|counterpart)\s*=\s*"([^"]+)"/i.exec(scanWindow);
-            if (twinMatch) {
-              twinTarget = twinMatch[1];
-            }
+            const twinTarget = extractQuotedAnnotationAttr(scanWindow, ["twin", "counterpart"]);
 
             if (twinTarget) {
               lenses.push(resolveDigitalTwinLens(context, uri, param, val, twinTarget, range));
@@ -695,17 +993,8 @@ export function registerCodeLensProvider(context: LspContext) {
       const text = document?.getText();
 
       if (text) {
-        const lines = text.split(/\r?\n/);
-        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-          const line = lines[lineIdx]!;
-
-          // Part Def: DroneAssembly or standard
-          const partMatch = /^\s*(?:abstract\s+)?part\s+def\s+([A-Za-z0-9_]+)/.exec(line);
-          if (partMatch) {
-            const name = partMatch[1]!;
-            const col = line.indexOf(name);
-            const range = Range.create(lineIdx, col, lineIdx, col + name.length);
-
+        const emitSysmlDefLenses = (kind: SysmlDefKind, name: string, range: Range) => {
+          if (kind === "part") {
             const threadEntries =
               showPolyglotLinks && context.workspaceManager?.getThreadsForUri
                 ? context.workspaceManager.getThreadsForUri(uri)
@@ -797,15 +1086,12 @@ export function registerCodeLensProvider(context: LspContext) {
                 },
               });
             }
+            return;
           }
 
-          // Requirement Def
-          const reqMatch = /^\s*(?:abstract\s+)?requirement\s+def\s+([A-Za-z0-9_]+)/.exec(line);
-          if (reqMatch && showVerification) {
-            const name = reqMatch[1]!;
-            const col = line.indexOf(name);
-            const range = Range.create(lineIdx, col, lineIdx, col + name.length);
+          if (!showVerification) return;
 
+          if (kind === "requirement") {
             lenses.push({
               range,
               command: {
@@ -830,15 +1116,7 @@ export function registerCodeLensProvider(context: LspContext) {
                 arguments: [uri],
               },
             });
-          }
-
-          // Verification Def
-          const verifMatch = /^\s*(?:abstract\s+)?verification\s+def\s+([A-Za-z0-9_]+)/.exec(line);
-          if (verifMatch && showVerification) {
-            const name = verifMatch[1]!;
-            const col = line.indexOf(name);
-            const range = Range.create(lineIdx, col, lineIdx, col + name.length);
-
+          } else if (kind === "verification") {
             lenses.push({
               range,
               command: {
@@ -847,15 +1125,7 @@ export function registerCodeLensProvider(context: LspContext) {
                 arguments: [uri],
               },
             });
-          }
-
-          // Action / Calc Def
-          const actionMatch = /^\s*(?:abstract\s+)?(?:action|calc)\s+def\s+([A-Za-z0-9_]+)/.exec(line);
-          if (actionMatch && showVerification) {
-            const name = actionMatch[1]!;
-            const col = line.indexOf(name);
-            const range = Range.create(lineIdx, col, lineIdx, col + name.length);
-
+          } else if (kind === "action") {
             lenses.push({
               range,
               command: {
@@ -872,15 +1142,7 @@ export function registerCodeLensProvider(context: LspContext) {
                 arguments: [uri, name],
               },
             });
-          }
-
-          // State Def / Activity
-          const stateMatch = /^\s*(?:state|activity)\s+def\s+([A-Za-z0-9_]+)/.exec(line);
-          if (stateMatch && showVerification) {
-            const name = stateMatch[1]!;
-            const col = line.indexOf(name);
-            const range = Range.create(lineIdx, col, lineIdx, col + name.length);
-
+          } else if (kind === "state") {
             lenses.push({
               range,
               command: {
@@ -889,6 +1151,71 @@ export function registerCodeLensProvider(context: LspContext) {
                 arguments: [uri, name],
               },
             });
+          }
+        };
+
+        let usedSysmlCst = false;
+        type TreeEntryAccess = {
+          getDocumentTree?(uri: string):
+            | {
+                tree?: { rootNode?: import("../utils/ast-utils.js").CstNodeLike };
+                rootNode?: import("../utils/ast-utils.js").CstNodeLike;
+              }
+            | undefined;
+          documentTrees?: Map<
+            string,
+            {
+              tree?: { rootNode?: import("../utils/ast-utils.js").CstNodeLike };
+              rootNode?: import("../utils/ast-utils.js").CstNodeLike;
+            }
+          >;
+        };
+        const docMgr = context.documentManager as unknown as TreeEntryAccess | undefined;
+        const sysmlTreeEntry = docMgr?.getDocumentTree?.(uri) ?? docMgr?.documentTrees?.get?.(uri);
+        const sysmlRootNode = sysmlTreeEntry?.tree?.rootNode ?? sysmlTreeEntry?.rootNode;
+        if (sysmlRootNode) {
+          const cstTypeToKind: Record<string, SysmlDefKind> = {
+            partdefinition: "part",
+            requirementdefinition: "requirement",
+            verificationcasedefinition: "verification",
+            actiondefinition: "action",
+            calculationdefinition: "action",
+            statedefinition: "state",
+          };
+          const visitSysml = (node: import("../utils/ast-utils.js").CstNodeLike | null | undefined) => {
+            if (!node) return;
+            const normType = (node.type || "").toLowerCase();
+            const kind = cstTypeToKind[normType];
+            if (kind) {
+              const nameNode =
+                node.childForFieldName?.("declaredName") ?? node.children?.find((c) => c.type === "Name");
+              const name = nameNode?.text?.trim();
+              if (name) {
+                usedSysmlCst = true;
+                const lineIdx = nameNode?.startPosition?.row ?? node.startPosition?.row ?? 0;
+                const col = nameNode?.startPosition?.column ?? node.startPosition?.column ?? 0;
+                emitSysmlDefLenses(kind, name, Range.create(lineIdx, col, lineIdx, col + name.length));
+              }
+            }
+            if (node.children) {
+              for (const child of node.children) {
+                visitSysml(child);
+              }
+            }
+          };
+          visitSysml(sysmlRootNode);
+        }
+
+        if (!usedSysmlCst) {
+          const lines = splitLinesPreserve(text);
+          for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            const line = lines[lineIdx]!;
+            const parsed = matchSysmlDefLine(line);
+            if (parsed) {
+              const col = line.indexOf(parsed.name);
+              const range = Range.create(lineIdx, col, lineIdx, col + parsed.name.length);
+              emitSysmlDefLenses(parsed.kind, parsed.name, range);
+            }
           }
         }
       }
@@ -915,13 +1242,7 @@ export function registerCodeLensProvider(context: LspContext) {
           const rootNode = treeEntry?.tree?.rootNode;
 
           const cadService = context.cadMetricsService ?? defaultCadMetricsService;
-          const metricsTitle = cadService.getOrSchedule(
-            uri,
-            text,
-            rootNode,
-            context.connection,
-            threadFallback,
-          );
+          const metricsTitle = cadService.getOrSchedule(uri, text, rootNode, context.connection, threadFallback);
           if (metricsTitle) {
             lenses.push({
               range: headerRange,
@@ -979,23 +1300,40 @@ export function registerCodeLensProvider(context: LspContext) {
         }
 
         if (showPolyglotLinks) {
-          const lines = text.split(/\r?\n/);
-          for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-            const line = lines[lineIdx]!;
-            const tagMatch = /tag_port\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"/.exec(line);
-            if (tagMatch) {
-              const portName = tagMatch[1]!;
-              const portType = tagMatch[2];
-              const col = line.indexOf(portName);
-              const range = Range.create(lineIdx, col, lineIdx, col + portName.length);
-              lenses.push({
-                range,
-                command: {
-                  title: `🔗 Boundary Coupling Port: [${portName} (${portType})] -> Boundary Condition`,
-                  command: "modelscript.openPolyglotVisualizer",
-                  arguments: [uri, portName],
-                },
-              });
+          const emitTagPortLens = (lineIdx: number, lineText: string, portName: string, portType: string) => {
+            const col = Math.max(0, lineText.indexOf(portName));
+            const range = Range.create(lineIdx, col, lineIdx, col + portName.length);
+            lenses.push({
+              range,
+              command: {
+                title: `🔗 Boundary Coupling Port: [${portName} (${portType})] -> Boundary Condition`,
+                command: "modelscript.openPolyglotVisualizer",
+                arguments: [uri, portName],
+              },
+            });
+          };
+
+          const scadTree =
+            (context as any).documentManager?.getDocumentTree?.(uri) ??
+            (context as any).documentManager?.documentTrees?.get?.(uri);
+          const scadRootNode = scadTree?.tree?.rootNode ?? scadTree?.rootNode;
+          const tagNodes = scadRootNode ? findCstNodesByType(scadRootNode, "TagPortOp") : [];
+          const lines = splitLinesPreserve(text);
+
+          if (tagNodes.length > 0) {
+            for (const tagNode of tagNodes) {
+              const parsed = extractScadTagPortFromLine(tagNode.text || "");
+              if (!parsed) continue;
+              const lineIdx = tagNode.startPosition?.row ?? 0;
+              emitTagPortLens(lineIdx, lines[lineIdx] ?? "", parsed.portName, parsed.portType);
+            }
+          } else {
+            for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+              const line = lines[lineIdx]!;
+              const parsed = extractScadTagPortFromLine(line);
+              if (parsed) {
+                emitTagPortLens(lineIdx, line, parsed.portName, parsed.portType);
+              }
             }
           }
         }
@@ -1048,35 +1386,29 @@ export function registerCodeLensProvider(context: LspContext) {
           }
         }
 
-        const lines = text.split(/\r?\n/);
         let nodeCount = 0;
         let elemCount = 0;
-        let sectionMode: "none" | "node" | "element" = "none";
-        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-          const line = lines[lineIdx]!;
-          const trimmed = line.trim();
-          if (trimmed.startsWith("*")) {
-            if (/^\*NODE\b/i.test(trimmed)) sectionMode = "node";
-            else if (/^\*ELEMENT\b/i.test(trimmed)) sectionMode = "element";
-            else sectionMode = "none";
-          } else if (trimmed && !trimmed.startsWith("$") && !trimmed.startsWith("#")) {
-            if (sectionMode === "node" || /^GRID\b/i.test(trimmed)) nodeCount++;
-            else if (sectionMode === "element" || /^(?:CTETRA|CHEXA|CPENTA|CQUAD4|CTRIA3)\b/i.test(trimmed))
-              elemCount++;
-          }
+        if (showCadMetrics) {
+          const feaPath = uri.split(/[?#]/, 1)[0]!.toLowerCase();
+          const feaData = parseFeaDeck(text, feaPath.endsWith(".bdf") ? "bdf" : "inp");
+          nodeCount = feaData.nodes.size;
+          elemCount = feaData.elements.size;
 
-          if (showCadMetrics && /^\*SOLID SECTION/i.test(line)) {
-            const matMatch = /MATERIAL\s*=\s*([^,\s]+)/i.exec(line);
-            const matLabel = matMatch?.[1] ? matMatch[1].replace(/_/g, " ") : "Solid Section";
-            const range = Range.create(lineIdx, 0, lineIdx, line.length);
-            lenses.push({
-              range,
-              command: {
-                title: `📐 Composite Section Envelope: ${matLabel}`,
-                command: "modelscript.openStepViewer",
-                arguments: [uri],
-              },
-            });
+          const lines = splitLinesPreserve(text);
+          for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            const line = lines[lineIdx]!;
+            const matLabel = extractFeaSolidSectionMaterial(line);
+            if (matLabel !== undefined) {
+              const range = Range.create(lineIdx, 0, lineIdx, line.length);
+              lenses.push({
+                range,
+                command: {
+                  title: `📐 Composite Section Envelope: ${matLabel}`,
+                  command: "modelscript.openStepViewer",
+                  arguments: [uri],
+                },
+              });
+            }
           }
         }
 
@@ -1136,7 +1468,7 @@ export function registerCodeLensProvider(context: LspContext) {
               const moPeer = aligned.find((p: any) => p.domain?.toLowerCase() === "modelica");
               const peerName = moPeer?.name;
               if (peerName) {
-                moName = peerName.replace(/^model\s+/, "");
+                moName = stripLeadingKeywords(peerName, ["model"]);
               }
             }
             lenses.push({
@@ -1149,10 +1481,11 @@ export function registerCodeLensProvider(context: LspContext) {
             });
           }
         } else if (showCadMetrics) {
-          const solverMatch = /^\s*SOLVER\s*=\s*([^\r\n]+)/im.exec(text);
-          const refAreaMatch = /^\s*REF_AREA\s*=\s*([^\r\n]+)/im.exec(text);
-          const solver = solverMatch?.[1]?.trim() ?? "CFD";
-          const refArea = refAreaMatch?.[1]?.trim();
+          const cfdDialect = uri.split(/[?#]/, 1)[0]!.toLowerCase().endsWith(".foam") ? "openfoam" : "su2";
+          const cfdData = parseCfdConfig(text, cfdDialect);
+          const solver = cfdData.rawDirectives.get("SOLVER") || cfdData.directives.get("SOLVER") || "CFD";
+          const rawRefArea = cfdData.rawDirectives.get("REF_AREA") || cfdData.directives.get("REF_AREA");
+          const refArea = rawRefArea?.trim() || undefined;
           lenses.push({
             range: headerRange,
             command: {
@@ -1173,10 +1506,14 @@ export function registerCodeLensProvider(context: LspContext) {
           });
         }
 
-        const lines = text.split(/\r?\n/);
-        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-          const line = lines[lineIdx]!;
-          if (showPolyglotLinks && frontalArea !== undefined && /^\s*REF_AREA\s*=/i.test(line)) {
+        if (showPolyglotLinks && frontalArea !== undefined) {
+          const cfdDialect = uri.split(/[?#]/, 1)[0]!.toLowerCase().endsWith(".foam") ? "openfoam" : "su2";
+          const cfdData = parseCfdConfig(text, cfdDialect);
+          const refAreaLine = cfdData.directiveLines?.get("REF_AREA");
+          if (refAreaLine !== undefined && refAreaLine >= 1) {
+            const lineIdx = refAreaLine - 1;
+            const lines = splitLinesPreserve(text);
+            const line = lines[lineIdx] ?? "";
             const range = Range.create(lineIdx, 0, lineIdx, line.length);
             lenses.push({
               range,
@@ -1197,7 +1534,7 @@ export function registerCodeLensProvider(context: LspContext) {
       const headerRange = Range.create(0, 0, 0, 0);
       const text = currentText;
       if (showCadMetrics) {
-        const entityCount = (text.match(/#\d+\s*=/g) || []).length;
+        const entityCount = countStepEntities(text);
         const threadEntries = context.workspaceManager?.getThreadsForUri?.(uri) ?? [];
         const threadProps = threadEntries[0]?.meta?.properties;
         const nodes = threadProps?.["nodes"];
@@ -1355,7 +1692,7 @@ export function registerCodeLensProvider(context: LspContext) {
     if (detectedPlugin) {
       let targetLine = 0;
       if (currentText) {
-        const lines = currentText.split(/\r?\n/);
+        const lines = splitLinesPreserve(currentText);
         for (let i = 0; i < lines.length; i++) {
           const t = lines[i]!.trim();
           if (
@@ -1432,7 +1769,7 @@ export function registerCodeLensProvider(context: LspContext) {
             if (!showVerification) continue;
           }
           const prefix = isSim ? "▶ " : isExport ? "⇄ " : "✓ ";
-          const humanTitle = actionId.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+          const humanTitle = humanizeActionId(actionId);
           lenses.push({
             range: headerRange,
             command: {
@@ -1522,7 +1859,7 @@ export function registerCodeLensProvider(context: LspContext) {
                   namePos.line,
                   namePos.character + defn.length,
                 );
-                if (/tline|cable/i.test(defn) && (showSimulate || showDiagram)) {
+                if (containsCaseInsensitiveAny(defn, ["tline", "cable"]) && (showSimulate || showDiagram)) {
                   lenses.push({
                     range,
                     command: {
@@ -1531,7 +1868,10 @@ export function registerCodeLensProvider(context: LspContext) {
                       arguments: [uri, compId],
                     },
                   });
-                } else if (/inverter|ibr|grid_forming|vsc|statcom/i.test(defn) && (showVerification || showSimulate)) {
+                } else if (
+                  containsCaseInsensitiveAny(defn, ["inverter", "ibr", "grid_forming", "vsc", "statcom"]) &&
+                  (showVerification || showSimulate)
+                ) {
                   lenses.push({
                     range,
                     command: {

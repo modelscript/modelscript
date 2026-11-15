@@ -84,6 +84,7 @@ COPY languages/ibis/package.json languages/ibis/
 COPY languages/igtl/package.json languages/igtl/
 COPY languages/jsbsim/package.json languages/jsbsim/
 COPY languages/landgem/package.json languages/landgem/
+COPY languages/las/package.json languages/las/
 COPY languages/lps/package.json languages/lps/
 COPY languages/modelica/package.json languages/modelica/
 COPY languages/modelscript/package.json languages/modelscript/

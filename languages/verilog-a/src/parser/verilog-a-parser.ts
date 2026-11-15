@@ -3,7 +3,7 @@
 /**
  * @modelscript/verilog-a — Zero-Regex Verilog-A / Verilog-AMS Lexer & Recursive-Descent Parser.
  *
- * Implements deterministic token-based parsing conforming to IEEE 1857 / Accellera Verilog-AMS.
+ * Implements deterministic token-based parsing conforming to Accellera Verilog-AMS LRM.
  * Handles `include directives, module boundaries, electrical/thermal disciplines, parameters
  * with range bounds (from [min:max]), internal node allocations, and analog block contributions (<+).
  */

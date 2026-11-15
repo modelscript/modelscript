@@ -281,8 +281,8 @@ const surfaces = computed<Surface[]>(() => [
 .surf-tag {
   padding: 3px 10px;
   border-radius: 999px;
-  font-size: 11px;
-  font-weight: 650;
+  font-size: var(--text-2xs);
+  font-weight: var(--ms-fw-semibold);
   color: var(--tone-p);
   background: color-mix(in srgb, var(--tone-p) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--tone-p) 35%, transparent);
@@ -290,15 +290,15 @@ const surfaces = computed<Surface[]>(() => [
 
 .surf-card h3 {
   margin: 14px 0 6px;
-  font-size: 1.06rem;
-  font-weight: 680;
+  font-size: var(--text-lg);
+  font-weight: var(--ms-fw-semibold);
   color: var(--vp-c-text-1);
 }
 
 .surf-card p {
   margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.55;
+  font-size: var(--text-sm);
+  line-height: var(--leading-base);
   color: var(--vp-c-text-2);
 }
 
@@ -308,8 +308,8 @@ const surfaces = computed<Surface[]>(() => [
   gap: 6px;
   margin-top: auto;
   padding-top: 18px;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--text-xs);
+  font-weight: var(--ms-fw-semibold);
   color: var(--vp-c-brand-1);
   transition: gap 0.2s;
 }

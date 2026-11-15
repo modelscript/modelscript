@@ -5,6 +5,14 @@
 // SysML2 elements and connections in `.sysml` source text.
 
 import { Range, TextEdit } from "vscode-languageserver";
+import {
+  collectCstLeaves,
+  offsetToLineColumn,
+  parseSysmlSource,
+  sliceLeavesInRange,
+  stripNamespaceWildcard,
+  trimTrailingChars,
+} from "../cst-utils.js";
 
 // ── SysML2 Code Generation Templates ──
 
@@ -224,26 +232,46 @@ export interface SysML2CrossLanguageInsertOptions {
 }
 
 function normalizeSysmlTypePath(raw: string): string {
-  return raw
-    .trim()
-    .replace(/\.+/g, "::")
-    .replace(/^:+|:+$/g, "");
+  const trimmed = raw.trim();
+  let out = "";
+  let i = 0;
+  while (i < trimmed.length) {
+    if (trimmed[i] === ".") {
+      while (i < trimmed.length && trimmed[i] === ".") i++;
+      out += "::";
+    } else {
+      out += trimmed[i]!;
+      i++;
+    }
+  }
+  let start = 0;
+  let end = out.length;
+  while (start < end && out[start] === ":") start++;
+  while (end > start && out[end - 1] === ":") end--;
+  return out.slice(start, end);
 }
 
 function hasSysmlImport(docText: string, importTarget: string): boolean {
-  const clean = normalizeSysmlTypePath(importTarget).replace(/::\*$/, "");
+  const clean = stripNamespaceWildcard(normalizeSysmlTypePath(importTarget));
   if (!clean) return true;
-  const exactRe = new RegExp(
-    `(?:^|\\n)\\s*(?:(?:public|private)\\s+)?import\\s+(?:all\\s+)?${escapeRegex(importTarget)}\\s*;`,
-  );
-  if (exactRe.test(docText)) return true;
   const segments = clean.split("::");
-  if (segments.length >= 2) {
-    const pkgPath = segments.slice(0, -1).join("::");
-    const wildcardRe = new RegExp(
-      `(?:^|\\n)\\s*(?:(?:public|private)\\s+)?import\\s+(?:all\\s+)?${escapeRegex(pkgPath)}::\\*\\s*;`,
-    );
-    if (wildcardRe.test(docText)) return true;
+  const pkgWildcard = segments.length >= 2 ? `${segments.slice(0, -1).join("::")}::*` : "";
+  const normalizedTarget = normalizeSysmlTypePath(importTarget);
+
+  const leaves = collectCstLeaves(parseSysmlSource(docText));
+  for (let i = 0; i < leaves.length; i++) {
+    if (leaves[i]!.text !== "import") continue;
+    let j = i + 1;
+    if (leaves[j]?.text === "all") j++;
+    let target = "";
+    while (j < leaves.length && leaves[j]!.text !== ";" && leaves[j]!.text !== "{" && leaves[j]!.text !== "}") {
+      target += leaves[j]!.text;
+      j++;
+    }
+    if (leaves[j]?.text !== ";") continue;
+    const normImported = normalizeSysmlTypePath(target);
+    if (normImported === normalizedTarget || target === importTarget) return true;
+    if (pkgWildcard && (normImported === pkgWildcard || normImported === `${pkgWildcard}*`)) return true;
   }
   return false;
 }
@@ -266,11 +294,11 @@ function findEnclosingOpenBraceLine(lines: string[], closingLine: number): numbe
 }
 
 function indentBlockLines(block: string, indent: string): string {
-  return block
+  const joined = block
     .split("\n")
     .map((line) => (line.trim().length > 0 ? `${indent}${line}` : ""))
-    .join("\n")
-    .replace(/\n+$/, "");
+    .join("\n");
+  return trimTrailingChars(joined, "\n");
 }
 
 /**
@@ -309,7 +337,7 @@ export function computeSysML2ElementInsert(
     const cstBlock = tree ? findCstEnclosingBlock(tree) : null;
     if (cstBlock) {
       targetLine = cstBlock.line;
-      const braceIndent = lines[targetLine]?.match(/^(\s*)/)?.[1] ?? "";
+      const braceIndent = getIndentAt(lines, targetLine);
       indent = braceIndent + INDENT;
     } else {
       // Find the last closing `}` in the document (end of the outermost package body)
@@ -326,7 +354,7 @@ export function computeSysML2ElementInsert(
         indent = docText.trim().length === 0 ? "" : INDENT;
       } else {
         // Indent one level deeper than the closing brace
-        const braceIndent = lines[targetLine]?.match(/^(\s*)/)?.[1] ?? "";
+        const braceIndent = getIndentAt(lines, targetLine);
         indent = braceIndent + INDENT;
       }
     }
@@ -338,7 +366,8 @@ export function computeSysML2ElementInsert(
     const declKw = kw === "port" || kw === "attribute" || kw === "item" ? kw : "part";
     snippet = `${indent}${declKw} ${elementName} : ${resolvedType};`;
   } else {
-    snippet = template!(elementName, indent).replace(/\n$/, "");
+    const generated = template!(elementName, indent);
+    snippet = generated.endsWith("\n") ? generated.slice(0, -1) : generated;
   }
 
   const normalizedImport = options?.importPath ? normalizeSysmlTypePath(options.importPath) : undefined;
@@ -471,13 +500,10 @@ function findEnclosingBlockBrace(lines: string[], elementName?: string, tree?: D
   }
 
   if (elementName) {
-    let declLine = -1;
-    for (let i = 0; i < lines.length; i++) {
-      if (new RegExp(`\\b${elementName}\\b`).test(lines[i]!)) {
-        declLine = i;
-        break;
-      }
-    }
+    const docJoined = lines.join("\n");
+    const docLeaves = collectCstLeaves(parseSysmlSource(docJoined));
+    const foundLeaf = docLeaves.find((leaf) => leaf.text === elementName);
+    const declLine = foundLeaf ? offsetToLineColumn(docJoined, foundLeaf.start).line : -1;
     if (declLine !== -1) {
       let depth = 0;
       for (let i = declLine; i < lines.length; i++) {
@@ -535,14 +561,20 @@ export function computeSysML2ConnectionInsert(
       isActivityContext = true;
     }
   } else {
-    // Text fallback: inspect source and target declaration lines
-    const lines = docText.split("\n");
-    const isStateLine = (name: string) => lines.some((l) => new RegExp(`^\\s*state\\s+(def\\s+)?${name}\\b`).test(l));
-    const isActionLine = (name: string) => lines.some((l) => new RegExp(`^\\s*action\\s+(def\\s+)?${name}\\b`).test(l));
+    // CST leaf fallback: inspect source and target declarations
+    const docLeaves = collectCstLeaves(parseSysmlSource(docText));
+    const hasTypedDecl = (kindKw: "state" | "action", name: string) => {
+      for (let i = 0; i + 1 < docLeaves.length; i++) {
+        if (docLeaves[i]!.text !== kindKw) continue;
+        const nameIdx = docLeaves[i + 1]!.text === "def" ? i + 2 : i + 1;
+        if (docLeaves[nameIdx]?.text === name) return true;
+      }
+      return false;
+    };
 
-    if (isStateLine(source) || isStateLine(target)) {
+    if (hasTypedDecl("state", source) || hasTypedDecl("state", target)) {
       isStateMachineContext = true;
-    } else if (isActionLine(source) || isActionLine(target)) {
+    } else if (hasTypedDecl("action", source) || hasTypedDecl("action", target)) {
       isActivityContext = true;
     }
   }
@@ -557,7 +589,7 @@ export function computeSysML2ConnectionInsert(
   const lines = docText.split("\n");
   const targetLine = findEnclosingBlockBrace(lines, source, tree);
 
-  const braceIndent = lines[targetLine]?.match(/^(\s*)/)?.[1] ?? "";
+  const braceIndent = getIndentAt(lines, targetLine);
   const indent = braceIndent + INDENT;
 
   // Generate a connection name from source and target
@@ -582,7 +614,7 @@ export function computeSysML2TransitionInsert(
   const lines = docText.split("\n");
   const targetLine = findEnclosingBlockBrace(lines, source, tree);
 
-  const braceIndent = lines[targetLine]?.match(/^(\s*)/)?.[1] ?? "";
+  const braceIndent = getIndentAt(lines, targetLine);
   const indent = braceIndent + INDENT;
 
   const snippet = `${indent}transition first ${source} then ${target};\n`;
@@ -607,7 +639,7 @@ export function computeSysML2SuccessionInsert(
 
   if (targetLine === -1) targetLine = lines.length;
 
-  const braceIndent = lines[targetLine]?.match(/^(\s*)/)?.[1] ?? "";
+  const braceIndent = getIndentAt(lines, targetLine);
   const indent = braceIndent + INDENT;
 
   const snippet = `${indent}first ${source} then ${target};\n`;
@@ -708,15 +740,16 @@ export function computeSysML2NameEdit(tree: unknown, docText: string, oldName: s
   }
 
   if (edits.length === 0) {
-    // Fallback regex replacement
-    const lines = docText.split("\n");
-    const pattern = new RegExp(`\\b${escapeRegex(oldName)}\\b`, "g");
-    lines.forEach((line, i) => {
-      let match;
-      while ((match = pattern.exec(line)) !== null) {
-        edits.push(TextEdit.replace(Range.create(i, match.index, i, match.index + oldName.length), newName));
-      }
-    });
+    // Fallback CST leaf replacement
+    const leaves = collectCstLeaves(parseSysmlSource(docText));
+    for (const leaf of leaves) {
+      if (leaf.text !== oldName) continue;
+      const startPos = offsetToLineColumn(docText, leaf.start);
+      const endPos = offsetToLineColumn(docText, leaf.end);
+      edits.push(
+        TextEdit.replace(Range.create(startPos.line, startPos.character, endPos.line, endPos.character), newName),
+      );
+    }
   }
 
   return deduplicateAndSort(edits);
@@ -752,12 +785,16 @@ export function computeSysML2DescriptionEdit(
 
   if (startLine === -1) return [];
 
-  const escapedDesc = newDescription.replace(/\*\//g, "* /");
+  const escapedDesc = newDescription.replaceAll("*/", "* /");
   const docString = `doc /* ${escapedDesc} */`;
 
   // Check if there is an existing doc inside the element body
   for (let i = startLine; i <= endLine; i++) {
-    if (lines[i]!.includes("doc /*") || lines[i]!.match(/^\s*doc\s+/)) {
+    const trimLine = lines[i]!.trimStart();
+    if (
+      lines[i]!.includes("doc /*") ||
+      (trimLine.startsWith("doc") && trimLine.length > 3 && (trimLine[3] === " " || trimLine[3] === "\t"))
+    ) {
       const docStart = lines[i]!.indexOf("doc");
       const docEndIdx = lines[i]!.indexOf("*/");
       if (docEndIdx !== -1) {
@@ -802,22 +839,38 @@ export function computeSysML2ParameterEdit(
   if (startLine === -1) return [];
 
   let paramLineIdx = -1;
+  const leaves = collectCstLeaves(parseSysmlSource(docText));
+  let rangeStartOffset = 0;
+  for (let i = 0; i < startLine; i++) rangeStartOffset += lines[i]!.length + 1;
+  let rangeEndOffset = rangeStartOffset;
+  for (let i = startLine; i <= endLine && i < lines.length; i++) rangeEndOffset += lines[i]!.length + 1;
+  const rangeLeaves = sliceLeavesInRange(leaves, rangeStartOffset, rangeEndOffset);
+
   // A common syntax for redefinition in usages is `:>> param = value;`
-  for (let i = startLine; i <= endLine; i++) {
-    if (lines[i]!.includes(`:>> ${parameterName}`) || lines[i]!.includes(` ${parameterName} =`)) {
-      paramLineIdx = i;
-      // E.g. `:>> p = 6;`
-      const match = lines[i]!.match(new RegExp(`(:>>\\s*${escapeRegex(parameterName)}\\s*=\\s*)[^;]+(;)`));
-      if (match) {
-        const repStart = lines[i]!.indexOf(match[0]);
+  for (let k = 0; k + 2 < rangeLeaves.length; k++) {
+    if (
+      rangeLeaves[k]!.text === ":>>" &&
+      rangeLeaves[k + 1]!.text === parameterName &&
+      rangeLeaves[k + 2]!.text === "="
+    ) {
+      paramLineIdx = offsetToLineColumn(docText, rangeLeaves[k]!.start).line;
+      let semi = k + 3;
+      while (semi < rangeLeaves.length && rangeLeaves[semi]!.text !== ";") {
+        semi++;
+      }
+      if (semi < rangeLeaves.length && semi > k + 3) {
+        const startPos = offsetToLineColumn(docText, rangeLeaves[k + 2]!.end);
+        const endPos = offsetToLineColumn(docText, rangeLeaves[semi]!.start);
         edits.push(
           TextEdit.replace(
-            Range.create(i, repStart, i, repStart + match[0].length),
-            `${match[1]}${newValue}${match[2]}`,
+            Range.create(startPos.line, startPos.character, endPos.line, endPos.character),
+            ` ${newValue}`,
           ),
         );
         return edits;
       }
+    } else if (rangeLeaves[k]!.text === parameterName && rangeLeaves[k + 1]!.text === "=") {
+      paramLineIdx = offsetToLineColumn(docText, rangeLeaves[k]!.start).line;
     }
   }
 
@@ -914,24 +967,91 @@ function findElementRange(lines: string[], name: string): { startLine: number; e
     "package",
   ];
 
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i]!.trim();
-    for (const kw of keywords) {
-      // Match: keyword name { or keyword name ;
-      const pattern = new RegExp(`^${kw.replace(/ /g, "\\s+")}\\s+${escapeRegex(name)}\\s*[{;]`);
-      if (pattern.test(trimmed)) {
-        // Found the declaration start
-        if (trimmed.endsWith(";")) {
-          return { startLine: i, endLine: i };
+  const docText = lines.join("\n");
+  const leaves = collectCstLeaves(parseSysmlSource(docText));
+  const keywordTuples = keywords.map((kw) => kw.split(" "));
+
+  for (let i = 0; i < leaves.length; i++) {
+    for (const kwParts of keywordTuples) {
+      if (i + kwParts.length + 1 >= leaves.length) continue;
+      let matched = true;
+      for (let k = 0; k < kwParts.length; k++) {
+        if (leaves[i + k]!.text !== kwParts[k]) {
+          matched = false;
+          break;
         }
-        // Find matching closing brace
-        const endLine = findMatchingBrace(lines, i);
-        return { startLine: i, endLine };
       }
+      if (!matched) continue;
+      if (leaves[i + kwParts.length]!.text !== name) continue;
+      const delimTok = leaves[i + kwParts.length + 1]!.text;
+      if (delimTok !== "{" && delimTok !== ";") continue;
+
+      const startLine = offsetToLineColumn(docText, leaves[i]!.start).line;
+      if (delimTok === ";") {
+        return { startLine, endLine: startLine };
+      }
+      const endLine = findMatchingBrace(lines, startLine);
+      return { startLine, endLine };
     }
   }
 
   return { startLine: -1, endLine: -1 };
+}
+
+const STATEMENT_PREFIX_MODIFIERS = new Set([
+  "public",
+  "private",
+  "protected",
+  "abstract",
+  "readonly",
+  "derived",
+  "constant",
+  "ref",
+  "in",
+  "out",
+  "inout",
+  "doc",
+]);
+
+const STATEMENT_DECL_KEYWORDS = new Set([
+  "part",
+  "attribute",
+  "port",
+  "action",
+  "state",
+  "calc",
+  "requirement",
+  "constraint",
+  "case",
+  "connection",
+  "interface",
+  "allocation",
+  "flow",
+  "item",
+  "enum",
+  "concern",
+  "view",
+  "viewpoint",
+  "rendering",
+  "occurrence",
+  "package",
+  "import",
+  "verification",
+]);
+
+function startsWithSysmlDeclHeader(trimmedLine: string): boolean {
+  if (!trimmedLine) return false;
+  const leaves = collectCstLeaves(parseSysmlSource(trimmedLine));
+  let idx = 0;
+  while (idx < leaves.length && STATEMENT_PREFIX_MODIFIERS.has(leaves[idx]!.text)) {
+    idx++;
+  }
+  if (idx >= leaves.length) return false;
+  const tok = leaves[idx]!.text;
+  if (STATEMENT_DECL_KEYWORDS.has(tok)) return true;
+  if (tok === "use" && leaves[idx + 1]?.text === "case") return true;
+  if (tok === "analysis" && leaves[idx + 1]?.text === "case") return true;
+  return false;
 }
 
 /**
@@ -939,12 +1059,8 @@ function findElementRange(lines: string[], name: string): { startLine: number; e
  */
 function findStatementRange(lines: string[], startLine: number): { startLine: number; endLine: number } {
   let endLine = startLine;
-  // Match common SysML v2 declaration prefixes including visibility, features, and doc comments
-  const declKeywordRegex =
-    /^(?:(?:public|private|protected|abstract|readonly|derived|constant|ref|in|out|inout)\s+)*(?:doc\s+\/\*(?:[^*]|\*(?!\/))*\*\/\s*)*(?:part|attribute|port|action|state|calc|requirement|constraint|use case|verification|analysis case|case|connection|interface|allocation|flow|item|enum|concern|view|viewpoint|rendering|occurrence|package|import)\b/;
-
   let line = lines[startLine]!.trim();
-  while (startLine > 0 && !declKeywordRegex.test(line)) {
+  while (startLine > 0 && !startsWithSysmlDeclHeader(line)) {
     startLine--;
     line = lines[startLine]!.trim();
   }
@@ -1024,14 +1140,12 @@ function findMatchingBrace(lines: string[], startLine: number): number {
  */
 function getIndentAt(lines: string[], line: number): string {
   if (line < 0 || line >= lines.length) return INDENT;
-  return lines[line]!.match(/^(\s*)/)?.[1] ?? "";
-}
-
-/**
- * Escape special regex characters in a string.
- */
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const text = lines[line]!;
+  let k = 0;
+  while (k < text.length && (text[k] === " " || text[k] === "\t")) {
+    k++;
+  }
+  return text.slice(0, k);
 }
 
 /**

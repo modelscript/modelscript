@@ -168,6 +168,7 @@ interface CadViewerProps {
 
 export interface QifOverlayPayload {
   qpId?: string | undefined;
+  stepUri?: string | undefined;
   features?:
     | Array<{
         id: string;
@@ -176,6 +177,7 @@ export interface QifOverlayPayload {
         datumLabel?: string | undefined;
         entityId?: string | undefined;
         location?: [number, number, number] | undefined;
+        worldPosition?: [number, number, number] | undefined;
         normal?: [number, number, number] | undefined;
         nominalSize?: number | undefined;
       }>
@@ -186,6 +188,7 @@ export interface QifOverlayPayload {
         name: string;
         type: string;
         featureId: string;
+        featureIds?: string[] | undefined;
         toleranceValue: number;
         nominalValue?: number | undefined;
         materialCondition?: string | undefined;
@@ -960,8 +963,10 @@ function QifInspectionOverlay3D({ overlay, sceneRadius }: { overlay: QifOverlayP
     <group name="QifInspectionOverlay3D">
       {features.map((feat, idx) => {
         const loc = feat.location ?? [(idx - 1.5) * 18, 0, 0];
-        const pos: [number, number, number] = [loc[0] * scaleFactor, loc[2] * scaleFactor + 0.15, loc[1] * scaleFactor];
-        const char = characteristics.find((c) => c.featureId === feat.id);
+        const pos: [number, number, number] = feat.worldPosition
+          ? [feat.worldPosition[0], feat.worldPosition[1], feat.worldPosition[2]]
+          : [loc[0] * scaleFactor, loc[2] * scaleFactor + 0.15, loc[1] * scaleFactor];
+        const char = characteristics.find((c) => c.featureId === feat.id || c.featureIds?.includes(feat.id));
         const charActuals = char ? actuals.filter((a) => a.characteristicId === char.id) : [];
         const hasFail = charActuals.some((a) => a.status === "FAIL");
         const spcMetric = char ? spcChars.find((s) => s.characteristicId === char.id) : undefined;

@@ -177,11 +177,17 @@ export function getOneLinerDiagnostics(content: string): LspDiagnosticItem[] {
     ];
   }
 
+  const lines = content.split(/\r?\n/);
+  const lt = lines[0] ?? "";
+  let sChar = 0;
+  while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
+  const tok = lt.slice(sChar).match(/^[^\s;:,]+/);
+  const eChar = Math.min(lt.length, sChar + (tok ? tok[0].length : 1));
   const lints = lintOneLinerCase(c);
   return lints.map((l) => ({
     range: {
-      start: { line: 0, character: 0 },
-      end: { line: 0, character: 80 },
+      start: { line: 0, character: sChar },
+      end: { line: 0, character: eChar },
     },
     severity: l.severity === "error" ? 1 : l.severity === "warning" ? 2 : 3,
     code: l.code,

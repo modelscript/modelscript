@@ -1363,24 +1363,24 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  SourceFile = 23,
-  CommentLine = 24,
-  Directive = 25,
-  TupleValue = 26,
-  ScalarValue = 27,
-  EmbeddedExpression = 28,
-  Expression = 29,
-  BinaryExpression = 30,
-  UnaryExpression = 31,
-  PrimaryExpression = 32,
-  QualifiedIdentifier = 33,
-  START = 34,
-  _START = 34,
-  Newline = 38,
-  _newline = 38,
-  IDENTIFIER = 56,
-  NUMBER = 57,
-  STRING = 58,
+  SourceFile = 20,
+  Directive = 21,
+  TupleValue = 22,
+  ScalarValue = 23,
+  EmbeddedExpression = 24,
+  Expression = 25,
+  BinaryExpression = 26,
+  UnaryExpression = 27,
+  PrimaryExpression = 28,
+  QualifiedIdentifier = 29,
+  START = 30,
+  _START = 30,
+  CommentLine = 33,
+  Newline = 34,
+  _newline = 34,
+  IDENTIFIER = 52,
+  NUMBER = 53,
+  STRING = 54,
   EOF = 1023,
 }
 
@@ -1402,10 +1402,6 @@ export interface SourceFileNode extends SyntaxNode {
   readonly typeId: SyntaxKind.SourceFile;
 }
 export declare function isSourceFile(node: SyntaxNode | null | undefined): node is SourceFileNode;
-export interface CommentLineNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.CommentLine;
-}
-export declare function isCommentLine(node: SyntaxNode | null | undefined): node is CommentLineNode;
 export interface DirectiveNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Directive;
 }
@@ -1442,6 +1438,10 @@ export interface QualifiedIdentifierNode extends SyntaxNode {
   readonly typeId: SyntaxKind.QualifiedIdentifier;
 }
 export declare function isQualifiedIdentifier(node: SyntaxNode | null | undefined): node is QualifiedIdentifierNode;
+export interface CommentLineNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CommentLine;
+}
+export declare function isCommentLine(node: SyntaxNode | null | undefined): node is CommentLineNode;
 export interface IDENTIFIERNode extends SyntaxNode {
   readonly typeId: SyntaxKind.IDENTIFIER;
 }
@@ -1461,11 +1461,6 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is SourceFileNode;
-  };
-  export const CommentLine: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is CommentLineNode;
   };
   export const Directive: {
     readonly typeId: number;
@@ -1517,6 +1512,11 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is QualifiedIdentifierNode;
+  };
+  export const CommentLine: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is CommentLineNode;
   };
   export const IDENTIFIER: {
     readonly typeId: number;

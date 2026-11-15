@@ -131,11 +131,25 @@ export function getAsmDocumentSymbols(content: string): LspDocumentSymbol[] {
   return [rootSymbol];
 }
 
+function firstTokenRange(content: string): {
+  start: { line: number; character: number };
+  end: { line: number; character: number };
+} {
+  const lines = content.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const match = /\S+/.exec(lines[i] ?? "");
+    if (match) {
+      return { start: { line: i, character: match.index }, end: { line: i, character: match.index + match[0].length } };
+    }
+  }
+  return { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } };
+}
+
 export function getAsmDiagnostics(content: string): LspDiagnosticItem[] {
   if (!content.includes("plant ") && !content.includes("bioreactor ")) {
     return [
       {
-        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } },
+        range: firstTokenRange(content),
         severity: 1,
         code: "ASM1001",
         source: "asm-lint",
@@ -151,7 +165,7 @@ export function getAsmDiagnostics(content: string): LspDiagnosticItem[] {
     const msg = err instanceof Error ? err.message : String(err);
     return [
       {
-        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } },
+        range: firstTokenRange(content),
         severity: 1,
         code: "ASM1001",
         source: "asm-lint",
@@ -160,9 +174,15 @@ export function getAsmDiagnostics(content: string): LspDiagnosticItem[] {
     ];
   }
 
+  const lines = content.split(/\r?\n/);
+  const lt = lines[0] ?? "";
+  let sChar = 0;
+  while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
+  const tok = lt.slice(sChar).match(/^[^\s;]+/);
+  const eChar = Math.min(lt.length, sChar + (tok ? tok[0].length : 1));
   const diags = lintAsmPlant(plant);
   return diags.map((d) => ({
-    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 80 } },
+    range: { start: { line: 0, character: sChar }, end: { line: 0, character: eChar } },
     severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
     code: d.code,
     source: "asm-lint",

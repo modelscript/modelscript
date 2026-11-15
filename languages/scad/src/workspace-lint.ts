@@ -8,19 +8,7 @@ import {
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
-import { createWasmParserSync } from "@modelscript/scad/parser";
-import { createRequire } from "node:module";
-import { lintScad } from "./index.js";
-
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
-function getScadWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/scad/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
-}
+import { getScadParser, lintScad } from "./index.js";
 
 /**
  * Performs multi-file OpenSCAD workspace linting by resolving `include <...>` and
@@ -38,7 +26,7 @@ export async function lintScadWorkspace(
 
   const entryUri = rootUri ?? entries[0]![0];
   const edges = new Map<string, string[]>();
-  const parser = getScadWasmParser();
+  const parser = await getScadParser();
 
   for (const [uri, text] of entries) {
     const outEdges: string[] = [];

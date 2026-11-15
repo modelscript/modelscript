@@ -64,7 +64,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
       ) {
         // Verify that the 2nd positional argument (factor) is not <= 0
         if (hasNonPositiveSampleFactor(db, node, $)) {
-          db.diagnostic(node);
+          db.diagnosticAt(name, node);
         }
       }
     },
@@ -86,7 +86,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
       if (name != 0 && db.ast.textEquals(name, "previous")) {
         // Reject `previous(time)` or `previous(paramOrConst)` per MLS §16.4.1
         if (isPreviousOnNonClocked(db, node, $)) {
-          db.diagnostic(node);
+          db.diagnosticAt(name, node);
         }
       }
     },
@@ -110,7 +110,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
           if (anc != node) {
             const t = db.ast.getType(anc);
             if (t == $.primary && db.ast.startsWith(anc, "der(")) {
-              db.diagnostic(node);
+              db.diagnosticAt(name, node);
               break;
             }
             if (t == $.function_call || t == $.primary) {
@@ -122,7 +122,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
                   db.ast.textEquals(outerName, "superSample") ||
                   db.ast.textEquals(outerName, "der"))
               ) {
-                db.diagnostic(node);
+                db.diagnosticAt(name, node);
                 break;
               }
             }

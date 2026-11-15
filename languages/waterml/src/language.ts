@@ -139,7 +139,7 @@ export const watermlLanguage = language({
       },
     },
   ],
-  extras: () => [/[ \t\r\n]+/],
+  extras: ($) => [/[ \t\r\n]+/, $["COMMENT"]!, $["PROCESSING_INSTRUCTION"]!],
   rules: xmlRules,
 });
 

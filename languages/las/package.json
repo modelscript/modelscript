@@ -1,0 +1,53 @@
+{
+  "name": "@modelscript/las",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/language.d.ts",
+      "default": "./dist/language.js"
+    },
+    "./language": {
+      "types": "./dist/language.d.ts",
+      "default": "./dist/language.js"
+    },
+    "./parser": {
+      "types": "./src-gen/bindings.d.ts",
+      "default": "./src-gen/bindings.js"
+    },
+    "./las-parser": {
+      "types": "./dist/src/las-parser.d.ts",
+      "default": "./dist/src/las-parser.js"
+    },
+    "./parser.wasm": "./dist/parser.wasm",
+    "./dist/parser.wasm": "./dist/parser.wasm"
+  },
+  "files": [
+    "language.ts",
+    "src/**",
+    "src-gen/**",
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "node ../../scripts/build-language-parser.js && tsc",
+    "build:parser": "node ../../scripts/build-language-parser.js --force",
+    "clean": "rimraf dist build src-gen as-gen *.wasm",
+    "lint": "eslint language.ts src tests --no-warn-ignored",
+    "test": "node ../../scripts/test-runner.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "*",
+    "@modelscript/runtime": "*",
+    "@modelscript/simulate": "*"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  },
+  "modelscript": {
+    "tier": "preview",
+    "category": "language"
+  }
+}

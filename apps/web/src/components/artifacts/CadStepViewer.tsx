@@ -1,18 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { Verification3DOverlayPayload } from "@modelscript/cad";
+import { extractStepGdtOverlay, type GdtOverlayPayload, type Verification3DOverlayPayload } from "@modelscript/cad";
 import { CheckIcon, CopyIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
-import { Environment, Html, useProgress } from "@react-three/drei";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Html, useProgress } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import DOMPurify from "dompurify";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { convertCadGeometry } from "../../api";
 import { useTheme } from "../../theme";
 import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
+import type { CadComponent } from "../morsel/cad-viewer/CadViewer";
+import {
+  ensureGeometryBrushedUvs,
+  Gdt3dOverlay,
+  HeroStudioEnvironment,
+  resolveHeroAlloyConfig,
+  SplitSectionGeometryPasses,
+  StencilSectionCapQuad,
+} from "../morsel/cad-viewer/HeroCadMaterials";
+import { tessellateScadSource } from "../morsel/hooks/useMorselEngine";
+import { getCadComponents } from "../morsel/util/lsp-bridge";
 import Spinner from "../Spinner";
 import { useToast } from "../ToastContext";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
@@ -24,6 +36,7 @@ import ViewportCameraControls, { type CameraPreset, type ClipAxis, type RenderMo
 interface CadStepViewerProps {
   artifactId?: number | undefined;
   viewConfig: any;
+  dialect?: string | undefined;
   isFullScreen?: boolean | undefined;
   onPinCreated?: ((pin: SpatialPin) => void) | undefined;
   verificationOverlay?: Verification3DOverlayPayload | undefined;
@@ -394,12 +407,12 @@ function CameraController({
 
 interface RawStepMeshData {
   name?: string | undefined;
-  color?: [number, number, number] | undefined;
+  color?: number[] | undefined;
   attributes: {
-    position: { array: number[] };
-    normal?: { array: number[] } | undefined;
+    position: { array: ArrayLike<number> };
+    normal?: { array: ArrayLike<number> } | undefined;
   };
-  index?: { array: number[] } | undefined;
+  index?: { array: ArrayLike<number> } | undefined;
 }
 
 function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
@@ -886,14 +899,166 @@ function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
   return meshes;
 }
 
+const gltfLoaderSingleton = new GLTFLoader();
+
+async function cadComponentsToRawMeshes(components: CadComponent[]): Promise<RawStepMeshData[]> {
+  const out: RawStepMeshData[] = [];
+  for (const comp of components) {
+    if (comp.proceduralMesh && comp.proceduralMesh.vertices.length >= 9) {
+      out.push({
+        attributes: {
+          position: { array: comp.proceduralMesh.vertices },
+          normal:
+            comp.proceduralMesh.normals && comp.proceduralMesh.normals.length === comp.proceduralMesh.vertices.length
+              ? { array: comp.proceduralMesh.normals }
+              : undefined,
+        },
+        index:
+          comp.proceduralMesh.indices && comp.proceduralMesh.indices.length > 0
+            ? { array: comp.proceduralMesh.indices }
+            : undefined,
+        name: comp.name,
+        color: comp.proceduralMesh.color,
+      });
+      continue;
+    }
+
+    const uri = comp.cad?.uri;
+    if (typeof uri === "string" && (uri.startsWith("data:") || uri.startsWith("http") || uri.startsWith("/"))) {
+      try {
+        const gltf = await gltfLoaderSingleton.loadAsync(uri);
+        gltf.scene.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            const mesh = child as THREE.Mesh;
+            const posAttr = mesh.geometry.getAttribute("position");
+            if (!posAttr) return;
+            const normAttr = mesh.geometry.getAttribute("normal");
+            const idxAttr = mesh.geometry.getIndex();
+            const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
+            const col = mat?.color ? [mat.color.r, mat.color.g, mat.color.b, mat.opacity ?? 1] : undefined;
+            out.push({
+              attributes: {
+                position: { array: Array.from(posAttr.array as Iterable<number>) },
+                normal: normAttr ? { array: Array.from(normAttr.array as Iterable<number>) } : undefined,
+              },
+              index: idxAttr ? { array: Array.from(idxAttr.array as Iterable<number>) } : undefined,
+              name: comp.name || mesh.name || "OpenSCAD_Solid",
+              color: col,
+            });
+          }
+        });
+      } catch {
+        // Skip unloaded GLB part
+      }
+    }
+  }
+  return out;
+}
+
+const AutoSweepDriver: React.FC<{
+  enabled: boolean;
+  onSweepOffset: (offset: number) => void;
+}> = ({ enabled, onSweepOffset }) => {
+  const phaseRef = useRef(0);
+  const accumRef = useRef(0);
+  useFrame((_, delta) => {
+    if (!enabled) return;
+    const dt = Math.min(delta, 0.05);
+    phaseRef.current += dt * 0.72;
+    accumRef.current += dt;
+    if (accumRef.current >= 0.032) {
+      accumRef.current = 0;
+      onSweepOffset(Math.sin(phaseRef.current) * 0.82);
+    }
+  });
+  return null;
+};
+
+const StepMeshItem: React.FC<{
+  geo: THREE.BufferGeometry;
+  offset: [number, number, number];
+  compName: string;
+  colorRgba: number[] | null;
+  renderMode: RenderMode;
+  solidPlane: THREE.Plane | null;
+  wirePlane: THREE.Plane | null;
+  activeClippingPlanes: THREE.Plane[];
+  dark: boolean;
+  isDefective: boolean;
+  onMeshClick: (e: { point: THREE.Vector3; camera: THREE.Camera; stopPropagation: () => void }) => void;
+}> = ({
+  geo,
+  offset,
+  compName,
+  colorRgba,
+  renderMode,
+  solidPlane,
+  wirePlane,
+  activeClippingPlanes,
+  dark,
+  isDefective,
+  onMeshClick,
+}) => {
+  const { gl } = useThree();
+  const alloyProps = useMemo(() => {
+    const tuple: [number, number, number, number] | undefined =
+      colorRgba && colorRgba.length >= 3
+        ? [
+            Number(colorRgba[0]),
+            Number(colorRgba[1]),
+            Number(colorRgba[2]),
+            colorRgba[3] !== undefined ? Number(colorRgba[3]) : 1,
+          ]
+        : undefined;
+    return resolveHeroAlloyConfig(gl, compName, tuple, dark);
+  }, [gl, compName, colorRgba, dark]);
+
+  return (
+    <group>
+      <mesh geometry={geo} position={offset} onClick={onMeshClick}>
+        <meshPhysicalMaterial
+          {...alloyProps}
+          wireframe={renderMode === "wireframe"}
+          transparent={renderMode === "xray"}
+          opacity={renderMode === "xray" ? 0.35 : 1.0}
+          clearcoat={0.14}
+          side={THREE.DoubleSide}
+          clippingPlanes={activeClippingPlanes}
+          clipShadows={true}
+        />
+      </mesh>
+      {renderMode === "section" && solidPlane && wirePlane && (
+        <SplitSectionGeometryPasses
+          geometry={geo}
+          solidPlane={solidPlane}
+          wirePlane={wirePlane}
+          position={offset}
+          dark={dark}
+          showStencilMask={true}
+          showWireOpposite={true}
+        />
+      )}
+      {isDefective && (
+        <lineSegments position={offset}>
+          <edgesGeometry args={[geo, 15]} />
+          <lineBasicMaterial color="#f97316" depthTest={false} transparent opacity={0.95} />
+        </lineSegments>
+      )}
+    </group>
+  );
+};
+
 const CadStepViewer: React.FC<CadStepViewerProps> = ({
   artifactId,
   viewConfig,
+  dialect,
   isFullScreen,
   onPinCreated,
   verificationOverlay,
 }) => {
   const toast = useToast();
+  const effectiveDialect = (dialect || viewConfig?.dialect || "step").toLowerCase();
+  const isScadDialect = effectiveDialect === "scad" || effectiveDialect === "csg";
   const effectiveVerificationOverlay: Verification3DOverlayPayload | undefined =
     verificationOverlay || viewConfig?.verificationOverlay;
 
@@ -931,6 +1096,8 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
   const [renderMode, setRenderMode] = useState<RenderMode>("shaded");
   const [clipAxis, setClipAxis] = useState<ClipAxis>("none");
   const [clipOffset, setClipOffset] = useState<number>(0);
+  const [autoSweep, setAutoSweep] = useState<boolean>(false);
+  const [showGdt, setShowGdt] = useState<boolean>(true);
   const [probedPoint, setProbedPoint] = useState<{
     position: [number, number, number];
     worldPosition?: [number, number, number];
@@ -944,14 +1111,33 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
     stepSourceRef.current = stepSource;
   }, [stepSource]);
 
-  const activeClippingPlanes = useMemo(() => {
-    if (clipAxis === "none") return [];
-    const span = 22;
-    const d = clipOffset * span;
-    if (clipAxis === "x") return [new THREE.Plane(new THREE.Vector3(-1, 0, 0), d)];
-    if (clipAxis === "y") return [new THREE.Plane(new THREE.Vector3(0, -1, 0), d)];
-    return [new THREE.Plane(new THREE.Vector3(0, 0, -1), d)];
-  }, [clipAxis, clipOffset]);
+  const clipNormalTuple = useMemo<[number, number, number] | null>(() => {
+    if (clipAxis === "x") return [-1, 0, 0];
+    if (clipAxis === "y") return [0, -1, 0];
+    if (clipAxis === "z") return [0, 0, -1];
+    return null;
+  }, [clipAxis]);
+
+  const { solidPlane, wirePlane } = useMemo(() => {
+    if (!clipNormalTuple) {
+      return { solidPlane: null as THREE.Plane | null, wirePlane: null as THREE.Plane | null };
+    }
+    const [nx, ny, nz] = clipNormalTuple;
+    const d = clipOffset * 22;
+    return {
+      solidPlane: new THREE.Plane(new THREE.Vector3(nx, ny, nz), d),
+      wirePlane: new THREE.Plane(new THREE.Vector3(-nx, -ny, -nz), -d),
+    };
+  }, [clipNormalTuple, clipOffset]);
+
+  const activeClippingPlanes = useMemo(() => (solidPlane ? [solidPlane] : []), [solidPlane]);
+
+  const handleRenderModeChange = (mode: RenderMode) => {
+    setRenderMode(mode);
+    if (mode === "section" && clipAxis === "none") {
+      setClipAxis("x");
+    }
+  };
 
   const navigate = useNavigate();
 
@@ -962,7 +1148,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
     viewConfig?.title ||
     viewConfig?.modelName ||
     (typeof stepUrl === "string" && stepUrl.split("/").pop()) ||
-    "STEP CAD Assembly";
+    (isScadDialect ? "OpenSCAD CSG Model" : "STEP CAD Assembly");
 
   useEffect(() => {
     const inlineCode =
@@ -1031,6 +1217,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
   const isDark = theme === "dark";
 
   const pregenExpressSvg = typeof viewConfig?.expressSvg === "string" ? viewConfig.expressSvg : "";
+  const pregenGdtOverlay = viewConfig?.gdtOverlay as GdtOverlayPayload | undefined;
 
   const expressDiagram = useMemo(() => {
     if (viewTab !== "diagram" && viewTab !== "code") {
@@ -1052,6 +1239,13 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
     };
   }, [viewTab, pregenExpressSvg, effectiveStepSource, isDark]);
 
+  const gdtOverlay = useMemo<GdtOverlayPayload | null>(() => {
+    if (pregenGdtOverlay) return pregenGdtOverlay;
+    if (viewTab !== "3d" || isScadDialect || !effectiveStepSource.trim()) return null;
+    const payload = extractStepGdtOverlay(effectiveStepSource);
+    return payload.callouts.length > 0 || payload.datums.length > 0 ? payload : null;
+  }, [viewTab, isScadDialect, effectiveStepSource, pregenGdtOverlay]);
+
   const handleOpenInPlayground = () => {
     const targetUrl = buildEditorUrlForArtifact({
       artifactId: artifactId ?? viewConfig?.artifactId ?? viewConfig?.id,
@@ -1059,7 +1253,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
       viewConfig,
       code: stepSource.trim().length > 0 ? stepSource : viewConfig?.code || viewConfig?.stepSource || undefined,
       title: modelTitle,
-      dialect: "step",
+      dialect: isScadDialect ? "scad" : "step",
     });
     navigate(targetUrl);
   };
@@ -1070,7 +1264,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error("Failed to copy STEP source to clipboard");
+      toast.error("Failed to copy CAD source to clipboard");
     }
   };
 
@@ -1078,10 +1272,51 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
     let active = true;
     let readyTimer: ReturnType<typeof setTimeout> | null = null;
 
+    const applyRawMeshes = (rawMeshes: RawStepMeshData[]) => {
+      const geos: THREE.BufferGeometry[] = [];
+      const boundingBox = new THREE.Box3();
+
+      for (const meshData of rawMeshes) {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.Float32BufferAttribute(meshData.attributes.position.array, 3));
+        if (meshData.attributes.normal) {
+          geo.setAttribute("normal", new THREE.Float32BufferAttribute(meshData.attributes.normal.array, 3));
+        } else {
+          geo.computeVertexNormals();
+        }
+        if (meshData.index) {
+          geo.setIndex(new THREE.Uint32BufferAttribute(meshData.index.array, 1));
+        }
+        ensureGeometryBrushedUvs(geo);
+        geo.userData = {
+          name: meshData.name,
+          color: meshData.color,
+        };
+        geo.computeBoundingSphere();
+        geo.computeBoundingBox();
+        if (geo.boundingBox) {
+          boundingBox.union(geo.boundingBox);
+        }
+        geos.push(geo);
+      }
+
+      const center = new THREE.Vector3();
+      boundingBox.getCenter(center);
+
+      const sphere = new THREE.Sphere();
+      boundingBox.getBoundingSphere(sphere);
+      const scale = sphere.radius > 0 ? 20 / sphere.radius : 1;
+
+      setGeometries(geos);
+      setAssemblyCenter(center);
+      setAssemblyScale(scale);
+    };
+
     async function loadStep() {
       try {
         setError(null);
-        let rawMeshes: any[] | null = null;
+        let rawMeshes: RawStepMeshData[] | null = null;
+        let resolvedSource = "";
 
         // 1. Direct meshes array already supplied in viewConfig
         if (Array.isArray(viewConfig?.meshes) && viewConfig.meshes.length > 0) {
@@ -1116,14 +1351,14 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                 rawMeshes = result.meshes;
               }
             } catch {
-              // Fall back to client-side STEP B-Rep tessellation below
+              // Fall back to client-side tessellation below
             }
           }
         }
 
-        // 2. Client-side STEP B-Rep tessellation fallback from inline source or fetched STEP text
+        // 2. Client-side tessellation fallback from inline source or fetched text
         if (!rawMeshes || rawMeshes.length === 0) {
-          let sourceText: string =
+          resolvedSource =
             viewConfig?.code ||
             viewConfig?.stepCode ||
             viewConfig?.stepSource ||
@@ -1131,81 +1366,97 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
             viewConfig?.content ||
             stepSourceRef.current ||
             "";
-          if (!sourceText.trim() && stepUrl) {
+          if (!resolvedSource.trim() && stepUrl) {
             try {
               const res = await fetch(stepUrl);
               if (res.ok) {
-                sourceText = await res.text();
+                resolvedSource = await res.text();
               } else if (!stepUrl.startsWith("http") && !stepUrl.startsWith("/api")) {
                 const fallbackRes = await fetch(`/api${stepUrl.startsWith("/") ? "" : "/"}${stepUrl}`);
                 if (fallbackRes.ok) {
-                  sourceText = await fallbackRes.text();
+                  resolvedSource = await fallbackRes.text();
                 }
               }
             } catch {
               // Ignore fetch errors
             }
           }
-          if (active && sourceText.trim().length > 0 && !stepSourceRef.current.trim()) {
-            setStepSource(sourceText);
+          if (active && resolvedSource.trim().length > 0 && !stepSourceRef.current.trim()) {
+            setStepSource(resolvedSource);
           }
-          if (sourceText.trim().length > 0) {
-            const clientMeshes = tessellateStepBRepClient(sourceText);
-            if (clientMeshes.length > 0) {
-              rawMeshes = clientMeshes;
+          if (resolvedSource.trim().length > 0) {
+            if (isScadDialect) {
+              const { components: scadComps } = tessellateScadSource(resolvedSource);
+              if (scadComps.length > 0) {
+                rawMeshes = await cadComponentsToRawMeshes(scadComps);
+              }
+            } else {
+              const clientMeshes = tessellateStepBRepClient(resolvedSource);
+              if (clientMeshes.length > 0) {
+                rawMeshes = clientMeshes;
+              }
             }
           }
         }
 
         if (rawMeshes && rawMeshes.length > 0 && active) {
-          const geos: THREE.BufferGeometry[] = [];
-          const boundingBox = new THREE.Box3();
-
-          for (const meshData of rawMeshes) {
-            const geo = new THREE.BufferGeometry();
-            geo.setAttribute("position", new THREE.Float32BufferAttribute(meshData.attributes.position.array, 3));
-            if (meshData.attributes.normal) {
-              geo.setAttribute("normal", new THREE.Float32BufferAttribute(meshData.attributes.normal.array, 3));
-            } else {
-              geo.computeVertexNormals();
-            }
-            if (meshData.index) {
-              geo.setIndex(new THREE.Uint32BufferAttribute(meshData.index.array, 1));
-            }
-            geo.userData = {
-              name: meshData.name,
-              color: meshData.color,
-            };
-            geo.computeBoundingSphere();
-            geo.computeBoundingBox();
-            if (geo.boundingBox) {
-              boundingBox.union(geo.boundingBox);
-            }
-            geos.push(geo);
-          }
-
-          const center = new THREE.Vector3();
-          boundingBox.getCenter(center);
-
-          const sphere = new THREE.Sphere();
-          boundingBox.getBoundingSphere(sphere);
-          const scale = sphere.radius > 0 ? 20 / sphere.radius : 1;
-
-          setGeometries(geos);
-          setAssemblyCenter(center);
-          setAssemblyScale(scale);
+          applyRawMeshes(rawMeshes);
 
           readyTimer = setTimeout(() => {
             if (active) {
-              (window as any).__ARTIFACT_READY = true;
+              (window as unknown as { __ARTIFACT_READY?: boolean }).__ARTIFACT_READY = true;
             }
           }, 1500);
+
+          // Async upgrade for OpenSCAD models using full @modelscript/scad WASM Manifold evaluator
+          if (isScadDialect && resolvedSource.trim().length > 0) {
+            void getCadComponents(viewConfig?.uri || "inmemory://model.scad", undefined, resolvedSource)
+              .then(async (lspComps) => {
+                if (!active || !Array.isArray(lspComps) || lspComps.length === 0) return;
+                const upgraded = await cadComponentsToRawMeshes(lspComps as CadComponent[]);
+                if (active && upgraded.length > 0) {
+                  setError(null);
+                  applyRawMeshes(upgraded);
+                  (window as unknown as { __ARTIFACT_READY?: boolean }).__ARTIFACT_READY = true;
+                }
+              })
+              .catch(() => {
+                // Keep fast client tessellation if WASM LSP worker is unavailable
+              });
+          }
+        } else if (isScadDialect && resolvedSource.trim().length > 0 && active) {
+          let resolved = false;
+          try {
+            const lspComps = await getCadComponents(
+              viewConfig?.uri || "inmemory://model.scad",
+              undefined,
+              resolvedSource,
+            );
+            if (active && Array.isArray(lspComps) && lspComps.length > 0) {
+              const upgraded = await cadComponentsToRawMeshes(lspComps as CadComponent[]);
+              if (active && upgraded.length > 0) {
+                resolved = true;
+                setError(null);
+                applyRawMeshes(upgraded);
+                (window as unknown as { __ARTIFACT_READY?: boolean }).__ARTIFACT_READY = true;
+              }
+            }
+          } catch {
+            // Fall through to empty-mesh error
+          }
+          if (!resolved && active) {
+            setError("No CSG geometry meshes generated for this OpenSCAD model.");
+          }
         } else if (active) {
-          setError("No CAD geometry meshes available for this STEP model.");
+          setError(
+            isScadDialect
+              ? "No CSG geometry meshes generated for this OpenSCAD model."
+              : "No CAD geometry meshes available for this STEP model.",
+          );
         }
       } catch (err: unknown) {
         if (active) {
-          setError(err instanceof Error ? err.message : "Error parsing STEP file");
+          setError(err instanceof Error ? err.message : "Error parsing CAD file");
         }
       }
     }
@@ -1216,7 +1467,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
       active = false;
       if (readyTimer) clearTimeout(readyTimer);
     };
-  }, [viewConfig, stepUrl, modelTitle]);
+  }, [viewConfig, stepUrl, modelTitle, isScadDialect]);
 
   useEffect(() => {
     return () => {
@@ -1240,10 +1491,10 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
         typeof geo.userData?.name === "string" && geo.userData.name.trim().length > 0
           ? geo.userData.name
           : `CAD Component #${idx + 1}`;
-      const rgb = Array.isArray(geo.userData?.color) ? geo.userData.color : null;
+      const rgb = Array.isArray(geo.userData?.color) ? (geo.userData.color as number[]) : null;
       const matColor =
         rgb && rgb.length >= 3 ? new THREE.Color(Number(rgb[0]), Number(rgb[1]), Number(rgb[2])) : "#3b526b";
-      return { geo, idx, offset, compName, matColor };
+      return { geo, idx, offset, compName, matColor, colorRgba: rgb };
     });
   }, [geometries, assemblyCenter, explosionFactor]);
 
@@ -1304,7 +1555,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
               whiteSpace: "nowrap",
             }}
           >
-            ISO-10303-21 STEP
+            {isScadDialect ? "OpenSCAD CSG" : "ISO-10303-21 STEP"}
           </span>
           {effectiveVerificationOverlay && (
             <span
@@ -1334,7 +1585,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
         <Box display="flex" alignItems="center" gap={2}>
           <div
             role="tablist"
-            aria-label="STEP Viewer Mode"
+            aria-label="CAD Viewer Mode"
             style={{
               display: "inline-flex",
               background: "var(--color-canvas-default, rgba(15, 23, 42, 0.75))",
@@ -1346,7 +1597,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
           >
             {[
               { id: "3d" as const, label: "3D CAD" },
-              { id: "diagram" as const, label: "2D EXPRESS" },
+              { id: "diagram" as const, label: isScadDialect ? "CSG Entities" : "2D EXPRESS" },
               { id: "code" as const, label: "Source" },
             ].map((tab) => {
               const active = viewTab === tab.id;
@@ -1419,11 +1670,22 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                 <ViewportCameraControls
                   onPresetSelect={(preset) => setPresetTrigger({ preset, timestamp: Date.now() })}
                   renderMode={renderMode}
-                  onRenderModeChange={setRenderMode}
+                  onRenderModeChange={handleRenderModeChange}
                   clipAxis={clipAxis}
-                  onClipAxisChange={setClipAxis}
+                  onClipAxisChange={(axis) => {
+                    setClipAxis(axis);
+                    if (axis === "none") setAutoSweep(false);
+                  }}
                   clipOffset={clipOffset}
-                  onClipOffsetChange={setClipOffset}
+                  onClipOffsetChange={(val) => {
+                    setAutoSweep(false);
+                    setClipOffset(val);
+                  }}
+                  autoSweep={autoSweep}
+                  onToggleAutoSweep={() => setAutoSweep((s) => !s)}
+                  showGdt={showGdt}
+                  onToggleGdt={gdtOverlay ? () => setShowGdt((s) => !s) : undefined}
+                  gdtCount={gdtOverlay?.callouts.length ?? 0}
                   isPinMode={isPinMode}
                   onTogglePinMode={() => setIsPinMode(!isPinMode)}
                 />
@@ -1468,22 +1730,15 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                 )}
 
                 <Canvas
-                  gl={{ preserveDrawingBuffer: true, localClippingEnabled: true }}
+                  gl={{ preserveDrawingBuffer: true, localClippingEnabled: true, stencil: true, antialias: true }}
                   camera={{ position: [0, 0, 50], fov: 50 }}
                 >
                   <AutoThumbnailCapture
                     artifactId={artifactId}
                     hasThumbnail={Boolean(viewConfig?.thumbnailUrl || viewConfig?.thumbnail_url)}
                   />
-                  <ambientLight intensity={0.45} />
-                  <directionalLight position={[20, 30, 25]} intensity={0.9} />
-                  <directionalLight position={[-20, -15, -10]} intensity={0.35} />
-                  <spotLight position={[10, 10, 10]} angle={0.25} penumbra={1} intensity={0.35} castShadow />
-
-                  <Suspense fallback={null}>
-                    {/* Local HDRI Texture */}
-                    <Environment files="/hdri/studio.hdr" environmentIntensity={0.35} />
-                  </Suspense>
+                  <HeroStudioEnvironment dark={isDark} />
+                  <AutoSweepDriver enabled={autoSweep && clipAxis !== "none"} onSweepOffset={setClipOffset} />
                   <Suspense fallback={<Loader />}>
                     <group
                       scale={[assemblyScale, assemblyScale, assemblyScale]}
@@ -1497,7 +1752,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                           : [0, 0, 0]
                       }
                     >
-                      {meshItems.map(({ geo, idx, offset, compName, matColor }) => {
+                      {meshItems.map(({ geo, idx, offset, compName, colorRgba }) => {
                         const isDefective = boundaryDefectPins.some(
                           (pin) =>
                             pin.contractId === `watertight_${compName}` ||
@@ -1505,57 +1760,53 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                             (boundaryDefectPins.length > 0 && meshItems.length === 1),
                         );
                         return (
-                          <group key={idx}>
-                            <mesh
-                              geometry={geo}
-                              position={offset}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const invScale = assemblyScale > 1e-9 ? 1 / assemblyScale : 1;
-                                const cadPos: [number, number, number] = [
-                                  e.point.x * invScale - offset[0] + (assemblyCenter?.x ?? 0),
-                                  e.point.y * invScale - offset[1] + (assemblyCenter?.y ?? 0),
-                                  e.point.z * invScale - offset[2] + (assemblyCenter?.z ?? 0),
-                                ];
-                                setProbedPoint({
-                                  position: cadPos,
-                                  worldPosition: [e.point.x, e.point.y, e.point.z],
-                                  partName: compName,
+                          <StepMeshItem
+                            key={idx}
+                            geo={geo}
+                            offset={offset}
+                            compName={compName}
+                            colorRgba={colorRgba}
+                            renderMode={renderMode}
+                            solidPlane={solidPlane}
+                            wirePlane={wirePlane}
+                            activeClippingPlanes={activeClippingPlanes}
+                            dark={isDark}
+                            isDefective={isDefective}
+                            onMeshClick={(e) => {
+                              e.stopPropagation();
+                              const invScale = assemblyScale > 1e-9 ? 1 / assemblyScale : 1;
+                              const cadPos: [number, number, number] = [
+                                e.point.x * invScale - offset[0] + (assemblyCenter?.x ?? 0),
+                                e.point.y * invScale - offset[1] + (assemblyCenter?.y ?? 0),
+                                e.point.z * invScale - offset[2] + (assemblyCenter?.z ?? 0),
+                              ];
+                              setProbedPoint({
+                                position: cadPos,
+                                worldPosition: [e.point.x, e.point.y, e.point.z],
+                                partName: compName,
+                              });
+                              if (isPinMode && onPinCreated) {
+                                onPinCreated({
+                                  worldPosition: cadPos,
+                                  cameraPosition: [e.camera.position.x, e.camera.position.y, e.camera.position.z],
+                                  cameraTarget: cadPos,
+                                  fieldName: compName,
+                                  scalarValue: idx + 1,
                                 });
-                                if (isPinMode && onPinCreated) {
-                                  onPinCreated({
-                                    worldPosition: cadPos,
-                                    cameraPosition: [e.camera.position.x, e.camera.position.y, e.camera.position.z],
-                                    cameraTarget: cadPos,
-                                    fieldName: compName,
-                                    scalarValue: idx + 1,
-                                  });
-                                  setIsPinMode(false);
-                                }
-                              }}
-                            >
-                              <meshPhysicalMaterial
-                                color={matColor}
-                                metalness={0.28}
-                                roughness={0.48}
-                                wireframe={renderMode === "wireframe"}
-                                transparent={renderMode === "xray"}
-                                opacity={renderMode === "xray" ? 0.35 : 1.0}
-                                clearcoat={0.1}
-                                side={THREE.DoubleSide}
-                                clippingPlanes={activeClippingPlanes}
-                                clipShadows={true}
-                              />
-                            </mesh>
-                            {isDefective && (
-                              <lineSegments position={offset}>
-                                <edgesGeometry args={[geo, 15]} />
-                                <lineBasicMaterial color="#f97316" depthTest={false} transparent opacity={0.95} />
-                              </lineSegments>
-                            )}
-                          </group>
+                                setIsPinMode(false);
+                              }
+                            }}
+                          />
                         );
                       })}
+                      {showGdt && gdtOverlay && (
+                        <Gdt3dOverlay
+                          payload={gdtOverlay}
+                          lift={assemblyScale > 1e-9 ? 2.6 / assemblyScale : 2.6}
+                          dark={isDark}
+                          onSelectCallout={() => setViewTab("code")}
+                        />
+                      )}
                       {boundaryDefectPins.map((pin) => (
                         <group key={pin.id} position={pin.position}>
                           <mesh>
@@ -1587,6 +1838,9 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                         </group>
                       ))}
                     </group>
+                    {renderMode === "section" && solidPlane && (
+                      <StencilSectionCapQuad plane={solidPlane} center={[0, 0, 0]} size={48} dark={isDark} />
+                    )}
                     {probedPoint?.worldPosition && (
                       <mesh position={probedPoint.worldPosition}>
                         <sphereGeometry args={[0.38, 16, 16]} />

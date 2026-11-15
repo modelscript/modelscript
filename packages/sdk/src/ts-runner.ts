@@ -2,7 +2,16 @@
 
 import * as ts from "typescript";
 import * as dsp from "./dsp.js";
-import type { KernelContext, KernelHostHandlers, KernelInput, KernelResult } from "./types.js";
+import type {
+  KernelBatchItemResult,
+  KernelBatchTask,
+  KernelContext,
+  KernelHostHandlers,
+  KernelInput,
+  KernelInspectOptions,
+  KernelResult,
+  KernelSimulateOptions,
+} from "./types.js";
 
 export interface TsCompileResult {
   ok: boolean;
@@ -455,7 +464,91 @@ function parseComtradeAscii(cfgText, datText) {
   }
   return { stationName, deviceId, lineFrequencyHz, sampleRateHz, time, channels };
 }
-const sdkModule = { ResultBuilder, mean, std, rmse, maxRelError, resampleUniform, stepResponseMetrics, hannWindow, rfft, integrateTrapezoidal, quantile, histogram, nelderMead, parseDelimitedTable, parseComtradeAscii };
+function interpolateEnvelopeBound(p0, p1, t, key, mode) {
+  const b0 = p0[key], b1 = p1[key];
+  if (mode === "hold" || b0 === undefined || b1 === undefined || p1.time === p0.time) {
+    return b0 !== undefined ? b0 : (t >= p1.time ? b1 : undefined);
+  }
+  return b0 + ((t - p0.time) / (p1.time - p0.time)) * (b1 - b0);
+}
+function checkEnvelope(time, value, envelope, options) {
+  const n = Math.min(time.length, value.length);
+  if (n === 0 || !envelope || envelope.length === 0) {
+    return { ok: true, checkedSamples: 0, violationCount: 0, worstMargin: Infinity, violations: [] };
+  }
+  const sorted = envelope.slice().sort((a, b) => a.time - b.time);
+  const mode = options && options.mode ? options.mode : "linear";
+  const minT = sorted[0].time, maxT = sorted[sorted.length - 1].time;
+  const violations = [];
+  let checkedSamples = 0, worstMargin = Infinity, seg = 0;
+  for (let i = 0; i < n; i++) {
+    const t = time[i], v = value[i];
+    if (!Number.isFinite(t) || !Number.isFinite(v) || t < minT || t > maxT) continue;
+    checkedSamples++;
+    while (seg + 1 < sorted.length && sorted[seg + 1].time < t) seg++;
+    const p0 = sorted[seg], p1 = sorted[Math.min(seg + 1, sorted.length - 1)];
+    const lo = interpolateEnvelopeBound(p0, p1, t, "min", mode);
+    if (lo !== undefined && Number.isFinite(lo)) {
+      const m = v - lo;
+      if (m < worstMargin) worstMargin = m;
+      if (v < lo) violations.push({ time: t, value: v, bound: "min", limit: lo, margin: m });
+    }
+    const hi = interpolateEnvelopeBound(p0, p1, t, "max", mode);
+    if (hi !== undefined && Number.isFinite(hi)) {
+      const m = hi - v;
+      if (m < worstMargin) worstMargin = m;
+      if (v > hi) violations.push({ time: t, value: v, bound: "max", limit: hi, margin: m });
+    }
+  }
+  return { ok: violations.length === 0, checkedSamples, violationCount: violations.length, worstMargin, violations };
+}
+function slidingPhasor(time, signal, nominalFreqHz = 60, windowCycles = 1) {
+  const n = Math.min(time.length, signal.length);
+  if (n < 2 || nominalFreqHz <= 0 || windowCycles <= 0) {
+    return { times: [], magnitude: [], phaseRad: [], frequencyHz: nominalFreqHz };
+  }
+  const span = time[n - 1] - time[0];
+  const avgDt = span > 0 ? span / (n - 1) : 1 / (nominalFreqHz * 16);
+  const winLen = Math.min(n, Math.max(4, Math.round(windowCycles / nominalFreqHz / avgDt)));
+  const omega = 2 * Math.PI * nominalFreqHz;
+  const times = [], magnitude = [], phaseRad = [], scale = 2 / winLen;
+  for (let end = winLen - 1; end < n; end++) {
+    let re = 0, im = 0;
+    for (let k = end - winLen + 1; k <= end; k++) {
+      const angle = omega * time[k], x = signal[k];
+      re += x * Math.cos(angle);
+      im -= x * Math.sin(angle);
+    }
+    const rs = re * scale, is = im * scale;
+    times.push(time[end]);
+    magnitude.push(Math.hypot(rs, is));
+    phaseRad.push(Math.atan2(is, rs));
+  }
+  return { times, magnitude, phaseRad, frequencyHz: nominalFreqHz };
+}
+function symmetricalComponents(phaseA, phaseB, phaseC) {
+  const n = Math.min(phaseA.mag.length, phaseA.phaseRad.length, phaseB.mag.length, phaseB.phaseRad.length, phaseC.mag.length, phaseC.phaseRad.length);
+  const aRe = -0.5, aIm = Math.sqrt(3) / 2;
+  const zeroMag = new Array(n), positiveMag = new Array(n), negativeMag = new Array(n), positivePhaseRad = new Array(n), unbalanceFactor = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const ar = phaseA.mag[i] * Math.cos(phaseA.phaseRad[i]), ai = phaseA.mag[i] * Math.sin(phaseA.phaseRad[i]);
+    const br = phaseB.mag[i] * Math.cos(phaseB.phaseRad[i]), bi = phaseB.mag[i] * Math.sin(phaseB.phaseRad[i]);
+    const cr = phaseC.mag[i] * Math.cos(phaseC.phaseRad[i]), ci = phaseC.mag[i] * Math.sin(phaseC.phaseRad[i]);
+    const abRe = aRe * br - aIm * bi, abIm = aRe * bi + aIm * br;
+    const a2bRe = aRe * br + aIm * bi, a2bIm = aRe * bi - aIm * br;
+    const acRe = aRe * cr - aIm * ci, acIm = aRe * ci + aIm * cr;
+    const a2cRe = aRe * cr + aIm * ci, a2cIm = aRe * ci - aIm * cr;
+    zeroMag[i] = Math.hypot(ar + br + cr, ai + bi + ci) / 3;
+    const v1Re = (ar + abRe + a2cRe) / 3, v1Im = (ai + abIm + a2cIm) / 3;
+    const v2Re = (ar + a2bRe + acRe) / 3, v2Im = (ai + a2bIm + acIm) / 3;
+    const pMag = Math.hypot(v1Re, v1Im), nMag = Math.hypot(v2Re, v2Im);
+    positiveMag[i] = pMag; negativeMag[i] = nMag;
+    positivePhaseRad[i] = Math.atan2(v1Im, v1Re);
+    unbalanceFactor[i] = pMag > 1e-12 ? nMag / pMag : 0;
+  }
+  return { zeroMag, positiveMag, negativeMag, positivePhaseRad, unbalanceFactor };
+}
+const sdkModule = { ResultBuilder, mean, std, rmse, maxRelError, resampleUniform, stepResponseMetrics, hannWindow, rfft, integrateTrapezoidal, quantile, histogram, nelderMead, parseDelimitedTable, parseComtradeAscii, checkEnvelope, slidingPhasor, symmetricalComponents };
 `;
 
 const WORKER_EXECUTOR_SOURCE = `
@@ -528,12 +621,80 @@ function createWorkerContext(postMsg) {
   }
   const ctx = {
     readFile: (relPath) => callHost("readFile", [relPath]),
+    readBinary: (relPath) => callHost("readBinary", [relPath]),
+    writeArtifact: (relPath, data) => callHost("writeArtifact", [relPath, data]),
+    inspect: (modelPath, options) => callHost("inspect", [modelPath, options]),
     simulate: (modelPath, options) => callHost("simulate", [modelPath, options]),
+    runBatch: (tasks, concurrency) => callHost("runBatch", [tasks, concurrency]),
     progress: (percent, message) => postMsg({ type: "progress", percent, message }),
   };
   return { ctx, handleRpcResponse };
 }
 `;
+
+async function defaultHostRunBatch(
+  host: KernelHostHandlers | undefined,
+  tasks: KernelBatchTask[],
+  concurrency = 4,
+): Promise<KernelBatchItemResult[]> {
+  if (!host?.simulate) {
+    throw new Error("Host runBatch() / simulate() is not configured for this kernel run.");
+  }
+  const results: KernelBatchItemResult[] = new Array(tasks.length);
+  let cursor = 0;
+  const workerCount = Math.min(Math.max(1, Math.floor(concurrency)), Math.max(1, tasks.length));
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (cursor < tasks.length) {
+      const idx = cursor++;
+      const task = tasks[idx]!;
+      const id = task.id ?? `task_${idx}`;
+      try {
+        const waveforms = await Promise.resolve(host.simulate!(task.modelPath, task.options));
+        results[idx] = { id, ok: true, waveforms };
+      } catch (err) {
+        results[idx] = { id, ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function dispatchHostRpcCall(
+  host: KernelHostHandlers | undefined,
+  method: string,
+  args: unknown[],
+): Promise<unknown> {
+  if (method === "readFile") {
+    if (!host?.readFile) throw new Error("Host readFile() is not configured for this kernel run.");
+    return await Promise.resolve(host.readFile(String(args[0] ?? "")));
+  }
+  if (method === "readBinary") {
+    if (!host?.readBinary) throw new Error("Host readBinary() is not configured for this kernel run.");
+    return await Promise.resolve(host.readBinary(String(args[0] ?? "")));
+  }
+  if (method === "writeArtifact") {
+    if (!host?.writeArtifact) throw new Error("Host writeArtifact() is not configured for this kernel run.");
+    return await Promise.resolve(host.writeArtifact(String(args[0] ?? ""), args[1] as string | Uint8Array));
+  }
+  if (method === "inspect") {
+    if (!host?.inspect) throw new Error("Host inspect() is not configured for this kernel run.");
+    return await Promise.resolve(host.inspect(String(args[0] ?? ""), args[1] as KernelInspectOptions | undefined));
+  }
+  if (method === "simulate") {
+    if (!host?.simulate) throw new Error("Host simulate() is not configured for this kernel run.");
+    return await Promise.resolve(host.simulate(String(args[0] ?? ""), args[1] as KernelSimulateOptions | undefined));
+  }
+  if (method === "runBatch") {
+    const tasks = (Array.isArray(args[0]) ? args[0] : []) as KernelBatchTask[];
+    const concurrency = typeof args[1] === "number" ? args[1] : undefined;
+    if (host?.runBatch) {
+      return await Promise.resolve(host.runBatch(tasks, concurrency));
+    }
+    return await defaultHostRunBatch(host, tasks, concurrency);
+  }
+  throw new Error(`Unknown host RPC method '${method}'.`);
+}
 
 async function handleHostRpc(
   msg: { type?: string; id?: number; method?: string; args?: unknown[]; percent?: number; message?: string },
@@ -547,22 +708,8 @@ async function handleHostRpc(
   if (msg.type !== "rpc" || typeof msg.id !== "number") return false;
   const id = msg.id;
   try {
-    if (msg.method === "readFile") {
-      if (!host?.readFile) throw new Error("Host readFile() is not configured for this kernel run.");
-      const value = await Promise.resolve(host.readFile(String(msg.args?.[0] ?? "")));
-      reply({ type: "rpc-res", id, ok: true, value });
-    } else if (msg.method === "simulate") {
-      if (!host?.simulate) throw new Error("Host simulate() is not configured for this kernel run.");
-      const value = await Promise.resolve(
-        host.simulate(
-          String(msg.args?.[0] ?? ""),
-          msg.args?.[1] as Parameters<NonNullable<KernelHostHandlers["simulate"]>>[1],
-        ),
-      );
-      reply({ type: "rpc-res", id, ok: true, value });
-    } else {
-      throw new Error(`Unknown host RPC method '${String(msg.method)}'.`);
-    }
+    const value = await dispatchHostRpcCall(host, String(msg.method ?? ""), msg.args ?? []);
+    reply({ type: "rpc-res", id, ok: true, value });
   } catch (err) {
     reply({ type: "rpc-res", id, ok: false, error: err instanceof Error ? err.message : String(err) });
   }
@@ -754,16 +901,20 @@ async function runTsInProcess(
     nelderMead: dsp.nelderMead,
     parseDelimitedTable: dsp.parseDelimitedTable,
     parseComtradeAscii: dsp.parseComtradeAscii,
+    checkEnvelope: dsp.checkEnvelope,
+    slidingPhasor: dsp.slidingPhasor,
+    symmetricalComponents: dsp.symmetricalComponents,
   };
   const ctx: KernelContext = {
-    readFile: async (relPath) => {
-      if (!host?.readFile) throw new Error("Host readFile() is not configured for this kernel run.");
-      return await Promise.resolve(host.readFile(relPath));
-    },
-    simulate: async (modelPath, opts) => {
-      if (!host?.simulate) throw new Error("Host simulate() is not configured for this kernel run.");
-      return await Promise.resolve(host.simulate(modelPath, opts));
-    },
+    readFile: (relPath) => dispatchHostRpcCall(host, "readFile", [relPath]) as Promise<string>,
+    readBinary: (relPath) => dispatchHostRpcCall(host, "readBinary", [relPath]) as Promise<Uint8Array>,
+    writeArtifact: (relPath, data) => dispatchHostRpcCall(host, "writeArtifact", [relPath, data]) as Promise<string>,
+    inspect: (modelPath, opts) =>
+      dispatchHostRpcCall(host, "inspect", [modelPath, opts]) as ReturnType<KernelContext["inspect"]>,
+    simulate: (modelPath, opts) =>
+      dispatchHostRpcCall(host, "simulate", [modelPath, opts]) as ReturnType<KernelContext["simulate"]>,
+    runBatch: (tasks, concurrency) =>
+      dispatchHostRpcCall(host, "runBatch", [tasks, concurrency]) as ReturnType<KernelContext["runBatch"]>,
     progress: (percent, message) => host?.onProgress?.(percent, message),
   };
   const loaded = new Map<string, { exports: Record<string, unknown> }>();

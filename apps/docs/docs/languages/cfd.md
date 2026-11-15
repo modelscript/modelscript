@@ -23,7 +23,7 @@ description: "@modelscript/cfd (languages/cfd) provides native WebAssembly GLR p
 
 CFD templates (`.cfgt`, `.cfg`, `.cfd`) can embed mathematical expressions in <code v-pre>{{ ... }}</code> blocks bound to SysML v2 or Modelica workspace parameters:
 
-```ini
+```cfd
 SOLVER= RANS
 KIND_TURB_MODEL= SST
 MACH_NUMBER= {{ cruise_speed / sqrt(1.4 * 287.05 * ambient_temp) }}

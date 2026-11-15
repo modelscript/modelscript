@@ -36,6 +36,10 @@ export interface DaeSingularityIssue {
   eqIdx?: number | undefined;
   message: string;
   interval: NumericalInterval;
+  standardClause?: string | undefined;
+  suggestedValue?: number | undefined;
+  requiredLimit?: number | undefined;
+  margin?: number | undefined;
 }
 
 export interface DaeEvaluatorOptions {

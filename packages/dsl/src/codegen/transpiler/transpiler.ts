@@ -569,6 +569,52 @@ export function transpileQuery(
               arg3,
             ]);
           }
+
+          if (methodName === "diagnosticAt") {
+            const spanExpr =
+              args.length > 0 ? (visitNode(args[0]!) as ts.Expression) : ts.factory.createNumericLiteral(0);
+            const targetExpr =
+              args.length > 1 ? (visitNode(args[1]!) as ts.Expression) : ts.factory.createNumericLiteral(0);
+            const arg1 = args.length > 2 ? (visitNode(args[2]!) as ts.Expression) : ts.factory.createNumericLiteral(0);
+            const arg2 = args.length > 3 ? (visitNode(args[3]!) as ts.Expression) : ts.factory.createNumericLiteral(0);
+            const arg3 = args.length > 4 ? (visitNode(args[4]!) as ts.Expression) : ts.factory.createNumericLiteral(0);
+
+            return ts.factory.createCallExpression(ts.factory.createIdentifier("lsp_allocDiagnosticAt"), undefined, [
+              spanExpr,
+              ts.factory.createIdentifier("nodeStart"),
+              ts.factory.createIdentifier("nodeEnd"),
+              ts.factory.createIdentifier("lintId"),
+              targetExpr,
+              arg1,
+              arg2,
+              arg3,
+            ]);
+          }
+
+          if (methodName === "diagnosticPrefix") {
+            const lenExpr =
+              args.length > 0 ? (visitNode(args[0]!) as ts.Expression) : ts.factory.createNumericLiteral(1);
+            const targetExpr =
+              args.length > 1 ? (visitNode(args[1]!) as ts.Expression) : ts.factory.createIdentifier("currentLintNode");
+            const arg1 = args.length > 2 ? (visitNode(args[2]!) as ts.Expression) : ts.factory.createNumericLiteral(0);
+            const arg2 = args.length > 3 ? (visitNode(args[3]!) as ts.Expression) : ts.factory.createNumericLiteral(0);
+            const arg3 = args.length > 4 ? (visitNode(args[4]!) as ts.Expression) : ts.factory.createNumericLiteral(0);
+
+            return ts.factory.createCallExpression(
+              ts.factory.createIdentifier("lsp_allocDiagnosticPrefix"),
+              undefined,
+              [
+                lenExpr,
+                ts.factory.createIdentifier("nodeStart"),
+                ts.factory.createIdentifier("nodeEnd"),
+                ts.factory.createIdentifier("lintId"),
+                targetExpr,
+                arg1,
+                arg2,
+                arg3,
+              ],
+            );
+          }
         } else if (
           ts.isPropertyAccessExpression(expr.expression) &&
           ts.isIdentifier(expr.expression.expression) &&

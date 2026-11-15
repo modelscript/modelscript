@@ -1304,6 +1304,49 @@ export function registerRegistryView(context: vscode.ExtensionContext, lspClient
     vscode.commands.registerCommand("modelscript.registry.openPackage", async (name: string, _version?: string) => {
       openAnsatzPackageHub(context, lspClient, name);
     }),
+    vscode.commands.registerCommand(
+      "modelscript.libraryView.toggleStandardProfile",
+      async (arg?: string | { info?: { name?: string; id?: string; description?: string } }) => {
+        if (!lspClient?.sendRequest) return;
+        const { name } = extractPackageNameFromArg(arg);
+        try {
+          const resp = await lspClient.sendRequest<{
+            standards?: Array<{ name: string; standardCode?: string; active?: boolean; activation?: string }>;
+          }>("modelscript/getActiveStandards", {});
+          const standards = resp?.standards ?? [];
+          if (standards.length === 0) {
+            vscode.window.showInformationMessage("No standard packs are currently mounted in the workspace.");
+            return;
+          }
+          let target = name ? standards.find((s) => s.name.toLowerCase() === name.toLowerCase()) : undefined;
+          let nextActive = target ? !target.active : true;
+          if (!target && typeof vscode.window.showQuickPick === "function") {
+            const picked = await vscode.window.showQuickPick(
+              standards.map((s) => ({
+                label: s.name,
+                description: `${s.standardCode ?? "Standard Pack"} · ${s.active ? "Active globally" : `Activation: ${s.activation ?? "import"}`}`,
+                pack: s,
+              })),
+              { placeHolder: "Select a mounted standard pack to toggle global activation" },
+            );
+            if (!picked) return;
+            target = picked.pack;
+            nextActive = !target.active;
+          }
+          if (!target) return;
+          await lspClient.sendRequest("modelscript/setActiveStandards", {
+            packageName: target.name,
+            active: nextActive,
+          });
+          await vscode.commands.executeCommand("modelscript.libraryView.refresh");
+          vscode.window.showInformationMessage(
+            `Standard pack '${target.name}' is now ${nextActive ? "globally active" : "import-scoped"}.`,
+          );
+        } catch (err) {
+          vscode.window.showErrorMessage(`Failed to toggle standard pack profile: ${err}`);
+        }
+      },
+    ),
   );
 
   // Import library from a local .zip archive

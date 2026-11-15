@@ -3,7 +3,7 @@
 
 # @modelscript/verilog-a
 
-**Verilog-A** and **Verilog-AMS** (IEEE 1857 / Accellera, `.va`, `.vams`) compact semiconductor device modeling and analog behavioral simulation language package for ModelScript. Features zero-regex AST parsing, 10 pre-flight analog convergence & discipline lint rules (`M7601`–`M7610`), direct linear-memory WebAssembly `DAEBuilder` lowering, bidirectional projections to Modelica 3.x and SPICE `.SUBCKT` netlists, and multi-file workspace indexing.
+**Verilog-A** and **Verilog-AMS** (Accellera Verilog-AMS LRM, `.va`, `.vams`) compact semiconductor device modeling and analog behavioral simulation language package for ModelScript. Features zero-regex AST parsing, 10 pre-flight analog convergence & discipline lint rules (`M7601`–`M7610`), direct linear-memory WebAssembly `DAEBuilder` lowering, bidirectional projections to Modelica 3.x and SPICE `.SUBCKT` netlists, and multi-file workspace indexing.
 
 ---
 

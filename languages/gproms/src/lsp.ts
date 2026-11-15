@@ -123,12 +123,17 @@ export function getGpromsDocumentSymbols(text: string): LspDocumentSymbol[] {
   const doc = parseGproms(text);
   const symbols: LspDocumentSymbol[] = [];
 
+  const lines = text.split(/\r?\n/);
+
   for (const vt of doc.variableTypes.values()) {
     const startLine = vt.range ? Math.max(0, vt.range.startLine - 1) : 0;
     const endLine = vt.range ? Math.max(0, vt.range.endLine - 1) : startLine;
+    const leadMatch = /\S/.exec(lines[startLine] ?? "");
+    const startChar = leadMatch ? leadMatch.index : 0;
+    const endChar = Math.max(startChar, (lines[endLine] ?? "").trimEnd().length);
     const r: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: endLine, character: 40 },
+      start: { line: startLine, character: startChar },
+      end: { line: endLine, character: endChar },
     };
     symbols.push({
       name: vt.name,

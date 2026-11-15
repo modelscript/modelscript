@@ -68,26 +68,35 @@ flowchart TD
 
 ### 1. Disjoint Connection Set Resolution (Union-Find)
 
-The set of all declared `connect(c_a, c_b)` statements forms an undirected graph. ModelScript partitions all connector references into disjoint equivalence classes using an integer array-based Union-Find with path compression and rank heuristics:
+The set of all declared `connect(c_a, c_b)` statements forms an undirected graph. ModelScript partitions all connector references into disjoint equivalence classes using an integer array-based Union-Find with path compression and rank heuristics, achieving nearly constant amortized time per operation:
 $$\alpha(N) \le 4 \quad \text{for all physical models}$$
+where $\alpha(N)$ is the inverse Ackermann function and $N \in \mathbb{N}$ is the total number of connector references in the model.
+
 For each connection set $S = \{c_1, c_2, \dots, c_m\}$ of size $m$:
 
 ### 2. Potential Variable Equalization
 
-For every non-flow, non-stream variable $v$ declared inside the connector type:
+For every non-flow, non-stream variable $v$ declared inside the connector type, all connected ports share a common potential (across-variable) value:
 $$v(c_1) = v(c_2) = \dots = v(c_m)$$
-This yields exactly $m - 1$ scalar equations. One variable is chosen as the canonical representative, eliminating $m - 1$ redundant states during alias elimination.
+where $v(c_j) \in \mathbb{R}$ is the potential variable evaluated on connector $c_j$ ($j \in \{1, \dots, m\}$) and $m \ge 2$ is the number of connectors in the connection set. This yields exactly $m - 1$ scalar equations. One variable is chosen as the canonical representative, eliminating $m - 1$ redundant states during alias elimination.
 
 ### 3. Kirchhoff Flow Variable Balancing
 
-For every `flow` variable $f$ declared inside the connector type:
+For every `flow` variable $f$ declared inside the connector type, conservation requires that all flows into the connection node sum to zero:
 $$\sum_{j=1}^m f(c_j) = 0$$
 This yields exactly $1$ scalar conservation equation per connection set. If an inside-outside connector hierarchy boundary is crossed, the outer flow sign is inverted to preserve directional conservation:
 $$f_{\text{outer}} = \sum_{j \in \text{inner}} f(c_j)$$
 
+| Symbol             | Meaning                                                             | Units / Domain                                                 |
+| :----------------- | :------------------------------------------------------------------ | :------------------------------------------------------------- |
+| $f(c_j)$           | Through (`flow`) variable on connector $c_j$                        | Domain-dependent (e.g., $\text{A}$, $\text{kg/s}$, $\text{N}$) |
+| $m$                | Number of connectors in the connection set $S$                      | $\mathbb{N}_{\ge 2}$                                           |
+| $f_{\text{outer}}$ | Flow variable on the parent (outer) hierarchical connector          | Same as $f(c_j)$                                               |
+| $\text{inner}$     | Index set of child (inner) connectors attached inside the component | Subset of $\{1, \dots, m\}$                                    |
+
 ### 4. Stream Variable Convective Transport
 
-For fluid ports, transport enthalpy depends on flow direction:
+For fluid ports, transport enthalpy switches between upstream and downstream values depending on the sign of the mass flow rate:
 
 $$
 h_{\text{transported}} = \begin{cases}
@@ -96,8 +105,21 @@ h_{\text{downstream}} & \text{if } \dot{m} < 0
 \end{cases}
 $$
 
-Direct formulation introduces a discontinuous switch that causes Newton solvers to oscillate around $\dot{m} = 0$. ModelScript lowers stream variables using Franke's regularized `inStream()` and `actualStream()` operators:
+where:
+
+- $h_{\text{transported}}, h_{\text{upstream}}, h_{\text{downstream}} \in \mathbb{R}$ ($\text{J/kg}$) are the transported, upstream, and downstream specific enthalpies,
+- $\dot{m} \in \mathbb{R}$ ($\text{kg/s}$) is the mass flow rate into the port.
+
+Direct formulation introduces a discontinuous switch that causes Newton solvers to oscillate around $\dot{m} = 0$. ModelScript lowers stream variables using Franke's regularized `inStream()` operator, which computes the mass-flow-weighted mixing enthalpy of all incoming streams:
 $$\text{inStream}(c_i.h) = \frac{\sum_{j \neq i, \dot{m}_j > 0} \dot{m}_j \cdot c_j.h}{\sum_{j \neq i, \dot{m}_j > 0} \dot{m}_j}$$
+
+| Symbol                   | Meaning                                                            | Units / Domain    |
+| :----------------------- | :----------------------------------------------------------------- | :---------------- |
+| $\text{inStream}(c_i.h)$ | Specific enthalpy entering connector $c_i$ from the connection set | $\text{J/kg}$     |
+| $c_i, c_j$               | Connectors in the fluid connection set                             | Connector indices |
+| $c_j.h$                  | Outgoing stream specific enthalpy declared on connector $c_j$      | $\text{J/kg}$     |
+| $\dot{m}_j$              | Mass flow rate entering the connection set from connector $c_j$    | $\text{kg/s}$     |
+
 Near zero flow ($\|\dot{m}_j\| < \epsilon$), smooth polynomial regularization is applied to maintain $C^1$-continuity of the residual Jacobian.
 
 ---

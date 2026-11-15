@@ -81,8 +81,16 @@ flowchart TD
 
 Resolves port assignment along component perimeters ($x, y \in \partial \text{Node}$):
 
-- **Discrete Face Selection**: Assigns ports to Cardinal sides (`top`, `bottom`, `left`, `right`) minimizing Manhattan connection distance:
+- **Discrete Face Selection**: Assigns ports to Cardinal sides (`top`, `bottom`, `left`, `right`) by minimizing total Manhattan wirelength across all connected port pairs:
   $$\min \sum_{e = (u_i, v_j) \in E} \| \mathbf{p}(u_i) - \mathbf{p}(v_j) \|_1$$
+
+  | Symbol              | Meaning                                                    | Units / Domain            |
+  | :------------------ | :--------------------------------------------------------- | :------------------------ |
+  | $E$                 | Set of all schematic connection edges                      | Graph edge set            |
+  | $e = (u_i, v_j)$    | Connection edge between port $u_i$ and port $v_j$          | $e \in E$                 |
+  | $\mathbf{p}(\cdot)$ | 2D canvas coordinates of a port on its node perimeter      | $\mathbb{R}^2$ (px)       |
+  | $\|\cdot\|_1$       | $L_1$ (Manhattan) distance $\|x_1 - x_2\| + \|y_1 - y_2\|$ | $\mathbb{R}_{\ge 0}$ (px) |
+
 - **Causality Biasing**: Automatically places `input` ports on the left face and `output` ports on the right face for signal-flow blocks.
 - **Collinear Port Snapping**: Enforces 0-bend straight lines whenever two connected ports are horizontally or vertically aligned within a configurable tolerance `straightTolerance`.
 
@@ -99,8 +107,17 @@ Extends Tamassia's Kandinsky model for high-degree engineering vertices:
 Renders clean multi-segment connection polylines:
 
 - **Perpendicular Port Stubs**: Edge paths extend outward along the port normal vector by a distance `stubLength` before turning.
-- **A\* Grid Search with Bend Penalty**: Avoids component AABB bounding boxes using fast `segmentIntersectsRect` intersection tests while penalizing unnecessary turns:
+- **A\* Grid Search with Bend Penalty**: Avoids component AABB bounding boxes using fast `segmentIntersectsRect` intersection tests while penalizing unnecessary turns in the step cost:
   $$\text{Cost}(p \to q) = \text{dist}(p, q) + \lambda_{\text{bend}} \cdot [\text{isTurn}(p, q)]$$
+
+  | Symbol                  | Meaning                                                              | Units / Domain                       |
+  | :---------------------- | :------------------------------------------------------------------- | :----------------------------------- |
+  | $p, q$                  | Adjacent grid waypoints along the candidate routing path             | $\mathbb{R}^2$ (px)                  |
+  | $\text{Cost}(p \to q)$  | Incremental A\* traversal cost from $p$ to $q$                       | $\mathbb{R}_{\ge 0}$                 |
+  | $\text{dist}(p, q)$     | Orthogonal grid step length between $p$ and $q$                      | $\mathbb{R}_{\ge 0}$ (px)            |
+  | $\lambda_{\text{bend}}$ | Tunable scalar penalty per $90^\circ$ corner                         | $\mathbb{R}_{\ge 0}$ (px-equivalent) |
+  | $[\text{isTurn}(p, q)]$ | Iverson indicator equal to $1$ if direction changes at $p$, else $0$ | $\{0, 1\}$                           |
+
 - **Staggered Parallel Channels**: Multi-wire bus connections share a common corridor but are offset by `parallelIndex * channelSpacing`, preventing overlapping lines.
 
 ### 4. Specialized Engineering Diagram Layouts
@@ -117,13 +134,15 @@ Beyond acausal block schematics, ModelScript provides domain-specific geometric 
    - **Dual-Axis Sequence Layout (`computeSequenceLayout` / `applySequenceLayout`)**: Orders participant lifelines left-to-right ($x_i = x_{\text{left}} + i \cdot \Delta x_{\text{lifeline}} + W_{\text{hdr}}/2$), renders dashed vertical lifeline stems (`__seq_stem_*`), and stacks temporal messages top-to-bottom ($y_{k+1} = y_k + \Delta y_{\text{msg}}$) with distinct styling for synchronous (`sync`), asynchronous (`async`), dashed `reply`, and self-loop (`isSelf`, $1.5\times$ vertical spacing) messages.
    - **2D Activity Swimlane Partitioning (`applySwimlaneLayout`)**: Groups SysML v2 action nodes into vertical or horizontal allocation partitions (`SwimlanePartition`), sizing uniform lane containers (`swimlane_<id>`) to the maximum member stack height and routing cross-lane object/control flows via `port-orthogonal-astar`.
 3. **PSCAD & PowerFactory Power-System Single-Line Diagram (SLD) & Block Schematics (`pscad-diagram-builder.ts`, `powerfactory-diagram-builder.ts`)**:
-   - `buildPscadDiagram` and `buildPowerFactoryDiagram` render `.pscx`/`.pslx` and DIgSILENT PowerFactory `.dsl`/`.dgs` models into IEEE-standard Single-Line Diagrams and AVR/Gov/PSS composite block diagrams with voltage-coded busbar glyphs ($\ge 200\text{ kV}$ red `#ff5252`, $\ge 69\text{ kV}$ amber `#ffab40`, $< 69\text{ kV}$ cyan `#40c4ff`), specialized IEEE apparatus vector glyphs (`transformerGlyph`, `generatorGlyph`, `inverterIbrGlyph`, `breakerGlyph`, `surgeArresterGlyph`, `faultGlyph`, `converterBridgeGlyph`), solder-dot wire T-junctions, and orthogonal feeder routing.
+   - `buildPscadDiagram` and `buildPowerFactoryDiagram` render `.pscx`/`.pslx` and DIgSILENT PowerFactory `.dz`/`.pfd`/`.xml`/`.dsl` models into IEEE-standard Single-Line Diagrams and AVR/Gov/PSS composite block diagrams with voltage-coded busbar glyphs ($\ge 200\text{ kV}$ red `#ff5252`, $\ge 69\text{ kV}$ amber `#ffab40`, $< 69\text{ kV}$ cyan `#40c4ff`), specialized IEEE apparatus vector glyphs (`transformerGlyph`, `generatorGlyph`, `inverterIbrGlyph`, `breakerGlyph`, `surgeArresterGlyph`, `faultGlyph`, `converterBridgeGlyph`), solder-dot wire T-junctions, and orthogonal feeder routing.
 4. **Protection Relay Log-Log TCC, Distance R-X Plane & Generator P-Q Capability Plots (`tcc-diagram-builder.ts`, `rx-diagram-builder.ts`, `pq-diagram-builder.ts`)**:
    - **Time-Current Characteristic (TCC) Log-Log Plots (`buildTccDiagram`)**: Renders multi-decade log-log ($10^0\dots 10^5\text{ A}$ vs. $10^{-2}\dots 10^3\text{ s}$) overcurrent relay (`IEEE Moderately/Very/Extremely Inverse`, `IEC Standard/Very/Extremely Inverse`, `Definite Time`) and fuse melting/clearing curves alongside annotated Coordination Time Interval (CTI) margin arrows.
    - **Distance Protection R-X Impedance Plane (`buildRxDiagram`)**: Plots Zone 1, Zone 2, and Zone 3 Mho circles and quadrilateral reach polygons, transmission line impedance vectors $Z_L \angle \theta_L$, load encroachment blinders, and apparent fault impedance trajectories $Z_{\text{app}}(t)$ in the complex $R + jX$ plane.
    - **Synchronous Generator P-Q Capability Envelopes (`buildPqDiagram`)**: Synthesizes active-vs-reactive ($P\text{–}Q$) operating envelopes bounded by armature current heatingCircles, field current rotor heating arcs, stator end-region core heating limits, prime-mover MW limits, and Under-Excitation Limiter (UEL) / steady-state stability boundaries.
 5. **Hydraulic & Stormwater Pipe Network Topological Diffs (`water-network-diff.ts`)**:
    - `diffWaterNetworks` and `renderWaterNetworkDiffSvg` compare baseline and proposed EPANET / SWMM `.inp` pipe networks, highlighting added/removed/resized conduits, junction pressure deltas $\Delta p$, and flow reversals on spatially anchored municipal layouts.
+
+---
 
 ### 5. Semantic Visual Diffing, CST 3-Way Merge & Collaborative Presence
 
@@ -144,11 +163,11 @@ Beyond acausal block schematics, ModelScript provides domain-specific geometric 
 
 ## Upstream & Downstream Integration
 
-| Pipeline Component                        | Upstream Dependencies                                      | Downstream Consumers                                           |
-| :---------------------------------------- | :--------------------------------------------------------- | :------------------------------------------------------------- |
-| **PortIlpSolver**                         | `SymbolIndex` connector ports, `Annotation` constraints    | Port placement in `TsmLayoutEngine`                            |
-| **TsmLayoutEngine**                       | Polyglot connect graphs (Modelica, SysML v2)               | Node bounding box placement, routing channels                  |
-| **PortRouter**                            | Component layout coordinates, Port locations               | SVG polyline rendering, interactive 3D/2D IDE canvas           |
-| **FaultTree / Sequence / Swimlane**       | Safety MCS sets, SysML v2 interactions & activities        | X6 WebIDE canvas, headless SVG & PDF documentation export      |
-| **Pscad / PowerFactory / TCC / R-X / P-Q**| `.pscx`, `.dsl`, `.dgs`, `.dss`, `.raw` grid & relay ASTs  | Power-system SLD, relay coordination & capability viewers      |
-| **VisualDiffGraph, Merge & CollabManager**| Git Base/Ours/Theirs ASTs, WebSocket / Live Share streams  | `msx merge`, PR visual diff bundles, multi-user IDE            |
+| Pipeline Component                         | Upstream Dependencies                                     | Downstream Consumers                                      |
+| :----------------------------------------- | :-------------------------------------------------------- | :-------------------------------------------------------- |
+| **PortIlpSolver**                          | `SymbolIndex` connector ports, `Annotation` constraints   | Port placement in `TsmLayoutEngine`                       |
+| **TsmLayoutEngine**                        | Polyglot connect graphs (Modelica, SysML v2)              | Node bounding box placement, routing channels             |
+| **PortRouter**                             | Component layout coordinates, Port locations              | SVG polyline rendering, interactive 3D/2D IDE canvas      |
+| **FaultTree / Sequence / Swimlane**        | Safety MCS sets, SysML v2 interactions & activities       | X6 WebIDE canvas, headless SVG & PDF documentation export |
+| **Pscad / PowerFactory / TCC / R-X / P-Q** | `.pscx`, `.dsl`, `.dz`, `.pfd`, `.dss`, `.raw` grid ASTs  | Power-system SLD, relay coordination & capability viewers |
+| **VisualDiffGraph, Merge & CollabManager** | Git Base/Ours/Theirs ASTs, WebSocket / Live Share streams | `msx merge`, PR visual diff bundles, multi-user IDE       |

@@ -406,6 +406,10 @@ export const EmbedPlaygroundPage: React.FC = () => {
           setPayload({
             title: resolvedTitle,
             lang: dialect,
+            ...(cfg.files && typeof cfg.files === "object" && !Array.isArray(cfg.files)
+              ? { files: cfg.files as Record<string, string> }
+              : {}),
+            ...(typeof cfg.activeFile === "string" ? { activeFile: cfg.activeFile } : {}),
           });
           const editorUrl = buildEditorUrlForArtifact({
             artifactId: fromArtifact,
@@ -466,6 +470,8 @@ export const EmbedPlaygroundPage: React.FC = () => {
       <MorselEditor
         dataUrl={null}
         initialCode={currentCode}
+        projectFiles={payload?.files}
+        activeFileName={payload?.activeFile}
         embed={true}
         showParameterRibbon={showRibbon}
         initialDialect={resolvedDialect as any}

@@ -39,16 +39,25 @@ export function validateGtfs(text: string): LspDiagnostic[] {
   try {
     const feed = parseGtfs(text);
     const diags = lintGtfs(feed);
-    return diags.map((d) => ({
-      range: {
-        start: { line: Math.max(0, d.line - 1), character: 0 },
-        end: { line: Math.max(0, d.line - 1), character: 80 },
-      },
-      severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
-      code: `GTFS${d.code}`,
-      source: "gtfs",
-      message: d.message,
-    }));
+    const lines = text.split(/\r?\n/);
+    return diags.map((d) => {
+      const lineIdx = Math.min(Math.max(0, d.line - 1), Math.max(0, lines.length - 1));
+      const lt = lines[lineIdx] ?? "";
+      let sChar = 0;
+      while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
+      const tok = lt.slice(sChar).match(/^[^,\s]+/);
+      const eChar = Math.min(lt.length, sChar + (tok ? tok[0].length : 1));
+      return {
+        range: {
+          start: { line: lineIdx, character: sChar },
+          end: { line: lineIdx, character: eChar },
+        },
+        severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
+        code: `GTFS${d.code}`,
+        source: "gtfs",
+        message: d.message,
+      };
+    });
   } catch (err) {
     return [
       {
@@ -70,27 +79,37 @@ export function getGtfsDocumentSymbols(input: string | GtfsFeed): LspDocumentSym
     return [];
   }
 
+  const lines = typeof input === "string" ? input.split(/\r?\n/) : [];
+  const lineRange = (line: number, labelLen: number): LspRange => {
+    const lt = lines[line] ?? "";
+    const endChar = lt.length > 0 ? Math.max(1, lt.trimEnd().length) : Math.max(1, labelLen);
+    return { start: { line, character: 0 }, end: { line, character: endChar } };
+  };
   const symbols: LspDocumentSymbol[] = [];
 
   for (const r of feed.routes) {
     const l = Math.max(0, (r.line ?? 1) - 1);
+    const label = `Route ${r.route_short_name || r.route_id}`;
+    const rng = lineRange(l, label.length);
     symbols.push({
-      name: `Route ${r.route_short_name || r.route_id}`,
+      name: label,
       detail: r.route_long_name,
       kind: 5,
-      range: { start: { line: l, character: 0 }, end: { line: l, character: 80 } },
-      selectionRange: { start: { line: l, character: 0 }, end: { line: l, character: 10 } },
+      range: rng,
+      selectionRange: rng,
     });
   }
 
   for (const s of feed.stops) {
     const l = Math.max(0, (s.line ?? 1) - 1);
+    const label = s.stop_name || s.stop_id;
+    const rng = lineRange(l, label.length);
     symbols.push({
-      name: s.stop_name || s.stop_id,
+      name: label,
       detail: `Stop (${s.stop_lat.toFixed(4)}, ${s.stop_lon.toFixed(4)})`,
       kind: 13,
-      range: { start: { line: l, character: 0 }, end: { line: l, character: 80 } },
-      selectionRange: { start: { line: l, character: 0 }, end: { line: l, character: 10 } },
+      range: rng,
+      selectionRange: rng,
     });
   }
 

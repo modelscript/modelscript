@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="IBR_Interconnection_EMT" version="5.0.0" type="normal">
+  <param name="time_step" value="50.0"/>
+  <param name="time_duration" value="0.05"/>
+  <param name="start_type" value="0"/>
+  <param name="f_base" value="60.0"/>
+  <hierarchy>
+    <call name="Main" link="10001" />
+  </hierarchy>
+  <definitions>
+    <definition name="Main" type="module">
+      <schematic>
+        <User classid="UserCmp" defn="source_3p" id="G1" x="80" y="150" orient="0">
+          <param name="Name" value="Grid_Source_230kV"/>
+          <param name="V" value="230.0"/>
+          <param name="MVA" value="620.0"/>
+          <port name="out" pos="[20, 0]"/>
+        </User>
+
+        <Bus name="Bus_Sub230" id="B1" x="110" y="150" length="80" vbase="230.0"/>
+
+        <User classid="UserCmp" defn="xfmr-3p" id="T1" x="220" y="150" orient="0">
+          <param name="Name" value="StepUp_230_34kV"/>
+          <param name="MVA" value="250.0"/>
+          <param name="V1" value="230.0"/>
+          <param name="V2" value="34.5"/>
+          <param name="X" value="0.08"/>
+          <port name="P" pos="[-30, 0]"/>
+          <port name="S" pos="[30, 0]"/>
+        </User>
+
+        <Bus name="Bus_POI" id="B2" x="320" y="150" length="80" vbase="34.5"/>
+
+        <User classid="UserCmp" defn="tline_3p" id="L1" x="460" y="150" orient="0">
+          <param name="Name" value="Collector_Feeder"/>
+          <param name="Length" value="15.0"/>
+          <param name="R" value="0.025"/>
+          <param name="L" value="0.0009"/>
+          <param name="C" value="1.0e-8"/>
+          <port name="in" pos="[-40, 0]"/>
+          <port name="out" pos="[40, 0]"/>
+        </User>
+
+        <Bus name="Bus_IBR" id="B3" x="560" y="150" length="80" vbase="34.5"/>
+
+        <Wire>
+          <vertex x="100" y="150"/>
+          <vertex x="190" y="150"/>
+        </Wire>
+        <Wire>
+          <vertex x="250" y="150"/>
+          <vertex x="320" y="150"/>
+        </Wire>
+        <Wire>
+          <vertex x="400" y="150"/>
+          <vertex x="420" y="150"/>
+        </Wire>
+        <Wire>
+          <vertex x="500" y="150"/>
+          <vertex x="560" y="150"/>
+        </Wire>
+      </schematic>
+    </definition>
+  </definitions>
+</project>

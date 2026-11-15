@@ -37,20 +37,36 @@ description: "@modelscript/touchstone (languages/touchstone) provides high-perfo
 
 ### 2. Vector Fitting & Rational Macromodeling
 
-- Converts discrete frequency-domain tabulated measurements into continuous-time rational transfer functions via **Vector Fitting**:
+- Converts discrete frequency-domain tabulated measurements into continuous-time rational pole-residue transfer functions via **Vector Fitting**, ensuring causality and stability by constraining poles to the open left half-plane ($\text{Re}(p_m) < 0$):
   $$S_{ij}(s) \approx \sum_{m=1}^{P} \frac{r_m}{s - p_m} + d + s \cdot e$$
-  where $p_m$ are complex conjugate pole pairs in the open left half-plane ($\text{Re}(p_m) < 0$), ensuring stability.
-- Synthesizes a state-space realization:
+- Synthesizes an equivalent continuous-time state-space realization from the fitted poles and residues, which lowers directly into ODE time-domain solvers without inverse FFT convolution lag:
   $$\dot{x}(t) = A x(t) + B u(t), \quad y(t) = C x(t) + D u(t)$$
-  which lowers directly into ODE time-domain solvers without inverse FFT convolution lag.
+
+  | Symbol             | Meaning                                                          | Units / Domain                                                                                       |
+  | :----------------- | :--------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------- |
+  | $S_{ij}(s)$        | $(i, j)$ scattering parameter transfer function                  | dimensionless, $\mathbb{C}$                                                                          |
+  | $s$                | Laplace complex frequency variable ($\sigma + j\omega$)          | $\text{rad/s}$, $\mathbb{C}$                                                                         |
+  | $P$                | Rational approximation order (number of poles)                   | dimensionless, $\mathbb{Z}_{>0}$                                                                     |
+  | $r_m, p_m$         | $m$-th pole residue and stable pole ($\text{Re}(p_m) < 0$)       | $\text{rad/s}$, $\mathbb{C}$                                                                         |
+  | $d, e$             | Direct feedthrough constant and proportional high-frequency term | dimensionless, $\text{s}$                                                                            |
+  | $x(t), \dot{x}(t)$ | Internal state vector and its time derivative                    | $\mathbb{R}^n$                                                                                       |
+  | $u(t), y(t)$       | Incident and reflected wave port vectors                         | $\text{W}^{1/2}$, $\mathbb{R}^N$                                                                     |
+  | $A, B, C, D$       | State-space system, input, output, and feedthrough matrices      | $\mathbb{R}^{n \times n}, \mathbb{R}^{n \times N}, \mathbb{R}^{N \times n}, \mathbb{R}^{N \times N}$ |
 
 ### 3. Passivity Verification & Hamiltonian Matrix
 
-- Verifies that the $N$-port network does not generate net energy across all frequencies:
+- Verifies that the $N$-port network is passive (cannot generate net energy) by checking that its singular values never exceed unity across all frequencies:
   $$\|S(j\omega)\|_2 \le 1 \quad \forall \omega \in [0, \infty)$$
-- Computes the eigenvalues of the **Hamiltonian matrix**:
+- Locates exact passivity violation crossover frequencies by computing the eigenvalues of the **Hamiltonian matrix** $H$; purely imaginary eigenvalues correspond to frequencies where $\|S(j\omega)\|_2 = 1$:
   $$H = \begin{bmatrix} A + B (I - D^T D)^{-1} D^T C & B (I - D^T D)^{-1} B^T \\ -C^T (I - D D^T)^{-1} C & -(A + B (I - D^T D)^{-1} D^T C)^T \end{bmatrix}$$
-  where purely imaginary eigenvalues identify exact passivity violation frequency crossover points.
+
+  | Symbol                       | Meaning                                                                  | Units / Domain                         |
+  | :--------------------------- | :----------------------------------------------------------------------- | :------------------------------------- |
+  | $\lVert S(j\omega) \rVert_2$ | Largest singular value (spectral norm) of the $N$-port scattering matrix | dimensionless, $\ge 0$                 |
+  | $\omega, j$                  | Angular frequency ($2\pi f$) and imaginary unit ($\sqrt{-1}$)            | $\text{rad/s}$ ($\ge 0$), $\mathbb{C}$ |
+  | $H$                          | $2n \times 2n$ Hamiltonian test matrix for bounded-realness              | $\mathbb{R}^{2n \times 2n}$            |
+  | $I$                          | $N \times N$ identity matrix                                             | dimensionless                          |
+  | $A, B, C, D$                 | State-space realization matrices of the $N$-port macromodel              | real matrices                          |
 
 ### 4. Direct DAE Lowering & Modelica Projection
 

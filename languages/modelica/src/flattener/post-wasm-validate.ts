@@ -13,6 +13,11 @@ import { type DAEBuilder, type QueryDB, type SymbolEntry, type SymbolId } from "
 import { type SyntaxNode } from "../../src-gen/bindings.js";
 import { ModelicaErrorCode } from "../errors.js";
 import { validateEnumeration } from "../queries.js";
+import {
+  isSignedAsciiIntText,
+  isSignedAsciiNumberText,
+  tokenizeCommentStrippedWords,
+} from "./expressions/cst-utils.js";
 
 function pushError(dae: DAEBuilder, code: number, rule: string, message: string, node?: SyntaxNode | null): void {
   dae.diagnostics.push({
@@ -86,7 +91,15 @@ export function emitIntegerRealBindingDiagnostic(
   const lhsPart = text.slice(0, eqIdx).trim();
   const rhsPart = text.slice(eqIdx + 1).trim();
   if (!lhsPart || !rhsPart || rhsPart.startsWith("sign(")) return false;
-  const varName = lhsPart.split(/[.\s[(]/)[0] ?? lhsPart;
+  let cut = lhsPart.length;
+  for (let i = 0; i < lhsPart.length; i++) {
+    const ch = lhsPart[i]!;
+    if (ch === "." || ch === "[" || ch === "(" || ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
+      cut = i;
+      break;
+    }
+  }
+  const varName = lhsPart.slice(0, cut) || lhsPart;
   pushError(
     dae,
     ModelicaErrorCode.TYPE_MISMATCH_BINDING.code,
@@ -96,6 +109,73 @@ export function emitIntegerRealBindingDiagnostic(
   );
   return true;
 }
+
+const PRIMITIVE_BUILTIN_TYPES = new Set(["Real", "Integer", "Boolean", "String"]);
+const NUMERIC_BUILTIN_TYPES = new Set(["Real", "Integer"]);
+const NON_REAL_BUILTIN_TYPES = new Set(["Integer", "Boolean", "String"]);
+const CLASS_SPEC_KEYWORDS = new Set([
+  "package",
+  "model",
+  "block",
+  "connector",
+  "record",
+  "type",
+  "function",
+  "class",
+  "operator",
+]);
+const BUILTIN_MODELICA_FUNCTIONS = new Set([
+  "assert",
+  "cardinality",
+  "reinit",
+  "der",
+  "pre",
+  "size",
+  "sum",
+  "product",
+  "min",
+  "max",
+  "sin",
+  "cos",
+  "tan",
+  "exp",
+  "log",
+  "sqrt",
+  "abs",
+  "sign",
+  "integer",
+  "mod",
+  "rem",
+  "div",
+  "ceil",
+  "floor",
+  "noEvent",
+  "smooth",
+  "sample",
+  "initial",
+  "terminal",
+  "edge",
+  "change",
+  "delay",
+  "spatialDistribution",
+  "fill",
+  "zeros",
+  "ones",
+  "identity",
+  "diagonal",
+  "linspace",
+  "transpose",
+  "cross",
+  "skew",
+  "outerProduct",
+  "symmetric",
+  "cat",
+  "ndims",
+  "scalar",
+  "vector",
+  "matrix",
+  "String",
+]);
 
 function getHeaderText(classCst: SyntaxNode): string {
   const txt = classCst.text ?? "";
@@ -108,16 +188,30 @@ function getClassSpecialization(sym: SymbolEntry, classCst: SyntaxNode | null): 
   const spec = (meta?.["specialization"] ?? meta?.["classType"] ?? "") as string;
   if (spec) return spec;
   if (!classCst) return "model";
-  const hdr = getHeaderText(classCst);
-  const m = hdr.match(/\b(package|model|block|connector|record|type|function|class|operator)\b/);
-  return m ? m[1]! : "model";
+  const pfxNode = classCst.namedChildren.find((c) => c.type === "class_prefixes");
+  const words = tokenizeCommentStrippedWords(pfxNode?.text ?? getHeaderText(classCst));
+  for (const w of words) {
+    if (CLASS_SPEC_KEYWORDS.has(w)) return w;
+  }
+  return "model";
 }
 
 function isClassPartial(sym: SymbolEntry, classCst: SyntaxNode | null): boolean {
   const meta = sym.metadata as Record<string, unknown> | undefined;
   if (meta?.["isPartial"] === true) return true;
   if (!classCst) return false;
-  return /^(?:(?:encapsulated|pure|impure)\s+)*partial\b/.test((classCst.text ?? "").trim());
+  const pfxNode = classCst.namedChildren.find((c) => c.type === "class_prefixes");
+  if (pfxNode) {
+    for (const ch of pfxNode.children) {
+      if (ch.type === "partial" || ch.text === "partial") return true;
+    }
+  }
+  const words = tokenizeCommentStrippedWords(getHeaderText(classCst));
+  let idx = 0;
+  while (idx < words.length && (words[idx] === "encapsulated" || words[idx] === "pure" || words[idx] === "impure")) {
+    idx++;
+  }
+  return words[idx] === "partial";
 }
 
 function resolveClassSym(db: QueryDB, scopeId: SymbolId, name: string): SymbolEntry | null {
@@ -144,8 +238,8 @@ function inferSimpleLiteralType(exprText: string): string | null {
   const t = exprText.trim();
   if (t === "true" || t === "false") return "Boolean";
   if (t.startsWith('"') && t.endsWith('"') && t.length >= 2) return "String";
-  if (/^[+-]?\d+$/.test(t)) return "Integer";
-  if (/^[+-]?(?:\d+\.\d*|\.\d+|\d+[eE][+-]?\d+|\d+\.\d*[eE][+-]?\d+)$/.test(t)) return "Real";
+  if (isSignedAsciiIntText(t)) return "Integer";
+  if (isSignedAsciiNumberText(t)) return "Real";
   return null;
 }
 
@@ -159,8 +253,49 @@ interface CompInfo {
   isStream: boolean;
   isOuter: boolean;
   isReplaceable: boolean;
+  isInput: boolean;
   ndims: number;
   cst: SyntaxNode | null;
+}
+
+function collectComponentPrefixWords(
+  elemNode: SyntaxNode | null | undefined,
+  declClause: SyntaxNode | null | undefined,
+  headerBeforeParen: string,
+): Set<string> {
+  const prefixes = new Set<string>();
+  const collectLeaves = (node: SyntaxNode): void => {
+    const t = node.type;
+    if (t === "comment" || t === "line_comment" || t === "block_comment") return;
+    if (node.childCount === 0) {
+      const txt = node.text.trim();
+      if (txt) prefixes.add(txt);
+      return;
+    }
+    for (const ch of node.children) {
+      if (ch.type === "type_specifier" || ch.type === "component_list") break;
+      collectLeaves(ch);
+    }
+  };
+  if (elemNode && elemNode !== declClause) {
+    for (const ch of elemNode.children) {
+      if (ch.type === "component_clause") break;
+      collectLeaves(ch);
+    }
+  }
+  if (declClause?.type === "component_clause") {
+    for (const ch of declClause.children) {
+      if (ch.type === "type_specifier" || ch.type === "component_list") break;
+      collectLeaves(ch);
+    }
+  }
+  if (prefixes.size === 0) {
+    for (const w of tokenizeCommentStrippedWords(headerBeforeParen)) {
+      const clean = w.split("[")[0]?.split(";")[0] ?? w;
+      if (clean) prefixes.add(clean);
+    }
+  }
+  return prefixes;
 }
 
 function findAncestor(node: SyntaxNode | null, typeName: string, maxHops = 5): SyntaxNode | null {
@@ -179,6 +314,7 @@ function getCompInfo(db: QueryDB, compSym: SymbolEntry): CompInfo {
   const elemNode = declClause?.parent?.type === "element" ? declClause.parent : declClause;
   const clauseText = (elemNode?.text ?? cst?.text ?? "").trim();
   const headerBeforeParen = clauseText.split("(")[0] ?? clauseText;
+  const prefixWords = collectComponentPrefixWords(elemNode, declClause, headerBeforeParen);
   let typeName = (meta["typeName"] as string) ?? "";
   if (!typeName && declClause) {
     const tsNode = declClause.namedChildren.find((c) => c.type === "type_specifier");
@@ -186,9 +322,9 @@ function getCompInfo(db: QueryDB, compSym: SymbolEntry): CompInfo {
   }
   let variability = (meta["variability"] as string) ?? "";
   if (!variability) {
-    if (/\bconstant\b/.test(headerBeforeParen)) variability = "constant";
-    else if (/\bparameter\b/.test(headerBeforeParen)) variability = "parameter";
-    else if (/\bdiscrete\b/.test(headerBeforeParen)) variability = "discrete";
+    if (prefixWords.has("constant")) variability = "constant";
+    else if (prefixWords.has("parameter")) variability = "parameter";
+    else if (prefixWords.has("discrete")) variability = "discrete";
     else variability = "continuous";
   }
   const ndims = Array.isArray(meta["dimensions"]) ? meta["dimensions"].length : headerBeforeParen.includes("[") ? 1 : 0;
@@ -197,11 +333,12 @@ function getCompInfo(db: QueryDB, compSym: SymbolEntry): CompInfo {
     typeName,
     variability,
     isProtected: Boolean(meta["isProtected"]),
-    isFinal: Boolean(meta["isFinal"]) || /\bfinal\b/.test(headerBeforeParen),
-    isFlow: /\bflow\b/.test(headerBeforeParen),
-    isStream: /\bstream\b/.test(headerBeforeParen),
-    isOuter: /\bouter\b/.test(headerBeforeParen) && !/\binner\b/.test(headerBeforeParen),
-    isReplaceable: /\breplaceable\b/.test(headerBeforeParen),
+    isFinal: Boolean(meta["isFinal"]) || prefixWords.has("final"),
+    isFlow: prefixWords.has("flow"),
+    isStream: prefixWords.has("stream"),
+    isOuter: prefixWords.has("outer") && !prefixWords.has("inner"),
+    isReplaceable: prefixWords.has("replaceable"),
+    isInput: meta["causality"] === "input" || prefixWords.has("input"),
     ndims,
     cst,
   };
@@ -231,8 +368,9 @@ function collectClassComponents(db: QueryDB, classId: SymbolId, visited = new Se
 
 function collectModifiersInNode(
   modListNode: SyntaxNode | null,
-): Array<{ name: string; text: string; node: SyntaxNode; nested?: SyntaxNode | null }> {
-  const out: Array<{ name: string; text: string; node: SyntaxNode; nested?: SyntaxNode | null }> = [];
+): Array<{ name: string; text: string; node: SyntaxNode; nested?: SyntaxNode | null; isFinal?: boolean }> {
+  const out: Array<{ name: string; text: string; node: SyntaxNode; nested?: SyntaxNode | null; isFinal?: boolean }> =
+    [];
   if (!modListNode) return out;
   function walk(n: SyntaxNode): void {
     if (n.type === "element_modification") {
@@ -240,7 +378,8 @@ function collectModifiersInNode(
       const name = nameNode?.text?.trim() ?? "";
       if (name) {
         const modNode = n.childForFieldName("modification") ?? n.namedChildren[1] ?? null;
-        out.push({ name, text: n.text.trim(), node: n, nested: modNode });
+        const isFinal = n.parent?.children?.some((c) => c.type === "final" || c.text === "final") ?? false;
+        out.push({ name, text: n.text.trim(), node: n, nested: modNode, isFinal });
       }
       return;
     }
@@ -277,7 +416,7 @@ function validateClassSubtree(db: QueryDB, dae: DAEBuilder, classId: SymbolId, v
   // 2. Builtin extension with extra elements (e.g., inst4, usertype6)
   if (spec !== "type") {
     for (const child of children) {
-      if (child.kind === "Extends" && /^(Real|Integer|Boolean|String)$/.test(child.name)) {
+      if (child.kind === "Extends" && PRIMITIVE_BUILTIN_TYPES.has(child.name)) {
         const hasOtherElems = children.some((c) => c.kind === "Component");
         if (hasOtherElems) {
           pushError(
@@ -316,8 +455,6 @@ function validateClassSubtree(db: QueryDB, dae: DAEBuilder, classId: SymbolId, v
     if (child.kind !== "Component") continue;
     const info = getCompInfo(db, child);
     const compCst = info.cst;
-    const declClause = compCst?.parent?.type === "component_declaration" ? compCst.parent.parent : compCst?.parent;
-    const clauseText = (declClause?.text ?? compCst?.text ?? "").trim();
 
     // 4a. Outer element with modifier
     if (info.isOuter && compCst) {
@@ -330,7 +467,8 @@ function validateClassSubtree(db: QueryDB, dae: DAEBuilder, classId: SymbolId, v
         if (hasEq && modIdx === errText.indexOf("=") && modIdx > 0 && errText[modIdx - 1] === " ") {
           modIdx -= 1;
         }
-        const modText = errText.slice(modIdx).replace(/;\s*$/, "").trimEnd();
+        const rawMod = errText.slice(modIdx).trimEnd();
+        const modText = (rawMod.endsWith(";") ? rawMod.slice(0, -1) : rawMod).trimEnd();
         pushError(
           dae,
           ModelicaErrorCode.OUTER_MODIFIER.code,
@@ -363,7 +501,7 @@ function validateClassSubtree(db: QueryDB, dae: DAEBuilder, classId: SymbolId, v
     }
 
     // 4c. Resolve component type and recurse + check partial/final/protected
-    if (info.typeName && !/^(Real|Integer|Boolean|String)$/.test(info.typeName)) {
+    if (info.typeName && !PRIMITIVE_BUILTIN_TYPES.has(info.typeName)) {
       const typeSym = resolveClassSym(db, classId, info.typeName);
       if (typeSym) {
         const typeCst = cstOf(db, typeSym.id);
@@ -421,7 +559,7 @@ function validateClassSubtree(db: QueryDB, dae: DAEBuilder, classId: SymbolId, v
     }
 
     // 4d. Check builtin attribute final override on own `extends`
-    if (/\bfinal\b/.test(clauseText) && compCst) {
+    if (info.isFinal && compCst) {
       // Nothing to check on self; checked when extended/modified
     }
   }
@@ -467,13 +605,12 @@ function validateClassSubtree(db: QueryDB, dae: DAEBuilder, classId: SymbolId, v
             }
             // Check nested attribute modifications like `x(start = 2.0)` when `target` had `final start = 1.0`
             if (m.nested && target.cst) {
-              const targetText = target.cst.text ?? "";
+              const targetMods = collectModifiersInNode(target.cst);
               for (const nm of collectModifiersInNode(m.nested)) {
-                const re = new RegExp(`\\bfinal\\s+${nm.name}\\b`);
-                if (re.test(targetText)) {
+                const targetMatch = targetMods.find((tm) => tm.name === nm.name);
+                if (targetMatch?.isFinal) {
                   const eqPart = nm.text.includes("=") ? nm.text.slice(nm.text.indexOf("=")).trim() : nm.text;
-                  const targetMod =
-                    collectModifiersInNode(target.cst).find((tm) => tm.name === nm.name)?.node ?? target.cst;
+                  const targetMod = targetMatch.node ?? target.cst;
                   pushNotification(dae, nm.node);
                   pushError(
                     dae,
@@ -567,7 +704,7 @@ function validateClassSubtree(db: QueryDB, dae: DAEBuilder, classId: SymbolId, v
       if (lhs) {
         const lhsName = lhs.text.trim();
         const comp = comps.get(lhsName);
-        if (comp && comp.typeName && !/^(Real|Integer|Boolean|String)$/.test(comp.typeName)) {
+        if (comp && comp.typeName && !PRIMITIVE_BUILTIN_TYPES.has(comp.typeName)) {
           const typeSym = resolveClassSym(db, classId, comp.typeName);
           if (typeSym) {
             const tSpec = getClassSpecialization(typeSym, cstOf(db, typeSym.id));
@@ -649,7 +786,12 @@ function validateClassSubtree(db: QueryDB, dae: DAEBuilder, classId: SymbolId, v
             node,
           );
         }
-        const argName = argTexts[0]!.replace(/^[a-zA-Z_]\w*\s*=\s*/, "").trim();
+        const argNode = rawArgs[0];
+        const argExpr =
+          argNode?.type === "named_argument"
+            ? (argNode.childForFieldName("value") ?? argNode.namedChildren[1] ?? argNode)
+            : argNode;
+        const argName = argExpr?.text?.trim() ?? argTexts[0]!;
         if (!comps.has(argName) && resolveClassSym(db, classId, argName)) {
           pushError(
             dae,
@@ -660,7 +802,7 @@ function validateClassSubtree(db: QueryDB, dae: DAEBuilder, classId: SymbolId, v
           );
         } else {
           const cInfo = comps.get(argName.split(".")[0] ?? argName);
-          if (cInfo && /^(Real|Integer|Boolean|String)$/.test(cInfo.typeName)) {
+          if (cInfo && PRIMITIVE_BUILTIN_TYPES.has(cInfo.typeName)) {
             pushError(
               dae,
               ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code,
@@ -697,7 +839,7 @@ function validateClassSubtree(db: QueryDB, dae: DAEBuilder, classId: SymbolId, v
               `The first argument to reinit must be a continuous time variable, but ${xName} is ${cInfo.variability}.`,
               node,
             );
-          } else if (/^(Integer|Boolean|String)$/.test(cInfo.typeName)) {
+          } else if (NON_REAL_BUILTIN_TYPES.has(cInfo.typeName)) {
             pushError(
               dae,
               3000,
@@ -715,7 +857,7 @@ function validateClassSubtree(db: QueryDB, dae: DAEBuilder, classId: SymbolId, v
         if (cInfo) {
           if (cInfo.variability === "parameter" || cInfo.variability === "constant") {
             pushError(dae, 3000, "der-not-differentiable", `Argument ${xName} of der is not differentiable.`, node);
-          } else if (/^(Integer|Boolean|String)$/.test(cInfo.typeName)) {
+          } else if (NON_REAL_BUILTIN_TYPES.has(cInfo.typeName)) {
             pushError(
               dae,
               3000,
@@ -732,7 +874,7 @@ function validateClassSubtree(db: QueryDB, dae: DAEBuilder, classId: SymbolId, v
         const cInfo = comps.get(arrArg);
         if ((cInfo && cInfo.ndims === 0) || inferSimpleLiteralType(arrArg) !== null) {
           pushError(dae, 3000, "size-non-array", `The first argument of size must be an array expression.`, node);
-        } else if (argTexts.length >= 2 && cInfo && cInfo.ndims > 0 && /^-?\d+$/.test(argTexts[1]!)) {
+        } else if (argTexts.length >= 2 && cInfo && cInfo.ndims > 0 && isSignedAsciiIntText(argTexts[1]!, false)) {
           const dim = parseInt(argTexts[1]!, 10);
           if (dim < 1 || dim > cInfo.ndims) {
             pushError(
@@ -750,7 +892,7 @@ function validateClassSubtree(db: QueryDB, dae: DAEBuilder, classId: SymbolId, v
         const arg0 = argTexts[0]!;
         const cInfo = comps.get(arg0);
         const litType = inferSimpleLiteralType(arg0);
-        if ((cInfo && cInfo.ndims === 0 && /^(Real|Integer)$/.test(cInfo.typeName)) || litType !== null) {
+        if ((cInfo && cInfo.ndims === 0 && NUMERIC_BUILTIN_TYPES.has(cInfo.typeName)) || litType !== null) {
           const tName = cInfo ? cInfo.typeName : litType!;
           pushError(
             dae,
@@ -763,12 +905,7 @@ function validateClassSubtree(db: QueryDB, dae: DAEBuilder, classId: SymbolId, v
       }
 
       // User-defined function call checks
-      if (
-        fnName &&
-        !/^(assert|cardinality|reinit|der|pre|size|sum|product|min|max|sin|cos|tan|exp|log|sqrt|abs|sign|integer|mod|rem|div|ceil|floor|noEvent|smooth|sample|initial|terminal|edge|change|delay|spatialDistribution|fill|zeros|ones|identity|diagonal|linspace|transpose|cross|skew|outerProduct|symmetric|cat|ndims|scalar|vector|matrix|String)$/.test(
-          fnName,
-        )
-      ) {
+      if (fnName && !BUILTIN_MODELICA_FUNCTIONS.has(fnName)) {
         const fnSym = resolveClassSym(db, classId, fnName);
         if (fnSym) {
           const fnCst = cstOf(db, fnSym.id);
@@ -782,8 +919,7 @@ function validateClassSubtree(db: QueryDB, dae: DAEBuilder, classId: SymbolId, v
               const paramName =
                 rawArg.childForFieldName("name")?.text?.trim() ?? rawArg.namedChildren[0]?.text?.trim() ?? "";
               const pInfo = fnComps.get(paramName);
-              const pText = pInfo?.cst?.parent?.parent?.text ?? pInfo?.cst?.text ?? "";
-              if (!pInfo || !/\binput\b/.test(pText)) {
+              if (!pInfo || !pInfo.isInput) {
                 pushError(
                   dae,
                   3000,

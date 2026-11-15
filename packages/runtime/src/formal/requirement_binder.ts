@@ -16,6 +16,8 @@ import {
   isTypeLikeSymbol,
   splitQualifiedPath,
 } from "../util/symbol_roles.js";
+import { globalLibraryRegistry } from "../workspace/library-manifest.js";
+import { NumericalInterval } from "./abstract_interpretation/interval_domain.js";
 import { SemanticTheoryCoordinator } from "./theory_coordinator.js";
 
 export interface RequirementCstNodeLike {
@@ -42,6 +44,49 @@ type SyntaxNode = RequirementCstNodeLike;
 
 export type { BoundRequirement };
 
+export type ConstraintExprAst =
+  | { kind: "lit"; value: number }
+  | { kind: "str"; value: string }
+  | { kind: "var"; path: string }
+  | { kind: "unary"; op: "+" | "-"; operand: ConstraintExprAst }
+  | { kind: "bin"; op: "+" | "-" | "*" | "/" | "^"; left: ConstraintExprAst; right: ConstraintExprAst }
+  | { kind: "call"; name: string; args: ConstraintExprAst[] };
+
+export interface ConstraintComparisonAst {
+  lhs: ConstraintExprAst;
+  op: "<=" | ">=" | "<" | ">" | "==" | "!=";
+  rhs: ConstraintExprAst;
+  rawText?: string | undefined;
+}
+
+export interface StandardClauseRef {
+  standard?: string | undefined;
+  edition?: string | undefined;
+  clauseId?: string | undefined;
+  severity?: "error" | "warning" | "info" | undefined;
+}
+
+export interface InlineCalcDef {
+  name: string;
+  params: string[];
+  bodyAst?: ConstraintExprAst | undefined;
+  externalCalculator?: string | undefined;
+}
+
+export interface IntervalRequirementIssue {
+  requirementId: string;
+  clauseLabel?: string | undefined;
+  severity: "definite" | "possible";
+  varName: string;
+  operator: "<=" | ">=" | "<" | ">" | "==" | "!=";
+  lhsInterval: NumericalInterval;
+  rhsInterval: NumericalInterval;
+  requiredLimit?: number | undefined;
+  suggestedValue?: number | undefined;
+  margin?: number | undefined;
+  message: string;
+}
+
 export interface SysmlRequirement {
   /** Requirement definition identifier (e.g., "FlightCeilingRequirement") */
   id: string;
@@ -57,10 +102,22 @@ export interface SysmlRequirement {
   targetAttribute: string;
   /** Comparison operator */
   operator: "<=" | ">=" | "<" | ">";
-  /** Evaluated numeric threshold */
+  /** Evaluated numeric threshold (`NaN` for multi-variable symbolic constraints) */
   limitValue: number;
   /** Evaluated numeric attributes in scope for this requirement */
   attributes?: Record<string, number> | undefined;
+  /** Evaluated string attributes in scope for table lookups */
+  stringAttributes?: Record<string, string> | undefined;
+  /** Standard clause metadata if annotated via `@StandardClause` / `@ComplianceRule` */
+  standardClause?: StandardClauseRef | undefined;
+  /** Full symbolic comparison AST for multi-variable / nonlinear interval proofs */
+  constraintAst?: ConstraintComparisonAst | undefined;
+  /** Optional `assume constraint` applicability guard ASTs */
+  assumeAsts?: ConstraintComparisonAst[] | undefined;
+  /** Local/imported inline calculation definitions referenced inside `constraintAst` */
+  calculators?: Record<string, InlineCalcDef> | undefined;
+  /** Normalized source text of the constraint clause */
+  expressionText?: string | undefined;
 }
 
 let cachedSysmlParser: TreeSitterParser | null = null;
@@ -340,42 +397,542 @@ function collectAttributeUsagesFromCst(scopeNode: SyntaxNode, attrMap: Map<strin
   }
 }
 
-function evaluateSimpleSysmlArithmetic(expr: string, attrMap: Map<string, number>): number {
-  const trimmed = expr.trim();
-  const direct = Number(trimmed);
-  if (Number.isFinite(direct)) return direct;
-  if (attrMap.has(trimmed)) return attrMap.get(trimmed)!;
+type ExprToken =
+  | { kind: "num"; value: number }
+  | { kind: "str"; value: string }
+  | { kind: "ident"; value: string }
+  | { kind: "op"; value: string }
+  | { kind: "paren"; value: "(" | ")" }
+  | { kind: "comma" };
 
-  const binMatch = trimmed.match(/^([a-zA-Z0-9_.]+|\d+(?:\.\d+)?)\s*([+\-*/])\s*([a-zA-Z0-9_.]+|\d+(?:\.\d+)?)$/);
-  if (binMatch) {
-    const lhs = evaluateSimpleSysmlArithmetic(binMatch[1]!, attrMap);
-    const op = binMatch[2]!;
-    const rhs = evaluateSimpleSysmlArithmetic(binMatch[3]!, attrMap);
-    if (!Number.isNaN(lhs) && !Number.isNaN(rhs)) {
-      if (op === "+") return lhs + rhs;
-      if (op === "-") return lhs - rhs;
-      if (op === "*") return lhs * rhs;
-      if (op === "/") return rhs !== 0 ? lhs / rhs : NaN;
+function stripSysmlComments(text: string): string {
+  let out = "";
+  let inSingle = false;
+  let inDouble = false;
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i]!;
+    const next = text[i + 1];
+    if (!inSingle && !inDouble) {
+      if (ch === "/" && next === "/") {
+        while (i < text.length && text[i] !== "\n") i++;
+        continue;
+      }
+      if (ch === "/" && next === "*") {
+        i += 2;
+        while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++;
+        i += 2;
+        out += " ";
+        continue;
+      }
     }
+    if (ch === "'" && !inDouble && text[i - 1] !== "\\") inSingle = !inSingle;
+    else if (ch === '"' && !inSingle && text[i - 1] !== "\\") inDouble = !inDouble;
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+function tokenizeConstraintExpr(rawText: string): ExprToken[] | null {
+  const text = stripSysmlComments(rawText);
+  const tokens: ExprToken[] = [];
+  let i = 0;
+
+  while (i < text.length) {
+    const ch = text[i]!;
+    if (/\s/.test(ch)) {
+      i++;
+      continue;
+    }
+
+    // SysML measurement unit annotation `[mm]`, `[MPa]`, `[kg/m^3]` after a value or `)`
+    if (ch === "[" && tokens.length > 0) {
+      const prev = tokens[tokens.length - 1]!;
+      if (prev.kind === "num" || prev.kind === "ident" || (prev.kind === "paren" && prev.value === ")")) {
+        const closeIdx = text.indexOf("]", i + 1);
+        if (closeIdx > i + 1) {
+          const inner = text.slice(i + 1, closeIdx).trim();
+          if (/^[a-zA-Z%°µ]/.test(inner)) {
+            i = closeIdx + 1;
+            continue;
+          }
+        }
+      }
+    }
+
+    if (ch === '"' || ch === "'") {
+      const quote = ch;
+      let j = i + 1;
+      let val = "";
+      while (j < text.length && text[j] !== quote) {
+        if (text[j] === "\\" && j + 1 < text.length) {
+          val += text[j + 1]!;
+          j += 2;
+        } else {
+          val += text[j]!;
+          j++;
+        }
+      }
+      if (j >= text.length) return null;
+      tokens.push({ kind: "str", value: val });
+      i = j + 1;
+      continue;
+    }
+
+    if (/[0-9]/.test(ch) || (ch === "." && i + 1 < text.length && /[0-9]/.test(text[i + 1]!))) {
+      const numMatch = text.slice(i).match(/^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/);
+      if (!numMatch) return null;
+      const num = Number(numMatch[0]);
+      if (!Number.isFinite(num)) return null;
+      tokens.push({ kind: "num", value: num });
+      i += numMatch[0].length;
+      continue;
+    }
+
+    if (/[a-zA-Z_]/.test(ch)) {
+      const identMatch = text.slice(i).match(/^[a-zA-Z_][a-zA-Z0-9_]*(?:(?:\.|::)[a-zA-Z_][a-zA-Z0-9_]*)*/);
+      if (!identMatch) return null;
+      tokens.push({ kind: "ident", value: identMatch[0] });
+      i += identMatch[0].length;
+      continue;
+    }
+
+    if (ch === "*" && text[i + 1] === "*") {
+      tokens.push({ kind: "op", value: "^" });
+      i += 2;
+      continue;
+    }
+    if (ch === "+" || ch === "-" || ch === "*" || ch === "/" || ch === "^") {
+      tokens.push({ kind: "op", value: ch });
+      i++;
+      continue;
+    }
+    if (ch === "(" || ch === ")") {
+      tokens.push({ kind: "paren", value: ch });
+      i++;
+      continue;
+    }
+    if (ch === ",") {
+      tokens.push({ kind: "comma" });
+      i++;
+      continue;
+    }
+
+    return null;
+  }
+
+  return tokens;
+}
+
+export function parseConstraintExprAst(exprText: string): ConstraintExprAst | undefined {
+  const tokens = tokenizeConstraintExpr(exprText);
+  if (!tokens || tokens.length === 0) return undefined;
+
+  let pos = 0;
+
+  const parseAddSub = (): ConstraintExprAst | undefined => {
+    let left = parseMulDiv();
+    if (!left) return undefined;
+    while (pos < tokens.length) {
+      const tok = tokens[pos]!;
+      if (tok.kind === "op" && (tok.value === "+" || tok.value === "-")) {
+        pos++;
+        const right = parseMulDiv();
+        if (!right) return undefined;
+        left = { kind: "bin", op: tok.value, left, right };
+      } else {
+        break;
+      }
+    }
+    return left;
+  };
+
+  const parseMulDiv = (): ConstraintExprAst | undefined => {
+    let left = parsePower();
+    if (!left) return undefined;
+    while (pos < tokens.length) {
+      const tok = tokens[pos]!;
+      if (tok.kind === "op" && (tok.value === "*" || tok.value === "/")) {
+        pos++;
+        const right = parsePower();
+        if (!right) return undefined;
+        left = { kind: "bin", op: tok.value, left, right };
+      } else {
+        break;
+      }
+    }
+    return left;
+  };
+
+  const parsePower = (): ConstraintExprAst | undefined => {
+    const base = parseUnary();
+    if (!base) return undefined;
+    if (pos < tokens.length) {
+      const tok = tokens[pos]!;
+      if (tok.kind === "op" && tok.value === "^") {
+        pos++;
+        const exp = parsePower();
+        if (!exp) return undefined;
+        return { kind: "bin", op: "^", left: base, right: exp };
+      }
+    }
+    return base;
+  };
+
+  const parseUnary = (): ConstraintExprAst | undefined => {
+    const tok = tokens[pos];
+    if (tok && tok.kind === "op" && (tok.value === "+" || tok.value === "-")) {
+      pos++;
+      const operand = parseUnary();
+      if (!operand) return undefined;
+      return tok.value === "+" ? operand : { kind: "unary", op: "-", operand };
+    }
+    return parsePrimary();
+  };
+
+  const parsePrimary = (): ConstraintExprAst | undefined => {
+    const tok = tokens[pos];
+    if (!tok) return undefined;
+
+    if (tok.kind === "num") {
+      pos++;
+      return { kind: "lit", value: tok.value };
+    }
+    if (tok.kind === "str") {
+      pos++;
+      return { kind: "str", value: tok.value };
+    }
+    if (tok.kind === "ident") {
+      pos++;
+      const next = tokens[pos];
+      if (next && next.kind === "paren" && next.value === "(") {
+        pos++;
+        const args: ConstraintExprAst[] = [];
+        if (!(tokens[pos]?.kind === "paren" && (tokens[pos] as { value: string }).value === ")")) {
+          while (pos < tokens.length) {
+            const arg = parseAddSub();
+            if (!arg) return undefined;
+            args.push(arg);
+            if (tokens[pos]?.kind === "comma") {
+              pos++;
+              continue;
+            }
+            break;
+          }
+        }
+        const closeTok = tokens[pos];
+        if (!closeTok || closeTok.kind !== "paren" || closeTok.value !== ")") return undefined;
+        pos++;
+        return { kind: "call", name: tok.value, args };
+      }
+      return { kind: "var", path: tok.value };
+    }
+    if (tok.kind === "paren" && tok.value === "(") {
+      pos++;
+      const inner = parseAddSub();
+      if (!inner) return undefined;
+      const closeTok = tokens[pos];
+      if (!closeTok || closeTok.kind !== "paren" || closeTok.value !== ")") return undefined;
+      pos++;
+      return inner;
+    }
+
+    return undefined;
+  };
+
+  const root = parseAddSub();
+  if (!root || pos !== tokens.length) return undefined;
+  return root;
+}
+
+export function splitConstraintClauses(rawText: string): string[] {
+  const cleaned = stripSysmlComments(rawText);
+  const clauses: string[] = [];
+  let buf = "";
+  let depth = 0;
+  let inSingle = false;
+  let inDouble = false;
+
+  const flush = (): void => {
+    const trimmed = buf.trim();
+    if (trimmed) clauses.push(trimmed);
+    buf = "";
+  };
+
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i]!;
+    if (ch === "'" && !inDouble && cleaned[i - 1] !== "\\") {
+      inSingle = !inSingle;
+      buf += ch;
+      continue;
+    }
+    if (ch === '"' && !inSingle && cleaned[i - 1] !== "\\") {
+      inDouble = !inDouble;
+      buf += ch;
+      continue;
+    }
+    if (!inSingle && !inDouble) {
+      if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if ((ch === ")" || ch === "]" || ch === "}") && depth > 0) depth--;
+
+      if (depth === 0) {
+        if (ch === ";") {
+          flush();
+          continue;
+        }
+        if (ch === "&" && cleaned[i + 1] === "&") {
+          flush();
+          i++;
+          continue;
+        }
+        if (
+          (ch === "a" || ch === "A") &&
+          cleaned.slice(i, i + 3).toLowerCase() === "and" &&
+          (i === 0 || !/[a-zA-Z0-9_]/.test(cleaned[i - 1]!)) &&
+          (i + 3 >= cleaned.length || !/[a-zA-Z0-9_]/.test(cleaned[i + 3]!))
+        ) {
+          flush();
+          i += 2;
+          continue;
+        }
+        if (ch === "\n") {
+          const trimmedSoFar = buf.trim();
+          const restTrimmed = cleaned.slice(i + 1).trimStart();
+          const hasComparison = /(<=|>=|==|!=|<|>)/.test(trimmedSoFar);
+          const endsWithOp = /[+\-*/^,(<>=!]$/.test(trimmedSoFar);
+          const nextStartsWithOp = /^[+\-*/^),<>=!]/.test(restTrimmed);
+          if (hasComparison && !endsWithOp && !nextStartsWithOp && trimmedSoFar.length > 0) {
+            flush();
+            continue;
+          }
+          buf += " ";
+          continue;
+        }
+      }
+    }
+    buf += ch;
+  }
+  flush();
+  return clauses;
+}
+
+export function parseConstraintComparisonAst(clauseText: string): ConstraintComparisonAst | undefined {
+  const cleaned = stripSysmlComments(clauseText).trim();
+  if (!cleaned) return undefined;
+
+  let depth = 0;
+  let inSingle = false;
+  let inDouble = false;
+  let foundOp: { op: "<=" | ">=" | "<" | ">" | "==" | "!="; start: number; len: number } | null = null;
+
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i]!;
+    if (ch === "'" && !inDouble && cleaned[i - 1] !== "\\") {
+      inSingle = !inSingle;
+      continue;
+    }
+    if (ch === '"' && !inSingle && cleaned[i - 1] !== "\\") {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (inSingle || inDouble) continue;
+    if (ch === "(" || ch === "[") depth++;
+    else if ((ch === ")" || ch === "]") && depth > 0) depth--;
+
+    if (depth === 0) {
+      const two = cleaned.slice(i, i + 2);
+      if (two === "<=" || two === ">=" || two === "==" || two === "!=") {
+        if (foundOp) return undefined;
+        foundOp = { op: two, start: i, len: 2 };
+        i++;
+        continue;
+      }
+      if (ch === "<" || ch === ">") {
+        if (foundOp) return undefined;
+        foundOp = { op: ch, start: i, len: 1 };
+      }
+    }
+  }
+
+  if (!foundOp) return undefined;
+  const lhsText = cleaned.slice(0, foundOp.start).trim();
+  const rhsText = cleaned.slice(foundOp.start + foundOp.len).trim();
+  const lhs = parseConstraintExprAst(lhsText);
+  const rhs = parseConstraintExprAst(rhsText);
+  if (!lhs || !rhs) return undefined;
+  return { lhs, op: foundOp.op, rhs, rawText: cleaned };
+}
+
+function collectExprVars(ast: ConstraintExprAst, out: string[] = []): string[] {
+  if (ast.kind === "var") {
+    out.push(ast.path);
+  } else if (ast.kind === "unary") {
+    collectExprVars(ast.operand, out);
+  } else if (ast.kind === "bin") {
+    collectExprVars(ast.left, out);
+    collectExprVars(ast.right, out);
+  } else if (ast.kind === "call") {
+    for (const arg of ast.args) collectExprVars(arg, out);
+  }
+  return out;
+}
+
+function collectPrimaryAttributeName(lhs: ConstraintExprAst, rhs?: ConstraintExprAst): string {
+  const lhsVars = collectExprVars(lhs);
+  const targetPath = lhsVars[0] ?? (rhs ? collectExprVars(rhs)[0] : undefined) ?? "";
+  if (!targetPath) return "";
+  const dotLeaf = targetPath.split(".").pop() ?? targetPath;
+  return dotLeaf.split("::").pop() ?? dotLeaf;
+}
+
+function evaluateScalarBuiltinCall(name: string, args: (number | string)[]): number {
+  const fn = name.split("::").pop()!.split(".").pop()!.toLowerCase();
+  const nums = args.map((a) => (typeof a === "number" ? a : Number(a)));
+  if (fn === "abs" && nums.length >= 1) return Math.abs(nums[0]!);
+  if (fn === "sqrt" && nums.length >= 1) return nums[0]! >= 0 ? Math.sqrt(nums[0]!) : NaN;
+  if (fn === "min" && nums.length >= 1) return Math.min(...nums);
+  if (fn === "max" && nums.length >= 1) return Math.max(...nums);
+  if (fn === "sin" && nums.length >= 1) return Math.sin(nums[0]!);
+  if (fn === "cos" && nums.length >= 1) return Math.cos(nums[0]!);
+  if (fn === "tan" && nums.length >= 1) return Math.tan(nums[0]!);
+  if (fn === "exp" && nums.length >= 1) return Math.exp(nums[0]!);
+  if ((fn === "log" || fn === "ln") && nums.length >= 1) return nums[0]! > 0 ? Math.log(nums[0]!) : NaN;
+  if (fn === "pow" && nums.length >= 2) return Math.pow(nums[0]!, nums[1]!);
+  if (fn === "ceil" && nums.length >= 1) return Math.ceil(nums[0]!);
+  if (fn === "floor" && nums.length >= 1) return Math.floor(nums[0]!);
+  return NaN;
+}
+
+function resolveInlineCalc(name: string, calculators?: Record<string, InlineCalcDef>): InlineCalcDef | undefined {
+  if (!calculators) return undefined;
+  if (calculators[name]) return calculators[name];
+  const shortName = name.split("::").pop()?.trim();
+  if (shortName && calculators[shortName]) return calculators[shortName];
+  for (const key of Object.keys(calculators)) {
+    if (key.endsWith(`::${name}`) || (shortName && key.endsWith(`::${shortName}`))) {
+      return calculators[key];
+    }
+  }
+  return undefined;
+}
+
+function invokeExternalCalculatorValue(callName: string, args: (number | string)[], calcDef?: InlineCalcDef): number {
+  const candidates: string[] = [];
+  if (calcDef?.externalCalculator) candidates.push(calcDef.externalCalculator);
+  candidates.push(callName);
+  const short = callName.split("::").pop();
+  if (short && short !== callName) candidates.push(short);
+
+  for (const target of candidates) {
+    const res = globalLibraryRegistry.invokeCalculator(target, args);
+    if (typeof res === "number" && Number.isFinite(res)) return res;
+    if (typeof res === "boolean") return res ? 1 : 0;
   }
   return NaN;
 }
 
-function extractRequirementBlocksFromText(
-  sysmlText: string,
-): { shortId?: string | undefined; id: string; body: string }[] {
-  const blocks: { shortId?: string | undefined; id: string; body: string }[] = [];
-  const reqStartRegex = /requirement\s+(?:def\s+)?(?:<['"]?([^'">]+)['"]?>\s*)?([a-zA-Z0-9_]+)\s*\{/g;
-  let match: RegExpExecArray | null;
-  while ((match = reqStartRegex.exec(sysmlText)) !== null) {
-    const shortId = match[1];
-    const id = match[2]!;
-    const startIndex = match.index + match[0].length;
-    let depth = 1;
-    let endIndex = startIndex;
-    for (let i = startIndex; i < sysmlText.length; i++) {
-      if (sysmlText[i] === "{") depth++;
-      else if (sysmlText[i] === "}") {
+export function evaluateConstraintExprScalar(
+  ast: ConstraintExprAst,
+  attrMap: ReadonlyMap<string, number>,
+  stringMap?: ReadonlyMap<string, string>,
+  calculators?: Record<string, InlineCalcDef>,
+  depth = 0,
+): number {
+  if (depth > 16) return NaN;
+  if (ast.kind === "lit") return ast.value;
+  if (ast.kind === "str") return NaN;
+  if (ast.kind === "var") {
+    const direct = attrMap.get(ast.path);
+    if (direct !== undefined) return direct;
+    const dotTail = ast.path.split(".").pop()?.trim();
+    if (dotTail && attrMap.has(dotTail)) return attrMap.get(dotTail)!;
+    const colonTail = ast.path.split("::").pop()?.trim();
+    if (colonTail && attrMap.has(colonTail)) return attrMap.get(colonTail)!;
+    return NaN;
+  }
+  if (ast.kind === "unary") {
+    const v = evaluateConstraintExprScalar(ast.operand, attrMap, stringMap, calculators, depth + 1);
+    return ast.op === "-" ? -v : v;
+  }
+  if (ast.kind === "bin") {
+    const l = evaluateConstraintExprScalar(ast.left, attrMap, stringMap, calculators, depth + 1);
+    const r = evaluateConstraintExprScalar(ast.right, attrMap, stringMap, calculators, depth + 1);
+    if (Number.isNaN(l) || Number.isNaN(r)) return NaN;
+    if (ast.op === "+") return l + r;
+    if (ast.op === "-") return l - r;
+    if (ast.op === "*") return l * r;
+    if (ast.op === "/") return r !== 0 ? l / r : NaN;
+    if (ast.op === "^") return Math.pow(l, r);
+    return NaN;
+  }
+  if (ast.kind === "call") {
+    const argVals: (number | string)[] = [];
+    for (const arg of ast.args) {
+      if (arg.kind === "str") {
+        argVals.push(arg.value);
+        continue;
+      }
+      if (arg.kind === "var" && stringMap) {
+        const sVal =
+          stringMap.get(arg.path) ??
+          stringMap.get(arg.path.split(".").pop() ?? "") ??
+          stringMap.get(arg.path.split("::").pop() ?? "");
+        if (sVal !== undefined) {
+          argVals.push(sVal);
+          continue;
+        }
+      }
+      const numVal = evaluateConstraintExprScalar(arg, attrMap, stringMap, calculators, depth + 1);
+      if (Number.isNaN(numVal)) return NaN;
+      argVals.push(numVal);
+    }
+
+    const calc = resolveInlineCalc(ast.name, calculators);
+    if (calc?.bodyAst) {
+      const localNum = new Map<string, number>(attrMap);
+      const localStr = new Map<string, string>(stringMap ?? []);
+      for (let i = 0; i < calc.params.length && i < argVals.length; i++) {
+        const paramName = calc.params[i]!;
+        const v = argVals[i]!;
+        if (typeof v === "string") localStr.set(paramName, v);
+        else localNum.set(paramName, v);
+      }
+      const inlineRes = evaluateConstraintExprScalar(calc.bodyAst, localNum, localStr, calculators, depth + 1);
+      if (!Number.isNaN(inlineRes)) return inlineRes;
+    }
+
+    const extVal = invokeExternalCalculatorValue(ast.name, argVals, calc);
+    if (!Number.isNaN(extVal)) return extVal;
+
+    return evaluateScalarBuiltinCall(ast.name, argVals);
+  }
+  return NaN;
+}
+
+function evaluateSimpleSysmlArithmetic(
+  expr: string,
+  attrMap: Map<string, number>,
+  stringMap?: Map<string, string>,
+  calculators?: Record<string, InlineCalcDef>,
+): number {
+  const ast = parseConstraintExprAst(expr);
+  if (!ast) return NaN;
+  return evaluateConstraintExprScalar(ast, attrMap, stringMap, calculators);
+}
+
+function extractBalancedBraceBody(text: string, openBraceIdx: number): { body: string; endIndex: number } {
+  let depth = 1;
+  let inSingle = false;
+  let inDouble = false;
+  let endIndex = text.length;
+  for (let i = openBraceIdx + 1; i < text.length; i++) {
+    const ch = text[i]!;
+    if (ch === "'" && !inDouble && text[i - 1] !== "\\") inSingle = !inSingle;
+    else if (ch === '"' && !inSingle && text[i - 1] !== "\\") inDouble = !inDouble;
+    else if (!inSingle && !inDouble) {
+      if (ch === "{") depth++;
+      else if (ch === "}") {
         depth--;
         if (depth === 0) {
           endIndex = i;
@@ -383,22 +940,667 @@ function extractRequirementBlocksFromText(
         }
       }
     }
-    const body = sysmlText.slice(startIndex, endIndex);
-    blocks.push({ shortId, id, body });
+  }
+  return { body: text.slice(openBraceIdx + 1, endIndex), endIndex };
+}
+
+function parseAnnotationProps(bodyText: string): Record<string, string> {
+  const props: Record<string, string> = {};
+  const propRe = /([a-zA-Z0-9_]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([a-zA-Z0-9_./:-]+))/g;
+  let m: RegExpExecArray | null;
+  while ((m = propRe.exec(bodyText)) !== null) {
+    const key = m[1]!;
+    const val = m[2] ?? m[3] ?? m[4] ?? "";
+    if (key && val !== "") props[key] = val;
+  }
+  return props;
+}
+
+function extractStandardClauseFromText(textChunk: string): StandardClauseRef | undefined {
+  const metaRe = /@(?:StandardClause|ComplianceRule|Standard)\b\s*(\{[^}]*\}|\([^)]*\))?/g;
+  let m: RegExpExecArray | null;
+  while ((m = metaRe.exec(textChunk)) !== null) {
+    const props = m[1] ? parseAnnotationProps(m[1]) : {};
+    const severityRaw = props["severity"]?.toLowerCase();
+    const severity =
+      severityRaw === "warning" ? "warning" : severityRaw === "info" ? "info" : props["severity"] ? "error" : undefined;
+    return {
+      standard: props["standard"] ?? props["code"],
+      edition: props["edition"],
+      clauseId: props["clauseId"] ?? props["clause"] ?? props["id"],
+      severity,
+    };
+  }
+  return undefined;
+}
+
+function isMetadataGapOnly(gap: string): boolean {
+  const stripped = gap
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/\/\/[^\n]*/g, " ")
+    .replace(/@[A-Za-z_][A-Za-z0-9_:]*\s*(?:\{[^}]*\}|\([^)]*\))?/g, " ")
+    .replace(/\b(?:public|private|protected|abstract)\b/g, " ")
+    .trim();
+  return stripped.length === 0;
+}
+
+function extractLeadingAnnotationsBeforeOffset(sysmlText: string, declStartIndex: number): string {
+  const windowStart = Math.max(0, declStartIndex - 800);
+  const window = sysmlText.slice(windowStart, declStartIndex);
+  const headerRe = /@(?:StandardClause|ComplianceRule|Standard)\b/g;
+  const candidates: { index: number; end: number }[] = [];
+  let hm: RegExpExecArray | null;
+  while ((hm = headerRe.exec(window)) !== null) {
+    let end = hm.index + hm[0].length;
+    while (end < window.length && /\s/.test(window[end]!)) end++;
+    if (window[end] === "{") {
+      const bal = extractBalancedBraceBody(window, end);
+      end = Math.max(end + 1, bal.endIndex + 1);
+    } else if (window[end] === "(") {
+      const closeParen = window.indexOf(")", end + 1);
+      if (closeParen >= 0) end = closeParen + 1;
+    }
+    candidates.push({ index: hm.index, end });
+  }
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const cand = candidates[i]!;
+    if (isMetadataGapOnly(window.slice(cand.end))) {
+      return window.slice(cand.index);
+    }
+  }
+  return "";
+}
+
+function extractInlineCalcDefsFromText(sysmlText: string, packageName?: string): Record<string, InlineCalcDef> {
+  const calculators: Record<string, InlineCalcDef> = {};
+  const calcStartRe = /calc\s+(?:def\s+)?(?:<['"]?([^'">]+)['"]?>\s*)?([a-zA-Z0-9_]+)\s*\{/g;
+  let m: RegExpExecArray | null;
+  while ((m = calcStartRe.exec(sysmlText)) !== null) {
+    const calcName = m[2]!;
+    const openBraceIdx = m.index + m[0].length - 1;
+    const { body } = extractBalancedBraceBody(sysmlText, openBraceIdx);
+
+    const params: string[] = [];
+    const inParamRe = /\bin\s+(?:attribute\s+)?([a-zA-Z0-9_]+)\b/g;
+    let pm: RegExpExecArray | null;
+    while ((pm = inParamRe.exec(body)) !== null) {
+      params.push(pm[1]!);
+    }
+
+    let externalCalculator: string | undefined;
+    const extMetaRe = /@(?:ExternalCalculator|LookupTable)\b\s*(\{[^}]*\}|\([^)]*\))?/g;
+    const em = extMetaRe.exec(body);
+    if (em && em[1]) {
+      const props = parseAnnotationProps(em[1]);
+      externalCalculator = props["calculator"] ?? props["table"] ?? props["name"] ?? props["id"];
+    }
+
+    let bodyAst: ConstraintExprAst | undefined;
+    const returnMatch = body.match(/return\b[^=;]*=\s*([\s\S]*?);/);
+    if (returnMatch && returnMatch[1]) {
+      bodyAst = parseConstraintExprAst(returnMatch[1]);
+    } else if (!externalCalculator) {
+      const cleanLines = stripSysmlComments(body)
+        .split(/[;\n]/)
+        .map((l) => l.trim())
+        .filter(
+          (l) => l && !l.startsWith("in ") && !l.startsWith("out ") && !l.startsWith("return") && !l.startsWith("@"),
+        );
+      for (let i = cleanLines.length - 1; i >= 0; i--) {
+        const candidate = parseConstraintExprAst(cleanLines[i]!);
+        if (candidate) {
+          bodyAst = candidate;
+          break;
+        }
+      }
+    }
+
+    const def: InlineCalcDef = {
+      name: calcName,
+      params,
+      bodyAst,
+      externalCalculator,
+    };
+    calculators[calcName] = def;
+    if (packageName) {
+      calculators[`${packageName}::${calcName}`] = def;
+    }
+  }
+  return calculators;
+}
+
+function collectStringAttributesFromText(text: string, out: Map<string, string>, prefix?: string): void {
+  const strAttrRe = /attribute\s+(?::>>\s*)?([a-zA-Z0-9_]+)\s*(?::\s*[^=;\n]+)?=\s*(?:"([^"]*)"|'([^']*)')\s*;/g;
+  let m: RegExpExecArray | null;
+  while ((m = strAttrRe.exec(text)) !== null) {
+    const name = m[1]!;
+    const val = m[2] ?? m[3] ?? "";
+    out.set(name, val);
+    if (prefix) out.set(`${prefix}.${name}`, val);
+  }
+}
+
+function extractConstraintBlocksByKind(body: string, kind: "assume" | "require"): string[] {
+  const results: string[] = [];
+  const re = new RegExp(`\\b${kind}\\s+constraint\\b(?:\\s+[a-zA-Z0-9_<>'"]+)?\\s*\\{`, "g");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const openBraceIdx = m.index + m[0].length - 1;
+    const { body: blockBody, endIndex } = extractBalancedBraceBody(body, openBraceIdx);
+    results.push(blockBody);
+    re.lastIndex = endIndex + 1;
+  }
+  return results;
+}
+
+function extractRequirementBlocksFromText(
+  sysmlText: string,
+): { shortId?: string | undefined; id: string; body: string; prefixText: string }[] {
+  const blocks: { shortId?: string | undefined; id: string; body: string; prefixText: string }[] = [];
+  const reqStartRegex = /requirement\s+(?:def\s+)?(?:<['"]?([^'">]+)['"]?>\s*)?([a-zA-Z0-9_]+)[^{};]*\{/g;
+  let match: RegExpExecArray | null;
+  while ((match = reqStartRegex.exec(sysmlText)) !== null) {
+    const shortId = match[1];
+    const id = match[2]!;
+    const openBraceIdx = match.index + match[0].length - 1;
+    const { body, endIndex } = extractBalancedBraceBody(sysmlText, openBraceIdx);
+    const prefixText = extractLeadingAnnotationsBeforeOffset(sysmlText, match.index);
+    blocks.push({ shortId, id, body, prefixText });
+    reqStartRegex.lastIndex = Math.max(reqStartRegex.lastIndex, endIndex + 1);
   }
   return blocks;
 }
 
+function resolveIntervalVarFromEnv(
+  varPath: string,
+  req: SysmlRequirement,
+  varEnv: ReadonlyMap<string, NumericalInterval>,
+  twinAnnotations?: ReadonlyMap<string, string>,
+): { interval: NumericalInterval; matchedVar: string } | undefined {
+  const direct = varEnv.get(varPath);
+  if (direct && !direct.isBottom()) return { interval: direct, matchedVar: varPath };
+
+  const candidates: string[] = [];
+  if (req.subjectVarName && varPath.startsWith(`${req.subjectVarName}.`)) {
+    const stripped = varPath.slice(req.subjectVarName.length + 1);
+    candidates.push(stripped);
+    if (req.subjectName) candidates.push(`${req.subjectName}.${stripped}`);
+  }
+  const leaf = varPath.split(".").pop()?.split("::").pop()?.trim() ?? "";
+  if (leaf) {
+    candidates.push(leaf);
+    if (req.subjectName) candidates.push(`${req.subjectName}.${leaf}`);
+  }
+
+  for (const cand of candidates) {
+    const iv = varEnv.get(cand);
+    if (iv && !iv.isBottom()) return { interval: iv, matchedVar: cand };
+  }
+
+  if (twinAnnotations) {
+    for (const [modelVar, twinTarget] of twinAnnotations.entries()) {
+      if (
+        twinTarget === varPath ||
+        (leaf &&
+          (twinTarget === leaf ||
+            twinTarget.endsWith(`.${leaf}`) ||
+            twinTarget.endsWith(`${req.id}.${leaf}`) ||
+            twinTarget.endsWith(`::${leaf}`)))
+      ) {
+        const iv = varEnv.get(modelVar);
+        if (iv && !iv.isBottom()) return { interval: iv, matchedVar: modelVar };
+      }
+    }
+  }
+
+  if (leaf) {
+    for (const [k, iv] of varEnv.entries()) {
+      if (!iv.isBottom() && (k === leaf || k.endsWith(`.${leaf}`))) {
+        return { interval: iv, matchedVar: k };
+      }
+    }
+  }
+
+  const staticNum = req.attributes?.[varPath] ?? (leaf ? req.attributes?.[leaf] : undefined);
+  if (staticNum !== undefined && Number.isFinite(staticNum)) {
+    return { interval: NumericalInterval.const(staticNum), matchedVar: varPath };
+  }
+
+  return undefined;
+}
+
+function resolveStringVarFromEnv(
+  varPath: string,
+  req: SysmlRequirement,
+  stringEnv?: ReadonlyMap<string, string>,
+): string | undefined {
+  if (stringEnv) {
+    const s = stringEnv.get(varPath);
+    if (s !== undefined) return s;
+    const leaf = varPath.split(".").pop()?.split("::").pop()?.trim() ?? "";
+    if (leaf && stringEnv.has(leaf)) return stringEnv.get(leaf);
+    for (const [k, v] of stringEnv.entries()) {
+      if (k.endsWith(`.${leaf}`)) return v;
+    }
+  }
+  const leaf = varPath.split(".").pop()?.split("::").pop()?.trim() ?? "";
+  return req.stringAttributes?.[varPath] ?? (leaf ? req.stringAttributes?.[leaf] : undefined);
+}
+
+function evaluateBuiltinIntervalCall(name: string, args: NumericalInterval[]): NumericalInterval | undefined {
+  const fn = name.split("::").pop()!.split(".").pop()!.toLowerCase();
+  if (args.length === 0) return undefined;
+  const a0 = args[0]!;
+  if (fn === "abs") {
+    if (a0.low >= 0) return a0;
+    if (a0.high <= 0) return a0.neg();
+    return new NumericalInterval(0, Math.max(-a0.low, a0.high));
+  }
+  if (fn === "sqrt") {
+    if (a0.high < 0) return undefined;
+    return new NumericalInterval(Math.sqrt(Math.max(0, a0.low)), Math.sqrt(a0.high));
+  }
+  if (fn === "exp") {
+    return new NumericalInterval(Math.exp(a0.low), Math.exp(a0.high));
+  }
+  if (fn === "log" || fn === "ln") {
+    if (a0.high <= 0) return undefined;
+    return new NumericalInterval(a0.low > 0 ? Math.log(a0.low) : -Infinity, Math.log(a0.high));
+  }
+  if (fn === "min") {
+    let low = a0.low;
+    let high = a0.high;
+    for (let i = 1; i < args.length; i++) {
+      low = Math.min(low, args[i]!.low);
+      high = Math.min(high, args[i]!.high);
+    }
+    return new NumericalInterval(low, high);
+  }
+  if (fn === "max") {
+    let low = a0.low;
+    let high = a0.high;
+    for (let i = 1; i < args.length; i++) {
+      low = Math.max(low, args[i]!.low);
+      high = Math.max(high, args[i]!.high);
+    }
+    return new NumericalInterval(low, high);
+  }
+  if (fn === "pow" && args.length >= 2) {
+    return evaluateIntervalPower(a0, args[1]!);
+  }
+  if (fn === "ceil") return new NumericalInterval(Math.ceil(a0.low), Math.ceil(a0.high));
+  if (fn === "floor") return new NumericalInterval(Math.floor(a0.low), Math.floor(a0.high));
+  return undefined;
+}
+
+function evaluateIntervalPower(base: NumericalInterval, exp: NumericalInterval): NumericalInterval | undefined {
+  if (base.isBottom() || exp.isBottom()) return undefined;
+  if (exp.isConstant()) {
+    const e = exp.low;
+    if (e === 0) return NumericalInterval.ONE;
+    if (e === 1) return base;
+    if (e === 2) return base.sqr();
+    if (Number.isInteger(e) && e > 0) {
+      if (e % 2 === 0) {
+        const l = Math.pow(base.low, e);
+        const h = Math.pow(base.high, e);
+        return base.contains(0)
+          ? new NumericalInterval(0, Math.max(l, h))
+          : new NumericalInterval(Math.min(l, h), Math.max(l, h));
+      }
+      return new NumericalInterval(Math.pow(base.low, e), Math.pow(base.high, e));
+    }
+    if (base.low >= 0) {
+      const a = Math.pow(base.low, e);
+      const b = Math.pow(base.high, e);
+      return new NumericalInterval(Math.min(a, b), Math.max(a, b));
+    }
+    return undefined;
+  }
+  if (base.low > 0) {
+    const cands = [
+      Math.pow(base.low, exp.low),
+      Math.pow(base.low, exp.high),
+      Math.pow(base.high, exp.low),
+      Math.pow(base.high, exp.high),
+    ].filter((v) => !Number.isNaN(v));
+    if (cands.length === 4) {
+      return new NumericalInterval(Math.min(...cands), Math.max(...cands));
+    }
+  }
+  return undefined;
+}
+
+function evaluateExternalCalculatorOverIntervals(
+  callName: string,
+  argVals: Array<{ num?: NumericalInterval | undefined; str?: string | undefined }>,
+  calcDef?: InlineCalcDef,
+): NumericalInterval | undefined {
+  const numDims: number[] = [];
+  for (let i = 0; i < argVals.length; i++) {
+    const a = argVals[i]!;
+    if (a.str !== undefined) continue;
+    if (!a.num) return undefined;
+    if (!Number.isFinite(a.num.low) || !Number.isFinite(a.num.high)) return undefined;
+    if (!a.num.isConstant()) numDims.push(i);
+  }
+
+  // Point evaluation fast path
+  if (numDims.length === 0) {
+    const pt = argVals.map((a) => (a.str !== undefined ? a.str : a.num!.low));
+    const v = invokeExternalCalculatorValue(callName, pt, calcDef);
+    return !Number.isNaN(v) ? NumericalInterval.const(v) : undefined;
+  }
+
+  if (numDims.length > 3) return undefined;
+  const steps = numDims.length === 1 ? 16 : 4;
+  const grids: number[][] = argVals.map((a) => {
+    if (a.str !== undefined) return [];
+    const lo = a.num!.low;
+    const hi = a.num!.high;
+    if (lo === hi) return [lo];
+    const pts: number[] = [];
+    for (let s = 0; s <= steps; s++) {
+      pts.push(lo + ((hi - lo) * s) / steps);
+    }
+    return pts;
+  });
+
+  let minRes = Infinity;
+  let maxRes = -Infinity;
+  const currentArgs: (number | string)[] = argVals.map((a) => (a.str !== undefined ? a.str : a.num!.low));
+
+  const recurse = (idx: number): boolean => {
+    if (idx === argVals.length) {
+      const v = invokeExternalCalculatorValue(callName, currentArgs, calcDef);
+      if (Number.isNaN(v)) return false;
+      if (v < minRes) minRes = v;
+      if (v > maxRes) maxRes = v;
+      return true;
+    }
+    if (argVals[idx]!.str !== undefined) {
+      currentArgs[idx] = argVals[idx]!.str!;
+      return recurse(idx + 1);
+    }
+    for (const pt of grids[idx]!) {
+      currentArgs[idx] = pt;
+      if (!recurse(idx + 1)) return false;
+    }
+    return true;
+  };
+
+  if (!recurse(0) || !Number.isFinite(minRes) || !Number.isFinite(maxRes)) return undefined;
+  return new NumericalInterval(minRes, maxRes);
+}
+
+export function evaluateConstraintExprInterval(
+  ast: ConstraintExprAst,
+  req: SysmlRequirement,
+  varEnv: ReadonlyMap<string, NumericalInterval>,
+  twinAnnotations?: ReadonlyMap<string, string>,
+  stringEnv?: ReadonlyMap<string, string>,
+  depth = 0,
+): { interval: NumericalInterval; primaryMatchedVar?: string | undefined } | undefined {
+  if (depth > 16) return undefined;
+
+  if (ast.kind === "lit") return { interval: NumericalInterval.const(ast.value) };
+  if (ast.kind === "str") return undefined;
+
+  if (ast.kind === "var") {
+    const resolved = resolveIntervalVarFromEnv(ast.path, req, varEnv, twinAnnotations);
+    if (!resolved) return undefined;
+    return { interval: resolved.interval, primaryMatchedVar: resolved.matchedVar };
+  }
+
+  if (ast.kind === "unary") {
+    const inner = evaluateConstraintExprInterval(ast.operand, req, varEnv, twinAnnotations, stringEnv, depth + 1);
+    if (!inner) return undefined;
+    return {
+      interval: ast.op === "-" ? inner.interval.neg() : inner.interval,
+      primaryMatchedVar: inner.primaryMatchedVar,
+    };
+  }
+
+  if (ast.kind === "bin") {
+    const left = evaluateConstraintExprInterval(ast.left, req, varEnv, twinAnnotations, stringEnv, depth + 1);
+    const right = evaluateConstraintExprInterval(ast.right, req, varEnv, twinAnnotations, stringEnv, depth + 1);
+    if (!left || !right) return undefined;
+    const primaryMatchedVar = left.primaryMatchedVar ?? right.primaryMatchedVar;
+    if (ast.op === "+") return { interval: left.interval.add(right.interval), primaryMatchedVar };
+    if (ast.op === "-") return { interval: left.interval.sub(right.interval), primaryMatchedVar };
+    if (ast.op === "*") return { interval: left.interval.mul(right.interval), primaryMatchedVar };
+    if (ast.op === "/") {
+      const divRes = left.interval.div(right.interval);
+      if (divRes.divisionByZero === "definite" || divRes.result.isBottom()) return undefined;
+      return { interval: divRes.result, primaryMatchedVar };
+    }
+    if (ast.op === "^") {
+      const powRes = evaluateIntervalPower(left.interval, right.interval);
+      return powRes ? { interval: powRes, primaryMatchedVar } : undefined;
+    }
+    return undefined;
+  }
+
+  if (ast.kind === "call") {
+    const evalArgs: Array<{ num?: NumericalInterval | undefined; str?: string | undefined }> = [];
+    let primaryMatchedVar: string | undefined;
+    for (const arg of ast.args) {
+      if (arg.kind === "str") {
+        evalArgs.push({ str: arg.value });
+        continue;
+      }
+      if (arg.kind === "var") {
+        const sVal = resolveStringVarFromEnv(arg.path, req, stringEnv);
+        if (sVal !== undefined) {
+          evalArgs.push({ str: sVal });
+          continue;
+        }
+      }
+      const numEval = evaluateConstraintExprInterval(arg, req, varEnv, twinAnnotations, stringEnv, depth + 1);
+      if (!numEval) return undefined;
+      if (!primaryMatchedVar && numEval.primaryMatchedVar) primaryMatchedVar = numEval.primaryMatchedVar;
+      evalArgs.push({ num: numEval.interval });
+    }
+
+    const calc = resolveInlineCalc(ast.name, req.calculators);
+    if (calc?.bodyAst) {
+      const localVarEnv = new Map<string, NumericalInterval>(varEnv);
+      const localStrEnv = new Map<string, string>(stringEnv ?? []);
+      const localReqAttrs: Record<string, number> = { ...(req.attributes ?? {}) };
+      const localReq: SysmlRequirement = { ...req, subjectVarName: undefined, attributes: localReqAttrs };
+      for (let i = 0; i < calc.params.length && i < evalArgs.length; i++) {
+        const paramName = calc.params[i]!;
+        const v = evalArgs[i]!;
+        if (v.str !== undefined) localStrEnv.set(paramName, v.str);
+        else if (v.num) localVarEnv.set(paramName, v.num);
+      }
+      const inlineRes = evaluateConstraintExprInterval(
+        calc.bodyAst,
+        localReq,
+        localVarEnv,
+        twinAnnotations,
+        localStrEnv,
+        depth + 1,
+      );
+      if (inlineRes) return { interval: inlineRes.interval, primaryMatchedVar };
+    }
+
+    const extRes = evaluateExternalCalculatorOverIntervals(ast.name, evalArgs, calc);
+    if (extRes) return { interval: extRes, primaryMatchedVar };
+
+    if (evalArgs.every((a) => a.num !== undefined)) {
+      const builtinRes = evaluateBuiltinIntervalCall(
+        ast.name,
+        evalArgs.map((a) => a.num!),
+      );
+      if (builtinRes) return { interval: builtinRes, primaryMatchedVar };
+    }
+    return undefined;
+  }
+
+  return undefined;
+}
+
+export function evaluateConstraintComparisonInterval(
+  comp: ConstraintComparisonAst,
+  req: SysmlRequirement,
+  varEnv: ReadonlyMap<string, NumericalInterval>,
+  twinAnnotations?: ReadonlyMap<string, string>,
+  stringEnv?: ReadonlyMap<string, string>,
+):
+  | {
+      status: "satisfied" | "definite" | "possible";
+      lhsInterval: NumericalInterval;
+      rhsInterval: NumericalInterval;
+      primaryMatchedVar?: string | undefined;
+    }
+  | undefined {
+  const lhsEval = evaluateConstraintExprInterval(comp.lhs, req, varEnv, twinAnnotations, stringEnv);
+  const rhsEval = evaluateConstraintExprInterval(comp.rhs, req, varEnv, twinAnnotations, stringEnv);
+  if (!lhsEval || !rhsEval) return undefined;
+
+  const L = lhsEval.interval;
+  const R = rhsEval.interval;
+  const primaryMatchedVar = lhsEval.primaryMatchedVar ?? rhsEval.primaryMatchedVar;
+
+  let status: "satisfied" | "definite" | "possible" = "possible";
+  switch (comp.op) {
+    case "<=":
+      if (L.high <= R.low) status = "satisfied";
+      else if (L.low > R.high) status = "definite";
+      break;
+    case "<":
+      if (L.high < R.low) status = "satisfied";
+      else if (L.low >= R.high) status = "definite";
+      break;
+    case ">=":
+      if (L.low >= R.high) status = "satisfied";
+      else if (L.high < R.low) status = "definite";
+      break;
+    case ">":
+      if (L.low > R.high) status = "satisfied";
+      else if (L.high <= R.low) status = "definite";
+      break;
+    case "==":
+      if (L.isConstant() && R.isConstant() && L.low === R.low) status = "satisfied";
+      else if (L.high < R.low || R.high < L.low) status = "definite";
+      break;
+    case "!=":
+      if (L.high < R.low || R.high < L.low) status = "satisfied";
+      else if (L.isConstant() && R.isConstant() && L.low === R.low) status = "definite";
+      break;
+  }
+
+  return { status, lhsInterval: L, rhsInterval: R, primaryMatchedVar };
+}
+
+/**
+ * Evaluates full symbolic & nonlinear SysML v2 requirements (including `assume constraint`
+ * guards, inline `calc def` formulas, and external table/WASM calculators) against a map of
+ * Modelica DAE variable intervals.
+ */
+export function evaluateSysmlRequirementsOnIntervals(
+  requirements: readonly SysmlRequirement[],
+  varEnv: ReadonlyMap<string, NumericalInterval>,
+  twinAnnotations?: ReadonlyMap<string, string>,
+  stringEnv?: ReadonlyMap<string, string>,
+): IntervalRequirementIssue[] {
+  const issues: IntervalRequirementIssue[] = [];
+
+  for (const req of requirements) {
+    const comp: ConstraintComparisonAst = req.constraintAst ?? {
+      lhs: { kind: "var", path: req.targetAttribute },
+      op: req.operator,
+      rhs: { kind: "lit", value: req.limitValue },
+    };
+
+    // Check `assume constraint` guards first: a definitively false assume makes the rule inapplicable.
+    let assumeUncertain = false;
+    if (req.assumeAsts && req.assumeAsts.length > 0) {
+      let inapplicable = false;
+      for (const assumeAst of req.assumeAsts) {
+        const assumeRes = evaluateConstraintComparisonInterval(assumeAst, req, varEnv, twinAnnotations, stringEnv);
+        if (!assumeRes) continue;
+        if (assumeRes.status === "definite") {
+          inapplicable = true;
+          break;
+        }
+        if (assumeRes.status === "possible") {
+          assumeUncertain = true;
+        }
+      }
+      if (inapplicable) continue;
+    }
+
+    const res = evaluateConstraintComparisonInterval(comp, req, varEnv, twinAnnotations, stringEnv);
+    if (!res || res.status === "satisfied") continue;
+
+    const severity: "definite" | "possible" = res.status === "definite" && !assumeUncertain ? "definite" : "possible";
+    const varName = res.primaryMatchedVar ?? req.targetAttribute;
+
+    let requiredLimit: number | undefined;
+    let suggestedValue: number | undefined;
+    let margin: number | undefined;
+
+    if (comp.op === "<=" || comp.op === "<") {
+      if (Number.isFinite(res.rhsInterval.low)) {
+        requiredLimit = res.rhsInterval.low;
+        margin = res.rhsInterval.low - res.lhsInterval.high;
+        suggestedValue =
+          comp.op === "<="
+            ? requiredLimit
+            : Number((requiredLimit - Math.max(1e-6, Math.abs(requiredLimit) * 1e-4)).toFixed(6));
+      }
+    } else if (comp.op === ">=" || comp.op === ">") {
+      if (Number.isFinite(res.rhsInterval.high)) {
+        requiredLimit = res.rhsInterval.high;
+        margin = res.lhsInterval.low - res.rhsInterval.high;
+        suggestedValue =
+          comp.op === ">="
+            ? requiredLimit
+            : Number((requiredLimit + Math.max(1e-6, Math.abs(requiredLimit) * 1e-4)).toFixed(6));
+      }
+    }
+
+    const sc = req.standardClause;
+    const clauseParts = [sc?.standard, sc?.clauseId].filter(Boolean);
+    const clauseLabel = clauseParts.length > 0 ? `[${clauseParts.join(" ")}] ` : "";
+    const fmt = (n: number) => (Number.isFinite(n) ? Number(n.toPrecision(6)).toString() : String(n));
+    const lhsDesc = `[${fmt(res.lhsInterval.low)}, ${fmt(res.lhsInterval.high)}]`;
+    const rhsDesc = `[${fmt(res.rhsInterval.low)}, ${fmt(res.rhsInterval.high)}]`;
+
+    issues.push({
+      requirementId: req.id,
+      clauseLabel: clauseParts.length > 0 ? clauseParts.join(" ") : undefined,
+      severity,
+      varName,
+      operator: comp.op,
+      lhsInterval: res.lhsInterval,
+      rhsInterval: res.rhsInterval,
+      requiredLimit,
+      suggestedValue,
+      margin,
+      message: `${clauseLabel}Requirement '${req.id}' violated for '${varName}': ${lhsDesc} fails constraint '${varName} ${comp.op} ${rhsDesc}'.`,
+    });
+  }
+
+  return issues;
+}
+
 function parseSysmlRequirementsFallback(sysmlText: string): SysmlRequirement[] {
-  const pkgMatch = sysmlText.match(/package\s+([a-zA-Z0-9_]+)/);
+  const pkgMatch = sysmlText.match(/(?:library\s+)?package\s+([a-zA-Z0-9_]+)/);
   const packageName = pkgMatch ? pkgMatch[1] : undefined;
+  const calculators = extractInlineCalcDefsFromText(sysmlText, packageName);
 
   const globalAttrs = new Map<string, number>();
-  const attrRegex = /attribute\s+([a-zA-Z0-9_]+)\s*(?::\s*[^=;\n]+)?=\s*([^;\n]+);/g;
+  const globalStrAttrs = new Map<string, string>();
+  collectStringAttributesFromText(sysmlText, globalStrAttrs);
+
+  const attrRegex = /attribute\s+(?::>>\s*)?([a-zA-Z0-9_]+)\s*(?::\s*[^=;\n]+)?=\s*([^;\n]+);/g;
   let attrMatch: RegExpExecArray | null;
   while ((attrMatch = attrRegex.exec(sysmlText)) !== null) {
     const name = attrMatch[1]!;
-    const val = evaluateSimpleSysmlArithmetic(attrMatch[2]!, globalAttrs);
+    const val = evaluateSimpleSysmlArithmetic(attrMatch[2]!, globalAttrs, globalStrAttrs, calculators);
     if (!Number.isNaN(val)) {
       globalAttrs.set(name, val);
     }
@@ -408,14 +1610,17 @@ function parseSysmlRequirementsFallback(sysmlText: string): SysmlRequirement[] {
   const results: SysmlRequirement[] = [];
 
   for (const block of blocks) {
-    const { shortId, id: reqId, body } = block;
+    const { shortId, id: reqId, body, prefixText } = block;
 
     const localAttrs = new Map<string, number>(globalAttrs);
-    const localAttrRegex = /attribute\s+([a-zA-Z0-9_]+)\s*(?::\s*[^=;\n]+)?=\s*([^;\n]+);/g;
+    const localStrAttrs = new Map<string, string>(globalStrAttrs);
+    collectStringAttributesFromText(body, localStrAttrs);
+
+    const localAttrRegex = /attribute\s+(?::>>\s*)?([a-zA-Z0-9_]+)\s*(?::\s*[^=;\n]+)?=\s*([^;\n]+);/g;
     let laMatch: RegExpExecArray | null;
     while ((laMatch = localAttrRegex.exec(body)) !== null) {
       const name = laMatch[1]!;
-      const val = evaluateSimpleSysmlArithmetic(laMatch[2]!, localAttrs);
+      const val = evaluateSimpleSysmlArithmetic(laMatch[2]!, localAttrs, localStrAttrs, calculators);
       if (!Number.isNaN(val)) {
         localAttrs.set(name, val);
       }
@@ -423,51 +1628,63 @@ function parseSysmlRequirementsFallback(sysmlText: string): SysmlRequirement[] {
 
     let subjectName: string | undefined;
     let subjectVarName: string | undefined;
-    const subjMatch = body.match(/subject\s+([a-zA-Z0-9_]+)\s*:\s*([a-zA-Z0-9_]+)/);
+    const subjMatch = body.match(/subject\s+([a-zA-Z0-9_]+)\s*:\s*([a-zA-Z0-9_.:]+)/);
     if (subjMatch) {
       subjectVarName = subjMatch[1];
-      subjectName = subjMatch[2];
+      subjectName = subjMatch[2]?.split("::").pop();
     }
 
-    const constraintBlockMatch = body.match(/require\s+constraint\s*\{([\s\S]*?)\}/);
-    if (constraintBlockMatch) {
-      const constraintText = constraintBlockMatch[1]!;
-      const clauses = constraintText
-        .split(/\band\b|[;\n]/)
-        .map((c) => c.trim())
-        .filter(Boolean);
+    const standardClause = extractStandardClauseFromText(body) ?? extractStandardClauseFromText(prefixText);
 
-      for (const clause of clauses) {
-        const relMatch = clause.match(/([a-zA-Z0-9_.]+)\s*(<=|>=|<|>)\s*([a-zA-Z0-9_.]+)/);
-        if (relMatch) {
-          const rawLhs = relMatch[1]!;
-          const op = relMatch[2]! as "<=" | ">=" | "<" | ">";
-          const rawRhs = relMatch[3]!;
+    const assumeAsts: ConstraintComparisonAst[] = [];
+    for (const assumeBlock of extractConstraintBlocksByKind(body, "assume")) {
+      for (const clause of splitConstraintClauses(assumeBlock)) {
+        const compAst = parseConstraintComparisonAst(clause);
+        if (compAst) assumeAsts.push(compAst);
+      }
+    }
 
-          const lhsParts = rawLhs.split(".");
-          const targetAttribute = lhsParts[lhsParts.length - 1]!;
-          const explicitVar = lhsParts.length > 1 ? lhsParts[0] : undefined;
+    const attrObj: Record<string, number> = {};
+    for (const [k, v] of localAttrs.entries()) {
+      if (!k.includes(".")) attrObj[k] = v;
+    }
+    const strObj: Record<string, string> = {};
+    for (const [k, v] of localStrAttrs.entries()) {
+      if (!k.includes(".")) strObj[k] = v;
+    }
 
-          const limitValue = evaluateSimpleSysmlArithmetic(rawRhs, localAttrs);
-          if (!Number.isNaN(limitValue)) {
-            const attrObj: Record<string, number> = {};
-            for (const [k, v] of localAttrs.entries()) {
-              if (!k.includes(".")) attrObj[k] = v;
-            }
+    const requireBlocks = extractConstraintBlocksByKind(body, "require");
+    for (const constraintText of requireBlocks) {
+      for (const clause of splitConstraintClauses(constraintText)) {
+        const compAst = parseConstraintComparisonAst(clause);
+        if (!compAst) continue;
+        if (compAst.op !== "<=" && compAst.op !== ">=" && compAst.op !== "<" && compAst.op !== ">") continue;
 
-            results.push({
-              id: reqId,
-              shortId,
-              packageName,
-              subjectName,
-              subjectVarName: subjectVarName ?? explicitVar,
-              targetAttribute,
-              operator: op,
-              limitValue,
-              attributes: attrObj,
-            });
-          }
-        }
+        const targetAttribute = collectPrimaryAttributeName(compAst.lhs, compAst.rhs);
+        if (!targetAttribute) continue;
+
+        const lhsVars = collectExprVars(compAst.lhs);
+        const firstVarPath = lhsVars[0] ?? "";
+        const explicitVar = firstVarPath.includes(".") ? firstVarPath.split(".")[0] : undefined;
+        const limitValue = evaluateConstraintExprScalar(compAst.rhs, localAttrs, localStrAttrs, calculators);
+
+        results.push({
+          id: reqId,
+          shortId,
+          packageName,
+          subjectName,
+          subjectVarName: subjectVarName ?? explicitVar,
+          targetAttribute,
+          operator: compAst.op,
+          limitValue,
+          attributes: attrObj,
+          stringAttributes: Object.keys(strObj).length > 0 ? strObj : undefined,
+          standardClause,
+          constraintAst: compAst,
+          assumeAsts: assumeAsts.length > 0 ? assumeAsts : undefined,
+          calculators: Object.keys(calculators).length > 0 ? calculators : undefined,
+          expressionText: clause,
+        });
       }
     }
   }
@@ -492,9 +1709,12 @@ export function parseSysmlRequirements(sysmlText: string, cstRoot?: SyntaxNode |
   const pkgNodes = rootNode.descendantsOfType(["Package", "LibraryPackage"]);
   const packageName =
     pkgNodes.length > 0 ? extractSysmlIdentification(pkgNodes[0]!).declaredName || undefined : undefined;
+  const calculators = extractInlineCalcDefsFromText(sysmlText, packageName);
 
   // Global/package-level attribute defaults (including part def attributes)
   const globalAttrMap = new Map<string, number>();
+  const globalStrMap = new Map<string, string>();
+  collectStringAttributesFromText(sysmlText, globalStrMap);
   const partDefNodes = rootNode.descendantsOfType(["PartDefinition", "PartUsage"]);
   for (const partNode of partDefNodes) {
     const { declaredName: partName } = extractSysmlIdentification(partNode);
@@ -510,6 +1730,16 @@ export function parseSysmlRequirements(sysmlText: string, cstRoot?: SyntaxNode |
     // Local attribute map inherits package/part attributes and overrides with requirement attributes
     const localAttrMap = new Map<string, number>(globalAttrMap);
     collectAttributeUsagesFromCst(reqNode, localAttrMap);
+    const localStrMap = new Map<string, string>(globalStrMap);
+    collectStringAttributesFromText(reqNode.text, localStrMap);
+
+    // Also parse local `:>>` numeric redefinitions if CST omitted field bindings
+    const redefAttrRe = /attribute\s+:>>\s*([a-zA-Z0-9_]+)\s*(?::\s*[^=;\n]+)?=\s*([^;\n]+);/g;
+    let rm: RegExpExecArray | null;
+    while ((rm = redefAttrRe.exec(reqNode.text)) !== null) {
+      const val = evaluateSimpleSysmlArithmetic(rm[2]!, localAttrMap, localStrMap, calculators);
+      if (!Number.isNaN(val)) localAttrMap.set(rm[1]!, val);
+    }
 
     // Extract `subject <subjectVarName> : <subjectName>;` from SubjectUsage CST node
     let subjectName: string | undefined;
@@ -530,23 +1760,89 @@ export function parseSysmlRequirements(sysmlText: string, cstRoot?: SyntaxNode |
       }
     }
 
-    // Collect plain record of numeric attributes in scope
+    // Standard compliance clause annotation (`@StandardClause` / `@ComplianceRule`) inside or before requirement
+    const prefixText = extractLeadingAnnotationsBeforeOffset(sysmlText, reqNode.startIndex);
+    const standardClause = extractStandardClauseFromText(reqNode.text) ?? extractStandardClauseFromText(prefixText);
+
+    // Collect plain record of numeric & string attributes in scope
     const attributesRecord: Record<string, number> = {};
     for (const [k, v] of localAttrMap.entries()) {
       if (!k.includes(".")) {
         attributesRecord[k] = v;
       }
     }
+    const stringAttributesRecord: Record<string, string> = {};
+    for (const [k, v] of localStrMap.entries()) {
+      if (!k.includes(".")) {
+        stringAttributesRecord[k] = v;
+      }
+    }
+    const strAttrsOrUndef = Object.keys(stringAttributesRecord).length > 0 ? stringAttributesRecord : undefined;
+    const calcsOrUndef = Object.keys(calculators).length > 0 ? calculators : undefined;
 
-    // Traverse RequirementConstraintMember CST nodes in pre-order
     const constraintMembers = reqNode.descendantsOfType(["RequirementConstraintMember"]);
+
+    // Pass 1: Collect `assume constraint` applicability guards
+    const assumeAsts: ConstraintComparisonAst[] = [];
+    for (const memberNode of constraintMembers) {
+      const kindNode = memberNode.childForFieldName("constraintKind");
+      if (kindNode && kindNode.text.trim() === "assume") {
+        const mText = memberNode.text;
+        const openBrace = mText.indexOf("{");
+        const body = openBrace >= 0 ? extractBalancedBraceBody(mText, openBrace).body : mText;
+        for (const clause of splitConstraintClauses(body)) {
+          const compAst = parseConstraintComparisonAst(clause);
+          if (compAst) assumeAsts.push(compAst);
+        }
+      }
+    }
+    const assumeOrUndef = assumeAsts.length > 0 ? assumeAsts : undefined;
+
+    // Pass 2: Extract `require constraint` comparisons via full AST parser first, then CST fallback
     for (const memberNode of constraintMembers) {
       const kindNode = memberNode.childForFieldName("constraintKind");
       if (kindNode && kindNode.text.trim() === "assume") {
         continue;
       }
 
-      // Collect pre-order list of CST nodes inside this constraint member
+      let extractedAstClause = false;
+      const mText = memberNode.text;
+      const openBrace = mText.indexOf("{");
+      if (openBrace >= 0) {
+        const { body } = extractBalancedBraceBody(mText, openBrace);
+        for (const clause of splitConstraintClauses(body)) {
+          const compAst = parseConstraintComparisonAst(clause);
+          if (!compAst) continue;
+          if (compAst.op !== "<=" && compAst.op !== ">=" && compAst.op !== "<" && compAst.op !== ">") continue;
+
+          const targetAttribute = collectPrimaryAttributeName(compAst.lhs, compAst.rhs);
+          if (!targetAttribute) continue;
+
+          const limitValue = evaluateConstraintExprScalar(compAst.rhs, localAttrMap, localStrMap, calculators);
+          extractedAstClause = true;
+          requirements.push({
+            id: reqId,
+            shortId,
+            packageName,
+            subjectName,
+            subjectVarName,
+            targetAttribute,
+            operator: compAst.op,
+            limitValue,
+            attributes: attributesRecord,
+            stringAttributes: strAttrsOrUndef,
+            standardClause,
+            constraintAst: compAst,
+            assumeAsts: assumeOrUndef,
+            calculators: calcsOrUndef,
+            expressionText: clause,
+          });
+        }
+      }
+
+      if (extractedAstClause) continue;
+
+      // Fallback pre-order CST traversal for shorthand/unbraced CST nodes
       const preOrderNodes: SyntaxNode[] = [];
       const walkPreOrder = (n: SyntaxNode): void => {
         preOrderNodes.push(n);
@@ -599,6 +1895,12 @@ export function parseSysmlRequirements(sysmlText: string, cstRoot?: SyntaxNode |
                 operator: opText,
                 limitValue,
                 attributes: attributesRecord,
+                stringAttributes: strAttrsOrUndef,
+                standardClause,
+                constraintAst: parseConstraintComparisonAst(cur.text),
+                assumeAsts: assumeOrUndef,
+                calculators: calcsOrUndef,
+                expressionText: cur.text,
               });
               for (const d of cur.descendantsOfType([
                 "RelationalExpression",
@@ -633,7 +1935,6 @@ export function parseSysmlRequirements(sysmlText: string, cstRoot?: SyntaxNode |
           const targetAttribute = lhsNames.length > 0 ? lhsNames[lhsNames.length - 1]! : "";
           if (!targetAttribute) continue;
 
-          // Find the immediately following RHS value expression in pre-order outside `parentErr`
           let rhsNode: SyntaxNode | null = null;
           for (let j = idx + 1; j < preOrderNodes.length; j++) {
             const cand = preOrderNodes[j]!;
@@ -667,6 +1968,10 @@ export function parseSysmlRequirements(sysmlText: string, cstRoot?: SyntaxNode |
                 operator: opText,
                 limitValue,
                 attributes: attributesRecord,
+                stringAttributes: strAttrsOrUndef,
+                standardClause,
+                assumeAsts: assumeOrUndef,
+                calculators: calcsOrUndef,
               });
             }
           }
@@ -792,6 +2097,10 @@ export function bindRequirementsToModelica(
   const bound: BoundRequirement[] = [];
 
   for (const req of requirements) {
+    if (!Number.isFinite(req.limitValue)) continue;
+    if (req.assumeAsts && req.assumeAsts.length > 0) continue;
+    if (req.constraintAst && req.constraintAst.lhs.kind !== "var") continue;
+
     let matchedIndex = -1;
 
     // 1. Check explicit twin annotations first
@@ -841,6 +2150,22 @@ export function bindRequirementsToModelica(
 }
 
 /**
+ * Merges inline `calc def` definitions across multiple parsed SysML v2 files so requirements
+ * in one document can call inline `calc def` formulas defined in another standard pack file.
+ */
+export function linkRequirementCalculators(requirements: readonly SysmlRequirement[]): SysmlRequirement[] {
+  const merged: Record<string, InlineCalcDef> = {};
+  for (const req of requirements) {
+    if (req.calculators) Object.assign(merged, req.calculators);
+  }
+  if (Object.keys(merged).length === 0) return [...requirements];
+  return requirements.map((req) => ({
+    ...req,
+    calculators: req.calculators ? { ...merged, ...req.calculators } : merged,
+  }));
+}
+
+/**
  * Registers parsed SysML v2 requirements and Modelica twin bindings as formal
  * literal assertions inside a `SemanticTheoryCoordinator`.
  */
@@ -851,6 +2176,7 @@ export function assertRequirementsToTheoryCoordinator(
 ): void {
   let litId = baseLiteralId;
   for (const req of requirements) {
+    if (!Number.isFinite(req.limitValue)) continue;
     const varName = req.subjectName ? `${req.subjectName}.${req.targetAttribute}` : req.targetAttribute;
     const bounds: [number, number] =
       req.operator === "<=" || req.operator === "<" ? [-Infinity, req.limitValue] : [req.limitValue, Infinity];

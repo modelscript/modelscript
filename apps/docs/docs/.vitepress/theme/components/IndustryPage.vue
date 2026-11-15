@@ -1,25 +1,255 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script setup lang="ts">
-import { computed } from "vue";
-import { INDUSTRIES, INDUSTRY_BY_SLUG } from "../data/industries";
-import { LANGUAGE_BY_SLUG, TIER_LABELS } from "../data/languages";
+import { useData } from "vitepress";
+import { computed, ref, watch } from "vue";
+import benchmarksData from "../data/benchmarks.generated.json";
+import { INDUSTRIES, INDUSTRY_BY_SLUG, type Industry } from "../data/industries";
+import { LANGUAGE_BY_SLUG, TIER_LABELS, type LanguageSpec } from "../data/languages";
+import languagesGenerated from "../data/languages.generated.json";
+import mcpToolsData from "../data/mcp-tools.generated.json";
 import { useAnsatzOrigin } from "../util/ansatz";
 import MsIcon from "./MsIcon.vue";
 
 const props = defineProps<{ slug: string }>();
 
 const { ansatzOrigin } = useAnsatzOrigin();
+const { frontmatter, isDark } = useData();
 
-const industry = computed(() => INDUSTRY_BY_SLUG[props.slug]);
-const languages = computed(() =>
-  (industry.value?.languages ?? []).map((s) => LANGUAGE_BY_SLUG[s]).filter((l) => l !== undefined),
+interface IndustryExampleItem {
+  slug: string;
+  name: string;
+  ext: string;
+  filename: string;
+  title: string;
+  description: string;
+  viewLabel: string;
+  code: string;
+  lineCount: number;
+  highlightedLines?: string[];
+  permalinkToken: string;
+  svgDark: string;
+  svgLight: string;
+}
+
+interface GeneratedLangEntry {
+  slug: string;
+  cliCommand?: string;
+  capabilities?: {
+    parse: boolean;
+    lint: boolean;
+    dae: boolean;
+    simulate: boolean;
+    projections: string[];
+  };
+  ruleCount?: number;
+}
+
+interface BenchmarkCatalogEntry {
+  id: string;
+  name: string;
+  version: string;
+  license: string;
+  referenceTool: string;
+  metricTarget: string;
+  threshold: number;
+  description: string;
+}
+
+interface BenchmarkLangEntry {
+  slug: string;
+  catalogIds?: string[];
+  scorecard?: {
+    testFileCount?: number;
+    testCaseCount?: number;
+    testedErrorCodesCount?: number;
+    auditedTier?: string;
+  };
+  summary?: {
+    totalCases?: number;
+    passedCases?: number;
+    passRate?: number;
+  };
+}
+
+interface McpToolMeta {
+  name: string;
+  description: string;
+  category: string;
+}
+
+const LANG_GEN_BY_SLUG: Record<string, GeneratedLangEntry> = Object.fromEntries(
+  (languagesGenerated as GeneratedLangEntry[]).map((l) => [l.slug, l]),
 );
+const CATALOG_BY_ID = (benchmarksData as { catalogById: Record<string, BenchmarkCatalogEntry> }).catalogById;
+const BENCH_BY_SLUG: Record<string, BenchmarkLangEntry> = Object.fromEntries(
+  ((benchmarksData as { languages: BenchmarkLangEntry[] }).languages ?? []).map((b) => [b.slug, b]),
+);
+const MCP_BY_NAME: Record<string, McpToolMeta> = Object.fromEntries(
+  ((mcpToolsData as { tools: McpToolMeta[] }).tools ?? []).map((t) => [t.name, t]),
+);
+
+const activeTrackId = ref<string>("all");
+const activeExampleIdx = ref<number>(0);
+const workbenchView = ref<"split" | "code" | "diagram">("split");
+const copiedExample = ref<boolean>(false);
+const copiedCli = ref<boolean>(false);
+
+watch(
+  () => props.slug,
+  () => {
+    activeTrackId.value = "all";
+    activeExampleIdx.value = 0;
+    workbenchView.value = "split";
+    copiedExample.value = false;
+    copiedCli.value = false;
+  },
+);
+
+const industry = computed<Industry | undefined>(() => INDUSTRY_BY_SLUG[props.slug]);
+
+const allLanguages = computed(() =>
+  (industry.value?.languages ?? [])
+    .map((s) => LANGUAGE_BY_SLUG[s])
+    .filter((l): l is LanguageSpec => l !== undefined),
+);
+
+const activeTrack = computed(() =>
+  activeTrackId.value === "all"
+    ? undefined
+    : industry.value?.tracks?.find((t) => t.id === activeTrackId.value),
+);
+
+const visibleLanguages = computed(() => {
+  const slugs = activeTrack.value ? activeTrack.value.languages : (industry.value?.languages ?? []);
+  return slugs
+    .map((s) => LANGUAGE_BY_SLUG[s])
+    .filter((l): l is LanguageSpec => l !== undefined)
+    .map((spec) => ({
+      spec,
+      meta: LANG_GEN_BY_SLUG[spec.slug],
+      bench: BENCH_BY_SLUG[spec.slug],
+    }));
+});
+
+const industryExamples = computed<IndustryExampleItem[]>(() => {
+  const raw = (frontmatter.value as { _industryExamples?: IndustryExampleItem[] })?._industryExamples;
+  return Array.isArray(raw) ? raw : [];
+});
+
+const activeExample = computed<IndustryExampleItem | undefined>(() => {
+  return industryExamples.value[activeExampleIdx.value] ?? industryExamples.value[0];
+});
+
+const activeCodeLines = computed<string[]>(() => {
+  return activeExample.value ? activeExample.value.code.split("\n") : [];
+});
+
+const activeExampleSvg = computed<string>(() => {
+  if (!activeExample.value) return "";
+  return isDark.value ? activeExample.value.svgDark : activeExample.value.svgLight;
+});
+
+function morselHrefFor(ex: IndustryExampleItem | undefined): string {
+  if (!ex?.permalinkToken) return `${ansatzOrigin.value}/morsel`;
+  return `${ansatzOrigin.value}/morsel#m=${ex.permalinkToken}`;
+}
+
+const heroMorselHref = computed(() => morselHrefFor(industryExamples.value[0]));
+
+const domainBenchStats = computed(() => {
+  const entries = (industry.value?.languages ?? [])
+    .map((s) => BENCH_BY_SLUG[s])
+    .filter((b): b is BenchmarkLangEntry => b !== undefined);
+  let testCases = 0;
+  let passedCases = 0;
+  let totalBenchCases = 0;
+  for (const b of entries) {
+    testCases += b.scorecard?.testCaseCount ?? 0;
+    passedCases += b.summary?.passedCases ?? 0;
+    totalBenchCases += b.summary?.totalCases ?? 0;
+  }
+  return {
+    auditedFormats: entries.length,
+    testCases,
+    passedCases,
+    totalBenchCases,
+    passRate: totalBenchCases > 0 ? Math.round((passedCases / totalBenchCases) * 100) : 100,
+  };
+});
+
+const benchmarkEntries = computed(() => {
+  const ind = industry.value;
+  if (!ind) return [];
+  const suiteToLang = new Map<string, string>();
+  for (const slug of ind.languages) {
+    for (const cid of BENCH_BY_SLUG[slug]?.catalogIds ?? []) {
+      if (!suiteToLang.has(cid)) suiteToLang.set(cid, slug);
+    }
+  }
+  return ind.benchmarkSuites
+    .map((id) => {
+      const cat = CATALOG_BY_ID[id];
+      if (!cat) return undefined;
+      return {
+        ...cat,
+        langSlug: suiteToLang.get(id) ?? ind.languages[0] ?? "overview",
+      };
+    })
+    .filter((c): c is BenchmarkCatalogEntry & { langSlug: string } => c !== undefined);
+});
+
+const mcpToolEntries = computed(() =>
+  (industry.value?.mcpTools ?? []).map((name) => {
+    const found = MCP_BY_NAME[name];
+    return {
+      name,
+      category: found?.category ?? "Domain Analysis",
+      description: found?.description ?? "Registered MCP verification and simulation tool.",
+    };
+  }),
+);
+
 const related = computed(() => {
   const ind = industry.value;
   if (!ind) return [];
-  const same = INDUSTRIES.filter((i) => i.slug !== ind.slug && i.group === ind.group);
-  return same.slice(0, 3);
+  if (ind.relatedSlugs?.length) {
+    return ind.relatedSlugs
+      .map((r) => {
+        const target = INDUSTRY_BY_SLUG[r.slug];
+        return target ? { industry: target, reason: r.reason } : undefined;
+      })
+      .filter((r): r is { industry: Industry; reason: string } => r !== undefined);
+  }
+  return INDUSTRIES.filter((i) => i.slug !== ind.slug && i.group === ind.group)
+    .slice(0, 3)
+    .map((target) => ({ industry: target, reason: target.tagline }));
 });
+
+function formatThreshold(metricTarget: string, threshold: number): string {
+  const label = metricTarget === "max-relative-error" ? "Rel Err" : metricTarget.toUpperCase();
+  if (metricTarget === "ast-pass-rate") return `${label} ${(threshold * 100).toFixed(0)}%`;
+  return `${label} < ${threshold}`;
+}
+
+async function copyText(text: string, which: "cli" | "example") {
+  if (typeof navigator === "undefined" || !navigator.clipboard) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    if (which === "cli") {
+      copiedCli.value = true;
+      setTimeout(() => {
+        copiedCli.value = false;
+      }, 1800);
+    } else {
+      copiedExample.value = true;
+      setTimeout(() => {
+        copiedExample.value = false;
+      }, 1800);
+    }
+  } catch {
+    /* ignore clipboard permission errors */
+  }
+}
 </script>
 
 <template>
@@ -41,11 +271,30 @@ const related = computed(() => {
           </span>
           <h1 class="ind-title">{{ industry.headline }}</h1>
           <p class="ind-summary">{{ industry.summary }}</p>
+
+          <div class="ind-hero-stats">
+            <span class="hero-stat-pill">
+              <strong>{{ allLanguages.length }}</strong> domain formats
+            </span>
+            <span class="hero-stat-pill">
+              <strong>{{ industry.standards.length }}</strong> verified standards
+            </span>
+            <span v-if="domainBenchStats.testCases > 0" class="hero-stat-pill">
+              <strong>{{ domainBenchStats.testCases.toLocaleString() }}</strong> automated tests
+            </span>
+            <span v-if="benchmarkEntries.length > 0" class="hero-stat-pill">
+              <strong>{{ benchmarkEntries.length }}</strong> benchmark suites
+            </span>
+          </div>
+
           <div class="ind-actions">
             <a class="ms-btn ms-btn-lg ms-btn-brand" href="/guide/getting-started">
               Get started <MsIcon name="arrowRight" :size="16" :stroke="2" />
             </a>
-            <a class="ms-btn ms-btn-lg ms-btn-ghost" :href="`${ansatzOrigin}/morsel`" target="_blank" rel="noopener noreferrer">Open Morsel</a>
+            <a class="ms-btn ms-btn-lg ms-btn-ghost" :href="heroMorselHref" target="_blank" rel="noopener noreferrer">
+              {{ industryExamples.length ? `Open ${industryExamples[0]?.name} in Morsel` : "Open Morsel" }}
+              <MsIcon name="arrow-up-right" :size="15" :stroke="2" />
+            </a>
           </div>
         </div>
 
@@ -53,6 +302,15 @@ const related = computed(() => {
           <div class="term-bar">
             <span class="dot" /><span class="dot" /><span class="dot" />
             <span class="term-title">msx — {{ industry.slug }}</span>
+            <button
+              type="button"
+              class="term-copy"
+              :aria-label="copiedCli ? 'CLI commands copied' : 'Copy CLI commands'"
+              @click="copyText(industry.cli.join('\n'), 'cli')"
+            >
+              <MsIcon :name="copiedCli ? 'check' : 'copy'" :size="12" />
+              <span>{{ copiedCli ? "Copied" : "Copy" }}</span>
+            </button>
           </div>
           <pre
             class="term-body"
@@ -62,8 +320,149 @@ const related = computed(() => {
       </div>
     </section>
 
+    <!-- Interactive Model & Schematic Workbench -->
+    <section v-if="industryExamples.length && activeExample" class="ms-section">
+      <div class="ms-container">
+        <header class="ms-section-head">
+          <span class="ms-eyebrow">Interactive Workbench</span>
+          <h2 class="ms-h2">Inspect live {{ industry.name.toLowerCase() }} models &amp; schematics</h2>
+          <p class="ms-lead">
+            Pre-rendered from the same parser, diagram layout engine, and Morsel WebAssembly studio used in production.
+          </p>
+        </header>
+
+        <div class="wb-shell">
+          <div class="wb-topbar">
+            <div class="wb-model-tabs" role="tablist" aria-label="Featured domain models">
+              <button
+                v-for="(ex, idx) in industryExamples"
+                :key="ex.slug"
+                type="button"
+                role="tab"
+                class="wb-model-tab"
+                :class="{ active: idx === activeExampleIdx }"
+                :aria-selected="idx === activeExampleIdx"
+                @click="activeExampleIdx = idx"
+              >
+                <span class="wb-model-ext">{{ ex.ext.split(",")[0]?.trim() }}</span>
+                <span class="wb-model-name">{{ ex.name }}</span>
+              </button>
+            </div>
+
+            <div class="wb-controls">
+              <div class="wb-view-tabs" role="tablist" aria-label="Workbench view mode">
+                <button
+                  type="button"
+                  role="tab"
+                  class="wb-view-btn"
+                  :class="{ active: workbenchView === 'split' }"
+                  :aria-selected="workbenchView === 'split'"
+                  @click="workbenchView = 'split'"
+                >
+                  <MsIcon name="layers" :size="13" />
+                  <span>Split</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  class="wb-view-btn"
+                  :class="{ active: workbenchView === 'code' }"
+                  :aria-selected="workbenchView === 'code'"
+                  @click="workbenchView = 'code'"
+                >
+                  <MsIcon name="code" :size="13" />
+                  <span>Code</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  class="wb-view-btn"
+                  :class="{ active: workbenchView === 'diagram' }"
+                  :aria-selected="workbenchView === 'diagram'"
+                  @click="workbenchView = 'diagram'"
+                >
+                  <MsIcon name="workflow" :size="13" />
+                  <span>Schematic</span>
+                </button>
+              </div>
+              <a
+                :href="morselHrefFor(activeExample)"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="wb-morsel-btn"
+              >
+                <span>Open in Morsel</span>
+                <MsIcon name="arrow-up-right" :size="13" />
+              </a>
+            </div>
+          </div>
+
+          <div class="wb-caption">
+            <div class="wb-caption-title">
+              <code class="wb-filename">{{ activeExample.filename }}</code>
+              <strong>{{ activeExample.title }}</strong>
+            </div>
+            <p class="wb-desc">{{ activeExample.description }}</p>
+          </div>
+
+          <div
+            class="wb-body"
+            :class="{
+              'is-split': workbenchView === 'split',
+              'is-code': workbenchView === 'code',
+              'is-diagram': workbenchView === 'diagram',
+            }"
+          >
+            <div v-if="workbenchView !== 'diagram'" class="wb-code-pane">
+              <div class="wb-pane-bar">
+                <span>
+                  <MsIcon name="terminal" :size="12" />
+                  Source ({{ activeExample.lineCount }} lines)
+                </span>
+                <div class="wb-pane-actions">
+                  <a :href="`/languages/${activeExample.slug}`" class="wb-lang-link">
+                    {{ activeExample.name }} docs <MsIcon name="arrowRight" :size="12" />
+                  </a>
+                  <button
+                    type="button"
+                    class="wb-copy-btn"
+                    @click="copyText(activeExample.code, 'example')"
+                  >
+                    <MsIcon :name="copiedExample ? 'check' : 'copy'" :size="12" />
+                    <span>{{ copiedExample ? "Copied" : "Copy" }}</span>
+                  </button>
+                </div>
+              </div>
+              <div class="wb-code-scroll">
+                <pre class="wb-code-pre shiki"><code><span
+                  v-for="(line, idx) in activeCodeLines"
+                  :key="idx"
+                  class="wb-code-line"
+                ><span class="wb-line-num">{{ idx + 1 }}</span><span
+                  v-if="activeExample.highlightedLines?.[idx]"
+                  class="wb-line-text"
+                  v-html="activeExample.highlightedLines[idx]"
+                /><span v-else class="wb-line-text">{{ line }}</span></span></code></pre>
+              </div>
+            </div>
+
+            <div v-if="workbenchView !== 'code'" class="wb-diagram-pane">
+              <div class="wb-pane-bar">
+                <span>
+                  <MsIcon name="workflow" :size="12" />
+                  {{ activeExample.viewLabel }}
+                </span>
+                <span class="wb-theme-tag">{{ isDark ? "Dark schematic" : "Light schematic" }}</span>
+              </div>
+              <div class="wb-svg-stage" v-html="activeExampleSvg" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Pains -->
-    <section class="ms-section">
+    <section class="ms-section ms-section-alt">
       <div class="ms-container">
         <header class="ms-section-head">
           <span class="ms-eyebrow">The challenge</span>
@@ -80,7 +479,7 @@ const related = computed(() => {
     </section>
 
     <!-- Workflow -->
-    <section class="ms-section ms-section-alt">
+    <section class="ms-section">
       <div class="ms-container">
         <header class="ms-section-head">
           <span class="ms-eyebrow">Reference workflow</span>
@@ -99,7 +498,7 @@ const related = computed(() => {
     </section>
 
     <!-- Capabilities -->
-    <section class="ms-section">
+    <section class="ms-section ms-section-alt">
       <div class="ms-container">
         <header class="ms-section-head">
           <span class="ms-eyebrow">Capabilities</span>
@@ -118,24 +517,77 @@ const related = computed(() => {
     </section>
 
     <!-- Formats + standards -->
-    <section class="ms-section ms-section-alt">
+    <section class="ms-section">
       <div class="ms-container fmt-layout">
         <div>
           <header class="ms-section-head left">
             <span class="ms-eyebrow">Supported formats</span>
             <h2 class="ms-h2">Works with the tools you already use</h2>
           </header>
+
+          <div v-if="industry.tracks?.length" class="track-filter-wrap">
+            <div class="track-tabs" role="tablist" aria-label="Filter formats by domain sub-track">
+              <button
+                type="button"
+                role="tab"
+                class="track-tab"
+                :class="{ active: activeTrackId === 'all' }"
+                :aria-selected="activeTrackId === 'all'"
+                @click="activeTrackId = 'all'"
+              >
+                <span>All formats</span>
+                <span class="track-count">{{ allLanguages.length }}</span>
+              </button>
+              <button
+                v-for="t in industry.tracks"
+                :key="t.id"
+                type="button"
+                role="tab"
+                class="track-tab"
+                :class="{ active: activeTrackId === t.id }"
+                :aria-selected="activeTrackId === t.id"
+                @click="activeTrackId = t.id"
+              >
+                <span>{{ t.label }}</span>
+                <span class="track-count">{{ t.languages.length }}</span>
+              </button>
+            </div>
+            <p v-if="activeTrack" class="track-summary">{{ activeTrack.summary }}</p>
+          </div>
+
           <div class="fmt-grid">
-            <a v-for="l in languages" :key="l!.slug" :href="`/languages/${l!.slug}`" class="fmt-card">
+            <a
+              v-for="item in visibleLanguages"
+              :key="item.spec.slug"
+              :href="`/languages/${item.spec.slug}`"
+              class="fmt-card"
+            >
               <div class="fmt-head">
-                <span class="fmt-ext">{{ l!.ext }}</span>
-                <span class="fmt-tier" :class="`fmt-tier--${l!.tier}`">{{ TIER_LABELS[l!.tier] }}</span>
+                <span class="fmt-ext">{{ item.spec.ext }}</span>
+                <span class="fmt-tier" :class="`fmt-tier--${item.spec.tier}`">
+                  {{ TIER_LABELS[item.spec.tier] }}
+                </span>
               </div>
-              <span class="fmt-name">{{ l!.name }}</span>
-              <span class="fmt-role">{{ l!.role }}</span>
+              <span class="fmt-name">{{ item.spec.name }}</span>
+              <span class="fmt-role">{{ item.spec.role }}</span>
+              <div v-if="item.meta" class="fmt-caps">
+                <span v-if="item.meta.capabilities?.simulate" class="fmt-cap-pill">Simulate</span>
+                <span v-else-if="item.meta.capabilities?.dae" class="fmt-cap-pill">DAE</span>
+                <span v-if="(item.meta.ruleCount ?? 0) > 0" class="fmt-cap-pill">
+                  {{ item.meta.ruleCount }} lint rules
+                </span>
+                <span
+                  v-for="proj in (item.meta.capabilities?.projections ?? []).slice(0, 2)"
+                  :key="proj"
+                  class="fmt-cap-pill"
+                >
+                  {{ proj }}
+                </span>
+              </div>
             </a>
           </div>
         </div>
+
         <aside class="std-card">
           <h3><MsIcon name="shield" :size="20" :duotone="true" /> Standards &amp; interchange</h3>
           <ul>
@@ -148,23 +600,158 @@ const related = computed(() => {
       </div>
     </section>
 
-    <!-- Related + CTA -->
+    <!-- Verified Benchmarks + Reference Workspaces -->
+    <section v-if="benchmarkEntries.length || industry.workspaces?.length" class="ms-section ms-section-alt">
+      <div class="ms-container">
+        <header class="ms-section-head left">
+          <span class="ms-eyebrow">Empirical verification</span>
+          <h2 class="ms-h2">Validated against upstream reference solvers</h2>
+          <p v-if="domainBenchStats.auditedFormats > 0" class="ms-lead left-lead">
+            Across <strong>{{ domainBenchStats.auditedFormats }}</strong> audited formats in this domain:
+            <strong>{{ domainBenchStats.testCases.toLocaleString() }}</strong> unit &amp; regression test cases and
+            <strong>{{ domainBenchStats.passedCases }}/{{ domainBenchStats.totalBenchCases }}</strong> reference benchmark checks
+            ({{ domainBenchStats.passRate }}% pass rate).
+          </p>
+        </header>
+
+        <div v-if="benchmarkEntries.length" class="bench-grid">
+          <a
+            v-for="b in benchmarkEntries"
+            :key="b.id"
+            :href="`/languages/${b.langSlug}`"
+            class="bench-card"
+          >
+            <div class="bench-top">
+              <span class="bench-ref">{{ b.referenceTool }}</span>
+              <span class="bench-thresh">{{ formatThreshold(b.metricTarget, b.threshold) }}</span>
+            </div>
+            <h3>{{ b.name }}</h3>
+            <p>{{ b.description }}</p>
+            <div class="bench-foot">
+              <span class="bench-meta">v{{ b.version }} · {{ b.license }}</span>
+              <span class="bench-link">
+                View language <MsIcon name="arrowRight" :size="13" />
+              </span>
+            </div>
+          </a>
+        </div>
+
+        <div v-if="industry.workspaces?.length" class="ws-block">
+          <div class="ws-header">
+            <span class="ms-eyebrow">Digital-Thread Reference Workspaces</span>
+            <h3>Multi-format example repositories</h3>
+          </div>
+          <div class="ws-grid" :class="{ 'ws-grid--single': industry.workspaces.length === 1 }">
+            <article v-for="ws in industry.workspaces" :key="ws.path" class="ws-card">
+              <div class="ws-top">
+                <h4>{{ ws.name }}</h4>
+                <code class="ws-path">{{ ws.path }}</code>
+              </div>
+              <p class="ws-summary">{{ ws.summary }}</p>
+              <div class="ws-langs">
+                <a
+                  v-for="slug in ws.languages"
+                  :key="slug"
+                  :href="`/languages/${slug}`"
+                  class="ws-lang-chip"
+                >
+                  {{ LANGUAGE_BY_SLUG[slug]?.name ?? slug }}
+                </a>
+              </div>
+              <ul class="ws-highlights">
+                <li v-for="h in ws.highlights" :key="h">
+                  <MsIcon name="check" :size="14" :stroke="2.2" />
+                  <span>{{ h }}</span>
+                </li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MCP AI Tools & CI/Enterprise Readiness -->
     <section class="ms-section">
       <div class="ms-container">
+        <div class="ops-grid">
+          <div class="ops-panel">
+            <div class="ops-head">
+              <span class="ms-eyebrow">AI Agent Integration</span>
+              <h2>Native MCP tools for {{ industry.name.toLowerCase() }}</h2>
+              <p>
+                Every parse, structural check, solver run, and compliance verifier below is exposed directly to IDE agents
+                via <code>@modelscript/mcp</code>.
+              </p>
+            </div>
+            <div class="mcp-list">
+              <div v-for="tool in mcpToolEntries" :key="tool.name" class="mcp-item">
+                <div class="mcp-item-head">
+                  <code class="mcp-name">{{ tool.name }}</code>
+                  <span class="mcp-cat">{{ tool.category }}</span>
+                </div>
+                <p class="mcp-desc">{{ tool.description }}</p>
+              </div>
+            </div>
+            <a href="/reference/mcp-and-ide" class="ops-more">
+              Browse all MCP &amp; IDE tools <MsIcon name="arrowRight" :size="14" />
+            </a>
+          </div>
+
+          <div class="ops-panel">
+            <div class="ops-head">
+              <span class="ms-eyebrow">CI/CD &amp; Enterprise Governance</span>
+              <h2>Production gates &amp; audit readiness</h2>
+              <p>
+                Emit deterministic CI reports, signed FMU/SSP artifacts, and air-gapped audit records without per-seat
+                floating license servers.
+              </p>
+            </div>
+
+            <div class="comp-block">
+              <span class="comp-label">CI &amp; Verification Artifacts</span>
+              <div class="comp-chips">
+                <span v-for="fmt in industry.compliance.ciFormats" :key="fmt" class="comp-chip">{{ fmt }}</span>
+              </div>
+            </div>
+
+            <div class="comp-block">
+              <span class="comp-label">Regulatory &amp; Enterprise Support</span>
+              <ul class="comp-list">
+                <li v-for="feat in industry.compliance.enterpriseFeatures" :key="feat">
+                  <MsIcon name="shield" :size="14" />
+                  <span>{{ feat }}</span>
+                </li>
+              </ul>
+            </div>
+
+            <div class="comp-links">
+              <a v-for="doc in industry.compliance.docsLinks" :key="doc.to" :href="doc.to" class="comp-doc-link">
+                <span>{{ doc.label }}</span>
+                <MsIcon name="arrowRight" :size="13" />
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Related + CTA -->
+    <section class="ms-section ms-section-alt">
+      <div class="ms-container">
         <div v-if="related.length" class="related">
-          <h2 class="related-title">Related industries</h2>
+          <h2 class="related-title">Cross-sector digital threads &amp; related industries</h2>
           <div class="related-grid">
             <a
               v-for="r in related"
-              :key="r.slug"
-              :href="`/industries/${r.slug}`"
+              :key="r.industry.slug"
+              :href="`/industries/${r.industry.slug}`"
               class="related-card"
-              :style="{ '--accent': r.accent }"
+              :style="{ '--accent': r.industry.accent }"
             >
-              <span class="related-icon"><MsIcon :name="r.icon" :size="22" :duotone="true" /></span>
-              <span>
-                <strong>{{ r.name }}</strong>
-                <small>{{ r.tagline }}</small>
+              <span class="related-icon"><MsIcon :name="r.industry.icon" :size="22" :duotone="true" /></span>
+              <span class="related-copy">
+                <strong>{{ r.industry.name }}</strong>
+                <small>{{ r.reason }}</small>
               </span>
               <MsIcon name="arrowRight" :size="16" class="related-arrow" />
             </a>
@@ -287,16 +874,16 @@ const related = computed(() => {
   margin: 20px 0 16px;
   font-size: clamp(2rem, 4.2vw, 3.25rem);
   line-height: 1.08;
-  font-weight: 750;
-  letter-spacing: -0.025em;
+  font-weight: var(--ms-fw-bold);
+  letter-spacing: var(--ms-tracking-tight);
   color: var(--vp-c-text-1);
 }
 
 .ind-summary {
   margin: 0;
   max-width: 600px;
-  font-size: 1.075rem;
-  line-height: 1.65;
+  font-size: var(--text-md);
+  line-height: var(--leading-md);
   color: var(--vp-c-text-2);
 }
 
@@ -336,7 +923,7 @@ const related = computed(() => {
 .term-title {
   margin-left: 10px;
   font-family: var(--vp-font-family-mono);
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: #94a3b8;
 }
 
@@ -344,8 +931,8 @@ const related = computed(() => {
   margin: 0;
   padding: 18px 20px 22px;
   font-family: var(--vp-font-family-mono);
-  font-size: 12.5px;
-  line-height: 2;
+  font-size: var(--text-xs);
+  line-height: 1.9;
   color: #e2e8f0;
   white-space: pre-wrap;
   word-break: break-word;
@@ -390,8 +977,8 @@ const related = computed(() => {
   padding: 3px 9px;
   border-radius: 8px;
   font-family: var(--vp-font-family-mono);
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--text-xs);
+  font-weight: var(--ms-fw-semibold);
   color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
@@ -401,8 +988,8 @@ const related = computed(() => {
 .cap-card h3,
 .flow-step h3 {
   margin: 12px 0 8px;
-  font-size: 1.05rem;
-  font-weight: 650;
+  font-size: var(--text-md);
+  font-weight: var(--ms-fw-semibold);
   color: var(--vp-c-text-1);
 }
 
@@ -581,14 +1168,14 @@ const related = computed(() => {
 
 .fmt-name {
   margin-top: 6px;
-  font-weight: 650;
-  font-size: 0.95rem;
+  font-weight: var(--ms-fw-semibold);
+  font-size: var(--text-base);
   color: var(--vp-c-text-1);
 }
 
 .fmt-role {
-  font-size: 0.82rem;
-  line-height: 1.45;
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
   color: var(--vp-c-text-2);
 }
 
@@ -607,8 +1194,8 @@ const related = computed(() => {
   align-items: center;
   gap: 8px;
   margin: 0 0 14px;
-  font-size: 1rem;
-  font-weight: 650;
+  font-size: var(--text-md);
+  font-weight: var(--ms-fw-semibold);
   color: var(--vp-c-text-1);
 }
 
@@ -730,10 +1317,805 @@ const related = computed(() => {
   color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
 }
 
+.related-copy {
+  min-width: 0;
+}
+
+.related-copy small {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.45;
+}
+
+/* ── Hero Stats & Terminal Copy ── */
+.ind-hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.hero-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--vp-c-text-2);
+  background: color-mix(in srgb, var(--vp-c-bg-soft) 80%, transparent);
+  border: 1px solid var(--vp-c-divider);
+}
+
+.hero-stat-pill strong {
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
+}
+
+.term-copy {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 11px;
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.term-copy:hover {
+  color: #fff;
+  background: rgba(148, 163, 184, 0.24);
+}
+
+/* ── Interactive Model & Schematic Workbench ── */
+.wb-shell {
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+  box-shadow: 0 24px 56px -34px rgba(15, 23, 42, 0.35);
+}
+
+.wb-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--vp-c-bg-soft);
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.wb-model-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wb-model-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.wb-model-tab:hover {
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-bg);
+}
+
+.wb-model-tab.active {
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-bg);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--vp-c-divider));
+  box-shadow: 0 2px 8px -3px rgba(15, 23, 42, 0.12);
+}
+
+.wb-model-ext {
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 10.5px;
+  color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.wb-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.wb-view-tabs {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+  gap: 2px;
+}
+
+.wb-view-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.wb-view-btn.active {
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-bg-soft);
+}
+
+.wb-morsel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.wb-morsel-btn:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 52%, transparent);
+}
+
+.wb-caption {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg);
+}
+
+.wb-caption-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.wb-filename {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 11.5px;
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+}
+
+.wb-caption-title strong {
+  font-size: 0.95rem;
+  color: var(--vp-c-text-1);
+}
+
+.wb-desc {
+  margin: 4px 0 0;
+  font-size: 0.87rem;
+  line-height: 1.5;
+  color: var(--vp-c-text-2);
+}
+
+.wb-body {
+  display: grid;
+  min-height: 360px;
+}
+
+.wb-body.is-split {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.wb-body.is-code,
+.wb-body.is-diagram {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.wb-code-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--vp-code-block-bg);
+  border-right: 1px solid var(--vp-c-divider);
+}
+
+.wb-body.is-code .wb-code-pane {
+  border-right: none;
+}
+
+.wb-diagram-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--vp-c-bg);
+}
+
+.wb-pane-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+  background: var(--vp-c-bg-soft);
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.wb-pane-bar > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wb-pane-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wb-lang-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--vp-c-brand-1);
+  text-decoration: none;
+}
+
+.wb-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+  background: var(--vp-c-bg-elv);
+  border: 1px solid var(--vp-c-divider);
+  cursor: pointer;
+}
+
+.wb-copy-btn:hover {
+  color: var(--vp-c-text-1);
+}
+
+.wb-theme-tag {
+  font-family: var(--vp-font-family-mono);
+  font-size: 10.5px;
+  color: var(--vp-c-text-3);
+}
+
+.wb-code-scroll {
+  flex: 1;
+  max-height: 410px;
+  overflow: auto;
+  padding: 12px 0;
+}
+
+.wb-code-pre {
+  margin: 0 !important;
+  padding: 0 14px !important;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  background: transparent !important;
+}
+
+.wb-code-line {
+  display: table-row;
+}
+
+.wb-line-num {
+  display: table-cell;
+  user-select: none;
+  text-align: right;
+  padding-right: 12px;
+  min-width: 28px;
+  color: var(--vp-c-text-3);
+  font-size: 11px;
+}
+
+.wb-line-text {
+  display: table-cell;
+  white-space: pre;
+  color: var(--vp-c-text-1);
+}
+
+.wb-svg-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  min-height: 340px;
+  overflow: auto;
+}
+
+.wb-svg-stage :deep(svg) {
+  max-width: 100%;
+  max-height: 370px;
+  width: auto;
+  height: auto;
+  display: block;
+  border-radius: 8px;
+}
+
+/* ── Domain Track Filters & Format Capability Badges ── */
+.track-filter-wrap {
+  margin-bottom: 18px;
+}
+
+.track-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.track-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+  background: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.track-tab:hover {
+  color: var(--vp-c-text-1);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--vp-c-divider));
+}
+
+.track-tab.active {
+  color: var(--vp-c-text-1);
+  background: color-mix(in srgb, var(--accent) 12%, var(--vp-c-bg));
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.track-count {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 10.5px;
+  color: var(--vp-c-text-3);
+  background: var(--vp-c-bg);
+}
+
+.track-tab.active .track-count {
+  color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
+}
+
+.track-summary {
+  margin: 10px 0 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.87rem;
+  line-height: 1.5;
+  color: var(--vp-c-text-2);
+  background: color-mix(in srgb, var(--accent) 6%, var(--vp-c-bg-soft));
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--vp-c-divider));
+}
+
+.fmt-caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.fmt-cap-pill {
+  padding: 1px 7px;
+  border-radius: 5px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 10.5px;
+  color: var(--vp-c-text-2);
+  background: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+}
+
+/* ── Benchmarks & Workspaces ── */
+.left-lead {
+  max-width: 780px;
+  margin: 8px 0 0;
+  text-align: left;
+}
+
+.bench-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.bench-card {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  border-radius: 14px;
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+  text-decoration: none;
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.bench-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  transform: translateY(-2px);
+}
+
+.bench-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bench-ref {
+  font-family: var(--vp-font-family-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
+}
+
+.bench-thresh {
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ms-tier-stable);
+  background: var(--ms-tier-stable-bg);
+  border: 1px solid var(--ms-tier-stable-border);
+}
+
+.bench-card h3 {
+  margin: 10px 0 6px;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+}
+
+.bench-card p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--vp-c-text-2);
+}
+
+.bench-foot {
+  margin-top: auto;
+  padding-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+}
+
+.bench-meta {
+  font-family: var(--vp-font-family-mono);
+  color: var(--vp-c-text-3);
+}
+
+.bench-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: var(--vp-c-brand-1);
+}
+
+.ws-block {
+  margin-top: 40px;
+}
+
+.ws-header h3 {
+  margin: 6px 0 16px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--vp-c-text-1);
+}
+
+.ws-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.ws-grid--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ws-card {
+  padding: 22px;
+  border-radius: 14px;
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+}
+
+.ws-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ws-top h4 {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--vp-c-text-1);
+}
+
+.ws-path {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 11.5px;
+  color: var(--vp-c-text-2);
+  background: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+}
+
+.ws-summary {
+  margin: 8px 0 12px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--vp-c-text-2);
+}
+
+.ws-langs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.ws-lang-chip {
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-decoration: none;
+  color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
+  background: color-mix(in srgb, var(--accent) 10%, var(--vp-c-bg-soft));
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.ws-highlights {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.ws-highlights li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--vp-c-text-2);
+}
+
+.ws-highlights li .ms-icon {
+  margin-top: 2px;
+  color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
+}
+
+/* ── AI MCP Tools & Enterprise Compliance Panels ── */
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.ops-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 26px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--vp-c-bg-soft), var(--vp-c-bg));
+  border: 1px solid var(--vp-c-divider);
+}
+
+.ops-head h2 {
+  margin: 8px 0 8px;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--vp-c-text-1);
+}
+
+.ops-head p {
+  margin: 0 0 18px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--vp-c-text-2);
+}
+
+.mcp-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.mcp-item {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+}
+
+.mcp-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.mcp-name {
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
+}
+
+.mcp-cat {
+  font-size: 10.5px;
+  color: var(--vp-c-text-3);
+}
+
+.mcp-desc {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--vp-c-text-2);
+}
+
+.ops-more {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--vp-c-brand-1);
+  text-decoration: none;
+}
+
+.comp-block {
+  margin-bottom: 18px;
+}
+
+.comp-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
+}
+
+.comp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.comp-chip {
+  padding: 4px 10px;
+  border-radius: 7px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+}
+
+.comp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.comp-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--vp-c-text-2);
+}
+
+.comp-list li .ms-icon {
+  margin-top: 2px;
+  color: color-mix(in srgb, var(--accent) var(--ms-accent-strength), var(--vp-c-text-1));
+}
+
+.comp-links {
+  margin-top: auto;
+  padding-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.comp-doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--vp-c-brand-1);
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+  transition: border-color 0.18s ease;
+}
+
+.comp-doc-link:hover {
+  border-color: var(--vp-c-brand-1);
+}
+
 @media (max-width: 960px) {
   .ind-hero-inner,
-  .fmt-layout {
+  .fmt-layout,
+  .wb-body.is-split,
+  .ops-grid,
+  .ws-grid {
     grid-template-columns: 1fr;
+  }
+  .wb-code-pane {
+    border-right: none;
+    border-bottom: 1px solid var(--vp-c-divider);
   }
   .pain-grid,
   .related-grid {

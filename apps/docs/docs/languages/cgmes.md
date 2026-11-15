@@ -66,19 +66,34 @@ European TSO datasets frequently mix bus-branch (`TopologicalNode`) and node-bre
 
 ### Per-Unit Impedance & Thermal Rating Normalization
 
-During projection to PSS/E (`cgmesToPsse`) on system MVA base $S_{\text{base}} = 100\text{ MVA}$, physical engineering quantities from `EQ` profiles are normalized using the nominal voltage $V_{\text{base}}$ ($\text{kV}$) of the terminal's `TopologicalNode`:
+During projection to PSS/E (`cgmesToPsse`) on system MVA base $S_{\text{base}} = 100\text{ MVA}$, physical engineering quantities from `EQ` profiles are normalized using the nominal voltage $V_{\text{base}}$ ($\text{kV}$) of the terminal's `TopologicalNode`. First, the base impedance is computed from the nominal line-to-line voltage and system base power:
 
 $$Z_{\text{base}} = \frac{V_{\text{base}}^2}{S_{\text{base}}} \quad [\Omega]$$
 
-For an `ACLineSegment` with ohmic resistance $R_{\Omega}$, reactance $X_{\Omega}$, total charging susceptance $B_{\text{ch}}\;[\text{S}]$, and maximum current rating $I_{\max}\;[\text{A}]$:
+For an `ACLineSegment`, physical resistance, reactance, and charging susceptance are converted to dimensionless per-unit values, and the thermal current limit is converted to an apparent power rating (`Rate A`):
 
 $$r_{\text{pu}} = \frac{R_{\Omega}}{Z_{\text{base}}}, \qquad x_{\text{pu}} = \frac{X_{\Omega}}{Z_{\text{base}}}, \qquad b_{\text{pu}} = B_{\text{ch}} \cdot Z_{\text{base}}$$
 
 $$\text{Rate A} = \frac{\sqrt{3} \, V_{\text{base}} \, I_{\max}}{1000} \quad [\text{MVA}]$$
 
-For a `LinearShuntCompensator` with $N_{\text{sec}}$ energized sections and per-section conductance/susceptance $(g_{\text{sec}}, b_{\text{sec}})$ in Siemens, the nominal MVAr injection at $1.0\text{ pu}$ voltage is:
+For a `LinearShuntCompensator` with $N_{\text{sec}}$ energized sections, the total nominal active and reactive power injection at $1.0\text{ pu}$ voltage is obtained by scaling the per-section admittance by the squared nominal voltage:
 
 $$G_{\text{shunt}} + j B_{\text{shunt}} = N_{\text{sec}} \left( g_{\text{sec}} + j b_{\text{sec}} \right) V_{\text{base}}^2 \quad [\text{MW} + j\,\text{MVAr}]$$
+
+| Symbol                                        | Meaning                                                                      | Units / Domain                              |
+| :-------------------------------------------- | :--------------------------------------------------------------------------- | :------------------------------------------ |
+| $Z_{\text{base}}$                             | Base impedance at the bus nominal voltage                                    | $\Omega$ ($> 0$)                            |
+| $V_{\text{base}}$                             | Nominal line-to-line voltage of the `TopologicalNode`                        | $\text{kV}$ ($> 0$)                         |
+| $S_{\text{base}}$                             | System three-phase apparent power base ($100\text{ MVA}$)                    | $\text{MVA}$ ($> 0$)                        |
+| $r_{\text{pu}}, x_{\text{pu}}, b_{\text{pu}}$ | Per-unit series resistance, series reactance, and shunt charging susceptance | Dimensionless ($\text{pu}$)                 |
+| $R_{\Omega}, X_{\Omega}$                      | Physical ohmic resistance and reactance of the line segment                  | $\Omega$                                    |
+| $B_{\text{ch}}$                               | Total physical line charging susceptance                                     | $\text{S}$ (Siemens)                        |
+| $\text{Rate A}$                               | Normal thermal apparent power rating                                         | $\text{MVA}$                                |
+| $I_{\max}$                                    | Maximum continuous phase current rating                                      | $\text{A}$                                  |
+| $G_{\text{shunt}}, B_{\text{shunt}}$          | Nominal shunt active power and reactive power at $1.0\text{ pu}$ voltage     | $\text{MW}, \text{MVAr}$                    |
+| $N_{\text{sec}}$                              | Number of energized shunt compensator sections                               | Non-negative integer ($\mathbb{Z}_{\ge 0}$) |
+| $g_{\text{sec}}, b_{\text{sec}}$              | Per-section shunt conductance and susceptance                                | $\text{S}$ (Siemens)                        |
+| $j$                                           | Imaginary unit ($\sqrt{-1}$)                                                 | Dimensionless                               |
 
 ---
 

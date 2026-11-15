@@ -599,7 +599,8 @@ export const stepLanguage = language({
           } catch {}
         }
 
-        if (meshes.length === 0 && unifiedWs && stepSourceText) {
+        const cachedSourceText = unifiedWs?.getParsedModel<string>(targetUri, "meshesSourceText");
+        if (unifiedWs && stepSourceText && (meshes.length === 0 || cachedSourceText !== stepSourceText)) {
           try {
             await indexStepDocument(unifiedWs, targetUri, stepSourceText);
             meshes = [...getStepMeshes(unifiedWs, targetUri)];
@@ -946,6 +947,10 @@ export const stepLanguage = language({
           }
         }
 
+        const resolvedStepText =
+          stepSourceText || unifiedWs?.getParsedModel<string>(targetUri, "meshesSourceText") || "";
+        const stepUnit = /\bSI_UNIT\s*\(\s*\$\s*,\s*\.METRE\.\s*\)/i.test(resolvedStepText) ? "m" : "mm";
+
         return meshes.map((mesh: OcctMesh, idx: number) => {
           const rawName = mesh.name || `Mesh_${idx}`;
           let displayName = rawName;
@@ -970,6 +975,8 @@ export const stepLanguage = language({
             id: idx,
             name: displayName,
             type,
+            unit: stepUnit,
+            fromOcct: Boolean(mesh.fromOcct),
             color: mesh.color || [0.8, 0.8, 0.8],
             vertices: Array.isArray(posArr) ? posArr : Array.from(posArr),
             normals: Array.isArray(normArr) ? normArr : Array.from(normArr),

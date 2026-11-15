@@ -18,6 +18,7 @@ import {
   type KInductionResult,
   WasmFumlEngine,
 } from "@modelscript/runtime";
+import { collectCstLeaves, isSysmlIdentLeaf, parseSysmlSource } from "./cst-utils.js";
 import { SysML2FumlBridge } from "./fuml-bridge.js";
 
 export interface SysML2ActivityVerificationOptions {
@@ -55,25 +56,44 @@ export function extractActivityInvariants(
   const forbidden = new Set<string>(options.forbiddenActions || []);
   const mutexPairs: [string, string][] = [...(options.mutuallyExclusivePairs || [])];
 
-  // Regex for forbidden action annotation: action [name] ... #hazard or #error
-  const hazardRegex = /\baction\s+([A-Za-z_][A-Za-z0-9_]*)\b[^;{}]*?(?:#hazard|#error|@hazard|@error)/g;
-  let hMatch: RegExpExecArray | null;
-  while ((hMatch = hazardRegex.exec(sysmlSource)) !== null) {
-    forbidden.add(hMatch[1]!);
-  }
+  const leaves = collectCstLeaves(parseSysmlSource(sysmlSource));
 
-  // Regex for assertion: assert not [actionName]
-  const assertNotRegex = /\bassert\s+not\s+([A-Za-z_][A-Za-z0-9_]*)/g;
-  let anMatch: RegExpExecArray | null;
-  while ((anMatch = assertNotRegex.exec(sysmlSource)) !== null) {
-    forbidden.add(anMatch[1]!);
-  }
+  for (let i = 0; i < leaves.length; i++) {
+    const cur = leaves[i]!;
 
-  // Regex for mutex assertion: assert mutex([A], [B])
-  const mutexRegex = /\bassert\s+mutex\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/g;
-  let mMatch: RegExpExecArray | null;
-  while ((mMatch = mutexRegex.exec(sysmlSource)) !== null) {
-    mutexPairs.push([mMatch[1]!, mMatch[2]!]);
+    // Forbidden action annotation: action <name> ... (#hazard | #error | @hazard | @error)
+    if (cur.text === "action" && isSysmlIdentLeaf(leaves[i + 1]?.text)) {
+      const actionName = leaves[i + 1]!.text;
+      for (let j = i + 2; j < leaves.length; j++) {
+        const tok = leaves[j]!.text;
+        if (tok === ";" || tok === "{" || tok === "}") break;
+        if ((tok === "#" || tok === "@") && (leaves[j + 1]?.text === "hazard" || leaves[j + 1]?.text === "error")) {
+          forbidden.add(actionName);
+          break;
+        }
+      }
+      continue;
+    }
+
+    if (cur.text === "assert") {
+      const next = leaves[i + 1]?.text;
+      // Assertion: assert not <actionName>
+      if (next === "not" && isSysmlIdentLeaf(leaves[i + 2]?.text)) {
+        forbidden.add(leaves[i + 2]!.text);
+        continue;
+      }
+      // Mutex assertion: assert mutex(<A>, <B>)
+      if (
+        next === "mutex" &&
+        leaves[i + 2]?.text === "(" &&
+        isSysmlIdentLeaf(leaves[i + 3]?.text) &&
+        leaves[i + 4]?.text === "," &&
+        isSysmlIdentLeaf(leaves[i + 5]?.text) &&
+        leaves[i + 6]?.text === ")"
+      ) {
+        mutexPairs.push([leaves[i + 3]!.text, leaves[i + 5]!.text]);
+      }
+    }
   }
 
   return {

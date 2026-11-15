@@ -31,15 +31,33 @@ A receptor or scaffold protein with $M$ independent phosphorylation/binding site
 
 Once iterative rule application reaches fixed-point closure (or `max_iter`) over $\mathcal{S} = \{S_1, \dots, S_N\}$ and elementary reactions $\mathcal{R} = \{1, \dots, R\}$, the concentration vector $\mathbf{x}(t) \in \mathbb{R}_{\ge 0}^N$ evolves according to stoichiometric mass-action kinetics with statistical symmetry multiplicities $\sigma_r$:
 
+In plain English, each species concentration changes at a rate equal to the sum of all elementary reaction rates producing or consuming it, weighted by stoichiometry, statistical symmetry, and reactant concentrations:
+
 $$
 \frac{dx_i}{dt} = \sum_{r=1}^R \nu_{ir}\, \sigma_r k_r \prod_{j=1}^N x_j^{\nu_{jr}^-}, \qquad \nu_{ir} = \nu_{ir}^+ - \nu_{ir}^-
 $$
 
-Each declared `Molecules` or `Species` observable $O_q(t)$ computes a weighted linear combination over all generated species $S_i$ matching pattern $\Pi_q$ with subgraph match multiplicity $w_{qi} = |\text{Emb}(\Pi_q, S_i)|$:
+| Symbol                   | Meaning                                                                         | Units / Domain                                                     |
+| :----------------------- | :------------------------------------------------------------------------------ | :----------------------------------------------------------------- |
+| $x_i, x_j$               | Concentration (or copy number) of generated species $S_i, S_j$                  | $\text{mol}\cdot\text{L}^{-1}$ or molecules ($\mathbb{R}_{\ge 0}$) |
+| $t$                      | Simulation time                                                                 | $\text{s}$ (or model time unit), $t \ge 0$                         |
+| $N, R$                   | Total number of generated species and elementary reactions                      | Positive integers                                                  |
+| $\nu_{ir}^+, \nu_{ir}^-$ | Product and reactant stoichiometric coefficients of species $i$ in reaction $r$ | Non-negative integers ($\mathbb{Z}_{\ge 0}$)                       |
+| $\nu_{ir}$               | Net stoichiometric coefficient of species $i$ in reaction $r$                   | Integer ($\mathbb{Z}$)                                             |
+| $\sigma_r$               | Statistical symmetry multiplicity factor for reaction $r$                       | Positive integer / rational                                        |
+| $k_r$                    | Elementary mass-action rate constant for reaction $r$                           | $(\text{conc})^{1 - \sum_j \nu_{jr}^-}\cdot\text{s}^{-1}$          |
+
+Each declared `Molecules` or `Species` observable $O_q(t)$ computes a weighted linear combination over all generated species $S_i$ matching pattern $\Pi_q$, aggregating total motif counts across the network:
 
 $$
 O_q(t) = \sum_{i=1}^N w_{qi}\, x_i(t)
 $$
+
+| Symbol   | Meaning                                               | Units / Domain                                                     |
+| :------- | :---------------------------------------------------- | :----------------------------------------------------------------- | ------------------------------------- | ------------------------------------------- |
+| $O_q(t)$ | Aggregate value of observable $q$ at time $t$         | Concentration or molecule count                                    |
+| $w_{qi}$ | Subgraph embedding multiplicity $                     | \text{Emb}(\Pi_q, S_i)                                             | $ of pattern $\Pi_q$ in species $S_i$ | Non-negative integer ($\mathbb{Z}_{\ge 0}$) |
+| $x_i(t)$ | Concentration (or count) of species $S_i$ at time $t$ | $\text{mol}\cdot\text{L}^{-1}$ or molecules ($\mathbb{R}_{\ge 0}$) |
 
 ---
 

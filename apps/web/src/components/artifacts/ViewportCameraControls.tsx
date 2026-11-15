@@ -5,7 +5,7 @@ import styled from "styled-components";
 import { useTheme } from "../../theme";
 
 export type CameraPreset = "iso" | "top" | "front" | "right" | "reset";
-export type RenderMode = "shaded" | "wireframe" | "xray";
+export type RenderMode = "section" | "shaded" | "wireframe" | "xray";
 export type ClipAxis = "none" | "x" | "y" | "z";
 
 interface ViewportCameraControlsProps {
@@ -20,6 +20,11 @@ interface ViewportCameraControlsProps {
   onClipAxisChange?: ((axis: ClipAxis) => void) | undefined;
   clipOffset?: number | undefined;
   onClipOffsetChange?: ((offset: number) => void) | undefined;
+  autoSweep?: boolean | undefined;
+  onToggleAutoSweep?: (() => void) | undefined;
+  showGdt?: boolean | undefined;
+  onToggleGdt?: (() => void) | undefined;
+  gdtCount?: number | undefined;
   topOffset?: string | number | undefined;
 }
 
@@ -101,6 +106,11 @@ export const ViewportCameraControls: React.FC<ViewportCameraControlsProps> = ({
   onClipAxisChange,
   clipOffset = 0,
   onClipOffsetChange,
+  autoSweep,
+  onToggleAutoSweep,
+  showGdt,
+  onToggleGdt,
+  gdtCount,
   topOffset,
 }) => {
   const { theme } = useTheme();
@@ -127,6 +137,14 @@ export const ViewportCameraControls: React.FC<ViewportCameraControlsProps> = ({
       {onRenderModeChange && renderMode && (
         <>
           <Divider $isDark={isDark} />
+          <PresetButton
+            $isDark={isDark}
+            $active={renderMode === "section"}
+            onClick={() => onRenderModeChange("section")}
+            title="Split Solid + Edge Wireframe Section Cut"
+          >
+            SPLIT
+          </PresetButton>
           <PresetButton
             $isDark={isDark}
             $active={renderMode === "shaded"}
@@ -198,6 +216,30 @@ export const ViewportCameraControls: React.FC<ViewportCameraControlsProps> = ({
               style={{ width: "68px", accentColor: "#06b6d4", cursor: "pointer" }}
             />
           )}
+          {(clipAxis !== "none" || renderMode === "section") && onToggleAutoSweep && (
+            <PresetButton
+              $isDark={isDark}
+              $active={Boolean(autoSweep)}
+              onClick={onToggleAutoSweep}
+              title="Toggle continuous section sweep"
+            >
+              AUTO
+            </PresetButton>
+          )}
+        </>
+      )}
+
+      {onToggleGdt && (
+        <>
+          <Divider $isDark={isDark} />
+          <PresetButton
+            $isDark={isDark}
+            $active={Boolean(showGdt)}
+            onClick={onToggleGdt}
+            title="Toggle ASME Y14.5 GD&T / MBD callouts"
+          >
+            GD&amp;T{gdtCount && gdtCount > 0 ? ` (${gdtCount})` : ""}
+          </PresetButton>
         </>
       )}
 

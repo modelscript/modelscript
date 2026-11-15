@@ -5,6 +5,7 @@ import { useAnsatzOrigin } from "../util/ansatz.js";
 import {
   closeDocsLspBuffer,
   getCodeActionsDocsLsp,
+  getDiagramDataDocsLsp,
   onLspDiagnostics,
   onLspStatus,
   syncDocsLspBuffer,
@@ -19,6 +20,7 @@ import {
   type DetectedLanguageMatch,
 } from "../util/polyglot-paste-detector.js";
 import type { SandboxMonacoHandle } from "../util/sandbox-monaco.js";
+import { hasDiagramElements, type SandboxDiagramHandle } from "../util/sandbox-diagram.js";
 import languageExamples from "../data/language-examples.generated.json";
 import languagesData from "../data/languages.generated.json";
 import MsIcon from "./MsIcon.vue";
@@ -99,14 +101,27 @@ const groupedFilteredLanguages = computed(() => {
   }));
 });
 
-const examplesBySlug = new Map<string, { slug: string; ext: string; filename: string; code: string }>();
-for (const ex of languageExamples as Array<{ slug: string; ext: string; filename: string; code: string }>) {
+const examplesBySlug = new Map<
+  string,
+  { slug: string; ext: string; filename: string; code: string; svgDark?: string; svgLight?: string; viewLabel?: string }
+>();
+for (const ex of languageExamples as Array<{
+  slug: string;
+  ext: string;
+  filename: string;
+  code: string;
+  svgDark?: string;
+  svgLight?: string;
+  viewLabel?: string;
+}>) {
   examplesBySlug.set(ex.slug, ex);
 }
 
 function makePrimaryExt(rawExt: string): string {
   return (rawExt.split(",")[0] ?? ".txt").trim();
 }
+
+let nextTabSeq = 1;
 
 function createTabForLang(slug: string, idx: number, customCode?: string, customFileName?: string): SandboxTab {
   const meta = allLanguages.value.find((l) => l.slug === slug) ?? allLanguages.value[0]!;
@@ -115,7 +130,7 @@ function createTabForLang(slug: string, idx: number, customCode?: string, custom
   const fileName = customFileName || ex?.filename || `model_${idx}${ext}`;
   const code = customCode ?? ex?.code ?? `// Paste ${meta.name} (${ext}) model here\n`;
   return {
-    id: `tab-${idx}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: `tab-${idx}-${nextTabSeq++}`,
     uri: `file:///sandbox/${idx}_${fileName}`,
     langSlug: meta.slug,
     fileName,
@@ -142,6 +157,14 @@ const activeTabId = ref<string>(tabs.value[0]!.id);
 const diagnosticsByUri = ref<Record<string, LspDiagnostic[]>>({});
 const quickFixByDiagKey = ref<Record<string, { title: string; changes: Record<string, any[]> }>>({});
 const diagScope = ref<"all" | "active">("all");
+const rightPaneView = ref<"both" | "diagnostics" | "diagram">("both");
+const hasLiveDiagram = ref(false);
+const liveDiagramMeta = ref<{ nodeCount: number; edgeCount: number } | null>(null);
+const diagramLoading = ref(false);
+const diagramContainerRef = ref<HTMLElement | null>(null);
+let diagramHandle: SandboxDiagramHandle | null = null;
+let diagramRequestToken = 0;
+const showAllStages = ref(false);
 const workerStatus = ref<LspWorkerStatus>({ state: "idle" });
 const workerError = ref<string | null>(null);
 const verifying = ref(false);
@@ -151,11 +174,14 @@ const faultBanner = ref<string | null>(null);
 const { isDark } = useData();
 const copiedLink = ref(false);
 const isDragActive = ref(false);
+const sandboxSectionRef = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
-const useMonacoMode = ref(false);
+const useMonacoMode = ref(true);
 const monacoLoading = ref(false);
 const monacoContainerRef = ref<HTMLElement | null>(null);
 let monacoHandle: SandboxMonacoHandle | null = null;
+let intersectionObserver: IntersectionObserver | null = null;
+let hasBooted = false;
 
 const activeTab = computed(() => tabs.value.find((t) => t.id === activeTabId.value) ?? tabs.value[0]!);
 const activeLangMeta = computed(
@@ -182,21 +208,27 @@ const visibleDiagnostics = computed<ScopedDiagnosticEntry[]>(() =>
 );
 const totalDiagCount = computed(() => allScopedDiagnostics.value.length);
 
+const stageSummary = computed(() => {
+  const stages = verifyResult.value?.stages as Record<string, any> | undefined;
+  if (!stages) return null;
+  let passed = 0;
+  let failed = 0;
+  let skipped = 0;
+  for (const st of Object.values(stages)) {
+    if (st?.passed === false) failed++;
+    else if (st?.status === "skipped") skipped++;
+    else passed++;
+  }
+  return { passed, failed, skipped, total: passed + failed + skipped };
+});
+
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let codeActionRefreshToken = 0;
 let stopDiagListening: (() => void) | null = null;
 let stopStatusListening: (() => void) | null = null;
 
-async function toggleMonacoEditor(): Promise<void> {
-  if (useMonacoMode.value) {
-    monacoHandle?.dispose();
-    monacoHandle = null;
-    useMonacoMode.value = false;
-    await nextTick();
-    textareaRef.value?.focus();
-    return;
-  }
-  useMonacoMode.value = true;
+async function initMonacoEditor(): Promise<void> {
+  if (monacoHandle || monacoLoading.value) return;
   monacoLoading.value = true;
   try {
     await nextTick();
@@ -204,14 +236,17 @@ async function toggleMonacoEditor(): Promise<void> {
     const { mountSandboxMonaco } = await import("../util/sandbox-monaco.js");
     monacoHandle = await mountSandboxMonaco({
       container: monacoContainerRef.value,
+      initialUri: activeTab.value.uri,
       initialCode: activeTab.value.code,
       langSlug: activeTab.value.langSlug,
       isDark: isDark.value,
       onChange: (nextCode) => onCodeInput(nextCode),
       onPaste: () => onEditorPaste(),
     });
-    monacoHandle.setDiagnostics(activeDiagnostics.value);
-    monacoHandle.focus();
+    for (const tab of tabs.value) {
+      const diags = diagnosticsByUri.value[tab.uri];
+      if (diags) monacoHandle.setDiagnostics(tab.uri, diags);
+    }
   } catch (err: any) {
     workerError.value = `Failed to load Monaco Editor: ${err?.message || String(err)}`;
     useMonacoMode.value = false;
@@ -220,30 +255,87 @@ async function toggleMonacoEditor(): Promise<void> {
   }
 }
 
+const activeExampleMeta = computed(() => examplesBySlug.get(activeTab.value.langSlug));
+
+async function refreshDiagramPreview(): Promise<void> {
+  const tab = activeTab.value;
+  const token = ++diagramRequestToken;
+  diagramLoading.value = true;
+  try {
+    const data = await getDiagramDataDocsLsp(tab.uri, tab.langSlug, tab.code);
+    if (token !== diagramRequestToken) return;
+    if (!hasDiagramElements(data)) {
+      hasLiveDiagram.value = false;
+      liveDiagramMeta.value = null;
+      return;
+    }
+    hasLiveDiagram.value = true;
+    await nextTick();
+    if (token !== diagramRequestToken) return;
+    if (!diagramContainerRef.value) return;
+    if (!diagramHandle) {
+      const { mountSandboxDiagram } = await import("../util/sandbox-diagram.js");
+      if (token !== diagramRequestToken || !diagramContainerRef.value) return;
+      diagramHandle = await mountSandboxDiagram(diagramContainerRef.value, isDark.value);
+    }
+    liveDiagramMeta.value = diagramHandle.render(data, isDark.value, tab.langSlug);
+  } catch {
+    if (token === diagramRequestToken) {
+      hasLiveDiagram.value = false;
+      liveDiagramMeta.value = null;
+    }
+  } finally {
+    if (token === diagramRequestToken) {
+      diagramLoading.value = false;
+    }
+  }
+}
+
 watch(
-  () => [activeTab.value.code, activeTab.value.langSlug] as const,
-  ([nextCode, nextSlug]) => {
+  () => [activeTab.value.id, activeTab.value.uri, activeTab.value.langSlug] as const,
+  ([, nextUri, nextSlug]) => {
+    hasLiveDiagram.value = false;
+    liveDiagramMeta.value = null;
+    if (hasBooted) {
+      void refreshDiagramPreview();
+    }
     if (!monacoHandle) return;
-    monacoHandle.setLanguage(nextSlug);
+    monacoHandle.switchTab(nextUri, activeTab.value.code, nextSlug);
+    const diags = diagnosticsByUri.value[nextUri];
+    if (diags) monacoHandle.setDiagnostics(nextUri, diags);
+  },
+);
+
+watch(
+  () => activeTab.value.code,
+  (nextCode) => {
+    if (!monacoHandle) return;
     monacoHandle.setValue(nextCode);
   },
 );
 
-watch(activeDiagnostics, (diags) => {
-  monacoHandle?.setDiagnostics(diags);
-});
-
 watch(isDark, (dark) => {
   monacoHandle?.setTheme(dark);
+  diagramHandle?.setTheme(dark);
+});
+
+watch(rightPaneView, async () => {
+  await nextTick();
+  diagramHandle?.resize();
 });
 
 async function refreshQuickFixesForUri(uri: string, diags: LspDiagnostic[]): Promise<void> {
   const token = ++codeActionRefreshToken;
-  if (diags.length === 0) return;
-  const nextFixes: Record<string, { title: string; changes: Record<string, any[]> }> = {
-    ...quickFixByDiagKey.value,
-  };
-  for (const d of diags.slice(0, 5)) {
+  const nextFixes: Record<string, { title: string; changes: Record<string, any[]> }> = {};
+  const uriPrefix = `${uri}:`;
+  for (const [k, v] of Object.entries(quickFixByDiagKey.value)) {
+    if (!k.startsWith(uriPrefix)) nextFixes[k] = v;
+  }
+  if (diags.length === 0) {
+    quickFixByDiagKey.value = nextFixes;
+    return;
+  }
+  for (const d of diags.slice(0, 8)) {
     const actions = await getCodeActionsDocsLsp(uri, d.range, [d]).catch(() => []);
     if (token !== codeActionRefreshToken) return;
     const fix = actions.find((a) => a?.edit?.changes);
@@ -257,27 +349,59 @@ async function refreshQuickFixesForUri(uri: string, diags: LspDiagnostic[]): Pro
   quickFixByDiagKey.value = nextFixes;
 }
 
+function bootSandbox(): void {
+  if (hasBooted) return;
+  hasBooted = true;
+  void initMonacoEditor();
+  void syncTabsAndLint();
+}
+
 onMounted(() => {
   stopDiagListening = onLspDiagnostics((uri, diags) => {
     diagnosticsByUri.value = {
       ...diagnosticsByUri.value,
       [uri]: diags,
     };
+    monacoHandle?.setDiagnostics(uri, diags);
+    monacoHandle?.refreshSemanticTokens();
     if (uri === activeTab.value.uri) {
       void refreshQuickFixesForUri(uri, diags);
     }
   });
   stopStatusListening = onLspStatus((status) => {
     workerStatus.value = status;
+    if (status.state === "ready") {
+      monacoHandle?.refreshSemanticTokens();
+    }
   });
+
+  if (typeof IntersectionObserver !== "undefined" && sandboxSectionRef.value) {
+    intersectionObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          bootSandbox();
+          intersectionObserver?.disconnect();
+          intersectionObserver = null;
+        }
+      },
+      { rootMargin: "250px" },
+    );
+    intersectionObserver.observe(sandboxSectionRef.value);
+  } else {
+    bootSandbox();
+  }
 });
 
 onBeforeUnmount(() => {
   if (debounceTimer) clearTimeout(debounceTimer);
+  intersectionObserver?.disconnect();
+  intersectionObserver = null;
   stopDiagListening?.();
   stopStatusListening?.();
   monacoHandle?.dispose();
   monacoHandle = null;
+  diagramHandle?.dispose();
+  diagramHandle = null;
 });
 
 async function syncTabsAndLint(): Promise<void> {
@@ -286,6 +410,8 @@ async function syncTabsAndLint(): Promise<void> {
     for (const tab of tabs.value) {
       await syncDocsLspBuffer(tab.uri, tab.langSlug, tab.code);
     }
+    monacoHandle?.refreshSemanticTokens();
+    void refreshDiagramPreview();
   } catch (err: any) {
     workerError.value = err?.message || String(err);
   }
@@ -295,7 +421,7 @@ function scheduleLint(): void {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     void syncTabsAndLint();
-  }, 350);
+  }, 300);
 }
 
 async function switchTabLanguage(tab: SandboxTab, newSlug: string, keepExistingCode: boolean): Promise<void> {
@@ -315,6 +441,7 @@ async function switchTabLanguage(tab: SandboxTab, newSlug: string, keepExistingC
   }
   tab.uri = `file:///sandbox/${tabIdx}_${tab.fileName}`;
   if (oldUri !== tab.uri) {
+    monacoHandle?.removeModel(oldUri);
     await closeDocsLspBuffer(oldUri);
     const next = { ...diagnosticsByUri.value };
     delete next[oldUri];
@@ -393,6 +520,7 @@ async function removeTab(tabId: string): Promise<void> {
   if (idx < 0) return;
   const [removed] = tabs.value.splice(idx, 1);
   if (removed) {
+    monacoHandle?.removeModel(removed.uri);
     await closeDocsLspBuffer(removed.uri);
     const next = { ...diagnosticsByUri.value };
     delete next[removed.uri];
@@ -406,6 +534,7 @@ async function removeTab(tabId: string): Promise<void> {
 
 async function loadPolyglotTwinPreset(): Promise<void> {
   for (const t of tabs.value) {
+    monacoHandle?.removeModel(t.uri);
     await closeDocsLspBuffer(t.uri);
   }
   diagnosticsByUri.value = {};
@@ -583,7 +712,7 @@ function severityLabel(sev?: number): string {
 </script>
 
 <template>
-  <section id="polyglot-sandbox" class="sandbox-section">
+  <section id="polyglot-sandbox" ref="sandboxSectionRef" class="sandbox-section">
     <div class="sandbox-container">
       <div class="sandbox-header">
         <div>
@@ -596,10 +725,11 @@ function severityLabel(sev?: number): string {
         </div>
         <div class="sandbox-header-actions">
           <button type="button" class="sb-btn sb-btn-ghost" @click="loadPolyglotTwinPreset">
-            <MsIcon name="thread" :size="14" />
+            <MsIcon name="workflow" :size="14" />
             <span>Load SysML + SPICE Twin Demo</span>
           </button>
           <button type="button" class="sb-btn sb-btn-ghost" @click="copyMorselLink">
+            <MsIcon name="copy" :size="14" />
             <span>{{ copiedLink ? "Copied Link!" : "Copy Share Link" }}</span>
           </button>
           <button type="button" class="sb-btn sb-btn-outline" @click="openInMorselWithState">
@@ -648,30 +778,32 @@ function severityLabel(sev?: number): string {
           </div>
 
           <div class="sb-controls">
-            <input
-              v-model="langFilter"
-              type="search"
-              placeholder="Filter 92 languages…"
-              aria-label="Filter languages"
-              class="sb-filter-input"
-            />
-            <select
-              :value="activeTab.langSlug"
-              aria-label="Select engineering language"
-              class="sb-select"
-              @change="onLanguageChange(($event.target as HTMLSelectElement).value)"
-            >
-              <optgroup v-for="grp in groupedFilteredLanguages" :key="grp.group" :label="grp.title">
-                <option v-for="lang in grp.items" :key="lang.slug" :value="lang.slug">
-                  {{ lang.name }} ({{ lang.ext.split(",")[0] }}) — {{ lang.tier }}
-                </option>
-              </optgroup>
-            </select>
+            <div class="sb-lang-picker">
+              <input
+                v-model="langFilter"
+                type="search"
+                :placeholder="`Filter ${allLanguages.length} languages…`"
+                aria-label="Filter languages"
+                class="sb-filter-input"
+              />
+              <select
+                :value="activeTab.langSlug"
+                aria-label="Select engineering language"
+                class="sb-select"
+                @change="onLanguageChange(($event.target as HTMLSelectElement).value)"
+              >
+                <optgroup v-for="grp in groupedFilteredLanguages" :key="grp.group" :label="grp.title">
+                  <option v-for="lang in grp.items" :key="lang.slug" :value="lang.slug">
+                    {{ lang.name }} ({{ lang.ext.split(",")[0] }}) — {{ lang.tier }}
+                  </option>
+                </optgroup>
+              </select>
+            </div>
             <button type="button" class="sb-btn sb-btn-ghost" title="Inject a syntax or digital-thread fault" @click="onInjectFault">
               <span>Inject Fault</span>
             </button>
             <button type="button" class="sb-btn sb-btn-primary" :disabled="verifying" @click="runVerifyAll">
-              <MsIcon name="shield-check" :size="14" />
+              <MsIcon name="shield" :size="14" />
               <span>{{ verifying ? "Verifying…" : "Lint & Verify All" }}</span>
             </button>
           </div>
@@ -694,21 +826,23 @@ function severityLabel(sev?: number): string {
         <div class="sb-body">
           <div class="sb-editor-pane">
             <div class="sb-pane-meta">
-              <span>{{ activeLangMeta.name }} · {{ activeLangMeta.role }} · Drop files here</span>
+              <span class="sb-meta-title">{{ activeLangMeta.name }} · {{ activeLangMeta.role }}</span>
               <div class="sb-pane-meta-right">
-                <span>{{ activeLangMeta.ruleCount ?? 0 }} lint rules · Worker: {{ workerStatus.state }}</span>
-                <button
-                  type="button"
-                  class="sb-monaco-toggle"
-                  :class="{ active: useMonacoMode }"
-                  :disabled="monacoLoading"
-                  @click="toggleMonacoEditor"
-                >
-                  {{ monacoLoading ? "Loading IDE…" : useMonacoMode ? "Simple Editor" : "Monaco IDE" }}
-                </button>
+                <span>{{ activeLangMeta.ruleCount ?? 0 }} lint rules</span>
+                <span class="sb-worker-pill" :class="`state-${workerStatus.state}`">
+                  <span class="sb-worker-dot" />
+                  {{ workerStatus.state }}
+                </span>
               </div>
             </div>
-            <div v-if="useMonacoMode" ref="monacoContainerRef" class="sb-monaco-host" aria-label="Monaco polyglot editor" />
+            <div
+              v-if="useMonacoMode"
+              ref="monacoContainerRef"
+              class="sb-monaco-host"
+              aria-label="Monaco polyglot editor"
+            >
+              <div v-if="monacoLoading" class="sb-monaco-loading">Loading Monaco + WASM LSP…</div>
+            </div>
             <textarea
               v-else
               ref="textareaRef"
@@ -724,8 +858,39 @@ function severityLabel(sev?: number): string {
           <div class="sb-results-pane">
             <div class="sb-pane-meta">
               <div class="sb-results-heading">
-                <span>Diagnostics ({{ totalDiagCount }}) &amp; Formal Verification</span>
-                <div v-if="tabs.length > 1" class="sb-scope-toggle" role="group" aria-label="Diagnostic file scope">
+                <div class="sb-scope-toggle" role="tablist" aria-label="Results pane view">
+                  <button
+                    type="button"
+                    role="tab"
+                    class="sb-scope-btn"
+                    :class="{ active: rightPaneView === 'both' }"
+                    :aria-selected="rightPaneView === 'both'"
+                    @click="rightPaneView = 'both'"
+                  >
+                    Both
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    class="sb-scope-btn"
+                    :class="{ active: rightPaneView === 'diagnostics' }"
+                    :aria-selected="rightPaneView === 'diagnostics'"
+                    @click="rightPaneView = 'diagnostics'"
+                  >
+                    Diagnostics ({{ totalDiagCount }})
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    class="sb-scope-btn"
+                    :class="{ active: rightPaneView === 'diagram' }"
+                    :aria-selected="rightPaneView === 'diagram'"
+                    @click="rightPaneView = 'diagram'"
+                  >
+                    Diagram
+                  </button>
+                </div>
+                <div v-if="tabs.length > 1 && rightPaneView !== 'diagram'" class="sb-scope-toggle" role="group" aria-label="Diagnostic file scope">
                   <button
                     type="button"
                     class="sb-scope-btn"
@@ -755,65 +920,115 @@ function severityLabel(sev?: number): string {
               </button>
             </div>
 
-            <div v-if="workerError" class="sb-alert sb-alert-err">
-              Worker error: {{ workerError }}
-            </div>
+            <div class="sb-results-scroll">
+              <template v-if="rightPaneView !== 'diagram'">
+                <div v-if="workerError" class="sb-alert sb-alert-err">
+                  Worker error: {{ workerError }}
+                </div>
 
-            <div v-if="verifyResult?.polyglotDigitalThread" class="sb-thread-box" :class="verifyResult.polyglotDigitalThread.isSat ? 'is-sat' : 'is-unsat'">
-              <div class="sb-thread-top">
-                <strong>Digital Thread: {{ verifyResult.polyglotDigitalThread.status }}</strong>
-                <span>{{ verifyResult.polyglotDigitalThread.fileCount }} files · {{ (verifyResult.polyglotDigitalThread.domains || []).join(", ") }}</span>
-              </div>
-              <p class="sb-thread-summary">{{ verifyResult.polyglotDigitalThread.summaryText }}</p>
-              <ul v-if="verifyResult.polyglotDigitalThread.conflicts?.length" class="sb-conflict-list">
-                <li v-for="(c, idx) in verifyResult.polyglotDigitalThread.conflicts" :key="idx">
-                  <strong>[{{ c.theoryName }}]</strong> {{ c.explanation }}
-                </li>
-              </ul>
-            </div>
+                <div v-if="verifyResult?.polyglotDigitalThread" class="sb-thread-box" :class="verifyResult.polyglotDigitalThread.isSat ? 'is-sat' : 'is-unsat'">
+                  <div class="sb-thread-top">
+                    <strong>Digital Thread: {{ verifyResult.polyglotDigitalThread.status }}</strong>
+                    <span>{{ verifyResult.polyglotDigitalThread.fileCount }} files · {{ (verifyResult.polyglotDigitalThread.domains || []).join(", ") }}</span>
+                  </div>
+                  <p class="sb-thread-summary">{{ verifyResult.polyglotDigitalThread.summaryText }}</p>
+                  <ul v-if="verifyResult.polyglotDigitalThread.conflicts?.length" class="sb-conflict-list">
+                    <li v-for="(c, idx) in verifyResult.polyglotDigitalThread.conflicts" :key="idx">
+                      <strong>[{{ c.theoryName }}]</strong> {{ c.explanation }}
+                    </li>
+                  </ul>
+                </div>
 
-            <div v-if="visibleDiagnostics.length === 0 && !verifyResult" class="sb-empty">
-              Paste or drop any model above, click <strong>Inject Fault</strong>, or click <strong>Lint &amp; Verify All</strong> to run 92+ language WASM checks.
-            </div>
+                <div v-if="visibleDiagnostics.length === 0 && !verifyResult && !hasLiveDiagram" class="sb-empty">
+                  Edit or drop any model, click <strong>Inject Fault</strong>, or click <strong>Lint &amp; Verify All</strong> to run {{ allLanguages.length }}+ language WASM checks.
+                </div>
 
-            <div v-else-if="visibleDiagnostics.length === 0" class="sb-alert sb-alert-ok">
-              No syntax or semantic lint errors in <code>{{ diagScope === "all" ? "open tabs" : activeTab.fileName }}</code>.
-            </div>
+                <div v-else-if="visibleDiagnostics.length === 0 && (verifyResult || workerStatus.state === 'ready')" class="sb-alert sb-alert-ok">
+                  No syntax or semantic lint errors in <code>{{ diagScope === "all" ? "open tabs" : activeTab.fileName }}</code>.
+                </div>
 
-            <ul v-else class="sb-diag-list">
-              <li
-                v-for="(entry, idx) in visibleDiagnostics"
-                :key="entry.key + ':' + idx"
-                class="sb-diag-item"
-                :class="`sev-${entry.diag.severity ?? 1}`"
-                title="Click to jump to diagnostic location"
-                @click="revealDiagnosticLocation(entry)"
-              >
-                <span class="sb-diag-badge">{{ severityLabel(entry.diag.severity) }}</span>
-                <span v-if="tabs.length > 1" class="sb-diag-file">{{ entry.tab.fileName }}</span>
-                <code v-if="entry.diag.code" class="sb-diag-code">{{ entry.diag.code }}</code>
-                <span class="sb-diag-loc">L{{ entry.diag.range.start.line + 1 }}:{{ entry.diag.range.start.character + 1 }}</span>
-                <span class="sb-diag-msg">{{ entry.diag.message }}</span>
-                <button
-                  v-if="quickFixByDiagKey[entry.key]"
-                  type="button"
-                  class="sb-inline-fix"
-                  @click.stop="applyDiagnosticQuickFix(quickFixByDiagKey[entry.key]!.changes)"
-                >
-                  {{ quickFixByDiagKey[entry.key]!.title }}
-                </button>
-              </li>
-            </ul>
+                <ul v-else-if="visibleDiagnostics.length > 0" class="sb-diag-list">
+                  <li
+                    v-for="(entry, idx) in visibleDiagnostics"
+                    :key="entry.key + ':' + idx"
+                    class="sb-diag-item"
+                    :class="`sev-${entry.diag.severity ?? 1}`"
+                    title="Click to jump to diagnostic location"
+                    @click="revealDiagnosticLocation(entry)"
+                  >
+                    <div class="sb-diag-head">
+                      <span class="sb-diag-badge">{{ severityLabel(entry.diag.severity) }}</span>
+                      <span v-if="tabs.length > 1" class="sb-diag-file">{{ entry.tab.fileName }}</span>
+                      <code v-if="entry.diag.code" class="sb-diag-code">{{ entry.diag.code }}</code>
+                      <span class="sb-diag-loc">L{{ entry.diag.range.start.line + 1 }}:{{ entry.diag.range.start.character + 1 }}</span>
+                      <button
+                        v-if="quickFixByDiagKey[entry.key]"
+                        type="button"
+                        class="sb-inline-fix"
+                        @click.stop="applyDiagnosticQuickFix(quickFixByDiagKey[entry.key]!.changes)"
+                      >
+                        {{ quickFixByDiagKey[entry.key]!.title }}
+                      </button>
+                    </div>
+                    <span class="sb-diag-msg">{{ entry.diag.message }}</span>
+                  </li>
+                </ul>
 
-            <div v-if="verifyResult?.stages" class="sb-stages">
+                <div v-if="verifyResult?.stages && stageSummary" class="sb-stages-wrap">
+                  <button type="button" class="sb-stages-toggle" @click="showAllStages = !showAllStages">
+                    <span>
+                      Verification stages:
+                      <strong class="st-pass">{{ stageSummary.passed }} passed</strong>
+                      <template v-if="stageSummary.failed > 0">
+                        · <strong class="st-fail">{{ stageSummary.failed }} failed</strong>
+                      </template>
+                      <template v-if="stageSummary.skipped > 0">
+                        · <span class="st-skip">{{ stageSummary.skipped }} skipped</span>
+                      </template>
+                    </span>
+                    <span>{{ showAllStages ? "Hide ▴" : "Details ▾" }}</span>
+                  </button>
+                  <div v-if="showAllStages" class="sb-stages">
+                    <div
+                      v-for="(st, name) in verifyResult.stages"
+                      :key="name"
+                      class="sb-stage-pill"
+                      :class="st?.passed === false ? 'fail' : st?.status === 'skipped' ? 'skip' : 'pass'"
+                    >
+                      <span>{{ name }}</span>
+                      <span>{{ st?.status ?? (st?.passed === false ? "failed" : "passed") }}</span>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
               <div
-                v-for="(st, name) in verifyResult.stages"
-                :key="name"
-                class="sb-stage-pill"
-                :class="st?.passed === false ? 'fail' : st?.status === 'skipped' ? 'skip' : 'pass'"
+                v-if="rightPaneView === 'diagram' || (rightPaneView === 'both' && (hasLiveDiagram || diagramLoading))"
+                class="sb-diagram-card"
+                :class="{ 'is-full': rightPaneView === 'diagram' }"
               >
-                <span>{{ name }}</span>
-                <span>{{ st?.status ?? (st?.passed === false ? "failed" : "passed") }}</span>
+                <div class="sb-diagram-head">
+                  <span class="sb-diagram-title">{{ activeExampleMeta?.viewLabel || `${activeLangMeta.name} Diagram` }}</span>
+                  <div class="sb-diagram-actions">
+                    <span v-if="diagramLoading" class="sb-diagram-meta">Rendering…</span>
+                    <span v-else-if="liveDiagramMeta" class="sb-diagram-meta">
+                      {{ liveDiagramMeta.nodeCount }} nodes · {{ liveDiagramMeta.edgeCount }} edges
+                    </span>
+                    <button
+                      v-if="hasLiveDiagram"
+                      type="button"
+                      class="sb-scope-btn"
+                      title="Fit diagram to view"
+                      @click="diagramHandle?.zoomToFit()"
+                    >
+                      Fit
+                    </button>
+                  </div>
+                </div>
+                <div v-show="hasLiveDiagram" ref="diagramContainerRef" class="sb-diagram-stage" />
+                <div v-if="!hasLiveDiagram" class="sb-empty">
+                  {{ diagramLoading ? "Rendering live diagram from WASM LSP…" : `No graphical diagram elements in ${activeTab.fileName}.` }}
+                </div>
               </div>
             </div>
           </div>
@@ -925,23 +1140,32 @@ function severityLabel(sev?: number): string {
   gap: 8px;
   align-items: center;
 }
+.sb-lang-picker {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  background: var(--vp-c-bg);
+  overflow: hidden;
+}
 .sb-filter-input {
   padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--vp-c-divider);
-  background: var(--vp-c-bg);
+  border: none;
+  border-right: 1px solid var(--vp-c-divider);
+  background: transparent;
   color: var(--vp-c-text-1);
   font-size: 13px;
-  width: 155px;
+  width: 170px;
+  outline: none;
 }
 .sb-select {
   padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--vp-c-divider);
-  background: var(--vp-c-bg);
+  border: none;
+  background: transparent;
   color: var(--vp-c-text-1);
   font-size: 13px;
-  max-width: 245px;
+  max-width: 235px;
+  outline: none;
 }
 .sb-hint-bar {
   display: flex;
@@ -968,41 +1192,77 @@ function severityLabel(sev?: number): string {
   cursor: pointer;
   text-decoration: none;
   border: 1px solid transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 .sb-btn-primary {
-  background: var(--vp-c-brand-1);
+  background: var(--ms-brand, #2563eb);
   color: #fff;
+}
+.sb-btn-primary:hover:not(:disabled) {
+  background: var(--ms-brand-hover, #1d4ed8);
+}
+.sb-btn-primary:disabled {
+  opacity: 0.65;
+  cursor: wait;
 }
 .sb-btn-ghost {
   background: var(--vp-c-bg);
   border-color: var(--vp-c-divider);
   color: var(--vp-c-text-1);
 }
+.sb-btn-ghost:hover {
+  border-color: var(--vp-c-brand-1);
+}
 .sb-btn-outline {
   background: transparent;
   border-color: var(--vp-c-divider);
   color: var(--vp-c-text-1);
 }
+.sb-btn-outline:hover {
+  border-color: var(--vp-c-brand-1);
+}
 .sb-body {
   display: grid;
   grid-template-columns: 1.15fr 0.85fr;
-  min-height: 340px;
-}
-@media (max-width: 900px) {
-  .sb-body {
-    grid-template-columns: 1fr;
-  }
+  height: 460px;
 }
 .sb-editor-pane {
   display: flex;
   flex-direction: column;
+  min-height: 0;
   border-right: 1px solid var(--vp-c-divider);
 }
 .sb-results-pane {
   display: flex;
   flex-direction: column;
+  min-height: 0;
   padding: 12px 14px;
   gap: 10px;
+}
+.sb-results-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 2px;
+}
+@media (max-width: 900px) {
+  .sb-body {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .sb-editor-pane {
+    border-right: none;
+    border-bottom: 1px solid var(--vp-c-divider);
+  }
+  .sb-monaco-host {
+    height: 340px;
+  }
+  .sb-results-pane {
+    max-height: 420px;
+  }
 }
 .sb-pane-meta {
   display: flex;
@@ -1013,6 +1273,12 @@ function severityLabel(sev?: number): string {
   font-size: 12px;
   color: var(--vp-c-text-2);
   border-bottom: 1px solid var(--vp-c-divider);
+  flex-shrink: 0;
+}
+.sb-meta-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sb-results-pane .sb-pane-meta {
   padding: 0 0 8px;
@@ -1020,11 +1286,11 @@ function severityLabel(sev?: number): string {
 .sb-textarea {
   flex: 1;
   width: 100%;
-  min-height: 290px;
+  min-height: 320px;
   padding: 12px 14px;
   border: none;
   outline: none;
-  resize: vertical;
+  resize: none;
   background: transparent;
   color: var(--vp-c-text-1);
   font-family: var(--vp-font-family-mono);
@@ -1080,17 +1346,27 @@ function severityLabel(sev?: number): string {
 }
 .sb-diag-item {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
   padding: 8px 10px;
   border-radius: 6px;
   background: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
   font-size: 12px;
   cursor: pointer;
 }
 .sb-diag-item:hover {
-  outline: 1px solid var(--vp-c-brand-1);
+  border-color: var(--vp-c-brand-1);
+}
+.sb-diag-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.sb-diag-msg {
+  color: var(--vp-c-text-1);
+  line-height: 1.4;
 }
 .sb-diag-badge {
   font-weight: 600;
@@ -1098,6 +1374,10 @@ function severityLabel(sev?: number): string {
 }
 .sb-diag-item.sev-2 .sb-diag-badge {
   color: #f59e0b;
+}
+.sb-diag-item.sev-3 .sb-diag-badge,
+.sb-diag-item.sev-4 .sb-diag-badge {
+  color: #38bdf8;
 }
 .sb-diag-loc {
   color: var(--vp-c-text-3);
@@ -1120,11 +1400,40 @@ function severityLabel(sev?: number): string {
   font-size: 13px;
   color: var(--vp-c-text-2);
 }
+.sb-stages-wrap {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--vp-c-divider);
+}
+.sb-stages-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 2px;
+  border: none;
+  background: transparent;
+  color: var(--vp-c-text-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.sb-stages-toggle:hover {
+  color: var(--vp-c-text-1);
+}
+.st-pass {
+  color: #10b981;
+}
+.st-fail {
+  color: #ef4444;
+}
+.st-skip {
+  color: var(--vp-c-text-3);
+}
 .sb-stages {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: auto;
+  margin-top: 8px;
 }
 .sb-stage-pill {
   display: inline-flex;
@@ -1134,6 +1443,19 @@ function severityLabel(sev?: number): string {
   font-size: 11px;
   background: var(--vp-c-bg-soft);
   border: 1px solid var(--vp-c-divider);
+}
+.sb-stage-pill.pass {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.08);
+  color: #34d399;
+}
+.sb-stage-pill.fail {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+}
+.sb-stage-pill.skip {
+  opacity: 0.65;
 }
 .sb-results-heading {
   display: flex;
@@ -1180,32 +1502,103 @@ function severityLabel(sev?: number): string {
   cursor: pointer;
 }
 .sb-inline-fix:hover {
-  background: var(--vp-c-brand-1);
+  background: var(--ms-brand, #2563eb);
+  border-color: var(--ms-brand, #2563eb);
   color: #fff;
 }
 .sb-pane-meta-right {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
-.sb-monaco-toggle {
-  padding: 2px 8px;
-  border-radius: 5px;
+.sb-worker-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  border-radius: 999px;
   border: 1px solid var(--vp-c-divider);
-  background: var(--vp-c-bg);
-  color: var(--vp-c-text-1);
   font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
+  text-transform: capitalize;
 }
-.sb-monaco-toggle.active {
-  border-color: var(--vp-c-brand-1);
-  background: var(--vp-c-brand-soft);
-  color: var(--vp-c-brand-1);
+.sb-worker-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--vp-c-text-3);
+}
+.sb-worker-pill.state-ready .sb-worker-dot {
+  background: #10b981;
+}
+.sb-worker-pill.state-booting .sb-worker-dot {
+  background: #f59e0b;
+}
+.sb-worker-pill.state-error .sb-worker-dot {
+  background: #ef4444;
 }
 .sb-monaco-host {
+  position: relative;
   width: 100%;
-  min-height: 290px;
   flex: 1;
+  min-height: 0;
+}
+.sb-monaco-loading {
+  padding: 16px;
+  font-size: 13px;
+  color: var(--vp-c-text-2);
+  font-family: var(--vp-font-family-mono);
+}
+.sb-diagram-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--vp-c-bg);
+  flex-shrink: 0;
+}
+.sb-diagram-card.is-full {
+  flex: 1;
+  min-height: 0;
+}
+.sb-diagram-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+  border-bottom: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg-soft);
+}
+.sb-diagram-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-diagram-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.sb-diagram-meta {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--vp-c-text-3);
+}
+.sb-diagram-stage {
+  position: relative;
+  width: 100%;
+  height: 240px;
+  overflow: hidden;
+}
+.sb-diagram-card.is-full .sb-diagram-stage {
+  flex: 1;
+  min-height: 280px;
+  height: 100%;
 }
 </style>

@@ -26,6 +26,7 @@ import {
   type Quat,
 } from "@modelscript/cad";
 import { BinOp, EqKind, ExprKind, UnaryOp } from "@modelscript/runtime";
+import { stripOuterDoubleQuotes } from "../flattener/expressions/cst-utils.js";
 
 export interface ProceduralMeshPayload {
   vertices: number[];
@@ -968,7 +969,7 @@ class ArenaVisualizerInspector {
     if (kind === ExprKind.StringLiteral) {
       const raw = this.arena.interner.resolve(this.arena.getExprData1(exprId));
       if (raw === undefined) return null;
-      return raw.replace(/^"(.*)"$/, "$1");
+      return stripOuterDoubleQuotes(raw);
     }
     if (kind === ExprKind.Name) {
       const refName = this.arena.interner.resolve(this.arena.getExprData1(exprId));
@@ -1413,8 +1414,19 @@ export function extractArenaVisualizers(arena: any): ExtractedVisualizerComponen
     inspector.pushDynamicBinding(dynamicBindings, "scale", 1, `${p}width`);
     inspector.pushDynamicBinding(dynamicBindings, "scale", 2, isSpring ? `${p}width` : `${p}height`);
 
+    const lowerShapeType = shapeType.toLowerCase();
     const isExternalUri =
-      /^(?:modelica|file|https?):\/\//i.test(shapeType) || /\.(?:stl|obj|glb|gltf|step|stp|dxf)$/i.test(shapeType);
+      lowerShapeType.startsWith("modelica://") ||
+      lowerShapeType.startsWith("file://") ||
+      lowerShapeType.startsWith("http://") ||
+      lowerShapeType.startsWith("https://") ||
+      lowerShapeType.endsWith(".stl") ||
+      lowerShapeType.endsWith(".obj") ||
+      lowerShapeType.endsWith(".glb") ||
+      lowerShapeType.endsWith(".gltf") ||
+      lowerShapeType.endsWith(".step") ||
+      lowerShapeType.endsWith(".stp") ||
+      lowerShapeType.endsWith(".dxf");
     const uri = isExternalUri ? shapeType : `procedural://msl/${shapeType.toLowerCase()}`;
     const proceduralMesh = isExternalUri ? undefined : createMslShapeMesh(shapeType, extra, rgba, wireRatio);
 

@@ -3,8 +3,46 @@
 import { Color, ColorInformation, ColorPresentation, Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import type { SyntaxNode } from "../utils/cst-facade.js";
+import { isDigitCode, skipWs } from "../utils/lexical-utils.js";
 
 const COLOR_FIELDS = new Set(["color", "lineColor", "fillColor", "textColor"]);
+
+function parseRgbTupleFromExpr(exprNode: SyntaxNode): [number, number, number] | null {
+  const nums: number[] = [];
+  const collect = (n: SyntaxNode) => {
+    if (n.type === "UNSIGNED_NUMBER" || n.type === "unsigned_number" || n.type === "UNSIGNED_INTEGER") {
+      const v = Number((n.text ?? "").trim());
+      if (Number.isInteger(v)) nums.push(v);
+      return;
+    }
+    for (const c of n.children || []) {
+      if (c) collect(c);
+    }
+  };
+  collect(exprNode);
+  if (nums.length === 3) {
+    return [nums[0]!, nums[1]!, nums[2]!];
+  }
+
+  const raw = (exprNode.text ?? "").trim();
+  if (!raw.startsWith("{")) return null;
+  let pos = 1;
+  const parsed: number[] = [];
+  for (let k = 0; k < 3; k++) {
+    pos = skipWs(raw, pos);
+    const dStart = pos;
+    while (pos < raw.length && isDigitCode(raw.charCodeAt(pos))) pos++;
+    if (pos === dStart) return null;
+    parsed.push(parseInt(raw.slice(dStart, pos), 10));
+    pos = skipWs(raw, pos);
+    if (k < 2) {
+      if (raw[pos] !== ",") return null;
+      pos++;
+    }
+  }
+  pos = skipWs(raw, pos);
+  return raw[pos] === "}" ? [parsed[0]!, parsed[1]!, parsed[2]!] : null;
+}
 
 export function registerColorProvider(
   connection: Connection,
@@ -59,26 +97,21 @@ export function registerColorProvider(
           }
 
           if (exprNode) {
-            const text = exprNode.text ?? "";
-            const match = text.match(/\{\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\}/);
-            if (match) {
-              const r = parseInt(match[1], 10);
-              const g = parseInt(match[2], 10);
-              const b = parseInt(match[3], 10);
-              if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
-                colors.push({
-                  range: {
-                    start: { line: exprNode.startPosition.row, character: exprNode.startPosition.column },
-                    end: { line: exprNode.endPosition.row, character: exprNode.endPosition.column },
-                  },
-                  color: Color.create(
-                    Math.max(0, Math.min(255, r)) / 255.0,
-                    Math.max(0, Math.min(255, g)) / 255.0,
-                    Math.max(0, Math.min(255, b)) / 255.0,
-                    1.0,
-                  ),
-                });
-              }
+            const rgb = parseRgbTupleFromExpr(exprNode);
+            if (rgb) {
+              const [r, g, b] = rgb;
+              colors.push({
+                range: {
+                  start: { line: exprNode.startPosition.row, character: exprNode.startPosition.column },
+                  end: { line: exprNode.endPosition.row, character: exprNode.endPosition.column },
+                },
+                color: Color.create(
+                  Math.max(0, Math.min(255, r)) / 255.0,
+                  Math.max(0, Math.min(255, g)) / 255.0,
+                  Math.max(0, Math.min(255, b)) / 255.0,
+                  1.0,
+                ),
+              });
             }
           }
         }

@@ -6,6 +6,13 @@
  */
 
 import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
+import {
+  collectCstLeaves,
+  isSysmlIdentLeaf,
+  parseSysmlSource,
+  readDottedChainFromLeaves,
+  stripLeadingChars,
+} from "./cst-utils.js";
 import { findCstDescendants, findFirstDescendant, type SysmlCstNode } from "./flattener/cst-lowerer.js";
 
 export type DimensionVector = readonly [
@@ -281,13 +288,15 @@ export function resolveTypeDimension(
     }
   }
 
-  // Check CST text for `:> SuperType`
+  // Check CST leaves for `:> SuperType`
   if (typeof entry.startOffset === "number" && typeof entry.endOffset === "number") {
     const text = db.cstText(entry.startOffset, entry.endOffset);
     if (text) {
-      const match = text.match(/:>\s*([a-zA-Z0-9_:]+)/);
-      if (match && match[1]) {
-        const supName = match[1].split("::").pop()!;
+      const leaves = collectCstLeaves(parseSysmlSource(text));
+      const specIdx = leaves.findIndex((l) => l.text === ":>");
+      const chain = specIdx !== -1 ? readDottedChainFromLeaves(leaves, specIdx + 1) : null;
+      if (chain) {
+        const supName = chain.text.split("::").pop()!;
         const dim = resolveTypeDimension(db, supName, visited);
         if (dim) return dim;
       }
@@ -633,11 +642,10 @@ export function inferExpressionDimension(
 
 function extractReferencedName(node: SysmlCstNode): string | null {
   if (node.type === "FeatureReferenceExpression") {
-    const text = node.text?.trim() || "";
-    return text.replace(/^[:.]+/, "").split(".")[0] ?? null;
+    return stripLeadingChars(node.text?.trim(), ":.").split(".")[0] ?? null;
   }
   const text = node.text?.trim() || "";
-  if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(text)) {
+  if (isSysmlIdentLeaf(text)) {
     return text;
   }
   return null;
@@ -725,7 +733,7 @@ export function inferUnitDimension(
 
     case "FeatureReferenceExpression":
     default: {
-      const rawText = (node.text?.trim() || "").replace(/^[:.]+/, "").split(".")[0] ?? "";
+      const rawText = stripLeadingChars(node.text?.trim(), ":.").split(".")[0] ?? "";
       // Handle superscripts directly (e.g. m², m³)
       if (rawText.endsWith("²") || rawText.endsWith("\u00B2")) {
         const baseName = rawText.slice(0, -1);

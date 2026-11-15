@@ -7,7 +7,7 @@
  * polyglot cross-language projections for SSP archives and SSD models.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, xmlRules } from "@modelscript/dsl";
 import { sspToModelicaBlock } from "./projection.js";
 import { parseSsd, parseSsv } from "./ssd-parser.js";
 import { sspTabularConfig } from "./tabular.js";
@@ -32,9 +32,12 @@ export const sspLanguage = language({
       dark: "./assets/ssp/icon-dark.png",
     },
   },
-  rules: {
-    Root: () => "ssp",
+  extras: ($) => {
+    const comment = $["COMMENT"];
+    const pi = $["PROCESSING_INSTRUCTION"];
+    return comment && pi ? [/[ \t\r\n]+/, comment, pi] : [/[ \t\r\n]+/];
   },
+  rules: xmlRules,
 
   // IDE and AI agent actions for inspecting SSD diagrams, running multi-FMU co-simulation, and Modelica projection
   actions: [

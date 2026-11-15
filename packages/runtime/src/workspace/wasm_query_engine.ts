@@ -1077,25 +1077,60 @@ export class WasmQueryEngine {
     const rEnd = result.endOffset;
     const isWholeEntryRange = rStart === entryStart && rEnd === entryEnd;
 
+    const trimWithinEntry = (s: number, e: number): { startOffset: number; endOffset: number } => {
+      if (e <= s + 1) return { startOffset: s, endOffset: e };
+      const cstText = (this as unknown as { cstNode?: (id: SymbolId) => { text?: string } | null }).cstNode?.(
+        entry.id,
+      )?.text;
+      if (!cstText || s < entryStart || e > entryStart + cstText.length) {
+        return { startOffset: s, endOffset: e };
+      }
+      let relS = s - entryStart;
+      let relE = e - entryStart;
+      while (relS < relE - 1 && (cstText[relS] === " " || cstText[relS] === "\t")) {
+        relS++;
+      }
+      while (
+        relE > relS + 1 &&
+        (cstText[relE - 1] === " " ||
+          cstText[relE - 1] === "\t" ||
+          cstText[relE - 1] === "\r" ||
+          cstText[relE - 1] === "\n")
+      ) {
+        relE--;
+      }
+      return { startOffset: entryStart + relS, endOffset: entryStart + relE };
+    };
+
     if (rStart !== undefined && rEnd !== undefined && rEnd >= rStart && !isWholeEntryRange) {
-      return { startOffset: rStart, endOffset: rEnd };
+      return trimWithinEntry(rStart, rEnd);
     }
 
     const fieldRange = result.field ? entry.fieldRanges?.[result.field] : undefined;
     if (fieldRange) {
-      return {
-        startOffset: fieldRange.startOffset,
-        endOffset: fieldRange.endOffset,
-      };
+      return trimWithinEntry(fieldRange.startOffset, fieldRange.endOffset);
     }
 
     const fallbackField =
-      entry.fieldRanges?.["declaredName"] ?? entry.fieldRanges?.["name"] ?? entry.fieldRanges?.["id"];
+      entry.fieldRanges?.["declaredName"] ??
+      entry.fieldRanges?.["name"] ??
+      entry.fieldRanges?.["id"] ??
+      entry.fieldRanges?.["typeName"];
     if (fallbackField) {
-      return {
-        startOffset: fallbackField.startOffset,
-        endOffset: fallbackField.endOffset,
-      };
+      return trimWithinEntry(fallbackField.startOffset, fallbackField.endOffset);
+    }
+
+    const cstText = (this as unknown as { cstNode?: (id: SymbolId) => { text?: string } | null }).cstNode?.(
+      entry.id,
+    )?.text;
+    if (cstText) {
+      const leadMatch = cstText.match(/^[A-Za-z_][A-Za-z0-9_]*/);
+      if (leadMatch) {
+        return {
+          startOffset: entryStart,
+          endOffset: entryStart + leadMatch[0].length,
+        };
+      }
     }
 
     return {

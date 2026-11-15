@@ -1144,6 +1144,25 @@ export const Lint: CommandModule<{}, LintArgs> = {
           continue;
         }
 
+        if (langId === "las") {
+          const { lintLas } = await import("@modelscript/las/las-parser");
+          const lasDiags = lintLas(item.text);
+          for (const ld of lasDiags) {
+            diagnostics.push({
+              severity: ld.severity,
+              lintName: ld.rule || ld.code.toLowerCase(),
+              code: ld.code,
+              domain: "las",
+              message: ld.message,
+              symbolId: null,
+              resourceId: filePath,
+              startOffset: ld.startOffset ?? 0,
+              endOffset: ld.endOffset ?? 0,
+            });
+          }
+          continue;
+        }
+
         if (langId === "cfd") {
           diagnostics.push(...lintCfdText(item.text, filePath));
           try {

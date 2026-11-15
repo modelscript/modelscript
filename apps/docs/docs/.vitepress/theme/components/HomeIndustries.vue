@@ -11,13 +11,19 @@ const props = withDefaults(
     heading?: boolean;
     level?: "h1" | "h2";
     groupFilter?: IndustryGroupId | "all";
+    searchQuery?: string;
   }>(),
   {
     heading: true,
     level: "h2",
     groupFilter: "all",
+    searchQuery: "",
   },
 );
+
+const emit = defineEmits<{
+  "clear-search": [];
+}>();
 
 /** Compact chip labels so format pills never overflow or wrap awkwardly in 4-column cards. */
 const COMPACT_FORMAT_NAMES: Record<string, string> = {
@@ -35,6 +41,7 @@ const COMPACT_FORMAT_NAMES: Record<string, string> = {
   "fea": "FEA / NASTRAN",
   "pscad": "PSCAD",
   "psse": "PSS/E",
+  "powerfactory": "PowerFactory",
   "cgmes": "CIM / CGMES",
   "lps": "PipelineStudio",
   "eclipse": "ECLIPSE",
@@ -75,9 +82,9 @@ const PRIMARY_STANDARD: Record<string, string> = {
   "oil-gas": "ISO 20765 · PHREEQC",
   "nuclear": "RELAP5-3D · ReqIF",
   "buildings": "IDF · EPANET · SWMM",
-  "electronics": "IEEE 1857 · Touchstone",
+  "electronics": "Verilog-AMS · Touchstone",
   "robotics": "IEC 61131-3 · CAEX",
-  "process": "CAPE-OPEN · NASA-7",
+  "process": "Joback-Reid · NASA-7 · MOL",
   "life-sciences": "DICOM-RT · 21 CFR 11",
 };
 
@@ -100,17 +107,43 @@ function cardStyle(ind: Industry): Record<string, string> {
   };
 }
 
-const visibleGroups = computed(() =>
-  INDUSTRY_GROUPS.filter((g) => props.groupFilter === "all" || g.id === props.groupFilter).map((g) => {
-    const items = INDUSTRIES.filter((i) => i.group === g.id);
-    const uniqueFormats = new Set(items.flatMap((i) => i.languages)).size;
-    return {
-      ...g,
-      items,
-      uniqueFormats,
-    };
-  }),
-);
+function matchesQuery(ind: Industry, q: string): boolean {
+  if (!q) return true;
+  if (
+    ind.name.toLowerCase().includes(q) ||
+    ind.slug.toLowerCase().includes(q) ||
+    ind.tagline.toLowerCase().includes(q) ||
+    ind.summary.toLowerCase().includes(q)
+  ) {
+    return true;
+  }
+  if (ind.standards.some((s) => s.toLowerCase().includes(q))) return true;
+  if (ind.tracks?.some((t) => t.label.toLowerCase().includes(q) || t.summary.toLowerCase().includes(q))) return true;
+  return ind.languages.some((slug) => {
+    const lang = LANGUAGE_BY_SLUG[slug];
+    return (
+      slug.toLowerCase().includes(q) ||
+      lang?.name.toLowerCase().includes(q) ||
+      lang?.ext.toLowerCase().includes(q) ||
+      lang?.role.toLowerCase().includes(q)
+    );
+  });
+}
+
+const visibleGroups = computed(() => {
+  const q = props.searchQuery.trim().toLowerCase();
+  return INDUSTRY_GROUPS.filter((g) => props.groupFilter === "all" || g.id === props.groupFilter)
+    .map((g) => {
+      const items = INDUSTRIES.filter((i) => i.group === g.id && matchesQuery(i, q));
+      const uniqueFormats = new Set(items.flatMap((i) => i.languages)).size;
+      return {
+        ...g,
+        items,
+        uniqueFormats,
+      };
+    })
+    .filter((g) => g.items.length > 0);
+});
 </script>
 
 <template>
@@ -124,7 +157,7 @@ const visibleGroups = computed(() =>
         </p>
       </header>
 
-      <div class="ind-sectors">
+      <div v-if="visibleGroups.length" class="ind-sectors">
         <div v-for="group in visibleGroups" :key="group.id" class="ind-sector">
           <div class="sector-rail">
             <span class="sector-code">{{ group.code }}</span>
@@ -374,6 +407,13 @@ const visibleGroups = computed(() =>
           </div>
         </div>
       </div>
+
+      <div v-else class="ind-empty">
+        <MsIcon name="search" :size="24" class="ind-empty-icon" />
+        <p class="ind-empty-title">No domains match “{{ props.searchQuery }}”</p>
+        <p class="ind-empty-sub">Try searching by extension (.pscx, .opi, .va), standard (IEEE 2800, EN 14363), or clear filters.</p>
+        <button type="button" class="ind-empty-btn" @click="emit('clear-search')">Reset filters</button>
+      </div>
     </div>
   </section>
 </template>
@@ -433,8 +473,8 @@ const visibleGroups = computed(() =>
 
 .sector-meta {
   font-family: var(--vp-font-family-mono);
-  font-size: 11px;
-  font-weight: 550;
+  font-size: var(--text-2xs);
+  font-weight: var(--ms-fw-medium);
   color: var(--vp-c-text-3);
   white-space: nowrap;
 }
@@ -586,8 +626,8 @@ const visibleGroups = computed(() =>
   padding: 2px 8px;
   border-radius: 999px;
   font-family: var(--vp-font-family-mono);
-  font-size: 10.5px;
-  font-weight: 560;
+  font-size: var(--text-2xs);
+  font-weight: var(--ms-fw-medium);
   font-variant-numeric: tabular-nums;
   line-height: 1.4;
 }
@@ -607,17 +647,17 @@ const visibleGroups = computed(() =>
 /* ── Typography ── */
 .ind-name {
   margin: 14px 0 5px;
-  font-size: 1.02rem;
-  font-weight: 700;
+  font-size: var(--text-md);
+  font-weight: var(--ms-fw-bold);
   line-height: 1.28;
-  letter-spacing: -0.012em;
+  letter-spacing: var(--ms-tracking-snug);
   color: var(--vp-c-text-1);
 }
 
 .ind-tag {
   margin: 0 0 14px;
-  font-size: 0.83rem;
-  line-height: 1.48;
+  font-size: var(--text-sm);
+  line-height: var(--leading-sm);
   color: var(--vp-c-text-2);
 }
 
@@ -639,8 +679,8 @@ const visibleGroups = computed(() =>
 .ind-fmt {
   padding: 2px 7px;
   border-radius: 6px;
-  font-size: 11px;
-  font-weight: 560;
+  font-size: var(--text-2xs);
+  font-weight: var(--ms-fw-medium);
   line-height: 1.4;
   color: var(--vp-c-text-2);
   background: var(--vp-c-bg);
@@ -655,8 +695,8 @@ const visibleGroups = computed(() =>
 
 .ind-fmt-more {
   font-family: var(--vp-font-family-mono);
-  font-size: 10.5px;
-  font-weight: 650;
+  font-size: var(--text-2xs);
+  font-weight: var(--ms-fw-semibold);
   color: var(--tone-p);
   background: color-mix(in srgb, var(--tone-p) 9%, var(--vp-c-bg));
   border-color: color-mix(in srgb, var(--tone-p) 25%, var(--vp-c-divider));
@@ -673,8 +713,8 @@ const visibleGroups = computed(() =>
 
 .ind-std-pill {
   font-family: var(--vp-font-family-mono);
-  font-size: 10.5px;
-  font-weight: 540;
+  font-size: var(--text-2xs);
+  font-weight: var(--ms-fw-medium);
   color: var(--vp-c-text-3);
   white-space: nowrap;
   overflow: hidden;
@@ -685,8 +725,8 @@ const visibleGroups = computed(() =>
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12.5px;
-  font-weight: 650;
+  font-size: var(--text-xs);
+  font-weight: var(--ms-fw-semibold);
   color: var(--tone-p);
   flex-shrink: 0;
 }
@@ -719,6 +759,50 @@ const visibleGroups = computed(() =>
   .sector-summary {
     display: none;
   }
+}
+
+.ind-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 56px 24px;
+  border-radius: 18px;
+  border: 1px dashed var(--vp-c-divider);
+  background: color-mix(in srgb, var(--vp-c-bg-soft) 65%, var(--vp-c-bg));
+}
+
+.ind-empty-icon {
+  color: var(--vp-c-text-3);
+  margin-bottom: 12px;
+}
+
+.ind-empty-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--vp-c-text-1);
+}
+
+.ind-empty-sub {
+  margin: 6px 0 18px;
+  font-size: 0.9rem;
+  color: var(--vp-c-text-2);
+}
+
+.ind-empty-btn {
+  padding: 7px 16px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vp-c-brand-1);
+  background: var(--vp-c-brand-soft);
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 35%, transparent);
+  cursor: pointer;
+}
+
+.ind-empty-btn:hover {
+  border-color: var(--vp-c-brand-1);
 }
 
 @media (max-width: 600px) {

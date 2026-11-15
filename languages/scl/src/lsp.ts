@@ -203,9 +203,15 @@ export function getSclDiagnostics(content: string): LspDiagnosticItem[] {
     ];
   }
 
+  const lines = content.split(/\r?\n/);
+  const lt = lines[0] ?? "";
+  let sChar = 0;
+  while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
+  const tok = lt.slice(sChar).match(/^<\/?[A-Za-z0-9_:-]+|^\S+/);
+  const eChar = Math.min(lt.length, sChar + (tok ? tok[0].length : 1));
   const diags = lintSclDocument(doc);
   return diags.map((d) => ({
-    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 80 } },
+    range: { start: { line: 0, character: sChar }, end: { line: 0, character: eChar } },
     severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
     code: d.code,
     source: "scl-lint",

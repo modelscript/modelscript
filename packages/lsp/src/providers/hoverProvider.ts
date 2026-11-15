@@ -2,11 +2,42 @@
 
 import { getPscadHover } from "@modelscript/pscad";
 import { getSymbolDomain, LanguageDomainId } from "@modelscript/runtime";
-import { STEP_SCHEMA } from "@modelscript/step";
+import { scanStepEntities, STEP_SCHEMA } from "@modelscript/step";
 import { Connection, Hover, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { resolveFeatureFlags, type LspContext } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
+import {
+  extractCrossDomainLineHints,
+  extractQualifiedTokenAtOffset,
+  extractWordAtOffset,
+  hasBiomedicalContext,
+  isDigitCode,
+  stripNamespacePrefix,
+  uriBasename,
+} from "../utils/lexical-utils.js";
+
+function isUpperAsciiOrDigitOrUnderscore(code: number): boolean {
+  return (code >= 65 && code <= 90) || isDigitCode(code) || code === 95;
+}
+
+function isStepEntityIdToken(token: string): boolean {
+  if (!token.startsWith("#") || token.length < 2) return false;
+  for (let i = 1; i < token.length; i++) {
+    if (!isDigitCode(token.charCodeAt(i))) return false;
+  }
+  return true;
+}
+
+function isUpperStepTypeToken(token: string): boolean {
+  if (!token) return false;
+  const c0 = token.charCodeAt(0);
+  if (c0 < 65 || c0 > 90) return false;
+  for (let i = 1; i < token.length; i++) {
+    if (!isUpperAsciiOrDigitOrUnderscore(token.charCodeAt(i))) return false;
+  }
+  return true;
+}
 
 function isStepDocument(document: TextDocument): boolean {
   return document.languageId === "step" || /\.(step|stp|p21)$/i.test(document.uri);
@@ -79,20 +110,14 @@ function enhanceWithDigitalThreadTwin(
   const lineText = text.slice(lineStart, lineEnd);
 
   const refEntry = bridge?.findEntryAtOffset?.(offset) || bridge?.findScopeAtOffset?.(offset);
-
-  // Twin annotations / metadata
-  const twinMatch = lineText.match(/(?:twin|counterpart|implements)\s*=\s*"([^"]+)"/i);
-  const partTypeMatch = lineText.match(/part\s+[a-zA-Z0-9_]+\s*:\s*([a-zA-Z0-9_:]+)/);
-  const cadMatch =
-    lineText.match(/CAD(?:Port)?\([^)]*?(?:feature|part)\s*=\s*"([^"]+)"/i) ||
-    lineText.match(/__modelscript_cad\([^)]*?part\s*=\s*"([^"]+)"/i);
+  const lineHints = extractCrossDomainLineHints(lineText);
 
   const twinCand =
     refEntry?.metadata?.twin ||
     refEntry?.metadata?.counterpart ||
     refEntry?.metadata?.implements ||
-    twinMatch?.[1] ||
-    partTypeMatch?.[1];
+    lineHints.twin ||
+    lineHints.partType;
 
   const qe =
     bridge?.engine ??
@@ -164,11 +189,12 @@ function enhanceWithDigitalThreadTwin(
   }
 
   // If we have counterpart info or CAD annotation or thread element, construct twin section
-  if (counterpartEntry || threadElem || cadMatch) {
-    const cName = counterpartEntry?.name || threadElem?.name || cadMatch?.[1] || String(twinCand);
+  const cadCallPart = lineHints.cadCallPart;
+  if (counterpartEntry || threadElem || cadCallPart) {
+    const cName = counterpartEntry?.name || threadElem?.name || cadCallPart || String(twinCand);
     const cKind = counterpartEntry?.ruleName || counterpartEntry?.kind || threadElem?.properties?.kind || "definition";
     const cUri = counterpartEntry?.resourceId || threadElem?.uri;
-    const cDomain = counterpartDomain || (cadMatch ? "STEP CAD" : "Polyglot");
+    const cDomain = counterpartDomain || (cadCallPart ? "STEP CAD" : "Polyglot");
 
     const lines: string[] = [
       "",
@@ -179,7 +205,7 @@ function enhanceWithDigitalThreadTwin(
     ];
 
     if (cUri) {
-      const bName = cUri.split("/").pop() || cUri;
+      const bName = uriBasename(cUri);
       lines.push(`- **Resource:** [\`${bName}\`](${cUri})`);
     }
 
@@ -198,10 +224,10 @@ function enhanceWithDigitalThreadTwin(
       lines.push(`- **Physical Quantity:** \`mass: ${threadElem.properties.mass}\` ✓ [Consistent]`);
     }
 
-    const cadPartName = cadMatch?.[1] || (cDomain === "STEP CAD" ? cName : null);
+    const cadPartName = cadCallPart || (cDomain === "STEP CAD" ? cName : null);
     if (cadPartName && !hoverContent.includes("command:modelscript.focusCadPart?")) {
       const commandArg = encodeURIComponent(JSON.stringify({ partName: cadPartName }));
-      const isBio = /ventricle|atrium|myocardium|pacemaker|cannula|catheter|stent/i.test(text);
+      const isBio = hasBiomedicalContext(text);
       const label = isBio ? "Inspect in 3D Anatomy Canvas" : "Inspect in 3D CAD Viewer";
       lines.push(`- **Coupled 3D CAD Anchor:** [🔍 ${label}](command:modelscript.focusCadPart?${commandArg})`);
     }
@@ -229,17 +255,15 @@ function enhanceWithCadLink(
 
   let coupledPartName: string | null = null;
   let isBiomedical = false;
-  const cadMatch =
-    lineText.match(/CAD(?:Port)?\([^)]*?(?:feature|part)\s*=\s*"([^"]+)"/i) ||
-    lineText.match(/__modelscript_cad\([^)]*?part\s*=\s*"([^"]+)"/i);
+  const lineHints = extractCrossDomainLineHints(lineText);
 
-  if (cadMatch) {
-    coupledPartName = cadMatch[1]!;
-    isBiomedical = /ventricle|atrium|myocardium|pacemaker|cannula|catheter|stent/i.test(text);
+  if (lineHints.cadCallPart) {
+    coupledPartName = lineHints.cadCallPart;
+    isBiomedical = hasBiomedicalContext(text);
   } else if (allowDemoHeuristics) {
     const lowerToken = token.toLowerCase();
     const strictBioKeywords = ["cannula", "ventricle", "atrium", "myocardium", "leaflet", "catheter", "stent"];
-    const hasBioContext = /ventricle|atrium|myocardium|pacemaker|cannula|catheter|stent/i.test(text);
+    const hasBioContext = hasBiomedicalContext(text);
     const contextualBioKeywords = ["lead", "electrode", "apex", "patch"];
 
     if (
@@ -271,14 +295,6 @@ function enhanceWithCadLink(
   return hoverContent;
 }
 
-function extractWordAtOffset(text: string, offset: number): { token: string; start: number; end: number } {
-  let start = offset;
-  while (start > 0 && /[a-zA-Z0-9_]/.test(text[start - 1]!)) start--;
-  let end = offset;
-  while (end < text.length && /[a-zA-Z0-9_]/.test(text[end]!)) end++;
-  return { token: text.slice(start, end).trim(), start, end };
-}
-
 export function registerHoverProvider(
   connection: Connection,
   documents: TextDocuments<TextDocument>,
@@ -297,19 +313,21 @@ export function registerHoverProvider(
     if (isStepDocument(document)) {
       // Expand token boundaries to include # for entity IDs and uppercase for type names
       let start = offset;
-      while (start > 0 && /[A-Z0-9_#]/.test(text[start - 1]!)) start--;
+      while (start > 0 && (isUpperAsciiOrDigitOrUnderscore(text.charCodeAt(start - 1)) || text[start - 1] === "#")) {
+        start--;
+      }
       let end = offset;
-      while (end < text.length && /[A-Z0-9_]/.test(text[end]!)) end++;
+      while (end < text.length && isUpperAsciiOrDigitOrUnderscore(text.charCodeAt(end))) {
+        end++;
+      }
 
       const token = text.slice(start, end);
 
       // Hover over entity ID reference (#123) → show its definition line
-      if (/^#\d+$/.test(token)) {
-        // Escape the # for use in regex
-        const defRegex = new RegExp(`^${token.replace("#", "\\#")}\\s*=\\s*([^;]+);`, "m");
-        const match = defRegex.exec(text);
-        if (match) {
-          let stepHover = ["```step", match[0].trim(), "```"].join("\n");
+      if (isStepEntityIdToken(token)) {
+        const entity = scanStepEntities(text).find((e) => e.id === token);
+        if (entity) {
+          let stepHover = ["```step", text.slice(entity.startOffset, entity.endOffset).trim(), "```"].join("\n");
           stepHover = enhanceWithDigitalThreadTwin(
             stepHover,
             token,
@@ -334,7 +352,7 @@ export function registerHoverProvider(
       }
 
       // Hover over STEP entity type name (e.g. ORIENTED_EDGE) → show schema info
-      if (/^[A-Z][A-Z0-9_]*$/.test(token)) {
+      if (isUpperStepTypeToken(token)) {
         const schema = STEP_SCHEMA[token];
         if (schema) {
           return {
@@ -415,7 +433,8 @@ export function registerHoverProvider(
 
     if (/\.(inp|inpt|bdf|fea)$/i.test(targetUri)) {
       const feaWord = extractWordAtOffset(text, offset);
-      const word = feaWord.token.toUpperCase().replace(/^\*/, "");
+      const rawToken = feaWord.token.toUpperCase();
+      const word = rawToken.startsWith("*") ? rawToken.slice(1) : rawToken;
       const feaDocs: Record<string, string> = {
         NODE: "**CalculiX / Abaqus *NODE**\n\nDefines nodal coordinate grid (X, Y, Z) for finite element discretization.",
         ELEMENT:
@@ -497,11 +516,7 @@ export function registerHoverProvider(
 
     if (!hoverContent) {
       // Check if cursor is over a cross-language reference, e.g. Propulsion::Motor or SysML2::Avionics::IMU
-      let tokStart = offset;
-      while (tokStart > 0 && /[-a-zA-Z0-9_:#./]/.test(text[tokStart - 1]!)) tokStart--;
-      let tokEnd = offset;
-      while (tokEnd < text.length && /[-a-zA-Z0-9_:#./]/.test(text[tokEnd]!)) tokEnd++;
-      const fullToken = text.slice(tokStart, tokEnd).trim();
+      const { token: fullToken, start: tokStart, end: tokEnd } = extractQualifiedTokenAtOffset(text, offset);
 
       const qe =
         (bridge as any)?.engine ??
@@ -520,7 +535,7 @@ export function registerHoverProvider(
           if (entry) {
             const domainName = getDomainName(getSymbolDomain(entry.id), entry.resourceId);
             const kind = entry.kind || entry.ruleName || "definition";
-            const resName = entry.resourceId ? entry.resourceId.split("/").pop() || entry.resourceId : "";
+            const resName = entry.resourceId ? uriBasename(entry.resourceId) : "";
             const resLink = entry.resourceId ? `\n- **Resource:** [\`${resName}\`](${entry.resourceId})` : "";
             hoverContent = `\`\`\`${domainToLang(domainName)}\n${entry.name}: ${kind}\n\`\`\`\n\n---\n### 🔗 Polyglot Digital Thread Twin\n- **Domain:** ${domainName}\n- **Counterpart:** \`${entry.name}\` (\`${kind}\`)${resLink}`;
             hoverRange = {
@@ -550,10 +565,7 @@ export function registerHoverProvider(
         const docLang = (document as any).languageId;
         const langId = plugin?.id || docLang || "polyglot";
 
-        const candidateIris: string[] = [
-          `${langId}:${token}`,
-          token,
-        ];
+        const candidateIris: string[] = [`${langId}:${token}`, token];
         if (docLang && !candidateIris.includes(`${docLang}:${token}`)) {
           candidateIris.push(`${docLang}:${token}`);
         }
@@ -592,14 +604,14 @@ export function registerHoverProvider(
             }
 
             if (domainTypes.length > 0) {
-              hoverContent += `\n\n**Inferred Types (Reasoner):**\n- ${domainTypes.map((d) => d.replace(/^[^:]+:/, "")).join(", ")}`;
+              hoverContent += `\n\n**Inferred Types (Reasoner):**\n- ${domainTypes.map((d) => stripNamespacePrefix(d)).join(", ")}`;
             }
 
             const subClasses = Array.from<string>(node.subClasses || []).filter(
               (s: string) => s !== "owl:Nothing" && s !== iri,
             );
             if (subClasses.length > 0) {
-              hoverContent += `\n\n**Inferred Subtypes:**\n- ${subClasses.map((s) => s.replace(/^[^:]+:/, "")).join(", ")}`;
+              hoverContent += `\n\n**Inferred Subtypes:**\n- ${subClasses.map((s) => stripNamespacePrefix(s)).join(", ")}`;
             }
             break;
           }
@@ -611,11 +623,7 @@ export function registerHoverProvider(
     if (document.uri.endsWith(".mo") || plugin?.id === "modelica") {
       const proofMap = validationService.modelicaProofResultsByUri?.get(document.uri);
       if (proofMap) {
-        let tokenStart = offset;
-        while (tokenStart > 0 && /[a-zA-Z0-9_]/.test(text[tokenStart - 1]!)) tokenStart--;
-        let tokenEnd = offset;
-        while (tokenEnd < text.length && /[a-zA-Z0-9_]/.test(text[tokenEnd]!)) tokenEnd++;
-        const token = text.slice(tokenStart, tokenEnd).trim();
+        const { token } = extractWordAtOffset(text, offset);
 
         if (token) {
           for (const [fnName, proof] of proofMap.entries()) {
@@ -675,11 +683,7 @@ export function registerHoverProvider(
       validationService?.daeVerificationResultsByUri?.get(document.uri) ??
       validationService?.modelicaDaeVerificationResultsByUri?.get(document.uri);
     if (daeMap) {
-      let tokenStart = offset;
-      while (tokenStart > 0 && /[a-zA-Z0-9_]/.test(text[tokenStart - 1]!)) tokenStart--;
-      let tokenEnd = offset;
-      while (tokenEnd < text.length && /[a-zA-Z0-9_]/.test(text[tokenEnd]!)) tokenEnd++;
-      const token = text.slice(tokenStart, tokenEnd).trim();
+      const { token, start: tokenStart, end: tokenEnd } = extractWordAtOffset(text, offset);
 
       if (token) {
         for (const [modelName, daeProof] of daeMap.entries()) {
@@ -698,11 +702,7 @@ export function registerHoverProvider(
     }
 
     // Enhance hover with coupled 3D CAD navigation link (Workstream 4) and Digital Thread Twin
-    let hoveredStart = offset;
-    while (hoveredStart > 0 && /[a-zA-Z0-9_]/.test(text[hoveredStart - 1]!)) hoveredStart--;
-    let hoveredEnd = offset;
-    while (hoveredEnd < text.length && /[a-zA-Z0-9_]/.test(text[hoveredEnd]!)) hoveredEnd++;
-    const hoveredToken = text.slice(hoveredStart, hoveredEnd).trim();
+    const { token: hoveredToken } = extractWordAtOffset(text, offset);
 
     const activeSettings = context?.settings ?? validationService?.context?.settings;
     const features = resolveFeatureFlags(activeSettings);

@@ -694,7 +694,7 @@ export class ModelScriptLinter {
                 ModelScriptErrorCode.INVALID_BINARY_OPERAND.rule,
                 "error",
                 ModelScriptErrorCode.INVALID_BINARY_OPERAND.message(op, formatModelScriptType(lType)),
-                node,
+                leftNode,
               );
             } else if (!isNumericType(rType)) {
               this.addDiagnostic(
@@ -702,49 +702,53 @@ export class ModelScriptLinter {
                 ModelScriptErrorCode.INVALID_BINARY_OPERAND.rule,
                 "error",
                 ModelScriptErrorCode.INVALID_BINARY_OPERAND.message(op, formatModelScriptType(rType)),
-                node,
+                rightNode,
               );
             }
           } else if (op === "+") {
             const bothNum = isNumericType(lType) && isNumericType(rType);
             const bothStr = lType.kind === "string" && rType.kind === "string";
             if (!bothNum && !bothStr) {
-              const badType =
-                !isNumericType(lType) && lType.kind !== "string"
-                  ? formatModelScriptType(lType)
-                  : !isNumericType(rType) && rType.kind !== "string"
-                    ? formatModelScriptType(rType)
-                    : `${formatModelScriptType(lType)} and ${formatModelScriptType(rType)}`;
+              const leftBad = !isNumericType(lType) && lType.kind !== "string";
+              const rightBad = !isNumericType(rType) && rType.kind !== "string";
+              const badType = leftBad
+                ? formatModelScriptType(lType)
+                : rightBad
+                  ? formatModelScriptType(rType)
+                  : `${formatModelScriptType(lType)} and ${formatModelScriptType(rType)}`;
+              const targetNode = leftBad && !rightBad ? leftNode : rightBad && !leftBad ? rightNode : node;
               this.addDiagnostic(
                 ModelScriptErrorCode.INVALID_BINARY_OPERAND.code,
                 ModelScriptErrorCode.INVALID_BINARY_OPERAND.rule,
                 "error",
                 ModelScriptErrorCode.INVALID_BINARY_OPERAND.message(op, badType),
-                node,
+                targetNode,
               );
             }
           } else if (["<", "<=", ">", ">="].includes(op)) {
             const bothNum = isNumericType(lType) && isNumericType(rType);
             const bothStr = lType.kind === "string" && rType.kind === "string";
             if (!bothNum && !bothStr) {
-              const badType = !isNumericType(lType) ? formatModelScriptType(lType) : formatModelScriptType(rType);
+              const leftBad = !isNumericType(lType);
+              const badType = leftBad ? formatModelScriptType(lType) : formatModelScriptType(rType);
               this.addDiagnostic(
                 ModelScriptErrorCode.INVALID_BINARY_OPERAND.code,
                 ModelScriptErrorCode.INVALID_BINARY_OPERAND.rule,
                 "error",
                 ModelScriptErrorCode.INVALID_BINARY_OPERAND.message(op, badType),
-                node,
+                leftBad ? leftNode : rightNode,
               );
             }
           } else if (["&&", "||"].includes(op)) {
             if (lType.kind !== "bool" || rType.kind !== "bool") {
-              const badType = lType.kind !== "bool" ? formatModelScriptType(lType) : formatModelScriptType(rType);
+              const leftBad = lType.kind !== "bool";
+              const badType = leftBad ? formatModelScriptType(lType) : formatModelScriptType(rType);
               this.addDiagnostic(
                 ModelScriptErrorCode.INVALID_BINARY_OPERAND.code,
                 ModelScriptErrorCode.INVALID_BINARY_OPERAND.rule,
                 "error",
                 ModelScriptErrorCode.INVALID_BINARY_OPERAND.message(op, badType),
-                node,
+                leftBad ? leftNode : rightNode,
               );
             }
           }

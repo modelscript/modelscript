@@ -436,8 +436,8 @@ const meshKnots = knots.map((x) => ({ x, y: +stateY(x).toFixed(1) }));
   padding: 2px 8px;
   border-radius: 999px;
   font-family: var(--vp-font-family-mono);
-  font-size: 10.5px;
-  font-weight: 550;
+  font-size: var(--text-2xs);
+  font-weight: var(--ms-fw-medium);
   color: var(--vp-c-text-2);
   background: var(--vp-c-bg-soft);
   border: 1px solid var(--vp-c-divider);
@@ -445,15 +445,15 @@ const meshKnots = knots.map((x) => ({ x, y: +stateY(x).toFixed(1) }));
 
 .cap h3 {
   margin: 12px 0 6px;
-  font-size: 1rem;
-  font-weight: 680;
+  font-size: var(--text-md);
+  font-weight: var(--ms-fw-semibold);
   color: var(--vp-c-text-1);
 }
 
 .cap p {
   margin: 0;
-  font-size: 0.86rem;
-  line-height: 1.55;
+  font-size: var(--text-sm);
+  line-height: var(--leading-base);
   color: var(--vp-c-text-2);
 }
 
@@ -469,8 +469,8 @@ const meshKnots = knots.map((x) => ({ x, y: +stateY(x).toFixed(1) }));
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: var(--ms-fw-semibold);
   color: var(--vp-c-brand-1);
   text-decoration: none;
 }

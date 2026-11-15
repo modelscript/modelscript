@@ -138,34 +138,74 @@ All elementary operators ($+, -, \times, /$) and transcendental functions ($\sin
 
 ### 2. Linear Memory Computational Tape
 
-The reverse-mode tape records operations into a flat 32-byte stride unmanaged array:
+The reverse-mode tape records every elementary operation into a flat 32-byte stride unmanaged array so the backward pass can traverse the graph without heap allocations:
 $$\text{Stride: } [\text{op: u32}, \text{left: u32}, \text{right: u32}, \text{aux: u32}, \text{valLo: u32}, \text{valHi: u32}, \text{gradLo: u32}, \text{gradHi: u32}]$$
-During the reverse pass, adjoints are accumulated in topological order directly in linear memory:
+
+| Symbol             | Meaning                                                             | Units / Domain      |
+| :----------------- | :------------------------------------------------------------------ | :------------------ |
+| `op`               | Opcode of the elementary arithmetic or transcendental operation     | `u32` (enum tag)    |
+| `left`, `right`    | Tape indices of the left and right operand nodes                    | `u32` (tape index)  |
+| `aux`              | Auxiliary metadata (e.g., constant pool index or parameter ID)      | `u32`               |
+| `valLo`, `valHi`   | Lower and upper 32-bit words of the IEEE-754 `f64` primal value     | `u32` (split `f64`) |
+| `gradLo`, `gradHi` | Lower and upper 32-bit words of the IEEE-754 `f64` adjoint gradient | `u32` (split `f64`) |
+
+During the reverse pass, sensitivities (adjoints) are propagated backward from outputs to inputs in topological order directly in linear memory:
 $$\bar{x}_j \leftarrow \bar{x}_j + \bar{x}_i \cdot \frac{\partial f_i}{\partial x_j}$$
+where:
+
+- $\bar{x}_i, \bar{x}_j \in \mathbb{R}$ are the adjoint sensitivities ($\partial \mathcal{L} / \partial x_i$ and $\partial \mathcal{L} / \partial x_j$) of nodes $i$ and $j$,
+- $\frac{\partial f_i}{\partial x_j}$ is the local partial derivative of elementary operation $f_i$ with respect to input $x_j$.
 
 ### 3. CPR Distance-2 Coloring Algorithm
 
-Two columns $j$ and $k$ in the Jacobian $J$ are **structurally orthogonal** if they do not share any non-zero row entry:
+Two columns $j$ and $k$ in the Jacobian $J$ are **structurally orthogonal** if they do not share any non-zero row entry, meaning they can be perturbed simultaneously without interference:
 $$\text{Row}(j) \cap \text{Row}(k) = \emptyset$$
+where $\text{Row}(j)$ is the set of row indices with non-zero entries in column $j$ (and similarly for column $k$), and $\emptyset$ is the empty set.
+
 The graph coloring algorithm:
 
 1. Constructs the bipartite graph $B = (V_R, V_C, E)$ where edge $(i, j) \in E \iff \frac{\partial f_i}{\partial x_j} \neq 0$.
 2. Colors columns $V_C$ such that any pair of columns connected by a path of length 2 receives different colors.
 3. Groups columns of color $c \in \{1, \dots, p\}$ into a perturbation vector $d^{(c)} = \sum_{j \in \text{Color}(c)} e_j$.
-4. Computes the entire compressed Jacobian in exactly $p$ directional forward-mode passes:
+4. Computes the entire compressed Jacobian in exactly $p$ directional forward-mode passes by summing the columns sharing each color:
    $$J \cdot d^{(c)} = \sum_{j \in \text{Color}(c)} J_{*, j}$$
+
+| Symbol            | Meaning                                                      | Units / Domain              |
+| :---------------- | :----------------------------------------------------------- | :-------------------------- |
+| $J$               | Sparse Jacobian matrix of the system                         | $\mathbb{R}^{m \times n}$   |
+| $d^{(c)}$         | Binary seed vector for color class $c$                       | $\{0, 1\}^n$                |
+| $\text{Color}(c)$ | Set of column indices assigned color $c \in \{1, \dots, p\}$ | Subset of $\{1, \dots, n\}$ |
+| $J_{*, j}$        | $j$-th column vector of the Jacobian $J$                     | $\mathbb{R}^m$              |
 
 ### 4. McCormick Relaxations
 
-For factorable bilinear products $z = x \cdot y$ over bounds $x \in [x^L, x^U]$ and $y \in [y^L, y^U]$, the convex underestimator $z^{cv}$ and concave overestimator $z^{cc}$ are:
+For factorable bilinear products $z = x \cdot y$ over bounds $x \in [x^L, x^U]$ and $y \in [y^L, y^U]$, the tightest linear convex underestimator $z^{cv}$ and concave overestimator $z^{cc}$ enclose the bilinear surface:
 $$z^{cv} = \max\left(x^L y + x y^L - x^L y^L, \; x^U y + x y^U - x^U y^U\right)$$
 $$z^{cc} = \min\left(x^U y + x y^L - x^U y^L, \; x^L y + x y^U - x^L y^U\right)$$
+
+| Symbol           | Meaning                                                        | Units / Domain |
+| :--------------- | :------------------------------------------------------------- | :------------- |
+| $z^{cv}, z^{cc}$ | Convex underestimator and concave overestimator of $x \cdot y$ | $\mathbb{R}$   |
+| $x, y$           | Scalar factor variables in the bilinear product                | $\mathbb{R}$   |
+| $x^L, x^U$       | Lower and upper interval bounds on $x$                         | $\mathbb{R}$   |
+| $y^L, y^U$       | Lower and upper interval bounds on $y$                         | $\mathbb{R}$   |
+
 ModelScript evaluates McCormick tuples $[z^{cv}, z^{cc}, \nabla z^{cv}, \nabla z^{cc}]$ directly on WASM arrays.
 
 ### 5. Hybrid Adjoint Sensitivity with Saltation Matrices (`hybrid-adjoint.ts`)
 
-When a hybrid DAE trajectory crosses a discrete event surface $g(x(t^*), p) = 0$ with state reset map $x(t^{*+}) = h(x(t^{*-}), p)$ (such as Modelica `when` clauses, `reinit(x, expr)` impulses, or mechanical contact restitution), the forward sensitivity transition matrix undergoes a discontinuous rank-1 update governed by the **saltation matrix**:
+When a hybrid DAE trajectory crosses a discrete event surface $g(x(t^*), p) = 0$ with state reset map $x(t^{*+}) = h(x(t^{*-}), p)$ (such as Modelica `when` clauses, `reinit(x, expr)` impulses, or mechanical contact restitution), the forward sensitivity transition matrix undergoes a discontinuous rank-1 update governed by the **saltation matrix**, which maps pre-event tangent perturbations to post-event perturbations across the switching surface:
 $$\Xi = I + \frac{\left(f^+ - f^- - \frac{\partial h}{\partial t}\right) (\nabla_x g)^T}{(\nabla_x g)^T f^- + \frac{\partial g}{\partial t}}$$
+
+| Symbol       | Meaning                                                          | Units / Domain            |
+| :----------- | :--------------------------------------------------------------- | :------------------------ |
+| $\Xi$        | Saltation (sensitivity jump) matrix at the event surface         | $\mathbb{R}^{n \times n}$ |
+| $I$          | Identity matrix                                                  | $\mathbb{R}^{n \times n}$ |
+| $f^-, f^+$   | Pre-event and post-event state time derivatives $\dot{x}$        | $\mathbb{R}^n$            |
+| $h(x, p, t)$ | Discrete state reset map $x^+ = h(x^-, p, t)$                    | $\mathbb{R}^n$            |
+| $g(x, p, t)$ | Event indicator (guard) function defining the switching surface  | $\mathbb{R}$              |
+| $\nabla_x g$ | Spatial gradient of the guard function with respect to state $x$ | $\mathbb{R}^n$            |
+| $t$          | Simulation time                                                  | $\text{s}$                |
 
 `HybridAdjointSolver` (`solveHybridAdjoint` in `packages/simulate/src/core/hybrid-adjoint.ts`) implements a three-phase hybrid sensitivity pipeline:
 
@@ -173,6 +213,17 @@ $$\Xi = I + \frac{\left(f^+ - f^- - \frac{\partial h}{\partial t}\right) (\nabla
 2. **Adjoint Jump across Event Surfaces**: During backward Heun integration of the co-state $\lambda(t)$, crossing $t_e$ in reverse applies the transposed saltation jump condition to $\lambda(t_e^-)$ and accumulates the discrete event timing contribution into the parameter gradient $\frac{d\mathcal{L}}{dp}$:
    $$\lambda(t_e^-) = \left[\frac{\partial \Delta}{\partial x}\right]^T \lambda(t_e^+) + \frac{\left(\frac{d\Delta}{dt}\right)^- - \dot{x}^+}{\dot{h}^-} \nabla_x h(t_e^-)$$
    $$\Delta\left(\frac{d\mathcal{L}}{dp}\right) = \left[\frac{\partial \Delta}{\partial p}\right]^T \lambda(t_e^+) + \frac{\left(\frac{d\Delta}{dt}\right)^- - \dot{x}^+}{\dot{h}^-} \nabla_p h(t_e^-)$$
+
+   | Symbol                           | Meaning                                                                  | Units / Domain                  |
+   | :------------------------------- | :----------------------------------------------------------------------- | :------------------------------ |
+   | $\lambda(t_e^-), \lambda(t_e^+)$ | Adjoint (co-state) vectors immediately before and after event time $t_e$ | $\mathbb{R}^n$                  |
+   | $\Delta(x, p, t)$                | Discrete state reset map $x^+ = \Delta(x^-, p, t)$                       | $\mathbb{R}^n$                  |
+   | $\dot{x}^+$                      | Post-event state derivative                                              | $\mathbb{R}^n$                  |
+   | $h, \dot{h}^-$                   | Event indicator function and its pre-event total time derivative         | $\mathbb{R}, \; \text{s}^{-1}$  |
+   | $\mathcal{L}$                    | Scalar objective functional                                              | $\mathbb{R}$                    |
+   | $p$                              | Vector of model parameters                                               | $\mathbb{R}^m$                  |
+   | $\nabla_x h, \nabla_p h$         | Gradients of the event indicator with respect to $x$ and $p$             | $\mathbb{R}^n, \; \mathbb{R}^m$ |
+
 3. **Optional Sigmoidal Event Relaxation**: For models with dense chattering or non-smooth algebraic switches (`if`, `abs`, `min`, `max`), `HybridAdjointSolver` optionally invokes `DAEEventRelaxer` to smooth C0 discontinuities into $C^\infty$ sigmoidal transitions prior to adjoint integration.
 
 ### 6. Aitken Dynamic $\Delta$-Relaxation for Coupled Co-Simulation (`fsi-relaxation.ts`)
@@ -182,12 +233,20 @@ In partitioned Fluid-Structure Interaction (FSI) and multi-FMU co-simulation mac
 `VectorAitkenRelaxation` (`packages/simulate/src/core/fsi-relaxation.ts`) accelerates and stabilizes convergence over scalar variables, multi-DOF nodal displacement vectors, or 3D boundary traction maps (`relaxBoundaryLoads`):
 
 1. **Fixed-Point Residual**: At macro-step sub-iteration $k$, computes the interface residual $r_k = \tilde{x}_k - x_{k-1}$ and residual difference $\Delta r_k = r_k - r_{k-1}$.
-2. **Secant Aitken Factor Update**: Updates the dynamic relaxation factor $\omega_k$ via the multidimensional Aitken $\Delta^2$ projection:
+2. **Secant Aitken Factor Update**: Updates the dynamic relaxation factor $\omega_k$ via the multidimensional Aitken $\Delta^2$ projection, which minimizes the residual norm along the secant direction:
    $$\omega_k = -\omega_{k-1} \frac{r_{k-1}^T (r_k - r_{k-1})}{\|r_k - r_{k-1}\|_2^2}$$
    clamped to a safe stability interval $\omega_k \in [\omega_{\min}, \omega_{\max}]$ (default $[0.02, 1.0]$).
-3. **Relaxed State Update**: Advances the interface state via under-relaxation:
+3. **Relaxed State Update**: Advances the interface state via under-relaxation using the updated factor:
    $$x_{k+1} = x_k + \omega_k r_k$$
    terminating when the relative residual norm $\|r_k\|_2 / (\|x_k\|_2 + \epsilon) < \text{tol}$.
+
+   | Symbol                   | Meaning                                                         | Units / Domain                                  |
+   | :----------------------- | :-------------------------------------------------------------- | :---------------------------------------------- |
+   | $\omega_k, \omega_{k-1}$ | Dynamic relaxation factor at sub-iterations $k$ and $k-1$       | Dimensionless, $[\omega_{\min}, \omega_{\max}]$ |
+   | $r_k, r_{k-1}$           | Interface fixed-point residual vectors ($\tilde{x}_k - x_k$)    | $\mathbb{R}^n$                                  |
+   | $x_k, x_{k+1}$           | Relaxed interface state vectors at sub-iterations $k$ and $k+1$ | $\mathbb{R}^n$                                  |
+   | $\|\cdot\|_2$            | Euclidean ($L_2$) vector norm                                   | $\mathbb{R}_{\ge 0}$                            |
+
 4. **Multi-Rate Sub-Cycling (`MultiRateSubCycleScheduler`)**: Synchronizes fast acoustic CFD steps ($\Delta t_{\text{CFD}} \sim 10^{-4}\text{ s}$), intermediate elastodynamic FEA steps ($\Delta t_{\text{FEA}} \sim 10^{-3}\text{ s}$), and macro 1D DAE steps ($\Delta t_{\text{macro}} \sim 10^{-2}\text{ s}$) using linear sub-step boundary interpolation $\mathbf{u}(\tau) = (1 - \tau)\mathbf{u}_{\text{prev}} + \tau \mathbf{u}_{\text{target}}$.
 
 ---

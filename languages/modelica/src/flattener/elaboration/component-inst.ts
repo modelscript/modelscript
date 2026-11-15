@@ -36,13 +36,18 @@ import {
 import {
   castToRealExpr,
   checkIfExprTypeMismatch,
+  containsWholeWordOutsideStrings,
   copyExprBetweenDaes,
+  countWordOccurrencesOutsideStrings,
   evalDaeExpr,
   evaluateCSTNumber,
   expandColonToArrayCtor,
   exprContainsNameRef,
   exprReferencesRuntimeParameter,
+  extractAsciiIdentifiers,
+  extractCallTargetsFromExpr,
   extractEnumLiteralsFromCst,
+  firstBracketedIdentifier,
   formatArenaValForMod,
   generateArrayTuples,
   getArrayCtorElements,
@@ -52,24 +57,270 @@ import {
   getIndexedElementText,
   getSymbolEnumLiterals,
   getSymbolQualifiedName,
+  hasClassHeaderKeywordCst,
+  hasColonSubscript,
+  hasEquationAssignmentForNameCst,
   isArrayLiteral,
+  isAsciiDigitsOnly,
+  isAsciiIdentContinue,
+  isAsciiIdentifier,
+  isAsciiIdentStart,
+  isAsciiWhitespaceCode,
+  isDottedComponentRefWithSubscripts,
+  isDottedIdentifierChain,
+  isEnumClassDefCst,
   isIntegerTypeSpec,
   isRealExpr,
+  isSignedAsciiIntText,
+  isSignedAsciiNumberText,
+  leadingIdentifierBeforeDot,
   lookupDbConstant,
   mulWithSimplification,
   parseArrayLiteralElements,
+  parseBinaryIdentSubtraction,
+  parseIdentSubscriptText,
+  parseNamedArgAssignment,
+  parseNamedCallArgsFromText,
   parseRawLiteralArg,
+  parseSizeCallIdentDim,
+  replaceWordOutsideStrings,
   resolveEnumType,
   resolveScopedName,
+  spaceAfterCommas,
+  splitBraceCommasAndTrim,
   splitTopLevel,
   splitTopLevelArgs,
+  startsWithSignedDecimalFloat,
   stripArraySubscripts,
   stripComments,
+  stripCommentsAndStrings,
+  stripLeadingDots,
+  stripLeadingEquals,
+  stripLeadingMinusWs,
+  stripTrailingArraySubscripts,
+  tokenizeCommentStrippedWords,
 } from "../expressions/index.js";
 import { getElementDiagRange } from "../support/range-utils.js";
 import { getFlatteningState, getNamedArrayShape, setNamedArrayShape } from "../support/state.js";
 import { ModelicaModificationEnv } from "../support/wasm-bridge.js";
 import { type ComponentInstanceData, type ComponentModArgData, type FlattenOptions } from "../types.js";
+
+const ALIAS_CLASS_QUALIFIERS = new Set([
+  "encapsulated",
+  "partial",
+  "replaceable",
+  "final",
+  "inner",
+  "outer",
+  "redeclare",
+]);
+
+function hasReplaceablePrefixText(txt: string): boolean {
+  return containsWholeWordOutsideStrings(stripComments(txt), "replaceable");
+}
+
+function hasDotStarSuffix(text: string): boolean {
+  const clean = stripComments(text);
+  for (let i = 0; i < clean.length; i++) {
+    if (clean[i] === ".") {
+      let j = i + 1;
+      while (j < clean.length && isAsciiWhitespaceCode(clean.charCodeAt(j))) j++;
+      if (j < clean.length && clean[j] === "*") return true;
+    }
+  }
+  return false;
+}
+
+/** Parses the trimmed interior of `enumeration(...)` into generic marker and literal names. */
+function parseEnumInnerLiterals(inner: string): { isGeneric: boolean; literals: string[] } {
+  if (inner === ":") return { isGeneric: true, literals: [] };
+  const literals = inner
+    .split(",")
+    .map((s) => {
+      const t = s.trimStart();
+      let k = 0;
+      while (k < t.length && !isAsciiWhitespaceCode(t.charCodeAt(k))) k++;
+      return t.slice(0, k);
+    })
+    .filter(Boolean);
+  return { isGeneric: false, literals };
+}
+
+function hasReplaceableOrRedeclarePackageHeader(headerText: string): boolean {
+  const n = headerText.length;
+  let hasPrefix = false;
+  let i = 0;
+  while (i < n) {
+    const code = headerText.charCodeAt(i);
+    if (isAsciiIdentStart(code) || (code >= 48 && code <= 57)) {
+      const start = i++;
+      while (i < n && isAsciiIdentContinue(headerText.charCodeAt(i))) i++;
+      const word = headerText.slice(start, i);
+      if (word === "replaceable" || word === "redeclare") hasPrefix = true;
+      else if (word === "package" && hasPrefix) return true;
+    } else if (isAsciiWhitespaceCode(code)) {
+      i++;
+    } else {
+      hasPrefix = false;
+      i++;
+    }
+  }
+  return false;
+}
+
+function extractShortTypeAliasTarget(cst: any): string | null {
+  const text = stripComments(cst?.text ?? "").trim();
+  if (!text) return null;
+  if (hasClassHeaderKeywordCst(cst, "type")) {
+    const shortSpec = getShortClassSpecifierNode(cst);
+    if (shortSpec?.text) {
+      const shortText = stripComments(shortSpec.text);
+      const eqIdx = shortText.indexOf("=");
+      if (eqIdx >= 0) {
+        const rhs = shortText.slice(eqIdx + 1).trimStart();
+        let i = 0;
+        while (i < rhs.length && (isAsciiIdentContinue(rhs.charCodeAt(i)) || rhs[i] === ".")) i++;
+        if (i > 0) return rhs.slice(0, i);
+      }
+    }
+  }
+  let pos = 0;
+  const readWord = (): string => {
+    while (pos < text.length && isAsciiWhitespaceCode(text.charCodeAt(pos))) pos++;
+    const start = pos;
+    while (pos < text.length && isAsciiIdentContinue(text.charCodeAt(pos))) pos++;
+    return text.slice(start, pos);
+  };
+  let tok = readWord();
+  while (ALIAS_CLASS_QUALIFIERS.has(tok)) {
+    const prevPos = pos;
+    tok = readWord();
+    if (pos === prevPos) return null;
+  }
+  if (tok !== "type") return null;
+  const aliasName = readWord();
+  if (!aliasName) return null;
+  while (pos < text.length && isAsciiWhitespaceCode(text.charCodeAt(pos))) pos++;
+  if (text[pos] !== "=") return null;
+  pos++;
+  while (pos < text.length && isAsciiWhitespaceCode(text.charCodeAt(pos))) pos++;
+  const start = pos;
+  while (pos < text.length && (isAsciiIdentContinue(text.charCodeAt(pos)) || text[pos] === ".")) pos++;
+  return pos > start ? text.slice(start, pos) : null;
+}
+
+function extractEnumSpecifierFromText(
+  raw: string,
+  requireLeadingEquals: boolean,
+  requireAtStart: boolean,
+): { isGeneric: boolean; literals: string[] } | null {
+  const text = stripComments(raw);
+  if (!text) return null;
+  const n = text.length;
+  let openParen = -1;
+
+  if (requireAtStart) {
+    const trimmed = text.trimStart();
+    if (!trimmed.startsWith("enumeration")) return null;
+    let j = "enumeration".length;
+    while (j < trimmed.length && isAsciiWhitespaceCode(trimmed.charCodeAt(j))) j++;
+    if (trimmed[j] !== "(") return null;
+    const closeParen = trimmed.indexOf(")", j + 1);
+    if (closeParen < 0) return null;
+    const inner = trimmed.slice(j + 1, closeParen).trim();
+    return parseEnumInnerLiterals(inner);
+  }
+
+  let searchFrom = 0;
+  if (requireLeadingEquals) {
+    while (searchFrom < n) {
+      const eqPos = text.indexOf("=", searchFrom);
+      if (eqPos < 0) return null;
+      let j = eqPos + 1;
+      while (j < n && isAsciiWhitespaceCode(text.charCodeAt(j))) j++;
+      if (text.startsWith("enumeration", j)) {
+        j += "enumeration".length;
+        while (j < n && isAsciiWhitespaceCode(text.charCodeAt(j))) j++;
+        if (text[j] === "(") {
+          openParen = j;
+          break;
+        }
+      }
+      searchFrom = eqPos + 1;
+    }
+  } else {
+    while (searchFrom < n) {
+      const enumPos = text.indexOf("enumeration", searchFrom);
+      if (enumPos < 0) return null;
+      let j = enumPos + "enumeration".length;
+      while (j < n && isAsciiWhitespaceCode(text.charCodeAt(j))) j++;
+      if (text[j] === "(") {
+        openParen = j;
+        break;
+      }
+      searchFrom = enumPos + 1;
+    }
+  }
+
+  if (openParen < 0) return null;
+  const closeParen = text.indexOf(")", openParen + 1);
+  if (closeParen < 0) return null;
+  const inner = text.slice(openParen + 1, closeParen).trim();
+  return parseEnumInnerLiterals(inner);
+}
+
+function extractEnumSpecifier(
+  cst: any,
+  requireLeadingEquals: boolean,
+): { isGeneric: boolean; literals: string[] } | null {
+  if (!cst) return null;
+  if (!requireLeadingEquals) {
+    const shortSpec = getShortClassSpecifierNode(cst);
+    if (shortSpec) {
+      const lits = extractEnumLiteralsFromCst(cst);
+      if (lits) return { isGeneric: false, literals: lits };
+    }
+  }
+  return extractEnumSpecifierFromText(cst.text ?? "", requireLeadingEquals, false);
+}
+
+function findInstNameForArg(compClauseNode: any, argName: string): string | null {
+  if (compClauseNode && Array.isArray(compClauseNode.children)) {
+    const stack: any[] = [compClauseNode];
+    while (stack.length > 0) {
+      const cur = stack.pop();
+      if (cur?.type === "declaration") {
+        const modNode = (cur.children || []).find((c: any) => c.type === "modification");
+        if (modNode && containsWholeWordOutsideStrings(modNode.text ?? "", argName)) {
+          const identNode = (cur.children || []).find((c: any) => c.type === "identifier");
+          const identText = identNode?.text?.trim();
+          if (identText) return identText;
+        }
+      }
+      const chs = cur?.children;
+      if (Array.isArray(chs)) {
+        for (let i = chs.length - 1; i >= 0; i--) stack.push(chs[i]);
+      }
+    }
+  }
+  const text = compClauseNode?.text;
+  if (typeof text !== "string" || !argName) return null;
+  for (let i = 0; i < text.length; i++) {
+    if (!isAsciiIdentContinue(text.charCodeAt(i))) continue;
+    const start = i;
+    while (i < text.length && isAsciiIdentContinue(text.charCodeAt(i))) i++;
+    let j = i;
+    while (j < text.length && isAsciiWhitespaceCode(text.charCodeAt(j))) j++;
+    if (text[j] === "(") {
+      const closeParen = text.indexOf(")", j + 1);
+      const spanEnd = closeParen >= 0 ? closeParen : text.length;
+      if (text.slice(j + 1, spanEnd).includes(argName)) {
+        return text.slice(start, i);
+      }
+    }
+  }
+  return null;
+}
 
 /**
  * Host flattener interface required by the component elaboration kernel.
@@ -340,7 +591,7 @@ function isReplaceablePackageIdentifier(
 ): boolean {
   if (!ident) return false;
   if (redeclPkgPrefix && ident === redeclPkgPrefix) return true;
-  if (/^(?:Medium|Medium1|Medium2)$/.test(ident)) return true;
+  if (ident === "Medium" || ident === "Medium1" || ident === "Medium2") return true;
   const state = getFlatteningState(dae, flattener) as any;
   for (const col of [state?.packageRedeclares, state?.classRedeclares, state?.ElementRedeclares]) {
     if (!col) continue;
@@ -364,7 +615,7 @@ function isReplaceablePackageIdentifier(
         0,
         200,
       );
-      if (/\b(?:replaceable|redeclare)\b[\s\w]*\bpackage\b/.test(headerText)) {
+      if (hasReplaceableOrRedeclarePackageHeader(headerText)) {
         return true;
       }
       return false;
@@ -393,17 +644,14 @@ function extractReplaceablePackagePrefix(
   parentMods?: any,
   scopeClassId?: SymbolId | null,
 ): string | null {
-  const m = /^([a-zA-Z_]\w*)\./.exec(exprText.trim());
-  if (!m) return null;
-  const firstSeg = m[1]!;
+  const firstSeg = leadingIdentifierBeforeDot(exprText.trim());
+  if (!firstSeg) return null;
   return isReplaceablePackageIdentifier(firstSeg, flattener, dae, redeclPkgPrefix, parentMods, scopeClassId)
     ? firstSeg
     : null;
 }
 
-function parseBraceComprehension(text: string): { body: string; iter: string; range: string } | null {
-  if (!text.startsWith("{") || !text.endsWith("}")) return null;
-  const inner = text.slice(1, -1).trim();
+function parseComprehensionInner(inner: string): { body: string; iter: string; range: string } | null {
   let depth = 0;
   for (let i = 0; i < inner.length; i++) {
     const ch = inner[i];
@@ -411,19 +659,25 @@ function parseBraceComprehension(text: string): { body: string; iter: string; ra
     else if (ch === ")" || ch === "}" || ch === "]") depth--;
     else if (depth === 0) {
       if (
-        (i === 0 || /\s/.test(inner[i - 1]!)) &&
+        (i === 0 || isAsciiWhitespaceCode(inner.charCodeAt(i - 1))) &&
         inner.startsWith("for", i) &&
-        (i + 3 === inner.length || /\s/.test(inner[i + 3]!))
+        (i + 3 === inner.length || isAsciiWhitespaceCode(inner.charCodeAt(i + 3)))
       ) {
         const body = inner.slice(0, i).trim();
         const rest = inner.slice(i + 3).trim();
-        const inMatch = rest.match(/^([a-zA-Z_]\w*)\s+in\s+([\s\S]+)$/);
-        if (inMatch) {
-          return {
-            body,
-            iter: inMatch[1]!,
-            range: inMatch[2]!.trim(),
-          };
+        if (rest.length > 0 && isAsciiIdentStart(rest.charCodeAt(0))) {
+          let k = 1;
+          while (k < rest.length && isAsciiIdentContinue(rest.charCodeAt(k))) k++;
+          if (k < rest.length && isAsciiWhitespaceCode(rest.charCodeAt(k))) {
+            let m = k + 1;
+            while (m < rest.length && isAsciiWhitespaceCode(rest.charCodeAt(m))) m++;
+            if (rest.startsWith("in", m) && m + 2 < rest.length && isAsciiWhitespaceCode(rest.charCodeAt(m + 2))) {
+              const range = rest.slice(m + 3).trim();
+              if (range.length > 0) {
+                return { body, iter: rest.slice(0, k), range };
+              }
+            }
+          }
         }
       }
     }
@@ -431,37 +685,19 @@ function parseBraceComprehension(text: string): { body: string; iter: string; ra
   return null;
 }
 
+function parseBraceComprehension(text: string): { body: string; iter: string; range: string } | null {
+  if (!text.startsWith("{") || !text.endsWith("}")) return null;
+  return parseComprehensionInner(text.slice(1, -1).trim());
+}
+
 function parseArrayComprehension(text: string): { body: string; iter: string; range: string } | null {
-  const openParen = text.indexOf("(");
+  if (!text.startsWith("array")) return null;
+  let openParen = 5;
+  while (openParen < text.length && isAsciiWhitespaceCode(text.charCodeAt(openParen))) openParen++;
+  if (openParen >= text.length || text[openParen] !== "(") return null;
   const closeParen = text.lastIndexOf(")");
-  if (openParen === -1 || closeParen <= openParen) return null;
-  if (!/^array\s*\(/.test(text)) return null;
-  const inner = text.slice(openParen + 1, closeParen).trim();
-  let depth = 0;
-  for (let i = 0; i < inner.length; i++) {
-    const ch = inner[i];
-    if (ch === "(" || ch === "{" || ch === "[") depth++;
-    else if (ch === ")" || ch === "}" || ch === "]") depth--;
-    else if (depth === 0) {
-      if (
-        (i === 0 || /\s/.test(inner[i - 1]!)) &&
-        inner.startsWith("for", i) &&
-        (i + 3 === inner.length || /\s/.test(inner[i + 3]!))
-      ) {
-        const body = inner.slice(0, i).trim();
-        const rest = inner.slice(i + 3).trim();
-        const inMatch = rest.match(/^([a-zA-Z_]\w*)\s+in\s+([\s\S]+)$/);
-        if (inMatch) {
-          return {
-            body,
-            iter: inMatch[1]!,
-            range: inMatch[2]!.trim(),
-          };
-        }
-      }
-    }
-  }
-  return null;
+  if (closeParen <= openParen) return null;
+  return parseComprehensionInner(text.slice(openParen + 1, closeParen).trim());
 }
 
 function evaluateComprehensionRangeValues(
@@ -692,14 +928,24 @@ function tryScalarizeIfSizeBindingCst(
   const condText = (exprChildren[0].text ?? "").trim();
   const thenText = (exprChildren[1].text ?? "").trim();
   const elseText = (exprChildren[exprChildren.length - 1].text ?? "").trim();
-  const sizeCondMatch = condText.match(/^size\(\s*([a-zA-Z_][\w.]*)\s*,\s*1\s*\)\s*==\s*1$/);
-  if (!sizeCondMatch) return null;
-  const arrName = sizeCondMatch[1]!;
+  const eqEqIdx = condText.lastIndexOf("==");
+  const sizeCall =
+    eqEqIdx > 0 && condText.slice(eqEqIdx + 2).trim() === "1"
+      ? parseNamedCallArgsFromText(condText.slice(0, eqEqIdx))
+      : null;
+  if (!sizeCall || sizeCall.callee !== "size") return null;
+  const sizeCommaIdx = sizeCall.argsText.indexOf(",");
+  if (sizeCommaIdx < 0 || sizeCall.argsText.indexOf(",", sizeCommaIdx + 1) >= 0) return null;
+  const arrName = sizeCall.argsText.slice(0, sizeCommaIdx).trim();
+  const dimArg = sizeCall.argsText.slice(sizeCommaIdx + 1).trim();
+  if (!isDottedIdentifierChain(arrName) || dimArg !== "1") return null;
   const resolvedArr = resolveScopedName(arrName, bindingPrefix ?? "", dae);
   const hasSecond = dae.getVarIdxByName(`${resolvedArr}[2]`) >= 0;
   const branchText = !hasSecond ? thenText : elseText;
-  const onesMulMatch = branchText.match(/^ones\([^)]*\)\s*\*\s*([a-zA-Z_][\w.]*)\[1\]$/);
-  if (onesMulMatch && onesMulMatch[1] === arrName) {
+  const onesClose = branchText.startsWith("ones(") ? branchText.indexOf(")", 5) : -1;
+  const afterOnes = onesClose > 0 ? branchText.slice(onesClose + 1).trimStart() : "";
+  const rhsMul = afterOnes.startsWith("*") ? afterOnes.slice(1).trim() : "";
+  if (rhsMul === `${arrName}[1]`) {
     return dae.addExpression(ExprKind.Name, dae.interner.intern(`${resolvedArr}[1]`));
   }
   if (branchText === arrName) {
@@ -864,10 +1110,8 @@ export function isClassType(flattener: ComponentFlattener, classId: SymbolId, vi
   const target = flattener.db.symbol(classId);
   if (!target) return false;
   const meta = target.metadata as any;
-  const metaPrefixes = String(meta?.classKind ?? meta?.classPrefixes ?? "")
-    .replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "")
-    .trim();
-  if (metaPrefixes === "type" || /\btype\b/.test(metaPrefixes) || meta?.isType) return true;
+  const metaPrefixTokens = extractAsciiIdentifiers(stripComments(String(meta?.classKind ?? meta?.classPrefixes ?? "")));
+  if (metaPrefixTokens.includes("type") || meta?.isType) return true;
   const cst = flattener.db.cstNode(classId) as any;
   if (!cst) {
     const baseType = meta?.baseType;
@@ -875,14 +1119,21 @@ export function isClassType(flattener: ComponentFlattener, classId: SymbolId, vi
   }
 
   const prefixes = Cst.ClassDefinition.classPrefixes(cst);
-  const cleanPrefixes = (prefixes?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
-  if (/\btype\b/.test(cleanPrefixes)) return true;
-  if (/\b(model|record|block|package)\b/.test(cleanPrefixes)) return false;
+  const prefixWords = tokenizeCommentStrippedWords(prefixes?.text ?? "");
+  if (prefixWords.includes("type")) return true;
+  if (
+    prefixWords.includes("model") ||
+    prefixWords.includes("record") ||
+    prefixWords.includes("block") ||
+    prefixWords.includes("package")
+  ) {
+    return false;
+  }
 
   const shortSpec = getShortClassSpecifierNode(cst);
   const isShort = Boolean(shortSpec);
 
-  if (/\bconnector\b/.test(cleanPrefixes) && !isShort) return false;
+  if (prefixWords.includes("connector") && !isShort) return false;
 
   if (isShort) {
     const subElems = flattener.db.query<SymbolId[]>("instantiate", classId);
@@ -1033,12 +1284,8 @@ export function checkTypeAliasSpecialization(
   if (!sym) return null;
   const cst = flattener.db.cstNode(typeSymId) as any;
   if (!cst) return null;
-  const text = (cst.text?.trim() ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "").trim();
-  const match = text.match(
-    /^(?:(?:encapsulated|partial|replaceable|final|inner|outer|redeclare)\s+)*type\s+([A-Za-z0-9_]+)\s*=\s*([A-Za-z0-9_.]+)/,
-  );
-  if (!match) return null;
-  const targetName = match[2]!;
+  const targetName = extractShortTypeAliasTarget(cst);
+  if (!targetName) return null;
   if (targetName === "Real" || targetName === "Integer" || targetName === "Boolean" || targetName === "String") {
     return null;
   }
@@ -1050,12 +1297,12 @@ export function checkTypeAliasSpecialization(
 
   const targetCst = flattener.db.cstNode(targetClass.id) as any;
   const prefixes = Cst.ClassDefinition.classPrefixes(targetCst);
-  const cleanPrefixes = (prefixes?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
+  const prefixWords = tokenizeCommentStrippedWords(prefixes?.text ?? "");
   let kindDesc = "a new def";
-  if (/\bmodel\b/.test(cleanPrefixes)) kindDesc = "a model";
-  else if (/\bblock\b/.test(cleanPrefixes)) kindDesc = "a block";
-  else if (/\brecord\b/.test(cleanPrefixes)) kindDesc = "a record";
-  else if (/\bconnector\b/.test(cleanPrefixes)) kindDesc = "a connector";
+  if (prefixWords.includes("model")) kindDesc = "a model";
+  else if (prefixWords.includes("block")) kindDesc = "a block";
+  else if (prefixWords.includes("record")) kindDesc = "a record";
+  else if (prefixWords.includes("connector")) kindDesc = "a connector";
 
   const range = {
     startOffset: cst.startIndex ?? cst.startOffset,
@@ -1438,42 +1685,35 @@ export function validateClassModifiers(
       // Enumeration subtyping in redeclaration (RedeclareEnum2, RedeclareEnum4, RedeclareEnum6)
       if (targetMember.kind === "Class") {
         const targetCst = flattener.db.cstNode(targetMember.id) as any;
-        const targetText = (targetCst?.text ?? "").replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, "");
-        const targetEnumMatch = /=\s*enumeration\s*\(([^)]*)\)/.exec(targetText);
-        if (targetEnumMatch) {
-          const rawTargetLits = targetEnumMatch[1]!.trim();
-          const isTargetGeneric = rawTargetLits === ":";
-          const targetLits = isTargetGeneric
-            ? []
-            : rawTargetLits
-                .split(",")
-                .map((s) => s.trim().split(/\s+/)[0])
-                .filter(Boolean);
+        const targetEnum = extractEnumSpecifier(targetCst, true);
+        if (targetEnum) {
+          const isTargetGeneric = targetEnum.isGeneric;
+          const targetLits = targetEnum.literals;
 
           const modText = stripComments(arg.modText ?? "");
-          const rhsMatch = /=\s*([^\n;]+)/.exec(modText);
-          const rhsVal = rhsMatch ? rhsMatch[1]!.trim() : (arg.redeclaredTypeSpecifier ?? "");
+          const eqPos = modText.indexOf("=");
+          let rhsAfterEq = "";
+          if (eqPos >= 0) {
+            let endPos = eqPos + 1;
+            while (endPos < modText.length && modText[endPos] !== "\n" && modText[endPos] !== ";") endPos++;
+            rhsAfterEq = modText.slice(eqPos + 1, endPos).trim();
+          }
+          const rhsVal = rhsAfterEq || (arg.redeclaredTypeSpecifier ?? "");
 
           let isEnumRhs = false;
           let rhsLits: string[] = [];
-          const rhsEnumMatch = /^enumeration\s*\(([^)]*)\)/.exec(rhsVal);
-          if (rhsEnumMatch) {
+          const rhsEnum = extractEnumSpecifierFromText(rhsVal, false, true);
+          if (rhsEnum) {
             isEnumRhs = true;
-            rhsLits = rhsEnumMatch[1]!
-              .split(",")
-              .map((s) => s.trim().split(/\s+/)[0]!)
-              .filter(Boolean);
+            rhsLits = rhsEnum.literals;
           } else if (rhsVal && !["Real", "Integer", "Boolean", "String"].includes(rhsVal)) {
             const typeSym = flattener.db.byName(rhsVal).find((e: any) => e.kind === "Class" || e.kind === "Type");
             if (typeSym) {
-              const tCst = (flattener.db.cstNode(typeSym.id) as any)?.text ?? "";
-              const tEnumMatch = /enumeration\s*\(([^)]*)\)/.exec(tCst);
-              if (tEnumMatch) {
+              const tCst = flattener.db.cstNode(typeSym.id) as any;
+              const tEnum = extractEnumSpecifier(tCst, false);
+              if (tEnum) {
                 isEnumRhs = true;
-                rhsLits = tEnumMatch[1]!
-                  .split(",")
-                  .map((s) => s.trim().split(/\s+/)[0]!)
-                  .filter(Boolean);
+                rhsLits = tEnum.literals;
               }
             }
           }
@@ -1541,8 +1781,8 @@ export function validateClassModifiers(
                   (flattener.currentClassId ? (flattener.db.cstNode(flattener.currentClassId) as any) : null);
                 let instName = "tt";
                 if (compClauseNode?.text && arg.modText) {
-                  const m = new RegExp(`(\\w+)\\s*\\([^)]*${arg.name}`).exec(compClauseNode.text);
-                  if (m?.[1]) instName = m[1];
+                  const foundInst = findInstNameForArg(compClauseNode, arg.name);
+                  if (foundInst) instName = foundInst;
                 }
                 const scopeName = `${classFqn}$${instName}`;
                 const eqRange = {
@@ -1796,11 +2036,11 @@ export function instantiateElements(
       // Pre-compute array dimensions for flexible `[:]` declarations bound to array literals
       // so sibling components referencing `size(arr, d)` can resolve dimensions in any order.
       const elemCstForShape = flattener.db.cstNode(elemId) as any;
-      const hasColonSubscript = /\[\s*:(?:\s*,\s*:)*\s*\]/.test(elemCstForShape?.text ?? "");
-      if (compInst?.name && hasColonSubscript && compInst?.modification?.bindingExpression?.text) {
+      const elemHasColonSubscript = hasColonSubscript(elemCstForShape?.text ?? "", true);
+      if (compInst?.name && elemHasColonSubscript && compInst?.modification?.bindingExpression?.text) {
         const fullName = prefix ? `${prefix}.${compInst.name}` : compInst.name;
         const rawText = compInst.modification.bindingExpression.text.trim();
-        if (isArrayLiteral(rawText) && !/\bfor\b/.test(rawText)) {
+        if (isArrayLiteral(rawText) && !containsWholeWordOutsideStrings(rawText, "for")) {
           const elems = parseArrayLiteralElements(rawText);
           if (elems.length > 0) {
             if (isArrayLiteral(elems[0]?.trim() ?? "")) {
@@ -1811,10 +2051,11 @@ export function instantiateElements(
             }
           }
         } else {
-          const refMatch = rawText.match(/^[+-]?\s*([a-zA-Z_]\w*)$/);
-          if (refMatch) {
-            const targetFull = prefix ? `${prefix}.${refMatch[1]!}` : refMatch[1]!;
-            const refShape = getNamedArrayShape(dae, targetFull) ?? getNamedArrayShape(dae, refMatch[1]!);
+          const signedIdent =
+            rawText.startsWith("+") || rawText.startsWith("-") ? rawText.slice(1).trimStart() : rawText;
+          if (isAsciiIdentifier(signedIdent)) {
+            const targetFull = prefix ? `${prefix}.${signedIdent}` : signedIdent;
+            const refShape = getNamedArrayShape(dae, targetFull) ?? getNamedArrayShape(dae, signedIdent);
             if (refShape && refShape.length > 0) {
               setNamedArrayShape(dae, fullName, [...refShape]);
             }
@@ -1880,11 +2121,14 @@ export function instantiateElements(
           if (hasExplicitMod) continue;
           const ci = flattener.db.query<any>("componentInstance", elemId);
           const bText = ci?.modification?.value?.text?.trim() ?? "";
-          const rangeSizeMatch = bText.match(/^(\d+)\s*:\s*size\(\s*([a-zA-Z_]\w*)\s*,\s*(\d+)\s*\)$/);
-          if (rangeSizeMatch) {
-            const startIdx = parseInt(rangeSizeMatch[1]!, 10);
-            const targetArr = rangeSizeMatch[2]!;
-            const dimIdx = parseInt(rangeSizeMatch[3]!, 10) - 1;
+          const colonPos = bText.indexOf(":");
+          const startPart = colonPos > 0 ? bText.slice(0, colonPos).trim() : "";
+          const rangeSizeCall =
+            colonPos > 0 && isAsciiDigitsOnly(startPart) ? parseSizeCallIdentDim(bText.slice(colonPos + 1)) : null;
+          if (rangeSizeCall) {
+            const startIdx = parseInt(startPart, 10);
+            const targetArr = rangeSizeCall.target;
+            const dimIdx = rangeSizeCall.dim - 1;
             const targetShape = getNamedArrayShape(dae, `${prefix}.${targetArr}`);
             if (targetShape && dimIdx >= 0 && dimIdx < targetShape.length) {
               const len = Math.max(0, targetShape[dimIdx]! - startIdx + 1);
@@ -1893,10 +2137,10 @@ export function instantiateElements(
               }
             }
           }
-          const sizeCallMatch = bText.match(/^size\(\s*([a-zA-Z_]\w*)\s*,\s*(\d+)\s*\)$/);
+          const sizeCallMatch = parseSizeCallIdentDim(bText);
           if (sizeCallMatch) {
-            const targetArr = sizeCallMatch[1]!;
-            const dimIdx = parseInt(sizeCallMatch[2]!, 10) - 1;
+            const targetArr = sizeCallMatch.target;
+            const dimIdx = sizeCallMatch.dim - 1;
             const targetShape = getNamedArrayShape(dae, `${prefix}.${targetArr}`);
             if (targetShape && dimIdx >= 0 && dimIdx < targetShape.length && targetShape[dimIdx]! > 0) {
               inferredDimParams.set(elemSym.name, targetShape[dimIdx]!);
@@ -2408,7 +2652,7 @@ export function instantiateElements(
           const condExpr = conditionAttrNode.children?.find((c: SyntaxNode) => c.type === "expression");
           if (condExpr) {
             const condText = condExpr.text?.trim() ?? "";
-            const condMatches = condText.match(/[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*/g) || [];
+            const condMatches = extractAsciiIdentifiers(condText, true);
             const depNames = condMatches.filter(
               (m: string) => m !== "true" && m !== "false" && m !== "not" && m !== "and" && m !== "or",
             );
@@ -2438,7 +2682,7 @@ export function instantiateElements(
               const txt = mv.text?.trim();
               if (txt === "true") return true;
               if (txt === "false") return false;
-              if (txt && /^-?\d+(?:\.\d+)?$/.test(txt)) return Number(txt);
+              if (txt && isSignedAsciiNumberText(txt)) return Number(txt);
               return null;
             };
             const evalScalarTextInDaeOrDb = (
@@ -2451,7 +2695,7 @@ export function instantiateElements(
               if (t === "false") return false;
               const num = Number(t);
               if (!isNaN(num) && t !== "") return num;
-              if (/^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(t)) {
+              if (isDottedIdentifierChain(t)) {
                 const cand = scopePrefix ? `${scopePrefix}.${t}` : t;
                 const refIdx = dae.getVarIdxByName(cand) >= 0 ? dae.getVarIdxByName(cand) : dae.getVarIdxByName(t);
                 if (refIdx >= 0) {
@@ -2469,7 +2713,7 @@ export function instantiateElements(
                     let cid: SymbolId | undefined = flattener.currentRootClassId;
                     for (const seg of scopePrefix.split(".")) {
                       if (cid === undefined) break;
-                      const segClean = seg.replace(/\[[^\]]*\]$/, "");
+                      const segClean = stripTrailingArraySubscripts(seg);
                       const els: SymbolId[] = flattener.db.query<SymbolId[]>("instantiate", cid) ?? [];
                       const foundId: SymbolId | undefined = els.find(
                         (eid: SymbolId) => flattener.db.symbol(eid)?.name === segClean,
@@ -2495,7 +2739,7 @@ export function instantiateElements(
                       const bindTxt = compData?.modification?.bindingExpression?.text?.trim();
                       if (bindTxt === "true") return true;
                       if (bindTxt === "false") return false;
-                      if (bindTxt && /^-?\d+(?:\.\d+)?$/.test(bindTxt)) return Number(bindTxt);
+                      if (bindTxt && isSignedAsciiNumberText(bindTxt)) return Number(bindTxt);
                       const startEntry = compData?.modification?.args
                         ?.slice()
                         .reverse()
@@ -2811,7 +3055,7 @@ export function instantiateElements(
             if (isDiscreteTypeOrVar && bText) {
               if (bText.startsWith("noEvent(") && bText.endsWith(")")) {
                 const inner = bText.slice(8, -1);
-                const m = inner.match(/[a-zA-Z_]\w*/g) || [];
+                const m = extractAsciiIdentifiers(inner);
                 const hasContinuous = m.some((vName) => {
                   if (vName === "time") return true;
                   const vi = dae.getVarIdxByName(prefix ? `${prefix}.${vName}` : vName);
@@ -2875,7 +3119,7 @@ export function instantiateElements(
               variability === Variability.Constant &&
               (prefix || elemParentId !== flattener.currentRootClassId) &&
               bText &&
-              /^[a-zA-Z_]\w*$/.test(bText)
+              isAsciiIdentifier(bText)
             ) {
               const targetConst = resolveScopedName(bText, prefix, dae);
               const targetIdx =
@@ -2957,13 +3201,7 @@ export function instantiateElements(
             const hasEqInClass = (): boolean => {
               if (!flattener.currentClassId) return false;
               const cst = flattener.db.cstNode(flattener.currentClassId) as any;
-              if (!cst) return false;
-              const cstText = (cst.text as string) ?? "";
-              const eqIdx = cstText.indexOf("equation");
-              if (eqIdx < 0) return false;
-              const eqSection = cstText.slice(eqIdx);
-              const regex = new RegExp(`\\b${compInst.name}\\b\\s*=`);
-              return regex.test(eqSection);
+              return hasEquationAssignmentForNameCst(cst, compInst.name);
             };
 
             if (
@@ -3143,13 +3381,13 @@ export function instantiateElements(
                         );
                       }
                     } else {
-                      let resolvedT = /^[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(rawText)
+                      let resolvedT = isDottedIdentifierChain(rawText)
                         ? resolveScopedName(rawText, prefix, dae)
                         : rawText;
                       let isDaeVar =
                         arg.name === "start" &&
                         (dae.getVarIdxByName(resolvedT) >= 0 || dae.getVarIdxByName(`${resolvedT}[1]`) >= 0);
-                      if (!isDaeVar && arg.name === "start" && prefix && /^[a-zA-Z_]\w*$/.test(rawText)) {
+                      if (!isDaeVar && arg.name === "start" && prefix && isAsciiIdentifier(rawText)) {
                         const siblingComp =
                           (elemParentId
                             ? flattener.db
@@ -3178,11 +3416,11 @@ export function instantiateElements(
                       } else {
                         const subParts =
                           dae.extensionMetadata?.["isOldFrontend"] && arg.name === "start"
-                            ? rawText.match(/^([a-zA-Z_][a-zA-Z0-9_.]*)\s*-\s*([a-zA-Z_][a-zA-Z0-9_.]*)$/)
+                            ? parseBinaryIdentSubtraction(rawText)
                             : null;
-                        if (subParts && subParts[1] && subParts[2]) {
-                          const p1 = resolveScopedName(subParts[1], prefix, dae, state.innerOuterComponents);
-                          const p2 = resolveScopedName(subParts[2], prefix, dae, state.innerOuterComponents);
+                        if (subParts) {
+                          const p1 = resolveScopedName(subParts[0], prefix, dae, state.innerOuterComponents);
+                          const p2 = resolveScopedName(subParts[1], prefix, dae, state.innerOuterComponents);
                           attrExprId = dae.addBinaryExpr(
                             BinOp.Sub,
                             dae.addExpression(ExprKind.Name, dae.interner.intern(p1)),
@@ -3202,8 +3440,8 @@ export function instantiateElements(
                               attrExprId = dae.addExpression(ExprKind.StringLiteral, dae.interner.intern(evalVal));
                             }
                             if (evalVal !== null && flattener.options.omcCompatibility) {
-                              const idMatches = rawText.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g);
-                              if (idMatches) {
+                              const idMatches = extractAsciiIdentifiers(rawText);
+                              if (idMatches.length > 0) {
                                 for (const id of idMatches) {
                                   if (id === "if" || id === "then" || id === "else" || id === "true" || id === "false")
                                     continue;
@@ -3515,7 +3753,7 @@ export function instantiateElements(
               const aliasNode = impCst ? Cst.ImportClause.alias(impCst) : null;
               const importListNode = impCst ? Cst.ImportClause.importList(impCst) : null;
               const pkgName = String(impMeta?.["packageName"] ?? imp.name ?? "");
-              if (/\.\s*\*/.test(impText) || impMeta?.["importKind"] === "unqualified") {
+              if (hasDotStarSuffix(impText) || impMeta?.["importKind"] === "unqualified") {
                 const pkgSym = resolveQualified(flattener.db, pkgName, true);
                 if (
                   pkgSym &&
@@ -3855,12 +4093,8 @@ export function instantiateElements(
                 ((origParentType === "element" ||
                   origParentType === "element_redeclaration" ||
                   origParentType === "argument") &&
-                  /^\s*(?:redeclare\s+)?(?:each\s+)?(?:final\s+)?(?:inner\s+|outer\s+)*replaceable\b/.test(
-                    origCst?.parent?.text ?? "",
-                  )) ||
-                /^\s*(?:redeclare\s+)?(?:each\s+)?(?:final\s+)?(?:inner\s+|outer\s+)*replaceable\b/.test(
-                  origCst?.text ?? "",
-                )),
+                  hasReplaceablePrefixText(origCst?.parent?.text ?? "")) ||
+                hasReplaceablePrefixText(origCst?.text ?? "")),
             );
             if (origClassTargetId && origClassTargetId !== redeclTargetId && isOrigReplaceableClass) {
               const origMod = flattener.db.query<any>("effectiveModification", origClassTargetId);
@@ -3968,9 +4202,9 @@ export function instantiateElements(
                     for (const arg of effShortMod.args) {
                       const rawVal = arg.value?.text ?? arg.value ?? arg.modification?.bindingExpression;
                       if (!arg.each && !arg.isEach && rawVal) {
-                        const bVal = String(rawVal).replace(/^=/, "").trim();
+                        const bVal = stripLeadingEquals(String(rawVal));
                         if (
-                          /^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(bVal) ||
+                          isSignedAsciiNumberText(bVal) ||
                           bVal === "true" ||
                           bVal === "false" ||
                           (bVal.startsWith('"') && bVal.endsWith('"'))
@@ -4090,7 +4324,7 @@ export function instantiateElements(
                 const ownerQual = ownerClsId ? getSymbolQualifiedName(flattener.db, ownerClsId) : "";
                 if (!ownerQual) return undefined;
                 return prefix
-                  ? `${ownerQual}$${prefix.replace(/\./g, "$")}.${redeclPkgPrefix}`
+                  ? `${ownerQual}$${prefix.replaceAll(".", "$")}.${redeclPkgPrefix}`
                   : `${ownerQual}.${redeclPkgPrefix}`;
               })()
             : (parentMods?.specializedPkgPrefix ?? (dae as any)?.specializedPrefix);
@@ -4166,8 +4400,7 @@ export function instantiateElements(
         if (dae.classKind === "function" && classTargetId) {
           const targetMeta = flattener.db.symbol(classTargetId)?.metadata as any;
           const rawKind = String(targetMeta?.classKind ?? targetMeta?.classPrefixes ?? "");
-          const cleanKind = rawKind.replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-          const words = cleanKind.split(/\s+/).filter(Boolean);
+          const words = tokenizeCommentStrippedWords(rawKind);
           const isModel = words.includes("model");
           const isConnector = words.includes("connector");
           const isBlock = words.includes("block");
@@ -4625,8 +4858,7 @@ export function instantiateElements(
             let hasPartialErr = false;
             for (const nc of nestedClasses) {
               const ncCst = flattener.db.cstNode(nc.id) as any;
-              const ncText: string = ncCst?.text ?? "";
-              const isPartialClass = /^(?:(?:encapsulated|pure|impure)\s+)*partial\b/.test(ncText.trim());
+              const isPartialClass = hasClassHeaderKeywordCst(ncCst, "partial");
               if (isPartialClass) {
                 const isRedeclared = parentMods?.args?.some(
                   (a: any) => a.name === nc.name && (a.kind === "redeclare" || a.isRedeclare),
@@ -4783,10 +5015,10 @@ export function instantiateElements(
               matchingClassArg?.value?.text ??
               compInst.modification?.bindingExpression?.text
             )?.trim();
-            const cleanB = bText ? bText.replace(/^=/, "").trim() : "";
-            const ctorCallMatch = cleanB ? cleanB.match(/^([a-zA-Z0-9_.$]+)\s*\(([\s\S]*)\)$/) : null;
+            const cleanB = bText ? stripLeadingEquals(bText) : "";
+            const ctorCallMatch = cleanB ? parseNamedCallArgsFromText(cleanB) : null;
             if (ctorCallMatch) {
-              const ctorName = ctorCallMatch[1]!;
+              const ctorName = ctorCallMatch.callee;
               const targetBaseName = classTarget?.name ?? compInst.typeSpecifier.split(".").pop();
               const origTypeBaseName = compInst.typeSpecifier.split(".").pop();
               const isDirectRecordCtor =
@@ -4818,7 +5050,7 @@ export function instantiateElements(
                     }
                   }
                 }
-                const rawArgs = splitTopLevelArgs(ctorCallMatch[2]!);
+                const rawArgs = splitTopLevelArgs(ctorCallMatch.argsText);
                 const subSyms = subElements
                   .map((id) => flattener.db.symbol(id))
                   .filter(
@@ -4869,7 +5101,7 @@ export function instantiateElements(
                     const ci = flattener.db.query<ComponentInstanceData>("componentInstance", s!.id);
                     return ci?.variability !== "parameter" && ci?.variability !== "constant";
                   }) &&
-                  recordCtorArgs.some((a) => /\btime\b/.test(a.value?.text ?? ""))
+                  recordCtorArgs.some((a) => containsWholeWordOutsideStrings(a.value?.text ?? "", "time"))
                 ) {
                   isContinuousRecordCtorEq = true;
                 }
@@ -4959,8 +5191,8 @@ export function instantiateElements(
                 const ctorShortName = ctorName.includes(".") ? ctorName.split(".").pop()! : ctorName;
                 const fnCandidates = flattener.db.byName(ctorShortName).filter((e) => flattener["isFunctionSym"](e));
                 const isNonPartialFn = (e: SymbolEntry) => {
-                  const txt = (flattener.db.cstNode(e.id) as any)?.text?.trimStart() ?? "";
-                  return !/^partial\s+function\b/.test(txt);
+                  const fnCst = flattener.db.cstNode(e.id) as any;
+                  return !(hasClassHeaderKeywordCst(fnCst, "partial") && hasClassHeaderKeywordCst(fnCst, "function"));
                 };
                 const pkgScopeForFn = redeclPkgId ?? parentMods?.packageScopeId;
                 const ctorPkgPrefix = pkgScopeForFn
@@ -5002,22 +5234,35 @@ export function instantiateElements(
                     if (!isNaN(n) && t !== "") return n;
                     if (t === "true") return true;
                     if (t === "false") return false;
-                    const zMatch = /^zeros\s*\(\s*(\d+)\s*\)$/.exec(t);
-                    if (zMatch) return new Array(Number(zMatch[1])).fill(0);
+                    const zCall = parseNamedCallArgsFromText(t);
+                    if (zCall && zCall.callee === "zeros" && isAsciiDigitsOnly(zCall.argsText.trim())) {
+                      return new Array(Number(zCall.argsText.trim())).fill(0);
+                    }
                     if (t.startsWith("{") && t.endsWith("}")) {
                       const elems = parseArrayLiteralElements(t);
                       const parsed = elems.map(parseConstArg);
                       return parsed.every((p) => p !== null) ? parsed : null;
                     }
-                    const sliceMatch = /^(.+)\[([^:\]]+):([^\]]+)\]$/.exec(t);
-                    if (sliceMatch) {
-                      const startIdx = parseConstArg(sliceMatch[2]!);
-                      const stopIdx = parseConstArg(sliceMatch[3]!);
-                      if (typeof startIdx === "number" && typeof stopIdx === "number") {
-                        if (startIdx > stopIdx) return [];
-                        const baseArr = parseConstArg(sliceMatch[1]!);
-                        if (Array.isArray(baseArr)) {
-                          return baseArr.slice(startIdx - 1, stopIdx);
+                    if (t.endsWith("]")) {
+                      const lb = t.lastIndexOf("[");
+                      if (lb > 0) {
+                        const inner = t.slice(lb + 1, -1);
+                        const colonIdx = inner.indexOf(":");
+                        if (
+                          colonIdx > 0 &&
+                          colonIdx < inner.length - 1 &&
+                          !inner.includes(":", colonIdx + 1) &&
+                          !inner.includes("]")
+                        ) {
+                          const startIdx = parseConstArg(inner.slice(0, colonIdx));
+                          const stopIdx = parseConstArg(inner.slice(colonIdx + 1));
+                          if (typeof startIdx === "number" && typeof stopIdx === "number") {
+                            if (startIdx > stopIdx) return [];
+                            const baseArr = parseConstArg(t.slice(0, lb));
+                            if (Array.isArray(baseArr)) {
+                              return baseArr.slice(startIdx - 1, stopIdx);
+                            }
+                          }
                         }
                       }
                     }
@@ -5067,8 +5312,8 @@ export function instantiateElements(
                     }
                     return null;
                   };
-                  const rawArgs = splitTopLevelArgs(ctorCallMatch[2]!);
-                  const hasNamedArg = rawArgs.some((a) => /^[a-zA-Z_]\w*\s*=[^=]/.test(a.trim()));
+                  const rawArgs = splitTopLevelArgs(ctorCallMatch.argsText);
+                  const hasNamedArg = rawArgs.some((a) => parseNamedArgAssignment(a) !== null);
                   const prelimEvalArgs = !hasNamedArg ? rawArgs.map(parseConstArg) : null;
                   if (
                     prelimEvalArgs &&
@@ -5094,7 +5339,7 @@ export function instantiateElements(
                             const ownerQual = ownerClsId ? getSymbolQualifiedName(flattener.db, ownerClsId) : "";
                             if (!ownerQual) return null;
                             return prefix
-                              ? `${ownerQual}$${prefix.replace(/\./g, "$")}.${ctorPkgPrefix}`
+                              ? `${ownerQual}$${prefix.replaceAll(".", "$")}.${ctorPkgPrefix}`
                               : `${ownerQual}.${ctorPkgPrefix}`;
                           })()
                         : null;
@@ -5194,9 +5439,9 @@ export function instantiateElements(
                       const byName = new Map<string, any>();
                       let posIdx = 0;
                       for (const ra of rawArgs) {
-                        const nmMatch = /^([a-zA-Z_]\w*)\s*=([^=].*)$/s.exec(ra.trim());
+                        const nmMatch = parseNamedArgAssignment(ra);
                         if (nmMatch) {
-                          byName.set(nmMatch[1]!, parseConstArg(nmMatch[2]!));
+                          byName.set(nmMatch.name, parseConstArg(nmMatch.valueText));
                         } else {
                           if (posIdx < inputNames.length) {
                             byName.set(inputNames[posIdx]!, parseConstArg(ra));
@@ -5288,7 +5533,7 @@ export function instantiateElements(
                   }
                 }
               }
-            } else if (cleanB && /^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)+$/.test(cleanB)) {
+            } else if (cleanB && cleanB.includes(".") && isDottedIdentifierChain(cleanB)) {
               const leafName = cleanB.split(".").pop()!;
               const pkgComp = flattener.db
                 .byName(leafName)
@@ -5299,10 +5544,10 @@ export function instantiateElements(
                   recordCtorArgs.push(...pkgCompInst.modification.args);
                   resolvedPkgRecordConst = true;
                 } else if (pkgCompInst?.modification?.bindingExpression?.text) {
-                  const pkgBText = pkgCompInst.modification.bindingExpression.text.trim().replace(/^=/, "").trim();
-                  const pkgCtorMatch = pkgBText.match(/^([a-zA-Z0-9_.$]+)\s*\(([\s\S]*)\)$/);
+                  const pkgBText = stripLeadingEquals(pkgCompInst.modification.bindingExpression.text);
+                  const pkgCtorMatch = parseNamedCallArgsFromText(pkgBText);
                   if (pkgCtorMatch) {
-                    const pkgCtorName = pkgCtorMatch[1]!;
+                    const pkgCtorName = pkgCtorMatch.callee;
                     const pkgCtorSym = flattener.db
                       .byName(pkgCtorName.split(".").pop()!)
                       .find((e) => flattener["isRecordSym"](e));
@@ -5310,7 +5555,7 @@ export function instantiateElements(
                       const pkgScopeId = pkgComp.parentId ?? flattener.currentRootClassId;
                       flattener.generateRecordConstructorFor(pkgCtorSym, dae, pkgScopeId);
                     }
-                    const rawArgs = splitTopLevelArgs(pkgCtorMatch[2]!);
+                    const rawArgs = splitTopLevelArgs(pkgCtorMatch.argsText);
                     const subSyms = subElements
                       .map((id) => flattener.db.symbol(id))
                       .filter(
@@ -5342,9 +5587,7 @@ export function instantiateElements(
           const isRecordVarRef =
             !resolvedPkgRecordConst &&
             parentMods?.bindingExpression?.text &&
-            /^[a-zA-Z_]\w*(?:\[\d+(?:,\d+)*\])?(?:\.[a-zA-Z_]\w*(?:\[\d+(?:,\d+)*\])?)*$/.test(
-              parentMods.bindingExpression.text.trim(),
-            );
+            isDottedComponentRefWithSubscripts(parentMods.bindingExpression.text.trim(), true);
           const parentBoundRecordField = isRecordVarRef
             ? { kind: "expression", text: `${parentMods.bindingExpression.text.trim()}.${compInst.name}` }
             : null;
@@ -5530,12 +5773,9 @@ export function instantiateElements(
           );
           const recordBindingSource =
             matchingParentArg?.value ?? matchingClassArg?.value ?? compInst.modification?.bindingExpression;
-          const cleanRecordBindText = recordBindingSource?.text
-            ? recordBindingSource.text.trim().replace(/^=/, "").trim()
-            : "";
+          const cleanRecordBindText = recordBindingSource?.text ? stripLeadingEquals(recordBindingSource.text) : "";
           const isSelfRecordVarRef =
-            Boolean(cleanRecordBindText) &&
-            /^[a-zA-Z_]\w*(?:\[[^\]]+\])?(?:\.[a-zA-Z_]\w*(?:\[[^\]]+\])?)*$/.test(cleanRecordBindText);
+            Boolean(cleanRecordBindText) && isDottedComponentRefWithSubscripts(cleanRecordBindText, false);
           const isParamRecord =
             compInst.variability === "parameter" || parentMods?.parentVariability === Variability.Parameter;
           if (
@@ -5549,12 +5789,17 @@ export function instantiateElements(
             (recordCtorArgs.length === 0 ||
               (Boolean(flattener.options.omcCompatibility) &&
                 isOpRec &&
-                /^[A-Za-z_][\w.]*\s*\(/.test(cleanRecordBindText) &&
-                // Constant-literal arguments (`Complex(0, 0)`) are evaluated and scalarized by OMC; only
-                // calls that reference other variables/parameters stay as a record equation.
-                /[A-Za-z_]/.test(
-                  cleanRecordBindText.replace(/^[A-Za-z_][\w.]*\s*\(/, "").replace(/\d+\.?\d*(?:[eE][+-]?\d+)?/g, ""),
-                ))) &&
+                (() => {
+                  const parenIdx = cleanRecordBindText.indexOf("(");
+                  if (parenIdx <= 0) return false;
+                  const callee = cleanRecordBindText.slice(0, parenIdx).trim();
+                  if (!isDottedIdentifierChain(callee)) return false;
+                  // Constant-literal arguments (`Complex(0, 0)`) are evaluated and scalarized by OMC; only
+                  // calls that reference other variables/parameters stay as a record equation.
+                  return (
+                    extractAsciiIdentifiers(stripCommentsAndStrings(cleanRecordBindText.slice(parenIdx + 1))).length > 0
+                  );
+                })())) &&
             !resolvedPkgRecordConst &&
             !isRecordVarRef &&
             dae.classKind !== "function" &&
@@ -5624,9 +5869,9 @@ export function instantiateElements(
               dimNames = rawDims.map((d: any) => d?.text?.trim() ?? "");
             }
             if (dimNames.length === 0 && elemCst) {
-              const match = /\[([a-zA-Z_]\w*)\]/.exec(elemCst.text ?? "");
-              if (match) {
-                dimNames = [match[1]!];
+              const firstDim = firstBracketedIdentifier(elemCst.text ?? "");
+              if (firstDim) {
+                dimNames = [firstDim];
               }
             }
             const resolvedDims = [...arrayDims];
@@ -5678,10 +5923,10 @@ export function instantiateElements(
                   if (typeof evalVal === "number" && evalVal >= 0) {
                     resolvedDims[i] = evalVal;
                   } else if (flattener.options.omcCompatibility) {
-                    const sizeMatch = dimName.match(/^size\s*\(\s*([a-zA-Z_]\w*)\s*,\s*(\d+)\s*\)$/);
+                    const sizeMatch = parseSizeCallIdentDim(dimName);
                     if (sizeMatch) {
-                      const targetVarName = sizeMatch[1]!;
-                      const targetDimIdx = sizeMatch[2]!;
+                      const targetVarName = sizeMatch.target;
+                      const targetDimIdx = sizeMatch.dimStr;
                       const targetElemSym = flattener.currentRootClassId
                         ? flattener.db
                             .childrenOf(flattener.currentRootClassId)
@@ -5700,7 +5945,7 @@ export function instantiateElements(
                             targetRawDims.some(
                               (d: any) => d?.text?.trim() === ":" || d?.kind === "colon" || d?.kind === "flexible",
                             )) ||
-                          /\[\s*:\s*\]/.test(cstText);
+                          hasColonSubscript(cstText);
                         const targetBinding = flattener.db.query<any>("effectiveBinding", targetElemSym.id);
                         const targetHasBinding = Boolean(
                           targetCompInst?.modification?.bindingExpression || targetBinding?.expression,
@@ -5785,10 +6030,10 @@ export function instantiateElements(
                 const isConst =
                   peInst?.variability === "constant" ||
                   (peSym.metadata as any)?.variability === "constant" ||
-                  /\bconstant\b/.test(peCst?.text ?? "");
+                  tokenizeCommentStrippedWords(peCst?.text ?? "").includes("constant");
                 if (!isConst) continue;
                 if (peInst?.typeSpecifier) {
-                  const tSpec = peInst.typeSpecifier.replace(/^\.+/, "");
+                  const tSpec = stripLeadingDots(peInst.typeSpecifier);
                   const recSym =
                     (tSpec.includes(".")
                       ? flattener.db.query<(n: string) => SymbolEntry | null>("resolveName", pkgId)?.(tSpec)
@@ -5827,10 +6072,7 @@ export function instantiateElements(
                 const extMod = [...pkgExtendsMods].reverse().find((m: any) => m.name === peSym.name && m.value?.text);
                 const bText = (extMod?.value?.text ?? peInst?.modification?.bindingExpression?.text)?.trim();
                 if (bText) {
-                  const fnCallRe = /\.?\b([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\s*\(/g;
-                  let m: RegExpExecArray | null;
-                  while ((m = fnCallRe.exec(bText)) !== null) {
-                    const fnCallName = m[1]!;
+                  for (const fnCallName of extractCallTargetsFromExpr(bText, null, false)) {
                     if (
                       fnCallName === "fill" ||
                       fnCallName === "size" ||
@@ -5840,7 +6082,7 @@ export function instantiateElements(
                     ) {
                       continue;
                     }
-                    const cleanFnCall = fnCallName.replace(/^\.+/, "");
+                    const cleanFnCall = stripLeadingDots(fnCallName);
                     if (cleanFnCall.includes(".")) {
                       const fnShort = cleanFnCall.split(".").pop()!;
                       const fnSym =
@@ -5882,8 +6124,8 @@ export function instantiateElements(
                       }
                     }
                   }
-                  const cleanRef = bText.replace(/^\.+/, "").trim();
-                  if (/^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)+$/.test(cleanRef)) {
+                  const cleanRef = stripLeadingDots(bText).trim();
+                  if (cleanRef.includes(".") && isDottedIdentifierChain(cleanRef)) {
                     const refParts = cleanRef.split(".");
                     const refCompName = refParts.pop()!;
                     const refPkgQual = refParts.join(".");
@@ -5912,7 +6154,7 @@ export function instantiateElements(
               ((state as any).packageRedeclares ??= new Set<string>()).add(a.name);
             }
             const targetClassQual = getSymbolQualifiedName(flattener.db, classTargetId);
-            const unsubscriptedComp = name.replace(/\[[^\][]*\]/g, "").replace(/\./g, "$");
+            const unsubscriptedComp = stripArraySubscripts(name).replaceAll(".", "$");
             if (targetClassQual) {
               for (const [pkgName, pkgArg] of pkgRedeclByName) {
                 const origPkgSym =
@@ -5966,8 +6208,8 @@ export function instantiateElements(
                   const node = flattener.db.cstNodeRange(rd.cstBytes[0], rd.cstBytes[1]) as any;
                   if (node) rdText = node.text?.trim() ?? "";
                 }
-                const idMatches = rdText.match(/\b[a-zA-Z_]\w*\b/g);
-                if (idMatches) {
+                const idMatches = extractAsciiIdentifiers(rdText);
+                if (idMatches.length > 0) {
                   for (const idm of idMatches) {
                     if (
                       idm === "if" ||
@@ -6022,8 +6264,8 @@ export function instantiateElements(
               arrayCtorElements = parseArrayLiteralElements(bText);
             }
             if (bText) {
-              const cleanB = bText.replace(/^=/, "").trim();
-              if (isArrayLiteral(cleanB) && !/\bfor\b/.test(cleanB)) {
+              const cleanB = stripLeadingEquals(bText);
+              if (isArrayLiteral(cleanB) && !containsWholeWordOutsideStrings(cleanB, "for")) {
                 const ctorElems = parseArrayLiteralElements(cleanB);
                 if (ctorElems.length !== arrayDims[0]) {
                   let clauseNode: any = elemCst;
@@ -6041,7 +6283,7 @@ export function instantiateElements(
                     : undefined;
                   let formattedBText = cleanB;
                   if (compInst.typeSpecifier === "Real") {
-                    formattedBText = `{${ctorElems.map((e) => (/^\d+$/.test(e.trim()) ? `${e.trim()}.0` : e.trim())).join(", ")}}`;
+                    formattedBText = `{${ctorElems.map((e) => (isAsciiDigitsOnly(e.trim()) ? `${e.trim()}.0` : e.trim())).join(", ")}}`;
                   }
                   dae.diagnostics.push({
                     severity: "error",
@@ -6082,7 +6324,7 @@ export function instantiateElements(
                   return;
                 }
               } else if (
-                /^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(cleanB) ||
+                isSignedAsciiNumberText(cleanB) ||
                 cleanB === "true" ||
                 cleanB === "false" ||
                 (cleanB.startsWith('"') && cleanB.endsWith('"'))
@@ -6205,11 +6447,7 @@ export function instantiateElements(
                       flattener.currentClassId ?? classTargetId ?? undefined,
                     );
                     const iterVal = rangeVals && idxNum < rangeVals.length ? rangeVals[idxNum]! : String(idxNum + 1);
-                    const escapedIter = comp.iter.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-                    const iterRe = new RegExp(`"(?:\\\\.|[^"\\\\])*"|(\\.?\\b${escapedIter}\\b)`, "g");
-                    const itemText = comp.body.replace(iterRe, (match, identPart) =>
-                      !identPart || identPart.startsWith(".") ? match : iterVal,
-                    );
+                    const itemText = replaceWordOutsideStrings(comp.body, comp.iter, iterVal, true);
                     return {
                       ...arg,
                       value: {
@@ -6247,13 +6485,19 @@ export function instantiateElements(
                         value: {
                           ...arg.value,
                           text: itemText,
-                          kind: /^[+-]?\d+$/.test(itemText) ? "literal" : "expression",
-                          value: /^[+-]?\d+$/.test(itemText) ? Number(itemText) : arg.value?.value,
+                          kind: isSignedAsciiIntText(itemText) ? "literal" : "expression",
+                          value: isSignedAsciiIntText(itemText) ? Number(itemText) : arg.value?.value,
                           cstBytes: undefined,
                         },
                       };
                     }
-                  } else if (argText && !arg.each && !arg.isEach && /^array\s*\(/.test(argText)) {
+                  } else if (
+                    argText &&
+                    !arg.each &&
+                    !arg.isEach &&
+                    argText.startsWith("array") &&
+                    argText.slice(5).trimStart().startsWith("(")
+                  ) {
                     const arrCompMatch = parseArrayComprehension(argText);
                     if (arrCompMatch) {
                       const sliced = sliceCompModifier(arrCompMatch, argText);
@@ -6262,7 +6506,7 @@ export function instantiateElements(
                   } else if (
                     argText &&
                     !arg.each &&
-                    /^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(argText) &&
+                    isDottedIdentifierChain(argText) &&
                     (dae.getVarIdxByName(`${argText}[1]`) >= 0 ||
                       dae.hasArrayElements(argText) ||
                       (!hasFieldVariablesInDae(dae, argText) && getNamedArrayShape(dae, argText) !== undefined))
@@ -6287,7 +6531,7 @@ export function instantiateElements(
               }
               let isContinuousRecordElemFnEq = false;
               const bExprText = elemSubMod.bindingExpression?.text?.trim();
-              if (bExprText && !bExprText.startsWith("{") && /^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(bExprText)) {
+              if (bExprText && !bExprText.startsWith("{") && isDottedIdentifierChain(bExprText)) {
                 elemSubMod = {
                   ...elemSubMod,
                   bindingExpression: {
@@ -6298,17 +6542,17 @@ export function instantiateElements(
                 };
               } else if (arrayCtorElements && idxNum < arrayCtorElements.length) {
                 const elemText = arrayCtorElements[idxNum]!.trim();
-                const ctorCallMatch = elemText.match(/^([a-zA-Z0-9_.$]+)\s*\(([\s\S]*)\)$/);
-                if (!ctorCallMatch && /^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(elemText)) {
+                const ctorCallMatch = parseNamedCallArgsFromText(elemText);
+                if (!ctorCallMatch && isDottedIdentifierChain(elemText)) {
                   elemSubMod = {
                     ...elemSubMod,
                     bindingExpression: { kind: "expression", text: elemText },
                   };
                 } else if (ctorCallMatch) {
-                  const ctorName = ctorCallMatch[1]!;
+                  const ctorName = ctorCallMatch.callee;
                   const targetBaseName = classTarget?.name ?? compInst.typeSpecifier.split(".").pop();
                   if (ctorName === targetBaseName || ctorName.endsWith(`.${targetBaseName}`)) {
-                    const rawArgs = splitTopLevelArgs(ctorCallMatch[2]!);
+                    const rawArgs = splitTopLevelArgs(ctorCallMatch.argsText);
                     const subSyms = subElements
                       .map((id) => flattener.db.symbol(id))
                       .filter(
@@ -6348,7 +6592,7 @@ export function instantiateElements(
                       flattener.db.byName(ctorShortName).find((e) => flattener["isFunctionSym"](e));
                     let resolvedArrayElemConst = false;
                     if (matchingFnSym && flattener["isFunctionSym"](matchingFnSym)) {
-                      const rawArgs = splitTopLevelArgs(ctorCallMatch[2]!);
+                      const rawArgs = splitTopLevelArgs(ctorCallMatch.argsText);
                       const evalArgs = rawArgs.map(parseRawLiteralArg);
                       if (evalArgs.every((a) => a !== null)) {
                         const qualFnName = getSymbolQualifiedName(flattener.db, matchingFnSym.id);
@@ -6960,15 +7204,11 @@ export function instantiateElements(
           if (enumSym) {
             const baseEnumSym = getBaseEnumSymbol(flattener.db, enumSym) ?? enumSym;
             const targetMeta = baseEnumSym.metadata as any;
-            const baseCstText = ((flattener.db.cstNode(baseEnumSym.id) as any)?.text ?? "")
-              .replace(/\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ")
-              .trim();
+            const baseEnumCst = flattener.db.cstNode(baseEnumSym.id) as any;
             const isEnum =
               targetMeta?.classPrefixes === "enumeration" ||
               targetMeta?.isEnumeration ||
-              /^(?:(?:encapsulated|partial|final|replaceable|redeclare|inner|outer)\s+)*(?:type|class)\s+[A-Za-z_]\w*\s*=\s*enumeration\s*\(/.test(
-                baseCstText,
-              );
+              isEnumClassDefCst(baseEnumCst);
             if (isEnum) {
               const enumErr = validateEnumeration(flattener.db.cstNode(baseEnumSym.id) as any, baseEnumSym);
               if (enumErr) {
@@ -7019,8 +7259,9 @@ export function instantiateElements(
                     endOffset: elemCst.endIndex ?? elemCst.endOffset,
                   }
                 : undefined;
-            const idxMatch = prefix.match(/\[(\d+)\]$/);
-            const idxVal = idxMatch ? parseInt(idxMatch[1]!, 10) : 1;
+            const lastBracket = prefix.endsWith("]") ? prefix.lastIndexOf("[") : -1;
+            const idxDigits = lastBracket >= 0 ? prefix.slice(lastBracket + 1, -1) : "";
+            const idxVal = idxDigits && isAsciiDigitsOnly(idxDigits) ? parseInt(idxDigits, 10) : 1;
             if (flattener.options.omcCompatibility && idxVal === 2) {
               dae.diagnostics.push({
                 severity: "error",
@@ -7096,9 +7337,7 @@ export function instantiateElements(
 
         const isParentBoundRecord =
           parentMods?.bindingExpression?.text &&
-          /^[a-zA-Z_]\w*(?:\[\d+(?:,\d+)*\])?(?:\.[a-zA-Z_]\w*(?:\[\d+(?:,\d+)*\])?)*$/.test(
-            parentMods.bindingExpression.text.trim(),
-          );
+          isDottedComponentRefWithSubscripts(parentMods.bindingExpression.text.trim(), true);
         const isParentBoundField =
           (!effectiveParentArg?.value || Boolean(effectiveParentArg?.isExtendsMod)) &&
           !effectiveClassArg?.value &&
@@ -7157,7 +7396,7 @@ export function instantiateElements(
           variability === Variability.Constant &&
           (prefix || elemParentId !== flattener.currentRootClassId) &&
           bText &&
-          /^[a-zA-Z_]\w*$/.test(bText)
+          isAsciiIdentifier(bText)
         ) {
           const targetConst = resolveScopedName(bText, prefix, dae);
           const targetIdx =
@@ -7183,7 +7422,7 @@ export function instantiateElements(
                 const memType = flattener.db.query<string | null>("typeSpecifier", memberEntry.id);
                 const memMod = flattener.db.query<any>("effectiveModification", memberEntry.id);
                 const memBinding = memMod?.bindingExpression?.text?.trim();
-                if (memType === "Integer" && memBinding && /^[+-]?\d+\.\d+/.test(memBinding)) {
+                if (memType === "Integer" && memBinding && startsWithSignedDecimalFloat(memBinding)) {
                   const memCst = flattener.db.cstNode(memberEntry.id) as any;
                   let memClauseStart = memCst?.startIndex ?? memCst?.startOffset;
                   let memClauseEnd = memCst?.endIndex ?? memCst?.endOffset;
@@ -7228,7 +7467,7 @@ export function instantiateElements(
 
         if (variability === Variability.Constant && effectiveBinding?.text) {
           const bText = effectiveBinding.text.trim();
-          const idMatches = bText.match(/[a-zA-Z_]\w*/g) || [];
+          const idMatches = extractAsciiIdentifiers(bText);
           let higherVar: string | null = null;
           for (const idName of idMatches) {
             if (idName === "time") {
@@ -7265,7 +7504,7 @@ export function instantiateElements(
 
         if (variability === Variability.Parameter && effectiveBinding?.text) {
           const bText = effectiveBinding.text.trim();
-          if (/\btime\b/.test(bText)) {
+          if (containsWholeWordOutsideStrings(bText, "time")) {
             const rangeObj = matchingParentArg?.modRange
               ? { startOffset: matchingParentArg.modRange[0], endOffset: matchingParentArg.modRange[1] }
               : elemCst
@@ -7274,7 +7513,7 @@ export function instantiateElements(
                     endOffset: elemCst.endIndex ?? elemCst.endOffset,
                   }
                 : undefined;
-            const formatted = bText.replace(/\*/g, " * ");
+            const formatted = bText.replaceAll("*", " * ");
             dae.diagnostics.push({
               severity: "error",
               code: ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH.code,
@@ -7293,7 +7532,7 @@ export function instantiateElements(
         if (isDiscreteTypeOrVar && effectiveBinding?.text) {
           const bText = effectiveBinding.text.trim();
           if (bText.startsWith("noEvent(") && bText.endsWith(")")) {
-            const m = bText.slice(8, -1).match(/[a-zA-Z_]\w*/g) || [];
+            const m = extractAsciiIdentifiers(bText.slice(8, -1));
             const hasContinuous = m.some((vName: string) => {
               if (vName === "time") return true;
               const vi = dae.getVarIdxByName(prefix ? `${prefix}.${vName}` : vName);
@@ -7338,12 +7577,7 @@ export function instantiateElements(
           if (!flattener.currentClassId) return false;
           const cst = flattener.db.cstNode(flattener.currentClassId) as any;
           if (!cst) return false;
-          const cstText = (cst.text as string) ?? "";
-          const eqIdx = cstText.indexOf("equation");
-          if (eqIdx < 0) return false;
-          const eqSection = cstText.slice(eqIdx);
-          const regex = new RegExp(`\\b${compInst.name}\\b\\s*=`);
-          return regex.test(eqSection);
+          return hasEquationAssignmentForNameCst(cst, compInst.name);
         };
 
         if (
@@ -7446,11 +7680,11 @@ export function instantiateElements(
                     let argExprId = -1;
                     if (modMap.has(fName)) {
                       const modVal = modMap.get(fName)!;
-                      const modText = (modVal.text ?? "").replace(/^=/, "").trim();
+                      const modText = stripLeadingEquals(modVal.text ?? "");
                       const num = Number(modText);
                       if (!isNaN(num) && modText !== "") {
                         argExprId = fType === VarType.Integer ? dae.addIntLiteral(num) : dae.addRealLiteral(num);
-                      } else if (/^[a-zA-Z_]\w*$/.test(modText)) {
+                      } else if (isAsciiIdentifier(modText)) {
                         argExprId = dae.addNameExpr(prefix ? `${prefix}.${modText}` : modText);
                       } else if (modVal.cstBytes && flattener.lowerExpr) {
                         const scopeSym = elemId ? flattener.db.symbol(elemId) : undefined;
@@ -7510,15 +7744,18 @@ export function instantiateElements(
                 }
                 if (exprId !== null) {
                   // Handled by evaluatedConstantArrays
-                } else if (isArrayLiteral(bText) && !/\bfor\b/.test(bText)) {
+                } else if (isArrayLiteral(bText) && !containsWholeWordOutsideStrings(bText, "for")) {
                   bText = getIndexedElementText(bText, idxTuple);
                 }
-                if (/^zeros\s*\([^)]*\)$/.test(bText)) {
+                const parsedBuiltinCall = parseNamedCallArgsFromText(bText);
+                const builtinCallee =
+                  parsedBuiltinCall && !parsedBuiltinCall.argsText.includes(")") ? parsedBuiltinCall.callee : "";
+                if (builtinCallee === "zeros") {
                   exprId = varType === VarType.Integer ? dae.addIntLiteral(0) : dae.addRealLiteral(0.0);
-                } else if (/^ones\s*\([^)]*\)$/.test(bText)) {
+                } else if (builtinCallee === "ones") {
                   bText = varType === VarType.Integer ? "1" : "1.0";
                   exprId = varType === VarType.Integer ? dae.addIntLiteral(1) : dae.addRealLiteral(1.0);
-                } else if (/^identity\s*\([^)]*\)$/.test(bText) && idxTuple.length >= 2) {
+                } else if (builtinCallee === "identity" && idxTuple.length >= 2) {
                   const isDiag = idxTuple[0] === idxTuple[1];
                   bText = isDiag
                     ? varType === VarType.Integer
@@ -7557,7 +7794,7 @@ export function instantiateElements(
                       bText = elemText;
                     }
                   }
-                } else if (/^[a-zA-Z_]\w*$/.test(bText) && isArrayTarget(bText)) {
+                } else if (isAsciiIdentifier(bText) && isArrayTarget(bText)) {
                   const resolvedTarget = resolveScopedName(bText, bindingPrefix, dae);
                   let indexedTarget = `${resolvedTarget}[${idxTuple.join(",")}]`;
                   const elemIndices = dae.getArrayElementIndices(resolvedTarget);
@@ -7575,8 +7812,8 @@ export function instantiateElements(
                     indexedTarget = `${resolvedTarget}${indexStr}`;
                   }
                   exprId = dae.addExpression(ExprKind.Name, dae.interner.intern(indexedTarget));
-                } else if (/^-\s*[a-zA-Z_]\w*$/.test(bText)) {
-                  const target = bText.replace(/^-\s*/, "");
+                } else if (bText.startsWith("-") && isAsciiIdentifier(stripLeadingMinusWs(bText))) {
+                  const target = stripLeadingMinusWs(bText);
                   if (isArrayTarget(target)) {
                     const resolvedTarget = resolveScopedName(target, bindingPrefix, dae);
                     let indexedTarget = `${resolvedTarget}[${idxTuple.join(",")}]`;
@@ -7645,7 +7882,7 @@ export function instantiateElements(
                       rangeVals && idxTuple[0]! - 1 < rangeVals.length
                         ? rangeVals[idxTuple[0]! - 1]!
                         : String(idxTuple[0]);
-                    bText = bodyStr.replace(new RegExp(`\\b${iterVar}\\b`, "g"), iterVal);
+                    bText = replaceWordOutsideStrings(bodyStr, iterVar, iterVal, false);
                   }
                 } else {
                   const modChildForIf = elemCst?.children?.find((c: any) => c.type === "modification");
@@ -7672,8 +7909,8 @@ export function instantiateElements(
               const isPreservedArrayVar =
                 (arrayDims && arrayDims.length > 0) || (varShapeAtIdx && varShapeAtIdx.length > 0);
               if (idxTuple.length === 0 && !isPreservedArrayVar && bText) {
-                const cleanB = bText.replace(/^=/, "").trim();
-                if (isArrayLiteral(cleanB) && !/\bfor\b/.test(cleanB)) {
+                const cleanB = stripLeadingEquals(bText);
+                if (isArrayLiteral(cleanB) && !containsWholeWordOutsideStrings(cleanB, "for")) {
                   const ctorElems = parseArrayLiteralElements(cleanB);
                   let clauseNode: any = elemCst;
                   while (clauseNode && clauseNode.type !== "component_clause") {
@@ -7798,7 +8035,7 @@ export function instantiateElements(
                       : undefined;
                   const compName = prefix ? `.${prefix}.${compInst.name}` : `.${compInst.name}`;
                   const modExprText = bText.startsWith("=") ? bText : `=${bText}`;
-                  let rhsText = bText.replace(/^=/, "").trim();
+                  let rhsText = stripLeadingEquals(bText);
                   if (varType === VarType.Integer && providedType === VarType.Real && exprId !== null && exprId >= 0) {
                     const cVal = evalDaeExpr(exprId, dae);
                     if (typeof cVal === "number") {
@@ -7859,7 +8096,13 @@ export function instantiateElements(
               }
 
               if (exprId === null) {
-                if (effectiveBinding.cstBytes && !/^array\s*\(.+\bfor\b.+\)$/s.test(effectiveBinding.text.trim())) {
+                const trimmedBindingText = effectiveBinding.text.trim();
+                const parsedArrayCall = parseNamedCallArgsFromText(trimmedBindingText);
+                const isArrayCompBinding =
+                  parsedArrayCall?.callee === "array" &&
+                  parsedArrayCall.argsText.trim().length > 0 &&
+                  containsWholeWordOutsideStrings(parsedArrayCall.argsText, "for");
+                if (effectiveBinding.cstBytes && !isArrayCompBinding) {
                   const targetScopeId =
                     (effectiveBinding as any)?.evaluationScopeId ??
                     effectiveParentArg?.evaluationScopeId ??
@@ -7900,7 +8143,7 @@ export function instantiateElements(
                         const isBracket =
                           (innerCst?.child(0)?.text === "[" || text.startsWith("[")) &&
                           (innerCst?.child(innerCst?.childCount - 1)?.text === "]" || text.endsWith("]"));
-                        const isBrace = isArrayLiteral(text) && !/\bfor\b/.test(text);
+                        const isBrace = isArrayLiteral(text) && !containsWholeWordOutsideStrings(text, "for");
                         if (isBracket && idxTuple.length === 2) {
                           const rows = getArrayLiteralItems(innerCst);
                           const rowIdx = idxTuple[0]!;
@@ -8262,7 +8505,7 @@ export function instantiateElements(
                         const compName = prefix ? `.${prefix}.${compInst.name}` : `.${compInst.name}`;
                         const modExprText = bText.startsWith("=") ? bText : `=${bText}`;
                         if (varType === VarType.Integer && providedType === VarType.Real) {
-                          let rhsText = bText.replace(/^=/, "").trim();
+                          let rhsText = stripLeadingEquals(bText);
                           if (exprId !== null && exprId >= 0) {
                             const cVal = evalDaeExpr(exprId, dae);
                             if (typeof cVal === "number") {
@@ -8284,7 +8527,7 @@ export function instantiateElements(
                           !prefix &&
                           (!dae.extensionMetadata?.["isOldFrontend"] || dae.classKind !== "function")
                         ) {
-                          let rhsText = bText.replace(/^=/, "").trim();
+                          let rhsText = stripLeadingEquals(bText);
                           dae.diagnostics.push({
                             severity: "error",
                             code: ModelicaErrorCode.TYPE_MISMATCH_BINDING.code,
@@ -8361,8 +8604,8 @@ export function instantiateElements(
               }
 
               if (exprId === null) {
-                const isPureInt = /^[+-]?\d+$/.test(bText);
-                const isPureReal = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(bText);
+                const isPureInt = isSignedAsciiIntText(bText);
+                const isPureReal = isSignedAsciiNumberText(bText);
                 if (varType === VarType.Real && (isPureReal || isPureInt)) {
                   exprId = dae.addRealLiteral(parseFloat(bText));
                 } else if (varType === VarType.Integer && isPureInt) {
@@ -8621,9 +8864,7 @@ export function instantiateElements(
                       ? ((arg as any).originPrefix ??
                         (prefix.includes(".") ? prefix.split(".").slice(0, -1).join(".") : ""))
                       : bindingPrefix;
-                    let resolvedT = /^[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(t)
-                      ? resolveScopedName(t, effAttrPrefix, dae)
-                      : t;
+                    let resolvedT = isDottedIdentifierChain(t) ? resolveScopedName(t, effAttrPrefix, dae) : t;
                     // Qualify enumeration literal names in attributes (`start = Enum.lit` or `lit`)
                     if (varType === VarType.Enumeration && customType && enumLiterals) {
                       const enumShort = customType.split(".").pop()!;
@@ -8654,7 +8895,7 @@ export function instantiateElements(
                     }
                     const elemParentId =
                       flattener.db.symbol(elemId)?.parentId || flattener.currentClassId || flattener.currentRootClassId;
-                    if (!isDaeVar && effAttrPrefix && /^[a-zA-Z_]\w*$/.test(t) && elemParentId) {
+                    if (!isDaeVar && effAttrPrefix && isAsciiIdentifier(t) && elemParentId) {
                       const isNonConstComp = (c: any) =>
                         c.kind === "Component" &&
                         c.name === t &&
@@ -8698,11 +8939,11 @@ export function instantiateElements(
                     } else {
                       const subParts =
                         dae.extensionMetadata?.["isOldFrontend"] && arg.name === "start"
-                          ? t.match(/^([a-zA-Z_][a-zA-Z0-9_.]*)\s*-\s*([a-zA-Z_][a-zA-Z0-9_.]*)$/)
+                          ? parseBinaryIdentSubtraction(t)
                           : null;
-                      if (subParts && subParts[1] && subParts[2]) {
-                        const p1 = resolveScopedName(subParts[1], effAttrPrefix, dae, state.innerOuterComponents);
-                        const p2 = resolveScopedName(subParts[2], effAttrPrefix, dae, state.innerOuterComponents);
+                      if (subParts) {
+                        const p1 = resolveScopedName(subParts[0], effAttrPrefix, dae, state.innerOuterComponents);
+                        const p2 = resolveScopedName(subParts[1], effAttrPrefix, dae, state.innerOuterComponents);
                         attrExprId = dae.addBinaryExpr(
                           BinOp.Sub,
                           dae.addExpression(ExprKind.Name, dae.interner.intern(p1)),
@@ -8710,15 +8951,18 @@ export function instantiateElements(
                         );
                       }
                       let evalVal: any = null;
+                      const isIfPrefix =
+                        t.startsWith("if") && (t.length === 2 || !isAsciiIdentContinue(t.charCodeAt(2)));
+                      const isArrayCallPrefix = t.startsWith("array") && t.slice(5).trimStart().startsWith("(");
                       const shouldSkipPreEval =
                         (flattener.options.omcCompatibility &&
-                          /^if\b/.test(t) &&
+                          isIfPrefix &&
                           (t.includes("flowDirection") || t.includes("allowFlowReversal")) &&
                           arg.name !== "stateSelect" &&
                           arg.name !== "fixed") ||
                         (Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
                           arg.name === "start" &&
-                          /^array\s*\(/.test(t));
+                          isArrayCallPrefix);
                       if (attrExprId === null && !shouldSkipPreEval) {
                         try {
                           const pkgScopeId = redeclPkgId ?? parentMods?.packageScopeId;
@@ -8738,8 +8982,8 @@ export function instantiateElements(
                           const refsDaeParamInRel =
                             (evalT.includes("==") || evalT.includes("<>")) &&
                             (() => {
-                              const ids = evalT.match(/\b[a-zA-Z_]\w*\b/g);
-                              if (!ids) return false;
+                              const ids = extractAsciiIdentifiers(evalT);
+                              if (ids.length === 0) return false;
                               for (const id of ids) {
                                 if (
                                   id === "if" ||
@@ -8799,8 +9043,8 @@ export function instantiateElements(
                             flattener.options.omcCompatibility &&
                             !dae.extensionMetadata?.["isOldFrontend"]
                           ) {
-                            const idMatches = t.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g);
-                            if (idMatches) {
+                            const idMatches = extractAsciiIdentifiers(t);
+                            if (idMatches.length > 0) {
                               for (const id of idMatches) {
                                 if (id === "if" || id === "then" || id === "else" || id === "true" || id === "false")
                                   continue;
@@ -9003,7 +9247,7 @@ export function instantiateElements(
                       } else if (t.startsWith('"') && t.endsWith('"')) {
                         attrExprId = dae.addExpression(ExprKind.Name, dae.interner.intern(t));
                       } else if (attrExprId === null) {
-                        const isSimpleIdent = /^[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(t);
+                        const isSimpleIdent = isDottedIdentifierChain(t);
                         if (!isSimpleIdent && arg.value?.cstBytes) {
                           const targetSym = flattener.db.symbol(elemId);
                           const evalScopeSymId =
@@ -9154,8 +9398,8 @@ export function instantiateElements(
               const node = flattener.db.cstNodeRange(rd.cstBytes[0], rd.cstBytes[1]) as any;
               if (node) rdText = node.text?.trim() ?? "";
             }
-            const idMatches = rdText.match(/\b[a-zA-Z_]\w*\b/g);
-            if (idMatches) {
+            const idMatches = extractAsciiIdentifiers(rdText);
+            if (idMatches.length > 0) {
               for (const idm of idMatches) {
                 if (
                   idm === "if" ||
@@ -9279,7 +9523,7 @@ export function instantiateElements(
                 }
               }
               const formattedExpr = "{" + rowElements.map((cols) => "{" + cols.join(", ") + "}").join(", ") + "}";
-              const allInts = rowElements.every((row) => row.every((c) => /^[+-]?\d+$/.test(c)));
+              const allInts = rowElements.every((row) => row.every((c) => isSignedAsciiIntText(c)));
               const elemType = allInts ? "Integer" : "Real";
               dae.diagnostics.push({
                 severity: "error",
@@ -9320,9 +9564,9 @@ export function instantiateElements(
             dimNames = rawDims.map((d: any) => d?.text?.trim() ?? "");
           }
           if (dimNames.length === 0 && elemCst) {
-            const match = /\[([a-zA-Z_]\w*)\]/.exec(elemCst.text ?? "");
-            if (match) {
-              dimNames = [match[1]!];
+            const firstDimName = firstBracketedIdentifier(elemCst.text ?? "");
+            if (firstDimName) {
+              dimNames = [firstDimName];
             }
           }
           const resolvedDims = [...arrayDims];
@@ -9350,7 +9594,7 @@ export function instantiateElements(
                   }
                   if (typeof evalVal !== "number" || evalVal < 0) {
                     const defaultDimScopeId = (dae as any).enclosingScopeId ?? flattener.currentClassId ?? undefined;
-                    const dimFirstId = dimName.match(/^([a-zA-Z_]\w*)\./)?.[1];
+                    const dimFirstId = leadingIdentifierBeforeDot(dimName) ?? undefined;
                     const dimPkgRedecl = dimFirstId
                       ? parentMods?.args
                           ?.slice()
@@ -9364,7 +9608,7 @@ export function instantiateElements(
                           )
                       : undefined;
                     const effectiveDimName = dimPkgRedecl
-                      ? `${String(dimPkgRedecl.redeclaredTypeSpecifier).replace(/^\.+/, "")}${dimName.slice(dimFirstId!.length)}`
+                      ? `${stripLeadingDots(String(dimPkgRedecl.redeclaredTypeSpecifier))}${dimName.slice(dimFirstId!.length)}`
                       : dimName;
                     const dimScopeId =
                       dimPkgRedecl?.evaluationScopeId ??
@@ -9429,10 +9673,10 @@ export function instantiateElements(
                 if (typeof evalVal === "number" && evalVal >= 0) {
                   resolvedDims[i] = evalVal;
                 } else if (flattener.options.omcCompatibility && dimName && !isFunctionInputWithColon) {
-                  const sizeMatch = dimName.match(/^size\s*\(\s*([a-zA-Z_]\w*)\s*,\s*(\d+)\s*\)$/);
+                  const sizeMatch = parseSizeCallIdentDim(dimName);
                   if (sizeMatch) {
-                    const targetVarName = sizeMatch[1]!;
-                    const targetDimIdx = sizeMatch[2]!;
+                    const targetVarName = sizeMatch.target;
+                    const targetDimIdx = sizeMatch.dimStr;
                     const targetElemSym = flattener.currentRootClassId
                       ? flattener.db
                           .childrenOf(flattener.currentRootClassId)
@@ -9451,7 +9695,7 @@ export function instantiateElements(
                           targetRawDims.some(
                             (d: any) => d?.text?.trim() === ":" || d?.kind === "colon" || d?.kind === "flexible",
                           )) ||
-                        /\[\s*:\s*\]/.test(cstText);
+                        hasColonSubscript(cstText);
                       const targetBinding = flattener.db.query<any>("effectiveBinding", targetElemSym.id);
                       const targetHasBinding = Boolean(
                         targetCompInst?.modification?.bindingExpression || targetBinding?.expression,
@@ -9650,10 +9894,11 @@ export function instantiateElements(
                     }
                   }
                 } else if (bRef.includes("(") && bRef.endsWith(")")) {
-                  const fnCallMatch = bRef.match(/^([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\s*\((.*)\)$/);
+                  const parsedCall = parseNamedCallArgsFromText(bRef);
+                  const fnCallMatch = parsedCall && isDottedIdentifierChain(parsedCall.callee) ? parsedCall : null;
                   if (fnCallMatch) {
-                    const fnCallName = fnCallMatch[1]!;
-                    const argsText = fnCallMatch[2]!;
+                    const fnCallName = fnCallMatch.callee;
+                    const argsText = fnCallMatch.argsText;
                     const prefixFnCallName = prefix ? `${prefix}.${fnCallName}` : fnCallName;
                     let fnObj = dae.getFunction(fnCallName) || dae.getFunction(prefixFnCallName);
                     if (!fnObj) {
@@ -9775,7 +10020,7 @@ export function instantiateElements(
                     }
                   }
                 } else {
-                  const cleanRef = bRef.replace(/^-\s*/, "");
+                  const cleanRef = stripLeadingMinusWs(bRef);
                   const resolvedRef = resolveScopedName(cleanRef, prefix, dae);
                   let maxDimVal = 0;
                   const searchRefs = [resolvedRef];
@@ -9889,10 +10134,7 @@ export function instantiateElements(
             arrayDims.some((d) => d === 0)
           ) {
             if (dae.extensionMetadata?.["isOldFrontend"] && effectiveBinding?.text) {
-              const fnCallRe = /\b([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)+)\s*\(/g;
-              let m: RegExpExecArray | null;
-              while ((m = fnCallRe.exec(effectiveBinding.text)) !== null) {
-                const fnCallName = m[1]!;
+              for (const fnCallName of extractCallTargetsFromExpr(effectiveBinding.text, null, true)) {
                 const fnShort = fnCallName.split(".").pop()!;
                 const fnSym = flattener.db
                   .byName(fnShort)
@@ -9956,7 +10198,7 @@ export function instantiateElements(
                         clauseEnd = curr.endIndex ?? curr.endOffset;
                       }
                     }
-                    const allInts = outerElems.every((e: string) => /^[+-]?\d+$/.test(e.trim()));
+                    const allInts = outerElems.every((e: string) => isSignedAsciiIntText(e.trim()));
                     const elemType = allInts ? "Integer" : "Real";
                     const baseTypeName = varTypeName(varType);
                     dae.diagnostics.push({
@@ -9997,7 +10239,7 @@ export function instantiateElements(
                   }
                 }
                 const formattedExpr = "{" + rowElements.map((cols) => "{" + cols.join(", ") + "}").join(", ") + "}";
-                const allInts = rowElements.every((row) => row.every((c) => /^[+-]?\d+$/.test(c)));
+                const allInts = rowElements.every((row) => row.every((c) => isSignedAsciiIntText(c)));
                 const elemType = allInts ? "Integer" : "Real";
                 dae.diagnostics.push({
                   severity: "error",
@@ -10031,7 +10273,7 @@ export function instantiateElements(
                       clauseEnd = curr.endIndex ?? curr.endOffset;
                     }
                   }
-                  const elemType = mismatchRow.innerElems.every((e: string) => /^[+-]?\d+$/.test(e.trim()))
+                  const elemType = mismatchRow.innerElems.every((e: string) => isSignedAsciiIntText(e.trim()))
                     ? "Integer"
                     : "Real";
                   const notifRange = arg.modRange ?? [clauseStart, clauseEnd];
@@ -10060,7 +10302,7 @@ export function instantiateElements(
                     clauseEnd = curr.endIndex ?? curr.endOffset;
                   }
                 }
-                const elemType = outerElems.every((e: string) => /^[+-]?\d+$/.test(e.trim())) ? "Integer" : "Real";
+                const elemType = outerElems.every((e: string) => isSignedAsciiIntText(e.trim())) ? "Integer" : "Real";
                 const notifRange = arg.modRange ?? [clauseStart, clauseEnd];
                 dae.diagnostics.push({
                   severity: "notification",
@@ -10097,15 +10339,15 @@ export function instantiateElements(
               concreteShape.length > 0 &&
               effectiveBinding?.text
             ) {
-              const cleanB = effectiveBinding.text.replace(/^=/, "").trim();
+              const cleanB = stripLeadingEquals(effectiveBinding.text);
               if (cleanB.startsWith("{") && cleanB.endsWith("}")) {
-                const leafTokens = cleanB
-                  .split(/[{},]+/)
-                  .map((s: string) => s.trim())
-                  .filter(Boolean);
-                if (leafTokens.length > 0 && leafTokens.every((t: string) => /^[+-]?\d+$/.test(t))) {
+                const leafTokens = splitBraceCommasAndTrim(cleanB);
+                if (leafTokens.length > 0 && leafTokens.every((t: string) => isSignedAsciiIntText(t))) {
                   const compLabel = prefix ? name : `.${compInst.name}`;
-                  const formattedMod = cleanB.replace(/,\s*/g, ", ");
+                  const formattedMod = cleanB
+                    .split(",")
+                    .map((seg: string, idx: number) => (idx === 0 ? seg : seg.trimStart()))
+                    .join(", ");
                   let clauseNode: any = elemCst;
                   while (clauseNode && clauseNode.type !== "component_clause") {
                     clauseNode = clauseNode.parent;
@@ -10169,7 +10411,7 @@ export function instantiateElements(
                   const dimText = d.text?.trim() ?? "";
                   const refsFnVar =
                     dae.classKind === "function" &&
-                    (dimText.match(/[A-Za-z_]\w*/g) ?? []).some((id: string) => fnElemNames.has(id));
+                    extractAsciiIdentifiers(dimText).some((id: string) => fnElemNames.has(id));
                   if (!refsFnVar && dimText) {
                     const dimScopeId = (dae as any).enclosingScopeId ?? flattener.currentClassId ?? undefined;
                     let constDimVal = evaluateCSTNumber(dimText, undefined, dimScopeId, flattener.db, dae, prefix);
@@ -10203,7 +10445,7 @@ export function instantiateElements(
                     }
                   }
                   if (exprId < 0 && d.text) {
-                    const normText = d.text.replace(/,(\S)/g, ", $1");
+                    const normText = spaceAfterCommas(d.text);
                     exprId = dae.addExpression(ExprKind.Name, dae.interner.intern(normText));
                   }
                   if (exprId >= 0) {
@@ -10308,15 +10550,10 @@ export function instantiateElements(
                   if (candidates.length > 0) enumSym = candidates[0]!;
                 }
                 if (enumSym) {
-                  const cstText = (flattener.db.cstNode(enumSym.id) as any)?.text ?? "";
-                  const match = /enumeration\s*\(([^)]+)\)/.exec(cstText);
                   const qual = getSymbolQualifiedName(flattener.db, enumSym.id);
-                  if (match) {
-                    const lits = match[1]!.split(",").map((s) => `${qual}.${s.trim().split(/\s+/)[0]}`);
-                    dimLabels.push(lits);
-                    continue;
-                  } else if (Array.isArray(enumSym.metadata?.["literals"])) {
-                    const lits = (enumSym.metadata["literals"] as string[]).map((s) => `${qual}.${s}`);
+                  const rawLits = extractEnumLiteralsFromCst(flattener.db.cstNode(enumSym.id) as any, enumSym.metadata);
+                  if (rawLits && rawLits.length > 0) {
+                    const lits = rawLits.map((s) => `${qual}.${s}`);
                     dimLabels.push(lits);
                     continue;
                   }
@@ -10329,8 +10566,8 @@ export function instantiateElements(
           }
           const bText = effectiveBinding?.text?.trim() ?? "";
           if (arrayDims && arrayDims.length > 0 && bText) {
-            const cleanB = bText.replace(/^=/, "").trim();
-            if (isArrayLiteral(cleanB) && !/\bfor\b/.test(cleanB)) {
+            const cleanB = stripLeadingEquals(bText);
+            if (isArrayLiteral(cleanB) && !containsWholeWordOutsideStrings(cleanB, "for")) {
               const ctorElems = parseArrayLiteralElements(cleanB);
               if (ctorElems.length !== arrayDims[0]) {
                 let clauseNode: any = elemCst;
@@ -10348,7 +10585,7 @@ export function instantiateElements(
                   : undefined;
                 let formattedBText = cleanB;
                 if (varType === VarType.Real) {
-                  formattedBText = `{${ctorElems.map((e) => (/^\d+$/.test(e.trim()) ? `${e.trim()}.0` : e.trim())).join(", ")}}`;
+                  formattedBText = `{${ctorElems.map((e) => (isAsciiDigitsOnly(e.trim()) ? `${e.trim()}.0` : e.trim())).join(", ")}}`;
                 }
                 dae.diagnostics.push({
                   severity: "error",
@@ -10389,7 +10626,7 @@ export function instantiateElements(
                 return;
               }
             } else if (
-              /^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(cleanB) ||
+              isSignedAsciiNumberText(cleanB) ||
               cleanB === "true" ||
               cleanB === "false" ||
               (cleanB.startsWith('"') && cleanB.endsWith('"'))
@@ -10719,12 +10956,9 @@ export function instantiateElements(
           }
           applyModifiers(varIdx, []);
           const rootClassId = flattener.currentRootClassId ?? flattener.currentClassId;
-          const rawConstBindText = String(effectiveBinding?.text ?? "")
-            .replace(/^=/, "")
-            .trim();
+          const rawConstBindText = stripLeadingEquals(String(effectiveBinding?.text ?? ""));
           const isNumericLiteralConst =
-            effectiveBinding?.kind === "literal" ||
-            /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(rawConstBindText);
+            effectiveBinding?.kind === "literal" || isSignedAsciiNumberText(rawConstBindText);
           if (
             dae.extensionMetadata?.["isOldFrontend"] &&
             variability === Variability.Constant &&
@@ -10735,22 +10969,14 @@ export function instantiateElements(
             rootClassId != null
           ) {
             const clsCst = flattener.db.cstNode(rootClassId) as { text?: string } | undefined;
-            const clsText = String(clsCst?.text ?? "").replace(/"(?:\\.|[^"\\])*"|\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g, " ");
             const fullName = `${prefix}.${compInst.name}`;
-            const escapedFullName = fullName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const isUsedInOwner = new RegExp(`\\b${escapedFullName}\\b`).test(clsText);
+            const isUsedInOwner = containsWholeWordOutsideStrings(String(clsCst?.text ?? ""), fullName);
             const declaringClassId = flattener.db.symbol(elemId)?.parentId;
             const declCst =
               declaringClassId != null
                 ? (flattener.db.cstNode(declaringClassId) as { text?: string } | undefined)
                 : null;
-            const declText = String(declCst?.text ?? "").replace(
-              /"(?:\\.|[^"\\])*"|\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g,
-              " ",
-            );
-            const escapedShortName = compInst.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const declMatches = declText.match(new RegExp(`\\b${escapedShortName}\\b`, "g"));
-            const isUsedInDecl = Boolean(declMatches && declMatches.length > 1);
+            const isUsedInDecl = countWordOccurrencesOutsideStrings(String(declCst?.text ?? ""), compInst.name) > 1;
             if (!isUsedInOwner && !isUsedInDecl) {
               dae.removeVariable(varIdx);
             }
@@ -11044,7 +11270,7 @@ export function validateComponentBasicAttributes(
         arg.value?.text
       ) {
         const valText = arg.value.text.trim();
-        if (/^[a-zA-Z_]\w*$/.test(valText)) {
+        if (isAsciiIdentifier(valText)) {
           const refName = prefix ? `${prefix}.${valText}` : valText;
           const elemParentId = flattener.db.symbol(elemId)?.parentId ?? compInst.parentId;
           const syms = flattener.db.byName(valText);
@@ -11176,15 +11402,15 @@ export function validateComponentBasicAttributes(
                     items.push(inner.slice(start).trim());
                     return `{${items.map(formatFloats).join(", ")}}`;
                   }
-                  return /^\d+$/.test(str) ? `${str}.0` : str;
+                  return isAsciiDigitsOnly(str) ? `${str}.0` : str;
                 };
                 formattedText = formatFloats(valText);
               }
             } else {
-              const subMatch = valText.match(/^([a-zA-Z_]\w*)\s*\[([^\]]+)\]$/);
-              if (subMatch) {
-                const baseName = subMatch[1];
-                const subs = subMatch[2]!.split(",").map((s: string) => s.trim());
+              const subParsed = parseIdentSubscriptText(valText);
+              if (subParsed) {
+                const baseName = subParsed.base;
+                const subs = subParsed.subscript.split(",").map((s: string) => s.trim());
                 const syms = flattener.db.byName(baseName);
                 const targetSym =
                   syms.find(
@@ -11241,7 +11467,7 @@ export function validateComponentBasicAttributes(
                     actualShape = remainingDims;
                   }
                 }
-              } else if (/^[a-zA-Z_]\w*$/.test(valText)) {
+              } else if (isAsciiIdentifier(valText)) {
                 const syms = flattener.db.byName(valText);
                 const targetSym =
                   syms.find(
@@ -11327,7 +11553,7 @@ export function validateComponentBasicAttributes(
                     }
                   }
                   if (mismatchRow) {
-                    const elemType = mismatchRow.innerElems.every((e: string) => /^[+-]?\d+$/.test(e.trim()))
+                    const elemType = mismatchRow.innerElems.every((e: string) => isSignedAsciiIntText(e.trim()))
                       ? "Integer"
                       : "Real";
                     errorCode = ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code;
@@ -11341,7 +11567,7 @@ export function validateComponentBasicAttributes(
                     );
                   }
                 } else if (compDims.length === 1 && outerElems.length !== compDims[0]) {
-                  const elemType = outerElems.every((e: string) => /^[+-]?\d+$/.test(e.trim())) ? "Integer" : "Real";
+                  const elemType = outerElems.every((e: string) => isSignedAsciiIntText(e.trim())) ? "Integer" : "Real";
                   errorCode = ModelicaErrorCode.ARRAY_DIMENSION_MISMATCH.code;
                   errorMessage = `Array dimension mismatch, expression ${valText} has type ${elemType}[${outerElems.length}], expected array dimensions [${compDims[0]}].`;
                 } else {

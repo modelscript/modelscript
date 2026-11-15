@@ -23,9 +23,1025 @@ import {
   type SMTRequirementCheckResult,
 } from "@modelscript/sysml2";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
+import { findCstNodesByType } from "../utils/ast-utils.js";
 
 let cachedSysml2Parser: any = null;
 let cachedModelicaParser: any = null;
+
+const SI_UNIT_WORDS = new Set(["kg", "m", "s", "N", "Pa", "W", "J", "V", "A", "Ohm", "F", "H"]);
+const MODELICA_DECL_SKIP_KEYWORDS = new Set(["model", "class", "package", "block", "import", "extends", "annotation"]);
+const MODELICA_TYPE_QUALIFIERS = new Set(["public", "protected", "output", "discrete"]);
+
+export function countChar(text: string, target: string): number {
+  let count = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === target) count++;
+  }
+  return count;
+}
+
+function isWsCode(code: number): boolean {
+  return code === 32 || code === 9 || code === 13 || code === 10 || code === 11 || code === 12;
+}
+
+function isDigitCode(code: number): boolean {
+  return code >= 48 && code <= 57;
+}
+
+function isIdentStartCode(code: number): boolean {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 95;
+}
+
+export function isIdentContCode(code: number): boolean {
+  return isIdentStartCode(code) || isDigitCode(code);
+}
+
+function isAsciiLetterCode(code: number): boolean {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+}
+
+export function isStrictIdentifier(text: string): boolean {
+  if (!text || !isIdentStartCode(text.charCodeAt(0))) return false;
+  for (let i = 1; i < text.length; i++) {
+    if (!isIdentContCode(text.charCodeAt(i))) return false;
+  }
+  return true;
+}
+
+function isUpperStartIdent(text: string): boolean {
+  if (!text) return false;
+  const first = text.charCodeAt(0);
+  if (first < 65 || first > 90) return false;
+  for (let i = 1; i < text.length; i++) {
+    if (!isIdentContCode(text.charCodeAt(i))) return false;
+  }
+  return true;
+}
+
+export function skipWs(text: string, idx: number): number {
+  let i = idx;
+  while (i < text.length && isWsCode(text.charCodeAt(i))) i++;
+  return i;
+}
+
+function removeWs(text: string): string {
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    if (!isWsCode(text.charCodeAt(i))) out += text[i];
+  }
+  return out;
+}
+
+function stripToIdentifierPath(text: string): string {
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (isIdentContCode(ch.charCodeAt(0)) || ch === ".") out += ch;
+  }
+  return out;
+}
+
+export function findNextWordIndex(text: string, word: string, fromIndex = 0): number {
+  if (!word) return -1;
+  let pos = fromIndex;
+  while (pos <= text.length - word.length) {
+    const idx = text.indexOf(word, pos);
+    if (idx === -1) return -1;
+    const beforeOk = idx === 0 || !isIdentContCode(text.charCodeAt(idx - 1));
+    const afterIdx = idx + word.length;
+    const afterOk = afterIdx >= text.length || !isIdentContCode(text.charCodeAt(afterIdx));
+    if (beforeOk && afterOk) return idx;
+    pos = idx + 1;
+  }
+  return -1;
+}
+
+export function hasWordMatch(text: string, word: string): boolean {
+  return findNextWordIndex(text, word, 0) !== -1;
+}
+
+function hasAnyWordMatch(text: string, words: readonly string[]): boolean {
+  return words.some((w) => hasWordMatch(text, w));
+}
+
+function skipLeadingKeyword(text: string, kw: string): number {
+  const start = skipWs(text, 0);
+  if (!text.startsWith(kw, start)) return -1;
+  const end = start + kw.length;
+  if (end < text.length && isIdentContCode(text.charCodeAt(end))) return -1;
+  return end;
+}
+
+export function readIdentAt(text: string, idx: number): { token: string; next: number } | undefined {
+  if (idx >= text.length || !isIdentStartCode(text.charCodeAt(idx))) return undefined;
+  let end = idx + 1;
+  while (end < text.length && isIdentContCode(text.charCodeAt(end))) end++;
+  return { token: text.slice(idx, end), next: end };
+}
+
+export function readDottedIdentAt(
+  text: string,
+  idx: number,
+  allowColonColon = false,
+): { token: string; next: number } | undefined {
+  const first = readIdentAt(text, idx);
+  if (!first) return undefined;
+  let end = first.next;
+  while (end < text.length) {
+    if (text[end] === "." && end + 1 < text.length && isIdentStartCode(text.charCodeAt(end + 1))) {
+      const seg = readIdentAt(text, end + 1);
+      if (!seg) break;
+      end = seg.next;
+      continue;
+    }
+    if (
+      allowColonColon &&
+      text.startsWith("::", end) &&
+      end + 2 < text.length &&
+      isIdentStartCode(text.charCodeAt(end + 2))
+    ) {
+      const seg = readIdentAt(text, end + 2);
+      if (!seg) break;
+      end = seg.next;
+      continue;
+    }
+    break;
+  }
+  return { token: text.slice(idx, end), next: end };
+}
+
+export function skipStringLiteral(text: string, quoteIdx: number): number {
+  let i = quoteIdx + 1;
+  while (i < text.length) {
+    if (text[i] === "\\") {
+      i += 2;
+      continue;
+    }
+    if (text[i] === '"') return i + 1;
+    i++;
+  }
+  return text.length;
+}
+
+export function findNextWordOutsideQuotes(text: string, word: string, fromIndex = 0): number {
+  if (!word) return -1;
+  let i = fromIndex;
+  while (i <= text.length - word.length) {
+    if (text[i] === '"') {
+      i = skipStringLiteral(text, i);
+      continue;
+    }
+    if (text.startsWith(word, i)) {
+      const beforeOk = i === 0 || !isIdentContCode(text.charCodeAt(i - 1));
+      const afterIdx = i + word.length;
+      const afterOk = afterIdx >= text.length || !isIdentContCode(text.charCodeAt(afterIdx));
+      if (beforeOk && afterOk) return i;
+    }
+    i++;
+  }
+  return -1;
+}
+
+export function splitSemicolonStatementsWithSpans(text: string): Array<{ text: string; start: number; end: number }> {
+  const out: Array<{ text: string; start: number; end: number }> = [];
+  let stmtStart = 0;
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i]!;
+    if (ch === '"') {
+      i = skipStringLiteral(text, i);
+      continue;
+    }
+    if (ch === ";") {
+      const slice = text.slice(stmtStart, i).trim();
+      if (slice.length > 0) {
+        out.push({ text: slice, start: stmtStart, end: i });
+      }
+      stmtStart = i + 1;
+    }
+    i++;
+  }
+  const tail = text.slice(stmtStart).trim();
+  if (tail.length > 0) {
+    out.push({ text: tail, start: stmtStart, end: text.length });
+  }
+  return out;
+}
+
+export function splitSemicolonStatementsOutsideQuotes(text: string): string[] {
+  return splitSemicolonStatementsWithSpans(text).map((s) => s.text);
+}
+
+export function extractModelicaClassNameFromText(
+  text: string,
+  allowedKinds: readonly string[] = ["model", "class", "block", "connector", "record"],
+): string | undefined {
+  let bestIdx = Number.MAX_SAFE_INTEGER;
+  let bestKind = "";
+  for (const kind of allowedKinds) {
+    const idx = findNextWordOutsideQuotes(text, kind, 0);
+    if (idx !== -1 && idx < bestIdx) {
+      bestIdx = idx;
+      bestKind = kind;
+    }
+  }
+  if (!bestKind) return undefined;
+  const nameStart = skipWs(text, bestIdx + bestKind.length);
+  if (nameStart === bestIdx + bestKind.length) return undefined;
+  return readIdentAt(text, nameStart)?.token;
+}
+
+export function findModelicaSectionSpan(
+  text: string,
+  sectionKeyword: "equation" | "algorithm",
+): { kwStart: number; bodyStart: number; bodyEnd: number; endKwStart: number; endTermText: string } | undefined {
+  const kwStart = findNextWordOutsideQuotes(text, sectionKeyword, 0);
+  if (kwStart === -1) return undefined;
+  const bodyStart = kwStart + sectionKeyword.length;
+
+  const algIdx = sectionKeyword === "equation" ? findNextWordOutsideQuotes(text, "algorithm", bodyStart) : -1;
+  const endIdx = findNextWordOutsideQuotes(text, "end", bodyStart);
+
+  let bodyEnd = text.length;
+  let endKwStart = text.length;
+  let endTermText = "";
+
+  if (algIdx !== -1 && (endIdx === -1 || algIdx < endIdx)) {
+    bodyEnd = algIdx;
+    endKwStart = algIdx;
+    endTermText = "algorithm";
+  } else if (endIdx !== -1) {
+    bodyEnd = endIdx;
+    endKwStart = endIdx;
+    const afterEnd = skipWs(text, endIdx + 3);
+    const id = readIdentAt(text, afterEnd);
+    endTermText = id ? text.slice(endIdx, id.next) : "end";
+  }
+
+  return { kwStart, bodyStart, bodyEnd, endKwStart, endTermText };
+}
+
+function extractModelicaSectionSpan(text: string, sectionKeyword: "equation" | "algorithm"): string | undefined {
+  const span = findModelicaSectionSpan(text, sectionKeyword);
+  return span ? text.slice(span.bodyStart, span.bodyEnd) : undefined;
+}
+
+export function splitModelicaBeforeEquation(text: string): string {
+  const eqIdx = findNextWordOutsideQuotes(text, "equation", 0);
+  return eqIdx === -1 ? text : text.slice(0, eqIdx);
+}
+
+function hasFunctionCall(text: string, fnName: string): boolean {
+  let pos = 0;
+  while (pos < text.length) {
+    const idx = findNextWordOutsideQuotes(text, fnName, pos);
+    if (idx === -1) return false;
+    const afterWs = skipWs(text, idx + fnName.length);
+    if (text[afterWs] === "(") return true;
+    pos = idx + fnName.length;
+  }
+  return false;
+}
+
+function pushModelicaEquations(sectionBody: string, out: string[]): void {
+  for (const eq of splitSemicolonStatementsOutsideQuotes(sectionBody)) {
+    if (hasFunctionCall(eq, "connect")) {
+      out.push(eq, eq);
+    } else if (eq.includes("=") || hasFunctionCall(eq, "der")) {
+      out.push(eq);
+    }
+  }
+}
+
+function skipModelicaDottedType(text: string, idx: number): number | undefined {
+  const first = readIdentAt(text, idx);
+  if (!first) return undefined;
+  let end = first.next;
+  while (end < text.length) {
+    const dotPos = skipWs(text, end);
+    if (text[dotPos] !== ".") break;
+    const nextStart = skipWs(text, dotPos + 1);
+    const nextSeg = readIdentAt(text, nextStart);
+    if (!nextSeg) break;
+    end = nextSeg.next;
+  }
+  return end;
+}
+
+const MODELICA_CLASS_PREFIXES = new Set(["partial", "encapsulated", "expandable"]);
+const MODELICA_CLASS_HEADERS = new Set([
+  "model",
+  "class",
+  "block",
+  "connector",
+  "record",
+  "type",
+  "package",
+  "function",
+  "operator",
+]);
+const MODELICA_SECTION_HEADERS = new Set(["equation", "algorithm", "public", "protected"]);
+
+function stripLeadingModelicaHeader(stmt: string): string {
+  let pos = skipWs(stmt, 0);
+  while (pos < stmt.length) {
+    const tok = readIdentAt(stmt, pos);
+    if (!tok) break;
+    if (MODELICA_CLASS_PREFIXES.has(tok.token)) {
+      pos = skipWs(stmt, tok.next);
+      continue;
+    }
+    if (tok.token === "initial") {
+      const nextPos = skipWs(stmt, tok.next);
+      const nextTok = readIdentAt(stmt, nextPos);
+      if (nextTok && (nextTok.token === "equation" || nextTok.token === "algorithm")) {
+        pos = skipWs(stmt, nextTok.next);
+        continue;
+      }
+      break;
+    }
+    if (MODELICA_SECTION_HEADERS.has(tok.token)) {
+      pos = skipWs(stmt, tok.next);
+      continue;
+    }
+    if (MODELICA_CLASS_HEADERS.has(tok.token)) {
+      let after = skipWs(stmt, tok.next);
+      const nameTok = readIdentAt(stmt, after);
+      if (!nameTok) break;
+      after = skipWs(stmt, nameTok.next);
+      if (stmt[after] === '"') {
+        after = skipWs(stmt, skipStringLiteral(stmt, after));
+      }
+      pos = after;
+      continue;
+    }
+    break;
+  }
+  return stmt.slice(pos);
+}
+
+function extractModelicaClauseDecls(
+  clauseNode: any,
+): Array<{ varName: string; mods: string; binding?: string | undefined }> {
+  const out: Array<{ varName: string; mods: string; binding?: string | undefined }> = [];
+  const compDecls = findCstNodesByType(clauseNode, "component_declaration");
+  const declNodes = compDecls.length > 0 ? compDecls : findCstNodesByType(clauseNode, "declaration");
+  for (const declNode of declNodes) {
+    const innerDecl =
+      declNode.type === "declaration" ? declNode : (findCstNodesByType(declNode, "declaration")[0] ?? declNode);
+    const idNode =
+      (innerDecl.children || []).find((gc: any) => gc.type === "identifier" || gc.type === "IDENT") ??
+      findCstNodesByType(innerDecl, "identifier")[0] ??
+      findCstNodesByType(innerDecl, "IDENT")[0];
+    const varName = idNode?.text?.trim();
+    if (!varName || !isStrictIdentifier(varName)) continue;
+    const modNode =
+      (innerDecl.children || []).find((gc: any) => gc.type === "modification") ??
+      findCstNodesByType(declNode, "modification")[0];
+    const parsedMod = parseModelicaModificationSpan(modNode?.text ?? "");
+    out.push({ varName, mods: parsedMod.mods, binding: parsedMod.binding });
+  }
+  return out;
+}
+
+export function extractModelicaStateVarsFromDecls(declPart: string): string[] {
+  const vars: string[] = [];
+  for (const rawStmt of splitSemicolonStatementsOutsideQuotes(declPart)) {
+    const stmt = stripLeadingModelicaHeader(rawStmt);
+    const firstTok = readIdentAt(stmt, 0);
+    if (firstTok && MODELICA_DECL_SKIP_KEYWORDS.has(firstTok.token)) {
+      continue;
+    }
+    if (hasWordMatch(stmt, "parameter") || hasWordMatch(stmt, "constant") || hasWordMatch(stmt, "input")) {
+      continue;
+    }
+
+    let pos = 0;
+    while (pos < stmt.length) {
+      const qual = readIdentAt(stmt, pos);
+      if (qual && MODELICA_TYPE_QUALIFIERS.has(qual.token)) {
+        const nextPos = skipWs(stmt, qual.next);
+        if (nextPos > qual.next) {
+          pos = nextPos;
+          continue;
+        }
+      }
+      break;
+    }
+
+    const afterType = skipModelicaDottedType(stmt, pos);
+    if (afterType === undefined) continue;
+    const declStart = skipWs(stmt, afterType);
+    if (declStart === afterType) continue;
+
+    let declEnd = declStart;
+    while (declEnd < stmt.length) {
+      const ch = stmt[declEnd]!;
+      if (ch === "=" || ch === ";" || ch === "(") break;
+      declEnd++;
+    }
+    if (declEnd <= declStart) continue;
+
+    for (const part of stmt.slice(declStart, declEnd).split(",")) {
+      const trimmed = part.trim();
+      const ident = readIdentAt(trimmed, 0);
+      if (ident && isStrictIdentifier(ident.token)) {
+        vars.push(ident.token);
+      }
+    }
+  }
+  return vars;
+}
+
+export function findBracketedUnitAddMismatchSpan(
+  expr: string,
+): { u1: string; u2: string; u2Start: number; u2End: number } | undefined {
+  let hasUnitWord = false;
+  let scanPos = 0;
+  while (scanPos < expr.length) {
+    const id = readIdentAt(expr, scanPos);
+    if (id) {
+      if (SI_UNIT_WORDS.has(id.token)) {
+        hasUnitWord = true;
+        break;
+      }
+      scanPos = id.next;
+    } else {
+      scanPos++;
+    }
+  }
+  if (!hasUnitWord) return undefined;
+
+  let i = 0;
+  while (i < expr.length) {
+    if (expr[i] === "[") {
+      let u1End = i + 1;
+      while (u1End < expr.length && isAsciiLetterCode(expr.charCodeAt(u1End))) u1End++;
+      if (u1End > i + 1 && expr[u1End] === "]") {
+        const u1 = expr.slice(i + 1, u1End);
+        let j = u1End + 1;
+        while (j < expr.length && expr[j] !== "+" && expr[j] !== "[") j++;
+        if (expr[j] === "+") {
+          let k = j + 1;
+          while (k < expr.length && expr[k] !== "[") k++;
+          if (expr[k] === "[") {
+            let u2End = k + 1;
+            while (u2End < expr.length && isAsciiLetterCode(expr.charCodeAt(u2End))) u2End++;
+            if (u2End > k + 1 && expr[u2End] === "]") {
+              const u2 = expr.slice(k + 1, u2End);
+              if (u1 !== u2) {
+                return { u1, u2, u2Start: k, u2End: u2End + 1 };
+              }
+            }
+          }
+        }
+      }
+    }
+    i++;
+  }
+  return undefined;
+}
+
+function findBracketedUnitAddMismatch(expr: string): { u1: string; u2: string } | undefined {
+  const hit = findBracketedUnitAddMismatchSpan(expr);
+  return hit ? { u1: hit.u1, u2: hit.u2 } : undefined;
+}
+
+function parseModelicaModificationSpan(modText: string): { mods: string; binding?: string | undefined } {
+  const trimmed = modText.trim();
+  if (!trimmed) return { mods: "" };
+  let mods = "";
+  let pos = 0;
+  if (trimmed[0] === "(") {
+    let depth = 0;
+    let i = 0;
+    while (i < trimmed.length) {
+      const ch = trimmed[i]!;
+      if (ch === '"') {
+        i = skipStringLiteral(trimmed, i);
+        continue;
+      }
+      if (ch === "(") depth++;
+      else if (ch === ")") {
+        depth--;
+        if (depth === 0) {
+          mods = trimmed.slice(1, i);
+          pos = i + 1;
+          break;
+        }
+      }
+      i++;
+    }
+  }
+  pos = skipWs(trimmed, pos);
+  if (trimmed[pos] === "=") {
+    const binding = trimmed.slice(pos + 1).trim();
+    return binding ? { mods, binding } : { mods };
+  }
+  return { mods };
+}
+
+function extractModelicaTypedDeclsFromText(
+  clean: string,
+): Array<{ typeName: string; varName: string; rhs?: string | undefined }> {
+  const out: Array<{ typeName: string; varName: string; rhs?: string | undefined }> = [];
+  for (const rawStmt of splitSemicolonStatementsOutsideQuotes(clean)) {
+    const stmt = stripLeadingModelicaHeader(rawStmt);
+    let pos = 0;
+    while (pos < stmt.length) {
+      const qual = readIdentAt(stmt, pos);
+      if (qual && MODELICA_TYPE_QUALIFIERS.has(qual.token)) {
+        const nextPos = skipWs(stmt, qual.next);
+        if (nextPos > qual.next) {
+          pos = nextPos;
+          continue;
+        }
+      }
+      break;
+    }
+    const afterType = skipModelicaDottedType(stmt, pos);
+    if (afterType === undefined) continue;
+    const rawType = removeWs(stmt.slice(pos, afterType));
+    const dotIdx = rawType.lastIndexOf(".");
+    const shortType = dotIdx !== -1 ? rawType.slice(dotIdx + 1) : rawType;
+    if (!isUpperStartIdent(shortType)) continue;
+    const afterWs = skipWs(stmt, afterType);
+    if (afterWs === afterType) continue;
+    const varIdent = readIdentAt(stmt, afterWs);
+    if (!varIdent) continue;
+    const parsedMod = parseModelicaModificationSpan(stmt.slice(varIdent.next));
+    out.push({ typeName: shortType, varName: varIdent.token, rhs: parsedMod.binding });
+  }
+  return out;
+}
+
+export function readSignedNumberAt(
+  text: string,
+  idx: number,
+): { value: number; text: string; next: number } | undefined {
+  let i = idx;
+  if (i < text.length && (text[i] === "+" || text[i] === "-")) i++;
+  const intStart = i;
+  while (i < text.length && isDigitCode(text.charCodeAt(i))) i++;
+  if (i === intStart) return undefined;
+  if (i < text.length && text[i] === "." && i + 1 < text.length && isDigitCode(text.charCodeAt(i + 1))) {
+    i++;
+    while (i < text.length && isDigitCode(text.charCodeAt(i))) i++;
+  }
+  if (i < text.length && (text[i] === "e" || text[i] === "E")) {
+    let expPos = i + 1;
+    if (expPos < text.length && (text[expPos] === "+" || text[expPos] === "-")) expPos++;
+    const expDigitsStart = expPos;
+    while (expPos < text.length && isDigitCode(text.charCodeAt(expPos))) expPos++;
+    if (expPos > expDigitsStart) i = expPos;
+  }
+  const numStr = text.slice(idx, i);
+  const val = Number(numStr);
+  return Number.isFinite(val) ? { value: val, text: numStr, next: i } : undefined;
+}
+
+function parseLeadingSignedNumber(text: string): number | undefined {
+  const start = skipWs(text, 0);
+  return readSignedNumberAt(text, start)?.value;
+}
+
+function extractNamedNumericAttr(mods: string, attrName: string): number | undefined {
+  let pos = 0;
+  while (pos < mods.length) {
+    const idx = findNextWordIndex(mods, attrName, pos);
+    if (idx === -1) return undefined;
+    const eqPos = skipWs(mods, idx + attrName.length);
+    if (mods[eqPos] === "=") {
+      const valStart = skipWs(mods, eqPos + 1);
+      const num = readSignedNumberAt(mods, valStart);
+      if (num) return num.value;
+    }
+    pos = idx + attrName.length;
+  }
+  return undefined;
+}
+
+function extractModelicaParamDeclsFromText(
+  clean: string,
+): Array<{ name: string; mods: string; binding?: string | undefined }> {
+  const out: Array<{ name: string; mods: string; binding?: string | undefined }> = [];
+  for (const rawStmt of splitSemicolonStatementsOutsideQuotes(clean)) {
+    const stmt = stripLeadingModelicaHeader(rawStmt);
+    let pos = 0;
+    const braceIdx = stmt.lastIndexOf("{");
+    if (braceIdx !== -1) pos = skipWs(stmt, braceIdx + 1);
+
+    const first = readIdentAt(stmt, pos);
+    if (!first) continue;
+    if (first.token === "parameter" || first.token === "constant") {
+      pos = skipWs(stmt, first.next);
+      if (pos === first.next) continue;
+    }
+    const typeEnd = skipModelicaDottedType(stmt, pos);
+    if (typeEnd === undefined) continue;
+    const typeTok = stmt.slice(pos, typeEnd);
+    if (typeTok === "parameter" || typeTok === "constant") continue;
+
+    const varStart = skipWs(stmt, typeEnd);
+    if (varStart === typeEnd) continue;
+    const varIdent = readIdentAt(stmt, varStart);
+    if (!varIdent) continue;
+
+    const parsedMod = parseModelicaModificationSpan(stmt.slice(varIdent.next));
+    out.push({ name: varIdent.token, mods: parsedMod.mods, binding: parsedMod.binding });
+  }
+  return out;
+}
+
+function extractModelicaAssertCalls(text: string): Array<{ expr: string; msg: string }> {
+  const calls: Array<{ expr: string; msg: string }> = [];
+  let pos = 0;
+  while (pos < text.length) {
+    const idx = findNextWordOutsideQuotes(text, "assert", pos);
+    if (idx === -1) break;
+    const openParen = skipWs(text, idx + 6);
+    if (text[openParen] !== "(") {
+      pos = idx + 6;
+      continue;
+    }
+    let depth = 0;
+    let i = openParen + 1;
+    let firstComma = -1;
+    let closeParen = -1;
+    while (i < text.length) {
+      const ch = text[i]!;
+      if (ch === '"') {
+        i = skipStringLiteral(text, i);
+        continue;
+      }
+      if (ch === "(") depth++;
+      else if (ch === ")") {
+        if (depth === 0) {
+          closeParen = i;
+          break;
+        }
+        depth--;
+      } else if (ch === "," && depth === 0 && firstComma === -1) {
+        firstComma = i;
+      }
+      i++;
+    }
+    if (firstComma !== -1 && closeParen > firstComma) {
+      const expr = text.slice(openParen + 1, firstComma).trim();
+      const msgStart = skipWs(text, firstComma + 1);
+      if (text[msgStart] === '"') {
+        const msgEnd = skipStringLiteral(text, msgStart);
+        if (msgEnd > msgStart + 2) {
+          const msg = text.slice(msgStart + 1, msgEnd - 1);
+          calls.push({ expr, msg });
+        }
+      }
+    }
+    pos = (closeParen !== -1 ? closeParen : openParen) + 1;
+  }
+  return calls;
+}
+
+function tokenizeModelicaBoolExpr(expr: string): string[] | null {
+  const tokens: string[] = [];
+  let i = 0;
+  const twoCharOps = new Set(["<=", ">=", "==", "!=", "<>", "&&", "||"]);
+  const oneCharOps = new Set(["<", ">", "!", "=", "+", "-", "*", "/", "%", "(", ")"]);
+
+  while (i < expr.length) {
+    i = skipWs(expr, i);
+    if (i >= expr.length) break;
+    const two = expr.slice(i, i + 2);
+    if (twoCharOps.has(two)) {
+      tokens.push(two);
+      i += 2;
+      continue;
+    }
+    const ch = expr[i]!;
+    if (oneCharOps.has(ch)) {
+      tokens.push(ch);
+      i++;
+      continue;
+    }
+    const ident = readIdentAt(expr, i);
+    if (ident) {
+      tokens.push(ident.token);
+      i = ident.next;
+      continue;
+    }
+    if (isDigitCode(ch.charCodeAt(0))) {
+      const num = readSignedNumberAt(expr, i);
+      if (num) {
+        tokens.push(num.text);
+        i = num.next;
+        continue;
+      }
+    }
+    return null;
+  }
+  return tokens;
+}
+
+export function extractFirstBraceBlock(
+  text: string,
+  fromIndex = 0,
+): { body: string; openIdx: number; closeIdx: number } | undefined {
+  let openIdx = -1;
+  let i = fromIndex;
+  while (i < text.length) {
+    if (text[i] === '"') {
+      i = skipStringLiteral(text, i);
+      continue;
+    }
+    if (text[i] === "{") {
+      openIdx = i;
+      break;
+    }
+    i++;
+  }
+  if (openIdx === -1) return undefined;
+  let depth = 1;
+  i = openIdx + 1;
+  while (i < text.length) {
+    const ch = text[i]!;
+    if (ch === '"') {
+      i = skipStringLiteral(text, i);
+      continue;
+    }
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        return { body: text.slice(openIdx + 1, i), openIdx, closeIdx: i };
+      }
+    }
+    i++;
+  }
+  return undefined;
+}
+
+function hasSysmlAttrInitializer(attrText: string): boolean {
+  let i = 0;
+  while (i < attrText.length) {
+    const ch = attrText[i]!;
+    if (ch === '"') {
+      i = skipStringLiteral(attrText, i);
+      continue;
+    }
+    if (ch === "{" || ch === ";") return false;
+    if (ch === "=") return true;
+    i++;
+  }
+  return false;
+}
+
+function hasConstraintEqualityOrBound(body: string): boolean {
+  let i = 0;
+  while (i < body.length) {
+    const ch = body[i]!;
+    if (ch === '"') {
+      i = skipStringLiteral(body, i);
+      continue;
+    }
+    if (ch === "=") {
+      return i > 0 && i + 1 < body.length;
+    }
+    i++;
+  }
+  return false;
+}
+
+export function parseSysmlComparisonConstraint(
+  body: string,
+): { lhs: string; operator: "<=" | ">=" | "==" | "<" | ">"; rhs: number } | undefined {
+  let i = 0;
+  while (i < body.length) {
+    const lhsIdent = readDottedIdentAt(body, i, false);
+    if (lhsIdent) {
+      const opStart = skipWs(body, lhsIdent.next);
+      const two = body.slice(opStart, opStart + 2);
+      const one = body[opStart];
+      let op: "<=" | ">=" | "==" | "<" | ">" | undefined;
+      let opEnd = opStart;
+      if (two === "<=" || two === ">=" || two === "==") {
+        op = two;
+        opEnd += 2;
+      } else if (one === "<" || one === ">") {
+        op = one;
+        opEnd += 1;
+      }
+      if (op) {
+        const rhsStart = skipWs(body, opEnd);
+        if (rhsStart < body.length && isDigitCode(body.charCodeAt(rhsStart))) {
+          const num = readSignedNumberAt(body, rhsStart);
+          if (num) {
+            return { lhs: lhsIdent.token, operator: op, rhs: num.value };
+          }
+        }
+      }
+      i = lhsIdent.next;
+    } else {
+      i++;
+    }
+  }
+  return undefined;
+}
+
+function parseSysmlNumericAttrNode(attrNode: any): { name: string; value: number } | undefined {
+  const nameNode =
+    attrNode.childForFieldName?.("declaredName") ?? attrNode.children?.find((c: any) => c.type === "Name");
+  const name = nameNode?.text?.trim();
+  const txt = attrNode.text || "";
+  const eqIdx = txt.indexOf("=");
+  if (!name || eqIdx === -1) return undefined;
+  const valStart = skipWs(txt, eqIdx + 1);
+  if (valStart >= txt.length || !isDigitCode(txt.charCodeAt(valStart))) return undefined;
+  const num = readSignedNumberAt(txt, valStart);
+  return num ? { name, value: num.value } : undefined;
+}
+
+export function extractSysmlAttributesFromText(text: string): Array<{
+  name: string;
+  typeName?: string | undefined;
+  hasInitializer: boolean;
+  valueText?: string | undefined;
+  stmtStart: number;
+  stmtEnd: number;
+}> {
+  const out: Array<{
+    name: string;
+    typeName?: string | undefined;
+    hasInitializer: boolean;
+    valueText?: string | undefined;
+    stmtStart: number;
+    stmtEnd: number;
+  }> = [];
+  let pos = 0;
+  while (pos < text.length) {
+    const idx = findNextWordOutsideQuotes(text, "attribute", pos);
+    if (idx === -1) break;
+    const nameStart = skipWs(text, idx + 9);
+    if (nameStart === idx + 9) {
+      pos = idx + 9;
+      continue;
+    }
+    const nameIdent = readIdentAt(text, nameStart);
+    if (!nameIdent) {
+      pos = idx + 9;
+      continue;
+    }
+    const colonPos = skipWs(text, nameIdent.next);
+    if (text[colonPos] !== ":") {
+      pos = nameIdent.next;
+      continue;
+    }
+    const typeStart = skipWs(text, colonPos + 1);
+    const typeIdent = readDottedIdentAt(text, typeStart, true);
+    if (!typeIdent) {
+      pos = colonPos + 1;
+      continue;
+    }
+    let scan = typeIdent.next;
+    let eqPos = -1;
+    let semiPos = -1;
+    while (scan < text.length) {
+      const ch = text[scan]!;
+      if (ch === '"') {
+        scan = skipStringLiteral(text, scan);
+        continue;
+      }
+      if (
+        ch === "{" ||
+        (ch === "\n" && eqPos === -1 && semiPos === -1 && text.slice(typeIdent.next, scan).trim().length > 0)
+      ) {
+        // stop at block opener without initializer
+        if (ch === "{") break;
+      }
+      if (ch === "=" && eqPos === -1) eqPos = scan;
+      if (ch === ";") {
+        semiPos = scan;
+        break;
+      }
+      scan++;
+    }
+    if (semiPos !== -1) {
+      const valueText = eqPos !== -1 ? text.slice(eqPos + 1, semiPos).trim() : undefined;
+      out.push({
+        name: nameIdent.token,
+        typeName: typeIdent.token,
+        hasInitializer: eqPos !== -1,
+        valueText,
+        stmtStart: idx,
+        stmtEnd: semiPos + 1,
+      });
+      pos = semiPos + 1;
+    } else {
+      pos = typeIdent.next;
+    }
+  }
+  return out;
+}
+
+export function extractSysmlBraceConstraintsFromText(text: string): Array<{
+  name?: string | undefined;
+  hasAssert: boolean;
+  body: string;
+  start: number;
+  end: number;
+  bodyStart: number;
+  bodyEnd: number;
+}> {
+  const out: Array<{
+    name?: string | undefined;
+    hasAssert: boolean;
+    body: string;
+    start: number;
+    end: number;
+    bodyStart: number;
+    bodyEnd: number;
+  }> = [];
+  let pos = 0;
+  while (pos < text.length) {
+    const idx = findNextWordOutsideQuotes(text, "constraint", pos);
+    if (idx === -1) break;
+    let hasAssert = false;
+    let start = idx;
+    let back = idx - 1;
+    while (back >= 0 && isWsCode(text.charCodeAt(back))) back--;
+    if (back >= 5 && text.slice(back - 5, back + 1) === "assert") {
+      const assertStart = back - 5;
+      if (assertStart === 0 || !isIdentContCode(text.charCodeAt(assertStart - 1))) {
+        hasAssert = true;
+        start = assertStart;
+      }
+    }
+
+    let cursor = skipWs(text, idx + 10);
+    let name: string | undefined;
+    const maybeName = readIdentAt(text, cursor);
+    if (maybeName) {
+      name = maybeName.token;
+      cursor = skipWs(text, maybeName.next);
+    }
+    if (text[cursor] === "{") {
+      const block = extractFirstBraceBlock(text, cursor);
+      if (block) {
+        let end = block.closeIdx + 1;
+        if (text[end] === ";") end++;
+        out.push({
+          name,
+          hasAssert,
+          body: block.body,
+          start,
+          end,
+          bodyStart: block.openIdx + 1,
+          bodyEnd: block.closeIdx,
+        });
+        pos = end;
+        continue;
+      }
+    }
+    pos = idx + 10;
+  }
+  return out;
+}
+
+function extractSysmlReqAttrBoundsFromText(text: string): Array<{ reqName: string; attrName: string; value: number }> {
+  const out: Array<{ reqName: string; attrName: string; value: number }> = [];
+  let pos = 0;
+  while (pos < text.length) {
+    const idx = findNextWordOutsideQuotes(text, "requirement", pos);
+    if (idx === -1) break;
+    let cursor = skipWs(text, idx + 11);
+    const maybeDef = readIdentAt(text, cursor);
+    if (maybeDef?.token === "def") {
+      cursor = skipWs(text, maybeDef.next);
+    }
+    const reqIdent = readIdentAt(text, cursor);
+    if (!reqIdent) {
+      pos = idx + 11;
+      continue;
+    }
+    const braceStart = skipWs(text, reqIdent.next);
+    if (text[braceStart] === "{") {
+      const block = extractFirstBraceBlock(text, braceStart);
+      if (block) {
+        for (const attr of extractSysmlAttributesFromText(block.body)) {
+          if (attr.hasInitializer && attr.valueText) {
+            const num = parseLeadingSignedNumber(attr.valueText);
+            if (num !== undefined && attr.valueText.trim().length > 0) {
+              out.push({ reqName: reqIdent.token, attrName: attr.name, value: num });
+            }
+          }
+        }
+        pos = block.closeIdx + 1;
+        continue;
+      }
+    }
+    pos = idx + 11;
+  }
+  return out;
+}
 
 export type ClosedLoopLanguage = "sysml2" | "sysml" | "modelica";
 
@@ -40,7 +1056,7 @@ export interface GateDiagnostic {
   endOffset?: number | undefined;
   code?: string | undefined;
   sourceContext?: string | undefined;
-  metadata?: Record<string, any> | undefined;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 export interface GateVerificationResult {
@@ -75,7 +1091,7 @@ export interface ClosedLoopCandidateVerification {
 }
 
 export interface VerifyCandidateOptions {
-  parser?: any;
+  parser?: import("../utils/ast-utils.js").CstParserLike | null | undefined;
   targetGates?: (1 | 2 | 3 | 4)[] | undefined;
   documentUri?: string | undefined;
 }
@@ -83,7 +1099,9 @@ export interface VerifyCandidateOptions {
 /**
  * Resolves a default WASM parser for the specified language.
  */
-export async function getWasmParserForLanguage(lang: ClosedLoopLanguage): Promise<any | null> {
+export async function getWasmParserForLanguage(
+  lang: ClosedLoopLanguage,
+): Promise<import("../utils/ast-utils.js").CstParserLike | null> {
   const norm = lang.toLowerCase();
   const plugin = globalLanguageRegistry.getPluginById(norm === "sysml" ? "sysml2" : norm);
   if (plugin?.parser) return plugin.parser;
@@ -161,8 +1179,8 @@ export async function verifyGate1Syntax(
 
   if (!parser) {
     // If no parser is loadable in current environment, do a structural sanity check
-    const openBraces = (code.match(/\{/g) || []).length;
-    const closeBraces = (code.match(/\}/g) || []).length;
+    const openBraces = countChar(code, "{");
+    const closeBraces = countChar(code, "}");
     if (openBraces !== closeBraces) {
       diagnostics.push({
         gate: 1,
@@ -256,8 +1274,8 @@ export async function verifyGate1Syntax(
   walk(tree.rootNode);
 
   // Check delimiter balance
-  const openBraces = (code.match(/\{/g) || []).length;
-  const closeBraces = (code.match(/\}/g) || []).length;
+  const openBraces = countChar(code, "{");
+  const closeBraces = countChar(code, "}");
   if (openBraces !== closeBraces) {
     diagnostics.push({
       gate: 1,
@@ -299,14 +1317,48 @@ export async function verifyGate1Syntax(
 async function flattenModelicaCandidate(
   code: string,
   documentUri = "file:///candidate/model.mo",
-  lspContext?: any,
-): Promise<{ arena: any; className: string; ctx: any } | null> {
+  lspContext?: {
+    parserService?: {
+      sharedContext?: {
+        load?(code: string, path: string): void;
+        flattenArena?(
+          className: string,
+          x?: unknown,
+          path?: string,
+        ):
+          | (import("@modelscript/runtime").DAEBuilder & { getVarUnit?(i: number): string | undefined })
+          | null
+          | undefined;
+      };
+    };
+  },
+  existingTree?: import("../utils/ast-utils.js").CstTreeLike | null,
+): Promise<{
+  arena: (import("@modelscript/runtime").DAEBuilder & { getVarUnit?(i: number): string | undefined }) | null;
+  className: string;
+  ctx: unknown;
+  tree?: import("../utils/ast-utils.js").CstTreeLike | null;
+} | null> {
+  let localTree: import("../utils/ast-utils.js").CstTreeLike | null = existingTree ?? null;
+  let createdLocalTree = false;
   try {
     const uri = documentUri.endsWith(".mo") ? documentUri : "file:///candidate/model.mo";
     const filePath = uri.startsWith("file://") ? uri.slice("file://".length) : uri;
-    const classMatch = stripComments(code).match(/\b(?:model|class|block|connector|record)\s+([A-Za-z_][A-Za-z0-9_]*)/);
-    if (!classMatch?.[1]) return null;
-    const className = classMatch[1];
+    const parser = await getWasmParserForLanguage("modelica");
+    if (!localTree && parser) {
+      localTree = parser.parse(code);
+      createdLocalTree = true;
+    }
+
+    const cstClassNode = localTree?.rootNode
+      ? findCstNodesByType(localTree.rootNode, "class_definition")[0]
+      : undefined;
+    const cstIdNode = cstClassNode ? findCstNodesByType(cstClassNode, "identifier")[0] : undefined;
+    const className = cstIdNode?.text?.trim() || extractModelicaClassNameFromText(stripComments(code));
+    if (!className) {
+      if (createdLocalTree) localTree?.delete?.();
+      return null;
+    }
 
     // If lspContext exposes an initialized sharedContext, try it first
     const sharedCtx = lspContext?.parserService?.sharedContext;
@@ -314,17 +1366,18 @@ async function flattenModelicaCandidate(
       try {
         sharedCtx.load(code, filePath);
         const arena = sharedCtx.flattenArena(className, undefined, filePath);
-        if (arena) return { arena, className, ctx: sharedCtx };
+        if (arena) return { arena, className, ctx: sharedCtx, tree: localTree };
       } catch {
         // Fall through to isolated Context
       }
     }
 
-    const parser = await getWasmParserForLanguage("modelica");
-    if (!parser) return null;
+    if (!parser) {
+      return localTree ? { arena: null, className, ctx: null, tree: localTree } : null;
+    }
 
     const { Context } = await import("@modelscript/modelica");
-    Context.registerParser(".mo", parser);
+    Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
 
     const memFiles = new Map<string, string>([[filePath, code]]);
     const memFs = {
@@ -334,12 +1387,17 @@ async function flattenModelicaCandidate(
       isDir: () => false,
     };
 
-    const ctx = new Context(memFs as any, undefined, undefined, { loadStdlib: false });
+    const ctx = new Context(memFs as unknown as ConstructorParameters<typeof Context>[0], undefined, undefined, {
+      loadStdlib: false,
+    });
     ctx.load(code, filePath);
-    const arena = ctx.flattenArena(className, undefined, filePath);
-    if (!arena) return null;
-    return { arena, className, ctx };
+    const arena = ctx.flattenArena(className, undefined, filePath) as
+      | (import("@modelscript/runtime").DAEBuilder & { getVarUnit?(i: number): string | undefined })
+      | null
+      | undefined;
+    return { arena: arena ?? null, className, ctx, tree: localTree };
   } catch {
+    if (createdLocalTree) localTree?.delete?.();
     return null;
   }
 }
@@ -479,7 +1537,7 @@ export async function verifyGate2Dimensions(
     let checkedFeatures = 0;
 
     // 0. Real Modelica arena flattening + SI unit checking via @modelscript/modelica
-    const flattened = await flattenModelicaCandidate(code, documentUri);
+    const flattened = await flattenModelicaCandidate(code, documentUri, undefined, tree);
     if (flattened?.arena) {
       try {
         const { parseUnit, checkEquationUnits, formatSIUnit, unitDivide, unitMultiply } =
@@ -589,38 +1647,62 @@ export async function verifyGate2Dimensions(
     }
 
     // 1. Check unit bracket additions: e.g. 5[m] + 10[s]
-    const unitMatches = code.matchAll(/\b([a-zA-Z0-9_]+)\s*=\s*([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*);/g);
-    for (const match of unitMatches) {
-      const expr = match[2]!.trim();
-      // Check for obvious incompatible addition of different unit markers if present
-      if (/\b(kg|m|s|N|Pa|W|J|V|A|Ohm|F|H)\b/.test(expr)) {
-        // e.g., 5[m] + 10[s]
-        const m = expr.match(/\[([a-zA-Z]+)\][^[+]*\+[^[]*\[([a-zA-Z]+)\]/);
-        if (m && m[1] !== m[2]) {
-          diagnostics.push({
-            gate: 2,
-            gateName: "QUDV Physical Dimensions",
-            severity: "error",
-            message: `Dimensional mismatch in Modelica expression '${expr.trim()}': cannot add unit [${m[1]}] to [${m[2]}].`,
-          });
+    const cleanModelica2 = stripComments(code);
+    for (const rawStmt of splitSemicolonStatementsOutsideQuotes(cleanModelica2)) {
+      const stmt = stripLeadingModelicaHeader(rawStmt);
+      const eqPos = stmt.indexOf("=");
+      if (eqPos <= 0) continue;
+      const lhsTok = stmt.slice(0, eqPos).trim();
+      if (!isStrictIdentifier(lhsTok)) continue;
+      const expr = stmt.slice(eqPos + 1).trim();
+      const mismatch = findBracketedUnitAddMismatch(expr);
+      if (mismatch) {
+        diagnostics.push({
+          gate: 2,
+          gateName: "QUDV Physical Dimensions",
+          severity: "error",
+          message: `Dimensional mismatch in Modelica expression '${expr}': cannot add unit [${mismatch.u1}] to [${mismatch.u2}].`,
+        });
+      }
+    }
+
+    // 2. Check SI unit type incompatibilities via CST first, falling back to zero-regex text scan
+    const varTypes = new Map<string, string>();
+    const varAssignments: { varName: string; declaredType: string; rhs: string }[] = [];
+    const mRoot2 = tree?.rootNode ?? flattened?.tree?.rootNode;
+    let usedCst2 = false;
+
+    if (mRoot2) {
+      for (const clauseNode of findCstNodesByType(mRoot2, "component_clause")) {
+        const typeNode =
+          findCstNodesByType(clauseNode, "type_specifier")[0] ??
+          findCstNodesByType(clauseNode, "name")[0] ??
+          findCstNodesByType(clauseNode, "type_name")[0];
+        const rawType = removeWs(typeNode?.text ?? "");
+        const lastDot = rawType.lastIndexOf(".");
+        const shortType = lastDot !== -1 ? rawType.slice(lastDot + 1) : rawType;
+        if (!shortType || !isUpperStartIdent(shortType)) continue;
+
+        for (const decl of extractModelicaClauseDecls(clauseNode)) {
+          usedCst2 = true;
+          varTypes.set(decl.varName, shortType);
+          if (decl.binding) {
+            varAssignments.push({ varName: decl.varName, declaredType: shortType, rhs: decl.binding });
+          }
         }
       }
     }
 
-    // 2. Check SI unit type incompatibilities:
-    // e.g. Modelica.SIunits.Length len = weight; where weight is Modelica.SIunits.Mass
-    const declMatches = code.matchAll(
-      /\b(?:Modelica\s*\.\s*SIunits\s*\.\s*)?([A-Z][a-zA-Z0-9_]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\([^)]*\))?(?:\s*=\s*([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*))?\s*;/g,
-    );
-    const varTypes = new Map<string, string>();
-    const varAssignments: { varName: string; declaredType: string; rhs: string }[] = [];
-    for (const dm of declMatches) {
-      const typeName = dm[1]!;
-      const varName = dm[2]!;
-      const rhs = dm[3];
-      varTypes.set(varName, typeName);
-      if (rhs) {
-        varAssignments.push({ varName, declaredType: typeName, rhs: rhs.trim() });
+    if (!tree) {
+      flattened?.tree?.delete?.();
+    }
+
+    if (!usedCst2) {
+      for (const dm of extractModelicaTypedDeclsFromText(cleanModelica2)) {
+        varTypes.set(dm.varName, dm.typeName);
+        if (dm.rhs) {
+          varAssignments.push({ varName: dm.varName, declaredType: dm.typeName, rhs: dm.rhs });
+        }
       }
     }
 
@@ -634,7 +1716,7 @@ export async function verifyGate2Dimensions(
     };
 
     for (const { varName, declaredType, rhs } of varAssignments) {
-      const rhsVar = rhs.replace(/[^a-zA-Z0-9_.]/g, "");
+      const rhsVar = stripToIdentifierPath(rhs);
       const rhsType = varTypes.get(rhsVar);
       if (rhsType && incompatiblePairs[declaredType]?.includes(rhsType)) {
         diagnostics.push({
@@ -692,44 +1774,78 @@ export async function verifyGate3Requirements(
       constraints = extractSysML2Constraints(db) || [];
     }
 
-    // Also parse explicit inline constraints from code if queryDB didn't extract any
+    // Also parse explicit inline constraints from CST / source if queryDB didn't extract any
     if (constraints.length === 0) {
-      const constraintMatches = code.matchAll(/(?:\bassert\s+)?\bconstraint(?:\s+([a-zA-Z0-9_]+))?\s*\{([^}]+)\}/g);
-      for (const m of constraintMatches) {
-        const body = m[2]!.trim();
-        const compMatch = body.match(
-          /\b([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)\s*(<=|>=|==|<|>)\s*([0-9]+(?:\.[0-9]+)?)/,
-        );
-        if (compMatch) {
-          constraints.push({
-            lhs: compMatch[1]!,
-            operator: compMatch[2] as any,
-            rhs: parseFloat(compMatch[3]!),
-            expression: body,
-            source: "sysml2",
-            requirementName: m[1] || "inlineConstraint",
-          });
+      if (tree?.rootNode) {
+        const cNodes = [
+          ...findCstNodesByType(tree.rootNode, "AssertConstraintUsage"),
+          ...findCstNodesByType(tree.rootNode, "ConstraintUsage"),
+        ];
+        for (const cNode of cNodes) {
+          const block = extractFirstBraceBlock(cNode.text || "");
+          if (!block) continue;
+          const comp = parseSysmlComparisonConstraint(block.body);
+          if (comp) {
+            const nameNode =
+              cNode.childForFieldName?.("declaredName") ?? cNode.children?.find((c: any) => c.type === "Name");
+            constraints.push({
+              ...comp,
+              expression: block.body.trim(),
+              source: "sysml2",
+              requirementName: nameNode?.text?.trim() || "inlineConstraint",
+            });
+          }
+        }
+      } else {
+        for (const block of extractSysmlBraceConstraintsFromText(code)) {
+          const comp = parseSysmlComparisonConstraint(block.body);
+          if (comp) {
+            constraints.push({
+              ...comp,
+              expression: block.body.trim(),
+              source: "sysml2",
+              requirementName: block.name || "inlineConstraint",
+            });
+          }
         }
       }
     }
 
-    // Inline requirement bounds: doc /* ... */ or attribute bounds
-    const reqMatches = code.matchAll(
-      /\brequirement\s+(?:def\s+)?([a-zA-Z0-9_]+)\s*\{[^{}]*?\battribute\s+([a-zA-Z0-9_]+)(?:\s*:\s*[a-zA-Z0-9_.]+)?\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*;[^{}]*?\}/g,
-    );
-    for (const rm of reqMatches) {
-      const reqName = rm[1];
-      const attrName = rm[2]!;
-      const val = parseFloat(rm[3]!);
-      // If code specifies requirement limit
-      constraints.push({
-        lhs: attrName,
-        operator: "<=",
-        rhs: val,
-        expression: `${attrName} <= ${val}`,
-        source: "sysml2",
-        requirementName: reqName,
-      });
+    // Inline requirement bounds: requirement attributes initialized with numeric limits
+    if (tree?.rootNode) {
+      const reqNodes = [
+        ...findCstNodesByType(tree.rootNode, "RequirementUsage"),
+        ...findCstNodesByType(tree.rootNode, "RequirementDefinition"),
+      ];
+      for (const reqNode of reqNodes) {
+        const reqNameNode =
+          reqNode.childForFieldName?.("declaredName") ?? reqNode.children?.find((c: any) => c.type === "Name");
+        const reqName = reqNameNode?.text?.trim();
+        for (const attrNode of findCstNodesByType(reqNode, "AttributeUsage")) {
+          const parsedAttr = parseSysmlNumericAttrNode(attrNode);
+          if (parsedAttr) {
+            constraints.push({
+              lhs: parsedAttr.name,
+              operator: "<=",
+              rhs: parsedAttr.value,
+              expression: `${parsedAttr.name} <= ${parsedAttr.value}`,
+              source: "sysml2",
+              requirementName: reqName,
+            });
+          }
+        }
+      }
+    } else {
+      for (const bound of extractSysmlReqAttrBoundsFromText(code)) {
+        constraints.push({
+          lhs: bound.attrName,
+          operator: "<=",
+          rhs: bound.value,
+          expression: `${bound.attrName} <= ${bound.value}`,
+          source: "sysml2",
+          requirementName: bound.reqName,
+        });
+      }
     }
 
     if (constraints.length === 0) {
@@ -786,7 +1902,7 @@ export async function verifyGate3Requirements(
     const boundVars = new Map<string, number>();
     const modelicaConstraints: ExtractedConstraint[] = [];
 
-    const flattened = await flattenModelicaCandidate(code, documentUri);
+    const flattened = await flattenModelicaCandidate(code, documentUri, undefined, tree);
     if (flattened?.arena) {
       try {
         const { EqKind, ExprKind, evaluateArenaExpression } = await import("@modelscript/runtime");
@@ -843,15 +1959,39 @@ export async function verifyGate3Requirements(
     }
 
     const clean = stripComments(code);
-    const paramRegex =
-      /(?:^|[;{}])\s*(?:(?:parameter|constant)\s+)?(?!parameter\b|constant\b)[A-Za-z_][A-Za-z0-9_.]*\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\(([^()]*)\))?(?:\s*=\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?))?\s*;/g;
-    for (const pm of clean.matchAll(paramRegex)) {
-      const vName = pm[1]!;
-      const mods = pm[2] ?? "";
-      const valStr = pm[3];
-      if (valStr !== undefined) {
-        const val = Number(valStr);
-        if (Number.isFinite(val)) {
+    const paramDecls: Array<{ name: string; mods: string; binding?: string | undefined }> = [];
+    const assertCalls: Array<{ expr: string; msg: string }> = [];
+
+    const mRoot3 = tree?.rootNode ?? flattened?.tree?.rootNode;
+    if (mRoot3) {
+      for (const clauseNode of findCstNodesByType(mRoot3, "component_clause")) {
+        for (const decl of extractModelicaClauseDecls(clauseNode)) {
+          paramDecls.push({ name: decl.varName, mods: decl.mods, binding: decl.binding });
+        }
+      }
+      for (const callNode of findCstNodesByType(mRoot3, "function_call")) {
+        const callText = callNode.text || "";
+        if (callText.trimStart().startsWith("assert")) {
+          assertCalls.push(...extractModelicaAssertCalls(callText));
+        }
+      }
+    }
+    if (!tree) {
+      flattened?.tree?.delete?.();
+    }
+
+    if (!mRoot3 || paramDecls.length === 0) {
+      paramDecls.push(...extractModelicaParamDeclsFromText(clean));
+    }
+    if (!mRoot3 || assertCalls.length === 0) {
+      assertCalls.push(...extractModelicaAssertCalls(clean));
+    }
+
+    for (const pm of paramDecls) {
+      const { name: vName, mods, binding } = pm;
+      if (binding !== undefined) {
+        const val = parseLeadingSignedNumber(binding);
+        if (val !== undefined && Number.isFinite(val)) {
           boundVars.set(vName, val);
           modelicaConstraints.push({
             lhs: vName,
@@ -863,33 +2003,27 @@ export async function verifyGate3Requirements(
           });
         }
       }
-      const minMatch = mods.match(/\bmin\s*=\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/);
-      if (minMatch?.[1]) {
-        const minVal = Number(minMatch[1]);
-        if (Number.isFinite(minVal)) {
-          modelicaConstraints.push({
-            lhs: vName,
-            operator: ">=",
-            rhs: minVal,
-            expression: `${vName} >= ${minVal}`,
-            source: "modelica",
-            requirementName: `${vName}_min`,
-          });
-        }
+      const minVal = extractNamedNumericAttr(mods, "min");
+      if (minVal !== undefined && Number.isFinite(minVal)) {
+        modelicaConstraints.push({
+          lhs: vName,
+          operator: ">=",
+          rhs: minVal,
+          expression: `${vName} >= ${minVal}`,
+          source: "modelica",
+          requirementName: `${vName}_min`,
+        });
       }
-      const maxMatch = mods.match(/\bmax\s*=\s*([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/);
-      if (maxMatch?.[1]) {
-        const maxVal = Number(maxMatch[1]);
-        if (Number.isFinite(maxVal)) {
-          modelicaConstraints.push({
-            lhs: vName,
-            operator: "<=",
-            rhs: maxVal,
-            expression: `${vName} <= ${maxVal}`,
-            source: "modelica",
-            requirementName: `${vName}_max`,
-          });
-        }
+      const maxVal = extractNamedNumericAttr(mods, "max");
+      if (maxVal !== undefined && Number.isFinite(maxVal)) {
+        modelicaConstraints.push({
+          lhs: vName,
+          operator: "<=",
+          rhs: maxVal,
+          expression: `${vName} <= ${maxVal}`,
+          source: "modelica",
+          requirementName: `${vName}_max`,
+        });
       }
     }
 
@@ -907,17 +2041,14 @@ export async function verifyGate3Requirements(
       }
     }
 
-    const assertMatches = clean.matchAll(/\bassert\s*\(([^,]+),\s*"([^"]+)"(?:\s*,[^)]*)?\)\s*;/g);
-    for (const am of assertMatches) {
-      const expr = am[1]!.trim();
-      const msg = am[2]!;
-      const evalResult = evaluateModelicaBooleanExpr(expr, boundVars);
+    for (const am of assertCalls) {
+      const evalResult = evaluateModelicaBooleanExpr(am.expr, boundVars);
       if (evalResult === false && diagnostics.length === 0) {
         diagnostics.push({
           gate: 3,
           gateName: "SMT Requirement Feasibility",
           severity: "error",
-          message: `Infeasible Modelica assertion '${expr}': ${msg}`,
+          message: `Infeasible Modelica assertion '${am.expr}': ${am.msg}`,
         });
       }
     }
@@ -948,16 +2079,8 @@ function evaluateModelicaBooleanExpr(expr: string, boundVars: ReadonlyMap<string
     if (trimmed === "false") return false;
     if (trimmed === "true") return true;
 
-    const tokens: string[] = [];
-    const tokenRegex =
-      /\s*(<=|>=|==|!=|<>|&&|\|\||[<>!=+\-*/%()]|\b(?:and|or|not|true|false)\b|[a-zA-Z_][a-zA-Z0-9_]*|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*/gy;
-    let match: RegExpExecArray | null;
-    let lastIndex = 0;
-    while ((match = tokenRegex.exec(expr)) !== null) {
-      tokens.push(match[1]!);
-      lastIndex = tokenRegex.lastIndex;
-    }
-    if (expr.slice(lastIndex).trim().length > 0) return null;
+    const tokens = tokenizeModelicaBoolExpr(expr);
+    if (!tokens) return null;
 
     let pos = 0;
     const peek = () => tokens[pos];
@@ -1135,8 +2258,7 @@ function analyzeBipartiteAndBLT(
     const eqText = equationStrings[e]!;
     for (let v = 0; v < nVars; v++) {
       const varName = variables[v]!;
-      const escaped = varName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      if (new RegExp(`\\b${escaped}\\b`).test(eqText)) {
+      if (hasWordMatch(eqText, varName)) {
         adj[e]!.push(v);
       }
     }
@@ -1238,7 +2360,7 @@ export async function verifyGate4DAEBalance(
 
   if (norm === "modelica") {
     // 0. Flatten into real DAEBuilder arena and run performBltTransformationArena when available
-    const flattened = await flattenModelicaCandidate(code, "file:///candidate/model.mo", _lspContext);
+    const flattened = await flattenModelicaCandidate(code, "file:///candidate/model.mo", _lspContext, _tree);
     let arenaVars: string[] = [];
     let arenaEqCount = 0;
     let arenaBltBlocksCount: number | undefined;
@@ -1285,103 +2407,53 @@ export async function verifyGate4DAEBalance(
 
     // Robust Modelica equation & variable structural balance
     const cleanCode = stripComments(code);
-
-    // 1. Separate declarations from equation/algorithm sections
-    const eqMatch = cleanCode.match(/\bequation\b([\s\S]*?)(?:\balgorithm\b|\bend\b|$)/);
-    const declPart = cleanCode.split(/\bequation\b/)[0] ?? cleanCode;
-
-    // 2. Extract dynamic unknown state variables (exclude parameters, constants, and inputs)
-    const declStatements = declPart
-      .split(";")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-
     const declaredVars = new Set<string>(arenaVars);
+    const mRoot = _tree?.rootNode ?? flattened?.tree?.rootNode;
+    const equationStrings: string[] = [];
 
-    // Walk CST if provided to extract component_clause nodes
-    if (_tree?.rootNode) {
+    if (mRoot) {
       const visitCst = (node: any) => {
         if (node.type === "component_clause") {
-          const isNonState = (node.children || []).some((c: any) => {
-            const t = c.type ?? "";
-            return (
-              t === "parameter" ||
-              t === "constant" ||
-              t === "input" ||
-              (t === "type_prefix" && /\b(parameter|constant|input)\b/.test(c.text ?? ""))
-            );
-          });
+          const prefixNodes = findCstNodesByType(node, "type_prefix");
+          const isNonState =
+            (node.children || []).some((c: any) => {
+              const t = c.type ?? "";
+              return t === "parameter" || t === "constant" || t === "input";
+            }) || prefixNodes.some((p: any) => hasAnyWordMatch(p.text ?? "", ["parameter", "constant", "input"]));
           if (!isNonState) {
-            for (const child of node.children || []) {
-              if (child.type === "component_declaration" || child.type === "declaration") {
-                const idNode = (child.children || []).find(
-                  (gc: any) => gc.type === "identifier" || gc.type === "IDENT",
-                );
-                const id = idNode?.text?.trim();
-                if (id && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)) {
-                  declaredVars.add(id);
-                }
-              }
+            for (const decl of extractModelicaClauseDecls(node)) {
+              declaredVars.add(decl.varName);
             }
+          }
+        } else if (node.type === "equation_section") {
+          const rawSection = node.text ?? "";
+          const bodyStart = skipLeadingKeyword(rawSection, "equation");
+          if (bodyStart >= 0) {
+            pushModelicaEquations(rawSection.slice(bodyStart), equationStrings);
           }
         }
         if (Array.isArray(node.children)) {
           for (const child of node.children) visitCst(child);
         }
       };
-      visitCst(_tree.rootNode);
+      visitCst(mRoot);
     }
 
-    for (const stmt of declStatements) {
-      if (
-        stmt.startsWith("model ") ||
-        stmt.startsWith("class ") ||
-        stmt.startsWith("package ") ||
-        stmt.startsWith("block ") ||
-        stmt.startsWith("import ") ||
-        stmt.startsWith("extends ") ||
-        stmt.startsWith("annotation")
-      ) {
-        continue;
-      }
+    if (!_tree) {
+      flattened?.tree?.delete?.();
+    }
 
-      // Check variability prefix
-      const isParam = /\bparameter\b/.test(stmt);
-      const isConst = /\bconstant\b/.test(stmt);
-      const isInput = /\binput\b/.test(stmt);
-      if (isParam || isConst || isInput) {
-        continue;
-      }
-
-      // Extract variable name(s): e.g. Real x, y; or Modelica.SIunits.Length len;
-      const typeIdentMatch = stmt.match(
-        /(?:(?:public|protected)\s+)?(?:(?:output|discrete)\s+)?(?:(?:Modelica\s*\.\s*SIunits\s*\.\s*)?[A-Za-z_][a-zA-Z0-9_.]*)\s+([^=;()]+)/,
-      );
-      if (typeIdentMatch && typeIdentMatch[1]) {
-        const idents = typeIdentMatch[1]
-          .split(",")
-          .map((id) => id.trim().split(/\s+/)[0])
-          .filter((id) => id!.length > 0 && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id!));
-        for (const id of idents) {
-          declaredVars.add(id!);
-        }
+    if (!mRoot || declaredVars.size === 0) {
+      const declPart = splitModelicaBeforeEquation(cleanCode);
+      for (const id of extractModelicaStateVarsFromDecls(declPart)) {
+        declaredVars.add(id);
       }
     }
 
-    // 3. Extract equations in equation section
-    const equationStrings: string[] = [];
-    if (eqMatch && eqMatch[1]) {
-      const rawEqs = eqMatch[1]
-        .split(";")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-
-      for (const eq of rawEqs) {
-        if (/\bconnect\s*\(/.test(eq)) {
-          equationStrings.push(eq, eq);
-        } else if (eq.includes("=") || /\bder\s*\(/.test(eq)) {
-          equationStrings.push(eq);
-        }
+    if (equationStrings.length === 0) {
+      const eqSectionBody = extractModelicaSectionSpan(cleanCode, "equation");
+      if (eqSectionBody) {
+        pushModelicaEquations(eqSectionBody, equationStrings);
       }
     }
 
@@ -1466,23 +2538,59 @@ export async function verifyGate4DAEBalance(
       },
     };
   } else if (norm === "sysml2" || norm === "sysml") {
-    // Check parametric equations in SysML v2
-    // Count unknown attributes (not parameter or initialized) vs equality constraints
-    const attrMatches = code.matchAll(
-      /\battribute\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*([a-zA-Z0-9_:]+)(?:\s*=\s*([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*))?\s*;/g,
-    );
+    // Check parametric equations in SysML v2 via CST first, falling back to zero-regex text scan
     const uninitializedAttrs: string[] = [];
-    for (const am of attrMatches) {
-      const full = am[0];
-      if (!full.includes("=")) {
-        uninitializedAttrs.push(am[1]!);
-      }
-    }
-
-    const eqMatches = code.matchAll(/(?:\bassert\s+)?\bconstraint\s*\{([^}=]+=[^}]+)\}/g);
     const equations: string[] = [];
-    for (const em of eqMatches) {
-      equations.push(em[1]!.trim());
+
+    let localSysmlTree: any = null;
+    try {
+      let sysmlRoot = _tree?.rootNode;
+      if (!sysmlRoot) {
+        const sysmlParser = await getWasmParserForLanguage("sysml2");
+        if (sysmlParser) {
+          localSysmlTree = sysmlParser.parse(code);
+          sysmlRoot = localSysmlTree?.rootNode;
+        }
+      }
+
+      if (sysmlRoot) {
+        for (const attrNode of findCstNodesByType(sysmlRoot, "AttributeUsage")) {
+          const nameNode =
+            attrNode.childForFieldName?.("declaredName") ?? attrNode.children?.find((c: any) => c.type === "Name");
+          const attrName = nameNode?.text?.trim();
+          const attrText = attrNode.text || "";
+          if (attrName && !hasSysmlAttrInitializer(attrText)) {
+            uninitializedAttrs.push(attrName);
+          }
+        }
+
+        const constraintNodes = [
+          ...findCstNodesByType(sysmlRoot, "AssertConstraintUsage"),
+          ...findCstNodesByType(sysmlRoot, "ConstraintUsage"),
+        ];
+        for (const cNode of constraintNodes) {
+          const braceSpan = extractFirstBraceBlock(cNode.text || "");
+          if (braceSpan) {
+            const body = braceSpan.body.trim();
+            if (hasConstraintEqualityOrBound(body)) {
+              equations.push(body);
+            }
+          }
+        }
+      } else {
+        for (const attr of extractSysmlAttributesFromText(code)) {
+          if (!attr.hasInitializer) {
+            uninitializedAttrs.push(attr.name);
+          }
+        }
+        for (const cBlock of extractSysmlBraceConstraintsFromText(code)) {
+          if (hasConstraintEqualityOrBound(cBlock.body)) {
+            equations.push(cBlock.body.trim());
+          }
+        }
+      }
+    } finally {
+      localSysmlTree?.delete?.();
     }
 
     if (uninitializedAttrs.length > 0 && equations.length > 0) {

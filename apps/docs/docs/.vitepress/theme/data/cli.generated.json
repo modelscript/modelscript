@@ -4803,6 +4803,42 @@
     "subcommands": []
   },
   {
+    "name": "init-kernel",
+    "specs": [
+      "init-kernel <name>"
+    ],
+    "aliases": [],
+    "describe": "Scaffold a SysML v2 + AssemblyScript or TypeScript capability package",
+    "positionals": [
+      {
+        "name": "name",
+        "aliases": [],
+        "type": "string",
+        "description": "Capability package name (e.g. step-auditor)"
+      }
+    ],
+    "options": [
+      {
+        "name": "lang",
+        "aliases": [],
+        "type": "string",
+        "description": "Kernel implementation language ('ts' for TypeScript, 'as' for AssemblyScript/WASM)",
+        "choices": [
+          "ts",
+          "as"
+        ],
+        "default": "ts"
+      },
+      {
+        "name": "dir",
+        "aliases": [],
+        "type": "string",
+        "description": "Target directory (defaults to ./<name>)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "inspect",
     "specs": [
       "inspect <files..>",
@@ -10749,6 +10785,64 @@
         ]
       }
     ]
+  },
+  {
+    "name": "sysml-run",
+    "specs": [
+      "sysml-run <file>"
+    ],
+    "aliases": [],
+    "describe": "Compile AssemblyScript/TypeScript kernels and verify SysML v2 definitions headlessly",
+    "positionals": [
+      {
+        "name": "file",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to .sysml file"
+      }
+    ],
+    "options": [
+      {
+        "name": "def",
+        "aliases": [],
+        "type": "string",
+        "description": "Specific SysML v2 definition name to run (includes upstream dependencies; runs all if omitted)"
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Emit machine-readable JSON results",
+        "default": false
+      },
+      {
+        "name": "timeout",
+        "aliases": [],
+        "type": "number",
+        "description": "Watchdog timeout in milliseconds per kernel",
+        "default": 10000
+      },
+      {
+        "name": "param",
+        "aliases": [],
+        "type": "string",
+        "description": "Override SysML attribute inputs (e.g. --param GridStrengthGate.ibrRatedMw=350)",
+        "array": true
+      },
+      {
+        "name": "bundle",
+        "aliases": [],
+        "type": "string",
+        "description": "Write a PSI 21 Digital Data Package (.ddp.zip) provenance bundle to this path"
+      },
+      {
+        "name": "sign-key",
+        "aliases": [],
+        "type": "string",
+        "description": "Optional Ed25519 private key PEM file used to sign the DDP verification report"
+      }
+    ],
+    "subcommands": []
   },
   {
     "name": "three-mf",

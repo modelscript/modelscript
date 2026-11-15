@@ -125,9 +125,19 @@ export function getCanteraDocumentSymbols(text: string): LspDocumentSymbol[] {
   const mech = doc.mechanism;
   const symbols: LspDocumentSymbol[] = [];
 
+  const lines = text.split(/\r?\n/);
+  const makeRange = (startLine: number, endLine: number): LspRange => {
+    const sLineText = lines[startLine] ?? "";
+    const eLineText = lines[endLine] ?? "";
+    const leadMatch = /\S/.exec(sLineText);
+    const startChar = leadMatch ? leadMatch.index : 0;
+    const endChar = Math.max(startChar, eLineText.trimEnd().length);
+    return { start: { line: startLine, character: startChar }, end: { line: endLine, character: endChar } };
+  };
+
   const rootRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: text.split("\n").length, character: 0 },
+    end: { line: lines.length, character: 0 },
   };
 
   const children: LspDocumentSymbol[] = [];
@@ -136,10 +146,7 @@ export function getCanteraDocumentSymbols(text: string): LspDocumentSymbol[] {
   for (const phase of mech.phases.values()) {
     const startLine = phase.range ? Math.max(0, phase.range.startLine - 1) : 0;
     const endLine = phase.range ? Math.max(0, phase.range.endLine - 1) : startLine;
-    const r: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: endLine, character: 40 },
-    };
+    const r = makeRange(startLine, endLine);
     children.push({
       name: phase.name,
       detail: `Phase (${phase.thermo}, ${phase.species.length} species)`,
@@ -153,10 +160,7 @@ export function getCanteraDocumentSymbols(text: string): LspDocumentSymbol[] {
   for (const sp of mech.species.values()) {
     const startLine = sp.range ? Math.max(0, sp.range.startLine - 1) : 0;
     const endLine = sp.range ? Math.max(0, sp.range.endLine - 1) : startLine;
-    const r: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: endLine, character: 40 },
-    };
+    const r = makeRange(startLine, endLine);
     const compStr = Object.entries(sp.composition)
       .map(([k, v]) => `${k}:${v}`)
       .join(", ");
@@ -173,10 +177,7 @@ export function getCanteraDocumentSymbols(text: string): LspDocumentSymbol[] {
   for (const rxn of mech.reactions) {
     const startLine = rxn.range ? Math.max(0, rxn.range.startLine - 1) : 0;
     const endLine = rxn.range ? Math.max(0, rxn.range.endLine - 1) : startLine;
-    const r: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: endLine, character: 40 },
-    };
+    const r = makeRange(startLine, endLine);
     children.push({
       name: rxn.id,
       detail: `${rxn.equation} (${rxn.type})`,

@@ -8,8 +8,21 @@ import {
   type QueryDB,
   type SymbolEntry,
 } from "@modelscript/runtime";
-import { extractBalancedBlock } from "./activity-cfa.js";
-import { evaluateSysML2Constraint, parseSysML2Expression } from "./evaluator.js";
+import {
+  collapseWhitespace,
+  collectCstLeaves,
+  extractLastNameSegment,
+  findCstChildren,
+  findCstDescendants,
+  getCstChildren,
+  getDocumentationCommentText,
+  parseSysmlSource,
+  tokenizeSysmlExpressionCst,
+  type CstLeaf,
+  type SysmlCstNode,
+  type SysmlExprToken,
+} from "./cst-utils.js";
+import { evaluateSysML2Constraint, parseSysML2Expression, sysmlAstSome } from "./evaluator.js";
 import { SysML2EventTraceExplorer } from "./event-trace-explorer.js";
 import { extractVariables, parseGuardConstraints, type GuardConstraint } from "./state-machine-verifier.js";
 
@@ -86,11 +99,27 @@ export function verifyTemporalContract(
   // Parse assumption and guarantee bounds
   const aConstraints = parseGuardConstraints(contract.assumption);
   const gConstraints = parseGuardConstraints(contract.guarantee);
-  const useCompoundEvaluator =
-    /\b(?:or|xor|implies|not)\b|\|\||=>|->|[+\-*/^]/i.test(contract.assumption) ||
-    /\b(?:or|xor|implies|not)\b|\|\||=>|->|[+\-*/^]/i.test(contract.guarantee);
-  const aAst = useCompoundEvaluator ? parseSysML2Expression(contract.assumption) : null;
-  const gAst = useCompoundEvaluator ? parseSysML2Expression(contract.guarantee) : null;
+  const aAst = parseSysML2Expression(contract.assumption);
+  const gAst = parseSysML2Expression(contract.guarantee);
+  const hasCompoundNode = (ast: ReturnType<typeof parseSysML2Expression>) =>
+    sysmlAstSome(
+      ast,
+      (n) =>
+        (n.kind === "UnaryExpr" && n.op === "not") ||
+        n.kind === "ConditionalExpr" ||
+        n.kind === "CallExpr" ||
+        (n.kind === "BinaryExpr" &&
+          (n.op === "or" ||
+            n.op === "xor" ||
+            n.op === "implies" ||
+            n.op === "+" ||
+            n.op === "-" ||
+            n.op === "*" ||
+            n.op === "/" ||
+            n.op === "%" ||
+            n.op === "^")),
+    );
+  const useCompoundEvaluator = hasCompoundNode(aAst) || hasCompoundNode(gAst);
 
   let worstMargin = Infinity;
   let violationTime: number | undefined = undefined;
@@ -375,8 +404,64 @@ export function checkSymbolicEntailment(premises: string[], conclusionStr: strin
   return { entailed: true };
 }
 
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function formatSysmlExprTokens(tokens: readonly SysmlExprToken[], target: "sysml" | "nuxmv"): string {
+  const parts: string[] = [];
+  let prevWasUnarySign = false;
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i]!;
+    if (tok.type === "eof") continue;
+    let txt = tok.type === "string" ? `"${tok.text}"` : tok.text;
+    if (target === "nuxmv") {
+      if (tok.type === "op" && tok.text === "and") txt = "&";
+      else if (tok.type === "op" && tok.text === "or") txt = "|";
+      else if (tok.type === "op" && tok.text === "==") txt = "=";
+      else if (tok.type === "op" && tok.text === "implies") txt = "->";
+      else if (tok.type === "op" && tok.text === "not") txt = "!";
+    }
+    const prev = parts.length > 0 ? parts[parts.length - 1] : undefined;
+    const prevTok = i > 0 ? tokens[i - 1] : undefined;
+    const noSpaceAfterPrev =
+      !prev || prev === "(" || prev === "[" || prevWasUnarySign || (prev === "!" && target === "nuxmv");
+    const noSpaceBeforeCur =
+      txt === ")" ||
+      txt === "]" ||
+      txt === "," ||
+      txt === ";" ||
+      (txt === "(" &&
+        prevTok?.type === "ident" &&
+        prevTok.text !== "if" &&
+        prevTok.text !== "then" &&
+        prevTok.text !== "else");
+    parts.push(noSpaceAfterPrev || noSpaceBeforeCur ? txt : ` ${txt}`);
+    prevWasUnarySign = (txt === "-" || txt === "+") && (parts.length === 1 || prev === "(" || prevTok?.type === "op");
+  }
+  return parts.join("").trim();
+}
+
+function formatSysmlExprForNuXmv(exprText: string): string {
+  return formatSysmlExprTokens(tokenizeSysmlExpressionCst(exprText), "nuxmv");
+}
+
+function remapSysmlPortIdentifiers(exprText: string, mapEntries: ReadonlyArray<readonly [string, string]>): string {
+  const tokens = tokenizeSysmlExpressionCst(exprText);
+  const remapped = tokens.map((tok) => {
+    if (tok.type !== "ident") return tok;
+    let name = tok.text;
+    for (const [src, dst] of mapEntries) {
+      if (name === src) {
+        name = dst;
+      } else if (name.startsWith(`${src}.`)) {
+        name = `${dst}${name.slice(src.length)}`;
+      } else if (!src.includes(".") && name.includes(".")) {
+        name = name
+          .split(".")
+          .map((seg) => (seg === src ? dst : seg))
+          .join(".");
+      }
+    }
+    return name === tok.text ? tok : { ...tok, text: name };
+  });
+  return formatSysmlExprTokens(remapped, "sysml");
 }
 
 /**
@@ -397,14 +482,7 @@ export function verifyAssumeGuaranteePair(
   let effectiveGuarantees = guarantees;
   if (portMapping) {
     const mapEntries = portMapping instanceof Map ? Array.from(portMapping.entries()) : Object.entries(portMapping);
-    effectiveGuarantees = guarantees.map((g) => {
-      let mapped = g;
-      for (const [src, dst] of mapEntries) {
-        const regex = new RegExp(`\\b${escapeRegex(src)}\\b`, "g");
-        mapped = mapped.replace(regex, dst);
-      }
-      return mapped;
-    });
+    effectiveGuarantees = guarantees.map((g) => remapSysmlPortIdentifiers(g, mapEntries));
   }
 
   const gConstraints = effectiveGuarantees.flatMap((g) => parseGuardConstraints(g));
@@ -727,7 +805,17 @@ export class ContractAlgebra {
       const vars = new Set<string>();
       let hasTemporalDelay = false;
       for (const str of constraints) {
-        if (/\bprev\s*\(|\bdelay\s*\(|\blatch\b/i.test(str)) {
+        if (
+          sysmlAstSome(
+            parseSysML2Expression(str),
+            (n) =>
+              (n.kind === "CallExpr" &&
+                (n.callee.toLowerCase() === "prev" ||
+                  n.callee.toLowerCase() === "delay" ||
+                  n.callee.toLowerCase() === "latch")) ||
+              (n.kind === "Identifier" && n.name.toLowerCase() === "latch"),
+          )
+        ) {
           hasTemporalDelay = true;
         }
         const parsed = parseGuardConstraints(str);
@@ -930,12 +1018,8 @@ export function exportContractToNuXmv(contract: AssumeGuaranteeContract | Tempor
     }
     smv += `\n`;
 
-    const formatCond = (str: string) => {
-      return str.replace(/&&/g, " & ").replace(/\|\|/g, " | ").replace(/==/g, " = ");
-    };
-
-    const aSmv = formatCond(tc.assumption);
-    const gSmv = formatCond(tc.guarantee);
+    const aSmv = formatSysmlExprForNuXmv(tc.assumption);
+    const gSmv = formatSysmlExprForNuXmv(tc.guarantee);
 
     if (tc.timeHorizon) {
       smv += `-- Bounded time horizon [${tc.timeHorizon[0]}, ${tc.timeHorizon[1]}]\n`;
@@ -960,18 +1044,14 @@ export function exportContractToNuXmv(contract: AssumeGuaranteeContract | Tempor
     }
     smv += `\n`;
 
-    const formatCond = (str: string) => {
-      return str.replace(/&&/g, " & ").replace(/\|\|/g, " | ").replace(/==/g, " = ");
-    };
-
     if (ag.assumptions.length > 0) {
-      const aExpr = ag.assumptions.map(formatCond).join(" & ");
+      const aExpr = ag.assumptions.map(formatSysmlExprForNuXmv).join(" & ");
       smv += `-- Environment Assumptions\n`;
       smv += `INVAR ${aExpr};\n\n`;
     }
 
     if (ag.guarantees.length > 0) {
-      const gExpr = ag.guarantees.map(formatCond).join(" & ");
+      const gExpr = ag.guarantees.map(formatSysmlExprForNuXmv).join(" & ");
       smv += `-- Component Guarantees\n`;
       smv += `INVARSPEC ${gExpr};\n`;
     }
@@ -1106,149 +1186,912 @@ interface ParsedReqDef {
   guarantees: string[];
 }
 
-function stripCommentsPreserveStructure(src: string): string {
-  let out = "";
-  let i = 0;
-  const n = src.length;
-  while (i < n) {
-    if (src[i] === "/" && i + 1 < n) {
-      if (src[i + 1] === "/") {
-        let count = 2;
-        i += 2;
-        while (i < n && src[i] !== "\n" && src[i] !== "\r") {
-          i++;
-          count++;
-        }
-        out += " ".repeat(count);
-        continue;
-      } else if (src[i + 1] === "*") {
-        let count = 2;
-        i += 2;
-        while (i + 1 < n && !(src[i] === "*" && src[i + 1] === "/")) {
-          i++;
-          count++;
-        }
-        if (i + 1 < n) {
-          i += 2;
-          count += 2;
-        }
-        out += " ".repeat(count);
+const CONFIG_ATTR_NAMES = new Set(["displacement", "capacity", "diameter", "length", "thickness"]);
+
+const IGNORED_CLAUSE_STARTERS = new Set([
+  "doc",
+  "attribute",
+  "subject",
+  "objective",
+  "port",
+  "part",
+  "ref",
+  "verify",
+  "satisfy",
+]);
+
+const WRAPPER_MEMBER_TYPES = new Set([
+  "PackageMember",
+  "DefinitionMember",
+  "VariantUsageMember",
+  "OccurrenceUsageMember",
+  "NonOccurrenceUsageMember",
+  "AnnotatingMember",
+  "SubjectMember",
+  "ActorMember",
+  "RequirementConstraintMember",
+  "ObjectiveMember",
+  "TransitionUsageMember",
+  "ReturnParameterMember",
+  "ActionNodeMember",
+  "EnumerationUsageMember",
+  "AliasMember",
+  "Membership",
+  "OwningMembership",
+  "FeatureMembership",
+  "ParameterMembership",
+  "ResultExpressionMember",
+  "ERROR",
+]);
+
+const DOC_NODE_TYPES = new Set(["Documentation"]);
+const ATTR_USAGE_TYPES = new Set(["AttributeUsage"]);
+const PORT_USAGE_TYPES = new Set(["PortUsage"]);
+const PART_USAGE_TYPES = new Set(["PartUsage"]);
+const CONN_USAGE_TYPES = new Set(["ConnectionUsage"]);
+const SUBJECT_USAGE_TYPES = new Set(["SubjectUsage"]);
+const ACTOR_USAGE_TYPES = new Set(["ActorUsage"]);
+const INCLUDE_UC_TYPES = new Set(["IncludeUseCaseUsage"]);
+const OBJECTIVE_REQ_TYPES = new Set(["ObjectiveRequirementUsage"]);
+const ACTION_PIN_TYPES = new Set([
+  "ItemUsage",
+  "DefaultReferenceUsage",
+  "AttributeUsage",
+  "PartUsage",
+  "PortUsage",
+  "ReferenceUsage",
+]);
+
+function isWordIdentStr(s: string | undefined): boolean {
+  if (!s || s.length === 0) return false;
+  const c0 = s.charCodeAt(0);
+  if (!((c0 >= 65 && c0 <= 90) || (c0 >= 97 && c0 <= 122) || c0 === 95)) return false;
+  for (let i = 1; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (!((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isUnsignedNumericLiteral(s: string | undefined): boolean {
+  if (!s || s.length === 0) return false;
+  let seenDot = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c >= 48 && c <= 57) continue;
+    if (c === 46 && !seenDot && i > 0 && i < s.length - 1) {
+      seenDot = true;
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+function joinLeavesWithSourceGaps(leaves: readonly CstLeaf[], fullSource: string): string {
+  if (leaves.length === 0) return "";
+  let out = leaves[0]!.text;
+  for (let i = 1; i < leaves.length; i++) {
+    const prev = leaves[i - 1]!;
+    const cur = leaves[i]!;
+    out += cur.start > prev.end && fullSource.slice(prev.end, cur.start).length > 0 ? ` ${cur.text}` : cur.text;
+  }
+  return out.trim();
+}
+
+function collectDirectMemberNodes(container: SysmlCstNode, targetTypes: ReadonlySet<string>): SysmlCstNode[] {
+  const results: SysmlCstNode[] = [];
+  const stack = [...getCstChildren(container)].reverse();
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (targetTypes.has(cur.type)) {
+      results.push(cur);
+      continue;
+    }
+    if (WRAPPER_MEMBER_TYPES.has(cur.type) || cur.type.startsWith("_")) {
+      const children = getCstChildren(cur);
+      for (let i = children.length - 1; i >= 0; i--) {
+        stack.push(children[i]!);
+      }
+    }
+  }
+  return results;
+}
+
+function findDefNameAndSuper(defNode: SysmlCstNode): { name: string; superType?: string | undefined } {
+  const nameNodes = findCstChildren(defNode, "Name");
+  const name = nameNodes.length > 0 ? nameNodes[nameNodes.length - 1]!.text.trim() : "";
+  const subNode = findCstChildren(defNode, "OwnedSubclassification")[0];
+  const superType = subNode ? extractLastNameSegment(subNode) : undefined;
+  return { name, superType: superType || undefined };
+}
+
+function findDirectDoc(node: SysmlCstNode, fullSource: string): string | undefined {
+  const docNodes = collectDirectMemberNodes(node, DOC_NODE_TYPES);
+  for (const d of docNodes) {
+    const text = getDocumentationCommentText(d, fullSource);
+    if (text) return text;
+  }
+  return undefined;
+}
+
+function findDocFromLeaves(leaves: readonly CstLeaf[], fullSource: string): string | undefined {
+  for (const leaf of leaves) {
+    if (leaf.text === "doc") {
+      let pos = leaf.end;
+      while (pos < fullSource.length) {
+        const c = fullSource.charCodeAt(pos);
+        if (c === 32 || c === 9 || c === 10 || c === 13) pos++;
+        else break;
+      }
+      if (fullSource.startsWith("/*", pos)) {
+        const endIdx = fullSource.indexOf("*/", pos + 2);
+        if (endIdx !== -1) return collapseWhitespace(fullSource.slice(pos + 2, endIdx));
+      }
+    }
+  }
+  return undefined;
+}
+
+function getBodyLeaves(defNode: SysmlCstNode): CstLeaf[] {
+  const leaves = collectCstLeaves(defNode);
+  const firstBrace = leaves.findIndex((l) => l.text === "{");
+  if (firstBrace === -1) return [];
+  for (let i = leaves.length - 1; i > firstBrace; i--) {
+    if (leaves[i]!.text === "}") {
+      return leaves.slice(firstBrace + 1, i);
+    }
+  }
+  return leaves.slice(firstBrace + 1);
+}
+
+function findMatchingBraceLeaf(leaves: readonly CstLeaf[], openIdx: number): number {
+  let depth = 0;
+  for (let i = openIdx; i < leaves.length; i++) {
+    if (leaves[i]!.text === "{") depth++;
+    else if (leaves[i]!.text === "}") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return leaves.length - 1;
+}
+
+function extractAttributeUsageFromCst(attrNode: SysmlCstNode, fullSource: string): ParsedAttr | null {
+  const name = findCstChildren(attrNode, "Name").pop()?.text.trim();
+  if (!name) return null;
+  const ft = findCstChildren(attrNode, "FeatureTyping")[0];
+  const rawType = ft ? extractLastNameSegment(ft) : "Real";
+  let defaultVal: string | undefined;
+  const fv = findCstChildren(attrNode, "FeatureValue")[0];
+  if (fv) {
+    const fvLeaves = collectCstLeaves(fv);
+    const eqIdx = fvLeaves.findIndex((l) => l.text === "=" || l.text === ":=");
+    if (eqIdx !== -1) {
+      let endIdx = eqIdx + 1;
+      while (endIdx < fvLeaves.length && fvLeaves[endIdx]!.text !== ";" && fvLeaves[endIdx]!.text !== "{") {
+        endIdx++;
+      }
+      const valText = joinLeavesWithSourceGaps(fvLeaves.slice(eqIdx + 1, endIdx), fullSource);
+      if (valText.length > 0) defaultVal = valText;
+    }
+  }
+  return { name, type: rawType || "Real", defaultVal };
+}
+
+function inferPortDirectionFallback(portName: string): "in" | "out" | undefined {
+  const lower = portName.toLowerCase();
+  if (lower.endsWith("in") || lower.endsWith("input")) return "in";
+  if (
+    portName.startsWith("in") &&
+    portName.length > 2 &&
+    ((portName.charCodeAt(2) >= 65 && portName.charCodeAt(2) <= 90) || portName[2] === "_")
+  ) {
+    return "in";
+  }
+  if (lower.endsWith("out") || lower.endsWith("output")) return "out";
+  if (
+    portName.startsWith("out") &&
+    portName.length > 3 &&
+    ((portName.charCodeAt(3) >= 65 && portName.charCodeAt(3) <= 90) || portName[3] === "_")
+  ) {
+    return "out";
+  }
+  return undefined;
+}
+
+function extractPortUsageFromCst(portNode: SysmlCstNode): ParsedPort | null {
+  const pName = findCstChildren(portNode, "Name").pop()?.text.trim();
+  if (!pName) return null;
+  const ft = findCstChildren(portNode, "FeatureTyping")[0];
+  const pType = ft ? extractLastNameSegment(ft) : pName;
+  const leaves = collectCstLeaves(portNode);
+  const firstKw = leaves[0]?.text;
+  let dir: "in" | "out" | "inout" | undefined =
+    firstKw === "in" || firstKw === "out" || firstKw === "inout" ? firstKw : undefined;
+  if (!dir) dir = inferPortDirectionFallback(pName);
+  return { name: pName, portType: pType || pName, direction: dir };
+}
+
+function extractPartUsageFromCst(partNode: SysmlCstNode, fullSource: string): ParsedSubpart | null {
+  const usageName = findCstChildren(partNode, "Name").pop()?.text.trim();
+  if (!usageName) return null;
+  const ft = findCstChildren(partNode, "FeatureTyping")[0];
+  const partType = ft ? extractLastNameSegment(ft) : "";
+  if (!partType) return null;
+  let multiplicity: string | undefined;
+  const multNode = findCstChildren(partNode, "OwnedMultiplicity")[0];
+  if (multNode) {
+    const multLeaves = collectCstLeaves(multNode);
+    if (multLeaves.length >= 2 && multLeaves[0]!.text === "[" && multLeaves[multLeaves.length - 1]!.text === "]") {
+      multiplicity = joinLeavesWithSourceGaps(multLeaves.slice(1, -1), fullSource);
+    }
+  }
+  return { usageName, partType, multiplicity };
+}
+
+function extractConnectionUsageFromCst(connNode: SysmlCstNode): ParsedConnection | null {
+  const leaves = collectCstLeaves(connNode);
+  const endIdx = leaves.findIndex((l) => l.text === ";" || l.text === "{");
+  const header = endIdx === -1 ? leaves : leaves.slice(0, endIdx);
+  const toIdx = header.findIndex((l) => l.text === "to");
+  if (toIdx < 3) return null;
+
+  const left = header.slice(0, toIdx);
+  const right = header.slice(toIdx + 1);
+  if (
+    left.length < 3 ||
+    right.length < 3 ||
+    left[left.length - 2]!.text !== "." ||
+    right[1]!.text !== "." ||
+    !isWordIdentStr(left[left.length - 3]!.text) ||
+    !isWordIdentStr(left[left.length - 1]!.text) ||
+    !isWordIdentStr(right[0]!.text) ||
+    !isWordIdentStr(right[2]!.text)
+  ) {
+    return null;
+  }
+
+  let connName: string | undefined;
+  const beforeChainIdx = left.length - 4;
+  if (beforeChainIdx >= 0) {
+    const cand = left[beforeChainIdx]!.text;
+    if (isWordIdentStr(cand) && cand !== "connect" && cand !== "connection") {
+      connName = cand;
+    }
+  }
+
+  return {
+    name: connName,
+    sourcePart: left[left.length - 3]!.text,
+    sourcePort: left[left.length - 1]!.text,
+    targetPart: right[0]!.text,
+    targetPort: right[2]!.text,
+  };
+}
+
+function matchRelOpAt(leaves: readonly CstLeaf[], idx: number): { op: string; nextIdx: number; endIdx: number } | null {
+  const cur = leaves[idx]!.text;
+  if (cur === "<=" || cur === ">=" || cur === "==" || cur === "!=") {
+    return { op: cur, nextIdx: idx + 1, endIdx: idx };
+  }
+  const next = leaves[idx + 1];
+  if (next && leaves[idx]!.end === next.start) {
+    const pair = cur + next.text;
+    if (pair === "<=" || pair === ">=" || pair === "==" || pair === "!=") {
+      return { op: pair, nextIdx: idx + 2, endIdx: idx + 1 };
+    }
+  }
+  if (cur === "<" || cur === ">") {
+    return { op: cur, nextIdx: idx + 1, endIdx: idx };
+  }
+  return null;
+}
+
+function normalizeClauseLeaves(
+  rawLeaves: readonly CstLeaf[],
+  fullSource: string,
+  constMap: ReadonlyMap<string, string>,
+): string | null {
+  let start = 0;
+  let end = rawLeaves.length;
+  while (start < end && rawLeaves[start]!.text === ";") start++;
+  while (end > start && rawLeaves[end - 1]!.text === ";") end--;
+  if (start >= end) return null;
+
+  const stmt = rawLeaves.slice(start, end);
+  if (IGNORED_CLAUSE_STARTERS.has(stmt[0]!.text)) return null;
+
+  const segments: { text: string; origStart: number; origEnd: number; forceSpaceBefore?: boolean }[] = [];
+  let hasRelOp = false;
+  let k = 0;
+  let expectRhsConst = false;
+
+  while (k < stmt.length) {
+    const cur = stmt[k]!;
+
+    // Collapse qualified reference `pkg::...::ident` -> `constMap.get(last) ?? last`
+    if (isWordIdentStr(cur.text) && stmt[k + 1]?.text === "::" && isWordIdentStr(stmt[k + 2]?.text)) {
+      let j = k + 2;
+      while (j + 2 < stmt.length && stmt[j + 1]?.text === "::" && isWordIdentStr(stmt[j + 2]?.text)) {
+        j += 2;
+      }
+      const lastIdent = stmt[j]!.text;
+      const resolved = constMap.get(lastIdent) ?? lastIdent;
+      segments.push({
+        text: resolved,
+        origStart: cur.start,
+        origEnd: stmt[j]!.end,
+        forceSpaceBefore: expectRhsConst && constMap.has(lastIdent),
+      });
+      expectRhsConst = false;
+      k = j + 1;
+      continue;
+    }
+
+    const rel = matchRelOpAt(stmt, k);
+    if (rel) {
+      hasRelOp = true;
+      segments.push({
+        text: rel.op,
+        origStart: cur.start,
+        origEnd: stmt[rel.endIdx]!.end,
+      });
+      expectRhsConst = true;
+      k = rel.nextIdx;
+      continue;
+    }
+
+    if (expectRhsConst && isWordIdentStr(cur.text) && stmt[k + 1]?.text !== "." && stmt[k + 1]?.text !== "(") {
+      const val = constMap.get(cur.text);
+      if (val !== undefined) {
+        segments.push({
+          text: val,
+          origStart: cur.start,
+          origEnd: cur.end,
+          forceSpaceBefore: true,
+        });
+        expectRhsConst = false;
+        k++;
         continue;
       }
     }
-    out += src[i++];
+
+    expectRhsConst = false;
+    segments.push({ text: cur.text, origStart: cur.start, origEnd: cur.end });
+    k++;
   }
-  return out;
-}
 
-function extractDocComment(body: string): string | undefined {
-  const docIdx = body.search(/\bdoc\s*\/\*/);
-  if (docIdx === -1) return undefined;
-  const start = body.indexOf("/*", docIdx) + 2;
-  const end = body.indexOf("*/", start);
-  if (end === -1) return undefined;
-  return body.slice(start, end).replace(/\s+/g, " ").trim();
-}
+  if (!hasRelOp || segments.length === 0) return null;
 
-function extractAttributesFromBody(body: string): ParsedAttr[] {
-  const clean = stripCommentsPreserveStructure(body);
-  const attrs: ParsedAttr[] = [];
-  const attrRegex =
-    /\b(?:(in|out|inout)\s+)?attribute\s+(?!def\b)([A-Za-z_]\w*)(?:\s*:\s*([A-Za-z_][\w:]*))?(?:\s*=\s*([^;{\s\r\n](?:[^;{\r\n]*[^;{\s\r\n])?))?\s*;/g;
-  let m: RegExpExecArray | null;
-  while ((m = attrRegex.exec(clean)) !== null) {
-    const rawType = m[3] ? m[3].split("::").pop()! : "Real";
-    attrs.push({
-      name: m[2]!,
-      type: rawType,
-      defaultVal: m[4]?.trim(),
-    });
+  let rendered = segments[0]!.text;
+  for (let i = 1; i < segments.length; i++) {
+    const prev = segments[i - 1]!;
+    const seg = segments[i]!;
+    const hasGap = seg.origStart > prev.origEnd && fullSource.slice(prev.origEnd, seg.origStart).length > 0;
+    rendered += seg.forceSpaceBefore || hasGap ? ` ${seg.text}` : seg.text;
   }
-  return attrs;
+  rendered = rendered.trim();
+  while (rendered.endsWith(";")) rendered = rendered.slice(0, -1).trimEnd();
+  return rendered.length > 0 ? rendered : null;
 }
 
-function extractClausesFromBody(
-  body: string,
-  constMap: Map<string, string>,
+function extractClausesFromBodyLeaves(
+  leaves: readonly CstLeaf[],
+  fullSource: string,
+  constMap: ReadonlyMap<string, string>,
+  implicitConstraintBody = false,
 ): { assumptions: string[]; guarantees: string[] } {
-  const clean = stripCommentsPreserveStructure(body);
   const assumptions: string[] = [];
   const guarantees: string[] = [];
 
-  const normalizeClause = (raw: string): string => {
-    let expr = raw.replace(/\s+/g, " ").trim();
-    while (expr.endsWith(";")) {
-      expr = expr.slice(0, -1).trimEnd();
+  const pushSplitLeaves = (target: string[], sliceLeaves: readonly CstLeaf[]) => {
+    let cur: CstLeaf[] = [];
+    let parenDepth = 0;
+    let braceDepth = 0;
+    const flush = () => {
+      if (cur.length === 0) return;
+      const clause = normalizeClauseLeaves(cur, fullSource, constMap);
+      if (clause && !target.includes(clause)) {
+        target.push(clause);
+      }
+      cur = [];
+    };
+
+    for (let i = 0; i < sliceLeaves.length; i++) {
+      const lf = sliceLeaves[i]!;
+      const prev = i > 0 ? sliceLeaves[i - 1]! : undefined;
+      if (parenDepth === 0 && braceDepth === 0 && prev && fullSource.slice(prev.end, lf.start).includes("\n")) {
+        flush();
+      }
+      if (lf.text === "(") parenDepth++;
+      else if (lf.text === ")") parenDepth = Math.max(0, parenDepth - 1);
+      else if (lf.text === "{") braceDepth++;
+      else if (lf.text === "}") braceDepth = Math.max(0, braceDepth - 1);
+
+      if (lf.text === ";" && parenDepth === 0 && braceDepth === 0) {
+        flush();
+        continue;
+      }
+      cur.push(lf);
     }
-    // Normalize qualified references like cell::T or system::airflow::T_outlet
-    expr = expr.replace(/\b(?:[A-Za-z_]\w*::)+([A-Za-z_]\w*)\b/g, (_full, last) => {
-      return constMap.get(last) ?? last;
-    });
-    // Substitute known constant identifiers on RHS of comparisons
-    expr = expr.replace(/(<=|>=|==|!=|<|>)\s*([A-Za-z_]\w*)\b/g, (full, op, ident) => {
-      const val = constMap.get(ident);
-      return val !== undefined ? `${op} ${val}` : full;
-    });
-    return expr;
+    flush();
   };
 
-  const pushSplitClauses = (target: string[], rawBlock: string) => {
-    const parts = rawBlock
-      .split(/[;\n]+/)
-      .map((s) => normalizeClause(s))
-      .filter((s) => s.length > 0 && !/^(?:doc|attribute|subject|objective|port|part|ref|verify|satisfy)\b/.test(s));
-    for (const p of parts) {
-      if (/(?:<=|>=|==|!=|<|>)/.test(p) && !target.includes(p)) {
-        target.push(p);
+  if (implicitConstraintBody) {
+    pushSplitLeaves(guarantees, leaves);
+    return { assumptions, guarantees };
+  }
+
+  for (let i = 0; i < leaves.length; i++) {
+    const lf = leaves[i]!;
+    const prev = i > 0 ? leaves[i - 1] : undefined;
+    const atBoundary =
+      !prev ||
+      prev.text === ";" ||
+      prev.text === "{" ||
+      prev.text === "}" ||
+      fullSource.slice(prev.end, lf.start).includes("\n");
+    if (!atBoundary) continue;
+
+    const kw = lf.text;
+    if (kw === "assume" || kw === "require" || kw === "guarantee" || kw === "assert") {
+      const target = kw === "assume" ? assumptions : guarantees;
+      const next = leaves[i + 1];
+      let openBraceIdx = -1;
+      if (next?.text === "{") {
+        openBraceIdx = i + 1;
+      } else if (next?.text === "constraint") {
+        if (leaves[i + 2]?.text === "{") openBraceIdx = i + 2;
+        else if (isWordIdentStr(leaves[i + 2]?.text) && leaves[i + 3]?.text === "{") openBraceIdx = i + 3;
+      }
+
+      if (openBraceIdx !== -1) {
+        const closeIdx = findMatchingBraceLeaf(leaves, openBraceIdx);
+        pushSplitLeaves(target, leaves.slice(openBraceIdx + 1, closeIdx));
+        i = closeIdx;
+        continue;
+      }
+
+      if (kw !== "assert" && next?.text !== "constraint") {
+        let j = i + 1;
+        while (j < leaves.length) {
+          const cur = leaves[j]!;
+          if (cur.text === ";" || cur.text === "{" || cur.text === "}") break;
+          if (j > i + 1 && fullSource.slice(leaves[j - 1]!.end, cur.start).includes("\n")) break;
+          j++;
+        }
+        if (j < leaves.length && leaves[j]!.text === ";") {
+          pushSplitLeaves(target, leaves.slice(i + 1, j));
+          i = j;
+        }
+      }
+      continue;
+    }
+
+    if (kw === "constraint" && leaves[i + 1]?.text !== "def") {
+      let openBraceIdx = -1;
+      if (leaves[i + 1]?.text === "{") openBraceIdx = i + 1;
+      else if (isWordIdentStr(leaves[i + 1]?.text) && leaves[i + 2]?.text === "{") openBraceIdx = i + 2;
+      if (openBraceIdx !== -1) {
+        const closeIdx = findMatchingBraceLeaf(leaves, openBraceIdx);
+        pushSplitLeaves(guarantees, leaves.slice(openBraceIdx + 1, closeIdx));
+        i = closeIdx;
       }
     }
-  };
-
-  // 1. Braced assume constraint { ... }
-  const assumeBraceRegex = /\bassume\s+(?:constraint\s*)?\{/g;
-  let m: RegExpExecArray | null;
-  while ((m = assumeBraceRegex.exec(clean)) !== null) {
-    const openPos = m.index + m[0].length - 1;
-    const block = extractBalancedBlock(clean, openPos);
-    pushSplitClauses(assumptions, block.body);
-    assumeBraceRegex.lastIndex = block.endPos;
-  }
-
-  // 2. Single-line assume <expr>;
-  const assumeLineRegex = /\bassume\s+(?!constraint\b)([^;{\n]+);/g;
-  while ((m = assumeLineRegex.exec(clean)) !== null) {
-    pushSplitClauses(assumptions, m[1]!);
-  }
-
-  // 3. Braced require / guarantee / assert constraint { ... }
-  const reqBraceRegex = /\b(?:require|guarantee|assert)\s+(?:constraint\s*)?\{/g;
-  while ((m = reqBraceRegex.exec(clean)) !== null) {
-    const openPos = m.index + m[0].length - 1;
-    const block = extractBalancedBlock(clean, openPos);
-    pushSplitClauses(guarantees, block.body);
-    reqBraceRegex.lastIndex = block.endPos;
-  }
-
-  // 4. Single-line require / guarantee <expr>;
-  const reqLineRegex = /\b(?:require|guarantee)\s+(?!constraint\b)([^;{\n]+);/g;
-  while ((m = reqLineRegex.exec(clean)) !== null) {
-    pushSplitClauses(guarantees, m[1]!);
-  }
-
-  // 5. Named or anonymous constraint <name>? { ... } inside analysis/part/req
-  const constraintBraceRegex =
-    /\b(?:(assume|require|guarantee|assert)\s+)?constraint(?:\s+(?!def\b)[A-Za-z_]\w*)?\s*\{/g;
-  while ((m = constraintBraceRegex.exec(clean)) !== null) {
-    const isPrefixed = !!m[1];
-    const openPos = m.index + m[0].length - 1;
-    const block = extractBalancedBlock(clean, openPos);
-    if (!isPrefixed) {
-      pushSplitClauses(guarantees, block.body);
-    }
-    constraintBraceRegex.lastIndex = block.endPos;
   }
 
   return { assumptions, guarantees };
+}
+
+function isRangeInsideAny(start: number, end: number, spans: readonly [number, number][]): boolean {
+  for (const [s, e] of spans) {
+    if (start >= s && end <= e) return true;
+  }
+  return false;
+}
+
+function extractModelDefsFromCst(root: SysmlCstNode, sysmlSource: string) {
+  // 0. Collect global numeric attribute defaults for symbolic constant substitution
+  const constMap = new Map<string, string>();
+  for (const attrNode of findCstDescendants(root, "AttributeUsage")) {
+    const parsed = extractAttributeUsageFromCst(attrNode, sysmlSource);
+    if (parsed?.defaultVal && isUnsignedNumericLiteral(parsed.defaultVal)) {
+      constMap.set(parsed.name, parsed.defaultVal);
+    }
+  }
+
+  // 1. Port Definitions (port def <Name> { ... })
+  const portDefs = new Map<string, ParsedAttr[]>();
+  for (const portDefNode of findCstDescendants(root, "PortDefinition")) {
+    const { name } = findDefNameAndSuper(portDefNode);
+    if (!name) continue;
+    const attrs = collectDirectMemberNodes(portDefNode, ATTR_USAGE_TYPES)
+      .map((a) => extractAttributeUsageFromCst(a, sysmlSource))
+      .filter((a): a is ParsedAttr => a !== null);
+    portDefs.set(name, attrs);
+  }
+
+  // 2. Use Case Definitions
+  const actorTypes = new Set<string>();
+  const useCases: {
+    name: string;
+    doc?: string | undefined;
+    subject?: { name: string; type: string } | undefined;
+    actors: { name: string; type: string }[];
+    includes: { name: string; type: string }[];
+  }[] = [];
+  for (const ucNode of findCstDescendants(root, "UseCaseDefinition")) {
+    const { name } = findDefNameAndSuper(ucNode);
+    if (!name) continue;
+    const subjNode = collectDirectMemberNodes(ucNode, SUBJECT_USAGE_TYPES)[0];
+    let subject: { name: string; type: string } | undefined;
+    if (subjNode) {
+      const sName = findCstChildren(subjNode, "Name").pop()?.text.trim();
+      const sType = extractLastNameSegment(findCstChildren(subjNode, "FeatureTyping")[0]);
+      if (sName && sType) subject = { name: sName, type: sType };
+    }
+    const actors: { name: string; type: string }[] = [];
+    for (const actNode of collectDirectMemberNodes(ucNode, ACTOR_USAGE_TYPES)) {
+      const aName = findCstChildren(actNode, "Name").pop()?.text.trim();
+      const aType = extractLastNameSegment(findCstChildren(actNode, "FeatureTyping")[0]);
+      if (aName && aType) {
+        actorTypes.add(aType);
+        actors.push({ name: aName, type: aType });
+      }
+    }
+    const includes: { name: string; type: string }[] = [];
+    for (const incNode of collectDirectMemberNodes(ucNode, INCLUDE_UC_TYPES)) {
+      const iName = findCstChildren(incNode, "Name").pop()?.text.trim();
+      const iType = extractLastNameSegment(findCstChildren(incNode, "FeatureTyping")[0]);
+      if (iName && iType) includes.push({ name: iName, type: iType });
+    }
+    useCases.push({
+      name,
+      doc: findDirectDoc(ucNode, sysmlSource),
+      subject,
+      actors,
+      includes,
+    });
+  }
+
+  // 3. Part Definitions (part def <Name> { ... })
+  const partDefs = new Map<string, ParsedPartDef>();
+  const parsedDefSpans: [number, number][] = [];
+  const collectDefSpans = (types: readonly string[]) => {
+    for (const t of types) {
+      for (const n of findCstDescendants(root, t)) {
+        if (n.startIndex !== undefined && n.endIndex !== undefined) {
+          parsedDefSpans.push([n.startIndex, n.endIndex]);
+        }
+      }
+    }
+  };
+  collectDefSpans([
+    "PartDefinition",
+    "PortDefinition",
+    "UseCaseDefinition",
+    "RequirementDefinition",
+    "AnalysisCaseDefinition",
+    "ConstraintDefinition",
+    "StateDefinition",
+    "ActionDefinition",
+  ]);
+
+  for (const pdNode of findCstDescendants(root, "PartDefinition")) {
+    const { name, superType } = findDefNameAndSuper(pdNode);
+    if (!name) continue;
+    const attributes = collectDirectMemberNodes(pdNode, ATTR_USAGE_TYPES)
+      .map((a) => extractAttributeUsageFromCst(a, sysmlSource))
+      .filter((a): a is ParsedAttr => a !== null);
+    const ports = collectDirectMemberNodes(pdNode, PORT_USAGE_TYPES)
+      .map((p) => extractPortUsageFromCst(p))
+      .filter((p): p is ParsedPort => p !== null);
+    const subparts = collectDirectMemberNodes(pdNode, PART_USAGE_TYPES)
+      .map((p) => extractPartUsageFromCst(p, sysmlSource))
+      .filter((p): p is ParsedSubpart => p !== null);
+    const connections = collectDirectMemberNodes(pdNode, CONN_USAGE_TYPES)
+      .map((c) => extractConnectionUsageFromCst(c))
+      .filter((c): c is ParsedConnection => c !== null);
+    const clauses = extractClausesFromBodyLeaves(getBodyLeaves(pdNode), sysmlSource, constMap);
+    const isActor =
+      actorTypes.has(name) &&
+      attributes.length === 0 &&
+      ports.length === 0 &&
+      subparts.length === 0 &&
+      clauses.assumptions.length === 0 &&
+      clauses.guarantees.length === 0;
+    partDefs.set(name, {
+      name,
+      superType,
+      doc: findDirectDoc(pdNode, sysmlSource) ?? findDocFromLeaves(getBodyLeaves(pdNode), sysmlSource),
+      attributes,
+      ports,
+      subparts,
+      connections,
+      explicitAssumptions: clauses.assumptions,
+      explicitGuarantees: clauses.guarantees,
+      isActor,
+    });
+  }
+
+  // Standalone `contract <Name> [:> <Super>] { ... }` shorthand outside formal *Definition blocks
+  const allRootLeaves = collectCstLeaves(root);
+  const allAttrNodes = findCstDescendants(root, "AttributeUsage");
+  const allPortNodes = findCstDescendants(root, "PortUsage");
+  const allPartNodes = findCstDescendants(root, "PartUsage");
+  const allConnNodes = findCstDescendants(root, "ConnectionUsage");
+
+  for (let i = 0; i < allRootLeaves.length; i++) {
+    const lf = allRootLeaves[i]!;
+    if (lf.text !== "contract") continue;
+    if (isRangeInsideAny(lf.start, lf.end, parsedDefSpans)) continue;
+    const prev = i > 0 ? allRootLeaves[i - 1] : undefined;
+    const atBoundary =
+      !prev ||
+      prev.text === ";" ||
+      prev.text === "{" ||
+      prev.text === "}" ||
+      prev.text === "abstract" ||
+      prev.text === "variation" ||
+      sysmlSource.slice(prev.end, lf.start).includes("\n");
+    if (!atBoundary) continue;
+
+    const nameLeaf = allRootLeaves[i + 1];
+    if (!nameLeaf || !isWordIdentStr(nameLeaf.text)) continue;
+    let cursor = i + 2;
+    let superType: string | undefined;
+    if (allRootLeaves[cursor]?.text === ":>") {
+      cursor++;
+      while (
+        cursor < allRootLeaves.length &&
+        allRootLeaves[cursor]!.text !== "{" &&
+        allRootLeaves[cursor]!.text !== ";"
+      ) {
+        if (isWordIdentStr(allRootLeaves[cursor]!.text)) superType = allRootLeaves[cursor]!.text;
+        cursor++;
+      }
+    }
+    const delim = allRootLeaves[cursor];
+    if (!delim || (delim.text !== "{" && delim.text !== ";")) continue;
+
+    let bodyLeaves: CstLeaf[] = [];
+    let bodyStart = delim.start;
+    let bodyEnd = delim.end;
+    if (delim.text === "{") {
+      const closeIdx = findMatchingBraceLeaf(allRootLeaves, cursor);
+      bodyLeaves = allRootLeaves.slice(cursor + 1, closeIdx);
+      bodyEnd = allRootLeaves[closeIdx]!.end;
+      i = closeIdx;
+    } else {
+      i = cursor;
+    }
+
+    const inSpan = (n: SysmlCstNode) =>
+      n.startIndex !== undefined && n.endIndex !== undefined && n.startIndex >= bodyStart && n.endIndex <= bodyEnd;
+    const attributes = allAttrNodes
+      .filter(inSpan)
+      .map((a) => extractAttributeUsageFromCst(a, sysmlSource))
+      .filter((a): a is ParsedAttr => a !== null);
+    const ports = allPortNodes
+      .filter(inSpan)
+      .map((p) => extractPortUsageFromCst(p))
+      .filter((p): p is ParsedPort => p !== null);
+    const subparts = allPartNodes
+      .filter(inSpan)
+      .map((p) => extractPartUsageFromCst(p, sysmlSource))
+      .filter((p): p is ParsedSubpart => p !== null);
+    const connections = allConnNodes
+      .filter(inSpan)
+      .map((c) => extractConnectionUsageFromCst(c))
+      .filter((c): c is ParsedConnection => c !== null);
+    const clauses = extractClausesFromBodyLeaves(bodyLeaves, sysmlSource, constMap);
+    partDefs.set(nameLeaf.text, {
+      name: nameLeaf.text,
+      superType,
+      doc: findDocFromLeaves(bodyLeaves, sysmlSource),
+      attributes,
+      ports,
+      subparts,
+      connections,
+      explicitAssumptions: clauses.assumptions,
+      explicitGuarantees: clauses.guarantees,
+      isActor: false,
+    });
+  }
+
+  // 4. Requirement Definitions
+  const reqDefs = new Map<string, ParsedReqDef>();
+  for (const reqNode of findCstDescendants(root, "RequirementDefinition")) {
+    const { name } = findDefNameAndSuper(reqNode);
+    if (!name) continue;
+    const subjNode = collectDirectMemberNodes(reqNode, SUBJECT_USAGE_TYPES)[0];
+    const subjectType = subjNode ? extractLastNameSegment(findCstChildren(subjNode, "FeatureTyping")[0]) : undefined;
+    const attributes = collectDirectMemberNodes(reqNode, ATTR_USAGE_TYPES)
+      .map((a) => extractAttributeUsageFromCst(a, sysmlSource))
+      .filter((a): a is ParsedAttr => a !== null);
+    const bodyLeaves = getBodyLeaves(reqNode);
+    const clauses = extractClausesFromBodyLeaves(bodyLeaves, sysmlSource, constMap);
+    reqDefs.set(name, {
+      name,
+      doc: findDirectDoc(reqNode, sysmlSource) ?? findDocFromLeaves(bodyLeaves, sysmlSource),
+      subjectType: subjectType || undefined,
+      attributes,
+      assumptions: clauses.assumptions,
+      guarantees: clauses.guarantees,
+    });
+  }
+
+  // 5. Analysis & Constraint Definitions
+  const analysisDefs: {
+    name: string;
+    subjectType?: string | undefined;
+    objectiveReq?: string | undefined;
+    guarantees: string[];
+  }[] = [];
+  for (const anNode of findCstDescendants(root, "AnalysisCaseDefinition")) {
+    const { name } = findDefNameAndSuper(anNode);
+    if (!name) continue;
+    const subjNode = collectDirectMemberNodes(anNode, SUBJECT_USAGE_TYPES)[0];
+    const subjectType = subjNode ? extractLastNameSegment(findCstChildren(subjNode, "FeatureTyping")[0]) : undefined;
+    const objNode = collectDirectMemberNodes(anNode, OBJECTIVE_REQ_TYPES)[0];
+    const objFt = objNode ? findCstChildren(objNode, "FeatureTyping")[0] : undefined;
+    const objectiveReq = objFt ? extractLastNameSegment(objFt) : undefined;
+    const clauses = extractClausesFromBodyLeaves(getBodyLeaves(anNode), sysmlSource, constMap);
+    analysisDefs.push({
+      name,
+      subjectType: subjectType || undefined,
+      objectiveReq: objectiveReq || undefined,
+      guarantees: clauses.guarantees,
+    });
+    if (subjectType && partDefs.has(subjectType)) {
+      const pd = partDefs.get(subjectType)!;
+      for (const g of clauses.guarantees) {
+        if (!pd.explicitGuarantees.includes(g)) pd.explicitGuarantees.push(g);
+      }
+    }
+    if (objectiveReq && reqDefs.has(objectiveReq)) {
+      const rd = reqDefs.get(objectiveReq)!;
+      for (const g of clauses.guarantees) {
+        if (!rd.guarantees.includes(g)) rd.guarantees.push(g);
+      }
+    }
+  }
+
+  const constraintDefs: { name: string; guarantees: string[] }[] = [];
+  for (const cdNode of findCstDescendants(root, "ConstraintDefinition")) {
+    const { name } = findDefNameAndSuper(cdNode);
+    if (!name) continue;
+    const clauses = extractClausesFromBodyLeaves(getBodyLeaves(cdNode), sysmlSource, constMap, true);
+    constraintDefs.push({ name, guarantees: clauses.guarantees });
+  }
+
+  // 6. Top-level part usages & satisfy links
+  const globalUsageToType = new Map<string, string>();
+  for (const pu of allPartNodes) {
+    const parsed = extractPartUsageFromCst(pu, sysmlSource);
+    if (parsed) globalUsageToType.set(parsed.usageName, parsed.partType);
+  }
+
+  const satisfiedReqsByPartType = new Map<string, string[]>();
+  const satisfyLinks: { reqName: string; targetName: string; targetType: string }[] = [];
+  for (const satNode of findCstDescendants(root, "SatisfyRequirementUsage")) {
+    const leaves = collectCstLeaves(satNode);
+    const byIdx = leaves.findIndex((l) => l.text === "by");
+    if (byIdx === -1) continue;
+    let reqName = "";
+    for (let k = byIdx - 1; k >= 0; k--) {
+      if (isWordIdentStr(leaves[k]!.text) && leaves[k]!.text !== "requirement" && leaves[k]!.text !== "satisfy") {
+        reqName = leaves[k]!.text;
+        break;
+      }
+    }
+    let targetUsage = "";
+    for (let k = byIdx + 1; k < leaves.length; k++) {
+      const t = leaves[k]!.text;
+      if (t === ";" || t === "{") break;
+      if (isWordIdentStr(t)) targetUsage = t;
+    }
+    if (!reqName || !targetUsage) continue;
+    const resolvedType = globalUsageToType.get(targetUsage) ?? targetUsage;
+    const list = satisfiedReqsByPartType.get(resolvedType) ?? [];
+    if (!list.includes(reqName)) list.push(reqName);
+    satisfiedReqsByPartType.set(resolvedType, list);
+    satisfyLinks.push({ reqName, targetName: targetUsage, targetType: resolvedType });
+  }
+
+  for (const [reqName, rd] of reqDefs.entries()) {
+    if (rd.subjectType) {
+      const list = satisfiedReqsByPartType.get(rd.subjectType) ?? [];
+      if (!list.includes(reqName)) list.push(reqName);
+      satisfiedReqsByPartType.set(rd.subjectType, list);
+    }
+  }
+
+  return {
+    portDefs,
+    useCases,
+    partDefs,
+    reqDefs,
+    analysisDefs,
+    constraintDefs,
+    satisfiedReqsByPartType,
+    satisfyLinks,
+  };
+}
+
+function extractStatesAndActionsFromCst(root: SysmlCstNode, fullSource: string) {
+  const states: string[] = [];
+  const transitions: { name: string; from: string; to: string; guard?: string | undefined; stateMachine?: string }[] =
+    [];
+
+  for (const smNode of findCstDescendants(root, "StateDefinition")) {
+    const { name: smName } = findDefNameAndSuper(smNode);
+    if (!smName) continue;
+
+    for (const stNode of findCstDescendants(smNode, "StateUsage")) {
+      const stName = findCstChildren(stNode, "Name").pop()?.text.trim();
+      if (stName && !states.includes(stName)) states.push(stName);
+    }
+
+    for (const trNode of findCstDescendants(smNode, "TransitionUsage")) {
+      const allLeaves = collectCstLeaves(trNode);
+      const stopIdx = allLeaves.findIndex((l) => l.text === ";" || l.text === "{");
+      const leaves = stopIdx === -1 ? allLeaves : allLeaves.slice(0, stopIdx);
+      const firstIdx = leaves.findIndex((l) => l.text === "first");
+      const thenIdx = leaves.findIndex((l) => l.text === "then");
+      if (firstIdx === -1 || thenIdx === -1 || thenIdx <= firstIdx) continue;
+
+      const tName = joinLeavesWithSourceGaps(leaves.slice(1, firstIdx), fullSource);
+      const ifIdx = leaves.findIndex((l, idx) => idx > firstIdx && idx < thenIdx && l.text === "if");
+      const acceptIdx = leaves.findIndex((l, idx) => idx > firstIdx && idx < thenIdx && l.text === "accept");
+      const doIdx = leaves.findIndex((l, idx) => idx > firstIdx && idx < thenIdx && l.text === "do");
+
+      let fromEnd = thenIdx;
+      if (ifIdx !== -1) fromEnd = Math.min(fromEnd, ifIdx);
+      if (acceptIdx !== -1) fromEnd = Math.min(fromEnd, acceptIdx);
+      if (doIdx !== -1) fromEnd = Math.min(fromEnd, doIdx);
+      const from = joinLeavesWithSourceGaps(leaves.slice(firstIdx + 1, fromEnd), fullSource);
+
+      let guard: string | undefined;
+      if (ifIdx !== -1) {
+        const guardEnd = doIdx > ifIdx && doIdx < thenIdx ? doIdx : thenIdx;
+        const gText = joinLeavesWithSourceGaps(leaves.slice(ifIdx + 1, guardEnd), fullSource);
+        if (gText) guard = gText;
+      }
+
+      const to = leaves[thenIdx + 1]?.text.trim() ?? "";
+      if (!from || !to) continue;
+      const resolvedName = tName || `${from}_to_${to}`;
+      if (!states.includes(from)) states.push(from);
+      if (!states.includes(to)) states.push(to);
+      transitions.push({ name: resolvedName, from, to, guard, stateMachine: smName });
+    }
+  }
+
+  const actionDefs: { name: string; inputs: ParsedAttr[]; outputs: ParsedAttr[] }[] = [];
+  for (const actNode of findCstDescendants(root, "ActionDefinition")) {
+    const { name } = findDefNameAndSuper(actNode);
+    if (!name) continue;
+    const inputs: ParsedAttr[] = [];
+    const outputs: ParsedAttr[] = [];
+    for (const pinNode of collectDirectMemberNodes(actNode, ACTION_PIN_TYPES)) {
+      const leaves = collectCstLeaves(pinNode);
+      const dir = leaves[0]?.text;
+      if (dir !== "in" && dir !== "out" && dir !== "inout") continue;
+      const pName = findCstChildren(pinNode, "Name").pop()?.text.trim();
+      if (!pName) continue;
+      const ft = findCstChildren(pinNode, "FeatureTyping")[0];
+      const pType = (ft ? extractLastNameSegment(ft) : "") || "Real";
+      if (dir === "in" || dir === "inout") inputs.push({ name: pName, type: pType });
+      if (dir === "out" || dir === "inout") outputs.push({ name: pName, type: pType });
+    }
+    actionDefs.push({ name, inputs, outputs });
+  }
+
+  return { states, transitions, actionDefs };
 }
 
 function inferAttributeConstraint(
@@ -1366,260 +2209,11 @@ export function extractSysML2ContractHierarchy(
   sysmlSource: string,
   options: { targetName?: string | undefined; scope?: number | undefined } = {},
 ): SysML2ContractHierarchyResult | null {
-  const cleanSource = stripCommentsPreserveStructure(sysmlSource);
+  const cstRoot = parseSysmlSource(sysmlSource);
+  if (!cstRoot) return null;
 
-  // 0. Collect global numeric attribute defaults for symbolic constant substitution
-  const constMap = new Map<string, string>();
-  const globalAttrRegex = /\battribute\s+([A-Za-z_]\w*)(?:\s*:\s*[A-Za-z_][\w:]*)?\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*;/g;
-  let gm: RegExpExecArray | null;
-  while ((gm = globalAttrRegex.exec(cleanSource)) !== null) {
-    constMap.set(gm[1]!, gm[2]!);
-  }
-
-  // 1. Parse Port Definitions (port def <Name> { ... })
-  const portDefs = new Map<string, ParsedAttr[]>();
-  const portDefRegex = /\bport\s+def\s+([A-Za-z_]\w*)\s*(?:\{|;)/g;
-  let pm: RegExpExecArray | null;
-  while ((pm = portDefRegex.exec(cleanSource)) !== null) {
-    const name = pm[1]!;
-    if (cleanSource[pm.index + pm[0].length - 1] === "{") {
-      const openPos = pm.index + pm[0].length - 1;
-      const block = extractBalancedBlock(sysmlSource, openPos);
-      portDefs.set(name, extractAttributesFromBody(block.body));
-      portDefRegex.lastIndex = block.endPos;
-    } else {
-      portDefs.set(name, []);
-    }
-  }
-
-  // 2. Parse Use Case Definitions to identify Actor types and interaction steps
-  const actorTypes = new Set<string>();
-  const useCases: {
-    name: string;
-    doc?: string | undefined;
-    subject?: { name: string; type: string } | undefined;
-    actors: { name: string; type: string }[];
-    includes: { name: string; type: string }[];
-  }[] = [];
-  const useCaseRegex = /\buse\s+case\s+def\s+([A-Za-z_]\w*)\s*\{/g;
-  let ucm: RegExpExecArray | null;
-  while ((ucm = useCaseRegex.exec(cleanSource)) !== null) {
-    const name = ucm[1]!;
-    const openPos = ucm.index + ucm[0].length - 1;
-    const block = extractBalancedBlock(sysmlSource, openPos);
-    const bodyClean = stripCommentsPreserveStructure(block.body);
-    const subjMatch = /\bsubject\s+([A-Za-z_]\w*)\s*:\s*([A-Za-z_][\w:]*)/.exec(bodyClean);
-    const actors: { name: string; type: string }[] = [];
-    const actorRegex = /\bactor\s+([A-Za-z_]\w*)\s*:\s*([A-Za-z_][\w:]*)/g;
-    let am: RegExpExecArray | null;
-    while ((am = actorRegex.exec(bodyClean)) !== null) {
-      const aType = am[2]!.split("::").pop()!;
-      actorTypes.add(aType);
-      actors.push({ name: am[1]!, type: aType });
-    }
-    const includes: { name: string; type: string }[] = [];
-    const incRegex = /\binclude\s+(?:use\s+case\s+)?([A-Za-z_]\w*)\s*:\s*([A-Za-z_][\w:]*)/g;
-    let im: RegExpExecArray | null;
-    while ((im = incRegex.exec(bodyClean)) !== null) {
-      includes.push({ name: im[1]!, type: im[2]!.split("::").pop()! });
-    }
-    useCases.push({
-      name,
-      doc: extractDocComment(block.body),
-      subject: subjMatch ? { name: subjMatch[1]!, type: subjMatch[2]!.split("::").pop()! } : undefined,
-      actors,
-      includes,
-    });
-    useCaseRegex.lastIndex = block.endPos;
-  }
-
-  // 3. Parse Part Definitions (part def <Name> { ... }) and standalone contract blocks
-  const partDefs = new Map<string, ParsedPartDef>();
-  const partDefRegex =
-    /\b(?:(?:abstract|variation)\s+)?(?:part\s+def|contract)\s+([A-Za-z_]\w*)(?:\s*:>\s*([A-Za-z_][\w:]*))?\s*(?:\{|;)/g;
-  let pdm: RegExpExecArray | null;
-  while ((pdm = partDefRegex.exec(cleanSource)) !== null) {
-    const name = pdm[1]!;
-    const superType = pdm[2]?.split("::").pop();
-    const isBrace = cleanSource[pdm.index + pdm[0].length - 1] === "{";
-    let body = "";
-    if (isBrace) {
-      const openPos = pdm.index + pdm[0].length - 1;
-      const block = extractBalancedBlock(sysmlSource, openPos);
-      body = block.body;
-      partDefRegex.lastIndex = block.endPos;
-    }
-
-    const bodyClean = stripCommentsPreserveStructure(body);
-    const attributes = extractAttributesFromBody(body);
-
-    const ports: ParsedPort[] = [];
-    const portRegex = /\b(?:(in|out|inout)\s+)?port\s+(?!def\b)([A-Za-z_]\w*)(?:\s*:\s*~?([A-Za-z_][\w:]*))?/g;
-    let prm: RegExpExecArray | null;
-    while ((prm = portRegex.exec(bodyClean)) !== null) {
-      const pName = prm[2]!;
-      const pType = prm[3] ? prm[3].split("::").pop()! : pName;
-      let dir = prm[1] as "in" | "out" | "inout" | undefined;
-      if (!dir) {
-        if (/(?:In|Input)$/i.test(pName) || /^in[A-Z_]/.test(pName)) dir = "in";
-        else if (/(?:Out|Output)$/i.test(pName) || /^out[A-Z_]/.test(pName)) dir = "out";
-      }
-      ports.push({ name: pName, portType: pType, direction: dir });
-    }
-
-    const subparts: ParsedSubpart[] = [];
-    const subpartRegex = /\bpart\s+(?!def\b)([A-Za-z_]\w*)\s*:\s*([A-Za-z_][\w:]*)(?:\s*\[([^\]]+)\])?/g;
-    let spm: RegExpExecArray | null;
-    while ((spm = subpartRegex.exec(bodyClean)) !== null) {
-      subparts.push({
-        usageName: spm[1]!,
-        partType: spm[2]!.split("::").pop()!,
-        multiplicity: spm[3]?.trim(),
-      });
-    }
-
-    const connections: ParsedConnection[] = [];
-    const connRegex =
-      /\bconnect\s+(?:([A-Za-z_]\w*)\s+)?([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s+to\s+([A-Za-z_]\w*)\.([A-Za-z_]\w*)/g;
-    let cm: RegExpExecArray | null;
-    while ((cm = connRegex.exec(bodyClean)) !== null) {
-      connections.push({
-        name: cm[1],
-        sourcePart: cm[2]!,
-        sourcePort: cm[3]!,
-        targetPart: cm[4]!,
-        targetPort: cm[5]!,
-      });
-    }
-
-    const clauses = extractClausesFromBody(body, constMap);
-    const isActor =
-      actorTypes.has(name) &&
-      attributes.length === 0 &&
-      ports.length === 0 &&
-      subparts.length === 0 &&
-      clauses.assumptions.length === 0 &&
-      clauses.guarantees.length === 0;
-
-    partDefs.set(name, {
-      name,
-      superType,
-      doc: extractDocComment(body),
-      attributes,
-      ports,
-      subparts,
-      connections,
-      explicitAssumptions: clauses.assumptions,
-      explicitGuarantees: clauses.guarantees,
-      isActor,
-    });
-  }
-
-  // 4. Parse Requirement Definitions (requirement def <Name> { ... })
-  const reqDefs = new Map<string, ParsedReqDef>();
-  const reqDefRegex = /\brequirement\s+def\s+([A-Za-z_]\w*)\s*\{/g;
-  let rdm: RegExpExecArray | null;
-  while ((rdm = reqDefRegex.exec(cleanSource)) !== null) {
-    const name = rdm[1]!;
-    const openPos = rdm.index + rdm[0].length - 1;
-    const block = extractBalancedBlock(sysmlSource, openPos);
-    const bodyClean = stripCommentsPreserveStructure(block.body);
-    const subjMatch = /\bsubject\s+[A-Za-z_]\w*\s*:\s*([A-Za-z_][\w:]*)/.exec(bodyClean);
-    const attributes = extractAttributesFromBody(block.body);
-    const clauses = extractClausesFromBody(block.body, constMap);
-    reqDefs.set(name, {
-      name,
-      doc: extractDocComment(block.body),
-      subjectType: subjMatch ? subjMatch[1]!.split("::").pop()! : undefined,
-      attributes,
-      assumptions: clauses.assumptions,
-      guarantees: clauses.guarantees,
-    });
-    reqDefRegex.lastIndex = block.endPos;
-  }
-
-  // 5. Parse Analysis Definitions (analysis def <Name> { ... }) & Constraint Definitions
-  const analysisDefs: {
-    name: string;
-    subjectType?: string | undefined;
-    objectiveReq?: string | undefined;
-    guarantees: string[];
-  }[] = [];
-  const analysisRegex = /\banalysis\s+def\s+([A-Za-z_]\w*)\s*\{/g;
-  let anm: RegExpExecArray | null;
-  while ((anm = analysisRegex.exec(cleanSource)) !== null) {
-    const name = anm[1]!;
-    const openPos = anm.index + anm[0].length - 1;
-    const block = extractBalancedBlock(sysmlSource, openPos);
-    const bodyClean = stripCommentsPreserveStructure(block.body);
-    const subjMatch = /\bsubject\s+[A-Za-z_]\w*\s*:\s*([A-Za-z_][\w:]*)/.exec(bodyClean);
-    const objMatch = /\bobjective\s+[A-Za-z_]\w*(?:\s*:\s*([A-Za-z_][\w:]*))?/.exec(bodyClean);
-    const clauses = extractClausesFromBody(block.body, constMap);
-    const subjectType = subjMatch ? subjMatch[1]!.split("::").pop()! : undefined;
-    const objectiveReq = objMatch?.[1] ? objMatch[1].split("::").pop()! : undefined;
-    analysisDefs.push({
-      name,
-      subjectType,
-      objectiveReq,
-      guarantees: clauses.guarantees,
-    });
-    if (subjectType && partDefs.has(subjectType)) {
-      const pd = partDefs.get(subjectType)!;
-      for (const g of clauses.guarantees) {
-        if (!pd.explicitGuarantees.includes(g)) pd.explicitGuarantees.push(g);
-      }
-    }
-    if (objectiveReq && reqDefs.has(objectiveReq)) {
-      const rd = reqDefs.get(objectiveReq)!;
-      for (const g of clauses.guarantees) {
-        if (!rd.guarantees.includes(g)) rd.guarantees.push(g);
-      }
-    }
-    analysisRegex.lastIndex = block.endPos;
-  }
-
-  const constraintDefs: { name: string; guarantees: string[] }[] = [];
-  const constraintDefRegex = /\bconstraint\s+def\s+([A-Za-z_]\w*)\s*\{/g;
-  let cdm: RegExpExecArray | null;
-  while ((cdm = constraintDefRegex.exec(cleanSource)) !== null) {
-    const name = cdm[1]!;
-    const openPos = cdm.index + cdm[0].length - 1;
-    const block = extractBalancedBlock(sysmlSource, openPos);
-    const clauses = extractClausesFromBody(`require constraint { ${block.body} }`, constMap);
-    constraintDefs.push({ name, guarantees: clauses.guarantees });
-    constraintDefRegex.lastIndex = block.endPos;
-  }
-
-  // 6. Parse top-level part usages & satisfy links (e.g. part vehicle : VehicleSystem::Vehicle; satisfy MassRequirement by vehicle;)
-  const globalUsageToType = new Map<string, string>();
-  const globalPartUsageRegex = /\bpart\s+(?!def\b)([A-Za-z_]\w*)\s*:\s*([A-Za-z_][\w:]*)/g;
-  let gpum: RegExpExecArray | null;
-  while ((gpum = globalPartUsageRegex.exec(cleanSource)) !== null) {
-    globalUsageToType.set(gpum[1]!, gpum[2]!.split("::").pop()!);
-  }
-
-  const satisfiedReqsByPartType = new Map<string, string[]>();
-  const satisfyLinks: { reqName: string; targetName: string; targetType: string }[] = [];
-  const satisfyRegex = /\bsatisfy\s+(?:requirement\s+)?([A-Za-z_][\w:]*)\s+by\s+([A-Za-z_][\w.]*)/g;
-  let sm: RegExpExecArray | null;
-  while ((sm = satisfyRegex.exec(cleanSource)) !== null) {
-    const reqName = sm[1]!.split("::").pop()!;
-    const targetUsage = sm[2]!.split(".").pop()!.split("::").pop()!;
-    const resolvedType = globalUsageToType.get(targetUsage) ?? targetUsage;
-    const list = satisfiedReqsByPartType.get(resolvedType) ?? [];
-    if (!list.includes(reqName)) list.push(reqName);
-    satisfiedReqsByPartType.set(resolvedType, list);
-    satisfyLinks.push({ reqName, targetName: targetUsage, targetType: resolvedType });
-  }
-
-  // Also link requirements with explicit `subject <sName> : <PartType>`
-  for (const [reqName, rd] of reqDefs.entries()) {
-    if (rd.subjectType) {
-      const list = satisfiedReqsByPartType.get(rd.subjectType) ?? [];
-      if (!list.includes(reqName)) list.push(reqName);
-      satisfiedReqsByPartType.set(rd.subjectType, list);
-    }
-  }
+  const { portDefs, useCases, partDefs, reqDefs, analysisDefs, constraintDefs, satisfiedReqsByPartType, satisfyLinks } =
+    extractModelDefsFromCst(cstRoot, sysmlSource);
 
   // If there are no part defs, requirement defs, or analysis defs at all, return null
   const nonActorParts = Array.from(partDefs.values()).filter((p) => !p.isActor);
@@ -1787,7 +2381,7 @@ export function extractSysML2ContractHierarchy(
               assumptions.length <= 1 &&
               i === nonPortAttrs.length - 1 &&
               nonPortAttrs.length >= 2 &&
-              /^(?:displacement|capacity|diameter|length|thickness)$/i.test(attr.name);
+              CONFIG_ATTR_NAMES.has(attr.name.toLowerCase());
             const c = inferAttributeConstraint(
               attr.name,
               attr.type,
@@ -1995,78 +2589,7 @@ export function extractSysML2ContractHierarchy(
   const compResult = ContractAlgebra.verifySystemComposition(systemNode, components);
 
   // 9. Extract State Machine states/transitions and Behavioral Event Traces (Monterey Phoenix)
-  const states: string[] = [];
-  const transitions: { name: string; from: string; to: string; guard?: string | undefined; stateMachine?: string }[] =
-    [];
-  const stateDefRegex = /\bstate\s+def\s+([A-Za-z_]\w*)\s*\{/g;
-  let sdm: RegExpExecArray | null;
-  while ((sdm = stateDefRegex.exec(cleanSource)) !== null) {
-    const smName = sdm[1]!;
-    const openPos = sdm.index + sdm[0].length - 1;
-    const block = extractBalancedBlock(sysmlSource, openPos);
-    const bodyClean = stripCommentsPreserveStructure(block.body);
-
-    const stRegex = /\bstate\s+(?!def\b)([A-Za-z_]\w*)\s*(?:;|\{)/g;
-    let stm: RegExpExecArray | null;
-    while ((stm = stRegex.exec(bodyClean)) !== null) {
-      if (!states.includes(stm[1]!)) states.push(stm[1]!);
-    }
-
-    const trRegex = /\btransition\s+([^\s;][^;]*);/g;
-    let trm: RegExpExecArray | null;
-    while ((trm = trRegex.exec(bodyClean)) !== null) {
-      const trBody = trm[1]!.replace(/\s+/g, " ").trim();
-      const firstIdx = trBody.indexOf("first ");
-      if (firstIdx === -1) continue;
-      const tName = trBody.slice(0, firstIdx).trim();
-      const afterFirst = trBody.slice(firstIdx + 6).trim();
-      const thenIdx = afterFirst.indexOf("then ");
-      if (thenIdx === -1) continue;
-      const beforeThen = afterFirst.slice(0, thenIdx).trim();
-      const to = afterFirst
-        .slice(thenIdx + 5)
-        .trim()
-        .split(" ")[0]!;
-
-      let from = beforeThen;
-      let guard: string | undefined = undefined;
-      const ifIdx = beforeThen.indexOf(" if ");
-      if (ifIdx !== -1) {
-        from = beforeThen.slice(0, ifIdx).trim();
-        guard = beforeThen.slice(ifIdx + 4).trim();
-      }
-      if (!from || !to) continue;
-      const resolvedName = tName || `${from}_to_${to}`;
-      if (!states.includes(from)) states.push(from);
-      if (!states.includes(to)) states.push(to);
-      transitions.push({ name: resolvedName, from, to, guard, stateMachine: smName });
-    }
-    stateDefRegex.lastIndex = block.endPos;
-  }
-
-  // Extract Action Definitions (action def <Name> { in ...; out ...; })
-  const actionDefs: { name: string; inputs: ParsedAttr[]; outputs: ParsedAttr[] }[] = [];
-  const actionDefRegex = /\baction\s+def\s+([A-Za-z_]\w*)\s*\{/g;
-  let adm: RegExpExecArray | null;
-  while ((adm = actionDefRegex.exec(cleanSource)) !== null) {
-    const name = adm[1]!;
-    const openPos = adm.index + adm[0].length - 1;
-    const block = extractBalancedBlock(sysmlSource, openPos);
-    const bodyClean = stripCommentsPreserveStructure(block.body);
-    const inputs: ParsedAttr[] = [];
-    const outputs: ParsedAttr[] = [];
-    const pinRegex = /\b(in|out|inout)\s+(?:item\s+|attribute\s+)?([A-Za-z_]\w*)(?:\s*:\s*([A-Za-z_][\w:]*))?/g;
-    let pim: RegExpExecArray | null;
-    while ((pim = pinRegex.exec(bodyClean)) !== null) {
-      const dir = pim[1]!;
-      const pName = pim[2]!;
-      const pType = pim[3] ? pim[3].split("::").pop()! : "Real";
-      if (dir === "in" || dir === "inout") inputs.push({ name: pName, type: pType });
-      if (dir === "out" || dir === "inout") outputs.push({ name: pName, type: pType });
-    }
-    actionDefs.push({ name, inputs, outputs });
-    actionDefRegex.lastIndex = block.endPos;
-  }
+  const { states, transitions, actionDefs } = extractStatesAndActionsFromCst(cstRoot, sysmlSource);
 
   // Synthesize Monterey Phoenix scope-complete execution trace steps from actual model elements
   const traces: SysML2ContractTraceStep[] = [];

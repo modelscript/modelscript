@@ -7,11 +7,103 @@ import {
   evaluateConstantArenaExpression,
   ExprKind,
   StmtKind,
+  UnifiedWorkspace,
   VarAttrKind,
   Variability,
 } from "@modelscript/runtime";
 import { ModelicaErrorCode } from "./errors.js";
+import {
+  type CstNodeLike,
+  isAsciiDigitsOnly,
+  isAsciiIdentContinue,
+  stripArraySubscripts,
+  tokenizeCommentStrippedWords,
+} from "./flattener/expressions/cst-utils.js";
 import { getFlatteningState } from "./flattener/support/state.js";
+
+function parseLeadingIndexedMember(name: string): { base: string; index: number; rest: string } | null {
+  const open = name.indexOf("[");
+  if (open <= 0) return null;
+  for (let i = 0; i < open; i++) {
+    if (!isAsciiIdentContinue(name.charCodeAt(i))) return null;
+  }
+  const close = name.indexOf("].", open + 1);
+  if (close <= open + 1) return null;
+  const digits = name.slice(open + 1, close);
+  if (!isAsciiDigitsOnly(digits)) return null;
+  return {
+    base: name.slice(0, open),
+    index: parseInt(digits, 10),
+    rest: name.slice(close + 2),
+  };
+}
+
+function compareIndexedVarNamesDesc(aName: string, bName: string): number | null {
+  const mA = parseLeadingIndexedMember(aName);
+  const mB = parseLeadingIndexedMember(bName);
+  if (mA && mB && mA.base === mB.base && mA.rest === mB.rest) {
+    return mB.index - mA.index;
+  }
+  return null;
+}
+
+function extractFirstBracketDigits(s: string): number | null {
+  let pos = s.indexOf("[");
+  while (pos >= 0) {
+    const close = s.indexOf("]", pos + 1);
+    if (close > pos + 1 && isAsciiDigitsOnly(s.slice(pos + 1, close))) {
+      return parseInt(s.slice(pos + 1, close), 10);
+    }
+    pos = s.indexOf("[", pos + 1);
+  }
+  return null;
+}
+
+function hasNumericSubscriptDot(s: string): boolean {
+  let pos = s.indexOf("[");
+  while (pos >= 0) {
+    const close = s.indexOf("]", pos + 1);
+    if (close > pos + 1 && s[close + 1] === "." && isAsciiDigitsOnly(s.slice(pos + 1, close))) {
+      return true;
+    }
+    pos = s.indexOf("[", pos + 1);
+  }
+  return false;
+}
+
+function extractShortClassAliasTypeText(resolvedCst: CstNodeLike | null | undefined, snippet: string): string | null {
+  const findShortSpec = (root: CstNodeLike | null | undefined): CstNodeLike | null => {
+    if (!root) return null;
+    const stack: CstNodeLike[] = [root];
+    while (stack.length > 0) {
+      const cur = stack.pop();
+      if (!cur) continue;
+      if (cur.type === "short_class_specifier") return cur;
+      const kids = cur.children || [];
+      for (let i = kids.length - 1; i >= 0; i--) {
+        if (kids[i]) stack.push(kids[i]!);
+      }
+    }
+    return null;
+  };
+  let shortSpec = findShortSpec(resolvedCst);
+  if (!shortSpec && snippet.includes("=")) {
+    const parser = UnifiedWorkspace.getGlobalParser(".mo");
+    if (parser) {
+      const trimmed = snippet.trim();
+      const wrapped = trimmed.endsWith(";") ? trimmed : `${trimmed};`;
+      const root = (parser.parse(wrapped)?.rootNode ??
+        parser.parse(`model _MsAliasTmp ${wrapped} end _MsAliasTmp;`)?.rootNode) as CstNodeLike | undefined;
+      shortSpec = findShortSpec(root);
+    }
+  }
+  if (!shortSpec) return null;
+  const kids = shortSpec.children || [];
+  const typeSpec = kids.find((c) => c.type === "type_specifier");
+  if (!typeSpec?.text) return null;
+  const modNode = kids.find((c) => c.type === "class_modification");
+  return modNode?.text ? `${typeSpec.text.trim()}${modNode.text.trim()}` : typeSpec.text.trim();
+}
 
 /**
  * Union-Find data structure with path compression and union-by-rank.
@@ -191,7 +283,7 @@ export class ModelicaPortBalancer {
     const outsideOutsidePairs: [number, number][] = [];
     const varConnectEqIdx = new Map<number, number>();
 
-    const stripConnectorSubscripts = (s: string): string => s.replace(/\[[^\][]*\]/g, "");
+    const stripConnectorSubscripts = (s: string): string => stripArraySubscripts(s);
     const matchesConnectorPrefix = (varName: string, candidate: string): boolean => {
       if (!candidate) return false;
       if (varName === candidate || varName.startsWith(candidate + ".") || varName.startsWith(candidate + "[")) {
@@ -221,8 +313,18 @@ export class ModelicaPortBalancer {
       ) {
         return true;
       }
-      if (cst?.text && /^\s*(?:redeclare\s+|final\s+|replaceable\s+)*(?:inner|outer)\b/.test(cst.text)) {
-        return true;
+      if (cst?.text) {
+        const words = tokenizeCommentStrippedWords(cst.text);
+        let wi = 0;
+        while (
+          wi < words.length &&
+          (words[wi] === "redeclare" || words[wi] === "final" || words[wi] === "replaceable")
+        ) {
+          wi++;
+        }
+        if (words[wi] === "inner" || words[wi] === "outer") {
+          return true;
+        }
       }
       return false;
     };
@@ -480,7 +582,7 @@ export class ModelicaPortBalancer {
           const open = res.lastIndexOf("[");
           if (open === -1) break;
           const inner = res.slice(open + 1, -1);
-          if (inner.split(",").every((part) => /^\d+$/.test(part.trim()))) {
+          if (inner.split(",").every((part) => isAsciiDigitsOnly(part.trim()))) {
             res = res.slice(0, open);
           } else {
             break;
@@ -769,9 +871,9 @@ export class ModelicaPortBalancer {
                         src && resolved.startOffset !== undefined && resolved.endOffset !== undefined
                           ? src.substring(resolved.startOffset, resolved.endOffset)
                           : ((state.db.cstNode?.(resolved.id) as any)?.text ?? "");
-                      const match = snippet.match(/=\s*([A-Za-z0-9_]+(\([^)]+\))?)/);
-                      if (match) {
-                        typeName = match[1];
+                      const aliasType = extractShortClassAliasTypeText(state.db.cstNode?.(resolved.id), snippet);
+                      if (aliasType) {
+                        typeName = aliasType;
                       }
                     }
                   }
@@ -809,7 +911,7 @@ export class ModelicaPortBalancer {
         const isBus = isExpBusVar(fromStr) || isExpBusVar(toStr);
         let isPlugCompatible = true;
 
-        const getBase = (s: string) => s.replace(/\[[^\][]*\]/g, "");
+        const getBase = (s: string) => stripArraySubscripts(s);
         const fromHasSub = fromStr.includes("[");
         const toHasSub = toStr.includes("[");
 
@@ -933,8 +1035,15 @@ export class ModelicaPortBalancer {
                       if (validParentClassIds.size > 0 && sym.parentId && !validParentClassIds.has(sym.parentId)) {
                         continue;
                       }
-                      const cst = (state.db as any).cstNode?.(sym.id);
-                      if (cst?.text && /\bif\s+/.test(cst.text)) return true;
+                      let cst = state.db.cstNode?.(sym.id) as CstNodeLike | null | undefined;
+                      for (let hop = 0; hop < 3 && cst; hop++, cst = cst.parent ?? undefined) {
+                        if (
+                          cst.type === "condition_attribute" ||
+                          cst.children?.some((ch) => ch.type === "condition_attribute")
+                        ) {
+                          return true;
+                        }
+                      }
                     }
                   }
                 }
@@ -1451,7 +1560,7 @@ export class ModelicaPortBalancer {
                     const open = r.lastIndexOf("[");
                     if (open === -1) break;
                     const inner = r.slice(open + 1, -1);
-                    if (/^\d+$/.test(inner)) {
+                    if (isAsciiDigitsOnly(inner)) {
                       r = r.slice(0, open);
                     } else {
                       break;
@@ -2313,7 +2422,13 @@ export class ModelicaPortBalancer {
         // `sum(f_inside) + sum(-f_outside) = 0.0` per MLS §9.2, assigning positive sign
         // to inside connectors and negative sign to outside connectors.
         let sumExpr: number;
-        const countDots = (name: string) => (name.match(/\./g) || []).length;
+        const countDots = (name: string) => {
+          let count = 0;
+          for (let i = 0; i < name.length; i++) {
+            if (name.charCodeAt(i) === 46) count++;
+          }
+          return count;
+        };
         const minDots = Math.min(...group.map((vIdx) => countDots(dae.getVarName(vIdx))));
         const maxDots = Math.max(...group.map((vIdx) => countDots(dae.getVarName(vIdx))));
         const groupHasOutsideVar = group.some((vIdx) => outsideVarSet.has(vIdx));
@@ -2384,13 +2499,8 @@ export class ModelicaPortBalancer {
             if (options?.omcCompatibility) {
               insideVars.sort((a, b) => dae.getVarName(a).localeCompare(dae.getVarName(b)));
               outsideVars.sort((a, b) => {
-                const nameA = dae.getVarName(a);
-                const nameB = dae.getVarName(b);
-                const mA = nameA.match(/^([a-zA-Z0-9_]+)\[(\d+)\]\.(.*)$/);
-                const mB = nameB.match(/^([a-zA-Z0-9_]+)\[(\d+)\]\.(.*)$/);
-                if (mA && mB && mA[1] === mB[1] && mA[3] === mB[3]) {
-                  return parseInt(mB[2]!, 10) - parseInt(mA[2]!, 10);
-                }
+                const cmp = compareIndexedVarNamesDesc(dae.getVarName(a), dae.getVarName(b));
+                if (cmp !== null) return cmp;
                 return a - b;
               });
             }
@@ -2907,11 +3017,8 @@ export class ModelicaPortBalancer {
 
               const remainingZeroFlows = zeroFlows.filter((z) => !emittedZeroFlows.has(z));
               remainingZeroFlows.sort((a, b) => {
-                const mA = a.varName.match(/^([a-zA-Z0-9_]+)\[(\d+)\]\.(.*)$/);
-                const mB = b.varName.match(/^([a-zA-Z0-9_]+)\[(\d+)\]\.(.*)$/);
-                if (mA && mB && mA[1] === mB[1] && mA[3] === mB[3]) {
-                  return parseInt(mB[2]!, 10) - parseInt(mA[2]!, 10);
-                }
+                const cmp = compareIndexedVarNamesDesc(a.varName, b.varName);
+                if (cmp !== null) return cmp;
                 return dae.getVarIdxByName(a.varName) - dae.getVarIdxByName(b.varName);
               });
               remainingZeroFlows.forEach((eq) => {
@@ -2955,11 +3062,8 @@ export class ModelicaPortBalancer {
               }
             }
             zeroFlows.sort((a, b) => {
-              const mA = a.varName.match(/^([a-zA-Z0-9_]+)\[(\d+)\]\.(.*)$/);
-              const mB = b.varName.match(/^([a-zA-Z0-9_]+)\[(\d+)\]\.(.*)$/);
-              if (mA && mB && mA[1] === mB[1] && mA[3] === mB[3]) {
-                return parseInt(mB[2]!, 10) - parseInt(mA[2]!, 10);
-              }
+              const cmp = compareIndexedVarNamesDesc(a.varName, b.varName);
+              if (cmp !== null) return cmp;
               const compA = a.varName.split(".")[0]!;
               const compB = b.varName.split(".")[0]!;
               const rankA = compOrder.get(compA) ?? 9999;
@@ -2992,16 +3096,16 @@ export class ModelicaPortBalancer {
 
             if (options?.omcCompatibility && options?.isOldFrontend) {
               flowSumEqs.sort((a, b) => {
-                const mA = a.str.match(/\[(\d+)\]/);
-                const mB = b.str.match(/\[(\d+)\]/);
-                if (mA && mB) {
-                  return parseInt(mB[1]!, 10) - parseInt(mA[1]!, 10);
+                const idxA = extractFirstBracketDigits(a.str);
+                const idxB = extractFirstBracketDigits(b.str);
+                if (idxA !== null && idxB !== null) {
+                  return idxB - idxA;
                 }
                 return 0;
               });
             }
 
-            const hasArrayOutside = zeroFlows.some((eq) => /\[\d+\]\./.test(eq.varName));
+            const hasArrayOutside = zeroFlows.some((eq) => hasNumericSubscriptDot(eq.varName));
             const isTopLevelOnly =
               options?.isOldFrontend &&
               potentialEqs.length > 0 &&

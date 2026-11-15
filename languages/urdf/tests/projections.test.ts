@@ -5,8 +5,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { parseUrdf } from "../src/parser/index.js";
 import {
+  simulationSeriesToUrdfTrajectory,
   urdfToAdams,
   urdfToCadShapes,
+  urdfToHybridWamModelica,
   urdfToModelica,
   urdfToSimpack,
   urdfToUsd,
@@ -42,6 +44,52 @@ describe("URDF Projections (@modelscript/urdf)", () => {
     assert.ok(mo.includes("model scara"));
     assert.ok(mo.includes("MultiBody.World world"));
     assert.ok(mo.includes("Joints.Revolute j1"));
+  });
+
+  it("should project to hybrid WAM Modelica model and map trajectory", () => {
+    const robot = parseUrdf(ROBOT_XML);
+    const mo = urdfToHybridWamModelica(robot, {
+      wamBlockName: "ScaraWam",
+      wamBlockCode:
+        "block ScaraWam\n  input Real q_j1;\n  input Real dq_j1;\n  input Real u_j1;\n  output Real tau_res_j1;\nequation\n  tau_res_j1 = 0.0;\nend ScaraWam;",
+    });
+    assert.ok(mo.includes("useAxisFlange = true"));
+    assert.ok(mo.includes("model scara_HybridWAM"));
+    assert.ok(mo.includes("extends scara;"));
+    assert.ok(mo.includes("ScaraWam wam;"));
+    assert.ok(mo.includes("connect(act_j1.flange, j1.axis);"));
+    assert.ok(mo.includes("tau_total_j1 = tau_ctrl_j1 + tau_wam_j1;"));
+
+    const standalone = urdfToHybridWamModelica(robot, {
+      wamBlockName: "ScaraWam",
+      wamBlockCode:
+        "block ScaraWam\n  input Real q_j1;\n  input Real dq_j1;\n  input Real u_j1;\n  output Real tau_res_j1;\nequation\n  tau_res_j1 = 0.0;\nend ScaraWam;",
+      standaloneEquationModel: true,
+    });
+    assert.ok(standalone.startsWith("model scara_HybridWAM"));
+    assert.ok(!standalone.includes("Modelica.Mechanics.MultiBody"));
+    assert.ok(standalone.includes("der(j1_phi) = j1_w;"));
+    assert.ok(standalone.includes("I_j1 * der(j1_w) = tau_total_j1"));
+
+    const prismaticRobot = parseUrdf(`<?xml version="1.0"?>
+<robot name="1-slider">
+  <link name="base_link"><inertial><mass value="1.0"/><inertia ixx="0.01" iyy="0.01" izz="0.01" ixy="0" ixz="0" iyz="0"/></inertial></link>
+  <link name="carriage"><inertial><mass value="2.0"/><inertia ixx="0.02" iyy="0.02" izz="0.02" ixy="0" ixz="0" iyz="0"/></inertial></link>
+  <joint name="1-arm" type="prismatic">
+    <parent link="base_link"/><child link="carriage"/>
+    <axis xyz="1 0 0"/><limit lower="-1" upper="1" effort="10" velocity="2"/>
+  </joint>
+</robot>`);
+    const prismaticMo = urdfToHybridWamModelica(prismaticRobot, { wamBlockName: "SliderWam" });
+    assert.ok(prismaticMo.includes("model _1_slider"));
+    assert.ok(prismaticMo.includes("Joints.Prismatic _1_arm("));
+    assert.ok(prismaticMo.includes("Translational.Sources.Force act__1_arm"));
+    assert.ok(prismaticMo.includes("_1_arm.s"));
+    assert.ok(prismaticMo.includes("_1_arm.v"));
+
+    const traj = simulationSeriesToUrdfTrajectory([0, 0.5, 1.0], { j1: [0, 0.2, 0.4] });
+    assert.deepEqual(traj.times, [0, 0.5, 1.0]);
+    assert.deepEqual((traj.jointPositions as Record<string, number[]>).j1, [0, 0.2, 0.4]);
   });
 
   it("should project to MSC Adams dataset", () => {

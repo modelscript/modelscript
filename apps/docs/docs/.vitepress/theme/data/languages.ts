@@ -156,7 +156,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".step",
     role: "B-Rep CAD assemblies & AP242 PMI",
     group: "geometry",
-    tier: "stable",
+    tier: "beta",
   },
   {
     slug: "qif",
@@ -201,7 +201,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".usd / .usda / .usdz",
     role: "Universal Scene Description 3D stages & UsdPhysics digital twins",
     group: "geometry",
-    tier: "stable",
+    tier: "beta",
   },
 
   // ── Data & code integration ─────────────────────────────────────────────
@@ -221,7 +221,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".c",
     role: "Numerical & embedded C integration",
     group: "integration",
-    tier: "stable",
+    tier: "beta",
   },
   {
     slug: "fortran",
@@ -250,7 +250,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".roc",
     role: "Liquid rocket engine transients",
     group: "aerospace",
-    tier: "beta",
+    tier: "stable",
   },
   {
     slug: "ccsds",
@@ -259,7 +259,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".xtce",
     role: "Astrodynamics & spacecraft telemetry",
     group: "aerospace",
-    tier: "beta",
+    tier: "stable",
   },
   {
     slug: "easy5",
@@ -268,7 +268,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".ez5",
     role: "Dynamic simulation & linear control",
     group: "aerospace",
-    tier: "beta",
+    tier: "stable",
   },
 
   // ── Automotive & mobility ───────────────────────────────────────────────
@@ -306,7 +306,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".xodr",
     role: "Road network geometry",
     group: "automotive",
-    tier: "beta",
+    tier: "stable",
   },
   {
     slug: "openscenario",
@@ -370,10 +370,10 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     slug: "powerfactory",
     name: "DIgSILENT PowerFactory",
     sidebar: "DIgSILENT PowerFactory",
-    ext: ".dgs, .pfd",
+    ext: ".dz, .pfd, .dsl",
     role: "Node-breaker power flow, IEC 60909 short-circuit & RMS/EMT",
     group: "power",
-    tier: "beta",
+    tier: "stable",
   },
   {
     slug: "pslf",
@@ -400,7 +400,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".dss",
     role: "Unbalanced distribution & DER hosting",
     group: "power",
-    tier: "stable",
+    tier: "beta",
   },
   {
     slug: "ocpp",
@@ -498,7 +498,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     slug: "olga",
     name: "OLGA",
     sidebar: "OLGA Multiphase Flow",
-    ext: ".genkey",
+    ext: ".opi, .genkey",
     role: "Transient multiphase flow assurance",
     group: "oil-gas",
     tier: "stable",
@@ -527,10 +527,10 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     slug: "relap5",
     name: "RELAP5-3D",
     sidebar: "RELAP5 Nuclear Loops",
-    ext: ".inp",
+    ext: ".r5, .inp",
     role: "Reactor thermal-hydraulics & kinetics",
     group: "nuclear",
-    tier: "beta",
+    tier: "stable",
   },
 
   // ── Marine & offshore ───────────────────────────────────────────────────
@@ -558,7 +558,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     slug: "verilog-a",
     name: "Verilog-A / AMS",
     sidebar: "Verilog-A Devices",
-    ext: ".va",
+    ext: ".va, .vams",
     role: "Analog compact device models",
     group: "electronics",
     tier: "beta",
@@ -606,7 +606,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".geojson",
     role: "Fiber strand tracing, NESC pole loading & OTDR GIS fault location",
     group: "electronics",
-    tier: "beta",
+    tier: "stable",
   },
 
   // ── Robotics & industrial automation ────────────────────────────────────
@@ -626,7 +626,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".st",
     role: "PLC control software",
     group: "robotics",
-    tier: "stable",
+    tier: "beta",
   },
   {
     slug: "automationml",
@@ -644,7 +644,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".adm",
     role: "Mechanical system dynamics",
     group: "robotics",
-    tier: "beta",
+    tier: "stable",
   },
 
   // ── Buildings & civil infrastructure ────────────────────────────────────
@@ -655,7 +655,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".idf",
     role: "Building energy & HVAC",
     group: "buildings",
-    tier: "stable",
+    tier: "beta",
   },
   {
     slug: "epanet",
@@ -756,7 +756,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".yaml",
     role: "Gas-phase chemical kinetics & NASA-7 thermochemistry",
     group: "process",
-    tier: "beta",
+    tier: "stable",
   },
   {
     slug: "phreeqc",

@@ -7,6 +7,7 @@ import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { nodeRange } from "../utils/ast-utils.js";
 import type { SyntaxNode } from "../utils/cst-facade.js";
+import { extractWordAtOffset, isDigitCode } from "../utils/lexical-utils.js";
 
 function isPosBefore(a: { line: number; character: number }, b: { line: number; character: number }): boolean {
   return a.line < b.line || (a.line === b.line && a.character < b.character);
@@ -395,12 +396,8 @@ export function registerDocumentFeaturesProvider(
     const lineContent = lines[params.position.line] ?? "";
 
     // Find the word under cursor
-    let wordStart = params.position.character;
-    let wordEnd = params.position.character;
-    while (wordStart > 0 && /[_a-zA-Z0-9]/.test(lineContent[wordStart - 1]!)) wordStart--;
-    while (wordEnd < lineContent.length && /[_a-zA-Z0-9]/.test(lineContent[wordEnd]!)) wordEnd++;
-    const word = lineContent.substring(wordStart, wordEnd);
-    if (!word || /^\d/.test(word)) return []; // Skip empty or numeric tokens
+    const word = extractWordAtOffset(lineContent, params.position.character).token;
+    if (!word || isDigitCode(word.charCodeAt(0))) return []; // Skip empty or numeric tokens
 
     // Find all occurrences of the word in the document using LineIndex
     const indexData = getLineIndexForDoc(document.uri);

@@ -23,6 +23,7 @@
     "@modelscript/dsl": "*",
     "@modelscript/exchange": "*",
     "@modelscript/ide-client": "*",
+    "@modelscript/las": "*",
     "@modelscript/lsp": "*",
     "@modelscript/modelica": "*",
     "@modelscript/owl2": "*",

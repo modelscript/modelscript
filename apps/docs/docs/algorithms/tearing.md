@@ -29,6 +29,13 @@ Solving an $N$-dimensional non-linear system via Newton-Raphson requires inverti
 
 $$\mathcal{O}(N^3)$$
 
+This cubic asymptotic cost comes from factoring and solving an $N \times N$ dense Jacobian matrix at each Newton-Raphson iteration.
+
+| Symbol               | Meaning                                                             | Units / Domain            |
+| :------------------- | :------------------------------------------------------------------ | :------------------------ |
+| $\mathcal{O}(\cdot)$ | Asymptotic upper-bound time complexity (operations per Newton step) | Big-O notation            |
+| $N$                  | Dimension of the coupled strongly connected component (SCC) block   | Count ($\mathbb{Z}_{>0}$) |
+
 The Cellier-Elmqvist Minimum Degree Tearing algorithm identifies a minimal set of $k$ **tearing variables** ($k \ll N$) such that assuming known values for these $k$ variables breaks all cyclic dependencies in the block. The remaining $N - k$ inner variables can then be evaluated sequentially via a causal explicit forward substitution chain:
 
 $$
@@ -37,6 +44,17 @@ x_{\text{inner}} &= g(x_{\text{tear}}, u) \quad \text{(explicit chain)} \\
 R(x_{\text{tear}}) &= f_{\text{residual}}(x_{\text{tear}}, x_{\text{inner}}) = 0 \quad \text{(small $k \times k$ solve)}
 \end{aligned}
 $$
+
+Once values for the $k$ tearing variables $x_{\text{tear}}$ are proposed, all $N - k$ inner variables $x_{\text{inner}}$ are evaluated explicitly in causal order via $g$, so the iterative Newton solver only needs to converge the reduced $k \times k$ residual system $R(x_{\text{tear}}) = 0$.
+
+| Symbol                          | Meaning                                                                                    | Units / Domain                                              |
+| :------------------------------ | :----------------------------------------------------------------------------------------- | :---------------------------------------------------------- |
+| $x_{\text{inner}}$              | Vector of $N - k$ explicitly solved inner variables                                        | $\mathbb{R}^{N-k}$                                          |
+| $x_{\text{tear}}$               | Vector of $k$ chosen tearing variables ($k \ll N$)                                         | $\mathbb{R}^k$                                              |
+| $u$                             | Known external inputs and previously solved upstream variables                             | $\mathbb{R}^{n_u}$                                          |
+| $g(\cdot)$                      | Causal explicit forward-substitution chain evaluating $x_{\text{inner}}$                   | $\mathbb{R}^k \times \mathbb{R}^{n_u} \to \mathbb{R}^{N-k}$ |
+| $R(\cdot), f_{\text{residual}}$ | Reduced $k$-dimensional residual vector evaluated at $(x_{\text{tear}}, x_{\text{inner}})$ | $\mathbb{R}^k$                                              |
+| $k$                             | Number of tearing variables (size of the reduced nonlinear system)                         | Count ($\mathbb{Z}_{>0}$)                                   |
 
 The non-linear iterative solver is restricted to the tiny $k \times k$ residual system, accelerating simulation speed by orders of magnitude.
 

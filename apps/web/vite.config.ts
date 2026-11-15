@@ -204,6 +204,8 @@ const DOCS_ROUTE_PREFIXES = [
   "/industries",
   "/pricing",
   "/trademark",
+  "/terms",
+  "/privacy",
   "/vp-icons",
 ];
 
@@ -580,6 +582,8 @@ export default defineConfig({
       { find: /^net$/, replacement: path.resolve(import.meta.dirname, "src/util/node-shims.ts") },
       { find: /^node:events$/, replacement: path.resolve(import.meta.dirname, "src/util/node-shims.ts") },
       { find: /^events$/, replacement: path.resolve(import.meta.dirname, "src/util/node-shims.ts") },
+      { find: /^node:module$/, replacement: path.resolve(import.meta.dirname, "src/util/node-shims.ts") },
+      { find: /^module$/, replacement: path.resolve(import.meta.dirname, "src/util/node-shims.ts") },
     ],
     dedupe: ["react", "react-dom", "react-router-dom", "styled-components", "@primer/react", "three"],
   },

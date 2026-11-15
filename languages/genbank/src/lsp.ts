@@ -123,9 +123,16 @@ export function validateGenbank(text: string): LspDiagnostic[] {
 
 export function getGenbankDocumentSymbols(text: string): LspDocumentSymbol[] {
   const doc = parseGenbank(text);
+  const lines = text.split(/\r?\n/);
+  const makeRange = (startLine: number, endLine: number): LspRange => {
+    const leadMatch = /\S/.exec(lines[startLine] ?? "");
+    const startChar = leadMatch ? leadMatch.index : 0;
+    const endChar = Math.max(startChar, (lines[endLine] ?? "").trimEnd().length);
+    return { start: { line: startLine, character: startChar }, end: { line: endLine, character: endChar } };
+  };
   const rootRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: text.split("\n").length, character: 0 },
+    end: { line: lines.length, character: 0 },
   };
 
   const children: LspDocumentSymbol[] = [];
@@ -133,10 +140,7 @@ export function getGenbankDocumentSymbols(text: string): LspDocumentSymbol[] {
   for (const rec of doc.records) {
     const startLine = rec.range ? Math.max(0, rec.range.startLine - 1) : 0;
     const endLine = rec.range ? Math.max(0, rec.range.endLine - 1) : startLine;
-    const r: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: endLine, character: 40 },
-    };
+    const r = makeRange(startLine, endLine);
 
     const recChildren: LspDocumentSymbol[] = [];
     for (let i = 0; i < rec.features.length; i++) {
@@ -144,10 +148,7 @@ export function getGenbankDocumentSymbols(text: string): LspDocumentSymbol[] {
       const featName = getFeatureDisplayName(feat, i);
       const fStart = feat.range ? Math.max(0, feat.range.startLine - 1) : startLine;
       const fEnd = feat.range ? Math.max(0, feat.range.endLine - 1) : fStart;
-      const fR: LspRange = {
-        start: { line: fStart, character: 0 },
-        end: { line: fEnd, character: 40 },
-      };
+      const fR = makeRange(fStart, fEnd);
       recChildren.push({
         name: featName,
         detail: `${feat.key} (${feat.location.raw})`,

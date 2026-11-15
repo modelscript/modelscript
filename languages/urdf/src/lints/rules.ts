@@ -109,11 +109,13 @@ function checkKinematicTree(robot: UrdfRobot, diagnostics: UrdfDiagnostic[]): vo
 
   if (robot.links.size > 1 && rootLinks.length === 0) {
     // Pure cycle across all links
+    const firstJoint = Array.from(robot.joints.values())[0];
+    const firstLink = Array.from(robot.links.values())[0];
     diagnostics.push({
       code: "M7502",
       severity: "error",
       message: "Directed closed cycle detected in kinematic tree: no root base link exists.",
-      range: DEFAULT_RANGE,
+      range: firstJoint?.range ?? firstLink?.range ?? DEFAULT_RANGE,
     });
   } else if (robot.links.size > 1 && rootLinks.length > 1) {
     // Forest / disconnected components
@@ -388,4 +390,3 @@ function checkMimicJointCycles(robot: UrdfRobot, diagnostics: UrdfDiagnostic[]):
     }
   }
 }
-

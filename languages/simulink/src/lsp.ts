@@ -100,9 +100,23 @@ export function validateSimulink(content: string | Buffer | Uint8Array, uri: str
     }));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
+    let range = DEFAULT_RANGE;
+    if (typeof content === "string") {
+      const lines = content.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        const match = /\S+/.exec(lines[i] ?? "");
+        if (match) {
+          range = {
+            start: { line: i, character: match.index },
+            end: { line: i, character: match.index + match[0].length },
+          };
+          break;
+        }
+      }
+    }
     return [
       {
-        range: DEFAULT_RANGE,
+        range,
         severity: 1,
         code: "M7200",
         source: "modelscript-simulink",

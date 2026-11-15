@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import {
+  choice,
+  field,
+  language,
+  optional,
+  repeat,
+  semanticToken,
+  seq,
+  type ActionExecutionContext,
+} from "@modelscript/dsl";
 import { lowerOpenAdrToDae } from "./dae/openadr-to-dae.js";
 import { indexOpenAdrFile } from "./indexing.js";
 import { lintOpenAdr } from "./lints/rules.js";
@@ -11,6 +20,7 @@ import { openadrPolyglotConfig } from "./tgg/index.js";
 export const openadrLanguage = language({
   polyglot: openadrPolyglotConfig,
   name: "openadr",
+  word: ($) => $["Identifier"]!,
   fileExtensions: [".oadr", ".oadr.xml", ".oadr.json", ".xml", ".json"],
   maturity: "experimental",
   indexing: {
@@ -29,9 +39,53 @@ export const openadrLanguage = language({
   },
   lsp: {
     fileExtensions: [".oadr", ".oadr.xml", ".oadr.json"],
+    folding: ["ProgramDecl", "EventDecl", "IntervalDecl"],
+    outline: ["ProgramDecl", "EventDecl", "IntervalDecl"],
   },
+  extras: ($) => [/[ \t\r\n]+/, $["Comment"]!],
   rules: {
-    Root: () => "openadr",
+    Document: ($) => repeat(choice($["ProgramDecl"]!, $["EventDecl"]!, $["PropertyDecl"]!)),
+
+    ProgramDecl: ($) =>
+      seq(
+        semanticToken("keyword", "program"),
+        field("name", choice($["StringLiteral"]!, $["Identifier"]!)),
+        "{",
+        repeat(choice($["EventDecl"]!, $["PropertyDecl"]!)),
+        "}",
+      ),
+
+    EventDecl: ($) =>
+      seq(
+        semanticToken("keyword", "event"),
+        field("name", choice($["StringLiteral"]!, $["Identifier"]!)),
+        "{",
+        repeat(choice($["IntervalDecl"]!, $["PropertyDecl"]!)),
+        "}",
+      ),
+
+    IntervalDecl: ($) =>
+      seq(
+        semanticToken("keyword", "interval"),
+        optional(field("name", choice($["StringLiteral"]!, $["Identifier"]!))),
+        "{",
+        repeat($["PropertyDecl"]!),
+        "}",
+      ),
+
+    PropertyDecl: ($) =>
+      seq(
+        field("key", $["Identifier"]!),
+        choice(":", "="),
+        field("value", choice($["StringLiteral"]!, $["IsoTimestamp"]!, $["NumberLiteral"]!, $["Identifier"]!)),
+        optional(choice(";", ",")),
+      ),
+
+    StringLiteral: () => semanticToken("string", /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/),
+    IsoTimestamp: () => semanticToken("string", /\d{4}-\d{2}-\d{2}T[0-9:.+-]+Z?/),
+    NumberLiteral: () => semanticToken("number", /[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/),
+    Identifier: () => semanticToken("variable", /[A-Za-z_][A-Za-z0-9_-]*/),
+    Comment: () => semanticToken("comment", /(?:\/\/|#)[^\r\n]*/),
   },
 
   actions: [

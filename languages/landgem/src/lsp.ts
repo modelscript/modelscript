@@ -37,18 +37,26 @@ export interface LspDocumentSymbol {
 
 export function validateLandgem(text: string): LspDiagnostic[] {
   try {
+    const lines = text.split(/\r?\n/);
     const model = parseLandgem(text);
     const diags = lintLandgem(model);
-    return diags.map((d) => ({
-      range: {
-        start: { line: Math.max(0, d.line - 1), character: 0 },
-        end: { line: Math.max(0, d.line - 1), character: 80 },
-      },
-      severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
-      code: `LG${d.code}`,
-      source: "landgem",
-      message: d.message,
-    }));
+    return diags.map((d) => {
+      const l = Math.min(Math.max(0, d.line - 1), Math.max(0, lines.length - 1));
+      const lt = lines[l] ?? "";
+      let sChar = 0;
+      while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
+      const tok = lt.slice(sChar).match(/^[^,\s;]+/);
+      return {
+        range: {
+          start: { line: l, character: sChar },
+          end: { line: l, character: Math.min(lt.length, sChar + (tok ? tok[0].length : 1)) },
+        },
+        severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
+        code: `LG${d.code}`,
+        source: "landgem",
+        message: d.message,
+      };
+    });
   } catch (err) {
     return [
       {
@@ -70,6 +78,11 @@ export function getLandgemDocumentSymbols(input: string | LandgemModel): LspDocu
     return [];
   }
 
+  const lines = typeof input === "string" ? input.split(/\r?\n/) : [];
+  const lineEnd = (line: number, fallback: number): number => {
+    const lt = lines[line] ?? "";
+    return lt.length > 0 ? Math.max(1, lt.trimEnd().length) : Math.max(1, fallback);
+  };
   const symbols: LspDocumentSymbol[] = [];
 
   for (const site of model.sites) {
@@ -78,7 +91,7 @@ export function getLandgemDocumentSymbols(input: string | LandgemModel): LspDocu
       name: site.name,
       detail: `Landfill (${site.openYear} - ${site.closeYear}, k=${site.params.k})`,
       kind: 5,
-      range: { start: { line: l, character: 0 }, end: { line: l, character: 80 } },
+      range: { start: { line: l, character: 0 }, end: { line: l, character: lineEnd(l, site.name.length) } },
       selectionRange: { start: { line: l, character: 0 }, end: { line: l, character: site.name.length } },
     });
   }
@@ -89,7 +102,7 @@ export function getLandgemDocumentSymbols(input: string | LandgemModel): LspDocu
       name: dig.name,
       detail: `Anaerobic Digester (Vol: ${dig.volumeM3} m^3, HRT: ${dig.hrtDays}d, pH: ${dig.ph})`,
       kind: 13,
-      range: { start: { line: l, character: 0 }, end: { line: l, character: 80 } },
+      range: { start: { line: l, character: 0 }, end: { line: l, character: lineEnd(l, dig.name.length) } },
       selectionRange: { start: { line: l, character: 0 }, end: { line: l, character: dig.name.length } },
     });
   }

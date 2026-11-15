@@ -133,10 +133,13 @@ export function ensureBuiltInPscadLibraryRegistered(): LoadedLibraryPackage | un
         if (!nodeFs.existsSync(pkgPath)) continue;
         const pkgJson = JSON.parse(nodeFs.readFileSync(pkgPath, "utf-8"));
         if (!isModelscriptLibraryPackageJson(pkgJson)) continue;
-        const symbolsPath = nodePath.resolve(dir, pkgJson.modelscript.symbols);
-        const symbols: LibrarySymbolStub[] = nodeFs.existsSync(symbolsPath)
-          ? JSON.parse(nodeFs.readFileSync(symbolsPath, "utf-8"))
-          : [];
+        let symbols: LibrarySymbolStub[] = [];
+        if (pkgJson.modelscript.symbols) {
+          const symbolsPath = nodePath.resolve(dir, pkgJson.modelscript.symbols);
+          if (nodeFs.existsSync(symbolsPath)) {
+            symbols = JSON.parse(nodeFs.readFileSync(symbolsPath, "utf-8"));
+          }
+        }
         let diagrams: DiagramComponentSpec[] | undefined;
         if (pkgJson.modelscript.diagrams) {
           const diagPath = nodePath.resolve(dir, pkgJson.modelscript.diagrams);

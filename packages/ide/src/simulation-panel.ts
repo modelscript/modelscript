@@ -1453,6 +1453,25 @@ export class SimulationPanel {
       background: var(--vscode-toolbar-activeBackground, rgba(128,128,128,0.28)) !important;
       border-color: var(--vscode-focusBorder, #38bdf8) !important;
     }
+    #view-mode-group {
+      background: var(--vscode-editorWidget-background, rgba(128,128,128,0.12));
+      border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.3));
+      border-radius: 6px;
+      padding: 2px;
+      gap: 2px;
+    }
+    #toolbar button.mode-tab {
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid transparent;
+      font-size: 11px;
+    }
+    #toolbar button.mode-tab.active {
+      background: var(--vscode-button-background, #0e639c) !important;
+      color: var(--vscode-button-foreground, #fff) !important;
+      border-color: transparent !important;
+      font-weight: 600;
+    }
     /* Option toggles rendered as pills */
     #toolbar .toggle-pill {
       display: inline-flex;
@@ -1799,31 +1818,62 @@ export class SimulationPanel {
         <div class="status-indicator live-only" id="live-status"></div>
         <span class="status-text live-only" id="live-status-text">Disconnected</span>
         
-        <div class="toolbar-group">
+        <div class="toolbar-group" id="view-mode-group" role="tablist" aria-label="Chart View Mode">
+          <button class="mode-tab active" data-mode="overlay" role="tab" aria-selected="true" title="Time-series / index overlay chart">Overlay</button>
+          <button class="mode-tab" data-mode="multitrack" role="tab" aria-selected="false" title="Multi-track parallel log / signal lanes">Tracks</button>
+          <button class="mode-tab" data-mode="crossplot" role="tab" aria-selected="false" title="X-Y crossplot with optional color third-axis and OLS fit">Crossplot</button>
+          <button class="mode-tab" data-mode="histogram" role="tab" aria-selected="false" title="Distribution histogram with P10/P50/P90 and mean markers">Histogram</button>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <div class="toolbar-group overlay-only" id="overlay-controls">
           <label for="select-xaxis" class="toolbar-label">X</label>
           <select id="select-xaxis" title="Select X-Axis (Time or State Variable for Phase Portrait)">
             <option value="__time__">Time (s)</option>
+          </select>
+
+          <label class="toggle-pill" title="Normalize curves to 0-100% to compare different units and magnitudes">
+            <input type="checkbox" id="checkbox-normalize"> Normalize
+          </label>
+
+          <label class="toggle-pill" title="Dual Y-Axis (Left and Right axes for primary vs secondary variables)">
+            <input type="checkbox" id="checkbox-dual-y"> Dual Y
+          </label>
+
+          <label class="toggle-pill" title="Smooth curves">
+            <input type="checkbox" id="checkbox-smooth" checked> Smooth
+          </label>
+        </div>
+
+        <div class="toolbar-group" id="crossplot-controls" style="display: none;">
+          <label for="select-cp-x" class="toolbar-label">X</label>
+          <select id="select-cp-x" title="Crossplot X variable"></select>
+          <label for="select-cp-y" class="toolbar-label">Y</label>
+          <select id="select-cp-y" title="Crossplot Y variable"></select>
+          <label for="select-cp-color" class="toolbar-label">Color</label>
+          <select id="select-cp-color" title="Optional Z-axis color variable"></select>
+          <label class="toggle-pill" title="Show Ordinary Least Squares linear regression line">
+            <input type="checkbox" id="checkbox-cp-regression" checked> Fit
+          </label>
+        </div>
+
+        <div class="toolbar-group" id="histogram-controls" style="display: none;">
+          <label for="select-hist-var" class="toolbar-label">Var</label>
+          <select id="select-hist-var" title="Histogram target variable"></select>
+          <label for="select-hist-bins" class="toolbar-label">Bins</label>
+          <select id="select-hist-bins" title="Histogram bin count">
+            <option value="20">20</option>
+            <option value="30" selected>30</option>
+            <option value="50">50</option>
+            <option value="80">80</option>
           </select>
         </div>
 
         <div class="toolbar-divider"></div>
 
-        <label class="toggle-pill" title="Normalize curves to 0-100% to compare different units and magnitudes">
-          <input type="checkbox" id="checkbox-normalize"> Normalize
-        </label>
-
-        <label class="toggle-pill" title="Dual Y-Axis (Left and Right axes for primary vs secondary variables)">
-          <input type="checkbox" id="checkbox-dual-y"> Dual Y
-        </label>
-
-        <label class="toggle-pill" title="Smooth curves">
-          <input type="checkbox" id="checkbox-smooth" checked> Smooth
-        </label>
-
-        <div class="toolbar-divider"></div>
-
         <button id="btn-toggle-cursors" title="Toggle measurement cursors A & B to inspect delta-time and delta-y">📐<span class="lbl"> Cursors</span></button>
-        <button id="btn-pin-run" title="Pin current trajectory as ghost baseline for comparison">📌<span class="lbl"> Pin Run</span></button>
+        <button id="btn-pin-run" class="overlay-only" title="Pin current trajectory as ghost baseline for comparison">📌<span class="lbl"> Pin Run</span></button>
 
         <span class="spacer"></span>
 

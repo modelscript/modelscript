@@ -10,15 +10,7 @@ import type {
   PsseSubCase,
   SubsystemDefinition,
 } from "../types.js";
-import { createPsseWasmParserSync } from "./wasm-loader.js";
-
-let cachedParser: ReturnType<typeof createPsseWasmParserSync>["parser"] | undefined;
-function getPsseWasmParser() {
-  if (!cachedParser) {
-    cachedParser = createPsseWasmParserSync().parser;
-  }
-  return cachedParser;
-}
+import { getPsseWasmParser } from "./wasm-loader.js";
 
 /**
  * Checks whether a document string looks like a PSS/E `.con` Contingency Data file.

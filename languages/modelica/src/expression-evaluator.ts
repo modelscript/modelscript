@@ -23,8 +23,73 @@
 
 import type { ExpressionEvaluator, QueryDB, SymbolEntry } from "@modelscript/runtime";
 import { resolveModelicaConstant } from "./constants.js";
-import { evalArithmeticString, splitTopLevel } from "./flattener/expressions/cst-utils.js";
+import {
+  evalArithmeticString,
+  firstAsciiToken,
+  isAsciiIdentContinue,
+  isAsciiIdentStart,
+  isAsciiIdentifier,
+  isAsciiWhitespaceCode,
+  isDottedIdentifierChain,
+  parseEnumLiteralsText,
+  parseNamedCallArgsFromText,
+  replaceWordOutsideStrings,
+  splitTopLevel,
+  stripLeadingDot,
+} from "./flattener/expressions/cst-utils.js";
 import type { ModificationValue } from "./modifications.js";
+
+function parseForInClause(inner: string): { bodyExpr: string; iterVar: string; rangeExpr: string } | null {
+  let depth = 0;
+  let inQuotes = false;
+  let quoteChar = "";
+  for (let i = 1; i + 4 < inner.length; i++) {
+    const ch = inner[i]!;
+    if (inQuotes) {
+      if (ch === "\\" && i + 1 < inner.length) i++;
+      else if (ch === quoteChar) inQuotes = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuotes = true;
+      quoteChar = ch;
+      continue;
+    }
+    if (ch === "(" || ch === "[" || ch === "{") {
+      depth++;
+      continue;
+    }
+    if (ch === ")" || ch === "]" || ch === "}") {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (
+      depth === 0 &&
+      isAsciiWhitespaceCode(inner.charCodeAt(i - 1)) &&
+      inner.startsWith("for", i) &&
+      isAsciiWhitespaceCode(inner.charCodeAt(i + 3))
+    ) {
+      let j = i + 4;
+      while (j < inner.length && isAsciiWhitespaceCode(inner.charCodeAt(j))) j++;
+      if (j >= inner.length || !isAsciiIdentStart(inner.charCodeAt(j))) continue;
+      const varStart = j;
+      while (j < inner.length && isAsciiIdentContinue(inner.charCodeAt(j))) j++;
+      const iterVar = inner.slice(varStart, j);
+      if (j >= inner.length || !isAsciiWhitespaceCode(inner.charCodeAt(j))) continue;
+      while (j < inner.length && isAsciiWhitespaceCode(inner.charCodeAt(j))) j++;
+      if (!inner.startsWith("in", j) || j + 2 >= inner.length || !isAsciiWhitespaceCode(inner.charCodeAt(j + 2))) {
+        continue;
+      }
+      j += 3;
+      const bodyExpr = inner.slice(0, i).trim();
+      const rangeExpr = inner.slice(j).trim();
+      if (bodyExpr && iterVar && rangeExpr) {
+        return { bodyExpr, iterVar, rangeExpr };
+      }
+    }
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Modelica Expression Evaluator
@@ -209,7 +274,7 @@ function getEnumLiteralIndex(text: string, db: QueryDB): number | null {
         if (!node) return;
         if (node.type === "enumeration_literal" || node.type === "EnumerationLiteral") {
           const idNode = (node.children || []).find((c: any) => c.type === "identifier" || c.type === "IDENT");
-          const name = idNode?.text?.trim() ?? node.text?.trim()?.split(/\s+/)[0];
+          const name = idNode?.text?.trim() ?? (firstAsciiToken(node.text ?? "") || undefined);
           if (name) lits.push(name);
           return;
         }
@@ -226,9 +291,8 @@ function getEnumLiteralIndex(text: string, db: QueryDB): number | null {
 
     // 3. Fallback text parsing only if CST inspection did not find literals
     const cstText = (cst as any)?.text ?? "";
-    const match = /enumeration\s*\(([^)]+)\)/.exec(cstText);
-    if (match && match[1]) {
-      const lits = match[1].split(",").map((x: string) => x.trim().split(/\s+/)[0]);
+    const lits = parseEnumLiteralsText(cstText);
+    if (lits && lits.length > 0) {
       const idx = lits.indexOf(litName);
       if (idx >= 0) return idx + 1;
     }
@@ -266,7 +330,11 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
   }
 
   // If-then-else expressions: if <cond> then <thenExpr> [elseif <cond> then <thenExpr> ...] else <elseExpr>
-  if (/^if(?:\s|\()/.test(trimmed)) {
+  if (
+    trimmed.startsWith("if") &&
+    trimmed.length >= 3 &&
+    (isAsciiWhitespaceCode(trimmed.charCodeAt(2)) || trimmed[2] === "(")
+  ) {
     const parsedIf = parseTopLevelIfExpression(trimmed);
     if (parsedIf) {
       for (const branch of parsedIf.branches) {
@@ -313,7 +381,7 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
         if (colonParts.length >= 2) {
           const parts = colonParts.map((p) => {
             let pt = p.trim();
-            pt = pt.replace(/\bend\b/g, String(arrVal.length));
+            pt = replaceWordOutsideStrings(pt, "end", String(arrVal.length));
             if (pt === "false") return 1;
             if (pt === "true") return 2;
             const ev = evaluateExprText(pt, scope, db);
@@ -361,7 +429,7 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
           }
           return undefined;
         }
-        const cleanSub = sTrim.replace(/\bend\b/g, String(arrVal.length));
+        const cleanSub = replaceWordOutsideStrings(sTrim, "end", String(arrVal.length));
         let idx: unknown = evaluateExprText(cleanSub, scope, db);
         if (cleanSub === "false") idx = 1;
         if (cleanSub === "true") idx = 2;
@@ -401,7 +469,7 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
     if (lastDot > 0) {
       const lhs = trimmed.slice(0, lastDot).trim();
       const rhs = trimmed.slice(lastDot + 1).trim();
-      if (/^[a-zA-Z_]\w*$/.test(rhs)) {
+      if (isAsciiIdentifier(rhs)) {
         const lhsVal = evaluateExprText(lhs, scope, db);
         if (lhsVal && typeof lhsVal === "object") {
           if (rhs in (lhsVal as Record<string, unknown>)) {
@@ -428,8 +496,8 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
   }
 
   // Simple name reference — resolve in scope
-  if (/^\.?[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/.test(trimmed) && scope) {
-    const cleanName = trimmed.startsWith(".") ? trimmed.slice(1) : trimmed;
+  const cleanName = stripLeadingDot(trimmed);
+  if (isDottedIdentifierChain(cleanName) && scope) {
     const isQualified = cleanName.includes(".");
     const resolveHook = isQualified ? "resolveName" : "resolveSimpleName";
     const resolver = db.query<(name: string) => SymbolEntry | null>(resolveHook, scope.id);
@@ -512,11 +580,11 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
   // Array constructor: {a, b, c} or array comprehension: {expr for x in range}
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     const inner = trimmed.slice(1, -1).trim();
-    const compMatch = inner.match(/^(.+?)\s+for\s+([a-zA-Z_]\w*)\s+in\s+(.+)$/);
+    const compMatch = parseForInClause(inner);
     if (compMatch) {
-      const bodyExpr = compMatch[1]!.trim();
-      const iterVar = compMatch[2]!.trim();
-      const rangeExpr = compMatch[3]!.trim();
+      const bodyExpr = compMatch.bodyExpr;
+      const iterVar = compMatch.iterVar;
+      const rangeExpr = compMatch.rangeExpr;
       const rangeVals = evaluateExprText(rangeExpr, scope, db);
       if (Array.isArray(rangeVals)) {
         const substituteIterVar = (exprStr: string, varName: string, replacement: string): string => {
@@ -541,14 +609,15 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
               }
               continue;
             }
-            if (/[a-zA-Z_]/.test(ch)) {
+            if (isAsciiIdentStart(ch.charCodeAt(0))) {
               const start = i;
-              while (i < exprStr.length && /[a-zA-Z0-9_]/.test(exprStr[i]!)) i++;
+              while (i < exprStr.length && isAsciiIdentContinue(exprStr.charCodeAt(i))) i++;
               const ident = exprStr.slice(start, i);
               const prevChar = start > 0 ? exprStr[start - 1] : "";
-              const rest = exprStr.slice(i);
+              let k = i;
+              while (k < exprStr.length && isAsciiWhitespaceCode(exprStr.charCodeAt(k))) k++;
               const isMemberAccess = prevChar === ".";
-              const isNamedArg = /^\s*=[^=]/.test(rest);
+              const isNamedArg = k < exprStr.length && exprStr[k] === "=" && exprStr[k + 1] !== "=";
               if (ident === varName && !isMemberAccess && !isNamedArg) {
                 out += replacement;
               } else {
@@ -595,7 +664,11 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
     const rhs = evaluateExprText(trimmed.slice(andIdx + 3), scope, db);
     if (typeof lhs === "boolean" && typeof rhs === "boolean") return lhs && rhs;
   }
-  if (/^not(?:\s|\()/.test(trimmed)) {
+  if (
+    trimmed.startsWith("not") &&
+    trimmed.length > 3 &&
+    (isAsciiWhitespaceCode(trimmed.charCodeAt(3)) || trimmed[3] === "(")
+  ) {
     const inner = evaluateExprText(trimmed.slice(3), scope, db);
     if (typeof inner === "boolean") return !inner;
   }
@@ -669,10 +742,10 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
   }
 
   // Built-in function calls: funcName(args) or Record constructor
-  const funcMatch = trimmed.match(/^([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*)\s*\((.+)\)$/s);
-  if (funcMatch) {
-    const funcName = funcMatch[1]!;
-    const argsText = funcMatch[2]!;
+  const parsedCall = parseNamedCallArgsFromText(trimmed);
+  if (parsedCall && parsedCall.argsText.length > 0 && isDottedIdentifierChain(parsedCall.callee)) {
+    const funcName = parsedCall.callee;
+    const argsText = parsedCall.argsText;
     const builtinVal = evaluateBuiltinCall(funcName, argsText, scope, db);
     if (builtinVal !== null) return builtinVal;
 
@@ -741,7 +814,12 @@ function evaluateBuiltinCall(name: string, argsText: string, scope: SymbolEntry 
   // Math & SIunits.Conversions functions (single numeric argument)
   if (args.length === 1 && typeof args[0] === "number") {
     const v = args[0];
-    const shortName = name.replace(/^(?:Modelica\.)?(?:Math|SIunits\.Conversions)\./, "");
+    const bareName = name.startsWith("Modelica.") ? name.slice("Modelica.".length) : name;
+    const shortName = bareName.startsWith("Math.")
+      ? bareName.slice("Math.".length)
+      : bareName.startsWith("SIunits.Conversions.")
+        ? bareName.slice("SIunits.Conversions.".length)
+        : name;
     switch (shortName) {
       case "abs":
         return Math.abs(v);
@@ -966,8 +1044,10 @@ function isBalancedOuterParens(text: string): boolean {
 function parseTopLevelIfExpression(
   text: string,
 ): { branches: { cond: string; thenExpr: string }[]; elseExpr: string | null } | null {
-  if (!/^if(?:\s|\()/.test(text)) return null;
-  const isWordChar = (c: string | undefined) => Boolean(c && /[a-zA-Z0-9_]/.test(c));
+  if (!text.startsWith("if") || text.length < 3 || !(isAsciiWhitespaceCode(text.charCodeAt(2)) || text[2] === "(")) {
+    return null;
+  }
+  const isWordChar = (c: string | undefined) => Boolean(c && isAsciiIdentContinue(c.charCodeAt(0)));
   const matchKeywordAt = (pos: number, kw: string): boolean => {
     if (text.slice(pos, pos + kw.length) !== kw) return false;
     const prev = pos > 0 ? text[pos - 1] : undefined;
@@ -1094,7 +1174,7 @@ function extractTrailingSubscript(text: string): { baseExpr: string; subText: st
       if (depth < 0) return null;
     } else if (depth === 0) {
       // Disallow top-level binary operators or whitespace outside brackets in the base expression
-      if (/\s|[+\-*/^<>=:]/.test(ch)) {
+      if (isAsciiWhitespaceCode(ch.charCodeAt(0)) || "+-*/^<>=:".includes(ch)) {
         return null;
       }
     }
@@ -1108,7 +1188,7 @@ function extractTrailingSubscript(text: string): { baseExpr: string; subText: st
 
 /** Find the rightmost top-level word-bounded keyword operator ('or' or 'and'). */
 function findTopLevelKeywordOperator(text: string, keyword: "or" | "and"): number {
-  const isWordChar = (c: string | undefined) => Boolean(c && /[a-zA-Z0-9_]/.test(c));
+  const isWordChar = (c: string | undefined) => Boolean(c && isAsciiIdentContinue(c.charCodeAt(0)));
   let depth = 0;
   let inQuotes = false;
   let quoteChar = "";
@@ -1210,14 +1290,14 @@ function findTopLevelOperator(text: string, ops: string[]): number {
         (ch === "-" || ch === "+") &&
         i >= 2 &&
         (text[i - 1] === "e" || text[i - 1] === "E") &&
-        /[\d.]/.test(text[i - 2]!)
+        ((text.charCodeAt(i - 2) >= 48 && text.charCodeAt(i - 2) <= 57) || text[i - 2] === ".")
       ) {
         continue;
       }
       // Don't match unary minus/plus after another operator (ignoring whitespace)
       if ((ch === "-" || ch === "+") && i > 0) {
         let prevIdx = i - 1;
-        while (prevIdx >= 0 && /\s/.test(text[prevIdx]!)) prevIdx--;
+        while (prevIdx >= 0 && isAsciiWhitespaceCode(text.charCodeAt(prevIdx))) prevIdx--;
         if (prevIdx < 0 || "+-*/^:<>=,({[".includes(text[prevIdx]!)) continue;
       }
       lastIdx = i;

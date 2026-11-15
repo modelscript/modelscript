@@ -61,6 +61,7 @@ export function generateCtrfReport(
       ? `${res.requirementName} (Constraint #${res.constraintId})`
       : `Requirement_${res.requirementId}_Constraint_${res.constraintId}`;
 
+    const verificationMethod = (res as { verificationMethod?: string | undefined }).verificationMethod;
     if (res.isSatisfied) {
       passed++;
       return {
@@ -77,6 +78,9 @@ export function generateCtrfReport(
           metricValue: res.metricValue,
           verdict: res.verdict,
           rigor: res.rigor,
+          standardClause: res.standardClause,
+          margin: res.margin,
+          verificationMethod,
         },
       };
     } else {
@@ -98,6 +102,9 @@ export function generateCtrfReport(
           blastRadius: res.blastRadius,
           verdict: res.verdict,
           rigor: res.rigor,
+          standardClause: res.standardClause,
+          margin: res.margin,
+          verificationMethod,
         },
       };
     }

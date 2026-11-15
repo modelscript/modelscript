@@ -291,13 +291,13 @@ C_load vout 0 5.0p
   {
     languageId: "verilog-a",
     author: "sarah_lin",
-    title: "GaN_HEMT_ASM_Thermal — IEEE 1857 Verilog-A Compact Power Transistor Model",
+    title: "GaN_HEMT_ASM_Thermal — Accellera Verilog-A Compact Power Transistor Model",
     filename: "GaN_HEMT_ASM_Thermal.va",
     viewType: "verilog-a",
     hoursAgo: 17,
     postContent:
-      "Released our IEEE 1857 Verilog-A compact model (`GaN_HEMT_ASM_Thermal.va`) for 650V Enhancement-Mode GaN-on-Si HEMT power switches. Formulates continuous surface-potential channel current, nonlinear Ward-Dutton gate-drain Miller charge `ddt(Qgd)`, dynamic $R_{\\text{DS(on)}}$ current collapse trapping, and electro-thermal self-heating branch (`tj`). #veriloga #gan #powerelectronics #semiconductor #compactmodeling",
-    code: `// IEEE 1857 Verilog-A Compact Model: 650V E-Mode GaN HEMT with Self-Heating
+      "Released our Accellera Verilog-A compact model (`GaN_HEMT_ASM_Thermal.va`) for 650V Enhancement-Mode GaN-on-Si HEMT power switches. Formulates continuous surface-potential channel current, nonlinear Ward-Dutton gate-drain Miller charge `ddt(Qgd)`, dynamic $R_{\\text{DS(on)}}$ current collapse trapping, and electro-thermal self-heating branch (`tj`). #veriloga #gan #powerelectronics #semiconductor #compactmodeling",
+    code: `// Accellera Verilog-A Compact Model: 650V E-Mode GaN HEMT with Self-Heating
 \`include "disciplines.vams"
 \`include "constants.vams"
 

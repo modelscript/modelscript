@@ -16,6 +16,15 @@
  */
 
 import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
+import {
+  collectCstLeaves,
+  type CstLeaf,
+  findMatchingBraceLeaf,
+  isSysmlIdentLeaf,
+  parseSysmlSource,
+  readDottedChainFromLeaves,
+  sliceBetweenLeaves,
+} from "./cst-utils.js";
 
 function isSpace(ch: string | undefined): boolean {
   return ch === " " || ch === "\t" || ch === "\r" || ch === "\n";
@@ -176,6 +185,179 @@ export function extractBalancedBlock(str: string, openBracePos: number): { body:
   return { body: str.slice(openBracePos + 1), endPos: str.length };
 }
 
+function parseOptionalFlowGuard(
+  leaves: readonly CstLeaf[],
+  idx: number,
+  sourceText: string,
+  requireSemicolon: boolean,
+): { guard?: string | undefined; endOffset: number } | null {
+  const cur = leaves[idx];
+  if (!cur) {
+    return requireSemicolon ? null : { endOffset: sourceText.length };
+  }
+  if (cur.text === ";") {
+    return { endOffset: cur.end };
+  }
+  if (cur.text === "if") {
+    for (let j = idx + 1; j < leaves.length; j++) {
+      const tok = leaves[j]!.text;
+      if (tok === ";") {
+        const guard = sliceBetweenLeaves(sourceText, cur, leaves[j]!);
+        return guard ? { guard, endOffset: leaves[j]!.end } : null;
+      }
+      if (tok === "{" || tok === "}") return null;
+    }
+    if (!requireSemicolon && idx + 1 < leaves.length) {
+      const guard = sourceText.slice(cur.end).trim();
+      return guard ? { guard, endOffset: sourceText.length } : null;
+    }
+  }
+  return requireSemicolon ? null : { endOffset: cur.end };
+}
+
+function extractSuccessionsFromLeaves(
+  leaves: readonly CstLeaf[],
+  sourceText: string,
+  requireSemicolon: boolean,
+): ActivityFlowInfo[] {
+  const out: ActivityFlowInfo[] = [];
+  for (let i = 0; i < leaves.length; i++) {
+    const kw = leaves[i]!.text;
+    if (kw === "first" || kw === "succession") {
+      const src = readDottedChainFromLeaves(leaves, i + 1);
+      if (!src || leaves[src.nextIdx]?.text !== "then") continue;
+      const tgt = readDottedChainFromLeaves(leaves, src.nextIdx + 1);
+      if (!tgt) continue;
+      const after = parseOptionalFlowGuard(leaves, tgt.nextIdx, sourceText, requireSemicolon);
+      if (!after) continue;
+      out.push({
+        source: src.text,
+        target: tgt.text,
+        kind: "control",
+        guard: after.guard,
+        startOffset: leaves[i]!.start,
+        endOffset: after.endOffset,
+      });
+    } else if (kw === "flow") {
+      let p = i + 1;
+      if (leaves[p]?.text === "of") {
+        const ofType = readDottedChainFromLeaves(leaves, p + 1);
+        if (!ofType) continue;
+        p = ofType.nextIdx;
+      }
+      if (leaves[p]?.text !== "from") continue;
+      const src = readDottedChainFromLeaves(leaves, p + 1);
+      if (!src || leaves[src.nextIdx]?.text !== "to") continue;
+      const tgt = readDottedChainFromLeaves(leaves, src.nextIdx + 1);
+      if (!tgt) continue;
+      const after = parseOptionalFlowGuard(leaves, tgt.nextIdx, sourceText, requireSemicolon);
+      if (!after) continue;
+      out.push({
+        source: src.text,
+        target: tgt.text,
+        kind: "object",
+        guard: after.guard,
+        startOffset: leaves[i]!.start,
+        endOffset: after.endOffset,
+      });
+    }
+  }
+  return out;
+}
+
+function collectPinsFromLeaves(leaves: readonly CstLeaf[], allowKindPrefix: boolean): ActionPinInfo[] {
+  const pins: ActionPinInfo[] = [];
+  for (let i = 0; i < leaves.length; i++) {
+    const dir = leaves[i]!.text;
+    if (dir !== "in" && dir !== "out" && dir !== "inout") continue;
+    if (i > 0 && leaves[i - 1]!.text === ".") continue;
+    let p = i + 1;
+    if (
+      allowKindPrefix &&
+      (leaves[p]?.text === "item" || leaves[p]?.text === "attribute") &&
+      isSysmlIdentLeaf(leaves[p + 1]?.text)
+    ) {
+      p++;
+    }
+    const pName = leaves[p]?.text;
+    if (!isSysmlIdentLeaf(pName)) continue;
+    p++;
+    let pType: string | undefined;
+    if (leaves[p]?.text === ":") {
+      const tc = readDottedChainFromLeaves(leaves, p + 1);
+      if (tc) pType = tc.text;
+    }
+    pins.push({ name: pName, direction: dir, type: pType });
+  }
+  return pins;
+}
+
+function collectAssignmentsFromLeaves(leaves: readonly CstLeaf[], sourceText: string): ActionAssignmentInfo[] {
+  const assignments: ActionAssignmentInfo[] = [];
+  for (let i = 0; i < leaves.length; i++) {
+    if (leaves[i]!.text !== "assign") continue;
+    let semiIdx = -1;
+    for (let s = i + 1; s < leaves.length; s++) {
+      const tok = leaves[s]!.text;
+      if (tok === ";") {
+        semiIdx = s;
+        break;
+      }
+      if (tok === "{" || tok === "}") break;
+    }
+    if (semiIdx === -1) continue;
+
+    let walrusIdx = -1;
+    let revIdx = -1;
+    let revEndIdx = -1;
+    for (let j = i + 1; j < semiIdx; j++) {
+      const tok = leaves[j]!.text;
+      if (tok === ":=" && walrusIdx === -1) {
+        walrusIdx = j;
+      } else if (tok === "=:" && revIdx === -1) {
+        revIdx = j;
+        revEndIdx = j;
+      } else if (tok === "=" && leaves[j + 1]?.text === ":" && j + 1 < semiIdx && revIdx === -1) {
+        revIdx = j;
+        revEndIdx = j + 1;
+      }
+    }
+
+    if (walrusIdx === i + 2 && isSysmlIdentLeaf(leaves[i + 1]?.text) && walrusIdx + 1 < semiIdx) {
+      const expr = sliceBetweenLeaves(sourceText, leaves[walrusIdx]!, leaves[semiIdx]!);
+      if (expr) assignments.push({ target: leaves[i + 1]!.text, expr });
+    } else if (revIdx !== -1 && revEndIdx + 1 < semiIdx && isSysmlIdentLeaf(leaves[semiIdx - 1]?.text)) {
+      const target = leaves[semiIdx - 1]!.text;
+      const expr = sliceBetweenLeaves(sourceText, leaves[i]!, leaves[revIdx]!);
+      if (expr && !assignments.some((a) => a.target === target)) {
+        assignments.push({ target, expr });
+      }
+    } else if (walrusIdx > i + 2 && walrusIdx === semiIdx - 2 && isSysmlIdentLeaf(leaves[semiIdx - 1]?.text)) {
+      const target = leaves[semiIdx - 1]!.text;
+      const expr = sliceBetweenLeaves(sourceText, leaves[i]!, leaves[walrusIdx]!);
+      if (expr && !assignments.some((a) => a.target === target)) {
+        assignments.push({ target, expr });
+      }
+    }
+  }
+  return assignments;
+}
+
+function parsePinMetadataFromText(text: string): {
+  direction?: "in" | "out" | "inout" | "return" | undefined;
+  hasDefault: boolean;
+} {
+  const leaves = collectCstLeaves(parseSysmlSource(text));
+  let idx = 0;
+  const first = leaves[idx]?.text;
+  if (first === "public" || first === "private" || first === "protected") idx++;
+  const dirTok = leaves[idx]?.text;
+  const direction =
+    dirTok === "in" || dirTok === "out" || dirTok === "inout" || dirTok === "return" ? dirTok : undefined;
+  const hasDefault = leaves.some((l) => l.text === "=" || l.text === ":=" || l.text === "default");
+  return { direction, hasDefault };
+}
+
 /**
  * Parses textual SysML v2 source into a normalized ActivityGraph.
  * Handles nested action defs, control nodes, balanced blocks, and successions.
@@ -185,96 +367,85 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
   const flows: ActivityFlowInfo[] = [];
   const declaredOutputs: ActionPinInfo[] = [];
 
+  const allLeaves = collectCstLeaves(parseSysmlSource(sysmlSource));
   let containerName = "Activity";
-  let searchSource = sysmlSource;
+  let searchLeaves = allLeaves;
 
   // 1. Check if enclosed in action def <Name> { ... }
-  const actionDefMatch = /\baction\s+def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/.exec(sysmlSource);
-  if (actionDefMatch) {
-    containerName = actionDefMatch[1]!;
-    const openBrace = actionDefMatch.index + actionDefMatch[0].length - 1;
-    const block = extractBalancedBlock(sysmlSource, openBrace);
-    searchSource = block.body;
+  for (let i = 0; i + 3 < allLeaves.length; i++) {
+    if (
+      allLeaves[i]!.text === "action" &&
+      allLeaves[i + 1]!.text === "def" &&
+      isSysmlIdentLeaf(allLeaves[i + 2]!.text) &&
+      allLeaves[i + 3]!.text === "{"
+    ) {
+      containerName = allLeaves[i + 2]!.text;
+      const closeIdx = findMatchingBraceLeaf(allLeaves, i + 3);
+      searchLeaves = allLeaves.slice(i + 4, closeIdx);
+      break;
+    }
   }
 
   // 1b. Extract top-level action def pins: (in|out|inout) (item|attribute)? [name] (: [type])?
-  const topPinRegex =
-    /\b(in|out|inout)\s+(?:item\s+|attribute\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*([A-Za-z0-9_.]+))?/g;
-  let tpm: RegExpExecArray | null;
-  while ((tpm = topPinRegex.exec(searchSource)) !== null) {
-    const dir = tpm[1] as "in" | "out" | "inout";
-    const pName = tpm[2]!;
-    const pType = tpm[3];
-    const pinInfo: ActionPinInfo = { name: pName, direction: dir, type: pType };
-    declaredOutputs.push(pinInfo);
+  for (const pin of collectPinsFromLeaves(searchLeaves, true)) {
+    declaredOutputs.push(pin);
   }
 
-  // 2. Extract action usages: action [name] { ... } or action [name];
-  let idx = 0;
-  while (idx < searchSource.length) {
-    const actMatch = /\b(?:perform\s+action\s+|perform\s+|action\s+(?!def\b))([A-Za-z_][A-Za-z0-9_]*)/g;
-    actMatch.lastIndex = idx;
-    const m = actMatch.exec(searchSource);
-    if (!m) break;
+  // 2. Extract action usages: action [name] { ... } or action [name]; or perform [action] [name]
+  for (let k = 0; k < searchLeaves.length; k++) {
+    const cur = searchLeaves[k]!.text;
+    let isPerform = false;
+    let hasActionKw = false;
+    let nameIdx = -1;
 
-    const name = m[1]!;
-    const afterName = m.index + m[0].length;
-    let endOfDecl = afterName;
-
-    // Skip whitespace
-    while (endOfDecl < searchSource.length && /\s/.test(searchSource[endOfDecl]!)) endOfDecl++;
-
-    let bodyText = "";
-    let bracePos = -1;
-    let semiPos = -1;
-    for (let p = afterName; p < searchSource.length; p++) {
-      const ch = searchSource[p];
-      if (ch === "{") {
-        bracePos = p;
-        break;
+    if (cur === "perform") {
+      isPerform = true;
+      if (searchLeaves[k + 1]?.text === "action" && isSysmlIdentLeaf(searchLeaves[k + 2]?.text)) {
+        hasActionKw = true;
+        nameIdx = k + 2;
+      } else if (isSysmlIdentLeaf(searchLeaves[k + 1]?.text)) {
+        nameIdx = k + 1;
       }
-      if (ch === ";") {
-        semiPos = p;
+    } else if (cur === "action" && searchLeaves[k + 1]?.text !== "def" && isSysmlIdentLeaf(searchLeaves[k + 1]?.text)) {
+      hasActionKw = true;
+      nameIdx = k + 1;
+    }
+
+    if (nameIdx === -1) continue;
+    const name = searchLeaves[nameIdx]!.text;
+
+    let endDeclIdx = -1;
+    for (let p = nameIdx + 1; p < searchLeaves.length; p++) {
+      const t = searchLeaves[p]!.text;
+      if (t === "{" || t === ";") {
+        endDeclIdx = p;
         break;
       }
     }
+    if (endDeclIdx === -1) continue;
 
-    const declSlice = searchSource.slice(
-      afterName,
-      bracePos !== -1 ? bracePos : semiPos !== -1 ? semiPos : searchSource.length,
-    );
-    const typeMatch = /:\s*([A-Za-z_][A-Za-z0-9_.]*)/.exec(declSlice);
-    const calleeTypeName = typeMatch
-      ? typeMatch[1]
-      : m[0].trim().startsWith("perform") && !m[0].includes("action")
-        ? name
-        : undefined;
-    const isInvocation = m[0].trim().startsWith("perform") || Boolean(calleeTypeName);
+    let typeMatchName: string | undefined;
+    for (let p = nameIdx + 1; p < endDeclIdx; p++) {
+      if (searchLeaves[p]!.text === ":") {
+        const tc = readDottedChainFromLeaves(searchLeaves, p + 1);
+        if (tc) typeMatchName = tc.text;
+        break;
+      }
+    }
+    const calleeTypeName = typeMatchName ?? (isPerform && !hasActionKw ? name : undefined);
+    const isInvocation = isPerform || Boolean(calleeTypeName);
 
-    if (bracePos !== -1) {
-      const block = extractBalancedBlock(searchSource, bracePos);
-      bodyText = block.body;
-      idx = block.endPos;
-    } else if (semiPos !== -1) {
-      idx = semiPos + 1;
-    } else {
-      idx = afterName;
-      continue;
+    let bodyLeaves: CstLeaf[] = [];
+    let endLeafIdx = endDeclIdx;
+    if (searchLeaves[endDeclIdx]!.text === "{") {
+      endLeafIdx = findMatchingBraceLeaf(searchLeaves, endDeclIdx);
+      bodyLeaves = searchLeaves.slice(endDeclIdx + 1, endLeafIdx);
     }
 
     const inputs: ActionPinInfo[] = [];
     const outputs: ActionPinInfo[] = [];
-    const assignments: ActionAssignmentInfo[] = [];
-
-    // Pins: in/out [name] : [type];
-    const pinRegex = /\b(in|out|inout)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*([A-Za-z0-9_.]+))?/g;
-    let pMatch: RegExpExecArray | null;
-    while ((pMatch = pinRegex.exec(bodyText)) !== null) {
-      const dir = pMatch[1] as "in" | "out" | "inout";
-      const pName = pMatch[2]!;
-      const pType = pMatch[3];
-      const pinInfo: ActionPinInfo = { name: pName, direction: dir, type: pType };
-      if (dir === "in") {
+    for (const pinInfo of collectPinsFromLeaves(bodyLeaves, false)) {
+      if (pinInfo.direction === "in") {
         inputs.push(pinInfo);
       } else {
         outputs.push(pinInfo);
@@ -282,18 +453,7 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
       }
     }
 
-    // Assignments: assign [target] := [expr]; or assign [val] =: [target];
-    const assignRegex = /\bassign\s+([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*);/g;
-    let asMatch: RegExpExecArray | null;
-    while ((asMatch = assignRegex.exec(bodyText)) !== null) {
-      assignments.push({ target: asMatch[1]!, expr: asMatch[2]!.trim() });
-    }
-    const assignRevRegex = /\bassign\s+([A-Za-z0-9_.]+)\s*:=?\s*([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
-    while ((asMatch = assignRevRegex.exec(bodyText)) !== null) {
-      if (!assignments.some((a) => a.target === asMatch![2])) {
-        assignments.push({ target: asMatch[2]!, expr: asMatch[1]!.trim() });
-      }
-    }
+    const assignments = collectAssignmentsFromLeaves(bodyLeaves, sysmlSource);
 
     nodes.push({
       name,
@@ -303,89 +463,117 @@ export function extractActivityGraphFromText(sysmlSource: string): ActivityGraph
       inputs,
       outputs,
       assignments,
-      startOffset: m.index,
-      endOffset: idx,
+      startOffset: searchLeaves[k]!.start,
+      endOffset: searchLeaves[endLeafIdx]!.end,
     });
+    k = endLeafIdx;
   }
 
   // 3. Extract control nodes: (merge|decide|fork|join) [name];
-  const ctrlRegex = /\b(merge|decide|fork|join)\s+([A-Za-z_][A-Za-z0-9_]*)\s*;/g;
-  let cMatch: RegExpExecArray | null;
-  while ((cMatch = ctrlRegex.exec(searchSource)) !== null) {
-    const kind = cMatch[1] as "merge" | "decide" | "fork" | "join";
-    const name = cMatch[2]!;
-    nodes.push({
-      name,
-      kind,
-      inputs: [],
-      outputs: [],
-      assignments: [],
-      startOffset: cMatch.index,
-      endOffset: cMatch.index + cMatch[0].length,
-    });
+  for (let k = 0; k + 2 < searchLeaves.length; k++) {
+    const kind = searchLeaves[k]!.text;
+    const name = searchLeaves[k + 1]!.text;
+    if (
+      (kind === "merge" || kind === "decide" || kind === "fork" || kind === "join") &&
+      isSysmlIdentLeaf(name) &&
+      searchLeaves[k + 2]!.text === ";"
+    ) {
+      nodes.push({
+        name,
+        kind,
+        inputs: [],
+        outputs: [],
+        assignments: [],
+        startOffset: searchLeaves[k]!.start,
+        endOffset: searchLeaves[k + 2]!.end,
+      });
+    }
   }
 
   // 3b. Extract decide blocks: decide [name] { case [guard] => [target/assignment]; ... }
-  const decideBlockRegex = /\bdecide\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/g;
-  let dbMatch: RegExpExecArray | null;
-  while ((dbMatch = decideBlockRegex.exec(searchSource)) !== null) {
-    const decideName = dbMatch[1]!;
-    const openBrace = dbMatch.index + dbMatch[0].length - 1;
-    const block = extractBalancedBlock(searchSource, openBrace);
+  for (let k = 0; k + 2 < searchLeaves.length; k++) {
+    if (
+      searchLeaves[k]!.text !== "decide" ||
+      !isSysmlIdentLeaf(searchLeaves[k + 1]!.text) ||
+      searchLeaves[k + 2]!.text !== "{"
+    ) {
+      continue;
+    }
+    const decideName = searchLeaves[k + 1]!.text;
+    const closeIdx = findMatchingBraceLeaf(searchLeaves, k + 2);
     nodes.push({
       name: decideName,
       kind: "decide",
       inputs: [],
       outputs: [],
       assignments: [],
-      startOffset: dbMatch.index,
-      endOffset: block.endPos,
+      startOffset: searchLeaves[k]!.start,
+      endOffset: searchLeaves[closeIdx]!.end,
     });
 
-    const caseRegex =
-      /\b(?:case\s+((?:(?!=>|\bthen\b|:(?!=))[^;\r\n])+?)|(else|default))\s*(?:=>|\bthen\b|:(?!=))\s*([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*);/g;
-    let cm: RegExpExecArray | null;
+    const body = searchLeaves.slice(k + 3, closeIdx);
     let caseIdx = 1;
-    while ((cm = caseRegex.exec(block.body)) !== null) {
-      const guardStr = (cm[1] ?? cm[2])!.trim();
-      const targetName = `${decideName}_case_${caseIdx++}`;
-      nodes.push({
-        name: targetName,
-        kind: "action",
-        inputs: [],
-        outputs: [],
-        assignments: [],
-        startOffset: dbMatch.index + cm.index,
-        endOffset: dbMatch.index + cm.index + cm[0].length,
-      });
-      flows.push({
-        source: decideName,
-        target: targetName,
-        kind: "control",
-        guard: guardStr,
-        startOffset: dbMatch.index + cm.index,
-        endOffset: dbMatch.index + cm.index + cm[0].length,
-      });
+    let armStart = 0;
+    while (armStart < body.length) {
+      let semiIdx = armStart;
+      while (semiIdx < body.length && body[semiIdx]!.text !== ";") semiIdx++;
+      if (semiIdx >= body.length) break;
+
+      const head = body[armStart]!.text;
+      if (head === "case" || head === "else" || head === "default") {
+        let sepIdx = -1;
+        let sepEndIdx = -1;
+        for (let s = armStart + 1; s < semiIdx; s++) {
+          const t = body[s]!.text;
+          if (t === "=>" || t === "then") {
+            sepIdx = s;
+            sepEndIdx = s;
+            break;
+          }
+          if (t === "=" && body[s + 1]?.text === ">" && s + 1 < semiIdx) {
+            sepIdx = s;
+            sepEndIdx = s + 1;
+            break;
+          }
+          if (t === ":" && body[s + 1]?.text !== "=") {
+            sepIdx = s;
+            sepEndIdx = s;
+            break;
+          }
+        }
+        if (sepIdx !== -1 && sepEndIdx + 1 < semiIdx) {
+          const guardStr = head === "case" ? sliceBetweenLeaves(sysmlSource, body[armStart]!, body[sepIdx]!) : head;
+          if (guardStr) {
+            const targetName = `${decideName}_case_${caseIdx++}`;
+            const startOff = body[armStart]!.start;
+            const endOff = body[semiIdx]!.end;
+            nodes.push({
+              name: targetName,
+              kind: "action",
+              inputs: [],
+              outputs: [],
+              assignments: [],
+              startOffset: startOff,
+              endOffset: endOff,
+            });
+            flows.push({
+              source: decideName,
+              target: targetName,
+              kind: "control",
+              guard: guardStr,
+              startOffset: startOff,
+              endOffset: endOff,
+            });
+          }
+        }
+      }
+      armStart = semiIdx + 1;
     }
   }
 
   // 4. Extract successions: first [source] then [target] (optional if [guard]);
-  const succRegex =
-    /\b(?:first\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*))?\s*;|succession\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*))?\s*;|flow\s+(?:of\s+[A-Za-z0-9_.]+\s+from|from)\s+([A-Za-z0-9_.]+)\s+to\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*))?\s*;)/g;
-  let sMatch: RegExpExecArray | null;
-  while ((sMatch = succRegex.exec(searchSource)) !== null) {
-    const src = sMatch[1] || sMatch[4] || sMatch[7]!;
-    const tgt = sMatch[2] || sMatch[5] || sMatch[8]!;
-    const guard = sMatch[3] || sMatch[6] || sMatch[9];
-    const isObject = Boolean(sMatch[7]);
-    flows.push({
-      source: src,
-      target: tgt,
-      kind: isObject ? "object" : "control",
-      guard: guard?.trim(),
-      startOffset: sMatch.index,
-      endOffset: sMatch.index + sMatch[0].length,
-    });
+  for (const flow of extractSuccessionsFromLeaves(searchLeaves, sysmlSource, true)) {
+    flows.push(flow);
   }
 
   return {
@@ -414,19 +602,14 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
 
     if (rule === "SuccessionAsUsage" || rule === "SuccessionFlowUsage" || rule === "FlowUsage") {
       const text = db.cstText(child.startOffset, child.endOffset, child) || "";
-      const m =
-        /\b(?:first|succession)\s+([A-Za-z0-9_.]+)\s+then\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*))?/.exec(
-          text,
-        ) ||
-        /\bflow\s+(?:of\s+[A-Za-z0-9_.:]+\s+from|from)\s+([A-Za-z0-9_.]+)\s+to\s+([A-Za-z0-9_.]+)(?:\s+if\s+([^;\s\r\n]+(?:\s+[^;\s\r\n]+)*))?/.exec(
-          text,
-        );
-      if (m) {
+      const parsed = extractSuccessionsFromLeaves(collectCstLeaves(parseSysmlSource(text)), text, false);
+      const match = parsed[0];
+      if (match) {
         flows.push({
-          source: m[1]!,
-          target: m[2]!,
+          source: match.source,
+          target: match.target,
           kind: rule === "SuccessionFlowUsage" || rule === "FlowUsage" ? "object" : "control",
-          guard: m[3]?.trim(),
+          guard: match.guard,
           startOffset: child.startOffset,
           endOffset: child.endOffset,
         });
@@ -448,17 +631,16 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
       const text = (db.cstText(child.startOffset, child.endOffset, child) || "").trim();
       const rawMetaDir = child.metadata?.["direction"];
       const metaDir = typeof rawMetaDir === "string" ? rawMetaDir : undefined;
-      const dirMatch = /^(?:public\s+|private\s+|protected\s+)?(in|out|inout|return)\b/.exec(text);
+      const parsedPin = parsePinMetadataFromText(text);
       const dir =
         rule === "ReturnParameterMember"
           ? "out"
-          : ((metaDir || dirMatch?.[1]) as "in" | "out" | "inout" | "return" | undefined);
+          : ((metaDir || parsedPin.direction) as "in" | "out" | "inout" | "return" | undefined);
       if (dir) {
-        const hasDefault = /=|:=|\bdefault\b/.test(text);
         declaredOutputs.push({
           name,
           direction: dir === "return" ? "out" : dir,
-          hasDefault,
+          hasDefault: parsedPin.hasDefault,
           startOffset: child.startOffset,
           endOffset: child.endOffset,
         });
@@ -484,22 +666,21 @@ export function extractActivityGraphFromQueryDB(db: QueryDB, actionSymbol: Symbo
         const text = (db.cstText(pin.startOffset, pin.endOffset, pin) || "").trim();
         const rawPinMetaDir = pin.metadata?.["direction"];
         const metaDir = typeof rawPinMetaDir === "string" ? rawPinMetaDir : undefined;
-        const dirMatch = /^(?:public\s+|private\s+|protected\s+)?(in|out|inout|return)\b/.exec(text);
+        const parsedPin = parsePinMetadataFromText(text);
         const isParamRule = pin.ruleName === "ParameterMember" || pin.ruleName === "ReturnParameterMember";
-        if (!isParamRule && !metaDir && !dirMatch) continue;
+        if (!isParamRule && !metaDir && !parsedPin.direction) continue;
 
         const isOut =
           pin.ruleName === "ReturnParameterMember" ||
           metaDir === "out" ||
           metaDir === "inout" ||
-          dirMatch?.[1] === "out" ||
-          dirMatch?.[1] === "inout" ||
-          dirMatch?.[1] === "return";
-        const hasDefault = /=|:=|\bdefault\b/.test(text);
+          parsedPin.direction === "out" ||
+          parsedPin.direction === "inout" ||
+          parsedPin.direction === "return";
         const pinInfo: ActionPinInfo = {
           name: pin.name,
           direction: isOut ? "out" : "in",
-          hasDefault,
+          hasDefault: parsedPin.hasDefault,
           startOffset: pin.startOffset,
           endOffset: pin.endOffset,
         };
@@ -1078,16 +1259,21 @@ export function analyzeActivityCfa(graph: ActivityGraph): ActivityCfaResult {
  */
 export function extractActivityGraphsFromText(sysmlSource: string): Map<string, ActivityGraph> {
   const result = new Map<string, ActivityGraph>();
-  const defRegex = /\baction\s+def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/g;
-  let m: RegExpExecArray | null;
-  while ((m = defRegex.exec(sysmlSource)) !== null) {
-    const actName = m[1]!;
-    const openBrace = m.index + m[0].length - 1;
-    const block = extractBalancedBlock(sysmlSource, openBrace);
-    const subSource = sysmlSource.slice(m.index, block.endPos);
-    const g = extractActivityGraphFromText(subSource);
-    g.name = actName;
-    result.set(actName, g);
+  const leaves = collectCstLeaves(parseSysmlSource(sysmlSource));
+  for (let i = 0; i + 3 < leaves.length; i++) {
+    if (
+      leaves[i]!.text === "action" &&
+      leaves[i + 1]!.text === "def" &&
+      isSysmlIdentLeaf(leaves[i + 2]!.text) &&
+      leaves[i + 3]!.text === "{"
+    ) {
+      const actName = leaves[i + 2]!.text;
+      const closeIdx = findMatchingBraceLeaf(leaves, i + 3);
+      const subSource = sysmlSource.slice(leaves[i]!.start, leaves[closeIdx]!.end);
+      const g = extractActivityGraphFromText(subSource);
+      g.name = actName;
+      result.set(actName, g);
+    }
   }
   if (result.size === 0) {
     const single = extractActivityGraphFromText(sysmlSource);

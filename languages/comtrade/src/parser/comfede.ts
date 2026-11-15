@@ -31,8 +31,11 @@ export interface ComfedeDocument {
 }
 
 import { createWasmParserSync } from "@modelscript/comtrade/wasm-parser";
+import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
 import { createRequire } from "node:module";
+import type { ComtradeRecord } from "../types.js";
+import { splitCstLineByComma } from "./comname.js";
 
 const require = createRequire(import.meta.url);
 let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
@@ -44,34 +47,140 @@ function getComtradeWasmParser() {
   return cachedParser;
 }
 
+function xmlAttr(el: XmlElement, name: string): string | undefined {
+  const lower = name.toLowerCase();
+  return el.attributes.find((a) => a.name.toLowerCase() === lower)?.value;
+}
+
+function xmlChildText(el: XmlElement, name: string): string | undefined {
+  const lower = name.toLowerCase();
+  const child = el.children.find((c) => {
+    const tag = c.name.includes(":") ? c.name.split(":").pop()! : c.name;
+    return tag.toLowerCase() === lower;
+  });
+  return child?.text?.trim() || undefined;
+}
+
+function escapeXml(val: string): string {
+  return val
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
 /**
- * Parses an IEEE C37.239 COMFEDE (SOE) CSV/ASCII document.
+ * Parses an IEEE C37.239 COMFEDE XML document (`<COMFEDE>` / `<EventData>`).
+ */
+export function parseComfedeXml(xmlText: string): ComfedeDocument {
+  const doc = parseXml(xmlText);
+  const root = doc.root;
+  if (!root) {
+    throw new Error("Invalid COMFEDE XML: missing root element.");
+  }
+
+  const headerEl = root.children.find((c) => c.name.toLowerCase().endsWith("header")) ?? root;
+
+  const header: ComfedeHeader = {
+    stationName:
+      xmlAttr(headerEl, "stationName") ??
+      xmlChildText(headerEl, "StationName") ??
+      xmlChildText(headerEl, "Station") ??
+      "UNKNOWN_STATION",
+    deviceId:
+      xmlAttr(headerEl, "deviceId") ??
+      xmlChildText(headerEl, "DeviceId") ??
+      xmlChildText(headerEl, "Device") ??
+      "SOE_1",
+    revisionYear:
+      Number.parseInt(xmlAttr(headerEl, "revisionYear") ?? xmlChildText(headerEl, "RevisionYear") ?? "2010", 10) ||
+      2010,
+    startTimestampIso:
+      xmlAttr(headerEl, "startTimestamp") ??
+      xmlChildText(headerEl, "StartTimestamp") ??
+      xmlChildText(headerEl, "StartTime") ??
+      new Date(0).toISOString(),
+    timeCode: xmlAttr(headerEl, "timeCode") ?? xmlChildText(headerEl, "TimeCode"),
+  };
+
+  const eventElements: XmlElement[] = [];
+  const collectEvents = (el: XmlElement): void => {
+    const local = (el.name.includes(":") ? el.name.split(":").pop()! : el.name).toLowerCase();
+    if (local === "event" || local === "eventrecord" || local === "soerecord") {
+      eventElements.push(el);
+    }
+    for (const child of el.children) collectEvents(child);
+  };
+  collectEvents(root);
+
+  const events: ComfedeEventRecord[] = eventElements.map((ev, idx) => ({
+    sequenceNumber:
+      Number.parseInt(
+        xmlAttr(ev, "sequenceNumber") ?? xmlAttr(ev, "seq") ?? xmlChildText(ev, "SequenceNumber") ?? String(idx + 1),
+        10,
+      ) || idx + 1,
+    timestampIso: xmlAttr(ev, "timestamp") ?? xmlChildText(ev, "Timestamp") ?? header.startTimestampIso,
+    offsetMs: Number.parseFloat(xmlAttr(ev, "offsetMs") ?? xmlChildText(ev, "OffsetMs") ?? "0") || 0,
+    channelId: xmlAttr(ev, "channelId") ?? xmlChildText(ev, "ChannelId") ?? `CH_${idx + 1}`,
+    description: xmlAttr(ev, "description") ?? xmlChildText(ev, "Description") ?? "",
+    state: xmlAttr(ev, "state") ?? xmlChildText(ev, "State") ?? "ASSERTED",
+    phase: (xmlAttr(ev, "phase") ?? xmlChildText(ev, "Phase")) as ComfedeEventRecord["phase"],
+  }));
+
+  return { header, events };
+}
+
+/**
+ * Serializes a `ComfedeDocument` into IEEE C37.239 XML format.
+ */
+export function serializeComfedeXml(doc: ComfedeDocument): string {
+  const lines: string[] = [
+    `<?xml version="1.0" encoding="UTF-8"?>`,
+    `<COMFEDE revisionYear="${doc.header.revisionYear}">`,
+    `  <Header stationName="${escapeXml(doc.header.stationName)}" deviceId="${escapeXml(doc.header.deviceId)}" startTimestamp="${escapeXml(doc.header.startTimestampIso)}"${doc.header.timeCode ? ` timeCode="${escapeXml(doc.header.timeCode)}"` : ""} />`,
+    `  <Events>`,
+  ];
+  for (const ev of doc.events) {
+    lines.push(
+      `    <Event sequenceNumber="${ev.sequenceNumber}" timestamp="${escapeXml(ev.timestampIso)}" offsetMs="${ev.offsetMs.toFixed(3)}" channelId="${escapeXml(ev.channelId)}" description="${escapeXml(ev.description)}" state="${escapeXml(ev.state)}"${ev.phase ? ` phase="${escapeXml(ev.phase)}"` : ""} />`,
+    );
+  }
+  lines.push(`  </Events>`, `</COMFEDE>`);
+  return lines.join("\n");
+}
+
+/**
+ * Parses an IEEE C37.239 COMFEDE (SOE) XML or CSV/ASCII document.
  */
 export function parseComfede(text: string): ComfedeDocument {
+  if (text.trimStart().startsWith("<")) {
+    return parseComfedeXml(text);
+  }
   const cstTree = getComtradeWasmParser().parse(text);
-  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
-  const lines = cstLines
-    .map(({ tokens }) => cstLineText(text, tokens).trim())
-    .filter((l) => l.length > 0 && !l.startsWith("#"));
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode).filter(({ tokens }) => {
+    const line = cstLineText(text, tokens).trim();
+    return line.length > 0 && !line.startsWith("#");
+  });
 
-  if (lines.length < 2) {
+  if (cstLines.length < 2) {
     throw new Error("Invalid COMFEDE document: missing header lines.");
   }
 
-  const hdrParts = lines[0]!.split(",").map((s) => s.trim());
-  const timeParts = lines[1]!.split(",").map((s) => s.trim());
+  const hdrParts = splitCstLineByComma(text, cstLines[0]!.tokens);
+  const timeParts = splitCstLineByComma(text, cstLines[1]!.tokens);
 
   const header: ComfedeHeader = {
-    stationName: hdrParts[0] ?? "UNKNOWN_STATION",
-    deviceId: hdrParts[1] ?? "SOE_1",
+    stationName: hdrParts[0] || "UNKNOWN_STATION",
+    deviceId: hdrParts[1] || "SOE_1",
     revisionYear: Number.parseInt(hdrParts[2] ?? "2010", 10) || 2010,
-    startTimestampIso: timeParts[0] ?? new Date(0).toISOString(),
+    startTimestampIso: timeParts[0] || new Date(0).toISOString(),
     timeCode: timeParts[1],
   };
 
   const events: ComfedeEventRecord[] = [];
-  for (let idx = 2; idx < lines.length; idx++) {
-    const cols = lines[idx]!.split(",").map((s) => s.trim());
+  for (let idx = 2; idx < cstLines.length; idx++) {
+    const cols = splitCstLineByComma(text, cstLines[idx]!.tokens);
     if (cols.length < 6) continue;
     events.push({
       sequenceNumber: Number.parseInt(cols[0]!, 10) || idx - 1,
@@ -101,4 +210,48 @@ export function serializeComfede(doc: ComfedeDocument): string {
     );
   }
   return lines.join("\n");
+}
+
+export interface ComfedeWaveformCorrelation {
+  event: ComfedeEventRecord;
+  comtradeTimeSec: number;
+  nearestSampleIndex: number;
+  inWindow: boolean;
+}
+
+/**
+ * Aligns IEEE C37.239 COMFEDE sequence-of-events records with an IEEE C37.111 COMTRADE waveform.
+ */
+export function correlateComfedeWithComtrade(
+  doc: ComfedeDocument,
+  comtrade: ComtradeRecord,
+): ComfedeWaveformCorrelation[] {
+  const times =
+    comtrade.timeSec ?? (comtrade.timestamps ? Float64Array.from(comtrade.timestamps) : new Float64Array(0));
+  const comtradeStartMs = comtrade.config?.startTime ? new Date(comtrade.config.startTime).getTime() : Number.NaN;
+  const soeStartMs = new Date(doc.header.startTimestampIso).getTime();
+  const baseShiftSec =
+    Number.isFinite(comtradeStartMs) && Number.isFinite(soeStartMs) ? (soeStartMs - comtradeStartMs) / 1000 : 0;
+
+  const tMin = times.length > 0 ? times[0]! : 0;
+  const tMax = times.length > 0 ? times[times.length - 1]! : 0;
+
+  return doc.events.map((event) => {
+    const comtradeTimeSec = baseShiftSec + event.offsetMs / 1000;
+    let nearestSampleIndex = -1;
+    let bestDiff = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < times.length; i++) {
+      const diff = Math.abs(times[i]! - comtradeTimeSec);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        nearestSampleIndex = i;
+      }
+    }
+    return {
+      event,
+      comtradeTimeSec,
+      nearestSampleIndex,
+      inWindow: times.length > 0 && comtradeTimeSec >= tMin && comtradeTimeSec <= tMax,
+    };
+  });
 }

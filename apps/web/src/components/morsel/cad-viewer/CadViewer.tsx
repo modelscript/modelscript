@@ -8,7 +8,7 @@
  * interactions via CADPort annotations.
  */
 
-import type { DynamicBindingConfig, Verification3DOverlayPayload } from "@modelscript/cad";
+import type { DynamicBindingConfig, GdtOverlayPayload, Verification3DOverlayPayload } from "@modelscript/cad";
 import { ContactShadows, GizmoHelper, GizmoViewport, Grid, Html, OrbitControls, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -16,6 +16,14 @@ import * as THREE from "three";
 import type { AnimationController } from "./animation-controller";
 import { AnimationTimeline } from "./AnimationTimeline";
 import { CadBindingPickerModal } from "./CadBindingPickerModal";
+import {
+  ensureGeometryBrushedUvs,
+  Gdt3dOverlay,
+  HeroStudioEnvironment,
+  resolveHeroAlloyConfig,
+  SplitSectionGeometryPasses,
+  StencilSectionCapQuad,
+} from "./HeroCadMaterials";
 import { InstancedCadAssembly } from "./InstancedCadAssembly";
 import { VtkRenderer } from "./VtkRenderer";
 
@@ -84,6 +92,59 @@ interface CadViewerProps {
   touchScrollPassThrough?: boolean | undefined;
   /** Formal verification 3D overlay payload */
   verificationOverlay?: Verification3DOverlayPayload | null | undefined;
+  /** ASME Y14.5 GD&T MBD callouts and datums overlay */
+  gdtOverlay?: GdtOverlayPayload | null | undefined;
+}
+
+function computeSceneBounds(components: CadComponent[]): {
+  center: [number, number, number];
+  radius: number;
+  minY: number;
+} {
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+  let hasPoints = false;
+
+  for (const comp of components) {
+    const p = comp.cad.position ?? [0, 0, 0];
+    const s = comp.cad.scale ?? [1, 1, 1];
+    if (comp.proceduralMesh && comp.proceduralMesh.vertices.length >= 3) {
+      const verts = comp.proceduralMesh.vertices;
+      for (let i = 0; i < verts.length; i += 3) {
+        const vx = verts[i]! * s[0] + p[0];
+        const vy = verts[i + 1]! * s[1] + p[1];
+        const vz = verts[i + 2]! * s[2] + p[2];
+        if (vx < minX) minX = vx;
+        if (vy < minY) minY = vy;
+        if (vz < minZ) minZ = vz;
+        if (vx > maxX) maxX = vx;
+        if (vy > maxY) maxY = vy;
+        if (vz > maxZ) maxZ = vz;
+        hasPoints = true;
+      }
+    } else {
+      if (p[0] - 1 < minX) minX = p[0] - 1;
+      if (p[1] - 1 < minY) minY = p[1] - 1;
+      if (p[2] - 1 < minZ) minZ = p[2] - 1;
+      if (p[0] + 1 > maxX) maxX = p[0] + 1;
+      if (p[1] + 1 > maxY) maxY = p[1] + 1;
+      if (p[2] + 1 > maxZ) maxZ = p[2] + 1;
+      hasPoints = true;
+    }
+  }
+
+  if (!hasPoints) {
+    return { center: [0, 0, 0], radius: 2, minY: 0 };
+  }
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const cz = (minZ + maxZ) / 2;
+  const radius = Math.max(0.5, Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) / 2);
+  return { center: [cx, cy, cz], radius, minY };
 }
 
 // ── URI resolver ─────────────────────────────────────────────────────────────
@@ -136,7 +197,22 @@ function PortIndicator({
 }
 
 /** Procedural triangle mesh built directly from MSL Visualizer or CSG evaluation arrays. */
-function ProceduralMeshObject({ mesh }: { mesh: ProceduralMeshData }) {
+function ProceduralMeshObject({
+  mesh,
+  name,
+  dark = false,
+  solidPlane = null,
+  wirePlane = null,
+  sectionSplit = false,
+}: {
+  mesh: ProceduralMeshData;
+  name?: string | undefined;
+  dark?: boolean | undefined;
+  solidPlane?: THREE.Plane | null | undefined;
+  wirePlane?: THREE.Plane | null | undefined;
+  sectionSplit?: boolean | undefined;
+}) {
+  const { gl } = useThree();
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(mesh.vertices), 3));
@@ -149,6 +225,7 @@ function ProceduralMeshObject({ mesh }: { mesh: ProceduralMeshData }) {
     if (!mesh.normals || mesh.normals.length !== mesh.vertices.length) {
       geo.computeVertexNormals();
     }
+    ensureGeometryBrushedUvs(geo);
     return geo;
   }, [mesh]);
 
@@ -159,26 +236,58 @@ function ProceduralMeshObject({ mesh }: { mesh: ProceduralMeshData }) {
   }, [geometry]);
 
   const rgba = mesh.color ?? [0.27, 0.51, 0.71, 1.0];
-  const color = useMemo(() => new THREE.Color(rgba[0], rgba[1], rgba[2]), [rgba]);
+  const alloyProps = useMemo(() => resolveHeroAlloyConfig(gl, name, rgba, dark), [gl, name, rgba, dark]);
+  const clipPlanes = useMemo(() => (solidPlane ? [solidPlane] : []), [solidPlane]);
 
   return (
-    <mesh geometry={geometry} castShadow receiveShadow>
-      <meshStandardMaterial
-        color={color}
-        metalness={0.25}
-        roughness={0.45}
-        transparent={rgba[3] < 1.0}
-        opacity={rgba[3]}
-        side={THREE.DoubleSide}
-      />
-    </mesh>
+    <group>
+      <mesh geometry={geometry} castShadow receiveShadow>
+        <meshPhysicalMaterial
+          {...alloyProps}
+          transparent={rgba[3] < 1.0}
+          opacity={rgba[3]}
+          clearcoat={0.14}
+          side={THREE.DoubleSide}
+          clippingPlanes={clipPlanes}
+          clipShadows={true}
+        />
+      </mesh>
+      {sectionSplit && solidPlane && wirePlane && (
+        <SplitSectionGeometryPasses
+          geometry={geometry}
+          solidPlane={solidPlane}
+          wirePlane={wirePlane}
+          dark={dark}
+          showStencilMask={true}
+          showWireOpposite={true}
+        />
+      )}
+    </group>
   );
 }
 
 /** GLTF-loaded 3D mesh object. */
-function GltfMeshObject({ url }: { url: string }) {
+function GltfMeshObject({ url, solidPlane = null }: { url: string; solidPlane?: THREE.Plane | null | undefined }) {
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(true), [scene]);
+
+  useEffect(() => {
+    const planes = solidPlane ? [solidPlane] : [];
+    cloned.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const m of mats) {
+          if (m) {
+            m.clippingPlanes = planes;
+            m.clipShadows = true;
+            m.needsUpdate = true;
+          }
+        }
+      }
+    });
+  }, [cloned, solidPlane]);
+
   return <primitive object={cloned} />;
 }
 
@@ -189,12 +298,20 @@ function CadModel({
   selected,
   onSelect,
   animationController,
+  dark = false,
+  solidPlane = null,
+  wirePlane = null,
+  sectionSplit = false,
 }: {
   component: CadComponent;
   assetBaseUrl: string;
   selected: boolean;
   onSelect?: ((name: string | null) => void) | undefined;
   animationController?: AnimationController | null | undefined;
+  dark?: boolean | undefined;
+  solidPlane?: THREE.Plane | null | undefined;
+  wirePlane?: THREE.Plane | null | undefined;
+  sectionSplit?: boolean | undefined;
 }) {
   const url = useMemo(() => resolveModelicaUri(component.cad.uri, assetBaseUrl), [component.cad.uri, assetBaseUrl]);
   const groupRef = useRef<THREE.Group>(null);
@@ -236,13 +353,16 @@ function CadModel({
     if (!groupRef.current) return;
     groupRef.current.traverse((child) => {
       if (child instanceof THREE.Mesh && child.material && !child.name.startsWith("port:")) {
-        const mat = child.material as THREE.MeshStandardMaterial;
-        if (selected) {
-          mat.emissive = new THREE.Color("#06b6d4");
-          mat.emissiveIntensity = 0.45;
-        } else {
-          mat.emissive = new THREE.Color("#000000");
-          mat.emissiveIntensity = 0;
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        for (const mat of mats) {
+          if (!(mat instanceof THREE.MeshStandardMaterial)) continue;
+          if (selected) {
+            mat.emissive.set("#06b6d4");
+            mat.emissiveIntensity = 0.45;
+          } else {
+            mat.emissive.set("#000000");
+            mat.emissiveIntensity = 0;
+          }
         }
       }
     });
@@ -276,8 +396,12 @@ function CadModel({
     if (tf.color && !selected) {
       groupRef.current.traverse((child) => {
         if (child instanceof THREE.Mesh && child.material && !child.name.startsWith("port:")) {
-          const mat = child.material as THREE.MeshStandardMaterial;
-          mat.color.setRGB(tf.color![0], tf.color![1], tf.color![2]);
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          for (const mat of mats) {
+            if (mat instanceof THREE.MeshStandardMaterial) {
+              mat.color.setRGB(tf.color![0], tf.color![1], tf.color![2]);
+            }
+          }
         }
       });
     }
@@ -330,9 +454,16 @@ function CadModel({
         onPointerOut={() => setHovered(false)}
       >
         {component.proceduralMesh ? (
-          <ProceduralMeshObject mesh={component.proceduralMesh} />
+          <ProceduralMeshObject
+            mesh={component.proceduralMesh}
+            name={component.name}
+            dark={dark}
+            solidPlane={solidPlane}
+            wirePlane={wirePlane}
+            sectionSplit={sectionSplit}
+          />
         ) : !component.cad.uri.startsWith("procedural://") ? (
-          <GltfMeshObject url={url} />
+          <GltfMeshObject url={url} solidPlane={solidPlane} />
         ) : null}
 
         {showInspector && (
@@ -403,7 +534,14 @@ function SceneContents({
   animationController,
   vtkBuffer,
   touchScrollPassThrough,
-  clippingPlanes,
+  solidPlane,
+  wirePlane,
+  sectionSplit,
+  autoSweep,
+  clipSpan,
+  gdtOverlay,
+  showGdt,
+  sceneBounds,
 }: {
   components: CadComponent[];
   assetBaseUrl: string;
@@ -413,58 +551,19 @@ function SceneContents({
   animationController?: AnimationController | null | undefined;
   vtkBuffer?: Uint8Array | null | undefined;
   touchScrollPassThrough?: boolean | undefined;
-  clippingPlanes?: THREE.Plane[] | undefined;
+  solidPlane?: THREE.Plane | null | undefined;
+  wirePlane?: THREE.Plane | null | undefined;
+  sectionSplit?: boolean | undefined;
+  autoSweep?: boolean | undefined;
+  clipSpan: number;
+  gdtOverlay?: GdtOverlayPayload | null | undefined;
+  showGdt?: boolean | undefined;
+  sceneBounds: { center: [number, number, number]; radius: number; minY: number };
 }) {
   const { gl, camera } = useThree();
   const controlsRef = useRef<any>(null);
   const framedSignatureRef = useRef<string>("");
-
-  const sceneBounds = useMemo(() => {
-    let minX = Infinity;
-    let minY = Infinity;
-    let minZ = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    let maxZ = -Infinity;
-    let hasPoints = false;
-
-    for (const comp of components) {
-      const p = comp.cad.position ?? [0, 0, 0];
-      const s = comp.cad.scale ?? [1, 1, 1];
-      if (comp.proceduralMesh && comp.proceduralMesh.vertices.length >= 3) {
-        const verts = comp.proceduralMesh.vertices;
-        for (let i = 0; i < verts.length; i += 3) {
-          const vx = verts[i]! * s[0] + p[0];
-          const vy = verts[i + 1]! * s[1] + p[1];
-          const vz = verts[i + 2]! * s[2] + p[2];
-          if (vx < minX) minX = vx;
-          if (vy < minY) minY = vy;
-          if (vz < minZ) minZ = vz;
-          if (vx > maxX) maxX = vx;
-          if (vy > maxY) maxY = vy;
-          if (vz > maxZ) maxZ = vz;
-          hasPoints = true;
-        }
-      } else {
-        if (p[0] - 1 < minX) minX = p[0] - 1;
-        if (p[1] - 1 < minY) minY = p[1] - 1;
-        if (p[2] - 1 < minZ) minZ = p[2] - 1;
-        if (p[0] + 1 > maxX) maxX = p[0] + 1;
-        if (p[1] + 1 > maxY) maxY = p[1] + 1;
-        if (p[2] + 1 > maxZ) maxZ = p[2] + 1;
-        hasPoints = true;
-      }
-    }
-
-    if (!hasPoints) {
-      return { center: [0, 0, 0] as [number, number, number], radius: 2, minY: 0 };
-    }
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    const cz = (minZ + maxZ) / 2;
-    const radius = Math.max(0.5, Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) / 2);
-    return { center: [cx, cy, cz] as [number, number, number], radius, minY };
-  }, [components]);
+  const sweepPhaseRef = useRef(0);
 
   useEffect(() => {
     if (components.length === 0) return;
@@ -487,9 +586,9 @@ function SceneContents({
   }, [components.length, sceneBounds, camera]);
 
   useEffect(() => {
-    gl.localClippingEnabled = Boolean(clippingPlanes && clippingPlanes.length > 0);
-    gl.clippingPlanes = clippingPlanes && clippingPlanes.length > 0 ? clippingPlanes : [];
-  }, [gl, clippingPlanes]);
+    gl.localClippingEnabled = Boolean(solidPlane || wirePlane);
+    gl.clippingPlanes = [];
+  }, [gl, solidPlane, wirePlane]);
 
   // WebGL context loss interception and resource cleanup on unmount
   useEffect(() => {
@@ -520,9 +619,22 @@ function SceneContents({
     }
   }, [selectedName, components]);
 
-  // Drive the animation clock from the render loop
+  // Drive the animation clock & optional split-section sweep from the render loop
   useFrame((_, delta) => {
     animationController?.tick(delta);
+    if (autoSweep && solidPlane) {
+      sweepPhaseRef.current += Math.min(delta, 0.05) * 0.72;
+      const baseD = -(
+        solidPlane.normal.x * sceneBounds.center[0] +
+        solidPlane.normal.y * sceneBounds.center[1] +
+        solidPlane.normal.z * sceneBounds.center[2]
+      );
+      const d = baseD + Math.sin(sweepPhaseRef.current) * clipSpan * 0.85;
+      solidPlane.constant = d;
+      if (wirePlane) {
+        wirePlane.constant = -d;
+      }
+    }
   });
 
   // Deselect on background click
@@ -532,16 +644,11 @@ function SceneContents({
 
   return (
     <>
-      {/* Lighting (Self-contained studio rig; no external HDR network dependency) */}
-      <ambientLight intensity={dark ? 0.45 : 0.65} />
-      <hemisphereLight args={[dark ? "#93c5fd" : "#ffffff", dark ? "#1e293b" : "#cbd5e1", dark ? 0.55 : 0.7]} />
-      <directionalLight position={[5, 10, 7]} intensity={dark ? 0.9 : 1.1} castShadow />
-      <directionalLight position={[-3, 5, -5]} intensity={0.4} />
-      <directionalLight position={[0, -6, 4]} intensity={0.25} />
+      <HeroStudioEnvironment dark={Boolean(dark)} />
 
       {/* Ground */}
       <Grid
-        position={[0, -0.001, 0]}
+        position={[0, sceneBounds.minY - 0.002, 0]}
         args={[20, 20]}
         cellSize={0.5}
         cellThickness={0.5}
@@ -552,7 +659,7 @@ function SceneContents({
         fadeDistance={30}
         infiniteGrid
       />
-      <ContactShadows position={[0, -0.01, 0]} opacity={0.4} scale={20} blur={2} far={4} />
+      <ContactShadows position={[0, sceneBounds.minY - 0.01, 0]} opacity={0.4} scale={20} blur={2} far={4} />
 
       {/* Models: GPU Instanced rendering for clusters, fallback to CadModel for singletons */}
       <group onPointerMissed={handlePointerMissed}>
@@ -570,10 +677,27 @@ function SceneContents({
               selected={selectedName === comp.name}
               onSelect={onSelect}
               animationController={animationController}
+              dark={Boolean(dark)}
+              solidPlane={solidPlane}
+              wirePlane={wirePlane}
+              sectionSplit={Boolean(sectionSplit)}
             />
           )}
         />
       </group>
+
+      {sectionSplit && solidPlane && (
+        <StencilSectionCapQuad
+          plane={solidPlane}
+          center={sceneBounds.center}
+          size={Math.max(12, sceneBounds.radius * 3.2)}
+          dark={Boolean(dark)}
+        />
+      )}
+
+      {showGdt && gdtOverlay && (
+        <Gdt3dOverlay payload={gdtOverlay} lift={Math.max(0.45, sceneBounds.radius * 0.35)} dark={Boolean(dark)} />
+      )}
 
       {/* CFD Isosurface rendering */}
       {vtkBuffer && <VtkRenderer vtkBuffer={vtkBuffer} opacity={0.8} />}
@@ -640,11 +764,15 @@ export default function CadViewer({
   onSaveBindings,
   touchScrollPassThrough = false,
   verificationOverlay = null,
+  gdtOverlay = null,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const [isBindingPickerOpen, setIsBindingPickerOpen] = useState(false);
   const [clipAxis, setClipAxis] = useState<"none" | "x" | "y" | "z">("none");
   const [clipOffset, setClipOffset] = useState<number>(0);
+  const [sectionSplit, setSectionSplit] = useState<boolean>(true);
+  const [autoSweep, setAutoSweep] = useState<boolean>(false);
+  const [showGdt, setShowGdt] = useState<boolean>(true);
   const [explosionFactor, setExplosionFactor] = useState<number>(0);
 
   const breachMarkers = useMemo(() => {
@@ -661,14 +789,6 @@ export default function CadViewer({
     }
     return markers;
   }, [verificationOverlay]);
-
-  const activeClippingPlanes = useMemo(() => {
-    if (clipAxis === "none") return [];
-    const d = clipOffset * 6;
-    if (clipAxis === "x") return [new THREE.Plane(new THREE.Vector3(-1, 0, 0), d)];
-    if (clipAxis === "y") return [new THREE.Plane(new THREE.Vector3(0, -1, 0), d)];
-    return [new THREE.Plane(new THREE.Vector3(0, 0, -1), d)];
-  }, [clipAxis, clipOffset]);
 
   const effectiveComponents = useMemo(() => {
     if (explosionFactor <= 0 || components.length <= 1) return components;
@@ -707,6 +827,40 @@ export default function CadViewer({
       };
     });
   }, [components, explosionFactor]);
+
+  const sceneBounds = useMemo(() => computeSceneBounds(effectiveComponents), [effectiveComponents]);
+  const clipSpan = Math.max(1.5, sceneBounds.radius * 1.15);
+
+  const clipNormalTuple = useMemo<[number, number, number] | null>(() => {
+    if (clipAxis === "x") return [-1, 0, 0];
+    if (clipAxis === "y") return [0, -1, 0];
+    if (clipAxis === "z") return [0, 0, -1];
+    return null;
+  }, [clipAxis]);
+
+  const { solidPlane, wirePlane } = useMemo(() => {
+    if (!clipNormalTuple) {
+      return { solidPlane: null as THREE.Plane | null, wirePlane: null as THREE.Plane | null };
+    }
+    const [nx, ny, nz] = clipNormalTuple;
+    const baseD = -(nx * sceneBounds.center[0] + ny * sceneBounds.center[1] + nz * sceneBounds.center[2]);
+    const d = baseD + clipOffset * clipSpan;
+    return {
+      solidPlane: new THREE.Plane(new THREE.Vector3(nx, ny, nz), d),
+      wirePlane: new THREE.Plane(new THREE.Vector3(-nx, -ny, -nz), -d),
+    };
+  }, [clipNormalTuple]);
+
+  useEffect(() => {
+    if (!solidPlane || !wirePlane || !clipNormalTuple) return;
+    const [nx, ny, nz] = clipNormalTuple;
+    const baseD = -(nx * sceneBounds.center[0] + ny * sceneBounds.center[1] + nz * sceneBounds.center[2]);
+    const d = baseD + clipOffset * clipSpan;
+    solidPlane.normal.set(nx, ny, nz);
+    solidPlane.constant = d;
+    wirePlane.normal.set(-nx, -ny, -nz);
+    wirePlane.constant = -d;
+  }, [solidPlane, wirePlane, clipNormalTuple, clipOffset, clipSpan, sceneBounds.center]);
 
   const selectedComponent = useMemo(
     () => components.find((c) => c.name === selectedName) || null,
@@ -789,7 +943,11 @@ export default function CadViewer({
             <button
               key={axis}
               type="button"
-              onClick={() => setClipAxis(active ? "none" : axis)}
+              onClick={() => {
+                const next = active ? "none" : axis;
+                setClipAxis(next);
+                if (next === "none") setAutoSweep(false);
+              }}
               title={`Toggle ${axis.toUpperCase()}-axis section cutting plane`}
               style={{
                 background: active ? "rgba(6, 182, 212, 0.22)" : "transparent",
@@ -807,16 +965,74 @@ export default function CadViewer({
           );
         })}
         {clipAxis !== "none" && (
-          <input
-            type="range"
-            min="-1"
-            max="1"
-            step="0.02"
-            value={clipOffset}
-            onChange={(e) => setClipOffset(parseFloat(e.target.value))}
-            aria-label="Section cutting plane offset"
-            style={{ width: 64, accentColor: "#06b6d4", cursor: "pointer" }}
-          />
+          <>
+            <button
+              type="button"
+              onClick={() => setSectionSplit((s) => !s)}
+              title="Toggle Split Solid + Edge Wireframe + Cross-Hatch Cap"
+              style={{
+                background: sectionSplit ? "rgba(6, 182, 212, 0.22)" : "transparent",
+                color: sectionSplit ? "#06b6d4" : "inherit",
+                border: sectionSplit ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
+                borderRadius: 12,
+                padding: "2px 7px",
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              SPLIT
+            </button>
+            <input
+              type="range"
+              min="-1"
+              max="1"
+              step="0.02"
+              value={clipOffset}
+              onChange={(e) => {
+                setAutoSweep(false);
+                setClipOffset(parseFloat(e.target.value));
+              }}
+              aria-label="Section cutting plane offset"
+              style={{ width: 64, accentColor: "#06b6d4", cursor: "pointer" }}
+            />
+            <button
+              type="button"
+              onClick={() => setAutoSweep((s) => !s)}
+              title="Toggle continuous section sweep"
+              style={{
+                background: autoSweep ? "rgba(6, 182, 212, 0.22)" : "transparent",
+                color: autoSweep ? "#06b6d4" : "inherit",
+                border: autoSweep ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
+                borderRadius: 12,
+                padding: "2px 7px",
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              AUTO
+            </button>
+          </>
+        )}
+        {gdtOverlay && (
+          <button
+            type="button"
+            onClick={() => setShowGdt((s) => !s)}
+            title="Toggle ASME Y14.5 GD&T callouts"
+            style={{
+              background: showGdt ? "rgba(6, 182, 212, 0.22)" : "transparent",
+              color: showGdt ? "#06b6d4" : "inherit",
+              border: showGdt ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
+              borderRadius: 12,
+              padding: "2px 7px",
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            GD&amp;T
+          </button>
         )}
         {components.length > 1 && (
           <>
@@ -916,7 +1132,7 @@ export default function CadViewer({
       <Canvas
         shadows
         camera={{ position: [3, 2.5, 3], fov: 50 }}
-        gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, localClippingEnabled: true }}
+        gl={{ antialias: true, stencil: true, toneMapping: THREE.ACESFilmicToneMapping, localClippingEnabled: true }}
         style={{ background: dark ? "#1a1a2e" : "#f0f4f8" }}
         onError={(e) => setError(String(e))}
       >
@@ -929,7 +1145,14 @@ export default function CadViewer({
           animationController={animationController}
           vtkBuffer={vtkBuffer}
           touchScrollPassThrough={touchScrollPassThrough}
-          clippingPlanes={activeClippingPlanes}
+          solidPlane={solidPlane}
+          wirePlane={wirePlane}
+          sectionSplit={sectionSplit && clipAxis !== "none"}
+          autoSweep={autoSweep}
+          clipSpan={clipSpan}
+          gdtOverlay={gdtOverlay}
+          showGdt={showGdt}
+          sceneBounds={sceneBounds}
         />
       </Canvas>
 

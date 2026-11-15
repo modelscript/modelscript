@@ -11,6 +11,7 @@ export * from "./lsp.js";
 export * from "./parser/opendss-parser.js";
 export * from "./physics/carson-kron.js";
 export * from "./projections/opendss-to-modelica.js";
+export * from "./projections/opendss-to-p3743.js";
 export * from "./solvers/d-opf.js";
 export * from "./solvers/opendss-fault-solver.js";
 export * from "./solvers/opendss-flisr.js";

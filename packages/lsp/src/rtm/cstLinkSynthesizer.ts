@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { findCstNodesByType } from "../utils/ast-utils.js";
+import { isIdentContCode, isWsCode, readIdentAt, skipWs } from "../utils/lexical-utils.js";
 
 export interface TextPosition {
   line: number;
@@ -68,21 +69,195 @@ function isOffsetInCode(text: string, targetOffset: number): boolean {
   return !inLineComment && !inBlockComment && !inString;
 }
 
-/**
- * Finds the first regex match that starts at a valid code offset (not inside comments/strings).
- */
-function findRegexInCode(text: string, regex: RegExp, startIndex = 0): RegExpExecArray | null {
-  const flags = regex.flags.includes("g") ? regex.flags : regex.flags + "g";
-  const r = new RegExp(regex.source, flags);
-  r.lastIndex = startIndex;
-  let match: RegExpExecArray | null;
-  while ((match = r.exec(text)) !== null) {
-    if (isOffsetInCode(text, match.index)) {
-      return match;
+const SYSML_DECL_PREFIXES = new Set([
+  "part",
+  "port",
+  "action",
+  "verification",
+  "hazard",
+  "item",
+  "requirement",
+  "attribute",
+  "connection",
+  "allocation",
+]);
+
+function matchesNameAt(text: string, pos: number, name: string): number {
+  if (!text.startsWith(name, pos)) return -1;
+  const end = pos + name.length;
+  if (end < text.length && isIdentContCode(text.charCodeAt(end))) return -1;
+  return end;
+}
+
+function findSysmlDeclHeaderInCode(
+  text: string,
+  sourceName: string,
+): { delimIndex: number; delimiter: ";" | "{" } | null {
+  let i = 0;
+  while (i < text.length) {
+    const kw = readIdentAt(text, i);
+    if (!kw) {
+      i++;
+      continue;
     }
-    if (match.index === r.lastIndex) r.lastIndex++;
+    const prevOk = i === 0 || !isIdentContCode(text.charCodeAt(i - 1));
+    if (prevOk && SYSML_DECL_PREFIXES.has(kw.token)) {
+      let cur = skipWs(text, kw.next);
+      if (cur > kw.next) {
+        const maybeDef = readIdentAt(text, cur);
+        if (maybeDef?.token === "def") {
+          const afterDef = skipWs(text, maybeDef.next);
+          if (afterDef > maybeDef.next) {
+            cur = afterDef;
+          }
+        }
+        const afterName = matchesNameAt(text, cur, sourceName);
+        if (afterName !== -1 && isOffsetInCode(text, i)) {
+          let delimIdx = afterName;
+          while (delimIdx < text.length && text[delimIdx] !== ";" && text[delimIdx] !== "{") {
+            delimIdx++;
+          }
+          if (delimIdx < text.length) {
+            return {
+              delimIndex: delimIdx,
+              delimiter: text[delimIdx] as ";" | "{",
+            };
+          }
+        }
+      }
+    }
+    i = kw.next;
   }
   return null;
+}
+
+function splitWsTokens(s: string): string[] {
+  const out: string[] = [];
+  let i = skipWs(s, 0);
+  while (i < s.length) {
+    let end = i;
+    while (end < s.length && !isWsCode(s.charCodeAt(end))) end++;
+    out.push(s.slice(i, end));
+    i = skipWs(s, end);
+  }
+  return out;
+}
+
+function findSysmlLinkStmtSpanInCode(
+  text: string,
+  linkKind: "satisfy" | "verify" | "allocate" | "connect" | "mitigate" | "refine",
+  targetName: string,
+  sourceName?: string,
+): { start: number; end: number } | null {
+  const keyword =
+    linkKind === "satisfy"
+      ? "satisfy"
+      : linkKind === "verify"
+        ? "verify"
+        : linkKind === "mitigate"
+          ? "mitigate"
+          : linkKind === "refine"
+            ? "refine"
+            : linkKind === "connect"
+              ? "connect"
+              : "allocate";
+
+  let lineStart = 0;
+  while (lineStart <= text.length) {
+    const lf = text.indexOf("\n", lineStart);
+    const contentEnd = lf === -1 ? text.length : lf > lineStart && text[lf - 1] === "\r" ? lf - 1 : lf;
+    const lineEndWithNl = lf === -1 ? text.length : lf + 1;
+    const line = text.slice(lineStart, contentEnd);
+
+    let indentEnd = 0;
+    while (indentEnd < line.length && (line[indentEnd] === " " || line[indentEnd] === "\t")) indentEnd++;
+    const trimmedRight = line.trimEnd();
+    if (trimmedRight.endsWith(";")) {
+      const tokens = splitWsTokens(line.slice(indentEnd, trimmedRight.length - 1));
+      let matched = false;
+      if (linkKind === "connect" && sourceName) {
+        matched =
+          tokens.length === 4 &&
+          tokens[0] === "connect" &&
+          tokens[2] === "to" &&
+          ((tokens[1] === sourceName && tokens[3] === targetName) ||
+            (tokens[1] === targetName && tokens[3] === sourceName));
+      } else if (linkKind === "allocate" && sourceName) {
+        matched =
+          tokens.length === 4 &&
+          tokens[0] === "allocate" &&
+          tokens[1] === sourceName &&
+          tokens[2] === "to" &&
+          tokens[3] === targetName;
+      } else {
+        matched =
+          tokens[0] === keyword &&
+          ((tokens.length === 2 && tokens[1] === targetName) ||
+            (tokens.length === 3 && tokens[1] === "to" && tokens[2] === targetName));
+      }
+      if (matched && isOffsetInCode(text, lineStart + indentEnd)) {
+        return { start: lineStart, end: lineEndWithNl };
+      }
+    }
+    if (lf === -1) break;
+    lineStart = lf + 1;
+  }
+  return null;
+}
+
+const MODELICA_TRACE_CLASS_KEYWORDS = new Set([
+  "model",
+  "block",
+  "class",
+  "record",
+  "package",
+  "connector",
+  "function",
+  "type",
+]);
+
+function findModelicaClassStartInCode(text: string, className: string): number {
+  let i = 0;
+  while (i < text.length) {
+    const kw = readIdentAt(text, i);
+    if (!kw) {
+      i++;
+      continue;
+    }
+    const prevOk = i === 0 || !isIdentContCode(text.charCodeAt(i - 1));
+    if (prevOk && MODELICA_TRACE_CLASS_KEYWORDS.has(kw.token)) {
+      const ws = skipWs(text, kw.next);
+      if (ws > kw.next && matchesNameAt(text, ws, className) !== -1 && isOffsetInCode(text, i)) {
+        return i;
+      }
+    }
+    i = kw.next;
+  }
+  return -1;
+}
+
+function findModelicaEndInCode(text: string, className: string, searchStart: number): number {
+  let i = searchStart;
+  while (i < text.length) {
+    const kw = readIdentAt(text, i);
+    if (!kw) {
+      i++;
+      continue;
+    }
+    const prevOk = i === 0 || !isIdentContCode(text.charCodeAt(i - 1));
+    if (prevOk && kw.token === "end") {
+      const ws = skipWs(text, kw.next);
+      const afterName = ws > kw.next ? matchesNameAt(text, ws, className) : -1;
+      if (afterName !== -1) {
+        const semiPos = skipWs(text, afterName);
+        if (text[semiPos] === ";" && isOffsetInCode(text, i)) {
+          return i;
+        }
+      }
+    }
+    i = kw.next;
+  }
+  return -1;
 }
 
 /**
@@ -281,14 +456,8 @@ export class CstLinkSynthesizer {
     }
 
     // 1. Locate the source element declaration in documentText outside comments and strings
-    const escapedSource = sourceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const elemRegex = new RegExp(
-      `\\b(part\\s+def|part|port\\s+def|port|action\\s+def|action|verification\\s+def|verification|hazard\\s+def|hazard|item\\s+def|item|requirement\\s+def|requirement|attribute\\s+def|attribute|connection\\s+def|connection|allocation\\s+def|allocation)\\s+${escapedSource}\\b([^;{]*)(;|\\{)`,
-      "m",
-    );
-
-    const match = findRegexInCode(documentText, elemRegex);
-    if (!match) {
+    const declMatch = findSysmlDeclHeaderInCode(documentText, sourceName);
+    if (!declMatch) {
       if (linkKind === "allocate") {
         let lastBraceIndex = -1;
         for (let i = documentText.length - 1; i >= 0; i--) {
@@ -322,22 +491,17 @@ export class CstLinkSynthesizer {
               : "allocate";
     const statement = linkKind === "allocate" ? `allocate to ${targetName};` : `${keyword} ${targetName};`;
 
-    const fullMatchIndex = match.index;
-    const delimiter = match[3];
-
-    if (delimiter === "{") {
-      const openBraceIndex = fullMatchIndex + match[0].length - 1;
-      const pos = this.offsetToPosition(documentText, openBraceIndex + 1);
+    if (declMatch.delimiter === "{") {
+      const pos = this.offsetToPosition(documentText, declMatch.delimIndex + 1);
       return [
         {
           range: { start: pos, end: pos },
           newText: `\n  ${statement}`,
         },
       ];
-    } else if (delimiter === ";") {
-      const semicolonIndex = fullMatchIndex + match[0].length - 1;
-      const startPos = this.offsetToPosition(documentText, semicolonIndex);
-      const endPos = this.offsetToPosition(documentText, semicolonIndex + 1);
+    } else {
+      const startPos = this.offsetToPosition(documentText, declMatch.delimIndex);
+      const endPos = this.offsetToPosition(documentText, declMatch.delimIndex + 1);
       return [
         {
           range: { start: startPos, end: endPos },
@@ -345,8 +509,6 @@ export class CstLinkSynthesizer {
         },
       ];
     }
-
-    return null;
   }
 
   /**
@@ -400,52 +562,11 @@ export class CstLinkSynthesizer {
       }
     }
 
-    const escapedTarget = targetName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const span = findSysmlLinkStmtSpanInCode(documentText, linkKind, targetName, sourceName);
+    if (!span) return null;
 
-    if (linkKind === "connect" && sourceName) {
-      const escapedSource = sourceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const connectRegex = new RegExp(
-        `^[ \\t]*connect\\s+(${escapedSource}\\s+to\\s+${escapedTarget}|${escapedTarget}\\s+to\\s+${escapedSource})\\s*;[ \\t]*\\r?\\n?`,
-        "m",
-      );
-      const match = findRegexInCode(documentText, connectRegex);
-      if (match) {
-        const startPos = this.offsetToPosition(documentText, match.index);
-        const endPos = this.offsetToPosition(documentText, match.index + match[0].length);
-        return [{ range: { start: startPos, end: endPos }, newText: "" }];
-      }
-    }
-
-    if (linkKind === "allocate" && sourceName) {
-      const escapedSource = sourceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const allocRegex = new RegExp(
-        `^[ \\t]*allocate\\s+${escapedSource}\\s+to\\s+${escapedTarget}\\s*;[ \\t]*\\r?\\n?`,
-        "m",
-      );
-      const match = findRegexInCode(documentText, allocRegex);
-      if (match) {
-        const startPos = this.offsetToPosition(documentText, match.index);
-        const endPos = this.offsetToPosition(documentText, match.index + match[0].length);
-        return [{ range: { start: startPos, end: endPos }, newText: "" }];
-      }
-    }
-
-    const keyword =
-      linkKind === "satisfy"
-        ? "satisfy"
-        : linkKind === "verify"
-          ? "verify"
-          : linkKind === "mitigate"
-            ? "mitigate"
-            : linkKind === "refine"
-              ? "refine"
-              : "allocate";
-    const lineRegex = new RegExp(`^[ \\t]*${keyword}\\s+(to\\s+)?${escapedTarget}\\s*;[ \\t]*\\r?\\n?`, "m");
-    const match = findRegexInCode(documentText, lineRegex);
-    if (!match) return null;
-
-    const startPos = this.offsetToPosition(documentText, match.index);
-    const endPos = this.offsetToPosition(documentText, match.index + match[0].length);
+    const startPos = this.offsetToPosition(documentText, span.start);
+    const endPos = this.offsetToPosition(documentText, span.end);
 
     return [
       {
@@ -491,25 +612,18 @@ export class CstLinkSynthesizer {
       }
     }
 
-    const escapedClass = sourceClassName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
     // 1. Locate the class/model definition in code
-    const classDefRegex = new RegExp(
-      `\\b(model|block|class|record|package|connector|function|type)\\s+${escapedClass}\\b`,
-      "m",
-    );
-    const defMatch = findRegexInCode(documentText, classDefRegex);
-    const searchStart = defMatch ? defMatch.index : 0;
+    const defOffset = findModelicaClassStartInCode(documentText, sourceClassName);
+    const searchStart = defOffset >= 0 ? defOffset : 0;
 
     // 2. Find the matching `end <sourceClassName>;` of the model outside comments/strings
-    const endRegex = new RegExp(`\\bend\\s+${escapedClass}\\s*;`, "m");
-    const match = findRegexInCode(documentText, endRegex, searchStart);
-    if (!match) return null;
+    const endOffset = findModelicaEndInCode(documentText, sourceClassName, searchStart);
+    if (endOffset < 0) return null;
 
     const attrName = linkKind === "satisfy" ? "satisfies" : linkKind === "verify" ? "verifies" : "allocates";
     const annotationSnippet = `  annotation(__modelscript(${attrName}="${targetReqName}"));\n`;
 
-    const pos = this.offsetToPosition(documentText, match.index);
+    const pos = this.offsetToPosition(documentText, endOffset);
     return [
       {
         range: { start: pos, end: pos },
@@ -524,7 +638,7 @@ export class CstLinkSynthesizer {
   static removeModelicaTraceLink(documentText: string, targetReqName: string, tree?: any): WorkspaceTextEdit[] | null {
     if (tree) {
       const root = tree.rootNode ?? tree;
-      const annotNodes = findCstNodesByType(root, "annotation");
+      const annotNodes = findCstNodesByType(root, "annotation_clause").concat(findCstNodesByType(root, "annotation"));
       for (const node of annotNodes) {
         const text = node.text ?? documentText.slice(node.startIndex, node.endIndex);
         if (text.includes("__modelscript") && text.includes(`"${targetReqName}"`)) {
@@ -548,36 +662,40 @@ export class CstLinkSynthesizer {
       }
     }
 
-    // Scan for `annotation` outside comments and strings
-    const annotKeywordRegex = /\bannotation\s*\(/g;
-    let match: RegExpExecArray | null;
-    while ((match = annotKeywordRegex.exec(documentText)) !== null) {
-      if (!isOffsetInCode(documentText, match.index)) continue;
-
-      const openParenIdx = documentText.indexOf("(", match.index);
-      if (openParenIdx === -1) continue;
-
-      const closeParenIdx = findMatchingParen(documentText, openParenIdx);
-      if (closeParenIdx === -1) continue;
-
-      let semiIdx = closeParenIdx + 1;
-      while (semiIdx < documentText.length && /\s/.test(documentText[semiIdx]!)) {
-        semiIdx++;
+    // Scan for `annotation(` outside comments and strings
+    let scanPos = 0;
+    while (scanPos < documentText.length) {
+      const idx = documentText.indexOf("annotation", scanPos);
+      if (idx === -1) break;
+      const prevOk = idx === 0 || !isIdentContCode(documentText.charCodeAt(idx - 1));
+      const nextPos = idx + 10;
+      const openParenIdx = skipWs(documentText, nextPos);
+      if (
+        prevOk &&
+        !isIdentContCode(documentText.charCodeAt(nextPos)) &&
+        documentText[openParenIdx] === "(" &&
+        isOffsetInCode(documentText, idx)
+      ) {
+        const closeParenIdx = findMatchingParen(documentText, openParenIdx);
+        if (closeParenIdx !== -1) {
+          const semiIdx = skipWs(documentText, closeParenIdx + 1);
+          if (semiIdx < documentText.length && documentText[semiIdx] === ";") {
+            const annotBody = documentText.slice(openParenIdx, closeParenIdx + 1);
+            if (annotBody.includes("__modelscript") && annotBody.includes(`"${targetReqName}"`)) {
+              const fullRange = expandLineRange(documentText, idx, semiIdx + 1);
+              const startPos = this.offsetToPosition(documentText, fullRange.start);
+              const endPos = this.offsetToPosition(documentText, fullRange.end);
+              return [
+                {
+                  range: { start: startPos, end: endPos },
+                  newText: "",
+                },
+              ];
+            }
+          }
+        }
       }
-      if (semiIdx >= documentText.length || documentText[semiIdx] !== ";") continue;
-
-      const annotBody = documentText.slice(openParenIdx, closeParenIdx + 1);
-      if (annotBody.includes("__modelscript") && annotBody.includes(`"${targetReqName}"`)) {
-        const fullRange = expandLineRange(documentText, match.index, semiIdx + 1);
-        const startPos = this.offsetToPosition(documentText, fullRange.start);
-        const endPos = this.offsetToPosition(documentText, fullRange.end);
-        return [
-          {
-            range: { start: startPos, end: endPos },
-            newText: "",
-          },
-        ];
-      }
+      scanPos = nextPos;
     }
 
     return null;

@@ -2,6 +2,7 @@
 
 import { parseCsvMeasurements } from "@modelscript/csv/csv-parser";
 import { generateRomWasmSource } from "@modelscript/exchange/fmu";
+import { InpDialect } from "@modelscript/fea";
 import {
   B2BEquivalenceVerifier,
   CandidateFilter,
@@ -44,6 +45,7 @@ import {
   type WhileLoopInfo,
 } from "@modelscript/sysml2";
 import * as fs from "node:fs";
+import { createRequire } from "node:module";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { ClosedLoopCompilerEngine, runSelfHealingPipeline } from "../agent/index.js";
@@ -51,7 +53,125 @@ import { LspContext, resolveFeatureFlags } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { getRequirements } from "../requirements.js";
 import { evaluateArenaExprToNum, getArenaParameterInfo, printArenaExpression } from "../utils/arena-utils.js";
+import type { CstNodeLike, CstParserLike, CstTreeLike } from "../utils/ast-utils.js";
+import {
+  extractFirstQuotedLiteral,
+  extractMeshSourceDirectives,
+  isAsciiUpperCode,
+  isIdentContCode,
+  readIdentAt,
+  skipWs,
+  splitLines,
+  stripFileExtension,
+} from "../utils/lexical-utils.js";
 import { flattenTargetClass } from "./simulationEndpoints.js";
+
+interface CosimLspContextInternals {
+  documentManager?: {
+    documentTrees?: Map<string, { tree?: CstTreeLike | null }>;
+  };
+  state?: {
+    sharedContext?: { parse?(ext: string, text: string): CstTreeLike | null };
+  };
+}
+
+const lspRequire = createRequire(import.meta.url);
+let cosimMoParserInstance: CstParserLike | null = null;
+
+function parseCosimModelicaTree(context: LspContext, uri: string, text: string): CstTreeLike | null {
+  const ctxInternal = context as unknown as CosimLspContextInternals;
+  const existing = ctxInternal.documentManager?.documentTrees?.get?.(uri)?.tree;
+  if (existing?.rootNode) return existing;
+  try {
+    const sc =
+      ctxInternal.state?.sharedContext ??
+      (context.parserService?.sharedContext as { parse?(ext: string, text: string): CstTreeLike | null } | undefined);
+    if (sc && typeof sc.parse === "function") {
+      return sc.parse(".mo", text);
+    }
+    const p = context.parserService?.getParser?.("modelica") as CstParserLike | undefined;
+    if (p && typeof p.parse === "function") {
+      return p.parse(text);
+    }
+    if (!cosimMoParserInstance) {
+      const { createWasmParserSync } = lspRequire("@modelscript/dsl");
+      const { SYNTAX_NAMES } = lspRequire("@modelscript/modelica/parser");
+      const wasmPath = lspRequire.resolve("@modelscript/modelica/parser.wasm");
+      cosimMoParserInstance = createWasmParserSync(wasmPath, { syntaxNames: SYNTAX_NAMES }).parser as CstParserLike;
+    }
+    return cosimMoParserInstance?.parse(text) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function collectLeafTexts(node: CstNodeLike | null | undefined): string[] {
+  const out: string[] = [];
+  const stack: (CstNodeLike | null | undefined)[] = [node];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) continue;
+    const ch = cur.children || [];
+    if (ch.length === 0) {
+      const t = cur.text?.trim();
+      if (t) out.push(t);
+    } else {
+      for (let i = ch.length - 1; i >= 0; i--) stack.push(ch[i]);
+    }
+  }
+  return out;
+}
+
+function collectNodesByType(root: CstNodeLike | null | undefined, targetType: string): CstNodeLike[] {
+  const results: CstNodeLike[] = [];
+  const stack: (CstNodeLike | null | undefined)[] = [root];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) continue;
+    if (cur.type === targetType) results.push(cur);
+    const ch = cur.children || [];
+    for (let i = ch.length - 1; i >= 0; i--) stack.push(ch[i]);
+  }
+  return results;
+}
+
+function collectDirectOrNestedByType(root: CstNodeLike | null | undefined, targetType: string): CstNodeLike[] {
+  return collectNodesByType(root, targetType);
+}
+
+function collectFirstNodeByTypes(root: CstNodeLike | null | undefined, types: string[]): CstNodeLike | null {
+  const typeSet = new Set(types);
+  const stack: (CstNodeLike | null | undefined)[] = [root];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) continue;
+    if (typeSet.has(cur.type)) return cur;
+    const ch = cur.children || [];
+    for (let i = ch.length - 1; i >= 0; i--) stack.push(ch[i]);
+  }
+  return null;
+}
+
+function extractModelicaModStringAttr(modNode: CstNodeLike | null | undefined, attrName: string): string | undefined {
+  const elemMods = collectNodesByType(modNode, "element_modification");
+  for (const em of elemMods) {
+    const nameNode = collectFirstNodeByTypes(em, ["name", "identifier", "IDENT"]);
+    if (nameNode && nameNode.text.trim() === attrName) {
+      const strNode = collectFirstNodeByTypes(em, ["STRING", "string_literal"]);
+      if (strNode) {
+        return extractFirstQuotedLiteral(strNode.text);
+      }
+      return extractFirstQuotedLiteral(em.text);
+    }
+  }
+  return undefined;
+}
+
+function extractModelNameFromUri(uri: string): string {
+  const lastSlash = uri.lastIndexOf("/");
+  const base = lastSlash !== -1 ? uri.slice(lastSlash + 1) : uri;
+  return stripFileExtension(base) || "model";
+}
 
 export interface BltAnalysisResult {
   className: string;
@@ -288,7 +408,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         );
 
         // 4. Generate WASM C source from the trained ROM
-        const modelId = (classInstance.name || "Surrogate").replace(/\./g, "_");
+        const modelId = (classInstance.name || "Surrogate").replaceAll(".", "_");
         const wasmResult = generateRomWasmSource(surrogateResult.trainedROM, modelId);
 
         return {
@@ -499,6 +619,17 @@ export function registerAnalysisEndpoints(context: LspContext) {
       token?: any,
     ): Promise<UnifiedVerificationReport> => {
       context.connection.console.info(`[verifyAll] Requested unified verification for URI: ${params.uri}`);
+      const docVersionsAtStart = new Map<string, number>();
+      for (const d of context.documents?.all?.() ?? []) {
+        docVersionsAtStart.set(d.uri, d.version);
+      }
+      const hasStaleDocument = () => {
+        for (const d of context.documents?.all?.() ?? []) {
+          const prev = docVersionsAtStart.get(d.uri);
+          if (prev !== undefined && d.version !== prev) return true;
+        }
+        return false;
+      };
       try {
         let sourceText = "";
         try {
@@ -544,13 +675,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
             const sc = context.parserService.sharedContext as unknown as {
               flattenArena?: (model: string, cfg: unknown, uri: string) => DAEBuilder | null;
             };
-            const modelName =
-              params.target ||
-              params.uri
-                .split("/")
-                .pop()
-                ?.replace(/\.[^/.]+$/, "") ||
-              "model";
+            const modelName = params.target || extractModelNameFromUri(params.uri);
             if (typeof sc.flattenArena === "function") {
               arena = sc.flattenArena(modelName, undefined, params.uri);
             }
@@ -686,13 +811,13 @@ export function registerAnalysisEndpoints(context: LspContext) {
               continue;
             }
             const dir = path.dirname(fsPath);
-            // Referenced files via *INCLUDE, INPUT=... or @mesh_source: ...
-            const refMatches = [
-              ...entry.content.matchAll(/\*INCLUDE\s*,\s*INPUT\s*=\s*([^\s,]+)/gi),
-              ...entry.content.matchAll(/@mesh_source:\s*([^\s]+)/gi),
-            ];
-            for (const m of refMatches) {
-              const refRel = m[1]?.trim();
+            // Referenced files via *INCLUDE, INPUT=... (FEA INP) or @mesh_source: ...
+            const includeRefs = entry.content.toUpperCase().includes("*INCLUDE")
+              ? (new InpDialect().parse(entry.content).includes ?? [])
+              : [];
+            const refTargets = [...includeRefs, ...extractMeshSourceDirectives(entry.content)];
+            for (const rawRef of refTargets) {
+              const refRel = rawRef.trim();
               if (!refRel) continue;
               const refPath = path.resolve(dir, refRel);
               if (fs.existsSync(refPath) && fs.statSync(refPath).isFile()) {
@@ -859,14 +984,18 @@ export function registerAnalysisEndpoints(context: LspContext) {
               const ctxExt = context as unknown as {
                 validationService?: { mergeDigitalThreadDiagnostics?: (m: typeof diagsByUri) => void };
               };
-              if (typeof ctxExt.validationService?.mergeDigitalThreadDiagnostics === "function") {
-                ctxExt.validationService.mergeDigitalThreadDiagnostics(diagsByUri);
-              } else if (typeof context.connection?.sendDiagnostics === "function") {
-                for (const [uri, diagnostics] of diagsByUri.entries()) {
-                  context.connection.sendDiagnostics({
-                    uri,
-                    diagnostics: diagnostics as Parameters<typeof context.connection.sendDiagnostics>[0]["diagnostics"],
-                  });
+              if (!hasStaleDocument()) {
+                if (typeof ctxExt.validationService?.mergeDigitalThreadDiagnostics === "function") {
+                  ctxExt.validationService.mergeDigitalThreadDiagnostics(diagsByUri);
+                } else if (typeof context.connection?.sendDiagnostics === "function") {
+                  for (const [uri, diagnostics] of diagsByUri.entries()) {
+                    context.connection.sendDiagnostics({
+                      uri,
+                      diagnostics: diagnostics as Parameters<
+                        typeof context.connection.sendDiagnostics
+                      >[0]["diagnostics"],
+                    });
+                  }
                 }
               }
             }
@@ -984,13 +1113,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         if (!arena && context.parserService?.sharedContext) {
           try {
             const sc = context.parserService.sharedContext as any;
-            const modelName =
-              params.target ||
-              params.uri
-                .split("/")
-                .pop()
-                ?.replace(/\.[^/.]+$/, "") ||
-              "model";
+            const modelName = params.target || extractModelNameFromUri(params.uri);
             if (typeof sc.flattenArena === "function") {
               arena = sc.flattenArena(modelName, undefined, params.uri);
             }
@@ -2171,11 +2294,8 @@ export function registerAnalysisEndpoints(context: LspContext) {
     (params: { uri: string; text: string }): CosimGraphResult => {
       try {
         const text = params.text;
-
-        // ── Extract component declarations ──
-        const componentRegex =
-          /^\s+([A-Z][A-Za-z0-9_.]*)\s+([a-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?\s*(?:"[^"]*")?\s*;/gm;
         const builtinTypes = new Set(["Real", "Integer", "Boolean", "String", "StateSelect"]);
+        const excludedPrefixes = new Set(["parameter", "constant", "discrete", "input", "output"]);
         const keywords = new Set([
           "parameter",
           "constant",
@@ -2219,62 +2339,167 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
         const participants: CosimParticipantInfo[] = [];
         const componentNames = new Set<string>();
-
-        // Pre-filter: remove lines that start with modifier keywords
-        const lines = text.split("\n");
-        const filteredText = lines
-          .filter((line) => {
-            const trimmed = line.trimStart();
-            const firstWord = trimmed.split(/\s+/)[0] ?? "";
-            return !["parameter", "constant", "discrete", "input", "output"].includes(firstWord);
-          })
-          .join("\n");
-
-        let match: RegExpExecArray | null;
-        while ((match = componentRegex.exec(filteredText)) !== null) {
-          const className = match[1] ?? "";
-          const instanceName = match[2] ?? "";
-          const modBody = match[3] ?? "";
-
-          if (builtinTypes.has(className) || keywords.has(className.toLowerCase())) continue;
-          if (className.includes("Interface")) continue;
-
-          const fileNameMatch = modBody.match(/fileName\s*=\s*"([^"]*)"/);
-          const isFmu = fileNameMatch !== null;
-
-          participants.push({
-            id: instanceName,
-            type: isFmu ? "fmu" : "modelica",
-            className,
-            fileName: fileNameMatch?.[1],
-          });
-          componentNames.add(instanceName);
-        }
-
-        // ── Extract connect equations ──
-        const connectRegex = /connect\s*\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*,\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\)/g;
         const couplings: CosimCouplingInfo[] = [];
 
-        while ((match = connectRegex.exec(text)) !== null) {
-          const ref1 = match[1] ?? "";
-          const ref2 = match[2] ?? "";
+        const isAcceptedComponent = (className: string, instanceName: string): boolean => {
+          if (!className || !instanceName) return false;
+          if (!isAsciiUpperCode(className.charCodeAt(0))) return false;
+          const instCode = instanceName.charCodeAt(0);
+          if (!((instCode >= 97 && instCode <= 122) || instCode === 95)) return false;
+          if (builtinTypes.has(className) || keywords.has(className.toLowerCase())) return false;
+          if (className.includes("Interface")) return false;
+          return true;
+        };
 
+        const addConnectPair = (ref1: string, ref2: string) => {
           const dot1 = ref1.indexOf(".");
           const dot2 = ref2.indexOf(".");
-
-          if (dot1 === -1 || dot2 === -1) continue;
-
+          if (dot1 === -1 || dot2 === -1) return;
           const comp1 = ref1.substring(0, dot1);
           const var1 = ref1.substring(dot1 + 1);
           const comp2 = ref2.substring(0, dot2);
           const var2 = ref2.substring(dot2 + 1);
-
-          if (!componentNames.has(comp1) || !componentNames.has(comp2)) continue;
-
+          if (!componentNames.has(comp1) || !componentNames.has(comp2)) return;
           couplings.push({
             from: { participantId: comp1, variable: var1 },
             to: { participantId: comp2, variable: var2 },
           });
+        };
+
+        const tree = parseCosimModelicaTree(context, params.uri, text);
+        if (tree?.rootNode) {
+          try {
+            const root = tree.rootNode;
+            const stack: CstNodeLike[] = [root];
+            const connectNodes: CstNodeLike[] = [];
+
+            while (stack.length > 0) {
+              const node = stack.pop();
+              if (!node) continue;
+
+              if (node.type === "component_clause") {
+                const prefixNode = (node.children || []).find((c) => c.type === "type_prefix");
+                let hasExcludedPrefix = false;
+                if (prefixNode) {
+                  const pTokens = collectLeafTexts(prefixNode);
+                  if (pTokens.some((tok) => excludedPrefixes.has(tok))) {
+                    hasExcludedPrefix = true;
+                  }
+                }
+                if (!hasExcludedPrefix) {
+                  const typeSpecNode = (node.children || []).find((c) => c.type === "type_specifier");
+                  const className = typeSpecNode ? typeSpecNode.text.trim() : "";
+                  const declNodes = collectNodesByType(node, "component_declaration");
+                  for (const declWrap of declNodes) {
+                    const declNode = (declWrap.children || []).find((c) => c.type === "declaration") ?? declWrap;
+                    const idNode = collectFirstNodeByTypes(declNode, ["identifier", "IDENT"]);
+                    const instanceName = idNode ? idNode.text.trim() : "";
+                    if (!isAcceptedComponent(className, instanceName)) continue;
+
+                    const modNode = (declNode.children || []).find((c) => c.type === "modification");
+                    const fileName = modNode ? extractModelicaModStringAttr(modNode, "fileName") : undefined;
+                    participants.push({
+                      id: instanceName,
+                      type: fileName !== undefined ? "fmu" : "modelica",
+                      className,
+                      fileName,
+                    });
+                    componentNames.add(instanceName);
+                  }
+                }
+                continue;
+              }
+
+              if (node.type === "connect_equation" || node.type === "connect_clause") {
+                connectNodes.push(node);
+                continue;
+              }
+
+              for (let i = (node.children?.length ?? 0) - 1; i >= 0; i--) {
+                const ch = node.children?.[i];
+                if (ch) stack.push(ch);
+              }
+            }
+
+            for (const cn of connectNodes) {
+              const refs = collectDirectOrNestedByType(cn, "component_reference");
+              if (refs.length >= 2) {
+                addConnectPair(refs[0]!.text.trim(), refs[1]!.text.trim());
+              }
+            }
+
+            return { ok: true, participants, couplings };
+          } finally {
+            const ctxInternal = context as unknown as CosimLspContextInternals;
+            if (!ctxInternal.documentManager?.documentTrees?.get?.(params.uri)?.tree) {
+              tree?.delete?.();
+            }
+          }
+        }
+
+        // Lexical fallback when Modelica WASM parser is unavailable
+        for (const rawLine of splitLines(text)) {
+          const leadWsEnd = skipWs(rawLine, 0);
+          if (leadWsEnd === 0) continue; // match indented declarations
+          const firstTok = readIdentAt(rawLine, leadWsEnd);
+          if (!firstTok || excludedPrefixes.has(firstTok.token)) continue;
+
+          // Read dotted type specifier: Type.SubType
+          let typeEnd = firstTok.next;
+          while (typeEnd < rawLine.length && rawLine[typeEnd] === ".") {
+            const nextPart = readIdentAt(rawLine, typeEnd + 1);
+            if (!nextPart) break;
+            typeEnd = nextPart.next;
+          }
+          const className = rawLine.slice(leadWsEnd, typeEnd);
+          const wsAfterType = skipWs(rawLine, typeEnd);
+          if (wsAfterType === typeEnd) continue;
+          const instTok = readIdentAt(rawLine, wsAfterType);
+          if (!instTok || !isAcceptedComponent(className, instTok.token)) continue;
+
+          let cur = skipWs(rawLine, instTok.next);
+          let fileName: string | undefined;
+          if (rawLine[cur] === "(") {
+            const closeParen = rawLine.indexOf(")", cur + 1);
+            if (closeParen !== -1) {
+              const modSpan = rawLine.slice(cur + 1, closeParen);
+              const eq = modSpan.indexOf("fileName");
+              if (eq !== -1) {
+                fileName = extractFirstQuotedLiteral(modSpan.slice(eq));
+              }
+              cur = skipWs(rawLine, closeParen + 1);
+            }
+          }
+          if (rawLine.slice(cur).trim().endsWith(";")) {
+            participants.push({
+              id: instTok.token,
+              type: fileName !== undefined ? "fmu" : "modelica",
+              className,
+              fileName,
+            });
+            componentNames.add(instTok.token);
+          }
+        }
+
+        let scanPos = 0;
+        while (scanPos < text.length) {
+          const idx = text.indexOf("connect", scanPos);
+          if (idx === -1) break;
+          const prevOk = idx === 0 || !isIdentContCode(text.charCodeAt(idx - 1));
+          const afterConnect = skipWs(text, idx + 7);
+          if (prevOk && !isIdentContCode(text.charCodeAt(idx + 7)) && text[afterConnect] === "(") {
+            const closeIdx = text.indexOf(")", afterConnect + 1);
+            if (closeIdx !== -1) {
+              const args = text.slice(afterConnect + 1, closeIdx);
+              const comma = args.indexOf(",");
+              if (comma !== -1) {
+                addConnectPair(args.slice(0, comma).trim(), args.slice(comma + 1).trim());
+              }
+              scanPos = closeIdx + 1;
+              continue;
+            }
+          }
+          scanPos = idx + 7;
         }
 
         return { ok: true, participants, couplings };

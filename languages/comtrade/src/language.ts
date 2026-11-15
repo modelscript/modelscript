@@ -9,6 +9,8 @@ import { extractPhasorAtTimestamp } from "./analysis/phasor-extractor.js";
 import { lowerComtradeToDae } from "./dae/comtrade-to-dae.js";
 import { canIndexComtrade, indexComtradeDocument } from "./indexing.js";
 import { lintComtradeRecord } from "./lints/index.js";
+import { parseComfede } from "./parser/comfede.js";
+import { crossCheckComnameWithComtrade, validateComname } from "./parser/comname.js";
 import { parseComtradeCff, parseComtradeCfg } from "./parser/comtrade-reader.js";
 import { writeComtradeCff } from "./parser/comtrade-writer.js";
 import { comtradePolyglotConfig } from "./tgg/index.js";
@@ -17,14 +19,14 @@ import type { ComtradeRecord } from "./types.js";
 export const comtradeLanguage = language({
   polyglot: comtradePolyglotConfig,
   name: "comtrade",
-  fileExtensions: [".cfg", ".dat", ".cff"],
+  fileExtensions: [".cfg", ".dat", ".cff", ".soe", ".comfede"],
   maturity: "beta",
   indexing: {
     indexFile: indexComtradeDocument,
     canIndex: canIndexComtrade,
   },
   lsp: {
-    fileExtensions: [".cfg", ".dat", ".cff"],
+    fileExtensions: [".cfg", ".dat", ".cff", ".soe", ".comfede"],
   },
 
   actions: [
@@ -162,6 +164,38 @@ export const comtradeLanguage = language({
           };
         }
         return writeComtradeCff(record);
+      },
+    },
+    {
+      id: "parse_comfede_soe",
+      title: "Parse IEEE C37.239 COMFEDE (SOE)",
+      description: "Parses an IEEE C37.239 COMFEDE XML or CSV/ASCII sequence-of-events document.",
+      category: "verify",
+      execute: async (ctx, params?: { documentText?: string | undefined }) => {
+        const text = params?.documentText ?? ctx?.documentText;
+        if (!text) return null;
+        return parseComfede(text);
+      },
+    },
+    {
+      id: "validate_comname",
+      title: "Validate IEEE C37.232 COMNAME Filename",
+      description: "Validates an IEEE C37.232 COMNAME filename and cross-checks against COMTRADE .cfg metadata.",
+      category: "verify",
+      execute: async (ctx, params?: { fileName?: string | undefined; documentText?: string | undefined }) => {
+        const fileName = params?.fileName ?? "";
+        const validation = validateComname(fileName);
+        const text = params?.documentText ?? ctx?.documentText;
+        if (validation.valid && validation.components && text) {
+          try {
+            const cfg = parseComtradeCfg(text);
+            const warnings = crossCheckComnameWithComtrade(validation.components, cfg);
+            return { ...validation, warnings };
+          } catch {
+            return validation;
+          }
+        }
+        return validation;
       },
     },
   ],

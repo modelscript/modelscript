@@ -8,7 +8,7 @@
  * linear-memory DAE lowering, STEP AP242 reconciliation, and SysML v2 / Modelica projections.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, xmlRules } from "@modelscript/dsl";
 import { qifIndexing } from "./indexing.js";
 import { lintQifDocument } from "./lints/rules.js";
 import { parseQif } from "./parser/index.js";
@@ -26,9 +26,12 @@ export const qifLanguage = language({
   lsp: {
     fileExtensions: [".qif", ".qif.xml"],
   },
-  rules: {
-    Root: () => "qif",
+  extras: ($) => {
+    const comment = $["COMMENT"];
+    const pi = $["PROCESSING_INSTRUCTION"];
+    return comment && pi ? [/[ \t\r\n]+/, comment, pi] : [/[ \t\r\n]+/];
   },
+  rules: xmlRules,
 
   actions: [
     {

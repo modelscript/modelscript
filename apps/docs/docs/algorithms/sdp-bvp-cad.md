@@ -67,10 +67,30 @@ description: "Implementation:"
 
 1. **Semidefinite Programming (SDP) for Verified Safety**: Formal continuous verification of non-linear physical models requires proving that state trajectories $\mathbf{x}(t)$ never breach unsafe operating envelopes. Synthesizing polynomial Lyapunov functions $V(\mathbf{x}) > 0$ and barrier certificates $B(\mathbf{x}) \le 0$ reduces to finding Sum-of-Squares (SOS) decompositions:
    $$p(\mathbf{x}) = \mathbf{z}(\mathbf{x})^T Q \, \mathbf{z}(\mathbf{x}) \ge 0 \iff Q \succeq 0$$
+   A multivariate polynomial $p(\mathbf{x})$ is globally non-negative (Sum-of-Squares) if and only if it can be expressed as a quadratic form in a monomial basis $\mathbf{z}(\mathbf{x})$ with a symmetric positive semidefinite Gram matrix $Q$.
+
+   | Symbol                   | Meaning                                                                                            | Units / Domain           |
+   | :----------------------- | :------------------------------------------------------------------------------------------------- | :----------------------- |
+   | $p(\mathbf{x})$          | Multivariate polynomial Lyapunov or barrier certificate                                            | $\mathbb{R}[\mathbf{x}]$ |
+   | $\mathbf{x}$             | System state vector                                                                                | $\mathbb{R}^n$           |
+   | $\mathbf{z}(\mathbf{x})$ | Vector of monomial basis functions up to half the degree of $p$                                    | $\mathbb{R}^d$           |
+   | $Q$                      | Symmetric Gram matrix of polynomial coefficients ($Q \succeq 0$ denotes positive semidefiniteness) | $\mathbb{S}^d$           |
+
    By implementing a native primal-dual interior-point SDP solver in WebAssembly, ModelScript provides mathematically verified stability proofs directly in the browser and CLI without relying on external monolithic commercial solvers.
+
 2. **Multiple Shooting BVP for Optimal Trajectories**: Boundary Value Problems (BVPs) govern optimal trajectory planning, model predictive control (MPC), and periodic limit cycle detection with split boundary conditions:
    $$g(\mathbf{y}(t_0), \mathbf{y}(t_{\text{end}}), \mathbf{p}) = \mathbf{0}$$
+   The split boundary condition requires the initial state $\mathbf{y}(t_0)$, terminal state $\mathbf{y}(t_{\text{end}})$, and static parameters $\mathbf{p}$ to jointly satisfy all boundary constraints at the horizon endpoints.
+
+   | Symbol                | Meaning                                            | Units / Domain     |
+   | :-------------------- | :------------------------------------------------- | :----------------- |
+   | $g(\cdot)$            | Vector-valued boundary condition residual function | $\mathbb{R}^k$     |
+   | $\mathbf{y}(t)$       | Continuous state trajectory evaluated at time $t$  | $\mathbb{R}^n$     |
+   | $t_0, t_{\text{end}}$ | Start and end times of the BVP horizon             | $\text{s}$ (time)  |
+   | $\mathbf{p}$          | Unknown static parameters or control variables     | $\mathbb{R}^{n_p}$ |
+
    Standard single shooting suffers from catastrophic numerical instability on stiff or chaotic dynamics. Multiple shooting subdivides the time horizon into $M$ subintervals, guaranteeing numerical stability and fast Newton-Raphson convergence.
+
 3. **Constructive Solid Geometry (CSG) for Multi-Physics 3D Packaging**: Lumped-parameter 1D physical models (Modelica) rely on 3D geometric properties (mass, inertia tensor, aerodynamic drag area, hydraulic volume). ModelScript evaluates OpenSCAD models into normalized CSG solid trees (`@modelscript/cad`), auto-tagging boundary patches (`inlet`, `outlet`, `wall`, `symmetry`) for downstream OpenCascade B-Rep evaluation, STEP export, and SU2/OpenFOAM CFD meshing.
 
 ---
@@ -96,6 +116,19 @@ Solves standard primal and dual semidefinite programs:
 $$\text{Primal: } \min_{X \in \mathbb{S}^n} \text{tr}(C X) \quad \text{s.t.} \quad \text{tr}(A_i X) = b_i, \; X \succeq 0$$
 $$\text{Dual: } \max_{y \in \mathbb{R}^m, S \in \mathbb{S}^n} b^T y \quad \text{s.t.} \quad \sum_{i=1}^m y_i A_i + S = C, \; S \succeq 0$$
 
+The primal problem minimizes a linear matrix objective $\text{tr}(CX)$ over the positive semidefinite cone $X \succeq 0$ subject to $m$ linear trace constraints; the dual problem maximizes $b^T y$ subject to a linear matrix inequality keeping the slack matrix $S$ positive semidefinite. At optimality with zero duality gap, $\text{tr}(CX) = b^T y$.
+
+| Symbol             | Meaning                                                            | Units / Domain                    |
+| :----------------- | :----------------------------------------------------------------- | :-------------------------------- |
+| $X, S$             | Primal decision matrix and dual positive semidefinite slack matrix | $\mathbb{S}^n$ ($X, S \succeq 0$) |
+| $C$                | Symmetric cost / objective matrix                                  | $\mathbb{S}^n$                    |
+| $A_i$              | $i$-th symmetric constraint matrix ($i = 1, \dots, m$)             | $\mathbb{S}^n$                    |
+| $b_i, b$           | $i$-th scalar constraint target and full right-hand-side vector    | $\mathbb{R}, \mathbb{R}^m$        |
+| $y, y_i$           | Dual variable vector and its $i$-th scalar component               | $\mathbb{R}^m, \mathbb{R}$        |
+| $\text{tr}(\cdot)$ | Matrix trace operator (sum of diagonal entries)                    | $\mathbb{S}^n \to \mathbb{R}$     |
+| $\mathbb{S}^n$     | Space of $n \times n$ real symmetric matrices                      | Matrix space                      |
+| $n, m$             | Matrix dimension and number of linear equality constraints         | Count ($\mathbb{Z}_{>0}$)         |
+
 - **Central Path Following**: Enforces the perturbed complementarity condition $X S = \mu I$ with barrier parameter $\mu = \frac{\text{tr}(X S)}{n}$.
 - **WASM Linear Algebra**: Predictor-corrector search directions $(\Delta X, \Delta y, \Delta S)$ are computed using fast in-memory Cholesky factorizations (`wasm_gaussian.ts`), with backtracking line search to ensure $X + \alpha \Delta X \succ 0$ and $S + \alpha \Delta S \succ 0$.
 
@@ -106,9 +139,22 @@ Subdivides the horizon $[t_0, t_{\text{end}}]$ into $M$ subintervals with mesh p
 - **State Trajectory Variables**: Introduces free initial conditions $\mathbf{s}_m$ at each node $t_m$.
 - **Subinterval Integration**: Integrates forward from $t_m$ to $t_{m+1}$ using adaptive `tsit5`:
   $$\mathbf{y}(t_{m+1}; \mathbf{s}_m, \mathbf{p})$$
+  This denotes the numerically integrated state at the end of subinterval $m$ ($t_{m+1}$), starting from initial guess $\mathbf{s}_m$ at $t_m$ under static parameters $\mathbf{p}$.
 - **Matching Residual System**: Solves the $(M \cdot n + k) \times (M \cdot n + k)$ simultaneous nonlinear system:
   $$F_m(\mathbf{s}_m, \mathbf{s}_{m+1}) = \mathbf{y}(t_{m+1}; \mathbf{s}_m, \mathbf{p}) - \mathbf{s}_{m+1} = \mathbf{0}, \quad m = 0, \dots, M-1$$
   $$g(\mathbf{s}_0, \mathbf{s}_M, \mathbf{p}) = \mathbf{0}$$
+  The continuity equations $F_m = \mathbf{0}$ force the integrated end-state of each subinterval to match the next subinterval's starting guess $\mathbf{s}_{m+1}$, while $g(\mathbf{s}_0, \mathbf{s}_M, \mathbf{p}) = \mathbf{0}$ enforces the split boundary conditions at the horizon endpoints.
+
+  | Symbol                                          | Meaning                                                             | Units / Domain            |
+  | :---------------------------------------------- | :------------------------------------------------------------------ | :------------------------ |
+  | $\mathbf{s}_m$                                  | Free shooting state vector (initial guess) at mesh node $t_m$       | $\mathbb{R}^n$            |
+  | $\mathbf{y}(t_{m+1}; \mathbf{s}_m, \mathbf{p})$ | Integrated state at $t_{m+1}$ starting from $\mathbf{s}_m$ at $t_m$ | $\mathbb{R}^n$            |
+  | $\mathbf{p}$                                    | Static parameter vector                                             | $\mathbb{R}^{n_p}$        |
+  | $F_m$                                           | Continuity defect (matching residual) at mesh node $t_{m+1}$        | $\mathbb{R}^n$            |
+  | $g(\cdot)$                                      | Split boundary condition residual at $t_0$ and $t_M$                | $\mathbb{R}^k$            |
+  | $t_m$                                           | $m$-th shooting mesh time point ($m = 0, \dots, M$)                 | $\text{s}$ (time)         |
+  | $M$                                             | Number of shooting subintervals                                     | Count ($\mathbb{Z}_{>0}$) |
+
 - **Newton-Raphson Update**: Evaluates sensitivity Jacobians along trajectories and solves the block-banded linear system via WASM Gaussian LU elimination.
 
 ### 3. OpenSCAD CSG Engine & CFD Boundary Tagging
@@ -125,8 +171,20 @@ ModelScript embeds native 3D continuum fluid, structural, and volumetric meshing
 1. **WebGPU D3Q19 Lattice Boltzmann Method (LBM) CFD Solver (`webgpu-lbm-runner.ts`)**:
    - Discretizes the Boltzmann transport equation over a 19-velocity 3D lattice (`D3Q19`) stored in a zero-copy Structure-of-Arrays arena (`CfdFieldArena`) with ping-pong distribution buffers (`f0`, `f1`) and WGSL compute shader execution (`LBM_D3Q19_WGSL`, workgroups $8 \times 8 \times 4$):
      $$f_i^{\text{post}}(\mathbf{x}, t) = f_i(\mathbf{x}, t) - \omega_{\text{loc}}\!\left(f_i(\mathbf{x}, t) - f_i^{\text{eq}}(\rho, \mathbf{u})\right), \qquad f_i^{\text{eq}} = w_i \rho \!\left(1 + 3(\mathbf{c}_i \cdot \mathbf{u}) + \frac{9}{2}(\mathbf{c}_i \cdot \mathbf{u})^2 - \frac{3}{2}\|\mathbf{u}\|^2\right)$$
+     The BGK collision step relaxes each discrete particle distribution $f_i$ toward its local Maxwell-Boltzmann equilibrium $f_i^{\text{eq}}$ at rate $\omega_{\text{loc}}$, where $f_i^{\text{eq}}$ is a second-order Mach-number expansion in terms of macroscopic fluid density $\rho$ and velocity $\mathbf{u}$.
+
+     | Symbol                   | Meaning                                                                                                  | Units / Domain                                            |
+     | :----------------------- | :------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------- |
+     | $f_i, f_i^{\text{post}}$ | Pre- and post-collision particle distribution functions along lattice direction $i$ ($i = 0, \dots, 18$) | $\text{kg}/\text{m}^3$ (lattice units)                    |
+     | $f_i^{\text{eq}}$        | Local equilibrium distribution function along direction $i$                                              | $\text{kg}/\text{m}^3$ (lattice units)                    |
+     | $\mathbf{x}, t$          | Lattice spatial position and discrete time step                                                          | $\text{m}, \text{s}$ (lattice units)                      |
+     | $\omega_{\text{loc}}$    | Local BGK relaxation frequency (inverse relaxation time, adapted by LES)                                 | Dimensionless ($0 < \omega_{\text{loc}} < 2$)             |
+     | $\rho, \mathbf{u}$       | Macroscopic fluid density and velocity vector                                                            | $\text{kg}/\text{m}^3, \text{m}/\text{s}$ (lattice units) |
+     | $w_i, \mathbf{c}_i$      | D3Q19 lattice quadrature weight and discrete velocity vector for direction $i$                           | Dimensionless, lattice velocity                           |
+
    - **Smagorinsky Subgrid LES Turbulence**: Dynamically adapts the local relaxation frequency $\omega_{\text{loc}} = (\tau_0 + \Delta\tau_{\text{LES}})^{-1}$ from the non-equilibrium momentum flux tensor $\Pi_{\alpha\beta}^{\text{neq}} = \sum_i c_{i\alpha} c_{i\beta} (f_i - f_i^{\text{eq}})$.
    - **Bouzidi Curved Boundaries & Moving-Wall FSI**: Applies sub-cell linear interpolation for curved solid obstacles ($\delta_{\text{wall}} < 0.5$ vs. $\delta_{\text{wall}} \ge 0.5$), injects moving-wall momentum $\Delta f_i = 6 w_i \rho (\mathbf{c}_i \cdot \mathbf{u}_{\text{wall}})$ for two-way aeroelastic FSI, and integrates surface drag forces via momentum exchange.
+
 2. **3D Tet4/Tet10 Linear/Nonlinear Corotational Elasticity & Thermal FEA Solver (`fea-solver.ts`)**:
    - Assembles global sparse stiffness $K$ and consistent mass $M$ matrices in Compressed Sparse Row (CSR) format for 4-node linear (`Tet4Element`) and 10-node quadratic (`Tet10Element`) tetrahedra.
    - **Corotational Large-Rotation Kinematics**: Extracts element rigid-body rotation $R_e \in \text{SO}(3)$ from the deformation gradient $F = e_0 E_0^{-1}$ via 6-step Higham polar decomposition iterations $R_{k+1} = \frac{1}{2}(R_k + R_k^{-T})$, rotating local element stiffness blocks $K_{\text{rot}} = R_e K_e R_e^T$ for geometric nonlinearity invariance.
@@ -142,6 +200,18 @@ ModelScript embeds native 3D continuum fluid, structural, and volumetric meshing
 2. **Worst-Case, Statistical RSS & Coupled Thermal-Elastic GD&T Stack-Up (`tolerance-stack.ts`)**:
    - `ToleranceStackVerifier` verifies 1D/3D kinematic assembly gap loops across directional contributors ($d_i \in \{+1, -1\}$) combining bilateral manufacturing tolerances $[t_i^L, t_i^U]$, thermal expansion over $[T_{\min}, T_{\max}]$ ($\Delta L_{\text{th}} = L_0 \alpha_{\text{CTE}} \Delta T$), and axial elastic deflection under dynamic loads $[F_{\min}, F_{\max}]$ ($\Delta L_{\text{el}} = \frac{F L_0}{E A}$):
      $$g_{\text{min, WC}} = \sum_{i} d_i L_{0,i} + \sum_{i} \min(d_i t_i^L, d_i t_i^U) + \Delta g_{\text{th, min}} + \Delta g_{\text{el, min}}, \qquad \sigma_{\text{RSS}} = \sqrt{\sum_{i} \left(\frac{t_i^U - t_i^L}{6}\right)^2}$$
+     The worst-case minimum gap $g_{\text{min, WC}}$ sums the signed nominal loop dimensions, the most adverse bilateral manufacturing tolerances, and the minimum thermal and elastic deflections; the Root-Sum-Square (RSS) standard deviation $\sigma_{\text{RSS}}$ estimates the statistical spread assuming independent normal distributions across $\pm 3\sigma$ tolerance bands.
+
+     | Symbol                      | Meaning                                                                                                | Units / Domain              |
+     | :-------------------------- | :----------------------------------------------------------------------------------------------------- | :-------------------------- |
+     | $g_{\text{min, WC}}$        | Worst-case minimum assembly gap                                                                        | $\text{mm}$ (or $\text{m}$) |
+     | $d_i$                       | Directional sensitivity / sign of contributor $i$ in the kinematic loop                                | $\{-1, +1\}$                |
+     | $L_{0,i}$                   | Nominal length of contributor $i$                                                                      | $\text{mm}$ (or $\text{m}$) |
+     | $t_i^L, t_i^U$              | Lower and upper bilateral manufacturing tolerance limits of contributor $i$                            | $\text{mm}$ (or $\text{m}$) |
+     | $\Delta g_{\text{th, min}}$ | Minimum net thermal expansion contribution ($\Delta L_{\text{th}} = L_0 \alpha_{\text{CTE}} \Delta T$) | $\text{mm}$ (or $\text{m}$) |
+     | $\Delta g_{\text{el, min}}$ | Minimum net axial elastic deflection contribution ($\Delta L_{\text{el}} = \frac{F L_0}{E A}$)         | $\text{mm}$ (or $\text{m}$) |
+     | $\sigma_{\text{RSS}}$       | Root-Sum-Square standard deviation of the assembly gap (assuming $6\sigma$ tolerance bands)            | $\text{mm}$ (or $\text{m}$) |
+
 3. **Certified Bi-Directional CAD Parameter Inversion (`parameter-inversion.ts`)**:
    - `ParameterInversionEngine` closes the loop from 1D system optimization back to 3D MCAD source code. Given target mass/inertia constraints (`solveLengthForMass`, `scaleDimensionsForMass`) or optimized Modelica parameters, `patchMcadSourceCertified` verifies candidate dimensions against a multidisciplinary `SafeRegionGuard` ($\mathcal{P}_{\text{safe}}$ box bounds and buckling/stress/clearance predicates) before rewriting the parametric MCAD AST and regenerating STEP geometry.
 4. **3D Spatial Formal Verification Overlays (`verification-overlay.ts`)**:
@@ -163,12 +233,12 @@ ModelScript embeds native 3D continuum fluid, structural, and volumetric meshing
 
 ## Upstream & Downstream Integration
 
-| Component                                      | Upstream Dependencies                                | Downstream Consumers                                                   |
-| :--------------------------------------------- | :--------------------------------------------------- | :--------------------------------------------------------------------- |
-| **SdpSolver**                                  | Polynomial constraints from `TheoryCoordinator`      | Formal Lyapunov barrier certificates, 3D SOS barrier shell overlays    |
-| **BvpSolver**                                  | ODE dynamics from `DaeBuilder`, split boundary specs | Model predictive control (MPC), trajectory optimization                |
-| **ScadEvaluator & StepMesher**                 | Declarative `.scad` & `.step` B-Rep models           | `FeaSolver`, `WebGPULbmRunner`, CalculiX `.inp`, SU2 `.su2`            |
-| **WebGPULbmRunner & FeaSolver**                | `StepMesher` Tet4/Tet10 meshes, FSI boundary loads   | Aeroelastic FSI co-simulation, POD reduced-order models                |
-| **DynamicClearance, Overlays & ToleranceStack**| Reachability flowpipes, SOS certs, CAD `Assembly`    | `UnifiedVerifier` (`msx verify`), OpenUSD / Three.js 3D CAD viewport   |
-| **ParameterInversionEngine**                   | Optimized 1D Modelica parameters, `SafeRegionGuard`  | Automated MCAD source patching and AOT STEP regeneration               |
-| **ECAD Gerber / PCBRouter / DRC**              | Electrical netlists, component footprints            | RS-274X `.gbr` & Excellon `.xln` manufacturing outputs, WebIDE         |
+| Component                                       | Upstream Dependencies                                | Downstream Consumers                                                 |
+| :---------------------------------------------- | :--------------------------------------------------- | :------------------------------------------------------------------- |
+| **SdpSolver**                                   | Polynomial constraints from `TheoryCoordinator`      | Formal Lyapunov barrier certificates, 3D SOS barrier shell overlays  |
+| **BvpSolver**                                   | ODE dynamics from `DaeBuilder`, split boundary specs | Model predictive control (MPC), trajectory optimization              |
+| **ScadEvaluator & StepMesher**                  | Declarative `.scad` & `.step` B-Rep models           | `FeaSolver`, `WebGPULbmRunner`, CalculiX `.inp`, SU2 `.su2`          |
+| **WebGPULbmRunner & FeaSolver**                 | `StepMesher` Tet4/Tet10 meshes, FSI boundary loads   | Aeroelastic FSI co-simulation, POD reduced-order models              |
+| **DynamicClearance, Overlays & ToleranceStack** | Reachability flowpipes, SOS certs, CAD `Assembly`    | `UnifiedVerifier` (`msx verify`), OpenUSD / Three.js 3D CAD viewport |
+| **ParameterInversionEngine**                    | Optimized 1D Modelica parameters, `SafeRegionGuard`  | Automated MCAD source patching and AOT STEP regeneration             |
+| **ECAD Gerber / PCBRouter / DRC**               | Electrical netlists, component footprints            | RS-274X `.gbr` & Excellon `.xln` manufacturing outputs, WebIDE       |

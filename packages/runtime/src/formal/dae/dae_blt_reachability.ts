@@ -20,7 +20,12 @@ import {
 } from "../../analysis/wasm_zonotope_reach.js";
 import { BinOp, DAEBuilder, ExprKind } from "../../dae/wasm_dae.js";
 import { NumericalInterval } from "../abstract_interpretation/interval_domain.js";
-import { bindRequirementsToModelica, type SysmlRequirement } from "../requirement_binder.js";
+import {
+  bindRequirementsToModelica,
+  evaluateSysmlRequirementsOnIntervals,
+  linkRequirementCalculators,
+  type SysmlRequirement,
+} from "../requirement_binder.js";
 import type { VerificationVerdict } from "../verdict.js";
 import { IntervalDual, compileArenaToDae, createDualDomain } from "./arena_dae_compiler.js";
 import { WHOLE_LINE, evalArenaExpr } from "./arena_eval.js";
@@ -74,6 +79,8 @@ export interface DaeBltReachabilityOptions {
   sysmlRequirements?: SysmlRequirement[] | undefined;
   /** Optional Modelica twin annotations map (varName -> twinTarget) */
   twinMap?: Map<string, string> | undefined;
+  /** Optional Modelica string parameter values for standard lookup-table dispatch */
+  stringParams?: ReadonlyMap<string, string> | undefined;
   /** Whether to record per-step trajectory points */
   recordTrajectory?: boolean | undefined;
 }
@@ -292,11 +299,14 @@ export class DaeBltReachabilityEngine {
         >
       | undefined;
     let continuousReachResult: NonlinearZonotopeReachResult | undefined;
+    const zonotopeBoundKeys = new Set<string>();
+    let compiledDiffStateNames: string[] = [];
 
     if (hasDifferentialStates && !blockBudgetExceeded) {
       const compileRes = compileArenaToDae(this.arena, { isolateImplicitDer: true, enablePantelides: true });
       if (compileRes.ok && compileRes.compiled.dae.numDiffStates > 0) {
         const compiled = compileRes.compiled;
+        compiledDiffStateNames = compiled.stateNames;
         const diffCount = compiled.dae.numDiffStates;
         const initialIv: Interval[] = [];
         let allInitialBounded = true;
@@ -323,6 +333,9 @@ export class DaeBltReachabilityEngine {
               compiled.stateNames,
               this.options.twinMap,
             );
+            for (const b of bound) {
+              if (b.name) zonotopeBoundKeys.add(b.name);
+            }
             reqs.push(...bound);
           }
           for (let s = 0; s < diffCount; s++) {
@@ -485,6 +498,115 @@ export class DaeBltReachabilityEngine {
               });
             }
           }
+        }
+      }
+    }
+
+    if (this.options.sysmlRequirements && this.options.sysmlRequirements.length > 0 && !blockBudgetExceeded) {
+      const linkedReqs = linkRequirementCalculators(this.options.sysmlRequirements);
+      const remainingReqs = linkedReqs.filter((req) => {
+        if (!usedConservativeLinearization) return true;
+        if (!Number.isFinite(req.limitValue)) return true;
+        if (req.assumeAsts && req.assumeAsts.length > 0) return true;
+        if (req.constraintAst && req.constraintAst.lhs.kind !== "var") return true;
+        return !zonotopeBoundKeys.has(`${req.id}.${req.targetAttribute}`);
+      });
+
+      if (remainingReqs.length > 0) {
+        const varIntervalEnv = new Map<string, NumericalInterval>();
+        const stringEnv = new Map<string, string>(this.options.stringParams ?? []);
+
+        for (let i = 0; i < this.arena.varCount; i++) {
+          const vName = this.arena.getVarName(i);
+          if (!vName) continue;
+
+          const bindExpr = this.arena.getVarBindingExpr(i);
+          if (bindExpr !== undefined && bindExpr >= 0 && this.arena.getExprKind(bindExpr) === ExprKind.StringLiteral) {
+            const sVal = this.arena.interner.resolve(this.arena.getExprData1(bindExpr >>> 0));
+            if (sVal !== undefined) stringEnv.set(vName, sVal);
+          }
+
+          let bound: NumericalInterval | undefined =
+            stateEnclosures.get(i) ?? globalBounds.get(i) ?? this.evaluator.getVarBound(i);
+          if (!bound || bound.isTop() || bound.isBottom()) {
+            if (bindExpr !== undefined && bindExpr >= 0) {
+              const kind = this.arena.getExprKind(bindExpr);
+              if (kind === ExprKind.RealLiteral) {
+                const rv = this.arena.getExprRealValue(bindExpr);
+                if (Number.isFinite(rv)) bound = NumericalInterval.const(rv);
+              } else if (kind === ExprKind.IntLiteral) {
+                bound = NumericalInterval.const(this.arena.getExprData1(bindExpr));
+              }
+            }
+          }
+          if (bound && !bound.isTop() && !bound.isBottom()) {
+            varIntervalEnv.set(vName, bound);
+          }
+        }
+
+        const intervalIssues = evaluateSysmlRequirementsOnIntervals(
+          remainingReqs,
+          varIntervalEnv,
+          this.options.twinMap,
+          stringEnv,
+        );
+
+        // If continuous tube enclosures are available, check if any time step sharpens a possible issue to definite
+        const tubes = continuousReachResult?.continuousEnclosures;
+        if (
+          tubes &&
+          tubes.length > 0 &&
+          tubes.length <= 500 &&
+          compiledDiffStateNames.length > 0 &&
+          intervalIssues.some((iss) => iss.severity === "possible")
+        ) {
+          for (const iss of intervalIssues) {
+            if (iss.severity !== "possible") continue;
+            const targetReq = remainingReqs.filter((r) => r.id === iss.requirementId);
+            if (targetReq.length === 0) continue;
+            for (const tube of tubes) {
+              const stepEnv = new Map<string, NumericalInterval>(varIntervalEnv);
+              for (let s = 0; s < tube.length && s < compiledDiffStateNames.length; s++) {
+                const iv = tube[s];
+                const sName = compiledDiffStateNames[s];
+                if (iv && sName) stepEnv.set(sName, new NumericalInterval(iv.lo, iv.hi));
+              }
+              const stepIssues = evaluateSysmlRequirementsOnIntervals(
+                targetReq,
+                stepEnv,
+                this.options.twinMap,
+                stringEnv,
+              );
+              const defMatch = stepIssues.find((si) => si.severity === "definite" && si.varName === iss.varName);
+              if (defMatch) {
+                iss.severity = "definite";
+                iss.lhsInterval = defMatch.lhsInterval;
+                iss.rhsInterval = defMatch.rhsInterval;
+                iss.requiredLimit = defMatch.requiredLimit;
+                iss.suggestedValue = defMatch.suggestedValue;
+                iss.margin = defMatch.margin;
+                iss.message = defMatch.message;
+                break;
+              }
+            }
+          }
+        }
+
+        for (const issue of intervalIssues) {
+          const vIdx = this.arena.getVarIdxByName(issue.varName);
+          allIssues.push({
+            kind: issue.operator.includes("<") ? "max_bound_violation" : "min_bound_violation",
+            severity: issue.severity,
+            exprId: -1,
+            varIdx: vIdx >= 0 ? vIdx : undefined,
+            varName: issue.varName,
+            message: issue.message,
+            interval: issue.lhsInterval,
+            standardClause: issue.clauseLabel,
+            requiredLimit: issue.requiredLimit,
+            suggestedValue: issue.suggestedValue,
+            margin: issue.margin,
+          });
         }
       }
     }

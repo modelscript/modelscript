@@ -13,22 +13,45 @@ import {
 } from "@modelscript/runtime";
 import { Cst } from "../../../src-gen/bindings.js";
 import { ModelicaErrorCode } from "../../errors.js";
+import { type CstNodeLike, tokenizeCommentStrippedWords } from "../expressions/cst-utils.js";
+
+function hasExpandableConnectorKeywords(pfxNode: CstNodeLike | null | undefined): boolean {
+  let hasExpandable = false;
+  let hasConnector = false;
+  const stack: CstNodeLike[] = pfxNode ? [pfxNode] : [];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) continue;
+    const t = cur.type;
+    if (t === "comment" || t === "line_comment" || t === "block_comment") continue;
+    if (cur.childCount === 0 || cur.children?.length === 0) {
+      const tok = (cur.text ?? "").trim();
+      if (tok === "expandable") hasExpandable = true;
+      else if (tok === "connector") hasConnector = true;
+      if (hasExpandable && hasConnector) return true;
+      continue;
+    }
+    const children = cur.children || [];
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (children[i]) stack.push(children[i]!);
+    }
+  }
+  return hasExpandable && hasConnector;
+}
 
 export function isExpandableConnectorClass(db: QueryDB, classId: SymbolId): boolean {
   if (!classId) return false;
   const sym = db.symbol(classId);
   if (!sym) return false;
   const meta = (sym.metadata as any) || {};
-  let prefixes = String(meta.classPrefixes ?? meta.classKind ?? "");
-  prefixes = prefixes.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-  const words = prefixes.split(/\s+/).filter(Boolean);
+  const words = tokenizeCommentStrippedWords(String(meta.classPrefixes ?? meta.classKind ?? ""));
   if (words.includes("expandable") && words.includes("connector")) return true;
   const cst = db.cstNode(classId) as any;
   if (cst) {
     const pfx = Cst.ClassDefinition.classPrefixes(cst);
     if (pfx) {
-      const pfxText = (pfx.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-      const pfxWords = pfxText.split(/\s+/).filter(Boolean);
+      if (hasExpandableConnectorKeywords(pfx)) return true;
+      const pfxWords = tokenizeCommentStrippedWords(pfx.text ?? "");
       if (pfxWords.includes("expandable") && pfxWords.includes("connector")) return true;
     }
   }

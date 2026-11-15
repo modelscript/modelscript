@@ -240,8 +240,8 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
-  font-weight: 650;
+  font-size: var(--text-sm);
+  font-weight: var(--ms-fw-semibold);
   color: var(--vp-c-text-1);
 }
 
@@ -342,8 +342,8 @@ onBeforeUnmount(() => {
 }
 
 .ansatz-tooltip-title {
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--text-xs);
+  font-weight: var(--ms-fw-semibold);
   line-height: 1.3;
   color: var(--vp-c-text-1, #0f172a);
 }

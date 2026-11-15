@@ -74,6 +74,10 @@
       "types": "./dist/hpc/*.d.ts",
       "default": "./dist/hpc/*.js"
     },
+    "./telemetry": {
+      "types": "./dist/telemetry/index.d.ts",
+      "default": "./dist/telemetry/index.js"
+    },
     "./fmu/*": {
       "types": "./dist/fmu/*.d.ts",
       "default": "./dist/fmu/*.js"

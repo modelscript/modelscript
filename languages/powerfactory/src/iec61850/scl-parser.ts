@@ -6,6 +6,7 @@
  * Ingests SCD, CID, ICD, and SSD substation automation exchange files.
  */
 
+import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
 import type {
   LogicalNodeClass,
   SclAccessPoint,
@@ -22,16 +23,55 @@ import type {
   SclVoltageLevel,
 } from "./scl-types.js";
 
-/** Helper to parse attributes on an XML tag */
-function parseXmlAttrs(attrString: string): Record<string, string> {
-  const attrs: Record<string, string> = {};
-  const attrRegex = /([a-zA-Z0-9_:-]+)\s*=\s*["']([^"']*)["']/g;
-  let match: RegExpExecArray | null;
-  while ((match = attrRegex.exec(attrString)) !== null) {
-    const key = match[1]!;
-    attrs[key] = match[2]!;
+function localName(name: string): string {
+  const idx = name.indexOf(":");
+  return idx >= 0 ? name.slice(idx + 1) : name;
+}
+
+function matchTag(el: XmlElement, target: string): boolean {
+  const local = localName(el.name);
+  return local === target || local.toLowerCase() === target.toLowerCase();
+}
+
+function getAttr(el: XmlElement, name: string): string | undefined {
+  const exact = el.attributes.find((a) => a.name === name);
+  if (exact) return exact.value;
+  const targetLocal = localName(name);
+  return el.attributes.find((a) => localName(a.name) === targetLocal)?.value;
+}
+
+function findFirst(root: XmlElement, tagName: string): XmlElement | undefined {
+  if (matchTag(root, tagName)) return root;
+  for (const child of root.children) {
+    const found = findFirst(child, tagName);
+    if (found) return found;
   }
-  return attrs;
+  return undefined;
+}
+
+function findDescendants(root: XmlElement, tagName: string): XmlElement[] {
+  const out: XmlElement[] = [];
+  for (const child of root.children) {
+    if (matchTag(child, tagName)) {
+      out.push(child);
+    } else {
+      out.push(...findDescendants(child, tagName));
+    }
+  }
+  return out;
+}
+
+function collectLnElements(ldEl: XmlElement): XmlElement[] {
+  const out: XmlElement[] = [];
+  for (const child of ldEl.children) {
+    const upper = localName(child.name).toUpperCase();
+    if (upper === "LN0" || upper === "LN") {
+      out.push(child);
+    } else {
+      out.push(...collectLnElements(child));
+    }
+  }
+  return out;
 }
 
 /**
@@ -47,93 +87,75 @@ export function parseSclXml(xmlText: string): SclDocument {
     ieds: new Map<string, SclIED>(),
   };
 
+  const xmlDoc = parseXml(xmlText);
+  const root = xmlDoc.root;
+  if (!root) return doc;
+
   // 1. Header
-  const headerMatch = /<Header\b([^>]*)>/i.exec(xmlText);
-  if (headerMatch && headerMatch[1]) {
-    const attrs = parseXmlAttrs(headerMatch[1]);
+  const headerEl = findFirst(root, "Header");
+  if (headerEl && headerEl.attributes.length > 0) {
     doc.header = {
-      id: attrs["id"] || "SCL_Project",
-      version: attrs["version"] || "2.0",
-      revision: attrs["revision"] || "1.0",
-      toolId: attrs["toolID"],
+      id: getAttr(headerEl, "id") || "SCL_Project",
+      version: getAttr(headerEl, "version") || "2.0",
+      revision: getAttr(headerEl, "revision") || "1.0",
+      toolId: getAttr(headerEl, "toolID"),
     };
   }
 
   // 2. Substation
-  const substatMatch = /<Substation\b([^>]*)>([\s\S]*?)<\/Substation>/i.exec(xmlText);
-  if (substatMatch && substatMatch[1]) {
-    const sAttrs = parseXmlAttrs(substatMatch[1]);
-    const sContent = substatMatch[2] || "";
+  const substatEl = findFirst(root, "Substation");
+  if (substatEl) {
     const substation: SclSubstation = {
-      name: sAttrs["name"] || "Substation",
-      desc: sAttrs["desc"],
+      name: getAttr(substatEl, "name") || "Substation",
+      desc: getAttr(substatEl, "desc"),
       voltageLevels: [],
     };
 
-    // VoltageLevel
-    const vlRegex = /<VoltageLevel\b([^>]*)>([\s\S]*?)<\/VoltageLevel>/gi;
-    let vlMatch: RegExpExecArray | null;
-    while ((vlMatch = vlRegex.exec(sContent)) !== null) {
-      const vlAttrs = parseXmlAttrs(vlMatch[1] || "");
-      const vlContent = vlMatch[2] || "";
-
-      // Voltage value
+    for (const vlEl of findDescendants(substatEl, "VoltageLevel")) {
       let nomKv = 110.0;
-      const vMatch = /<Voltage\b([^>]*)>([^<]*)<\/Voltage>/i.exec(vlContent);
-      if (vMatch && vMatch[2]) {
-        const vAttrs = parseXmlAttrs(vMatch[1] || "");
-        const rawV = parseFloat(vMatch[2]);
-        const mult = vAttrs["multiplier"] || "";
-        nomKv = mult === "k" ? rawV : rawV / 1000;
+      const voltageEl = findFirst(vlEl, "Voltage");
+      if (voltageEl) {
+        const vText = voltageEl.text.trim();
+        if (vText) {
+          const rawV = parseFloat(vText);
+          const mult = getAttr(voltageEl, "multiplier") || "";
+          nomKv = mult === "k" ? rawV : rawV / 1000;
+        }
       }
 
       const vl: SclVoltageLevel = {
-        name: vlAttrs["name"] || "110kV",
+        name: getAttr(vlEl, "name") || "110kV",
         nomVoltageKv: nomKv,
-        nomFreqHz: parseFloat(vlAttrs["nomFreq"] || "50"),
+        nomFreqHz: parseFloat(getAttr(vlEl, "nomFreq") || "50"),
         bays: [],
       };
 
-      // Bays
-      const bayRegex = /<Bay\b([^>]*)>([\s\S]*?)<\/Bay>/gi;
-      let bayMatch: RegExpExecArray | null;
-      while ((bayMatch = bayRegex.exec(vlContent)) !== null) {
-        const bayAttrs = parseXmlAttrs(bayMatch[1] || "");
-        const bayContent = bayMatch[2] || "";
-
+      for (const bayEl of findDescendants(vlEl, "Bay")) {
         const bay: SclBay = {
-          name: bayAttrs["name"] || "Bay",
-          desc: bayAttrs["desc"],
+          name: getAttr(bayEl, "name") || "Bay",
+          desc: getAttr(bayEl, "desc"),
           conductingEquipment: [],
           connectivityNodes: [],
         };
 
-        // ConductingEquipment (supports self-closing <ConductingEquipment .../> and <ConductingEquipment ...>...</ConductingEquipment>)
-        const ceRegex = /<ConductingEquipment\b([^>]*?)(?:\/>|>([\s\S]*?)<\/ConductingEquipment>)/gi;
-        let ceMatch: RegExpExecArray | null;
-        while ((ceMatch = ceRegex.exec(bayContent)) !== null) {
-          const ceAttrs = parseXmlAttrs(ceMatch[1] || "");
-          const ceContent = ceMatch[2] || "";
-          const ceType = (ceAttrs["type"] || "CBR") as SclConductingEquipmentType;
-
+        for (const ceEl of findDescendants(bayEl, "ConductingEquipment")) {
+          const ceType = (getAttr(ceEl, "type") || "CBR") as SclConductingEquipmentType;
           const ce: SclConductingEquipment = {
-            name: ceAttrs["name"] || "CE",
+            name: getAttr(ceEl, "name") || "CE",
             type: ceType,
-            desc: ceAttrs["desc"],
+            desc: getAttr(ceEl, "desc"),
             lNodes: [],
           };
 
-          // LNodes attached to conducting equipment
-          const lnRegex = /<LNode\b([^>]*)\/?>/gi;
-          let lnMatch: RegExpExecArray | null;
-          while ((lnMatch = lnRegex.exec(ceContent)) !== null) {
-            const lnAttrs = parseXmlAttrs(lnMatch[1] || "");
-            if (lnAttrs["iedName"] && lnAttrs["lnClass"]) {
+          for (const lnEl of findDescendants(ceEl, "LNode")) {
+            const iedName = getAttr(lnEl, "iedName");
+            const lnClass = getAttr(lnEl, "lnClass");
+            if (iedName && lnClass) {
               ce.lNodes.push({
-                iedName: lnAttrs["iedName"],
-                lnClass: lnAttrs["lnClass"],
-                lnInst: lnAttrs["lnInst"] || "",
-                prefix: lnAttrs["prefix"],
+                iedName,
+                lnClass,
+                lnInst: getAttr(lnEl, "lnInst") || "",
+                prefix: getAttr(lnEl, "prefix"),
               });
             }
           }
@@ -141,12 +163,9 @@ export function parseSclXml(xmlText: string): SclDocument {
           bay.conductingEquipment.push(ce);
         }
 
-        // ConnectivityNodes
-        const cnRegex = /<ConnectivityNode\b([^>]*)\/?>/gi;
-        let cnMatch: RegExpExecArray | null;
-        while ((cnMatch = cnRegex.exec(bayContent)) !== null) {
-          const cnAttrs = parseXmlAttrs(cnMatch[1] || "");
-          if (cnAttrs["name"]) bay.connectivityNodes.push(cnAttrs["name"]);
+        for (const cnEl of findDescendants(bayEl, "ConnectivityNode")) {
+          const cnName = getAttr(cnEl, "name");
+          if (cnName) bay.connectivityNodes.push(cnName);
         }
 
         vl.bays.push(bay);
@@ -159,46 +178,34 @@ export function parseSclXml(xmlText: string): SclDocument {
   }
 
   // 3. Communication
-  const commMatch = /<Communication\b([^>]*)>([\s\S]*?)<\/Communication>/i.exec(xmlText);
-  if (commMatch && commMatch[2]) {
-    const cContent = commMatch[2];
+  const commEl = findFirst(root, "Communication");
+  if (commEl && !commEl.selfClosing && (commEl.children.length > 0 || commEl.text.length > 0)) {
     const subnets: SclCommunicationSubNetwork[] = [];
 
-    const snRegex = /<SubNetwork\b([^>]*)>([\s\S]*?)<\/SubNetwork>/gi;
-    let snMatch: RegExpExecArray | null;
-    while ((snMatch = snRegex.exec(cContent)) !== null) {
-      const snAttrs = parseXmlAttrs(snMatch[1] || "");
-      const snContent = snMatch[2] || "";
-
+    for (const snEl of findDescendants(commEl, "SubNetwork")) {
       const subNet: SclCommunicationSubNetwork = {
-        name: snAttrs["name"] || "SubNet",
-        type: snAttrs["type"] || "8-MMS",
+        name: getAttr(snEl, "name") || "SubNet",
+        type: getAttr(snEl, "type") || "8-MMS",
         connectedAPs: [],
       };
 
-      const apRegex = /<ConnectedAP\b([^>]*)>([\s\S]*?)<\/ConnectedAP>/gi;
-      let apMatch: RegExpExecArray | null;
-      while ((apMatch = apRegex.exec(snContent)) !== null) {
-        const apAttrs = parseXmlAttrs(apMatch[1] || "");
-        const apContent = apMatch[2] || "";
-
+      for (const apEl of findDescendants(snEl, "ConnectedAP")) {
         let ipAddress: string | undefined;
         let subnetMask: string | undefined;
 
-        const pRegex = /<P\b([^>]*)>([^<]*)<\/P>/gi;
-        let pMatch: RegExpExecArray | null;
-        while ((pMatch = pRegex.exec(apContent)) !== null) {
-          const pAttrs = parseXmlAttrs(pMatch[1] || "");
-          const pType = pAttrs["type"] || "";
-          const pVal = pMatch[2]?.trim();
+        for (const pEl of findDescendants(apEl, "P")) {
+          const pType = getAttr(pEl, "type") || "";
+          const pVal = pEl.text.trim();
           if (pType === "IP") ipAddress = pVal;
           if (pType === "IP-SUBNET") subnetMask = pVal;
         }
 
-        if (apAttrs["iedName"] && apAttrs["apName"]) {
+        const iedName = getAttr(apEl, "iedName");
+        const apName = getAttr(apEl, "apName");
+        if (iedName && apName) {
           subNet.connectedAPs.push({
-            iedName: apAttrs["iedName"],
-            apName: apAttrs["apName"],
+            iedName,
+            apName,
             ipAddress,
             subnetMask,
           });
@@ -212,104 +219,74 @@ export function parseSclXml(xmlText: string): SclDocument {
   }
 
   // 4. IEDs
-  const iedRegex = /<IED\b([^>]*)>([\s\S]*?)<\/IED>/gi;
-  let iedMatch: RegExpExecArray | null;
-  while ((iedMatch = iedRegex.exec(xmlText)) !== null) {
-    const iedAttrs = parseXmlAttrs(iedMatch[1] || "");
-    const iedContent = iedMatch[2] || "";
-    const iedName = iedAttrs["name"];
+  for (const iedEl of findDescendants(root, "IED")) {
+    const iedName = getAttr(iedEl, "name");
     if (!iedName) continue;
 
     const ied: SclIED = {
       name: iedName,
-      type: iedAttrs["type"],
-      manufacturer: iedAttrs["manufacturer"],
-      configVersion: iedAttrs["configVersion"],
-      desc: iedAttrs["desc"],
+      type: getAttr(iedEl, "type"),
+      manufacturer: getAttr(iedEl, "manufacturer"),
+      configVersion: getAttr(iedEl, "configVersion"),
+      desc: getAttr(iedEl, "desc"),
       accessPoints: [],
     };
 
-    // AccessPoint
-    const apRegex = /<AccessPoint\b([^>]*)>([\s\S]*?)<\/AccessPoint>/gi;
-    let apMatch: RegExpExecArray | null;
-    while ((apMatch = apRegex.exec(iedContent)) !== null) {
-      const apAttrs = parseXmlAttrs(apMatch[1] || "");
-      const apContent = apMatch[2] || "";
-
+    for (const apEl of findDescendants(iedEl, "AccessPoint")) {
       const ap: SclAccessPoint = {
-        name: apAttrs["name"] || "P1",
-        router: apAttrs["router"] === "true",
+        name: getAttr(apEl, "name") || "P1",
+        router: getAttr(apEl, "router") === "true",
       };
 
-      // Server
-      const serverMatch = /<Server\b([^>]*)>([\s\S]*?)<\/Server>/i.exec(apContent);
-      if (serverMatch && serverMatch[2]) {
-        const srvContent = serverMatch[2];
+      const serverEl = findFirst(apEl, "Server");
+      if (serverEl && !serverEl.selfClosing && (serverEl.children.length > 0 || serverEl.text.length > 0)) {
         const lDevices: SclLogicalDevice[] = [];
 
-        // LDevice
-        const ldRegex = /<LDevice\b([^>]*)>([\s\S]*?)<\/LDevice>/gi;
-        let ldMatch: RegExpExecArray | null;
-        while ((ldMatch = ldRegex.exec(srvContent)) !== null) {
-          const ldAttrs = parseXmlAttrs(ldMatch[1] || "");
-          const ldContent = ldMatch[2] || "";
-
+        for (const ldEl of findDescendants(serverEl, "LDevice")) {
           const ld: SclLogicalDevice = {
-            inst: ldAttrs["inst"] || "LD0",
-            desc: ldAttrs["desc"],
+            inst: getAttr(ldEl, "inst") || "LD0",
+            desc: getAttr(ldEl, "desc"),
             logicalNodes: [],
           };
 
-          // Parse LN0 and LN
-          const anyLnRegex = /<(LN0|LN)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
-          let lnMatch: RegExpExecArray | null;
-          while ((lnMatch = anyLnRegex.exec(ldContent)) !== null) {
-            const lnTag = lnMatch[1]!;
-            const lnAttrs = parseXmlAttrs(lnMatch[2] || "");
-            const lnInner = lnMatch[3] || "";
-
-            const lnClass = (lnTag === "LN0" ? "LLN0" : lnAttrs["lnClass"] || "XCBR") as LogicalNodeClass;
-            const lnInst = lnAttrs["inst"] || "";
+          for (const lnEl of collectLnElements(ldEl)) {
+            const isLn0 = localName(lnEl.name).toUpperCase() === "LN0";
+            const lnClass = (isLn0 ? "LLN0" : getAttr(lnEl, "lnClass") || "XCBR") as LogicalNodeClass;
+            const lnInst = getAttr(lnEl, "inst") || "";
 
             const ln: SclLogicalNode = {
               lnClass,
               inst: lnInst,
-              prefix: lnAttrs["prefix"],
-              lnType: lnAttrs["lnType"],
-              desc: lnAttrs["desc"],
+              prefix: getAttr(lnEl, "prefix"),
+              lnType: getAttr(lnEl, "lnType"),
+              desc: getAttr(lnEl, "desc"),
               dataSets: [],
               gseControls: [],
               smvControls: [],
               inputs: [],
             };
 
-            // DataSets
-            const dsRegex = /<DataSet\b([^>]*)>([\s\S]*?)<\/DataSet>/gi;
-            let dsMatch: RegExpExecArray | null;
-            while ((dsMatch = dsRegex.exec(lnInner)) !== null) {
-              const dsAttrs = parseXmlAttrs(dsMatch[1] || "");
-              const dsContent = dsMatch[2] || "";
-
+            for (const dsEl of findDescendants(lnEl, "DataSet")) {
               const ds: SclDataSet = {
-                name: dsAttrs["name"] || "ds1",
-                desc: dsAttrs["desc"],
+                name: getAttr(dsEl, "name") || "ds1",
+                desc: getAttr(dsEl, "desc"),
                 fcdaList: [],
               };
 
-              // FCDA
-              const fcdaRegex = /<FCDA\b([^>]*)\/?>/gi;
-              let fcdaMatch: RegExpExecArray | null;
-              while ((fcdaMatch = fcdaRegex.exec(dsContent)) !== null) {
-                const fa = parseXmlAttrs(fcdaMatch[1] || "");
-                if (fa["ldInst"] && fa["lnClass"] && fa["doName"] && fa["fc"]) {
+              for (const fEl of findDescendants(dsEl, "FCDA")) {
+                const ldInst = getAttr(fEl, "ldInst");
+                const fLnClass = getAttr(fEl, "lnClass");
+                const doName = getAttr(fEl, "doName");
+                const fc = getAttr(fEl, "fc");
+                if (ldInst && fLnClass && doName && fc) {
                   ds.fcdaList.push({
-                    ldInst: fa["ldInst"],
-                    prefix: fa["prefix"],
-                    lnClass: fa["lnClass"],
-                    lnInst: fa["lnInst"],
-                    doName: fa["doName"],
-                    daName: fa["daName"],
-                    fc: fa["fc"],
+                    ldInst,
+                    prefix: getAttr(fEl, "prefix"),
+                    lnClass: fLnClass,
+                    lnInst: getAttr(fEl, "lnInst"),
+                    doName,
+                    daName: getAttr(fEl, "daName"),
+                    fc,
                   });
                 }
               }
@@ -317,58 +294,51 @@ export function parseSclXml(xmlText: string): SclDocument {
               ln.dataSets.push(ds);
             }
 
-            // GSEControl
-            const gseRegex = /<GSEControl\b([^>]*)\/?>/gi;
-            let gseMatch: RegExpExecArray | null;
-            while ((gseMatch = gseRegex.exec(lnInner)) !== null) {
-              const ga = parseXmlAttrs(gseMatch[1] || "");
-              if (ga["name"] && ga["appID"]) {
+            for (const gEl of findDescendants(lnEl, "GSEControl")) {
+              const gName = getAttr(gEl, "name");
+              const appID = getAttr(gEl, "appID");
+              if (gName && appID) {
                 ln.gseControls.push({
-                  name: ga["name"],
-                  appID: ga["appID"],
-                  datSet: ga["datSet"] || "",
-                  confRev: parseInt(ga["confRev"] || "1", 10),
-                  type: (ga["type"] || "GOOSE") as "GOOSE" | "GSSE",
+                  name: gName,
+                  appID,
+                  datSet: getAttr(gEl, "datSet") || "",
+                  confRev: parseInt(getAttr(gEl, "confRev") || "1", 10),
+                  type: (getAttr(gEl, "type") || "GOOSE") as "GOOSE" | "GSSE",
                 });
               }
             }
 
-            // SampledValueControl
-            const smvRegex = /<SampledValueControl\b([^>]*)\/?>/gi;
-            let smvMatch: RegExpExecArray | null;
-            while ((smvMatch = smvRegex.exec(lnInner)) !== null) {
-              const sa = parseXmlAttrs(smvMatch[1] || "");
-              if (sa["name"] && sa["smvID"]) {
+            for (const sEl of findDescendants(lnEl, "SampledValueControl")) {
+              const sName = getAttr(sEl, "name");
+              const smvID = getAttr(sEl, "smvID");
+              if (sName && smvID) {
                 ln.smvControls.push({
-                  name: sa["name"],
-                  smvID: sa["smvID"],
-                  datSet: sa["datSet"] || "",
-                  confRev: parseInt(sa["confRev"] || "1", 10),
-                  smpRate: parseInt(sa["smpRate"] || "4800", 10),
+                  name: sName,
+                  smvID,
+                  datSet: getAttr(sEl, "datSet") || "",
+                  confRev: parseInt(getAttr(sEl, "confRev") || "1", 10),
+                  smpRate: parseInt(getAttr(sEl, "smpRate") || "4800", 10),
                 });
               }
             }
 
-            // Inputs -> ExtRef
-            const extRegex = /<ExtRef\b([^>]*)\/?>/gi;
-            let extMatch: RegExpExecArray | null;
-            while ((extMatch = extRegex.exec(lnInner)) !== null) {
-              const ea = parseXmlAttrs(extMatch[1] || "");
-              if (ea["iedName"]) {
+            for (const eEl of findDescendants(lnEl, "ExtRef")) {
+              const refIedName = getAttr(eEl, "iedName");
+              if (refIedName) {
                 ln.inputs.push({
-                  iedName: ea["iedName"],
-                  ldInst: ea["ldInst"],
-                  prefix: ea["prefix"],
-                  lnClass: ea["lnClass"],
-                  lnInst: ea["lnInst"],
-                  doName: ea["doName"],
-                  daName: ea["daName"],
-                  serviceType: (ea["serviceType"] || "GOOSE") as "GOOSE" | "SMV" | "Report",
+                  iedName: refIedName,
+                  ldInst: getAttr(eEl, "ldInst"),
+                  prefix: getAttr(eEl, "prefix"),
+                  lnClass: getAttr(eEl, "lnClass"),
+                  lnInst: getAttr(eEl, "lnInst"),
+                  doName: getAttr(eEl, "doName"),
+                  daName: getAttr(eEl, "daName"),
+                  serviceType: (getAttr(eEl, "serviceType") || "GOOSE") as "GOOSE" | "SMV" | "Report",
                 });
               }
             }
 
-            if (lnTag === "LN0") {
+            if (isLn0) {
               ld.ln0 = ln;
             } else {
               ld.logicalNodes.push(ln);

@@ -44,12 +44,15 @@ export function lint__mlxtranLongitudinal(db: QueryDB, entry: SymbolEntry): Lint
   if (!doc) return null;
 
   if (!/\[LONGITUDINAL\]/i.test(doc.raw)) {
+    const firstTok = doc.raw.match(/\S+/);
+    const startOffset = firstTok?.index ?? 0;
+    const endOffset = startOffset + (firstTok?.[0].length ?? 1);
     return {
       code: MlxtranErrorCode.MISSING_LONGITUDINAL_BLOCK.code,
       message: MlxtranErrorCode.MISSING_LONGITUDINAL_BLOCK.message(),
       severity: MlxtranErrorCode.MISSING_LONGITUDINAL_BLOCK.severity,
-      startOffset: doc.model.range?.startOffset,
-      endOffset: doc.model.range?.endOffset,
+      startOffset,
+      endOffset,
     };
   }
   return null;

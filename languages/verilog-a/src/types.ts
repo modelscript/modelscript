@@ -3,7 +3,7 @@
 /**
  * @modelscript/verilog-a — Core AST & Type Definitions.
  *
- * Defines the strongly typed Abstract Syntax Tree for Verilog-A / Verilog-AMS (IEEE 1857).
+ * Defines the strongly typed Abstract Syntax Tree for Verilog-A / Verilog-AMS (Accellera Verilog-AMS).
  * Encapsulates modules, ports, disciplines, continuous analog blocks, contribution
  * statements (<+), branch access operators (V, I), and expression trees.
  */

@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { KernelDiagnostic, KernelResult, PlotSeries, VisualArtifact } from "./types.js";
+import type {
+  EnvelopeCheckResult,
+  EnvelopePoint,
+  EnvelopeViolation,
+  KernelDiagnostic,
+  KernelResult,
+  PlotSeries,
+  SlidingPhasorResult,
+  SymmetricalComponentsResult,
+  VisualArtifact,
+} from "./types.js";
 
 /** Fluent builder for constructing structured `KernelResult` objects in TypeScript kernels. */
 export class ResultBuilder {
@@ -657,4 +667,179 @@ export function parseComtradeAscii(cfgText: string, datText: string): ComtradeAs
   }
 
   return { stationName, deviceId, lineFrequencyHz, sampleRateHz, time, channels };
+}
+
+function interpolateEnvelopeBound(
+  p0: EnvelopePoint,
+  p1: EnvelopePoint,
+  t: number,
+  key: "min" | "max",
+  mode: "hold" | "linear",
+): number | undefined {
+  const b0 = p0[key];
+  const b1 = p1[key];
+  if (mode === "hold" || b0 === undefined || b1 === undefined || p1.time === p0.time) {
+    return b0 ?? (t >= p1.time ? b1 : undefined);
+  }
+  const alpha = (t - p0.time) / (p1.time - p0.time);
+  return b0 + alpha * (b1 - b0);
+}
+
+/**
+ * Evaluate a time-series signal against a piecewise linear or zero-order hold min/max envelope.
+ * Domain-agnostic helper suitable for ride-through bounds, thermal limits, or trajectory envelopes.
+ */
+export function checkEnvelope(
+  time: ArrayLike<number>,
+  value: ArrayLike<number>,
+  envelope: EnvelopePoint[],
+  options?: { mode?: "hold" | "linear" },
+): EnvelopeCheckResult {
+  const n = Math.min(time.length, value.length);
+  if (n === 0 || envelope.length === 0) {
+    return { ok: true, checkedSamples: 0, violationCount: 0, worstMargin: Infinity, violations: [] };
+  }
+  const sorted = [...envelope].sort((a, b) => a.time - b.time);
+  const mode = options?.mode ?? "linear";
+  const minT = sorted[0]!.time;
+  const maxT = sorted[sorted.length - 1]!.time;
+  const violations: EnvelopeViolation[] = [];
+  let checkedSamples = 0;
+  let worstMargin = Infinity;
+  let seg = 0;
+
+  for (let i = 0; i < n; i++) {
+    const t = time[i]!;
+    const v = value[i]!;
+    if (!Number.isFinite(t) || !Number.isFinite(v) || t < minT || t > maxT) continue;
+    checkedSamples++;
+
+    while (seg + 1 < sorted.length && sorted[seg + 1]!.time < t) {
+      seg++;
+    }
+    const p0 = sorted[seg]!;
+    const p1 = sorted[Math.min(seg + 1, sorted.length - 1)]!;
+
+    const lo = interpolateEnvelopeBound(p0, p1, t, "min", mode);
+    if (lo !== undefined && Number.isFinite(lo)) {
+      const margin = v - lo;
+      if (margin < worstMargin) worstMargin = margin;
+      if (v < lo) violations.push({ time: t, value: v, bound: "min", limit: lo, margin });
+    }
+
+    const hi = interpolateEnvelopeBound(p0, p1, t, "max", mode);
+    if (hi !== undefined && Number.isFinite(hi)) {
+      const margin = hi - v;
+      if (margin < worstMargin) worstMargin = margin;
+      if (v > hi) violations.push({ time: t, value: v, bound: "max", limit: hi, margin });
+    }
+  }
+
+  return {
+    ok: violations.length === 0,
+    checkedSamples,
+    violationCount: violations.length,
+    worstMargin,
+    violations,
+  };
+}
+
+/**
+ * Extract sliding single-frequency phasor magnitude and phase (cosine reference) from a time-domain signal.
+ */
+export function slidingPhasor(
+  time: ArrayLike<number>,
+  signal: ArrayLike<number>,
+  nominalFreqHz = 60,
+  windowCycles = 1,
+): SlidingPhasorResult {
+  const n = Math.min(time.length, signal.length);
+  if (n < 2 || nominalFreqHz <= 0 || windowCycles <= 0) {
+    return { times: [], magnitude: [], phaseRad: [], frequencyHz: nominalFreqHz };
+  }
+  const span = time[n - 1]! - time[0]!;
+  const avgDt = span > 0 ? span / (n - 1) : 1 / (nominalFreqHz * 16);
+  const winLen = Math.min(n, Math.max(4, Math.round(windowCycles / nominalFreqHz / avgDt)));
+  const omega = 2 * Math.PI * nominalFreqHz;
+  const times: number[] = [];
+  const magnitude: number[] = [];
+  const phaseRad: number[] = [];
+  const scale = 2 / winLen;
+
+  for (let end = winLen - 1; end < n; end++) {
+    let re = 0;
+    let im = 0;
+    for (let k = end - winLen + 1; k <= end; k++) {
+      const angle = omega * time[k]!;
+      const x = signal[k]!;
+      re += x * Math.cos(angle);
+      im -= x * Math.sin(angle);
+    }
+    const reScaled = re * scale;
+    const imScaled = im * scale;
+    times.push(time[end]!);
+    magnitude.push(Math.hypot(reScaled, imScaled));
+    phaseRad.push(Math.atan2(imScaled, reScaled));
+  }
+
+  return { times, magnitude, phaseRad, frequencyHz: nominalFreqHz };
+}
+
+/**
+ * Compute Fortescue zero-, positive-, and negative-sequence magnitudes from three-phase phasors.
+ */
+export function symmetricalComponents(
+  phaseA: { mag: ArrayLike<number>; phaseRad: ArrayLike<number> },
+  phaseB: { mag: ArrayLike<number>; phaseRad: ArrayLike<number> },
+  phaseC: { mag: ArrayLike<number>; phaseRad: ArrayLike<number> },
+): SymmetricalComponentsResult {
+  const n = Math.min(
+    phaseA.mag.length,
+    phaseA.phaseRad.length,
+    phaseB.mag.length,
+    phaseB.phaseRad.length,
+    phaseC.mag.length,
+    phaseC.phaseRad.length,
+  );
+  const aRe = -0.5;
+  const aIm = Math.sqrt(3) / 2;
+  const zeroMag: number[] = new Array(n);
+  const positiveMag: number[] = new Array(n);
+  const negativeMag: number[] = new Array(n);
+  const positivePhaseRad: number[] = new Array(n);
+  const unbalanceFactor: number[] = new Array(n);
+
+  for (let i = 0; i < n; i++) {
+    const ar = phaseA.mag[i]! * Math.cos(phaseA.phaseRad[i]!);
+    const ai = phaseA.mag[i]! * Math.sin(phaseA.phaseRad[i]!);
+    const br = phaseB.mag[i]! * Math.cos(phaseB.phaseRad[i]!);
+    const bi = phaseB.mag[i]! * Math.sin(phaseB.phaseRad[i]!);
+    const cr = phaseC.mag[i]! * Math.cos(phaseC.phaseRad[i]!);
+    const ci = phaseC.mag[i]! * Math.sin(phaseC.phaseRad[i]!);
+
+    // a * Vb and a^2 * Vc where a^2 = conj(a)
+    const abRe = aRe * br - aIm * bi;
+    const abIm = aRe * bi + aIm * br;
+    const a2bRe = aRe * br + aIm * bi;
+    const a2bIm = aRe * bi - aIm * br;
+    const acRe = aRe * cr - aIm * ci;
+    const acIm = aRe * ci + aIm * cr;
+    const a2cRe = aRe * cr + aIm * ci;
+    const a2cIm = aRe * ci - aIm * cr;
+
+    zeroMag[i] = Math.hypot(ar + br + cr, ai + bi + ci) / 3;
+    const v1Re = (ar + abRe + a2cRe) / 3;
+    const v1Im = (ai + abIm + a2cIm) / 3;
+    const v2Re = (ar + a2bRe + acRe) / 3;
+    const v2Im = (ai + a2bIm + acIm) / 3;
+
+    const pMag = Math.hypot(v1Re, v1Im);
+    const nMag = Math.hypot(v2Re, v2Im);
+    positiveMag[i] = pMag;
+    negativeMag[i] = nMag;
+    positivePhaseRad[i] = Math.atan2(v1Im, v1Re);
+    unbalanceFactor[i] = pMag > 1e-12 ? nMag / pMag : 0;
+  }
+
+  return { zeroMag, positiveMag, negativeMag, positivePhaseRad, unbalanceFactor };
 }

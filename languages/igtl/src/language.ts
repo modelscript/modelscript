@@ -20,7 +20,7 @@ export const igtlLanguage = language({
   polyglot: igtlPolyglotConfig,
   name: "igtl",
   fileExtensions: [".igtl.json", ".igtl", ".plus.xml"],
-  maturity: "experimental",
+  maturity: "beta",
   lsp: {
     fileExtensions: [".igtl.json", ".igtl", ".plus.xml"],
   },

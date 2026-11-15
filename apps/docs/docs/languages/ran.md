@@ -26,19 +26,38 @@ description: "@modelscript/ran (languages/ran) provides NSMA WG16 antenna patter
 
 - Parses dual-polarized horizontal and vertical antenna gain cuts across $360^\circ$ azimuth and $\pm 90^\circ$ elevation.
 - Computes half-power beamwidth (HPBW, 3 dB) and front-to-back (F/B) ratios.
-- Bicubic 3D gain envelope interpolation with electrical and mechanical downtilt:
+- Bicubic 3D gain envelope interpolation combines horizontal and tilted vertical pattern cuts, capped by the front-to-back attenuation floor:
   $$G(\theta, \phi) = G_{\text{peak}} - \min\left(-(A_H(\phi) + A_V(\theta - \theta_{\text{tilt}})), A_m\right)$$
+
+  | Symbol                               | Meaning                                                                         | Units / Domain       |
+  | :----------------------------------- | :------------------------------------------------------------------------------ | :------------------- |
+  | $G(\theta, \phi)$                    | 3D directional antenna gain at elevation $\theta$ and azimuth $\phi$            | $\text{dBi}$         |
+  | $G_{\text{peak}}$                    | Maximum boresight antenna gain                                                  | $\text{dBi}$         |
+  | $A_H(\phi)$                          | Horizontal (azimuth) relative attenuation pattern                               | $\text{dB}$, $\le 0$ |
+  | $A_V(\theta - \theta_{\text{tilt}})$ | Vertical (elevation) relative attenuation shifted by downtilt                   | $\text{dB}$, $\le 0$ |
+  | $\theta, \phi$                       | Elevation ($[-90^\circ, 90^\circ]$) and azimuth ($[0^\circ, 360^\circ)$) angles | $^\circ$             |
+  | $\theta_{\text{tilt}}$               | Combined electrical and mechanical downtilt angle                               | $^\circ$             |
+  | $A_m$                                | Maximum front-to-back attenuation cap                                           | $\text{dB}$, $> 0$   |
 
 ### 2. Microwave Link Budget & ITU-R P.530 Rain Fade
 
-- Computes Free Space Path Loss (FSPL) and atmospheric absorption:
+- Computes Free Space Path Loss (FSPL) over an unobstructed line-of-sight path and atmospheric absorption:
   $$\text{FSPL}(\text{dB}) = 20 \log_{10}(d) + 20 \log_{10}(f) + 92.45$$
+  where $\text{FSPL}$ is the free-space path loss ($\text{dB}$), $d$ is the link distance ($\text{km}$, $> 0$), and $f$ is the carrier frequency ($\text{GHz}$, $> 0$).
 - Solves ITU-R P.530-18 rain attenuation for $0.01\%$ of time ($A_{0.01} = \gamma_R \cdot d_{\text{eff}}$) and annual link availability percent (verifying "five-nines" $99.999\%$ uptime).
 
 ### 3. Fresnel Zone Clearance & Earth Curvature
 
-- Computes 1st Fresnel zone radius along the propagation path:
+- Computes the 1st Fresnel zone radius enclosing the primary radio-frequency energy ellipsoid along the propagation path:
   $$F_1 = 17.32 \sqrt{\frac{d_1 d_2}{f \cdot D}}$$
+
+  | Symbol     | Meaning                                           | Units / Domain      |
+  | :--------- | :------------------------------------------------ | :------------------ |
+  | $F_1$      | First Fresnel zone radius at the obstacle         | $\text{m}$, $> 0$   |
+  | $d_1, d_2$ | Distances from the obstacle to each link endpoint | $\text{km}$, $> 0$  |
+  | $D$        | Total link path length ($D = d_1 + d_2$)          | $\text{km}$, $> 0$  |
+  | $f$        | Carrier frequency                                 | $\text{GHz}$, $> 0$ |
+
 - Evaluates Earth curvature bulge ($h_{\text{bulge}} = \frac{d_1 d_2}{12.74 k}$) using effective Earth radius factor $k = 4/3$.
 - Identifies terrain and obstacle obstructions where clearance ratio falls below the $0.60 F_1$ threshold.
 

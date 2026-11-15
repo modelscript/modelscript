@@ -49,6 +49,7 @@ import type {
   PropertyTabConfig,
 } from "./diagramProtocol.js";
 import { globalLanguageRegistry } from "./registry/LanguageRegistry.js";
+import type { CstNodeLike, CstParserLike } from "./utils/ast-utils.js";
 
 function getModelicaDiagramOps(): any {
   return (globalThis as any).modelicaDiagramOps ?? {};
@@ -215,7 +216,7 @@ export class ModelicaDiagramBackend implements DiagramBackend {
     let targetInstance = this.resolveTargetInstance(params.uri, params.className, instances, docText);
     if (!targetInstance) {
       const currentText = docText ?? "";
-      const strippedText = currentText.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "").trim();
+      const strippedText = maskComments(currentText).trim();
       const addActions = params.actions.filter((a) => a.type === "addComponent");
       if (strippedText.length === 0 && addActions.length > 0) {
         const cleanUri = params.uri.split(/[?#]/)[0] ?? "";
@@ -224,7 +225,7 @@ export class ModelicaDiagramBackend implements DiagramBackend {
             .split(/[/\\]/)
             .pop()
             ?.replace(/\.[^.]+$/, "") ?? "";
-        const modelName = /^[A-Za-z_][A-Za-z0-9_]*$/.test(baseFile) ? baseFile : "Model1";
+        const modelName = isSimpleIdentifier(baseFile) ? baseFile : "Model1";
         const unifiedIndex = this.deps.getUnifiedIndex?.() ?? null;
         const usedNames = new Set<string>();
         const importLines: string[] = [];
@@ -299,7 +300,8 @@ export class ModelicaDiagramBackend implements DiagramBackend {
       return { seq: params.seq, edits: [], renderHint: "none" };
     }
 
-    const unifiedIndex = this.deps.getUnifiedIndex?.() ?? null;
+    const needsUnifiedIndex = params.actions.some((a) => a.type === "addComponent");
+    const unifiedIndex = needsUnifiedIndex ? (this.deps.getUnifiedIndex?.() ?? null) : null;
     let result = processDiagramEditBatch(params, targetInstance, docText, unifiedIndex);
 
     // If no edits could be produced (e.g. stale AST where component ranges no longer match),
@@ -634,7 +636,7 @@ export class SysML2DiagramBackend implements DiagramBackend {
             let uniqueName = this.deps.generateUniqueName(docText, candidateBase);
             if (!action.name) {
               let idx = 1;
-              while (allEdits.some((e) => new RegExp(`\\b${uniqueName}\\b`).test(e.newText))) {
+              while (allEdits.some((e) => hasWordMatch(e.newText, uniqueName))) {
                 idx++;
                 uniqueName = this.deps.generateUniqueName(docText, `${candidateBase}${idx}`);
               }
@@ -1051,20 +1053,418 @@ export interface GenericDSLBackendDeps {
   getSymbolIndex?: ((uri: string) => any) | undefined;
   getUnifiedIndex?: (() => any) | undefined;
   getScopeResolver?: ((uri: string) => any) | undefined;
+  getParser?: ((langId: string) => CstParserLike | undefined) | undefined;
   layoutStorage?: SidecarLayoutStorage | undefined;
   fsBridge?: FileSystemBridge | undefined;
 }
 
+function isWsChar(ch: string): boolean {
+  return ch === " " || ch === "\t" || ch === "\r" || ch === "\n" || ch === "\f" || ch === "\v";
+}
+
+function isWordTokenChar(ch: string): boolean {
+  if (!ch) return false;
+  const c = ch.charCodeAt(0);
+  return (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
+}
+
+function isSimpleIdentifier(s: string): boolean {
+  if (!s) return false;
+  const c0 = s.charCodeAt(0);
+  const validStart = (c0 >= 65 && c0 <= 90) || (c0 >= 97 && c0 <= 122) || c0 === 95;
+  if (!validStart) return false;
+  for (let i = 1; i < s.length; i++) {
+    if (!isWordTokenChar(s[i]!)) return false;
+  }
+  return true;
+}
+
+function stripWhitespace(s: string): string {
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!;
+    if (!isWsChar(ch)) out += ch;
+  }
+  return out;
+}
+
+function collapseWhitespace(s: string): string {
+  let out = "";
+  let inWs = true; // trim leading whitespace
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!;
+    if (isWsChar(ch)) {
+      if (!inWs) {
+        out += " ";
+        inWs = true;
+      }
+    } else {
+      out += ch;
+      inWs = false;
+    }
+  }
+  return out.endsWith(" ") ? out.slice(0, -1) : out;
+}
+
+function leadingWhitespaceOf(s: string): string {
+  let i = 0;
+  while (i < s.length && isWsChar(s[i]!)) i++;
+  return s.slice(0, i);
+}
+
+function findNextWordMatchIndex(text: string, word: string, fromIndex = 0): number {
+  if (!word) return -1;
+  const checkStart = isWordTokenChar(word[0]!);
+  const checkEnd = isWordTokenChar(word[word.length - 1]!);
+  let idx = text.indexOf(word, fromIndex);
+  while (idx !== -1) {
+    const beforeOk = !checkStart || idx === 0 || !isWordTokenChar(text[idx - 1]!);
+    const afterPos = idx + word.length;
+    const afterOk = !checkEnd || afterPos === text.length || !isWordTokenChar(text[afterPos]!);
+    if (beforeOk && afterOk) return idx;
+    idx = text.indexOf(word, idx + 1);
+  }
+  return -1;
+}
+
+function findAllWordMatchIndices(text: string, word: string): number[] {
+  const out: number[] = [];
+  if (!word) return out;
+  let pos = 0;
+  while (pos <= text.length - word.length) {
+    const idx = findNextWordMatchIndex(text, word, pos);
+    if (idx === -1) break;
+    out.push(idx);
+    pos = idx + word.length;
+  }
+  return out;
+}
+
+function hasWordMatch(text: string, word: string): boolean {
+  return findNextWordMatchIndex(text, word, 0) !== -1;
+}
+
+function expandEdgeTemplateText(
+  edgeTemplate: unknown,
+  source: string,
+  target: string,
+  sourcePort?: string,
+  targetPort?: string,
+): string {
+  if (typeof edgeTemplate === "function") {
+    const fn = edgeTemplate as (src: string, tgt: string, sp?: string, tp?: string) => unknown;
+    const result = fn(source, target, sourcePort, targetPort);
+    return typeof result === "string" ? result : "";
+  }
+  if (typeof edgeTemplate !== "string" || !edgeTemplate.trim()) {
+    const src = sourcePort ? `${source}.${sourcePort}` : source;
+    const tgt = targetPort ? `${target}.${targetPort}` : target;
+    return `connect(${src}, ${tgt});`;
+  }
+  const sPort = sourcePort ?? "";
+  const tPort = targetPort ?? "";
+  let out = edgeTemplate;
+  if (!sPort) {
+    out = out.replaceAll(".${sourcePort}", "").replaceAll(".{{sourcePort}}", "").replaceAll(".{sourcePort}", "");
+  }
+  if (!tPort) {
+    out = out.replaceAll(".${targetPort}", "").replaceAll(".{{targetPort}}", "").replaceAll(".{targetPort}", "");
+  }
+  return out
+    .replaceAll("${source}", source)
+    .replaceAll("{{source}}", source)
+    .replaceAll("{source}", source)
+    .replaceAll("${target}", target)
+    .replaceAll("{{target}}", target)
+    .replaceAll("{target}", target)
+    .replaceAll("${sourcePort}", sPort)
+    .replaceAll("{{sourcePort}}", sPort)
+    .replaceAll("{sourcePort}", sPort)
+    .replaceAll("${targetPort}", tPort)
+    .replaceAll("{{targetPort}}", tPort)
+    .replaceAll("{targetPort}", tPort);
+}
+
+function countEndpointMatches(text: string, node: string, port: string | undefined): number {
+  if (!node) return 0;
+  const indices = findAllWordMatchIndices(text, node);
+  if (!port) return indices.length;
+  let count = 0;
+  for (const idx of indices) {
+    let p = idx + node.length;
+    while (p < text.length && (text[p] === " " || text[p] === "\t")) p++;
+    if (text[p] === "." || text[p] === ":") {
+      p++;
+      while (p < text.length && (text[p] === " " || text[p] === "\t")) p++;
+      if (text.startsWith(port, p)) {
+        const after = p + port.length;
+        if (after === text.length || !isWordTokenChar(text[after]!)) {
+          count++;
+        }
+      }
+    }
+  }
+  if (count === 0 && text.includes("<") && indices.length > 0 && hasWordMatch(text, port)) {
+    return 1;
+  }
+  return count;
+}
+
+function statementMatchesEndpoints(
+  text: string,
+  src: string,
+  srcPort: string | undefined,
+  tgt: string,
+  tgtPort: string | undefined,
+): boolean {
+  const srcCount = countEndpointMatches(text, src, srcPort);
+  if (srcCount === 0) return false;
+  if (src === tgt && (srcPort ?? "") === (tgtPort ?? "")) {
+    return srcCount >= 2;
+  }
+  return countEndpointMatches(text, tgt, tgtPort) > 0;
+}
+
+function findStatementEndLine(maskedLines: string[], startLine: number): number {
+  let parenDepth = 0;
+  let braceDepth = 0;
+  let bracketDepth = 0;
+  let inQuote: string | null = null;
+
+  for (let j = startLine; j < maskedLines.length; j++) {
+    const line = maskedLines[j]!;
+    let sawTopLevelSemi = false;
+    for (let k = 0; k < line.length; k++) {
+      const ch = line[k]!;
+      if (inQuote) {
+        if (ch === "\\" && k + 1 < line.length) {
+          k++;
+        } else if (ch === inQuote) {
+          inQuote = null;
+        }
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        inQuote = ch;
+        continue;
+      }
+      if (ch === "(") parenDepth++;
+      else if (ch === ")") parenDepth = Math.max(0, parenDepth - 1);
+      else if (ch === "{") braceDepth++;
+      else if (ch === "}") braceDepth = Math.max(0, braceDepth - 1);
+      else if (ch === "[") bracketDepth++;
+      else if (ch === "]") bracketDepth = Math.max(0, bracketDepth - 1);
+      else if (ch === ";" && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
+        sawTopLevelSemi = true;
+      }
+    }
+
+    if (sawTopLevelSemi) return j;
+    if (parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
+      const nextLine = j + 1 < maskedLines.length ? maskedLines[j + 1]!.trimStart() : "";
+      if (nextLine.startsWith("annotation") && nextLine.length > 10 && !isWordTokenChar(nextLine[10]!)) {
+        continue;
+      }
+      return j;
+    }
+  }
+  return maskedLines.length - 1;
+}
+
+function findMatchingEdgeStatement(
+  maskedLines: string[],
+  src: string,
+  srcPort: string | undefined,
+  tgt: string,
+  tgtPort: string | undefined,
+): { startLine: number; endLine: number } | null {
+  for (let i = 0; i < maskedLines.length; i++) {
+    const line = maskedLines[i]!;
+    if (!line.trim()) continue;
+    if (statementMatchesEndpoints(line, src, srcPort, tgt, tgtPort)) {
+      const endLine = findStatementEndLine(maskedLines, i);
+      return { startLine: i, endLine };
+    }
+    const trimmed = line.trimStart();
+    if ((trimmed.startsWith("connect") || hasWordMatch(line, src)) && (line.includes("(") || line.includes("{"))) {
+      const endLine = findStatementEndLine(maskedLines, i);
+      if (endLine > i) {
+        const joined = maskedLines.slice(i, endLine + 1).join("\n");
+        if (statementMatchesEndpoints(joined, src, srcPort, tgt, tgtPort)) {
+          return { startLine: i, endLine };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function extractTrailingAnnotationClause(stmtText: string): string | null {
+  const matches = findAllWordMatchIndices(stmtText, "annotation");
+  for (let m = matches.length - 1; m >= 0; m--) {
+    const startIdx = matches[m]!;
+    let p = startIdx + "annotation".length;
+    while (p < stmtText.length && isWsChar(stmtText[p]!)) p++;
+    if (stmtText[p] !== "(") continue;
+    let depth = 0;
+    let inQuote: string | null = null;
+    for (let k = p; k < stmtText.length; k++) {
+      const ch = stmtText[k]!;
+      if (inQuote) {
+        if (ch === "\\" && k + 1 < stmtText.length) k++;
+        else if (ch === inQuote) inQuote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        inQuote = ch;
+        continue;
+      }
+      if (ch === "(") depth++;
+      else if (ch === ")") {
+        depth--;
+        if (depth === 0) {
+          let endIdx = k + 1;
+          while (endIdx < stmtText.length && isWsChar(stmtText[endIdx]!)) endIdx++;
+          return stmtText.slice(startIdx, stmtText[endIdx] === ";" ? endIdx + 1 : k + 1);
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function findParamAssignmentValueSpan(
+  maskedLine: string,
+  paramName: string,
+): { startCol: number; endCol: number } | null {
+  if (!paramName) return null;
+  let searchFrom = 0;
+  while (searchFrom < maskedLine.length) {
+    const idx = findNextWordMatchIndex(maskedLine, paramName, searchFrom);
+    if (idx === -1) return null;
+    // Do not match qualified sub-segments like `foo.R` when looking for `R` unless `paramName` contains `.`
+    if (!paramName.includes(".") && idx > 0 && maskedLine[idx - 1] === ".") {
+      searchFrom = idx + paramName.length;
+      continue;
+    }
+    let p = idx + paramName.length;
+    while (p < maskedLine.length && (maskedLine[p] === " " || maskedLine[p] === "\t")) p++;
+    const sep = maskedLine[p];
+    if (sep !== "=" && sep !== ":") {
+      searchFrom = idx + paramName.length;
+      continue;
+    }
+    if (sep === "=" && maskedLine[p + 1] === "=") {
+      searchFrom = idx + paramName.length;
+      continue;
+    }
+    p++;
+    if (sep === ":" && maskedLine[p] === "=") p++;
+    while (p < maskedLine.length && (maskedLine[p] === " " || maskedLine[p] === "\t")) p++;
+    const startCol = p;
+    let parenDepth = 0;
+    let braceDepth = 0;
+    let bracketDepth = 0;
+    let inQuote: string | null = null;
+    let endCol = maskedLine.length;
+    for (let k = startCol; k < maskedLine.length; k++) {
+      const ch = maskedLine[k]!;
+      if (inQuote) {
+        if (ch === "\\" && k + 1 < maskedLine.length) k++;
+        else if (ch === inQuote) inQuote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        inQuote = ch;
+        continue;
+      }
+      if (ch === "(") parenDepth++;
+      else if (ch === ")") {
+        if (parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
+          endCol = k;
+          break;
+        }
+        parenDepth--;
+      } else if (ch === "{") braceDepth++;
+      else if (ch === "}") {
+        if (parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
+          endCol = k;
+          break;
+        }
+        braceDepth--;
+      } else if (ch === "[") bracketDepth++;
+      else if (ch === "]") bracketDepth = Math.max(0, bracketDepth - 1);
+      else if ((ch === "," || ch === ";") && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
+        endCol = k;
+        break;
+      }
+    }
+    while (endCol > startCol && (maskedLine[endCol - 1] === " " || maskedLine[endCol - 1] === "\t")) {
+      endCol--;
+    }
+    if (endCol > startCol) {
+      return { startCol, endCol };
+    }
+    searchFrom = idx + paramName.length;
+  }
+  return null;
+}
+
+function isKeyStartChar(ch: string): boolean {
+  const c = ch.charCodeAt(0);
+  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
+}
+
+function isKeyBodyChar(ch: string): boolean {
+  return isWordTokenChar(ch) || ch === "." || ch === "-";
+}
+
+function isKvStopChar(ch: string): boolean {
+  return ch === '"' || ch === "'" || ch === "," || ch === ";" || ch === ")" || ch === "}" || ch === ">" || isWsChar(ch);
+}
+
+function extractKeyValuePairsFromLine(line: string): Array<{ key: string; value: string }> {
+  const out: Array<{ key: string; value: string }> = [];
+  let i = 0;
+  while (i < line.length) {
+    const ch = line[i]!;
+    const prevOk = i === 0 || !isWordTokenChar(line[i - 1]!);
+    if (!prevOk || !isKeyStartChar(ch)) {
+      i++;
+      continue;
+    }
+    const keyStart = i;
+    i++;
+    while (i < line.length && isKeyBodyChar(line[i]!)) i++;
+    const key = line.slice(keyStart, i);
+    let p = i;
+    while (p < line.length && isWsChar(line[p]!)) p++;
+    if (p >= line.length || (line[p] !== "=" && line[p] !== ":")) {
+      continue;
+    }
+    p++;
+    while (p < line.length && isWsChar(line[p]!)) p++;
+    if (p < line.length && (line[p] === '"' || line[p] === "'")) p++;
+    const valStart = p;
+    while (p < line.length && !isKvStopChar(line[p]!)) p++;
+    if (p > valStart) {
+      out.push({ key, value: line.slice(valStart, p) });
+      i = p;
+    }
+  }
+  return out;
+}
+
 function findSectionClosingLine(lines: string[], sectionName: string): number | null {
-  const secRegex = new RegExp(`\\b${sectionName}\\b`);
   let inSection = false;
   let depth = 0;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     if (!inSection) {
-      if (secRegex.test(line)) {
+      const idx = findNextWordMatchIndex(line, sectionName);
+      if (idx !== -1) {
         inSection = true;
-        for (const ch of line.substring(line.search(secRegex))) {
+        for (const ch of line.substring(idx)) {
           if (ch === "{") depth++;
           else if (ch === "}") depth--;
         }
@@ -1455,838 +1855,31 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
 
       // Dedicated OpenSCAD (.scad) CSG Constructive Solid Geometry Tree & Parametric Diagram Builder
       if (isScad) {
-        const paramEntries: string[] = [];
-        const moduleNodeIds = new Map<string, string>();
-        const topModuleCalls = new Map<string, string[]>();
-        const blockStack: { parentId: string | null; depth: number }[] = [];
-        let braceDepth = 0;
-        let pendingParentId: string | null = null;
-        let nodeCounter = 0;
-
-        const currentParent = (): string | null => {
-          if (pendingParentId) return pendingParentId;
-          for (let i = blockStack.length - 1; i >= 0; i--) {
-            if (blockStack[i]!.parentId) return blockStack[i]!.parentId;
+        try {
+          const cachedOrProvided = this.deps.getParser?.("scad") ?? plugin?.parser;
+          const scadParser = cachedOrProvided ?? (await (await import("@modelscript/scad")).getScadParser());
+          const tree = scadParser?.parse?.(docText);
+          if (tree?.rootNode) {
+            buildScadDiagramFromCst(tree.rootNode, makeStyledNode, makeStyledEdge, nodes, edges);
           }
-          return null;
-        };
-
-        const rawLines = docText.split(/\r?\n/);
-        for (const rawLine of rawLines) {
-          const stripped = rawLine.replace(/\/\/.*$/, "").trim();
-          if (!stripped) continue;
-
-          const openBraces = (stripped.match(/\{/g) || []).length;
-          const closeBraces = (stripped.match(/\}/g) || []).length;
-
-          // Pure closing brace line
-          if (/^\}+;?\s*$/.test(stripped)) {
-            braceDepth = Math.max(0, braceDepth - closeBraces);
-            while (blockStack.length > 0 && blockStack[blockStack.length - 1]!.depth > braceDepth) {
-              blockStack.pop();
-            }
-            pendingParentId = null;
-            continue;
-          }
-
-          // 1. Top-level or local variable declaration: name = expr;
-          const varMatch = /^(\$?[A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^;]+);/.exec(stripped);
-          if (varMatch && braceDepth === 0) {
-            paramEntries.push(`${varMatch[1]} = ${varMatch[2]!.trim()}`);
-            continue;
-          }
-
-          // 2. Module declaration: module name(params) {
-          const modMatch = /^module\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)/.exec(stripped);
-          if (modMatch) {
-            const modName = modMatch[1]!;
-            const modParams = modMatch[2]!.trim();
-            const nodeId = `module_${modName}`;
-            moduleNodeIds.set(modName, nodeId);
-            nodes.push(
-              makeStyledNode({
-                id: nodeId,
-                name: modName,
-                kind: "Module",
-                stereotype: "csg module",
-                subtitle: modParams ? `(${modParams})` : "()",
-                stroke: "#0d9488",
-                fill: "#f0fdfa",
-              }),
-            );
-            braceDepth += openBraces - closeBraces;
-            if (openBraces > closeBraces) {
-              blockStack.push({ parentId: nodeId, depth: braceDepth });
-            }
-            pendingParentId = null;
-            continue;
-          }
-
-          // 3. Tagged boundary/mechanical port: tag_port("name", "type")
-          const portMatch = /^tag_port\s*\(\s*"([^"]+)"(?:\s*,\s*"([^"]+)")?\s*\)/.exec(stripped);
-          if (portMatch) {
-            const portName = portMatch[1]!;
-            const portType = portMatch[2] || "port";
-            const nodeId = `port_${++nodeCounter}_${portName}`;
-            const pId = currentParent();
-            nodes.push(
-              makeStyledNode({
-                id: nodeId,
-                name: portName,
-                kind: "Port",
-                stereotype: `port: ${portType}`,
-                subtitle: `tag_port("${portName}", "${portType}")`,
-                stroke: "#d97706",
-                fill: "#fffbeb",
-              }),
-            );
-            if (pId) {
-              edges.push(makeStyledEdge(`edge_${pId}_${nodeId}`, pId, nodeId));
-            }
-            braceDepth += openBraces - closeBraces;
-            if (openBraces > closeBraces) {
-              blockStack.push({ parentId: nodeId, depth: braceDepth });
-              pendingParentId = null;
-            } else {
-              pendingParentId = nodeId;
-            }
-            continue;
-          }
-
-          // 4. CSG Boolean operation: difference(), union(), intersection(), hull(), minkowski()
-          const boolMatch = /^(difference|union|intersection|hull|minkowski)\s*\(\s*\)/.exec(stripped);
-          if (boolMatch) {
-            const opName = boolMatch[1]!;
-            const nodeId = `bool_${++nodeCounter}_${opName}`;
-            const pId = currentParent();
-            nodes.push(
-              makeStyledNode({
-                id: nodeId,
-                name: `${opName}()`,
-                kind: "BooleanOp",
-                stereotype: "csg boolean",
-                stroke: "#7c3aed",
-                fill: "#f5f3ff",
-              }),
-            );
-            if (pId) {
-              edges.push(makeStyledEdge(`edge_${pId}_${nodeId}`, pId, nodeId));
-            }
-            braceDepth += openBraces - closeBraces;
-            if (openBraces > closeBraces) {
-              blockStack.push({ parentId: nodeId, depth: braceDepth });
-              pendingParentId = null;
-            } else {
-              pendingParentId = nodeId;
-            }
-            continue;
-          }
-
-          // 5. Transform operation: translate(...), rotate(...), scale(...), mirror(...), color(...), linear_extrude(...)
-          const tfMatch = /^(translate|rotate|scale|mirror|color|linear_extrude)\s*\((.*)\)\s*(\{?)$/.exec(stripped);
-          if (tfMatch) {
-            const tfName = tfMatch[1]!;
-            const tfArgs = tfMatch[2]!.trim();
-            const nodeId = `tf_${++nodeCounter}_${tfName}`;
-            const pId = currentParent();
-            nodes.push(
-              makeStyledNode({
-                id: nodeId,
-                name: tfName,
-                kind: "Transform",
-                stereotype: "transform",
-                subtitle: tfArgs,
-                stroke: "#0284c7",
-                fill: "#f0f9ff",
-              }),
-            );
-            if (pId) {
-              edges.push(makeStyledEdge(`edge_${pId}_${nodeId}`, pId, nodeId));
-            }
-            braceDepth += openBraces - closeBraces;
-            if (openBraces > closeBraces) {
-              blockStack.push({ parentId: nodeId, depth: braceDepth });
-              pendingParentId = null;
-            } else {
-              pendingParentId = nodeId;
-            }
-            continue;
-          }
-
-          // 6. 3D/2D Solid primitive: cylinder(...), cube(...), sphere(...), polyhedron(...), polygon(...), circle(...), square(...)
-          const primMatch = /^(cylinder|cube|sphere|polyhedron|polygon|circle|square)\s*\((.*)\)\s*;/.exec(stripped);
-          if (primMatch) {
-            const primName = primMatch[1]!;
-            const primArgs = primMatch[2]!.replace(/,\s*center\s*=\s*(true|false)/, "").trim();
-            const nodeId = `prim_${++nodeCounter}_${primName}`;
-            const pId = currentParent();
-            nodes.push(
-              makeStyledNode({
-                id: nodeId,
-                name: primName,
-                kind: "Primitive",
-                stereotype: "3d solid",
-                subtitle: primArgs,
-                stroke: "#059669",
-                fill: "#ecfdf5",
-              }),
-            );
-            if (pId) {
-              edges.push(makeStyledEdge(`edge_${pId}_${nodeId}`, pId, nodeId));
-            }
-            pendingParentId = null;
-            braceDepth = Math.max(0, braceDepth + openBraces - closeBraces);
-            continue;
-          }
-
-          // 7. User module instantiation: modName(args);
-          const callMatch = /^([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*;/.exec(stripped);
-          if (callMatch) {
-            const callee = callMatch[1]!;
-            const callArgs = callMatch[2]!.trim();
-            const pId = currentParent();
-            if (!pId && braceDepth === 0) {
-              const list = topModuleCalls.get(callee) ?? [];
-              list.push(callArgs || "default");
-              topModuleCalls.set(callee, list);
-            } else {
-              const targetModId = moduleNodeIds.get(callee);
-              if (targetModId && pId) {
-                edges.push(
-                  makeStyledEdge(
-                    `edge_call_${++nodeCounter}_${pId}_${targetModId}`,
-                    pId,
-                    targetModId,
-                    true,
-                    "instantiate",
-                  ),
-                );
-              } else {
-                const callId = `call_${++nodeCounter}_${callee}`;
-                nodes.push(
-                  makeStyledNode({
-                    id: callId,
-                    name: `${callee}(${callArgs})`,
-                    kind: "ModuleCall",
-                    stereotype: "instance",
-                    stroke: "#0d9488",
-                    fill: "#f0fdfa",
-                  }),
-                );
-                if (pId) {
-                  edges.push(makeStyledEdge(`edge_${pId}_${callId}`, pId, callId));
-                }
-              }
-            }
-            pendingParentId = null;
-            braceDepth = Math.max(0, braceDepth + openBraces - closeBraces);
-            continue;
-          }
-
-          braceDepth = Math.max(0, braceDepth + openBraces - closeBraces);
-          while (blockStack.length > 0 && blockStack[blockStack.length - 1]!.depth > braceDepth) {
-            blockStack.pop();
-          }
-        }
-
-        // Emit grouped top-level module instantiations (e.g., 4x arm_assembly(45, 135, 225, 315))
-        for (const [callee, argList] of topModuleCalls) {
-          const instId = `inst_${callee}`;
-          const summary =
-            argList.length > 1 ? `${argList.length}× instances (${argList.join(", ")})` : `(${argList[0] ?? ""})`;
-          nodes.push(
-            makeStyledNode({
-              id: instId,
-              name: `${callee} Assembly`,
-              kind: "AssemblyInstance",
-              stereotype: argList.length > 1 ? `csg pattern (${argList.length}×)` : "csg instance",
-              subtitle: summary,
-              stroke: "#0d9488",
-              fill: "#ccfbf1",
-            }),
-          );
-          const targetModId = moduleNodeIds.get(callee);
-          if (targetModId) {
-            edges.push(makeStyledEdge(`edge_${instId}_${targetModId}`, instId, targetModId, true, "instantiates"));
-          }
-        }
-
-        // Prepend consolidated Design Parameters compartment block
-        if (paramEntries.length > 0) {
-          nodes.unshift(
-            makeStyledNode({
-              id: "scad_parameters",
-              name: "Design Parameters",
-              kind: "Parameters",
-              stereotype: "parameters",
-              entries: paramEntries,
-              stroke: "#4f46e5",
-              fill: "#eef2ff",
-              headerFill: "#e0e7ff",
-            }),
-          );
+        } catch {
+          // If SCAD WASM parser cannot be loaded, allow downstream fallbacks if any
         }
       }
 
       // Dedicated Fortran (.f, .for, .f77, .f90, .f95, .f03, .f08) Dataflow & Block Schematic Builder
       const isFortran = /\.(f|for|f77|f90|f95|f03|f08)($|\?|#)/i.test(params.uri) || plugin?.id === "fortran";
       if (nodes.length === 0 && isFortran) {
-        let routineName = "fortran_kernel";
-        let routineKind = "subroutine";
-        const dummyArgs: string[] = [];
-        const inputVars = new Map<string, string>(); // lowerName -> displayName
-        const outputVars = new Map<string, string>(); // lowerName -> displayName
-        const varTypes = new Map<string, string>(); // lowerName -> typeStr
-        const constants = new Map<string, { name: string; value: string }>(); // lowerName -> { name, value }
-        const equations: {
-          id: string;
-          lhs: string;
-          rhs: string;
-          isState: boolean;
-          lineIdx: number;
-          condGuard?: string | undefined;
-        }[] = [];
-        const callBlocks: {
-          id: string;
-          subroutine: string;
-          args: string[];
-          lineIdx: number;
-        }[] = [];
-
-        const rawLines = docText.split(/\r?\n/);
-
-        // Pre-scan all program units to identify the primary routine and helper subroutine signatures
-        const unitSummaries = new Map<
-          string,
-          {
-            name: string;
-            kind: string;
-            params: string[];
-            intents: Map<string, string>;
-            startLine: number;
-            endLine: number;
+        try {
+          const maskedFortran = maskFortranFixedCommentsAndPreprocessor(docText);
+          const cachedOrProvided = this.deps.getParser?.("fortran") ?? plugin?.parser;
+          const fortranParser = cachedOrProvided ?? (await (await import("@modelscript/fortran")).getFortranParser());
+          const tree = fortranParser?.parse?.(maskedFortran);
+          if (tree?.rootNode) {
+            buildFortranDiagramFromCst(tree.rootNode, makeStyledNode, makeStyledEdge, nodes, edges);
           }
-        >();
-        let primaryUnitUpper: string | null = null;
-        {
-          let activeUnit: {
-            name: string;
-            kind: string;
-            params: string[];
-            intents: Map<string, string>;
-            startLine: number;
-            endLine: number;
-          } | null = null;
-          for (let i = 0; i < rawLines.length; i++) {
-            const clean = rawLines[i]!.replace(/!.*$/, "").trim();
-            if (!clean) continue;
-            const hdr =
-              /^(?:(?:pure|elemental|recursive|real(?:\s*\([^)]*\))?|integer(?:\s*\([^)]*\))?|double\s+precision|logical)\s+)*(subroutine|function|program)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?/i.exec(
-                clean,
-              );
-            if (hdr) {
-              const kind = hdr[1]!.toLowerCase();
-              const name = hdr[2]!;
-              const params = hdr[3]
-                ? hdr[3]
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter(Boolean)
-                : [];
-              activeUnit = {
-                name,
-                kind,
-                params,
-                intents: new Map(),
-                startLine: i,
-                endLine: rawLines.length - 1,
-              };
-              unitSummaries.set(name.toUpperCase(), activeUnit);
-              if (kind === "program" || !primaryUnitUpper) {
-                primaryUnitUpper = name.toUpperCase();
-              }
-              continue;
-            }
-            if (activeUnit && /^end(?:\s+(?:subroutine|function|program))?\b/i.test(clean)) {
-              activeUnit.endLine = i;
-              activeUnit = null;
-              continue;
-            }
-            if (activeUnit && clean.includes("::")) {
-              const [attrPart, rhsPart] = clean.split("::");
-              const im = /\bintent\s*\(\s*(in\s*out|inout|in|out)\s*\)/i.exec(attrPart ?? "");
-              if (im && rhsPart) {
-                const intent = im[1]!.replace(/\s+/g, "").toLowerCase();
-                for (const tok of rhsPart.split(",")) {
-                  const idm = /^([A-Za-z_][A-Za-z0-9_]*)/.exec(tok.trim());
-                  if (idm) activeUnit.intents.set(idm[1]!.toLowerCase(), intent);
-                }
-              }
-            }
-          }
-        }
-
-        const primaryUnit = primaryUnitUpper ? unitSummaries.get(primaryUnitUpper) : undefined;
-        const guardStack: string[] = [];
-        let insideHelperUnit = false;
-
-        for (let lineIdx = 0; lineIdx < rawLines.length; lineIdx++) {
-          const rawLine = rawLines[lineIdx]!;
-          if (/^[Cc*]\s/.test(rawLine) && !/^\s*call\b/i.test(rawLine)) continue;
-          const clean = rawLine.replace(/!.*$/, "").trim();
-          if (!clean || clean.startsWith("#")) continue;
-
-          // Subroutine / Function / Program / Module header
-          const headerMatch =
-            /^(?:(?:pure|elemental|recursive|real(?:\s*\([^)]*\))?|integer(?:\s*\([^)]*\))?|double\s+precision|logical)\s+)*(subroutine|function|program|module)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^)]*)\))?/i.exec(
-              clean,
-            );
-          if (headerMatch) {
-            const hKind = headerMatch[1]!.toLowerCase();
-            const hName = headerMatch[2]!;
-            if (hKind === "module") {
-              if (!primaryUnit) {
-                routineKind = "module";
-                routineName = hName;
-              }
-              continue;
-            }
-            if (primaryUnit && hName.toUpperCase() !== primaryUnit.name.toUpperCase()) {
-              insideHelperUnit = true;
-              continue;
-            }
-            insideHelperUnit = false;
-            routineKind = hKind;
-            routineName = hName;
-            if (headerMatch[3]) {
-              for (const arg of headerMatch[3].split(",")) {
-                const a = arg.trim();
-                if (a) dummyArgs.push(a);
-              }
-            }
-            continue;
-          }
-
-          if (/^end\b/i.test(clean)) {
-            if (/^end\s*(?:if|do)\b/i.test(clean)) {
-              if (!insideHelperUnit && guardStack.length > 0) guardStack.pop();
-            } else if (/^end(?:\s+(?:subroutine|function|program))?\b/i.test(clean)) {
-              insideHelperUnit = false;
-            }
-            continue;
-          }
-
-          if (insideHelperUnit) continue;
-
-          if (
-            /^implicit\b/i.test(clean) ||
-            /^return\b/i.test(clean) ||
-            /^continue\b/i.test(clean) ||
-            /^contains\b/i.test(clean) ||
-            /^use\b/i.test(clean)
-          ) {
-            continue;
-          }
-
-          // IF / ELSEIF / ELSE / DO control headers
-          const ifMatch = /^if\s*\((.+)\)\s*then$/i.exec(clean);
-          if (ifMatch) {
-            guardStack.push(`IF (${ifMatch[1]!.trim()})`);
-            continue;
-          }
-          const elseIfMatch = /^else\s*if\s*\((.+)\)\s*then$/i.exec(clean);
-          if (elseIfMatch) {
-            if (guardStack.length > 0) guardStack.pop();
-            guardStack.push(`ELSE IF (${elseIfMatch[1]!.trim()})`);
-            continue;
-          }
-          if (/^else$/i.test(clean)) {
-            const prev = guardStack.pop() ?? "IF";
-            guardStack.push(`ELSE [${prev}]`);
-            continue;
-          }
-          const doMatch = /^do\s+(?:\d+\s+)?([A-Za-z_][A-Za-z0-9_]*\s*=\s*.+)$/i.exec(clean);
-          if (doMatch) {
-            guardStack.push(`DO ${doMatch[1]!.trim()}`);
-            continue;
-          }
-
-          // PARAMETER (NAME = VAL, ...)
-          const paramStmtMatch = /^parameter\s*\((.+)\)$/i.exec(clean);
-          if (paramStmtMatch) {
-            for (const item of paramStmtMatch[1]!.split(",")) {
-              const kv = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$/.exec(item.trim());
-              if (kv) {
-                constants.set(kv[1]!.toLowerCase(), { name: kv[1]!, value: kv[2]!.trim() });
-              }
-            }
-            continue;
-          }
-
-          // Type declarations: REAL(8), INTENT(IN), DIMENSION(3,3) :: p_c, a_t
-          const declMatch =
-            /^((?:real|integer|double\s+precision|logical|complex|character)\s*(?:\([^)]*\)|\*\d+)?)\s*((?:,\s*[A-Za-z_][A-Za-z0-9_]*(?:\s*\([^)]*\))?)*)\s*(?:::)?\s*(.+)$/i.exec(
-              clean,
-            );
-          if (declMatch && (!clean.includes("=") || clean.includes("::"))) {
-            const baseType = declMatch[1]!.toUpperCase().replace(/\s+/g, " ");
-            const attrs = declMatch[2] ?? "";
-            const varPart = declMatch[3]!;
-            const intentMatch = /\bintent\s*\(\s*(in\s*out|inout|in|out)\s*\)/i.exec(attrs);
-            const intent = intentMatch ? intentMatch[1]!.replace(/\s+/g, "").toLowerCase() : null;
-            const attrDimMatch = /\bdimension\s*\(([^)]*)\)/i.exec(attrs);
-            const attrDimStr = attrDimMatch ? `[${attrDimMatch[1]!.replace(/\s*,\s*/g, "×")}]` : "";
-
-            const items: string[] = [];
-            let depth = 0;
-            let cur = "";
-            for (const ch of varPart) {
-              if (ch === "(" || ch === "[") depth++;
-              else if (ch === ")" || ch === "]") depth = Math.max(0, depth - 1);
-              if (ch === "," && depth === 0) {
-                items.push(cur.trim());
-                cur = "";
-              } else {
-                cur += ch;
-              }
-            }
-            if (cur.trim()) items.push(cur.trim());
-
-            for (const item of items) {
-              const m = /^([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(([^)]*)\))?(?:\s*=\s*(.+))?$/.exec(item);
-              if (!m) continue;
-              const vName = m[1]!;
-              const lower = vName.toLowerCase();
-              const inlineDim = m[2] ? `[${m[2].replace(/\s*,\s*/g, "×")}]` : attrDimStr;
-              const initVal = m[3]?.trim();
-              varTypes.set(lower, inlineDim ? `${baseType} ${inlineDim}` : baseType);
-              if (intent === "in") {
-                inputVars.set(lower, vName);
-              } else if (intent === "out") {
-                outputVars.set(lower, vName);
-              } else if (intent === "inout") {
-                inputVars.set(lower, vName);
-                outputVars.set(lower, vName);
-              } else if (initVal !== undefined) {
-                constants.set(lower, { name: vName, value: initVal });
-              }
-            }
-            continue;
-          }
-
-          // CALL statement: CALL SUB(a, b, c)
-          const callMatch = /^call\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\((.*)\))?$/i.exec(clean);
-          if (callMatch) {
-            const subName = callMatch[1]!;
-            const args = callMatch[2]
-              ? callMatch[2]
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-              : [];
-            callBlocks.push({
-              id: `call_${lineIdx}_${subName}`,
-              subroutine: subName,
-              args,
-              lineIdx,
-            });
-            continue;
-          }
-
-          // Assignment statement: LHS = RHS
-          const assignMatch = /^(\$?[A-Za-z_][A-Za-z0-9_]*(?:\s*\([^)]+\))?)\s*=\s*(.+)$/.exec(clean);
-          if (assignMatch && !assignMatch[2]!.startsWith("=")) {
-            const lhs = assignMatch[1]!.trim();
-            const rhs = assignMatch[2]!.trim();
-            const isState = /^(?:STORF|STORI|SD|S)\s*\(/i.test(lhs) || /^der_/i.test(lhs);
-            equations.push({
-              id: `eq_${lineIdx}_${lhs.replace(/[^A-Za-z0-9_]/g, "_")}`,
-              lhs,
-              rhs,
-              isState,
-              lineIdx,
-              condGuard: guardStack.length > 0 ? guardStack[guardStack.length - 1] : undefined,
-            });
-
-            // Discover $Port references on LHS/RHS
-            if (lhs.startsWith("$")) {
-              const pName = lhs.slice(1);
-              outputVars.set(pName.toLowerCase(), pName);
-            }
-            const portRegex = /\$([A-Za-z_][A-Za-z0-9_]*)/g;
-            let pm: RegExpExecArray | null;
-            while ((pm = portRegex.exec(rhs)) !== null) {
-              const pName = pm[1]!;
-              if (!outputVars.has(pName.toLowerCase())) {
-                inputVars.set(pName.toLowerCase(), pName);
-              }
-            }
-          }
-        }
-
-        // If dummyArgs were declared without explicit INTENT(IN/OUT), infer inputs vs outputs from assignments
-        const assignedLowers = new Set(
-          equations.map((e) =>
-            e.lhs
-              .replace(/\s*\([^)]*\)$/, "")
-              .replace(/^\$/, "")
-              .toLowerCase(),
-          ),
-        );
-        for (const arg of dummyArgs) {
-          const lower = arg.toLowerCase();
-          if (!inputVars.has(lower) && !outputVars.has(lower)) {
-            if (assignedLowers.has(lower)) outputVars.set(lower, arg);
-            else inputVars.set(lower, arg);
-          }
-        }
-
-        // Track producer node ID for each variable (lowerName -> nodeId)
-        const producerByVar = new Map<string, string>();
-
-        // Column 0 (Left): Input Port Nodes & Referenced Constants
-        let leftRow = 0;
-        for (const [lower, dispName] of inputVars.entries()) {
-          const nodeId = `in_${lower}`;
-          const tStr = varTypes.get(lower) ?? "REAL(8)";
-          nodes.push(
-            makeStyledNode({
-              id: nodeId,
-              name: dispName,
-              kind: "InputPort",
-              stereotype: "intent(in)",
-              subtitle: `${tStr} Input`,
-              stroke: "#0d9488",
-              fill: "#f0fdfa",
-              headerFill: "#ccfbf1",
-              x: 60,
-              y: 70 + leftRow * 110,
-            }),
-          );
-          producerByVar.set(lower, nodeId);
-          leftRow++;
-        }
-
-        for (const [lower, cInfo] of constants.entries()) {
-          const nodeId = `const_${lower}`;
-          const tStr = varTypes.get(lower) ?? "REAL(8)";
-          nodes.push(
-            makeStyledNode({
-              id: nodeId,
-              name: cInfo.name,
-              kind: "Constant",
-              stereotype: "constant",
-              subtitle: `${tStr} = ${cInfo.value}`,
-              stroke: "#4f46e5",
-              fill: "#eef2ff",
-              headerFill: "#e0e7ff",
-              x: 60,
-              y: 70 + leftRow * 110,
-            }),
-          );
-          producerByVar.set(lower, nodeId);
-          leftRow++;
-        }
-
-        // Column 1 (Center): Equation & Subroutine Call Blocks
-        let centerRow = 0;
-        const intrinsicSet = new Set([
-          "sqrt",
-          "abs",
-          "sin",
-          "cos",
-          "tan",
-          "asin",
-          "acos",
-          "atan",
-          "atan2",
-          "exp",
-          "log",
-          "log10",
-          "min",
-          "max",
-          "mod",
-          "sign",
-          "sum",
-          "maxval",
-          "minval",
-          "size",
-          "dot_product",
-          "matmul",
-          "storf",
-          "stori",
-          "sd",
-          "s",
-        ]);
-
-        for (const eq of equations) {
-          const baseLhs = eq.lhs.replace(/\s*\([^)]*\)$/, "").replace(/^\$/, "");
-          const lowerLhs = baseLhs.toLowerCase();
-          const isOutputTarget = outputVars.has(lowerLhs);
-          const entries = [`${eq.lhs} = ${eq.rhs}`];
-          if (eq.condGuard) {
-            entries.unshift(`[Guard] ${eq.condGuard}`);
-          }
-
-          nodes.push(
-            makeStyledNode({
-              id: eq.id,
-              name: eq.lhs,
-              kind: eq.isState ? "StateEquation" : "Equation",
-              stereotype: eq.isState ? "state derivative" : isOutputTarget ? "output equation" : "algebraic block",
-              subtitle: `${routineName} · line ${eq.lineIdx + 1}`,
-              entries,
-              stroke: eq.isState ? "#e11d48" : "#0284c7",
-              fill: eq.isState ? "#fff1f2" : "#f0f9ff",
-              headerFill: eq.isState ? "#ffe4e6" : "#e0f2fe",
-              x: 390,
-              y: 70 + centerRow * 135,
-            }),
-          );
-          centerRow++;
-
-          // Connect upstream producers referenced in RHS -> eq.id
-          const refRegex = /\$?([A-Za-z_][A-Za-z0-9_]*)/g;
-          const connectedSources = new Set<string>();
-          let rm: RegExpExecArray | null;
-          while ((rm = refRegex.exec(eq.rhs)) !== null) {
-            const refIdent = rm[1]!;
-            const refLower = refIdent.toLowerCase();
-            if (intrinsicSet.has(refLower)) continue;
-            const srcNodeId = producerByVar.get(refLower);
-            if (srcNodeId && srcNodeId !== eq.id && !connectedSources.has(srcNodeId)) {
-              connectedSources.add(srcNodeId);
-              edges.push(
-                makeStyledEdge(
-                  `edge_${srcNodeId}_${eq.id}`,
-                  srcNodeId,
-                  eq.id,
-                  srcNodeId.startsWith("const_"),
-                  refIdent,
-                ),
-              );
-            }
-          }
-
-          producerByVar.set(lowerLhs, eq.id);
-        }
-
-        for (const callBlk of callBlocks) {
-          const subUpper = callBlk.subroutine.toUpperCase();
-          const calleeSummary = unitSummaries.get(subUpper);
-          const callEntries: string[] = [];
-          if (calleeSummary) {
-            const inParams = calleeSummary.params.filter(
-              (p) => (calleeSummary.intents.get(p.toLowerCase()) ?? "in") !== "out",
-            );
-            const outParams = calleeSummary.params.filter((p) => {
-              const int = calleeSummary.intents.get(p.toLowerCase());
-              return int === "out" || int === "inout";
-            });
-            callEntries.push(`${inParams.join(", ") || "()"} → ${outParams.join(", ") || "void"}`);
-          }
-
-          nodes.push(
-            makeStyledNode({
-              id: callBlk.id,
-              name: `CALL ${callBlk.subroutine}`,
-              kind: "SubroutineCall",
-              stereotype: calleeSummary ? "module subroutine" : "subroutine call",
-              subtitle: `(${callBlk.args.join(", ")})`,
-              entries: callEntries.length > 0 ? callEntries : undefined,
-              stroke: "#7c3aed",
-              fill: "#f5f3ff",
-              headerFill: "#ede9fe",
-              x: 390,
-              y: 70 + centerRow * 135,
-            }),
-          );
-          centerRow++;
-
-          // Wire arguments: use callee signature intents if known, else EMTDC convention (last arg = output)
-          const defaultOutIdx =
-            ["REALPOLE", "DELAY1", "INTGRL", "LEADLAG", "DIFF", "LIMITER", "LIMIT", "HARDLIMIT"].includes(subUpper) &&
-            callBlk.args.length >= 2
-              ? callBlk.args.length - 1
-              : -1;
-
-          callBlk.args.forEach((argStr, idx) => {
-            const identMatch = /^\$?([A-Za-z_][A-Za-z0-9_]*)$/.exec(argStr);
-            if (!identMatch) return;
-            const vName = identMatch[1]!;
-            const vLower = vName.toLowerCase();
-
-            let isOutArg = idx === defaultOutIdx;
-            let isInArg = idx !== defaultOutIdx;
-            if (calleeSummary && calleeSummary.params[idx]) {
-              const formalIntent = calleeSummary.intents.get(calleeSummary.params[idx]!.toLowerCase());
-              if (formalIntent === "out") {
-                isOutArg = true;
-                isInArg = false;
-              } else if (formalIntent === "inout") {
-                isOutArg = true;
-                isInArg = true;
-              } else if (formalIntent === "in") {
-                isOutArg = false;
-                isInArg = true;
-              }
-            }
-
-            if (isInArg) {
-              const srcId = producerByVar.get(vLower);
-              if (srcId) {
-                edges.push(makeStyledEdge(`edge_${srcId}_${callBlk.id}`, srcId, callBlk.id, false, vName));
-              }
-            }
-            if (isOutArg) {
-              producerByVar.set(vLower, callBlk.id);
-            }
-          });
-        }
-
-        // Column 2 (Right): Output Port Terminal Nodes
-        let rightRow = 0;
-        for (const [lower, dispName] of outputVars.entries()) {
-          const outNodeId = `out_${lower}`;
-          const tStr = varTypes.get(lower) ?? "REAL(8)";
-          nodes.push(
-            makeStyledNode({
-              id: outNodeId,
-              name: dispName,
-              kind: "OutputPort",
-              stereotype: "intent(out)",
-              subtitle: `${tStr} Output`,
-              stroke: "#d97706",
-              fill: "#fffbeb",
-              headerFill: "#fef3c7",
-              x: 780,
-              y: 70 + rightRow * 120,
-            }),
-          );
-          rightRow++;
-
-          const srcId = producerByVar.get(lower);
-          if (srcId && srcId !== outNodeId) {
-            edges.push(makeStyledEdge(`edge_${srcId}_${outNodeId}`, srcId, outNodeId, false, dispName));
-          }
-        }
-
-        // If the file only had a subroutine header with no equations yet, emit a clean header node
-        if (nodes.length === 0) {
-          nodes.push(
-            makeStyledNode({
-              id: `sub_${routineName}`,
-              name: routineName,
-              kind: "Subroutine",
-              stereotype: routineKind,
-              subtitle: dummyArgs.length > 0 ? `(${dummyArgs.join(", ")})` : "()",
-              stroke: "#0284c7",
-              fill: "#f0f9ff",
-              headerFill: "#e0f2fe",
-              x: 120,
-              y: 80,
-            }),
-          );
+        } catch {
+          // If Fortran WASM parser cannot be loaded, allow downstream fallbacks if any
         }
       }
 
@@ -2294,7 +1887,18 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         try {
           const syms = plugin.customHandlers.symbols(docText) ?? [];
           let idx = 0;
-          const visitSym = (sym: any, parentId?: string) => {
+          const visitSym = (
+            sym:
+              | {
+                  name?: string;
+                  kind?: unknown;
+                  detail?: unknown;
+                  children?: unknown[];
+                }
+              | null
+              | undefined,
+            parentId?: string,
+          ) => {
             if (!sym || !sym.name) return;
             const nodeId = parentId ? `${parentId}.${sym.name}` : sym.name;
             if (!nodes.some((n) => n.id === nodeId)) {
@@ -2321,7 +1925,15 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
             }
             if (Array.isArray(sym.children)) {
               for (const child of sym.children) {
-                visitSym(child, nodeId);
+                visitSym(
+                  child as {
+                    name?: string;
+                    kind?: unknown;
+                    detail?: unknown;
+                    children?: unknown[];
+                  },
+                  nodeId,
+                );
               }
             }
           };
@@ -2452,7 +2064,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
     const values: Record<string, any> = { name: params.componentName };
     const fields: PropertyFieldConfig[] = [];
     if (docText) {
-      const lines = docText.split(/\r?\n/);
+      const lines = docText.replaceAll("\r\n", "\n").split("\n");
       const targetName = params.componentName.split(".").pop() ?? params.componentName;
       let startLine = 0;
       for (let i = 0; i < lines.length; i++) {
@@ -2465,11 +2077,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
       const seenKeys = new Set<string>();
       for (let i = startLine; i < windowEnd; i++) {
         const line = lines[i]!;
-        const kvRegex = /\b([A-Za-z_][A-Za-z0-9_.-]*)\s*(?:=|:)\s*["']?([^"',;)}\s>\r\n]+)["']?/g;
-        let m: RegExpExecArray | null;
-        while ((m = kvRegex.exec(line)) !== null) {
-          const k = m[1]!;
-          const v = m[2]!;
+        for (const { key: k, value: v } of extractKeyValuePairsFromLine(line)) {
           if (seenKeys.has(k)) continue;
           seenKeys.add(k);
           parameters.push({ name: k, value: v, description: `Parameter '${k}'` });
@@ -2569,48 +2177,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
               : [];
           if (config?.placement?.persistence === "inline" && docText !== undefined) {
             for (const item of moveItems) {
-              const name = item.name;
-              const escName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-              const nameRegex = new RegExp(`\\b${escName}\\b`);
-              for (let i = 0; i < lines.length; i++) {
-                if (nameRegex.test(maskedLines[i]!)) {
-                  const line = lines[i]!;
-                  const placementStr = config.placement.formatPlacement
-                    ? config.placement.formatPlacement(item.x, item.y, item.width, item.height, item.rotation)
-                    : `@layout(x=${Math.round(item.x)}, y=${Math.round(item.y)})`;
-
-                  const span = findInlinePlacementSpan(line);
-                  if (span) {
-                    allEdits.push({
-                      range: {
-                        start: { line: i, character: span.start },
-                        end: { line: i, character: span.end },
-                      },
-                      newText: placementStr,
-                    });
-                  } else {
-                    const semiIdx = line.lastIndexOf(";");
-                    if (semiIdx !== -1) {
-                      allEdits.push({
-                        range: {
-                          start: { line: i, character: semiIdx },
-                          end: { line: i, character: semiIdx },
-                        },
-                        newText: ` ${placementStr}`,
-                      });
-                    } else {
-                      allEdits.push({
-                        range: {
-                          start: { line: i, character: line.length },
-                          end: { line: i, character: line.length },
-                        },
-                        newText: ` ${placementStr}`,
-                      });
-                    }
-                  }
-                  break;
-                }
-              }
+              emitInlinePlacementEdit(item, lines, maskedLines, config.placement.formatPlacement, allEdits, true);
             }
           } else {
             itemsToSave.push(...moveItems);
@@ -2620,64 +2187,24 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         case "resize":
         case "rotate": {
           if (config?.placement?.persistence === "inline" && docText !== undefined) {
-            const item = action.item;
-            const escName = item.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const nameRegex = new RegExp(`\\b${escName}\\b`);
-            for (let i = 0; i < lines.length; i++) {
-              if (nameRegex.test(maskedLines[i]!)) {
-                const line = lines[i]!;
-                const placementStr = config.placement.formatPlacement
-                  ? config.placement.formatPlacement(item.x, item.y, item.width, item.height, item.rotation)
-                  : `@layout(x=${Math.round(item.x)}, y=${Math.round(item.y)})`;
-
-                const span = findInlinePlacementSpan(line);
-                if (span) {
-                  allEdits.push({
-                    range: {
-                      start: { line: i, character: span.start },
-                      end: { line: i, character: span.end },
-                    },
-                    newText: placementStr,
-                  });
-                } else {
-                  const semiIdx = line.lastIndexOf(";");
-                  if (semiIdx !== -1) {
-                    allEdits.push({
-                      range: {
-                        start: { line: i, character: semiIdx },
-                        end: { line: i, character: semiIdx },
-                      },
-                      newText: ` ${placementStr}`,
-                    });
-                  }
-                }
-                break;
-              }
-            }
+            emitInlinePlacementEdit(action.item, lines, maskedLines, config.placement.formatPlacement, allEdits, false);
           } else {
             itemsToSave.push(action.item);
           }
           break;
         }
         case "connect": {
-          let edgeText = "";
-          const edgeTemplates = mutations?.edgeTemplates;
           const edgeTemplate =
-            (action.edgeType && edgeTemplates?.[action.edgeType]) || mutations?.edgeTemplate || mutations?.createEdge;
-
-          if (typeof edgeTemplate === "function") {
-            edgeText = edgeTemplate(action.source, action.target, action.sourcePort, action.targetPort);
-          } else if (typeof edgeTemplate === "string") {
-            edgeText = edgeTemplate
-              .replace(/\$\{source\}/g, action.source)
-              .replace(/\$\{target\}/g, action.target)
-              .replace(/\$\{sourcePort\}/g, action.sourcePort ?? "")
-              .replace(/\$\{targetPort\}/g, action.targetPort ?? "");
-          } else {
-            const src = action.sourcePort ? `${action.source}.${action.sourcePort}` : action.source;
-            const tgt = action.targetPort ? `${action.target}.${action.targetPort}` : action.target;
-            edgeText = `connect(${src}, ${tgt});\n`;
-          }
+            (action.edgeType && mutations?.edgeTemplates?.[action.edgeType]) ||
+            mutations?.edgeTemplate ||
+            mutations?.createEdge;
+          const edgeText = expandEdgeTemplateText(
+            edgeTemplate,
+            action.source,
+            action.target,
+            action.sourcePort,
+            action.targetPort,
+          );
 
           if (docText !== undefined && edgeText) {
             const targetSection =
@@ -2703,152 +2230,89 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         }
         case "disconnect": {
           if (docText !== undefined) {
-            const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const srcPattern = action.sourcePort
-              ? `${esc(action.source)}\\.${esc(action.sourcePort)}`
-              : esc(action.source);
-            const tgtPattern = action.targetPort
-              ? `${esc(action.target)}\\.${esc(action.targetPort)}`
-              : esc(action.target);
-            const edgeRegex = new RegExp(
-              `\\b${srcPattern}\\b.*\\b${tgtPattern}\\b|\\b${tgtPattern}\\b.*\\b${srcPattern}\\b`,
+            const matchSpan = findMatchingEdgeStatement(
+              maskedLines,
+              action.source,
+              action.sourcePort,
+              action.target,
+              action.targetPort,
             );
-
-            for (let i = 0; i < lines.length; i++) {
-              if (edgeRegex.test(maskedLines[i]!)) {
-                let endLine = i;
-                if (maskedLines[i]!.includes("(") && !maskedLines[i]!.trimEnd().endsWith(";")) {
-                  let parenDepth = 0;
-                  for (let l = i; l < Math.min(lines.length, i + 20); l++) {
-                    const ml = maskedLines[l]!;
-                    for (let c = 0; c < ml.length; c++) {
-                      if (ml[c] === "(" || ml[c] === "{") parenDepth++;
-                      else if (ml[c] === ")" || ml[c] === "}") {
-                        if (parenDepth > 0) parenDepth--;
-                      } else if (ml[c] === ";" && parenDepth === 0) {
-                        endLine = l;
-                        l = lines.length;
-                        break;
-                      }
-                    }
-                  }
-                }
-                allEdits.push({
-                  range: {
-                    start: { line: i, character: 0 },
-                    end: { line: endLine + 1, character: 0 },
-                  },
-                  newText: "",
-                });
-                break;
-              }
+            if (matchSpan) {
+              allEdits.push({
+                range: {
+                  start: { line: matchSpan.startLine, character: 0 },
+                  end: { line: matchSpan.endLine + 1, character: 0 },
+                },
+                newText: "",
+              });
             }
           }
           break;
         }
         case "reconnect": {
           if (docText !== undefined) {
-            let replaced = false;
-            const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const oldSrcPattern = action.oldSourcePort
-              ? `${esc(action.oldSource)}\\.${esc(action.oldSourcePort)}`
-              : esc(action.oldSource);
-            const oldTgtPattern = action.oldTargetPort
-              ? `${esc(action.oldTarget)}\\.${esc(action.oldTargetPort)}`
-              : esc(action.oldTarget);
-            const oldEdgeRegex = new RegExp(
-              `\\b${oldSrcPattern}\\b.*\\b${oldTgtPattern}\\b|\\b${oldTgtPattern}\\b.*\\b${oldSrcPattern}\\b`,
+            const matchSpan = findMatchingEdgeStatement(
+              maskedLines,
+              action.oldSource,
+              action.oldSourcePort,
+              action.oldTarget,
+              action.oldTargetPort,
             );
+            const edgeTemplate =
+              (action.edgeType && mutations?.edgeTemplates?.[action.edgeType]) ||
+              mutations?.edgeTemplate ||
+              mutations?.createEdge;
 
-            for (let i = 0; i < lines.length; i++) {
+            if (matchSpan) {
+              const { startLine: i, endLine } = matchSpan;
               const line = lines[i]!;
-              if (oldEdgeRegex.test(maskedLines[i]!)) {
-                let endLine = i;
-                if (maskedLines[i]!.includes("(") && !maskedLines[i]!.trimEnd().endsWith(";")) {
-                  let parenDepth = 0;
-                  for (let l = i; l < Math.min(lines.length, i + 20); l++) {
-                    const ml = maskedLines[l]!;
-                    for (let c = 0; c < ml.length; c++) {
-                      if (ml[c] === "(" || ml[c] === "{") parenDepth++;
-                      else if (ml[c] === ")" || ml[c] === "}") {
-                        if (parenDepth > 0) parenDepth--;
-                      } else if (ml[c] === ";" && parenDepth === 0) {
-                        endLine = l;
-                        l = lines.length;
-                        break;
-                      }
-                    }
-                  }
-                }
+              let newEdgeText = "";
 
-                let newEdgeText = "";
-                const edgeTemplates = mutations?.edgeTemplates;
-                const edgeTemplate =
-                  (action.edgeType && edgeTemplates?.[action.edgeType]) ||
-                  mutations?.edgeTemplate ||
-                  mutations?.createEdge;
-
-                if (typeof edgeTemplate === "function") {
-                  newEdgeText = edgeTemplate(
-                    action.newSource,
-                    action.newTarget,
-                    action.newSourcePort,
-                    action.newTargetPort,
-                  );
-                } else if (typeof edgeTemplate === "string") {
-                  newEdgeText = edgeTemplate
-                    .replace(/\$\{source\}/g, action.newSource)
-                    .replace(/\$\{target\}/g, action.newTarget)
-                    .replace(/\$\{sourcePort\}/g, action.newSourcePort ?? "")
-                    .replace(/\$\{targetPort\}/g, action.newTargetPort ?? "");
-                } else {
-                  const src = action.newSourcePort ? `${action.newSource}.${action.newSourcePort}` : action.newSource;
-                  const tgt = action.newTargetPort ? `${action.newTarget}.${action.newTargetPort}` : action.newTarget;
-                  const fullOldStatement = lines.slice(i, endLine + 1).join("\n");
-                  const annotMatch = fullOldStatement.match(/(\s*annotation\s*\(.*\)\s*;?)/s);
-                  const existingAnnot = annotMatch ? annotMatch[1] : ";";
-
-                  if (action.points && action.points.length > 0) {
-                    const ptsStr = action.points.map((p: any) => `{${p.x}, ${p.y}}`).join(", ");
-                    if (existingAnnot && existingAnnot.includes("points")) {
-                      const updatedAnnot = replaceBalancedBracesField(existingAnnot, "points", ptsStr);
-                      newEdgeText = `connect(${src}, ${tgt})${updatedAnnot}`;
-                    } else if (existingAnnot && existingAnnot.startsWith("annotation")) {
-                      newEdgeText = `connect(${src}, ${tgt}) ${existingAnnot.trim()}`;
-                    } else {
-                      newEdgeText = `connect(${src}, ${tgt}) annotation(Line(points={${ptsStr}}));`;
-                    }
-                  } else {
-                    newEdgeText = `connect(${src}, ${tgt})${existingAnnot && existingAnnot.startsWith("annotation") ? ` ${existingAnnot.trim()}` : ";"}`;
-                  }
-                }
-
-                const indent = line.match(/^\s*/)?.[0] ?? "";
-                allEdits.push({
-                  range: {
-                    start: { line: i, character: 0 },
-                    end: { line: endLine, character: lines[endLine]!.length },
-                  },
-                  newText: indent + newEdgeText.trim(),
-                });
-                replaced = true;
-                break;
-              }
-            }
-            if (!replaced) {
-              let edgeText = "";
-              const edgeTemplates = mutations?.edgeTemplates;
-              const edgeTemplate =
-                (action.edgeType && edgeTemplates?.[action.edgeType]) ||
-                mutations?.edgeTemplate ||
-                mutations?.createEdge;
-              if (typeof edgeTemplate === "function") {
-                edgeText = edgeTemplate(action.newSource, action.newTarget, action.newSourcePort, action.newTargetPort);
+              if (typeof edgeTemplate === "function" || typeof edgeTemplate === "string") {
+                newEdgeText = expandEdgeTemplateText(
+                  edgeTemplate,
+                  action.newSource,
+                  action.newTarget,
+                  action.newSourcePort,
+                  action.newTargetPort,
+                );
               } else {
                 const src = action.newSourcePort ? `${action.newSource}.${action.newSourcePort}` : action.newSource;
                 const tgt = action.newTargetPort ? `${action.newTarget}.${action.newTargetPort}` : action.newTarget;
-                edgeText = `connect(${src}, ${tgt});\n`;
+                const fullOldStatement = lines.slice(i, endLine + 1).join("\n");
+                const existingAnnot = extractTrailingAnnotationClause(fullOldStatement) ?? ";";
+
+                if (action.points && action.points.length > 0) {
+                  const ptsStr = action.points.map((p) => `{${p.x}, ${p.y}}`).join(", ");
+                  if (existingAnnot.includes("points")) {
+                    const updatedAnnot = replaceBalancedBracesField(existingAnnot, "points", ptsStr);
+                    newEdgeText = `connect(${src}, ${tgt}) ${updatedAnnot.trim()}`;
+                  } else if (existingAnnot.startsWith("annotation")) {
+                    newEdgeText = `connect(${src}, ${tgt}) ${existingAnnot.trim()}`;
+                  } else {
+                    newEdgeText = `connect(${src}, ${tgt}) annotation(Line(points={${ptsStr}}));`;
+                  }
+                } else {
+                  newEdgeText = `connect(${src}, ${tgt})${existingAnnot.startsWith("annotation") ? ` ${existingAnnot.trim()}` : ";"}`;
+                }
               }
+
+              const indent = leadingWhitespaceOf(line);
+              allEdits.push({
+                range: {
+                  start: { line: i, character: 0 },
+                  end: { line: endLine, character: lines[endLine]!.length },
+                },
+                newText: indent + newEdgeText.trim(),
+              });
+            } else {
+              const edgeText = expandEdgeTemplateText(
+                edgeTemplate,
+                action.newSource,
+                action.newTarget,
+                action.newSourcePort,
+                action.newTargetPort,
+              );
               const targetSection =
                 action.section || mutations?.sections?.edge || mutations?.insertionSection || mutations?.defaultSection;
               insertIntoSectionOrRoot(lines, allEdits, edgeText, targetSection);
@@ -2875,8 +2339,8 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
             nodeText = mutations.nodeTemplate(resolvedClassName, uniqueName);
           } else if (typeof mutations?.nodeTemplate === "string") {
             nodeText = mutations.nodeTemplate
-              .replace(/\$\{className\}/g, resolvedClassName)
-              .replace(/\$\{name\}/g, uniqueName);
+              .replaceAll("${className}", resolvedClassName)
+              .replaceAll("${name}", uniqueName);
           } else {
             nodeText = `${resolvedClassName} ${uniqueName};\n`;
           }
@@ -2899,10 +2363,8 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         case "deleteComponents": {
           if (docText !== undefined) {
             for (const name of action.names) {
-              const escName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-              const declRegex = new RegExp(`\\b${escName}\\b`);
               for (let i = 0; i < lines.length; i++) {
-                if (declRegex.test(maskedLines[i]!)) {
+                if (hasWordMatch(maskedLines[i]!, name)) {
                   allEdits.push({
                     range: {
                       start: { line: i, character: 0 },
@@ -2939,15 +2401,12 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
             await this.getLayoutStorage(params.uri).renameElement(params.uri, action.oldName, action.newName);
           }
           if (docText !== undefined && action.oldName && action.newName) {
-            const escOld = action.oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const regex = new RegExp(`\\b${escOld}\\b`, "g");
             for (let i = 0; i < lines.length; i++) {
-              let match: RegExpExecArray | null;
-              while ((match = regex.exec(maskedLines[i]!)) !== null) {
+              for (const col of findAllWordMatchIndices(maskedLines[i]!, action.oldName)) {
                 allEdits.push({
                   range: {
-                    start: { line: i, character: match.index },
-                    end: { line: i, character: match.index + action.oldName.length },
+                    start: { line: i, character: col },
+                    end: { line: i, character: col + action.oldName.length },
                   },
                   newText: action.newName,
                 });
@@ -2962,9 +2421,8 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
             action.type === "updateProperty"
               ? (action.key ?? (action as any).propertyName ?? (action as any).parameter)
               : action.parameter;
-          const paramVal = action.type === "updateProperty" ? action.value : action.value;
+          const paramVal = action.value;
           if (docText !== undefined && paramName && paramVal !== undefined) {
-            // Check custom mutator hook
             const mutator = config?.properties?.mutator;
             if (typeof mutator?.updateProperty === "function") {
               try {
@@ -2993,61 +2451,40 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
               }
             }
 
-            const escParam = paramName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const paramRegex = new RegExp(`\\b(${escParam}\\s*(?:=|:)\\s*["']?)([^"',;\\)\\}\\s>\\n]+)`);
             let matched = false;
+            const searchWindow = (startLine: number, endLine: number): boolean => {
+              for (let l = startLine; l < endLine; l++) {
+                const valSpan = findParamAssignmentValueSpan(maskedLines[l]!, paramName);
+                if (valSpan) {
+                  allEdits.push({
+                    range: {
+                      start: { line: l, character: valSpan.startCol },
+                      end: { line: l, character: valSpan.endCol },
+                    },
+                    newText: String(paramVal),
+                  });
+                  return true;
+                }
+              }
+              return false;
+            };
 
             if (action.name) {
-              const escName = action.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-              const nameRegex = new RegExp(`\\b${escName}\\b`);
-              for (let i = 0; i < lines.length; i++) {
-                if (nameRegex.test(maskedLines[i]!)) {
-                  for (let j = i; j < Math.min(lines.length, i + 6); j++) {
-                    const m = paramRegex.exec(maskedLines[j]!);
-                    if (m) {
-                      const startCol = m.index + m[1]!.length;
-                      const endCol = startCol + m[2]!.trimEnd().length;
-                      allEdits.push({
-                        range: {
-                          start: { line: j, character: startCol },
-                          end: { line: j, character: endCol },
-                        },
-                        newText: String(paramVal),
-                      });
-                      matched = true;
-                      break;
-                    }
-                  }
-                  if (matched) break;
+              for (let i = 0; i < lines.length && !matched; i++) {
+                if (hasWordMatch(maskedLines[i]!, action.name)) {
+                  matched = searchWindow(i, Math.min(lines.length, i + 6));
                 }
               }
             }
 
             if (!matched) {
-              for (let i = 0; i < lines.length; i++) {
-                const m = paramRegex.exec(maskedLines[i]!);
-                if (m) {
-                  const startCol = m.index + m[1]!.length;
-                  const endCol = startCol + m[2]!.trimEnd().length;
-                  allEdits.push({
-                    range: {
-                      start: { line: i, character: startCol },
-                      end: { line: i, character: endCol },
-                    },
-                    newText: String(paramVal),
-                  });
-                  matched = true;
-                  break;
-                }
-              }
+              matched = searchWindow(0, lines.length);
             }
 
             // If not matched, try appending new modifier to component declaration
             if (!matched && action.name) {
-              const escName = action.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-              const nameRegex = new RegExp(`\\b${escName}\\b`);
               for (let i = 0; i < lines.length; i++) {
-                if (nameRegex.test(maskedLines[i]!)) {
+                if (hasWordMatch(maskedLines[i]!, action.name)) {
                   const openParen = lines[i]!.indexOf("(", lines[i]!.indexOf(action.name));
                   const closeParen = lines[i]!.lastIndexOf(")");
                   if (openParen !== -1 && closeParen !== -1 && closeParen > openParen) {
@@ -3059,7 +2496,6 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
                       },
                       newText: `${hasArgs ? ", " : ""}${paramName} = ${paramVal}`,
                     });
-                    matched = true;
                     break;
                   }
                 }
@@ -3544,38 +2980,1197 @@ function findBalancedCloseSimple(text: string, openIndex: number): number {
   return -1;
 }
 
-function findInlinePlacementSpan(line: string): { start: number; end: number } | null {
-  const layoutMatch = /@layout\s*\(/.exec(line);
-  if (layoutMatch && layoutMatch.index !== undefined) {
-    const openIdx = layoutMatch.index + layoutMatch[0].length - 1;
-    const closeIdx = findBalancedCloseSimple(line, openIdx);
-    if (closeIdx !== -1) {
-      return { start: layoutMatch.index, end: closeIdx + 1 };
+function isWordCharCode(code: number): boolean {
+  return (
+    (code >= 65 && code <= 90) || // A-Z
+    (code >= 97 && code <= 122) || // a-z
+    (code >= 48 && code <= 57) || // 0-9
+    code === 95 // _
+  );
+}
+
+function skipWs(text: string, idx: number): number {
+  let i = idx;
+  while (i < text.length) {
+    const ch = text[i]!;
+    if (ch !== " " && ch !== "\t" && ch !== "\r" && ch !== "\n") break;
+    i++;
+  }
+  return i;
+}
+
+function isWordBoundaryAt(text: string, index: number, len: number): boolean {
+  if (len === 0) return false;
+  const startsWord = isWordCharCode(text.charCodeAt(index));
+  const endsWord = isWordCharCode(text.charCodeAt(index + len - 1));
+  if (startsWord && index > 0 && isWordCharCode(text.charCodeAt(index - 1))) return false;
+  if (endsWord && index + len < text.length && isWordCharCode(text.charCodeAt(index + len))) return false;
+  return true;
+}
+
+function scanOutsideStrings(text: string, visitor: (index: number) => boolean): void {
+  let inQuote: string | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (inQuote) {
+      if (ch === "\\" && i + 1 < text.length) {
+        i++;
+        continue;
+      }
+      if (ch === inQuote) inQuote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuote = ch;
+      continue;
+    }
+    if (visitor(i) === true) return;
+  }
+}
+
+function hasWordTokenOutsideStrings(text: string, token: string): boolean {
+  if (!token) return false;
+  let found = false;
+  scanOutsideStrings(text, (i) => {
+    if (text.startsWith(token, i) && isWordBoundaryAt(text, i, token.length)) {
+      found = true;
+      return true;
+    }
+    return false;
+  });
+  return found;
+}
+
+function emitInlinePlacementEdit(
+  item: PlacementItem,
+  lines: string[],
+  maskedLines: string[],
+  formatPlacement: ((x: number, y: number, width?: number, height?: number, rotation?: number) => string) | undefined,
+  allEdits: TextEdit[],
+  appendAtEolIfNoSemi: boolean,
+): void {
+  for (let i = 0; i < lines.length; i++) {
+    if (hasWordTokenOutsideStrings(maskedLines[i]!, item.name)) {
+      const line = lines[i]!;
+      const placementStr = formatPlacement
+        ? formatPlacement(item.x, item.y, item.width, item.height, item.rotation)
+        : `@layout(x=${Math.round(item.x)}, y=${Math.round(item.y)})`;
+
+      const span = findInlinePlacementSpan(line);
+      if (span) {
+        allEdits.push({
+          range: {
+            start: { line: i, character: span.start },
+            end: { line: i, character: span.end },
+          },
+          newText: placementStr,
+        });
+      } else {
+        const semiIdx = line.lastIndexOf(";");
+        if (semiIdx !== -1) {
+          allEdits.push({
+            range: {
+              start: { line: i, character: semiIdx },
+              end: { line: i, character: semiIdx },
+            },
+            newText: ` ${placementStr}`,
+          });
+        } else if (appendAtEolIfNoSemi) {
+          allEdits.push({
+            range: {
+              start: { line: i, character: line.length },
+              end: { line: i, character: line.length },
+            },
+            newText: ` ${placementStr}`,
+          });
+        }
+      }
+      break;
     }
   }
+}
 
-  const annotPlacementMatch = /\bannotation\s*\(\s*Placement\s*\(/.exec(line);
-  if (annotPlacementMatch && annotPlacementMatch.index !== undefined) {
-    const firstParenOffset = line.indexOf("(", annotPlacementMatch.index);
-    if (firstParenOffset !== -1) {
-      const closeIdx = findBalancedCloseSimple(line, firstParenOffset);
-      if (closeIdx !== -1) {
-        return { start: annotPlacementMatch.index, end: closeIdx + 1 };
+function findInlinePlacementSpan(line: string): { start: number; end: number } | null {
+  let layoutSpan: { start: number; end: number } | null = null;
+  scanOutsideStrings(line, (i) => {
+    if (!line.startsWith("@layout", i)) return false;
+    const parenIdx = skipWs(line, i + 7);
+    if (line[parenIdx] !== "(") return false;
+    const closeIdx = findBalancedCloseSimple(line, parenIdx);
+    if (closeIdx !== -1) {
+      layoutSpan = { start: i, end: closeIdx + 1 };
+      return true;
+    }
+    return false;
+  });
+  if (layoutSpan) return layoutSpan;
+
+  let annotSpan: { start: number; end: number } | null = null;
+  scanOutsideStrings(line, (i) => {
+    if (!line.startsWith("annotation", i) || !isWordBoundaryAt(line, i, 10)) return false;
+    const outerParen = skipWs(line, i + 10);
+    if (line[outerParen] !== "(") return false;
+    const placementStart = skipWs(line, outerParen + 1);
+    if (!line.startsWith("Placement", placementStart) || !isWordBoundaryAt(line, placementStart, 9)) return false;
+    const innerParen = skipWs(line, placementStart + 9);
+    if (line[innerParen] !== "(") return false;
+    const closeIdx = findBalancedCloseSimple(line, outerParen);
+    if (closeIdx !== -1) {
+      annotSpan = { start: i, end: closeIdx + 1 };
+      return true;
+    }
+    return false;
+  });
+  return annotSpan;
+}
+
+function replaceBalancedBracesField(text: string, fieldName: string, newInner: string): string {
+  if (!fieldName) return text;
+  let openBraceIdx = -1;
+  scanOutsideStrings(text, (i) => {
+    if (!text.startsWith(fieldName, i) || !isWordBoundaryAt(text, i, fieldName.length)) return false;
+    const eqIdx = skipWs(text, i + fieldName.length);
+    if (text[eqIdx] !== "=") return false;
+    const braceIdx = skipWs(text, eqIdx + 1);
+    if (text[braceIdx] !== "{") return false;
+    openBraceIdx = braceIdx;
+    return true;
+  });
+  if (openBraceIdx === -1) return text;
+  const closeBraceIdx = findBalancedCloseSimple(text, openBraceIdx);
+  if (closeBraceIdx === -1) return text;
+  return `${text.slice(0, openBraceIdx + 1)}${newInner}${text.slice(closeBraceIdx)}`;
+}
+
+type StyledNodeFn = (opts: {
+  id: string;
+  name: string;
+  kind: string;
+  stereotype: string;
+  subtitle?: string | undefined;
+  entries?: string[] | undefined;
+  stroke: string;
+  fill: string;
+  headerFill?: string | undefined;
+  x?: number | undefined;
+  y?: number | undefined;
+}) => unknown;
+
+type StyledEdgeFn = (id: string, source: string, target: string, dashed?: boolean, labelText?: string) => unknown;
+
+function getCstChildren(node: CstNodeLike | null | undefined): readonly CstNodeLike[] {
+  return Array.isArray(node?.children) ? node.children : [];
+}
+
+function findCstChild(node: CstNodeLike | null | undefined, type: string): CstNodeLike | undefined {
+  return getCstChildren(node).find((c) => c.type === type);
+}
+
+function findFirstDescendant(node: CstNodeLike | null | undefined, type: string): CstNodeLike | null {
+  for (const child of getCstChildren(node)) {
+    if (child.type === type) return child;
+    const found = findFirstDescendant(child, type);
+    if (found) return found;
+  }
+  return null;
+}
+
+function unquoteCstString(raw: string): string {
+  const s = raw.trim();
+  if (s.length >= 2 && ((s[0] === '"' && s[s.length - 1] === '"') || (s[0] === "'" && s[s.length - 1] === "'"))) {
+    let out = "";
+    for (let i = 1; i < s.length - 1; i++) {
+      if (s[i] === "\\" && i + 1 < s.length - 1) {
+        const next = s[i + 1]!;
+        if (next === '"' || next === "'" || next === "\\") {
+          out += next;
+          i++;
+          continue;
+        }
+      }
+      out += s[i]!;
+    }
+    return out;
+  }
+  return s;
+}
+
+function buildScadDiagramFromCst(
+  rootNode: CstNodeLike,
+  makeStyledNode: StyledNodeFn,
+  makeStyledEdge: StyledEdgeFn,
+  nodes: unknown[],
+  edges: unknown[],
+): void {
+  const paramEntries: string[] = [];
+  const moduleNodeIds = new Map<string, string>();
+  const topModuleCalls = new Map<string, string[]>();
+  let nodeCounter = 0;
+
+  const unwrapStmt = (node: CstNodeLike | null | undefined): CstNodeLike | null => {
+    if (!node) return null;
+    if (node.type === "Statement") {
+      return getCstChildren(node).find((c) => c.isNamed) ?? null;
+    }
+    return node;
+  };
+
+  for (const rawChild of getCstChildren(rootNode)) {
+    const inner = unwrapStmt(rawChild);
+    if (inner?.type === "ModuleDeclaration") {
+      const modName = findCstChild(inner, "IDENTIFIER")?.text?.trim();
+      if (modName) {
+        moduleNodeIds.set(modName, `module_${modName}`);
       }
     }
   }
 
-  return null;
+  const visitScadNode = (rawNode: CstNodeLike | null | undefined, parentId: string | null): void => {
+    const node = unwrapStmt(rawNode);
+    if (!node) return;
+
+    if (
+      node.type === "BlockStatement" ||
+      node.type === "IfStatement" ||
+      node.type === "ForStatement" ||
+      node.type === "IntersectionForStatement"
+    ) {
+      for (const child of getCstChildren(node)) {
+        if (child.type === "Statement" || child.type === "BlockStatement") {
+          visitScadNode(child, parentId);
+        }
+      }
+      return;
+    }
+
+    if (node.type === "ModuleDeclaration") {
+      const modName = findCstChild(node, "IDENTIFIER")?.text?.trim();
+      if (!modName) return;
+      const paramList = findCstChild(node, "ParameterList");
+      const modParams = paramList ? paramList.text.trim() : "";
+      const nodeId = moduleNodeIds.get(modName) ?? `module_${modName}`;
+      moduleNodeIds.set(modName, nodeId);
+      nodes.push(
+        makeStyledNode({
+          id: nodeId,
+          name: modName,
+          kind: "Module",
+          stereotype: "csg module",
+          subtitle: modParams ? `(${modParams})` : "()",
+          stroke: "#0d9488",
+          fill: "#f0fdfa",
+        }),
+      );
+      for (const child of getCstChildren(node)) {
+        if (child.type === "Statement" || child.type === "BlockStatement") {
+          visitScadNode(child, nodeId);
+        }
+      }
+      return;
+    }
+
+    if (node.type === "PrefixSolid") {
+      const children = getCstChildren(node);
+      const opNode = children.find(
+        (c) =>
+          c.type === "TagPortOp" || c.type === "BooleanOp" || c.type === "TransformOp" || c.type === "LinearExtrudeOp",
+      );
+      const bodyNodes = children.filter((c) => c !== opNode && c.isNamed);
+      let nextParentId = parentId;
+
+      if (opNode?.type === "TagPortOp") {
+        const argList = findCstChild(opNode, "ArgumentList");
+        const positionalStrings: string[] = [];
+        let namedPortName: string | undefined;
+        let namedPortType: string | undefined;
+        for (const arg of getCstChildren(argList)) {
+          if (arg.type !== "Argument") continue;
+          const hasEq = getCstChildren(arg).some((c) => c.text === "=");
+          const keyName = hasEq ? findCstChild(arg, "IDENTIFIER")?.text?.trim().toLowerCase() : undefined;
+          const strNode = findFirstDescendant(arg, "STRING");
+          if (!strNode) continue;
+          const val = unquoteCstString(strNode.text);
+          if (keyName === "name" || keyName === "port") namedPortName = val;
+          else if (keyName === "type" || keyName === "kind") namedPortType = val;
+          else if (!keyName) positionalStrings.push(val);
+        }
+        const portName = namedPortName ?? positionalStrings[0];
+        if (portName) {
+          const portType = namedPortType ?? positionalStrings[1] ?? "port";
+          const nodeId = `port_${++nodeCounter}_${portName}`;
+          nodes.push(
+            makeStyledNode({
+              id: nodeId,
+              name: portName,
+              kind: "Port",
+              stereotype: `port: ${portType}`,
+              subtitle: `tag_port("${portName}", "${portType}")`,
+              stroke: "#d97706",
+              fill: "#fffbeb",
+            }),
+          );
+          if (parentId) {
+            edges.push(makeStyledEdge(`edge_${parentId}_${nodeId}`, parentId, nodeId));
+          }
+          nextParentId = nodeId;
+        }
+      } else if (opNode?.type === "BooleanOp") {
+        const opName = getCstChildren(opNode)[0]?.text?.trim() || "boolean";
+        const nodeId = `bool_${++nodeCounter}_${opName}`;
+        nodes.push(
+          makeStyledNode({
+            id: nodeId,
+            name: `${opName}()`,
+            kind: "BooleanOp",
+            stereotype: "csg boolean",
+            stroke: "#7c3aed",
+            fill: "#f5f3ff",
+          }),
+        );
+        if (parentId) {
+          edges.push(makeStyledEdge(`edge_${parentId}_${nodeId}`, parentId, nodeId));
+        }
+        nextParentId = nodeId;
+      } else if (opNode?.type === "TransformOp" || opNode?.type === "LinearExtrudeOp") {
+        const tfName = getCstChildren(opNode)[0]?.text?.trim() || "transform";
+        const tfArgs = findCstChild(opNode, "ArgumentList")?.text?.trim() ?? "";
+        const nodeId = `tf_${++nodeCounter}_${tfName}`;
+        nodes.push(
+          makeStyledNode({
+            id: nodeId,
+            name: tfName,
+            kind: "Transform",
+            stereotype: "transform",
+            subtitle: tfArgs,
+            stroke: "#0284c7",
+            fill: "#f0f9ff",
+          }),
+        );
+        if (parentId) {
+          edges.push(makeStyledEdge(`edge_${parentId}_${nodeId}`, parentId, nodeId));
+        }
+        nextParentId = nodeId;
+      }
+
+      for (const body of bodyNodes) {
+        visitScadNode(body, nextParentId);
+      }
+      return;
+    }
+
+    if (node.type === "ChainedSolidStatement") {
+      const chained = findCstChild(node, "ChainedSolid");
+      if (chained) visitScadNode(chained, parentId);
+      return;
+    }
+
+    if (node.type === "ChainedSolid") {
+      const primary = findCstChild(node, "PrimarySolid");
+      if (primary) visitScadNode(primary, parentId);
+      return;
+    }
+
+    if (node.type === "PrimarySolid") {
+      const target = getCstChildren(node).find((c) => c.isNamed);
+      if (target) visitScadNode(target, parentId);
+      return;
+    }
+
+    if (
+      node.type === "CubePrimitive" ||
+      node.type === "CylinderPrimitive" ||
+      node.type === "SpherePrimitive" ||
+      node.type === "PolyhedronPrimitive" ||
+      node.type === "PolygonPrimitive" ||
+      node.type === "CirclePrimitive" ||
+      node.type === "SquarePrimitive"
+    ) {
+      const primName = getCstChildren(node)[0]?.text?.trim() ?? "primitive";
+      const argList = findCstChild(node, "ArgumentList");
+      const keptArgs: string[] = [];
+      for (const arg of getCstChildren(argList)) {
+        if (arg.type !== "Argument") continue;
+        const hasEq = getCstChildren(arg).some((c) => c.text === "=");
+        const keyName = hasEq ? findCstChild(arg, "IDENTIFIER")?.text?.trim() : undefined;
+        if (keyName === "center") continue;
+        keptArgs.push(arg.text.trim());
+      }
+      const nodeId = `prim_${++nodeCounter}_${primName}`;
+      nodes.push(
+        makeStyledNode({
+          id: nodeId,
+          name: primName,
+          kind: "Primitive",
+          stereotype: "3d solid",
+          subtitle: keptArgs.join(", "),
+          stroke: "#059669",
+          fill: "#ecfdf5",
+        }),
+      );
+      if (parentId) {
+        edges.push(makeStyledEdge(`edge_${parentId}_${nodeId}`, parentId, nodeId));
+      }
+      return;
+    }
+
+    if (node.type === "ModuleInstantiation") {
+      const callee = findCstChild(node, "IDENTIFIER")?.text?.trim();
+      if (!callee) return;
+      const callArgs = findCstChild(node, "ArgumentList")?.text?.trim() ?? "";
+      if (!parentId) {
+        const list = topModuleCalls.get(callee) ?? [];
+        list.push(callArgs || "default");
+        topModuleCalls.set(callee, list);
+      } else {
+        const targetModId = moduleNodeIds.get(callee);
+        if (targetModId) {
+          edges.push(
+            makeStyledEdge(
+              `edge_call_${++nodeCounter}_${parentId}_${targetModId}`,
+              parentId,
+              targetModId,
+              true,
+              "instantiate",
+            ),
+          );
+        } else {
+          const callId = `call_${++nodeCounter}_${callee}`;
+          nodes.push(
+            makeStyledNode({
+              id: callId,
+              name: `${callee}(${callArgs})`,
+              kind: "ModuleCall",
+              stereotype: "instance",
+              stroke: "#0d9488",
+              fill: "#f0fdfa",
+            }),
+          );
+          edges.push(makeStyledEdge(`edge_${parentId}_${callId}`, parentId, callId));
+        }
+      }
+    }
+  };
+
+  for (const rawChild of getCstChildren(rootNode)) {
+    const inner = unwrapStmt(rawChild);
+    if (!inner) continue;
+    if (inner.type === "VariableDeclaration") {
+      const varName = findCstChild(inner, "IDENTIFIER")?.text?.trim();
+      const exprNode = findCstChild(inner, "Expression");
+      if (varName && exprNode) {
+        paramEntries.push(`${varName} = ${exprNode.text.trim()}`);
+      }
+      continue;
+    }
+    visitScadNode(inner, null);
+  }
+
+  for (const [callee, argList] of topModuleCalls) {
+    const instId = `inst_${callee}`;
+    const summary =
+      argList.length > 1 ? `${argList.length}× instances (${argList.join(", ")})` : `(${argList[0] ?? ""})`;
+    nodes.push(
+      makeStyledNode({
+        id: instId,
+        name: `${callee} Assembly`,
+        kind: "AssemblyInstance",
+        stereotype: argList.length > 1 ? `csg pattern (${argList.length}×)` : "csg instance",
+        subtitle: summary,
+        stroke: "#0d9488",
+        fill: "#ccfbf1",
+      }),
+    );
+    const targetModId = moduleNodeIds.get(callee);
+    if (targetModId) {
+      edges.push(makeStyledEdge(`edge_${instId}_${targetModId}`, instId, targetModId, true, "instantiates"));
+    }
+  }
+
+  if (paramEntries.length > 0) {
+    nodes.unshift(
+      makeStyledNode({
+        id: "scad_parameters",
+        name: "Design Parameters",
+        kind: "Parameters",
+        stereotype: "parameters",
+        entries: paramEntries,
+        stroke: "#4f46e5",
+        fill: "#eef2ff",
+        headerFill: "#e0e7ff",
+      }),
+    );
+  }
 }
 
-function replaceBalancedBracesField(text: string, fieldName: string, newInner: string): string {
-  const escField = fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const fieldMatch = new RegExp(`\\b${escField}\\s*=\\s*\\{`).exec(text);
-  if (!fieldMatch || fieldMatch.index === undefined) return text;
-  const openBraceIdx = fieldMatch.index + fieldMatch[0].length - 1;
-  const closeBraceIdx = findBalancedCloseSimple(text, openBraceIdx);
-  if (closeBraceIdx === -1) return text;
-  return `${text.slice(0, openBraceIdx + 1)}${newInner}${text.slice(closeBraceIdx)}`;
+function maskFortranFixedCommentsAndPreprocessor(source: string): string {
+  const chars = source.split("");
+  let lineStart = 0;
+  for (let i = 0; i <= source.length; i++) {
+    if (i === source.length || source[i] === "\n") {
+      const lineEnd = i > lineStart && source[i - 1] === "\r" ? i - 1 : i;
+      const lineLen = lineEnd - lineStart;
+      if (lineLen > 0) {
+        const ch0 = source[lineStart]!;
+        const ch1 = lineLen > 1 ? source[lineStart + 1]! : " ";
+        const isFixedComment =
+          (ch0 === "C" || ch0 === "c" || ch0 === "*") && (ch1 === " " || ch1 === "\t" || ch1 === "*" || lineLen === 1);
+        let firstNonWs = lineStart;
+        while (firstNonWs < lineEnd && (source[firstNonWs] === " " || source[firstNonWs] === "\t")) {
+          firstNonWs++;
+        }
+        const isPreprocessor = firstNonWs < lineEnd && source[firstNonWs] === "#";
+        if (isFixedComment || isPreprocessor) {
+          for (let j = lineStart; j < lineEnd; j++) chars[j] = " ";
+        }
+      }
+      lineStart = i + 1;
+    }
+  }
+  return chars.join("");
+}
+
+function buildFortranDiagramFromCst(
+  rootNode: CstNodeLike,
+  makeStyledNode: StyledNodeFn,
+  makeStyledEdge: StyledEdgeFn,
+  nodes: unknown[],
+  edges: unknown[],
+): void {
+  interface FortranUnitSummary {
+    node: CstNodeLike;
+    name: string;
+    kind: string;
+    params: string[];
+    intents: Map<string, string>;
+  }
+
+  const unitKindByNodeType: Record<string, string> = {
+    SubroutineDeclaration: "subroutine",
+    FunctionDeclaration: "function",
+    ProgramDeclaration: "program",
+    ModuleDeclaration: "module",
+  };
+
+  const unitSummaries = new Map<string, FortranUnitSummary>();
+  let primaryUnitUpper: string | null = null;
+  let primaryRoutineUpper: string | null = null;
+
+  const normalizeWhitespace = (s: string): string => collapseWhitespace(s);
+
+  const extractSubscriptDims = (listNode: CstNodeLike | null | undefined): string => {
+    if (!listNode) return "";
+    const parts: string[] = [];
+    for (const c of getCstChildren(listNode)) {
+      if (c.type === "SubscriptItem" || c.type === "Expression" || c.isNamed) {
+        const t = c.text?.trim();
+        if (t && c.type !== "," && c.type !== "(" && c.type !== ")") parts.push(t);
+      }
+    }
+    return parts.length > 0 ? `[${parts.join("×")}]` : "";
+  };
+
+  const unwrapFortranStmt = (node: CstNodeLike | null | undefined): CstNodeLike | null => {
+    if (!node) return null;
+    if (node.type === "Statement" || node.type === "ProgramUnit") {
+      return getCstChildren(node).find((c) => c.isNamed) ?? null;
+    }
+    return node;
+  };
+
+  const collectUnitIntents = (unitNode: CstNodeLike): Map<string, string> => {
+    const intents = new Map<string, string>();
+    for (const child of getCstChildren(unitNode)) {
+      const stmt = unwrapFortranStmt(child);
+      if (stmt?.type !== "DeclarationStatement") continue;
+      let intent: string | null = null;
+      for (const sub of getCstChildren(stmt)) {
+        if (sub.type === "AttributeSpec") {
+          const specNode = findCstChild(sub, "INTENT_SPEC");
+          if (specNode) {
+            intent = stripWhitespace(specNode.text.toLowerCase());
+          }
+        }
+      }
+      if (!intent) continue;
+      const declList = findCstChild(stmt, "DeclaratorList");
+      for (const decl of getCstChildren(declList)) {
+        if (decl.type !== "Declarator") continue;
+        const idNode = findCstChild(decl, "IDENTIFIER");
+        if (idNode) intents.set(idNode.text.trim().toLowerCase(), intent);
+      }
+    }
+    return intents;
+  };
+
+  const collectUnits = (node: CstNodeLike): void => {
+    for (const child of getCstChildren(node)) {
+      const inner = unwrapFortranStmt(child);
+      if (!inner) continue;
+      const kind = unitKindByNodeType[inner.type];
+      if (kind) {
+        const name = findCstChild(inner, "IDENTIFIER")?.text?.trim();
+        if (name) {
+          const paramList = findCstChild(inner, "ParameterList");
+          const params = getCstChildren(paramList)
+            .filter((c) => c.type === "IDENTIFIER")
+            .map((c) => c.text.trim());
+          const summary: FortranUnitSummary = {
+            node: inner,
+            name,
+            kind,
+            params,
+            intents: collectUnitIntents(inner),
+          };
+          const upper = name.toUpperCase();
+          unitSummaries.set(upper, summary);
+          if (kind === "program" || !primaryUnitUpper) {
+            primaryUnitUpper = upper;
+          }
+          if (kind !== "module" && (!primaryRoutineUpper || kind === "program")) {
+            primaryRoutineUpper = upper;
+          }
+        }
+        if (inner.type === "ModuleDeclaration") {
+          collectUnits(inner);
+        }
+      } else if (inner.type === "ProgramUnit") {
+        collectUnits(inner);
+      }
+    }
+  };
+
+  collectUnits(rootNode);
+
+  const selectedUpper = primaryRoutineUpper ?? primaryUnitUpper;
+  const primaryUnit = selectedUpper ? unitSummaries.get(selectedUpper) : undefined;
+
+  const routineName = primaryUnit?.name ?? "fortran_kernel";
+  const routineKind = primaryUnit?.kind ?? "subroutine";
+  const dummyArgs = primaryUnit?.params ? [...primaryUnit.params] : [];
+
+  const inputVars = new Map<string, string>();
+  const outputVars = new Map<string, string>();
+  const varTypes = new Map<string, string>();
+  const constants = new Map<string, { name: string; value: string }>();
+  const equations: {
+    id: string;
+    lhs: string;
+    lhsBase: string;
+    rhs: string;
+    rhsRefs: string[];
+    isState: boolean;
+    lineIdx: number;
+    condGuard?: string | undefined;
+  }[] = [];
+  const callBlocks: {
+    id: string;
+    subroutine: string;
+    args: string[];
+    argIdentNames: (string | null)[];
+    lineIdx: number;
+  }[] = [];
+
+  const guardStack: string[] = [];
+
+  const sanitizeId = (s: string): string => {
+    let out = "";
+    for (let i = 0; i < s.length; i++) {
+      const code = s.charCodeAt(i);
+      out += isWordCharCode(code) ? s[i]! : "_";
+    }
+    return out;
+  };
+
+  const collectRefs = (node: CstNodeLike | null | undefined, outRefs: string[], discoveredPorts: string[]): void => {
+    if (!node) return;
+    if (node.type === "PORT_IDENTIFIER") {
+      const pName = node.text.trim().slice(1);
+      if (pName) {
+        discoveredPorts.push(pName);
+        outRefs.push(pName);
+      }
+      return;
+    }
+    if (node.type === "IDENTIFIER") {
+      const idText = node.text.trim();
+      if (idText) outRefs.push(idText);
+      return;
+    }
+    for (const c of getCstChildren(node)) {
+      collectRefs(c, outRefs, discoveredPorts);
+    }
+  };
+
+  const unwrapSingleArgIdent = (subItem: CstNodeLike | null | undefined): string | null => {
+    let cur = subItem;
+    while (cur) {
+      if (cur.type === "IDENTIFIER") return cur.text.trim();
+      if (cur.type === "PORT_IDENTIFIER") return cur.text.trim().slice(1);
+      if (cur.type === "StateRef") return findCstChild(cur, "STATE_ARRAY")?.text?.trim() ?? null;
+      const named = getCstChildren(cur).filter((c) => c.isNamed);
+      if (named.length !== 1) return null;
+      cur = named[0]!;
+    }
+    return null;
+  };
+
+  const extractTargetInfo = (targetNode: CstNodeLike): { baseName: string; isState: boolean; portName?: string } => {
+    const stateRef = findCstChild(targetNode, "StateRef");
+    if (stateRef) {
+      const arr = findCstChild(stateRef, "STATE_ARRAY")?.text?.trim() ?? "STORF";
+      return { baseName: arr, isState: true };
+    }
+    const portRef = findCstChild(targetNode, "PortRef");
+    if (portRef) {
+      const pIdent = findCstChild(portRef, "PORT_IDENTIFIER")?.text?.trim() ?? "";
+      const pName = pIdent.startsWith("$") ? pIdent.slice(1) : pIdent;
+      return { baseName: pName, isState: false, portName: pName };
+    }
+    const portIdent = findCstChild(targetNode, "PORT_IDENTIFIER");
+    if (portIdent) {
+      const pText = portIdent.text.trim();
+      const pName = pText.startsWith("$") ? pText.slice(1) : pText;
+      return { baseName: pName, isState: false, portName: pName };
+    }
+    const arrOrCall = findCstChild(targetNode, "ArrayOrCallRef");
+    if (arrOrCall) {
+      const id = findCstChild(arrOrCall, "IDENTIFIER")?.text?.trim() ?? "";
+      const upper = id.toUpperCase();
+      return {
+        baseName: id,
+        isState: upper === "STORF" || upper === "STORI" || upper === "SD" || upper === "S" || upper.startsWith("DER_"),
+      };
+    }
+    const idNode = findFirstDescendant(targetNode, "IDENTIFIER");
+    const idText = idNode?.text?.trim() ?? targetNode.text.trim();
+    const lower = idText.toLowerCase();
+    return {
+      baseName: idText,
+      isState: lower.startsWith("der_") || lower === "storf" || lower === "stori",
+    };
+  };
+
+  const visitStmt = (rawNode: CstNodeLike): void => {
+    const stmt = unwrapFortranStmt(rawNode);
+    if (!stmt || stmt.type === "ERROR") return;
+    if (unitKindByNodeType[stmt.type]) return;
+
+    if (stmt.type === "DeclarationStatement") {
+      const children = getCstChildren(stmt);
+      const typeSpec = findCstChild(stmt, "TYPE_SPECIFIER");
+      let baseType = typeSpec ? normalizeWhitespace(typeSpec.text.toUpperCase()) : "REAL";
+      // Check optional kind specification e.g. real(8) right before AttributeSpec/"::"/"DeclaratorList"
+      const typeIdx = typeSpec ? children.indexOf(typeSpec) : -1;
+      if (typeIdx !== -1 && children[typeIdx + 1]?.text === "(" && children[typeIdx + 2]?.type === "Expression") {
+        baseType = `${baseType}(${children[typeIdx + 2]!.text.trim()})`;
+      }
+
+      let intent: string | null = null;
+      let attrDimStr = "";
+      let isParamAttr = false;
+      for (const c of children) {
+        if (c.type !== "AttributeSpec") continue;
+        const spec = findCstChild(c, "INTENT_SPEC");
+        if (spec) intent = stripWhitespace(spec.text.toLowerCase());
+        const dimList = findCstChild(c, "DimensionList");
+        if (dimList) attrDimStr = extractSubscriptDims(dimList);
+        if (findCstChild(c, "PARAMETER_KEYWORD")) isParamAttr = true;
+      }
+
+      const declList = findCstChild(stmt, "DeclaratorList");
+      for (const decl of getCstChildren(declList)) {
+        if (decl.type !== "Declarator") continue;
+        const vName = findCstChild(decl, "IDENTIFIER")?.text?.trim();
+        if (!vName) continue;
+        const lower = vName.toLowerCase();
+        const dimNode = findCstChild(decl, "DimensionList") ?? findCstChild(decl, "ArgumentList");
+        const inlineDim = dimNode ? extractSubscriptDims(dimNode) : attrDimStr;
+        const eqTok = getCstChildren(decl).find((c) => c.text === "=");
+        const initExpr = eqTok ? findCstChild(decl, "Expression") : null;
+        const initVal = initExpr ? initExpr.text.trim() : undefined;
+        varTypes.set(lower, inlineDim ? `${baseType} ${inlineDim}` : baseType);
+        if (intent === "in") {
+          inputVars.set(lower, vName);
+        } else if (intent === "out") {
+          outputVars.set(lower, vName);
+        } else if (intent === "inout") {
+          inputVars.set(lower, vName);
+          outputVars.set(lower, vName);
+        } else if ((initVal !== undefined || isParamAttr) && initVal !== undefined) {
+          constants.set(lower, { name: vName, value: initVal });
+        }
+      }
+      return;
+    }
+
+    if (stmt.type === "ParameterStatement") {
+      const assignList = findCstChild(stmt, "ParameterAssignmentList");
+      for (const pa of getCstChildren(assignList)) {
+        if (pa.type !== "ParameterAssignment") continue;
+        const pName = findCstChild(pa, "IDENTIFIER")?.text?.trim();
+        const pExpr = findCstChild(pa, "Expression");
+        if (pName && pExpr) {
+          constants.set(pName.toLowerCase(), { name: pName, value: pExpr.text.trim() });
+        }
+      }
+      return;
+    }
+
+    if (stmt.type === "BlockIfStatement") {
+      const condExpr = findCstChild(stmt, "Expression");
+      const condLabel = `IF (${condExpr?.text?.trim() ?? "..."})`;
+      guardStack.push(condLabel);
+      for (const c of getCstChildren(stmt)) {
+        if (c.type === "Statement") {
+          visitStmt(c);
+        }
+      }
+      guardStack.pop();
+
+      for (const c of getCstChildren(stmt)) {
+        if (c.type === "ElseIfClause") {
+          const eCond = findCstChild(c, "Expression");
+          guardStack.push(`ELSE IF (${eCond?.text?.trim() ?? "..."})`);
+          for (const sub of getCstChildren(c)) {
+            if (sub.type === "Statement") visitStmt(sub);
+          }
+          guardStack.pop();
+        } else if (c.type === "ElseClause") {
+          guardStack.push(`ELSE [${condLabel}]`);
+          for (const sub of getCstChildren(c)) {
+            if (sub.type === "Statement") visitStmt(sub);
+          }
+          guardStack.pop();
+        }
+      }
+      return;
+    }
+
+    if (stmt.type === "InlineIfStatement") {
+      const condExpr = findCstChild(stmt, "Expression");
+      guardStack.push(`IF (${condExpr?.text?.trim() ?? "..."})`);
+      for (const c of getCstChildren(stmt)) {
+        if (c.type === "Statement") visitStmt(c);
+      }
+      guardStack.pop();
+      return;
+    }
+
+    if (stmt.type === "DoStatement") {
+      const loopVar = findCstChild(stmt, "IDENTIFIER")?.text?.trim();
+      const exprs = getCstChildren(stmt)
+        .filter((c) => c.type === "Expression")
+        .map((c) => c.text.trim());
+      const doGuard = loopVar ? `DO ${loopVar} = ${exprs.join(", ")}` : `DO ${exprs.join(", ") || "LOOP"}`;
+      guardStack.push(doGuard);
+      for (const c of getCstChildren(stmt)) {
+        if (c.type === "Statement") visitStmt(c);
+      }
+      guardStack.pop();
+      return;
+    }
+
+    if (stmt.type === "CallStatement") {
+      const subName = findCstChild(stmt, "IDENTIFIER")?.text?.trim();
+      if (!subName) return;
+      const argList = findCstChild(stmt, "ArgumentList");
+      const args: string[] = [];
+      const argIdentNames: (string | null)[] = [];
+      for (const arg of getCstChildren(argList)) {
+        if (!arg.isNamed || arg.type === "," || arg.type === "(" || arg.type === ")") continue;
+        args.push(arg.text.trim());
+        argIdentNames.push(unwrapSingleArgIdent(arg));
+      }
+      const lineIdx = stmt.startPosition?.row ?? 0;
+      callBlocks.push({
+        id: `call_${lineIdx}_${subName}`,
+        subroutine: subName,
+        args,
+        argIdentNames,
+        lineIdx,
+      });
+      return;
+    }
+
+    if (stmt.type === "AssignmentStatement") {
+      const targetNode = findCstChild(stmt, "Target");
+      const valueNode = findCstChild(stmt, "Expression");
+      if (!targetNode || !valueNode) return;
+      const lhs = targetNode.text.trim();
+      const rhs = valueNode.text.trim();
+      const lineIdx = stmt.startPosition?.row ?? 0;
+      const tInfo = extractTargetInfo(targetNode);
+      if (tInfo.portName) {
+        outputVars.set(tInfo.portName.toLowerCase(), tInfo.portName);
+      }
+      const rhsRefs: string[] = [];
+      const discoveredPorts: string[] = [];
+      collectRefs(valueNode, rhsRefs, discoveredPorts);
+      for (const pName of discoveredPorts) {
+        const lower = pName.toLowerCase();
+        if (!outputVars.has(lower)) {
+          inputVars.set(lower, pName);
+        }
+      }
+      equations.push({
+        id: `eq_${lineIdx}_${sanitizeId(lhs)}`,
+        lhs,
+        lhsBase: tInfo.baseName,
+        rhs,
+        rhsRefs,
+        isState: tInfo.isState,
+        lineIdx,
+        condGuard: guardStack.length > 0 ? guardStack[guardStack.length - 1] : undefined,
+      });
+    }
+  };
+
+  const stmtRoot = primaryUnit ? primaryUnit.node : rootNode;
+  for (const child of getCstChildren(stmtRoot)) {
+    visitStmt(child);
+  }
+
+  const assignedLowers = new Set(equations.map((e) => e.lhsBase.toLowerCase()));
+  for (const arg of dummyArgs) {
+    const lower = arg.toLowerCase();
+    if (!inputVars.has(lower) && !outputVars.has(lower)) {
+      if (assignedLowers.has(lower)) outputVars.set(lower, arg);
+      else inputVars.set(lower, arg);
+    }
+  }
+
+  const producerByVar = new Map<string, string>();
+  let leftRow = 0;
+  for (const [lower, dispName] of inputVars.entries()) {
+    const nodeId = `in_${lower}`;
+    const tStr = varTypes.get(lower) ?? "REAL(8)";
+    nodes.push(
+      makeStyledNode({
+        id: nodeId,
+        name: dispName,
+        kind: "InputPort",
+        stereotype: "intent(in)",
+        subtitle: `${tStr} Input`,
+        stroke: "#0d9488",
+        fill: "#f0fdfa",
+        headerFill: "#ccfbf1",
+        x: 60,
+        y: 70 + leftRow * 110,
+      }),
+    );
+    producerByVar.set(lower, nodeId);
+    leftRow++;
+  }
+
+  for (const [lower, cInfo] of constants.entries()) {
+    const nodeId = `const_${lower}`;
+    const tStr = varTypes.get(lower) ?? "REAL(8)";
+    nodes.push(
+      makeStyledNode({
+        id: nodeId,
+        name: cInfo.name,
+        kind: "Constant",
+        stereotype: "constant",
+        subtitle: `${tStr} = ${cInfo.value}`,
+        stroke: "#4f46e5",
+        fill: "#eef2ff",
+        headerFill: "#e0e7ff",
+        x: 60,
+        y: 70 + leftRow * 110,
+      }),
+    );
+    producerByVar.set(lower, nodeId);
+    leftRow++;
+  }
+
+  let centerRow = 0;
+  const intrinsicSet = new Set([
+    "sqrt",
+    "abs",
+    "sin",
+    "cos",
+    "tan",
+    "asin",
+    "acos",
+    "atan",
+    "atan2",
+    "exp",
+    "log",
+    "log10",
+    "min",
+    "max",
+    "mod",
+    "sign",
+    "sum",
+    "maxval",
+    "minval",
+    "size",
+    "dot_product",
+    "matmul",
+    "storf",
+    "stori",
+    "sd",
+    "s",
+  ]);
+
+  const flowSteps = [
+    ...equations.map((eq) => ({ kind: "eq" as const, lineIdx: eq.lineIdx, eq })),
+    ...callBlocks.map((callBlk) => ({ kind: "call" as const, lineIdx: callBlk.lineIdx, callBlk })),
+  ].sort((a, b) => a.lineIdx - b.lineIdx);
+
+  for (const step of flowSteps) {
+    if (step.kind === "eq") {
+      const { eq } = step;
+      const lowerLhs = eq.lhsBase.toLowerCase();
+      const isOutputTarget = outputVars.has(lowerLhs);
+      const entries = [`${eq.lhs} = ${eq.rhs}`];
+      if (eq.condGuard) {
+        entries.unshift(`[Guard] ${eq.condGuard}`);
+      }
+      nodes.push(
+        makeStyledNode({
+          id: eq.id,
+          name: eq.lhs,
+          kind: eq.isState ? "StateEquation" : "Equation",
+          stereotype: eq.isState ? "state derivative" : isOutputTarget ? "output equation" : "algebraic block",
+          subtitle: `${routineName} · line ${eq.lineIdx + 1}`,
+          entries,
+          stroke: eq.isState ? "#e11d48" : "#0284c7",
+          fill: eq.isState ? "#fff1f2" : "#f0f9ff",
+          headerFill: eq.isState ? "#ffe4e6" : "#e0f2fe",
+          x: 390,
+          y: 70 + centerRow * 135,
+        }),
+      );
+      centerRow++;
+
+      const connectedSources = new Set<string>();
+      for (const refIdent of eq.rhsRefs) {
+        const refLower = refIdent.toLowerCase();
+        if (intrinsicSet.has(refLower)) continue;
+        const srcNodeId = producerByVar.get(refLower);
+        if (srcNodeId && srcNodeId !== eq.id && !connectedSources.has(srcNodeId)) {
+          connectedSources.add(srcNodeId);
+          edges.push(
+            makeStyledEdge(`edge_${srcNodeId}_${eq.id}`, srcNodeId, eq.id, srcNodeId.startsWith("const_"), refIdent),
+          );
+        }
+      }
+      producerByVar.set(lowerLhs, eq.id);
+    } else {
+      const { callBlk } = step;
+      const subUpper = callBlk.subroutine.toUpperCase();
+      const calleeSummary = unitSummaries.get(subUpper);
+      const callEntries: string[] = [];
+      if (calleeSummary) {
+        const inParams = calleeSummary.params.filter(
+          (p) => (calleeSummary.intents.get(p.toLowerCase()) ?? "in") !== "out",
+        );
+        const outParams = calleeSummary.params.filter((p) => {
+          const intent = calleeSummary.intents.get(p.toLowerCase());
+          return intent === "out" || intent === "inout";
+        });
+        callEntries.push(`${inParams.join(", ") || "()"} → ${outParams.join(", ") || "void"}`);
+      }
+
+      nodes.push(
+        makeStyledNode({
+          id: callBlk.id,
+          name: `CALL ${callBlk.subroutine}`,
+          kind: "SubroutineCall",
+          stereotype: calleeSummary ? "module subroutine" : "subroutine call",
+          subtitle: `(${callBlk.args.join(", ")})`,
+          entries: callEntries.length > 0 ? callEntries : undefined,
+          stroke: "#7c3aed",
+          fill: "#f5f3ff",
+          headerFill: "#ede9fe",
+          x: 390,
+          y: 70 + centerRow * 135,
+        }),
+      );
+      centerRow++;
+
+      const defaultOutIdx =
+        ["REALPOLE", "DELAY1", "INTGRL", "LEADLAG", "DIFF", "LIMITER", "LIMIT", "HARDLIMIT"].includes(subUpper) &&
+        callBlk.args.length >= 2
+          ? callBlk.args.length - 1
+          : -1;
+
+      callBlk.argIdentNames.forEach((vName, idx) => {
+        if (!vName) return;
+        const vLower = vName.toLowerCase();
+
+        let isOutArg = idx === defaultOutIdx;
+        let isInArg = idx !== defaultOutIdx;
+        if (calleeSummary && calleeSummary.params[idx]) {
+          const formalIntent = calleeSummary.intents.get(calleeSummary.params[idx]!.toLowerCase());
+          if (formalIntent === "out") {
+            isOutArg = true;
+            isInArg = false;
+          } else if (formalIntent === "inout") {
+            isOutArg = true;
+            isInArg = true;
+          } else if (formalIntent === "in") {
+            isOutArg = false;
+            isInArg = true;
+          }
+        }
+
+        if (isInArg) {
+          const srcId = producerByVar.get(vLower);
+          if (srcId) {
+            edges.push(makeStyledEdge(`edge_${srcId}_${callBlk.id}`, srcId, callBlk.id, false, vName));
+          }
+        }
+        if (isOutArg) {
+          producerByVar.set(vLower, callBlk.id);
+        }
+      });
+    }
+  }
+
+  let rightRow = 0;
+  for (const [lower, dispName] of outputVars.entries()) {
+    const outNodeId = `out_${lower}`;
+    const tStr = varTypes.get(lower) ?? "REAL(8)";
+    nodes.push(
+      makeStyledNode({
+        id: outNodeId,
+        name: dispName,
+        kind: "OutputPort",
+        stereotype: "intent(out)",
+        subtitle: `${tStr} Output`,
+        stroke: "#d97706",
+        fill: "#fffbeb",
+        headerFill: "#fef3c7",
+        x: 780,
+        y: 70 + rightRow * 120,
+      }),
+    );
+    rightRow++;
+
+    const srcId = producerByVar.get(lower);
+    if (srcId && srcId !== outNodeId) {
+      edges.push(makeStyledEdge(`edge_${srcId}_${outNodeId}`, srcId, outNodeId, false, dispName));
+    }
+  }
+
+  if (nodes.length === 0 && primaryUnit) {
+    nodes.push(
+      makeStyledNode({
+        id: `sub_${routineName}`,
+        name: routineName,
+        kind: "Subroutine",
+        stereotype: routineKind,
+        subtitle: dummyArgs.length > 0 ? `(${dummyArgs.join(", ")})` : "()",
+        stroke: "#0284c7",
+        fill: "#f0f9ff",
+        headerFill: "#e0f2fe",
+        x: 120,
+        y: 80,
+      }),
+    );
+  }
 }
 
 function applyTextEditsInMemory(baseText: string, edits: TextEdit[]): string {

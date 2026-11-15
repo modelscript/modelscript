@@ -1,5 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { datasetToLas, lasToDataset, parseLas } from "@modelscript/las/las-parser";
+import {
+  computeRowsVariableStats,
+  datasetToRows,
+  DEFAULT_DOWNSAMPLE_THRESHOLD,
+  DEFAULT_TARGET_POINTS,
+  detectIndexAxis,
+  downsampleMinMaxRows,
+  rowsToDataset,
+  transformSeriesValue,
+  type ChartViewMode,
+  type IndexedDataset,
+} from "@modelscript/simulate/charts";
 import { DownloadIcon, GraphIcon, SearchIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import Papa from "papaparse";
@@ -20,6 +33,7 @@ import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import Spinner from "../Spinner";
+import IndexedCanvasPlot from "./IndexedCanvasPlot";
 import VegaViewer from "./VegaViewer";
 
 const SIM_COLORS = ["#06b6d4", "#a855f7", "#10b981", "#f59e0b", "#ef4444", "#3b82f6", "#ec4899", "#8b5cf6"];
@@ -64,73 +78,21 @@ const OverridePill = styled.span`
   border: 1px solid var(--color-border-default, #30363d);
 `;
 
-const MAX_RENDER_POINTS = 1500;
-const DOWNSAMPLE_THRESHOLD = 2000;
-
-function downsampleMinMax(
-  rows: Record<string, number>[],
-  primaryVar: string | undefined,
-  targetPoints = MAX_RENDER_POINTS,
-): Record<string, number>[] {
-  if (rows.length <= DOWNSAMPLE_THRESHOLD) return rows;
-  if (!primaryVar) {
-    const step = Math.max(1, Math.floor(rows.length / targetPoints));
-    const sampled: Record<string, number>[] = [];
-    for (let i = 0; i < rows.length; i += step) {
-      sampled.push(rows[i]!);
-    }
-    if (sampled[sampled.length - 1] !== rows[rows.length - 1]) {
-      sampled.push(rows[rows.length - 1]!);
-    }
-    return sampled;
-  }
-
-  const bucketCount = Math.max(1, Math.floor((targetPoints - 2) / 2));
-  const bucketSize = (rows.length - 2) / bucketCount;
-  const result: Record<string, number>[] = [rows[0]!];
-
-  for (let b = 0; b < bucketCount; b++) {
-    const start = 1 + Math.floor(b * bucketSize);
-    const end = Math.min(rows.length - 1, 1 + Math.floor((b + 1) * bucketSize));
-    if (start >= end) {
-      if (rows[start]) result.push(rows[start]!);
-      continue;
-    }
-    let minIdx = start;
-    let maxIdx = start;
-    let minVal = Infinity;
-    let maxVal = -Infinity;
-    for (let i = start; i < end; i++) {
-      const v = rows[i]?.[primaryVar];
-      if (typeof v === "number" && Number.isFinite(v)) {
-        if (v < minVal) {
-          minVal = v;
-          minIdx = i;
-        }
-        if (v > maxVal) {
-          maxVal = v;
-          maxIdx = i;
-        }
-      }
-    }
-    if (minIdx === maxIdx) {
-      result.push(rows[minIdx]!);
-    } else if (minIdx < maxIdx) {
-      result.push(rows[minIdx]!, rows[maxIdx]!);
-    } else {
-      result.push(rows[maxIdx]!, rows[minIdx]!);
-    }
-  }
-
-  result.push(rows[rows.length - 1]!);
-  return result;
-}
+const MAX_RENDER_POINTS = DEFAULT_TARGET_POINTS;
+const DOWNSAMPLE_THRESHOLD = DEFAULT_DOWNSAMPLE_THRESHOLD;
 
 const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig, isFullScreen }) => {
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
   const [data, setData] = useState<Record<string, number>[]>([]);
+  const [lasDataset, setLasDataset] = useState<IndexedDataset | null>(null);
+  const [viewMode, setViewMode] = useState<ChartViewMode>("overlay");
+  const [crossplotX, setCrossplotX] = useState<string>("");
+  const [crossplotY, setCrossplotY] = useState<string>("");
+  const [crossplotColor, setCrossplotColor] = useState<string>("");
+  const [histVar, setHistVar] = useState<string>("");
+  const [canvasResetSignal, setCanvasResetSignal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hiddenVars, setHiddenVars] = useState<Set<string>>(new Set());
@@ -165,6 +127,7 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
     setRight("dataMax");
     setRefAreaLeft("");
     setRefAreaRight("");
+    setCanvasResetSignal((n) => n + 1);
   };
 
   useEffect(() => {
@@ -217,6 +180,7 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
     const abortController = new AbortController();
 
     setError(null);
+    setLasDataset(null);
     setLeft("dataMin");
     setRight("dataMax");
     setRefAreaLeft("");
@@ -226,45 +190,66 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
     setNextCursorTarget(1);
 
     async function loadData() {
+      // 0. Direct LAS text supplied
+      if (typeof viewConfig?.lasText === "string" && viewConfig.lasText.trim().length > 0) {
+        const ds = lasToDataset(parseLas(viewConfig.lasText), { title: viewConfig?.title });
+        setLasDataset(ds);
+        setData(datasetToRows(ds));
+        setViewMode(viewConfig?.viewMode ?? "multitrack");
+        setLoading(false);
+        return;
+      }
+
       // 1. Direct data array supplied
       if (Array.isArray(viewConfig?.data) && viewConfig.data.length > 0) {
         setLoading(false);
         setData(viewConfig.data);
+        if (viewConfig?.viewMode) setViewMode(viewConfig.viewMode);
         return;
       }
 
-      // 2. CSV URL supplied (supporting query strings like .csv?token=...)
-      const csvUrl = viewConfig?.csvUrl || viewConfig?.url;
-      const isCsvUrl = (() => {
-        if (!csvUrl || typeof csvUrl !== "string") return false;
+      // 2. LAS or CSV URL supplied (supporting query strings like .las?token=... / .csv?token=...)
+      const dataUrl = viewConfig?.lasUrl || viewConfig?.csvUrl || viewConfig?.url;
+      const pathname = (() => {
+        if (!dataUrl || typeof dataUrl !== "string") return "";
         try {
-          return new URL(csvUrl, "http://localhost").pathname.toLowerCase().endsWith(".csv");
+          return new URL(dataUrl, "http://localhost").pathname.toLowerCase();
         } catch {
-          return csvUrl.toLowerCase().split("?")[0]!.endsWith(".csv");
+          return dataUrl.toLowerCase().split("?")[0] ?? "";
         }
       })();
+      const isLasUrl = pathname.endsWith(".las") || viewConfig?.format === "las" || Boolean(viewConfig?.lasUrl);
+      const isCsvUrl = pathname.endsWith(".csv") || viewConfig?.format === "csv";
 
-      if (csvUrl && typeof csvUrl === "string" && (isCsvUrl || viewConfig?.format === "csv")) {
+      if (dataUrl && typeof dataUrl === "string" && (isLasUrl || isCsvUrl)) {
         setLoading(true);
         try {
-          const res = await fetch(csvUrl, { signal: abortController.signal });
-          if (!res.ok) throw new Error(`HTTP ${res.status} fetching simulation CSV`);
+          const res = await fetch(dataUrl, { signal: abortController.signal });
+          if (!res.ok) throw new Error(`HTTP ${res.status} fetching plot data`);
           const text = await res.text();
           if (!active || abortController.signal.aborted) return;
-          const parsed = Papa.parse<Record<string, string>>(text, {
-            header: true,
-            skipEmptyLines: true,
-            dynamicTyping: true,
-          });
 
-          if (active && parsed.data && parsed.data.length > 0) {
-            setData(parsed.data as any[]);
-          } else if (active) {
-            setData([]);
+          if (isLasUrl) {
+            const ds = lasToDataset(parseLas(text), { title: viewConfig?.title });
+            setLasDataset(ds);
+            setData(datasetToRows(ds));
+            setViewMode(viewConfig?.viewMode ?? "multitrack");
+          } else {
+            const parsed = Papa.parse<Record<string, string>>(text, {
+              header: true,
+              skipEmptyLines: true,
+              dynamicTyping: true,
+            });
+            if (active && parsed.data && parsed.data.length > 0) {
+              setData(parsed.data as any[]);
+            } else if (active) {
+              setData([]);
+            }
+            if (viewConfig?.viewMode) setViewMode(viewConfig.viewMode);
           }
         } catch (err: any) {
           if (!active || abortController.signal.aborted || err?.name === "AbortError") return;
-          setError(err.message || "Failed to load simulation CSV");
+          setError(err.message || "Failed to load plot data");
         } finally {
           if (active && !abortController.signal.aborted) setLoading(false);
         }
@@ -291,19 +276,24 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
     }
   }, [loading, data]);
 
-  // Auto-detect time column key ('time' or 't')
-  const timeKey = useMemo(
+  // Auto-detect independent axis ('time', 't', 'depth', etc.) or honor viewConfig overrides
+  const indexAxis = useMemo(
     () =>
-      data.some((r) => typeof r?.time === "number")
-        ? "time"
-        : data.some((r) => typeof r?.t === "number")
-          ? "t"
-          : "time",
-    [data],
+      lasDataset?.indexAxis ??
+      detectIndexAxis(data, {
+        key: viewConfig?.indexKey,
+        label: viewConfig?.indexLabel,
+        unit: viewConfig?.indexUnit,
+        inverted: viewConfig?.inverted,
+        nullValue: viewConfig?.nullValue,
+      }),
+    [lasDataset, data, viewConfig],
   );
+  const timeKey = indexAxis.key;
 
-  // Extract plottable variables across rows (keys other than 'time' or 't')
+  // Extract plottable variables across rows (keys other than the independent axis)
   const variables = useMemo(() => {
+    if (lasDataset) return lasDataset.series.map((s) => s.name);
     if (!data || data.length === 0) return [];
     const keySet = new Set<string>();
     const sampleCount = Math.min(data.length, 50);
@@ -313,69 +303,52 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
       }
     }
     return Array.from(keySet).filter(
-      (k) => k !== "time" && k !== "t" && data.some((row) => typeof row?.[k] === "number" && Number.isFinite(row[k])),
+      (k) =>
+        k !== timeKey &&
+        k !== "time" &&
+        k !== "t" &&
+        data.some((row) => typeof row?.[k] === "number" && Number.isFinite(row[k])),
     );
-  }, [data]);
+  }, [lasDataset, data, timeKey]);
 
-  const variableStats = useMemo(() => {
-    if (!data || data.length === 0 || variables.length === 0) return [];
-    const minT = typeof left === "number" ? left : -Infinity;
-    const maxT = typeof right === "number" ? right : Infinity;
-    const windowed = data.filter((row) => {
-      const t = Number(row[timeKey] ?? row.time ?? row.t ?? 0);
-      return t >= minT && t <= maxT;
+  const canonicalDataset = useMemo<IndexedDataset | null>(() => {
+    if (lasDataset) return lasDataset;
+    if (!data || data.length === 0) return null;
+    return rowsToDataset(data, {
+      indexKey: indexAxis.key,
+      indexLabel: indexAxis.label,
+      indexUnit: indexAxis.unit,
+      inverted: indexAxis.inverted,
+      nullValue: indexAxis.nullValue,
+      title: viewConfig?.model || viewConfig?.title,
+      sourceFormat: viewConfig?.format ?? "simulation",
     });
-    const rows = windowed.length > 0 ? windowed : data;
-    return variables.map((v) => {
-      let min = Infinity;
-      let max = -Infinity;
-      let sum = 0;
-      let sqSum = 0;
-      let count = 0;
-      let finalVal = 0;
-      let prevT: number | null = null;
-      let prevVal: number | null = null;
-      let totalDt = 0;
-      let trapSum = 0;
-      let trapSqSum = 0;
+  }, [lasDataset, data, indexAxis, viewConfig]);
 
-      for (const r of rows) {
-        const val = r[v];
-        const t = Number(r[timeKey] ?? r.time ?? r.t ?? 0);
-        if (typeof val === "number" && Number.isFinite(val)) {
-          if (val < min) min = val;
-          if (val > max) max = val;
-          sum += val;
-          sqSum += val * val;
-          count++;
-          finalVal = val;
+  const exportLas = () => {
+    if (!canonicalDataset) return;
+    const lasText = datasetToLas(canonicalDataset, { version: "2.0" });
+    const blob = new Blob([lasText], { type: "text/plain;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `${(viewConfig?.model || viewConfig?.title || "dataset").replace(/\s+/g, "_")}.las`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
-          if (Number.isFinite(t)) {
-            if (prevT !== null && prevVal !== null) {
-              const dt = t - prevT;
-              if (dt > 0) {
-                totalDt += dt;
-                trapSum += 0.5 * (prevVal + val) * dt;
-                trapSqSum += 0.5 * (prevVal * prevVal + val * val) * dt;
-              }
-            }
-            prevT = t;
-            prevVal = val;
-          }
-        }
-      }
-      const mean = totalDt > 0 ? trapSum / totalDt : count > 0 ? sum / count : 0;
-      const rms = totalDt > 0 ? Math.sqrt(trapSqSum / totalDt) : count > 0 ? Math.sqrt(sqSum / count) : 0;
-      return {
-        name: v,
-        min: count > 0 ? min : 0,
-        max: count > 0 ? max : 0,
-        mean,
-        rms,
-        final: finalVal,
-      };
-    });
-  }, [data, variables, left, right, timeKey]);
+  const variableStats = useMemo(
+    () =>
+      computeRowsVariableStats(data, variables, {
+        indexKey: timeKey,
+        minIndex: typeof left === "number" ? left : undefined,
+        maxIndex: typeof right === "number" ? right : undefined,
+        nullValue: indexAxis.nullValue,
+      }),
+    [data, variables, left, right, timeKey, indexAxis.nullValue],
+  );
 
   const chartData = useMemo(() => {
     if (data.length === 0 || variables.length === 0) return data;
@@ -395,9 +368,9 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
     }
 
     const primaryVisibleVar = variables.find((v) => !hiddenVars.has(v)) ?? variables[0];
-    const sampled = downsampleMinMax(workingRows, primaryVisibleVar, MAX_RENDER_POINTS);
+    const sampled = downsampleMinMaxRows(workingRows, primaryVisibleVar, MAX_RENDER_POINTS, DOWNSAMPLE_THRESHOLD);
 
-    if (!isNormalized && !isLogScale) return sampled;
+    if (!isNormalized && !isLogScale && indexAxis.nullValue === undefined) return sampled;
 
     const bounds: Record<string, { min: number; span: number }> = {};
     if (isNormalized) {
@@ -410,20 +383,14 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
     return sampled.map((row) => {
       const next: Record<string, number> = { ...row };
       for (const v of variables) {
-        const raw = row[v];
-        if (typeof raw !== "number" || !Number.isFinite(raw)) continue;
-        let transformed = raw;
-        if (isNormalized) {
-          const b = bounds[v];
-          if (b) {
-            transformed = (raw - b.min) / b.span;
-          }
-        }
-        if (isLogScale) {
-          if (isNormalized) {
-            next[v] = Math.max(1e-6, transformed);
-          } else {
-            next[v] = transformed <= 0 ? (null as unknown as number) : transformed;
+        const transformed = transformSeriesValue(row[v], {
+          normalize: isNormalized ? bounds[v] : undefined,
+          logScale: isLogScale,
+          nullValue: indexAxis.nullValue,
+        });
+        if (transformed === null) {
+          if (isLogScale || indexAxis.nullValue !== undefined) {
+            next[v] = null as unknown as number;
           }
         } else {
           next[v] = transformed;
@@ -431,7 +398,7 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
       }
       return next;
     });
-  }, [data, isNormalized, isLogScale, variables, variableStats, hiddenVars, left, right, timeKey]);
+  }, [data, isNormalized, isLogScale, variables, variableStats, hiddenVars, left, right, timeKey, indexAxis.nullValue]);
 
   const cursorReadout = useMemo(() => {
     if (cursor1Time === null && cursor2Time === null) return null;
@@ -554,6 +521,25 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
           >
             {isLogScale ? "Log Y" : "Linear Y"}
           </Button>
+          <select
+            aria-label="Plot View Mode"
+            value={viewMode}
+            onChange={(e) => setViewMode(e.target.value as ChartViewMode)}
+            style={{
+              background: "var(--color-canvas-default, #0d1117)",
+              color: "var(--color-fg-default, #e6edf3)",
+              border: "1px solid var(--color-border-default, #30363d)",
+              borderRadius: "6px",
+              padding: "3px 6px",
+              fontFamily: "var(--font-mono)",
+              fontSize: "11px",
+            }}
+          >
+            <option value="overlay">Overlay</option>
+            <option value="multitrack">Multi-Track</option>
+            <option value="crossplot">Crossplot</option>
+            <option value="histogram">Histogram</option>
+          </select>
           <Button
             size="small"
             onClick={() => setShowStatsDrawer(!showStatsDrawer)}
@@ -571,6 +557,11 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
           <Button size="small" leadingVisual={DownloadIcon} onClick={exportCsv} title="Download trajectory as CSV">
             CSV
           </Button>
+          {(isFullScreen || lasDataset !== null) && (
+            <Button size="small" leadingVisual={DownloadIcon} onClick={exportLas} title="Download as CWLS LAS 2.0">
+              LAS
+            </Button>
+          )}
           {isFullScreen && (
             <Button size="small" leadingVisual={DownloadIcon} onClick={exportJson} title="Download trajectory as JSON">
               JSON
@@ -578,6 +569,79 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
           )}
         </Box>
       </Toolbar>
+
+      {/* Crossplot / Histogram Secondary Controls */}
+      {(viewMode === "crossplot" || viewMode === "histogram") && variables.length > 0 && (
+        <Box
+          px={3}
+          py={1}
+          bg="var(--color-canvas-subtle, #161b22)"
+          borderBottom="1px solid var(--color-border-default, #30363d)"
+          display="flex"
+          alignItems="center"
+          gap={2}
+          flexWrap="wrap"
+          style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "11px" }}
+        >
+          {viewMode === "crossplot" ? (
+            <>
+              <span>X:</span>
+              <select
+                value={crossplotX || variables[0] || timeKey}
+                onChange={(e) => setCrossplotX(e.target.value)}
+                style={{ fontSize: "11px", padding: "2px 6px" }}
+              >
+                <option value={timeKey}>{timeKey}</option>
+                {variables.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+              <span>Y:</span>
+              <select
+                value={crossplotY || variables[1] || variables[0] || timeKey}
+                onChange={(e) => setCrossplotY(e.target.value)}
+                style={{ fontSize: "11px", padding: "2px 6px" }}
+              >
+                {variables.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+              <span>Color:</span>
+              <select
+                value={crossplotColor}
+                onChange={(e) => setCrossplotColor(e.target.value)}
+                style={{ fontSize: "11px", padding: "2px 6px" }}
+              >
+                <option value="">None</option>
+                {variables.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : (
+            <>
+              <span>Variable:</span>
+              <select
+                value={histVar || variables[0] || ""}
+                onChange={(e) => setHistVar(e.target.value)}
+                style={{ fontSize: "11px", padding: "2px 6px" }}
+              >
+                {variables.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+        </Box>
+      )}
 
       {/* Overrides Bar */}
       {viewConfig?.overrides && Object.keys(viewConfig.overrides).length > 0 && (
@@ -651,6 +715,27 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
           <Box p={4} textAlign="center" color="var(--color-danger-fg)">
             <Text>{error}</Text>
           </Box>
+        ) : viewMode !== "overlay" && canonicalDataset ? (
+          <IndexedCanvasPlot
+            dataset={canonicalDataset}
+            mode={viewMode}
+            isDark={isDark}
+            cursorMode={cursorMode}
+            resetSignal={canvasResetSignal}
+            crossplot={{
+              xSeries: crossplotX || variables[0] || timeKey,
+              ySeries: crossplotY || variables[1] || variables[0] || timeKey,
+              colorSeries: crossplotColor || undefined,
+              showRegression: true,
+            }}
+            histogram={{
+              seriesName: histVar || variables[0] || "",
+            }}
+            onCursorUpdate={(c) => {
+              if (c.c1 !== undefined) setCursor1Time(c.c1 ?? null);
+              if (c.c2 !== undefined) setCursor2Time(c.c2 ?? null);
+            }}
+          />
         ) : chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
@@ -688,7 +773,7 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
                 allowDataOverflow
                 stroke="var(--color-text-muted, #8b949e)"
                 fontSize={11}
-                tickFormatter={(val) => `${Number(val).toFixed(2)}s`}
+                tickFormatter={(val) => `${Number(val).toFixed(2)}${indexAxis.unit ? indexAxis.unit : ""}`}
               />
               <YAxis
                 stroke="var(--color-text-muted, #8b949e)"
@@ -705,7 +790,9 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
                   fontSize: "12px",
                   color: isDark ? "#fff" : "#0f172a",
                 }}
-                labelFormatter={(label) => `Time: ${Number(label).toFixed(3)}s`}
+                labelFormatter={(label) =>
+                  `${indexAxis.label}: ${Number(label).toFixed(3)}${indexAxis.unit ? indexAxis.unit : ""}`
+                }
               />
               <Legend
                 wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }}

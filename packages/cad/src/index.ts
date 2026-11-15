@@ -88,7 +88,17 @@ export {
 export { assembly, part } from "./assembly.js";
 
 // STEP compiler
-export { compileAssemblyToStep, compileToStep } from "./step-compiler.js";
+export {
+  compileAssemblyToAp242Step,
+  compileAssemblyToStep,
+  compileToStep,
+  type StepCompileOptions,
+  type StepFeatureAnchor,
+  type StepPmiDatumSpec,
+  type StepPmiSpec,
+  type StepPmiToleranceSpec,
+  type StepToleranceEntityType,
+} from "./step-compiler.js";
 
 // OpenUSD & USDZ compiler
 export {
@@ -239,3 +249,58 @@ export {
   type SpatialPinDiagnostic,
   type Verification3DOverlayPayload,
 } from "./verification-overlay.js";
+
+// Hero-grade Studio PBR, Softbox IBL & Stencil Sectioning Shaders
+export {
+  ALLOY_MATERIAL_PRESETS,
+  SECTION_CAP_FRAGMENT_SHADER,
+  SECTION_CAP_VERTEX_SHADER,
+  STUDIO_GRID_FRAGMENT_SHADER,
+  STUDIO_GRID_VERTEX_SHADER,
+  STUDIO_SOFTBOX_LOBES,
+  classifyAlloyPreset,
+  evaluateStudioDomeColor,
+  synthesizeBrushedAlloyTextures,
+  type AlloyMaterialSpec,
+  type AlloyPresetKey,
+  type StudioPbrTextureBuffers,
+  type StudioSoftboxLobeSpec,
+} from "./studio-pbr.js";
+
+// ASME Y14.5 GD&T 3D Feature Control Frame & STEP AP242 PMI Extraction
+export {
+  GDT_CHAR_SYMBOLS,
+  extractStepGdtOverlay,
+  formatFeatureControlFrameText,
+  formatMaterialModifierGlyph,
+  type GdtCallout3D,
+  type GdtCharacteristicType,
+  type GdtDatumFeature3D,
+  type GdtDatumRef,
+  type GdtMaterialModifier,
+  type GdtOverlayPayload,
+} from "./gdt-overlay.js";
+
+// Self-Contained STEP Provenance, Cross-File Directives & Modelica Telemetry
+export {
+  basenamePosix,
+  dirnamePosix,
+  extractModelicaTelemetryParams,
+  joinPosix,
+  normalizePosixPath,
+  parseQifSourceDirectives,
+  parseScadSourceDirectives,
+  parseScadSpoolDirectives,
+  parseStepProvenanceMeta,
+  relativePosix,
+  resolveStepPairingFromFileMap,
+  serializeStepProvenanceMeta,
+  stemPosix,
+  type ModelicaTelemetryParams,
+  type QifSourceDirectives,
+  type ResolvedStepPairing,
+  type ScadSourceDirectives,
+  type SpoolId,
+  type SpoolKinematicsSpec,
+  type StepProvenanceMeta,
+} from "./step-provenance.js";

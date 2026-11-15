@@ -2,6 +2,13 @@
 
 import { Cst, type SyntaxNode } from "../../src-gen/bindings.js";
 import { resolveModelicaConstant } from "../constants.js";
+import {
+  evalArithmeticString,
+  isAsciiIdentContinue,
+  isAsciiWhitespaceCode,
+  isSignedAsciiIntText,
+  isSignedAsciiNumberText,
+} from "../flattener/expressions/cst-utils.js";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "../types.js";
 
 // ── Annotation Enum Definitions ─────────────────────────────────────────────
@@ -31,9 +38,63 @@ export const ANNOTATION_ENUMS: Record<string, EnumDef> = {
   TextStyle: { Bold: "Bold", Italic: "Italic", UnderLine: "UnderLine" },
 };
 
-// ── Safe Arithmetic Evaluator ───────────────────────────────────────────────
+function unescapeDoubleQuotedInner(inner: string): string {
+  let out = "";
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === "\\" && i + 1 < inner.length) {
+      const next = inner[i + 1];
+      if (next === '"' || next === "\\") {
+        out += next;
+        i++;
+        continue;
+      }
+    }
+    out += inner[i];
+  }
+  return out;
+}
 
-import { evalArithmeticString } from "../flattener/expressions/cst-utils.js";
+function tryParseNumericLiteral(t: string): number | undefined {
+  if (isSignedAsciiIntText(t)) return parseInt(t, 10);
+  if (isSignedAsciiNumberText(t)) {
+    const n = parseFloat(t);
+    if (!isNaN(n)) return n;
+  }
+  return undefined;
+}
+
+function tryParseScalarText(t: string): number | boolean | undefined {
+  if (t === "true") return true;
+  if (t === "false") return false;
+  return tryParseNumericLiteral(t);
+}
+
+function isSafeArithmeticText(s: string): boolean {
+  if (s.length === 0) return false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (
+      (c >= 48 && c <= 57) ||
+      c === 43 ||
+      c === 45 ||
+      c === 42 ||
+      c === 47 ||
+      c === 40 ||
+      c === 41 ||
+      c === 46 ||
+      c === 94 ||
+      c === 101 ||
+      c === 69 ||
+      isAsciiWhitespaceCode(c)
+    ) {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+// ── Safe Arithmetic Evaluator ───────────────────────────────────────────────
 
 /**
  * Evaluates safe arithmetic expressions, delegating to the unified
@@ -229,10 +290,8 @@ function evaluateRawOrCstExpr(expr: any, evalScope?: any): any {
   if (typeof expr === "number" || typeof expr === "boolean") return expr;
   if (typeof expr === "string") {
     const t = expr.trim();
-    if (t === "true") return true;
-    if (t === "false") return false;
-    if (/^[+-]?\d+$/.test(t)) return parseInt(t, 10);
-    if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(t) && !isNaN(Number(t))) return parseFloat(t);
+    const prim = tryParseScalarText(t);
+    if (prim !== undefined) return prim;
     return t;
   }
   if (typeof expr.value === "number" || typeof expr.value === "boolean" || typeof expr.value === "string") {
@@ -240,10 +299,8 @@ function evaluateRawOrCstExpr(expr: any, evalScope?: any): any {
   }
   if (typeof expr.text === "string" && !Array.isArray(expr.children)) {
     const t = expr.text.trim();
-    if (t === "true") return true;
-    if (t === "false") return false;
-    if (/^[+-]?\d+$/.test(t)) return parseInt(t, 10);
-    if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(t) && !isNaN(Number(t))) return parseFloat(t);
+    const prim = tryParseScalarText(t);
+    if (prim !== undefined) return prim;
     const resolved = resolveAnnotationName(t, evalScope);
     if (resolved !== undefined) return resolved;
   }
@@ -695,19 +752,15 @@ export function parseModelicaArrayLiteral(text: string, evalScope?: any): any[] 
       return parseModelicaArrayLiteral(item, evalScope);
     }
     if (item.startsWith('"') && item.endsWith('"')) {
-      return item.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+      return unescapeDoubleQuotedInner(item.slice(1, -1));
     }
-    if (/^[+-]?\d+$/.test(item)) {
-      return parseInt(item, 10);
-    }
-    if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(item) && !isNaN(Number(item))) {
-      return parseFloat(item);
-    }
+    const itemNum = tryParseNumericLiteral(item);
+    if (itemNum !== undefined) return itemNum;
     if (item === "true") return true;
     if (item === "false") return false;
 
     // Check safe arithmetic expressions (e.g. 10 + 20, -50 + 5)
-    if (/^[0-9+\-*/().\s^eE]+$/.test(item)) {
+    if (isSafeArithmeticText(item)) {
       const arith = evalSafeArithmetic(item);
       if (arith !== null) return arith;
     }
@@ -800,14 +853,10 @@ export function evaluateCSTExpression(node: any, evalScope?: any): any {
   if (rawText === "true") return true;
   if (rawText === "false") return false;
   if (rawText.startsWith('"') && rawText.endsWith('"')) {
-    return rawText.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+    return unescapeDoubleQuotedInner(rawText.slice(1, -1));
   }
-  if (/^[+-]?\d+$/.test(rawText)) {
-    return parseInt(rawText, 10);
-  }
-  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(rawText) && !isNaN(Number(rawText))) {
-    return parseFloat(rawText);
-  }
+  const numVal = tryParseNumericLiteral(rawText);
+  if (numVal !== undefined) return numVal;
 
   // 1. Array / Matrix evaluation directly on CST
   if (Array.isArray(node.children) && node.children.length >= 2) {
@@ -1200,7 +1249,7 @@ export function evaluateCSTExpression(node: any, evalScope?: any): any {
   }
 
   // 9. Fallback: Safe text-based arithmetic evaluation (e.g. "10 + 5")
-  if (rawText && /^[0-9+\-*/().\s^eE]+$/.test(rawText)) {
+  if (rawText && isSafeArithmeticText(rawText)) {
     const arith = evalSafeArithmetic(rawText);
     if (arith !== null) return arith;
   }
@@ -3219,9 +3268,28 @@ export class AnnotationEvaluator {
 }
 
 export function extractPointsFromText(text: string): [number, number][] | null {
-  const idx = text.search(/\bpoints\s*=\s*\{/);
-  if (idx === -1) return null;
-  const startBrace = text.indexOf("{", idx);
+  let startBrace = -1;
+  let idx = 0;
+  while (idx <= text.length - 6) {
+    const pos = text.indexOf("points", idx);
+    if (pos < 0) break;
+    const prevOk = pos === 0 || !isAsciiIdentContinue(text.charCodeAt(pos - 1));
+    const afterWord = pos + 6;
+    const nextOk = afterWord >= text.length || !isAsciiIdentContinue(text.charCodeAt(afterWord));
+    if (prevOk && nextOk) {
+      let j = afterWord;
+      while (j < text.length && isAsciiWhitespaceCode(text.charCodeAt(j))) j++;
+      if (text[j] === "=") {
+        j++;
+        while (j < text.length && isAsciiWhitespaceCode(text.charCodeAt(j))) j++;
+        if (text[j] === "{") {
+          startBrace = j;
+          break;
+        }
+      }
+    }
+    idx = pos + 1;
+  }
   if (startBrace === -1) return null;
   let depth = 0;
   let endBrace = -1;

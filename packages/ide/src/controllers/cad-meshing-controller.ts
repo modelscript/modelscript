@@ -7,6 +7,7 @@ import type { LanguageClient } from "vscode-languageclient/browser";
 import { registerCadMeshingCommands } from "../cad-meshing-commands.js";
 import { CadViewerPanel } from "../cad-viewer-panel.js";
 import { GCodeEditorProvider } from "../gcode-editor-provider.js";
+import { readWorkspaceText, type StepCompilationService } from "../services/step-compilation-service.js";
 import { StepEditorProvider } from "../step-editor-provider.js";
 
 type UriCommandArg = vscode.Uri | { uri?: vscode.Uri | string | undefined } | undefined;
@@ -19,6 +20,7 @@ interface ScadExecuteResponse {
 export function registerCadAndMeshingCommands(
   context: vscode.ExtensionContext,
   client?: LanguageClient,
+  stepCompilationService?: StepCompilationService,
 ): vscode.Disposable[] {
   // Register automated CAD-to-Mesh background workers (.inp / .su2 generation)
   registerCadMeshingCommands(context, client);
@@ -155,23 +157,38 @@ export function registerCadAndMeshingCommands(
         targetUri = typeof args.uri === "string" ? vscode.Uri.parse(args.uri) : args.uri;
       } else {
         const activeEditor = vscode.window.activeTextEditor;
-        if (activeEditor?.document && /\.scad$/i.test(activeEditor.document.uri.path)) {
+        if (activeEditor?.document && /\.(scad|qif)$/i.test(activeEditor.document.uri.path)) {
           targetUri = activeEditor.document.uri;
         }
       }
       if (!targetUri) return;
       try {
-        let docText: string | undefined;
-        for (const doc of vscode.workspace.textDocuments) {
-          if (doc.uri.toString() === targetUri.toString()) {
-            docText = doc.getText();
-            break;
+        if (stepCompilationService) {
+          const pair = await stepCompilationService.resolvePairedStepSources(targetUri);
+          const scadTextProbe = (pair.scadUri ? await readWorkspaceText(pair.scadUri) : undefined) ?? "";
+          const usesOptionA =
+            Boolean(pair.qifUri) ||
+            /\/\/\s*@(?:spool|qif_source|step_output|assembly_name)|tag_port\s*\(/i.test(scadTextProbe);
+          if (usesOptionA) {
+            const compiled = await stepCompilationService.compileStepFromUri(targetUri);
+            if (compiled) {
+              const stepUri = vscode.Uri.parse(compiled.stepUri);
+              const fileLabel = stepUri.path.split("/").pop() ?? "assembly.step";
+              vscode.window.showInformationMessage(
+                `Compiled AP242 STEP (${compiled.gdtOverlay.callouts.length} GD&T, ${compiled.spools.length} spools): ${fileLabel}`,
+              );
+              await vscode.commands.executeCommand(
+                "vscode.openWith",
+                stepUri,
+                StepEditorProvider.viewType,
+                vscode.ViewColumn.Beside,
+              );
+              return;
+            }
           }
         }
-        if (!docText) {
-          const raw = await vscode.workspace.fs.readFile(targetUri);
-          docText = new TextDecoder().decode(raw);
-        }
+
+        const docText = await readWorkspaceText(targetUri);
         const res = await client?.sendRequest<ScadExecuteResponse>("modelscript/executeAction", {
           actionId: "export_step",
           uri: targetUri.toString(),
@@ -192,6 +209,51 @@ export function registerCadAndMeshingCommands(
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to export STEP CAD: ${msg}`);
+      }
+    }),
+
+    vscode.commands.registerCommand("modelscript.compileStepFromWorkspace", async (args?: UriCommandArg) => {
+      if (!stepCompilationService) {
+        vscode.window.showWarningMessage("STEP compilation service is not initialized.");
+        return;
+      }
+      let targetUri: vscode.Uri | undefined;
+      if (args instanceof vscode.Uri) {
+        targetUri = args;
+      } else if (args?.uri) {
+        targetUri = typeof args.uri === "string" ? vscode.Uri.parse(args.uri) : args.uri;
+      } else {
+        const activeUri = vscode.window.activeTextEditor?.document.uri;
+        if (activeUri && /\.(scad|qif|step|stp|p21)$/i.test(activeUri.path)) {
+          targetUri = activeUri;
+        } else {
+          const scadFiles = await vscode.workspace.findFiles("**/*.scad", "**/node_modules/**", 1);
+          targetUri = scadFiles[0];
+        }
+      }
+      if (!targetUri) {
+        vscode.window.showWarningMessage("No .scad, .qif, or .step file found to compile.");
+        return;
+      }
+      try {
+        const compiled = await stepCompilationService.compileStepFromUri(targetUri);
+        if (!compiled) {
+          vscode.window.showWarningMessage("Could not compile STEP: no paired .scad source or LSP returned an error.");
+          return;
+        }
+        const stepUri = vscode.Uri.parse(compiled.stepUri);
+        vscode.window.showInformationMessage(
+          `Compiled AP242 STEP${compiled.qifUri ? " with QIF PMI" : ""}: ${stepUri.path.split("/").pop()}`,
+        );
+        await vscode.commands.executeCommand(
+          "vscode.openWith",
+          stepUri,
+          StepEditorProvider.viewType,
+          vscode.ViewColumn.Beside,
+        );
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Failed to compile AP242 STEP: ${msg}`);
       }
     }),
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/runtime";
+import { stripOuterDoubleQuotes } from "../flattener/expressions/cst-utils.js";
 import { type ModelicaModArgs } from "../modifications.js";
 
 /**
@@ -55,7 +56,7 @@ export class StudyFlattener {
                 let val = this.db.evaluate(arg.value, arg.evaluationScopeId || child.parentId);
                 if (val === null && arg.value.kind === "expression" && typeof (arg.value as any).text === "string") {
                   val = Number((arg.value as any).text);
-                  if (isNaN(val as number)) val = (arg.value as any).text.replace(/^"|"$/g, "");
+                  if (isNaN(val as number)) val = stripOuterDoubleQuotes((arg.value as any).text);
                 }
                 config.parameters[arg.name] = val;
               }
@@ -83,7 +84,7 @@ export class StudyFlattener {
               typeof (inlineMod.args[0].value as any).text === "string"
             ) {
               val = Number((inlineMod.args[0].value as any).text);
-              if (isNaN(val as number)) val = (inlineMod.args[0].value as any).text.replace(/^"|"$/g, "");
+              if (isNaN(val as number)) val = stripOuterDoubleQuotes((inlineMod.args[0].value as any).text);
             }
             config.parameters[child.name] = val;
           }

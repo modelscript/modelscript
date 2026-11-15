@@ -166,6 +166,7 @@
     "@modelscript/csv": "*",
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
+    "@modelscript/las": "*",
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",
     "vscode-languageserver": "^9.0.1"
@@ -182,6 +183,7 @@
           "@modelscript/runtime:build",
           "@modelscript/diagram:build",
           "@modelscript/csv:build",
+          "@modelscript/las:build",
           "@modelscript/simulate:build",
           "@modelscript/cad:build"
         ]

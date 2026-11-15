@@ -50,9 +50,21 @@ export function getAmplDiagnostics(documentText: string): LspDiagnostic[] {
       message: d.message,
     }));
   } catch (err) {
+    const lines = documentText.split(/\r?\n/);
+    let range = { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } };
+    for (let i = 0; i < lines.length; i++) {
+      const match = /\S+/.exec(lines[i] ?? "");
+      if (match) {
+        range = {
+          start: { line: i, character: match.index },
+          end: { line: i, character: match.index + match[0].length },
+        };
+        break;
+      }
+    }
     return [
       {
-        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+        range,
         severity: 1,
         code: "M9501",
         source: "ampl",

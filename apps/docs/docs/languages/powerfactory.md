@@ -1,11 +1,11 @@
 ---
-title: "DIgSILENT PowerFactory-Compatible Grid Modeling (.dz, .pfd, .dgs, .dsl)"
-description: "The @modelscript/powerfactory language package provides native support for DIgSILENT PowerFactory-compatible project archives (.dz), ASCII exports (.pfd, .dgs, .xml), and DIgSILENT Simulation Language (.dsl) dynamic control blocks."
+title: "DIgSILENT PowerFactory-Compatible Grid Modeling (.dz, .pfd, .dsl)"
+description: "The @modelscript/powerfactory language package provides native support for DIgSILENT PowerFactory-compatible project archives (.dz), ASCII/XML exports (.pfd, .xml), and DIgSILENT Simulation Language (.dsl) dynamic control blocks."
 ---
 
-# DIgSILENT PowerFactory-Compatible Grid Modeling (`.dz`, `.pfd`, `.dgs`, `.dsl`)
+# DIgSILENT PowerFactory-Compatible Grid Modeling (`.dz`, `.pfd`, `.dsl`)
 
-The `@modelscript/powerfactory` language package (`languages/powerfactory`) provides native support for **DIgSILENT PowerFactory-compatible** project archives (`.dz`), database exports (`.pfd`, `.dgs`, `.xml`), and **DIgSILENT Simulation Language (`.dsl`)** dynamic block definitions. It delivers node-breaker to bus-branch topology reduction, pre-flight electrical validation (`PF1001`–`PF1008`), AC/DC Optimal Power Flow (`solvePowerFactoryOpf`), Quasi-Dynamic Simulation (`solvePowerFactoryQdsl`), harmonic load flow, IEC 60909 short-circuit analysis, Sparse Arnoldi small-signal modal analysis, IEEE 738 Dynamic Line Rating (DLR), Single-Line Diagram (SLD) rendering (`IntGrf` / `SetDesktop`), and cross-domain projections to **PSS/E** and **Modelica (OpenIPSL)**.
+The `@modelscript/powerfactory` language package (`languages/powerfactory`) provides native support for **DIgSILENT PowerFactory-compatible** project archives (`.dz`), database exports (`.pfd`, `.xml`), and **DIgSILENT Simulation Language (`.dsl`)** dynamic block definitions. It delivers node-breaker to bus-branch topology reduction, pre-flight electrical validation (`PF1001`–`PF1008`), AC/DC Optimal Power Flow (`solvePowerFactoryOpf`), Quasi-Dynamic Simulation (`solvePowerFactoryQdsl`), harmonic load flow, IEC 60909 short-circuit analysis, Sparse Arnoldi small-signal modal analysis, IEEE 738 Dynamic Line Rating (DLR), Single-Line Diagram (SLD) rendering (`IntGrf` / `SetDesktop`), and cross-domain projections to **PSS/E** and **Modelica (OpenIPSL)**.
 
 ---
 
@@ -13,7 +13,7 @@ The `@modelscript/powerfactory` language package (`languages/powerfactory`) prov
 
 | Format / Class              | Specification                       | Key Structural Features                                                                                   |
 | :-------------------------- | :---------------------------------- | :-------------------------------------------------------------------------------------------------------- |
-| **`.dz` / `.pfd` / `.dgs`** | Project Archive & Data Exchange     | Substations (`ElmSubstat`), terminals (`ElmTerm`), switches (`StaSwitch`, `ElmCoup`), graphic netboards   |
+| **`.dz` / `.pfd` / `.xml`** | Project Archive & Database Export   | Substations (`ElmSubstat`), terminals (`ElmTerm`), switches (`StaSwitch`, `ElmCoup`), graphic netboards   |
 | **`ElmLne` / `TypLne`**     | AC Transmission Lines & Cables      | Positive/zero-sequence impedance ($R_1, X_1, B_1, R_0, X_0, B_0$), thermal rating, parallel circuits      |
 | **`ElmTr2` / `ElmTr3`**     | 2- & 3-Winding Power Transformers   | HV/MV/LV nominal voltages, vector groups (`YNd11`, `Dyn5`), off-nominal tap changers, short-circuit $u_k$ |
 | **`ElmSym` / `ElmGenstat`** | Synchronous & Static IBR Generators | Active/reactive dispatch, voltage setpoint $u_{\text{setp}}$, capability curves, synchronous reactances   |
@@ -25,10 +25,10 @@ The `@modelscript/powerfactory` language package (`languages/powerfactory`) prov
 
 ```mermaid
 flowchart TD
-    PF["PowerFactory Archive (.dz / .pfd / .dgs / .dsl)"]
+    PF["PowerFactory Archive (.dz / .pfd / .xml / .dsl)"]
 
     subgraph FrontEnd["Ingestion & Topology Processor"]
-        PARSE["Archive & XML/DGS Object Parser"]
+        PARSE["Archive & XML/PFD Object Parser"]
         TOPO["Disjoint-Set Node-Breaker Topology Processor"]
         DSL["DSL Transfer-Function & Block Compiler"]
         LINT["Pre-Flight Grid Linter (PF1001–PF1008)"]

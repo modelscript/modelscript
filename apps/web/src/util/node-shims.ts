@@ -210,11 +210,15 @@ export const createHash = () => ({
   update: () => ({ digest: () => "" }),
   digest: () => "",
 });
+export const sign = () => new Uint8Array(0);
+export const verify = () => false;
 
 export const cryptoModule = {
   randomUUID,
   randomBytes,
   createHash,
+  sign,
+  verify,
 };
 
 // --- net ---
@@ -262,6 +266,21 @@ export class EventEmitter {
     return this;
   }
 }
+
+// --- module ---
+export const builtinModules: string[] = [];
+export const isBuiltin = (_moduleName: string): boolean => false;
+export function createRequire(_filename?: string | URL) {
+  const req = (_id: string): Record<string, unknown> => ({});
+  req.resolve = Object.assign((id: string): string => id, {
+    paths: (_request: string): string[] | null => null,
+  });
+  req.cache = {} as Record<string, unknown>;
+  req.extensions = {} as Record<string, unknown>;
+  req.main = undefined;
+  return req;
+}
+export const module = { builtinModules, isBuiltin, createRequire };
 
 const defaultExport = {
   sep,
@@ -325,12 +344,18 @@ const defaultExport = {
   randomUUID,
   randomBytes,
   createHash,
+  sign,
+  verify,
   crypto: cryptoModule,
   createConnection,
   connect,
   createServer,
   net,
   EventEmitter,
+  builtinModules,
+  isBuiltin,
+  createRequire,
+  module,
 };
 
 export default defaultExport;

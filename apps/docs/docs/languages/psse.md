@@ -74,16 +74,27 @@ The network admittance matrix $\mathbf{Y}_{\text{bus}} \in \mathbb{C}^{N \times 
 
 ### Transmission Lines ($\pi$-Equivalent)
 
-For a branch connecting buses $i$ and $j$ with series impedance $z = r + jx$ and total charging susceptance $b$:
+For a branch connecting buses $i$ and $j$ with series impedance $z = r + jx$ and total line charging susceptance $b$, the series admittance $y_s$ is stamped into the off-diagonal mutual entries ($Y_{ij}, Y_{ji}$) with a negative sign and added—along with half the line charging susceptance $j\frac{b}{2}$—to each terminal bus's self-admittance ($Y_{ii}, Y_{jj}$):
+
 $$y_s = \frac{1}{r + jx} = \frac{r - jx}{r^2 + x^2} = g_s + j b_s$$
 $$Y_{ij} = -y_s,\quad Y_{ji} = -y_s$$
 $$Y_{ii} \mathrel{+}= y_s + j\frac{b}{2},\quad Y_{jj} \mathrel{+}= y_s + j\frac{b}{2}$$
 
 ### Transformers with Complex Tap Ratio
 
-For a transformer with off-nominal turns ratio magnitude $a$ and phase shift $\phi$, the complex tap is $\bar{a} = a e^{j\phi} = a_{\text{re}} + j a_{\text{im}}$:
+For a transformer with off-nominal turns ratio magnitude $a$ and phase-shift angle $\phi$, the complex tap $\bar{a} = a e^{j\phi} = a_{\text{re}} + j a_{\text{im}}$ scales the primary-side self-admittance by $|\bar{a}|^{-2}$ and introduces conjugate-asymmetric mutual couplings between the primary ($i$) and secondary ($j$) buses:
+
 $$Y_{ii} \mathrel{+}= \frac{y_s}{|\bar{a}|^2},\quad Y_{jj} \mathrel{+}= y_s$$
 $$Y_{ij} = -\frac{y_s}{\bar{a}^*},\quad Y_{ji} = -\frac{y_s}{\bar{a}}$$
+
+| Symbol                           | Meaning                                                                     | Units / Domain                |
+| :------------------------------- | :-------------------------------------------------------------------------- | :---------------------------- |
+| $y_s, g_s, b_s$                  | Series branch admittance, conductance, and susceptance                      | $\text{p.u.}$ (or $\text{S}$) |
+| $r, x$                           | Series branch resistance and reactance                                      | $\text{p.u.}$ (or $\Omega$)   |
+| $b$                              | Total line shunt charging susceptance                                       | $\text{p.u.}$ (or $\text{S}$) |
+| $j$                              | Imaginary unit ($\sqrt{-1}$)                                                | Dimensionless                 |
+| $Y_{ii}, Y_{jj}, Y_{ij}, Y_{ji}$ | Self and mutual entries of $\mathbf{Y}_{\text{bus}}$                        | $\text{p.u.}$ (or $\text{S}$) |
+| $\bar{a}, \bar{a}^*$             | Complex off-nominal transformer tap ratio ($a e^{j\phi}$) and its conjugate | Dimensionless                 |
 
 ---
 
@@ -93,7 +104,8 @@ $$Y_{ij} = -\frac{y_s}{\bar{a}^*},\quad Y_{ji} = -\frac{y_s}{\bar{a}}$$
 
 ### Mismatch Formulation
 
-For each bus $i \in \{1, \dots, N\}$ with voltage $\bar{V}_i = V_i e^{j\theta_i}$:
+For each bus $i \in \{1, \dots, N\}$ with voltage phasor $\bar{V}_i = V_i e^{j\theta_i}$, the calculated net active ($P_i$) and reactive ($Q_i$) power injections sum the power flowing into all connected buses, and the mismatches ($\Delta P_i, \Delta Q_i$) measure the residual difference from the scheduled generator/load injections:
+
 $$P_i(V, \theta) = V_i \sum_{k=1}^N V_k \left( G_{ik} \cos\theta_{ik} + B_{ik} \sin\theta_{ik} \right)$$
 $$Q_i(V, \theta) = V_i \sum_{k=1}^N V_k \left( G_{ik} \sin\theta_{ik} - B_{ik} \cos\theta_{ik} \right)$$
 where $\theta_{ik} = \theta_i - \theta_k$. Active and reactive mismatches are:
@@ -101,8 +113,20 @@ $$\Delta P_i = P_i^{\text{spec}} - P_i(V, \theta),\quad \Delta Q_i = Q_i^{\text{
 
 ### Analytical Jacobian & Adaptive Damping
 
-The linearized Newton system at each iteration $k$ is:
+At each Newton-Raphson iteration, the non-linear mismatch equations are linearized around the current voltage state to solve for the phase-angle ($\Delta \theta$) and normalized voltage-magnitude ($\Delta V / V$) updates:
+
 $$\begin{bmatrix} \Delta P \\ \Delta Q \end{bmatrix} = \begin{bmatrix} H & N \\ M & L \end{bmatrix} \begin{bmatrix} \Delta \theta \\ \Delta V / V \end{bmatrix}$$
+
+| Symbol                                          | Meaning                                                                                                                                                             | Units / Domain    |
+| :---------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :---------------- |
+| $N$                                             | Total number of buses in the network                                                                                                                                | Integer ($\ge 1$) |
+| $V_i, V_k, \Delta V$                            | Bus voltage magnitudes and voltage update vector                                                                                                                    | $\text{p.u.}$     |
+| $\theta_i, \theta_k, \theta_{ik}, \Delta\theta$ | Bus voltage phase angles, angle difference ($\theta_i - \theta_k$), and angle update vector                                                                         | $\text{rad}$      |
+| $G_{ik}, B_{ik}$                                | Real (conductance) and imaginary (susceptance) parts of $Y_{ik}$                                                                                                    | $\text{p.u.}$     |
+| $P_i, Q_i$                                      | Calculated net active and reactive power injections at bus $i$                                                                                                      | $\text{p.u.}$     |
+| $P_i^{\text{spec}}, Q_i^{\text{spec}}$          | Specified net active and reactive power injections at bus $i$                                                                                                       | $\text{p.u.}$     |
+| $\Delta P_i, \Delta Q_i, \Delta P, \Delta Q$    | Active and reactive power mismatch scalars and vectors                                                                                                              | $\text{p.u.}$     |
+| $H, N, M, L$                                    | Jacobian block submatrices ($\frac{\partial P}{\partial\theta}, V\frac{\partial P}{\partial V}, \frac{\partial Q}{\partial\theta}, V\frac{\partial Q}{\partial V}$) | $\text{p.u.}$     |
 
 - **$H_{ik} = \frac{\partial P_i}{\partial \theta_k} = V_i V_k (G_{ik} \sin\theta_{ik} - B_{ik} \cos\theta_{ik})$** ($k \ne i$), and $H_{ii} = -Q_i - B_{ii} V_i^2$.
 - **$N_{ik} = V_k \frac{\partial P_i}{\partial V_k} = V_i V_k (G_{ik} \cos\theta_{ik} + B_{ik} \sin\theta_{ik})$** ($k \ne i$), and $N_{ii} = P_i + G_{ii} V_i^2$.

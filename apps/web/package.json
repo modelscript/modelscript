@@ -28,6 +28,7 @@
     "@modelscript/epanet": "*",
     "@modelscript/exchange": "*",
     "@modelscript/igtl": "*",
+    "@modelscript/las": "*",
     "@modelscript/lsp": "*",
     "@modelscript/modelica": "*",
     "@modelscript/opensim": "*",

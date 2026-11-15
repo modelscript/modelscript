@@ -17,7 +17,7 @@ export const relap5Language = language({
   polyglot: relap5PolyglotConfig,
   name: "relap5",
   fileExtensions: [".i", ".inp", ".r5"],
-  maturity: "experimental",
+  maturity: "stable",
   indexing: relap5Indexing,
   lsp: {
     fileExtensions: [".i", ".inp", ".r5"],

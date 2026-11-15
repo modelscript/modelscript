@@ -13,7 +13,13 @@ import {
 import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
-import { computeTreeEdit } from "../utils/ast-utils.js";
+import {
+  computeTreeEdit,
+  isLargeXmlForWasm,
+  isWasmTreeActiveInFacade,
+  parseXmlFallbackTree,
+  type XmlFallbackTree,
+} from "../utils/ast-utils.js";
 import type { SyntaxNode, Tree as TreeSitterTree } from "../utils/cst-facade.js";
 import { LineIndex, TokenData } from "../utils/line-index.js";
 import { BrowserFileSystem } from "../vfs/browser-file-system.js";
@@ -101,6 +107,9 @@ export class ParserService {
       } else if (norm === "csv") {
         setGlobalPlain("csvParser", parser);
         setGlobalPlain("csvParserReady", !!parser);
+      } else if (norm === "psse") {
+        setGlobalPlain("psseParser", parser);
+        setGlobalPlain("psseParserReady", !!parser);
       }
     } finally {
       this.registeringLangs.delete(norm);
@@ -307,6 +316,28 @@ export class ParserService {
     else this.registerParser("csv", null, null);
   }
 
+  get lasParser() {
+    return this.getParser("las");
+  }
+  set lasParser(val: unknown) {
+    this.registerParser("las", val, this.lasFacade);
+  }
+  get lasFacade() {
+    return this.getFacade("las");
+  }
+  set lasFacade(val: unknown) {
+    const p = this.lasParser;
+    this.registerParser("las", p, val);
+  }
+  get lasParserReady() {
+    return this.isParserReady("las");
+  }
+  set lasParserReady(val: boolean) {
+    const entry = this.parserEntries.get("las");
+    if (entry) entry.ready = val;
+    else this.registerParser("las", null, null);
+  }
+
   constructor(
     private connection: Connection,
     private documentManager: DocumentManager,
@@ -489,18 +520,36 @@ export class ParserService {
     const plugin = globalLanguageRegistry.getPluginForUri(uri);
     const parser = plugin?.parser ?? this.getParserForUri(uri) ?? (this.isParserReady("modelica") ? this.parser : null);
     const facade = plugin?.facade ?? (this.isParserReady("modelica") ? this.facade : null);
+
+    const cached = this.documentManager.documentTrees.get(uri);
+    const cachedIsFallback = Boolean((cached?.tree as XmlFallbackTree | undefined)?.__isXmlCstFallback);
+    const isWasmTreeActive = isWasmTreeActiveInFacade(cached?.tree, facade);
+    const isCachedTreeActive = cachedIsFallback || isWasmTreeActive;
+
+    if (cached && cached.text === newText && isCachedTreeActive) {
+      return cached.tree;
+    }
+
+    if (isLargeXmlForWasm(uri, newText, plugin)) {
+      const tree = parseXmlFallbackTree(newText);
+      this.documentManager.documentTrees.set(uri, {
+        text: newText,
+        tree,
+        classCache: cached?.classCache ?? new Map(),
+        lineIndex: undefined,
+        tokens: undefined,
+      });
+      return tree;
+    }
+
     if (!parser) {
       throw new Error(`Parser not ready for URI: ${uri}`);
     }
 
-    const cached = this.documentManager.documentTrees.get(uri);
-    const cachedTree = cached?.tree as unknown as { rootPtr?: number; rootNode?: { id?: number } } | null | undefined;
-    const oldRootPtr = cachedTree?.rootPtr ?? cachedTree?.rootNode?.id ?? 0;
-    const isCachedTreeActive = Boolean(oldRootPtr && facade && facade.lastAstRoot === oldRootPtr);
     let tree: TreeSitterTree;
     const t0 = performance.now();
 
-    if (cached && cached.text !== newText && isCachedTreeActive) {
+    if (cached && cached.text !== newText && isWasmTreeActive) {
       // Incremental reparse: edit the old tree and pass it to parse()
       const tEdit0 = performance.now();
       const edit = computeTreeEdit(cached.text, newText);
@@ -528,9 +577,6 @@ export class ParserService {
           `[perf] updateDocumentTree (incremental) slow: total=${(tEdit3 - t0).toFixed(2)}ms, diff=${(tEdit1 - tEdit0).toFixed(2)}ms, edit=${(tEdit2 - tEdit1).toFixed(2)}ms, parse=${(tEdit3 - tEdit2).toFixed(2)}ms`,
         );
       }
-    } else if (cached && cached.text === newText && isCachedTreeActive) {
-      // Text unchanged — reuse existing tree
-      return cached.tree;
     } else {
       // First parse — no old tree available
       const tParse0 = performance.now();
@@ -566,12 +612,10 @@ export class ParserService {
     const plugin = globalLanguageRegistry.getPluginForUri(uri);
     const parser = plugin?.parser ?? this.getParserForUri(uri) ?? (this.isParserReady("modelica") ? this.parser : null);
     const facade = plugin?.facade ?? (this.isParserReady("modelica") ? this.facade : null);
-    if (!parser) return null;
 
     const cached = this.documentManager.documentTrees.get(uri);
-    const cachedTree = cached?.tree as unknown as { rootPtr?: number; rootNode?: { id?: number } } | null | undefined;
-    const oldRootPtr = cachedTree?.rootPtr ?? cachedTree?.rootNode?.id ?? 0;
-    const isCachedTreeActive = Boolean(oldRootPtr && facade && facade.lastAstRoot === oldRootPtr);
+    const cachedIsFallback = Boolean((cached?.tree as XmlFallbackTree | undefined)?.__isXmlCstFallback);
+    const isCachedTreeActive = cachedIsFallback || isWasmTreeActiveInFacade(cached?.tree, facade);
     if (cached && isCachedTreeActive) return cached.tree;
 
     // No cached tree — parse from current document text
@@ -579,6 +623,7 @@ export class ParserService {
     if (!document) return cached?.tree ?? null;
 
     const text = document.getText();
+    if (!parser && !isLargeXmlForWasm(uri, text, plugin)) return null;
     return this.updateDocumentTree(uri, text);
   }
 
@@ -702,6 +747,7 @@ export class ParserService {
     { id: "step", wasm: "step.wasm", displayName: "Step", fileExtensions: [".step"] },
     { id: "owl2", wasm: "owl2.wasm", displayName: "Owl2", fileExtensions: [".owl", ".owl2", ".ofn", ".ttl"] },
     { id: "csv", wasm: "csv.wasm", displayName: "Csv", fileExtensions: [".csv"] },
+    { id: "las", wasm: "las.wasm", displayName: "Las", fileExtensions: [".las"] },
     { id: "scad", wasm: "scad.wasm", displayName: "Scad", fileExtensions: [".scad"] },
   ];
   private lazyLoadParsers = false;
@@ -717,9 +763,13 @@ export class ParserService {
       fs: (globalThis as any).sharedFs,
       parse: (ext: string, input: string, ...rest: any[]) => {
         const normExt = ext.startsWith(".") ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
+        const dummyUri = `file:///dummy${normExt}`;
+        const plugin = globalLanguageRegistry.getPluginForUri(dummyUri);
+        if (isLargeXmlForWasm(dummyUri, input, plugin)) {
+          return parseXmlFallbackTree(input);
+        }
         const parser =
-          this.getParserForUri(`file:///dummy${normExt}`) ??
-          (this.workspaceManager.unifiedWorkspace as any)?.getParser?.(normExt);
+          this.getParserForUri(dummyUri) ?? (this.workspaceManager.unifiedWorkspace as any)?.getParser?.(normExt);
         if (parser) return parser.parse(input, ...rest);
         if (normExt === ".sysml" || normExt === ".sysml2" || normExt === ".kerml")
           return (this.sysml2Parser as any)?.parse(input, ...rest);
@@ -1103,7 +1153,7 @@ export class ParserService {
               this.connection.console.warn(
                 `[lsp] Registry load failed for Modelica, falling back to local MSL zip: ${regErr}`,
               );
-              await loadMSL(this.serverDistBase, loaderCtx, dep.version);
+              await loadMSL(this.serverDistBase, loaderCtx, dep.version, { skipRegistryRetry: true });
             } else if (dep.name === "SysML") {
               this.connection.console.warn(
                 `[lsp] Registry load failed for SysML, falling back to local SysML zip: ${regErr}`,
@@ -1127,7 +1177,16 @@ export class ParserService {
         (globalThis as any).clearDiagramCache?.();
         (globalThis as any).diagramCache?.clear();
 
+        const isModelicaDep = dep.name === "Modelica";
+        const isSysmlDep = dep.name === "SysML";
         for (const doc of this.documents.all()) {
+          const langId = (doc.languageId || "").toLowerCase();
+          if (isModelicaDep && langId !== "modelica" && langId !== "modelscript" && !/\.(mo|msx)$/i.test(doc.uri)) {
+            continue;
+          }
+          if (isSysmlDep && langId !== "sysml2" && langId !== "sysml" && !/\.(sysml|kerml)$/i.test(doc.uri)) {
+            continue;
+          }
           try {
             await (this.validationServiceRef?.validateTextDocument?.(doc) ??
               (globalThis as any).validateTextDocument?.(doc));
@@ -1470,7 +1529,7 @@ export class ParserService {
                 this.connection.console.warn(
                   `[lsp] Registry load failed for Modelica, falling back to local MSL zip: ${regErr}`,
                 );
-                await loadMSL(serverDistBase, loaderCtx, dep.version);
+                await loadMSL(serverDistBase, loaderCtx, dep.version, { skipRegistryRetry: true });
               } else if (dep.name === "SysML") {
                 this.connection.console.warn(
                   `[lsp] Registry load failed for SysML, falling back to local SysML zip: ${regErr}`,
@@ -1497,6 +1556,8 @@ export class ParserService {
       (globalThis as any).diagramCache?.clear();
 
       for (const doc of this.documents.all()) {
+        const langId = (doc.languageId || "").toLowerCase();
+        if (langId === "step" && doc.getText().length > 262_144) continue;
         try {
           await (globalThis as any).validateTextDocument?.(doc);
         } catch (err) {

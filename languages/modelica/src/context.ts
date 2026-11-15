@@ -30,6 +30,7 @@ import { ModelicaPoParser, ModelicaTranslation } from "./extensions/po.js";
 import { MODELSCRIPT_STUDIES_PACKAGE } from "./extensions/studies.js";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex, injectPredefinedTypes } from "./factory.js";
 import { ModelicaFlattener, type FlattenOptions } from "./flattener.js";
+import { extractFirstClassFromCstNode, extractWithinFromSource } from "./workspace-hooks.js";
 
 /** Preconditioner strategy used by the nonlinear initialization solver. */
 export type PreconditionerMode = "none" | "branch-and-bound";
@@ -98,16 +99,35 @@ export class ModelicaLibrary {
     public context: Context,
     public path: string,
   ) {
-    this.name = path.split(/[/\\]/).pop()?.replace(/\.mo$/, "") ?? "Untitled";
+    const normalizedPath = path.replaceAll("\\", "/");
+    const lastSlash = normalizedPath.lastIndexOf("/");
+    const baseName = lastSlash >= 0 ? normalizedPath.slice(lastSlash + 1) : normalizedPath;
+    const strippedName = baseName.endsWith(".mo") ? baseName.slice(0, -3) : baseName;
+    this.name = strippedName || "Untitled";
 
     const stat = context.fs.stat(path);
     if (stat?.isDirectory()) {
       const pkgPath = context.fs.join(path, "package.mo");
       if (context.fs.stat(pkgPath)?.isFile()) {
         const text = context.fs.read(pkgPath);
-        const match = text.match(/package\s+([a-zA-Z0-9_]+)/);
-        if (match && match[1]) {
-          this.name = match[1];
+        const parser =
+          (
+            Context as unknown as {
+              _parsers?: Map<
+                string,
+                { parse: (s: string) => { rootNode?: Parameters<typeof extractFirstClassFromCstNode>[0] } | null }
+              >;
+            }
+          )._parsers?.get(".mo") ??
+          (UnifiedWorkspace.getGlobalParser(".mo") as
+            | { parse: (s: string) => { rootNode?: Parameters<typeof extractFirstClassFromCstNode>[0] } | null }
+            | undefined);
+        if (parser && typeof parser.parse === "function") {
+          const pkgTree = parser.parse(text);
+          const pkgCls = extractFirstClassFromCstNode(pkgTree?.rootNode, new Set(["package"]));
+          if (pkgCls?.name) {
+            this.name = pkgCls.name;
+          }
         }
       }
     }
@@ -232,10 +252,16 @@ export class Context {
   findInModelicaPath(packageName: string): string | null {
     const mp = this.modelicaPath;
     if (!mp) return null;
-    const searchDirs = mp
-      .split(/[:;]/)
-      .map((d) => d.trim())
-      .filter(Boolean);
+    const searchDirs: string[] = [];
+    let segStart = 0;
+    for (let i = 0; i <= mp.length; i++) {
+      const ch = i < mp.length ? mp[i] : ";";
+      if (ch === ":" || ch === ";") {
+        const d = mp.slice(segStart, i).trim();
+        if (d) searchDirs.push(d);
+        segStart = i + 1;
+      }
+    }
     for (const searchDir of searchDirs) {
       const pkgDir = this.#fs.join(searchDir, packageName);
       const pkgMo = this.#fs.join(pkgDir, "package.mo");
@@ -741,7 +767,9 @@ export class Context {
     const stats = this.#fs.stat(path);
     if (stats?.isDirectory()) {
       const pkgPath = this.#fs.join(path, "package.mo");
-      const baseName = path.split(/[/\\]/).filter(Boolean).pop();
+      const trimmedPath = path.replaceAll("\\", "/");
+      const nonEmptySegs = trimmedPath.split("/").filter(Boolean);
+      const baseName = nonEmptySegs[nonEmptySegs.length - 1];
       const singleMoPath = baseName ? this.#fs.join(path, `${baseName}.mo`) : undefined;
       const hasPkgMo = Boolean(this.#fs.stat(pkgPath)?.isFile());
       const hasSingleMo = Boolean(singleMoPath && this.#fs.stat(singleMoPath)?.isFile());
@@ -759,7 +787,8 @@ export class Context {
       if (!s) return;
       if (s.isFile()) {
         if (dir.endsWith(".mo") || dir.endsWith(".msim")) {
-          const basename = dir.split(/[/\\]/).pop();
+          const normDir = dir.replaceAll("\\", "/");
+          const basename = normDir.slice(normDir.lastIndexOf("/") + 1);
           let parentFQN: string | undefined = currentFQN;
 
           if (basename === "package.mo") {
@@ -772,8 +801,7 @@ export class Context {
           // the single .mo file matching the library name), the top-level class is a
           // root class with no enclosing package.
           if (
-            (dir === path ||
-              (basename && basename.endsWith(".mo") && basename.replace(/\.mo$/, "") === library.name)) &&
+            (dir === path || (basename && basename.endsWith(".mo") && basename.slice(0, -3) === library.name)) &&
             basename !== "package.mo"
           ) {
             parentFQN = undefined;
@@ -783,16 +811,28 @@ export class Context {
           try {
             const textHeader = this.#fs.read(dir);
             if (textHeader) {
-              const withinMatch = textHeader.match(/^\s*within\s*([a-zA-Z0-9_.]*)\s*;/m);
-              if (withinMatch) {
-                const declaredWithin = withinMatch[1]?.trim();
-                if (declaredWithin) {
-                  if (parentFQN && declaredWithin !== parentFQN) {
+              const declaredWithin = extractWithinFromSource(
+                textHeader,
+                ((
+                  Context as unknown as {
+                    _parsers: Map<
+                      string,
+                      { parse: (s: string) => { rootNode?: Parameters<typeof extractFirstClassFromCstNode>[0] } | null }
+                    >;
+                  }
+                )._parsers.get(".mo") ?? UnifiedWorkspace.getGlobalParser(".mo")) as Parameters<
+                  typeof extractWithinFromSource
+                >[1],
+              );
+              if (declaredWithin !== null) {
+                const trimmedWithin = declaredWithin.trim();
+                if (trimmedWithin) {
+                  if (parentFQN && trimmedWithin !== parentFQN) {
                     console.warn(
-                      `[modelica] Notice: ${dir} declares 'within ${declaredWithin};' which differs from path hierarchy '${parentFQN}'. Using declared within.`,
+                      `[modelica] Notice: ${dir} declares 'within ${trimmedWithin};' which differs from path hierarchy '${parentFQN}'. Using declared within.`,
                     );
                   }
-                  parentFQN = declaredWithin;
+                  parentFQN = trimmedWithin;
                 } else if (basename !== "package.mo") {
                   // 'within;' with no name means root/top-level
                   parentFQN = undefined;
@@ -843,7 +883,9 @@ export class Context {
             const orderContent = this.#fs.read(orderFile);
             if (orderContent) {
               const orderLines = orderContent
-                .split(/\r?\n/)
+                .replaceAll("\r\n", "\n")
+                .replaceAll("\r", "\n")
+                .split("\n")
                 .map((l) => l.trim())
                 .filter((l) => l && !l.startsWith("#") && !l.startsWith("//"));
               if (orderLines.length > 0) {
@@ -852,8 +894,8 @@ export class Context {
                 entries.sort((a, b) => {
                   if (a.name === "package.mo") return -1;
                   if (b.name === "package.mo") return 1;
-                  const nameA = a.name.replace(/\.mo$/, "");
-                  const nameB = b.name.replace(/\.mo$/, "");
+                  const nameA = a.name.endsWith(".mo") ? a.name.slice(0, -3) : a.name;
+                  const nameB = b.name.endsWith(".mo") ? b.name.slice(0, -3) : b.name;
                   const idxA = orderMap.has(nameA) ? orderMap.get(nameA)! : 999999;
                   const idxB = orderMap.has(nameB) ? orderMap.get(nameB)! : 999999;
                   if (idxA !== idxB) return idxA - idxB;
@@ -1572,7 +1614,7 @@ export class Context {
           for (const entry of this.#fs.readdir(i18nPath)) {
             const name = entry.name;
             if (name.endsWith(".po")) {
-              languages.add(name.replace(/\.po$/, ""));
+              languages.add(name.slice(0, -3));
             }
           }
         } catch {

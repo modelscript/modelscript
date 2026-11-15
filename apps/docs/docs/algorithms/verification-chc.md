@@ -27,8 +27,16 @@ description: "Implementation:"
 
 ### ModelScript Rationale & Modifications
 
-Constrained Horn Clauses (CHCs) represent systems of logical relations of the form:
+Constrained Horn Clauses (CHCs) represent systems of logical transition and safety rules where a background theory constraint and body predicates imply a head predicate:
 $$\forall X. \; \phi(X) \land P_1(X) \land \dots \land P_k(X) \implies H(X)$$
+
+| Symbol                  | Meaning                                                               | Units / Domain                                                |
+| :---------------------- | :-------------------------------------------------------------------- | :------------------------------------------------------------ |
+| $X$                     | Tuple of universally quantified state/model variables                 | Domain-dependent ($\mathbb{R}^n, \mathbb{Z}^m, \mathbb{B}^p$) |
+| $\phi(X)$               | Background theory constraint (e.g., linear real arithmetic)           | Boolean formula                                               |
+| $P_1(X), \dots, P_k(X)$ | Uninterpreted body predicates (e.g., reachable state invariants)      | Boolean predicates                                            |
+| $H(X)$                  | Uninterpreted head predicate (target invariant or `false` for safety) | Boolean predicate                                             |
+
 Spacer solves CHCs by combining inductive generalization, Craig interpolation, and under-approximated reachability trees without bounding the unrolling depth. In ModelScript, Spacer verifies infinite-state state machine transitions and recursive cyber-physical control architectures.
 
 - **Modifications**: Directly integrates with ModelScript's in-WASM CDCL SAT core and Craig interpolator; implements specialized heuristics for linear real arithmetic over cyber-physical invariants.
@@ -65,16 +73,31 @@ Proves whether safety property $P$ holds across all reachable states of a discre
 
 ### ModelScript Rationale & Modifications
 
-For continuous-time stochastic differential equations (Itô diffusions) driven by standard Wiener processes $W_t$:
+For continuous-time stochastic differential equations (Itô diffusions) driven by standard Wiener processes $W_t$, the state evolves under deterministic drift and stochastic diffusion:
 $$dx(t) = f(x) \, dt + \sigma(x) \, dW_t$$
-deterministic trajectories do not exist, and safety verification requires bounding the tail probability that $x(t)$ ever enters an unsafe region $\mathcal{X}_u = \{ x \mid \|x\|_2 \ge r_u \}$.
+Because deterministic trajectories do not exist, safety verification requires bounding the tail probability that $x(t)$ ever enters an unsafe region $\mathcal{X}_u = \{ x \mid \|x\|_2 \ge r_u \}$.
 
-`StochasticBarrierSynthesizer` (`packages/runtime/src/analysis/wasm_stochastic_barrier.ts`) synthesizes non-negative supermartingale barrier candidates $B(x) = x^T P x \ge 0$ using the **infinitesimal generator** $\mathcal{L}$ of the Itô process:
+`StochasticBarrierSynthesizer` (`packages/runtime/src/analysis/wasm_stochastic_barrier.ts`) synthesizes non-negative supermartingale barrier candidates $B(x) = x^T P x \ge 0$ using the **infinitesimal generator** $\mathcal{L}$ of the Itô process, ensuring that the expected value of $B(x)$ decreases on average:
 $$\mathcal{L} B(x) = \nabla B(x) \cdot f(x) + \frac{1}{2} \text{tr}\!\left(\sigma(x) \sigma(x)^T \nabla^2 B(x)\right) \le -c$$
 
-- **Doob's Maximal Supermartingale Inequality**: Bounds the infinite-horizon and finite-horizon probability of unsafe set entry via:
+- **Doob's Maximal Supermartingale Inequality**: Bounds the infinite-horizon probability of ever exiting the safe ball of radius $r_u$ below a target risk threshold $\delta_{\text{risk}}$:
   $$\mathbb{P}\!\left(\sup_{t \ge 0} \|x(t)\|_2 \ge r_u\right) \le \frac{B(x_0) + \frac{\text{tr}(\Sigma P)}{2 \alpha}}{\lambda_{\min}(P) r_u^2} \le \delta_{\text{risk}}$$
-  where $\Sigma = \sigma(0)\sigma(0)^T$ is the diffusion noise covariance and $\alpha$ is the linearized drift decay rate.
+
+  | Symbol                          | Meaning                                                                    | Units / Domain                            |
+  | :------------------------------ | :------------------------------------------------------------------------- | :---------------------------------------- |
+  | $x(t), x_0$                     | Stochastic state vector at time $t$ and initial state $x(0)$               | $\mathbb{R}^n$                            |
+  | $f(x)$                          | Deterministic drift vector field                                           | $\mathbb{R}^n/\text{s}$                   |
+  | $\sigma(x)$                     | State-dependent diffusion matrix                                           | $\mathbb{R}^{n \times m}/\sqrt{\text{s}}$ |
+  | $W_t$                           | $m$-dimensional standard Wiener process (Brownian motion)                  | $\mathbb{R}^m$ ($\sqrt{\text{s}}$)        |
+  | $B(x) = x^T P x$                | Quadratic barrier certificate with symmetric positive-definite $P \succ 0$ | $\mathbb{R}_{\ge 0}$                      |
+  | $\mathcal{L} B(x)$              | Infinitesimal generator (expected time rate of change) of $B(x)$           | $\text{s}^{-1}$                           |
+  | $c$                             | Non-negative drift-decay offset                                            | $\mathbb{R}_{\ge 0}$                      |
+  | $r_u$                           | Unsafe set boundary radius in Euclidean norm                               | $\mathbb{R}_{> 0}$                        |
+  | $\Sigma = \sigma(0)\sigma(0)^T$ | Diffusion noise covariance matrix at the origin                            | $\mathbb{R}^{n \times n}/\text{s}$        |
+  | $\alpha$                        | Linearized drift decay rate                                                | $\text{s}^{-1}$ ($\alpha > 0$)            |
+  | $\lambda_{\min}(P)$             | Minimum eigenvalue of the barrier matrix $P$                               | $\mathbb{R}_{> 0}$                        |
+  | $\delta_{\text{risk}}$          | Maximum admissible failure probability threshold                           | $[0, 1]$                                  |
+
 - **Soundness & Rigor Reporting**: Emits structured `VerificationVerdict` diagnostics distinguishing fast linearized quadratic risk estimates from Sum-of-Squares (SOS) / LP certified supermartingales.
 
 ---
@@ -116,8 +139,16 @@ Safety-critical automotive (ISO 26262 ASIL-D) and avionics (DO-178C DAL-A) stand
 1. **MiL Reference Trajectory Execution**: Simulates the high-level DAE arena (`simulateArenaAsync`) over $[t_{\text{start}}, t_{\text{stop}}]$ to obtain reference trajectories $y^{\text{MiL}}_j(t)$.
 2. **Standalone C99 Code Generation & Cryptographic Hashing**: Invokes `generateStandaloneCSources` (`@modelscript/exchange/fmu`) to emit self-contained, zero-allocation C99 sources (`<Model>_standalone.h`, `<Model>_standalone.c`), computing a SHA-256 artifact digest (`cSourceHash`) for V-cycle traceability.
 3. **Automated Test Harness & Native Compilation**: Synthesizes a deterministic C99 fixed-step RK4 test harness (`<Model>_b2b_harness.c`), compiles the binary via `gcc -O2 -Wall -Wextra -std=c99 -lm`, and streams CSV output trajectories $y^{\text{SiL}}_j(t_k)$.
-4. **Bisimulation & Signal-Tolerance Equivalence Checking**: Aligns SiL samples against binary-searched linearly interpolated MiL trajectories and verifies the combined absolute/relative tolerance envelope across all $K$ time steps and $M$ output signals:
+4. **Bisimulation & Signal-Tolerance Equivalence Checking**: Aligns SiL samples against binary-searched linearly interpolated MiL trajectories and verifies that every output signal remains within a combined absolute and relative tolerance envelope across all time steps:
    $$\forall j \in \{1, \dots, M\}, \; \forall k \in \{1, \dots, K\}: \quad \left| y^{\text{MiL}}_j(t_k) - y^{\text{SiL}}_j(t_k) \right| \le \epsilon_{\text{abs}} + \epsilon_{\text{rel}} \left| y^{\text{MiL}}_j(t_k) \right|$$
+
+   | Symbol                                         | Meaning                                                                  | Units / Domain             |
+   | :--------------------------------------------- | :----------------------------------------------------------------------- | :------------------------- |
+   | $j, M$                                         | Output signal index and total number of monitored signals                | $j \in \{1, \dots, M\}$    |
+   | $k, K$                                         | Sample time index and total number of comparison steps                   | $k \in \{1, \dots, K\}$    |
+   | $y^{\text{MiL}}_j(t_k), y^{\text{SiL}}_j(t_k)$ | Model-in-the-Loop and Software-in-the-Loop values of signal $j$ at $t_k$ | Signal-dependent           |
+   | $\epsilon_{\text{abs}}$                        | Maximum admissible absolute deviation                                    | Signal-dependent ($\ge 0$) |
+   | $\epsilon_{\text{rel}}$                        | Maximum admissible relative deviation                                    | Dimensionless ($\ge 0$)    |
 
 ---
 

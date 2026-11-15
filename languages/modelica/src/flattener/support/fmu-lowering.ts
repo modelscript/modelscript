@@ -14,30 +14,233 @@
  *  3. `ArenaSimulator`: Automatically registering and stepping `FmuSubsystem` co-simulation participants.
  */
 
-import { Causality, Variability, type DAEBuilder, type FmuInstanceMetadata, type SymbolId } from "@modelscript/runtime";
-import { Cst } from "../../../src-gen/bindings.js";
+import {
+  Causality,
+  UnifiedWorkspace,
+  Variability,
+  type DAEBuilder,
+  type FmuInstanceMetadata,
+  type SymbolId,
+} from "@modelscript/runtime";
+import { Cst, type SyntaxNode } from "../../../src-gen/bindings.js";
 import { AnnotationEvaluator } from "../../diagram/annotation-evaluator.js";
+import {
+  stripLeadingDots,
+  stripOuterDoubleQuotes,
+  tokenizeCommentStrippedWords,
+  type CstNodeLike,
+} from "../expressions/cst-utils.js";
+
+const PRIMITIVE_FMU_TYPES = new Set(["Real", "Integer", "Boolean", "String"]);
+
+function parseAnnotationClauseCst(annText: string): CstNodeLike | null {
+  const trimmed = annText.trim();
+  if (!trimmed) return null;
+  const parser = UnifiedWorkspace.getGlobalParser(".mo");
+  if (!parser) return null;
+  const wrapped = `model _MsFmuAnnTmp ${trimmed.endsWith(";") ? trimmed : `${trimmed};`} end _MsFmuAnnTmp;`;
+  const root = parser.parse(wrapped)?.rootNode as CstNodeLike | undefined;
+  return root ? findDirectAnnotationClause(root) : null;
+}
+
+function collectAnnotationElementMods(annNode: CstNodeLike | null | undefined): Map<string, CstNodeLike> {
+  const mods = new Map<string, CstNodeLike>();
+  if (!annNode) return mods;
+  const stack: CstNodeLike[] = [annNode];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) continue;
+    if (cur.type === "element_modification") {
+      const nameNode = cur.childForFieldName?.("name") ?? cur.children?.find((c) => c.type === "name");
+      const modNode = cur.childForFieldName?.("modification") ?? cur.children?.find((c) => c.type === "modification");
+      const modExpr =
+        modNode?.childForFieldName?.("expression") ??
+        modNode?.children?.find((c) => c.type === "modification_expression") ??
+        modNode?.children?.find((c) => c.type === "expression") ??
+        null;
+      const exprNode = modExpr?.children?.find((c) => c.type === "expression") ?? modExpr;
+      const key = nameNode?.text?.trim()?.toLowerCase();
+      if (key && exprNode && !mods.has(key)) {
+        mods.set(key, exprNode);
+      }
+      continue;
+    }
+    const kids = cur.children || [];
+    for (let i = kids.length - 1; i >= 0; i--) {
+      if (kids[i]) stack.push(kids[i]!);
+    }
+  }
+  return mods;
+}
+
+function isQuotedStringCstNode(cur: CstNodeLike | null | undefined): boolean {
+  if (!cur) return false;
+  if (cur.type === "string_literal" || cur.type === "STRING") return true;
+  if (
+    (cur.childCount === 0 || (Array.isArray(cur.children) && cur.children.length === 0)) &&
+    typeof cur.text === "string"
+  ) {
+    const t = cur.text.trim();
+    return t.length >= 2 && t.startsWith('"') && t.endsWith('"');
+  }
+  return false;
+}
+
+function extractStringLiteralFromCst(exprNode: CstNodeLike | null | undefined): string | undefined {
+  if (!exprNode) return undefined;
+  const stack: CstNodeLike[] = [exprNode];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) continue;
+    if (isQuotedStringCstNode(cur)) {
+      return stripOuterDoubleQuotes((cur.text ?? "").trim());
+    }
+    const kids = cur.children || [];
+    for (let i = kids.length - 1; i >= 0; i--) {
+      if (kids[i]) stack.push(kids[i]!);
+    }
+  }
+  const raw = exprNode.text?.trim();
+  if (raw && raw.startsWith('"') && raw.endsWith('"') && raw.length >= 2) {
+    return stripOuterDoubleQuotes(raw);
+  }
+  return undefined;
+}
+
+function extractTerminalMappingPairsFromCst(
+  exprNode: CstNodeLike | null | undefined,
+): { portMember: string; fmuVar: string; terminalName?: string }[] {
+  const pairs: { portMember: string; fmuVar: string; terminalName?: string }[] = [];
+  if (!exprNode) return pairs;
+  const collectStrings = (node: CstNodeLike): string[] => {
+    const out: string[] = [];
+    const stack: CstNodeLike[] = [node];
+    while (stack.length > 0) {
+      const cur = stack.pop();
+      if (!cur) continue;
+      if (isQuotedStringCstNode(cur)) {
+        out.push(stripOuterDoubleQuotes((cur.text ?? "").trim()));
+        continue;
+      }
+      const kids = cur.children || [];
+      for (let i = kids.length - 1; i >= 0; i--) {
+        if (kids[i]) stack.push(kids[i]!);
+      }
+    }
+    return out;
+  };
+  const stack: CstNodeLike[] = [exprNode];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) continue;
+    if (cur.type === "output_expression_list" || (cur.type === "primary" && cur.children?.[0]?.text?.trim() === "(")) {
+      const strs = collectStrings(cur);
+      if (strs.length >= 2) {
+        pairs.push({ portMember: strs[0]!, fmuVar: strs[1]! });
+        continue;
+      }
+    }
+    const kids = cur.children || [];
+    for (let i = kids.length - 1; i >= 0; i--) {
+      if (kids[i]) stack.push(kids[i]!);
+    }
+  }
+  return pairs;
+}
+
+function collectDirectPrimitiveIoFromCst(
+  classCst: CstNodeLike,
+  inputs: string[],
+  outputs: string[],
+  parameters: string[],
+): void {
+  const stack: CstNodeLike[] = [classCst];
+  let skipRootCheck = true;
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) continue;
+    const t = cur.type;
+    if (!skipRootCheck && (t === "class_definition" || t === "short_class_definition" || t === "annotation_clause")) {
+      continue;
+    }
+    skipRootCheck = false;
+    if (t === "component_clause") {
+      let typeSpecText = "";
+      const prefixWords: string[] = [];
+      const kids = cur.children || [];
+      for (const ch of kids) {
+        if (ch.type === "type_specifier") {
+          typeSpecText = stripLeadingDots((ch.text ?? "").trim());
+          break;
+        }
+        if (ch.type !== "comment" && ch.type !== "line_comment" && ch.type !== "block_comment") {
+          prefixWords.push(...tokenizeCommentStrippedWords(ch.text ?? ""));
+        }
+      }
+      if (PRIMITIVE_FMU_TYPES.has(typeSpecText)) {
+        const targetList = prefixWords.includes("input")
+          ? inputs
+          : prefixWords.includes("output")
+            ? outputs
+            : prefixWords.includes("parameter")
+              ? parameters
+              : null;
+        if (targetList) {
+          const declStack: CstNodeLike[] = [cur];
+          while (declStack.length > 0) {
+            const dCur = declStack.pop();
+            if (!dCur) continue;
+            if (dCur.type === "declaration") {
+              const nameNode =
+                Cst.Declaration.name(dCur as SyntaxNode) ?? dCur.children?.find((c) => c.type === "identifier");
+              const nm = nameNode?.text?.trim();
+              if (nm && !targetList.includes(nm)) targetList.push(nm);
+              continue;
+            }
+            const dKids = dCur.children || [];
+            for (let i = dKids.length - 1; i >= 0; i--) {
+              if (dKids[i]) declStack.push(dKids[i]!);
+            }
+          }
+        }
+      }
+      continue;
+    }
+    const kids = cur.children || [];
+    for (let i = kids.length - 1; i >= 0; i--) {
+      if (kids[i]) stack.push(kids[i]!);
+    }
+  }
+}
 
 /**
  * Finds an annotation clause that directly belongs to the given class or component,
  * without descending into nested sub-classes or unrelated scopes.
  */
-export function findDirectAnnotationClause(cstNode: any, depth = 0): any | null {
+export function findDirectAnnotationClause(cstNode: CstNodeLike | null | undefined, depth = 0): CstNodeLike | null {
   if (!cstNode || depth > 8) return null;
-  if (Cst.AnnotationClause.is(cstNode) || cstNode.typeId === 185 || cstNode.type === "annotation_clause") {
+  if (
+    Cst.AnnotationClause.is(cstNode as SyntaxNode) ||
+    cstNode.typeId === 185 ||
+    cstNode.type === "annotation_clause"
+  ) {
     return cstNode;
   }
   const children = cstNode.children || cstNode.namedChildren;
   if (Array.isArray(children)) {
     // Check direct children first for AnnotationClause
     for (const child of children) {
-      if (Cst.AnnotationClause.is(child) || child.typeId === 185 || child.type === "annotation_clause") {
+      if (Cst.AnnotationClause.is(child as SyntaxNode) || child.typeId === 185 || child.type === "annotation_clause") {
         return child;
       }
     }
     // Only descend into non-nested-class children
     for (const child of children) {
-      if (Cst.ClassDefinition.is(child) || Cst.ShortClassDefinition.is(child) || child.type === "class_definition") {
+      if (
+        Cst.ClassDefinition.is(child as SyntaxNode) ||
+        Cst.ShortClassDefinition.is(child as SyntaxNode) ||
+        child.type === "class_definition"
+      ) {
         continue;
       }
       const found = findDirectAnnotationClause(child, depth + 1);
@@ -58,75 +261,52 @@ export function extractFmuAnnotation(
   const annNode = findDirectAnnotationClause(cstNode);
   if (!annNode) return null;
   const text = typeof annNode.text === "string" ? annNode.text : "";
-  if (!text.includes("__ModelScript_fmuPath") && !text.includes("__modelscript_fmupath")) {
+  if (!text.toLowerCase().includes("__modelscript_fmupath")) {
     return null;
   }
+  const structuredAnn =
+    typeof annNode.childCount === "number" && annNode.childCount > 0 ? annNode : parseAnnotationClauseCst(text);
+  const annMods = collectAnnotationElementMods(structuredAnn);
 
   // 1. Path to FMU / black-box archive
-  let fmuPath: string | undefined;
-  const pathMatch = text.match(/__ModelScript_fmuPath\s*=\s*"([^"]+)"/i);
-  if (pathMatch && pathMatch[1]) {
-    fmuPath = pathMatch[1];
-  } else if (evaluator) {
+  let fmuPath = extractStringLiteralFromCst(annMods.get("__modelscript_fmupath"));
+  if (!fmuPath && evaluator) {
     const evalRes = evaluator.evaluate(annNode, "__modelscript_fmupath");
     if (typeof evalRes === "string") fmuPath = evalRes;
   }
   if (!fmuPath) return null;
 
   // 2. FMI Version
-  let fmiVersion: string | undefined = "2.0";
-  const fmiMatch = text.match(/__ModelScript_fmiVersion\s*=\s*"([^"]+)"/i);
-  if (fmiMatch && fmiMatch[1]) {
-    fmiVersion = fmiMatch[1];
-  } else if (evaluator) {
+  let fmiVersion: string | undefined = extractStringLiteralFromCst(annMods.get("__modelscript_fmiversion"));
+  if (!fmiVersion && evaluator) {
     const evalRes = evaluator.evaluate(cstNode, "__modelscript_fmiversion");
     if (typeof evalRes === "string") fmiVersion = evalRes;
   }
+  if (!fmiVersion) fmiVersion = "2.0";
 
   // 3. GUID / UID
-  let guid: string | undefined;
-  const guidMatch = text.match(/__ModelScript_guid\s*=\s*"([^"]+)"/i);
-  if (guidMatch && guidMatch[1]) {
-    guid = guidMatch[1];
-  } else if (evaluator) {
+  let guid: string | undefined = extractStringLiteralFromCst(annMods.get("__modelscript_guid"));
+  if (!guid && evaluator) {
     const evalRes = evaluator.evaluate(cstNode, "__modelscript_guid");
     if (typeof evalRes === "string") guid = evalRes;
   }
 
   // 4. Preferred Kind ("cs" | "me" | "auto")
-  let preferredKind: "cs" | "me" | "auto" | undefined = "cs";
-  const kindMatch = text.match(/__ModelScript_preferredKind\s*=\s*"([^"]+)"/i);
-  if (kindMatch && kindMatch[1]) {
-    preferredKind = kindMatch[1] as "cs" | "me" | "auto";
-  } else if (evaluator) {
+  let preferredKindStr = extractStringLiteralFromCst(annMods.get("__modelscript_preferredkind"));
+  if (!preferredKindStr && evaluator) {
     const evalRes = evaluator.evaluate(cstNode, "__modelscript_preferredkind");
-    if (typeof evalRes === "string") preferredKind = evalRes as "cs" | "me" | "auto";
+    if (typeof evalRes === "string") preferredKindStr = evalRes;
   }
+  const preferredKind: "cs" | "me" | "auto" | undefined =
+    (preferredKindStr as "cs" | "me" | "auto" | undefined) ?? "cs";
 
   // 5. Model Identifiers
-  let csModelIdentifier: string | undefined;
-  const csMatch = text.match(/__ModelScript_csModelIdentifier\s*=\s*"([^"]+)"/i);
-  if (csMatch && csMatch[1]) {
-    csModelIdentifier = csMatch[1];
-  }
-
-  let meModelIdentifier: string | undefined;
-  const meMatch = text.match(/__ModelScript_meModelIdentifier\s*=\s*"([^"]+)"/i);
-  if (meMatch && meMatch[1]) {
-    meModelIdentifier = meMatch[1];
-  }
+  const csModelIdentifier = extractStringLiteralFromCst(annMods.get("__modelscript_csmodelidentifier"));
+  const meModelIdentifier = extractStringLiteralFromCst(annMods.get("__modelscript_memodelidentifier"));
 
   // 6. Terminal Mappings
-  let terminalMapping: { portMember: string; fmuVar: string; terminalName?: string }[] | undefined;
-  const tmMatch = text.match(/__ModelScript_terminalMapping\s*=\s*\{([\s\S]*?)\}/i);
-  if (tmMatch && tmMatch[1]) {
-    terminalMapping = [];
-    const pairRe = /\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)/g;
-    let m: RegExpExecArray | null;
-    while ((m = pairRe.exec(tmMatch[1])) !== null) {
-      terminalMapping.push({ portMember: m[1]!, fmuVar: m[2]! });
-    }
-  }
+  const tmExpr = annMods.get("__modelscript_terminalmapping");
+  const terminalMapping = tmExpr ? extractTerminalMappingPairsFromCst(tmExpr) : undefined;
 
   return {
     fmuPath,
@@ -273,23 +453,9 @@ export function extractAndRegisterFmuMetadata(flattener: any, dae: DAEBuilder, r
         }
       }
 
-      // Fallback: inspect raw CST text for declarations if metadata was not populated
-      if (inputs.length === 0 && outputs.length === 0 && classCst?.text) {
-        const inputRe = /\binput\s+(?:Real|Integer|Boolean|String)\s+([A-Za-z0-9_]+)/g;
-        let m: RegExpExecArray | null;
-        while ((m = inputRe.exec(classCst.text)) !== null) {
-          if (!inputs.includes(m[1]!)) inputs.push(m[1]!);
-        }
-
-        const outputRe = /\boutput\s+(?:Real|Integer|Boolean|String)\s+([A-Za-z0-9_]+)/g;
-        while ((m = outputRe.exec(classCst.text)) !== null) {
-          if (!outputs.includes(m[1]!)) outputs.push(m[1]!);
-        }
-
-        const paramRe = /\bparameter\s+(?:Real|Integer|Boolean|String)\s+([A-Za-z0-9_]+)/g;
-        while ((m = paramRe.exec(classCst.text)) !== null) {
-          if (!parameters.includes(m[1]!)) parameters.push(m[1]!);
-        }
+      // Fallback: inspect CST component_clause nodes if metadata was not populated
+      if (inputs.length === 0 && outputs.length === 0 && classCst) {
+        collectDirectPrimitiveIoFromCst(classCst, inputs, outputs, parameters);
       }
 
       fmuInstances.push({

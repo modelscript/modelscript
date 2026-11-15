@@ -144,7 +144,7 @@ export const get = request;
 export const Agent = class {};
 
 // --- module ---
-export const createRequire = (): any => () => ({});
+export const createRequire = (): any => Object.assign(() => ({}), { resolve: (id: string) => id });
 export const builtinModules: string[] = [];
 
 // --- worker_threads ---

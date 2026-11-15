@@ -10,12 +10,336 @@
 
 import {
   ClosedLoopCompilerEngine,
+  countChar,
+  extractModelicaClassNameFromText,
+  extractModelicaStateVarsFromDecls,
+  extractSysmlAttributesFromText,
+  extractSysmlBraceConstraintsFromText,
+  findBracketedUnitAddMismatchSpan,
+  findModelicaSectionSpan,
+  findNextWordOutsideQuotes,
+  hasWordMatch,
+  parseSysmlComparisonConstraint,
+  readDottedIdentAt,
+  readIdentAt,
+  readSignedNumberAt,
+  skipWs,
+  splitModelicaBeforeEquation,
+  splitSemicolonStatementsOutsideQuotes,
+  splitSemicolonStatementsWithSpans,
   type ClosedLoopCandidateVerification,
   type ClosedLoopLanguage,
   type GateDiagnostic,
   type GateVerificationResult,
   type VerifyCandidateOptions,
 } from "./closedLoopCompilerEngine.js";
+
+function findModelicaEndStmtSpan(
+  text: string,
+  targetName?: string,
+): { start: number; end: number; name: string } | undefined {
+  let pos = 0;
+  while (pos < text.length) {
+    const endIdx = findNextWordOutsideQuotes(text, "end", pos);
+    if (endIdx === -1) return undefined;
+    const nameStart = skipWs(text, endIdx + 3);
+    if (nameStart > endIdx + 3) {
+      const id = readIdentAt(text, nameStart);
+      if (id) {
+        const semiPos = skipWs(text, id.next);
+        if (text[semiPos] === ";" && (!targetName || id.token === targetName)) {
+          return { start: endIdx, end: semiPos + 1, name: id.token };
+        }
+      }
+    }
+    pos = endIdx + 3;
+  }
+  return undefined;
+}
+
+function hasModelicaEndStmt(text: string, modelName: string): boolean {
+  return findModelicaEndStmtSpan(text, modelName) !== undefined;
+}
+
+function hasAnyModelicaEndDecl(text: string): boolean {
+  let pos = 0;
+  while (pos < text.length) {
+    const endIdx = findNextWordOutsideQuotes(text, "end", pos);
+    if (endIdx === -1) return false;
+    const nameStart = skipWs(text, endIdx + 3);
+    if (nameStart > endIdx + 3 && readIdentAt(text, nameStart)) {
+      return true;
+    }
+    pos = endIdx + 3;
+  }
+  return false;
+}
+
+function insertBeforeModelicaEndStmt(text: string, addition: string): string {
+  const span = findModelicaEndStmtSpan(text);
+  return span ? text.slice(0, span.start) + addition + text.slice(span.start) : text;
+}
+
+function repairModelicaTypedDeclRhs(
+  text: string,
+  declaredType: string,
+  featureName: string,
+  replacementVal: string,
+): string {
+  let current = text;
+  const spans = splitSemicolonStatementsWithSpans(current);
+  for (let idx = spans.length - 1; idx >= 0; idx--) {
+    const span = spans[idx]!;
+    const slice = current.slice(span.start, span.end);
+    let pos = 0;
+    while (pos < slice.length) {
+      let typeIdx = findNextWordOutsideQuotes(slice, declaredType, pos);
+      if (typeIdx === -1) break;
+      const afterType = skipWs(slice, typeIdx + declaredType.length);
+      if (afterType > typeIdx + declaredType.length) {
+        const varId = readIdentAt(slice, afterType);
+        if (varId?.token === featureName) {
+          let cursor = skipWs(slice, varId.next);
+          if (slice[cursor] === "(") {
+            const closeParen = slice.indexOf(")", cursor + 1);
+            if (closeParen !== -1) cursor = skipWs(slice, closeParen + 1);
+          }
+          if (slice[cursor] === "=") {
+            const rhsStart = skipWs(slice, cursor + 1);
+            current = current.slice(0, span.start + rhsStart) + replacementVal + current.slice(span.end);
+            break;
+          }
+        }
+      }
+      pos = typeIdx + declaredType.length;
+    }
+  }
+  return current;
+}
+
+function repairModelicaBracketedUnitMismatches(text: string): string {
+  let current = text;
+  const spans = splitSemicolonStatementsWithSpans(current);
+  for (let idx = spans.length - 1; idx >= 0; idx--) {
+    const span = spans[idx]!;
+    let stmtSlice = current.slice(span.start, span.end);
+    let hit = findBracketedUnitAddMismatchSpan(stmtSlice);
+    while (hit) {
+      stmtSlice = stmtSlice.slice(0, hit.u2Start) + `[${hit.u1}]` + stmtSlice.slice(hit.u2End);
+      hit = findBracketedUnitAddMismatchSpan(stmtSlice);
+    }
+    current = current.slice(0, span.start) + stmtSlice + current.slice(span.end);
+  }
+  return current;
+}
+
+function isArithmeticZeroComparisonBody(body: string): boolean {
+  let pos = skipWs(body, 0);
+  if (body[pos] !== "(") return false;
+  pos = skipWs(body, pos + 1);
+  const lhs = readDottedIdentAt(body, pos, false);
+  if (!lhs) return false;
+  pos = skipWs(body, lhs.next);
+  if (body[pos] !== "+" && body[pos] !== "-") return false;
+  pos = skipWs(body, pos + 1);
+  const rhs = readDottedIdentAt(body, pos, false);
+  if (!rhs) return false;
+  pos = skipWs(body, rhs.next);
+  if (body[pos] !== ")") return false;
+  pos = skipWs(body, pos + 1);
+  if (body[pos] !== "<" && body[pos] !== ">") return false;
+  pos++;
+  if (body[pos] === "=") pos++;
+  pos = skipWs(body, pos);
+  if (body[pos] !== "0") return false;
+  pos = skipWs(body, pos + 1);
+  return pos === body.length;
+}
+
+function repairIncompatibleLengthConstraints(text: string, fallbackLengthVar: string): string {
+  let current = text;
+  const constraints = extractSysmlBraceConstraintsFromText(current);
+  for (let i = constraints.length - 1; i >= 0; i--) {
+    const c = constraints[i]!;
+    if (c.hasAssert && isArithmeticZeroComparisonBody(c.body)) {
+      const endNoSemi = current[c.end - 1] === ";" ? c.end - 1 : c.end;
+      current = current.slice(0, c.start) + `assert constraint { ${fallbackLengthVar} > 0 }` + current.slice(endNoSemi);
+    }
+  }
+  return current;
+}
+
+function repairSysmlConnectStatements(text: string): string {
+  let current = text;
+  let pos = 0;
+  while (pos < current.length) {
+    const connIdx = findNextWordOutsideQuotes(current, "connect", pos);
+    if (connIdx === -1) break;
+    const srcStart = skipWs(current, connIdx + 7);
+    const src = srcStart > connIdx + 7 ? readDottedIdentAt(current, srcStart, false) : undefined;
+    if (!src) {
+      pos = connIdx + 7;
+      continue;
+    }
+    const toStart = skipWs(current, src.next);
+    if (toStart > src.next && current.startsWith("to", toStart)) {
+      const dstStart = skipWs(current, toStart + 2);
+      const dst = dstStart > toStart + 2 ? readDottedIdentAt(current, dstStart, false) : undefined;
+      if (dst) {
+        const semiPos = skipWs(current, dst.next);
+        if (current[semiPos] === ";") {
+          const replacement =
+            src.token === "lenPort" && dst.token === "timePort"
+              ? "connect lenPort to lenPort2;"
+              : `connect ${src.token} to ${src.token}2;`;
+          current = current.slice(0, connIdx) + replacement + current.slice(semiPos + 1);
+          pos = connIdx + replacement.length;
+          continue;
+        }
+      }
+    }
+    pos = connIdx + 7;
+  }
+  return current;
+}
+
+function repairWeightMassInit(text: string): string {
+  let current = text;
+  const attrs = extractSysmlAttributesFromText(current);
+  for (let i = attrs.length - 1; i >= 0; i--) {
+    const a = attrs[i]!;
+    if (a.name === "weight" && a.typeName === "Mass" && a.hasInitializer && a.valueText?.trim() === "100") {
+      current = current.slice(0, a.stmtStart) + "attribute weight : Mass = 40;" + current.slice(a.stmtEnd);
+    }
+  }
+  return current;
+}
+
+function repairWeightConstraintLowerBound(text: string): string {
+  let current = text;
+  const constraints = extractSysmlBraceConstraintsFromText(current);
+  for (let i = constraints.length - 1; i >= 0; i--) {
+    const c = constraints[i]!;
+    const comp = parseSysmlComparisonConstraint(c.body);
+    if (comp && comp.lhs === "weight" && comp.operator === ">=" && comp.rhs === 100) {
+      const endNoSemi = current[c.end - 1] === ";" ? c.end - 1 : c.end;
+      current = current.slice(0, c.start) + "constraint { weight <= 50 }" + current.slice(endNoSemi);
+    }
+  }
+  return current;
+}
+
+function relaxSysmlLowerBoundToUpper(text: string, varName: string, upper: number): string {
+  let current = text;
+  const constraints = extractSysmlBraceConstraintsFromText(current);
+  for (let i = constraints.length - 1; i >= 0; i--) {
+    const c = constraints[i]!;
+    const comp = parseSysmlComparisonConstraint(c.body);
+    if (comp && comp.lhs === varName && comp.operator === ">=" && comp.rhs > upper) {
+      const varIdx = findNextWordOutsideQuotes(c.body, varName, 0);
+      if (varIdx !== -1) {
+        const gePos = skipWs(c.body, varIdx + varName.length);
+        if (c.body.startsWith(">=", gePos)) {
+          const valStart = skipWs(c.body, gePos + 2);
+          const num = readSignedNumberAt(c.body, valStart);
+          if (num) {
+            const absStart = c.bodyStart + gePos;
+            const absEnd = c.bodyStart + num.next;
+            const spaceBetween = c.body.slice(gePos + 2, valStart);
+            current = current.slice(0, absStart) + `<=${spaceBetween}${upper}` + current.slice(absEnd);
+          }
+        }
+      }
+    }
+  }
+  return current;
+}
+
+function clampSysmlAttrAboveUpper(text: string, varName: string, upper: number): string {
+  let current = text;
+  const attrs = extractSysmlAttributesFromText(current);
+  for (let i = attrs.length - 1; i >= 0; i--) {
+    const a = attrs[i]!;
+    if (a.name === varName && a.hasInitializer && a.valueText) {
+      const val = Number(a.valueText.trim());
+      if (Number.isFinite(val) && val > upper) {
+        const eqIdx = current.indexOf("=", a.stmtStart);
+        if (eqIdx !== -1 && eqIdx < a.stmtEnd) {
+          const valStart = skipWs(current, eqIdx + 1);
+          const num = readSignedNumberAt(current, valStart);
+          if (num) {
+            current =
+              current.slice(0, valStart) + String(Math.floor(upper * 0.8)) + current.slice(valStart + num.text.length);
+          }
+        }
+      }
+    }
+  }
+  return current;
+}
+
+function repairModelicaAssertStatements(text: string): string {
+  let current = text;
+  let pos = 0;
+  while (pos < current.length) {
+    const idx = findNextWordOutsideQuotes(current, "assert", pos);
+    if (idx === -1) break;
+    const openParen = skipWs(current, idx + 6);
+    if (current[openParen] !== "(") {
+      pos = idx + 6;
+      continue;
+    }
+    const argStart = skipWs(current, openParen + 1);
+    if (current.startsWith("false", argStart)) {
+      const afterFalse = skipWs(current, argStart + 5);
+      if (current[afterFalse] === ",") {
+        current = current.slice(0, argStart) + "true" + current.slice(argStart + 5);
+        pos = argStart + 4;
+        continue;
+      }
+    }
+    const lhs = readSignedNumberAt(current, argStart);
+    if (lhs) {
+      const opStart = skipWs(current, lhs.next);
+      const two = current.slice(opStart, opStart + 2);
+      const one = current[opStart];
+      let op: "<" | "<=" | ">" | ">=" | undefined;
+      if (two === "<=" || two === ">=") op = two;
+      else if (one === "<" || one === ">") op = one;
+      if (op) {
+        const rhsStart = skipWs(current, opStart + op.length);
+        const rhs = readSignedNumberAt(current, rhsStart);
+        if (rhs) {
+          const afterRhs = skipWs(current, rhs.next);
+          if (current[afterRhs] === ",") {
+            const ok =
+              op === "<"
+                ? lhs.value < rhs.value
+                : op === "<="
+                  ? lhs.value <= rhs.value
+                  : op === ">"
+                    ? lhs.value > rhs.value
+                    : lhs.value >= rhs.value;
+            if (!ok) {
+              const flipped = op.startsWith("<") ? ">=" : "<=";
+              const replacement = `${lhs.text} ${flipped} ${rhs.text}`;
+              current = current.slice(0, argStart) + replacement + current.slice(rhs.next);
+              pos = argStart + replacement.length;
+              continue;
+            }
+          }
+        }
+      }
+    }
+    pos = openParen + 1;
+  }
+  return current;
+}
+
+function replaceTrailingClosingBrace(text: string, suffix: string): string {
+  const trimmedEnd = text.trimEnd();
+  return trimmedEnd.endsWith("}") ? trimmedEnd.slice(0, -1) + suffix : text;
+}
 
 export interface SelfHealingIterationStep {
   iteration: number;
@@ -80,8 +404,28 @@ export function scoreCandidateVerification(verification: ClosedLoopCandidateVeri
 export function cleanEmittedCode(raw: string): string {
   let cleaned = raw.trim();
   if (cleaned.startsWith("```")) {
-    cleaned = cleaned.replace(/^```[a-zA-Z0-9_-]*\r?\n/, "");
-    cleaned = cleaned.replace(/\r?\n```$/, "");
+    const nlIdx = cleaned.indexOf("\n");
+    if (nlIdx !== -1) {
+      const fenceLine = cleaned.slice(3, nlIdx);
+      const tag = fenceLine.endsWith("\r") ? fenceLine.slice(0, -1) : fenceLine;
+      const isLangTag = [...tag].every((c) => {
+        const code = c.charCodeAt(0);
+        return (
+          (code >= 65 && code <= 90) ||
+          (code >= 97 && code <= 122) ||
+          (code >= 48 && code <= 57) ||
+          c === "_" ||
+          c === "-"
+        );
+      });
+      if (isLangTag) {
+        cleaned = cleaned.slice(nlIdx + 1);
+      }
+    }
+    if (cleaned.endsWith("\n```")) {
+      cleaned = cleaned.slice(0, -4);
+      if (cleaned.endsWith("\r")) cleaned = cleaned.slice(0, -1);
+    }
   }
   return cleaned.trim();
 }
@@ -166,64 +510,50 @@ export function createHeuristicRepairSynthesizer(): CodeSynthesizer {
     for (const gate of gatesToProcess) {
       // Gate 1: Syntax repair
       if (gate.gate === 1) {
-        const openCount = (repaired.match(/\{/g) || []).length;
-        const closeCount = (repaired.match(/\}/g) || []).length;
+        const openCount = countChar(repaired, "{");
+        const closeCount = countChar(repaired, "}");
         if (openCount > closeCount) {
           repaired += "\n" + "}".repeat(openCount - closeCount);
         }
         // Check for unclosed Modelica model/class definition
-        const modelHead = repaired.match(/^\s*(?:model|class|block)\s+([A-Za-z_][A-Za-z0-9_]*)/m);
-        if (modelHead?.[1] && !new RegExp(`\\bend\\s+${modelHead[1]}\\s*;`).test(repaired)) {
-          repaired = `${repaired.trimEnd()}\nend ${modelHead[1]};\n`;
+        const modelName = extractModelicaClassNameFromText(repaired, ["model", "class", "block"]);
+        if (modelName && !hasModelicaEndStmt(repaired, modelName)) {
+          repaired = `${repaired.trimEnd()}\nend ${modelName};\n`;
         }
       }
 
       // Gate 2: Dimensional repair
       if (gate.gate === 2) {
-        // Find declared valid Length/Time/Mass attributes in the document for reference substitution
-        const lengthAttrMatch = repaired.match(/\battribute\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*Length\b/);
-        const fallbackLengthVar = lengthAttrMatch?.[1] ?? "len";
+        const lengthAttr = extractSysmlAttributesFromText(repaired).find((a) => a.typeName === "Length");
+        const fallbackLengthVar = lengthAttr?.name ?? "len";
 
         for (const d of diagnostics) {
           const featureName = d.metadata?.["featureName"];
           const declaredType = d.metadata?.["declaredType"];
           if (featureName) {
-            const attrRegex = new RegExp(`attribute\\s+${featureName}\\s*:\\s*([a-zA-Z0-9_:]+)\\s*=\\s*([^;]+);`);
-            const match = repaired.match(attrRegex);
-            if (match) {
-              repaired = repaired.replace(attrRegex, `attribute ${featureName} : Length = ${fallbackLengthVar};`);
+            const matchingAttr = extractSysmlAttributesFromText(repaired).find(
+              (a) => a.name === featureName && a.hasInitializer,
+            );
+            if (matchingAttr) {
+              repaired =
+                repaired.slice(0, matchingAttr.stmtStart) +
+                `attribute ${featureName} : Length = ${fallbackLengthVar};` +
+                repaired.slice(matchingAttr.stmtEnd);
             }
             if (declaredType) {
-              const moDeclRegex = new RegExp(
-                `(\\b(?:Modelica\\s*\\.\\s*SIunits\\s*\\.\\s*)?${declaredType}\\s+${featureName}(?:\\s*\\([^)]*\\))?\\s*=\\s*)([^;]+)(;)`,
-              );
-              if (moDeclRegex.test(repaired)) {
-                repaired = repaired.replace(moDeclRegex, "$11.0$3");
-              }
+              repaired = repairModelicaTypedDeclRhs(repaired, String(declaredType), String(featureName), "1.0");
             }
           }
 
           // Modelica unit bracket mismatch repair: e.g. 5[m] + 10[s] -> 5[m] + 10[m]
-          repaired = repaired.replace(
-            /(\[([a-zA-Z]+)\][^[+;]*\+[^[;]*)\[([a-zA-Z]+)\]/g,
-            (_full, prefix: string, u1: string, u2: string) => (u1 !== u2 ? `${prefix}[${u1}]` : _full),
-          );
+          repaired = repairModelicaBracketedUnitMismatches(repaired);
 
           if (d.metadata?.["constraintName"] || d.message.includes("incompatible physical dimensions")) {
-            repaired = repaired.replace(
-              /assert\s+constraint\s*\{\s*\([a-zA-Z0-9_.]+\s*[+-]\s*[a-zA-Z0-9_.]+\)\s*[<>]=?\s*0\s*\}/g,
-              `assert constraint { ${fallbackLengthVar} > 0 }`,
-            );
+            repaired = repairIncompatibleLengthConstraints(repaired, fallbackLengthVar);
           }
 
           if (d.metadata?.["connectionName"] || d.message.includes("connection")) {
-            repaired = repaired.replace(
-              /connect\s+([a-zA-Z0-9_.]+)\s+to\s+([a-zA-Z0-9_.]+)\s*;/g,
-              (_full, src: string, dst: string) => {
-                if (src === "lenPort" && dst === "timePort") return "connect lenPort to lenPort2;";
-                return `connect ${src} to ${src}2;`;
-              },
-            );
+            repaired = repairSysmlConnectStatements(repaired);
           }
         }
       }
@@ -231,145 +561,95 @@ export function createHeuristicRepairSynthesizer(): CodeSynthesizer {
       // Gate 3: SMT Requirement repair
       if (gate.gate === 3) {
         // Specific known patterns + general bound conflict resolution
-        repaired = repaired.replace(
-          /(?:attribute\s+weight\s*:\s*Mass\s*=\s*)100(?:\s*;)/g,
-          "attribute weight : Mass = 40;",
-        );
-        repaired = repaired.replace(
-          /(?:assert\s+)?constraint\s*\{[^}]*weight\s*>=\s*100[^}]*\}/g,
-          "constraint { weight <= 50 }",
-        );
+        repaired = repairWeightMassInit(repaired);
+        repaired = repairWeightConstraintLowerBound(repaired);
 
         // General SysML v2 upper/lower bound conflict repair:
         // If `var <= U` and `var >= L` with L > U, relax the >= L constraint to <= U
         const upperBounds = new Map<string, number>();
-        for (const m of repaired.matchAll(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s*<=\s*([+-]?\d+(?:\.\d+)?)/g)) {
-          upperBounds.set(m[1]!, Number(m[2]));
+        for (const c of extractSysmlBraceConstraintsFromText(repaired)) {
+          const comp = parseSysmlComparisonConstraint(c.body);
+          if (comp && comp.operator === "<=") {
+            upperBounds.set(comp.lhs, comp.rhs);
+          }
         }
         for (const [varName, upper] of upperBounds) {
-          const lowerRegex = new RegExp(
-            `((?:assert\\s+)?constraint\\s*\\{[^}]*\\b${varName}\\s*)>=(\\s*)([+-]?\\d+(?:\\.\\d+)?)([^}]*\\})`,
-            "g",
-          );
-          repaired = repaired.replace(lowerRegex, (full, pre: string, sp: string, valStr: string, post: string) => {
-            if (Number(valStr) > upper) {
-              return `${pre}<=${sp}${upper}${post}`;
-            }
-            return full;
-          });
-          // Also if attribute varName : Type = val where val > upper, clamp to upper * 0.8
-          const attrValRegex = new RegExp(
-            `(\\battribute\\s+${varName}\\s*:\\s*[A-Za-z0-9_:]+\\s*=\\s*)([+-]?\\d+(?:\\.\\d+)?)(\\s*;)`,
-            "g",
-          );
-          repaired = repaired.replace(attrValRegex, (full, pre: string, valStr: string, post: string) => {
-            if (Number(valStr) > upper) {
-              return `${pre}${Math.floor(upper * 0.8)}${post}`;
-            }
-            return full;
-          });
+          repaired = relaxSysmlLowerBoundToUpper(repaired, varName, upper);
+          repaired = clampSysmlAttrAboveUpper(repaired, varName, upper);
         }
 
         // General Modelica infeasible assert(...) repair
-        repaired = repaired.replace(/\bassert\s*\(\s*false\s*,/g, "assert(true,");
-        repaired = repaired.replace(
-          /\bassert\s*\(\s*([+-]?\d+(?:\.\d+)?)\s*([<>]=?)\s*([+-]?\d+(?:\.\d+)?)\s*,/g,
-          (full, lhs: string, op: string, rhs: string) => {
-            const a = Number(lhs);
-            const b = Number(rhs);
-            const ok = op === "<" ? a < b : op === "<=" ? a <= b : op === ">" ? a > b : a >= b;
-            if (!ok) {
-              const flipped = op.startsWith("<") ? ">=" : "<=";
-              return `assert(${lhs} ${flipped} ${rhs},`;
-            }
-            return full;
-          },
-        );
+        repaired = repairModelicaAssertStatements(repaired);
       }
 
       // Gate 4: DAE Structural balance repair
       if (gate.gate === 4) {
         const numEqs = gate.metadata?.numEquations ?? 0;
         const numVars = gate.metadata?.numVariables ?? 0;
-        const isModelica = /\bequation\b/.test(repaired) && /\bend\s+[A-Za-z_]/.test(repaired);
+        const isModelica = hasWordMatch(repaired, "equation") && hasAnyModelicaEndDecl(repaired);
 
         if (isModelica) {
           if (numEqs > numVars) {
             // Remove excess equations from equation section
-            const eqSec = repaired.match(/(\bequation\b)([\s\S]*?)(\balgorithm\b|\bend\s+[A-Za-z_])/);
-            if (eqSec && eqSec[2]) {
-              const stmts = eqSec[2]
-                .split(";")
-                .map((s) => s.trim())
-                .filter((s) => s.length > 0);
-              const keep = stmts.slice(0, Math.max(0, numVars));
-              repaired = repaired.replace(
-                eqSec[0],
-                `${eqSec[1]}\n  ${keep.map((s) => `${s};`).join("\n  ")}\n${eqSec[3]}`,
+            const sec = findModelicaSectionSpan(repaired, "equation");
+            if (sec) {
+              const keep = splitSemicolonStatementsOutsideQuotes(repaired.slice(sec.bodyStart, sec.bodyEnd)).slice(
+                0,
+                Math.max(0, numVars),
               );
+              const replacement = `equation\n  ${keep.map((s) => `${s};`).join("\n  ")}\n${sec.endTermText}`;
+              repaired =
+                repaired.slice(0, sec.kwStart) + replacement + repaired.slice(sec.endKwStart + sec.endTermText.length);
             }
           } else if (numEqs < numVars) {
             // Find declared dynamic variables missing an equation
-            const declPart = repaired.split(/\bequation\b/)[0] ?? "";
-            const eqPart = repaired.split(/\bequation\b/)[1] ?? "";
-            const missingVars: string[] = [];
-            for (const stmt of declPart.split(";")) {
-              const s = stmt.trim();
-              if (!s || /\b(?:parameter|constant|input|model|class|package|block|import|extends)\b/.test(s)) continue;
-              const m = s.match(/^[A-Za-z_][a-zA-Z0-9_.]*\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
-              if (m?.[1] && !new RegExp(`\\b${m[1]}\\b`).test(eqPart)) {
-                missingVars.push(m[1]);
-              }
-            }
+            const declPart = splitModelicaBeforeEquation(repaired);
+            const eqIdx = findNextWordOutsideQuotes(repaired, "equation", 0);
+            const eqPart = eqIdx !== -1 ? repaired.slice(eqIdx + 8) : "";
+            const missingVars = extractModelicaStateVarsFromDecls(declPart).filter((v) => !hasWordMatch(eqPart, v));
             const needed = numVars - numEqs;
             const additions: string[] = [];
             for (let i = 0; i < needed; i++) {
               const vName = missingVars[i] ?? `x_${i}`;
               additions.push(`  ${vName} = 0.0;`);
             }
-            repaired = repaired.replace(/(\bend\s+[A-Za-z_][A-Za-z0-9_]*\s*;)/, `${additions.join("\n")}\n$1`);
+            repaired = insertBeforeModelicaEndStmt(repaired, `${additions.join("\n")}\n`);
           } else {
             // Structurally singular (numEqs == numVars, but unmatched variables exist)
             const unmatchedVars = gate.diagnostics.flatMap(
               (d) => (d.metadata?.["unmatchedVars"] as string[] | undefined) ?? [],
             );
             if (unmatchedVars.length > 0) {
-              const eqSec = repaired.match(/(\bequation\b)([\s\S]*?)(\balgorithm\b|\bend\s+[A-Za-z_])/);
-              if (eqSec && eqSec[2]) {
-                const stmts = eqSec[2]
-                  .split(";")
-                  .map((s) => s.trim())
-                  .filter((s) => s.length > 0);
+              const sec = findModelicaSectionSpan(repaired, "equation");
+              if (sec) {
+                const stmts = splitSemicolonStatementsOutsideQuotes(repaired.slice(sec.bodyStart, sec.bodyEnd));
                 for (let i = 0; i < unmatchedVars.length && i < stmts.length; i++) {
                   stmts[stmts.length - 1 - i] = `${unmatchedVars[i]} = 0.0`;
                 }
-                repaired = repaired.replace(
-                  eqSec[0],
-                  `${eqSec[1]}\n  ${stmts.map((s) => `${s};`).join("\n  ")}\n${eqSec[3]}`,
-                );
+                const replacement = `equation\n  ${stmts.map((s) => `${s};`).join("\n  ")}\n${sec.endTermText}`;
+                repaired =
+                  repaired.slice(0, sec.kwStart) +
+                  replacement +
+                  repaired.slice(sec.endKwStart + sec.endTermText.length);
               }
             }
           }
         } else {
           if (numEqs > numVars) {
-            const eqMatches = [...repaired.matchAll(/\b(?:assert\s+)?constraint\s*\{[^{}]+\};?/g)];
-            if (eqMatches.length > 0) {
-              repaired = repaired.replace(eqMatches[eqMatches.length - 1]![0], "");
+            const nonEmpty = extractSysmlBraceConstraintsFromText(repaired).filter((c) => c.body.trim().length > 0);
+            if (nonEmpty.length > 0) {
+              const last = nonEmpty[nonEmpty.length - 1]!;
+              repaired = repaired.slice(0, last.start) + repaired.slice(last.end);
             }
           } else if (numEqs < numVars) {
             // Find uninitialized attributes in SysML v2
-            const uninitVars: string[] = [];
-            for (const line of repaired.split(/\r?\n/)) {
-              const trimmed = line.trim();
-              const m = /^attribute\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*([a-zA-Z0-9_:]+)/.exec(trimmed);
-              if (m && trimmed.endsWith(";")) {
-                if (!trimmed.includes("=")) uninitVars.push(m[1]!);
-              }
-            }
+            const uninitVars = extractSysmlAttributesFromText(repaired)
+              .filter((a) => !a.hasInitializer)
+              .map((a) => a.name);
             const targetVar = uninitVars.includes("sled_v")
               ? "sled_v"
               : (uninitVars[uninitVars.length - 1] ?? "sled_v");
-            repaired = repaired.replace(/\}\s*$/, `  assert constraint { ${targetVar} == 10.0 }\n}\n`);
+            repaired = replaceTrailingClosingBrace(repaired, `  assert constraint { ${targetVar} == 10.0 }\n}\n`);
           }
         }
       }

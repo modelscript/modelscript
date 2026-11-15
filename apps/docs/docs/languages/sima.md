@@ -82,9 +82,16 @@ flowchart TD
 
 ### 1. DNV-OS-E301 & DNV-ST-0119 Compliance
 
-Evaluates line tension safety factors against Minimum Breaking Load (MBL):
+Evaluates the mooring line tension safety factor ($S_F$) as the ratio of the line's Minimum Breaking Load ($T_{\text{MBL}}$) to its maximum characteristic design tension ($T_{\text{max}}$). To satisfy offshore structural reliability limits, the safety factor must meet or exceed $1.67$ when all lines are intact and $1.25$ in the damaged state following a single-line failure:
+
 $$S_F = \frac{T_{\text{MBL}}}{T_{\text{max}}} \ge 1.67 \quad (\text{Intact Condition})$$
 $$S_F = \frac{T_{\text{MBL}}}{T_{\text{max}}} \ge 1.25 \quad (\text{Damaged / Single Line Broken})$$
+
+| Symbol           | Meaning                                                             | Units / Domain                                        |
+| :--------------- | :------------------------------------------------------------------ | :---------------------------------------------------- |
+| $S_F$            | Mooring line tension safety factor (utilization margin)             | Dimensionless ($\ge 1.67$ intact, $\ge 1.25$ damaged) |
+| $T_{\text{MBL}}$ | Minimum Breaking Load of the mooring line segment                   | $\text{kN}$ (or $\text{N}$, $> 0$)                    |
+| $T_{\text{max}}$ | Maximum characteristic line tension under environmental design load | $\text{kN}$ (or $\text{N}$, $> 0$)                    |
 
 ### 2. Watch Circle & Touchdown Zone Verification
 

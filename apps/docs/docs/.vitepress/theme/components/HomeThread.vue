@@ -308,21 +308,21 @@ onBeforeUnmount(() => timer && clearInterval(timer));
   display: flex;
   align-items: baseline;
   gap: 10px;
-  font-size: 1rem;
-  font-weight: 650;
+  font-size: var(--text-md);
+  font-weight: var(--ms-fw-semibold);
   color: var(--vp-c-text-1);
 }
 
 .step-num {
   font-family: var(--vp-font-family-mono);
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--vp-c-text-3);
 }
 
 .step-body {
   display: none;
-  font-size: 0.88rem;
-  line-height: 1.55;
+  font-size: var(--text-sm);
+  line-height: var(--leading-base);
   color: var(--vp-c-text-2);
 }
 
@@ -363,13 +363,13 @@ onBeforeUnmount(() => timer && clearInterval(timer));
   border-radius: 12px;
   border: 1px solid var(--vp-c-divider);
   background: var(--vp-c-bg);
-  font-size: 13px;
+  font-size: var(--text-xs);
 }
 
 .install-label {
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.08em;
+  font-size: var(--text-2xs);
+  font-weight: var(--ms-fw-semibold);
+  letter-spacing: var(--ms-tracking-wide);
   text-transform: uppercase;
   color: var(--vp-c-text-3);
 }
@@ -459,9 +459,9 @@ onBeforeUnmount(() => timer && clearInterval(timer));
 
 .art-label {
   margin-right: 4px;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.08em;
+  font-size: var(--text-2xs);
+  font-weight: var(--ms-fw-semibold);
+  letter-spacing: var(--ms-tracking-wide);
   text-transform: uppercase;
   color: #64748b;
 }

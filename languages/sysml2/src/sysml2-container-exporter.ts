@@ -51,6 +51,8 @@ import {
   type SysML2GenericDefinition,
   type SysML2PartUsage,
 } from "../transformers/generic-modelica-bridge.js";
+import { collectCstLeaves, parseSysmlSource, type CstLeaf } from "./cst-utils.js";
+import { parseSysML2Expression, type SysML2ExprAst } from "./evaluator.js";
 
 export type { SspSystem };
 
@@ -492,85 +494,164 @@ export class SysML2ContainerExporter {
       }
     }
 
+    const inputSuffixes = new Set(["u", "in", "input", "cmd"]);
+    const outputSuffixes = new Set(["y", "out", "output"]);
+    const hasSignalSuffix = (varName: string, suffixes: ReadonlySet<string>): boolean => {
+      const lower = varName.toLowerCase();
+      if (suffixes.has(lower)) return true;
+      const usIdx = lower.lastIndexOf("_");
+      return usIdx !== -1 && suffixes.has(lower.slice(usIdx + 1));
+    };
+
+    const lowerExprAst = (node: SysML2ExprAst): number => {
+      switch (node.kind) {
+        case "NumberLiteral":
+          return dae.addRealLiteral(node.value);
+        case "BooleanLiteral":
+          return dae.addRealLiteral(node.value ? 1.0 : 0.0);
+        case "UnaryExpr":
+          return node.op === "-"
+            ? dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(-1.0), lowerExprAst(node.operand))
+            : lowerExprAst(node.operand);
+        case "BinaryExpr": {
+          const left = lowerExprAst(node.left);
+          const right = lowerExprAst(node.right);
+          const binOp =
+            node.op === "+"
+              ? BinOp.Add
+              : node.op === "-"
+                ? BinOp.Sub
+                : node.op === "*"
+                  ? BinOp.Mul
+                  : node.op === "/"
+                    ? BinOp.Div
+                    : node.op === "^"
+                      ? BinOp.Pow
+                      : undefined;
+          return binOp !== undefined ? dae.addBinaryExpr(binOp, left, right) : dae.addRealLiteral(0);
+        }
+        case "CallExpr":
+          if (node.callee === "der" && node.args[0]?.kind === "Identifier") {
+            const rawArg = node.args[0].name;
+            const base = rawArg.includes(part.name) ? rawArg : `${part.name}_${rawArg}`;
+            ensureVar(base, Variability.Continuous, Causality.Local, 1.0);
+            ensureVar(`der(${base})`, Variability.Continuous, Causality.Local);
+            return dae.addNameExpr(`der(${base})`);
+          }
+          return dae.addRealLiteral(0);
+        case "Identifier": {
+          const s = node.name;
+          const varName = s === "time" || s.startsWith(`${part.name}_`) ? s : `${part.name}_${s}`;
+          const isInput = hasSignalSuffix(varName, inputSuffixes);
+          const isOutput = hasSignalSuffix(varName, outputSuffixes);
+          ensureVar(
+            varName,
+            Variability.Continuous,
+            isInput ? Causality.Input : isOutput ? Causality.Output : Causality.Local,
+          );
+          return dae.addNameExpr(varName);
+        }
+        default:
+          return dae.addRealLiteral(0);
+      }
+    };
+
     const parseSimpleExpr = (exprStr: string): number => {
       const s = exprStr.trim();
       if (!s) return dae.addRealLiteral(0);
-      if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(s)) {
-        return dae.addRealLiteral(parseFloat(s));
-      }
-      const derMatch = s.match(/^der\s*\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\)$/);
-      if (derMatch) {
-        const base = derMatch[1]!.includes(part.name) ? derMatch[1]! : `${part.name}_${derMatch[1]!}`;
-        ensureVar(base, Variability.Continuous, Causality.Local, 1.0);
-        ensureVar(`der(${base})`, Variability.Continuous, Causality.Local);
-        return dae.addNameExpr(`der(${base})`);
-      }
-      // Split on top-level + or -
-      let depth = 0;
-      for (let i = s.length - 1; i > 0; i--) {
-        const ch = s[i]!;
-        if (ch === ")") depth++;
-        else if (ch === "(") depth--;
-        else if (depth === 0 && (ch === "+" || ch === "-") && s[i - 1] !== "e" && s[i - 1] !== "E") {
-          const left = parseSimpleExpr(s.slice(0, i));
-          const right = parseSimpleExpr(s.slice(i + 1));
-          return dae.addBinaryExpr(ch === "+" ? BinOp.Add : BinOp.Sub, left, right);
-        }
-      }
-      for (let i = s.length - 1; i > 0; i--) {
-        const ch = s[i]!;
-        if (ch === ")") depth++;
-        else if (ch === "(") depth--;
-        else if (depth === 0 && (ch === "*" || ch === "/")) {
-          const left = parseSimpleExpr(s.slice(0, i));
-          const right = parseSimpleExpr(s.slice(i + 1));
-          return dae.addBinaryExpr(ch === "*" ? BinOp.Mul : BinOp.Div, left, right);
-        }
-      }
-      if (s.startsWith("-")) {
-        return dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(-1.0), parseSimpleExpr(s.slice(1)));
-      }
-      if (s.startsWith("(") && s.endsWith(")")) {
-        return parseSimpleExpr(s.slice(1, -1));
-      }
-      const varName = s === "time" || s.startsWith(`${part.name}_`) ? s : `${part.name}_${s}`;
-      const isInput = /(?:^|_)(?:u|in|input|cmd)$/i.test(varName);
-      const isOutput = /(?:^|_)(?:y|out|output)$/i.test(varName);
-      ensureVar(
-        varName,
-        Variability.Continuous,
-        isInput ? Causality.Input : isOutput ? Causality.Output : Causality.Local,
-      );
-      return dae.addNameExpr(varName);
+      return lowerExprAst(parseSysML2Expression(s));
     };
 
-    const stmts = behaviorText
-      .split(/[;\n]+/)
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0 && !l.startsWith("//"));
+    const root = parseSysmlSource(behaviorText);
+    const leaves = root ? collectCstLeaves(root) : [];
+    const stmts: CstLeaf[][] = [];
+    let curStmt: CstLeaf[] = [];
+    let parenDepth = 0;
+    let braceDepth = 0;
+    for (let i = 0; i < leaves.length; i++) {
+      const lf = leaves[i]!;
+      const prev = i > 0 ? leaves[i - 1]! : undefined;
+      if (parenDepth === 0 && braceDepth === 0 && prev && behaviorText.slice(prev.end, lf.start).includes("\n")) {
+        if (curStmt.length > 0) {
+          stmts.push(curStmt);
+          curStmt = [];
+        }
+      }
+      if (lf.text === "(") parenDepth++;
+      else if (lf.text === ")") parenDepth = Math.max(0, parenDepth - 1);
+      else if (lf.text === "{") braceDepth++;
+      else if (lf.text === "}") braceDepth = Math.max(0, braceDepth - 1);
 
-    for (const stmt of stmts) {
-      const paramMatch = stmt.match(
-        /^(?:parameter|attribute|const)\s+(?:Real\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([+-]?[\d.eE+-]+)$/i,
-      );
-      if (paramMatch) {
-        const pName = paramMatch[1]!.startsWith(`${part.name}_`) ? paramMatch[1]! : `${part.name}_${paramMatch[1]!}`;
-        const val = parseFloat(paramMatch[2]!);
-        const pIdx = ensureVar(pName, Variability.Parameter, Causality.Local, val);
-        dae.setVarExpression(pIdx, dae.addRealLiteral(val));
+      if (lf.text === ";" && parenDepth === 0 && braceDepth === 0) {
+        if (curStmt.length > 0) {
+          stmts.push(curStmt);
+          curStmt = [];
+        }
         continue;
       }
-      const ioMatch = stmt.match(/^(input|output)\s+(?:Real\s+)?([A-Za-z_][A-Za-z0-9_]*)$/i);
-      if (ioMatch) {
-        const causality = ioMatch[1]!.toLowerCase() === "input" ? Causality.Input : Causality.Output;
-        const vName = ioMatch[2]!.startsWith(`${part.name}_`) ? ioMatch[2]! : `${part.name}_${ioMatch[2]!}`;
+      curStmt.push(lf);
+    }
+    if (curStmt.length > 0) stmts.push(curStmt);
+
+    for (const stmtLeaves of stmts) {
+      if (stmtLeaves.length === 0) continue;
+      const kw = stmtLeaves[0]!.text.toLowerCase();
+
+      if ((kw === "parameter" || kw === "attribute" || kw === "const") && stmtLeaves.length >= 4) {
+        let nameIdx = 1;
+        if (stmtLeaves[nameIdx]?.text === "Real" && stmtLeaves.length >= 5) nameIdx++;
+        if (stmtLeaves[nameIdx + 1]?.text === "=") {
+          const rawName = stmtLeaves[nameIdx]!.text;
+          const rhsStr = behaviorText.slice(stmtLeaves[nameIdx + 2]!.start, stmtLeaves[stmtLeaves.length - 1]!.end);
+          const rhsAst = parseSysML2Expression(rhsStr);
+          const val =
+            rhsAst.kind === "NumberLiteral"
+              ? rhsAst.value
+              : rhsAst.kind === "UnaryExpr" && rhsAst.operand.kind === "NumberLiteral"
+                ? rhsAst.op === "-"
+                  ? -rhsAst.operand.value
+                  : rhsAst.operand.value
+                : parseFloat(rhsStr);
+          if (Number.isFinite(val)) {
+            const pName = rawName.startsWith(`${part.name}_`) ? rawName : `${part.name}_${rawName}`;
+            const pIdx = ensureVar(pName, Variability.Parameter, Causality.Local, val);
+            dae.setVarExpression(pIdx, dae.addRealLiteral(val));
+            continue;
+          }
+        }
+      }
+
+      if (
+        (kw === "input" || kw === "output") &&
+        (stmtLeaves.length === 2 || (stmtLeaves.length === 3 && stmtLeaves[1]?.text === "Real"))
+      ) {
+        const causality = kw === "input" ? Causality.Input : Causality.Output;
+        const rawVar = stmtLeaves[stmtLeaves.length - 1]!.text;
+        const vName = rawVar.startsWith(`${part.name}_`) ? rawVar : `${part.name}_${rawVar}`;
         ensureVar(vName, Variability.Continuous, causality);
         continue;
       }
-      const eqIdx = stmt.indexOf("=");
-      if (eqIdx > 0 && stmt[eqIdx - 1] !== "<" && stmt[eqIdx - 1] !== ">" && stmt[eqIdx + 1] !== "=") {
-        const lhsStr = stmt.slice(0, eqIdx).trim();
-        const rhsStr = stmt.slice(eqIdx + 1).trim();
+
+      let eqLeafIdx = -1;
+      for (let i = 1; i + 1 < stmtLeaves.length; i++) {
+        const lf = stmtLeaves[i]!;
+        if (lf.text !== "=") continue;
+        const prev = stmtLeaves[i - 1]!;
+        const next = stmtLeaves[i + 1]!;
+        const gluedPrev =
+          prev.end === lf.start &&
+          (prev.text === "<" || prev.text === ">" || prev.text === ":" || prev.text === "!" || prev.text === "=");
+        const gluedNext = lf.end === next.start && next.text === "=";
+        if (!gluedPrev && !gluedNext) {
+          eqLeafIdx = i;
+          break;
+        }
+      }
+      if (eqLeafIdx > 0) {
+        const lhsStr = behaviorText.slice(stmtLeaves[0]!.start, stmtLeaves[eqLeafIdx - 1]!.end).trim();
+        const rhsStr = behaviorText
+          .slice(stmtLeaves[eqLeafIdx + 1]!.start, stmtLeaves[stmtLeaves.length - 1]!.end)
+          .trim();
         const lhsExpr = parseSimpleExpr(lhsStr);
         const rhsExpr = parseSimpleExpr(rhsStr);
         dae.addEquation(EqKind.Simple, lhsExpr, rhsExpr);
@@ -740,8 +821,8 @@ export class SysML2ContainerExporter {
 
     // Add inter-part connection equations
     for (const conn of sysmlDef.connections) {
-      const srcName = conn.source.replace(/\./g, "_");
-      const tgtName = conn.target.replace(/\./g, "_");
+      const srcName = conn.source.replaceAll(".", "_");
+      const tgtName = conn.target.replaceAll(".", "_");
       const srcId = dae.getVarIdxByName(srcName);
       const tgtId = dae.getVarIdxByName(tgtName);
       if (srcId !== -1 && tgtId !== -1) {

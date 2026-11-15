@@ -132,7 +132,8 @@ const EXT_METADATA: Record<string, { dialect: string; viewType: string; langTag:
 function inferExtMetadata(filename: string): { dialect: string; viewType: string; langTag: string } {
   const lower = filename.toLowerCase();
   if (lower.endsWith(".oscal.json")) return { dialect: "oscal", viewType: "oscal", langTag: "json" };
-  if (lower.endsWith(".oscal.yaml") || lower.endsWith(".oscal.yml")) return { dialect: "oscal", viewType: "oscal", langTag: "yaml" };
+  if (lower.endsWith(".oscal.yaml") || lower.endsWith(".oscal.yml"))
+    return { dialect: "oscal", viewType: "oscal", langTag: "yaml" };
   if (lower.endsWith(".oscal.xml")) return { dialect: "oscal", viewType: "oscal", langTag: "xml" };
   if (lower.endsWith(".dcm.json")) return { dialect: "dicom-rt", viewType: "dicom-rt", langTag: "json" };
   if (lower.endsWith(".nii.json")) return { dialect: "nifti", viewType: "nifti", langTag: "json" };
@@ -179,7 +180,10 @@ export function isTrustedHostOrigin(origin: string): boolean {
     // 2. Development loopback (localhost, 127.0.0.1, ::1)
     if (
       (parsed.protocol === "http:" || parsed.protocol === "https:") &&
-      (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "::1" || parsed.hostname === "[::1]")
+      (parsed.hostname === "localhost" ||
+        parsed.hostname === "127.0.0.1" ||
+        parsed.hostname === "::1" ||
+        parsed.hostname === "[::1]")
     ) {
       return true;
     }
@@ -308,6 +312,8 @@ export class HostBridgeService implements vscode.Disposable {
       const fileUri = Uri.joinPath(targetUri, ...primaryFile.split("/"));
       if (primaryFile.endsWith(".monb")) {
         await vscode.commands.executeCommand("vscode.openWith", fileUri, "modelscript-notebook");
+      } else if (/\.(step|stp|p21)$/i.test(primaryFile)) {
+        await vscode.commands.executeCommand("vscode.openWith", fileUri, "modelscript.stepEditor");
       } else {
         const doc = await workspace.openTextDocument(fileUri);
         await vscode.window.showTextDocument(doc);

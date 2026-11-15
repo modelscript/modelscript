@@ -184,15 +184,23 @@ export function getComtradeDiagnostics(content: string, uri?: string): LspDiagno
     ];
   }
 
+  const lines = content.split(/\r?\n/);
   const lints = lintComtradeRecord(record);
-  return lints.map((l) => ({
-    range: {
-      start: { line: l.line ? l.line - 1 : 0, character: 0 },
-      end: { line: l.line ? l.line - 1 : 0, character: 100 },
-    },
-    severity: l.severity === "error" ? 1 : l.severity === "warning" ? 2 : 3,
-    code: l.code,
-    source: "comtrade-lint",
-    message: l.message,
-  }));
+  return lints.map((l) => {
+    const lineIdx = Math.min(Math.max(0, l.line ? l.line - 1 : 0), Math.max(0, lines.length - 1));
+    const lt = lines[lineIdx] ?? "";
+    let sChar = 0;
+    while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
+    const tok = lt.slice(sChar).match(/^[^,\s;]+/);
+    return {
+      range: {
+        start: { line: lineIdx, character: sChar },
+        end: { line: lineIdx, character: Math.min(lt.length, sChar + (tok ? tok[0].length : 1)) },
+      },
+      severity: l.severity === "error" ? 1 : l.severity === "warning" ? 2 : 3,
+      code: l.code,
+      source: "comtrade-lint",
+      message: l.message,
+    };
+  });
 }

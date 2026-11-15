@@ -92,13 +92,26 @@ export function validateEasy5(content: string, _uri: string = "model.ez5"): LspD
         const found = lines.findIndex((l) => l.includes(d.componentId!));
         if (found >= 0) lineNum = found;
       }
-      const colNum = d.column ? Math.max(0, d.column - 1) : 0;
-      const lineLen = lines[lineNum]?.length ?? 1;
+      const lt = lines[lineNum] ?? "";
+      let startChar = d.column ? Math.max(0, d.column - 1) : 0;
+      let endChar = 0;
+      if (!d.column && d.componentId) {
+        const idx = lt.indexOf(d.componentId);
+        if (idx >= 0) {
+          startChar = idx;
+          endChar = idx + d.componentId.length;
+        }
+      }
+      if (endChar <= startChar) {
+        while (startChar < lt.length && (lt[startChar] === " " || lt[startChar] === "\t")) startChar++;
+        const tok = lt.slice(startChar).match(/^[^\s=,;]+/);
+        endChar = Math.min(lt.length, startChar + (tok ? tok[0].length : 1));
+      }
 
       return {
         range: {
-          start: { line: lineNum, character: colNum },
-          end: { line: lineNum, character: Math.max(colNum + 1, lineLen) },
+          start: { line: lineNum, character: startChar },
+          end: { line: lineNum, character: Math.max(startChar + 1, endChar) },
         },
         severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
         code: d.id,

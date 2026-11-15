@@ -10,6 +10,7 @@ export * from "./flow_algebra_oracle.js";
 export * from "./marine_mooring_oracle.js";
 export * from "./ontology_oracle.js";
 export * from "./power_grid_oracle.js";
+export * from "./pressure_vessel_oracle.js";
 export * from "./safety_theory_oracle.js";
 export * from "./spatial_physics_oracle.js";
 export * from "./telecom_oracle.js";

@@ -331,6 +331,8 @@ export function detectLanguageIdFromUri(uriStr?: string): string {
     case ".csv":
     case ".tsv":
       return "csv";
+    case ".las":
+      return "las";
     case ".g01":
     case ".g02":
     case ".g03":

@@ -514,6 +514,38 @@ export const SysML2ErrorCode = {
     message: (sourceName: string, targetLang: string) =>
       `Counterpart element referenced by '${sourceName}' could not be resolved in '${targetLang}'.`,
   },
+  STANDARD_COMPLIANCE_VIOLATION: {
+    code: 5020,
+    rule: "standard-compliance-violation",
+    severity: "error" as DiagnosticSeverity,
+    message: (clauseLabel: string, subjectName: string, reqName: string, detail: string = "") =>
+      clauseLabel
+        ? `[${clauseLabel}] '${subjectName}' violates requirement '${reqName}'${detail ? `: ${detail}` : "."}`
+        : `'${subjectName}' violates standard requirement '${reqName}'${detail ? `: ${detail}` : "."}`,
+  },
+  STANDARD_COMPLIANCE_WARNING: {
+    code: 5021,
+    rule: "standard-compliance-warning",
+    severity: "warning" as DiagnosticSeverity,
+    message: (clauseLabel: string, subjectName: string, reqName: string, detail: string = "") =>
+      clauseLabel
+        ? `[${clauseLabel}] '${subjectName}' triggers advisory requirement '${reqName}'${detail ? `: ${detail}` : "."}`
+        : `'${subjectName}' triggers advisory requirement '${reqName}'${detail ? `: ${detail}` : "."}`,
+  },
+  REQUIREMENT_NOT_APPLICABLE: {
+    code: 5022,
+    rule: "requirement-not-applicable",
+    severity: "warning" as DiagnosticSeverity,
+    message: (reqName: string, subjectName: string = "", clauseLabel: string = "") =>
+      `${clauseLabel ? `[${clauseLabel}] ` : ""}Requirement '${reqName}' is not applicable${subjectName ? ` to '${subjectName}'` : ""}: assume constraint evaluates to false.`,
+  },
+  STANDARD_TABLE_LOOKUP_MISSING: {
+    code: 5023,
+    rule: "standard-table-lookup-missing",
+    severity: "warning" as DiagnosticSeverity,
+    message: (calcName: string, reason: string = "") =>
+      `Standard table/calculator lookup '${calcName}' could not be evaluated${reason ? `: ${reason}` : "."}`,
+  },
 } as const;
 
 /**

@@ -22,8 +22,20 @@ description: "@modelscript/energyplus (languages/energyplus) provides compiler, 
 
 ### 1. Lumped-Capacitance Multi-Zone Thermal DAEs
 
-- Translates architectural thermal zones and building envelopes into continuous energy balance DAEs:
+- Translates architectural thermal zones and building envelopes into continuous energy balance DAEs, where the rate of change of zone air thermal energy equals the sum of conductive, convective, solar, internal, and HVAC heat transfer rates:
   $$C_{z,i} \frac{dT_{z,i}}{dt} = \sum_{j} \dot{Q}_{\text{cond},ij} + \sum_{k} \dot{Q}_{\text{conv},ik} + \dot{Q}_{\text{solar}} + \dot{Q}_{\text{internal}} + \dot{Q}_{\text{HVAC}}$$
+
+  | Symbol                      | Meaning                                                       | Units / Domain                       |
+  | :-------------------------- | :------------------------------------------------------------ | :----------------------------------- |
+  | $C_{z,i}$                   | Effective thermal capacitance of thermal zone $i$             | $\text{J}\cdot\text{K}^{-1}$ ($> 0$) |
+  | $T_{z,i}$                   | Dry-bulb air temperature of zone $i$                          | $\text{K}$ (or $^\circ\text{C}$)     |
+  | $t$                         | Simulation time                                               | $\text{s}$                           |
+  | $\dot{Q}_{\text{cond},ij}$  | Conductive heat transfer rate from adjacent zone/surface $j$  | $\text{W}$                           |
+  | $\dot{Q}_{\text{conv},ik}$  | Convective heat transfer rate from interior surface $k$       | $\text{W}$                           |
+  | $\dot{Q}_{\text{solar}}$    | Transmitted solar radiation heat gain                         | $\text{W}$ ($\ge 0$)                 |
+  | $\dot{Q}_{\text{internal}}$ | Internal sensible heat gains (lighting, occupants, equipment) | $\text{W}$ ($\ge 0$)                 |
+  | $\dot{Q}_{\text{HVAC}}$     | Net heating or cooling rate supplied by the HVAC system       | $\text{W}$                           |
+
 - **Envelope Conduction**: Multi-layer wall, floor, and roof constructions with layer-resolved thermal conductivity $k$, density $\rho$, and specific heat $c_p$.
 - **Window & Fenestration Optics**: U-factor, Solar Heat Gain Coefficient (SHGC), and visible transmittance shading calculations.
 - **Internal Loads**: Schedules for lighting, occupancy sensible/latent heat release, and plug-load equipment dissipation.

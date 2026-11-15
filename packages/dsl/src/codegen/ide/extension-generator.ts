@@ -667,6 +667,13 @@ export function generatePackageJson(
     });
   }
 
+  customEditors.push({
+    viewType: "modelscript.tabularPlotViewer",
+    displayName: "Well Log & Tabular Plot Studio",
+    selector: [{ filenamePattern: "*.las" }, { filenamePattern: "*.csv" }],
+    priority: "option",
+  });
+
   // Collect commands, menus, language model tools, and keybindings from language actions
   const commands: Record<string, unknown>[] = [
     {

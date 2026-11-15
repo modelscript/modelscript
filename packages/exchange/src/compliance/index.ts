@@ -2,3 +2,4 @@
 
 export * from "./compliance_matrix.js";
 export * from "./nrtl-attestation.js";
+export * from "./pmview-report.js";

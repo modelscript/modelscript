@@ -334,4 +334,20 @@ export interface CodeGraph<
     arg2?: u32 | i32 | number,
     arg3?: u32 | i32 | number,
   ): void;
+  /** Emit a diagnostic highlighting `spanNode` while passing `targetNode` (and optional args) to `message()`. */
+  diagnosticAt(
+    spanNode: u32,
+    targetNode: u32,
+    arg1?: u32 | i32 | number,
+    arg2?: u32 | i32 | number,
+    arg3?: u32 | i32 | number,
+  ): void;
+  /** Emit a diagnostic highlighting the leading `charLen` characters of the current node while passing `targetNode` (defaulting to current node) to `message()`. */
+  diagnosticPrefix(
+    charLen: u32 | number,
+    targetNode?: u32,
+    arg1?: u32 | i32 | number,
+    arg2?: u32 | i32 | number,
+    arg3?: u32 | i32 | number,
+  ): void;
 }

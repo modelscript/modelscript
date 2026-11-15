@@ -4,6 +4,7 @@ import { computeSemanticDiff, type SemanticEdit } from "@modelscript/dsl";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import {
   DOMAIN_INDEX_TO_NAME,
+  globalLibraryRegistry,
   type DiagramComponentSpec,
   type LibrarySymbolStub,
   type ModelscriptLibraryManifest,
@@ -19,10 +20,13 @@ import {
   getCompositeName,
   loadingLibraryState,
   mountedLibraryMetadata,
+  normalizeLibraryName,
   type LoadingLibraryInfo,
   type MountedLibraryInfo,
 } from "../utils/hierarchy-utils.js";
+import { extractFirstQuotedLiteral, trimTrailingChars } from "../utils/lexical-utils.js";
 import {
+  decodeBase64Bytes,
   ensureLibraryVersionMounted,
   importLibraryZip,
   loadRegistryPackages,
@@ -159,6 +163,13 @@ export function registerMiscEndpoints(context: LspContext) {
   const getLoaderCtx = () => context.parserService?.getOrCreateLoaderContext?.() ?? (globalThis as any).savedLoaderCtx;
   const getServerDistBase = () => (globalThis as any).serverDistBase ?? context.parserService?.getServerDistBase?.();
 
+  const syncAndRevalidateAll = () => {
+    (context.validationService as { syncWorkspaceStateAfterIndex?: () => void }).syncWorkspaceStateAfterIndex?.();
+    for (const doc of context.documents.all()) {
+      context.validationService.validateTextDocument(doc);
+    }
+  };
+
   context.connection.onNotification(
     "modelscript/registryPackages",
     async (params: { packages: RegistryPackageInfo[] }) => {
@@ -166,10 +177,7 @@ export function registerMiscEndpoints(context: LspContext) {
       if (loaderCtx) {
         context.connection.console.info(`[lsp] Received ${params.packages.length} registry packages from client.`);
         await loadRegistryPackages(params.packages, loaderCtx);
-        // Re-validate all documents to pick up the newly indexed library items
-        for (const doc of context.documents.all()) {
-          context.validationService.validateTextDocument(doc);
-        }
+        syncAndRevalidateAll();
         context.connection.sendNotification("modelscript/projectTreeChanged");
       } else {
         context.connection.console.warn("[lsp] Received registry packages but loader context is not ready.");
@@ -178,11 +186,34 @@ export function registerMiscEndpoints(context: LspContext) {
   );
 
   const snapshotMountedLibraries = (): MountedLibraryInfo[] => {
+    const overrides = context.state?.activeStandardOverrides;
     const list: MountedLibraryInfo[] = [];
     const seen = new Set<string>();
     for (const info of mountedLibraryMetadata.values()) {
-      list.push({ ...info });
+      const copy = { ...info };
+      const overrideVal = overrides?.get(normalizeLibraryName(info.name));
+      if (overrideVal !== undefined) {
+        copy.active = overrideVal;
+      }
+      list.push(copy);
       seen.add(info.name.toLowerCase());
+    }
+    for (const pack of globalLibraryRegistry.getStandardPacks()) {
+      const norm = normalizeLibraryName(pack.packageName);
+      if (seen.has(norm.toLowerCase()) || seen.has(pack.packageName.toLowerCase())) continue;
+      const overrideVal = overrides?.get(norm);
+      list.push({
+        name: norm,
+        version: pack.version,
+        language: pack.languages?.[0] ?? "sysml2",
+        category: "standard-pack",
+        standardCode: pack.manifest.standard?.code,
+        standardEdition: pack.manifest.standard?.edition,
+        profile: pack.manifest.standard?.profile,
+        activation: pack.manifest.standard?.activation ?? "import",
+        active: overrideVal ?? pack.manifest.standard?.activation === "workspace",
+      });
+      seen.add(norm.toLowerCase());
     }
     const msl = mountedLibraryMetadata.get("Modelica");
     if (msl) {
@@ -229,8 +260,6 @@ export function registerMiscEndpoints(context: LspContext) {
     try {
       await ensureLibraryVersionMounted(params, loaderCtx, getServerDistBase(), true);
       try {
-        const { globalLibraryRegistry } = await import("@modelscript/runtime");
-        const path = await import("node:path");
         const nodeModulesRoot = path.resolve(process.cwd(), "node_modules");
         const pkgDir = path.resolve(nodeModulesRoot, params.name);
         const relPkg = path.relative(nodeModulesRoot, pkgDir);
@@ -246,20 +275,20 @@ export function registerMiscEndpoints(context: LspContext) {
         state: "loading",
         message: `Indexing ${params.name}...`,
       });
-      const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
-      await moIdx?.indexRemainingInBackground?.(100, (indexed: number, total: number) => {
-        if (indexed % 100 === 0) {
-          context.connection.sendNotification("modelscript/status", {
-            state: "loading",
-            message: `Indexing ${params.name} (${indexed}/${total})...`,
-          });
-        }
-      });
-
-      // Re-validate all open documents
-      for (const doc of context.documents.all()) {
-        context.validationService.validateTextDocument(doc);
+      for (const langId of ["modelica", "sysml2"] as const) {
+        const idx = context.workspaceManager.getWorkspaceIndex(langId);
+        await idx?.indexRemainingInBackground?.(100, (indexed: number, total: number) => {
+          if (indexed % 100 === 0) {
+            context.connection.sendNotification("modelscript/status", {
+              state: "loading",
+              message: `Indexing ${params.name} (${indexed}/${total})...`,
+            });
+          }
+        });
       }
+
+      // Sync QueryEngines + re-validate all open documents
+      syncAndRevalidateAll();
       // Notify client that the project tree changed (refreshes Libraries panel)
       context.connection.sendNotification("modelscript/projectTreeChanged");
       context.connection.sendNotification("modelscript/status", {
@@ -304,10 +333,9 @@ export function registerMiscEndpoints(context: LspContext) {
     }
     try {
       const evicted = unloadLibraryPackage(params.name, loaderCtx);
+      context.state?.activeStandardOverrides?.delete(normalizeLibraryName(params.name));
       context.connection.console.info(`[lsp] Uninstalled dependency ${params.name} (${evicted} URIs evicted)`);
-      for (const doc of context.documents.all()) {
-        context.validationService.validateTextDocument(doc);
-      }
+      syncAndRevalidateAll();
       context.connection.sendNotification("modelscript/projectTreeChanged");
       context.connection.sendNotification("modelscript/status", {
         state: "ready",
@@ -351,9 +379,7 @@ export function registerMiscEndpoints(context: LspContext) {
       context.connection.console.info(
         `[lsp] Imported .zip library ${result.name}@${result.version} (${result.fileCount} files)`,
       );
-      for (const doc of context.documents.all()) {
-        context.validationService.validateTextDocument(doc);
-      }
+      syncAndRevalidateAll();
       context.connection.sendNotification("modelscript/projectTreeChanged");
       context.connection.sendNotification("modelscript/status", {
         state: "ready",
@@ -393,6 +419,50 @@ export function registerMiscEndpoints(context: LspContext) {
     }),
   );
 
+  // Query and toggle active compliance standard-pack profiles
+  const applyActiveStandardsUpdate = (params: {
+    packageName?: string | undefined;
+    active?: boolean | undefined;
+    activePackages?: string[] | undefined;
+  }) => {
+    const state = (context.state ??= {} as LspContext["state"]);
+    const overrides = (state.activeStandardOverrides ??= new Map<string, boolean>());
+    if (Array.isArray(params.activePackages)) {
+      const enabledSet = new Set(params.activePackages.map((p) => normalizeLibraryName(p)));
+      for (const lib of snapshotMountedLibraries()) {
+        if (lib.category === "standard-pack" || lib.standardCode) {
+          const norm = normalizeLibraryName(lib.name);
+          const next = enabledSet.has(norm);
+          overrides.set(norm, next);
+          const existing = mountedLibraryMetadata.get(norm);
+          if (existing) mountedLibraryMetadata.set(norm, { ...existing, active: next });
+        }
+      }
+    } else if (typeof params.packageName === "string" && typeof params.active === "boolean") {
+      const norm = normalizeLibraryName(params.packageName);
+      overrides.set(norm, params.active);
+      const existing = mountedLibraryMetadata.get(norm);
+      if (existing) {
+        mountedLibraryMetadata.set(norm, { ...existing, active: params.active });
+      }
+    }
+    context.validationService.setStandardOverrides(overrides);
+    syncAndRevalidateAll();
+    context.connection.sendNotification("modelscript/projectTreeChanged");
+    return {
+      ok: true,
+      standards: snapshotMountedLibraries().filter((m) => m.category === "standard-pack" || Boolean(m.standardCode)),
+    };
+  };
+
+  context.connection.onRequest("modelscript/getActiveStandards", () => ({
+    standards: snapshotMountedLibraries().filter((m) => m.category === "standard-pack" || Boolean(m.standardCode)),
+    overrides: Object.fromEntries(context.state?.activeStandardOverrides ?? new Map<string, boolean>()),
+  }));
+
+  context.connection.onRequest("modelscript/setActiveStandards", applyActiveStandardsUpdate);
+  context.connection.onNotification("modelscript/setActiveStandards", applyActiveStandardsUpdate);
+
   // Request-based package lifecycle endpoints (awaited by Morsel & VS Code Package Hub)
   context.connection.onRequest("modelscript/installPackage", performInstallPackage);
   context.connection.onRequest("modelscript/uninstallPackage", performUninstallPackage);
@@ -402,20 +472,35 @@ export function registerMiscEndpoints(context: LspContext) {
       pkgJson: { name: string; version?: string; modelscript: ModelscriptLibraryManifest };
       symbols?: LibrarySymbolStub[] | undefined;
       diagrams?: DiagramComponentSpec[] | undefined;
+      tables?: Record<string, unknown> | undefined;
       wasmBase64?: string | undefined;
     }) => {
-      const { globalLibraryRegistry } = await import("@modelscript/runtime");
-      const wasmBytes = params.wasmBase64
-        ? Uint8Array.from(atob(String(params.wasmBase64)), (c) => c.charCodeAt(0))
-        : undefined;
+      const wasmBytes = params.wasmBase64 ? decodeBase64Bytes(String(params.wasmBase64)) : undefined;
       const loaded = globalLibraryRegistry.registerLibraryBundle(params.pkgJson, {
         symbols: params.symbols ?? [],
         diagrams: params.diagrams,
+        tables: params.tables,
         wasmBytes,
       });
-      for (const doc of context.documents.all()) {
-        context.validationService.validateTextDocument(doc);
+      if (loaded.wasmBytes && !loaded.wasmExports) {
+        await globalLibraryRegistry.ensureWasmInstantiated(loaded);
       }
+      const normName = normalizeLibraryName(loaded.packageName);
+      const msx = params.pkgJson.modelscript;
+      if (msx && (msx.category === "standard-pack" || msx.standard)) {
+        mountedLibraryMetadata.set(normName, {
+          name: normName,
+          version: loaded.version,
+          language: msx.languages?.[0] ?? msx.language ?? "sysml2",
+          category: "standard-pack",
+          standardCode: msx.standard?.code,
+          standardEdition: msx.standard?.edition,
+          profile: msx.standard?.profile,
+          activation: msx.standard?.activation ?? "import",
+        });
+      }
+      syncAndRevalidateAll();
+      context.connection.sendNotification("modelscript/projectTreeChanged");
       return { ok: true, packageName: loaded.packageName, symbolCount: loaded.symbols.length };
     },
   );
@@ -473,17 +558,26 @@ export function registerMiscEndpoints(context: LspContext) {
 
             // OWL2 DataPropertyAssertion
             if (entry.ruleName === "DataPropertyAssertion" || sourceText.startsWith("DataPropertyAssertion")) {
-              const strMatch = sourceText.match(/"([^"\\]*(?:\\.[^"\\]*)*)"/);
-              if (strMatch) {
-                valueText = strMatch[1];
+              const cachedTree = context.documentManager?.documentTrees?.get(entry.resourceId)?.tree;
+              if (cachedTree?.rootNode) {
+                const stack = [cachedTree.rootNode];
+                while (stack.length > 0) {
+                  const n = stack.pop();
+                  if (!n) continue;
+                  if (n.type === "StringLiteral" && n.startIndex >= startOff && n.endIndex <= endOff) {
+                    valueText = extractFirstQuotedLiteral(n.text);
+                    if (valueText !== undefined) break;
+                  }
+                  for (const c of n.children || []) stack.push(c);
+                }
+              }
+              if (valueText === undefined) {
+                valueText = extractFirstQuotedLiteral(sourceText);
               }
             } else {
               const eqIdx = sourceText.indexOf("=");
               if (eqIdx !== -1) {
-                valueText = sourceText
-                  .substring(eqIdx + 1)
-                  .replace(/[;}\s]+$/, "")
-                  .trim();
+                valueText = trimTrailingChars(sourceText.substring(eqIdx + 1), ";} \t\r\n").trim();
               }
             }
 

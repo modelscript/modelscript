@@ -107,6 +107,19 @@ export interface CgmesSvPowerFlow {
   qMvar: number; // Reactive power flow (MVAR)
 }
 
+/** IEC 61970-457 (DY) dynamic model record (machine, exciter, governor, or IBR). */
+export interface CgmesDynamicModel extends IdentifiedObject {
+  profileClass: string; // e.g. SynchronousMachineTimeConstantReactance, ExcIEEEAC1A, PowerElectronicsConnection
+  targetEquipmentId?: string | undefined;
+  parameters: Record<string, number>;
+}
+
+/** IEC 61968 distribution per-phase line segment record. */
+export interface CgmesACLineSegmentPhase extends IdentifiedObject {
+  acLineSegmentId: string;
+  phase: "A" | "B" | "C" | "N" | string;
+}
+
 /** Complete in-memory representation of parsed CGMES profiles. */
 export interface CgmesModel {
   substations: Map<string, CgmesSubstation>;
@@ -124,4 +137,6 @@ export interface CgmesModel {
   svVoltages: Map<string, CgmesSvVoltage>;
   svFlows: Map<string, CgmesSvPowerFlow>;
   baseVoltages: Map<string, number>;
+  dynamicModels?: Map<string, CgmesDynamicModel> | undefined;
+  linePhases?: Map<string, CgmesACLineSegmentPhase> | undefined;
 }

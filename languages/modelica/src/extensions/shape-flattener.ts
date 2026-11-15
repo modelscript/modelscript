@@ -15,7 +15,83 @@ import {
   translationMatrix,
 } from "@modelscript/cad";
 import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/runtime";
+import {
+  isAsciiIdentContinue,
+  isAsciiIdentifier,
+  isAsciiWhitespaceCode,
+  parseArrayLiteralElements,
+  type CstNodeLike,
+} from "../flattener/expressions/index.js";
 import { isBroken, mergeModArgs, subModification, type ModelicaModArgs } from "../modifications.js";
+
+function findNamedElementModValues(cstNode: CstNodeLike | null | undefined, names: string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  if (!cstNode) return out;
+  const wanted = new Set(names);
+  const stack: CstNodeLike[] = [cstNode];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) continue;
+    if (cur.type === "element_modification") {
+      const nameNode = cur.children?.find((c) => c.type === "name" || c.type === "IDENT" || c.type === "identifier");
+      const modName = nameNode?.text?.trim();
+      if (modName && wanted.has(modName) && !out.has(modName)) {
+        const valNode = cur.children?.find(
+          (c) =>
+            c.type === "element_modification_or_replaceable" ||
+            c.type === "modification" ||
+            c.type === "modification_expression" ||
+            c.type === "expression",
+        );
+        if (valNode?.text) {
+          let raw = valNode.text.trim();
+          if (raw.startsWith("=")) raw = raw.slice(1).trim();
+          if (raw) out.set(modName, raw);
+        }
+      }
+    }
+    if (Array.isArray(cur.children)) {
+      for (let i = cur.children.length - 1; i >= 0; i--) {
+        if (cur.children[i]) stack.push(cur.children[i]!);
+      }
+    }
+  }
+  return out;
+}
+
+function parseVec3Literal(text: string | undefined): [number, number, number] | null {
+  if (!text) return null;
+  const t = text.trim();
+  if (!t.startsWith("{") || !t.endsWith("}")) return null;
+  const parts = parseArrayLiteralElements(t);
+  if (parts.length !== 3) return null;
+  const nums = parts.map((p: string) => Number(p.trim()));
+  return nums.every((n: number) => !isNaN(n)) ? [nums[0]!, nums[1]!, nums[2]!] : null;
+}
+
+function findShapeModifierFallback(text: string, key: string): string | null {
+  let idx = 0;
+  while (idx <= text.length - key.length) {
+    const pos = text.indexOf(key, idx);
+    if (pos < 0) return null;
+    let i = pos + key.length;
+    while (i < text.length && isAsciiWhitespaceCode(text.charCodeAt(i))) i++;
+    if (text[i] === "=" && text[i + 1] !== "=") {
+      i++;
+      while (i < text.length && isAsciiWhitespaceCode(text.charCodeAt(i))) i++;
+      if (text[i] === "{") {
+        const close = text.indexOf("}", i + 1);
+        if (close > i) return text.slice(i, close + 1);
+      } else {
+        const start = i;
+        while (i < text.length && isAsciiIdentContinue(text.charCodeAt(i))) i++;
+        if (i > start) return text.slice(start, i);
+      }
+    }
+    idx = pos + 1;
+  }
+  return null;
+}
 
 type ModificationStack = { mods: ModelicaModArgs; evaluationScopeId: SymbolId | null }[];
 
@@ -203,18 +279,11 @@ export class ShapeFlattener {
     const text = cstNode.text as string;
     if (!text || !text.includes("Placement")) return null;
 
-    let origin: [number, number, number] | null = null;
-    let rotation: [number, number, number] | null = null;
-
-    // A lightweight parser for the Placement annotation
-    const oMatch = text.match(/origin\s*=\s*\{\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\}/);
-    if (oMatch) {
-      origin = [Number(oMatch[1]), Number(oMatch[2]), Number(oMatch[3])];
-    }
-    const rMatch = text.match(/rotation\s*=\s*\{\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\}/);
-    if (rMatch) {
-      rotation = [Number(rMatch[1]), Number(rMatch[2]), Number(rMatch[3])];
-    }
+    const modVals = findNamedElementModValues(cstNode, ["origin", "rotation"]);
+    const origin = parseVec3Literal(modVals.get("origin") ?? findShapeModifierFallback(text, "origin") ?? undefined);
+    const rotation = parseVec3Literal(
+      modVals.get("rotation") ?? findShapeModifierFallback(text, "rotation") ?? undefined,
+    );
 
     if (!origin && !rotation) return null;
 
@@ -246,10 +315,8 @@ export class ShapeFlattener {
     const text = cstNode.text as string;
     if (!text || !text.includes("material")) return undefined;
 
-    const match = text.match(/material\s*=\s*([a-zA-Z0-9_]+)/);
-    if (match) {
-      return match[1];
-    }
-    return undefined;
+    const modVals = findNamedElementModValues(cstNode, ["material"]);
+    const raw = modVals.get("material") ?? findShapeModifierFallback(text, "material");
+    return raw && isAsciiIdentifier(raw) ? raw : undefined;
   }
 }

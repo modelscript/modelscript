@@ -13,11 +13,12 @@ export function lintUsdStage(stage: UsdStage): UsdDiagnostic[] {
 
   // 1. Stage metadata checks
   if (stage.metadata.upAxis && stage.metadata.upAxis !== "Y" && stage.metadata.upAxis !== "Z") {
+    const firstPrim = stage.prims.values().next().value;
     diagnostics.push({
       code: "USD1003",
       severity: "error",
       message: `Invalid stage upAxis '${stage.metadata.upAxis}'. OpenUSD requires 'Y' or 'Z'.`,
-      range: DEFAULT_RANGE,
+      range: firstPrim?.range ?? DEFAULT_RANGE,
     });
   }
 

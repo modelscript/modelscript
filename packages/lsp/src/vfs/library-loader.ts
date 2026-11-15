@@ -10,6 +10,7 @@ import {
   putSalsaIndexCache,
 } from "./browser-file-system.js";
 
+import { globalLibraryRegistry, type ModelscriptLibraryManifest } from "@modelscript/runtime";
 import type { FederatedQueryCacheStore } from "@modelscript/runtime/wasm_cache_store.js";
 import { strFromU8, unzipSync } from "fflate";
 import { iconCache } from "../handlers/treeHandler.js";
@@ -19,7 +20,14 @@ import {
   loadingLibraryState,
   mountedLibraryMetadata,
   normalizeLibraryName,
+  type MountedLibraryInfo,
 } from "../utils/hierarchy-utils.js";
+import {
+  extractModelicaPackageAndNestedSplit,
+  extractModelicaUsesDeps,
+  extractSysmlAtAnnotationDeps,
+  trimOuterChars,
+} from "../utils/lexical-utils.js";
 import { loadPrebakedMslIcons } from "../utils/msl-icons-loader.js";
 import { findCuratedPackageFallback } from "./curated-package-fallbacks.js";
 import { ingestSalsaIndex } from "./salsa-index-ingester.js";
@@ -55,21 +63,243 @@ export const SAFE_PACKAGE_SIZE_LIMIT = LARGEST_MSL_FILE_SIZE * SAFE_PACKAGE_SIZE
 
 const warnedLargeFiles = new Set<string>();
 
+export function decodeBase64Bytes(b64: string): Uint8Array {
+  const bin = atob(b64.replace(/[^A-Za-z0-9+/=]/g, ""));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) {
+    out[i] = bin.charCodeAt(i);
+  }
+  return out;
+}
+
+export function encodeBytesBase64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) {
+    bin += String.fromCharCode(bytes[i]!);
+  }
+  return btoa(bin);
+}
+
+function isSysmlSourcePath(filePath: string): boolean {
+  const lower = filePath.toLowerCase();
+  return lower.endsWith(".sysml") || lower.endsWith(".sysml2") || lower.endsWith(".kerml");
+}
+
+function mountSysmlEntriesInContext(
+  entries: Array<{ fullPath: string; content: string }>,
+  ctx: LoaderContext,
+  registerWorkspace = true,
+): string[] {
+  const registeredUris: string[] = [];
+  for (const { fullPath, content } of entries) {
+    if (!isSysmlSourcePath(fullPath)) continue;
+    const uri = fullPath.startsWith("file://") ? fullPath : `file://${fullPath.startsWith("/") ? "" : "/"}${fullPath}`;
+    ctx.documentTrees?.set(uri, { text: content, tree: null, classCache: new Map() });
+    if (registerWorkspace && ctx.sysml2WorkspaceIndex) {
+      ctx.sysml2WorkspaceIndex.register(uri, () => {
+        if (!ctx.sysml2Parser)
+          return null as unknown as ReturnType<NonNullable<LoaderContext["sysml2Parser"]>["parse"]>["rootNode"];
+        const tree = ctx.sysml2Parser.parse(content);
+        if (tree) {
+          setTimeout(() => {
+            try {
+              (tree as { delete?(): void }).delete?.();
+            } catch {
+              /* ignore */
+            }
+          }, 0);
+        }
+        return (tree ? tree.rootNode : null) as unknown as ReturnType<
+          NonNullable<LoaderContext["sysml2Parser"]>["parse"]
+        >["rootNode"];
+      });
+      registeredUris.push(uri);
+    }
+  }
+  return registeredUris;
+}
+
+interface HydratedSymbolLike {
+  language?: unknown;
+  resourceId?: unknown;
+}
+
+function partitionBundlePayload(
+  subsetIds: Set<number>,
+  allSymbols: [number, HydratedSymbolLike][],
+  byNameRaw: [string, number[]][],
+  childrenOfRaw: [number | null, number[]][],
+) {
+  const symbols = new Map<number, HydratedSymbolLike>(allSymbols.filter(([id]) => subsetIds.has(id)));
+  const byName = new Map<string, number[]>();
+  for (const [name, ids] of byNameRaw) {
+    const filtered = ids.filter((id) => subsetIds.has(id));
+    if (filtered.length > 0) byName.set(name, filtered);
+  }
+  const childrenOf = new Map<number | null, number[]>();
+  for (const [parentId, cIds] of childrenOfRaw) {
+    if (parentId !== null && !subsetIds.has(parentId)) continue;
+    const filtered = cIds.filter((id) => subsetIds.has(id));
+    if (filtered.length > 0) childrenOf.set(parentId, filtered);
+  }
+  return { symbols, byName, childrenOf };
+}
+
+function hydrateMultiLanguageBundle(
+  uri: string,
+  parsedIndex: {
+    symbols?: [number | string, HydratedSymbolLike][] | Record<string, HydratedSymbolLike> | undefined;
+    byName?: [string, number[]][] | undefined;
+    childrenOf?: [number | null, number[]][] | undefined;
+  },
+  mapResourceId: (origPath: string) => string,
+  ctx: LoaderContext,
+): number {
+  const rawSymbols: [number, HydratedSymbolLike][] = Array.isArray(parsedIndex.symbols)
+    ? parsedIndex.symbols.map(([id, entry]) => [Number(id), entry])
+    : Object.entries(parsedIndex.symbols ?? {}).map(([id, entry]) => [Number(id), entry]);
+  const byNameRaw: [string, number[]][] = Array.isArray(parsedIndex.byName) ? parsedIndex.byName : [];
+  const childrenOfRaw: [number | null, number[]][] = Array.isArray(parsedIndex.childrenOf)
+    ? parsedIndex.childrenOf
+    : [];
+
+  const sysmlIds = new Set<number>();
+  const otherIds = new Set<number>();
+  for (const [id, entry] of rawSymbols) {
+    const lang = String(entry?.language ?? "").toLowerCase();
+    const resId = String(entry?.resourceId ?? "");
+    if (lang === "sysml2" || lang === "sysml" || lang === "kerml" || isSysmlSourcePath(resId)) {
+      sysmlIds.add(id);
+    } else {
+      otherIds.add(id);
+    }
+  }
+
+  if (sysmlIds.size > 0 && ctx.sysml2WorkspaceIndex?.hydrate) {
+    const sysmlPayload = partitionBundlePayload(sysmlIds, rawSymbols, byNameRaw, childrenOfRaw);
+    ctx.sysml2WorkspaceIndex.hydrate(uri, sysmlPayload, undefined, mapResourceId);
+  }
+  if (otherIds.size > 0 && ctx.globalWorkspaceIndex?.hydrate) {
+    const otherPayload = partitionBundlePayload(otherIds, rawSymbols, byNameRaw, childrenOfRaw);
+    ctx.globalWorkspaceIndex.hydrate(uri, otherPayload, undefined, mapResourceId);
+  } else if (sysmlIds.size === 0 && rawSymbols.length > 0 && ctx.globalWorkspaceIndex?.hydrate) {
+    ctx.globalWorkspaceIndex.hydrate(
+      uri,
+      {
+        symbols: new Map(rawSymbols),
+        byName: new Map(byNameRaw),
+        childrenOf: new Map(childrenOfRaw),
+      },
+      undefined,
+      mapResourceId,
+    );
+  }
+  return rawSymbols.length;
+}
+
+async function registerRuntimeAssetsFromPackage(
+  pkgName: string,
+  version: string,
+  opts: {
+    files?: Record<string, string> | undefined;
+    modelscript?: Record<string, unknown> | undefined;
+    wasmBase64?: string | undefined;
+    tables?: Record<string, unknown> | undefined;
+    binaryFiles?: Record<string, Uint8Array> | undefined;
+  },
+): Promise<Partial<MountedLibraryInfo>> {
+  let manifestMeta: Record<string, unknown> | undefined = opts.modelscript;
+  const files = opts.files ?? {};
+  const pkgJsonContent = files["package.json"] ?? files["sources/package.json"];
+  if (!manifestMeta && typeof pkgJsonContent === "string") {
+    try {
+      const parsed = JSON.parse(pkgJsonContent) as Record<string, unknown>;
+      if (parsed["modelscript"] && typeof parsed["modelscript"] === "object") {
+        manifestMeta = parsed["modelscript"] as Record<string, unknown>;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!manifestMeta) return {};
+
+  const cat = manifestMeta["category"];
+  const stdRaw = manifestMeta["standard"] as Record<string, unknown> | undefined;
+  const langs = Array.isArray(manifestMeta["languages"])
+    ? manifestMeta["languages"].filter((l): l is string => typeof l === "string")
+    : typeof manifestMeta["language"] === "string"
+      ? [manifestMeta["language"]]
+      : [];
+
+  let tables: Record<string, unknown> | undefined = opts.tables ? { ...opts.tables } : undefined;
+  const runtimeRaw = manifestMeta["runtime"] as
+    | { wasm?: string | undefined; tables?: Record<string, string> | undefined }
+    | undefined;
+  if (runtimeRaw?.tables && typeof runtimeRaw.tables === "object") {
+    tables ??= {};
+    for (const [k, rel] of Object.entries(runtimeRaw.tables)) {
+      if (tables[k] !== undefined) continue;
+      const cleanRel = rel.replace(/^\.\//, "");
+      const text = files[cleanRel] ?? files[rel] ?? files[`sources/${cleanRel}`];
+      if (typeof text === "string") {
+        try {
+          tables[k] = JSON.parse(text);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+
+  let wasmBytes: Uint8Array | undefined;
+  if (opts.wasmBase64) {
+    wasmBytes = decodeBase64Bytes(opts.wasmBase64);
+  } else if (runtimeRaw?.wasm && opts.binaryFiles) {
+    const cleanWasm = runtimeRaw.wasm.replace(/^\.\//, "");
+    wasmBytes = opts.binaryFiles[cleanWasm] ?? opts.binaryFiles[`sources/${cleanWasm}`];
+  }
+
+  if (cat === "library" || cat === "standard-pack" || stdRaw) {
+    const normalizedManifest: ModelscriptLibraryManifest = {
+      ...(manifestMeta as unknown as ModelscriptLibraryManifest),
+      category: cat === "standard-pack" || stdRaw ? "standard-pack" : "library",
+      ...(langs[0] ? { language: langs[0] } : {}),
+      ...(langs.length > 0 ? { languages: langs } : {}),
+    };
+    const loaded = globalLibraryRegistry.registerLibraryBundle(
+      { name: pkgName, version, modelscript: normalizedManifest },
+      { wasmBytes, tables },
+    );
+    if (loaded.wasmBytes && !loaded.wasmExports) {
+      await globalLibraryRegistry.ensureWasmInstantiated(loaded);
+    }
+  }
+
+  return {
+    language: langs[0] ?? (stdRaw ? "sysml2" : undefined),
+    category: cat === "standard-pack" || stdRaw ? "standard-pack" : "library",
+    standardCode: typeof stdRaw?.["code"] === "string" ? stdRaw["code"] : undefined,
+    standardEdition: typeof stdRaw?.["edition"] === "string" ? stdRaw["edition"] : undefined,
+    profile: typeof stdRaw?.["profile"] === "string" ? stdRaw["profile"] : undefined,
+    activation:
+      stdRaw?.["activation"] === "workspace" || stdRaw?.["activation"] === "explicit"
+        ? (stdRaw["activation"] as "workspace" | "explicit")
+        : stdRaw
+          ? "import"
+          : undefined,
+  };
+}
+
 export function getSafePackageSource(text: string, fullPath: string, ctx?: LoaderContext): string {
   if (text.length <= SAFE_PACKAGE_SIZE_LIMIT) return text;
   // Don't truncate icon definition files — their nested class definitions
   // (e.g. Icons.Package, Icons.ExamplesPackage) are essential for extends
   // resolution during icon rendering of sub-packages.
   if (fullPath.endsWith("/Icons.mo")) return text;
-  const match = text.match(/package\s+([A-Za-z0-9_]+)/);
-  if (!match) return text;
-  const pkgName = match[1];
-
-  const afterMatch = text.slice(match.index! + match[0].length);
-  const nestedMatch = afterMatch.match(
-    /\n[ \t]*(model|block|connector|function|package|record|type)[ \t]+[A-Za-z0-9_]+/,
-  );
-  if (nestedMatch && nestedMatch.index !== undefined) {
+  const splitInfo = extractModelicaPackageAndNestedSplit(text);
+  if (!splitInfo) return text;
+  const pkgName = splitInfo.pkgName;
+  if (splitInfo.nestedOffset >= 0) {
     if (!warnedLargeFiles.has(fullPath)) {
       warnedLargeFiles.add(fullPath);
       const sizeMB = (text.length / (1024 * 1024)).toFixed(2);
@@ -84,8 +314,7 @@ export function getSafePackageSource(text: string, fullPath: string, ctx?: Loade
         message: msg,
       });
     }
-    const cutPos = match.index! + match[0].length + nestedMatch.index;
-    const header = text.slice(0, cutPos);
+    const header = text.slice(0, splitInfo.nestedOffset);
     return `${header}\nend ${pkgName};`;
   }
   return text;
@@ -105,18 +334,22 @@ export interface RegistryPackageInfo {
   /** Package version. */
   version: string;
   /**
-   * Map of relative paths → file contents for all .mo files.
-   * Keys are relative to the package root (e.g., "Motor/package.mo").
+   * Map of relative paths → file contents for package source/data files.
+   * Keys are relative to the package root (e.g., "Motor/package.mo", "src/asme.sysml").
    */
   files: Record<string, string>;
   /** Optional modelscript metadata from package.json. */
   modelscript?:
-    | {
+    | ({
         languages?: string[] | undefined;
         main?: string | undefined;
         modelicaVersion?: string | undefined;
-      }
+      } & Partial<ModelscriptLibraryManifest>)
     | undefined;
+  /** Optional pre-loaded lookup tables keyed by runtime.tables entry name. */
+  tables?: Record<string, unknown> | undefined;
+  /** Optional base64-encoded sandboxed WASM runtime bytes. */
+  wasmBase64?: string | undefined;
 }
 
 /**
@@ -208,6 +441,8 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
 
     // Write files to the VFS
     let fileCount = 0;
+    const sysmlEntries: Array<{ fullPath: string; content: string }> = [];
+    const encoder = new TextEncoder();
     for (const [relPath, content] of Object.entries(pkg.files)) {
       const fullPath = `${basePath}/${relPath}`;
 
@@ -222,8 +457,10 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
         }
       }
 
-      const encoder = new TextEncoder();
       ctx.sharedFs.addFile(fullPath, encoder.encode(content));
+      if (isSysmlSourcePath(fullPath)) {
+        sysmlEntries.push({ fullPath, content });
+      }
       fileCount++;
     }
 
@@ -307,6 +544,10 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
     };
     registerDirLazy(basePath);
 
+    // Mount SysML v2 / KerML sources into sysml2WorkspaceIndex and documentTrees
+    const sysmlUris = mountSysmlEntriesInContext(sysmlEntries, ctx, true);
+    registeredCount += sysmlUris.length;
+
     // Eagerly trigger indexing for all registered files so their symbols
     // appear in getIndex() and are available for name resolution.
     // Without this, lazy-registered files are invisible to the validation pipeline.
@@ -323,15 +564,34 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
         }
       }
     }
+    for (const sysmlUri of sysmlUris) {
+      try {
+        ctx.sysml2WorkspaceIndex?.getFileIndex(sysmlUri);
+        indexedCount++;
+      } catch (err) {
+        indexErrors++;
+        if (indexErrors <= 3) {
+          ctx.logger.warn(`[registry] SysML index error for ${sysmlUri}: ${err}`);
+        }
+      }
+    }
     if (indexErrors > 3) {
       ctx.logger.warn(`[registry] ... and ${indexErrors - 3} more indexing errors`);
     }
 
+    const runtimeMeta = await registerRuntimeAssetsFromPackage(pkg.name, pkg.version, {
+      files: pkg.files,
+      modelscript: pkg.modelscript as Record<string, unknown> | undefined,
+      wasmBase64: pkg.wasmBase64,
+      tables: pkg.tables,
+    });
+
     loadingLibraryState.delete(normName);
     mountedLibraryMetadata.set(normName, {
+      ...runtimeMeta,
       name: normName,
       version: pkg.version,
-      language: pkg.modelscript?.languages?.[0],
+      language: runtimeMeta.language ?? pkg.modelscript?.languages?.[0],
     });
     ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
 
@@ -454,6 +714,7 @@ export async function loadDependencyFromRegistry(
           }
           loadingLibraryState.delete(normName);
           mountedLibraryMetadata.set(normName, {
+            ...mountedLibraryMetadata.get(normName),
             name: normName,
             version: dep.version,
           });
@@ -467,6 +728,7 @@ export async function loadDependencyFromRegistry(
         let indexJson: Record<string, unknown> | null = null;
         let iconsJson: Record<string, string> | null = null;
         const files: Record<string, string> = {};
+        const binaryFilesBase64: Record<string, string> = {};
 
         for (const [relativePath, data] of Object.entries(zipped)) {
           if (data.length === 0) continue; // directory
@@ -476,11 +738,19 @@ export async function loadDependencyFromRegistry(
             iconsJson = JSON.parse(strFromU8(data));
           } else if (relativePath.startsWith("sources/")) {
             const fileRelPath = relativePath.substring("sources/".length);
-            files[fileRelPath] = strFromU8(data);
+            if (fileRelPath.toLowerCase().endsWith(".wasm")) {
+              binaryFilesBase64[fileRelPath] = encodeBytesBase64(data);
+            } else {
+              files[fileRelPath] = strFromU8(data);
+            }
+          } else if (relativePath === "package.json") {
+            files["package.json"] = strFromU8(data);
+          } else if (relativePath.toLowerCase().endsWith(".wasm")) {
+            binaryFilesBase64[relativePath] = encodeBytesBase64(data);
           }
         }
 
-        cached = { indexJson, iconsJson, files };
+        cached = { indexJson, iconsJson, files, binaryFilesBase64 };
         await idbPut(db, cacheKey, cached);
       }
     } finally {
@@ -523,11 +793,9 @@ export async function loadDependencyFromRegistry(
     const basePath = `/modelscript_registry/${pkg.name}/${pkg.version}`;
     const encoder = new TextEncoder();
     let fileCount = 0;
-    for (const [relPath, content] of Object.entries(pkg.files)) {
-      const fullPath = ctx.sharedFs.join(basePath, relPath);
-
-      // Ensure parent directories exist
-      const parts = fullPath.split("/");
+    const sysmlEntries: Array<{ fullPath: string; content: string }> = [];
+    const ensureParentDirs = (targetPath: string) => {
+      const parts = targetPath.split("/");
       for (let i = 2; i < parts.length; i++) {
         const dir = parts.slice(0, i).join("/");
         try {
@@ -536,40 +804,57 @@ export async function loadDependencyFromRegistry(
           /* already exists */
         }
       }
-
+    };
+    for (const [relPath, content] of Object.entries(pkg.files)) {
+      const fullPath = ctx.sharedFs.join(basePath, relPath);
+      ensureParentDirs(fullPath);
       ctx.sharedFs.addFile(fullPath, encoder.encode(content as string));
+      if (isSysmlSourcePath(fullPath)) {
+        sysmlEntries.push({ fullPath, content: content as string });
+      }
       fileCount++;
     }
+    const binaryFiles: Record<string, Uint8Array> = {};
+    if (cached.binaryFilesBase64 && typeof cached.binaryFilesBase64 === "object") {
+      for (const [relPath, b64] of Object.entries(cached.binaryFilesBase64 as Record<string, string>)) {
+        const bytes = decodeBase64Bytes(b64);
+        binaryFiles[relPath] = bytes;
+        const fullPath = ctx.sharedFs.join(basePath, relPath);
+        ensureParentDirs(fullPath);
+        ctx.sharedFs.addFile(fullPath, bytes);
+        fileCount++;
+      }
+    }
+
+    // Populate documentTrees (and lazy-index SysML files if bundle lacked an indexJson)
+    mountSysmlEntriesInContext(sysmlEntries, ctx, !cached.indexJson);
 
     // 3. Hydrate WorkspaceIndex
     if (cached.indexJson) {
       const uri = `library-bundle:/${dep.name}@${dep.version}`;
-
-      const symbols = new Map(cached.indexJson.symbols);
-      const byName = new Map(cached.indexJson.byName);
-      const childrenOf = new Map(cached.indexJson.childrenOf);
-
-      ctx.globalWorkspaceIndex.hydrate(
+      const symbolCount = hydrateMultiLanguageBundle(
         uri,
-        {
-          symbols,
-          byName,
-          childrenOf,
-        },
-        undefined,
+        cached.indexJson,
         (origPath: string) => {
           if (origPath.startsWith("sources/")) {
             return "file://" + ctx.sharedFs.join(basePath, origPath.substring("sources/".length));
           }
           return "file://" + ctx.sharedFs.join(basePath, origPath);
         },
+        ctx,
       );
 
-      ctx.logger.log(`[registry] Hydrated ${label}: ${fileCount} files, index hydrated with ${symbols.size} symbols.`);
+      ctx.logger.log(`[registry] Hydrated ${label}: ${fileCount} files, index hydrated with ${symbolCount} symbols.`);
     }
+
+    const runtimeMeta = await registerRuntimeAssetsFromPackage(dep.name, dep.version, {
+      files: cached.files,
+      binaryFiles,
+    });
 
     loadingLibraryState.delete(normName);
     mountedLibraryMetadata.set(normName, {
+      ...runtimeMeta,
       name: normName,
       version: dep.version,
     });
@@ -620,7 +905,12 @@ export async function loadDependencyFromRegistry(
 
 export const SYSML_VERSION_KEY = "SysML-v2-Release-2026-03";
 
-export async function loadMSL(serverDistBase: string, ctx: LoaderContext, version = "4.1.0"): Promise<void> {
+export async function loadMSL(
+  serverDistBase: string,
+  ctx: LoaderContext,
+  version = "4.1.0",
+  options?: { skipRegistryRetry?: boolean },
+): Promise<void> {
   const existingMeta = mountedLibraryMetadata.get("Modelica");
   if (existingMeta && existingMeta.version !== version) {
     unloadLibraryPackage("Modelica", ctx);
@@ -690,7 +980,7 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext, versio
       }
 
       if (!zipData) {
-        if (ctx.registryUrl || version !== "4.1.0") {
+        if (!options?.skipRegistryRetry && (ctx.registryUrl || version !== "4.1.0")) {
           try {
             await loadDependencyFromRegistry({ name: "Modelica", version }, ctx);
             return;
@@ -1113,6 +1403,11 @@ export async function mountPolyglotLibrary(
     // Mount files into VFS under /lib/<packageName>/
     const basePath = `/lib/${options.packageName}`;
     let fileCount = 0;
+    const textDecoder = new TextDecoder("utf-8");
+    const textFiles: Record<string, string> = {};
+    const binaryFiles: Record<string, Uint8Array> = {};
+    const sysmlEntries: Array<{ fullPath: string; content: string }> = [];
+
     for (const [name, data] of Object.entries(fileEntries)) {
       if (name.endsWith("/")) {
         ctx.sharedFs.addDir(`${basePath}/${name.slice(0, -1)}`);
@@ -1120,12 +1415,25 @@ export async function mountPolyglotLibrary(
       }
       const fullPath = `${basePath}/${name}`;
       ctx.sharedFs.addFile(fullPath, data);
+      if (name.toLowerCase().endsWith(".wasm")) {
+        binaryFiles[name] = data;
+      } else if (
+        isSysmlSourcePath(name) ||
+        name === "package.json" ||
+        name.endsWith("/package.json") ||
+        (name.endsWith(".json") && name !== "index.json" && name !== "icons.json")
+      ) {
+        const text = textDecoder.decode(data);
+        textFiles[name] = text;
+        if (isSysmlSourcePath(fullPath)) {
+          sysmlEntries.push({ fullPath, content: text });
+        }
+      }
       fileCount++;
     }
 
     if (fileEntries["icons.json"]) {
       try {
-        const textDecoder = new TextDecoder("utf-8");
         const icons = JSON.parse(textDecoder.decode(fileEntries["icons.json"])) as Record<string, string>;
         for (const [className, svg] of Object.entries(icons)) {
           if (typeof svg === "string") {
@@ -1138,36 +1446,45 @@ export async function mountPolyglotLibrary(
       }
     }
 
+    // Populate documentTrees (and lazy-index SysML files if bundle lacked an index.json)
+    mountSysmlEntriesInContext(sysmlEntries, ctx, !fileEntries["index.json"]);
+
     // If pre-indexed bundle (contains index.json):
     if (fileEntries["index.json"]) {
       try {
-        const textDecoder = new TextDecoder("utf-8");
         const indexStr = textDecoder.decode(fileEntries["index.json"]);
         const parsed = JSON.parse(indexStr);
         if (parsed.symbols && parsed.byName && parsed.childrenOf) {
-          const symbols = new Map(parsed.symbols);
-          const byName = new Map(parsed.byName);
-          const childrenOf = new Map(parsed.childrenOf);
           const uri = `library-bundle:/${options.packageName}@${options.version}`;
-
-          ctx.globalWorkspaceIndex.hydrate(uri, { symbols, byName, childrenOf }, undefined, (origPath: string) => {
-            if (origPath.startsWith("sources/")) {
-              return "file://" + ctx.sharedFs.join(basePath, origPath.substring("sources/".length));
-            }
-            return "file://" + ctx.sharedFs.join(basePath, origPath);
-          });
-          ctx.logger.log(`[vfs-mount] Hydrated ${label} pre-indexed bundle with ${symbols.size} symbols.`);
+          const symbolCount = hydrateMultiLanguageBundle(
+            uri,
+            parsed,
+            (origPath: string) => {
+              if (origPath.startsWith("sources/")) {
+                return "file://" + ctx.sharedFs.join(basePath, origPath.substring("sources/".length));
+              }
+              return "file://" + ctx.sharedFs.join(basePath, origPath);
+            },
+            ctx,
+          );
+          ctx.logger.log(`[vfs-mount] Hydrated ${label} pre-indexed bundle with ${symbolCount} symbols.`);
         }
       } catch (indexErr) {
         ctx.logger.warn(`[vfs-mount] Failed to parse index.json for ${label}: ${indexErr}`);
       }
     }
 
+    const runtimeMeta = await registerRuntimeAssetsFromPackage(options.packageName, options.version, {
+      files: textFiles,
+      binaryFiles,
+    });
+
     loadingLibraryState.delete(normName);
     mountedLibraryMetadata.set(normName, {
+      ...runtimeMeta,
       name: normName,
       version: options.version,
-      language: options.language,
+      language: options.language ?? runtimeMeta.language,
     });
     ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
 
@@ -1197,6 +1514,10 @@ export function unloadLibraryPackage(packageName: string, ctx: LoaderContext): n
   const normName = normalizeLibraryName(packageName);
   mountedLibraryMetadata.delete(normName);
   loadingLibraryState.delete(normName);
+  globalLibraryRegistry.unregisterPackage(packageName);
+  if (normName !== packageName) {
+    globalLibraryRegistry.unregisterPackage(normName);
+  }
 
   let clearedUris = 0;
 
@@ -1285,6 +1606,14 @@ export function extractDeclaredDependenciesFromSource(
 ): Array<{ name: string; version: string }> {
   const deps: Array<{ name: string; version: string }> = [];
   const seen = new Set<string>();
+  const addDep = (depName: string, depVer: string) => {
+    const cleanName = depName.trim();
+    const cleanVer = trimOuterChars(depVer.trim(), "^~>=<", "") || "1.0.0";
+    if (cleanName && !seen.has(cleanName)) {
+      seen.add(cleanName);
+      deps.push({ name: cleanName, version: cleanVer });
+    }
+  };
 
   if (uri.endsWith(".json") || text.trim().startsWith("{")) {
     try {
@@ -1293,46 +1622,42 @@ export function extractDeclaredDependenciesFromSource(
         parsed["modelscript"] && typeof parsed["modelscript"] === "object"
           ? (parsed["modelscript"] as Record<string, unknown>)
           : undefined;
-      for (const mapObj of [parsed["dependencies"], msx?.["dependencies"]]) {
-        if (mapObj && typeof mapObj === "object") {
+      for (const mapObj of [parsed["dependencies"], msx?.["dependencies"], msx?.["standards"]]) {
+        if (Array.isArray(mapObj)) {
+          for (const item of mapObj) {
+            if (typeof item !== "string" || !item.trim()) continue;
+            const trimmed = item.trim();
+            const atIdx = trimmed.lastIndexOf("@");
+            if (atIdx > 0) {
+              addDep(trimmed.slice(0, atIdx), trimmed.slice(atIdx + 1));
+            } else {
+              addDep(trimmed, "1.0.0");
+            }
+          }
+        } else if (mapObj && typeof mapObj === "object") {
           for (const [depName, depVer] of Object.entries(mapObj as Record<string, unknown>)) {
-            if (typeof depVer === "string" && depVer.trim() && !seen.has(depName)) {
-              const cleanVer = depVer.trim().replace(/^[\^~>=<]+/, "");
-              if (cleanVer) {
-                seen.add(depName);
-                deps.push({ name: depName, version: cleanVer });
-              }
+            if (typeof depVer === "string" && depVer.trim()) {
+              addDep(depName, depVer);
             }
           }
         }
       }
       return deps;
     } catch {
-      // Not valid JSON, fall through to Modelica uses(...) extraction
+      // Not valid JSON, fall through to source annotation extraction
     }
   }
 
-  const usesStartMatch = /\buses\s*\(/.exec(text);
-  if (usesStartMatch) {
-    const startIdx = usesStartMatch.index + usesStartMatch[0].length;
-    let depth = 1;
-    let endIdx = startIdx;
-    while (endIdx < text.length && depth > 0) {
-      const ch = text[endIdx];
-      if (ch === "(") depth++;
-      else if (ch === ")") depth--;
-      endIdx++;
+  for (const dep of extractModelicaUsesDeps(text)) {
+    addDep(dep.name, dep.version);
+  }
+
+  if (isSysmlSourcePath(uri) || text.includes("@LibraryDependency") || text.includes("@ComplianceProfile")) {
+    for (const dep of extractSysmlAtAnnotationDeps(text, "@LibraryDependency", ["name"])) {
+      addDep(dep.name, dep.version);
     }
-    const usesBody = text.slice(startIdx, Math.max(startIdx, endIdx - 1));
-    const depRe = /([A-Za-z_]\w*)\s*\(\s*version\s*=\s*"([^"]+)"\s*\)/g;
-    let m: RegExpExecArray | null;
-    while ((m = depRe.exec(usesBody)) !== null) {
-      const depName = m[1]!;
-      const depVer = m[2]!.trim();
-      if (depName && depVer && !seen.has(depName)) {
-        seen.add(depName);
-        deps.push({ name: depName, version: depVer });
-      }
+    for (const dep of extractSysmlAtAnnotationDeps(text, "@ComplianceProfile", ["package", "standardPackage"])) {
+      addDep(dep.name, dep.version);
     }
   }
 
@@ -1387,7 +1712,7 @@ export async function ensureLibraryVersionMounted(
     } catch (regErr) {
       if (normName === "Modelica" && effectiveDistBase) {
         ctx.logger.warn(`[deps] Registry load failed for Modelica, falling back to local MSL: ${regErr}`);
-        await loadMSL(effectiveDistBase, ctx, dep.version);
+        await loadMSL(effectiveDistBase, ctx, dep.version, { skipRegistryRetry: true });
       } else if (normName === "SysML" && effectiveDistBase) {
         ctx.logger.warn(`[deps] Registry load failed for SysML, falling back to local SysML: ${regErr}`);
         await loadSysML2StandardLibrary(effectiveDistBase, ctx);
@@ -1496,29 +1821,88 @@ export async function importLibraryZip(
 
   const unzipped = unzipSync(zipBytes);
   const files: Record<string, string> = {};
+  const binaryWasmEntries: Array<{ path: string; bytes: Uint8Array }> = [];
+  let parsedModelscript: RegistryPackageInfo["modelscript"];
+  let packageRootPrefix = "";
   let detectedPkgName = params.name || "";
   let detectedVersion = params.version || "1.0.0";
 
   for (const [relPath, data] of Object.entries(unzipped)) {
     if (!data || data.length === 0 || relPath.endsWith("/")) continue;
     const cleanPath = relPath.replace(/^\/+/, "");
+    const lower = cleanPath.toLowerCase();
     if (cleanPath.endsWith("package.json") && cleanPath.split("/").length <= 2) {
       try {
-        const parsed = JSON.parse(strFromU8(data));
+        const text = strFromU8(data);
+        files[cleanPath] = text;
+        const slashIdx = cleanPath.indexOf("/");
+        if (slashIdx > 0) {
+          packageRootPrefix = cleanPath.slice(0, slashIdx + 1);
+        }
+        const parsed = JSON.parse(text);
         if (!detectedPkgName && typeof parsed.name === "string") detectedPkgName = parsed.name;
         if (!params.version && typeof parsed.version === "string") detectedVersion = parsed.version;
+        if (parsed.modelscript && typeof parsed.modelscript === "object") {
+          parsedModelscript = parsed.modelscript as RegistryPackageInfo["modelscript"];
+        }
       } catch {
         /* ignore */
       }
+      continue;
     }
-    if (cleanPath.endsWith(".mo") || cleanPath.endsWith(".msim") || cleanPath.endsWith(".sysml")) {
+    if (lower.endsWith(".wasm")) {
+      binaryWasmEntries.push({ path: cleanPath, bytes: data });
+      continue;
+    }
+    if (
+      lower.endsWith(".mo") ||
+      lower.endsWith(".msim") ||
+      isSysmlSourcePath(lower) ||
+      (lower.endsWith(".json") && !lower.endsWith("tsconfig.json"))
+    ) {
       files[cleanPath] = strFromU8(data);
       if (!detectedPkgName) {
         const firstSeg = cleanPath.split("/")[0]?.split(" ")[0];
-        if (firstSeg && !firstSeg.endsWith(".mo") && !firstSeg.endsWith(".sysml")) {
+        if (firstSeg && !firstSeg.endsWith(".mo") && !isSysmlSourcePath(firstSeg)) {
           detectedPkgName = firstSeg;
         }
       }
+    }
+  }
+
+  let tables: Record<string, unknown> | undefined;
+  const runtimeRaw = parsedModelscript?.runtime as
+    | { wasm?: string | undefined; tables?: Record<string, string> | undefined }
+    | undefined;
+  if (runtimeRaw?.tables && typeof runtimeRaw.tables === "object") {
+    tables = {};
+    for (const [key, rel] of Object.entries(runtimeRaw.tables)) {
+      const cleanRel = rel.replace(/^\.\//, "");
+      const text =
+        files[cleanRel] ?? files[rel] ?? (packageRootPrefix ? files[`${packageRootPrefix}${cleanRel}`] : undefined);
+      if (typeof text === "string") {
+        try {
+          tables[key] = JSON.parse(text);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+
+  let wasmBase64: string | undefined;
+  if (binaryWasmEntries.length > 0) {
+    const cleanWasm = runtimeRaw?.wasm?.replace(/^\.\//, "");
+    const match = cleanWasm
+      ? binaryWasmEntries.find(
+          (e) =>
+            e.path === cleanWasm ||
+            (packageRootPrefix && e.path === `${packageRootPrefix}${cleanWasm}`) ||
+            e.path.endsWith(`/${cleanWasm}`),
+        )
+      : binaryWasmEntries[0];
+    if (match) {
+      wasmBase64 = encodeBytesBase64(match.bytes);
     }
   }
 
@@ -1528,6 +1912,9 @@ export async function importLibraryZip(
       name: finalName,
       version: detectedVersion,
       files,
+      ...(parsedModelscript ? { modelscript: parsedModelscript } : {}),
+      ...(tables && Object.keys(tables).length > 0 ? { tables } : {}),
+      ...(wasmBase64 ? { wasmBase64 } : {}),
     },
     ctx,
   );

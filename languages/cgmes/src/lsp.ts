@@ -115,6 +115,23 @@ export function validateCgmes(xmlSource: string): LspDiagnostic[] {
       const matchIdx = lines.findIndex((l) => l.includes(lint.mRID!));
       if (matchIdx >= 0) lineIdx = matchIdx;
     }
+    const lt = lines[lineIdx] ?? "";
+    let startChar = 0;
+    let endChar = Math.min(lt.length, 1);
+    if (lint.mRID) {
+      const mridIdx = lt.indexOf(lint.mRID);
+      if (mridIdx >= 0) {
+        startChar = mridIdx;
+        endChar = mridIdx + lint.mRID.length;
+      }
+    }
+    if (endChar <= startChar) {
+      while (startChar < lt.length && (lt[startChar] === " " || lt[startChar] === "\t")) {
+        startChar++;
+      }
+      const tagMatch = lt.slice(startChar).match(/^<\/?[A-Za-z0-9_:-]+|^\S+/);
+      endChar = Math.min(lt.length, startChar + (tagMatch ? tagMatch[0].length : 1));
+    }
 
     let sev: 1 | 2 | 3 | 4 = 1;
     if (lint.severity === "warning") sev = 2;
@@ -122,8 +139,8 @@ export function validateCgmes(xmlSource: string): LspDiagnostic[] {
 
     diags.push({
       range: {
-        start: { line: lineIdx, character: 0 },
-        end: { line: lineIdx, character: 40 },
+        start: { line: lineIdx, character: startChar },
+        end: { line: lineIdx, character: endChar },
       },
       severity: sev,
       code: lint.code,

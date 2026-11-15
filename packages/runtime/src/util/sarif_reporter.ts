@@ -88,6 +88,10 @@ export interface SarifVerificationReportInput {
             id?: string | undefined;
             message: string;
             severity?: "error" | "warning" | "note" | undefined;
+            standard?: string | undefined;
+            clauseId?: string | undefined;
+            margin?: number | undefined;
+            verificationMethod?: string | undefined;
             location?:
               | {
                   uri?: string | undefined;
@@ -185,6 +189,12 @@ const DEFAULT_RULES: Record<string, SarifRule> = {
     shortDescription: { text: "Formal verification safety violation." },
     defaultConfiguration: { level: "error" },
   },
+  "MSC-VERIFY-STANDARD-COMPLIANCE": {
+    id: "MSC-VERIFY-STANDARD-COMPLIANCE",
+    name: "StandardComplianceViolation",
+    shortDescription: { text: "Engineering model violates an external standard requirement or code clause." },
+    defaultConfiguration: { level: "error" },
+  },
 };
 
 /**
@@ -198,10 +208,24 @@ export function generateSarifReport(report: SarifVerificationReportInput, toolVe
     if (!stageResult.violations || stageResult.violations.length === 0) continue;
 
     for (const v of stageResult.violations) {
-      let ruleId = v.id || `MSC-VERIFY-${stageKey.toUpperCase()}`;
+      const hasStandardTag = Boolean(v.standard || v.clauseId);
+      const standardRuleId = hasStandardTag
+        ? [v.standard, v.clauseId].filter(Boolean).join(":").replace(/\s+/g, "-")
+        : undefined;
+      let ruleId = v.id || standardRuleId || `MSC-VERIFY-${stageKey.toUpperCase()}`;
       if (!rulesMap.has(ruleId)) {
-        // Fallback or mapped rule
-        if (stageKey === "decisions") ruleId = "MSC-VERIFY-DECISION-GAP";
+        if (hasStandardTag) {
+          rulesMap.set(ruleId, {
+            id: ruleId,
+            name: standardRuleId ? `Compliance_${standardRuleId.replace(/[^a-zA-Z0-9_]/g, "_")}` : "StandardCompliance",
+            shortDescription: {
+              text: `${[v.standard, v.clauseId].filter(Boolean).join(" ")} compliance requirement`,
+            },
+            defaultConfiguration: {
+              level: v.severity === "warning" ? "warning" : v.severity === "note" ? "note" : "error",
+            },
+          });
+        } else if (stageKey === "decisions") ruleId = "MSC-VERIFY-DECISION-GAP";
         else if (stageKey === "contracts") ruleId = "MSC-VERIFY-CONTRACT-VIOLATION";
         else if (stageKey === "stateMachines") ruleId = "MSC-VERIFY-STATE-DEADLOCK";
         else if (stageKey === "flowpipes") ruleId = "MSC-VERIFY-FLOWPIPE-UNSAFE";
@@ -242,6 +266,10 @@ export function generateSarifReport(report: SarifVerificationReportInput, toolVe
           witness: v.witness,
           verdict: stageResult.details?.verdict?.kind,
           rigor: stageResult.details?.verdict?.rigor,
+          standard: v.standard,
+          clauseId: v.clauseId,
+          margin: v.margin,
+          verificationMethod: v.verificationMethod,
         },
       };
 

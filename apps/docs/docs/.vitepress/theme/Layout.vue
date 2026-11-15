@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import { inBrowser, useRoute } from "vitepress";
 import DefaultTheme from "vitepress/theme";
-import { computed, defineAsyncComponent, nextTick, onMounted, watch } from "vue";
+import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from "vue";
 import DocBreadcrumbs from "./components/DocBreadcrumbs.vue";
 import LanguageHeader from "./components/LanguageHeader.vue";
 import { useAnsatzOrigin } from "./util/ansatz";
@@ -14,6 +14,7 @@ const LanguageExample = defineAsyncComponent(() => import("./components/Language
 const { Layout } = DefaultTheme;
 const route = useRoute();
 const { ansatzOrigin } = useAnsatzOrigin();
+const isMounted = ref(false);
 const isLanguageDetailPage = computed(
   () => route.path.startsWith("/languages/") && !route.path.startsWith("/languages/overview"),
 );
@@ -37,6 +38,7 @@ function syncHeroAnsatzLinks(): void {
 }
 
 onMounted(() => {
+  isMounted.value = true;
   syncHeroAnsatzLinks();
 });
 
@@ -58,7 +60,7 @@ watch(
       <ClientOnly>
         <TurbineHero />
       </ClientOnly>
-      <div v-if="!inBrowser" class="turbine-ssr-fallback">
+      <div v-if="!isMounted" class="turbine-ssr-fallback">
         <img class="fallback-img" src="/ms-logo.png" alt="ModelScript Turbine Engine" />
       </div>
     </template>

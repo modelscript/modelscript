@@ -60,6 +60,10 @@ export interface VerificationViolation {
   message: string;
   severity?: "error" | "warning" | "note" | undefined;
   stage: string;
+  standard?: string | undefined;
+  clauseId?: string | undefined;
+  margin?: number | undefined;
+  verificationMethod?: string | undefined;
   location?:
     | {
         uri?: string | undefined;
@@ -548,6 +552,16 @@ export class UnifiedVerifier {
   private static async runDecisionsStage(ctx: VerificationInputContext): Promise<VerificationStageResult> {
     const t0 = Date.now();
     try {
+      if (!ctx.sourceText || !/\b(decide|decision|table)\b/i.test(ctx.sourceText)) {
+        return {
+          stage: "decisions",
+          name: "Decision Table & Guard Verifier",
+          passed: true,
+          durationMs: Date.now() - t0,
+          summary: "Decision table analysis skipped (no tables detected or analyzer unavailable).",
+          violations: [],
+        };
+      }
       const sysmlModule: any = await importOptionalModule("@modelscript/sysml2");
       if (!sysmlModule || !sysmlModule.DecisionTableVerifier) {
         return {
@@ -620,23 +634,24 @@ export class UnifiedVerifier {
   ): Promise<VerificationStageResult> {
     const t0 = Date.now();
     try {
-      const sysmlModule: any = await importOptionalModule("@modelscript/sysml2");
-
-      if (sysmlModule?.BoundaryTestSynthesizer && ctx.sourceText && /\b(action|calc)\s+def\b/.test(ctx.sourceText)) {
-        const suite = await sysmlModule.BoundaryTestSynthesizer.synthesizeFromSysml(ctx.sourceText, {
-          includeMcdc: synthesizeMcdc,
-        });
-        const mcdcCount = suite.coverageMetrics?.mcdcPairsCount ?? 0;
-        return {
-          stage: "regionDecomposition",
-          name: "Symbolic Region Decomposition & MC/DC",
-          passed: true,
-          certified: true,
-          durationMs: Date.now() - t0,
-          summary: `Decomposed state space into ${suite.testCases.length} certified test vectors (${mcdcCount} MC/DC independent condition pairs).`,
-          violations: [],
-          details: suite,
-        };
+      if (ctx.sourceText && /\b(action|calc)\s+def\b/.test(ctx.sourceText)) {
+        const sysmlModule: any = await importOptionalModule("@modelscript/sysml2");
+        if (sysmlModule?.BoundaryTestSynthesizer) {
+          const suite = await sysmlModule.BoundaryTestSynthesizer.synthesizeFromSysml(ctx.sourceText, {
+            includeMcdc: synthesizeMcdc,
+          });
+          const mcdcCount = suite.coverageMetrics?.mcdcPairsCount ?? 0;
+          return {
+            stage: "regionDecomposition",
+            name: "Symbolic Region Decomposition & MC/DC",
+            passed: true,
+            certified: true,
+            durationMs: Date.now() - t0,
+            summary: `Decomposed state space into ${suite.testCases.length} certified test vectors (${mcdcCount} MC/DC independent condition pairs).`,
+            violations: [],
+            details: suite,
+          };
+        }
       }
 
       // Default static decomposition with empty conditions
@@ -669,6 +684,16 @@ export class UnifiedVerifier {
   private static async runContractsStage(ctx: VerificationInputContext): Promise<VerificationStageResult> {
     const t0 = Date.now();
     try {
+      if (!ctx.sourceText || !/\b(contract|assume|guarantee|requirement|satisfy)\b/i.test(ctx.sourceText)) {
+        return {
+          stage: "contracts",
+          name: "Assume-Guarantee Contract Verifier",
+          passed: true,
+          durationMs: Date.now() - t0,
+          summary: "No formal contracts found or contract module skipped.",
+          violations: [],
+        };
+      }
       const sysmlModule: any = await importOptionalModule("@modelscript/sysml2");
       if (!sysmlModule?.ContractVerifier) {
         return {
@@ -1320,20 +1345,6 @@ export class UnifiedVerifier {
   ): Promise<VerificationStageResult> {
     const t0 = Date.now();
     try {
-      const modelicaModule: any = await importOptionalModule("@modelscript/modelica");
-      if (!modelicaModule || !modelicaModule.ModelicaAlgorithmAnalyzer) {
-        return {
-          stage: "algorithms",
-          name: "Modelica Algorithmic Abstract Interpretation (Sound RTE Verification)",
-          passed: true,
-          durationMs: Date.now() - t0,
-          summary: "Algorithmic abstract interpretation skipped (@modelscript/modelica analyzer unavailable).",
-          violations: [],
-        };
-      }
-
-      const { ModelicaAlgorithmAnalyzer, ModelicaCFGLowerer, PhysicalInvariantBridge } = modelicaModule;
-
       let text = ctx.sourceText || "";
       if (!/\balgorithm\b/.test(text) && ctx.paths && ctx.paths.length > 0) {
         try {
@@ -1359,6 +1370,20 @@ export class UnifiedVerifier {
           violations: [],
         };
       }
+
+      const modelicaModule: any = await importOptionalModule("@modelscript/modelica");
+      if (!modelicaModule || !modelicaModule.ModelicaAlgorithmAnalyzer) {
+        return {
+          stage: "algorithms",
+          name: "Modelica Algorithmic Abstract Interpretation (Sound RTE Verification)",
+          passed: true,
+          durationMs: Date.now() - t0,
+          summary: "Algorithmic abstract interpretation skipped (@modelscript/modelica analyzer unavailable).",
+          violations: [],
+        };
+      }
+
+      const { ModelicaAlgorithmAnalyzer, ModelicaCFGLowerer, PhysicalInvariantBridge } = modelicaModule;
 
       let plantPreconditions: Map<string, [number, number]> | undefined = undefined;
       if (ctx.hybridAutomaton && PhysicalInvariantBridge) {
@@ -1668,6 +1693,7 @@ export class UnifiedVerifier {
     for (const st of Object.values(report.stages)) {
       if (st.violations && st.violations.length > 0) {
         for (const v of st.violations) {
+          const standardClause = v.standard && v.clauseId ? `${v.standard} ${v.clauseId}` : (v.standard ?? v.clauseId);
           verifResults.push({
             requirementId: reqId++,
             constraintId: 1,
@@ -1676,7 +1702,10 @@ export class UnifiedVerifier {
             message: v.message,
             verdict: st.details?.verdict?.kind,
             rigor: st.details?.verdict?.rigor,
-          });
+            standardClause,
+            margin: v.margin,
+            verificationMethod: v.verificationMethod ?? v.stage,
+          } as VerificationResult);
         }
       } else {
         verifResults.push({
@@ -1750,6 +1779,19 @@ export class UnifiedVerifier {
           `- Tool Confidence: Tool Qualification (TCL1) Qualified (ISO 26262-8 Clause 11.4.5)`,
           `- ISO 26262-6 Table 7 Conformance: Verified (100% Back-to-Back Equivalence)`,
         );
+      }
+      if (s.violations && s.violations.length > 0) {
+        for (const v of s.violations) {
+          if (v.standard || v.clauseId || v.margin !== undefined || v.verificationMethod) {
+            const clauseLabel = [v.standard, v.clauseId].filter(Boolean).join(" ") || "Compliance";
+            const marginText =
+              v.margin !== undefined && Number.isFinite(v.margin)
+                ? `, Margin: ${v.margin >= 0 ? "+" : ""}${v.margin.toFixed(4)}`
+                : "";
+            const methodText = v.verificationMethod ? `, Method: ${v.verificationMethod}` : "";
+            lines.push(`- [${clauseLabel}${marginText}${methodText}] ${v.message}`);
+          }
+        }
       }
       lines.push(``);
     }

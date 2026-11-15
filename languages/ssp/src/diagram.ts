@@ -8,9 +8,17 @@
  * XML `TextEdit`s on `SystemStructure.ssd`.
  */
 
-import { parseXmlSync, type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
+import {
+  appendChildSplice,
+  parseXmlSync,
+  removeElementSplice,
+  setAttributeSplice,
+  type Splice,
+  type XmlAttribute,
+  type XmlElement,
+} from "@modelscript/dsl/xml";
 import { parseSsd } from "./ssd-parser.js";
-import type { SspComponent, SspConnection, SspConnector, SspConnectorType, SspSystem } from "./types.js";
+import type { SspComponent, SspConnector, SspConnectorType, SspSystem } from "./types.js";
 
 function sspLocalName(name: string): string {
   const idx = name.indexOf(":");
@@ -545,35 +553,46 @@ export function applySspDiagramEdits(
   parsedSystem?: SspSystem,
 ): SspTextEdit[] {
   const system = parsedSystem ?? parseSsd(xml);
-  const lines = xml.split("\n");
+  const xmlDoc = parseXmlSync(xml);
+  const lineStarts = computeLineStarts(xml);
   const edits: SspTextEdit[] = [];
+  const pendingAppends = new Map<XmlElement, string[]>();
 
-  const findComponentEndLine = (startLine0: number): number => {
-    const startLineText = (lines[startLine0] ?? "").trimEnd();
-    if (startLineText.endsWith("/>")) return startLine0;
-    for (let i = startLine0; i < lines.length; i++) {
-      const line = lines[i]!;
-      if (line.includes("</Component>") || line.includes("</ssd:Component>")) return i;
+  const spliceToEdit = (splice: Splice): SspTextEdit => ({
+    range: {
+      start: offsetToPosition(splice.start, lineStarts),
+      end: offsetToPosition(splice.end, lineStarts),
+    },
+    newText: splice.text,
+  });
+
+  const queueAppend = (parent: XmlElement | null, snippet: string) => {
+    const trimmed = snippet.trim();
+    if (!trimmed) return;
+    if (parent) {
+      let list = pendingAppends.get(parent);
+      if (!list) {
+        list = [];
+        pendingAppends.set(parent, list);
+      }
+      list.push(trimmed);
+    } else {
+      const eof = offsetToPosition(xml.length, lineStarts);
+      edits.push({
+        range: { start: eof, end: eof },
+        newText: `${xml.endsWith("\n") ? "" : "\n"}${trimmed}\n`,
+      });
     }
-    return startLine0;
   };
 
-  const findClosingTagLine = (tag: string, fromLine = 0): number => {
-    const target1 = `</${tag}>`.toLowerCase();
-    const target2 = `</ssd:${tag}>`.toLowerCase();
-    for (let i = fromLine; i < lines.length; i++) {
-      const lower = lines[i]!.toLowerCase();
-      if (lower.includes(target1) || lower.includes(target2)) return i;
-    }
-    return -1;
-  };
+  const getAttr = (el: XmlElement, name: string): string | undefined =>
+    el.attributes.find((a) => a.name === name)?.value;
 
   const parseEndpointRef = (ref: string): { element: string; connector: string } => {
     const dotIdx = ref.indexOf(".");
     if (dotIdx !== -1) {
       return { element: ref.slice(0, dotIdx), connector: ref.slice(dotIdx + 1) };
     }
-    // Check if ref matches a boundary connector name
     const isBoundary = system.connectors?.some((c) => c.name === ref);
     if (isBoundary) {
       return { element: "", connector: ref };
@@ -581,19 +600,30 @@ export function applySspDiagramEdits(
     return { element: ref, connector: "y" };
   };
 
-  const findMatchingConnection = (source: string, target: string): SspConnection | undefined => {
+  const findConnectionElement = (source: string, target: string): XmlElement | null => {
+    if (!xmlDoc.root) return null;
     const src = parseEndpointRef(source);
     const tgt = parseEndpointRef(target);
-    return system.connections.find((c) => {
-      const cSrcEl = c.startElement === system.name ? "" : c.startElement;
-      const cTgtEl = c.endElement === system.name ? "" : c.endElement;
-      const srcEl = src.element === system.name ? "" : src.element;
-      const tgtEl = tgt.element === system.name ? "" : tgt.element;
-      return (
-        cSrcEl === srcEl && c.startConnector === src.connector && cTgtEl === tgtEl && c.endConnector === tgt.connector
-      );
-    });
+    const norm = (s: string | undefined): string => (!s || s === system.name ? "" : s);
+    const srcEl = norm(src.element);
+    const tgtEl = norm(tgt.element);
+    for (const el of findAllXmlElements(xmlDoc.root, (e) => sspMatchName(e.name, "Connection"))) {
+      if (
+        norm(getAttr(el, "startElement")) === srcEl &&
+        (getAttr(el, "startConnector") ?? "") === src.connector &&
+        norm(getAttr(el, "endElement")) === tgtEl &&
+        (getAttr(el, "endConnector") ?? "") === tgt.connector
+      ) {
+        return el;
+      }
+    }
+    return null;
   };
+
+  const findComponentElement = (name: string): XmlElement | null =>
+    findXmlElement(xmlDoc.root, (el) => sspMatchName(el.name, "Component") && getAttr(el, "name") === name);
+
+  const sysEl = findXmlElement(xmlDoc.root, (el) => sspMatchName(el.name, "System"));
 
   const upsertComponentGeometry = (
     cmp: SspComponent,
@@ -603,6 +633,9 @@ export function applySspDiagramEdits(
     height: number,
     rotation?: number,
   ) => {
+    const cmpEl = findComponentElement(cmp.name);
+    if (!cmpEl) return;
+
     const x1 = Math.round(x);
     const y1 = Math.round(y);
     const x2 = Math.round(x + (width || 180));
@@ -615,44 +648,11 @@ export function applySspDiagramEdits(
           : "";
     const geomTag = `<ssd:ElementGeometry x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"${rotAttr} />`;
 
-    if (cmp.geometryLine && cmp.geometryLine - 1 < lines.length) {
-      const gIdx = cmp.geometryLine - 1;
-      const lineText = lines[gIdx]!;
-      const indent = /^(\s*)/.exec(lineText)?.[1] ?? "        ";
-      edits.push({
-        range: {
-          start: { line: gIdx, character: 0 },
-          end: { line: gIdx, character: lineText.length },
-        },
-        newText: `${indent}${geomTag}`,
-      });
-      return;
-    }
-
-    if (cmp.line && cmp.line - 1 < lines.length) {
-      const startIdx = cmp.line - 1;
-      const openLine = lines[startIdx]!;
-      const indent = /^(\s*)/.exec(openLine)?.[1] ?? "      ";
-      if (openLine.trimEnd().endsWith("/>")) {
-        const trimmed = openLine.trimEnd();
-        const expanded = trimmed.slice(0, -2).trimEnd() + `>\n${indent}  ${geomTag}\n${indent}</ssd:Component>`;
-        edits.push({
-          range: {
-            start: { line: startIdx, character: 0 },
-            end: { line: startIdx, character: openLine.length },
-          },
-          newText: expanded,
-        });
-      } else {
-        const endIdx = findComponentEndLine(startIdx);
-        edits.push({
-          range: {
-            start: { line: endIdx, character: 0 },
-            end: { line: endIdx, character: 0 },
-          },
-          newText: `${indent}  ${geomTag}\n`,
-        });
-      }
+    const geomEl = cmpEl.children.find((ch) => sspMatchName(ch.name, "ElementGeometry"));
+    if (geomEl) {
+      edits.push(spliceToEdit({ start: geomEl.start, end: geomEl.end, text: geomTag }));
+    } else {
+      queueAppend(cmpEl, geomTag);
     }
   };
 
@@ -699,72 +699,48 @@ export function applySspDiagramEdits(
         const px = interior.map((p: { x: number; y: number }) => Math.round(p.x)).join(" ");
         const py = interior.map((p: { x: number; y: number }) => Math.round(p.y)).join(" ");
         connSnippet =
-          `      <ssd:Connection ${startElAttr}startConnector="${src.connector}" ${endElAttr}endConnector="${tgt.connector}">\n` +
-          `        <ssd:ConnectionGeometry pointsX="${px}" pointsY="${py}" />\n` +
-          `      </ssd:Connection>\n`;
+          `<ssd:Connection ${startElAttr}startConnector="${src.connector}" ${endElAttr}endConnector="${tgt.connector}">\n` +
+          `  <ssd:ConnectionGeometry pointsX="${px}" pointsY="${py}" />\n` +
+          `</ssd:Connection>`;
       } else {
-        connSnippet = `      <ssd:Connection ${startElAttr}startConnector="${src.connector}" ${endElAttr}endConnector="${tgt.connector}" />\n`;
+        connSnippet = `<ssd:Connection ${startElAttr}startConnector="${src.connector}" ${endElAttr}endConnector="${tgt.connector}" />`;
       }
 
-      const closeConnsIdx = findClosingTagLine("Connections");
-      if (closeConnsIdx >= 0) {
-        edits.push({
-          range: { start: { line: closeConnsIdx, character: 0 }, end: { line: closeConnsIdx, character: 0 } },
-          newText: connSnippet,
-        });
+      const connsEl = findXmlElement(xmlDoc.root, (el) => sspMatchName(el.name, "Connections"));
+      if (connsEl) {
+        queueAppend(connsEl, connSnippet);
       } else {
-        const closeSysIdx = findClosingTagLine("System");
-        const insertIdx = closeSysIdx >= 0 ? closeSysIdx : lines.length;
-        edits.push({
-          range: { start: { line: insertIdx, character: 0 }, end: { line: insertIdx, character: 0 } },
-          newText: `    <ssd:Connections>\n${connSnippet}    </ssd:Connections>\n`,
-        });
+        queueAppend(sysEl, `<ssd:Connections>\n  ${connSnippet.replace(/\n/g, "\n  ")}\n</ssd:Connections>`);
       }
     } else if (actionType === "disconnect") {
-      const matched = findMatchingConnection(action.source ?? "", action.target ?? "");
-      if (matched?.line && matched.line - 1 < lines.length) {
-        const startIdx = matched.line - 1;
-        let endIdx = startIdx;
-        if (!/\/>\s*$/.test(lines[startIdx]!)) {
-          while (endIdx < lines.length && !/<\/(?:ssd:)?Connection>/i.test(lines[endIdx]!)) {
-            endIdx++;
-          }
-        }
-        edits.push({
-          range: {
-            start: { line: startIdx, character: 0 },
-            end: { line: Math.min(lines.length, endIdx + 1), character: 0 },
-          },
-          newText: "",
-        });
+      const connEl = findConnectionElement(action.source ?? "", action.target ?? "");
+      if (connEl) {
+        edits.push(spliceToEdit(removeElementSplice(connEl, xml)));
       }
     } else if (actionType === "moveEdge") {
       for (const edge of action.edges || []) {
-        const matched = findMatchingConnection(edge.source, edge.target);
-        if (matched?.line && matched.line - 1 < lines.length && Array.isArray(edge.points)) {
-          const startIdx = matched.line - 1;
-          let endIdx = startIdx;
-          if (!/\/>\s*$/.test(lines[startIdx]!)) {
-            while (endIdx < lines.length && !/<\/(?:ssd:)?Connection>/i.test(lines[endIdx]!)) {
-              endIdx++;
-            }
-          }
-          const startElAttr = matched.startElement ? `startElement="${matched.startElement}" ` : "";
-          const endElAttr = matched.endElement ? `endElement="${matched.endElement}" ` : "";
+        const connEl = findConnectionElement(edge.source, edge.target);
+        if (connEl && Array.isArray(edge.points)) {
+          const startElement = getAttr(connEl, "startElement") ?? "";
+          const endElement = getAttr(connEl, "endElement") ?? "";
+          const startConnector = getAttr(connEl, "startConnector") ?? "";
+          const endConnector = getAttr(connEl, "endConnector") ?? "";
+          const startElAttr = startElement ? `startElement="${startElement}" ` : "";
+          const endElAttr = endElement ? `endElement="${endElement}" ` : "";
           const interior = edge.points.length > 2 ? edge.points.slice(1, -1) : edge.points;
           const px = interior.map((p: { x: number; y: number }) => Math.round(p.x)).join(" ");
           const py = interior.map((p: { x: number; y: number }) => Math.round(p.y)).join(" ");
-          const replacement =
-            `      <ssd:Connection ${startElAttr}startConnector="${matched.startConnector}" ${endElAttr}endConnector="${matched.endConnector}">\n` +
-            `        <ssd:ConnectionGeometry pointsX="${px}" pointsY="${py}" />\n` +
-            `      </ssd:Connection>\n`;
-          edits.push({
-            range: {
-              start: { line: startIdx, character: 0 },
-              end: { line: Math.min(lines.length, endIdx + 1), character: 0 },
-            },
-            newText: replacement,
-          });
+          const geomEl = connEl.children.find((ch) => sspMatchName(ch.name, "ConnectionGeometry"));
+          if (geomEl && !connEl.selfClosing) {
+            const geomTag = `<ssd:ConnectionGeometry pointsX="${px}" pointsY="${py}" />`;
+            edits.push(spliceToEdit({ start: geomEl.start, end: geomEl.end, text: geomTag }));
+          } else {
+            const replacement =
+              `<ssd:Connection ${startElAttr}startConnector="${startConnector}" ${endElAttr}endConnector="${endConnector}">\n` +
+              `        <ssd:ConnectionGeometry pointsX="${px}" pointsY="${py}" />\n` +
+              `      </ssd:Connection>`;
+            edits.push(spliceToEdit({ start: connEl.start, end: connEl.end, text: replacement }));
+          }
         }
       }
     } else if (actionType === "addComponent") {
@@ -785,150 +761,47 @@ export function applySspDiagramEdits(
       const fmuSource =
         action.className && action.className.endsWith(".fmu") ? action.className : `resources/${uniqueName}.fmu`;
       const compSnippet =
-        `      <ssd:Component name="${uniqueName}" type="application/x-fmu-sharedlibrary" source="${fmuSource}">\n` +
-        `        <ssd:Connectors>\n` +
-        `          <ssd:Connector name="u" kind="input"><ssc:Real /></ssd:Connector>\n` +
-        `          <ssd:Connector name="y" kind="output"><ssc:Real /></ssd:Connector>\n` +
-        `        </ssd:Connectors>\n` +
-        `        <ssd:ElementGeometry x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />\n` +
-        `      </ssd:Component>\n`;
+        `<ssd:Component name="${uniqueName}" type="application/x-fmu-sharedlibrary" source="${fmuSource}">\n` +
+        `  <ssd:Connectors>\n` +
+        `    <ssd:Connector name="u" kind="input"><ssc:Real /></ssd:Connector>\n` +
+        `    <ssd:Connector name="y" kind="output"><ssc:Real /></ssd:Connector>\n` +
+        `  </ssd:Connectors>\n` +
+        `  <ssd:ElementGeometry x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />\n` +
+        `</ssd:Component>`;
 
-      const closeElsIdx = findClosingTagLine("Elements");
-      if (closeElsIdx >= 0) {
-        edits.push({
-          range: { start: { line: closeElsIdx, character: 0 }, end: { line: closeElsIdx, character: 0 } },
-          newText: compSnippet,
-        });
+      const elsEl = findXmlElement(xmlDoc.root, (el) => sspMatchName(el.name, "Elements"));
+      if (elsEl) {
+        queueAppend(elsEl, compSnippet);
       } else {
-        const closeSysIdx = findClosingTagLine("System");
-        const insertIdx = closeSysIdx >= 0 ? closeSysIdx : lines.length;
-        edits.push({
-          range: { start: { line: insertIdx, character: 0 }, end: { line: insertIdx, character: 0 } },
-          newText: `    <ssd:Elements>\n${compSnippet}    </ssd:Elements>\n`,
-        });
+        queueAppend(sysEl, `<ssd:Elements>\n  ${compSnippet.replace(/\n/g, "\n  ")}\n</ssd:Elements>`);
       }
     } else if (actionType === "deleteComponents") {
       const toDelete = new Set<string>(action.names || []);
-      for (const cmp of system.components) {
-        if (toDelete.has(cmp.name) && cmp.line && cmp.line - 1 < lines.length) {
-          const startIdx = cmp.line - 1;
-          const endIdx = findComponentEndLine(startIdx);
-          edits.push({
-            range: {
-              start: { line: startIdx, character: 0 },
-              end: { line: Math.min(lines.length, endIdx + 1), character: 0 },
-            },
-            newText: "",
-          });
+      for (const cmpEl of findAllXmlElements(xmlDoc.root, (el) => sspMatchName(el.name, "Component"))) {
+        const name = getAttr(cmpEl, "name");
+        if (name && toDelete.has(name)) {
+          edits.push(spliceToEdit(removeElementSplice(cmpEl, xml)));
         }
       }
-      for (const conn of system.connections) {
-        if (
-          (toDelete.has(conn.startElement) || toDelete.has(conn.endElement)) &&
-          conn.line &&
-          conn.line - 1 < lines.length
-        ) {
-          const startIdx = conn.line - 1;
-          let endIdx = startIdx;
-          if (!/\/>\s*$/.test(lines[startIdx]!)) {
-            while (endIdx < lines.length && !/<\/(?:ssd:)?Connection>/i.test(lines[endIdx]!)) {
-              endIdx++;
-            }
-          }
-          edits.push({
-            range: {
-              start: { line: startIdx, character: 0 },
-              end: { line: Math.min(lines.length, endIdx + 1), character: 0 },
-            },
-            newText: "",
-          });
+      for (const connEl of findAllXmlElements(xmlDoc.root, (el) => sspMatchName(el.name, "Connection"))) {
+        const s = getAttr(connEl, "startElement") ?? "";
+        const e = getAttr(connEl, "endElement") ?? "";
+        if (toDelete.has(s) || toDelete.has(e)) {
+          edits.push(spliceToEdit(removeElementSplice(connEl, xml)));
         }
       }
     } else if (actionType === "updateName") {
-      const xmlDoc = parseXmlSync(xml);
-      const lineStarts = computeLineStarts(xml);
-      let updatedCst = false;
-
-      if (xmlDoc.root) {
-        const cmpEl = findXmlElement(
-          xmlDoc.root,
-          (el) =>
-            sspMatchName(el.name, "Component") &&
-            el.attributes.some((a) => a.name === "name" && a.value === action.oldName),
-        );
-        if (cmpEl) {
-          const nameAttr = cmpEl.attributes.find((a) => a.name === "name");
-          if (nameAttr) {
-            edits.push({
-              range: {
-                start: offsetToPosition(nameAttr.valueStart, lineStarts),
-                end: offsetToPosition(nameAttr.valueEnd, lineStarts),
-              },
-              newText: action.newName ?? "",
-            });
-            updatedCst = true;
-          }
-        }
-
-        const connEls = findAllXmlElements(xmlDoc.root, (el) => sspMatchName(el.name, "Connection"));
-        for (const connEl of connEls) {
-          const startAttr = connEl.attributes.find((a) => a.name === "startElement" && a.value === action.oldName);
-          if (startAttr) {
-            edits.push({
-              range: {
-                start: offsetToPosition(startAttr.valueStart, lineStarts),
-                end: offsetToPosition(startAttr.valueEnd, lineStarts),
-              },
-              newText: action.newName ?? "",
-            });
-            updatedCst = true;
-          }
-          const endAttr = connEl.attributes.find((a) => a.name === "endElement" && a.value === action.oldName);
-          if (endAttr) {
-            edits.push({
-              range: {
-                start: offsetToPosition(endAttr.valueStart, lineStarts),
-                end: offsetToPosition(endAttr.valueEnd, lineStarts),
-              },
-              newText: action.newName ?? "",
-            });
-            updatedCst = true;
-          }
-        }
+      const newName = action.newName ?? "";
+      const cmpEl = action.oldName ? findComponentElement(action.oldName) : null;
+      if (cmpEl) {
+        edits.push(spliceToEdit(setAttributeSplice(cmpEl, "name", newName, xml)));
       }
-
-      if (!updatedCst) {
-        const cmp = system.components.find((c) => c.name === action.oldName);
-        if (cmp?.line && cmp.line - 1 < lines.length) {
-          const lIdx = cmp.line - 1;
-          const lineText = lines[lIdx]!;
-          const updated = lineText.replace(/\bname\s*=\s*(["'])[^"']*\1/, `name=$1${action.newName}$1`);
-          if (updated !== lineText) {
-            edits.push({
-              range: { start: { line: lIdx, character: 0 }, end: { line: lIdx, character: lineText.length } },
-              newText: updated,
-            });
-          }
+      for (const connEl of findAllXmlElements(xmlDoc.root, (el) => sspMatchName(el.name, "Connection"))) {
+        if (getAttr(connEl, "startElement") === action.oldName) {
+          edits.push(spliceToEdit(setAttributeSplice(connEl, "startElement", newName, xml)));
         }
-        for (const conn of system.connections) {
-          if (
-            (conn.startElement === action.oldName || conn.endElement === action.oldName) &&
-            conn.line &&
-            conn.line - 1 < lines.length
-          ) {
-            const cIdx = conn.line - 1;
-            let lineText = lines[cIdx]!;
-            if (conn.startElement === action.oldName) {
-              lineText = lineText.replace(/\bstartElement\s*=\s*(["'])[^"']*\1/, `startElement=$1${action.newName}$1`);
-            }
-            if (conn.endElement === action.oldName) {
-              lineText = lineText.replace(/\bendElement\s*=\s*(["'])[^"']*\1/, `endElement=$1${action.newName}$1`);
-            }
-            edits.push({
-              range: { start: { line: cIdx, character: 0 }, end: { line: cIdx, character: lines[cIdx]!.length } },
-              newText: lineText,
-            });
-          }
+        if (getAttr(connEl, "endElement") === action.oldName) {
+          edits.push(spliceToEdit(setAttributeSplice(connEl, "endElement", newName, xml)));
         }
       }
     } else if (actionType === "updateParameter" || actionType === "updateProperty") {
@@ -936,119 +809,56 @@ export function applySspDiagramEdits(
       const paramVal = String(action.value);
       const targetName: string = action.name ?? "";
 
-      const xmlDoc = parseXmlSync(xml);
-      const lineStarts = computeLineStarts(xml);
-
       if (paramName === "source" || paramName === "type") {
-        let updatedAttr = false;
-        if (xmlDoc.root) {
-          const cmpEl = findXmlElement(
-            xmlDoc.root,
-            (el) =>
-              sspMatchName(el.name, "Component") &&
-              el.attributes.some((a) => a.name === "name" && a.value === targetName),
-          );
-          if (cmpEl) {
-            const attr = cmpEl.attributes.find((a) => a.name === paramName);
-            if (attr) {
-              edits.push({
-                range: {
-                  start: offsetToPosition(attr.valueStart, lineStarts),
-                  end: offsetToPosition(attr.valueEnd, lineStarts),
-                },
-                newText: paramVal,
-              });
-              updatedAttr = true;
-            } else {
-              const insertOffset = cmpEl.selfClosing ? cmpEl.openEnd - 2 : cmpEl.openEnd - 1;
-              const pos = offsetToPosition(insertOffset, lineStarts);
-              edits.push({
-                range: { start: pos, end: pos },
-                newText: ` ${paramName}="${paramVal}"`,
-              });
-              updatedAttr = true;
-            }
-          }
-        }
-        if (!updatedAttr) {
-          const cmp = system.components.find((c) => c.name === targetName);
-          if (cmp?.line && cmp.line - 1 < lines.length) {
-            const lIdx = cmp.line - 1;
-            const lineText = lines[lIdx]!;
-            const attrRe = new RegExp(`\\b${paramName}\\s*=\\s*(["'])[^"']*\\1`);
-            let updated: string;
-            if (attrRe.test(lineText)) {
-              updated = lineText.replace(attrRe, `${paramName}=$1${paramVal}$1`);
-            } else {
-              const trimmed = lineText.trimEnd();
-              if (trimmed.endsWith("/>")) {
-                updated = `${trimmed.slice(0, -2)} ${paramName}="${paramVal}"/>`;
-              } else if (trimmed.endsWith(">")) {
-                updated = `${trimmed.slice(0, -1)} ${paramName}="${paramVal}">`;
-              } else {
-                updated = lineText;
-              }
-            }
-            if (updated !== lineText) {
-              edits.push({
-                range: { start: { line: lIdx, character: 0 }, end: { line: lIdx, character: lineText.length } },
-                newText: updated,
-              });
-            }
-          }
+        const cmpEl = findComponentElement(targetName);
+        if (cmpEl) {
+          edits.push(spliceToEdit(setAttributeSplice(cmpEl, paramName, paramVal, xml)));
         }
         continue;
       }
 
       // Check existing inline SSV parameter bindings via XML CST
       let paramValueAttr: XmlAttribute | null = null;
-      if (xmlDoc.root) {
-        for (const el of findAllXmlElements(xmlDoc.root, (e) => sspMatchName(e.name, "Parameter"))) {
-          const pName = el.attributes.find((a) => a.name === "name")?.value;
-          if (pName === paramName || pName === `${targetName}.${paramName}`) {
-            for (const ch of el.children) {
-              const vAttr = ch.attributes.find((a) => a.name === "value");
-              if (vAttr) {
-                paramValueAttr = vAttr;
-                break;
-              }
+      let paramValueParent: XmlElement | null = null;
+      for (const el of findAllXmlElements(xmlDoc.root, (e) => sspMatchName(e.name, "Parameter"))) {
+        const pName = getAttr(el, "name");
+        if (pName === paramName || pName === `${targetName}.${paramName}`) {
+          for (const ch of el.children) {
+            const vAttr = ch.attributes.find((a) => a.name === "value");
+            if (vAttr) {
+              paramValueAttr = vAttr;
+              paramValueParent = ch;
+              break;
             }
-            if (paramValueAttr) break;
           }
+          if (paramValueAttr) break;
         }
       }
 
-      if (paramValueAttr) {
-        edits.push({
-          range: {
-            start: offsetToPosition(paramValueAttr.valueStart, lineStarts),
-            end: offsetToPosition(paramValueAttr.valueEnd, lineStarts),
-          },
-          newText: paramVal,
-        });
+      if (paramValueParent) {
+        edits.push(spliceToEdit(setAttributeSplice(paramValueParent, "value", paramVal, xml)));
       } else {
-        const closeSysIdx = findClosingTagLine("System");
-        const insertIdx = closeSysIdx >= 0 ? closeSysIdx : lines.length;
         const bindingXml =
-          `    <ssd:ParameterBindings>\n` +
-          `      <ssd:ParameterBinding prefix="${targetName}">\n` +
-          `        <ssd:ParameterValues>\n` +
-          `          <ssv:ParameterSet xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues" version="1.0" name="Parameters">\n` +
-          `            <ssv:Parameters>\n` +
-          `              <ssv:Parameter name="${paramName}">\n` +
-          `                <ssv:Real value="${paramVal}" />\n` +
-          `              </ssv:Parameter>\n` +
-          `            </ssv:Parameters>\n` +
-          `          </ssv:ParameterSet>\n` +
-          `        </ssd:ParameterValues>\n` +
-          `      </ssd:ParameterBinding>\n` +
-          `    </ssd:ParameterBindings>\n`;
-        edits.push({
-          range: { start: { line: insertIdx, character: 0 }, end: { line: insertIdx, character: 0 } },
-          newText: bindingXml,
-        });
+          `<ssd:ParameterBindings>\n` +
+          `  <ssd:ParameterBinding prefix="${targetName}">\n` +
+          `    <ssd:ParameterValues>\n` +
+          `      <ssv:ParameterSet xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues" version="1.0" name="Parameters">\n` +
+          `        <ssv:Parameters>\n` +
+          `          <ssv:Parameter name="${paramName}">\n` +
+          `            <ssv:Real value="${paramVal}" />\n` +
+          `          </ssv:Parameter>\n` +
+          `        </ssv:Parameters>\n` +
+          `      </ssv:ParameterSet>\n` +
+          `    </ssd:ParameterValues>\n` +
+          `  </ssd:ParameterBinding>\n` +
+          `</ssd:ParameterBindings>`;
+        queueAppend(sysEl, bindingXml);
       }
     }
+  }
+
+  for (const [parent, snippets] of pendingAppends) {
+    edits.push(spliceToEdit(appendChildSplice(parent, snippets.join("\n"), xml)));
   }
 
   return edits;

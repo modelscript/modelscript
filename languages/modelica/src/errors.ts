@@ -1744,12 +1744,59 @@ const modelicaErrorCodeByCode = new Map<number, ErrorCodeDef>();
 /** Reverse lookup index mapping normalized rule names (lowercase, stripped of `-` and `_`) to their {@link ErrorCodeDef}. */
 const modelicaErrorCodeByRule = new Map<string, ErrorCodeDef>();
 
+function stripDashesAndUnderscores(s: string): string {
+  return s.toLowerCase().replaceAll("-", "").replaceAll("_", "");
+}
+
+function isEmptyBraceOrBracketPrefix(s: string): boolean {
+  if (s.length < 2) return false;
+  const open = s[0];
+  const close = open === "{" ? "}" : open === "[" ? "]" : "";
+  if (!close) return false;
+  let i = 1;
+  while (i < s.length && (s[i] === " " || s[i] === "\t" || s[i] === "\r" || s[i] === "\n")) i++;
+  return i < s.length && s[i] === close;
+}
+
+function hasTrailingOpenBraceOrBracket(s: string): boolean {
+  let i = s.length - 1;
+  while (i >= 0 && (s[i] === " " || s[i] === "\t" || s[i] === "\r" || s[i] === "\n")) i--;
+  return i >= 0 && (s[i] === "{" || s[i] === "[");
+}
+
+function isSubscriptedModifierPrefix(s: string): boolean {
+  let i = 0;
+  if (s[i] === "(") {
+    i++;
+    while (i < s.length && (s[i] === " " || s[i] === "\t" || s[i] === "\r" || s[i] === "\n")) i++;
+    if (i >= s.length) return false;
+    const ch0 = s.charCodeAt(i);
+    if (!((ch0 >= 65 && ch0 <= 90) || (ch0 >= 97 && ch0 <= 122) || ch0 === 95)) return false;
+    i++;
+    while (i < s.length) {
+      const c = s.charCodeAt(i);
+      if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95 || c === 46) {
+        i++;
+      } else {
+        break;
+      }
+    }
+    while (i < s.length && (s[i] === " " || s[i] === "\t" || s[i] === "\r" || s[i] === "\n")) i++;
+  }
+  if (s[i] !== "[") return false;
+  const close = s.indexOf("]", i + 1);
+  if (close <= i + 1) return false;
+  let j = close + 1;
+  while (j < s.length && (s[j] === " " || s[j] === "\t" || s[j] === "\r" || s[j] === "\n")) j++;
+  return j < s.length && s[j] === "=";
+}
+
 for (const def of Object.values(ModelicaErrorCode)) {
   if (!modelicaErrorCodeByCode.has(def.code)) {
     modelicaErrorCodeByCode.set(def.code, def);
   }
   if (def.rule) {
-    const normalized = def.rule.toLowerCase().replace(/[-_]/g, "");
+    const normalized = stripDashesAndUnderscores(def.rule);
     if (!modelicaErrorCodeByRule.has(normalized)) {
       modelicaErrorCodeByRule.set(normalized, def);
     }
@@ -1767,11 +1814,12 @@ export function getModelicaErrorCodeDef(codeOrRule: number | string): ErrorCodeD
     return modelicaErrorCodeByCode.get(codeOrRule);
   }
   if (typeof codeOrRule === "string") {
-    const num = Number(codeOrRule.replace(/^M/i, ""));
+    const numStr = codeOrRule.startsWith("M") || codeOrRule.startsWith("m") ? codeOrRule.slice(1) : codeOrRule;
+    const num = Number(numStr);
     if (!isNaN(num) && modelicaErrorCodeByCode.has(num)) {
       return modelicaErrorCodeByCode.get(num);
     }
-    const normalized = codeOrRule.toLowerCase().replace(/[-_]/g, "");
+    const normalized = stripDashesAndUnderscores(codeOrRule);
     return modelicaErrorCodeByRule.get(normalized);
   }
   return undefined;
@@ -1793,16 +1841,21 @@ export function normalizeModelicaSyntaxDiagnostic(
   startOffset?: number,
 ): string | null {
   if (!message.startsWith("Syntax Error: Unexpected")) return null;
-  if (/^\{\s*\}/.test(sourceSlice) || /^\[\s*\]/.test(sourceSlice)) {
+  if (isEmptyBraceOrBracketPrefix(sourceSlice)) {
     return ModelicaErrorCode.EMPTY_ARRAY_CONSTRUCTOR.message();
   }
-  if (fullSource && typeof startOffset === "number" && startOffset > 0 && /^[}\]]/.test(sourceSlice)) {
+  if (
+    fullSource &&
+    typeof startOffset === "number" &&
+    startOffset > 0 &&
+    (sourceSlice.startsWith("}") || sourceSlice.startsWith("]"))
+  ) {
     const before = fullSource.slice(0, startOffset);
-    if (/\{\s*$/.test(before) || /\[\s*$/.test(before)) {
+    if (hasTrailingOpenBraceOrBracket(before)) {
       return ModelicaErrorCode.EMPTY_ARRAY_CONSTRUCTOR.message();
     }
   }
-  if (/^(?:\(\s*[A-Za-z_][A-Za-z0-9_.]*\s*)?\[[^\]]+\]\s*=/.test(sourceSlice)) {
+  if (isSubscriptedModifierPrefix(sourceSlice)) {
     return ModelicaErrorCode.SUBSCRIPTED_MODIFIER.message();
   }
   return null;

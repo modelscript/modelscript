@@ -137,6 +137,12 @@ export interface MountedLibraryInfo {
   description?: string | undefined;
   language?: string | undefined;
   explicitlyInstalled?: boolean | undefined;
+  category?: "library" | "standard-pack" | undefined;
+  standardCode?: string | undefined;
+  standardEdition?: string | undefined;
+  profile?: string | undefined;
+  activation?: "import" | "explicit" | "workspace" | undefined;
+  active?: boolean | undefined;
 }
 
 export interface LoadingLibraryInfo {
@@ -381,12 +387,17 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
       if (libName === "ObsoleteModelica4") continue;
       const meta = mountedLibraryMetadata.get(libName);
       const formattedVer = ver ? (ver.startsWith("v") ? ver : `v${ver}`) : "package";
+      const isStdPack = meta?.category === "standard-pack" || Boolean(meta?.standardCode);
+      const description = isStdPack
+        ? `${formattedVer} · ${meta?.standardCode ?? "Standard Pack"}${meta?.active ? " · Active" : ""}`
+        : formattedVer;
       nodes.push({
         id: `__LIB__:${libName}`,
         name: libName,
         compositeName: `__LIB__:${libName}`,
         classKind: "package",
-        description: formattedVer,
+        description,
+        icon: isStdPack ? "shield" : undefined,
         hasChildren: true,
         language:
           meta?.language ??

@@ -273,4 +273,26 @@ test("Drag and Drop Component Placeholder & Bounce Animation Suite", async (t) =
       delete (globalThis as any).document;
     }
   });
+
+  await t.test("should adapt drop placeholder SVG colors in dark mode", () => {
+    const addedNodes: any[] = [];
+    const mockGraph: any = {
+      getCellById: () => null,
+      removeCell: () => {},
+      addNode: (node: any) => {
+        addedNodes.push(node);
+        return node;
+      },
+      getNodes: () => [{ id: "R1", getSize: () => ({ width: 20, height: 20 }) }],
+    };
+
+    const rawBlackStrokeSvg =
+      '<svg viewBox="0 0 100 100"><line x1="0" y1="0" x2="100" y2="100" stroke="#000000" fill="#ffffff"/></svg>';
+    dropComponentGhost(mockGraph, 50, 60, "Modelica.Electrical.Analog.Basic.Resistor", rawBlackStrokeSvg, true);
+
+    assert.strictEqual(addedNodes.length, 1);
+    const decoded = decodeURIComponent(addedNodes[0].imageUrl.replace("data:image/svg+xml;utf8,", ""));
+    assert.ok(!decoded.includes('stroke="#000000"'), "Dark-mode drop placeholder must invert pure black strokes");
+    clearActiveDropPlaceholder();
+  });
 });

@@ -133,7 +133,14 @@ export class LibraryTreeItem extends vscode.TreeItem {
     const isInstalledPkg =
       info.id.startsWith("__LIB__:") ||
       Boolean(info.uri && info.uri.includes("/packages/") && !info.compositeName?.includes("."));
-    this.contextValue = isLoadingPkg ? "loadingPackage" : isInstalledPkg ? "installedPackage" : info.classKind;
+    const isStandardPack = isInstalledPkg && info.icon === "shield";
+    this.contextValue = isLoadingPkg
+      ? "loadingPackage"
+      : isStandardPack
+        ? "installedStandardPack"
+        : isInstalledPkg
+          ? "installedPackage"
+          : info.classKind;
 
     if (isLoadingPkg) {
       this.iconPath = new vscode.ThemeIcon("loading~spin");

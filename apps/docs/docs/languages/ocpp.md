@@ -22,11 +22,19 @@ description: "@modelscript/ocpp (languages/ocpp) provides native parsing, urgenc
 
 ### 1. Urgency-Weighted Smart Charging Allocation
 
-- Dynamically schedules active vehicle sessions under a shared transformer or feeder capacity limit $P_{\text{grid}}^{\max}$:
+- Dynamically schedules active vehicle sessions under a shared transformer or feeder capacity limit $P_{\text{grid}}^{\max}$, prioritizing sessions by energy urgency relative to remaining dwell time:
   $$\sum_{i=1}^{N_{\text{active}}} P_i(t) \le P_{\text{grid}}^{\max}$$
-- Evaluates individual vehicle urgency metrics based on required energy $E_{\text{req},i} = (SoC_{\text{target},i} - SoC_{\text{current},i}) \cdot C_{\text{battery},i}$ and departure deadline $t_{\text{dep},i}$:
   $$U_i = \frac{E_{\text{req},i}}{\max(0.1, t_{\text{dep},i} - t)}$$
-- Enforces hardware connector physical maximums: $P_i(t) \le P_{\text{conn},i}^{\max}$.
+  where $E_{\text{req},i} = (SoC_{\text{target},i} - SoC_{\text{current},i}) \cdot C_{\text{battery},i}$ is the remaining energy required and $P_i(t) \le P_{\text{conn},i}^{\max}$ enforces hardware connector physical maximums.
+
+  | Symbol                   | Meaning                                                  | Units / Domain                                             |
+  | :----------------------- | :------------------------------------------------------- | :--------------------------------------------------------- |
+  | $i, N_{\text{active}}$   | Session index and number of active charging sessions     | $\text{dimensionless}$ ($i = 1, \dots, N_{\text{active}}$) |
+  | $P_i(t)$                 | Charging power allocated to session $i$ at time $t$      | $\text{kW}$ ($P_i \ge 0$)                                  |
+  | $P_{\text{grid}}^{\max}$ | Maximum aggregate site/feeder power limit                | $\text{kW}$                                                |
+  | $U_i$                    | Charging urgency score for session $i$                   | $\text{kW}$                                                |
+  | $E_{\text{req},i}$       | Remaining energy needed to reach target state of charge  | $\text{kWh}$                                               |
+  | $t_{\text{dep},i}, t$    | Scheduled departure time of vehicle $i$ and current time | $\text{h}$                                                 |
 
 ### 2. Multi-Tier Profile Priority Hierarchy
 
@@ -38,9 +46,20 @@ description: "@modelscript/ocpp (languages/ocpp) provides native parsing, urgenc
 
 ### 3. DAE Formulation for Transformer Overload Protection
 
-- Lowers aggregated EVSE power and state-of-charge dynamics into `DAEBuilder`:
+- Lowers aggregated EVSE power and battery state-of-charge dynamics into `DAEBuilder`, integrating charging power into battery state of charge and summing site demand:
   $$\frac{d(SoC_i)}{dt} = \frac{\eta_{\text{chg}} \cdot P_i(t)}{C_{\text{battery},i}}$$
   $$P_{\text{total}}(t) = \sum_{i=1}^{N} P_i(t)$$
+
+  | Symbol                 | Meaning                                       | Units / Domain                                         |
+  | :--------------------- | :-------------------------------------------- | :----------------------------------------------------- |
+  | $SoC_i$                | State of charge of vehicle battery $i$        | $\text{dimensionless}$ ($0 \le SoC_i \le 1$)           |
+  | $t$                    | Simulation time                               | $\text{h}$                                             |
+  | $\eta_{\text{chg}}$    | Charger-to-battery conversion efficiency      | $\text{dimensionless}$ ($0 < \eta_{\text{chg}} \le 1$) |
+  | $P_i(t)$               | Charging power delivered to vehicle $i$       | $\text{kW}$                                            |
+  | $C_{\text{battery},i}$ | Usable battery energy capacity of vehicle $i$ | $\text{kWh}$                                           |
+  | $P_{\text{total}}(t)$  | Total aggregate power drawn by all $N$ EVSEs  | $\text{kW}$                                            |
+  | $N$                    | Total number of EVSE connectors at the site   | $\text{dimensionless}$                                 |
+
 - Emits soft-slack penalty equations for transformer thermal capacity overloads.
 
 ---

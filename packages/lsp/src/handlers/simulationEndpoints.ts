@@ -24,6 +24,7 @@ import { ArenaSimulator, simulateArena, simulateArenaAsync, Tet4Mesher } from "@
 import { LspContext } from "../lsp-context.js";
 import { getArenaOutputStringIds, getArenaParameterInfo, getArenaVariableMetadata } from "../utils/arena-utils.js";
 import { getCompositeName } from "../utils/hierarchy-utils.js";
+import { extractNamedCallAttr, hasModelicaClassDefPrefix } from "../utils/lexical-utils.js";
 import { ModelScriptParticipant } from "./modelscriptParticipant.js";
 
 const notebookSessions = new Map<string, any>();
@@ -344,9 +345,31 @@ export function registerSimulationEndpoints(context: LspContext) {
             // Detect CAD annotation in source document if available
             let cadUri = params.cadUri;
             if (!cadUri && doc) {
-              const match = doc.getText().match(/CAD\s*\(\s*uri\s*=\s*["']([^"']+)["']/i);
-              if (match) {
-                cadUri = match[1];
+              const docMgr = (
+                context as unknown as {
+                  documentManager?: {
+                    documentTrees?: Map<
+                      string,
+                      { tree?: { rootNode?: import("../utils/ast-utils.js").CstNodeLike | null } | null }
+                    >;
+                  };
+                }
+              ).documentManager;
+              const cachedTree = docMgr?.documentTrees?.get(doc.uri)?.tree;
+              if (cachedTree?.rootNode) {
+                const stack = [cachedTree.rootNode];
+                while (stack.length > 0 && !cadUri) {
+                  const n = stack.pop();
+                  if (!n) continue;
+                  if (n.type === "annotation_clause" || n.type === "annotation" || n.type === "class_modification") {
+                    cadUri = extractNamedCallAttr(n.text, "cad", ["uri"], true);
+                  } else {
+                    for (const c of n.children || []) stack.push(c);
+                  }
+                }
+              }
+              if (!cadUri) {
+                cadUri = extractNamedCallAttr(doc.getText(), "cad", ["uri"], true);
               }
             }
             if (cadUri) {
@@ -1067,10 +1090,7 @@ export function registerSimulationEndpoints(context: LspContext) {
     }
 
     // Distinguish between class declarations (model, package, record, function...) vs script statements
-    const isClassDef =
-      /^\s*(within\b|model\b|class\b|block\b|record\b|connector\b|type\b|package\b|pure\s+function\b|impure\s+function\b|function\b)/.test(
-        trimmed,
-      );
+    const isClassDef = hasModelicaClassDefPrefix(trimmed);
     const codeToParse = isClassDef ? trimmed + "\n" : `function _script\nalgorithm\n${trimmed}\nend _script;\n`;
 
     const tree = sharedContext ? sharedContext.parse(".mo", codeToParse) : parser.parse(codeToParse);

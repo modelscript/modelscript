@@ -279,11 +279,12 @@ export class ModelicaAlgorithmAnalyzer {
         const isInput = Boolean(findCstNodesByType(comp, "input")[0]);
         const isOutput = Boolean(findCstNodesByType(comp, "output")[0]);
         const typeSpec = findCstNodesByType(comp, "type_specifier")[0]?.text?.trim() || "Real";
-        const normalizedType = /Integer/i.test(typeSpec)
+        const lowerTypeSpec = typeSpec.toLowerCase();
+        const normalizedType = lowerTypeSpec.includes("integer")
           ? "Integer"
-          : /Boolean/i.test(typeSpec)
+          : lowerTypeSpec.includes("boolean")
             ? "Boolean"
-            : /String/i.test(typeSpec)
+            : lowerTypeSpec.includes("string")
               ? "String"
               : "Real";
 
@@ -299,19 +300,60 @@ export class ModelicaAlgorithmAnalyzer {
           const isArray = Boolean(subNode);
           let arrayDimension: number | undefined = undefined;
           if (subNode?.text) {
-            const numMatch = /\b\d+\b/.exec(subNode.text);
-            if (numMatch) {
-              arrayDimension = Number(numMatch[0]);
+            const subText = subNode.text;
+            const isIdentCont = (code: number) =>
+              (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || (code >= 48 && code <= 57) || code === 95;
+            let i = 0;
+            while (i < subText.length) {
+              const c = subText.charCodeAt(i);
+              if (c >= 48 && c <= 57 && (i === 0 || !isIdentCont(subText.charCodeAt(i - 1)))) {
+                const start = i++;
+                while (i < subText.length && subText.charCodeAt(i) >= 48 && subText.charCodeAt(i) <= 57) i++;
+                if (i === subText.length || !isIdentCont(subText.charCodeAt(i))) {
+                  arrayDimension = Number(subText.slice(start, i));
+                  break;
+                }
+              } else {
+                i++;
+              }
             }
           }
 
           let initialBound: [number, number] | undefined = undefined;
           const modNode = findCstNodesByType(cd, "modification")[0];
           if (modNode?.text) {
-            const eqMatch = /=\s*(-?\d+(?:\.\d+)?)/.exec(modNode.text);
-            if (eqMatch && eqMatch[1]) {
-              const val = Number(eqMatch[1]);
-              initialBound = [val, val];
+            const modText = modNode.text;
+            const eqIdx = modText.indexOf("=");
+            if (eqIdx >= 0 && modText[eqIdx + 1] !== "=") {
+              let j = eqIdx + 1;
+              while (
+                j < modText.length &&
+                (modText[j] === " " || modText[j] === "\t" || modText[j] === "\n" || modText[j] === "\r")
+              ) {
+                j++;
+              }
+              const start = j;
+              if (modText[j] === "-") j++;
+              let intDigits = 0;
+              while (j < modText.length && modText.charCodeAt(j) >= 48 && modText.charCodeAt(j) <= 57) {
+                intDigits++;
+                j++;
+              }
+              if (intDigits > 0) {
+                if (
+                  modText[j] === "." &&
+                  j + 1 < modText.length &&
+                  modText.charCodeAt(j + 1) >= 48 &&
+                  modText.charCodeAt(j + 1) <= 57
+                ) {
+                  j++;
+                  while (j < modText.length && modText.charCodeAt(j) >= 48 && modText.charCodeAt(j) <= 57) j++;
+                }
+                const val = Number(modText.slice(start, j));
+                if (!Number.isNaN(val)) {
+                  initialBound = [val, val];
+                }
+              }
             }
           }
 

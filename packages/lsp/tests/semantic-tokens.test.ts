@@ -2,6 +2,7 @@
 
 import { createWasmParser } from "@modelscript/dsl/bindings";
 import assert from "node:assert";
+import { createRequire } from "node:module";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -146,6 +147,7 @@ end SimplePendulum;`;
 
   await t.test("Falls back to parseFallback if tree is missing or stale", () => {
     let fallbackCalled = false;
+    let receivedExt = "";
 
     registerSemanticTokensProvider(
       mockConn,
@@ -155,6 +157,7 @@ end SimplePendulum;`;
       () => false,
       (ext, text) => {
         fallbackCalled = true;
+        receivedExt = ext;
         return parser.parse(text);
       },
     );
@@ -162,6 +165,238 @@ end SimplePendulum;`;
     const fullHandler = handlers.get("textDocument/semanticTokens/full")!;
     const response = fullHandler({ textDocument: { uri: docUri } });
     assert.ok(fallbackCalled, "parseFallback should be called when cached tree is null");
+    assert.strictEqual(receivedExt, ".mo");
     assert.ok(response && response.data.length > 0, "Tokens should be returned from fallback parse");
   });
+
+  await t.test("Passes actual URI extension to parseFallback and consumes WASM getSemanticTokens()", () => {
+    let receivedExt = "";
+    const spiceUri = "file:///circuit.cir";
+    const spiceDoc = TextDocument.create(spiceUri, "spice", 1, "R1 1 0 1k\n");
+    const docsWithSpice = {
+      get: (uri: string) => (uri === spiceUri ? spiceDoc : mockDocs.get(uri)),
+      onDidClose: () => {},
+    } as any;
+
+    const fakeWasmTree = {
+      rootNode: { getPtr: () => 1 },
+      getSemanticTokens: () => new Uint32Array([0, 0, 2, 3, 1]),
+    };
+
+    registerSemanticTokensProvider(
+      mockConn,
+      docsWithSpice,
+      () => null,
+      () => null,
+      () => false,
+      (ext) => {
+        receivedExt = ext;
+        return fakeWasmTree;
+      },
+    );
+
+    const fullHandler = handlers.get("textDocument/semanticTokens/full")!;
+    const response = fullHandler({ textDocument: { uri: spiceUri } });
+    assert.strictEqual(receivedExt, ".cir", "parseFallback should receive .cir instead of .mo");
+    assert.deepStrictEqual(response.data, [0, 0, 2, 3, 1], "Should emit WASM semantic tokens directly");
+  });
+
+  function decodeTokens(data: number[], text: string) {
+    const lines = text.split(/\r?\n/);
+    const out: { line: number; char: number; length: number; type: string; modifiers: number; text: string }[] = [];
+    let line = 0;
+    let char = 0;
+    for (let i = 0; i + 4 < data.length; i += 5) {
+      const dLine = data[i]!;
+      const dChar = data[i + 1]!;
+      const length = data[i + 2]!;
+      const type = legend.tokenTypes[data[i + 3]!] ?? "unknown";
+      const modifiers = data[i + 4]!;
+      line += dLine;
+      char = dLine === 0 ? char + dChar : dChar;
+      out.push({
+        line,
+        char,
+        length,
+        type,
+        modifiers,
+        text: (lines[line] ?? "").slice(char, char + length),
+      });
+    }
+    return out;
+  }
+
+  function createTestProvider(
+    parseFallback: (ext: string, text: string) => any,
+    getDocumentTree?: (uri: string) => any,
+  ) {
+    const handlers = new Map<string, any>();
+    const docsMap = new Map<string, TextDocument>();
+    const mockConnection: any = {
+      onRequest(method: string, handler: any) {
+        handlers.set(method, handler);
+      },
+    };
+    const mockDocuments: any = {
+      get: (uri: string) => docsMap.get(uri),
+      onDidClose: () => {},
+    };
+    registerSemanticTokensProvider(
+      mockConnection,
+      mockDocuments,
+      getDocumentTree ?? (() => null),
+      () => null,
+      () => false,
+      parseFallback,
+    );
+    const fullHandler = handlers.get("textDocument/semanticTokens/full")!;
+    return {
+      run(uri: string, languageId: string, code: string) {
+        const doc = TextDocument.create(uri, languageId, 1, code);
+        docsMap.set(uri, doc);
+        const res = fullHandler({ textDocument: { uri } });
+        return decodeTokens(res.data, code);
+      },
+    };
+  }
+
+  const req = createRequire(import.meta.url);
+
+  await t.test("STEP (.step) uses CST nodes + inter-leaf gap comments (not inside strings)", async () => {
+    const { parser } = await createWasmParser(req.resolve("@modelscript/step/parser.wasm"));
+    const provider = createTestProvider((_ext, txt) => parser.parse(txt));
+    const code = `ISO-10303-21;
+/* Step block comment */
+HEADER;
+ENDSEC;
+DATA;
+#10=CARTESIAN_POINT('/* inside string */',(0.0,1.5,-2));
+#20=DIRECTION('',(.TRUE.,#10));
+ENDSEC;
+END-ISO-10303-21;`;
+    const toks = provider.run("file:///test/part.step", "step", code);
+    assert.ok(toks.some((x) => x.text === "ISO-10303-21" && x.type === "keyword"));
+    assert.ok(toks.some((x) => x.text === "/* Step block comment */" && x.type === "comment"));
+    assert.ok(!toks.some((x) => x.text.includes("inside string") && x.type === "comment"));
+    assert.ok(toks.some((x) => x.text === "'/* inside string */'" && x.type === "string"));
+    assert.ok(toks.some((x) => x.text === "CARTESIAN_POINT" && x.type === "type"));
+    assert.ok(toks.some((x) => x.text === "#10" && x.type === "variable"));
+    assert.ok(toks.some((x) => x.text === ".TRUE." && x.type === "enumMember"));
+  });
+
+  await t.test("CFD (.cfg CST + .foam OpenFOAM dialect) emits accurate semantic tokens", async () => {
+    const { parser } = await createWasmParser(req.resolve("@modelscript/cfd/parser.wasm"));
+    const provider = createTestProvider((ext, txt) => (ext === ".cfg" ? parser.parse(txt) : null));
+    const su2 = `% SU2 Config
+SOLVER = INC_RANS
+MACH_NUMBER = {{mach * 1.0}}
+MARKER_EULER = ( airfoil, symmetry )`;
+    const su2Toks = provider.run("file:///test/flow.cfg", "cfd", su2);
+    assert.ok(su2Toks.some((x) => x.text === "% SU2 Config" && x.type === "comment"));
+    assert.ok(su2Toks.some((x) => x.text === "SOLVER" && x.type === "keyword"));
+    assert.ok(su2Toks.some((x) => x.text === "INC_RANS" && x.type === "type"));
+    assert.ok(su2Toks.some((x) => x.text === "{{mach * 1.0}}" && x.type === "variable"));
+    assert.ok(su2Toks.some((x) => x.text === "airfoil" && x.type === "parameter"));
+
+    const foam = `FoamFile
+{
+    version 2.0; // header
+    object boundaryField;
+}`;
+    const foamToks = provider.run("file:///test/boundary.foam", "cfd", foam);
+    assert.ok(foamToks.some((x) => x.text === "// header" && x.type === "comment"));
+    assert.ok(foamToks.some((x) => x.text === "2.0" && x.type === "number"));
+  });
+
+  await t.test("FEA (.inp CST + .bdf Nastran dialect) emits accurate semantic tokens", async () => {
+    const { parser } = await createWasmParser(req.resolve("@modelscript/fea/parser.wasm"));
+    const provider = createTestProvider((ext, txt) => (ext === ".inp" ? parser.parse(txt) : null));
+    const inp = `** FEA Deck comment
+*NODE, NSET=ALL_NODES
+1, 0.0, 0.0, {{z}}
+*ELEMENT, TYPE=C3D8, ELSET=EALL
+1, 1, 2, 3, 4`;
+    const inpToks = provider.run("file:///test/mesh.inp", "fea", inp);
+    assert.ok(inpToks.some((x) => x.text === "** FEA Deck comment" && x.type === "comment"));
+    assert.ok(inpToks.some((x) => x.text === "*NODE" && x.type === "keyword"));
+    assert.ok(inpToks.some((x) => x.text === "NSET" && x.type === "parameter"));
+    assert.ok(inpToks.some((x) => x.text === "C3D8" && x.type === "type"));
+    assert.ok(inpToks.some((x) => x.text === "{{z}}" && x.type === "variable"));
+
+    const bdf = `$ Nastran comment
+GRID, 1, , 0.0, 1.0, 2.0`;
+    const bdfToks = provider.run("file:///test/model.bdf", "fea", bdf);
+    assert.ok(bdfToks.some((x) => x.text === "$ Nastran comment" && x.type === "comment"));
+    assert.ok(bdfToks.some((x) => x.text === "2.0" && x.type === "number"));
+  });
+
+  await t.test("Fortran (.f90 + EMTDC .f) uses CST + fixed-form/inter-leaf comment gaps", async () => {
+    const { parser } = await createWasmParser(req.resolve("@modelscript/fortran/parser.wasm"));
+    const provider = createTestProvider((_ext, txt) => parser.parse(txt));
+    const code = `! Modern comment
+SUBROUTINE MY_SUB(X, Y)
+  IMPLICIT NONE
+  REAL(8), INTENT(IN) :: X
+  REAL(8), INTENT(OUT) :: Y
+  REAL(8) :: LOC
+  LOC = $Pin
+  Y = SQRT(X) + REAL(N) + LOC
+  CALL HELPER(X, Y)
+END SUBROUTINE MY_SUB`;
+    const toks = provider.run("file:///test/sub.f90", "fortran", code);
+    assert.ok(toks.some((x) => x.text === "! Modern comment" && x.type === "comment"));
+    assert.ok(toks.some((x) => x.text === "SUBROUTINE" && x.type === "keyword"));
+    assert.ok(toks.some((x) => x.text === "MY_SUB" && x.type === "function" && x.modifiers === 1));
+    assert.ok(toks.some((x) => x.text === "REAL" && x.type === "type"));
+    assert.ok(toks.some((x) => x.text === "$Pin" && x.type === "parameter"));
+    assert.ok(toks.some((x) => x.text === "SQRT" && x.type === "function"));
+    assert.ok(toks.some((x) => x.text === "LOC" && x.type === "variable"));
+    assert.ok(toks.some((x) => x.line === 7 && x.text === "X" && x.type === "parameter"));
+  });
+
+  await t.test("OWL 2 (.ofn WASM CST + .owx XML CST) classifies declarations, comments, and literals", async () => {
+    const { parser } = await createWasmParser(req.resolve("@modelscript/owl2/parser.wasm"));
+    const provider = createTestProvider((ext, txt) => (ext === ".ofn" ? parser.parse(txt) : null));
+    const ofn = `# Top comment
+Prefix(:=<http://example.org/onto#>)
+Ontology(<http://example.org/onto>
+  Declaration(Class(:Motor))
+  AnnotationAssertion(rdfs:label :Motor "Title # not comment")
+  ClassAssertion(:Motor :motor1)
+)`;
+    const ofnToks = provider.run("file:///test/onto.ofn", "owl2", ofn);
+    assert.ok(ofnToks.some((x) => x.text === "# Top comment" && x.type === "comment"));
+    assert.ok(!ofnToks.some((x) => x.text.includes("# not comment") && x.type === "comment"));
+    assert.ok(ofnToks.some((x) => x.text === ":Motor" && x.type === "class" && x.modifiers === 1));
+    assert.ok(ofnToks.some((x) => x.text === ":motor1" && x.type === "enumMember"));
+
+    const owx = `<!-- XML comment -->
+<Ontology>
+  <Declaration>
+    <Class IRI="#Motor"/>
+  </Declaration>
+</Ontology>`;
+    const owxToks = provider.run("file:///test/onto.owx", "owl2", owx);
+    assert.ok(owxToks.some((x) => x.text === "<!-- XML comment -->" && x.type === "comment"));
+    assert.ok(owxToks.some((x) => x.text === "Declaration" && x.type === "keyword"));
+    assert.ok(owxToks.some((x) => x.text === "IRI" && x.type === "parameter"));
+    assert.ok(owxToks.some((x) => x.text === '"#Motor"' && x.type === "string"));
+  });
+
+  await t.test(
+    "Modelica type_prefix CST inspection ignores 'parameter'/'constant' words inside descriptions",
+    async () => {
+      const { parser } = await createWasmParser(req.resolve("@modelscript/modelica/parser.wasm"));
+      const provider = createTestProvider((_ext, txt) => parser.parse(txt));
+      const code = `model TestVariability
+  constant Real c = 1;
+  parameter Real p = 2;
+  Real x "a parameter and constant description";
+end TestVariability;`;
+      const toks = provider.run("file:///test/TestVariability.mo", "modelica", code);
+      assert.ok(toks.some((x) => x.text === "c" && x.type === "parameter" && x.modifiers === 3));
+      assert.ok(toks.some((x) => x.text === "p" && x.type === "parameter" && x.modifiers === 1));
+      assert.ok(toks.some((x) => x.text === "x" && x.type === "variable" && x.modifiers === 1));
+    },
+  );
 });

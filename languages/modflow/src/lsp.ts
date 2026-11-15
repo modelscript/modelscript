@@ -37,18 +37,26 @@ export interface LspDocumentSymbol {
 
 export function validateModflow(text: string): LspDiagnostic[] {
   try {
+    const lines = text.split(/\r?\n/);
     const model = parseModflow(text);
     const diags = lintModflow(model);
-    return diags.map((d) => ({
-      range: {
-        start: { line: Math.max(0, d.line - 1), character: 0 },
-        end: { line: Math.max(0, d.line - 1), character: 80 },
-      },
-      severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
-      code: `MF${d.code}`,
-      source: "modflow",
-      message: d.message,
-    }));
+    return diags.map((d) => {
+      const l = Math.min(Math.max(0, d.line - 1), Math.max(0, lines.length - 1));
+      const lt = lines[l] ?? "";
+      let sChar = 0;
+      while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
+      const tok = lt.slice(sChar).match(/^[^\s,;]+/);
+      return {
+        range: {
+          start: { line: l, character: sChar },
+          end: { line: l, character: Math.min(lt.length, sChar + (tok ? tok[0].length : 1)) },
+        },
+        severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
+        code: `MF${d.code}`,
+        source: "modflow",
+        message: d.message,
+      };
+    });
   } catch (err) {
     return [
       {
@@ -70,46 +78,60 @@ export function getModflowDocumentSymbols(input: string | ModflowModel): LspDocu
     return [];
   }
 
+  const lines = typeof input === "string" ? input.split(/\r?\n/) : [];
+  const lineRange = (line: number, endLine: number, fallbackLen: number): LspRange => {
+    const sLine = Math.min(Math.max(0, line), Math.max(0, lines.length - 1));
+    const eLine = Math.min(Math.max(sLine, endLine), Math.max(sLine, lines.length - 1));
+    const lt = lines[eLine] ?? "";
+    const endChar = lt.length > 0 ? Math.max(1, lt.trimEnd().length) : Math.max(1, fallbackLen);
+    return { start: { line: sLine, character: 0 }, end: { line: eLine, character: endChar } };
+  };
   const symbols: LspDocumentSymbol[] = [];
 
   if (model.dis) {
+    const label = `DIS (${model.dis.nlay}x${model.dis.nrow}x${model.dis.ncol})`;
     symbols.push({
-      name: `DIS (${model.dis.nlay}x${model.dis.nrow}x${model.dis.ncol})`,
+      name: label,
       detail: `Grid: ${model.dis.nlay} layers, ${model.dis.nrow} rows, ${model.dis.ncol} cols`,
       kind: 5,
-      range: { start: { line: 0, character: 0 }, end: { line: 10, character: 80 } },
-      selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } },
+      range: lineRange(0, 10, label.length),
+      selectionRange: lineRange(0, 0, label.length),
     });
   }
 
   if (model.npf) {
+    const label = `NPF (K=${model.npf.k})`;
     symbols.push({
-      name: `NPF (K=${model.npf.k})`,
+      name: label,
       detail: `Hydraulic Conductivity K: ${model.npf.k} m/d`,
       kind: 14,
-      range: { start: { line: 0, character: 0 }, end: { line: 20, character: 80 } },
-      selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } },
+      range: lineRange(0, 20, label.length),
+      selectionRange: lineRange(0, 0, label.length),
     });
   }
 
   for (const w of model.wells) {
     const l = Math.max(0, (w.line ?? 1) - 1);
+    const label = w.name ?? `Well (${w.cell.layer}, ${w.cell.row}, ${w.cell.col})`;
+    const r = lineRange(l, l, label.length);
     symbols.push({
-      name: w.name ?? `Well (${w.cell.layer}, ${w.cell.row}, ${w.cell.col})`,
+      name: label,
       detail: `Pumping rate: ${w.q} m^3/d`,
       kind: 13,
-      range: { start: { line: l, character: 0 }, end: { line: l, character: 80 } },
-      selectionRange: { start: { line: l, character: 0 }, end: { line: l, character: 10 } },
+      range: r,
+      selectionRange: r,
     });
   }
 
   for (const r of model.rivers) {
     const l = Math.max(0, (r.line ?? 1) - 1);
+    const label = `River (${r.cell.layer}, ${r.cell.row}, ${r.cell.col})`;
+    const rng = lineRange(l, l, label.length);
     symbols.push({
-      name: `River (${r.cell.layer}, ${r.cell.row}, ${r.cell.col})`,
+      name: label,
       detail: `Stage: ${r.stage} m, Cond: ${r.cond} m^2/d`,
       kind: 13,
-      range: { start: { line: l, character: 0 }, end: { line: l, character: 80 } },
+      range: rng,
       selectionRange: { start: { line: l, character: 0 }, end: { line: l, character: 10 } },
     });
   }

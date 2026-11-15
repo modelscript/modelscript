@@ -110,16 +110,22 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
 }
 
 export function getDiagnostics(text: string): LspDiagnostic[] {
+  const lines = text.split(/\r?\n/);
   const net = parseOcpp(text);
   const raw = lintOcpp(net);
 
   return raw.map((d) => {
-    const l = Math.max(0, d.line - 1);
+    const l = Math.min(Math.max(0, d.line - 1), Math.max(0, lines.length - 1));
+    const lt = lines[l] ?? "";
+    let sChar = 0;
+    while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
+    const tok = lt.slice(sChar).match(/^[^\s=,;]+/);
+    const eChar = Math.min(lt.length, sChar + (tok ? tok[0].length : 1));
     const sev = d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3;
     return {
       range: {
-        start: { line: l, character: 0 },
-        end: { line: l, character: 80 },
+        start: { line: l, character: sChar },
+        end: { line: l, character: eChar },
       },
       severity: sev,
       code: d.code,

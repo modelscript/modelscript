@@ -120,18 +120,22 @@ export function getEclipseDocumentSymbols(text: string): LspDocumentSymbol[] {
   const deck = parseEclipse(text);
   const symbols: LspDocumentSymbol[] = [];
 
+  const lines = text.split(/\r?\n/);
   const rootRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: text.split("\n").length, character: 0 },
+    end: { line: lines.length, character: 0 },
   };
 
   const wellSymbols: LspDocumentSymbol[] = [];
   for (const well of deck.wells.values()) {
     const startLine = well.range ? Math.max(0, well.range.startLine - 1) : 0;
     const endLine = well.range ? Math.max(0, well.range.endLine - 1) : startLine;
+    const leadMatch = /\S/.exec(lines[startLine] ?? "");
+    const startChar = leadMatch ? leadMatch.index : 0;
+    const endChar = Math.max(startChar, (lines[endLine] ?? "").trimEnd().length);
     const r: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: endLine, character: 40 },
+      start: { line: startLine, character: startChar },
+      end: { line: endLine, character: endChar },
     };
     const ctrl = well.productionControl
       ? `Producer (${well.productionControl.controlMode}=${well.productionControl.oilRate})`

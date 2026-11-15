@@ -27,6 +27,7 @@ export const UNIQUE_EXT_TO_SLUG: Record<string, string> = {
   ".step": "step",
   ".stp": "step",
   ".p21": "step",
+  ".qif": "qif",
   ".reqif": "reqif",
   ".owl": "owl2",
   ".owl2": "owl2",
@@ -67,6 +68,7 @@ export const UNIQUE_EXT_TO_SLUG: Record<string, string> = {
   ".feb": "febio",
   ".aml": "automationml",
   ".csv": "csv",
+  ".las": "las",
   ".usda": "usd",
   ".usd": "usd",
   ".adm": "adams",
@@ -292,9 +294,11 @@ export function injectRealisticFault(langSlug: string, code: string): { code: st
       };
     case "sysml2":
       if (code.includes("package ")) {
+        const trimmed = code.trimEnd();
+        const body = trimmed.endsWith("}") ? trimmed.slice(0, -1) : trimmed;
         return {
           label: "Injected unresolved part type reference",
-          code: `${code.trimEnd().replace(/\}\s*$/, "")}\n  part broken : UndefinedSubcomponent;\n}`,
+          code: `${body}\n  part broken : UndefinedSubcomponent;\n}`,
         };
       }
       return {
@@ -360,6 +364,11 @@ export function injectRealisticFault(langSlug: string, code: string): { code: st
       return {
         label: "Injected malformed STEP ISO-10303-21 entity",
         code: `${code.trimEnd()}\n#99999=UNCLOSED_ENTITY('broken'`,
+      };
+    case "qif":
+      return {
+        label: "Injected illegal MMC modifier on Plane feature (M8104)",
+        code: `${code.trimEnd()}\nCHARACTERISTIC C_FAULT Perpendicularity "InvalidDatumMod" zone=0.02 material=MMC datums=[A] features=[F_DATUM_A]`,
       };
     default:
       if (XML_DIALECTS.has(langSlug)) {

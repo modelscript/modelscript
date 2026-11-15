@@ -1,9 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { QueryDB } from "@modelscript/runtime";
-import { type ExtractedConstraint, extractSysML2Constraints } from "../constraint-extractor.js";
-import { findCstDescendants, findFirstDescendant, type SysmlCstNode } from "../flattener/cst-lowerer.js";
-import { getSysmlParser } from "../sysml2-dae-lowerer.js";
+import { extractSysML2Constraints, type ExtractedConstraint } from "../constraint-extractor.js";
+import {
+  collectCstLeaves,
+  findCstDescendants,
+  findFirstDescendant,
+  findMatchingBraceLeaf,
+  isDottedIdentText,
+  isSysmlIdentLeaf,
+  isUnsignedNumberText,
+  parseSysmlSource,
+  stripLeadingChars,
+  tokenizeSysmlExpressionCst,
+  trimTrailingSemicolon,
+  type SysmlCstNode,
+} from "../cst-utils.js";
+import { parseSysML2Expression, type SysML2ExprAst } from "../evaluator.js";
 
 export interface SmtFunctionDef {
   name: string;
@@ -21,189 +34,77 @@ export interface SmtLibExportOptions {
   maximize?: string[] | undefined;
 }
 
-type Token =
-  | { type: "num"; value: number }
-  | { type: "ident"; value: string }
-  | { type: "op"; value: string }
-  | { type: "lparen" }
-  | { type: "rparen" };
-
-function tokenizeArithmetic(expr: string): Token[] {
-  const tokens: Token[] = [];
-  let i = 0;
-  while (i < expr.length) {
-    const ch = expr[i]!;
-    if (/\s/.test(ch)) {
-      i++;
-      continue;
-    }
-    if (ch === "(") {
-      tokens.push({ type: "lparen" });
-      i++;
-      continue;
-    }
-    if (ch === ")") {
-      tokens.push({ type: "rparen" });
-      i++;
-      continue;
-    }
-    if (ch === "+" || ch === "-" || ch === "*" || ch === "/" || ch === "^") {
-      tokens.push({ type: "op", value: ch });
-      i++;
-      continue;
-    }
-    // Number: digits and optional dot
-    if (/[0-9]/.test(ch)) {
-      let numStr = "";
-      while (i < expr.length && /[0-9.eE+-]/.test(expr[i]!)) {
-        // If '+' or '-' appears, ensure it's exponent
-        const curr = expr[i]!;
-        if ((curr === "+" || curr === "-") && !/[eE]/.test(expr[i - 1] ?? "")) {
-          break;
-        }
-        numStr += curr;
-        i++;
-      }
-      tokens.push({ type: "num", value: parseFloat(numStr) });
-      continue;
-    }
-    // Identifier: letter or underscore, followed by alphanumeric, dot, or underscore
-    if (/[a-zA-Z_]/.test(ch)) {
-      let identStr = "";
-      while (i < expr.length && /[a-zA-Z0-9_.]/.test(expr[i]!)) {
-        identStr += expr[i]!;
-        i++;
-      }
-      tokens.push({ type: "ident", value: identStr.replace(/\./g, "_") });
-      continue;
-    }
-    i++;
-  }
-  return tokens;
+function hasNonlinearOp(expr: string): boolean {
+  return expr.includes("*") || expr.includes("^") || expr.includes("/");
 }
 
-interface AstNode {
-  kind: "num" | "ident" | "unary" | "binary";
-  op?: string | undefined;
-  val?: number | undefined;
-  name?: string | undefined;
-  left?: AstNode | undefined;
-  right?: AstNode | undefined;
+function trimReturnExpr(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  let s = raw.trim();
+  if (s.startsWith("return") && (s.length === 6 || s[6] === " " || s[6] === "\t" || s[6] === "\n")) {
+    s = s.slice(6).trim();
+  }
+  return trimTrailingSemicolon(s);
 }
 
-function parseArithmeticExpr(tokens: Token[]): AstNode {
-  let pos = 0;
+const SMT_BINARY_OP_MAP: Record<string, string> = {
+  "==": "=",
+  "!=": "distinct",
+  implies: "=>",
+};
 
-  function peek(): Token | undefined {
-    return tokens[pos];
+function isSmtPrefixSexpr(trimmed: string): boolean {
+  if (!trimmed.startsWith("(") || !trimmed.endsWith(")")) return false;
+  const toks = tokenizeSysmlExpressionCst(trimmed);
+  if (toks[0]?.text !== "(" || toks.length < 3) return false;
+  const head = toks[1]!;
+  if (head.type === "op") {
+    if ((head.text === "-" || head.text === "+") && toks[3]?.text === ")") {
+      return false;
+    }
+    return true;
   }
-
-  function consume(): Token {
-    return tokens[pos++]!;
+  if (head.type === "ident") {
+    const third = toks[2];
+    return Boolean(third && (third.type === "ident" || third.type === "number" || third.text === "("));
   }
-
-  // E -> T ( ('+' | '-') T )*
-  function parseE(): AstNode {
-    let left = parseT();
-    while (true) {
-      const t = peek();
-      if (t && t.type === "op" && (t.value === "+" || t.value === "-")) {
-        consume();
-        const right = parseT();
-        left = { kind: "binary", op: t.value, left, right };
-      } else {
-        break;
-      }
-    }
-    return left;
-  }
-
-  // T -> F ( ('*' | '/') F )*
-  function parseT(): AstNode {
-    let left = parseF();
-    while (true) {
-      const t = peek();
-      if (t && t.type === "op" && (t.value === "*" || t.value === "/")) {
-        consume();
-        const right = parseF();
-        left = { kind: "binary", op: t.value, left, right };
-      } else {
-        break;
-      }
-    }
-    return left;
-  }
-
-  // F -> P ( '^' P )*
-  function parseF(): AstNode {
-    let left = parseP();
-    while (true) {
-      const t = peek();
-      if (t && t.type === "op" && t.value === "^") {
-        consume();
-        const right = parseP();
-        left = { kind: "binary", op: "^", left, right };
-      } else {
-        break;
-      }
-    }
-    return left;
-  }
-
-  // P -> '-' P | '(' E ')' | num | ident
-  function parseP(): AstNode {
-    const t = peek();
-    if (!t) return { kind: "num", val: 0 };
-
-    if (t.type === "op" && t.value === "-") {
-      consume();
-      const child = parseP();
-      return { kind: "unary", op: "-", left: child };
-    }
-    if (t.type === "lparen") {
-      consume();
-      const e = parseE();
-      if (peek() && peek()!.type === "rparen") {
-        consume();
-      }
-      return e;
-    }
-    if (t.type === "num") {
-      consume();
-      return { kind: "num", val: t.value };
-    }
-    if (t.type === "ident") {
-      consume();
-      return { kind: "ident", name: t.value };
-    }
-    consume();
-    return { kind: "num", val: 0 };
-  }
-
-  return parseE();
+  return false;
 }
 
-function astToSmt(node: AstNode): string {
+function evalAstToSmt(node: SysML2ExprAst): string {
   switch (node.kind) {
-    case "num": {
-      const v = node.val ?? 0;
-      return Number.isInteger(v) ? `${v}.0` : String(v);
+    case "NumberLiteral":
+      return Number.isInteger(node.value) ? `${node.value}.0` : String(node.value);
+    case "BooleanLiteral":
+      return node.value ? "true" : "false";
+    case "StringLiteral":
+      return JSON.stringify(node.value);
+    case "Identifier":
+      return node.name.replaceAll(".", "_");
+    case "UnaryExpr": {
+      const arg = evalAstToSmt(node.operand);
+      if (node.op === "+") return arg;
+      return `(${node.op} ${arg})`;
     }
-    case "ident":
-      return node.name ?? "x";
-    case "unary":
-      return `(- ${astToSmt(node.left!)})`;
-    case "binary": {
-      const op = node.op!;
-      const l = astToSmt(node.left!);
-      const r = astToSmt(node.right!);
-      if (op === "^") {
-        if (node.right?.kind === "num" && node.right.val === 2) {
+    case "BinaryExpr": {
+      const l = evalAstToSmt(node.left);
+      const r = evalAstToSmt(node.right);
+      if (node.op === "^") {
+        if (node.right.kind === "NumberLiteral" && node.right.value === 2) {
           return `(* ${l} ${l})`;
         }
         return `(^ ${l} ${r})`;
       }
-      return `(${op} ${l} ${r})`;
+      const smtOp = SMT_BINARY_OP_MAP[node.op] ?? node.op;
+      return `(${smtOp} ${l} ${r})`;
+    }
+    case "ConditionalExpr":
+      return `(ite ${evalAstToSmt(node.condition)} ${evalAstToSmt(node.thenExpr)} ${evalAstToSmt(node.elseExpr)})`;
+    case "CallExpr": {
+      const args = node.args.map(evalAstToSmt);
+      return args.length > 0
+        ? `(${node.callee.replaceAll(".", "_")} ${args.join(" ")})`
+        : node.callee.replaceAll(".", "_");
     }
   }
 }
@@ -265,14 +166,15 @@ function cstToSmt(node: SysmlCstNode | null | undefined): string | null {
   }
 
   // Number literal
-  if (/^\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(node.text)) {
-    const v = parseFloat(node.text);
+  const nodeTrimmed = node.text.trim();
+  if (isUnsignedNumberText(nodeTrimmed)) {
+    const v = parseFloat(nodeTrimmed);
     return Number.isInteger(v) ? `${v}.0` : String(v);
   }
 
   // Identifier
-  if (/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(node.text)) {
-    return node.text.replace(/\./g, "_");
+  if (isDottedIdentText(nodeTrimmed)) {
+    return nodeTrimmed.replaceAll(".", "_");
   }
 
   return null;
@@ -282,12 +184,12 @@ export function infixArithmeticToSmt(expr: string): string {
   const trimmed = expr.trim();
   if (!trimmed) return "0.0";
   // If already in prefix SMT form e.g. "(* x x)", return directly
-  if (/^\(\s*[-+*/^=<>a-zA-Z]/.test(trimmed) && trimmed.endsWith(")")) {
+  if (isSmtPrefixSexpr(trimmed)) {
     return trimmed;
   }
   // Fast path for single identifier or number
-  if (/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(trimmed)) {
-    return trimmed.replace(/\./g, "_");
+  if (isDottedIdentText(trimmed)) {
+    return trimmed.replaceAll(".", "_");
   }
   const num = parseFloat(trimmed);
   if (!isNaN(num) && String(num) === trimmed) {
@@ -295,65 +197,55 @@ export function infixArithmeticToSmt(expr: string): string {
   }
 
   // Fast-path: Native WASM GLR parser
-  const parser = getSysmlParser();
-  if (parser) {
-    try {
-      const tree = parser.parse(`calc def __E { return ${trimmed}; }`);
-      if (tree?.rootNode && !tree.rootNode.hasError) {
-        const retNode =
-          findFirstDescendant(tree.rootNode, "ReturnStatement") ||
-          findFirstDescendant(tree.rootNode, "ResultExpressionMember");
-        if (retNode) {
-          const exprChild =
-            (retNode.childCount ?? 0) > 1
-              ? retNode.child
-                ? retNode.child(1)
-                : retNode.children?.[1]
-              : retNode.child
-                ? retNode.child(0)
-                : retNode.children?.[0];
-          const smt = cstToSmt(exprChild);
-          if (smt) return smt;
-        }
+  try {
+    const root = parseSysmlSource(`calc def __E { return ${trimmed}; }`);
+    if (root && !root.hasError) {
+      const retNode =
+        findFirstDescendant(root, "ReturnStatement") || findFirstDescendant(root, "ResultExpressionMember");
+      if (retNode) {
+        const exprChild =
+          (retNode.childCount ?? 0) > 1
+            ? retNode.child
+              ? retNode.child(1)
+              : retNode.children?.[1]
+            : retNode.child
+              ? retNode.child(0)
+              : retNode.children?.[0];
+        const smt = cstToSmt(exprChild);
+        if (smt) return smt;
       }
-    } catch {
-      // Fallback to legacy tokenizer
     }
+  } catch {
+    // Fallback to evaluator expression AST
   }
 
-  const tokens = tokenizeArithmetic(trimmed);
-  if (tokens.length === 0) return trimmed;
   try {
-    const ast = parseArithmeticExpr(tokens);
-    return astToSmt(ast);
+    return evalAstToSmt(parseSysML2Expression(trimmed));
   } catch {
-    return trimmed.replace(/\./g, "_");
+    return trimmed.replaceAll(".", "_");
   }
 }
 
 export function extractVariablesFromArithmetic(expr: string): string[] {
-  const parser = getSysmlParser();
-  if (parser) {
-    try {
-      const tree = parser.parse(`calc def __E { return ${expr.trim()}; }`);
-      if (tree?.rootNode && !tree.rootNode.hasError) {
-        const vars: string[] = [];
-        const idents = findCstDescendants(tree.rootNode, "Identification") || [];
-        for (const idNode of idents) {
-          if (idNode.text && idNode.text !== "__E") vars.push(idNode.text.replace(/\./g, "_"));
-        }
-        if (vars.length > 0) return vars;
+  try {
+    const root = parseSysmlSource(`calc def __E { return ${expr.trim()}; }`);
+    if (root && !root.hasError) {
+      const vars: string[] = [];
+      const idents = findCstDescendants(root, "Identification") || [];
+      for (const idNode of idents) {
+        if (idNode.text && idNode.text !== "__E") vars.push(idNode.text.replaceAll(".", "_"));
       }
-    } catch {
-      // Fallback
+      if (vars.length > 0) return vars;
     }
+  } catch {
+    // Fallback to CST expression token stream
   }
 
-  const tokens = tokenizeArithmetic(expr);
+  const tokens = tokenizeSysmlExpressionCst(expr);
   const vars: string[] = [];
   for (const t of tokens) {
-    if (t.type === "ident") {
-      vars.push(t.value);
+    if (t.type === "ident" && t.text !== "true" && t.text !== "false") {
+      vars.push(t.text.replaceAll(".", "_"));
     }
   }
   return vars;
@@ -412,25 +304,20 @@ function extractUserFunctionsFromDb(db: QueryDB): SmtFunctionDef[] {
               const paramNodes = [...findCstDescendants(cst, "Parameter"), ...findCstDescendants(cst, "InUsage")];
               for (const pn of paramNodes) {
                 const pName = (findFirstDescendant(pn, "Name") || findFirstDescendant(pn, "ID"))?.text?.trim();
-                const pType = findFirstDescendant(pn, "FeatureTyping")
-                  ?.text?.replace(/^[:\s]+/, "")
-                  .trim();
+                const pType = stripLeadingChars(findFirstDescendant(pn, "FeatureTyping")?.text, ": \t\r\n");
                 if (pName) {
-                  params.push({ name: pName, type: pType ?? "Real" });
+                  params.push({ name: pName, type: pType || "Real" });
                 }
               }
 
               const retNode = findFirstDescendant(cst, "ReturnFeature") || findFirstDescendant(cst, "FeatureTyping");
-              const returnType = retNode?.text?.replace(/^[:\s]+/, "").trim() || "Real";
+              const returnType = stripLeadingChars(retNode?.text, ": \t\r\n") || "Real";
 
               const returnExpr =
                 findFirstDescendant(cst, "ResultExpressionMember") ||
                 findFirstDescendant(cst, "ReturnStatement") ||
                 findFirstDescendant(cst, "OwnedExpression");
-              const bodyText = returnExpr?.text
-                ?.replace(/^return\s+/, "")
-                .replace(/;$/, "")
-                .trim();
+              const bodyText = trimReturnExpr(returnExpr?.text);
 
               if (bodyText) {
                 extracted = {
@@ -452,35 +339,68 @@ function extractUserFunctionsFromDb(db: QueryDB): SmtFunctionDef[] {
         continue;
       }
 
-      // 2. Textual fallback for mock QueryDB
+      // 2. Textual fallback via WASM CST leaves for mock QueryDB
       const text = db.cstText(e.startOffset, e.endOffset, e);
       if (!text) continue;
 
-      // Match: calc def <name>(<params>): <returnType> { return <body>; }
-      // Or: calc def <name>(<params>) { <body> }
-      const match = text.match(
-        /(?:calc|action)\s+def\s+([a-zA-Z0-9_]+)\s*\((.*?)\)(?:\s*:\s*([a-zA-Z0-9_]+))?\s*\{([\s\S]*?)\}/,
-      );
-      if (match) {
-        const name = match[1]!;
-        const rawParams = match[2] ?? "";
-        const returnType = match[3] ?? "Real";
-        const rawBody = match[4] ?? "";
+      const leaves = collectCstLeaves(parseSysmlSource(text));
+      for (let i = 0; i + 4 < leaves.length; i++) {
+        const kw = leaves[i]!.text;
+        if ((kw !== "calc" && kw !== "action") || leaves[i + 1]!.text !== "def") continue;
+        const name = leaves[i + 2]!.text;
+        if (!isSysmlIdentLeaf(name) || leaves[i + 3]!.text !== "(") continue;
 
-        // Extract return expression
-        const returnMatch = rawBody.match(/return\s+([^;]+);/) || rawBody.match(/([a-zA-Z0-9_.+*/^ -]+);?/);
-        const bodyExpr = returnMatch ? returnMatch[1]!.trim() : "0.0";
+        let closeParen = i + 4;
+        let parenDepth = 1;
+        while (closeParen < leaves.length && parenDepth > 0) {
+          if (leaves[closeParen]!.text === "(") parenDepth++;
+          else if (leaves[closeParen]!.text === ")") parenDepth--;
+          if (parenDepth === 0) break;
+          closeParen++;
+        }
+        if (parenDepth !== 0) continue;
 
         const params: { name: string; type?: string | undefined }[] = [];
-        if (rawParams.trim()) {
-          const paramParts = rawParams.split(",");
-          for (const part of paramParts) {
-            const pMatch = part.match(/([a-zA-Z0-9_]+)(?:\s*:\s*([a-zA-Z0-9_]+))?/);
-            if (pMatch) {
-              params.push({ name: pMatch[1]!, type: pMatch[2] ?? "Real" });
+        let pIdx = i + 4;
+        while (pIdx < closeParen) {
+          let pEnd = pIdx;
+          while (pEnd < closeParen && leaves[pEnd]!.text !== ",") pEnd++;
+          for (let k = pIdx; k < pEnd; k++) {
+            const pName = leaves[k]!.text;
+            if (isSysmlIdentLeaf(pName) && pName !== "in" && pName !== "attribute" && pName !== "item") {
+              const pType =
+                leaves[k + 1]?.text === ":" && k + 2 < pEnd && isSysmlIdentLeaf(leaves[k + 2]?.text)
+                  ? leaves[k + 2]!.text
+                  : "Real";
+              params.push({ name: pName, type: pType });
+              break;
             }
           }
+          pIdx = pEnd + 1;
         }
+
+        let afterParen = closeParen + 1;
+        let returnType = "Real";
+        if (leaves[afterParen]?.text === ":" && isSysmlIdentLeaf(leaves[afterParen + 1]?.text)) {
+          returnType = leaves[afterParen + 1]!.text;
+          afterParen += 2;
+        }
+        if (leaves[afterParen]?.text !== "{") continue;
+
+        const closeBrace = findMatchingBraceLeaf(leaves, afterParen);
+        let bodyStartIdx = afterParen + 1;
+        const retIdx = leaves.slice(afterParen + 1, closeBrace).findIndex((lf) => lf.text === "return");
+        if (retIdx !== -1) {
+          bodyStartIdx = afterParen + 1 + retIdx + 1;
+        }
+        let bodyEndIdx = bodyStartIdx;
+        while (bodyEndIdx < closeBrace && leaves[bodyEndIdx]!.text !== ";") {
+          bodyEndIdx++;
+        }
+        const bodyExpr =
+          bodyEndIdx > bodyStartIdx
+            ? text.slice(leaves[bodyStartIdx]!.start, leaves[bodyEndIdx - 1]!.end).trim()
+            : "0.0";
 
         funcs.push({
           name,
@@ -488,6 +408,7 @@ function extractUserFunctionsFromDb(db: QueryDB): SmtFunctionDef[] {
           returnType: returnType === "Real" || returnType === "Integer" ? "Real" : returnType,
           body: infixArithmeticToSmt(bodyExpr),
         });
+        break;
       }
     }
   }
@@ -504,14 +425,14 @@ export function exportToSmtLib(db: QueryDB, options: SmtLibExportOptions = {}): 
   // Auto-detect nonlinear arithmetic
   let hasNonlinear = false;
   for (const c of constraints) {
-    if (/[*^/]/.test(c.lhs) || (typeof c.rhs === "string" && /[*^/]/.test(c.rhs))) {
+    if (hasNonlinearOp(c.lhs) || (typeof c.rhs === "string" && hasNonlinearOp(c.rhs))) {
       hasNonlinear = true;
       break;
     }
   }
-  if (!hasNonlinear && options.minimize?.some((e) => /[*^/]/.test(e))) hasNonlinear = true;
-  if (!hasNonlinear && options.maximize?.some((e) => /[*^/]/.test(e))) hasNonlinear = true;
-  if (!hasNonlinear && options.functions?.some((f) => /[*^/]/.test(f.body))) hasNonlinear = true;
+  if (!hasNonlinear && options.minimize?.some((e) => hasNonlinearOp(e))) hasNonlinear = true;
+  if (!hasNonlinear && options.maximize?.some((e) => hasNonlinearOp(e))) hasNonlinear = true;
+  if (!hasNonlinear && options.functions?.some((f) => hasNonlinearOp(f.body))) hasNonlinear = true;
 
   const logic = options.logic || (hasNonlinear ? "QF_NRA" : "QF_LRA");
 

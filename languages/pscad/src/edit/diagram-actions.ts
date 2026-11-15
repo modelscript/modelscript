@@ -178,6 +178,7 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
   const project = parsePscx(text);
   const modules: PscxModule[] = [project.rootModule, ...project.subModules.values()];
   const legacyCmps = modules.flatMap((m) => m.components);
+  const legacyBuses = modules.flatMap((m) => m.buses);
   const legacyWires = modules.flatMap((m) => m.wires);
 
   const instances = [...model.definitions.values()].flatMap((d) => d.instances.map((i) => ({ d, i })));
@@ -202,6 +203,10 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
       instances.find(({ i }) => (i.params.get("Name") ?? i.params.get("name")) === name)
     );
   };
+  const findBus = (name: string) => {
+    const id = stripPrefix(name);
+    return legacyBuses.find((b) => b.id === id || b.id === name || b.name === name);
+  };
   const wireIndex = (name: string) => {
     const id = stripPrefix(name);
     return wires.find(({ w }) => w.id === id || w.id === name);
@@ -210,7 +215,10 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
     const [cell, dotted] = endpoint.includes(".") ? endpoint.split(".", 2) : [endpoint, undefined];
     const id = stripPrefix(cell ?? endpoint);
     const cmp = legacyCmps.find((c) => c.id === id || c.id === endpoint || c.instanceName === endpoint);
-    if (!cmp) return undefined;
+    if (!cmp) {
+      const bus = findBus(cell ?? endpoint);
+      return bus ? { x: bus.position.x, y: bus.position.y } : undefined;
+    }
     const want = port ?? dotted;
     const p =
       (want ? cmp.ports.find((q) => q.name === want || q.id === want || q.id === `${cmp.id}_${want}`) : undefined) ??
@@ -476,40 +484,60 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
       case "updateParameter":
       case "updateProperty": {
         const a = action as { name: string; parameter?: string; key?: string; value: unknown };
-        const hit = findInst(a.name);
         const key = a.parameter ?? a.key;
-        if (!hit || !key) {
-          unresolved.push(a.name);
+        const hit = findInst(a.name);
+        if (hit && key) {
+          ops.push({ type: "setParameter", id: hit.i.id, name: key, value: String(a.value) });
+          renderHint = "debounced";
           break;
         }
-        ops.push({ type: "setParameter", id: hit.i.id, name: key, value: String(a.value) });
-        renderHint = "debounced";
+        const bus = key ? findBus(a.name) : undefined;
+        if (bus && key) {
+          const lower = key.toLowerCase();
+          if (lower === "name") {
+            ops.push({ type: "resizeBus", id: bus.id, name: String(a.value) });
+            renderHint = "debounced";
+            break;
+          }
+          if (lower === "basekv" || lower === "vbase" || lower === "v_base" || lower === "vm") {
+            ops.push({ type: "resizeBus", id: bus.id, baseKV: String(a.value) });
+            renderHint = "debounced";
+            break;
+          }
+        }
+        unresolved.push(a.name);
         break;
       }
       case "updateName": {
         const a = action as Extract<DiagramAction, { type: "updateName" }>;
         const hit = findInst(a.oldName);
-        if (!hit) {
-          unresolved.push(a.oldName);
+        if (hit) {
+          const isNetEndpoint = /datalabel|xnode|pgb|pin|port/i.test(hit.i.defnName);
+          const oldNetName = hit.i.params.get("Name") ?? hit.i.params.get("name");
+          if (isNetEndpoint && oldNetName) {
+            ops.push({
+              type: "renameNet",
+              oldName: oldNetName,
+              newName: a.newName,
+            });
+          } else {
+            ops.push({
+              type: "setParameter",
+              id: hit.i.id,
+              name: hit.i.params.has("name") ? "name" : "Name",
+              value: a.newName,
+            });
+          }
+          renderHint = "immediate";
           break;
         }
-        const isNetEndpoint = /datalabel|xnode|pgb|pin|port/i.test(hit.i.defnName);
-        const oldNetName = hit.i.params.get("Name") ?? hit.i.params.get("name");
-        if (isNetEndpoint && oldNetName) {
-          ops.push({
-            type: "renameNet",
-            oldName: oldNetName,
-            newName: a.newName,
-          });
-        } else {
-          ops.push({
-            type: "setParameter",
-            id: hit.i.id,
-            name: hit.i.params.has("name") ? "name" : "Name",
-            value: a.newName,
-          });
+        const bus = findBus(a.oldName);
+        if (bus) {
+          ops.push({ type: "resizeBus", id: bus.id, name: a.newName });
+          renderHint = "immediate";
+          break;
         }
-        renderHint = "immediate";
+        unresolved.push(a.oldName);
         break;
       }
       case "addComponent": {
@@ -537,7 +565,21 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
           if (hit) {
             ops.push({ type: "removeComponent", id: hit.i.id });
             renderHint = "immediate";
-          } else unresolved.push(n);
+            continue;
+          }
+          const bus = findBus(n);
+          if (bus) {
+            ops.push({ type: "removeWire", id: bus.id });
+            renderHint = "immediate";
+            continue;
+          }
+          const wire = wireIndex(n);
+          if (wire) {
+            ops.push({ type: "removeWire", id: wire.w.id });
+            renderHint = "immediate";
+            continue;
+          }
+          unresolved.push(n);
         }
         break;
       }

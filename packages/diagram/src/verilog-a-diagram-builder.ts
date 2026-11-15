@@ -3,7 +3,7 @@
 /**
  * @modelscript/diagram — Verilog-A / Verilog-AMS Compact Device & Companion Branch Diagram Builder.
  *
- * Translates IEEE 1857 / Accellera Verilog-A (`.va`) and Verilog-AMS (`.vams`) compact semiconductor
+ * Translates Accellera Verilog-A (`.va`) and Verilog-AMS (`.vams`) compact semiconductor
  * and multiphysics behavioral models into:
  * 1. Interactive AntV X6 graph structures with discipline terminal ports (`electrical`, `thermal`,
  *    `magnetic`, `rotational`), internal nodes, constitutive branch contributions (`<+`), and parameter HUDs.
@@ -693,7 +693,7 @@ export function renderVerilogASvg(
 
   // Header Banner
   const discSummary = diag.metadata.disciplines.join(" · ") || "electrical";
-  svg += `  <text x="48" y="34" fill="${fg}" font-size="15" font-weight="700">${escapeXml(diag.title)} — IEEE 1857 Verilog-A Compact Device Schematic</text>\n`;
+  svg += `  <text x="48" y="34" fill="${fg}" font-size="15" font-weight="700">${escapeXml(diag.title)} — Accellera Verilog-A Compact Device Schematic</text>\n`;
   svg += `  <text x="48" y="52" fill="${mutedFg}" font-size="11">Disciplines: ${escapeXml(discSummary)} | Ports: ${diag.metadata.portCount} | Branches (&lt;+): ${diag.metadata.branchCount} | Parameters: ${diag.metadata.parameterCount}</text>\n\n`;
 
   // Module Semiconductor Package Boundary Box

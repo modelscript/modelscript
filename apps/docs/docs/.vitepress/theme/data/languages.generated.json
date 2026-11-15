@@ -88,7 +88,7 @@
         "ReqIF"
       ]
     },
-    "ruleCount": 59
+    "ruleCount": 63
   },
   {
     "slug": "reqif",
@@ -933,7 +933,7 @@
     "slug": "powerfactory",
     "name": "DIgSILENT PowerFactory",
     "sidebar": "DIgSILENT PowerFactory",
-    "ext": ".dgs, .pfd",
+    "ext": ".dz, .pfd, .dsl",
     "role": "Node-breaker power flow, IEC 60909 short-circuit & RMS/EMT",
     "group": "power",
     "pkgName": "@modelscript/powerfactory",
@@ -1361,7 +1361,7 @@
     "slug": "olga",
     "name": "OLGA",
     "sidebar": "OLGA Multiphase Flow",
-    "ext": ".genkey",
+    "ext": ".opi, .genkey",
     "role": "Transient multiphase flow assurance",
     "group": "oil-gas",
     "pkgName": "@modelscript/olga",
@@ -1468,7 +1468,7 @@
     "slug": "relap5",
     "name": "RELAP5-3D",
     "sidebar": "RELAP5 Nuclear Loops",
-    "ext": ".inp",
+    "ext": ".r5, .inp",
     "role": "Reactor thermal-hydraulics & kinetics",
     "group": "nuclear",
     "pkgName": "@modelscript/relap5",
@@ -1566,7 +1566,7 @@
     "slug": "verilog-a",
     "name": "Verilog-A / AMS",
     "sidebar": "Verilog-A Devices",
-    "ext": ".va",
+    "ext": ".va, .vams",
     "role": "Analog compact device models",
     "group": "electronics",
     "pkgName": "@modelscript/verilog-a",

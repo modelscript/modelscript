@@ -87,7 +87,7 @@ test("buildVerilogADiagram: Builds AntV X6 cells for ports, internal nodes, bran
 test("renderVerilogASvg: Renders standalone compact device schematic with glyphs and parameter HUD", () => {
   const svg = renderVerilogASvg(sampleGaNHemtModule);
   assert.ok(svg.startsWith("<?xml"));
-  assert.ok(svg.includes("GaN_HEMT_ASM_Thermal — IEEE 1857 Verilog-A Compact Device Schematic"));
+  assert.ok(svg.includes("GaN_HEMT_ASM_Thermal — Accellera Verilog-A Compact Device Schematic"));
   assert.ok(svg.includes("ddt(Q)"));
   assert.ok(svg.includes("THERMAL"));
   assert.ok(svg.includes("Vth0"));

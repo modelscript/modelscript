@@ -134,7 +134,12 @@ export function createOpenDriveDiagramBackend(backends: DiagramDispatchDeps): Di
       if (!text) return null;
       const { parseOpenDrive } = await import("@modelscript/opendrive");
       const doc = parseOpenDrive(text);
-      const rawId = (params.componentName || "").replace(/^road_/, "").replace(/^junc_/, "");
+      const rawComp = params.componentName || "";
+      const rawId = rawComp.startsWith("road_")
+        ? rawComp.slice(5)
+        : rawComp.startsWith("junc_")
+          ? rawComp.slice(5)
+          : rawComp;
 
       const road = doc.roads.find((r) => r.id === rawId || r.name === rawId);
       if (road) {
@@ -204,7 +209,7 @@ export function createOpenDriveDiagramBackend(backends: DiagramDispatchDeps): Di
       const { parseOpenDrive } = await import("@modelscript/opendrive");
       const doc = parseOpenDrive(text);
       const targetName = params.className || params.componentName || params.nodeId || "";
-      const rawId = targetName.replace(/^road_/, "");
+      const rawId = targetName.startsWith("road_") ? targetName.slice(5) : targetName;
       const road = doc.roads.find((r) => r.id === rawId || r.name === rawId);
       if (!road) return null;
 

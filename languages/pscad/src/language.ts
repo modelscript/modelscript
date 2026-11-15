@@ -7,7 +7,7 @@
  * and polyglot cross-language projections for PSCAD v4/v5 projects.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, xmlRules } from "@modelscript/dsl";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { instantiateWasmCompanionsForNetlist } from "./catalog/wasm-companion-loader.js";
@@ -362,6 +362,8 @@ export const pscadLanguage = language({
   maturity: "stable",
   lsp: {
     fileExtensions: [".pscx", ".pslx", ".pswx", ".psmx", ".psout"],
+    folding: ["Element", "COMMENT"],
+    outline: ["Element"],
     icons: {
       light: "./assets/pscad/icon-light.png",
       dark: "./assets/pscad/icon-dark.png",
@@ -369,8 +371,9 @@ export const pscadLanguage = language({
   },
   polyglot: pscadPolyglotConfig,
   rules: {
-    Root: () => "pscad",
+    ...xmlRules,
   },
+  extras: ($) => [/[ \t\r\n]+/, $["COMMENT"]!, $["PROCESSING_INSTRUCTION"]!],
   indexing: {
     indexFile: indexPscadDocument,
   },

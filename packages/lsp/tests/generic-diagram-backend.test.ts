@@ -656,4 +656,178 @@ test("GenericDSLDiagramBackend & Diagram Dispatch", async (t) => {
     assert.strictEqual(dispatch.supports("file:///workspace/policy.oscal.json"), true);
     assert.strictEqual(dispatch.supports("file:///workspace/unknown.xyz"), false);
   });
+
+  await t.test(
+    "extracts OpenSCAD (.scad) CSG tree via WASM CST including 3-arg tag_port and pattern calls",
+    async () => {
+      const scadUri = "file:///workspace/frame.scad";
+      const scadCode = `
+arm_len = 120;
+// ignored_var = 999;
+module arm(angle, len = 50) {
+  difference() {
+    translate([0, 0, 5]) rotate([0, 0, angle]) cube([len, 10, 5], center=true);
+    cylinder(h=12, r=3);
+  }
+}
+tag_port("fixed_hub", "fixed_support", [0, 0, 1]) {
+  cylinder(r=20, h=10);
+}
+arm(45);
+arm(135);
+`;
+      const scadBackend = new GenericDSLDiagramBackend({
+        getDocumentText: (uri) => (uri === scadUri ? scadCode : undefined),
+      });
+
+      const data = await scadBackend.getData({ uri: scadUri });
+      assert.ok(data, "Expected SCAD diagram data");
+
+      const paramsNode = data.nodes.find((n: any) => n.id === "scad_parameters");
+      assert.ok(paramsNode, "Expected scad_parameters node");
+      assert.ok(!JSON.stringify(paramsNode).includes("ignored_var"), "Comments must be ignored by CST");
+
+      const modNode = data.nodes.find((n: any) => n.name === "arm" && n.kind === "Module");
+      assert.ok(modNode, "Expected Module node for arm");
+
+      const portNode = data.nodes.find((n: any) => n.kind === "Port" && n.name === "fixed_hub");
+      assert.ok(portNode, "Expected Port node from 3-arg tag_port");
+      assert.strictEqual(portNode.properties?.description, 'tag_port("fixed_hub", "fixed_support")');
+
+      const diffNode = data.nodes.find((n: any) => n.kind === "BooleanOp" && n.name === "difference()");
+      assert.ok(diffNode, "Expected difference() BooleanOp node");
+
+      const translateNode = data.nodes.find((n: any) => n.kind === "Transform" && n.name === "translate");
+      const rotateNode = data.nodes.find((n: any) => n.kind === "Transform" && n.name === "rotate");
+      const cubeNode = data.nodes.find((n: any) => n.kind === "Primitive" && n.name === "cube");
+      assert.ok(translateNode && rotateNode && cubeNode, "Expected chained translate -> rotate -> cube CST nodes");
+      assert.ok(
+        !String(cubeNode.properties?.description ?? "").includes("center"),
+        "center=true should be stripped from cube subtitle",
+      );
+      assert.ok(data.edges.some((e: any) => e.source === diffNode.id && e.target === translateNode.id));
+      assert.ok(data.edges.some((e: any) => e.source === translateNode.id && e.target === rotateNode.id));
+      assert.ok(data.edges.some((e: any) => e.source === rotateNode.id && e.target === cubeNode.id));
+
+      const instNode = data.nodes.find((n: any) => n.id === "inst_arm" && n.kind === "AssemblyInstance");
+      assert.ok(instNode, "Expected grouped AssemblyInstance node for top-level arm() calls");
+      assert.ok(String(instNode.properties?.description ?? "").includes("2× instances (45, 135)"));
+      assert.ok(data.edges.some((e: any) => e.source === instNode.id && e.target === modNode.id));
+    },
+  );
+
+  await t.test("extracts Fortran 90 module & EMTDC $Port dataflow via WASM CST", async () => {
+    const f90Uri = "file:///workspace/ctrl.f90";
+    const f90Code = `
+module ctrl_mod
+  implicit none
+contains
+  subroutine step_ctrl(u_in, y_out)
+    real(8), intent(in) :: u_in
+    real(8), intent(out) :: y_out
+    real(8) :: tmp
+    parameter (GAIN = 2.0)
+    if (u_in > 0.0) then
+      tmp = u_in * GAIN
+    else
+      tmp = 0.0
+    end if
+    call helper_fn(tmp, y_out)
+  end subroutine step_ctrl
+
+  subroutine helper_fn(a, b)
+    real(8), intent(in) :: a
+    real(8), intent(out) :: b
+    b = a * 2.0
+  end subroutine helper_fn
+end module ctrl_mod
+`;
+    const fortranBackend = new GenericDSLDiagramBackend({
+      getDocumentText: (uri) => (uri === f90Uri ? f90Code : undefined),
+    });
+
+    const f90Data = await fortranBackend.getData({ uri: f90Uri });
+    assert.ok(f90Data, "Expected F90 diagram data");
+    assert.ok(f90Data.nodes.some((n: any) => n.id === "in_u_in" && n.kind === "InputPort"));
+    assert.ok(f90Data.nodes.some((n: any) => n.id === "out_y_out" && n.kind === "OutputPort"));
+    assert.ok(f90Data.nodes.some((n: any) => n.id === "const_gain" && n.kind === "Constant"));
+    const callNode = f90Data.nodes.find((n: any) => n.kind === "SubroutineCall" && n.name === "CALL helper_fn");
+    assert.ok(callNode, "Expected CALL helper_fn SubroutineCall node");
+    assert.ok(
+      f90Data.edges.some((e: any) => e.source === callNode.id && e.target === "out_y_out"),
+      "Helper subroutine intent(out) should wire to out_y_out",
+    );
+
+    const emtdcUri = "file:///workspace/filter.f";
+    const emtdcCode = `C EMTDC Filter Block
+#IF 1
+      REAL Y
+      PARAMETER (K = 2.0)
+      STORF(1) = $In * K
+      IF (FIRSTSTEP) THEN
+        STORF(1) = 0.0
+      END IF
+      CALL REALPOLE(1.0, 0.1, STORF(1), Y)
+      $Out = Y
+#ENDIF
+`;
+    const emtdcBackend = new GenericDSLDiagramBackend({
+      getDocumentText: (uri) => (uri === emtdcUri ? emtdcCode : undefined),
+    });
+    const emtdcData = await emtdcBackend.getData({ uri: emtdcUri });
+    assert.ok(emtdcData, "Expected EMTDC diagram data");
+    assert.ok(emtdcData.nodes.some((n: any) => n.id === "in_in" && n.kind === "InputPort"));
+    assert.ok(emtdcData.nodes.some((n: any) => n.id === "out_out" && n.kind === "OutputPort"));
+    assert.ok(emtdcData.nodes.some((n: any) => n.kind === "StateEquation"));
+    const realpoleNode = emtdcData.nodes.find((n: any) => n.kind === "SubroutineCall" && n.name === "CALL REALPOLE");
+    const outEqNode = emtdcData.nodes.find((n: any) => n.kind === "Equation" && n.name === "$Out");
+    assert.ok(realpoleNode && outEqNode, "Expected CALL REALPOLE and $Out equation nodes");
+    assert.ok(
+      emtdcData.edges.some((e: any) => e.source === realpoleNode.id && e.target === outEqNode.id),
+      "REALPOLE output Y should wire into $Out = Y",
+    );
+    assert.ok(
+      emtdcData.edges.some((e: any) => e.source === outEqNode.id && e.target === "out_out"),
+      "$Out = Y should wire into out_out OutputPort",
+    );
+  });
+
+  await t.test("applyEdits inline placement ignores @layout/annotation/tokens inside string literals", async () => {
+    const uri = "file:///workspace/inline.dsl";
+    const docText = [
+      'Resistor r0 "see r1 @layout(x=0, y=0)";',
+      'Resistor r1 "desc annotation(Placement(x=1))" @layout(x=10, y=20);',
+    ].join("\n");
+    const backend = new GenericDSLDiagramBackend({
+      getDocumentText: (u) => (u === uri ? docText : undefined),
+      getDiagramConfig: () => ({
+        placement: {
+          persistence: "inline",
+        },
+      }),
+    });
+
+    const moveRes = await backend.applyEdits({
+      uri,
+      seq: 1,
+      actions: [{ type: "move", items: [{ name: "r1", x: 111, y: 222 }] }],
+    });
+    assert.strictEqual(moveRes.edits.length, 1);
+    assert.strictEqual(moveRes.edits[0]!.range.start.line, 1, "Must skip string literal r1 on line 0");
+    assert.strictEqual(
+      moveRes.edits[0]!.range.start.character,
+      docText.split("\n")[1]!.indexOf("@layout("),
+      "Must target real @layout(...) rather than annotation(Placement(...)) inside string",
+    );
+    assert.strictEqual(moveRes.edits[0]!.newText, "@layout(x=111, y=222)");
+
+    const resizeRes = await backend.applyEdits({
+      uri,
+      seq: 2,
+      actions: [{ type: "resize", item: { name: "r1", x: 50, y: 60, width: 80, height: 40 } }],
+    });
+    assert.strictEqual(resizeRes.edits.length, 1);
+    assert.strictEqual(resizeRes.edits[0]!.range.start.line, 1);
+    assert.strictEqual(resizeRes.edits[0]!.newText, "@layout(x=50, y=60)");
+  });
 });

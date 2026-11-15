@@ -24,7 +24,7 @@ description: "@modelscript/fea (languages/fea) provides native parsing, parametr
 
 Input decks (`.inpt`, `.inp`, `.bdf`, `.fea`) can embed parametric expressions enclosed in <code v-pre>{{ ... }}</code> placeholders:
 
-```ini
+```fea
 *MATERIAL, NAME=AL7075
 *ELASTIC
 {{ E_modulus }}, {{ poisson_ratio }}
@@ -53,13 +53,13 @@ When a user selects a topological face in the 3D CAD viewer, `synthesizeFeaBound
 
 ## Structural Theory Slicing & Safety Margin Extraction
 
-`extractFeaSlicingProperties(text)` (`languages/fea/src/language.ts`) extracts structural parameters (`DENSITY`, `VOLUME`, `MAX_VON_MISES_STRESS`, `YIELD_STRENGTH`) directly from the CST and evaluates the structural safety margin:
+`extractFeaSlicingProperties(text)` (`languages/fea/src/language.ts`) extracts structural parameters (`DENSITY`, `VOLUME`, `MAX_VON_MISES_STRESS`, `YIELD_STRENGTH`) directly from the CST and evaluates the structural safety margin. In plain English, the safety factor is the ratio of material yield strength to peak von Mises equivalent stress, and the structure is safe when peak stress does not exceed yield:
 
 $$
 \text{Safety Factor (SF)} = \frac{\sigma_{\text{yield}}}{\sigma_{\text{von Mises, max}}}, \qquad \text{isSafe} \iff \sigma_{\text{von Mises, max}} \le \sigma_{\text{yield}}
 $$
 
-Returning `{ mass, maxVonMisesPa, yieldStrengthPa, safetyFactor, isSafe }` directly to the Multi-Domain Theory Coordinator (`CaeContractOracle`) and SysML v2 requirement verifiers.
+where $\sigma_{\text{yield}}$ is the material tensile yield strength ($\text{Pa}$, $> 0$), $\sigma_{\text{von Mises, max}}$ is the maximum computed von Mises equivalent stress across the mesh ($\text{Pa}$, $\ge 0$), and $\text{SF}$ is the dimensionless structural safety factor ($\text{SF} \ge 1 \iff \text{isSafe}$). Returning `{ mass, maxVonMisesPa, yieldStrengthPa, safetyFactor, isSafe }` directly to the Multi-Domain Theory Coordinator (`CaeContractOracle`) and SysML v2 requirement verifiers.
 
 ---
 

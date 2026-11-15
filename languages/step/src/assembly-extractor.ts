@@ -614,17 +614,18 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
   // ─────────────────────────────────────────────────────────────────────────
   // Find Semantic 3D PMI / GD&T (AP242)
   // ─────────────────────────────────────────────────────────────────────────
-  // 1. Datums
+  // 1. Datums (DATUM & AP242 DATUM_FEATURE)
   for (const [id, ent] of entities.entries()) {
-    if (ent.type === "DATUM") {
+    if (ent.type === "DATUM" || ent.type === "DATUM_FEATURE") {
       const args = parseArgs(ent.args);
-      // DATUM('name', 'description', #shape_aspect, identification)
+      // DATUM('name', 'description', #shape_aspect, identification) or DATUM_FEATURE('A', #placement)
       const labelMatch = args[3]?.match(/'([^']*)'/) || args[0]?.match(/'([^']*)'/);
       const datumName = labelMatch ? labelMatch[1]! : `D_${id.replace("#", "")}`;
+      const featureRef = args.length <= 2 ? args[1] : args[2];
       datums.set(id, {
         id,
         name: datumName,
-        featureRef: args[2] ?? undefined,
+        featureRef: featureRef ?? undefined,
       });
     }
   }
@@ -662,6 +663,7 @@ export function extractStepAssembly(text: string): StepAssemblyModel {
     CONCENTRICITY_TOLERANCE: "concentricity",
     COAXIALITY_TOLERANCE: "concentricity",
     RUNOUT_TOLERANCE: "runout",
+    TOTAL_RUNOUT_TOLERANCE: "runout",
   };
 
   for (const [id, ent] of entities.entries()) {

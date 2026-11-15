@@ -9,6 +9,7 @@ import { scanStepEntities } from "./schema.js";
 export interface OcctMesh {
   name?: string | undefined;
   color?: [number, number, number] | number[] | undefined;
+  fromOcct?: boolean | undefined;
   attributes?:
     | {
         position?: { array?: Float32Array | number[] | undefined } | undefined;
@@ -18,8 +19,17 @@ export interface OcctMesh {
   index?: { array?: Uint32Array | Uint16Array | number[] | undefined } | undefined;
 }
 
+interface OcctTreeNode {
+  name?: string | undefined;
+  meshes?: number[] | undefined;
+  children?: OcctTreeNode[] | undefined;
+}
+
 interface OcctInstance {
-  ReadStepFile(content: Uint8Array, params: Record<string, unknown> | null): { meshes?: OcctMesh[] | undefined };
+  ReadStepFile(
+    content: Uint8Array,
+    params: Record<string, unknown> | null,
+  ): { meshes?: OcctMesh[] | undefined; root?: OcctTreeNode | undefined };
 }
 
 type OcctInitializer = (options?: { locateFile?: (path: string) => string }) => Promise<OcctInstance>;
@@ -230,6 +240,75 @@ export function indexStepFileSync(ctx: DslIndexFileContext): void {
   }
 }
 
+const inFlightStepIndexes = new WeakMap<
+  UnifiedWorkspace,
+  Map<string, { text: string; promise: Promise<SymbolIndex> }>
+>();
+
+const PMI_ONLY_STEP_ENTITY_TYPES = new Set([
+  "PRODUCT_RELATED_PRODUCT_CATEGORY",
+  "PROPERTY_DEFINITION",
+  "PROPERTY_DEFINITION_REPRESENTATION",
+  "REPRESENTATION",
+  "REPRESENTATION_ITEM",
+  "DESCRIPTIVE_REPRESENTATION_ITEM",
+  "MEASURE_REPRESENTATION_ITEM",
+  "SHAPE_ASPECT",
+  "DATUM",
+  "DATUM_SYSTEM",
+  "DATUM_REFERENCE_COMPARTMENT",
+  "GEOMETRIC_ITEM_SPECIFIC_USAGE",
+  "APPLIED_NAME_ASSIGNMENT",
+  "DIMENSIONAL_LOCATION",
+  "DIMENSIONAL_SIZE",
+  "CARTESIAN_POINT",
+  "DIRECTION",
+  "AXIS2_PLACEMENT_3D",
+  "DATUM_FEATURE",
+  "LENGTH_MEASURE_WITH_UNIT",
+  "GEOMETRIC_TOLERANCE",
+  "POSITION_TOLERANCE",
+  "PERPENDICULARITY_TOLERANCE",
+  "PARALLELISM_TOLERANCE",
+  "FLATNESS_TOLERANCE",
+  "CYLINDRICITY_TOLERANCE",
+  "CIRCULARITY_TOLERANCE",
+  "TOTAL_RUNOUT_TOLERANCE",
+  "CIRCULAR_RUNOUT_TOLERANCE",
+  "SURFACE_PROFILE_TOLERANCE",
+  "LINE_PROFILE_TOLERANCE",
+]);
+
+/**
+ * Extracts the geometry-bearing portion of STEP `DATA;` for OCCT tessellation caching.
+ * Trailing AP242 PMI entities emitted after the final `SHAPE_DEFINITION_REPRESENTATION`
+ * do not alter 3D B-Rep solids, so stripping them avoids 10+ second OCCT re-parses when only QIF tolerances change.
+ */
+function extractStepGeometryCacheKey(text: string): string {
+  const dataMarker = /\r?\nDATA\s*;/.exec(text);
+  const dataSection = dataMarker ? text.slice(dataMarker.index) : text;
+  const lastProdIdx = dataSection.lastIndexOf("SHAPE_DEFINITION_REPRESENTATION(");
+  if (lastProdIdx > 0) {
+    const semiIdx = dataSection.indexOf(";", lastProdIdx);
+    if (semiIdx > lastProdIdx) {
+      const tail = dataSection.slice(semiIdx + 1);
+      const entityTypeRe = /#\d+\s*=\s*([A-Z0-9_]+)\s*\(/g;
+      let onlyPmi = true;
+      let match: RegExpExecArray | null;
+      while ((match = entityTypeRe.exec(tail)) !== null) {
+        if (!PMI_ONLY_STEP_ENTITY_TYPES.has(match[1]!)) {
+          onlyPmi = false;
+          break;
+        }
+      }
+      if (onlyPmi) {
+        return dataSection.slice(0, semiIdx + 1);
+      }
+    }
+  }
+  return dataSection;
+}
+
 /**
  * Asynchronously tessellates a STEP document via OpenCascade (`occt-import-js` or pure-TS B-Rep fallback)
  * and indexes its products, shapes, meshes, and assembly hierarchy into `workspace`.
@@ -247,51 +326,114 @@ export async function indexStepDocument(
 
   const buffer = typeof bufferOrText === "string" ? new TextEncoder().encode(bufferOrText) : bufferOrText;
   const text = typeof bufferOrText === "string" ? bufferOrText : new TextDecoder().decode(bufferOrText);
+  const dataSection = extractStepGeometryCacheKey(text);
 
-  const occt = await getOcct(options?.serverDistBase ?? null);
-  let meshes: OcctMesh[] = [];
-  if (occt) {
-    try {
-      const result = occt.ReadStepFile(buffer, null);
-      meshes = result?.meshes || [];
-    } catch (e) {
-      console.error(`[step] OCCT parse failed for ${uri}:`, e);
-    }
-  }
-  if (meshes.length === 0) {
-    try {
-      const { tessellateStepSolid } = await import("./occ.js");
-      const stepMesh = tessellateStepSolid(text);
-      if (stepMesh.triangleCount > 0) {
-        const targets = stepMesh.solids.length > 0 ? stepMesh.solids : [stepMesh];
-        meshes = targets.map((s) => ({
-          name: s.name,
-          attributes: {
-            position: { array: s.vertices },
-            normal: { array: s.normals },
-          },
-          index: { array: s.indices },
-        }));
-      }
-    } catch {
-      // ignore fallback tessellation errors
-    }
+  const cachedIndexedText = workspace.getParsedModel<string>(uri, "indexedSourceText");
+  const cachedSourceText = workspace.getParsedModel<string>(uri, "meshesSourceText");
+  const cachedDataSection = workspace.getParsedModel<string>(uri, "meshesDataText");
+  const cachedMeshes = workspace.getParsedModel<OcctMesh[]>(uri, "meshes");
+  if (cachedIndexedText === text && cachedSourceText === text && cachedMeshes && cachedMeshes.length > 0) {
+    return workspace.getIndex();
   }
 
-  pendingMeshesByUri.set(uri, meshes);
-  try {
-    const fileIndex = workspace.indexDocumentText(uri, text, "step");
-    workspace.setParsedModel(uri, meshes, "meshes");
-    return (
-      fileIndex ?? {
-        symbols: new Map(),
-        byName: new Map(),
-        childrenOf: new Map(),
-      }
-    );
-  } finally {
-    pendingMeshesByUri.delete(uri);
+  let wsInFlight = inFlightStepIndexes.get(workspace);
+  if (!wsInFlight) {
+    wsInFlight = new Map();
+    inFlightStepIndexes.set(workspace, wsInFlight);
   }
+  const existing = wsInFlight.get(uri);
+  if (existing && existing.text === text) {
+    return existing.promise;
+  }
+
+  const run = async (): Promise<SymbolIndex> => {
+    let meshes: OcctMesh[] = [];
+    if (cachedDataSection === dataSection && cachedMeshes && cachedMeshes.length > 0) {
+      meshes = cachedMeshes;
+    } else {
+      const occt = await getOcct(options?.serverDistBase ?? null);
+      if (occt) {
+        try {
+          const result = occt.ReadStepFile(buffer, null);
+          meshes = result?.meshes || [];
+          if (result?.root && meshes.length > 0) {
+            const assignNodeNames = (node: unknown, inheritedName: string): void => {
+              if (!node || typeof node !== "object") return;
+              const rec = node as { name?: unknown; meshes?: unknown; children?: unknown };
+              const ownName =
+                typeof rec.name === "string" && rec.name.trim().length > 0 ? rec.name.trim() : inheritedName;
+              if (Array.isArray(rec.meshes)) {
+                for (const meshIdx of rec.meshes) {
+                  if (typeof meshIdx !== "number") continue;
+                  const mesh = meshes[meshIdx];
+                  if (mesh && (!mesh.name || !mesh.name.trim()) && ownName) {
+                    mesh.name = ownName;
+                  }
+                }
+              }
+              if (Array.isArray(rec.children)) {
+                for (const child of rec.children) {
+                  assignNodeNames(child, ownName);
+                }
+              }
+            };
+            assignNodeNames(result.root, "");
+          }
+          for (const mesh of meshes as Array<OcctMesh & { fromOcct?: boolean }>) {
+            if (mesh) mesh.fromOcct = true;
+          }
+        } catch (e) {
+          console.error(`[step] OCCT parse failed for ${uri}:`, e);
+        }
+      }
+      if (meshes.length === 0) {
+        try {
+          const { tessellateStepSolid } = await import("./occ.js");
+          const stepMesh = tessellateStepSolid(text);
+          if (stepMesh.triangleCount > 0) {
+            const targets = stepMesh.solids.length > 0 ? stepMesh.solids : [stepMesh];
+            meshes = targets.map((s) => ({
+              name: s.name,
+              attributes: {
+                position: { array: s.vertices },
+                normal: { array: s.normals },
+              },
+              index: { array: s.indices },
+            }));
+          }
+        } catch {
+          // ignore fallback tessellation errors
+        }
+      }
+    }
+
+    pendingMeshesByUri.set(uri, meshes);
+    try {
+      const fileIndex = workspace.indexDocumentText(uri, text, "step");
+      workspace.setParsedModel(uri, meshes, "meshes");
+      workspace.setParsedModel(uri, text, "meshesSourceText");
+      workspace.setParsedModel(uri, dataSection, "meshesDataText");
+      workspace.setParsedModel(uri, text, "indexedSourceText");
+      return (
+        fileIndex ?? {
+          symbols: new Map(),
+          byName: new Map(),
+          childrenOf: new Map(),
+        }
+      );
+    } finally {
+      pendingMeshesByUri.delete(uri);
+    }
+  };
+
+  const promise = run().finally(() => {
+    const cur = wsInFlight?.get(uri);
+    if (cur?.promise === promise) {
+      wsInFlight.delete(uri);
+    }
+  });
+  wsInFlight.set(uri, { text, promise });
+  return promise;
 }
 
 /**

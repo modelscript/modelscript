@@ -19,6 +19,8 @@ import {
   type InductiveSpec,
   type NonlinearConstraint,
 } from "@modelscript/runtime";
+import { collectCstLeaves, isSysmlIdentLeaf, parseSysmlSource } from "./cst-utils.js";
+import { parseSysML2Expression, type SysML2ExprAst } from "./evaluator.js";
 
 export interface LoopDiagnostic {
   severity: "error" | "warning" | "info";
@@ -49,45 +51,87 @@ interface ParsedCondition {
   constant: number;
 }
 
+function evalSignedLiteral(expr: SysML2ExprAst): number | null {
+  if (expr.kind === "NumberLiteral") return expr.value;
+  if (expr.kind === "UnaryExpr" && expr.operand.kind === "NumberLiteral") {
+    if (expr.op === "-") return -expr.operand.value;
+    if (expr.op === "+") return expr.operand.value;
+  }
+  return null;
+}
+
+type CondOp = "<" | "<=" | ">" | ">=" | "==";
+
+function flipComparisonOp(op: CondOp): CondOp {
+  switch (op) {
+    case "<":
+      return ">";
+    case "<=":
+      return ">=";
+    case ">":
+      return "<";
+    case ">=":
+      return "<=";
+    case "==":
+      return "==";
+  }
+}
+
+function isCondOp(op: string): op is CondOp {
+  return op === "<" || op === "<=" || op === ">" || op === ">=" || op === "==";
+}
+
 function parseCondition(condText: string): ParsedCondition | null {
-  const clean = condText
-    .trim()
-    .replace(/^\(|\)$/g, "")
-    .trim();
+  if (!condText.trim()) return null;
+  let ast: SysML2ExprAst;
+  try {
+    ast = parseSysML2Expression(condText);
+  } catch {
+    return null;
+  }
+  if (ast.kind !== "BinaryExpr" || !isCondOp(ast.op)) return null;
 
   // 1. var - var? op const: e.g. counter < 10, i - j <= 5
-  const m = clean.match(
-    /^([A-Za-z_][A-Za-z0-9_]*)(?:\s*-\s*([A-Za-z_][A-Za-z0-9_]*))?\s*(<=|<|>=|>|==)\s*(-?\d+(?:\.\d+)?)$/,
-  );
-  if (m) {
-    return {
-      lhsVar: m[1]!,
-      rhsVar: m[2],
-      operator: m[3] as "<" | "<=" | ">" | ">=" | "==",
-      constant: parseFloat(m[4]!),
-    };
+  const rhsConst = evalSignedLiteral(ast.right);
+  if (rhsConst !== null) {
+    if (ast.left.kind === "Identifier") {
+      return {
+        lhsVar: ast.left.name,
+        operator: ast.op,
+        constant: rhsConst,
+      };
+    }
+    if (
+      ast.left.kind === "BinaryExpr" &&
+      ast.left.op === "-" &&
+      ast.left.left.kind === "Identifier" &&
+      ast.left.right.kind === "Identifier"
+    ) {
+      return {
+        lhsVar: ast.left.left.name,
+        rhsVar: ast.left.right.name,
+        operator: ast.op,
+        constant: rhsConst,
+      };
+    }
   }
 
   // 2. const op var: e.g. 10 > counter, 0 <= i
-  const mRev = clean.match(/^(-?\d+(?:\.\d+)?)\s*(<=|<|>=|>|==)\s*([A-Za-z_][A-Za-z0-9_]*)$/);
-  if (mRev) {
-    const rawOp = mRev[2]!;
-    const flippedOp: "<" | "<=" | ">" | ">=" | "==" =
-      rawOp === "<" ? ">" : rawOp === "<=" ? ">=" : rawOp === ">" ? "<" : rawOp === ">=" ? "<=" : "==";
+  const lhsConst = evalSignedLiteral(ast.left);
+  if (lhsConst !== null && ast.right.kind === "Identifier") {
     return {
-      lhsVar: mRev[3]!,
-      operator: flippedOp,
-      constant: parseFloat(mRev[1]!),
+      lhsVar: ast.right.name,
+      operator: flipComparisonOp(ast.op),
+      constant: lhsConst,
     };
   }
 
   // 3. var op var: e.g. i < n, i <= limit (equivalent to i - limit <= 0)
-  const mVar = clean.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*(<=|<|>=|>|==)\s*([A-Za-z_][A-Za-z0-9_]*)$/);
-  if (mVar && mVar[1] !== mVar[3]) {
+  if (ast.left.kind === "Identifier" && ast.right.kind === "Identifier" && ast.left.name !== ast.right.name) {
     return {
-      lhsVar: mVar[1]!,
-      rhsVar: mVar[3]!,
-      operator: mVar[2] as "<" | "<=" | ">" | ">=" | "==",
+      lhsVar: ast.left.name,
+      rhsVar: ast.right.name,
+      operator: ast.op,
       constant: 0,
     };
   }
@@ -104,50 +148,54 @@ interface StateUpdate {
 
 function parseBodyUpdates(bodyText: string): StateUpdate[] {
   const updates: StateUpdate[] = [];
-  const lines = bodyText
-    .split(";")
-    .map((l) => l.trim())
-    .filter(Boolean);
+  if (!bodyText.trim()) return updates;
 
-  for (const line of lines) {
-    const assignMatch = /^(?:assign\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?::=|=)\s*(\S.*)$/.exec(line);
-    if (!assignMatch) continue;
-
-    const target = assignMatch[1]!;
-    const expr = assignMatch[2]!.trim();
-
-    // Check target + c or target - c
-    const incMatch = new RegExp(`^${target}\\s*\\+\\s*(-?\\d+(?:\\.\\d+)?)$`).exec(expr);
-    const decMatch = new RegExp(`^${target}\\s*-\\s*(-?\\d+(?:\\.\\d+)?)$`).exec(expr);
-    const otherMatch = /^([A-Za-z_][A-Za-z0-9_]*)\s*\+\s*(-?\\d+(?:\\.\\d+)?)$/.exec(expr);
-    const constMatch = /^(-?\d+(?:\.\d+)?)$/.exec(expr);
-
-    if (incMatch) {
-      updates.push({
-        targetVar: target,
-        delta: parseFloat(incMatch[1]!),
-        isDirectAssignment: false,
-      });
-    } else if (decMatch) {
-      updates.push({
-        targetVar: target,
-        delta: -parseFloat(decMatch[1]!),
-        isDirectAssignment: false,
-      });
-    } else if (otherMatch && otherMatch[1] !== target) {
-      updates.push({
-        targetVar: target,
-        sourceVar: otherMatch[1]!,
-        delta: parseFloat(otherMatch[2]!),
-        isDirectAssignment: false,
-      });
-    } else if (constMatch) {
-      updates.push({
-        targetVar: target,
-        delta: parseFloat(constMatch[1]!),
-        isDirectAssignment: true,
-      });
+  const leaves = collectCstLeaves(parseSysmlSource(bodyText));
+  let stmtStart = 0;
+  for (let i = 0; i <= leaves.length; i++) {
+    if (i < leaves.length && leaves[i]!.text !== ";") continue;
+    if (i > stmtStart) {
+      let s = stmtStart;
+      if (leaves[s]!.text === "assign") s++;
+      const target = leaves[s]?.text;
+      const opTok = leaves[s + 1]?.text;
+      if (isSysmlIdentLeaf(target) && (opTok === ":=" || opTok === "=") && s + 2 < i) {
+        const rhsExprText = bodyText.slice(leaves[s + 2]!.start, leaves[i - 1]!.end).trim();
+        let rhsAst: SysML2ExprAst | null = null;
+        try {
+          rhsAst = parseSysML2Expression(rhsExprText);
+        } catch {
+          rhsAst = null;
+        }
+        if (rhsAst) {
+          const directConst = evalSignedLiteral(rhsAst);
+          if (directConst !== null) {
+            updates.push({
+              targetVar: target,
+              delta: directConst,
+              isDirectAssignment: true,
+            });
+          } else if (rhsAst.kind === "BinaryExpr" && rhsAst.left.kind === "Identifier") {
+            const c = evalSignedLiteral(rhsAst.right);
+            if (c !== null) {
+              if (rhsAst.op === "+" && rhsAst.left.name === target) {
+                updates.push({ targetVar: target, delta: c, isDirectAssignment: false });
+              } else if (rhsAst.op === "-" && rhsAst.left.name === target) {
+                updates.push({ targetVar: target, delta: -c, isDirectAssignment: false });
+              } else if (rhsAst.op === "+" && rhsAst.left.name !== target) {
+                updates.push({
+                  targetVar: target,
+                  sourceVar: rhsAst.left.name,
+                  delta: c,
+                  isDirectAssignment: false,
+                });
+              }
+            }
+          }
+        }
+      }
     }
+    stmtStart = i + 1;
   }
 
   return updates;

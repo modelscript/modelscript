@@ -541,6 +541,13 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
         );
 
         console.log("\n" + report.summary + "\n");
+        const outArg = args["out"] as string | undefined;
+        if (outArg) {
+          const outPath = path.resolve(process.cwd(), outArg);
+          fs.mkdirSync(path.dirname(outPath), { recursive: true });
+          fs.writeFileSync(outPath, JSON.stringify(report, null, 2), "utf-8");
+          console.log(`✓ Report written to: ${outArg}`);
+        }
         if (report.overallStatus === "FAIL") {
           process.exit(1);
         }

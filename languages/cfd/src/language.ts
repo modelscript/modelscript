@@ -256,7 +256,7 @@ export const cfdLanguage = language({
         },
       }),
 
-    CommentLine: ($) => seq(choice("%", "//", "#"), /.*/, $["_newline"]!),
+    CommentLine: () => /(?:%|\/\/|#)[^\n]*/,
 
     _newline: () => /\n/,
 

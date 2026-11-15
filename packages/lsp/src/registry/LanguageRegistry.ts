@@ -173,6 +173,7 @@ export const DEFAULT_LANGUAGE_MATURITY: Record<string, "stable" | "beta" | "expe
   htri: "experimental",
   if97: "experimental",
   kratos: "experimental",
+  las: "experimental",
   maap: "experimental",
   magicdraw: "experimental",
   matpower: "experimental",

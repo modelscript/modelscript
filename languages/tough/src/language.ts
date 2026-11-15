@@ -12,7 +12,7 @@ export const toughLanguage = language({
   polyglot: toughPolyglotConfig,
   name: "tough",
   fileExtensions: [".tough", ".dat", ".tgh"],
-  maturity: "experimental",
+  maturity: "beta",
   indexing: {
     indexFile: indexToughFile,
     canIndex: canIndexToughFile,

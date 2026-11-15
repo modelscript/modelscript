@@ -273,9 +273,9 @@ const stats = computed<StatItem[]>(() => [
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 11.5px;
+  font-size: var(--text-2xs);
   font-family: var(--ms-font-mono, monospace);
-  font-weight: 550;
+  font-weight: var(--ms-fw-medium);
   color: var(--vp-c-text-3);
   transition:
     color 0.2s ease,
@@ -303,10 +303,10 @@ const stats = computed<StatItem[]>(() => [
 }
 
 .bento-value {
-  font-size: 2.15rem;
-  font-weight: 800;
+  font-size: var(--text-3xl);
+  font-weight: var(--ms-fw-bold);
   line-height: 1;
-  letter-spacing: -0.035em;
+  letter-spacing: var(--ms-tracking-tight);
   font-variant-numeric: tabular-nums;
   color: var(--vp-c-text-1);
   transition: color 0.2s ease;
@@ -321,9 +321,9 @@ const stats = computed<StatItem[]>(() => [
   align-items: center;
   padding: 1px 7px;
   border-radius: 999px;
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
+  font-size: var(--text-2xs);
+  font-weight: var(--ms-fw-semibold);
+  letter-spacing: var(--ms-tracking-wide);
   text-transform: uppercase;
   white-space: nowrap;
   flex-shrink: 0;
@@ -339,16 +339,16 @@ const stats = computed<StatItem[]>(() => [
 
 .bento-label {
   margin: 0;
-  font-size: 0.94rem;
-  font-weight: 680;
+  font-size: var(--text-base);
+  font-weight: var(--ms-fw-semibold);
   color: var(--vp-c-text-1);
-  letter-spacing: -0.01em;
+  letter-spacing: var(--ms-tracking-snug);
 }
 
 .bento-desc {
   margin: 5px 0 0;
-  font-size: 0.81rem;
-  line-height: 1.45;
+  font-size: var(--text-xs);
+  line-height: var(--leading-sm);
   color: var(--vp-c-text-2);
 }
 
@@ -368,9 +368,9 @@ const stats = computed<StatItem[]>(() => [
 .bento-chip {
   padding: 2px 6px;
   border-radius: 6px;
-  font-size: 10.5px;
+  font-size: var(--text-2xs);
   font-family: var(--ms-font-mono, monospace);
-  font-weight: 550;
+  font-weight: var(--ms-fw-medium);
   color: var(--vp-c-text-2);
   background: color-mix(in srgb, var(--vp-c-bg) 60%, transparent);
   border: 1px solid var(--vp-c-divider);

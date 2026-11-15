@@ -33,7 +33,7 @@ ModelScript can parse OpenUSD stages authored in external digital twin tools (NV
 
 When forward dynamics are solved in ModelScript (from ROS URDF or Modelica MultiBody models), joint state trajectories are converted via forward kinematics into time-sampled USD animation curves:
 
-```c
+```usd
 double3 xformOp:translate.timeSamples = {
     0.0: (0.0, 0.0, 0.5),
     0.5: (0.1, 0.0, 0.7),

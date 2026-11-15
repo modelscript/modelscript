@@ -73,6 +73,7 @@ const SolutionViewCard = React.lazy(() => import("../SolutionViewCard"));
 const ReqifViewer = React.lazy(() => import("../ReqifViewer"));
 const QifViewer = React.lazy(() => import("../QifViewer"));
 const UrdfViewer = React.lazy(() => import("../UrdfViewer"));
+const WamRobotArtifactViewer = React.lazy(() => import("../WamRobotArtifactViewer"));
 const PolyglotArtifactViewer = React.lazy(() => import("../PolyglotArtifactViewer"));
 const OtdrTraceViewer = React.lazy(() => import("../OtdrTraceViewer"));
 const FiberSpliceMatrixViewer = React.lazy(() => import("../FiberSpliceMatrixViewer"));
@@ -253,6 +254,9 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
         );
       case "simulation-plot":
         return <SimulationPlotViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "las":
+      case "well-log":
+        return <SimulationPlotViewer viewConfig={{ ...viewConfig, format: "las" }} isFullScreen={isFullScreen} />;
       case "vega":
       case "vega-plot":
         return <VegaViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
@@ -557,6 +561,22 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             isFullScreen={isFullScreen}
           >
             <UrdfViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
+          </LazyHeavyViewer>
+        );
+      case "wam_robot_lab":
+      case "wam_robot":
+        return (
+          <LazyHeavyViewer
+            artifactId={artifactId}
+            thumbnailUrl={resolvedThumbnailUrl}
+            thumbnailUrlLight={resolvedThumbnailUrlLight}
+            thumbnailUrlDark={resolvedThumbnailUrlDark}
+            title="Modelica + WAM Robot Lab"
+            placeholderType="cad"
+            height={expectedHeight}
+            isFullScreen={isFullScreen}
+          >
+            <WamRobotArtifactViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
           </LazyHeavyViewer>
         );
       case "owl":

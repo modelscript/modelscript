@@ -34,7 +34,7 @@ description: "@modelscript/owl2 (languages/owl2) brings formal ontological engin
 | **Property Characteristics**            | `FunctionalObjectProperty`, `InverseFunctionalObjectProperty`, `ReflexiveObjectProperty`, `IrreflexiveObjectProperty`, `SymmetricObjectProperty`, `AsymmetricObjectProperty`, `TransitiveObjectProperty`, `FunctionalDataProperty` |
 | **ABox Individual Assertions**          | `ClassAssertion`, `ObjectPropertyAssertion`, `DataPropertyAssertion`, `NegativeObjectPropertyAssertion`, `NegativeDataPropertyAssertion`, `SameIndividual`, `DifferentIndividuals`                                                 |
 
-```lisp
+```owl2
 Prefix(:=<http://example.org/spacecraft#>)
 Ontology(<http://example.org/spacecraft>
   Declaration(Class(:Thruster))
@@ -101,7 +101,7 @@ OWL2 ontologies can be queried, projected, and validated using ModelScript's pol
 
 ```bash
 # Project OWL 2 DL class hierarchies and axioms into formal SysML v2 part definitions
-msx polyglot project SpacecraftOntology.ofn --target=sysml2 -o Spacecraft.sysml
+msx polyglot project SpacecraftOntology.ofn --target=sysml2 --out=Spacecraft.sysml
 
 # Cross-query ontology symbols and digital thread twins in the unified Salsa index
 msx polyglot query Spacecraft::ReactionControlPod --domain=owl2

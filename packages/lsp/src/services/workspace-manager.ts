@@ -29,6 +29,12 @@ import type { AlignedDomainElement } from "../providers/threadDiagnosticsProvide
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { getCompositeName } from "../utils/hierarchy-utils.js";
 import { extractIndexerHooks } from "../utils/hook-extractor.js";
+import {
+  extractModelicaTypeFromDeclLine,
+  extractWithinPackageName,
+  findAssignedNumberInLine,
+  skipWs,
+} from "../utils/lexical-utils.js";
 import { DocumentManager } from "./document-manager.js";
 
 let nodeRequire: ((id: string) => any) | null = null;
@@ -945,11 +951,9 @@ export class WorkspaceManager {
                     if (text && sOff != null && eOff != null) {
                       const lineStart = text.lastIndexOf("\n", sOff);
                       const declLine = text.substring(lineStart === -1 ? 0 : lineStart + 1, eOff);
-                      const m = declLine.match(
-                        /^\s*(?:(?:flow|stream|discrete|parameter|constant|input|output)\s+)*([A-Za-z0-9_.]+)\s+/,
-                      );
-                      if (m) {
-                        typeSpec = m[1]!.trim();
+                      const parsedType = extractModelicaTypeFromDeclLine(declLine);
+                      if (parsedType) {
+                        typeSpec = parsedType;
                       }
                     }
                   }
@@ -1050,9 +1054,9 @@ export class WorkspaceManager {
                 try {
                   const text = getSourceText(entry.resourceId);
                   if (text) {
-                    const withinMatch = text.slice(0, 1000).match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-                    if (withinMatch && withinMatch[1]) {
-                      scopeParts.push(...withinMatch[1].trim().split("."));
+                    const withinPkg = extractWithinPackageName(text.slice(0, 1000));
+                    if (withinPkg) {
+                      scopeParts.push(...withinPkg.split("."));
                     }
                   }
                 } catch {}
@@ -1124,9 +1128,10 @@ export class WorkspaceManager {
             if (!lhsStr || !rhsStr) {
               try {
                 const cstText = connCst.text ?? "";
-                const connectMatch = cstText.match(/connect\s*\(/);
-                if (connectMatch && connectMatch.index !== undefined) {
-                  const start = connectMatch.index + connectMatch[0].length;
+                const cIdx = cstText.indexOf("connect");
+                const openIdx = cIdx !== -1 ? skipWs(cstText, cIdx + 7) : -1;
+                if (cIdx !== -1 && cstText[openIdx] === "(") {
+                  const start = openIdx + 1;
                   const closeIdx = cstText.lastIndexOf(")");
                   if (closeIdx > start) {
                     const inner = cstText.slice(start, closeIdx);
@@ -1678,9 +1683,9 @@ export class WorkspaceManager {
       }
       if (props[sym.name] === undefined && docText && sym.endOffset > sym.startOffset) {
         const slice = docText.slice(Math.max(0, sym.startOffset), Math.min(docText.length, sym.endOffset + 40));
-        const assignMatch = slice.match(/=\s*([-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)\b/);
-        if (assignMatch?.[1]) {
-          recordNumeric(sym.name, assignMatch[1]);
+        const span = findAssignedNumberInLine(slice, { allowSign: true, allowExponent: true });
+        if (span?.text) {
+          recordNumeric(sym.name, span.text);
         }
       }
     };
@@ -1714,6 +1719,12 @@ export class WorkspaceManager {
     if (!uIdx || !uIdx.symbols) return [];
 
     const normLang = langId.toLowerCase();
+    // Large AP242 STEP B-Rep files (>256 KB) never declare @twin/Import/implements source links;
+    // scanning them on every keystroke or peer validation stalls the LSP worker.
+    if (normLang === "step" && text.length > 262_144) {
+      this.retractAutoThreadStateForUri(uri);
+      return [];
+    }
     const normUri = (u: string) => u.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///").toLowerCase();
     const targetNormUri = normUri(uri);
 
@@ -1733,10 +1744,12 @@ export class WorkspaceManager {
           otherDoc.languageId?.toLowerCase() ??
           "";
         if (!otherLang) continue;
+        const otherText = otherDoc.getText();
+        if (otherLang === "step" && otherText.length > 262_144) continue;
         const cachedTree = this.documentManager.documentTrees.get(otherDoc.uri)?.tree;
         docsToScan.push({
           docUri: otherDoc.uri,
-          docText: otherDoc.getText(),
+          docText: otherText,
           docLang: otherLang,
           docTree: cachedTree,
         });

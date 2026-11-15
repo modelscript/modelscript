@@ -36,3 +36,27 @@ export function createPsseWasmParserSync(wasmPathOrBytes?: string | Uint8Array) 
   const target = wasmPathOrBytes ?? getPsseWasmPath();
   return createWasmParserSync(target as Parameters<typeof createWasmParserSync>[0]);
 }
+
+type PsseWasmParser = ReturnType<typeof createPsseWasmParserSync>["parser"];
+let cachedPsseParser: PsseWasmParser | undefined;
+
+/**
+ * Registers a pre-instantiated PSS/E WebAssembly parser (e.g. loaded asynchronously in browser workers).
+ */
+export function setPsseWasmParser(parser: PsseWasmParser | null | undefined): void {
+  cachedPsseParser = parser ?? undefined;
+}
+
+/**
+ * Returns the cached PSS/E WebAssembly parser, checking `globalThis.psseParser` before falling back to synchronous Node loading.
+ */
+export function getPsseWasmParser(): PsseWasmParser {
+  if (cachedPsseParser) return cachedPsseParser;
+  const globalParser = (globalThis as { psseParser?: PsseWasmParser }).psseParser;
+  if (globalParser) {
+    cachedPsseParser = globalParser;
+    return cachedPsseParser;
+  }
+  cachedPsseParser = createPsseWasmParserSync().parser;
+  return cachedPsseParser;
+}

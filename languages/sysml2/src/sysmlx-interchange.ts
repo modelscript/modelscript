@@ -16,6 +16,15 @@
 
 import type { QueryDB, SymbolEntry, WorkspaceIndex } from "@modelscript/runtime";
 import { randomUUID } from "node:crypto";
+import {
+  collectCstLeaves,
+  findMatchingBraceLeaf,
+  hasImmediateLeadingKeyword,
+  parseSysmlSource,
+  readDottedChainFromLeaves,
+  sliceBetweenLeaves,
+  sliceLeavesInRange,
+} from "./cst-utils.js";
 import { createSysML2QueryEngine, createSysML2WorkspaceIndex, getSysmlParser } from "./factory.js";
 
 export const OMG_SYSML2_CONTEXT = "https://www.omg.org/spec/SysML/20240201/context.jsonld";
@@ -87,6 +96,9 @@ export class SysML2ModelInterchange {
     );
     const db = qe.toQueryDB();
 
+    const tree = parser.parse(sysmlSource);
+    const sourceLeaves = collectCstLeaves(tree?.rootNode ?? null);
+
     const elements: SysmlxElement[] = [];
     const relationships: SysmlxRelationship[] = [];
     const symbolToId = new Map<number, string>();
@@ -109,13 +121,17 @@ export class SysML2ModelInterchange {
         entry.startOffset != null && entry.endOffset != null
           ? sysmlSource.slice(entry.startOffset, entry.endOffset)
           : db.cstText(entry.startOffset, entry.endOffset, entry) || "";
-      const leadingText =
-        entry.startOffset != null ? sysmlSource.slice(Math.max(0, entry.startOffset - 30), entry.startOffset) : "";
+      const entryLeaves =
+        entry.startOffset != null && entry.endOffset != null
+          ? sliceLeavesInRange(sourceLeaves, entry.startOffset, entry.endOffset)
+          : entryText
+            ? collectCstLeaves(parseSysmlSource(entryText))
+            : [];
       const isAbstract =
         entry.metadata?.["isAbstract"] === true ||
         entry.metadata?.["isAbstract"] === "true" ||
-        /\babstract\b/.test(entryText) ||
-        /\babstract\s+$/.test(leadingText);
+        entryLeaves.some((l) => l.text === "abstract") ||
+        (entry.startOffset != null && hasImmediateLeadingKeyword(sourceLeaves, entry.startOffset, "abstract"));
 
       // Superclasses / Specializations
       const superclasses: string[] = [];
@@ -146,10 +162,19 @@ export class SysML2ModelInterchange {
       if (typingChild?.name) {
         attrs["type"] = typingChild.name;
       }
-      if (!attrs["type"] && entryText) {
-        const typeMatch = entryText.match(/:\s*(~?\s*[A-Za-z_][A-Za-z0-9_]*(?:::_?[A-Za-z0-9_]+)*)/);
-        if (typeMatch) {
-          attrs["type"] = typeMatch[1]!.trim();
+      if (!attrs["type"] && entryLeaves.length > 0) {
+        const colonIdx = entryLeaves.findIndex((l) => l.text === ":");
+        if (colonIdx !== -1) {
+          let k = colonIdx + 1;
+          let conjPrefix = "";
+          if (entryLeaves[k]?.text === "~") {
+            conjPrefix = "~";
+            k++;
+          }
+          const typeChain = readDottedChainFromLeaves(entryLeaves, k);
+          if (typeChain) {
+            attrs["type"] = conjPrefix + typeChain.text;
+          }
         }
       }
       if (typeof attrs["type"] === "string" && attrs["type"].startsWith("~")) {
@@ -168,11 +193,17 @@ export class SysML2ModelInterchange {
 
       // Extract connection endpoints
       if (entry.ruleName === "ConnectionUsage" || entry.ruleName === "BindingConnectorAsUsage") {
-        if (entryText) {
-          const connMatch = entryText.match(/connect\s+([A-Za-z0-9_.]+)\s+to\s+([A-Za-z0-9_.]+)/);
-          if (connMatch) {
-            attrs["source"] = connMatch[1]!.trim();
-            attrs["target"] = connMatch[2]!.trim();
+        if (entryLeaves.length > 0) {
+          const connIdx = entryLeaves.findIndex((l) => l.text === "connect");
+          if (connIdx !== -1) {
+            const srcChain = readDottedChainFromLeaves(entryLeaves, connIdx + 1);
+            if (srcChain && entryLeaves[srcChain.nextIdx]?.text === "to") {
+              const tgtChain = readDottedChainFromLeaves(entryLeaves, srcChain.nextIdx + 1);
+              if (tgtChain) {
+                attrs["source"] = srcChain.text;
+                attrs["target"] = tgtChain.text;
+              }
+            }
           }
         }
         if (!attrs["source"] || !attrs["target"]) {
@@ -186,29 +217,45 @@ export class SysML2ModelInterchange {
 
       // Extract constraint expression body
       if (entry.ruleName === "AssertConstraintUsage" || entry.ruleName === "ConstraintUsage") {
-        const text = entryText;
-        const braceMatch = text.match(/\{([^}]+)\}/);
-        if (braceMatch) {
-          attrs["expression"] = braceMatch[1]!.trim();
+        const openIdx = entryLeaves.findIndex((l) => l.text === "{");
+        if (openIdx !== -1) {
+          const closeIdx = findMatchingBraceLeaf(entryLeaves, openIdx);
+          if (closeIdx > openIdx + 1 && entryLeaves[closeIdx]?.text === "}") {
+            const exprText = sliceBetweenLeaves(
+              entry.startOffset != null ? sysmlSource : entryText,
+              entryLeaves[openIdx]!,
+              entryLeaves[closeIdx]!,
+            );
+            if (exprText) attrs["expression"] = exprText;
+          }
         }
       }
 
       // Extract attribute default value
       if (entry.ruleName === "AttributeUsage" || entry.ruleName === "AttributeDefinition") {
-        if (entryText) {
-          const valMatch = entryText.match(/=\s*([^;]+);/);
-          if (valMatch) {
-            attrs["defaultValue"] = valMatch[1]!.trim();
+        const eqIdx = entryLeaves.findIndex((l) => l.text === "=");
+        if (eqIdx !== -1) {
+          const semiIdx = entryLeaves.findIndex((l, idx) => idx > eqIdx && l.text === ";");
+          if (semiIdx > eqIdx + 1) {
+            const valText = sliceBetweenLeaves(
+              entry.startOffset != null ? sysmlSource : entryText,
+              entryLeaves[eqIdx]!,
+              entryLeaves[semiIdx]!,
+            );
+            if (valText) attrs["defaultValue"] = valText;
           }
         }
       }
 
       // Extract requirement satisfaction target
       if (entry.ruleName === "SatisfyRequirementUsage") {
-        if (entryText) {
-          const satisfyMatch = entryText.match(/satisfy\s+(?:requirement\s+)?([A-Za-z0-9_:]+)/);
-          if (satisfyMatch) {
-            attrs["target"] = satisfyMatch[1]!.trim();
+        const satIdx = entryLeaves.findIndex((l) => l.text === "satisfy");
+        if (satIdx !== -1) {
+          let k = satIdx + 1;
+          if (entryLeaves[k]?.text === "requirement") k++;
+          const targetChain = readDottedChainFromLeaves(entryLeaves, k);
+          if (targetChain) {
+            attrs["target"] = targetChain.text;
           }
         }
       }

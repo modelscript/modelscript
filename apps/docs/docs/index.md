@@ -46,7 +46,9 @@ import {
 
 <HomeSemanticCoordinator v-if="isHomeSemanticCoordinatorEnabled" />
 
-<HomePolyglotSandbox v-if="isHomePolyglotSandboxEnabled" />
+<ClientOnly>
+  <HomePolyglotSandbox v-if="isHomePolyglotSandboxEnabled" />
+</ClientOnly>
 
 <HomeThread />
 

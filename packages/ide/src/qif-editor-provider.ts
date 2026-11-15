@@ -12,6 +12,12 @@
  */
 
 import {
+  extractStepGdtOverlay,
+  parseStepProvenanceMeta,
+  type GdtOverlayPayload,
+  type StepProvenanceMeta,
+} from "@modelscript/cad";
+import {
   renderQifMbdHeatmapSvg,
   renderQifSpcChartSvg,
   type QifSpcSummaryLike,
@@ -28,10 +34,184 @@ import {
 } from "@modelscript/qif";
 import * as vscode from "vscode";
 import { CadViewerPanel } from "./cad-viewer-panel.js";
+import { readWorkspaceText, type StepCompilationService } from "./services/step-compilation-service.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
+
+function normMatchKey(raw: string | undefined): string {
+  return (raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function buildStepEntityLookup(stepText: string): Array<{
+  readonly entityId: string;
+  readonly type: string;
+  readonly argsLower: string;
+}> {
+  const out: Array<{ readonly entityId: string; readonly type: string; readonly argsLower: string }> = [];
+  const stmtRe = /#(\d+)\s*=\s*([A-Z0-9_]+)\s*\(([^;]*)\)\s*;/gi;
+  let m: RegExpExecArray | null;
+  while ((m = stmtRe.exec(stepText)) !== null) {
+    const type = m[2]!.toUpperCase();
+    if (
+      type.includes("TOLERANCE") ||
+      type === "DATUM" ||
+      type === "DATUM_FEATURE" ||
+      type === "SHAPE_ASPECT" ||
+      type === "ADVANCED_FACE"
+    ) {
+      out.push({
+        entityId: `#${m[1]!}`,
+        type,
+        argsLower: (m[3] ?? "").toLowerCase(),
+      });
+    }
+  }
+  return out;
+}
+
+function enrichQifOverlayWithStep(
+  doc: QifDocument,
+  stepText: string | undefined,
+  qifText: string,
+  stepUri?: string | undefined,
+): {
+  readonly features: Array<{
+    id: string;
+    name: string;
+    type: string;
+    datumLabel?: string | undefined;
+    entityId?: string | undefined;
+    location?: [number, number, number] | undefined;
+    worldPosition?: [number, number, number] | undefined;
+    normal?: [number, number, number] | undefined;
+    nominalSize?: number | undefined;
+  }>;
+  readonly characteristics: Array<{
+    id: string;
+    name: string;
+    type: string;
+    featureId: string;
+    featureIds: string[];
+    toleranceValue: number;
+    nominalValue?: number | undefined;
+    materialCondition?: string | undefined;
+    datumRefs?: string[] | undefined;
+  }>;
+  readonly stepUri?: string | undefined;
+} {
+  const stepMeta: StepProvenanceMeta | null = stepText ? parseStepProvenanceMeta(stepText) : null;
+  const gdtOverlay: GdtOverlayPayload | null = stepText ? extractStepGdtOverlay(stepText, qifText) : null;
+  const stepEntities = stepText ? buildStepEntityLookup(stepText) : [];
+
+  const features = doc.features.map((feat) => {
+    const datumDef = doc.datumDefinitions.find((d) => d.featureId === feat.id);
+    const char = doc.characteristics.find((c) => c.featureIds.includes(feat.id));
+    const datumLabel = datumDef?.label;
+    const featKey = normMatchKey(feat.name);
+    const charIdLower = char?.id.toLowerCase();
+    const charNameKey = normMatchKey(char?.name);
+
+    let matchedEntityId: string | undefined;
+    let matchedAnchor: [number, number, number] | undefined;
+    let matchedNormal: [number, number, number] | undefined = feat.normal
+      ? [feat.normal[0], feat.normal[1], feat.normal[2]]
+      : undefined;
+
+    if (gdtOverlay && datumLabel) {
+      const dMatch = gdtOverlay.datums.find((d) => d.label === datumLabel);
+      if (dMatch) {
+        matchedEntityId = dMatch.sourceRef;
+        matchedAnchor = [dMatch.anchor[0], dMatch.anchor[1], dMatch.anchor[2]];
+        if (dMatch.normal) {
+          matchedNormal = [dMatch.normal[0], dMatch.normal[1], dMatch.normal[2]];
+        }
+      }
+    }
+
+    if (!matchedEntityId && stepEntities.length > 0) {
+      const tolHit = stepEntities.find(
+        (e) =>
+          (charIdLower && e.argsLower.includes(`'${charIdLower}'`)) ||
+          (charNameKey && normMatchKey(e.argsLower).includes(charNameKey)) ||
+          (featKey && normMatchKey(e.argsLower).includes(featKey)),
+      );
+      if (tolHit) {
+        matchedEntityId = tolHit.entityId;
+      }
+    }
+
+    if (!matchedAnchor && stepMeta?.featureAnchors && stepMeta.featureAnchors.length > 0) {
+      const faHit = stepMeta.featureAnchors.find((a) => {
+        const aKey = normMatchKey(a.name);
+        return (
+          (featKey && (aKey === featKey || aKey.includes(featKey) || featKey.includes(aKey))) ||
+          (charNameKey && aKey.includes(charNameKey))
+        );
+      });
+      if (faHit) {
+        matchedAnchor = [faHit.anchor[0], faHit.anchor[1], faHit.anchor[2]];
+        if (faHit.normal) {
+          matchedNormal = [faHit.normal[0], faHit.normal[1], faHit.normal[2]];
+        }
+      }
+    }
+
+    if (!matchedAnchor && gdtOverlay && char) {
+      const cHit = gdtOverlay.callouts.find(
+        (c) =>
+          c.id === char.id || normMatchKey(c.label) === charNameKey || (featKey && normMatchKey(c.label) === featKey),
+      );
+      if (cHit) {
+        matchedAnchor = [cHit.anchor[0], cHit.anchor[1], cHit.anchor[2]];
+        if (!matchedEntityId && cHit.sourceRef?.startsWith("#")) {
+          matchedEntityId = cHit.sourceRef;
+        }
+      }
+    }
+
+    return {
+      id: feat.id,
+      name: feat.name,
+      type: feat.featureType,
+      ...(datumLabel ? { datumLabel } : {}),
+      ...((matchedEntityId ?? feat.stepEntityId) ? { entityId: matchedEntityId ?? feat.stepEntityId } : {}),
+      ...(feat.location ? { location: feat.location } : {}),
+      ...(matchedAnchor ? { worldPosition: matchedAnchor } : {}),
+      ...(matchedNormal ? { normal: matchedNormal } : {}),
+      ...(feat.nominalSize !== undefined ? { nominalSize: feat.nominalSize } : {}),
+    };
+  });
+
+  const characteristics = doc.characteristics.map((c) => ({
+    id: c.id,
+    name: c.name,
+    type: c.gdtType,
+    featureId: c.featureIds[0] ?? "",
+    featureIds: c.featureIds,
+    toleranceValue: c.toleranceZone,
+    ...(c.materialCondition ? { materialCondition: c.materialCondition } : {}),
+    datumRefs: c.datumReferences.map((r) => r.datumLabel),
+  }));
+
+  return {
+    features,
+    characteristics,
+    ...(stepUri ? { stepUri } : {}),
+  };
+}
 
 export class QifEditorProvider extends BaseCustomEditorProvider {
   public static readonly viewType = "modelscript.qifEditor";
+
+  constructor(
+    contextOrExtensionUri: vscode.ExtensionContext | vscode.Uri,
+    private readonly _stepCompilationService?: StepCompilationService,
+  ) {
+    super(contextOrExtensionUri);
+  }
 
   public async resolveCustomTextEditor(
     document: vscode.TextDocument,
@@ -43,7 +223,7 @@ export class QifEditorProvider extends BaseCustomEditorProvider {
     let disposed = false;
     webviewPanel.webview.html = this.getHtmlForWebview();
 
-    const updateWebview = () => {
+    const updateWebview = async (stepTextOverride?: string, stepUriOverride?: string): Promise<void> => {
       if (disposed) return;
       try {
         const text = document.getText();
@@ -77,15 +257,29 @@ export class QifEditorProvider extends BaseCustomEditorProvider {
         const modelicaCode: string = qifToModelica(doc);
 
         if (CadViewerPanel.currentPanel) {
+          let resolvedStepText = stepTextOverride;
+          let resolvedStepUri = stepUriOverride;
+          if (!resolvedStepText && this._stepCompilationService) {
+            const pair = await this._stepCompilationService.resolvePairedStepSources(document.uri);
+            if (pair.stepUri) {
+              resolvedStepUri = pair.stepUri.toString();
+              resolvedStepText =
+                this._stepCompilationService.getCompiledMeta(resolvedStepUri)?.stepText ??
+                (await readWorkspaceText(pair.stepUri));
+            }
+          }
+          const synced = enrichQifOverlayWithStep(doc, resolvedStepText, text, resolvedStepUri);
           CadViewerPanel.currentPanel.sendQifInspectionOverlay({
             qpId: doc.qpId,
-            features: doc.features,
-            characteristics: doc.characteristics,
+            features: synced.features,
+            characteristics: synced.characteristics,
             actuals: doc.actuals,
             spc: spcSummaryLike,
+            ...(synced.stepUri ? { stepUri: synced.stepUri } : {}),
           });
         }
 
+        if (disposed) return;
         webviewPanel.webview.postMessage({
           type: "update",
           qpId: doc.qpId,
@@ -102,6 +296,7 @@ export class QifEditorProvider extends BaseCustomEditorProvider {
           modelicaCode,
         });
       } catch (err: unknown) {
+        if (disposed) return;
         const message = err instanceof Error ? err.message : String(err);
         webviewPanel.webview.postMessage({
           type: "error",
@@ -110,18 +305,27 @@ export class QifEditorProvider extends BaseCustomEditorProvider {
       }
     };
 
-    updateWebview();
+    void updateWebview();
 
     const changeSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.toString() === document.uri.toString()) {
-        updateWebview();
+        void updateWebview();
+      }
+    });
+
+    const stepCompileSubscription = this._stepCompilationService?.onDidCompileStep((meta) => {
+      if (
+        meta.qifUri === document.uri.toString() ||
+        (meta.qifUri && vscode.Uri.parse(meta.qifUri).path === document.uri.path)
+      ) {
+        void updateWebview(meta.stepText, meta.stepUri);
       }
     });
 
     const msgSubscription = webviewPanel.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
         case "ready":
-          updateWebview();
+          void updateWebview();
           break;
         case "exportSysml2": {
           try {
@@ -163,6 +367,7 @@ export class QifEditorProvider extends BaseCustomEditorProvider {
     webviewPanel.onDidDispose(() => {
       disposed = true;
       changeSubscription.dispose();
+      stepCompileSubscription?.dispose();
       msgSubscription.dispose();
     });
   }

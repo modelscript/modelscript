@@ -180,7 +180,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
               }
             }
             if (!isAttrMod) {
-              db.diagnostic(declNode != 0 ? declNode : node, expectedType, TYPE_STRING);
+              db.diagnosticAt(str, declNode != 0 ? declNode : node, expectedType, TYPE_STRING);
               return;
             }
           }
@@ -208,7 +208,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
               }
             }
             if (!isDesc) {
-              db.diagnostic(declNode != 0 ? declNode : node, TYPE_INTEGER, TYPE_REAL);
+              db.diagnosticAt(num, declNode != 0 ? declNode : node, TYPE_INTEGER, TYPE_REAL);
               return;
             }
           }
@@ -237,7 +237,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
               }
             }
             if (!isDesc) {
-              db.diagnostic(declNode != 0 ? declNode : node, TYPE_STRING, TYPE_REAL);
+              db.diagnosticAt(num, declNode != 0 ? declNode : node, TYPE_STRING, TYPE_REAL);
               return;
             }
           }
@@ -265,7 +265,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
               }
             }
             if (!isDesc) {
-              db.diagnostic(declNode != 0 ? declNode : node, TYPE_STRING, TYPE_INTEGER);
+              db.diagnosticAt(num, declNode != 0 ? declNode : node, TYPE_STRING, TYPE_INTEGER);
               return;
             }
           }
@@ -739,11 +739,24 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       const lName = lIdx >= 0 && lIdx < typeNames.length ? typeNames[lIdx] : "Unknown";
       const rName = rIdx >= 0 && rIdx < typeNames.length ? typeNames[rIdx] : "Unknown";
       const isOld = isOldFrontend && (isOldFrontend.asNumber ? isOldFrontend.asNumber() : Number(isOldFrontend)) === 1;
-      if (isOld) {
-        const eqText = target.text.replace(/\s+/g, " ").replace(" = ", "=").trim();
-        return `Type mismatch in equation ${eqText} of type ${lName}=${rName}.`;
+      let eqText = "";
+      let inWs = true;
+      for (let i = 0; i < target.text.length; i++) {
+        const code = target.text.charCodeAt(i);
+        if (code === 32 || (code >= 9 && code <= 13)) {
+          if (!inWs) {
+            eqText += " ";
+            inWs = true;
+          }
+        } else {
+          eqText += target.text.charAt(i);
+          inWs = false;
+        }
       }
-      const eqText = target.text.replace(/\s+/g, " ").trim();
+      if (eqText.endsWith(" ")) eqText = eqText.slice(0, -1);
+      if (isOld) {
+        return `Type mismatch in equation ${eqText.replace(" = ", "=")} of type ${lName}=${rName}.`;
+      }
       return `Type mismatch in equation ${eqText} of type ${lName} = ${rName}.`;
     },
     query: (db: CodeGraph, node: u32, $: any) => {
@@ -778,7 +791,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
                 }
               }
             }
-            db.diagnostic(node, lhsType, rhsType, isOldFrontend);
+            db.diagnosticAt(rhs, node, lhsType, rhsType, isOldFrontend);
           }
         }
       }
@@ -839,7 +852,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         if (targetType != TYPE_UNKNOWN && valType != TYPE_UNKNOWN) {
           const allowIntEnum = isIntEnumConversionActive(db, $);
           if (!isTypeCompatible(valType, targetType, allowIntEnum)) {
-            db.diagnostic(node, targetType, valType);
+            db.diagnosticAt(value, node, targetType, valType);
           }
         }
       }
@@ -1145,7 +1158,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         const rhsUnit = inferExprUnit(db, rhs, $, classNode);
 
         if (lhsUnit != null && rhsUnit != null && !unitsCompatible(lhsUnit, rhsUnit)) {
-          db.diagnostic(node, 1);
+          db.diagnosticAt(rhs, node, 1);
         }
       }
     },
@@ -1223,7 +1236,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       if (exprNode != 0) {
         const exprUnit = inferExprUnit(db, exprNode, $, classNode);
         if (exprUnit != null && !unitsCompatible(compUnit, exprUnit)) {
-          db.diagnostic(node);
+          db.diagnosticAt(exprNode, node);
         }
       }
     },

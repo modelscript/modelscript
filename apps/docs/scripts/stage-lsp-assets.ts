@@ -39,6 +39,7 @@ const LANGUAGE_EXTENSIONS_MAP: Record<string, string[]> = {
   plcopen: [".st", ".iec", ".plcopen"],
   pscad: [".pscx", ".pslx"],
   psse: [".raw", ".dyr", ".seq"],
+  qif: [".qif"],
   relap5: [".i", ".relap"],
   reqif: [".reqif", ".reqifz"],
   rocets: [".roc", ".rocets", ".inp"],
@@ -89,6 +90,10 @@ copyIfChanged(
   path.join(workersOutDir, "indexer.worker.js"),
 );
 copyIfChanged(path.join(repoRoot, "packages/runtime/build/release.wasm"), path.join(outDir, "release.wasm"));
+copyIfChanged(
+  path.join(repoRoot, "node_modules/occt-import-js/dist/occt-import-js.wasm"),
+  path.join(outDir, "occt-import-js.wasm"),
+);
 
 const languagesRoot = path.join(repoRoot, "languages");
 const manifest: { id: string; extensions: string[]; wasm: string }[] = [];

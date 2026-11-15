@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { compileToStep, ManifoldWorker, SolidKind, type ExtrusionSolid } from "@modelscript/cad";
+import {
+  compileToStep,
+  computeMeshVolumeAndArea,
+  ManifoldWorker,
+  SolidKind,
+  type ExtrusionSolid,
+} from "@modelscript/cad";
 import assert from "node:assert";
 import fs from "node:fs";
 import path from "node:path";
@@ -96,7 +102,60 @@ async function main() {
   assert(mesh3.indices.length > 0);
   console.log(`  ✓ Generated twisted extrusion mesh: ${mesh3.indices.length / 3} triangles`);
 
-  console.log("All 2D Sketch and linear_extrude() tests passed successfully!");
+  // 4. Hollow curved nacelle profile rotate_extrude (must revolve exact profile, NOT coerce to torus)
+  const revolveRingScad = `
+  rotate_extrude(angle = 360, $fn = 24) {
+    polygon(points = [[10, 0], [14, 2], [15, 10], [11, 14], [10, 8]]);
+  }
+  `;
+  const tree4 = parser.parse(revolveRingScad);
+  const solid4 = new ScadEvaluator().evaluate(tree4.rootNode);
+  assert(solid4, "Solid4 must not be null");
+  assert.strictEqual(
+    solid4.kind,
+    SolidKind.Polyhedron,
+    `Hollow closed polygon rotate_extrude should produce exact Polyhedron lathe, got kind=${solid4.kind}`,
+  );
+  const mesh4 = ManifoldWorker.evaluateSolid(solid4);
+  assert(mesh4.vertices.length > 0 && mesh4.indices.length > 0, "Revolved ring mesh must be non-empty");
+  const stats4 = computeMeshVolumeAndArea(mesh4);
+  assert(stats4.volume > 0, `Expected positive outward volume for CCW revolved ring, got ${stats4.volume}`);
+  const step4 = compileToStep(solid4, "RevolvedNacelleRing");
+  assert(step4.includes("CLOSED_SHELL") && step4.includes("MANIFOLD_SOLID_BREP"));
+  console.log(
+    `  ✓ Evaluated curved hollow rotate_extrude profile: ${mesh4.indices.length / 3} triangles, vol=${stats4.volume.toFixed(1)}`,
+  );
+
+  // CW vertex order must also produce positive outward normals (watertight lathe winding)
+  const cwScad = `
+  rotate_extrude(angle = 360, $fn = 24) {
+    polygon(points = [[10, 8], [11, 14], [15, 10], [14, 2], [10, 0]]);
+  }
+  `;
+  const solidCw = new ScadEvaluator().evaluate(parser.parse(cwScad).rootNode);
+  assert(solidCw && solidCw.kind === SolidKind.Polyhedron);
+  const statsCw = computeMeshVolumeAndArea(ManifoldWorker.evaluateSolid(solidCw));
+  assert(statsCw.volume > 0, `Expected positive outward volume for CW revolved ring, got ${statsCw.volume}`);
+
+  // 5. Axis-touching r = 0 nose cone rotate_extrude
+  const coneProfileScad = `
+  rotate_extrude(angle = 360, $fn = 20) {
+    polygon(points = [[0, 0], [8, 0], [5, 12], [0, 18]]);
+  }
+  `;
+  const tree5 = parser.parse(coneProfileScad);
+  const solid5 = new ScadEvaluator().evaluate(tree5.rootNode);
+  assert(solid5, "Solid5 must not be null");
+  assert.strictEqual(solid5.kind, SolidKind.Polyhedron);
+  const mesh5 = ManifoldWorker.evaluateSolid(solid5);
+  assert(mesh5.vertices.length > 0 && mesh5.indices.length > 0, "Axis-touching nose cone mesh must be non-empty");
+  const stats5 = computeMeshVolumeAndArea(mesh5);
+  assert(stats5.volume > 0, `Expected positive outward volume for r=0 nose cone, got ${stats5.volume}`);
+  console.log(
+    `  ✓ Evaluated r=0 apex rotate_extrude profile: ${mesh5.indices.length / 3} triangles, vol=${stats5.volume.toFixed(1)}`,
+  );
+
+  console.log("All 2D Sketch and linear/rotate_extrude() tests passed successfully!");
 }
 
 main().catch((err) => {

@@ -12,6 +12,226 @@ import {
   WorkspaceEdit,
 } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { findCstNodesByType, type CstNodeLike, type CstTreeLike } from "../utils/ast-utils.js";
+import {
+  extractLeafSymbolName,
+  extractWordAtOffset,
+  findAssignedNumberInLine,
+  findScalarAssignmentValue,
+  isIdentContCode,
+  isIdentStartCode,
+  readIdentAt,
+  readNumericLiteralAt,
+  scanNumericTokensInLine,
+  skipWs,
+  splitLines,
+  uriBasename,
+  type NumericSpan,
+} from "../utils/lexical-utils.js";
+
+function extractSysmlNodeName(node: CstNodeLike | null | undefined): string | undefined {
+  const identNode = findCstNodesByType(node, "identification")[0] ?? findCstNodesByType(node, "identifier")[0];
+  const raw = identNode?.text?.trim();
+  if (!raw) return undefined;
+  const ident = readIdentAt(raw, 0);
+  return ident?.token;
+}
+
+function resolveSysmlDeclOnLine(
+  tree: CstTreeLike | null | undefined,
+  cursorRow: number,
+  cursorLine: string,
+): { kind: "part" | "requirement" | "action"; name: string } | { kind: undefined } {
+  const root = tree?.rootNode;
+  if (root) {
+    const checks: Array<{ types: string[]; kind: "part" | "requirement" | "action" }> = [
+      { types: ["part_definition", "PartDefinition"], kind: "part" },
+      { types: ["requirement_definition", "RequirementDefinition"], kind: "requirement" },
+      {
+        types: ["action_definition", "ActionDefinition", "calculation_definition", "CalculationDefinition"],
+        kind: "action",
+      },
+    ];
+    for (const c of checks) {
+      for (const nodeType of c.types) {
+        for (const node of findCstNodesByType(root, nodeType)) {
+          if (node?.startPosition?.row === cursorRow) {
+            const name = extractSysmlNodeName(node);
+            if (name) return { kind: c.kind, name };
+          }
+        }
+      }
+    }
+  }
+
+  let pos = skipWs(cursorLine, 0);
+  const first = readIdentAt(cursorLine, pos);
+  if (!first) return { kind: undefined };
+  let kw = first;
+  if (first.token === "abstract") {
+    const nextPos = skipWs(cursorLine, first.next);
+    if (nextPos === first.next) return { kind: undefined };
+    const nextTok = readIdentAt(cursorLine, nextPos);
+    if (!nextTok) return { kind: undefined };
+    kw = nextTok;
+  }
+  const kind =
+    kw.token === "part"
+      ? "part"
+      : kw.token === "requirement"
+        ? "requirement"
+        : kw.token === "action" || kw.token === "calc"
+          ? "action"
+          : undefined;
+  if (!kind) return { kind: undefined };
+
+  const afterKw = skipWs(cursorLine, kw.next);
+  if (afterKw === kw.next) return { kind: undefined };
+  const defTok = readIdentAt(cursorLine, afterKw);
+  if (!defTok || defTok.token !== "def") return { kind: undefined };
+  const afterDef = skipWs(cursorLine, defTok.next);
+  if (afterDef === defTok.next) return { kind: undefined };
+  const nameTok = readIdentAt(cursorLine, afterDef);
+  return nameTok ? { kind, name: nameTok.token } : { kind: undefined };
+}
+
+const MODELICA_DECL_ACTION_KEYWORDS = new Set(["model", "block", "study", "process", "class"]);
+
+function resolveModelicaClassOnLine(
+  tree: CstTreeLike | null | undefined,
+  cursorRow: number,
+  cursorLine: string,
+): string | undefined {
+  const root = tree?.rootNode;
+  if (root) {
+    for (const node of findCstNodesByType(root, "class_definition")) {
+      if (node?.startPosition?.row === cursorRow) {
+        const spec = findCstNodesByType(node, "class_specifier")[0] ?? node;
+        const idNode = findCstNodesByType(spec, "identifier")[0] ?? findCstNodesByType(spec, "IDENT")[0];
+        const raw = idNode?.text?.trim();
+        if (raw) return raw;
+      }
+    }
+  }
+  const pos = skipWs(cursorLine, 0);
+  const kw = readIdentAt(cursorLine, pos);
+  if (!kw || !MODELICA_DECL_ACTION_KEYWORDS.has(kw.token)) return undefined;
+  const afterKw = skipWs(cursorLine, kw.next);
+  if (afterKw === kw.next) return undefined;
+  return readIdentAt(cursorLine, afterKw)?.token;
+}
+
+function selectBestDriftNumericSpan(
+  lineContent: string,
+  matches: NumericSpan[],
+  expectedVal: number | undefined,
+): NumericSpan | undefined {
+  let bestMatch: NumericSpan | undefined;
+  if (expectedVal !== undefined && matches.length > 0) {
+    bestMatch = matches.find((cand) => {
+      const parsed = parseFloat(cand.text);
+      return (
+        Math.abs(parsed - expectedVal) < 1e-6 ||
+        Math.abs(parsed - expectedVal) / Math.max(Math.abs(expectedVal), 1) < 1e-4
+      );
+    });
+  }
+  if (!bestMatch && matches.length > 0) {
+    const eqIdx = lineContent.indexOf("=");
+    bestMatch = eqIdx !== -1 ? matches.find((cand) => cand.start >= eqIdx) : matches[matches.length - 1];
+  }
+  return bestMatch;
+}
+
+function findDivisorVariableInLine(lineContent: string): { name: string; start: number; end: number } | undefined {
+  let pos = 0;
+  while (pos < lineContent.length) {
+    const slashIdx = lineContent.indexOf("/", pos);
+    if (slashIdx === -1) return undefined;
+    const varStart = skipWs(lineContent, slashIdx + 1);
+    const ident = readIdentAt(lineContent, varStart);
+    if (ident) {
+      return { name: ident.token, start: varStart, end: ident.next };
+    }
+    pos = slashIdx + 1;
+  }
+  return undefined;
+}
+
+function parseFuncCallSingleArg(termText: string, fnName: string): string | undefined {
+  if (!termText.startsWith(fnName)) return undefined;
+  const openPos = skipWs(termText, fnName.length);
+  if (termText[openPos] !== "(" || !termText.endsWith(")")) return undefined;
+  const inner = termText.slice(openPos + 1, -1);
+  if (inner.includes("(") || inner.includes(")")) return undefined;
+  const trimmed = inner.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function findFirstIdent(text: string): string | undefined {
+  for (let i = 0; i < text.length; i++) {
+    if (isIdentStartCode(text.charCodeAt(i))) {
+      return readIdentAt(text, i)?.token;
+    }
+  }
+  return undefined;
+}
+
+function parseNonlinearSimplification(
+  termText: string,
+  deriveSimp: (kind: string, varName: string, options?: any) => string,
+): string {
+  const trimmed = termText.trim();
+  const ident = readIdentAt(trimmed, 0);
+  if (ident) {
+    const afterIdent = skipWs(trimmed, ident.next);
+    if (trimmed[afterIdent] === "^") {
+      const expStart = skipWs(trimmed, afterIdent + 1);
+      const expSpan = readNumericLiteralAt(trimmed, expStart);
+      if (expSpan && expSpan.end === trimmed.length) {
+        return deriveSimp("power", ident.token, { power: parseFloat(expSpan.text) });
+      }
+    } else if (trimmed[afterIdent] === "*") {
+      const rhsStart = skipWs(trimmed, afterIdent + 1);
+      const arg = parseFuncCallSingleArg(trimmed.slice(rhsStart), "abs");
+      if (arg === ident.token) {
+        return deriveSimp("quadratic_drag", ident.token);
+      }
+    }
+  }
+
+  const starIdx = trimmed.indexOf("*");
+  if (trimmed.startsWith("abs") && starIdx !== -1) {
+    const lhsArg = parseFuncCallSingleArg(trimmed.slice(0, starIdx).trimEnd(), "abs");
+    if (lhsArg) {
+      const rhsIdent = trimmed.slice(starIdx + 1).trim();
+      if (rhsIdent === lhsArg) {
+        return deriveSimp("quadratic_drag", lhsArg);
+      }
+    }
+  }
+
+  const expArg = parseFuncCallSingleArg(trimmed, "exp");
+  if (expArg) {
+    return deriveSimp("exp", findFirstIdent(expArg) || "x", { arg: expArg });
+  }
+
+  const sqrtArg = parseFuncCallSingleArg(trimmed, "sqrt");
+  if (sqrtArg) {
+    return deriveSimp("sqrt", findFirstIdent(sqrtArg) || "x", { arg: sqrtArg });
+  }
+
+  return `/* linear proxy */ ${termText}`;
+}
+
+function extractLineAfterLabel(text: string, label: string): string | undefined {
+  const idx = text.indexOf(label);
+  if (idx === -1) return undefined;
+  const start = skipWs(text, idx + label.length);
+  const nl = text.indexOf("\n", start);
+  const slice = (nl === -1 ? text.slice(start) : text.slice(start, nl)).trimEnd();
+  return slice.length > 0 ? slice : undefined;
+}
 
 function collectPscadWorkspaceDocs(
   documents: TextDocuments<TextDocument>,
@@ -128,15 +348,18 @@ export function registerWorkspaceFeaturesProvider(
 
     const isSysML2 = params.textDocument.uri.endsWith(".sysml");
     const unifiedIndex = isSysML2 ? await getUnifiedIndex(true) : await getUnifiedIndex(false);
-    let ws = offset;
-    if (ws > 0 && !/[a-zA-Z0-9_]/.test(text[ws]!) && /[a-zA-Z0-9_]/.test(text[ws - 1]!)) ws--;
-    while (ws > 0 && /[a-zA-Z0-9_]/.test(text[ws - 1]!)) ws--;
-    let we = ws;
-    while (we < text.length && /[a-zA-Z0-9_]/.test(text[we]!)) we++;
+    let adjOffset = offset;
+    if (
+      adjOffset > 0 &&
+      !isIdentContCode(text.charCodeAt(adjOffset)) &&
+      isIdentContCode(text.charCodeAt(adjOffset - 1))
+    ) {
+      adjOffset--;
+    }
+    const { token: word, start: ws, end: we } = extractWordAtOffset(text, adjOffset);
     if (ws >= we || offset < ws || offset > we) {
       return [];
     }
-    const word = text.slice(ws, we);
 
     let targetEntry: SymbolEntryLike | null = null;
 
@@ -360,15 +583,16 @@ export function registerWorkspaceFeaturesProvider(
 
     const docUri = params.textDocument.uri;
     const docText = document.getText();
-    const docLines = docText.split(/\r?\n/);
-    const cursorLine = docLines[params.range.start.line] ?? "";
+    const docLines = splitLines(docText);
+    const cursorRow = params.range.start.line;
+    const cursorLine = docLines[cursorRow] ?? "";
 
-    // Declaration-level CodeActions (only evaluated when Source or Refactor kinds are requested)
+    // Declaration-level CodeActions (CST-first, with zero-regex line header fallback)
     const allowDeclarations = isKindAllowed(CodeActionKind.Source) || isKindAllowed(CodeActionKind.Refactor);
     if (allowDeclarations && /\.(sysml|kerml)$/i.test(docUri)) {
-      const partMatch = /^\s*(?:abstract\s+)?part\s+def\s+([A-Za-z0-9_]+)/.exec(cursorLine);
-      if (partMatch) {
-        const partName = partMatch[1]!;
+      const decl = resolveSysmlDeclOnLine(documentTrees.get(docUri)?.tree, cursorRow, cursorLine);
+      if (decl.kind === "part") {
+        const partName = decl.name;
         actions.push(
           {
             title: `Verify Contracts & Hierarchy for '${partName}'`,
@@ -400,9 +624,8 @@ export function registerWorkspaceFeaturesProvider(
         );
       }
 
-      const reqMatch = /^\s*(?:abstract\s+)?requirement\s+def\s+([A-Za-z0-9_]+)/.exec(cursorLine);
-      if (reqMatch) {
-        const reqName = reqMatch[1]!;
+      if (decl.kind === "requirement") {
+        const reqName = decl.name;
         actions.push({
           title: `Verify Formal Requirement Contract '${reqName}'`,
           kind: CodeActionKind.Source,
@@ -414,9 +637,8 @@ export function registerWorkspaceFeaturesProvider(
         });
       }
 
-      const actionMatch = /^\s*(?:abstract\s+)?(?:action|calc)\s+def\s+([A-Za-z0-9_]+)/.exec(cursorLine);
-      if (actionMatch) {
-        const actName = actionMatch[1]!;
+      if (decl.kind === "action") {
+        const actName = decl.name;
         actions.push(
           {
             title: `Run Formal MC/DC Coverage Tests for '${actName}'`,
@@ -439,9 +661,8 @@ export function registerWorkspaceFeaturesProvider(
         );
       }
     } else if (allowDeclarations && /\.mo$/i.test(docUri)) {
-      const classMatch = /^\s*(?:model|block|study|process|class)\s+([A-Za-z0-9_]+)/.exec(cursorLine);
-      if (classMatch) {
-        const className = classMatch[1]!;
+      const className = resolveModelicaClassOnLine(documentTrees.get(docUri)?.tree, cursorRow, cursorLine);
+      if (className) {
         actions.push(
           {
             title: `Open Interactive Diagram for '${className}'`,
@@ -565,13 +786,11 @@ export function registerWorkspaceFeaturesProvider(
           let newText = `${consensus}`;
 
           // If the line contains an assignment (e.g. mass = 1.0 or Real mass = 1.0;), replace the value part
-          const assignMatch = lineContent.match(/(=|:=)\s*([0-9]+(?:\.[0-9]+)?)/);
-          if (assignMatch && assignMatch.index !== undefined) {
-            const valStartChar = lineContent.indexOf(assignMatch[2]!, assignMatch.index);
-            const valEndChar = valStartChar + assignMatch[2]!.length;
+          const assignSpan = findAssignedNumberInLine(lineContent);
+          if (assignSpan) {
             newRange = {
-              start: { line: diagnostic.range.start.line, character: valStartChar },
-              end: { line: diagnostic.range.start.line, character: valEndChar },
+              start: { line: diagnostic.range.start.line, character: assignSpan.start },
+              end: { line: diagnostic.range.start.line, character: assignSpan.end },
             };
             newText = `${consensus}`;
           }
@@ -598,13 +817,11 @@ export function registerWorkspaceFeaturesProvider(
         if (sourceVal !== undefined && data?.sourceDomain) {
           let newRange = diagnostic.range;
           let newText = `${sourceVal}`;
-          const assignMatch = lineContent.match(/(=|:=)\s*([0-9]+(?:\.[0-9]+)?)/);
-          if (assignMatch && assignMatch.index !== undefined) {
-            const valStartChar = lineContent.indexOf(assignMatch[2]!, assignMatch.index);
-            const valEndChar = valStartChar + assignMatch[2]!.length;
+          const assignSpan = findAssignedNumberInLine(lineContent);
+          if (assignSpan) {
             newRange = {
-              start: { line: diagnostic.range.start.line, character: valStartChar },
-              end: { line: diagnostic.range.start.line, character: valEndChar },
+              start: { line: diagnostic.range.start.line, character: assignSpan.start },
+              end: { line: diagnostic.range.start.line, character: assignSpan.end },
             };
             newText = `${sourceVal}`;
           }
@@ -681,7 +898,7 @@ export function registerWorkspaceFeaturesProvider(
               const offsetToPos = (txt: string, utf16Off: number) => {
                 const clamped = Math.max(0, Math.min(utf16Off, txt.length));
                 const sub = txt.slice(0, clamped);
-                const lines = sub.split(/\r?\n/);
+                const lines = splitLines(sub);
                 return { line: lines.length - 1, character: lines[lines.length - 1]!.length };
               };
               editRange = {
@@ -690,13 +907,12 @@ export function registerWorkspaceFeaturesProvider(
               };
             } else if (targetText !== undefined) {
               const zeroLine = Math.max(0, (se.line ?? 1) - 1);
-              const lText = targetText.split(/\r?\n/)[zeroLine] ?? "";
-              const mVal = /(=|:=)\s*([-+]?[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)/.exec(lText);
-              if (mVal && mVal.index !== undefined) {
-                const startChar = lText.indexOf(mVal[2]!, mVal.index);
+              const lText = splitLines(targetText)[zeroLine] ?? "";
+              const mVal = findAssignedNumberInLine(lText, { allowSign: true, allowExponent: true });
+              if (mVal) {
                 editRange = {
-                  start: { line: zeroLine, character: startChar },
-                  end: { line: zeroLine, character: startChar + mVal[2]!.length },
+                  start: { line: zeroLine, character: mVal.start },
+                  end: { line: zeroLine, character: mVal.end },
                 };
               }
             }
@@ -743,6 +959,8 @@ export function registerWorkspaceFeaturesProvider(
         diagnostic.code === "M5102" ||
         diagnostic.code === "M5103" ||
         diagnostic.code === "M5104" ||
+        diagnostic.code === "S5020" ||
+        diagnostic.code === "S5021" ||
         diagnostic.code === "division_by_zero" ||
         diagnostic.code === "div_by_zero" ||
         diagnostic.code === "min_bound_violation" ||
@@ -754,7 +972,7 @@ export function registerWorkspaceFeaturesProvider(
         const lineEnd = document.offsetAt({ line: diagnostic.range.start.line + 1, character: 0 });
         const lineContent = text.substring(lineStart, lineEnd);
         const data = diagnostic.data as any;
-        const numMatch = lineContent.match(/(=|:=|:)\s*([0-9]+(?:\.[0-9]+)?)/);
+        const numMatch = findAssignedNumberInLine(lineContent, { allowSingleColon: true });
 
         // 0. Cross-Language Parameter Drift QuickFix (M5104)
         if (diagnostic.code === "M5104" || diagnostic.source?.includes("drift-checker")) {
@@ -767,42 +985,13 @@ export function registerWorkspaceFeaturesProvider(
             let newRange = diagnostic.range;
             let newText = `${suggestedVal}`;
 
-            // Match numeric literals (including signs, decimals, scientific notation, and scale suffixes)
-            const numPattern = /[-+]?\b\d+(?:\.\d+)?(?:[eE][-+]?\d+)?[a-zA-Z]?\b/g;
-            const matches: RegExpExecArray[] = [];
-            let m: RegExpExecArray | null;
-            while ((m = numPattern.exec(lineContent)) !== null) {
-              matches.push(m);
-            }
+            const matches = scanNumericTokensInLine(lineContent);
+            let bestMatch = selectBestDriftNumericSpan(lineContent, matches, currentVal);
 
-            let bestMatch: RegExpExecArray | undefined;
-            if (currentVal !== undefined && matches.length > 0) {
-              // Try finding the token whose numeric value matches currentVal
-              bestMatch = matches.find((cand) => {
-                const parsed = parseFloat(cand[0]);
-                return (
-                  Math.abs(parsed - currentVal) < 1e-6 ||
-                  Math.abs(parsed - currentVal) / Math.max(Math.abs(currentVal), 1) < 1e-4
-                );
-              });
-            }
-
-            // In netlists like SPICE (e.g. R1 1 2 100), the parameter value is the last numeric token, not node IDs!
-            if (!bestMatch && matches.length > 0) {
-              const eqIdx = lineContent.indexOf("=");
-              if (eqIdx !== -1) {
-                bestMatch = matches.find((cand) => cand.index >= eqIdx);
-              } else {
-                bestMatch = matches[matches.length - 1];
-              }
-            }
-
-            if (bestMatch && bestMatch.index !== undefined) {
-              const valStartChar = bestMatch.index;
-              const valEndChar = valStartChar + bestMatch[0].length;
+            if (bestMatch) {
               newRange = {
-                start: { line: diagnostic.range.start.line, character: valStartChar },
-                end: { line: diagnostic.range.start.line, character: valEndChar },
+                start: { line: diagnostic.range.start.line, character: bestMatch.start },
+                end: { line: diagnostic.range.start.line, character: bestMatch.end },
               };
             }
 
@@ -831,7 +1020,7 @@ export function registerWorkspaceFeaturesProvider(
             if (counterpartUri && currentVal !== undefined) {
               const counterpartDoc = documents.get(counterpartUri);
               const counterpartText = counterpartDoc?.getText() ?? documentTrees.get(counterpartUri)?.text;
-              const counterpartFile = counterpartUri.split("/").pop() || counterpartUri;
+              const counterpartFile = uriBasename(counterpartUri);
 
               let cRange = data.counterpartRange;
               if (counterpartText && cRange) {
@@ -840,38 +1029,13 @@ export function registerWorkspaceFeaturesProvider(
                 const cLineEnd = cDoc.offsetAt({ line: cRange.start.line + 1, character: 0 });
                 const cLineContent = counterpartText.substring(cLineStart, cLineEnd);
 
-                const cNumPattern = /[-+]?\b\d+(?:\.\d+)?(?:[eE][-+]?\d+)?[a-zA-Z]?\b/g;
-                const cMatches: RegExpExecArray[] = [];
-                let cm: RegExpExecArray | null;
-                while ((cm = cNumPattern.exec(cLineContent)) !== null) {
-                  cMatches.push(cm);
-                }
+                const cMatches = scanNumericTokensInLine(cLineContent);
+                const cBestMatch = selectBestDriftNumericSpan(cLineContent, cMatches, suggestedVal);
 
-                let cBestMatch: RegExpExecArray | undefined;
-                if (suggestedVal !== undefined && cMatches.length > 0) {
-                  cBestMatch = cMatches.find((cand) => {
-                    const parsed = parseFloat(cand[0]);
-                    return (
-                      Math.abs(parsed - suggestedVal) < 1e-6 ||
-                      Math.abs(parsed - suggestedVal) / Math.max(Math.abs(suggestedVal), 1) < 1e-4
-                    );
-                  });
-                }
-                if (!cBestMatch && cMatches.length > 0) {
-                  const eqIdx = cLineContent.indexOf("=");
-                  if (eqIdx !== -1) {
-                    cBestMatch = cMatches.find((cand) => cand.index >= eqIdx);
-                  } else {
-                    cBestMatch = cMatches[cMatches.length - 1];
-                  }
-                }
-
-                if (cBestMatch && cBestMatch.index !== undefined) {
-                  const cValStartChar = cBestMatch.index;
-                  const cValEndChar = cValStartChar + cBestMatch[0].length;
+                if (cBestMatch) {
                   cRange = {
-                    start: { line: cRange.start.line, character: cValStartChar },
-                    end: { line: cRange.start.line, character: cValEndChar },
+                    start: { line: cRange.start.line, character: cBestMatch.start },
+                    end: { line: cRange.start.line, character: cBestMatch.end },
                   };
                 }
 
@@ -903,10 +1067,7 @@ export function registerWorkspaceFeaturesProvider(
           (diagnostic.source?.includes("reasoner") && !diagnostic.code?.toString().startsWith("M5"))
         ) {
           const suggestedVal = data?.suggestedValue;
-          if (suggestedVal !== undefined && numMatch && numMatch.index !== undefined) {
-            const valStartChar = lineContent.indexOf(numMatch[2]!, numMatch.index);
-            const valEndChar = valStartChar + numMatch[2]!.length;
-
+          if (suggestedVal !== undefined && numMatch) {
             actions.push({
               title: `Relax boundary parameter to ${suggestedVal} (Restores consistency)`,
               kind: CodeActionKind.QuickFix,
@@ -917,8 +1078,8 @@ export function registerWorkspaceFeaturesProvider(
                   [params.textDocument.uri]: [
                     {
                       range: {
-                        start: { line: diagnostic.range.start.line, character: valStartChar },
-                        end: { line: diagnostic.range.start.line, character: valEndChar },
+                        start: { line: diagnostic.range.start.line, character: numMatch.start },
+                        end: { line: diagnostic.range.start.line, character: numMatch.end },
                       },
                       newText: `${suggestedVal}`,
                     },
@@ -936,13 +1097,10 @@ export function registerWorkspaceFeaturesProvider(
           diagnostic.code === "div_by_zero" ||
           diagnostic.message.includes("division by zero")
         ) {
-          const slashMatch = lineContent.match(/\/\s*([a-zA-Z_][a-zA-Z0-9_]*)/);
-          if (slashMatch && slashMatch[1] && slashMatch.index !== undefined) {
-            const varName = slashMatch[1];
-            const varStartChar = slashMatch.index + slashMatch[0].lastIndexOf(varName);
-            const varEndChar = varStartChar + varName.length;
+          const divisor = findDivisorVariableInLine(lineContent);
+          if (divisor) {
             actions.push({
-              title: `Guard against division by zero with 'max(1e-6, ${varName})'`,
+              title: `Guard against division by zero with 'max(1e-6, ${divisor.name})'`,
               kind: CodeActionKind.QuickFix,
               diagnostics: [diagnostic],
               edit: {
@@ -950,10 +1108,10 @@ export function registerWorkspaceFeaturesProvider(
                   [params.textDocument.uri]: [
                     {
                       range: {
-                        start: { line: diagnostic.range.start.line, character: varStartChar },
-                        end: { line: diagnostic.range.start.line, character: varEndChar },
+                        start: { line: diagnostic.range.start.line, character: divisor.start },
+                        end: { line: diagnostic.range.start.line, character: divisor.end },
                       },
-                      newText: `max(1e-6, ${varName})`,
+                      newText: `max(1e-6, ${divisor.name})`,
                     },
                   ],
                 },
@@ -965,9 +1123,7 @@ export function registerWorkspaceFeaturesProvider(
         // 4. Contract Refinement QuickFix (M5102)
         if (diagnostic.code === "M5102" || diagnostic.message.includes("contract")) {
           const reqLimit = data?.requiredLimit ?? data?.suggestedValue;
-          if (reqLimit !== undefined && numMatch && numMatch.index !== undefined) {
-            const valStartChar = lineContent.indexOf(numMatch[2]!, numMatch.index);
-            const valEndChar = valStartChar + numMatch[2]!.length;
+          if (reqLimit !== undefined && numMatch) {
             actions.push({
               title: `Adjust contract to satisfy parent requirement (${reqLimit})`,
               kind: CodeActionKind.QuickFix,
@@ -978,8 +1134,8 @@ export function registerWorkspaceFeaturesProvider(
                   [params.textDocument.uri]: [
                     {
                       range: {
-                        start: { line: diagnostic.range.start.line, character: valStartChar },
-                        end: { line: diagnostic.range.start.line, character: valEndChar },
+                        start: { line: diagnostic.range.start.line, character: numMatch.start },
+                        end: { line: diagnostic.range.start.line, character: numMatch.end },
                       },
                       newText: `${reqLimit}`,
                     },
@@ -999,9 +1155,7 @@ export function registerWorkspaceFeaturesProvider(
           diagnostic.message.includes("flowpipe")
         ) {
           const provenBound = data?.provenBound ?? data?.suggestedValue;
-          if (provenBound !== undefined && numMatch && numMatch.index !== undefined) {
-            const valStartChar = lineContent.indexOf(numMatch[2]!, numMatch.index);
-            const valEndChar = valStartChar + numMatch[2]!.length;
+          if (provenBound !== undefined && numMatch) {
             actions.push({
               title: `Enclose reachability flowpipe boundary (${provenBound})`,
               kind: CodeActionKind.QuickFix,
@@ -1012,8 +1166,8 @@ export function registerWorkspaceFeaturesProvider(
                   [params.textDocument.uri]: [
                     {
                       range: {
-                        start: { line: diagnostic.range.start.line, character: valStartChar },
-                        end: { line: diagnostic.range.start.line, character: valEndChar },
+                        start: { line: diagnostic.range.start.line, character: numMatch.start },
+                        end: { line: diagnostic.range.start.line, character: numMatch.end },
                       },
                       newText: `${provenBound}`,
                     },
@@ -1021,6 +1175,54 @@ export function registerWorkspaceFeaturesProvider(
                 },
               },
             });
+          }
+        }
+
+        // 5b. Standard Compliance Limit QuickFix (S5020 / S5021)
+        if (diagnostic.code === "S5020" || diagnostic.code === "S5021") {
+          const targetVal = data?.suggestedValue ?? data?.requiredLimit;
+          if (typeof targetVal === "number" && Number.isFinite(targetVal)) {
+            const formattedVal = Number(targetVal.toPrecision(6)).toString();
+            const clauseLabel = data?.standardClause ? ` (${data.standardClause})` : "";
+            const varLabel = typeof data?.varName === "string" && data.varName ? data.varName : "parameter";
+            let editRange:
+              | { start: { line: number; character: number }; end: { line: number; character: number } }
+              | undefined;
+
+            if (numMatch) {
+              editRange = {
+                start: { line: diagnostic.range.start.line, character: numMatch.start },
+                end: { line: diagnostic.range.start.line, character: numMatch.end },
+              };
+            } else if (typeof data?.varName === "string" && data.varName.trim()) {
+              const shortVar = extractLeafSymbolName(data.varName);
+              const valSpan = findScalarAssignmentValue(text, shortVar);
+              if (valSpan) {
+                editRange = {
+                  start: document.positionAt(valSpan.start),
+                  end: document.positionAt(valSpan.end),
+                };
+              }
+            }
+
+            if (editRange) {
+              actions.push({
+                title: `Update '${varLabel}' to ${formattedVal} to satisfy${clauseLabel}`,
+                kind: CodeActionKind.QuickFix,
+                isPreferred: true,
+                diagnostics: [diagnostic],
+                edit: {
+                  changes: {
+                    [params.textDocument.uri]: [
+                      {
+                        range: editRange,
+                        newText: formattedVal,
+                      },
+                    ],
+                  },
+                },
+              });
+            }
           }
         }
 
@@ -1078,7 +1280,7 @@ export function registerWorkspaceFeaturesProvider(
         const endOffset = document.offsetAt(diagnostic.range.end);
         const unresolvedName = text.substring(startOffset, endOffset);
 
-        if (unresolvedName && /^[a-zA-Z_]/.test(unresolvedName)) {
+        if (unresolvedName && isIdentStartCode(unresolvedName.charCodeAt(0))) {
           actions.push({
             title: `Import '${unresolvedName}'`,
             kind: CodeActionKind.QuickFix,
@@ -1148,29 +1350,7 @@ export function registerWorkspaceFeaturesProvider(
             }
           };
 
-          let simplified: string | null = null;
-          const powMatch = termText.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*\^\s*([0-9]+(?:\.[0-9]+)?)$/);
-          if (powMatch) {
-            const varName = powMatch[1]!;
-            const power = parseFloat(powMatch[2]!);
-            simplified = deriveSimp("power", varName, { power });
-          } else if (/^([a-zA-Z_][a-zA-Z0-9_]*)\s*\*\s*abs\(\s*\1\s*\)$/.test(termText)) {
-            const varName = termText.match(/^([a-zA-Z_][a-zA-Z0-9_]*)/)?.[1] || "v";
-            simplified = deriveSimp("quadratic_drag", varName);
-          } else if (/^abs\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)\s*\*\s*\1$/.test(termText)) {
-            const varName = termText.match(/abs\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)/)?.[1] || "v";
-            simplified = deriveSimp("quadratic_drag", varName);
-          } else if (/^exp\(\s*([^()]+)\s*\)$/.test(termText)) {
-            const arg = termText.match(/^exp\(\s*([^()]+)\s*\)$/)?.[1] || "x";
-            const varName = arg.match(/[a-zA-Z_][a-zA-Z0-9_]*/)?.[0] || "x";
-            simplified = deriveSimp("exp", varName, { arg });
-          } else if (/^sqrt\(\s*([^()]+)\s*\)$/.test(termText)) {
-            const arg = termText.match(/^sqrt\(\s*([^()]+)\s*\)$/)?.[1] || "x";
-            const varName = arg.match(/[a-zA-Z_][a-zA-Z0-9_]*/)?.[0] || "x";
-            simplified = deriveSimp("sqrt", varName, { arg });
-          } else {
-            simplified = `/* linear proxy */ ${termText}`;
-          }
+          const simplified = parseNonlinearSimplification(termText, deriveSimp);
 
           if (simplified) {
             actions.push({
@@ -1202,12 +1382,13 @@ export function registerWorkspaceFeaturesProvider(
             diagnostic.message.includes("Missing guard scenario") ||
             diagnostic.message.includes("non-exhaustive")))
       ) {
-        const fixSnippetMatch = diagnostic.message.match(/QuickFix:\s*(else if[^\n]+)/);
-        const conditionMatch = diagnostic.message.match(/condition:\s*([^\n]+)/);
-        const condition = conditionMatch ? conditionMatch[1] : "/* unhandled condition */";
-        const newSnippet = fixSnippetMatch
-          ? `\n  ${fixSnippetMatch[1]} {\n    // Auto-generated QuickFix\n  }`
-          : `\n  else if (${condition}) {\n    // Auto-generated QuickFix for unhandled scenario\n  }`;
+        const fixSnippet = extractLineAfterLabel(diagnostic.message, "QuickFix:");
+        const condText = extractLineAfterLabel(diagnostic.message, "condition:");
+        const condition = condText || "/* unhandled condition */";
+        const newSnippet =
+          fixSnippet && fixSnippet.startsWith("else if")
+            ? `\n  ${fixSnippet} {\n    // Auto-generated QuickFix\n  }`
+            : `\n  else if (${condition}) {\n    // Auto-generated QuickFix for unhandled scenario\n  }`;
 
         actions.push({
           title: "Auto-repair: Insert missing guard scenario (QuickFix)",

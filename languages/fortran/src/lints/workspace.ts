@@ -9,13 +9,14 @@ import {
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import { lintFortranSource } from "./index.js";
 
+const require = createRequire(import.meta.url);
 let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getFortranWasmParser() {
   if (!cachedParser) {
-    const wasmUrl = new URL("../../dist/parser.wasm", import.meta.url);
-    const wasmPath = wasmUrl.protocol === "file:" ? decodeURIComponent(wasmUrl.pathname) : wasmUrl.href;
+    const wasmPath = require.resolve("@modelscript/fortran/parser.wasm");
     cachedParser = createWasmParserSync(wasmPath).parser;
   }
   return cachedParser;

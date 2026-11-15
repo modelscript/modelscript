@@ -1,10 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { getPscadDefinitionLocation } from "@modelscript/pscad";
+import { scanStepEntities, splitStepArgs } from "@modelscript/step";
 import { Connection, Definition, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
+import {
+  extractCrossDomainLineHints,
+  extractLeafSymbolName,
+  extractQualifiedTokenAtOffset,
+  extractWordAtOffset,
+  isDigitCode,
+  parseStepReferenceToken,
+} from "../utils/lexical-utils.js";
 import { symbolEntryToLocation } from "../utils/lsp-utils.js";
 
 function isStepDocument(document: TextDocument): boolean {
@@ -46,19 +55,10 @@ export function findCrossLanguageDefinition(
   }
 
   // 2. Scoped / Qualified token under cursor: e.g. SysML2::Propulsion::Motor or Propulsion::Motor or cad://...
-  let tokStart = offset;
-  while (tokStart > 0 && /[-a-zA-Z0-9_:#./]/.test(text[tokStart - 1]!)) tokStart--;
-  let tokEnd = offset;
-  while (tokEnd < text.length && /[-a-zA-Z0-9_:#./]/.test(text[tokEnd]!)) tokEnd++;
-  const rawFullToken = text.slice(tokStart, tokEnd).trim();
-  const fullToken = rawFullToken.replace(/^:+|:+$/g, "");
+  const { token: fullToken } = extractQualifiedTokenAtOffset(text, offset, true);
 
   // 3. Word token under cursor
-  let wStart = offset;
-  while (wStart > 0 && /[a-zA-Z0-9_]/.test(text[wStart - 1]!)) wStart--;
-  let wEnd = offset;
-  while (wEnd < text.length && /[a-zA-Z0-9_]/.test(text[wEnd]!)) wEnd++;
-  const word = text.slice(wStart, wEnd).trim();
+  const { token: word } = extractWordAtOffset(text, offset);
 
   // 4. Line text
   const lineStart = text.lastIndexOf("\n", offset) + 1;
@@ -69,13 +69,8 @@ export function findCrossLanguageDefinition(
   // 5. AST Entry at offset
   const refEntry = (bridge as any)?.findEntryAtOffset?.(offset) || (bridge as any)?.findScopeAtOffset?.(offset);
 
-  // 6. Line pattern matches
-  const cadPartMatch =
-    lineText.match(/CAD(?:Port)?\([^)]*?(?:feature|part)\s*=\s*"([^"]+)"/i) ||
-    lineText.match(/__modelscript_cad\([^)]*?part\s*=\s*"([^"]+)"/i) ||
-    lineText.match(/part\s*=\s*"([^"]+)"/i);
-  const twinMatch = lineText.match(/(?:twin|counterpart|implements)\s*=\s*"([^"]+)"/i);
-  const partTypeMatch = lineText.match(/part\s+[a-zA-Z0-9_]+\s*:\s*([a-zA-Z0-9_:]+)/);
+  // 6. Structured line hints (CAD(...), twin="...", part x : Type)
+  const lineHints = extractCrossDomainLineHints(lineText);
 
   // Candidate identifiers to resolve across languages
   const candidates: string[] = [];
@@ -88,9 +83,9 @@ export function findCrossLanguageDefinition(
   if (refEntry?.metadata?.implements) candidates.push(String(refEntry.metadata.implements));
   if (refEntry?.metadata?.cadBinding) candidates.push(String(refEntry.metadata.cadBinding));
   if (refEntry?.metadata?.typeSpecifier) candidates.push(String(refEntry.metadata.typeSpecifier));
-  if (twinMatch?.[1]) candidates.push(twinMatch[1]);
-  if (partTypeMatch?.[1]) candidates.push(partTypeMatch[1]);
-  if (cadPartMatch?.[1]) candidates.push(cadPartMatch[1]);
+  if (lineHints.twin) candidates.push(lineHints.twin);
+  if (lineHints.partType) candidates.push(lineHints.partType);
+  if (lineHints.cadAnyPart) candidates.push(lineHints.cadAnyPart);
   if (word && word !== refEntry?.name) candidates.push(word);
   if (fullToken) candidates.push(fullToken);
   if (word) candidates.push(word);
@@ -111,15 +106,11 @@ export function findCrossLanguageDefinition(
     validationService?.workspaceManager?.queryEngine ??
     globalLanguageRegistry.getAllPlugins().find((p: any) => p.queryEngine)?.queryEngine;
 
-  // Helper to escape regex special characters
-  const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
   // A. Check candidates for STEP entity or CAD reference
   for (const cand of uniqueCandidates) {
-    const stepEntityMatch = cand.match(/#(\d+)/);
-    const uriFileMatch = cand.match(/(?:cad:\/\/|file:\/\/)?([^#]+\.(?:step|stp|p21))#(\d+)/i);
-    const targetFile = uriFileMatch?.[1];
-    const entityNum = uriFileMatch?.[2] ?? stepEntityMatch?.[1];
+    const stepRef = parseStepReferenceToken(cand);
+    const targetFile = stepRef?.targetFile;
+    const entityNum = stepRef?.entityNum;
 
     if (entityNum) {
       const stepDocs: { uri: string; text: string }[] = [];
@@ -141,15 +132,17 @@ export function findCrossLanguageDefinition(
         ? [...stepDocs].sort((a, b) => (b.uri.includes(targetFile) ? 1 : 0) - (a.uri.includes(targetFile) ? 1 : 0))
         : stepDocs;
 
+      const wantedId = `#${entityNum}`;
       for (const sDoc of sortedStepDocs) {
         if (sDoc.uri === document.uri) continue;
-        const defRegex = new RegExp(`^#${entityNum}\\s*=`, "m");
-        const match = defRegex.exec(sDoc.text);
-        if (match) {
+        const entity = scanStepEntities(sDoc.text).find((e) => e.id === wantedId);
+        if (entity) {
+          const eqIdx = sDoc.text.indexOf("=", entity.startOffset);
+          const defEnd = eqIdx !== -1 ? eqIdx + 1 : entity.startOffset + wantedId.length;
           const positions = new PositionIndex(sDoc.text);
           return {
             uri: sDoc.uri,
-            range: positions.rangeFromOffsets(match.index, match.index + match[0].length),
+            range: positions.rangeFromOffsets(entity.startOffset, defEnd),
           };
         }
       }
@@ -191,17 +184,25 @@ export function findCrossLanguageDefinition(
         stepDocs.push({ uri: tUri, text: tTree.text });
       }
     }
-    const escapedCand = escapeRegex(cand);
+    const candLower = cand.toLowerCase();
     for (const sDoc of stepDocs) {
       if (sDoc.uri === document.uri) continue;
-      const prodRegex = new RegExp(`PRODUCT\\s*\\(\\s*'${escapedCand}'`, "i");
-      const match = prodRegex.exec(sDoc.text);
-      if (match) {
-        const positions = new PositionIndex(sDoc.text);
-        return {
-          uri: sDoc.uri,
-          range: positions.rangeFromOffsets(match.index, match.index + match[0].length),
-        };
+      for (const entity of scanStepEntities(sDoc.text)) {
+        if (entity.type.toUpperCase() !== "PRODUCT") continue;
+        const firstArg = splitStepArgs(entity.args)[0]?.trim();
+        if (!firstArg || !firstArg.startsWith("'") || !firstArg.endsWith("'")) continue;
+        const productName = firstArg.slice(1, -1).replaceAll("''", "'");
+        if (productName.toLowerCase() === candLower) {
+          const quoteEnd = sDoc.text.indexOf(firstArg, entity.startOffset);
+          const spanEnd = quoteEnd !== -1 ? quoteEnd + firstArg.length : entity.endOffset;
+          const prodOffset = sDoc.text.toUpperCase().indexOf("PRODUCT", entity.startOffset);
+          const spanStart = prodOffset !== -1 ? prodOffset : entity.startOffset;
+          const positions = new PositionIndex(sDoc.text);
+          return {
+            uri: sDoc.uri,
+            range: positions.rangeFromOffsets(spanStart, spanEnd),
+          };
+        }
       }
     }
   }
@@ -235,9 +236,9 @@ export function findCrossLanguageDefinition(
           cand === refEntry?.metadata?.counterpart ||
           cand === refEntry?.metadata?.implements ||
           cand === refEntry?.metadata?.cadBinding ||
-          cand === twinMatch?.[1] ||
-          cand === partTypeMatch?.[1] ||
-          cand === cadPartMatch?.[1];
+          cand === lineHints.twin ||
+          cand === lineHints.partType ||
+          cand === lineHints.cadAnyPart;
         if (!isQualified && !isExplicitMeta) continue;
         try {
           const symId = qe.resolvePolyglotSymbol(cand);
@@ -267,7 +268,7 @@ export function findCrossLanguageDefinition(
   }
 
   for (const cand of uniqueCandidates) {
-    const leaf = cand.split(/::|\./).pop() || cand;
+    const leaf = extractLeafSymbolName(cand);
     for (const idx of workspaceIndices) {
       const candidatesInIdx = idx.byName?.get(leaf) || idx.byName?.get(cand) || [];
       for (const id of candidatesInIdx) {
@@ -326,24 +327,27 @@ export function registerDefinitionProvider(
     if (isStepDocument(document)) {
       const text = document.getText();
       let start = offset;
-      while (start > 0 && /[0-9#]/.test(text[start - 1]!)) start--;
+      while (start > 0 && isDigitCode(text.charCodeAt(start - 1))) start--;
+      if (start > 0 && text[start - 1] === "#") start--;
       let end = offset;
-      while (end < text.length && /[0-9]/.test(text[end]!)) end++;
+      if (text[end] === "#") end++;
+      while (end < text.length && isDigitCode(text.charCodeAt(end))) end++;
 
       const token = text.slice(start, end);
-      let localDefMatch: RegExpExecArray | null = null;
-      if (/^#\d+$/.test(token)) {
-        const defRegex = new RegExp(`^${token.replace("#", "\\#")}\\s*=`, "m");
-        localDefMatch = defRegex.exec(text);
-        if (localDefMatch) {
-          const isAtDefinition =
-            offset >= localDefMatch.index && offset <= localDefMatch.index + localDefMatch[0].length;
+      let localDefSpan: { start: number; end: number } | null = null;
+      if (token.startsWith("#") && token.length > 1) {
+        const entity = scanStepEntities(text).find((e) => e.id === token);
+        if (entity) {
+          const eqIdx = text.indexOf("=", entity.startOffset);
+          const defEnd = eqIdx !== -1 ? eqIdx + 1 : entity.startOffset + token.length;
+          localDefSpan = { start: entity.startOffset, end: defEnd };
+          const isAtDefinition = offset >= localDefSpan.start && offset <= localDefSpan.end;
           if (!isAtDefinition) {
             return {
               uri: document.uri,
               range: {
-                start: document.positionAt(localDefMatch.index),
-                end: document.positionAt(localDefMatch.index + localDefMatch[0].length),
+                start: document.positionAt(localDefSpan.start),
+                end: document.positionAt(localDefSpan.end),
               },
             };
           }
@@ -362,12 +366,12 @@ export function registerDefinitionProvider(
       );
       if (crossLoc) return crossLoc;
 
-      if (localDefMatch) {
+      if (localDefSpan) {
         return {
           uri: document.uri,
           range: {
-            start: document.positionAt(localDefMatch.index),
-            end: document.positionAt(localDefMatch.index + localDefMatch[0].length),
+            start: document.positionAt(localDefSpan.start),
+            end: document.positionAt(localDefSpan.end),
           },
         };
       }
@@ -396,12 +400,7 @@ export function registerDefinitionProvider(
     const bridge = documentLSPBridges.get(params.textDocument.uri);
 
     const docText = document.getText();
-    let tokStart = offset;
-    while (tokStart > 0 && /[-a-zA-Z0-9_:#./]/.test(docText[tokStart - 1]!)) tokStart--;
-    let tokEnd = offset;
-    while (tokEnd < docText.length && /[-a-zA-Z0-9_:#./]/.test(docText[tokEnd]!)) tokEnd++;
-    const rawFullToken = docText.slice(tokStart, tokEnd).trim();
-    const fullToken = rawFullToken.replace(/^:+|:+$/g, "");
+    const { token: fullToken } = extractQualifiedTokenAtOffset(docText, offset, true);
 
     // If clicking on a qualified path (e.g. Propulsion::Motor) or URI, resolve the specific target first
     if (fullToken.includes("::") || fullToken.includes("#") || fullToken.includes("//")) {

@@ -30,11 +30,22 @@ description: "@modelscript/openscenario (languages/openscenario) provides zero-r
 ### 2. Time-To-Collision (TTC) & Mobileye RSS Safety Verification
 
 - Continuously evaluates kinematic safety margins between the autonomous vehicle ($E$) and surrounding traffic ($T$):
-  - **Time-To-Collision (TTC)**:
+  - **Time-To-Collision (TTC)**, measuring remaining time before rear-end impact at current relative speed:
     $$\text{TTC} = \frac{x_{\text{lead}} - x_{\text{ego}}}{v_{\text{ego}} - v_{\text{lead}}} \quad (\text{for } v_{\text{ego}} > v_{\text{lead}})$$
-  - **Mobileye RSS Longitudinal Safe Distance**:
+  - **Mobileye RSS Longitudinal Safe Distance**, computing the minimum following gap required so the ego vehicle can brake safely even if the lead vehicle brakes maximally after ego reaction time $\rho$:
     $$d_{\text{min,long}} = \left[ v_r \cdot \rho + \frac{1}{2} a_{\text{max,acc}} \rho^2 + \frac{(v_r + \rho a_{\text{max,acc}})^2}{2 a_{\text{min,brake}}} - \frac{v_f^2}{2 a_{\text{max,brake}}} \right]_+$$
-    where $\rho$ is sensor reaction time, $a_{\text{max,acc}}$ is maximum acceleration, and $a_{\text{min,brake}}$ is minimum emergency braking deceleration.
+
+  | Symbol                            | Meaning                                                                     | Units / Domain                           |
+  | :-------------------------------- | :-------------------------------------------------------------------------- | :--------------------------------------- |
+  | $\text{TTC}$                      | Time-to-collision                                                           | $\text{s}$ ($\text{TTC} > 0$)            |
+  | $x_{\text{lead}}, x_{\text{ego}}$ | Longitudinal positions of the leading and ego vehicles                      | $\text{m}$                               |
+  | $v_{\text{ego}}, v_{\text{lead}}$ | Longitudinal speeds of the ego and leading vehicles                         | $\text{m/s}$                             |
+  | $d_{\text{min,long}}$             | Minimum safe longitudinal following distance ($[\cdot]_+ = \max(0, \cdot)$) | $\text{m}$ ($d_{\text{min,long}} \ge 0$) |
+  | $v_r, v_f$                        | Speeds of the rear (ego) and front (lead) vehicles                          | $\text{m/s}$                             |
+  | $\rho$                            | Sensor-to-actuator reaction time                                            | $\text{s}$ ($\rho > 0$)                  |
+  | $a_{\text{max,acc}}$              | Maximum assumed acceleration of rear vehicle during $\rho$                  | $\text{m/s}^2$                           |
+  | $a_{\text{min,brake}}$            | Minimum guaranteed braking deceleration of rear vehicle                     | $\text{m/s}^2$                           |
+  | $a_{\text{max,brake}}$            | Maximum assumed braking deceleration of front vehicle                       | $\text{m/s}^2$                           |
 
 ### 3. Direct DAE Lowering
 

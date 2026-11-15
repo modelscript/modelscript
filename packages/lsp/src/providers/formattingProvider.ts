@@ -1,7 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { scanStepEntities } from "@modelscript/step";
 import { Connection, TextDocuments, TextEdit } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { isWsCode, skipWs, splitLines } from "../utils/lexical-utils.js";
+
+function stripLeadingSectionWords(
+  text: string,
+  keyword: "equation" | "algorithm",
+): { isInitial: boolean; body: string } {
+  let pos = skipWs(text, 0);
+  let isInitial = false;
+  if (text.slice(pos, pos + 7).toLowerCase() === "initial" && isWsCode(text.charCodeAt(pos + 7))) {
+    const afterInit = skipWs(text, pos + 7);
+    if (text.slice(afterInit, afterInit + keyword.length).toLowerCase() === keyword) {
+      isInitial = true;
+      pos = afterInit + keyword.length;
+      return { isInitial, body: text.slice(pos).trim() };
+    }
+  }
+  if (text.slice(pos, pos + keyword.length).toLowerCase() === keyword) {
+    pos += keyword.length;
+  }
+  return { isInitial, body: text.slice(pos).trim() };
+}
 
 // Nodes that increase indentation for their children/content (supporting both PascalCase and snake_case AST nodes)
 const INDENT_TRIGGER_NODES = new Set([
@@ -133,27 +155,21 @@ export function restructureModelicaTree(tree: { rootNode?: unknown }, source: st
       if (childType === ";") continue;
 
       if (childType === "equation_section") {
-        const isInitial = childText.startsWith("initial equation");
-        const innerText = childText
-          .replace(/^initial\s+equation\s*/i, "")
-          .replace(/^equation\s*/i, "")
-          .trim();
-        if (innerText.length > 0) {
-          if (isInitial) initialEquations.push(innerText);
-          else equations.push(innerText);
+        const innerText = stripLeadingSectionWords(childText, "equation");
+        const isInitial = innerText.isInitial;
+        if (innerText.body.length > 0) {
+          if (isInitial) initialEquations.push(innerText.body);
+          else equations.push(innerText.body);
         }
         continue;
       }
 
       if (childType === "algorithm_section") {
-        const isInitial = childText.startsWith("initial algorithm");
-        const innerText = childText
-          .replace(/^initial\s+algorithm\s*/i, "")
-          .replace(/^algorithm\s*/i, "")
-          .trim();
-        if (innerText.length > 0) {
-          if (isInitial) initialAlgorithms.push(innerText);
-          else algorithms.push(innerText);
+        const innerText = stripLeadingSectionWords(childText, "algorithm");
+        const isInitial = innerText.isInitial;
+        if (innerText.body.length > 0) {
+          if (isInitial) initialAlgorithms.push(innerText.body);
+          else algorithms.push(innerText.body);
         }
         continue;
       }
@@ -238,8 +254,13 @@ export function restructureModelicaTree(tree: { rootNode?: unknown }, source: st
       lines.push(...annotations);
     }
 
-    const prefix = result.slice(0, comp.startIndex).replace(/[ \t\r\n]+$/, "\n  ");
-    const suffix = result.slice(comp.endIndex).replace(/^[ \t\r\n]+/, "\n");
+    const rawPrefix = result.slice(0, comp.startIndex);
+    const prefix =
+      rawPrefix.length > 0 && isWsCode(rawPrefix.charCodeAt(rawPrefix.length - 1))
+        ? rawPrefix.trimEnd() + "\n  "
+        : rawPrefix;
+    const rawSuffix = result.slice(comp.endIndex);
+    const suffix = rawSuffix.length > 0 && isWsCode(rawSuffix.charCodeAt(0)) ? "\n" + rawSuffix.trimStart() : rawSuffix;
     result = prefix + lines.join("\n  ") + suffix;
   }
 
@@ -298,7 +319,11 @@ export function formatModelicaTree(
     }
 
     // Find the first non-whitespace character's column
-    const firstCharColumn = line.search(/\S/);
+    let firstCharColumn = 0;
+    while (firstCharColumn < line.length && isWsCode(line.charCodeAt(firstCharColumn))) {
+      firstCharColumn++;
+    }
+    if (firstCharColumn >= line.length) firstCharColumn = -1;
 
     // Get the node at the start of the line
     const node = currentTree?.rootNode?.descendantForPosition({ row: i, column: firstCharColumn });
@@ -367,57 +392,154 @@ export function formatModelicaTree(
   return formattedLines.join("\n");
 }
 
+function formatStepArgsCompact(args: string): string {
+  let out = "";
+  let inString = false;
+  let i = 0;
+  while (i < args.length) {
+    const ch = args[i]!;
+    if (ch === "'") {
+      out += ch;
+      if (inString && args[i + 1] === "'") {
+        out += args[i + 1]!;
+        i += 2;
+        continue;
+      }
+      inString = !inString;
+      i++;
+      continue;
+    }
+    if (inString) {
+      out += ch;
+      i++;
+      continue;
+    }
+    if (ch === "," || ch === "=") {
+      while (out.length > 0 && isWsCode(out.charCodeAt(out.length - 1))) {
+        out = out.slice(0, -1);
+      }
+      out += ch;
+      i = skipWs(args, i + 1);
+      continue;
+    }
+    if (ch === "(") {
+      out += ch;
+      i = skipWs(args, i + 1);
+      continue;
+    }
+    if (ch === ")") {
+      while (out.length > 0 && isWsCode(out.charCodeAt(out.length - 1))) {
+        out = out.slice(0, -1);
+      }
+      out += ch;
+      i++;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out.trim();
+}
+
+const STEP_SECTION_PREFIXES = ["ISO-10303-21;", "END-ISO-10303-21;", "HEADER;", "ENDSEC;"];
+
+function pushStepGapLines(segment: string, out: string[]): void {
+  const pushLine = (trimmed: string) => {
+    if (!trimmed) {
+      if (out.length > 0 && out[out.length - 1] !== "") out.push("");
+      return;
+    }
+    out.push(trimmed);
+  };
+
+  for (const rawLine of splitLines(segment)) {
+    let rem = rawLine.trim();
+    if (!rem) {
+      pushLine("");
+      continue;
+    }
+    while (rem.length > 0) {
+      let matchedSection = false;
+      for (const kw of STEP_SECTION_PREFIXES) {
+        if (rem.startsWith(kw)) {
+          pushLine(kw);
+          rem = rem.slice(kw.length).trimStart();
+          matchedSection = true;
+          break;
+        }
+      }
+      if (matchedSection) continue;
+
+      if (rem.startsWith("DATA")) {
+        let p = skipWs(rem, 4);
+        if (rem[p] === "(") {
+          let depth = 0;
+          let inStr = false;
+          while (p < rem.length) {
+            const c = rem[p]!;
+            if (c === "'") {
+              if (inStr && rem[p + 1] === "'") {
+                p += 2;
+                continue;
+              }
+              inStr = !inStr;
+            } else if (!inStr) {
+              if (c === "(") depth++;
+              else if (c === ")" && --depth === 0) {
+                p++;
+                break;
+              }
+            }
+            p++;
+          }
+          p = skipWs(rem, p);
+        }
+        if (rem[p] === ";") {
+          pushLine(rem.slice(0, p + 1));
+          rem = rem.slice(p + 1).trimStart();
+          continue;
+        }
+      }
+
+      // Advance past ordinary chunk until the next section keyword or end of line
+      let nextCut = rem.length;
+      for (const kw of STEP_SECTION_PREFIXES) {
+        const idx = rem.indexOf(kw);
+        if (idx > 0 && idx < nextCut) nextCut = idx;
+      }
+      const dataIdx = rem.indexOf("DATA");
+      if (dataIdx > 0 && dataIdx < nextCut) {
+        const afterData = skipWs(rem, dataIdx + 4);
+        if (rem[afterData] === ";" || rem[afterData] === "(") nextCut = dataIdx;
+      }
+      pushLine(rem.slice(0, nextCut).trim());
+      rem = rem.slice(nextCut).trimStart();
+    }
+  }
+}
+
 export function formatStepDocument(document: {
   getText: () => string;
   lineCount: number;
   offsetAt: (pos: any) => number;
 }): TextEdit[] {
-  const text = document.getText();
-
-  // Normalize line endings
-  let normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-
-  // Split multiple entities on the same line onto separate lines.
-  // Pattern: "; #" → ";\n#" (entity terminator followed by next entity)
-  normalized = normalized.replace(/;\s*(?=#\d)/g, ";\n");
-
-  // Section keywords onto their own lines
-  normalized = normalized.replace(
-    /(ISO-10303-21;|HEADER;|ENDSEC;|END-ISO-10303-21;|DATA(?:\s*\([^)]*\))?\s*;)/g,
-    (match) => "\n" + match.trim() + "\n",
-  );
-
-  // Normalize whitespace inside entity records:
-  //   #1=FOO( 'a' , 'b' ) → #1=FOO('a','b')
+  const normalized = document.getText().replaceAll("\r\n", "\n").replaceAll("\r", "\n");
+  const entities = scanStepEntities(normalized);
   const resultLines: string[] = [];
-  for (const line of normalized.split("\n")) {
-    let trimmed = line.trim();
 
-    // Skip empty lines in sequence (keep at most one blank line)
-    if (!trimmed) {
-      if (resultLines.length > 0 && resultLines[resultLines.length - 1] === "") {
-        continue;
-      }
-      resultLines.push("");
-      continue;
+  let cursor = 0;
+  for (const entity of entities) {
+    if (entity.startOffset > cursor) {
+      pushStepGapLines(normalized.slice(cursor, entity.startOffset), resultLines);
     }
-
-    // For entity lines (#N=...), normalize internal spacing
-    if (/^#\d+=/.test(trimmed)) {
-      // Normalize spaces around commas: " , " → ","
-      trimmed = trimmed.replace(/\s*,\s*/g, ",");
-      // Normalize spaces after opening parens: "( " → "("
-      trimmed = trimmed.replace(/\(\s+/g, "(");
-      // Normalize spaces before closing parens: " )" → ")"
-      trimmed = trimmed.replace(/\s+\)/g, ")");
-      // Normalize space around "=": "# 1 = " → "#1="
-      trimmed = trimmed.replace(/\s*=\s*/g, "=");
-    }
-
-    resultLines.push(trimmed);
+    const typePrefix = entity.type === "COMPLEX_ENTITY" ? "" : entity.type;
+    resultLines.push(`${entity.id}=${typePrefix}(${formatStepArgsCompact(entity.args)});`);
+    cursor = entity.endOffset;
+  }
+  if (cursor < normalized.length) {
+    pushStepGapLines(normalized.slice(cursor), resultLines);
   }
 
-  // Trim leading/trailing blank lines
   while (resultLines.length > 0 && resultLines[0] === "") resultLines.shift();
   while (resultLines.length > 0 && resultLines[resultLines.length - 1] === "") resultLines.pop();
 

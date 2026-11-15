@@ -277,7 +277,11 @@ export function planPscadEdits(
             text: `${open}${eol}${indent}  <param name="${escapeAttr(op.name)}" value="${escapeAttr(op.value)}" />${eol}${indent}</paramlist>`,
           });
         } else {
-          errors.push(`Component '${op.id}' has no paramlist.`);
+          const paramlistXml =
+            `<paramlist link="-1" name="" crc="0">${eol}` +
+            `  <param name="${escapeAttr(op.name)}" value="${escapeAttr(op.value)}" />${eol}` +
+            `</paramlist>`;
+          splices.push(appendChildSplice(hit.inst.element, paramlistXml, text));
         }
         break;
       }
@@ -361,13 +365,14 @@ export function planPscadEdits(
       }
       case "removeWire": {
         const hit = findWire(model, op.id);
-        if (!hit) {
+        const wireEl = hit?.wire.element ?? findElementById(model.root, op.id, new Set(["Bus", "Wire"]));
+        if (!wireEl) {
           errors.push(`Wire '${op.id}' not found.`);
           break;
         }
-        if (!removed.has(hit.wire.element.start)) {
-          removed.add(hit.wire.element.start);
-          splices.push(removeElementSplice(hit.wire.element, text));
+        if (!removed.has(wireEl.start)) {
+          removed.add(wireEl.start);
+          splices.push(removeElementSplice(wireEl, text));
         }
         break;
       }
@@ -412,6 +417,7 @@ export function planPscadEdits(
               })
             : undefined;
           if (kvParam) writeAttr(kvParam, "value", op.baseKV);
+          else writeAttr(busEl, "vbase", op.baseKV);
         }
         if (op.points && op.points.length >= 2) {
           const verts = [...childrenNamed(busEl, "vertex"), ...childrenNamed(busEl, "Vertex")];

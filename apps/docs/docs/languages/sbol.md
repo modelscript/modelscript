@@ -35,17 +35,21 @@ description: Native WebAssembly parsing, Sequence Ontology (SO) and Systems Biol
 
 ### 2. Hill-Function Genetic Circuit ODE Solver
 
-For every transcriptional unit ending in a coding sequence $P_i$ regulated by a set of transcriptional activators $\mathcal{A}_i$ and repressors $\mathcal{R}_i$, `@modelscript/sbol` synthesizes coupled mRNA and protein concentration ODEs using cooperative Hill kinetics:
+For every transcriptional unit ending in a coding sequence $P_i$ regulated by a set of transcriptional activators $\mathcal{A}_i$ and repressors $\mathcal{R}_i$, `@modelscript/sbol` synthesizes coupled mRNA and protein concentration ODEs using cooperative Hill kinetics, balancing basal and regulated synthesis against first-order degradation and growth dilution:
 
 $$\frac{d[P_i]}{dt} = \alpha_{0,i} + \alpha_i \left(\prod_{A \in \mathcal{A}_i} \frac{[A]^{n_A}}{K_A^{n_A} + [A]^{n_A}}\right) \left(\prod_{R \in \mathcal{R}_i} \frac{K_R^{m_R}}{K_R^{m_R} + [R]^{m_R}}\right) - \gamma_i [P_i]$$
 
-where:
-
-- $\alpha_{0,i}$ is the basal (leaky) promoter expression rate ($\text{nM}\cdot\text{min}^{-1}$),
-- $\alpha_i$ is the maximum regulated synthesis rate ($\text{nM}\cdot\text{min}^{-1}$),
-- $K_A, K_R$ are the half-maximal dissociation constants ($\text{nM}$),
-- $n_A, m_R$ are the Hill cooperativity coefficients, and
-- $\gamma_i = \gamma_{\text{deg},i} + \mu$ is the combined proteolytic degradation and cell-growth dilution rate ($\text{min}^{-1}$).
+| Symbol                         | Meaning                                                                                        | Units / Domain                           |
+| :----------------------------- | :--------------------------------------------------------------------------------------------- | :--------------------------------------- |
+| $[P_i]$                        | Concentration of expressed protein or reporter species $i$                                     | $\text{nM}$, $\ge 0$                     |
+| $t$                            | Simulation time                                                                                | $\text{min}$, $\ge 0$                    |
+| $\alpha_{0,i}$                 | Basal (leaky) promoter expression rate                                                         | $\text{nM}\cdot\text{min}^{-1}$, $\ge 0$ |
+| $\alpha_i$                     | Maximum regulated synthesis rate                                                               | $\text{nM}\cdot\text{min}^{-1}$, $\ge 0$ |
+| $\mathcal{A}_i, \mathcal{R}_i$ | Sets of transcriptional activators and repressors for $P_i$                                    | finite species sets                      |
+| $[A], [R]$                     | Concentrations of activator $A$ and repressor $R$                                              | $\text{nM}$, $\ge 0$                     |
+| $K_A, K_R$                     | Half-maximal dissociation constants for $A$ and $R$                                            | $\text{nM}$, $> 0$                       |
+| $n_A, m_R$                     | Hill cooperativity coefficients for $A$ and $R$                                                | dimensionless, $> 0$                     |
+| $\gamma_i$                     | Combined proteolytic degradation and cell-growth dilution rate ($\gamma_{\text{deg},i} + \mu$) | $\text{min}^{-1}$, $> 0$                 |
 
 This formulation directly supports multistable genetic toggle switches (Gardner et al.), three-node repressilator ring oscillators (Elowitz & Leibler), and AND/NAND logic gates.
 

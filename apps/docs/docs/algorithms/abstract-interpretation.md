@@ -41,9 +41,14 @@ Computes sound abstract over-approximations of state variables across complex ne
 
 ### ModelScript Rationale & Modifications
 
-Captures planar relational linear invariants of the form:
+Captures planar relational linear invariants between pairs of program variables:
 $$a x_i + b x_j \le c \quad (a, b, c \in \mathbb{Q})$$
-Much more expressive than simple intervals or octagons, allowing ModelScript to prove physical conservation laws (e.g. $p_1 + p_2 = \text{const}$) without the exponential vertex-facet explosion of general convex polyhedra.
+where:
+
+- $x_i, x_j \in \mathbb{R}$ are scalar state or model variables,
+- $a, b, c \in \mathbb{Q}$ are rational linear coefficients and the upper-bound constant.
+
+This relational invariant is much more expressive than simple intervals or octagons, allowing ModelScript to prove physical conservation laws (e.g. $p_1 + p_2 = \text{const}$) without the exponential vertex-facet explosion of general convex polyhedra.
 
 - **Modifications**: Planar Graham-scan convex hull algorithms in WebAssembly typed memory; relational projection routines optimized for physical parameter spaces.
 
@@ -59,8 +64,10 @@ Much more expressive than simple intervals or octagons, allowing ModelScript to 
 
 ### ModelScript Rationale & Modifications
 
-Restricts linear relationships to constraints of the form:
+Restricts linear relationships to difference-bound and sum-bound constraints between pairs of variables:
 $$\pm x_i \pm x_j \le c$$
+where $x_i, x_j \in \mathbb{R}$ are scalar program variables and $c \in \mathbb{R} \cup \{+\infty\}$ is a scalar upper bound.
+
 Achieves cubic time complexity $\mathcal{O}(n^3)$ via Floyd-Warshall shortest path algorithms over $2n \times 2n$ potential graphs.
 
 - **Modifications**: Direct integration into the `@modelscript/dsl` type inference system and `AbstractDomainOracle` in the Nelson-Oppen coordinator.
@@ -91,13 +98,29 @@ Verifies large array equations and indexed multi-dimensional components in Model
 
 ### ModelScript Rationale & Modifications
 
-Physical transport delays, networked control loops, and Modelica `delay(x, tau)` operators yield infinite-dimensional Delay Differential Equations (DDEs):
+Physical transport delays, networked control loops, and Modelica `delay(x, tau)` operators yield infinite-dimensional Delay Differential Equations (DDEs), where the state rate of change depends on both the current state and a delayed state:
 $$\dot{x}(t) = f\big(t, x(t), x(t - \tau)\big), \qquad x(t) \in \Phi(t) \text{ for } t \in [-\tau, 0]$$
+
+| Symbol             | Meaning                                                 | Units / Domain                           |
+| :----------------- | :------------------------------------------------------ | :--------------------------------------- |
+| $t$                | Simulation time                                         | $\text{s}$                               |
+| $x(t), \dot{x}(t)$ | System state vector and its time derivative at time $t$ | $\mathbb{R}^n, \; \mathbb{R}^n/\text{s}$ |
+| $f(\cdot)$         | Continuous DAE/ODE vector field                         | $\mathbb{R}^n/\text{s}$                  |
+| $\tau$             | Transport or communication time delay                   | $\text{s}$ ($\tau > 0$)                  |
+| $\Phi(t)$          | Initial functional history enclosure on $[-\tau, 0]$    | Interval/zonotope in $\mathbb{R}^n$      |
+
 `DdeFlowpipeSolver` (`packages/runtime/src/analysis/wasm_dde_flowpipe.ts`) implements **Method-of-Steps** reachability propagation across consecutive delay horizons $[0, \tau], [\tau, 2\tau], \dots$:
 
 - **History Interval Buffering**: Maintains a timestamped ring buffer `historyMap` storing both nominal trajectories $\bar{x}(t)$ and interval/zonotope tube enclosures $\mathcal{X}(t) = [\underline{x}(t), \overline{x}(t)]$. For $t - \tau \le t_0$, queries evaluate the initial functional history enclosure $\Phi(t - \tau)$; for $t - \tau > t_0$, historical enclosures are interpolated from stored flowpipe steps.
-- **Interval Picard Enclosure Step**: Advances the state tube across $[t_k, t_k + \Delta t]$ by combining current state bounds $\mathcal{X}(t_k)$ and delayed history bounds $\mathcal{X}(t_k - \tau)$:
+- **Interval Picard Enclosure Step**: Advances the state tube across $[t_k, t_k + \Delta t]$ by combining current state bounds $\mathcal{X}(t_k)$ and delayed history bounds $\mathcal{X}(t_k - \tau)$ using interval arithmetic:
   $$\mathcal{X}(t_{k+1}) = \mathcal{X}(t_k) + \Delta t \cdot \square f\big(t_k, \mathcal{X}(t_k), \mathcal{X}(t_k - \tau)\big)$$
+
+  | Symbol             | Meaning                                                  | Units / Domain                             |
+  | :----------------- | :------------------------------------------------------- | :----------------------------------------- |
+  | $\mathcal{X}(t_k)$ | Interval/zonotope state enclosure at discrete step $t_k$ | Subset of $\mathbb{R}^n$                   |
+  | $\Delta t$         | Integration time step size                               | $\text{s}$ ($\Delta t > 0$)                |
+  | $\square f$        | Natural interval extension of vector field $f$           | Interval vector in $\mathbb{R}^n/\text{s}$ |
+
 - **Epistemic Soundness Tagging**: Explicitly tags the resulting `VerificationVerdict` with rigor metadata (`heuristic` vs. `certified`) so downstream safety monitors distinguish fast corner-sampled delay tube estimates from fully Taylor-enclosed flowpipes.
 
 ---
@@ -117,11 +140,31 @@ $$\dot{x}(t) = f\big(t, x(t), x(t - \tau)\big), \qquad x(t) \in \Phi(t) \text{ f
 
 When verifying safety of nonlinear control systems under worst-case adversarial disturbances $d \in \mathcal{D}$ and control authority $u \in \mathcal{U}$, convex set-propagation (zonotopes) can suffer from wrapping effects. `HjiLevelSetSolver` (`packages/runtime/src/analysis/wasm_hji_solver.ts`) computes the exact **Backward Reachable Tube (BRT)** by solving the zero-sum differential game **Hamilton-Jacobi-Isaacs (HJI) PDE** viscosity solution on an Eulerian level-set grid:
 $$\frac{\partial V}{\partial t} + \min \left\{ 0, \; \min_{u \in \mathcal{U}} \max_{d \in \mathcal{D}} \nabla V(x, t) \cdot f(x, u, d) \right\} = 0, \qquad V(x, 0) = \ell(x)$$
-where the sub-zero level set $\mathcal{K}_{\text{unsafe}} = \{ x \mid \ell(x) \le 0 \}$ defines the target failure region and $\{ x \mid V(x, T) \le 0 \}$ captures all initial states from which the adversary $d$ can force the trajectory into $\mathcal{K}_{\text{unsafe}}$ within horizon $T$ despite optimal safety control $u$.
+
+| Symbol           | Meaning                                                               | Units / Domain                         |
+| :--------------- | :-------------------------------------------------------------------- | :------------------------------------- |
+| $V(x, t)$        | Value function whose sub-zero set encodes the backward reachable tube | $\mathbb{R}$                           |
+| $x, t$           | State vector and backward-time horizon variable                       | $\mathbb{R}^n, \; \text{s}$            |
+| $u, \mathcal{U}$ | Safety control input and its admissible compact set                   | $\mathcal{U} \subset \mathbb{R}^{m_u}$ |
+| $d, \mathcal{D}$ | Adversarial disturbance input and its admissible compact set          | $\mathcal{D} \subset \mathbb{R}^{m_d}$ |
+| $\nabla V(x, t)$ | Spatial gradient of the value function with respect to $x$            | $\mathbb{R}^n$                         |
+| $f(x, u, d)$     | Controlled system dynamics under disturbance                          | $\mathbb{R}^n/\text{s}$                |
+| $\ell(x)$        | Terminal signed-distance target function ($\ell(x) \le 0$ is unsafe)  | $\mathbb{R}$                           |
+
+The sub-zero level set $\mathcal{K}_{\text{unsafe}} = \{ x \mid \ell(x) \le 0 \}$ defines the target failure region and $\{ x \mid V(x, T) \le 0 \}$ captures all initial states from which the adversary $d$ can force the trajectory into $\mathcal{K}_{\text{unsafe}}$ within horizon $T$ despite optimal safety control $u$.
 
 - **5th-Order WENO Upwind Spatial Reconstruction (`weno5Derivatives`)**: Approximates left and right spatial derivatives $(p^-, p^+)$ along each state axis using 3-stencil smoothness indicators ($s_1, s_2, s_3$) and nonlinear weights $a_k = \frac{\gamma_k}{(\epsilon + s_k)^2}$, eliminating spurious oscillations near non-smooth value-function kinks.
-- **Lax-Friedrichs Numerical Hamiltonian**: Evaluates the saddle-point Hamiltonian $H(x, p) = \min_{u \in \mathcal{U}} \max_{d \in \mathcal{D}} p \cdot f(x, u, d)$ at central gradients $p = \frac{1}{2}(p^- + p^+)$ augmented by artificial viscosity dissipation:
+- **Lax-Friedrichs Numerical Hamiltonian**: Evaluates the saddle-point Hamiltonian $H(x, p) = \min_{u \in \mathcal{U}} \max_{d \in \mathcal{D}} p \cdot f(x, u, d)$ at central gradients $p = \frac{1}{2}(p^- + p^+)$ augmented by artificial viscosity dissipation to ensure numerical monotonicity:
   $$\hat{H}(x, p^-, p^+) = H\left(x, \frac{p^- + p^+}{2}\right) - \frac{1}{2} \sum_{i} \alpha_i (p_i^+ - p_i^-), \qquad \alpha_i = \max_{u, d} |f_i(x, u, d)|$$
+
+  | Symbol                 | Meaning                                                                | Units / Domain               |
+  | :--------------------- | :--------------------------------------------------------------------- | :--------------------------- |
+  | $\hat{H}(x, p^-, p^+)$ | Monotone Lax-Friedrichs numerical Hamiltonian                          | $\mathbb{R}$                 |
+  | $H(x, p)$              | Exact Isaacs saddle-point Hamiltonian $\min_u \max_d p \cdot f(x,u,d)$ | $\mathbb{R}$                 |
+  | $p^-, p^+$             | Left- and right-biased WENO5 spatial derivative approximations         | $\mathbb{R}^n$               |
+  | $\alpha_i$             | Local artificial dissipation coefficient along state axis $i$          | $\text{units}(x_i)/\text{s}$ |
+  | $f_i(x, u, d)$         | $i$-th component of the system vector field                            | $\text{units}(x_i)/\text{s}$ |
+
 - **Monotone BRT Accumulation**: Steps the level-set array backward in time with `nextV[idx] = Math.min(V[idx], V[idx] - dt * dVdt)` and reports the exact unsafe volume fraction across the state space.
 
 ---

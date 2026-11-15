@@ -91,12 +91,26 @@ export function validateGtsuite(content: string, uri: string = "model.gtm"): Lsp
         const found = lines.findIndex((l) => l.includes(d.componentId!));
         if (found >= 0) matchedLine = found;
       }
-      const lineLen = lines[matchedLine]?.length ?? 1;
+      const lt = lines[matchedLine] ?? "";
+      let startChar = 0;
+      let endChar = 0;
+      if (d.componentId) {
+        const idx = lt.indexOf(d.componentId);
+        if (idx >= 0) {
+          startChar = idx;
+          endChar = idx + d.componentId.length;
+        }
+      }
+      if (endChar <= startChar) {
+        while (startChar < lt.length && (lt[startChar] === " " || lt[startChar] === "\t")) startChar++;
+        const tok = lt.slice(startChar).match(/^[^\s=,;]+/);
+        endChar = Math.min(lt.length, startChar + (tok ? tok[0].length : 1));
+      }
 
       return {
         range: {
-          start: { line: matchedLine, character: 0 },
-          end: { line: matchedLine, character: Math.max(1, lineLen) },
+          start: { line: matchedLine, character: startChar },
+          end: { line: matchedLine, character: Math.max(startChar + 1, endChar) },
         },
         severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
         code: `M${d.code}`,

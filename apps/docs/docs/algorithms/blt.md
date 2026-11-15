@@ -31,6 +31,13 @@ Flattening industrial physical systems results in coupled systems comprising tho
 
 $$\mathcal{O}(N^3)$$
 
+This cubic asymptotic scaling arises because dense Jacobian factorization in a coupled Newton-Raphson step grows with the cube of the system dimension $N$.
+
+| Symbol               | Meaning                                                             | Units / Domain            |
+| :------------------- | :------------------------------------------------------------------ | :------------------------ |
+| $\mathcal{O}(\cdot)$ | Asymptotic upper-bound time complexity (operations per Newton step) | Big-O notation            |
+| $N$                  | Total number of equations and unknowns in the monolithic DAE system | Count ($\mathbb{Z}_{>0}$) |
+
 The Block Lower Triangular (BLT) transformation permutes the equation and variable ordering so that the incidence matrix assumes a lower triangular block diagonal structure:
 
 $$
@@ -43,6 +50,16 @@ A_{m1} & A_{m2} & \cdots & A_{mm}
 \begin{pmatrix} x_1 \\ x_2 \\ \vdots \\ x_m \end{pmatrix} =
 \begin{pmatrix} b_1 \\ b_2 \\ \vdots \\ b_m \end{pmatrix}
 $$
+
+Each diagonal block $A_{ii}$ depends only on its own unknowns $x_i$ and previously solved blocks $x_1, \dots, x_{i-1}$, allowing the system to be solved sequentially via forward block substitution from $i = 1$ to $m$ instead of inverting all $N$ equations simultaneously.
+
+| Symbol             | Meaning                                                                            | Units / Domain                |
+| :----------------- | :--------------------------------------------------------------------------------- | :---------------------------- |
+| $A_{ii}$           | Diagonal sub-matrix (strongly connected component) of block $i$                    | $\mathbb{R}^{k_i \times k_i}$ |
+| $A_{ij}$ ($j < i$) | Lower-triangular coupling matrix from previously solved block $j$ into block $i$   | $\mathbb{R}^{k_i \times k_j}$ |
+| $x_i$              | Vector of unknown variables assigned to block $i$                                  | $\mathbb{R}^{k_i}$            |
+| $b_i$              | Right-hand-side forcing / residual vector for block $i$                            | $\mathbb{R}^{k_i}$            |
+| $m$                | Total number of strongly connected component (SCC) blocks ($\sum_{i=1}^m k_i = N$) | Count ($\mathbb{Z}_{>0}$)     |
 
 Most blocks $A_{ii}$ are trivial $1 \times 1$ scalar explicit assignments ($x_i = f(\dots)$), while only non-linear algebraic loops become coupled sub-blocks of size $k \ll N$.
 

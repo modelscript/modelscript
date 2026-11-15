@@ -13,7 +13,7 @@ description: "@modelscript/scad (languages/scad) parses parametric OpenSCAD scri
 
 In addition to standard OpenSCAD primitives (`cube`, `sphere`, `cylinder`, `polyhedron`, `circle`, `square`, `polygon`), boolean operations (`union`, `difference`, `intersection`, `hull`, `minkowski`), extrusions (`linear_extrude`, `rotate_extrude`), and control flow (`module`, `function`, `for`, `if`/`else`), `@modelscript/scad` supports **fluent method chaining** (`ChainedSolid` in `languages/scad/src/evaluator.ts`) and **boundary port tagging**:
 
-```c
+```scad
 wall_thickness = 4.0;
 mount_radius = 12.0;
 

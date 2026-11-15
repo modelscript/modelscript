@@ -6,6 +6,7 @@
  * connection established by `lsp-worker.ts`.
  */
 
+import type { GdtOverlayPayload, SpoolKinematicsSpec, StepFeatureAnchor } from "@modelscript/cad";
 import {
   DiagramMethods,
   type ComponentPropertyData,
@@ -450,11 +451,26 @@ export async function searchClasses(query: string, limit = 50): Promise<{ result
 export async function getCadComponents(
   uri: string,
   className?: string,
+  documentText?: string,
 ): Promise<
   {
     name: string;
-    cad: string;
-    dynamicBindings: { property: string; index: number; variable: string }[];
+    cad:
+      | string
+      | {
+          uri: string;
+          position?: [number, number, number];
+          rotation?: [number, number, number];
+          scale?: [number, number, number];
+        };
+    dynamicBindings: {
+      property: string;
+      index: number;
+      variable: string;
+      unit?: string;
+      scaleFactor?: number;
+      scale?: number;
+    }[];
     shapeType?: string | undefined;
     defaults?: Record<string, unknown> | undefined;
     proceduralMesh?:
@@ -465,9 +481,11 @@ export async function getCadComponents(
           color?: [number, number, number, number] | undefined;
         }
       | undefined;
+    ports?: unknown[] | undefined;
+    sourceMetadata?: Record<string, unknown> | undefined;
   }[]
 > {
-  return (await lsp()).sendRequest("modelscript/getCadComponents", { uri, className });
+  return (await lsp()).sendRequest("modelscript/getCadComponents", { uri, className, documentText });
 }
 
 export interface DiagramPreviewRequestItem {
@@ -551,6 +569,12 @@ export interface MountedLibraryEntry {
   description?: string | undefined;
   language?: string | undefined;
   explicitlyInstalled?: boolean | undefined;
+  category?: "library" | "standard-pack" | undefined;
+  standardCode?: string | undefined;
+  standardEdition?: string | undefined;
+  profile?: string | undefined;
+  activation?: "import" | "explicit" | "workspace" | undefined;
+  active?: boolean | undefined;
 }
 
 export async function getMountedLibraries(): Promise<{
@@ -562,6 +586,27 @@ export async function getMountedLibraries(): Promise<{
   } catch {
     return { mounted: [], loading: [] };
   }
+}
+
+export async function getActiveStandards(): Promise<MountedLibraryEntry[]> {
+  try {
+    const res = await (
+      await lsp()
+    ).sendRequest<{ standards?: MountedLibraryEntry[] }>("modelscript/getActiveStandards", {});
+    return res?.standards ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function setActiveStandard(packageName: string, active: boolean): Promise<MountedLibraryEntry[]> {
+  const res = await (
+    await lsp()
+  ).sendRequest<{ ok?: boolean; standards?: MountedLibraryEntry[] }>("modelscript/setActiveStandards", {
+    packageName,
+    active,
+  });
+  return res?.standards ?? [];
 }
 
 export async function installDependency(name: string, version: string): Promise<MountedLibraryEntry[]> {
@@ -908,4 +953,56 @@ export async function getSemanticDiff(
     oldText,
     newText,
   });
+}
+
+export interface CompileStepFromSourcesMorselParams {
+  scadText: string;
+  qifText?: string | undefined;
+  scadUri?: string | undefined;
+  qifUri?: string | undefined;
+  stepUri?: string | undefined;
+  modelicaUri?: string | undefined;
+  assemblyName?: string | undefined;
+  timeStamp?: string | undefined;
+}
+
+export interface CompileStepFromSourcesMorselResult {
+  stepText: string;
+  featureAnchors: readonly StepFeatureAnchor[];
+  spools: readonly SpoolKinematicsSpec[];
+  gdtOverlay: GdtOverlayPayload;
+  partNames: readonly string[];
+  error?: string | undefined;
+}
+
+export interface StepMeshMorselResult {
+  id: number;
+  name: string;
+  type?: string | undefined;
+  vertices: number[] | Float32Array;
+  normals: number[] | Float32Array;
+  indices: number[] | Uint32Array;
+}
+
+/**
+ * Compile `.scad` (+ optional `.qif`) into an ISO-10303-21 AP242 STEP artifact
+ * with embedded provenance (`/* @modelscript-meta {...} *\/`) and GD&T overlay.
+ */
+export async function compileStepFromSourcesInMorsel(
+  params: CompileStepFromSourcesMorselParams,
+): Promise<CompileStepFromSourcesMorselResult> {
+  const c = await lsp("scad");
+  return c.sendRequest<CompileStepFromSourcesMorselResult>("modelscript/compileStepFromSources", params);
+}
+
+/**
+ * Tessellate an ISO-10303-21 STEP document into labeled triangular meshes via the LSP STEP kernel.
+ */
+export async function getStepMeshesInMorsel(uri: string, documentText?: string): Promise<StepMeshMorselResult[]> {
+  const c = await lsp("step");
+  const res = await c.sendRequest<StepMeshMorselResult[]>("modelscript/getStepMeshes", {
+    uri,
+    ...(documentText !== undefined ? { documentText } : {}),
+  });
+  return Array.isArray(res) ? res : [];
 }

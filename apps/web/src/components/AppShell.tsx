@@ -269,8 +269,8 @@ const MoreSheet = styled.div`
     background: none;
     color: var(--ms-text-1);
     font-family: inherit;
-    font-size: 15.5px;
-    font-weight: 550;
+    font-size: var(--text-base);
+    font-weight: var(--ms-fw-medium);
     text-decoration: none;
     cursor: pointer;
   }
@@ -372,17 +372,17 @@ const BannerContent = styled.div`
 `;
 
 const BannerTitle = styled.span`
-  font-size: 20px;
-  font-weight: 750;
-  letter-spacing: -0.01em;
+  font-size: var(--text-xl);
+  font-weight: var(--ms-fw-bold);
+  letter-spacing: var(--ms-tracking-snug);
 
   @media (max-width: 767px) {
-    font-size: 15px;
+    font-size: var(--text-base);
   }
 `;
 
 const BannerSubtitle = styled.span`
-  font-size: 14px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
 
   @media (max-width: 767px) {

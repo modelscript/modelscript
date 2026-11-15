@@ -10,8 +10,9 @@
  * This bridges the polyglot layer: SysML2 requirements → Optimica constraints.
  */
 
-import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
-import { evaluateSysML2Expression, extractAtomicComparisons, type SysML2ExprAst } from "./evaluator.js";
+import { type QueryDB, type SymbolEntry } from "@modelscript/runtime";
+import { findFirstDescendant, parseSysmlSource, type SysmlCstNode } from "./cst-utils.js";
+import { collectExpressionIdentifiers, evaluateSysML2Expression, extractAtomicComparisons } from "./evaluator.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Public interfaces
@@ -63,31 +64,6 @@ export function classifyConstraint(lhs: string, expression: string, entryName?: 
   return "static_parameter";
 }
 
-function collectAstIdentifiers(node: SysML2ExprAst, out: Set<string>): void {
-  switch (node.kind) {
-    case "Identifier":
-      out.add(node.name);
-      break;
-    case "UnaryExpr":
-      collectAstIdentifiers(node.operand, out);
-      break;
-    case "BinaryExpr":
-      collectAstIdentifiers(node.left, out);
-      collectAstIdentifiers(node.right, out);
-      break;
-    case "ConditionalExpr":
-      collectAstIdentifiers(node.condition, out);
-      collectAstIdentifiers(node.thenExpr, out);
-      collectAstIdentifiers(node.elseExpr, out);
-      break;
-    case "CallExpr":
-      for (const a of node.args) collectAstIdentifiers(a, out);
-      break;
-    default:
-      break;
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────
 // Constraint extraction
 // ─────────────────────────────────────────────────────────────────────
@@ -123,30 +99,24 @@ export function extractSysML2Constraints(db: QueryDB, filter?: string): Extracte
     const cstText = db.cstText(entry.startOffset, entry.endOffset, entry);
     if (!cstText) continue;
 
-    // Extract all atomic comparisons from compound constraint blocks
+    // Extract all atomic comparisons directly via native WASM GLR CST expression parser
     const atomicComps = extractAtomicComparisons(cstText);
-    const comps =
-      atomicComps.length > 0
-        ? atomicComps.map((a) => ({
-            lhs: a.lhs,
-            op: a.negated
-              ? a.operator === "<="
-                ? ">"
-                : a.operator === "<"
-                  ? ">="
-                  : a.operator === ">="
-                    ? "<"
-                    : a.operator === ">"
-                      ? "<="
-                      : a.operator
-              : a.operator,
-            rhs: a.rhs,
-            rhsAst: a.rhsAst,
-          }))
-        : (() => {
-            const single = parseComparisonFromText(cstText);
-            return single ? [{ ...single, rhsAst: undefined }] : [];
-          })();
+    const comps = atomicComps.map((a) => ({
+      lhs: a.lhs,
+      op: a.negated
+        ? a.operator === "<="
+          ? ">"
+          : a.operator === "<"
+            ? ">="
+            : a.operator === ">="
+              ? "<"
+              : a.operator === ">"
+                ? "<="
+                : a.operator
+        : a.operator,
+      rhs: a.rhs,
+      rhsAst: a.rhsAst,
+    }));
 
     const reqName = findRequirementName(db, entry);
 
@@ -154,30 +124,24 @@ export function extractSysML2Constraints(db: QueryDB, filter?: string): Extracte
       if (comp.op === "!=") continue;
       let resolvedRhs: number | string = comp.rhs;
 
-      if (comp.rhsAst) {
-        const idents = new Set<string>();
-        collectAstIdentifiers(comp.rhsAst, idents);
-        const env: Record<string, number> = {};
-        let allNumeric = true;
-        for (const id of idents) {
-          const val = resolveRhsFromDb(db, entry, id);
-          if (typeof val === "number" && !Number.isNaN(val)) {
-            env[id] = val;
-          } else {
-            allNumeric = false;
-          }
+      const idents = collectExpressionIdentifiers(comp.rhsAst);
+      const env: Record<string, number> = {};
+      let allNumeric = true;
+      for (const id of idents) {
+        const val = resolveRhsFromDb(db, entry, id);
+        if (typeof val === "number" && !Number.isNaN(val)) {
+          env[id] = val;
+        } else {
+          allNumeric = false;
         }
-        if (allNumeric) {
-          const evalVal = evaluateSysML2Expression(comp.rhsAst, env);
-          if (typeof evalVal === "number" && Number.isFinite(evalVal)) {
-            resolvedRhs = evalVal;
-          }
-        } else if (idents.size === 1) {
-          resolvedRhs = resolveRhsFromDb(db, entry, String(comp.rhs));
+      }
+      if (allNumeric) {
+        const evalVal = evaluateSysML2Expression(comp.rhsAst, env);
+        if (typeof evalVal === "number" && Number.isFinite(evalVal)) {
+          resolvedRhs = evalVal;
         }
-      } else {
-        const rhsNum = parseFloat(String(comp.rhs));
-        resolvedRhs = !isNaN(rhsNum) && isFinite(rhsNum) ? rhsNum : resolveRhsFromDb(db, entry, String(comp.rhs));
+      } else if (idents.size === 1) {
+        resolvedRhs = resolveRhsFromDb(db, entry, String(comp.rhs));
       }
 
       const kind = classifyConstraint(comp.lhs, cstText, entry.name);
@@ -300,33 +264,6 @@ function findRequirementName(db: QueryDB, constraint: SymbolEntry): string | und
 }
 
 /**
- * Parse a comparison expression from constraint CST text.
- * Handles patterns like:
- *   "constraint max_v { sled.v <= velReq.maxVelocity }"
- *   "sled.v <= 10.0"
- */
-function parseComparisonFromText(text: string): { lhs: string; op: string; rhs: string } | null {
-  // Strip constraint wrapper: "constraint name { ... }"
-  let inner = text;
-  const braceMatch = text.match(/\{([^}]+)\}/);
-  if (braceMatch) {
-    inner = braceMatch[1]!.trim();
-  }
-
-  // Match comparison operators
-  const compMatch = inner.match(/([^<>=!]+?)\s*(<=|>=|==|!=|<|>)\s*([^<>=!]+)/);
-  if (compMatch) {
-    return {
-      lhs: compMatch[1]!.trim(),
-      op: compMatch[2]!.trim(),
-      rhs: compMatch[3]!.trim(),
-    };
-  }
-
-  return null;
-}
-
-/**
  * Attempt to resolve a non-numeric RHS (e.g., "velReq.maxVelocity")
  * from the QueryDB by finding the referenced attribute and its default value.
  */
@@ -372,11 +309,22 @@ function resolveRhsFromDb(db: QueryDB, constraint: SymbolEntry, rhsPath: string)
     current = child;
   }
 
-  // Extract numeric default from CST text
-  const text = db.cstText(current.startOffset, current.endOffset, current);
-  if (text) {
-    const match = text.match(/=\s*(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)/);
-    if (match) return parseFloat(match[1]!);
+  // Extract numeric default from CST FeatureValue -> OwnedExpression
+  let cstNode: SysmlCstNode | null =
+    typeof db.cstNode === "function" ? (db.cstNode(current.id) as SysmlCstNode | null) : null;
+  if (!cstNode) {
+    const text = db.cstText(current.startOffset, current.endOffset, current);
+    if (text) cstNode = parseSysmlSource(text);
+  }
+  if (cstNode) {
+    const fv = findFirstDescendant(cstNode, "FeatureValue");
+    const exprNode = fv ? (findFirstDescendant(fv, "OwnedExpression") ?? fv) : null;
+    if (exprNode) {
+      const evaluated = evaluateSysML2Expression(exprNode.text);
+      if (typeof evaluated === "number" && Number.isFinite(evaluated)) {
+        return evaluated;
+      }
+    }
   }
 
   return rhsPath;

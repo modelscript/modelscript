@@ -272,3 +272,159 @@ export async function getCodeActionsDocsLsp(
     { timeoutMs: 8_000, channel: `codeAction:${uri}` },
   );
 }
+
+export async function getSemanticTokensDocsLsp(uri: string): Promise<{ resultId?: string; data: number[] } | null> {
+  if (!worker) return null;
+  return sendRequest(
+    "textDocument/semanticTokens/full",
+    { textDocument: { uri } },
+    { timeoutMs: 10_000, channel: `semanticTokens:${uri}` },
+  );
+}
+
+export async function getHoverDocsLsp(uri: string, line: number, character: number): Promise<any | null> {
+  if (!worker) return null;
+  return sendRequest(
+    "textDocument/hover",
+    { textDocument: { uri }, position: { line, character } },
+    { timeoutMs: 5_000, channel: `hover:${uri}` },
+  );
+}
+
+export async function getCompletionDocsLsp(
+  uri: string,
+  line: number,
+  character: number,
+): Promise<any[] | { items: any[] } | null> {
+  if (!worker) return null;
+  return sendRequest(
+    "textDocument/completion",
+    { textDocument: { uri }, position: { line, character } },
+    { timeoutMs: 5_000, channel: `completion:${uri}` },
+  );
+}
+
+export async function getDefinitionDocsLsp(uri: string, line: number, character: number): Promise<any | null> {
+  if (!worker) return null;
+  return sendRequest(
+    "textDocument/definition",
+    { textDocument: { uri }, position: { line, character } },
+    { timeoutMs: 5_000, channel: `definition:${uri}` },
+  );
+}
+
+export interface DiagramPreviewResult {
+  svg: string;
+  nodeCount: number;
+  edgeCount: number;
+}
+
+export async function getDiagramPreviewDocsLsp(
+  uri: string,
+  languageId: string,
+  documentText: string,
+  isDark: boolean,
+): Promise<DiagramPreviewResult | null> {
+  await ensureDocsLspReady(languageId);
+  const res = await sendRequest<{ previews?: Record<string, DiagramPreviewResult> }>(
+    "modelscript/getDiagramPreviewSvgs",
+    {
+      items: [{ id: "active", uri, languageId, documentText }],
+      isDark,
+    },
+    { timeoutMs: 12_000, channel: `diagram:${uri}` },
+  );
+  return res?.previews?.active ?? null;
+}
+
+export async function getDiagramDataDocsLsp(
+  uri: string,
+  languageId: string,
+  documentText: string,
+): Promise<any | null> {
+  await ensureDocsLspReady(languageId);
+  return sendRequest(
+    "modelscript/getDiagramData",
+    { uri, documentText },
+    { timeoutMs: 12_000, channel: `diagramData:${uri}` },
+  );
+}
+
+export async function getCadComponentsDocsLsp(uri: string, documentText: string, languageId = "scad"): Promise<any[]> {
+  await ensureDocsLspReady(languageId);
+  const res = await sendRequest<any[]>(
+    "modelscript/getCadComponents",
+    { uri, documentText },
+    { timeoutMs: 18_000, channel: `cadComponents:${uri}` },
+  );
+  return Array.isArray(res) ? res : [];
+}
+
+export interface SpoolKinematicsSpec {
+  part: string;
+  spool: "n1" | "n2";
+  axis: [number, number, number];
+}
+
+export interface StepGdtCalloutPayload {
+  id: string;
+  characteristic: string;
+  tolerance: number;
+  measured?: number;
+  status: "PASS" | "MARGINAL" | "FAIL";
+  materialCondition?: "MMC" | "LMC" | "RFS";
+  datums: Array<{ label: string }>;
+  anchor: [number, number, number];
+  sourceRef?: string;
+}
+
+export interface StepGdtDatumPayload {
+  label: string;
+  name: string;
+  anchor: [number, number, number];
+  sourceRef?: string;
+}
+
+export interface CompileStepFromSourcesResult {
+  stepText: string;
+  featureAnchors: Array<{
+    name: string;
+    portType: string;
+    anchor: [number, number, number];
+    normal?: [number, number, number];
+  }>;
+  spools: SpoolKinematicsSpec[];
+  gdtOverlay: {
+    datums: StepGdtDatumPayload[];
+    callouts: StepGdtCalloutPayload[];
+  };
+  partNames: string[];
+  error?: string;
+}
+
+export async function compileStepFromSourcesDocsLsp(params: {
+  scadText: string;
+  qifText?: string;
+  scadUri?: string;
+  qifUri?: string;
+  stepUri?: string;
+  modelicaUri?: string;
+  assemblyName?: string;
+  timeStamp?: string;
+}): Promise<CompileStepFromSourcesResult> {
+  await ensureDocsLspReady("step");
+  return sendRequest<CompileStepFromSourcesResult>("modelscript/compileStepFromSources", params, {
+    timeoutMs: 35_000,
+    channel: "compileStepFromSources",
+  });
+}
+
+export async function getStepMeshesDocsLsp(uri: string, documentText?: string): Promise<any[]> {
+  await ensureDocsLspReady("step");
+  const res = await sendRequest<any[]>(
+    "modelscript/getStepMeshes",
+    documentText !== undefined ? { uri, documentText } : { uri },
+    { timeoutMs: 45_000, channel: `stepMeshes:${uri}` },
+  );
+  return Array.isArray(res) ? res : [];
+}

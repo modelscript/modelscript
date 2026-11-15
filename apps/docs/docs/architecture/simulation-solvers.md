@@ -32,9 +32,9 @@ flowchart TD
 For high-precision industrial models, ModelScript integrates Lawrence Livermore National Laboratory's **SUNDIALS** suite compiled to WebAssembly alongside native stiff and non-stiff integrators:
 
 - **CVODE**: Solves Initial Value Problems (IVPs) for stiff and non-stiff systems of ordinary differential equations (ODEs). Uses Variable-Order Variable-Step-size Adams-Moulton methods for non-stiff systems and Backward Differentiation Formulas (BDF) for stiff systems.
-- **IDA**: Solves Initial Value Problems for systems of differential-algebraic equations (DAEs) of index up to 1:
+- **IDA**: Solves Initial Value Problems for implicit systems of differential-algebraic equations (DAEs) of index up to 1:
   $$F(t, y, y') = 0$$
-  Includes dense and sparse linear solvers with adaptive step-size control.
+  where $t \in \mathbb{R}$ ($\text{s}$) is simulation time, $y \in \mathbb{R}^n$ is the combined differential-algebraic state vector, $y' = dy/dt \in \mathbb{R}^n/\text{s}$ is its time derivative, and $F(\cdot) \in \mathbb{R}^n$ is the implicit DAE residual vector. Includes dense and sparse linear solvers with adaptive step-size control.
 - **Rodas4P & TR-BDF2**: L-stable 4th-order Rosenbrock-Wanner (`rodas4p.ts`) and 2nd-order Trapezoidal-BDF2 (`trbdf2.ts`) integrators for stiff power-electronic, chemical kinetics, and thermal-hydraulic transients without nonlinear Newton convergence failures.
 - **Tsit5 & DOPRI5**: 5th-order explicit Runge-Kutta pairs (`tsit5.ts`, `dopri5.ts`) with FSAL (First Same As Last) and dense cubic Hermite interpolation for fast non-stiff simulation.
 - **PALC Bifurcation & Continuation (`msx bifurcation`)**: Pseudo-Arclength Continuation (`bifurcation.ts`) for tracing steady-state equilibrium curves and automatically detecting saddle-node (fold) and Hopf bifurcations (e.g., power grid voltage nose curves and nonlinear oscillators).
@@ -55,10 +55,19 @@ ModelScript compiles linearized DAE blocks into WebGPU compute shaders (`@models
 
 ## 3. Direct Collocation Optimal Control
 
-ModelScript formulates dynamic optimization and optimal control problems directly from Modelica models:
+ModelScript formulates dynamic optimization and optimal control problems directly from Modelica models, minimizing a Bolza/Lagrange integral cost over a finite horizon subject to the system DAE and control bounds:
 
 $$\min_{u(t)} \int_0^T L(x(t), u(t), t) \, dt$$
 $$\text{subject to } F(t, x, \dot{x}, u) = 0, \quad u_{\min} \le u(t) \le u_{\max}$$
+
+| Symbol                | Meaning                                         | Units / Domain                                   |
+| :-------------------- | :---------------------------------------------- | :----------------------------------------------- |
+| $t, T$                | Simulation time and fixed terminal horizon      | $\text{s}$ ($t \in [0, T]$)                      |
+| $x(t), \dot{x}(t)$    | State trajectory and its time derivative        | $\mathbb{R}^{n_x}, \; \mathbb{R}^{n_x}/\text{s}$ |
+| $u(t)$                | Time-varying control input trajectory           | $\mathbb{R}^{n_u}$                               |
+| $u_{\min}, u_{\max}$  | Element-wise lower and upper control bounds     | $\mathbb{R}^{n_u}$                               |
+| $L(x, u, t)$          | Instantaneous running cost (Lagrange integrand) | $\mathbb{R}/\text{s}$                            |
+| $F(t, x, \dot{x}, u)$ | Implicit DAE dynamics constraint                | $\mathbb{R}^{n_x}$                               |
 
 - **Transcription**: Transcribes the continuous system into non-linear programming (NLP) problems using Radau or Lobatto collocation points.
 - **Solvers**: Solves the resulting sparse NLP using interior-point optimization techniques.

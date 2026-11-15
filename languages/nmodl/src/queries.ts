@@ -45,12 +45,15 @@ export function lint__nmodlNeuronBlock(db: QueryDB, entry: SymbolEntry): LintRes
   if (!doc) return null;
 
   if (!/\bNEURON\s*\{/i.test(doc.raw)) {
+    const firstTok = doc.raw.match(/\S+/);
+    const startOffset = firstTok?.index ?? 0;
+    const endOffset = startOffset + (firstTok?.[0].length ?? 1);
     return {
       code: NmodlErrorCode.MISSING_NEURON_BLOCK.code,
       message: NmodlErrorCode.MISSING_NEURON_BLOCK.message(),
       severity: NmodlErrorCode.MISSING_NEURON_BLOCK.severity,
-      startOffset: doc.model.range?.startOffset,
-      endOffset: doc.model.range?.endOffset,
+      startOffset,
+      endOffset,
     };
   }
   return null;
@@ -63,14 +66,16 @@ export function lint__nmodlSuffixDeclaration(db: QueryDB, entry: SymbolEntry): L
   const doc = db.query<NmodlDocument | null>("nmodlDocument", entry.id);
   if (!doc) return null;
 
-  if (/\bNEURON\s*\{/i.test(doc.raw) && (!doc.model.suffix || doc.model.suffix === "channel")) {
+  const neuronMatch = doc.raw.match(/\bNEURON(?=\s*\{)/i);
+  if (neuronMatch && (!doc.model.suffix || doc.model.suffix === "channel")) {
     if (!/\bSUFFIX\s+[a-zA-Z0-9_]+/i.test(doc.raw)) {
+      const startOffset = neuronMatch.index ?? 0;
       return {
         code: NmodlErrorCode.MISSING_SUFFIX_DECLARATION.code,
         message: NmodlErrorCode.MISSING_SUFFIX_DECLARATION.message(),
         severity: NmodlErrorCode.MISSING_SUFFIX_DECLARATION.severity,
-        startOffset: doc.model.range?.startOffset,
-        endOffset: doc.model.range?.endOffset,
+        startOffset,
+        endOffset: startOffset + neuronMatch[0].length,
       };
     }
   }
@@ -85,12 +90,15 @@ export function lint__nmodlBreakpointBlock(db: QueryDB, entry: SymbolEntry): Lin
   if (!doc) return null;
 
   if (!/\bBREAKPOINT\s*\{/i.test(doc.raw)) {
+    const firstTok = doc.raw.match(/\S+/);
+    const startOffset = firstTok?.index ?? 0;
+    const endOffset = startOffset + (firstTok?.[0].length ?? 1);
     return {
       code: NmodlErrorCode.MISSING_BREAKPOINT_BLOCK.code,
       message: NmodlErrorCode.MISSING_BREAKPOINT_BLOCK.message(),
       severity: NmodlErrorCode.MISSING_BREAKPOINT_BLOCK.severity,
-      startOffset: doc.model.range?.startOffset,
-      endOffset: doc.model.range?.endOffset,
+      startOffset,
+      endOffset,
     };
   }
   return null;

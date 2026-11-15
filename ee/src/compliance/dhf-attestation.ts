@@ -24,7 +24,10 @@ export type RegulatoryStandard =
   | "ISO-26262"
   | "NIST-SP-800-53-OSCAL"
   | "NIST-SP-800-82-CPS"
-  | "ISO-23952-QIF-MBE";
+  | "ISO-23952-QIF-MBE"
+  | "ASME-BPVC-VIII-1"
+  | "ASME-BPVC-VIII-2"
+  | "ASME-BPVC-VIII";
 
 export interface ComplianceAttestationPayload {
   /** Attestation schema version */

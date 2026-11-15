@@ -23,15 +23,36 @@ description: Compiler reference for Antimony modular systems biology models (.an
 
 Given $M$ dynamic floating species $\mathbf{S} = (S_1, \dots, S_M)^\top$ residing in compartments of volume $V_{\text{comp}(i)}$, $B$ fixed boundary species (`$S_b`, where $dS_b/dt = 0$), and $R$ biochemical reactions $J_r$ with net stoichiometry matrix $\mathbf{N} \in \mathbb{R}^{M \times R}$ ($\nu_{ir} = \nu_{ir}^+ - \nu_{ir}^-$) and kinetic rate laws $\mathbf{v}(\mathbf{S}, \mathbf{p}, t) \in \mathbb{R}^R$:
 
+In plain English, the rate of change of each species concentration equals the net sum of reaction rates producing or consuming that species, scaled by the inverse of its compartment volume.
+
 $$
 \frac{d[S_i]}{dt} = \frac{1}{V_{\text{comp}(i)}} \sum_{r=1}^R \nu_{ir}\, v_r\bigl([\mathbf{S}], \mathbf{p}, t\bigr)
 $$
 
-Explicit rate rules (`x' = f(x, S, p)`), algebraic assignment rules (`y := g(x, S, p)`), and Hill / Michaelis-Menten regulatory kinetics combine with reaction fluxes into a coupled semi-explicit DAE system:
+| Symbol                             | Meaning                                                                                   | Units / Domain                                                        |
+| :--------------------------------- | :---------------------------------------------------------------------------------------- | :-------------------------------------------------------------------- |
+| $[S_i]$                            | Concentration of floating species $i$                                                     | $\text{mol}\cdot\text{L}^{-1}$ (or $\text{M}$), $i \in \{1,\dots,M\}$ |
+| $t$                                | Simulation time                                                                           | $\text{s}$ (or model time unit), $t \ge 0$                            |
+| $V_{\text{comp}(i)}$               | Volume of the compartment containing species $i$                                          | $\text{L}$ (positive real, $> 0$)                                     |
+| $R$                                | Total number of biochemical reactions                                                     | Positive integer                                                      |
+| $\nu_{ir}$                         | Net stoichiometric coefficient of species $i$ in reaction $r$ ($\nu_{ir}^+ - \nu_{ir}^-$) | Dimensionless ($\mathbb{R}$)                                          |
+| $v_r([\mathbf{S}], \mathbf{p}, t)$ | Kinetic reaction rate (flux) of reaction $r$                                              | $\text{mol}\cdot\text{s}^{-1}$                                        |
+| $[\mathbf{S}]$                     | Vector of all species concentrations                                                      | $\mathbb{R}_{\ge 0}^M$                                                |
+| $\mathbf{p}$                       | Vector of kinetic parameters and constants                                                | $\mathbb{R}^P$                                                        |
+
+Explicit rate rules (`x' = f(x, S, p)`), algebraic assignment rules (`y := g(x, S, p)`), and Hill / Michaelis-Menten regulatory kinetics combine with reaction fluxes into a coupled semi-explicit differential-algebraic equation (DAE) system, where differential states evolve by ODEs and algebraic variables are determined instantaneously:
 
 $$
 \dot{\mathbf{x}} = \mathbf{f}(\mathbf{x}, \mathbf{y}, \mathbf{p}, t), \qquad \mathbf{y} = \mathbf{g}(\mathbf{x}, \mathbf{p}, t)
 $$
+
+| Symbol                         | Meaning                                                            | Units / Domain                      |
+| :----------------------------- | :----------------------------------------------------------------- | :---------------------------------- |
+| $\mathbf{x}, \dot{\mathbf{x}}$ | Differential state vector and its time derivative $d\mathbf{x}/dt$ | Model state units / $\text{s}^{-1}$ |
+| $\mathbf{y}$                   | Algebraic variable vector governed by assignment rules             | Model variable units                |
+| $\mathbf{f}(\cdot)$            | Right-hand-side rate vector field for differential states          | State units per unit time           |
+| $\mathbf{g}(\cdot)$            | Explicit algebraic evaluation map for assigned variables           | Algebraic variable units            |
+| $\mathbf{p}, t$                | Model parameter vector and simulation time                         | Parameters / $\text{s}$             |
 
 ### 2. Hybrid State-Event Zero-Crossing Semantics (`at (...)`)
 

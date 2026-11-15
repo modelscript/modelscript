@@ -24,6 +24,15 @@ import {
 } from "vscode-languageserver";
 import type { TextDocument } from "vscode-languageserver-textdocument";
 import { globalLanguageRegistry, type LanguagePlugin } from "../registry/LanguageRegistry.js";
+import {
+  isIdentContCode,
+  isIdentStartCode,
+  readIdentAt,
+  skipWs,
+  stripFileExtension,
+  trimOuterChars,
+  trimTrailingChars,
+} from "../utils/lexical-utils.js";
 
 const require = createRequire(import.meta.url);
 
@@ -32,6 +41,110 @@ function findNodes(node: any, type: string, results: any[] = []): any[] {
   if (node.type === type) results.push(node);
   for (const c of node.children || []) findNodes(c, type, results);
   return results;
+}
+
+function hasZeroRegexCall(text: string, callee: string): boolean {
+  let pos = 0;
+  while (pos < text.length) {
+    const idx = text.indexOf(callee, pos);
+    if (idx === -1) return false;
+    const prevOk = idx === 0 || !isIdentContCode(text.charCodeAt(idx - 1));
+    const afterName = skipWs(text, idx + callee.length);
+    if (prevOk && !isIdentContCode(text.charCodeAt(idx + callee.length)) && text[afterName] === "(") {
+      return true;
+    }
+    pos = idx + callee.length;
+  }
+  return false;
+}
+
+function extractScadFallback(
+  text: string,
+  baseName: string,
+): {
+  name: string;
+  kind: string;
+  attributes: { name: string; type: string; value?: string | undefined }[];
+  components: { name: string; typeSpecifier: string }[];
+} {
+  let name = baseName;
+  const attributes: { name: string; type: string; value?: string | undefined }[] = [];
+  let i = 0;
+  while (i < text.length) {
+    if (text.startsWith("//", i)) {
+      const nl = text.indexOf("\n", i + 2);
+      i = nl === -1 ? text.length : nl + 1;
+      continue;
+    }
+    if (isIdentStartCode(text.charCodeAt(i))) {
+      const prevOk = i === 0 || !isIdentContCode(text.charCodeAt(i - 1));
+      const tok = readIdentAt(text, i)!;
+      if (prevOk && tok.token === "module") {
+        const wsEnd = skipWs(text, tok.next);
+        const modTok = readIdentAt(text, wsEnd);
+        if (modTok && name === baseName) {
+          name = modTok.token;
+        }
+        i = tok.next;
+        continue;
+      }
+      if (prevOk && tok.token !== "module") {
+        const eqPos = skipWs(text, tok.next);
+        if (text[eqPos] === "=" && text[eqPos + 1] !== "=") {
+          const semi = text.indexOf(";", eqPos + 1);
+          if (semi !== -1) {
+            attributes.push({ name: tok.token, type: "Real", value: text.slice(eqPos + 1, semi).trim() });
+            i = semi + 1;
+            continue;
+          }
+        }
+      }
+      i = tok.next;
+    } else {
+      i++;
+    }
+  }
+  const components: { name: string; typeSpecifier: string }[] = [];
+  if (hasZeroRegexCall(text, "cube")) components.push({ name: "cubeSolid", typeSpecifier: "CubePrimitive" });
+  if (hasZeroRegexCall(text, "cylinder"))
+    components.push({ name: "cylinderSolid", typeSpecifier: "CylinderPrimitive" });
+  if (hasZeroRegexCall(text, "sphere")) components.push({ name: "sphereSolid", typeSpecifier: "SpherePrimitive" });
+  return { name, kind: "module", attributes, components };
+}
+
+function extractOwlClassesFallback(text: string): string[] {
+  const classes: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    if (text.startsWith("Class(:")) {
+      // handled below via Class scan
+    }
+    if (isIdentStartCode(text.charCodeAt(i))) {
+      const prevOk = i === 0 || !isIdentContCode(text.charCodeAt(i - 1));
+      const tok = readIdentAt(text, i)!;
+      if (prevOk && tok.token === "Class") {
+        if (text.startsWith("(:", tok.next)) {
+          const id = readIdentAt(text, tok.next + 2);
+          if (id && text[id.next] === ")") {
+            classes.push(id.token);
+            i = id.next + 1;
+            continue;
+          }
+        } else if (text[tok.next] === ":") {
+          const id = readIdentAt(text, skipWs(text, tok.next + 1));
+          if (id) {
+            classes.push(id.token);
+            i = id.next;
+            continue;
+          }
+        }
+      }
+      i = tok.next;
+    } else {
+      i++;
+    }
+  }
+  return classes;
 }
 
 let scadParserInstance: any = null;
@@ -436,7 +549,7 @@ export function registerPolyglotEndpoints(
 
         const uriParts = params.uri.split("/");
         const fileName = uriParts[uriParts.length - 1] || "Model";
-        const baseName = fileName.replace(/\.[^.]+$/, "");
+        const baseName = stripFileExtension(fileName);
 
         if (ext === ".mo") {
           const sysmlDef = GenericModelicaBridge.parseModelicaToSysML2(text);
@@ -538,23 +651,25 @@ export function registerPolyglotEndpoints(
                 const idNode = findNodes(vd, "IDENTIFIER")[0];
                 const exprNode = findNodes(vd, "Expression")[0] || findNodes(vd, "PrimaryExpression")[0];
                 if (idNode && !idNode.text.startsWith("//") && idNode.text !== "module") {
-                  const valStr = exprNode
-                    ? exprNode.text.trim()
-                    : vd.text
-                        .replace(/^[^=]+=\s*/, "")
-                        .replace(/;$/, "")
-                        .trim();
+                  let valStr: string;
+                  if (exprNode) {
+                    valStr = exprNode.text.trim();
+                  } else {
+                    const eqIdx = vd.text.indexOf("=");
+                    const rhs = eqIdx !== -1 ? vd.text.slice(eqIdx + 1) : vd.text;
+                    valStr = trimTrailingChars(rhs, "; \t\r\n").trim();
+                  }
                   attributes.push({ name: idNode.text.trim(), type: "Real", value: valStr });
                 }
               }
               const components: { name: string; typeSpecifier: string }[] = [];
-              if (findNodes(root, "CubePrimitive").length > 0 || /cube\s*\(/.test(text)) {
+              if (findNodes(root, "CubePrimitive").length > 0) {
                 components.push({ name: "cubeSolid", typeSpecifier: "CubePrimitive" });
               }
-              if (findNodes(root, "CylinderPrimitive").length > 0 || /cylinder\s*\(/.test(text)) {
+              if (findNodes(root, "CylinderPrimitive").length > 0) {
                 components.push({ name: "cylinderSolid", typeSpecifier: "CylinderPrimitive" });
               }
-              if (findNodes(root, "SpherePrimitive").length > 0 || /sphere\s*\(/.test(text)) {
+              if (findNodes(root, "SpherePrimitive").length > 0) {
                 components.push({ name: "sphereSolid", typeSpecifier: "SpherePrimitive" });
               }
               node = { name: name || baseName, kind: "module", attributes, components };
@@ -562,22 +677,7 @@ export function registerPolyglotEndpoints(
               tree?.delete?.();
             }
           } else {
-            const modMatch = text.match(/\bmodule\s+([A-Za-z_][A-Za-z0-9_]*)/);
-            const name = modMatch ? modMatch[1]! : baseName;
-            const attributes: { name: string; type: string; value?: string | undefined }[] = [];
-            const varRegex = /\b([a-zA-Z_]\w*)\s*=\s*([^;]+);/g;
-            let m: RegExpExecArray | null;
-            while ((m = varRegex.exec(text)) !== null) {
-              if (!m[1]!.startsWith("//") && m[1] !== "module") {
-                attributes.push({ name: m[1]!, type: "Real", value: m[2]!.trim() });
-              }
-            }
-            const components: { name: string; typeSpecifier: string }[] = [];
-            if (/cube\s*\(/.test(text)) components.push({ name: "cubeSolid", typeSpecifier: "CubePrimitive" });
-            if (/cylinder\s*\(/.test(text))
-              components.push({ name: "cylinderSolid", typeSpecifier: "CylinderPrimitive" });
-            if (/sphere\s*\(/.test(text)) components.push({ name: "sphereSolid", typeSpecifier: "SpherePrimitive" });
-            node = { name, kind: "module", attributes, components };
+            node = extractScadFallback(text, baseName);
           }
         } else if (ext === ".csv") {
           const lines = text.trim().split("\n");
@@ -595,7 +695,7 @@ export function registerPolyglotEndpoints(
               for (const d of decls) {
                 const clsNodes = findNodes(d, "Class");
                 for (const cn of clsNodes) {
-                  const clsName = cn.text.replace(/^[:\s<]+|[:>\s]+$/g, "").trim();
+                  const clsName = trimOuterChars(cn.text, ":<\t \r\n", ":>\t \r\n").trim();
                   if (clsName && !classes.includes(clsName)) classes.push(clsName);
                 }
               }
@@ -608,10 +708,7 @@ export function registerPolyglotEndpoints(
               tree?.delete?.();
             }
           } else {
-            const classMatches = text.matchAll(
-              /\b(?:Declaration\(Class\(:([A-Za-z_][A-Za-z0-9_]*)\)\)|Class:\s*([A-Za-z_][A-Za-z0-9_]*))/g,
-            );
-            const classes = Array.from(classMatches).map((cm) => cm[1]! || cm[2]!);
+            const classes = extractOwlClassesFallback(text);
             node = { name: classes[0] || baseName, kind: "ontology_class", superclasses: classes.slice(1) };
           }
         } else {

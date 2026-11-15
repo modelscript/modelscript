@@ -980,20 +980,54 @@ export async function scanWorkspaceFiles(getClient?: () => LanguageClient | unde
               const pkgName = pkgData.name;
               const pkgVersion = pkgData.version;
 
-              // Read all .mo files in this package directory
+              // Read all supported engineering model & specification files in this package directory
               const pkgDir = Uri.joinPath(pkgUri, "..");
-              const relativePattern = new vscode.RelativePattern(pkgDir, "**/*.mo");
-              const moFiles = await workspace.findFiles(relativePattern);
+              const relativePattern = new vscode.RelativePattern(pkgDir, "**/*.{mo,msim,sysml,kerml}");
+              const pkgFiles = await workspace.findFiles(relativePattern);
+              const decoder = new TextDecoder("utf-8");
 
               const files: Record<string, string> = {};
-              for (const moUri of moFiles) {
-                // Compute relative path
-                const relPath = workspace.asRelativePath(moUri, false);
-                const pkgPrefix = workspace.asRelativePath(pkgDir, false) + "/";
+              const pkgPrefix = workspace.asRelativePath(pkgDir, false) + "/";
+              for (const fileUri of pkgFiles) {
+                const relPath = workspace.asRelativePath(fileUri, false);
                 const internalPath = relPath.startsWith(pkgPrefix) ? relPath.substring(pkgPrefix.length) : relPath;
 
-                const fileBytes = await workspace.fs.readFile(moUri);
-                files[internalPath] = new TextDecoder("utf-8").decode(fileBytes);
+                const fileBytes = await workspace.fs.readFile(fileUri);
+                files[internalPath] = decoder.decode(fileBytes);
+              }
+
+              // Include package.json so the LSP loader can extract manifest/calculator bindings directly
+              files["package.json"] = content;
+
+              let tables: Record<string, unknown> | undefined;
+              const tableMap = pkgData.modelscript?.runtime?.tables as Record<string, string> | undefined;
+              if (tableMap && typeof tableMap === "object") {
+                tables = {};
+                for (const [key, relTablePath] of Object.entries(tableMap)) {
+                  try {
+                    const tableUri = Uri.joinPath(pkgDir, ...relTablePath.split("/").filter(Boolean));
+                    const tableBytes = await workspace.fs.readFile(tableUri);
+                    tables[key] = JSON.parse(decoder.decode(tableBytes));
+                  } catch {
+                    // Best-effort table loading
+                  }
+                }
+              }
+
+              let wasmBase64: string | undefined;
+              const relWasmPath = pkgData.modelscript?.runtime?.wasm as string | undefined;
+              if (typeof relWasmPath === "string" && relWasmPath.trim()) {
+                try {
+                  const wasmUri = Uri.joinPath(pkgDir, ...relWasmPath.split("/").filter(Boolean));
+                  const wasmBytes = await workspace.fs.readFile(wasmUri);
+                  let bin = "";
+                  for (let i = 0; i < wasmBytes.length; i++) {
+                    bin += String.fromCharCode(wasmBytes[i]!);
+                  }
+                  wasmBase64 = btoa(bin);
+                } catch {
+                  // Best-effort WASM loading
+                }
               }
 
               if (Object.keys(files).length > 0) {
@@ -1002,6 +1036,8 @@ export async function scanWorkspaceFiles(getClient?: () => LanguageClient | unde
                   version: String(pkgVersion),
                   files,
                   modelscript: pkgData.modelscript,
+                  ...(tables ? { tables } : {}),
+                  ...(wasmBase64 ? { wasmBase64 } : {}),
                 });
                 console.log(
                   `[workspace-scan] Discovered registry package ${pkgName}@${pkgVersion} (${Object.keys(files).length} files)`,

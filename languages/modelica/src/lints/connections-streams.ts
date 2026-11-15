@@ -86,14 +86,14 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
             const lhsIsFlow = lhsComp != 0 && hasTypePrefix(db, lhsComp, "flow", $);
             const flowRef = lhsIsFlow ? lhs : rhs;
             const nonFlowRef = lhsIsFlow ? rhs : lhs;
-            db.diagnostic(node, flowRef, nonFlowRef, mismatchIdent);
+            db.diagnosticAt(nonFlowRef, node, flowRef, nonFlowRef, mismatchIdent);
             return;
           }
           // Verify total flow variable counts and structural connector compatibility match
           const lhsFlows = getFlowVariableCount(db, lhsClass, $);
           const rhsFlows = getFlowVariableCount(db, rhsClass, $);
           if (lhsFlows != rhsFlows || !isConnectorCompatible(db, lhsClass, rhsClass, $)) {
-            db.diagnostic(node, lhs, rhs);
+            db.diagnosticAt(rhs, node, lhs, rhs);
           }
         }
       }
@@ -420,7 +420,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
       }
       const name = getCallCalleeNode(db, node, $);
       if (name != 0 && db.ast.textEquals(name, "cardinality")) {
-        db.diagnostic(node);
+        db.diagnosticAt(name, node);
       }
     },
   },

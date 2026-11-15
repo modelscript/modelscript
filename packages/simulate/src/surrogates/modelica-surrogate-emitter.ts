@@ -11,6 +11,17 @@
 import type { TrainedCaeSurrogate } from "./cae-surrogate-bridge.js";
 import type { MultivariateBounds } from "./multivariate-bounds.js";
 import type { TrainedROM } from "./rom-trainer.js";
+import type { TrainedWamResidual } from "./wam-residual-trainer.js";
+
+export interface WamModelicaEmissionOptions {
+  modelName: string;
+  packageName?: string | undefined;
+  description?: string | undefined;
+  /** Emit as a standalone block without `within` header when embedding directly in a single .mo file. */
+  omitWithin?: boolean | undefined;
+  /** Emit compact array/for-loop matrix equations instead of unrolled scalar equations (auto-enabled when hidden units > 48). */
+  useMatrixForm?: boolean | undefined;
+}
 
 export interface ModelicaEmissionOptions {
   modelName: string;
@@ -581,9 +592,130 @@ export class ModelicaSurrogateEmitter {
 
     return lines.join("\n");
   }
+
+  /**
+   * Emits a self-contained Modelica block representing a trained WAM residual MLP.
+   */
+  public static emitWamResidualModelica(trained: TrainedWamResidual, options: WamModelicaEmissionOptions): string {
+    const pkg = options.packageName ?? "ModelScript.Surrogates";
+    const desc =
+      options.description ??
+      `Trained WAM Residual MLP (R^2 = ${trained.rSquared.toFixed(4)}, MSE = ${trained.finalMse.toExponential(3)})`;
+    const lines: string[] = [];
+
+    if (!options.omitWithin) {
+      lines.push(`within ${pkg};`, ``);
+    }
+
+    lines.push(`block ${options.modelName} "${desc}"`);
+
+    for (const inp of trained.inputNames) {
+      lines.push(`  input Real ${inp};`);
+    }
+    for (const out of trained.outputNames) {
+      lines.push(`  output Real ${out};`);
+    }
+
+    const totalHidden = trained.layers.slice(0, -1).reduce((s, l) => s + l.outDim, 0);
+    const useMatrix = options.useMatrixForm ?? totalHidden > 48;
+
+    lines.push(``);
+    if (useMatrix) {
+      lines.push(`  parameter Real x_mean[${trained.inputDim}] = {${trained.inputMean.map(formatNumber).join(", ")}};`);
+      lines.push(`  parameter Real x_std[${trained.inputDim}] = {${trained.inputStd.map(formatNumber).join(", ")}};`);
+      lines.push(
+        `  parameter Real y_mean[${trained.outputDim}] = {${trained.outputMean.map(formatNumber).join(", ")}};`,
+      );
+      lines.push(`  parameter Real y_std[${trained.outputDim}] = {${trained.outputStd.map(formatNumber).join(", ")}};`);
+
+      for (let l = 0; l < trained.layers.length; l++) {
+        const layer = trained.layers[l]!;
+        const rows: string[] = [];
+        for (let o = 0; o < layer.outDim; o++) {
+          const rowVals = layer.weights.slice(o * layer.inDim, (o + 1) * layer.inDim).map(formatNumber);
+          rows.push(`{${rowVals.join(", ")}}`);
+        }
+        lines.push(`  parameter Real W_${l}[${layer.outDim}, ${layer.inDim}] = {${rows.join(", ")}};`);
+        lines.push(`  parameter Real b_${l}[${layer.outDim}] = {${layer.biases.map(formatNumber).join(", ")}};`);
+      }
+
+      lines.push(`  Real x_norm[${trained.inputDim}];`);
+      for (let l = 0; l < trained.layers.length; l++) {
+        const layer = trained.layers[l]!;
+        lines.push(`  Real z_${l}[${layer.outDim}];`);
+      }
+      lines.push(`equation`);
+      for (let i = 0; i < trained.inputDim; i++) {
+        lines.push(`  x_norm[${i + 1}] = (${trained.inputNames[i]} - x_mean[${i + 1}]) / x_std[${i + 1}];`);
+      }
+      for (let l = 0; l < trained.layers.length; l++) {
+        const layer = trained.layers[l]!;
+        const isLast = l === trained.layers.length - 1;
+        const prevVec = l === 0 ? "x_norm" : `z_${l - 1}`;
+        lines.push(`  for o in 1:${layer.outDim} loop`);
+        if (!isLast) {
+          lines.push(`    z_${l}[o] = tanh(b_${l}[o] + sum(W_${l}[o, i] * ${prevVec}[i] for i in 1:${layer.inDim}));`);
+        } else {
+          lines.push(`    z_${l}[o] = b_${l}[o] + sum(W_${l}[o, i] * ${prevVec}[i] for i in 1:${layer.inDim});`);
+        }
+        lines.push(`  end for;`);
+      }
+      for (let o = 0; o < trained.outputDim; o++) {
+        lines.push(
+          `  ${trained.outputNames[o]} = z_${trained.layers.length - 1}[${o + 1}] * y_std[${o + 1}] + y_mean[${o + 1}];`,
+        );
+      }
+    } else {
+      lines.push(`  // Normalized inputs & hidden activations`);
+      for (let i = 0; i < trained.inputDim; i++) {
+        lines.push(`  Real x_norm_${i};`);
+      }
+      for (let l = 0; l < trained.layers.length - 1; l++) {
+        const layer = trained.layers[l]!;
+        for (let o = 0; o < layer.outDim; o++) {
+          lines.push(`  Real h_${l}_${o};`);
+        }
+      }
+
+      lines.push(`equation`);
+      for (let i = 0; i < trained.inputDim; i++) {
+        const mean = formatNumber(trained.inputMean[i] ?? 0);
+        const std = formatNumber(trained.inputStd[i] ?? 1);
+        lines.push(`  x_norm_${i} = (${trained.inputNames[i]} - (${mean})) / (${std});`);
+      }
+
+      for (let l = 0; l < trained.layers.length; l++) {
+        const layer = trained.layers[l]!;
+        const isLast = l === trained.layers.length - 1;
+        for (let o = 0; o < layer.outDim; o++) {
+          const terms: string[] = [formatNumber(layer.biases[o] ?? 0)];
+          const rowOffset = o * layer.inDim;
+          for (let i = 0; i < layer.inDim; i++) {
+            const w = layer.weights[rowOffset + i] ?? 0;
+            if (Math.abs(w) > 1e-12) {
+              const prevVar = l === 0 ? `x_norm_${i}` : `h_${l - 1}_${i}`;
+              terms.push(`(${formatNumber(w)}) * ${prevVar}`);
+            }
+          }
+          const affine = terms.join(" + ");
+          if (!isLast) {
+            lines.push(`  h_${l}_${o} = tanh(${affine});`);
+          } else {
+            const oMean = formatNumber(trained.outputMean[o] ?? 0);
+            const oStd = formatNumber(trained.outputStd[o] ?? 1);
+            lines.push(`  ${trained.outputNames[o]} = (${affine}) * (${oStd}) + (${oMean});`);
+          }
+        }
+      }
+    }
+
+    lines.push(`end ${options.modelName};`, ``);
+    return lines.join("\n");
+  }
 }
 
 export const emitModelicaROM = ModelicaSurrogateEmitter.emitModelicaFromROM;
+export const emitWamResidualModelica = ModelicaSurrogateEmitter.emitWamResidualModelica;
 
 function formatNumber(val: number): string {
   if (Number.isInteger(val)) return `${val}.0`;

@@ -22,7 +22,7 @@ export const powerFactoryLanguage = language({
   polyglot: powerfactoryPolyglotConfig,
   name: "powerfactory",
   fileExtensions: [".dz", ".pfd", ".dsl"],
-  maturity: "beta",
+  maturity: "stable",
   lsp: {
     fileExtensions: [".dz", ".pfd", ".dsl"],
   },

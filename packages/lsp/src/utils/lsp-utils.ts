@@ -1,7 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { scanStepEntities } from "@modelscript/step";
 import { createRequire } from "node:module";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
+import { isDigitCode } from "./lexical-utils.js";
+
+function isStepEntityRefName(name: string): string | undefined {
+  const digits = name.startsWith("#") ? name.slice(1) : name;
+  if (!digits) return undefined;
+  for (let i = 0; i < digits.length; i++) {
+    if (!isDigitCode(digits.charCodeAt(i))) return undefined;
+  }
+  return `#${digits}`;
+}
 
 let nodeRequire: any = null;
 try {
@@ -61,12 +72,13 @@ export function symbolEntryToLocation(
     const baseEnd = entry.endOffset ?? baseStart;
     if (text && entry.name && entry.name !== "<anonymous>") {
       // Check for STEP entity reference: #123
-      if (/^#?\d+$/.test(entry.name)) {
-        const num = entry.name.replace("#", "");
-        const stepMatch = new RegExp(`^#${num}\\s*=`, "m").exec(text);
-        if (stepMatch) {
-          startOff = stepMatch.index;
-          endOff = startOff + stepMatch[0].length;
+      const wantedStepId = isStepEntityRefName(entry.name);
+      if (wantedStepId) {
+        const entity = scanStepEntities(text).find((e) => e.id === wantedStepId);
+        if (entity) {
+          startOff = entity.startOffset;
+          const eqIdx = text.indexOf("=", entity.startOffset);
+          endOff = eqIdx !== -1 ? eqIdx + 1 : entity.startOffset + wantedStepId.length;
         }
       }
       if (startOff === undefined || endOff === undefined) {

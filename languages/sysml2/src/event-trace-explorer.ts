@@ -18,6 +18,7 @@ import {
   TraceRecordNormalizer,
 } from "@modelscript/runtime";
 import { type ActivityGraph, extractActivityGraphsFromText } from "./activity-cfa.js";
+import { collectCstLeaves, isSysmlIdentLeaf, parseSysmlSource, readDottedChainFromLeaves } from "./cst-utils.js";
 
 export interface SysML2EventExplorationOptions {
   scope?: number | undefined; // Scope k for loop unrolling / instances (default: 2)
@@ -51,48 +52,62 @@ export interface SysML2EventExplorationResult {
  */
 function extractEventAssertions(sysmlSource: string): EventAssertion[] {
   const assertions: EventAssertion[] = [];
-
-  // 1. assert not (A and B) or assert mutex(A, B)
-  const mutexRegex =
-    /\bassert\s+(?:not\s*\(\s*([A-Za-z0-9_.]+)\s+and\s+([A-Za-z0-9_.]+)\s*\)|mutex\s*\(\s*([A-Za-z0-9_.]+)\s*,\s*([A-Za-z0-9_.]+)\s*\))/gi;
-  let m: RegExpExecArray | null;
+  const leaves = collectCstLeaves(parseSysmlSource(sysmlSource));
   let idx = 0;
-  while ((m = mutexRegex.exec(sysmlSource)) !== null) {
-    const a = m[1] || m[3];
-    const b = m[2] || m[4];
-    if (a && b) {
-      assertions.push({
-        id: `ASSERT_MUTEX_${++idx}`,
-        description: `Mutual exclusion: '${a}' and '${b}' cannot co-occur in the same trace`,
-        type: "mutex",
-        eventA: a.trim(),
-        eventB: b.trim(),
-      });
+
+  for (let i = 0; i < leaves.length; i++) {
+    if (leaves[i]!.text.toLowerCase() !== "assert") continue;
+    const kw = leaves[i + 1]?.text.toLowerCase();
+
+    if (kw === "not" && leaves[i + 2]?.text === "(") {
+      const a = readDottedChainFromLeaves(leaves, i + 3);
+      if (a && leaves[a.nextIdx]?.text.toLowerCase() === "and") {
+        const b = readDottedChainFromLeaves(leaves, a.nextIdx + 1);
+        if (b && leaves[b.nextIdx]?.text === ")") {
+          assertions.push({
+            id: `ASSERT_MUTEX_${++idx}`,
+            description: `Mutual exclusion: '${a.text}' and '${b.text}' cannot co-occur in the same trace`,
+            type: "mutex",
+            eventA: a.text,
+            eventB: b.text,
+          });
+        }
+      }
+      continue;
     }
-  }
 
-  // 2. assert precedes(A, B)
-  const precRegex = /\bassert\s+precedes\s*\(\s*([A-Za-z0-9_.]+)\s*,\s*([A-Za-z0-9_.]+)\s*\)/gi;
-  while ((m = precRegex.exec(sysmlSource)) !== null) {
-    assertions.push({
-      id: `ASSERT_PREC_${++idx}`,
-      description: `Precedence requirement: '${m[1]}' must precede '${m[2]}'`,
-      type: "precedence",
-      eventA: m[1]!.trim(),
-      eventB: m[2]!.trim(),
-    });
-  }
+    if ((kw === "mutex" || kw === "precedes" || kw === "response") && leaves[i + 2]?.text === "(") {
+      const a = readDottedChainFromLeaves(leaves, i + 3);
+      if (!a || leaves[a.nextIdx]?.text !== ",") continue;
+      const b = readDottedChainFromLeaves(leaves, a.nextIdx + 1);
+      if (!b || leaves[b.nextIdx]?.text !== ")") continue;
 
-  // 3. assert response(A, B) - whenever A occurs, B must eventually occur
-  const respRegex = /\bassert\s+response\s*\(\s*([A-Za-z0-9_.]+)\s*,\s*([A-Za-z0-9_.]+)\s*\)/gi;
-  while ((m = respRegex.exec(sysmlSource)) !== null) {
-    assertions.push({
-      id: `ASSERT_RESP_${++idx}`,
-      description: `Response requirement: occurrence of '${m[1]}' requires '${m[2]}'`,
-      type: "response",
-      eventA: m[1]!.trim(),
-      eventB: m[2]!.trim(),
-    });
+      if (kw === "mutex") {
+        assertions.push({
+          id: `ASSERT_MUTEX_${++idx}`,
+          description: `Mutual exclusion: '${a.text}' and '${b.text}' cannot co-occur in the same trace`,
+          type: "mutex",
+          eventA: a.text,
+          eventB: b.text,
+        });
+      } else if (kw === "precedes") {
+        assertions.push({
+          id: `ASSERT_PREC_${++idx}`,
+          description: `Precedence requirement: '${a.text}' must precede '${b.text}'`,
+          type: "precedence",
+          eventA: a.text,
+          eventB: b.text,
+        });
+      } else {
+        assertions.push({
+          id: `ASSERT_RESP_${++idx}`,
+          description: `Response requirement: occurrence of '${a.text}' requires '${b.text}'`,
+          type: "response",
+          eventA: a.text,
+          eventB: b.text,
+        });
+      }
+    }
   }
 
   return assertions;
@@ -181,16 +196,27 @@ export class SysML2EventTraceExplorer {
 
     // Extract item flows / message passing between activities as coordinations
     // e.g. flow from ActA.outPin to ActB.inPin
-    const flowRegex = /\bflow\s+from\s+([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\s+to\s+([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)/g;
-    let fm: RegExpExecArray | null;
-    while ((fm = flowRegex.exec(sysmlSource)) !== null) {
-      coordinations.push({
-        sourceActor: fm[1]!,
-        sourceEvent: fm[2]!,
-        targetActor: fm[3]!,
-        targetEvent: fm[4]!,
-        relation: "precedes",
-      });
+    const leaves = collectCstLeaves(parseSysmlSource(sysmlSource));
+    for (let i = 0; i + 8 < leaves.length; i++) {
+      if (
+        leaves[i]!.text === "flow" &&
+        leaves[i + 1]!.text === "from" &&
+        isSysmlIdentLeaf(leaves[i + 2]!.text) &&
+        leaves[i + 3]!.text === "." &&
+        isSysmlIdentLeaf(leaves[i + 4]!.text) &&
+        leaves[i + 5]!.text === "to" &&
+        isSysmlIdentLeaf(leaves[i + 6]!.text) &&
+        leaves[i + 7]!.text === "." &&
+        isSysmlIdentLeaf(leaves[i + 8]!.text)
+      ) {
+        coordinations.push({
+          sourceActor: leaves[i + 2]!.text,
+          sourceEvent: leaves[i + 4]!.text,
+          targetActor: leaves[i + 6]!.text,
+          targetEvent: leaves[i + 8]!.text,
+          relation: "precedes",
+        });
+      }
     }
 
     const assertions = extractEventAssertions(sysmlSource);

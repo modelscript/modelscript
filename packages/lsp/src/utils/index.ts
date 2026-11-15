@@ -5,5 +5,6 @@ export * from "./ast-utils.js";
 export * from "./filesystem.js";
 export * from "./hierarchy-utils.js";
 export * from "./hook-extractor.js";
+export * from "./lexical-utils.js";
 export * from "./line-index.js";
 export * from "./lsp-utils.js";

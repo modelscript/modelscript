@@ -126,14 +126,37 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
     ) {
       const text = node.text || "";
       // If already wrapped in homotopy, skip per MLS §3.7.2.4 (nested homotopy is not needed)
-      if (text.includes("homotopy(") || text.includes("homotopy (") || /homotopy\s*\(/.test(text)) {
+      const isHomotopyCallAt = (s: string, kwIdx: number): boolean => {
+        if (kwIdx > 0) {
+          const prev = s.charCodeAt(kwIdx - 1);
+          if ((prev >= 65 && prev <= 90) || (prev >= 97 && prev <= 122) || (prev >= 48 && prev <= 57) || prev === 95) {
+            return false;
+          }
+        }
+        let j = kwIdx + 8;
+        while (j < s.length && (s[j] === " " || s[j] === "\t" || s[j] === "\n" || s[j] === "\r")) j++;
+        return s[j] === "(";
+      };
+      let hasHomotopy = false;
+      let searchPos = 0;
+      while ((searchPos = text.indexOf("homotopy", searchPos)) >= 0) {
+        if (isHomotopyCallAt(text, searchPos)) {
+          hasHomotopy = true;
+          break;
+        }
+        searchPos += 8;
+      }
+      if (hasHomotopy) {
         return;
       }
 
       // Guard against sub-expressions that are immediately preceded by `homotopy(`
       const isAlreadyInHomotopy = (idx: number) => {
-        const prefix = text.slice(0, idx).trimEnd();
-        return /homotopy\s*\(\s*$/.test(prefix);
+        const beforeParen = text.slice(0, idx).trimEnd();
+        if (!beforeParen.endsWith("(")) return false;
+        const beforeCall = beforeParen.slice(0, -1).trimEnd();
+        if (!beforeCall.endsWith("homotopy")) return false;
+        return isHomotopyCallAt(beforeParen, beforeCall.length - 8);
       };
 
       // Check for nonlinear patterns in equation CST first, then fallback to text

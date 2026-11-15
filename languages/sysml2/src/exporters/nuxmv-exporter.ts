@@ -2,6 +2,71 @@
 
 import type { QueryDB } from "@modelscript/runtime";
 import type { AssumeGuaranteeContract } from "../contract-verifier.js";
+import {
+  collectCstLeaves,
+  isSysmlIdentLeaf,
+  parseSysmlSource,
+  tokenizeSysmlExpressionCst,
+  type CstLeaf,
+} from "../cst-utils.js";
+
+function formatExprForTarget(expr: string, target: "nuxmv" | "ocra"): string {
+  const toks = tokenizeSysmlExpressionCst(expr);
+  const pieces: { text: string; type: string }[] = [];
+  for (const t of toks) {
+    if (t.type === "eof") break;
+    const low = t.text.toLowerCase();
+    let text = t.text;
+    if (target === "nuxmv") {
+      if (low === "and") text = "&";
+      else if (low === "or") text = "|";
+      else if (low === "not") text = "!";
+      else if (t.text === "==") text = "=";
+    } else {
+      if (low === "and") text = "and";
+      else if (low === "or") text = "or";
+      else if (t.text === "==") text = "=";
+    }
+    pieces.push({ text, type: t.type });
+  }
+
+  let out = "";
+  for (let i = 0; i < pieces.length; i++) {
+    const cur = pieces[i]!;
+    const prev = i > 0 ? pieces[i - 1]! : undefined;
+    const prev2 = i > 1 ? pieces[i - 2]! : undefined;
+    if (prev) {
+      const noSpaceBefore = cur.text === ")" || cur.text === "," || cur.text === ";";
+      const noSpaceAfter =
+        prev.text === "(" ||
+        (prev.text === "!" && target === "nuxmv") ||
+        ((prev.text === "-" || prev.text === "+") &&
+          prev.type === "op" &&
+          (!prev2 || prev2.text === "(" || prev2.type === "op"));
+      if (!noSpaceBefore && !noSpaceAfter) {
+        out += " ";
+      }
+    }
+    out += cur.text;
+  }
+  return out.trim();
+}
+
+function extractStatementClause(
+  leaves: readonly CstLeaf[],
+  source: string,
+  keywords: readonly string[],
+): string | undefined {
+  for (let i = 0; i < leaves.length; i++) {
+    if (!keywords.includes(leaves[i]!.text)) continue;
+    let semi = i + 1;
+    while (semi < leaves.length && leaves[semi]!.text !== ";") semi++;
+    if (semi >= leaves.length) continue;
+    if (semi === i + 1) return "";
+    return source.slice(leaves[i + 1]!.start, leaves[semi - 1]!.end).trim();
+  }
+  return undefined;
+}
 
 export interface NuXmvVarDecl {
   name: string;
@@ -49,15 +114,7 @@ export interface OcraExportOptions {
  * e.g. "x >= 10 && x <= 20" -> "x >= 10 & x <= 20"
  */
 function normalizeGuardToNuXmv(guard: string): string {
-  return guard
-    .replace(/&&/g, " & ")
-    .replace(/\band\b/gi, " & ")
-    .replace(/\|\|/g, " | ")
-    .replace(/\bor\b/gi, " | ")
-    .replace(/!([^=])/g, "!$1")
-    .replace(/==/g, "=")
-    .replace(/\s+/g, " ")
-    .trim();
+  return formatExprForTarget(guard, "nuxmv");
 }
 
 /**
@@ -138,10 +195,13 @@ export function exportToNuXmv(db: QueryDB, options: NuXmvExportOptions = {}): st
     if (!source || !target) {
       const text = db.cstText(t.startOffset, t.endOffset, t);
       if (text) {
-        const match = text.match(/first\s+([a-zA-Z0-9_]+).*?then\s+([a-zA-Z0-9_]+)/);
-        if (match) {
-          source = source || match[1];
-          target = target || match[2];
+        const leaves = collectCstLeaves(parseSysmlSource(text));
+        for (let i = 0; i + 1 < leaves.length; i++) {
+          if (leaves[i]!.text === "first" && isSysmlIdentLeaf(leaves[i + 1]?.text)) {
+            source = source || leaves[i + 1]!.text;
+          } else if (leaves[i]!.text === "then" && isSysmlIdentLeaf(leaves[i + 1]?.text)) {
+            target = target || leaves[i + 1]!.text;
+          }
         }
       }
     }
@@ -192,13 +252,7 @@ export function exportToNuXmv(db: QueryDB, options: NuXmvExportOptions = {}): st
  * Normalizes a contract condition for OCRA .oss format.
  */
 function normalizeConditionToOcra(cond: string): string {
-  return cond
-    .replace(/&&/g, " and ")
-    .replace(/\|\|/g, " or ")
-    .replace(/==/g, "=")
-    .replace(/!==/g, "!=")
-    .replace(/\s+/g, " ")
-    .trim();
+  return formatExprForTarget(cond, "ocra");
 }
 
 /**
@@ -265,13 +319,14 @@ export function exportToOcra(
         e.ruleName === "ConstraintUsage"
       ) {
         const text = db.cstText(e.startOffset, e.endOffset, e) ?? "";
-        const assumeMatch = text.match(/assume\s+(.*?);/);
-        const requireMatch = text.match(/require\s+(.*?);/) || text.match(/guarantee\s+(.*?);/);
-        if (assumeMatch || requireMatch) {
+        const leaves = collectCstLeaves(parseSysmlSource(text));
+        const assumeClause = extractStatementClause(leaves, text, ["assume"]);
+        const requireClause = extractStatementClause(leaves, text, ["require", "guarantee"]);
+        if (assumeClause !== undefined || requireClause !== undefined) {
           extractedContracts.push({
             name: e.name || `contract_${e.id}`,
-            assumptions: assumeMatch ? [assumeMatch[1]!] : ["TRUE"],
-            guarantees: requireMatch ? [requireMatch[1]!] : ["TRUE"],
+            assumptions: assumeClause !== undefined ? [assumeClause] : ["TRUE"],
+            guarantees: requireClause !== undefined ? [requireClause] : ["TRUE"],
           });
         }
       }

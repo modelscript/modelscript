@@ -42,6 +42,7 @@ import * as sysml2DiagramOps from "@modelscript/sysml2/diagram";
 import { buildSysML2DiagramData } from "@modelscript/sysml2/factory";
 
 import { FIELD_NAMES as csvFieldNames, SYNTAX_NAMES as csvSyntaxNames } from "@modelscript/csv/parser";
+import { FIELD_NAMES as lasFieldNames, SYNTAX_NAMES as lasSyntaxNames } from "@modelscript/las/parser";
 import { FIELD_NAMES as modelicaFieldNames, SYNTAX_NAMES as modelicaSyntaxNames } from "@modelscript/modelica/parser";
 import { FIELD_NAMES as owl2FieldNames, SYNTAX_NAMES as owl2SyntaxNames } from "@modelscript/owl2/parser";
 import { FIELD_NAMES as scadFieldNames, SYNTAX_NAMES as scadSyntaxNames } from "@modelscript/scad/parser";
@@ -55,7 +56,7 @@ import { DiagramService } from "./services/diagram-service.js";
 import { HierarchyService } from "./services/hierarchy-service.js";
 import { ParserService } from "./services/parser-service.js";
 import { ValidationService, deduplicateAllDiagnostics } from "./services/validation-service.js";
-import { computeTreeEdit } from "./utils/ast-utils.js";
+import { parseTreeWithXmlGuard } from "./utils/ast-utils.js";
 import { LspWorkDoneProgressReporter } from "./utils/progress-reporter.js";
 import { BrowserFileSystem } from "./vfs/browser-file-system.js";
 import { type LoaderContext, loadRegistryPackages } from "./vfs/library-loader.js";
@@ -122,6 +123,8 @@ globalThis.createSysML2QueryEngine = createSysML2QueryEngine;
 (globalThis as any).owl2FieldNames = owl2FieldNames;
 (globalThis as any).csvSyntaxNames = csvSyntaxNames;
 (globalThis as any).csvFieldNames = csvFieldNames;
+(globalThis as unknown as Record<string, unknown>)["lasSyntaxNames"] = lasSyntaxNames;
+(globalThis as unknown as Record<string, unknown>)["lasFieldNames"] = lasFieldNames;
 (globalThis as any).scadSyntaxNames = scadSyntaxNames;
 (globalThis as any).scadFieldNames = scadFieldNames;
 
@@ -274,6 +277,16 @@ Object.defineProperty(globalThis, "csvParser", {
 Object.defineProperty(globalThis, "csvParserReady", {
   get: () => parserService.csvParserReady,
   set: (v) => (parserService.csvParserReady = v),
+  configurable: true,
+});
+Object.defineProperty(globalThis, "lasParser", {
+  get: () => parserService.lasParser,
+  set: (v) => (parserService.lasParser = v),
+  configurable: true,
+});
+Object.defineProperty(globalThis, "lasParserReady", {
+  get: () => parserService.lasParserReady,
+  set: (v) => (parserService.lasParserReady = v),
   configurable: true,
 });
 
@@ -613,13 +626,21 @@ documents.onDidChangeContent((change) => {
   const plugin = globalLanguageRegistry.getPluginForUri(uri);
   const isCfd = plugin?.id === "cfd" || /\.(cfg|cfgt|su2|cfd)$/i.test(uri);
   const isFea = plugin?.id === "fea" || /\.(inp|inpt|bdf|fea)$/i.test(uri);
-  if (isCfd || isFea) {
+  const isLargeStep =
+    (plugin?.id === "step" || /\.(step|stp|p21)$/i.test(uri)) && change.document.getText().length > 32_768;
+  const hasCustomValidator = Boolean(plugin?.customHandlers?.validate);
+  if (isCfd || isFea || isLargeStep || hasCustomValidator) {
     activeSyntaxDebounceTimers.set(
       uri,
-      setTimeout(async () => {
-        activeSyntaxDebounceTimers.delete(uri);
-        await validationService.validateTextDocument(change.document);
-      }, 100),
+      setTimeout(
+        async () => {
+          activeSyntaxDebounceTimers.delete(uri);
+          if ((validationService.documentRevisions.get(uri) ?? 0) !== currentRevision) return;
+          const latestDoc = documents.get(uri);
+          await validationService.validateTextDocument(latestDoc ?? change.document);
+        },
+        hasCustomValidator ? 60 : 100,
+      ),
     );
     return;
   }
@@ -634,17 +655,14 @@ documents.onDidChangeContent((change) => {
     try {
       const text = change.document.getText();
       const oldCached = documentManager.documentTrees.get(uri);
-      let tree: any;
-
-      if (oldCached && oldCached.text !== text) {
-        const edit = computeTreeEdit(oldCached.text, text);
-        validationService.adjustDiagnostics(uri, edit);
-        tree = parser.parse(text, oldCached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex, uri);
-      } else if (oldCached) {
-        tree = oldCached.tree;
-      } else {
-        tree = parser.parse(text);
-      }
+      const tree: any = parseTreeWithXmlGuard({
+        uri,
+        text,
+        plugin,
+        parser,
+        oldCached,
+        onIncrementalEdit: (edit) => validationService.adjustDiagnostics(uri, edit),
+      });
 
       if (tree) {
         if (oldCached?.tree && oldCached.tree !== tree) {

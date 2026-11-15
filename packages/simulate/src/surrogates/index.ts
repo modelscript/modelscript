@@ -17,3 +17,4 @@ export * from "./pinn-trainer.js";
 export * from "./rom-trainer.js";
 export * from "./surrogate-continuum-participant.js";
 export * from "./surrogate-pipeline.js";
+export * from "./wam-residual-trainer.js";

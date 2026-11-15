@@ -171,9 +171,18 @@ For safety-critical industries (aerospace DO-178C, automotive ISO 26262, medical
 
 ### Cryptographic Hash-Chained Audit Ledger (`/api/v1/threads/audit-log`)
 
-Every mutation to a requirement, model equation, TGG alignment link, verification proof, or administrative setting is appended to a PostgreSQL audit ledger where each record $k$ stores:
+Every mutation to a requirement, model equation, TGG alignment link, verification proof, or administrative setting is appended to a PostgreSQL audit ledger where each record $k$ chains its cryptographic digest to the previous record:
 
 $$H_k = \text{SHA256}\bigl(H_{k-1} \;\|\; \text{timestamp}_k \;\|\; \text{actorId}_k \;\|\; \text{action}_k \;\|\; \text{payloadHash}_k\bigr)$$
+
+| Symbol                 | Meaning                                                              | Units / Domain     |
+| :--------------------- | :------------------------------------------------------------------- | :----------------- |
+| $H_k, H_{k-1}$         | SHA-256 chain digests for audit record $k$ and its predecessor $k-1$ | 256-bit hex string |
+| $\text{timestamp}_k$   | UTC timestamp when record $k$ was committed                          | ISO-8601 string    |
+| $\text{actorId}_k$     | Authenticated user or service-account identifier                     | UUID / string      |
+| $\text{action}_k$      | Mutation event type (e.g., `CREATE_LINK`, `VERIFY_PROOF`)            | Enum / string      |
+| $\text{payloadHash}_k$ | SHA-256 digest of the canonicalized JSON mutation payload            | 256-bit hex string |
+| $\|$                   | Deterministic string/byte concatenation operator                     | —                  |
 
 Operators and external auditors can verify the unbroken integrity of the entire historical chain at any time via the CLI or REST API:
 

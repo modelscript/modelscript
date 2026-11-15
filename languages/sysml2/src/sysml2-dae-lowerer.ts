@@ -24,10 +24,15 @@ import {
   type WorkspaceIndex,
 } from "@modelscript/runtime";
 
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { createWasmParserSync } from "../src-gen/bindings.js";
+import {
+  collectCstLeaves,
+  type CstLeaf,
+  findMatchingBraceLeaf,
+  getSysmlParser,
+  isSysmlIdentLeaf,
+  parseSysmlSource,
+  type SysmlWasmParser,
+} from "./cst-utils.js";
 import {
   findCstDescendants,
   findFirstDescendant,
@@ -40,39 +45,8 @@ import {
   tokenizeSysml,
 } from "./flattener/cst-lowerer.js";
 
-export { lowerSysmlExpr, prefixSysmlExpression, SysmlExprParser, tokenizeSysml };
-export type { SysML2Token };
-
-export type SysmlWasmParser = NonNullable<ReturnType<typeof createWasmParserSync>>["parser"] & {
-  parse(text: string): { rootNode?: SysmlCstNode | null | undefined } | null | undefined;
-};
-
-let cachedSysmlParser: SysmlWasmParser | null = null;
-/**
- * Lazily loads and caches the synchronous WebAssembly GLR parser for SysML v2 (`parser.wasm`).
- *
- * @returns Initialized WASM parser instance or `null` if the binary is unavailable.
- */
-export function getSysmlParser(): SysmlWasmParser | null {
-  if (cachedSysmlParser) return cachedSysmlParser;
-  try {
-    const currentDir = path.dirname(fileURLToPath(import.meta.url));
-    const candidatePaths = [
-      path.resolve(currentDir, "../dist/parser.wasm"),
-      path.resolve(currentDir, "../parser.wasm"),
-      path.resolve(currentDir, "../.cache/parser.wasm"),
-      path.resolve(currentDir, "../../dist/parser.wasm"),
-      path.resolve(currentDir, "../../parser.wasm"),
-    ];
-    const wasmPath = candidatePaths.find((p) => fs.existsSync(p));
-    if (wasmPath) {
-      cachedSysmlParser = (createWasmParserSync(wasmPath)?.parser as SysmlWasmParser | undefined) ?? null;
-    }
-  } catch {
-    // Parser fallback
-  }
-  return cachedSysmlParser;
-}
+export { getSysmlParser, lowerSysmlExpr, prefixSysmlExpression, SysmlExprParser, tokenizeSysml };
+export type { SysML2Token, SysmlWasmParser };
 
 /**
  * Result of lowering an imperative SysML v2 `action` or `calc` block into `DAEBuilder` statements.
@@ -157,43 +131,59 @@ export class SysML2DaeLowerer {
 
     const arena = existingArena ?? new DAEBuilder();
 
-    const actionBlocks: { name: string; bodyText: string }[] = [];
-    const parser = getSysmlParser();
-    const tree = parser?.parse(sysmlSource);
-    const root = tree?.rootNode;
+    const actionBlocks: { name: string; bodyText: string; paramLeaves?: readonly CstLeaf[] }[] = [];
+    const root = parseSysmlSource(sysmlSource);
+    const allLeaves = collectCstLeaves(root);
     if (root) {
       const actionDefNodes = [
         ...findCstDescendants(root, "ActionDefinition"),
-        ...findCstDescendants(root, "CalcDefinition"),
+        ...findCstDescendants(root, "CalculationDefinition"),
       ];
       for (const adNode of actionDefNodes) {
         const nameNode = findFirstDescendant(adNode, "Name") || findFirstDescendant(adNode, "ID");
         const blockName = nameNode?.text?.trim();
         if (blockName) {
-          const bodyText = adNode.text || "";
-          actionBlocks.push({ name: blockName, bodyText });
+          const adLeaves = collectCstLeaves(adNode);
+          const openIdx = adLeaves.findIndex((lf) => lf.text === "{");
+          const closeIdx = openIdx !== -1 ? findMatchingBraceLeaf(adLeaves, openIdx) : -1;
+          const bodyText =
+            openIdx !== -1 && closeIdx > openIdx
+              ? sysmlSource.slice(adLeaves[openIdx]!.end, adLeaves[closeIdx]!.start)
+              : adNode.text || "";
+          actionBlocks.push({ name: blockName, bodyText, paramLeaves: adLeaves });
         }
       }
     }
 
     if (actionBlocks.length === 0) {
-      // Extract all action/calc blocks in the source (supports standalone or embedded in part/package)
-      const blockHeaderRegex = /\b(?:action|calc)\s+(?:def\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\{/g;
-      let bm: RegExpExecArray | null;
-      while ((bm = blockHeaderRegex.exec(sysmlSource)) !== null) {
-        const blockName = bm[1]!;
-        const openBrace = sysmlSource.indexOf("{", bm.index);
-        if (openBrace !== -1) {
-          const { body, endPos } = this.extractBraceBlock(sysmlSource, openBrace);
-          actionBlocks.push({ name: blockName, bodyText: body });
-          blockHeaderRegex.lastIndex = endPos;
+      // Extract all action/calc blocks from WASM CST leaves (supports standalone or embedded in part/package)
+      for (let i = 0; i < allLeaves.length; i++) {
+        const tok = allLeaves[i]!.text;
+        if (tok !== "action" && tok !== "calc") continue;
+        let j = i + 1;
+        if (allLeaves[j]?.text === "def") j++;
+        const blockName = allLeaves[j]?.text;
+        if (isSysmlIdentLeaf(blockName) && allLeaves[j + 1]?.text === "{") {
+          const closeIdx = findMatchingBraceLeaf(allLeaves, j + 1);
+          const bodyText = sysmlSource.slice(allLeaves[j + 1]!.end, allLeaves[closeIdx]!.start);
+          actionBlocks.push({ name: blockName, bodyText, paramLeaves: allLeaves.slice(j + 2, closeIdx) });
+          i = closeIdx;
         }
       }
     }
 
     if (actionBlocks.length === 0) {
-      const nameMatch = /(?:action|calc)\s+(?:def\s+)?([A-Za-z_][A-Za-z0-9_]*)/.exec(sysmlSource);
-      const fallbackName = nameMatch ? nameMatch[1]! : "AnonymousAction";
+      let fallbackName = "AnonymousAction";
+      for (let i = 0; i < allLeaves.length; i++) {
+        const tok = allLeaves[i]!.text;
+        if (tok !== "action" && tok !== "calc") continue;
+        let j = i + 1;
+        if (allLeaves[j]?.text === "def") j++;
+        if (isSysmlIdentLeaf(allLeaves[j]?.text)) {
+          fallbackName = allLeaves[j]!.text;
+          break;
+        }
+      }
       const openBrace = sysmlSource.indexOf("{");
       const closeBrace = sysmlSource.lastIndexOf("}");
       const bodyText =
@@ -210,39 +200,50 @@ export class SysML2DaeLowerer {
 
     for (const block of actionBlocks) {
       const { bodyText } = block;
+      const paramLeaves = block.paramLeaves ?? collectCstLeaves(parseSysmlSource(bodyText));
 
-      // 1. Extract pins / parameters from this action/calc block
-      const pinRegex = /\b(in|out)\s+(?:item\s+|attribute\s+)?([A-Za-z_][A-Za-z0-9_]*)(?:\s*:\s*([A-Za-z0-9_.:]+))?/g;
-      let pm: RegExpExecArray | null;
-      while ((pm = pinRegex.exec(bodyText)) !== null) {
-        const dir = pm[1];
-        const pName = pm[2]!;
-        const isInput = dir === "in";
-
-        if (isInput) {
-          if (!inputs.includes(pName)) inputs.push(pName);
-          if (arena.lookupVariable(pName) === -1) {
-            arena.addVariable(pName, VarType.Real, Variability.Continuous, Causality.Input);
+      // 1. Extract pins and return parameters from CST leaves of this action/calc block
+      for (let i = 0; i < paramLeaves.length; i++) {
+        const tok = paramLeaves[i]!.text;
+        if (tok === "in" || tok === "out") {
+          let j = i + 1;
+          if (paramLeaves[j]?.text === "item" || paramLeaves[j]?.text === "attribute") j++;
+          const pName = paramLeaves[j]?.text;
+          if (isSysmlIdentLeaf(pName)) {
+            if (tok === "in") {
+              if (!inputs.includes(pName)) inputs.push(pName);
+              if (arena.lookupVariable(pName) === -1) {
+                arena.addVariable(pName, VarType.Real, Variability.Continuous, Causality.Input);
+              }
+            } else {
+              if (!outputs.includes(pName)) outputs.push(pName);
+              if (arena.lookupVariable(pName) === -1) {
+                arena.addVariable(pName, VarType.Real, Variability.Continuous, Causality.Output);
+              }
+            }
           }
-        } else {
-          if (!outputs.includes(pName)) outputs.push(pName);
-          if (arena.lookupVariable(pName) === -1) {
-            arena.addVariable(pName, VarType.Real, Variability.Continuous, Causality.Output);
-          }
+          continue;
         }
-      }
 
-      // Return parameter declaration in calc def: return [item|attribute] <name> : <type>;
-      const retParamRegex =
-        /\breturn\s+(?:(?:item|attribute)\s+([A-Za-z_][A-Za-z0-9_]*)|([A-Za-z_][A-Za-z0-9_]*)\s*:\s*[A-Za-z_][A-Za-z0-9_.:]*)/g;
-      let rpm: RegExpExecArray | null;
-      while ((rpm = retParamRegex.exec(bodyText)) !== null) {
-        const retName = (rpm[1] ?? rpm[2])!;
-        if (!outputs.includes(retName)) {
-          outputs.push(retName);
-        }
-        if (arena.lookupVariable(retName) === -1) {
-          arena.addVariable(retName, VarType.Real, Variability.Continuous, Causality.Output);
+        // Return parameter declaration in calc def: return [item|attribute] <name> : <type>;
+        if (tok === "return") {
+          const t1 = paramLeaves[i + 1]?.text;
+          const t2 = paramLeaves[i + 2]?.text;
+          const t3 = paramLeaves[i + 3]?.text;
+          let retName: string | undefined;
+          if ((t1 === "item" || t1 === "attribute") && isSysmlIdentLeaf(t2)) {
+            retName = t2;
+          } else if (isSysmlIdentLeaf(t1) && t2 === ":" && isSysmlIdentLeaf(t3)) {
+            retName = t1;
+          }
+          if (retName) {
+            if (!outputs.includes(retName)) {
+              outputs.push(retName);
+            }
+            if (arena.lookupVariable(retName) === -1) {
+              arena.addVariable(retName, VarType.Real, Variability.Continuous, Causality.Output);
+            }
+          }
         }
       }
 
@@ -734,23 +735,6 @@ export class SysML2DaeLowerer {
   }
 
   /**
-   * Extracts the substring enclosed by matching `{` and `}` braces starting at `openBracePos`.
-   */
-  private static extractBraceBlock(str: string, openBracePos: number): { body: string; endPos: number } {
-    let depth = 1;
-    let i = openBracePos + 1;
-    while (i < str.length && depth > 0) {
-      if (str[i] === "{") depth++;
-      else if (str[i] === "}") depth--;
-      i++;
-    }
-    return {
-      body: str.slice(openBracePos + 1, i - 1),
-      endPos: i,
-    };
-  }
-
-  /**
    * Executes a lowered SysML v2 Action/Calculation via the WebAssembly statement executor.
    */
   public static execute(lowered: LoweredActionDae, inputValues: Record<string, number>): Record<string, number> {
@@ -866,20 +850,40 @@ export class SysML2DaeLowerer {
     options?: SysML2LowerOptions,
   ): Promise<DAEBuilder> {
     const arena = existingArena ?? new DAEBuilder();
-    const hasDeclarative =
-      /\b(?:constraint|assert\s+constraint|when)\b/.test(sysmlSource) ||
-      /\bder\s*\(/.test(sysmlSource) ||
-      /\bport\s+def\b/.test(sysmlSource) ||
-      /\bpart\s+def\b/.test(sysmlSource) ||
-      /\bpart\s+[A-Za-z_][A-Za-z0-9_]*\s*:/.test(sysmlSource);
-    const hasImperative = /\b(?:action|calc)\s+(?:def\s+)?[A-Za-z_][A-Za-z0-9_]*\s*\{/.test(sysmlSource);
+    const root = parseSysmlSource(sysmlSource);
+    const leaves = collectCstLeaves(root);
+
+    let hasDeclarative = false;
+    let hasImperative = false;
+    let hasEqEq = false;
+
+    for (let i = 0; i < leaves.length; i++) {
+      const tok = leaves[i]!.text;
+      if (tok === "==") {
+        hasEqEq = true;
+      } else if (tok === "constraint" || tok === "when") {
+        hasDeclarative = true;
+      } else if (tok === "der" && leaves[i + 1]?.text === "(") {
+        hasDeclarative = true;
+      } else if ((tok === "port" || tok === "part") && leaves[i + 1]?.text === "def") {
+        hasDeclarative = true;
+      } else if (tok === "part" && isSysmlIdentLeaf(leaves[i + 1]?.text) && leaves[i + 2]?.text === ":") {
+        hasDeclarative = true;
+      } else if (tok === "action" || tok === "calc") {
+        let j = i + 1;
+        if (leaves[j]?.text === "def") j++;
+        if (isSysmlIdentLeaf(leaves[j]?.text) && leaves[j + 1]?.text === "{") {
+          hasImperative = true;
+        }
+      }
+    }
 
     if (hasDeclarative && hasImperative) {
       await this.lowerConstraint(sysmlSource, arena, options);
       await this.lowerAction(sysmlSource, arena);
       return arena;
     }
-    if (hasDeclarative || (!hasImperative && /==/.test(sysmlSource))) {
+    if (hasDeclarative || (!hasImperative && hasEqEq)) {
       await this.lowerConstraint(sysmlSource, arena, options);
       return arena;
     }

@@ -8,6 +8,13 @@
 // 1. Batch mode: static data from a completed simulation
 // 2. Live mode: streaming data from MQTT broker via WebSocket
 
+import {
+  CanvasPlotController,
+  type ChartViewMode,
+  type IndexedDataset,
+  simulationToDataset,
+  type TrackConfig,
+} from "@modelscript/simulate/charts";
 import { lttbDecimate } from "../utils/lttb.js";
 
 interface SimulationData {
@@ -203,6 +210,16 @@ const btnCopyCsv = document.getElementById("btn-copy-csv");
 const btnToggleCursors = document.getElementById("btn-toggle-cursors");
 const btnPinRun = document.getElementById("btn-pin-run");
 const cursorHudEl = document.getElementById("cursor-hud");
+const viewModeGroupEl = document.getElementById("view-mode-group");
+const overlayControlsEl = document.getElementById("overlay-controls");
+const crossplotControlsEl = document.getElementById("crossplot-controls");
+const histogramControlsEl = document.getElementById("histogram-controls");
+const selectCpX = document.getElementById("select-cp-x") as HTMLSelectElement | null;
+const selectCpY = document.getElementById("select-cp-y") as HTMLSelectElement | null;
+const selectCpColor = document.getElementById("select-cp-color") as HTMLSelectElement | null;
+const checkboxCpRegression = document.getElementById("checkbox-cp-regression") as HTMLInputElement | null;
+const selectHistVar = document.getElementById("select-hist-var") as HTMLSelectElement | null;
+const selectHistBins = document.getElementById("select-hist-bins") as HTMLSelectElement | null;
 
 let isNormalized = false;
 let isDualY = false;
@@ -213,6 +230,131 @@ let cursorB: number | null = null;
 let draggingCursor: "A" | "B" | null = null;
 let pinnedRuns: { id: number; name: string; visible: boolean; data: SimulationData }[] = [];
 let pinnedRunSeq = 0;
+
+let viewMode: ChartViewMode = "overlay";
+const canvasPlotCtrl = new CanvasPlotController({ mode: "multitrack", isDark: true });
+let cachedDataset: IndexedDataset | null = null;
+let cachedDatasetSource: SimulationData | null = null;
+let canvasDrag: { active: boolean; startX: number; startY: number; curX: number; curY: number } = {
+  active: false,
+  startX: 0,
+  startY: 0,
+  curX: 0,
+  curY: 0,
+};
+
+function getSimDataset(): IndexedDataset | null {
+  if (!currentData || currentData.t.length === 0) return null;
+  if (cachedDatasetSource !== currentData || !cachedDataset) {
+    cachedDataset = simulationToDataset({
+      t: currentData.t,
+      y: currentData.y,
+      states: currentData.states,
+      variableMetadata: currentData.variableMetadata,
+      title: currentData.projectName,
+    });
+    cachedDatasetSource = currentData;
+    canvasPlotCtrl.setDataset(cachedDataset);
+  }
+  return cachedDataset;
+}
+
+function buildActiveTracks(dataset: IndexedDataset): TrackConfig[] | undefined {
+  const visible = dataset.series.filter((s) => !hiddenVars.has(s.name));
+  const pool = visible.length > 0 ? visible : dataset.series.slice(0, 4);
+  if (pool.length === 0) return undefined;
+  const trackCount = Math.min(4, pool.length);
+  const tracks: TrackConfig[] = Array.from({ length: trackCount }, (_, i) => ({
+    id: `track_${i + 1}`,
+    seriesNames: [],
+  }));
+  pool.forEach((s, idx) => {
+    tracks[idx % trackCount]!.seriesNames.push(s.name);
+  });
+  return tracks;
+}
+
+function syncCanvasPlotConfig(): void {
+  const ds = getSimDataset();
+  const seriesNames = ds ? ds.series.map((s) => s.name) : [];
+  const xVar = selectCpX?.value || seriesNames[0] || "time";
+  const yVar = selectCpY?.value || seriesNames[1] || seriesNames[0] || "time";
+  const colorVar = selectCpColor?.value || undefined;
+  const histVar = selectHistVar?.value || seriesNames[0] || "";
+  const bins = Math.max(5, Number(selectHistBins?.value ?? "30") || 30);
+
+  canvasPlotCtrl.updateConfig({
+    mode: viewMode,
+    isDark,
+    cursorMode: cursorsEnabled,
+    tracks: ds ? buildActiveTracks(ds) : undefined,
+    crossplot: {
+      xSeries: xVar,
+      ySeries: yVar,
+      colorSeries: colorVar,
+      showRegression: checkboxCpRegression?.checked ?? true,
+    },
+    histogram: {
+      seriesName: histVar,
+      binCount: bins,
+    },
+  });
+}
+
+function populateAnalysisSelectors(states: string[]): void {
+  const fillSelect = (sel: HTMLSelectElement | null, items: string[], fallbackIdx: number, includeEmpty = false) => {
+    if (!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = includeEmpty ? '<option value="">None</option>' : "";
+    for (const s of items) {
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = s;
+      sel.appendChild(opt);
+    }
+    if (prev && items.includes(prev)) {
+      sel.value = prev;
+    } else if (!includeEmpty && items.length > 0) {
+      sel.value = items[Math.min(fallbackIdx, items.length - 1)]!;
+    } else if (includeEmpty) {
+      sel.value = "";
+    }
+  };
+  fillSelect(selectCpX, states, 0);
+  fillSelect(selectCpY, states, 1);
+  fillSelect(selectCpColor, states, 2, true);
+  fillSelect(selectHistVar, states, 0);
+}
+
+function setViewMode(mode: ChartViewMode): void {
+  viewMode = mode;
+  viewModeGroupEl?.querySelectorAll("button.mode-tab").forEach((btn) => {
+    const active = btn.getAttribute("data-mode") === mode;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", String(active));
+  });
+  if (overlayControlsEl) overlayControlsEl.style.display = mode === "overlay" ? "" : "none";
+  if (btnPinRun) btnPinRun.style.display = mode === "overlay" ? "" : "none";
+  if (crossplotControlsEl) crossplotControlsEl.style.display = mode === "crossplot" ? "inline-flex" : "none";
+  if (histogramControlsEl) histogramControlsEl.style.display = mode === "histogram" ? "inline-flex" : "none";
+  if (cursorHudEl && mode !== "overlay") cursorHudEl.style.display = "none";
+  tooltipEl.style.display = "none";
+  syncCanvasPlotConfig();
+  redrawChart();
+}
+
+viewModeGroupEl?.addEventListener("click", (e) => {
+  const target = (e.target as HTMLElement | null)?.closest("button.mode-tab");
+  const mode = target?.getAttribute("data-mode") as ChartViewMode | null;
+  if (mode) setViewMode(mode);
+});
+
+[selectCpX, selectCpY, selectCpColor, checkboxCpRegression, selectHistVar, selectHistBins].forEach((el) => {
+  el?.addEventListener("change", () => {
+    syncCanvasPlotConfig();
+    if (viewMode !== "overlay") redrawChart();
+  });
+});
 
 function escapeHtmlSim(unsafe: string): string {
   if (!unsafe) return "";
@@ -509,6 +651,7 @@ btnClear?.addEventListener("click", () => {
 
 btnResetView?.addEventListener("click", () => {
   customBounds = null;
+  canvasPlotCtrl.resetZoom();
   if (isLiveMode) drawLive();
   else draw();
 });
@@ -726,6 +869,7 @@ btnToggleCursors?.addEventListener("click", () => {
     btnToggleCursors.style.background = "";
     btnToggleCursors.style.borderColor = "";
   }
+  syncCanvasPlotConfig();
   if (isLiveMode) drawLive();
   else draw();
 });
@@ -896,6 +1040,11 @@ window.addEventListener("message", (event) => {
       }
       selectedXVar = selectXAxis.value;
     }
+    if (msg.data.states) {
+      populateAnalysisSelectors(msg.data.states);
+    }
+    cachedDatasetSource = null;
+    syncCanvasPlotConfig();
 
     // Detect Multi-Body or 3D Visualizer simulation
     const isMultiBody = msg.data.states.some(
@@ -1816,6 +1965,7 @@ window.addEventListener("keydown", (e) => {
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
   if (!currentData && (!isLiveMode || !liveBuffer)) return;
+  if (!isLiveMode && viewMode !== "overlay") return;
 
   const rect = canvas.getBoundingClientRect();
   const margin = getPlotMargin();
@@ -1865,9 +2015,24 @@ canvas.addEventListener("pointerdown", (e) => {
   if (e.button !== 0) return;
 
   const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  if (!isLiveMode && viewMode !== "overlay" && currentData && currentData.t.length > 0) {
+    if (cursorsEnabled) {
+      const placed = canvasPlotCtrl.placeCursorAtPixel(mx, my);
+      if (placed !== null) {
+        draw();
+      }
+      return;
+    }
+    canvasDrag = { active: true, startX: mx, startY: my, curX: mx, curY: my };
+    canvas.setPointerCapture(e.pointerId);
+    return;
+  }
+
   const margin = getPlotMargin();
   const plotW = rect.width - margin.left - margin.right;
-  const mx = e.clientX - rect.left;
 
   // Check if clicking near Cursor A or Cursor B
   if (cursorsEnabled && cursorA !== null && cursorB !== null && currentData && currentData.t.length > 0 && plotW > 0) {
@@ -1902,6 +2067,17 @@ canvas.addEventListener("pointerdown", (e) => {
 
 canvas.addEventListener("pointermove", (e) => {
   const rect = canvas.getBoundingClientRect();
+  if (!isLiveMode && viewMode !== "overlay") {
+    if (canvasDrag.active) {
+      canvasDrag.curX = e.clientX - rect.left;
+      canvasDrag.curY = e.clientY - rect.top;
+      draw();
+    } else {
+      canvas.style.cursor = cursorsEnabled ? "crosshair" : "default";
+    }
+    return;
+  }
+
   const margin = getPlotMargin();
   const plotW = rect.width - margin.left - margin.right;
   const plotH = rect.height - margin.top - margin.bottom;
@@ -1962,6 +2138,16 @@ canvas.addEventListener("pointermove", (e) => {
 });
 
 canvas.addEventListener("pointerup", (e) => {
+  if (canvasDrag.active) {
+    const { startX, startY, curX, curY } = canvasDrag;
+    canvasDrag.active = false;
+    try {
+      canvas.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+    canvasPlotCtrl.zoomToPixelRange(startX, curX, startY, curY);
+    draw();
+    return;
+  }
   if (draggingCursor) {
     draggingCursor = null;
     try {
@@ -1977,6 +2163,14 @@ canvas.addEventListener("pointerup", (e) => {
   } catch (_) {}
 });
 canvas.addEventListener("pointercancel", (e) => {
+  if (canvasDrag.active) {
+    canvasDrag.active = false;
+    try {
+      canvas.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+    draw();
+    return;
+  }
   if (draggingCursor) {
     draggingCursor = null;
     try {
@@ -1990,6 +2184,13 @@ canvas.addEventListener("pointercancel", (e) => {
   try {
     canvas.releasePointerCapture(e.pointerId);
   } catch (_) {}
+});
+
+canvas.addEventListener("dblclick", () => {
+  if (!isLiveMode && viewMode !== "overlay") {
+    canvasPlotCtrl.resetZoom();
+    draw();
+  }
 });
 
 // ── Live mode: MQTT over WebSocket ──
@@ -2660,6 +2861,18 @@ function draw() {
   const rect = canvas.getBoundingClientRect();
   canvas.width = rect.width * dpr;
   canvas.height = rect.height * dpr;
+
+  if (!isLiveMode && viewMode !== "overlay") {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    syncCanvasPlotConfig();
+    const selBox =
+      canvasDrag.active && Math.abs(canvasDrag.curX - canvasDrag.startX) > 4
+        ? { startPx: canvasDrag.startX, endPx: canvasDrag.curX }
+        : undefined;
+    canvasPlotCtrl.render(ctx, Math.max(100, rect.width), Math.max(120, rect.height), dpr, selBox);
+    return;
+  }
+
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const w = rect.width;
@@ -3481,7 +3694,7 @@ function draw() {
 
 // Tooltip on mousemove
 canvas.addEventListener("mousemove", (e) => {
-  if (draggingCursor !== null) {
+  if (draggingCursor !== null || (!isLiveMode && viewMode !== "overlay")) {
     tooltipEl.style.display = "none";
     return;
   }

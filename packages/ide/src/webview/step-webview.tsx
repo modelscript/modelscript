@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import type { StepOverlayPayload } from "../services/step-compilation-service.js";
 import StepViewer, { type StepMeshPayload } from "./step-viewer/step-viewer";
 
 const vscode = (
@@ -26,6 +27,7 @@ interface RawStepMesh {
 
 function App() {
   const [meshes, setMeshes] = useState<StepMeshPayload[]>([]);
+  const [stepOverlay, setStepOverlay] = useState<StepOverlayPayload | null>(null);
   const [selectedId, setSelectedId] = useState<number | undefined>(undefined);
   const [isDark, setIsDark] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -53,6 +55,8 @@ function App() {
           indices: m.indices instanceof Uint32Array ? m.indices : new Uint32Array(Object.values(m.indices || {})),
         }));
         setMeshes(rawMeshes);
+      } else if (message.type === "stepOverlay") {
+        setStepOverlay((message.data as StepOverlayPayload) ?? null);
       } else if (message.type === "selectMesh") {
         setSelectedId(message.id);
       } else if (message.type === "setLoading") {
@@ -82,6 +86,14 @@ function App() {
     vscode?.postMessage({ type: "generateCfdMesh" });
   };
 
+  const handleOpenSource = (role: "scad" | "qif", uri?: string) => {
+    vscode?.postMessage({ type: "openSource", role, uri });
+  };
+
+  const handleRecompile = () => {
+    vscode?.postMessage({ type: "recompileStep" });
+  };
+
   return (
     <div
       className="step-webview-container"
@@ -93,8 +105,11 @@ function App() {
         onSelect={handleSelect}
         dark={isDark}
         isLoading={isLoading}
+        overlay={stepOverlay}
         onGenerateFeaStudy={handleGenerateFeaStudy}
         onGenerateCfdStudy={handleGenerateCfdStudy}
+        onOpenSource={handleOpenSource}
+        onRecompile={handleRecompile}
       />
     </div>
   );

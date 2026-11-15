@@ -1363,13 +1363,28 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  START = 2,
-  _START = 2,
-  Root = 3,
+  Document = 16,
+  ProgramDecl = 17,
+  EventDecl = 18,
+  IntervalDecl = 19,
+  PropertyDecl = 20,
+  START = 21,
+  _START = 21,
+  StringLiteral = 35,
+  IsoTimestamp = 36,
+  NumberLiteral = 37,
+  Identifier = 38,
+  Comment = 39,
   EOF = 1023,
 }
 
 export declare enum FieldId {
+  Name = 1,
+  name = 1,
+  Key = 2,
+  key = 2,
+  Value = 3,
+  value = 3,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1377,16 +1392,107 @@ export declare function normalizeToken(token: string | null | undefined): string
 
 /** Returns the normalized type of a CST node (stripped of quotes). */
 export declare function cstKind(node: SyntaxNode | null | undefined): string;
-export interface RootNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.Root;
+export interface DocumentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Document;
 }
-export declare function isRoot(node: SyntaxNode | null | undefined): node is RootNode;
+export declare function isDocument(node: SyntaxNode | null | undefined): node is DocumentNode;
+export interface ProgramDeclNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ProgramDecl;
+}
+export declare function isProgramDecl(node: SyntaxNode | null | undefined): node is ProgramDeclNode;
+export interface EventDeclNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.EventDecl;
+}
+export declare function isEventDecl(node: SyntaxNode | null | undefined): node is EventDeclNode;
+export interface IntervalDeclNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.IntervalDecl;
+}
+export declare function isIntervalDecl(node: SyntaxNode | null | undefined): node is IntervalDeclNode;
+export interface PropertyDeclNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.PropertyDecl;
+}
+export declare function isPropertyDecl(node: SyntaxNode | null | undefined): node is PropertyDeclNode;
+export interface StringLiteralNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.StringLiteral;
+}
+export declare function isStringLiteral(node: SyntaxNode | null | undefined): node is StringLiteralNode;
+export interface IsoTimestampNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.IsoTimestamp;
+}
+export declare function isIsoTimestamp(node: SyntaxNode | null | undefined): node is IsoTimestampNode;
+export interface NumberLiteralNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.NumberLiteral;
+}
+export declare function isNumberLiteral(node: SyntaxNode | null | undefined): node is NumberLiteralNode;
+export interface IdentifierNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Identifier;
+}
+export declare function isIdentifier(node: SyntaxNode | null | undefined): node is IdentifierNode;
+export interface CommentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Comment;
+}
+export declare function isComment(node: SyntaxNode | null | undefined): node is CommentNode;
 export declare namespace Cst {
   export function kind(node: SyntaxNode | null | undefined): string;
   export function normalize(token: string | null | undefined): string;
-  export const Root: {
+  export const Document: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is RootNode;
+    is(node: SyntaxNode | null | undefined): node is DocumentNode;
+  };
+  export const ProgramDecl: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ProgramDeclNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const EventDecl: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is EventDeclNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const IntervalDecl: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is IntervalDeclNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const PropertyDecl: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is PropertyDeclNode;
+    key(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    keyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const StringLiteral: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is StringLiteralNode;
+  };
+  export const IsoTimestamp: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is IsoTimestampNode;
+  };
+  export const NumberLiteral: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is NumberLiteralNode;
+  };
+  export const Identifier: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is IdentifierNode;
+  };
+  export const Comment: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is CommentNode;
   };
 }

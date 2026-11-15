@@ -10,11 +10,23 @@ import {
   type QueryDB,
   StmtKind,
   type SymbolId,
+  UnifiedWorkspace,
   Variability,
 } from "@modelscript/runtime";
-import { Cst, FieldId } from "../../../src-gen/bindings.js";
+import { Cst, FieldId, type SyntaxNode } from "../../../src-gen/bindings.js";
 import { ModelicaErrorCode } from "../../errors.js";
-import { castToRealExpr, isEquationExpr, isRealExpr, lowerCSTExpression } from "../expressions/index.js";
+import {
+  castToRealExpr,
+  type CstNodeLike,
+  extractBindingExprFromDeclCst,
+  extractModArgBindingExprCst,
+  isEquationExpr,
+  isRealExpr,
+  isSignedAsciiNumberText,
+  lowerCSTExpression,
+  stripAsciiWhitespace,
+  tokenizeCommentStrippedWords,
+} from "../expressions/index.js";
 
 export function findEquationNodeAt(root: any, start: number, end: number): any {
   const queue = [root];
@@ -127,8 +139,7 @@ export function checkBalance(dae: DAEBuilder, db: QueryDB, rootClassId?: SymbolI
   const rawKind = (rootSym?.metadata as any)?.classKind ?? (rootSym?.metadata as any)?.classPrefixes ?? "model";
   let specKind: string | null = null;
   if (typeof rawKind === "string") {
-    const cleanKind = rawKind.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-    const words = cleanKind.split(/\s+/).filter(Boolean);
+    const words = tokenizeCommentStrippedWords(rawKind);
     if (words.includes("package")) specKind = "package";
     else if (words.includes("function")) specKind = "function";
     else if (words.includes("record")) specKind = "record";
@@ -525,26 +536,56 @@ export function patchIncremental(
         let baseName = varName.split("[")[0]!;
 
         // 3a. Check variable renaming first (e.g. parameter Real L_new = 1.0; or parameter Real my_alpha = 1e-4;)
-        const declNode =
+        const stripLeadingEq = (s: string): string => {
+          const t = s.trim();
+          return t.startsWith("=") ? t.slice(1).trim() : t;
+        };
+        const findFirstDesc = (root: CstNodeLike | null | undefined, nodeType: string): CstNodeLike | null => {
+          if (!root) return null;
+          const stack: CstNodeLike[] = [root];
+          while (stack.length > 0) {
+            const cur = stack.pop();
+            if (!cur) continue;
+            if (cur.type === nodeType) return cur;
+            const kids = cur.children || [];
+            for (let i = kids.length - 1; i >= 0; i--) {
+              if (kids[i]) stack.push(kids[i]!);
+            }
+          }
+          return null;
+        };
+        let declNode =
+          (effectiveNode.type === "declaration" ? effectiveNode : null) ??
           Cst.ComponentDeclaration.declaration(effectiveNode) ??
           effectiveNode.childForFieldId?.(FieldId.declaration) ??
-          effectiveNode.children?.find((c: any) => c.type === "declaration");
-        const nameNode = declNode
-          ? (Cst.Declaration.name(declNode) ??
-            declNode.childForFieldId?.(FieldId.name) ??
-            declNode.children?.find((c: any) => c.type === "IDENT" || c.type === "identifier"))
-          : null;
-        let newName = nameNode?.text?.trim() ?? null;
-        if (!newName) {
-          const nameMatch = modText.match(
-            /(?:(?:parameter|constant|discrete)\s+)?(?:Real|Integer|Boolean|String|\w+)\s+([a-zA-Z_]\w*)/,
-          );
-          const declMatch = modText.match(/^([a-zA-Z_]\w*)/);
-          newName = nameMatch ? nameMatch[1] : declMatch ? declMatch[1] : null;
-        }
+          (findFirstDesc(effectiveNode, "declaration") as SyntaxNode | null);
+        let parsedFallbackRoot: CstNodeLike | null = null;
+        const getFallbackParsedDecl = (): CstNodeLike | null => {
+          if (declNode) return declNode;
+          if (!modText) return null;
+          if (!parsedFallbackRoot) {
+            const parser = UnifiedWorkspace.getGlobalParser(".mo");
+            if (parser) {
+              const snippet = modText.trimEnd().endsWith(";")
+                ? `model _MsPatchTmp ${modText} end _MsPatchTmp;`
+                : `model _MsPatchTmp ${modText}; end _MsPatchTmp;`;
+              parsedFallbackRoot = (parser.parse(snippet)?.rootNode as CstNodeLike | undefined) ?? null;
+            }
+          }
+          return parsedFallbackRoot ? findFirstDesc(parsedFallbackRoot, "declaration") : null;
+        };
+        const getDeclName = (d: CstNodeLike | null | undefined): string | null => {
+          if (!d) return null;
+          const nn =
+            Cst.Declaration.name(d as SyntaxNode) ??
+            (d as SyntaxNode).childForFieldId?.(FieldId.name) ??
+            d.children?.find((c) => c.type === "IDENT" || c.type === "identifier");
+          return nn?.text?.trim() || null;
+        };
+        let newName = getDeclName(declNode) ?? getDeclName(getFallbackParsedDecl());
         if (newName) {
           if (baseName && newName !== baseName) {
-            (dae as any).renameVar?.(baseName, newName);
+            (dae as unknown as { renameVar?: (a: string, b: string) => void }).renameVar?.(baseName, newName);
             baseName = newName;
           } else if (!baseName) {
             baseName = newName;
@@ -559,7 +600,7 @@ export function patchIncremental(
               const oldVarIdx = dae.findVarAtRange(range.startOffset, range.endOffset);
               if (oldVarIdx >= 0) {
                 const vn = dae.getVarName(oldVarIdx).split("[")[0];
-                (dae as any).renameVar?.(vn, newName);
+                (dae as unknown as { renameVar?: (a: string | undefined, b: string) => void }).renameVar?.(vn, newName);
                 targetVarIdx = oldVarIdx;
                 baseName = newName;
               }
@@ -570,36 +611,18 @@ export function patchIncremental(
         // Helper to locate modification node on declaration or component_declaration
         const modNode =
           (declNode ? Cst.Declaration.modification(declNode) : null) ??
-          declNode?.children?.find((c: any) => c.type === "modification") ??
-          effectiveNode.children?.find((c: any) => c.type === "modification") ??
+          (declNode?.children?.find((c: CstNodeLike) => c.type === "modification") as SyntaxNode | undefined) ??
+          effectiveNode.children?.find((c: CstNodeLike) => c.type === "modification") ??
           (effectiveNode.type === "modification" ? effectiveNode : null);
 
-        // 3b. Check start=... via CST class_modification first, then fallback to regex
+        // 3b. Check start=... via CST class_modification
+        const startBindingNode =
+          extractModArgBindingExprCst((modNode ?? declNode ?? effectiveNode) as SyntaxNode, "start") ??
+          extractModArgBindingExprCst(getFallbackParsedDecl() as SyntaxNode | null, "start");
         let startValStr: string | null = null;
-        if (modNode) {
-          const findStartMod = (n: any): string | null => {
-            if (!n) return null;
-            if (n.type === "element_modification") {
-              const compRef = n.children?.find((c: any) => c.type === "component_reference" || c.type === "IDENT");
-              if (compRef?.text?.trim() === "start") {
-                const subMod = n.children?.find((c: any) => c.type === "modification");
-                const subExpr =
-                  subMod?.children?.find((c: any) => c.type === "expression" || c.type === "modification_expression") ??
-                  n.children?.find((c: any) => c.type === "expression");
-                if (subExpr?.text) return subExpr.text.replace(/^=/, "").trim();
-              }
-            }
-            for (const ch of n.children || []) {
-              const found = findStartMod(ch);
-              if (found) return found;
-            }
-            return null;
-          };
-          startValStr = findStartMod(modNode);
-        }
-        if (!startValStr) {
-          const startMatch = modText.match(/start\s*=\s*([^,)\s]+)/);
-          if (startMatch) startValStr = startMatch[1]!.trim();
+        if (startBindingNode) {
+          const innerStartExpr = startBindingNode.children?.find((c) => c.type === "expression") ?? startBindingNode;
+          if (innerStartExpr?.text) startValStr = stripLeadingEq(innerStartExpr.text);
         }
         if (startValStr && targetVarIdx >= 0) {
           const valStr = startValStr;
@@ -630,17 +653,20 @@ export function patchIncremental(
           }
         }
 
-        // 3c. Check parameter value binding like L = 2.0; or dx = L_new / N; via CST modification expression first
+        // 3c. Check parameter value binding like L = 2.0; or dx = L_new / N; via CST modification expression
         const cstExprNode =
-          modNode?.children?.find((c: any) => c.type === "expression" || c.type === "modification_expression") ??
+          extractBindingExprFromDeclCst(declNode ?? effectiveNode) ??
+          modNode?.children?.find(
+            (c: CstNodeLike) => c.type === "expression" || c.type === "modification_expression",
+          ) ??
           modNode?.children
-            ?.find((c: any) => c.type === "modification_expression")
-            ?.children?.find((c: any) => c.type === "expression");
-        const bindMatch = modText.match(/=\s*([^;,)]+)/);
-        const rawBindStr = cstExprNode?.text?.replace(/^=/, "").trim() ?? (bindMatch ? bindMatch[1]!.trim() : null);
+            ?.find((c: CstNodeLike) => c.type === "modification_expression")
+            ?.children?.find((c: CstNodeLike) => c.type === "expression") ??
+          extractBindingExprFromDeclCst(getFallbackParsedDecl() as SyntaxNode | null);
+        const rawBindStr = cstExprNode?.text ? stripLeadingEq(cstExprNode.text) : null;
         if (rawBindStr && targetVarIdx >= 0) {
           const valStr = rawBindStr;
-          if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(valStr)) {
+          if (isSignedAsciiNumberText(valStr)) {
             const numVal = parseFloat(valStr);
             const oldVal = dae.getVarStartValue(targetVarIdx);
             const litId = dae.addRealLiteral(numVal);
@@ -658,7 +684,7 @@ export function patchIncremental(
             const fallbackModStr =
               prevStartVal !== undefined && !isNaN(prevStartVal) && prevStartVal !== 0
                 ? `=${prevStartVal.toExponential().replace("e+", "e")}`
-                : `=${valStr.replace(/\s+/g, "")}`;
+                : `=${stripAsciiWhitespace(valStr)}`;
             dae.diagnostics.push({
               severity: "error",
               code: ModelicaErrorCode.TYPE_MISMATCH_MODIFIER_BINDING.code,

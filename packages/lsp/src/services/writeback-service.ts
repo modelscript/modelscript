@@ -6,6 +6,8 @@ import type { LspContext } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { getCompositeName } from "../utils/hierarchy-utils.js";
 
+import { isIdentContCode, skipWs, trimTrailingChars } from "../utils/lexical-utils.js";
+
 export interface ComputeWritebackEditParams {
   target: string;
   newValue: string;
@@ -16,10 +18,6 @@ export interface ComputeWritebackEditResult {
   success: boolean;
   workspaceEdit?: WorkspaceEdit | undefined;
   error?: string | undefined;
-}
-
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function offsetToPosition(text: string, offset: number): { line: number; character: number } {
@@ -44,6 +42,25 @@ function offsetToPosition(text: string, offset: number): { line: number; charact
   return { line, character };
 }
 
+function matchOperatorAt(text: string, idx: number, sortedOps: string[]): string | undefined {
+  for (const op of sortedOps) {
+    if (text.startsWith(op, idx)) return op;
+  }
+  return undefined;
+}
+
+function readAssignmentValueSpan(text: string, afterOpIdx: number): { start: number; end: number } | undefined {
+  const valStart = skipWs(text, afterOpIdx);
+  let valEnd = valStart;
+  while (valEnd < text.length) {
+    const ch = text[valEnd]!;
+    if (ch === ";" || ch === "}" || ch === "\r" || ch === "\n" || ch === ",") break;
+    valEnd++;
+  }
+  while (valEnd > valStart && (text[valEnd - 1] === " " || text[valEnd - 1] === "\t")) valEnd--;
+  return valEnd > valStart ? { start: valStart, end: valEnd } : undefined;
+}
+
 /**
  * Universal Generic Fallback (FieldRanges or Assignment Locator).
  * Used when a language plugin does not supply a custom writeback handler,
@@ -57,6 +74,8 @@ function computeGenericWriteback(
   operators: string[] = [":=", "="],
   customValueField?: string,
 ): TextEdit[] {
+  const sortedOps = [...operators].sort((a, b) => b.length - a.length);
+
   // Tier 1: Check precomputed CST fieldRanges from AST indexing
   if (entry.fieldRanges) {
     const valField =
@@ -80,15 +99,11 @@ function computeGenericWriteback(
       let valStart = rawStart;
       let valEnd = rawEnd;
       const valSlice = fullText.substring(valStart, valEnd);
-      const opPattern = operators.map(escapeRegex).join("|");
-      const opMatch = valSlice.match(new RegExp(`^(?:${opPattern})\\s*`));
-      if (opMatch) {
-        valStart += opMatch[0].length;
+      const leadOp = matchOperatorAt(valSlice, 0, sortedOps);
+      if (leadOp) {
+        valStart += skipWs(valSlice, leadOp.length);
       }
-      const trimmedVal = fullText
-        .substring(valStart, valEnd)
-        .replace(/[;}\r\n,]+$/, "")
-        .trimEnd();
+      const trimmedVal = trimTrailingChars(fullText.substring(valStart, valEnd), ";}\r\n,").trimEnd();
       valEnd = valStart + trimmedVal.length;
       if (valEnd > valStart) {
         const startPos = doc ? doc.positionAt(valStart) : offsetToPosition(fullText, valStart);
@@ -103,33 +118,50 @@ function computeGenericWriteback(
   const entryEnd = entry.endOffset;
   if (entryStart != null && entryEnd != null && entryEnd > entryStart) {
     const declText = fullText.substring(entryStart, entryEnd);
-    const opPattern = operators.map(escapeRegex).join("|");
-    const regex = new RegExp(`(${opPattern})\\s*([^;}\\r\\n,]+)`);
-    const match = declText.match(regex);
-    if (match && match.index !== undefined) {
-      const rawVal = match[2]!.trimEnd();
-      const valOffsetInDecl = match.index + declText.substring(match.index).indexOf(rawVal);
-      const valStartOffset = entryStart + valOffsetInDecl;
-      const valEndOffset = valStartOffset + rawVal.length;
-
-      const startPos = doc ? doc.positionAt(valStartOffset) : offsetToPosition(fullText, valStartOffset);
-      const endPos = doc ? doc.positionAt(valEndOffset) : offsetToPosition(fullText, valEndOffset);
-      return [TextEdit.replace(Range.create(startPos, endPos), newValue.trim())];
+    let bestIdx = -1;
+    let bestOp = "";
+    for (const op of sortedOps) {
+      const idx = declText.indexOf(op);
+      if (idx !== -1 && (bestIdx === -1 || idx < bestIdx || (idx === bestIdx && op.length > bestOp.length))) {
+        bestIdx = idx;
+        bestOp = op;
+      }
+    }
+    if (bestIdx !== -1) {
+      const span = readAssignmentValueSpan(declText, bestIdx + bestOp.length);
+      if (span) {
+        const valStartOffset = entryStart + span.start;
+        const valEndOffset = entryStart + span.end;
+        const startPos = doc ? doc.positionAt(valStartOffset) : offsetToPosition(fullText, valStartOffset);
+        const endPos = doc ? doc.positionAt(valEndOffset) : offsetToPosition(fullText, valEndOffset);
+        return [TextEdit.replace(Range.create(startPos, endPos), newValue.trim())];
+      }
     }
   }
 
   // Tier 3: Universal assignment locator by identifier name within the source
-  const name = entry.name;
+  const name: string | undefined = entry.name;
   if (name) {
-    const opPattern = operators.map(escapeRegex).join("|");
-    const regex = new RegExp(`(\\b${escapeRegex(name)}\\s*(?:${opPattern})\\s*)([^;}\\r\\n,]+)`);
-    const match = fullText.match(regex);
-    if (match && match.index !== undefined) {
-      const valStart = match.index + match[1]!.length;
-      const valEnd = valStart + match[2]!.trimEnd().length;
-      const startPos = doc ? doc.positionAt(valStart) : offsetToPosition(fullText, valStart);
-      const endPos = doc ? doc.positionAt(valEnd) : offsetToPosition(fullText, valEnd);
-      return [TextEdit.replace(Range.create(startPos, endPos), newValue.trim())];
+    let pos = 0;
+    while (pos < fullText.length) {
+      const idx = fullText.indexOf(name, pos);
+      if (idx === -1) break;
+      const prevOk = idx === 0 || !isIdentContCode(fullText.charCodeAt(idx - 1));
+      const afterName = idx + name.length;
+      const nextOk = afterName >= fullText.length || !isIdentContCode(fullText.charCodeAt(afterName));
+      if (prevOk && nextOk) {
+        const opStart = skipWs(fullText, afterName);
+        const op = matchOperatorAt(fullText, opStart, sortedOps);
+        if (op) {
+          const span = readAssignmentValueSpan(fullText, opStart + op.length);
+          if (span) {
+            const startPos = doc ? doc.positionAt(span.start) : offsetToPosition(fullText, span.start);
+            const endPos = doc ? doc.positionAt(span.end) : offsetToPosition(fullText, span.end);
+            return [TextEdit.replace(Range.create(startPos, endPos), newValue.trim())];
+          }
+        }
+      }
+      pos = afterName;
     }
   }
 

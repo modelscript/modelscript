@@ -16,11 +16,16 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { INDUSTRIES, INDUSTRY_BY_SLUG } from "../docs/.vitepress/theme/data/industries.js";
+import { LANGUAGE_BY_SLUG, LANGUAGES } from "../docs/.vitepress/theme/data/languages.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const docsRoot = path.resolve(here, "../docs");
+const repoRoot = path.resolve(here, "../../..");
 const cliJson = path.join(docsRoot, ".vitepress/theme/data/cli.generated.json");
 const lintJson = path.join(docsRoot, ".vitepress/theme/data/lint-rules.generated.json");
+const examplesJson = path.join(docsRoot, ".vitepress/theme/data/language-examples.generated.json");
+const mcpToolsJson = path.join(docsRoot, ".vitepress/theme/data/mcp-tools.generated.json");
 const ruleCodes = new Map(
   (JSON.parse(fs.readFileSync(lintJson, "utf8")) as { slug: string; rules: { code: string }[] }[]).map((l) => [
     l.slug,
@@ -118,10 +123,24 @@ const msxLine = /^\s*(?:\$\s+)?(?:npx\s+(?:-y\s+)?)?(?:msx|modelscript)\s+([a-z]
 // Claims that need a benchmark to back them up, or that say nothing.
 const bannedWords =
   /\b(seamless(?:ly)?|sub-millisecond|blazing(?:ly)?(?:[- ]fast)?|instant(?:ly)?|world'?s first|revolutionary|game[- ]changing)\b/i;
+// Known factual errors that must never regress across docs or theme catalogs.
+const stalePatterns: { regex: RegExp; reason: string }[] = [
+  { regex: /\bIEEE\s+1857\b/i, reason: "IEEE 1857 is video coding; Verilog-A/AMS is Accellera" },
+  { regex: /\bCAPE-OPEN\b/i, reason: "CAPE-OPEN is not implemented in packages/exchange or Aspen/gPROMS" },
+  {
+    regex: /PowerFactory[^\n]*\.dgs|\.dgs[^\n]*PowerFactory/i,
+    reason: "PowerFactory parser reads .dz/.pfd/.xml/.dsl, not .dgs",
+  },
+];
 
 function checkWording(file: string, line: number, text: string): void {
   const m = bannedWords.exec(text);
   if (m) problems.push({ file, line, message: `avoid unsubstantiated wording '${m[1] ?? ""}'` });
+  for (const pat of stalePatterns) {
+    if (pat.regex.test(text)) {
+      problems.push({ file, line, message: `stale/inaccurate claim: ${pat.reason}` });
+    }
+  }
 }
 
 function checkInvocation(file: string, line: number, name: string, action: string | undefined, rest = ""): void {
@@ -156,6 +175,16 @@ function checkInvocation(file: string, line: number, name: string, action: strin
         file,
         line,
         message: `'msx ${name} --${flag} ${value}' is not allowed (expected one of: ${[...allowed].join(", ")})`,
+      });
+    }
+  }
+  for (const m of rest.matchAll(/(?:^|\s)-([a-zA-Z])(?=\s|=|$)/g)) {
+    const shortFlag = m[1] ?? "";
+    if (!opts.names.has(shortFlag)) {
+      problems.push({
+        file,
+        line,
+        message: `'msx ${name}${action && cmd.subOptions.has(action) ? ` ${action}` : ""}' has no short option '-${shortFlag}'`,
       });
     }
   }
@@ -256,21 +285,42 @@ for (const file of themeFiles) {
     });
 }
 
-// ── Language-count claims ──────────────────────────────────────────────
-// Prose such as "90 engineering formats" or "(25 Stable & 65 Beta)" is
-// hard-coded in markdown, the hero frontmatter and theme components. It must
-// match the generated language catalogue so it cannot silently go stale.
+// ── Language-count & tier parity claims ─────────────────────────────────
+// Prose such as "92 engineering formats" or "(26 Stable & 66 Beta)" is
+// matched against the generated language catalogue so it cannot go stale,
+// and hand-authored `languages.ts` tiers must match `languages.generated.json`.
 
 const languagesJson = path.join(themeRoot, "data/languages.generated.json");
-const languageCatalog = JSON.parse(fs.readFileSync(languagesJson, "utf8")) as { tier: string }[];
+const languageCatalog = JSON.parse(fs.readFileSync(languagesJson, "utf8")) as { slug: string; tier: string }[];
 const languageTotal = languageCatalog.length;
 const tierTotals = new Map<string, number>();
-for (const l of languageCatalog) tierTotals.set(l.tier, (tierTotals.get(l.tier) ?? 0) + 1);
+const generatedTierBySlug = new Map<string, string>();
+for (const l of languageCatalog) {
+  tierTotals.set(l.tier, (tierTotals.get(l.tier) ?? 0) + 1);
+  generatedTierBySlug.set(l.slug, l.tier);
+}
+
+for (const lang of LANGUAGES) {
+  const expectedTier = generatedTierBySlug.get(lang.slug);
+  if (!expectedTier) {
+    problems.push({
+      file: ".vitepress/theme/data/languages.ts",
+      line: 1,
+      message: `language '${lang.slug}' missing from languages.generated.json`,
+    });
+  } else if (expectedTier !== lang.tier) {
+    problems.push({
+      file: ".vitepress/theme/data/languages.ts",
+      line: 1,
+      message: `tier mismatch for '${lang.slug}': languages.ts has '${lang.tier}' vs languages.generated.json '${expectedTier}'`,
+    });
+  }
+}
 
 // "<N> [engineering|polyglot|supported|registered|…] languages|formats"
 const countClaim =
   /\b(\d{2,3})\+?[\s-]+(?:(?:engineering|polyglot|supported|registered|open|domain|ModelScript|scientific|language|format)\s+){0,3}(?:languages?|formats?|format parsers|language parsers)\b/gi;
-// "25 Stable & 65 Beta" / "25 stable, 65 beta"
+// "26 Stable & 66 Beta" / "26 stable, 66 beta"
 const tierClaim = /\b(\d{1,3})\s+(Stable|Beta|Preview)\b/gi;
 
 function checkLanguageCounts(rel: string, line: number, text: string): void {
@@ -309,11 +359,15 @@ for (const file of [...walk(docsRoot), ...themeFiles]) {
     .forEach((text, i) => checkLanguageCounts(rel, i + 1, text));
 }
 
+// ── Language benchmark coverage ─────────────────────────────────────────
 const benchmarksJson = path.join(themeRoot, "data/benchmarks.generated.json");
-if (fs.existsSync(benchmarksJson)) {
-  const benchData = JSON.parse(fs.readFileSync(benchmarksJson, "utf8")) as {
-    languages: { slug: string }[];
-  };
+const benchData = fs.existsSync(benchmarksJson)
+  ? (JSON.parse(fs.readFileSync(benchmarksJson, "utf8")) as {
+      catalogById: Record<string, unknown>;
+      languages: { slug: string }[];
+    })
+  : null;
+if (benchData) {
   const benchSlugs = new Set(benchData.languages.map((l) => l.slug));
   const langPagesDir = path.join(docsRoot, "languages");
   for (const file of fs.readdirSync(langPagesDir)) {
@@ -336,9 +390,206 @@ if (fs.existsSync(benchmarksJson)) {
   }
 }
 
+// ── MCP tool count parity ───────────────────────────────────────────────
+const mcpTools = fs.existsSync(mcpToolsJson)
+  ? (JSON.parse(fs.readFileSync(mcpToolsJson, "utf8")) as {
+      toolCount: number;
+      tools: { name: string }[];
+    })
+  : null;
+const mcpToolNames = new Set(mcpTools?.tools.map((t) => t.name) ?? []);
+if (mcpTools) {
+  const mcpDocPath = path.join(docsRoot, "reference/mcp-and-ide.md");
+  if (fs.existsSync(mcpDocPath)) {
+    const mcpLines = fs.readFileSync(mcpDocPath, "utf8").split("\n");
+    mcpLines.forEach((text, i) => {
+      for (const m of text.matchAll(/\b(\d{2,3})\s+(?:Model Context Protocol|specialized)?\s*tools\b/gi)) {
+        const claimed = Number(m[1]);
+        if (claimed >= 80 && claimed <= 200 && claimed !== mcpTools.toolCount) {
+          problems.push({
+            file: "reference/mcp-and-ide.md",
+            line: i + 1,
+            message: `MCP tool count '${m[0]}' is stale; mcp-tools.generated.json has ${mcpTools.toolCount} tools`,
+          });
+        }
+      }
+    });
+  }
+}
+
+// ── Industry catalog integrity & cross-references ───────────────────────
+const exampleBySlug = new Map(
+  (
+    JSON.parse(fs.readFileSync(examplesJson, "utf8")) as {
+      slug: string;
+      svgDark?: string;
+      svgLight?: string;
+      permalinkToken?: string;
+    }[]
+  ).map((e) => [e.slug, e]),
+);
+const benchCatalogIds = new Set(Object.keys(benchData?.catalogById ?? {}));
+
+function docsRouteExists(route: string): boolean {
+  const clean = route.split("#")[0]?.replace(/^\//, "") ?? "";
+  if (!clean) return fs.existsSync(path.join(docsRoot, "index.md"));
+  return fs.existsSync(path.join(docsRoot, `${clean}.md`)) || fs.existsSync(path.join(docsRoot, clean, "index.md"));
+}
+
+const industriesRel = ".vitepress/theme/data/industries.ts";
+for (const ind of INDUSTRIES) {
+  const indLangs = new Set(ind.languages);
+  for (const slug of ind.languages) {
+    if (!LANGUAGE_BY_SLUG[slug]) {
+      problems.push({ file: industriesRel, line: 1, message: `${ind.slug}: unknown language '${slug}'` });
+    }
+  }
+
+  for (const cliCmd of ind.cli) {
+    const m = /^(?:msx|modelscript)\s+([a-z][a-z0-9-]*)(?:\s+([a-z][a-z0-9-]*))?/.exec(cliCmd);
+    if (!m) {
+      problems.push({ file: industriesRel, line: 1, message: `${ind.slug}: invalid CLI snippet '${cliCmd}'` });
+    } else {
+      checkInvocation(industriesRel, 1, m[1] ?? "", m[2], cliCmd);
+    }
+  }
+
+  if (ind.tracks) {
+    const seenTrackIds = new Set<string>();
+    for (const track of ind.tracks) {
+      if (seenTrackIds.has(track.id)) {
+        problems.push({ file: industriesRel, line: 1, message: `${ind.slug}: duplicate track id '${track.id}'` });
+      }
+      seenTrackIds.add(track.id);
+      for (const slug of track.languages) {
+        if (!indLangs.has(slug)) {
+          problems.push({
+            file: industriesRel,
+            line: 1,
+            message: `${ind.slug}: track '${track.id}' references '${slug}' not in industry.languages`,
+          });
+        }
+      }
+    }
+  }
+
+  if (!ind.featuredExamples.length) {
+    problems.push({ file: industriesRel, line: 1, message: `${ind.slug}: featuredExamples must not be empty` });
+  }
+  for (const exSlug of ind.featuredExamples) {
+    if (!indLangs.has(exSlug)) {
+      problems.push({
+        file: industriesRel,
+        line: 1,
+        message: `${ind.slug}: featuredExample '${exSlug}' is not in industry.languages`,
+      });
+    }
+    const ex = exampleBySlug.get(exSlug);
+    if (!ex || !ex.svgDark || !ex.svgLight || !ex.permalinkToken) {
+      problems.push({
+        file: industriesRel,
+        line: 1,
+        message: `${ind.slug}: featuredExample '${exSlug}' missing code/SVG/permalink in language-examples.generated.json`,
+      });
+    }
+  }
+
+  for (const suiteId of ind.benchmarkSuites) {
+    if (benchCatalogIds.size > 0 && !benchCatalogIds.has(suiteId)) {
+      problems.push({
+        file: industriesRel,
+        line: 1,
+        message: `${ind.slug}: unknown benchmark suite '${suiteId}' (not in benchmarks.generated.json)`,
+      });
+    }
+  }
+
+  for (const ws of ind.workspaces ?? []) {
+    const wsAbs = path.resolve(repoRoot, ws.path);
+    if (!fs.existsSync(wsAbs)) {
+      problems.push({
+        file: industriesRel,
+        line: 1,
+        message: `${ind.slug}: workspace path '${ws.path}' does not exist on disk`,
+      });
+    }
+    for (const slug of ws.languages) {
+      if (!LANGUAGE_BY_SLUG[slug]) {
+        problems.push({
+          file: industriesRel,
+          line: 1,
+          message: `${ind.slug}: workspace '${ws.name}' references unknown language '${slug}'`,
+        });
+      }
+    }
+  }
+
+  for (const tool of ind.mcpTools) {
+    if (mcpToolNames.size > 0 && !mcpToolNames.has(tool)) {
+      problems.push({
+        file: industriesRel,
+        line: 1,
+        message: `${ind.slug}: unknown MCP tool '${tool}' (not in mcp-tools.generated.json)`,
+      });
+    }
+  }
+
+  for (const link of ind.compliance.docsLinks) {
+    if (!docsRouteExists(link.to)) {
+      problems.push({
+        file: industriesRel,
+        line: 1,
+        message: `${ind.slug}: compliance docsLink '${link.to}' does not resolve to a docs page`,
+      });
+    }
+  }
+
+  for (const relRef of ind.relatedSlugs) {
+    if (relRef.slug === ind.slug || !INDUSTRY_BY_SLUG[relRef.slug]) {
+      problems.push({
+        file: industriesRel,
+        line: 1,
+        message: `${ind.slug}: invalid relatedSlugs target '${relRef.slug}'`,
+      });
+    }
+  }
+
+  const stdText = ind.standards.join("\n");
+  if (/\bReqIF\b/i.test(stdText) && !indLangs.has("reqif")) {
+    problems.push({
+      file: industriesRel,
+      line: 1,
+      message: `${ind.slug}: lists ReqIF in standards without 'reqif' language`,
+    });
+  }
+  if (/\bSSP\s+1\.0\b/i.test(stdText) && !indLangs.has("ssp")) {
+    problems.push({
+      file: industriesRel,
+      line: 1,
+      message: `${ind.slug}: lists SSP 1.0 in standards without 'ssp' language`,
+    });
+  }
+  if (/\bSysML\b/i.test(stdText) && !indLangs.has("sysml2")) {
+    problems.push({
+      file: industriesRel,
+      line: 1,
+      message: `${ind.slug}: lists SysML in standards without 'sysml2' language`,
+    });
+  }
+  if (/\bAUTOSAR\b/i.test(stdText) && !indLangs.has("autosar")) {
+    problems.push({
+      file: industriesRel,
+      line: 1,
+      message: `${ind.slug}: lists AUTOSAR in standards without 'autosar' language`,
+    });
+  }
+}
+
 if (problems.length) {
   for (const p of problems) console.error(`${p.file}:${p.line}  ${p.message}`);
   console.error(`\n✖ ${problems.length} docs problem(s) found.`);
   process.exit(1);
 }
-console.log(`✓ docs check passed (${cli.size} CLI commands known).`);
+console.log(
+  `✓ docs check passed (${cli.size} CLI commands, ${INDUSTRIES.length} industries, ${LANGUAGES.length} languages).`,
+);

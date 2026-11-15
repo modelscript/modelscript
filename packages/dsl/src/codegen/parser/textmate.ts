@@ -117,114 +117,265 @@ export function generateTextMate(langConfig: LanguageOptions): { tm: string; mon
     (s) => /^[^a-zA-Z0-9_\s]+$/.test(s) && !["{", "}", "(", ")", "[", "]", ";", ",", '"', "'"].includes(s),
   );
 
-  const keywords = Array.from(new Set([...explicitKeywords, ...autoKeywords])).sort();
-  const typeKeywords = explicitTypes.sort();
-  const operators = Array.from(new Set([...explicitOperators, ...autoOperators])).sort();
+  const ruleKeys = new Set(Object.keys(langConfig.rules ?? {}));
+  const isXml = ruleKeys.has("StartTag") && ruleKeys.has("CloseTag") && ruleKeys.has("PROCESSING_INSTRUCTION");
+  const isIni = ruleKeys.has("IniSectionHeader") && ruleKeys.has("IniKeyValue") && ruleKeys.has("IniComment");
+  const isJson = ruleKeys.has("JsonObject") && ruleKeys.has("JsonArray") && ruleKeys.has("JsonPair");
+  const isKvBlock = ruleKeys.has("KvBlock") && ruleKeys.has("KvEntry") && ruleKeys.has("KvComment");
 
   const langName = langConfig.name.toLowerCase();
 
-  const tm = {
-    $schema: "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-    name: langConfig.name,
-    scopeName: `source.${langName}`,
-    patterns: [
-      { include: "#comments" },
-      { include: "#strings" },
-      { include: "#numbers" },
-      { include: "#keywords" },
-      { include: "#types" },
-      { include: "#operators" },
-    ],
-    repository: {
-      numbers: {
+  const extraKeywords: string[] = [];
+  const extraTypes: string[] = [];
+  if (langName === "step") {
+    extraKeywords.push("ISO-10303-21", "HEADER", "DATA", "ENDSEC", "END-ISO-10303-21");
+  } else if (langName === "modelica" && explicitTypes.length === 0) {
+    extraTypes.push("Real", "Integer", "Boolean", "String", "StateSelect", "AssertionLevel");
+  } else if ((langName === "sysml2" || langName === "sysml") && explicitTypes.length === 0) {
+    extraTypes.push("Boolean", "Integer", "Natural", "Positive", "Real", "Complex", "String", "ScalarValue", "Number");
+  }
+
+  const keywords = Array.from(new Set([...explicitKeywords, ...autoKeywords, ...extraKeywords])).sort();
+  const typeKeywords = Array.from(new Set([...explicitTypes, ...extraTypes])).sort();
+  const operators = Array.from(new Set([...explicitOperators, ...autoOperators])).sort();
+
+  const lineComment = langConfig.primitives?.lineComment;
+  const commentPatterns: Record<string, unknown>[] = [];
+  if (isXml || lineComment === "<!--") {
+    commentPatterns.push({
+      begin: "<!--",
+      end: "-->",
+      name: `comment.block.${langName}`,
+    });
+  } else if (isIni) {
+    commentPatterns.push({
+      match: "[;#].*$",
+      name: `comment.line.${langName}`,
+    });
+  } else if (isJson) {
+    // JSON has no comments
+  } else if (langName === "spice") {
+    commentPatterns.push(
+      { match: "^\\s*\\*.*$", name: `comment.line.asterisk.${langName}` },
+      { match: "[;$].*$", name: `comment.line.${langName}` },
+    );
+  } else if (langName === "matpower") {
+    commentPatterns.push({ match: "%.*$", name: `comment.line.percentage.${langName}` });
+  } else if (["ampl", "cantera", "bngl"].includes(langName)) {
+    commentPatterns.push({ match: "#.*$", name: `comment.line.number-sign.${langName}` });
+  } else if (lineComment && lineComment !== "//") {
+    commentPatterns.push({
+      match: `${escapeRegExp(lineComment)}.*$`,
+      name: `comment.line.${langName}`,
+    });
+  } else {
+    if (isKvBlock) {
+      commentPatterns.push({ match: "#.*$", name: `comment.line.number-sign.${langName}` });
+    }
+    commentPatterns.push(
+      {
+        begin: "/\\*",
+        end: "\\*/",
+        name: `comment.block.${langName}`,
+      },
+      {
+        match: "//.*$",
+        name: `comment.line.double-slash.${langName}`,
+      },
+    );
+  }
+
+  const buildRepositoryAndPatterns = (): {
+    patterns: Record<string, unknown>[];
+    repository: Record<string, unknown>;
+  } => {
+    if (isXml) {
+      return {
+        patterns: [
+          { include: "#comments" },
+          { include: "#cdata" },
+          { include: "#processingInstruction" },
+          { include: "#tags" },
+        ],
+        repository: {
+          comments: { patterns: commentPatterns },
+          cdata: {
+            patterns: [{ begin: "<!\\[CDATA\\[", end: "\\]\\]>", name: `string.unquoted.cdata.${langName}` }],
+          },
+          processingInstruction: {
+            patterns: [{ begin: "<\\?", end: "\\?>", name: `meta.tag.preprocessor.${langName}` }],
+          },
+          tags: {
+            patterns: [
+              {
+                begin: "(</?)([A-Za-z_:][A-Za-z0-9_.:-]*)",
+                beginCaptures: {
+                  1: { name: `punctuation.definition.tag.${langName}` },
+                  2: { name: `entity.name.tag.${langName}` },
+                },
+                end: "(/?>)",
+                endCaptures: {
+                  1: { name: `punctuation.definition.tag.${langName}` },
+                },
+                patterns: [
+                  {
+                    match: "\\b([A-Za-z_:][A-Za-z0-9_.:-]*)\\s*(=)",
+                    captures: {
+                      1: { name: `entity.other.attribute-name.${langName}` },
+                      2: { name: `punctuation.separator.key-value.${langName}` },
+                    },
+                  },
+                  { begin: '"', end: '"', name: `string.quoted.double.${langName}` },
+                  { begin: "'", end: "'", name: `string.quoted.single.${langName}` },
+                ],
+              },
+            ],
+          },
+        },
+      };
+    }
+
+    if (isJson) {
+      return {
         patterns: [
           {
-            match: "\\b[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?\\b",
-            name: `constant.numeric.${langName}`,
+            match: '"([^"\\\\]|\\\\.)*"\\s*(?=:)',
+            name: `support.type.property-name.${langName}`,
           },
-        ],
-      },
-      keywords: {
-        patterns:
-          keywords.length > 0
-            ? [
-                {
-                  match: `\\b(${keywords.map(escapeRegExp).join("|")})\\b`,
-                  name: `keyword.control.${langName}`,
-                },
-              ]
-            : [],
-      },
-      types: {
-        patterns:
-          typeKeywords.length > 0
-            ? [
-                {
-                  match: `\\b(${typeKeywords.map(escapeRegExp).join("|")})\\b`,
-                  name: `entity.name.type.${langName}`,
-                },
-              ]
-            : [],
-      },
-      operators: {
-        patterns:
-          operators.length > 0
-            ? [
-                {
-                  match: `(${operators.map(escapeRegExp).join("|")})`,
-                  name: `keyword.operator.${langName}`,
-                },
-              ]
-            : [],
-      },
-      strings: {
-        patterns: [
           {
             begin: '"',
             end: '"',
             name: `string.quoted.double.${langName}`,
-            patterns: [
-              {
-                match: "\\\\.",
-                name: `constant.character.escape.${langName}`,
-              },
-            ],
+            patterns: [{ match: "\\\\.", name: `constant.character.escape.${langName}` }],
           },
-          {
-            begin: "'",
-            end: "'",
-            name: `string.quoted.single.${langName}`,
-            patterns: [
-              {
-                match: "''|\\\\.",
-                name: `constant.character.escape.${langName}`,
-              },
-            ],
-          },
+          { match: "\\b(true|false|null)\\b", name: `constant.language.${langName}` },
+          { match: "-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?", name: `constant.numeric.${langName}` },
         ],
-      },
-      comments: {
-        patterns: [
-          ...(langConfig.primitives?.lineComment && langConfig.primitives.lineComment !== "//"
-            ? [
+        repository: {},
+      };
+    }
+
+    const extraPatterns: Record<string, unknown>[] = [];
+    if (isIni) {
+      extraPatterns.push(
+        {
+          match: "^\\s*(\\[)([^\\]]+)(\\])",
+          captures: {
+            1: { name: `punctuation.definition.section.${langName}` },
+            2: { name: `entity.name.section.${langName}` },
+            3: { name: `punctuation.definition.section.${langName}` },
+          },
+        },
+        {
+          match: "^\\s*([A-Za-z_][A-Za-z0-9_./:-]*)\\s*(=)",
+          captures: {
+            1: { name: `variable.other.property.${langName}` },
+            2: { name: `keyword.operator.${langName}` },
+          },
+        },
+      );
+    } else if (langName === "step") {
+      extraPatterns.push(
+        { match: "#[0-9]+", name: `variable.other.entity.${langName}` },
+        { match: "\\.[A-Za-z_][A-Za-z0-9_]*\\.", name: `constant.language.${langName}` },
+        { match: "\\b[A-Z][A-Z0-9_]{2,}\\b(?=\\s*\\()", name: `entity.name.type.${langName}` },
+      );
+    }
+
+    const singleQuoteBegin = langName === "modelica" ? "(?<![A-Za-z0-9_\\)\\]])'" : "'";
+
+    return {
+      patterns: [
+        { include: "#comments" },
+        ...extraPatterns,
+        { include: "#strings" },
+        { include: "#numbers" },
+        { include: "#keywords" },
+        { include: "#types" },
+        { include: "#operators" },
+      ],
+      repository: {
+        numbers: {
+          patterns: [
+            {
+              match:
+                "\\b0[xX][0-9a-fA-F]+\\b|\\b[0-9]+(\\.[0-9]+)?([eEdD][+-]?[0-9]+)?([fFuUlL]+|[kKmMuUnNpP]|Meg)?\\b",
+              name: `constant.numeric.${langName}`,
+            },
+          ],
+        },
+        keywords: {
+          patterns:
+            keywords.length > 0
+              ? [
+                  {
+                    match: `\\b(${keywords.map(escapeRegExp).join("|")})\\b`,
+                    name: `keyword.control.${langName}`,
+                  },
+                ]
+              : [],
+        },
+        types: {
+          patterns:
+            typeKeywords.length > 0
+              ? [
+                  {
+                    match: `\\b(${typeKeywords.map(escapeRegExp).join("|")})\\b`,
+                    name: `entity.name.type.${langName}`,
+                  },
+                ]
+              : [],
+        },
+        operators: {
+          patterns:
+            operators.length > 0
+              ? [
+                  {
+                    match: `(${operators.map(escapeRegExp).join("|")})`,
+                    name: `keyword.operator.${langName}`,
+                  },
+                ]
+              : [],
+        },
+        strings: {
+          patterns: [
+            {
+              begin: '"',
+              end: '"',
+              name: `string.quoted.double.${langName}`,
+              patterns: [
                 {
-                  match: `${escapeRegExp(langConfig.primitives.lineComment)}.*$`,
-                  name: `comment.line.${langName}`,
+                  match: "\\\\.",
+                  name: `constant.character.escape.${langName}`,
                 },
-              ]
-            : []),
-          {
-            begin: "/\\*",
-            end: "\\*/",
-            name: `comment.block.${langName}`,
-          },
-          {
-            match: "//.*$",
-            name: `comment.line.double-slash.${langName}`,
-          },
-        ],
+              ],
+            },
+            {
+              begin: singleQuoteBegin,
+              end: "'",
+              name: `string.quoted.single.${langName}`,
+              patterns: [
+                {
+                  match: "''|\\\\.",
+                  name: `constant.character.escape.${langName}`,
+                },
+              ],
+            },
+          ],
+        },
+        comments: {
+          patterns: commentPatterns,
+        },
       },
-    },
+    };
+  };
+
+  const tmContent = buildRepositoryAndPatterns();
+  const tm = {
+    $schema: "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    name: langConfig.name,
+    scopeName: `source.${langName}`,
+    ...tmContent,
   };
 
   const monarch = {
@@ -264,11 +415,23 @@ export function generateTextMate(langConfig: LanguageOptions): { tm: string; mon
       ],
       whitespace: [
         [/[ \\t\\r\\n]+/, "white"],
-        ...(langConfig.primitives?.lineComment && langConfig.primitives.lineComment !== "//"
-          ? [[new RegExp(`${escapeRegExp(langConfig.primitives.lineComment)}.*$`), "comment"]]
-          : []),
-        [/\/\*/, "comment", "@comment"],
-        [/\/\/.*$/, "comment"],
+        ...(lineComment && lineComment !== "//" && lineComment !== "<!--"
+          ? [[new RegExp(`${escapeRegExp(lineComment)}.*$`), "comment"]]
+          : isIni
+            ? [[/[;#].*$/, "comment"]]
+            : langName === "spice"
+              ? [
+                  [/^\s*\*.*$/, "comment"],
+                  [/[;$].*$/, "comment"],
+                ]
+              : langName === "matpower"
+                ? [[/%.*$/, "comment"]]
+                : ["ampl", "cantera", "bngl"].includes(langName)
+                  ? [[/#.*$/, "comment"]]
+                  : [
+                      [/\/\*/, "comment", "@comment"],
+                      [/\/\/.*$/, "comment"],
+                    ]),
       ],
     },
   };

@@ -17,6 +17,7 @@ import {
 import { QueryEngine, WorkspaceIndex } from "@modelscript/runtime";
 
 import csvLangDef, { csvWorkspaceHooks } from "@modelscript/csv/language";
+import lasLangDef, { lasWorkspaceHooks } from "@modelscript/las/language";
 import modelicaLangDef from "./language.js";
 import { modelicaWorkspaceHooks } from "./workspace-hooks.js";
 
@@ -26,6 +27,8 @@ const REF_HOOKS = extractRefHooks(modelicaLangDef);
 
 const csvIndexerHooks = extractIndexerHooks(csvLangDef);
 const csvQueryHooks = extractQueryHooksMap(csvLangDef);
+const lasIndexerHooks = extractIndexerHooks(lasLangDef);
+const lasQueryHooks = extractQueryHooksMap(lasLangDef);
 
 import { modelicaEvaluator } from "./expression-evaluator.js";
 import { modelicaQueryHooks } from "./queries.js";
@@ -33,6 +36,7 @@ import { modelicaQueryHooks } from "./queries.js";
 const baseIndexerHooks = [
   ...(INDEXER_HOOKS ?? (globalThis as any).__indexerHooksFallback ?? []),
   ...(csvIndexerHooks ?? []),
+  ...(lasIndexerHooks ?? []),
 ];
 const queryHooks = QUERY_HOOKS ?? (globalThis as any).__queryHooksFallback;
 const refHooks = REF_HOOKS ?? (globalThis as any).__refHooksFallback;
@@ -40,7 +44,18 @@ const evaluator = modelicaEvaluator ?? (globalThis as any).__evaluatorFallback;
 
 // Helper to normalize rule names (PascalCase <-> snake_case)
 function toSnakeCase(str: string): string {
-  return str.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();
+  let out = "";
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    if (ch >= 65 && ch <= 90 && i > 0) {
+      const prev = str.charCodeAt(i - 1);
+      if ((prev >= 97 && prev <= 122) || (prev >= 48 && prev <= 57)) {
+        out += "_";
+      }
+    }
+    out += str[i]!;
+  }
+  return out.toLowerCase();
 }
 
 // Merge Modelica and CSV query hooks
@@ -67,6 +82,17 @@ if (csvQueryHooks instanceof Map) {
   }
 } else if (csvQueryHooks) {
   for (const [k, v] of Object.entries(csvQueryHooks)) {
+    mergedQueryHooks.set(k, v);
+    mergedQueryHooks.set(toSnakeCase(k), v);
+  }
+}
+if (lasQueryHooks instanceof Map) {
+  for (const [k, v] of lasQueryHooks.entries()) {
+    mergedQueryHooks.set(k, v);
+    mergedQueryHooks.set(toSnakeCase(k), v);
+  }
+} else if (lasQueryHooks) {
+  for (const [k, v] of Object.entries(lasQueryHooks)) {
     mergedQueryHooks.set(k, v);
     mergedQueryHooks.set(toSnakeCase(k), v);
   }
@@ -223,12 +249,14 @@ const allIndexerHooks = [
 import { injectPredefinedTypes } from "./predefined-types.js";
 
 /**
- * Language conventions for the Modelica workspace index. The Modelica index also hosts `.csv` table
- * resources (exposed as parameter packages), so the CSV resource indexer is merged in here.
+ * Language conventions for the Modelica workspace index. The Modelica index also hosts `.csv` and
+ * `.las` tabular resources (exposed as parameter/curve packages), so their indexers are merged here.
  */
 export const modelicaIndexingHooks: WorkspaceIndexingHooks = {
   ...modelicaWorkspaceHooks,
-  indexResource: csvWorkspaceHooks.indexResource,
+  indexResource: (uri, rootNode, parentFQN) =>
+    lasWorkspaceHooks.indexResource?.(uri, rootNode, parentFQN) ??
+    csvWorkspaceHooks.indexResource?.(uri, rootNode, parentFQN),
 };
 
 /**

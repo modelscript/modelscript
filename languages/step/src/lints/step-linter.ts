@@ -248,9 +248,10 @@ export function lintStepContent(content: string): StepDiagnostic[] {
 
   const extractNumericTuple = (argsText: string): number[] | undefined => {
     // Match inner parenthesized coordinate/direction tuple e.g. ('name', (x, y, z))
-    const tupleMatch = /\(\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?:\s*,\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)+)\s*\)/.exec(
-      argsText,
-    );
+    const tupleMatch =
+      /\(\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?:\s*,\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)+)\s*\)/.exec(
+        argsText,
+      );
     if (!tupleMatch?.[1]) return undefined;
     const nums = tupleMatch[1].split(",").map((s) => Number.parseFloat(s.trim()));
     return nums.every((n) => !Number.isNaN(n)) ? nums : undefined;
@@ -341,7 +342,8 @@ export function lintStepContent(content: string): StepDiagnostic[] {
 
   for (const info of entityMap.values()) {
     if (info.entityName === "ORIENTED_EDGE") {
-      const ecId = info.refs.find((r) => entityMap.get(r)?.entityName === "EDGE_CURVE") ?? info.refs[info.refs.length - 1];
+      const ecId =
+        info.refs.find((r) => entityMap.get(r)?.entityName === "EDGE_CURVE") ?? info.refs[info.refs.length - 1];
       const sameSense = !/\.F\.\s*\)\s*;?\s*$/i.test(info.argsText);
       if (ecId && entityMap.has(ecId)) {
         orientedEdgeToCurve.set(info.id, { edgeCurveId: ecId, sameSense });
@@ -578,14 +580,21 @@ export function lintStepContent(content: string): StepDiagnostic[] {
     }
   }
 
-  // Also check pairs of VERTEX_POINTs with micro-gaps exceeding tolerance
+  // Also check pairs of under-connected VERTEX_POINTs with micro-gaps exceeding tolerance
+  const vertexEdgeDegree = new Map<string, number>();
+  for (const ep of edgeCurveEndpoints.values()) {
+    if (ep.vStart) vertexEdgeDegree.set(ep.vStart, (vertexEdgeDegree.get(ep.vStart) ?? 0) + 1);
+    if (ep.vEnd) vertexEdgeDegree.set(ep.vEnd, (vertexEdgeDegree.get(ep.vEnd) ?? 0) + 1);
+  }
   const vertexEntries = [...vertexPoints.entries()];
-  const maxMicroGap = uncertaintyTol !== undefined ? 1.0 : 0.05;
+  const maxMicroGap = uncertaintyTol !== undefined ? Math.min(0.05, Math.max(0.02, tol * 2)) : 0.05;
   for (let i = 0; i < vertexEntries.length; i++) {
     const [v1Id, p1] = vertexEntries[i]!;
+    const deg1 = vertexEdgeDegree.get(v1Id) ?? 0;
     for (let j = i + 1; j < vertexEntries.length; j++) {
       const [v2Id, p2] = vertexEntries[j]!;
       if (connectedVertexPairs.has(`${v1Id}:${v2Id}`)) continue;
+      if (deg1 >= 3 && (vertexEdgeDegree.get(v2Id) ?? 0) >= 3) continue;
       const gap = Math.hypot(p1[0] - p2[0], p1[1] - p2[1], p1[2] - p2[2]);
       if (gap > tol && gap <= maxMicroGap) {
         const v2Info = entityMap.get(v2Id);
@@ -607,17 +616,22 @@ export function lintStepContent(content: string): StepDiagnostic[] {
     const d2 = cross(c, d, b);
     const d3 = cross(a, b, c);
     const d4 = cross(a, b, d);
-    return ((d1 > 1e-9 && d2 < -1e-9) || (d1 < -1e-9 && d2 > 1e-9)) &&
-      ((d3 > 1e-9 && d4 < -1e-9) || (d3 < -1e-9 && d4 > 1e-9));
+    return (
+      ((d1 > 1e-9 && d2 < -1e-9) || (d1 < -1e-9 && d2 > 1e-9)) &&
+      ((d3 > 1e-9 && d4 < -1e-9) || (d3 < -1e-9 && d4 > 1e-9))
+    );
   };
 
   const isPolygonSelfIntersecting = (pts3d: [number, number, number][]): boolean => {
     const n = pts3d.length;
     if (n < 4) return false;
     // Project onto the 2D coordinate plane with largest span
-    let minX = Infinity, maxX = -Infinity;
-    let minY = Infinity, maxY = -Infinity;
-    let minZ = Infinity, maxZ = -Infinity;
+    let minX = Infinity,
+      maxX = -Infinity;
+    let minY = Infinity,
+      maxY = -Infinity;
+    let minZ = Infinity,
+      maxZ = -Infinity;
     for (const p of pts3d) {
       if (p[0] < minX) minX = p[0];
       if (p[0] > maxX) maxX = p[0];
@@ -780,4 +794,3 @@ export function lintStepContent(content: string): StepDiagnostic[] {
 
   return diagnostics;
 }
-

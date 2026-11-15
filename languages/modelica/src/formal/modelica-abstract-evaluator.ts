@@ -8,6 +8,13 @@ import {
   type CFGInstruction,
   type RTECheckResult,
 } from "@modelscript/runtime";
+import {
+  isAsciiIdentContinue,
+  isAsciiIdentStart,
+  isAsciiIdentifier,
+  isAsciiWhitespaceCode,
+  parseNamedCallArgsFromText,
+} from "../flattener/expressions/cst-utils.js";
 
 export interface EvaluatorContext {
   instId: number;
@@ -20,14 +27,164 @@ export interface EvaluatorContext {
 
 function isBinaryAddSub(str: string, idx: number): boolean {
   let p = idx - 1;
-  while (p >= 0 && /\s/.test(str[p]!)) p--;
+  while (p >= 0 && isAsciiWhitespaceCode(str.charCodeAt(p))) p--;
   if (p < 0) return false;
   const prevChar = str[p]!;
+  const code = prevChar.charCodeAt(0);
   if (prevChar === "e" || prevChar === "E") {
-    let beforeE = p - 1;
-    if (beforeE >= 0 && /\d/.test(str[beforeE]!)) return false;
+    const beforeE = p - 1;
+    if (beforeE >= 0 && str.charCodeAt(beforeE) >= 48 && str.charCodeAt(beforeE) <= 57) return false;
   }
-  return /[a-zA-Z0-9_)\]]/.test(prevChar);
+  return isAsciiIdentContinue(code) || prevChar === ")" || prevChar === "]";
+}
+
+function skipWs(s: string, i: number): number {
+  while (i < s.length && isAsciiWhitespaceCode(s.charCodeAt(i))) i++;
+  return i;
+}
+
+function readAsciiIdentAt(s: string, i: number): [string, number] | null {
+  if (i >= s.length || !isAsciiIdentStart(s.charCodeAt(i))) return null;
+  let j = i + 1;
+  while (j < s.length && isAsciiIdentContinue(s.charCodeAt(j))) j++;
+  return [s.slice(i, j), j];
+}
+
+function readUnsignedDecimalAt(s: string, i: number): [string, number] | null {
+  let j = i;
+  while (j < s.length && s.charCodeAt(j) >= 48 && s.charCodeAt(j) <= 57) j++;
+  if (j === i) return null;
+  if (j < s.length && s[j] === ".") {
+    const dotPos = j;
+    j++;
+    const fracStart = j;
+    while (j < s.length && s.charCodeAt(j) >= 48 && s.charCodeAt(j) <= 57) j++;
+    if (j === fracStart) j = dotPos;
+  }
+  return [s.slice(i, j), j];
+}
+
+function isSignedFloatLiteral(s: string): boolean {
+  let i = s.startsWith("-") ? 1 : 0;
+  const numPart = readUnsignedDecimalAt(s, i);
+  if (!numPart) return false;
+  i = numPart[1];
+  if (i < s.length && (s[i] === "e" || s[i] === "E")) {
+    i++;
+    if (i < s.length && (s[i] === "+" || s[i] === "-")) i++;
+    const expStart = i;
+    while (i < s.length && s.charCodeAt(i) >= 48 && s.charCodeAt(i) <= 57) i++;
+    if (i === expStart) return false;
+  }
+  return i === s.length;
+}
+
+function parseBracketIndexing(s: string): { arrName: string; innerIdx: string } | null {
+  const open = s.indexOf("[");
+  if (open <= 0 || !s.endsWith("]")) return null;
+  const arrName = s.slice(0, open);
+  if (!isAsciiIdentifier(arrName)) return null;
+  let depth = 0;
+  let inQuotes = false;
+  let quoteChar = "";
+  for (let i = open; i < s.length; i++) {
+    const ch = s[i]!;
+    if (inQuotes) {
+      if (ch === "\\" && i + 1 < s.length) {
+        i++;
+      } else if (ch === quoteChar) {
+        inQuotes = false;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuotes = true;
+      quoteChar = ch;
+    } else if (ch === "[" || ch === "(" || ch === "{") {
+      depth++;
+    } else if (ch === "]" || ch === ")" || ch === "}") {
+      depth--;
+      if (depth === 0) {
+        if (i !== s.length - 1) return null;
+        return { arrName, innerIdx: s.slice(open + 1, -1) };
+      }
+    }
+  }
+  return null;
+}
+
+function parseNotWrapped(s: string): string | null {
+  if (s.length < 5 || s.slice(0, 3).toLowerCase() !== "not") return null;
+  const i = skipWs(s, 3);
+  if (s[i] !== "(" || !s.endsWith(")")) return null;
+  let depth = 0;
+  for (let k = i; k < s.length; k++) {
+    if (s[k] === "(") depth++;
+    else if (s[k] === ")") {
+      depth--;
+      if (depth === 0) {
+        return k === s.length - 1 ? s.slice(i + 1, -1).trim() : null;
+      }
+    }
+  }
+  return null;
+}
+
+function parseVarOpNumber(s: string): { varName: string; offset: number } | null {
+  const id = readAsciiIdentAt(s, 0);
+  if (!id) return null;
+  let i = skipWs(s, id[1]);
+  const sign = s[i];
+  if (sign !== "+" && sign !== "-") return null;
+  i = skipWs(s, i + 1);
+  const dec = readUnsignedDecimalAt(s, i);
+  if (!dec || dec[1] !== s.length) return null;
+  const val = Number(dec[0]);
+  return { varName: id[0], offset: sign === "+" ? val : -val };
+}
+
+function parseVarCmpNumber(s: string): { vName: string; op: string; val: number } | null {
+  const id = readAsciiIdentAt(s, 0);
+  if (!id) return null;
+  let i = skipWs(s, id[1]);
+  const two = s.slice(i, i + 2);
+  let op = "";
+  if (two === "<=" || two === ">=" || two === "==") {
+    op = two;
+    i += 2;
+  } else if (s[i] === "<" || s[i] === ">") {
+    op = s[i]!;
+    i += 1;
+  } else {
+    return null;
+  }
+  i = skipWs(s, i);
+  const neg = s[i] === "-";
+  if (neg) i++;
+  const dec = readUnsignedDecimalAt(s, i);
+  if (!dec || dec[1] !== s.length) return null;
+  return { vName: id[0], op, val: neg ? -Number(dec[0]) : Number(dec[0]) };
+}
+
+function parseVarRelOffset(s: string): { xName: string; yName: string; offset: number } | null {
+  const id1 = readAsciiIdentAt(s, 0);
+  if (!id1) return null;
+  let i = skipWs(s, id1[1]);
+  if (s.slice(i, i + 2) === "<=") i += 2;
+  else if (s[i] === "<") i += 1;
+  else return null;
+  i = skipWs(s, i);
+  const id2 = readAsciiIdentAt(s, i);
+  if (!id2) return null;
+  i = skipWs(s, id2[1]);
+  if (i === s.length) return { xName: id1[0], yName: id2[0], offset: 0 };
+  const sign = s[i];
+  if (sign !== "+" && sign !== "-") return null;
+  i = skipWs(s, i + 1);
+  const dec = readUnsignedDecimalAt(s, i);
+  if (!dec || dec[1] !== s.length) return null;
+  const c = Number(dec[0]);
+  return { xName: id1[0], yName: id2[0], offset: sign === "+" ? c : -c };
 }
 
 function splitArguments(argString: string): string[] {
@@ -84,7 +241,7 @@ export class ModelicaAbstractEvaluator {
     }
 
     // 1. Literal number
-    if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(trimmed)) {
+    if (isSignedFloatLiteral(trimmed)) {
       return Interval.const(Number(trimmed));
     }
 
@@ -93,10 +250,9 @@ export class ModelicaAbstractEvaluator {
     if (trimmed === "false") return Interval.const(0);
 
     // 3. Array indexing: arr[idxExpr] or arr[idx1, idx2]
-    const arrayMatch = /^([a-zA-Z_][a-zA-Z0-9_]*)\[(.*)\]$/.exec(trimmed);
-    if (arrayMatch) {
-      const arrName = arrayMatch[1]!;
-      const innerIdx = arrayMatch[2]!;
+    const arrayIndexed = parseBracketIndexing(trimmed);
+    if (arrayIndexed) {
+      const { arrName, innerIdx } = arrayIndexed;
 
       // Handle comma-separated indices if multi-dimensional
       const idxParts = innerIdx.split(",").map((s) => s.trim());
@@ -144,7 +300,7 @@ export class ModelicaAbstractEvaluator {
     const openParenIdx = trimmed.indexOf("(");
     if (openParenIdx > 0 && trimmed.endsWith(")")) {
       const candidateName = trimmed.slice(0, openParenIdx).trim();
-      if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(candidateName)) {
+      if (isAsciiIdentifier(candidateName)) {
         let depth = 0;
         let closedAtEnd = false;
         for (let i = openParenIdx; i < trimmed.length; i++) {
@@ -431,7 +587,7 @@ export class ModelicaAbstractEvaluator {
     }
 
     // 6. Simple Variable Lookup (with Uninitialized Variable Verification)
-    if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed)) {
+    if (isAsciiIdentifier(trimmed)) {
       if (ctx?.declaredVars?.has(trimmed) && ctx.initializedVars && !ctx.initializedVars.has(trimmed)) {
         collectRTE({
           instId: ctx.instId,
@@ -486,10 +642,10 @@ export class ModelicaAbstractEvaluator {
         const exprStr = String(expr).trim();
 
         // 1. Array builder functions: zeros(n), ones(n), fill(val, n), linspace(x1, x2, n), identity(n)
-        const builderMatch = /^([a-zA-Z_][a-zA-Z0-9_]*)\((.*)\)$/.exec(exprStr);
-        if (builderMatch) {
-          const fnName = builderMatch[1]!;
-          const args = builderMatch[2] ? builderMatch[2].split(",").map((s) => s.trim()) : [];
+        const parsedBuilder = parseNamedCallArgsFromText(exprStr);
+        if (parsedBuilder && isAsciiIdentifier(parsedBuilder.callee)) {
+          const fnName = parsedBuilder.callee;
+          const args = parsedBuilder.argsText ? parsedBuilder.argsText.split(",").map((s) => s.trim()) : [];
 
           if (fnName === "zeros" && args[0]) {
             const lenIval = this.evalExpr(args[0], inState, collectRTE, ctx);
@@ -543,23 +699,18 @@ export class ModelicaAbstractEvaluator {
         oct.forget(tIdx);
 
         // Check for relational assignments: y := x + c (where y !== x)
-        const relMatch = /^([a-zA-Z_][a-zA-Z0-9_]*)\s*([+-])\s*(\d+(?:\.\d+)?)$/.exec(exprStr);
-        if (relMatch) {
-          const srcVar = relMatch[1]!;
+        const rel = parseVarOpNumber(exprStr);
+        if (rel) {
+          const { varName: srcVar, offset } = rel;
           if (srcVar !== target) {
-            const sign = relMatch[2]!;
-            const c = Number(relMatch[3]!);
-            const offset = sign === "+" ? c : -c;
-
             const sIdx = inState.getVarIndex(srcVar);
             oct.setDifference(tIdx, sIdx, offset);
             oct.setDifference(sIdx, tIdx, -offset);
           }
         } else {
           // Check for direct copy assignment: y := x (where y !== x)
-          const copyMatch = /^([a-zA-Z_][a-zA-Z0-9_]*)$/.exec(exprStr);
-          if (copyMatch && copyMatch[1] !== target) {
-            const srcVar = copyMatch[1]!;
+          if (isAsciiIdentifier(exprStr) && exprStr !== target) {
+            const srcVar = exprStr;
             const sIdx = inState.getVarIndex(srcVar);
             oct.setDifference(tIdx, sIdx, 0);
             oct.setDifference(sIdx, tIdx, 0);
@@ -637,25 +788,20 @@ export class ModelicaAbstractEvaluator {
     const arrays = inState.arraySegments;
 
     // Check for "not (...)"
-    const notMatch = /^not\s*\(([\s\S]*)\)$/i.exec(trimmed);
-    if (notMatch && notMatch[1]) {
-      const inner = notMatch[1].trim();
-      const cmpMatch = /^([a-zA-Z_][a-zA-Z0-9_]*)\s*(<=|<|>=|>|==)\s*(-?\d+(?:\.\d+)?)$/.exec(inner);
-      if (cmpMatch) {
-        const vName = cmpMatch[1]!;
-        const op = cmpMatch[2]!;
-        const val = Number(cmpMatch[3]!);
-        const invertedOp = op === "<=" ? ">" : op === "<" ? ">=" : op === ">=" ? "<" : op === ">" ? "<=" : "!=";
-        return this.assumeCondition(`${vName} ${invertedOp} ${val}`, inState);
+    const inner = parseNotWrapped(trimmed);
+    if (inner) {
+      const cmp = parseVarCmpNumber(inner);
+      if (cmp) {
+        const invertedOp =
+          cmp.op === "<=" ? ">" : cmp.op === "<" ? ">=" : cmp.op === ">=" ? "<" : cmp.op === ">" ? "<=" : "!=";
+        return this.assumeCondition(`${cmp.vName} ${invertedOp} ${cmp.val}`, inState);
       }
     }
 
     // 1. Comparison with literal: var (<|<=|>|>=|==) const
-    const numCmpMatch = /^([a-zA-Z_][a-zA-Z0-9_]*)\s*(<=|<|>=|>|==)\s*(-?\d+(?:\.\d+)?)$/.exec(trimmed);
-    if (numCmpMatch) {
-      const vName = numCmpMatch[1]!;
-      const op = numCmpMatch[2]!;
-      const val = Number(numCmpMatch[3]!);
+    const numCmp = parseVarCmpNumber(trimmed);
+    if (numCmp) {
+      const { vName, op, val } = numCmp;
       const currIval = env.get(vName);
       const vIdx = inState.getVarIndex(vName);
 
@@ -691,14 +837,9 @@ export class ModelicaAbstractEvaluator {
     }
 
     // 2. Relational comparison: x - y <= c or x <= y + c
-    const relCmpMatch =
-      /^([a-zA-Z_][a-zA-Z0-9_]*)\s*(<=|<)\s*([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*([+-])\s*(\d+(?:\.\d+)?))?$/.exec(trimmed);
-    if (relCmpMatch) {
-      const xName = relCmpMatch[1]!;
-      const yName = relCmpMatch[3]!;
-      const sign = relCmpMatch[4] || "+";
-      const c = relCmpMatch[5] ? Number(relCmpMatch[5]) : 0;
-      const offset = sign === "+" ? c : -c;
+    const relCmp = parseVarRelOffset(trimmed);
+    if (relCmp) {
+      const { xName, yName, offset } = relCmp;
 
       const xIdx = inState.getVarIndex(xName);
       const yIdx = inState.getVarIndex(yName);

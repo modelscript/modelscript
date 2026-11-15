@@ -12,15 +12,27 @@ import {
   VarType,
   varTypeName,
 } from "@modelscript/runtime";
-import { Cst } from "../../../src-gen/bindings.js";
+import { Cst, type SyntaxNode } from "../../../src-gen/bindings.js";
 import { BUILTIN_FUNCTIONS } from "../../builtins.js";
 import { ModelicaErrorCode } from "../../errors.js";
 import { getShortClassSpecifierNode, isScopeEncapsulated } from "../../queries.js";
-import { stripComments } from "../expressions/cst-utils.js";
+import {
+  type CstNodeLike,
+  extractFunctionCallArgExprNodesCst,
+  isAsciiDigitsOnly,
+  isAsciiIdentifier,
+  isDottedIdentifierChain,
+  parseStandaloneExpressionCst,
+  stripArraySubscripts,
+  stripAsciiWhitespace,
+  stripLeadingDot,
+  stripLeadingDots,
+  stripOuterDoubleQuotes,
+  tokenizeCommentStrippedWords,
+} from "../expressions/cst-utils.js";
 import { SCALAR_VECTORIZABLE_FUNCTIONS } from "../expressions/functions.js";
 import {
   castToRealExpr,
-  escapeRegExp,
   evalArithmeticString,
   evalDaeExpr,
   getSymbolEnumLiterals,
@@ -34,13 +46,282 @@ import { collectExtendsMods } from "./component-inst.js";
 
 type DaeWithParent = DAEBuilder & { parentDae?: DaeWithParent };
 
+const C_MATH_EXTERNAL_FUNCS = new Set([
+  "sin",
+  "cos",
+  "tan",
+  "asin",
+  "acos",
+  "atan",
+  "atan2",
+  "sinh",
+  "cosh",
+  "tanh",
+  "exp",
+  "log",
+  "log10",
+  "sqrt",
+  "ceil",
+  "floor",
+  "fabs",
+  "pow",
+  "fmod",
+]);
+
+const MATH_FUNC_ALIAS_SET = new Set([
+  "sin",
+  "cos",
+  "tan",
+  "asin",
+  "acos",
+  "atan",
+  "atan2",
+  "sinh",
+  "cosh",
+  "tanh",
+  "exp",
+  "log",
+  "log10",
+  "sqrt",
+]);
+
+function formatCommaSpacing(text: string): string {
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    out += ch;
+    if (ch === "," && i + 1 < text.length) {
+      const next = text[i + 1]!;
+      if (next !== " " && next !== "\t" && next !== "\n" && next !== "\r") {
+        out += " ";
+      }
+    }
+  }
+  return out;
+}
+
+function hasComponentPrefixWordCst(compCst: CstNodeLike | null | undefined, targetWord: string): boolean {
+  if (!compCst) return false;
+  let clause: CstNodeLike | null | undefined = compCst;
+  while (clause && clause.type !== "component_clause" && clause.type !== "class_definition") {
+    clause = clause.parent;
+  }
+  const target = clause?.type === "component_clause" ? clause : compCst;
+  const tp = (target.children || []).find((c) => c.type === "type_prefix");
+  if (tp) {
+    return tokenizeCommentStrippedWords(tp.text ?? "").includes(targetWord);
+  }
+  const tokens: string[] = [];
+  for (const ch of target.children || []) {
+    if (ch.type === "type_specifier" || ch.type === "component_list" || ch.type === "declaration") break;
+    tokens.push(...tokenizeCommentStrippedWords(ch.text ?? ""));
+  }
+  return tokens.includes(targetWord);
+}
+
+function hasPureFunctionPrefixCst(cst: CstNodeLike | null | undefined): boolean {
+  if (!cst) return false;
+  const pfx = (cst.children || []).find((c) => c.type === "class_prefixes");
+  if (!pfx) return false;
+  const words = tokenizeCommentStrippedWords(pfx.text ?? "");
+  for (let i = 0; i + 1 < words.length; i++) {
+    if (words[i] === "pure" && words[i + 1] === "function") return true;
+  }
+  return false;
+}
+
+function cstHasOwnAlgorithmSection(cst: CstNodeLike | null | undefined): boolean {
+  if (!cst) return false;
+  const stack: CstNodeLike[] = [cst];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node) continue;
+    if (node.type === "algorithm_section") return true;
+    if (node !== cst && (node.type === "class_definition" || node.type === "short_class_definition")) {
+      continue;
+    }
+    const children = node.children || [];
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (children[i]) stack.push(children[i]!);
+    }
+  }
+  return false;
+}
+
+function findDirectElementModificationsCst(root: CstNodeLike | null | undefined, targetName: string): CstNodeLike[] {
+  const matches: CstNodeLike[] = [];
+  if (!root) return matches;
+  const stack: CstNodeLike[] = [root];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) continue;
+    if (cur !== root && (cur.type === "class_definition" || cur.type === "short_class_definition")) {
+      continue;
+    }
+    if (cur.type === "element_modification") {
+      const nameNode =
+        cur.childForFieldName?.("name") ??
+        (cur.children || []).find((c) => c.type === "name" || c.type === "identifier");
+      if (nameNode?.text?.trim() === targetName) {
+        matches.push(cur);
+      }
+      continue;
+    }
+    const children = cur.children || [];
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (children[i]) stack.push(children[i]!);
+    }
+  }
+  return matches;
+}
+
+function extractModRhsNode(elemMod: CstNodeLike | null | undefined): CstNodeLike | null {
+  if (!elemMod) return null;
+  const modNode =
+    elemMod.childForFieldName?.("modification") ?? (elemMod.children || []).find((c) => c.type === "modification");
+  if (!modNode) return null;
+  const ch: CstNodeLike[] = modNode.children || [];
+  const eqIdx = ch.findIndex((c) => c.type === "=" || c.text?.trim() === "=");
+  if (eqIdx < 0) return null;
+  for (let i = eqIdx + 1; i < ch.length; i++) {
+    if (ch[i]?.text?.trim()) return ch[i] ?? null;
+  }
+  return null;
+}
+
+function hasAnnotationBoolModificationCst(
+  classCst: CstNodeLike | null | undefined,
+  attrName: string,
+  expected: boolean,
+): boolean {
+  if (!classCst) return false;
+  const expectedText = expected ? "true" : "false";
+  for (const ch of findDirectAnnotationClauses(classCst)) {
+    for (const em of findDirectElementModificationsCst(ch, attrName)) {
+      const rhs = extractModRhsNode(em);
+      if (rhs?.text?.trim() === expectedText) return true;
+    }
+  }
+  return false;
+}
+
+function findDirectAnnotationClauses(root: CstNodeLike | null | undefined): CstNodeLike[] {
+  const result: CstNodeLike[] = [];
+  if (!root) return result;
+  const stack: CstNodeLike[] = [root];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) continue;
+    if (cur !== root && (cur.type === "class_definition" || cur.type === "short_class_definition")) {
+      continue;
+    }
+    if (cur.type === "annotation_clause") {
+      result.push(cur);
+      continue;
+    }
+    const children = cur.children || [];
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (children[i]) stack.push(children[i]!);
+    }
+  }
+  return result;
+}
+
+function findAnnotationStringModificationCst(root: CstNodeLike | null | undefined, attrName: string): string | null {
+  for (const ann of findDirectAnnotationClauses(root)) {
+    for (const em of findDirectElementModificationsCst(ann, attrName)) {
+      const rhs = extractModRhsNode(em);
+      if (!rhs) continue;
+      let strNode: CstNodeLike = rhs;
+      const walk: CstNodeLike[] = [rhs];
+      while (walk.length > 0) {
+        const cur = walk.pop();
+        if (!cur) continue;
+        if (cur.type === "string_literal" || cur.type === "STRING") {
+          strNode = cur;
+          break;
+        }
+        const children = cur.children || [];
+        for (let i = children.length - 1; i >= 0; i--) {
+          if (children[i]) walk.push(children[i]!);
+        }
+      }
+      const raw = strNode?.text?.trim() ?? "";
+      if (raw.startsWith('"') && raw.endsWith('"') && raw.length >= 2) {
+        return raw.slice(1, -1);
+      }
+    }
+  }
+  return null;
+}
+
+function findFunctionAnnotationTargetCst(fnCst: CstNodeLike | null | undefined, attrName: string): string | null {
+  for (const ann of findDirectAnnotationClauses(fnCst)) {
+    for (const em of findDirectElementModificationsCst(ann, attrName)) {
+      const rhs = extractModRhsNode(em);
+      const raw = rhs?.text?.trim() ?? "";
+      if (raw && isDottedIdentifierChain(raw)) {
+        return raw;
+      }
+    }
+  }
+  return null;
+}
+
+function getExternalCallCalleeNode(extCallNode: CstNodeLike | null | undefined): CstNodeLike | null {
+  if (!extCallNode?.children) return null;
+  const ch: CstNodeLike[] = extCallNode.children;
+  const eqIdx = ch.findIndex((c) => c.text?.trim() === "=");
+  const searchSlice = eqIdx >= 0 ? ch.slice(eqIdx + 1) : ch;
+  return searchSlice.find((c) => c.type === "identifier" || c.type === "component_reference") ?? null;
+}
+
+function isCallCstNode(node: CstNodeLike | null | undefined): boolean {
+  if (!node) return false;
+  if (node.type === "function_call") return true;
+  if (node.type === "primary") {
+    return (node.children || []).some((c) => c.type === "function_call_args");
+  }
+  return false;
+}
+
+function extractNamedTwoArgCallCst(
+  node: CstNodeLike | null | undefined,
+  targetFnName: string,
+): [SyntaxNode, SyntaxNode] | null {
+  if (!node) return null;
+  let cur: CstNodeLike | null | undefined = node;
+  for (let depth = 0; depth < 12 && cur; depth++) {
+    if (isCallCstNode(cur)) break;
+    const ch: CstNodeLike[] = cur.children || [];
+    if (ch.length === 1) {
+      cur = ch[0];
+    } else {
+      const fc = ch.find((c) => isCallCstNode(c));
+      if (fc && ch.length <= 2) {
+        cur = fc;
+      } else {
+        break;
+      }
+    }
+  }
+  if (!isCallCstNode(cur)) return null;
+  const ch: CstNodeLike[] = cur!.children || [];
+  const calleeNode =
+    cur!.childForFieldName?.("name") ??
+    cur!.childForFieldName?.("callee") ??
+    ch.find((c) => c.type === "component_reference" || c.type === "name" || c.type === "identifier");
+  if (calleeNode?.text?.trim() !== targetFnName) return null;
+  const args = extractFunctionCallArgExprNodesCst(cur as SyntaxNode);
+  return args.length === 2 ? [args[0]!, args[1]!] : null;
+}
+
 export function isFunctionSym(db: QueryDB, sym: any): boolean {
   if (!sym) return false;
   if ((sym as any)._isFunction !== undefined) return (sym as any)._isFunction;
   const meta = (sym.metadata as any) || {};
   const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
-  const cleanKind = stripComments(rawKind).trim();
-  const words = cleanKind.split(/\s+/).filter(Boolean);
+  const words = tokenizeCommentStrippedWords(rawKind);
   if (words.includes("function")) {
     (sym as any)._isFunction = true;
     return true;
@@ -53,16 +334,26 @@ export function isFunctionSym(db: QueryDB, sym: any): boolean {
   if (cst) {
     for (const child of cst.children || []) {
       if (child.type === "class_prefixes") {
-        const childText = (child.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-        const childWords = childText.split(/\s+/).filter(Boolean);
+        const childWords = tokenizeCommentStrippedWords(child.text ?? "");
         if (childWords.includes("function")) {
           (sym as any)._isFunction = true;
           return true;
         }
       }
     }
-    const text = (cst.text?.trim() ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-    if (/^(?:(?:encapsulated|partial|replaceable|pure|impure)\s+)*function\b/.test(text)) {
+    const headerWords = tokenizeCommentStrippedWords(cst.text ?? "");
+    let idx = 0;
+    while (
+      idx < headerWords.length &&
+      (headerWords[idx] === "encapsulated" ||
+        headerWords[idx] === "partial" ||
+        headerWords[idx] === "replaceable" ||
+        headerWords[idx] === "pure" ||
+        headerWords[idx] === "impure")
+    ) {
+      idx++;
+    }
+    if (headerWords[idx] === "function") {
       (sym as any)._isFunction = true;
       return true;
     }
@@ -205,7 +496,7 @@ export function generateRecordConstructorFor(
         ci?.variability === "constant" ||
         cm.variability === "constant" ||
         cm.isConstant === true ||
-        /\bconstant\b/.test(cc?.text ?? "");
+        hasComponentPrefixWordCst(cc, "constant");
       if (isConst) {
         const bt = ci?.modification?.bindingExpression?.text?.trim();
         if (bt) {
@@ -223,9 +514,13 @@ export function generateRecordConstructorFor(
     const aCst = db.cstNode(a.id) as any;
     const bCst = db.cstNode(b.id) as any;
     const aProt =
-      flattener.isCstNodeProtected(aCst) || aInst?.variability === "constant" || /\bconstant\b/.test(aCst?.text ?? "");
+      flattener.isCstNodeProtected(aCst) ||
+      aInst?.variability === "constant" ||
+      hasComponentPrefixWordCst(aCst, "constant");
     const bProt =
-      flattener.isCstNodeProtected(bCst) || bInst?.variability === "constant" || /\bconstant\b/.test(bCst?.text ?? "");
+      flattener.isCstNodeProtected(bCst) ||
+      bInst?.variability === "constant" ||
+      hasComponentPrefixWordCst(bCst, "constant");
     if (aProt !== bProt) return aProt ? 1 : -1;
     return 0;
   });
@@ -283,14 +578,13 @@ export function generateRecordConstructorFor(
       else if (typeSpec === "Clock" || cMeta.varType === VarType.Clock) vType = VarType.Clock;
 
       const compCst = db.cstNode(comp.id) as any;
-      const cstText = compCst?.text ?? "";
-      const isInput = /\binput\b/.test(cstText);
-      const isOutput = /\boutput\b/.test(cstText);
+      const isInput = hasComponentPrefixWordCst(compCst, "input");
+      const isOutput = hasComponentPrefixWordCst(compCst, "output");
       const isConstant =
         compInst?.variability === "constant" ||
         cMeta.variability === "constant" ||
         cMeta.isConstant === true ||
-        /\bconstant\b/.test(cstText);
+        hasComponentPrefixWordCst(compCst, "constant");
       const isCompProt = (flattener.isCstNodeProtected(compCst) || isConstant) && !isInput && !isOutput;
       const causality = isOutput ? Causality.Output : isCompProt ? Causality.Local : Causality.Input;
       const variability = Variability.Continuous;
@@ -350,7 +644,7 @@ export function generateRecordConstructorFor(
               evaluatedDims.push(evalDim);
             } else {
               if (exprId < 0 && d.text) {
-                const normText = d.text.replace(/,(\S)/g, ", $1");
+                const normText = formatCommaSpacing(d.text);
                 exprId = fn.addExpression(ExprKind.Name, fn.interner.intern(normText));
               }
               evaluatedDims.push(-1);
@@ -391,7 +685,7 @@ export function generateRecordConstructorFor(
               exprId = fn.addStringLiteral(t.slice(1, -1));
             } else {
               let num = Number(t);
-              if (isNaN(num) && /^\.?[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$/.test(t)) {
+              if (isNaN(num) && isDottedIdentifierChain(stripLeadingDot(t))) {
                 const cRes = lookupDbConstant(t, db, sym.parentId ?? undefined);
                 if (cRes && typeof cRes.value === "number") {
                   num = cRes.value;
@@ -639,24 +933,25 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
     }
   }
   const rootCst = db.cstNode(rootClassId) as any;
-  if (rootCst && rootCst.text) {
+  if (rootCst) {
+    const { calledNames, referencedPaths } = collectCstFunctionRefs(rootCst);
     for (const sym of candidates) {
       if (isRecordSym(sym)) {
         const name = sym.name;
         const qName = getSymbolQualifiedName(db, sym.id);
-        if (qName && new RegExp(`\\b${escapeRegExp(qName)}\\s*\\(`, "m").test(rootCst.text)) {
+        if (qName && calledNames.has(qName)) {
           usedRecordNames.add(name);
           usedRecordNames.add(qName);
-        } else if (new RegExp(`\\b${escapeRegExp(name)}\\s*\\(`, "m").test(rootCst.text)) {
+        } else if (calledNames.has(name)) {
           usedRecordNames.add(name);
         }
       }
     }
     for (const fsym of fileSymbols) {
       if (fsym && fsym.kind === "Component" && fsym.parentId && fsym.parentId !== rootClassId) {
-        if (!fsym.name || !rootCst.text.includes(fsym.name)) continue;
+        if (!fsym.name) continue;
         const qCompName = getSymbolQualifiedName(db, fsym.id);
-        if (qCompName && new RegExp(`\\b${escapeRegExp(qCompName)}\\b`).test(rootCst.text)) {
+        if (qCompName && referencedPaths.has(qCompName)) {
           const compInst = db.query<ComponentInstanceData>("componentInstance", fsym.id);
           const rawTarget = db.query<any>("classInstance", fsym.id);
           let compTarget: SymbolEntry | null =
@@ -883,7 +1178,7 @@ export function flattenFunction(
   enclosingScopeId?: SymbolId,
 ): DAEBuilder {
   const db: QueryDB = flattener.db;
-  const cleanFnName = fnName.replace(/^\.+/, "");
+  const cleanFnName = stripLeadingDots(fnName);
   const fnParentId = db.symbol(fnSymId)?.parentId;
   const compModsArgs =
     (
@@ -1012,11 +1307,8 @@ export function flattenFunction(
     if (cst) {
       (fn as any).fnRange = getClassDiagRange(cst);
     }
-    if (cst?.text) {
-      const uncommentedText = cst.text.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "");
-      if (/\b__OpenModelica_EarlyInline\s*=\s*true\b/.test(uncommentedText)) {
-        (fn as any).isEarlyInline = true;
-      }
+    if (hasAnnotationBoolModificationCst(cst, "__OpenModelica_EarlyInline", true)) {
+      (fn as { isEarlyInline?: boolean }).isEarlyInline = true;
     }
 
     let _pureDeclared = false;
@@ -1025,25 +1317,19 @@ export function flattenFunction(
     if (cst) {
       for (const child of cst.children || []) {
         if (child.type === "class_prefixes") {
-          const pfx = (child.text ?? "").replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, " ").trim();
-          const words = pfx.split(/\s+/).filter(Boolean);
+          const words = tokenizeCommentStrippedWords(child.text ?? "");
           if (words.includes("pure")) _pureDeclared = true;
           if (words.includes("impure")) impureDeclared = true;
         }
       }
     }
 
-    if (cst?.text && /\bimpure\s+function\b/.test(cst.text)) {
-      fn.isImpure = true;
-      (fn as any).isExplicitImpure = true;
-    }
-
     if (impureDeclared) {
       fn.isImpure = true;
-      (fn as any).isExplicitImpure = true;
+      (fn as { isExplicitImpure?: boolean }).isExplicitImpure = true;
     }
 
-    const findDesc = (node: any): string | null => {
+    const findDesc = (node: CstNodeLike | null | undefined): string | null => {
       if (!node) return null;
       if (
         node.type === "element" ||
@@ -1066,7 +1352,7 @@ export function flattenFunction(
     const fnDesc = findDesc(cst);
     if (fnDesc) fn.description = fnDesc;
 
-    const findExternalClause = (node: any): any => {
+    const findExternalClause = (node: CstNodeLike | null | undefined): CstNodeLike | null => {
       if (!node) return null;
       if (node.type === "external_clause") return node;
       for (const child of node.children || []) {
@@ -1108,7 +1394,7 @@ export function flattenFunction(
             continue;
           }
         }
-        const rawSpec = String(a.redeclaredTypeSpecifier ?? "").replace(/^\.+/, "");
+        const rawSpec = stripLeadingDots(String(a.redeclaredTypeSpecifier ?? ""));
         if (!rawSpec) continue;
         const lookupScope =
           a.evaluationScopeId ?? a.ownerClassId ?? currSym.parentId ?? fnParentId ?? flattener.currentRootClassId;
@@ -1169,7 +1455,7 @@ export function flattenFunction(
         Cst.ShortClassSpecifier.typeSpecifier(currShortSpec) ??
         currShortSpec.children?.find((c: any) => c.type === "type_specifier");
       const rawBaseName = typeSpecNode?.text?.trim() ?? "";
-      const cleanBase = rawBaseName.replace(/^\.+/, "");
+      const cleanBase = stripLeadingDots(rawBaseName);
       const modNode =
         Cst.ShortClassSpecifier.classModification(currShortSpec) ??
         currShortSpec.children?.find((c: any) => c.type === "class_modification");
@@ -1185,11 +1471,11 @@ export function flattenFunction(
           );
         }
       } else if (targetSymId === fnSymId) {
-        const mathMatch = cleanBase.match(
-          /^(?:Modelica\.Math\.)?(sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|exp|log|log10|sqrt)$/,
-        );
-        if (mathMatch) {
-          (fn as any).aliasTo = mathMatch[1];
+        const mathAliasCandidate = cleanBase.startsWith("Modelica.Math.")
+          ? cleanBase.slice("Modelica.Math.".length)
+          : cleanBase;
+        if (MATH_FUNC_ALIAS_SET.has(mathAliasCandidate)) {
+          (fn as { aliasTo?: string }).aliasTo = mathAliasCandidate;
         }
       }
 
@@ -1260,7 +1546,7 @@ export function flattenFunction(
 
     let inheritedExtClause: SymbolEntry | null = null;
     const ownExtClause = findExternalClause(cst);
-    const hasOwnAlgo = Boolean(cst && /\balgorithm\b/.test(cst.text ?? ""));
+    const hasOwnAlgo = cstHasOwnAlgorithmSection(cst);
     if (ownExtClause || hasOwnAlgo) {
       const extendsChildren = db.childrenOf(fnSymId).filter((c) => c.kind === "Extends");
       for (const ext of extendsChildren) {
@@ -1313,49 +1599,55 @@ export function flattenFunction(
     }
 
     if (!extClause && targetSymId !== fnSymId) {
-      const targetCst = db.cstNode(targetSymId) as any;
+      const targetCst = db.cstNode(targetSymId) as CstNodeLike | null;
       extClause = findExternalClause(targetCst);
     }
 
     if (extClause) {
-      const isCMath =
-        /\b(?:sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|exp|log|log10|sqrt|ceil|floor|fabs|pow|fmod)\s*\(/.test(
-          extClause.text ?? "",
-        );
-      if (!extClause.text?.includes('"builtin"') && !isCMath && (!cst?.text || !/\bpure\s+function\b/.test(cst.text))) {
-        fn.isImpure = true;
-      }
+      const extCallNode = extClause.children?.find((c) => c.type === "external_function_call");
+      const extCalleeNode = getExternalCallCalleeNode(extCallNode);
+      const extCalleeName = extCalleeNode?.text?.trim() ?? "";
+      const isCMath = C_MATH_EXTERNAL_FUNCS.has(extCalleeName);
 
-      const includeMatch = extClause.text?.match(/\bInclude\s*=\s*"((?:[^"\\]|\\.)*)"/);
-      if (includeMatch) {
-        (fn as any).externalInclude = includeMatch[1]!.replace(/\\"/g, '"').replace(/\\n/g, "\n");
-      }
-
-      let extText = extClause.text?.trim() ?? "";
-      extText = extText.replace(/\s*annotation\s*\([\s\S]*?\)\s*;?$/, "").trim();
-      if (extText.endsWith(";")) extText = extText.slice(0, -1).trim();
-      const hasCall = extClause.children?.some((c: any) => c.type === "external_function_call") || /\(/.test(extText);
-
-      const langMatch = extText.match(/^external\s+(?:"[^"]+"|\bbuiltin\b)/);
-      if (!langMatch) {
-        extText = extText.replace(/^external\b/, 'external "C"');
-      }
-
-      // 1. Language specification
       const langSpecNode = extClause.children?.find(
-        (c: any) => c.type === "language_specification" || c.type === "string_literal",
+        (c) => c.type === "language_specification" || c.type === "string_literal",
       );
       let lang: string | null = null;
       if (langSpecNode) {
-        const rawLang = langSpecNode.text?.trim() ?? "";
-        lang = rawLang.startsWith('"') && rawLang.endsWith('"') ? rawLang.slice(1, -1) : rawLang;
+        lang = stripOuterDoubleQuotes(langSpecNode.text?.trim() ?? "");
       } else {
-        const langRawMatch = extClause.text?.match(/^external\s+("(?:[^"\\]|\\.)*")/);
-        if (langRawMatch) {
-          const rawLang = langRawMatch[1];
-          lang = rawLang.startsWith('"') ? rawLang.slice(1, -1) : rawLang;
+        const directTokens = (extClause.children || [])
+          .filter((c) => c.type !== "external_function_call" && c.type !== "annotation_clause")
+          .flatMap((c) => tokenizeCommentStrippedWords(c.text ?? ""));
+        if (directTokens[1] === "builtin") {
+          lang = "builtin";
         }
       }
+
+      if (lang !== "builtin" && !isCMath && !hasPureFunctionPrefixCst(cst)) {
+        fn.isImpure = true;
+      }
+
+      const includeVal = findAnnotationStringModificationCst(extClause, "Include");
+      if (includeVal !== null) {
+        (fn as { externalInclude?: string }).externalInclude = includeVal
+          .replaceAll('\\"', '"')
+          .replaceAll("\\n", "\n");
+      }
+
+      const extParts: string[] = [];
+      for (const ch of extClause.children || []) {
+        if (ch.type === "annotation_clause" || ch.type === ";" || ch.text?.trim() === ";") continue;
+        const t = ch.text?.trim();
+        if (t) extParts.push(t);
+      }
+      if (!langSpecNode && lang !== "builtin" && extParts[0] === "external") {
+        extParts.splice(1, 0, '"C"');
+      }
+      let extText = extParts.join(" ").trim();
+      const hasCall = Boolean(extCallNode) || extText.includes("(");
+
+      // 1. Language specification check
       if (
         lang &&
         lang !== "C" &&
@@ -1364,7 +1656,7 @@ export function flattenFunction(
         lang !== "builtin" &&
         lang !== "none"
       ) {
-        const bCst = db.cstNode(targetSymId) as any;
+        const bCst = db.cstNode(targetSymId) as CstNodeLike | null;
         const rangeObj = getClassDiagRange(bCst);
         fn.diagnostics.push({
           severity: "error",
@@ -1375,22 +1667,17 @@ export function flattenFunction(
       }
 
       // 2. Check if external function return (explicit LHS) has array type
-      const extCallNode = extClause.children?.find((c: any) => c.type === "external_function_call");
       let lhsVarName: string | null = null;
       if (extCallNode?.children) {
-        const eqIdx = extCallNode.children.findIndex((c: any) => c.text?.trim() === "=");
+        const eqIdx = extCallNode.children.findIndex((c) => c.text?.trim() === "=");
         if (eqIdx > 0) {
           const compRef = extCallNode.children
             .slice(0, eqIdx)
-            .find((c: any) => c.type === "component_reference" || c.type === "identifier");
+            .find((c) => c.type === "component_reference" || c.type === "identifier");
           if (compRef) {
             lhsVarName = compRef.text?.trim() ?? null;
           }
         }
-      }
-      if (!lhsVarName) {
-        const extLhsMatch = extText.match(/^external(?:\s+"[^"]+"|\s+\b\w+\b)?\s+([a-zA-Z_]\w*)\s*=/);
-        if (extLhsMatch) lhsVarName = extLhsMatch[1]!;
       }
       if (lhsVarName) {
         const vIdx = fn.getVarIdxByName(lhsVarName);
@@ -1425,9 +1712,10 @@ export function flattenFunction(
           }
         }
       } else {
-        const callArgsMatch = extText.match(/\((.*)\)\s*$/);
-        if (callArgsMatch) {
-          const rawArgsStr = callArgsMatch[1].trim();
+        const trimmedExt = extText.trimEnd();
+        const openParenIdx = trimmedExt.indexOf("(");
+        if (openParenIdx >= 0 && trimmedExt.endsWith(")")) {
+          const rawArgsStr = trimmedExt.slice(openParenIdx + 1, -1).trim();
           if (rawArgsStr) {
             let depth = 0,
               current = "";
@@ -1464,10 +1752,10 @@ export function flattenFunction(
           });
           break;
         }
-        const sizeMatch = a.match(/^size\s*\(\s*([a-zA-Z_]\w*)\s*,\s*(.*)\)$/);
-        if (sizeMatch) {
-          const dimExpr = sizeMatch[2]!.trim();
-          const isConstNum = /^\d+$/.test(dimExpr);
+        const sizeArgs = extractNamedTwoArgCallCst(arg.node ?? parseStandaloneExpressionCst(a), "size");
+        if (sizeArgs && isAsciiIdentifier(sizeArgs[0]?.text?.trim() ?? "")) {
+          const dimExpr = sizeArgs[1]?.text?.trim() ?? "";
+          const isConstNum = isAsciiDigitsOnly(dimExpr);
           if (!isConstNum) {
             const bCst = db.cstNode(targetSymId) as any;
             const rangeObj = getClassDiagRange(bCst);
@@ -1524,10 +1812,8 @@ export function flattenFunction(
     }
 
     const targetFnCst = (db.cstNode(targetSymId) as any) ?? cst;
-    const fnRawText = targetFnCst?.text ?? "";
-    const derivMatch = fnRawText.match(/\bderivative\s*(?:\([^)]*\))?\s*=\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)/);
-    if (derivMatch) {
-      const derivRawName = derivMatch[1]!;
+    const derivRawName = findFunctionAnnotationTargetCst(targetFnCst, "derivative");
+    if (derivRawName) {
       const scopeToSearch = fnParentId ?? enclosingScopeId ?? targetSymId;
       const resolver = db.query<any>("resolveName", scopeToSearch) ?? db.query<any>("resolveSimpleName", scopeToSearch);
       const derivSym =
@@ -1851,11 +2137,11 @@ export function generateFunctions(flattener: any, rootClassId: SymbolId, dae: DA
       (s: any) => s.resourceId === rootSym.resourceId && s.kind === "Class" && s.id !== rootClassId,
     );
     const rootCst = db.cstNode(rootClassId) as any;
-    const rootText = rootCst?.text ?? "";
+    const { calledNames, shortFuncTargets } = collectCstFunctionRefs(rootCst);
     for (const fc of fileClasses) {
       if (isFunctionSym(db, fc)) {
-        const isShortFuncTarget = new RegExp(`\\bfunction\\s+\\w+\\s*=\\s*${escapeRegExp(fc.name)}\\b`).test(rootText);
-        const isCalled = new RegExp(`\\b${escapeRegExp(fc.name)}\\s*\\(`).test(rootText);
+        const isShortFuncTarget = shortFuncTargets.has(fc.name);
+        const isCalled = calledNames.has(fc.name);
         if (isCalled && !isShortFuncTarget) {
           const fn = flattener.flattenFunction(fc.id, fc.name, undefined, dae);
           if (fn.diagnostics.some((d: any) => d.severity === "error")) {
@@ -1874,7 +2160,7 @@ export function generateFunctions(flattener: any, rootClassId: SymbolId, dae: DA
         const childFuncs = (db.childrenOf(fc.id) ?? []).filter((c: any) => c.kind === "Class" && isFunctionSym(db, c));
         for (const cf of childFuncs) {
           const qualName = `${fc.name}.${cf.name}`;
-          const isQualCalled = new RegExp(`\\b${escapeRegExp(qualName)}\\s*\\(`).test(rootText);
+          const isQualCalled = calledNames.has(qualName);
           if (isQualCalled && !dae.functions.has(qualName)) {
             const fn = flattener.flattenFunction(cf.id, qualName, undefined, dae);
             if (
@@ -1889,6 +2175,102 @@ export function generateFunctions(flattener: any, rootClassId: SymbolId, dae: DA
       }
     }
   }
+}
+
+function addNormalizedCalleeVariants(rawCallee: string | undefined, calledNames: Set<string>): void {
+  if (!rawCallee) return;
+  const cleaned = stripAsciiWhitespace(rawCallee);
+  if (!cleaned) return;
+  const normalized = cleaned.startsWith(".") ? cleaned.slice(1) : cleaned;
+  calledNames.add(normalized);
+  let dotIdx = normalized.indexOf(".");
+  while (dotIdx >= 0) {
+    const tail = normalized.slice(dotIdx + 1);
+    if (tail) calledNames.add(tail);
+    dotIdx = normalized.indexOf(".", dotIdx + 1);
+  }
+}
+
+function addNormalizedRefVariants(rawRef: string | undefined, referencedPaths: Set<string>): void {
+  if (!rawRef) return;
+  const cleaned = stripArraySubscripts(stripLeadingDots(stripAsciiWhitespace(rawRef)));
+  if (!cleaned) return;
+  const parts = cleaned.split(".").filter(Boolean);
+  for (let i = 0; i < parts.length; i++) {
+    for (let j = i + 1; j <= parts.length; j++) {
+      referencedPaths.add(parts.slice(i, j).join("."));
+    }
+  }
+}
+
+function collectCstFunctionRefs(rootCst: CstNodeLike | null | undefined): {
+  calledNames: Set<string>;
+  shortFuncTargets: Set<string>;
+  referencedPaths: Set<string>;
+} {
+  const calledNames = new Set<string>();
+  const shortFuncTargets = new Set<string>();
+  const referencedPaths = new Set<string>();
+  if (!rootCst) return { calledNames, shortFuncTargets, referencedPaths };
+
+  const stack: CstNodeLike[] = [rootCst];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node) continue;
+    const t = node.type;
+    const children: CstNodeLike[] = node.children || [];
+
+    if (t === "component_reference" || t === "name" || t === "type_specifier") {
+      addNormalizedRefVariants(node.text, referencedPaths);
+    }
+
+    if (t === "function_call") {
+      const calleeNode =
+        node.childForFieldName?.("name") ??
+        node.childForFieldName?.("callee") ??
+        children.find((c) => c.type === "component_reference" || c.type === "name" || c.type === "identifier");
+      addNormalizedCalleeVariants(calleeNode?.text, calledNames);
+    } else if (t === "external_function_call") {
+      const calleeNode = children.find((c) => c.type === "identifier" || c.type === "component_reference");
+      addNormalizedCalleeVariants(calleeNode?.text, calledNames);
+    } else if (
+      (t === "class_definition" || t === "short_class_definition") &&
+      children.some(
+        (c) => c.type === "class_prefixes" && tokenizeCommentStrippedWords(c.text ?? "").includes("function"),
+      )
+    ) {
+      const shortSpec = getShortClassSpecifierNode(node);
+      if (shortSpec) {
+        const typeSpec =
+          Cst.ShortClassSpecifier.typeSpecifier(shortSpec as SyntaxNode) ??
+          shortSpec.children?.find((c: CstNodeLike) => c.type === "type_specifier" || c.type === "name");
+        const target = typeSpec?.text?.trim();
+        if (target) {
+          const clean = target.startsWith(".") ? target.slice(1) : target;
+          shortFuncTargets.add(clean);
+          const firstSeg = clean.split(".")[0]?.split("[")[0]?.trim();
+          if (firstSeg) shortFuncTargets.add(firstSeg);
+        }
+      }
+    } else if (children.length >= 2) {
+      for (let i = 0; i + 1 < children.length; i++) {
+        const c = children[i];
+        const next = children[i + 1];
+        if (
+          next?.type === "function_call_args" &&
+          (c?.type === "component_reference" || c?.type === "name" || c?.type === "identifier")
+        ) {
+          addNormalizedCalleeVariants(c.text, calledNames);
+        }
+      }
+    }
+
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (children[i]) stack.push(children[i]!);
+    }
+  }
+
+  return { calledNames, shortFuncTargets, referencedPaths };
 }
 
 export function generateExternalObjectFunctions(flattener: any, dae: DAEBuilder): void {

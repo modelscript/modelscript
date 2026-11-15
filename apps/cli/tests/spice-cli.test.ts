@@ -67,7 +67,7 @@ test("SPICE CLI Commands (msx spice simulate, lint, to-modelica, to-ecad)", asyn
       assert.equal(opData.converged, true);
       assert.ok(opData.nodeVoltages["OUT"] !== undefined || opData.nodeVoltages["out"] !== undefined);
 
-      // 2. Run Transient simulation with CSV output
+      // 2. Run Transient simulation with explicit CSV output
       const csvOut = path.join(tmpDir, "tran_result.csv");
       await simCmd.handler({
         file: validFile,
@@ -80,6 +80,39 @@ test("SPICE CLI Commands (msx spice simulate, lint, to-modelica, to-ecad)", asyn
       const csvContent = fs.readFileSync(csvOut, "utf-8");
       assert.ok(csvContent.startsWith("time,"));
       assert.ok(csvContent.includes("V(OUT)") || csvContent.includes("V(out)"));
+
+      // 2b. Run Transient simulation with default format="table" + .csv --out inference
+      const inferredCsvOut = path.join(tmpDir, "tran_inferred.csv");
+      await simCmd.handler({
+        file: validFile,
+        analysis: "tran",
+        format: "table",
+        out: inferredCsvOut,
+      });
+      assert.ok(fs.existsSync(inferredCsvOut), "Should infer CSV format from --out .csv when format defaults to table");
+      const inferredCsvContent = fs.readFileSync(inferredCsvOut, "utf-8");
+      assert.ok(inferredCsvContent.startsWith("time,"));
+      assert.ok(inferredCsvContent.includes("V(OUT)") || inferredCsvContent.includes("V(out)"));
+
+      // 2c. Run AC sweep simulation with CSV output
+      const acFile = path.join(tmpDir, "ac_filter.cir");
+      fs.writeFileSync(
+        acFile,
+        `* RC AC Sweep\nV1 in 0 DC 0 AC 1\nR1 in out 1k\nC1 out 0 1u\n.AC DEC 5 10 100k\n.END\n`,
+        "utf-8",
+      );
+      const acCsvOut = path.join(tmpDir, "bode.csv");
+      await simCmd.handler({
+        file: acFile,
+        analysis: "ac",
+        format: "csv",
+        out: acCsvOut,
+      });
+      assert.ok(fs.existsSync(acCsvOut), "Should write bode.csv for AC sweep");
+      const acCsvContent = fs.readFileSync(acCsvOut, "utf-8");
+      assert.ok(acCsvContent.startsWith("frequency_hz,"));
+      assert.ok(acCsvContent.includes("_mag") && acCsvContent.includes("_db") && acCsvContent.includes("_phase_deg"));
+      assert.ok(acCsvContent.trim().split("\n").length > 5);
 
       // 3. Lint clean netlist
       const lintCmd = capturedCommands.find((c) => c.command.startsWith("lint"));

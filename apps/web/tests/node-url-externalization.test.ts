@@ -48,6 +48,8 @@ describe("Browser node:url shim & Vite bundle resolution", () => {
     assert.match(content, /\^path\$/);
     assert.match(content, /\^node:readline\$/);
     assert.match(content, /\^readline\$/);
+    assert.match(content, /\^node:module\$/);
+    assert.match(content, /\^module\$/);
   });
 
   it("node-shims provides browser-safe stubs without throwing on access", async () => {
@@ -60,6 +62,13 @@ describe("Browser node:url shim & Vite bundle resolution", () => {
     assert.strictEqual(typeof nodeShims.resolve, "function");
     assert.strictEqual(typeof nodeShims.createInterface, "function");
     assert.strictEqual(typeof nodeShims.readline.createInterface, "function");
+    assert.strictEqual(typeof nodeShims.createRequire, "function");
+    assert.strictEqual(nodeShims.isBuiltin("node:fs"), false);
+    assert.deepStrictEqual(nodeShims.builtinModules, []);
+    const req = nodeShims.createRequire("file:///app/index.js");
+    assert.strictEqual(typeof req, "function");
+    assert.strictEqual(req.resolve("@modelscript/olga/parser.wasm"), "@modelscript/olga/parser.wasm");
+    assert.deepStrictEqual(req("@modelscript/olga/parser.wasm"), {});
     assert.strictEqual(nodeShims.existsSync("/any/path"), false);
     assert.strictEqual(nodeShims.join("a", "b"), "a/b");
     const child = nodeShims.spawn("olga");

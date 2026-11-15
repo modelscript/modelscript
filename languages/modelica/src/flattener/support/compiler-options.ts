@@ -57,10 +57,24 @@ export function extractCompilerOptions(
 
   let flowThreshold = options?.flowThreshold;
   if (flowThreshold === undefined) {
-    const match = cmdOptions.match(/--flowThreshold=([0-9.eE+-]+)/) || combined.match(/--flowThreshold=([0-9.eE+-]+)/);
-    if (match) {
-      flowThreshold = parseFloat(match[1]!);
-    }
+    const parseFlowThreshold = (src: string): number | undefined => {
+      const flag = "--flowThreshold=";
+      const idx = src.indexOf(flag);
+      if (idx < 0) return undefined;
+      let end = idx + flag.length;
+      while (end < src.length) {
+        const ch = src[end]!;
+        if ((ch >= "0" && ch <= "9") || ch === "." || ch === "e" || ch === "E" || ch === "+" || ch === "-") {
+          end++;
+        } else {
+          break;
+        }
+      }
+      if (end === idx + flag.length) return undefined;
+      const val = parseFloat(src.slice(idx + flag.length, end));
+      return Number.isNaN(val) ? undefined : val;
+    };
+    flowThreshold = parseFlowThreshold(cmdOptions) ?? parseFlowThreshold(combined);
   }
 
   return {

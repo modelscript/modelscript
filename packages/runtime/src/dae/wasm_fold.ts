@@ -405,9 +405,10 @@ export function evaluateConstantArenaExpression(
 
     if (resolved && resolved.kind === "Component") {
       if (resolved.metadata) {
-        const csvValue = (resolved.metadata as any).csvValue;
-        if (csvValue !== undefined) {
-          return csvValue;
+        const meta = resolved.metadata as Record<string, unknown>;
+        const tabularValue = meta["lasValue"] ?? meta["csvValue"];
+        if (tabularValue !== undefined) {
+          return tabularValue as number | boolean | string | unknown[] | null;
         }
       }
       const variability =

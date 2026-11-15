@@ -89,11 +89,12 @@ export function lintAdamsModel(dataset: AdamsDataset): AdamsDiagnostic[] {
 function checkGroundPart(dataset: AdamsDataset, diagnostics: AdamsDiagnostic[]): void {
   const hasGround = Array.from(dataset.parts.values()).some((p) => p.isGround);
   if (!hasGround && dataset.parts.size > 0) {
+    const firstPart = Array.from(dataset.parts.values())[0];
     diagnostics.push({
       code: "M7309",
       severity: "error",
       message: "Dataset does not define a ground reference body ('PART/... GROUND').",
-      range: DEFAULT_RANGE,
+      range: firstPart?.range ?? DEFAULT_RANGE,
       quickFix: {
         title: "Add ground part 'PART/1, GROUND'",
         edit: {
@@ -217,11 +218,13 @@ function checkMasslessParts(dataset: AdamsDataset, diagnostics: AdamsDiagnostic[
 function checkMobility(dataset: AdamsDataset, diagnostics: AdamsDiagnostic[]): void {
   const mobility = analyzeAdamsMobility(dataset);
   if (mobility.isOverconstrained) {
+    const firstJoint = Array.from(dataset.joints.values())[0];
+    const firstPart = Array.from(dataset.parts.values())[0];
     diagnostics.push({
       code: "M7301",
       severity: "warning",
       message: `Overconstrained mechanism: Grübler-Kutzbach mobility M = ${mobility.calculatedMobility} < 0 (moving bodies: ${mobility.numBodies}, constraints: ${mobility.totalConstraintEquations}).`,
-      range: DEFAULT_RANGE,
+      range: firstJoint?.range ?? firstPart?.range ?? DEFAULT_RANGE,
     });
   }
 }

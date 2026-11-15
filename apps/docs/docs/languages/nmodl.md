@@ -21,9 +21,18 @@ description: Native WebAssembly GLR parsing, biophysical static verification (M9
 
 ### 1. Biophysical Interface & Kinetic Block Analysis
 
-`@modelscript/nmodl` parses `NEURON { SUFFIX ... USEION ... READ ... WRITE ... }` blocks, `PARAMETER` declarations with unit annotations, `STATE` gating variables, `INITIAL` conditions, `BREAKPOINT` ohmic/GHK current assignments, and `DERIVATIVE` gating ODEs:
+`@modelscript/nmodl` parses `NEURON { SUFFIX ... USEION ... READ ... WRITE ... }` blocks, `PARAMETER` declarations with unit annotations, `STATE` gating variables, `INITIAL` conditions, `BREAKPOINT` ohmic/GHK current assignments, and `DERIVATIVE` gating ODEs, coupling ionic conductances into the membrane potential differential equation:
 
 $$C_m \frac{dV_m}{dt} = I_{\text{stim}}(t) - \left[\bar{g}_{\text{Na}} m^3 h (V_m - E_{\text{Na}}) + \bar{g}_{\text{K}} n^4 (V_m - E_{\text{K}}) + g_L (V_m - E_L)\right]$$
+
+| Symbol                                         | Meaning                                                                              | Units / Domain                                 |
+| :--------------------------------------------- | :----------------------------------------------------------------------------------- | :--------------------------------------------- |
+| $C_m$                                          | Specific membrane capacitance                                                        | $\mu\text{F/cm}^2$                             |
+| $V_m, t$                                       | Membrane potential and time                                                          | $\text{mV}$, $\text{ms}$                       |
+| $I_{\text{stim}}(t)$                           | External stimulus current density                                                    | $\mu\text{A/cm}^2$                             |
+| $\bar{g}_{\text{Na}}, \bar{g}_{\text{K}}, g_L$ | Maximal sodium, potassium, and leak conductances                                     | $\text{S/cm}^2$                                |
+| $m, h, n$                                      | Dimensionless voltage-gated activation ($m, n$) and inactivation ($h$) probabilities | $\text{dimensionless}$ ($0 \le m, h, n \le 1$) |
+| $E_{\text{Na}}, E_{\text{K}}, E_L$             | Reversal (Nernst) potentials for sodium, potassium, and leak channels                | $\text{mV}$                                    |
 
 ### 2. Current-Clamp Action Potential Solver
 

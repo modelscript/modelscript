@@ -11,6 +11,7 @@ import {
   type FixedShuntRecord,
   type GeneratorRecord,
   type LoadRecord,
+  parseDyr,
   type PsseCase,
   type TransformerRecord,
 } from "@modelscript/psse";
@@ -329,6 +330,47 @@ export function cgmesToPsse(model: CgmesModel, options: CgmesToPsseOptions = {})
     vscDc: [],
     switchedShunts: [],
   };
+
+  if (topo.model.dynamicModels && topo.model.dynamicModels.size > 0) {
+    const dyrLines: string[] = [];
+    for (const dy of topo.model.dynamicModels.values()) {
+      const targetId = dy.targetEquipmentId;
+      const terms = targetId ? equipmentTerminals.get(targetId) : undefined;
+      const busNum = terms && terms.length > 0 ? getBusForTerminal(terms[0]!) : undefined;
+      const ibus = busNum ?? buses.keys().next().value ?? 1;
+      const p = dy.parameters;
+      if (dy.profileClass === "SynchronousMachineTimeConstantReactance") {
+        const tpdo = p["tpdo"] ?? 5.0;
+        const tppdo = p["tppdo"] ?? 0.05;
+        const tpqo = p["tpqo"] ?? 0.5;
+        const tppqo = p["tppqo"] ?? 0.05;
+        const h = p["inertia"] ?? 4.0;
+        const d = p["damping"] ?? 0.0;
+        const xd = p["xDirectSync"] ?? 1.8;
+        const xq = p["xQuadSync"] ?? 1.7;
+        const xdp = p["xDirectTrans"] ?? 0.25;
+        const xqp = p["xQuadTrans"] ?? 0.4;
+        const xdpp = p["xDirectSubtrans"] ?? 0.2;
+        const xl = p["xLeakage"] ?? 0.15;
+        dyrLines.push(
+          `${ibus} 'GENROU' 1 ${tpdo} ${tppdo} ${tpqo} ${tppqo} ${h} ${d} ${xd} ${xq} ${xdp} ${xqp} ${xdpp} ${xl} 0.0 0.0 /`,
+        );
+      } else if (dy.profileClass.startsWith("Exc")) {
+        const ka = p["ka"] ?? 50.0;
+        const ta = p["ta"] ?? 0.05;
+        dyrLines.push(`${ibus} 'EXST1' 1 0.02 -0.2 0.2 0.0 0.0 ${ka} ${ta} -5.0 5.0 0.0 0.0 0.0 /`);
+      } else if (dy.profileClass.startsWith("Gov")) {
+        const r = p["r"] ?? 0.05;
+        const t1 = p["t1"] ?? 0.5;
+        dyrLines.push(`${ibus} 'TGOV1' 1 ${r} ${t1} 1.05 0.0 1.0 3.0 0.0 /`);
+      } else if (dy.profileClass === "PowerElectronicsConnection" || dy.profileClass.startsWith("Wecc")) {
+        dyrLines.push(`${ibus} 'REGCA1' 1 0.02 10.0 0.9 0.5 1.22 1.2 0.8 0.4 -1.3 0.02 0.7 99.0 -99.0 1.0 /`);
+      }
+    }
+    if (dyrLines.length > 0) {
+      psseCase.dyr = parseDyr(dyrLines.join("\n"));
+    }
+  }
 
   return {
     psseCase,

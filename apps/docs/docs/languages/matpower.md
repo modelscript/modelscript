@@ -77,9 +77,18 @@ Projects MATPOWER cases to standard Siemens PTI PSS/E v33 `.raw` files:
 Lowers power balance equations into ModelScript's zero-GC WebAssembly `DAEBuilder` linear arena (`lowerMatpowerToDae`):
 
 - Voltage magnitudes $V_i$ and phase angles $\theta_i$ registered as continuous algebraic variables.
-- Active and reactive nodal power injection mismatch equations:
+- Active and reactive nodal power injection mismatch equations, enforcing that net power injected into the network at each bus $i$ equals generation minus load demand:
   $$P_i(\theta, V) - P_{g,i} + P_{d,i} = 0$$
   $$Q_i(\theta, V) - Q_{g,i} + Q_{d,i} = 0$$
+
+  | Symbol                           | Meaning                                                            | Units / Domain                                          |
+  | :------------------------------- | :----------------------------------------------------------------- | :------------------------------------------------------ |
+  | $i$                              | Bus index                                                          | $\text{dimensionless}$ ($i = 1, \dots, N_{\text{bus}}$) |
+  | $\theta, V$                      | Vectors of bus voltage phase angles and magnitudes                 | $\text{rad}$, $\text{p.u.}$                             |
+  | $P_i(\theta, V), Q_i(\theta, V)$ | Net active and reactive power injected into the network at bus $i$ | $\text{p.u.}$ (or $\text{MW}, \text{MVAr}$)             |
+  | $P_{g,i}, Q_{g,i}$               | Active and reactive power generated at bus $i$                     | $\text{p.u.}$ (or $\text{MW}, \text{MVAr}$)             |
+  | $P_{d,i}, Q_{d,i}$               | Active and reactive load demand at bus $i$                         | $\text{p.u.}$ (or $\text{MW}, \text{MVAr}$)             |
+
 - Ready for Block Lower Triangular (BLT) decomposition, Newton-Raphson power flow, and continuous dynamic simulation.
 
 ---

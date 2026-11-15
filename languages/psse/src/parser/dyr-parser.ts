@@ -1141,15 +1141,7 @@ export function isLikelyDyrContent(source: string): boolean {
 }
 
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createPsseWasmParserSync } from "./wasm-loader.js";
-
-let cachedParser: ReturnType<typeof createPsseWasmParserSync>["parser"] | undefined;
-function getPsseWasmParser() {
-  if (!cachedParser) {
-    cachedParser = createPsseWasmParserSync().parser;
-  }
-  return cachedParser;
-}
+import { getPsseWasmParser } from "./wasm-loader.js";
 
 /**
  * Parses a PSS/E `.dyr` Dynamic Data file into structured dynamic equipment records.

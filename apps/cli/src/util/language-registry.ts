@@ -99,6 +99,7 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
   { id: "step", name: "STEP", extensions: [".step", ".stp", ".p21"], isBuiltIn: true },
   { id: "owl2", name: "OWL2", extensions: [".owl", ".owl2", ".ttl", ".ofn", ".rdf"], isBuiltIn: true },
   { id: "csv", name: "CSV", extensions: [".csv"], isBuiltIn: true },
+  { id: "las", name: "LAS Well Log", extensions: [".las"], isBuiltIn: true },
   { id: "ssp", name: "SSP", extensions: [".ssp", ".ssd", ".ssv", ".ssm"], isBuiltIn: true },
   { id: "ampl", name: "AMPL", extensions: [".mod", ".ampl"], isBuiltIn: true },
   { id: "cfd", name: "CFD", extensions: [".cfg", ".cfgt", ".su2", ".cfd", ".foam"], isBuiltIn: true },

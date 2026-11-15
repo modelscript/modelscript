@@ -141,15 +141,26 @@ export function getWaterMlDiagnostics(content: string): LspDiagnosticItem[] {
     ];
   }
 
+  const lines = content.split(/\r?\n/);
   const lints = lintWaterMlDocument(doc);
-  return lints.map((l) => ({
-    range: {
-      start: { line: l.sampleIndex !== undefined ? Math.min(l.sampleIndex, 500) : 0, character: 0 },
-      end: { line: l.sampleIndex !== undefined ? Math.min(l.sampleIndex, 500) : 0, character: 80 },
-    },
-    severity: l.severity === "error" ? 1 : l.severity === "warning" ? 2 : 3,
-    code: l.code,
-    source: "waterml-lint",
-    message: l.message,
-  }));
+  return lints.map((l) => {
+    const lineIdx = Math.min(
+      Math.max(0, l.sampleIndex !== undefined ? Math.min(l.sampleIndex, 500) : 0),
+      Math.max(0, lines.length - 1),
+    );
+    const lt = lines[lineIdx] ?? "";
+    let sChar = 0;
+    while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
+    const tok = lt.slice(sChar).match(/^<\/?[A-Za-z0-9_:-]+|^\S+/);
+    return {
+      range: {
+        start: { line: lineIdx, character: sChar },
+        end: { line: lineIdx, character: Math.min(lt.length, sChar + (tok ? tok[0].length : 1)) },
+      },
+      severity: l.severity === "error" ? 1 : l.severity === "warning" ? 2 : 3,
+      code: l.code,
+      source: "waterml-lint",
+      message: l.message,
+    };
+  });
 }

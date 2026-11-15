@@ -23,6 +23,8 @@ const SECTION_MAP: Record<string, { label: string; link: string }> = {
   reference: { label: "Reference", link: "/reference/linter-rules" },
   pricing: { label: "Pricing & Licensing", link: "/pricing" },
   trademark: { label: "Trademark Policy", link: "/trademark" },
+  terms: { label: "Terms of Service", link: "/terms" },
+  privacy: { label: "Privacy Policy", link: "/privacy" },
 };
 
 const cleanRoute = computed(() => {

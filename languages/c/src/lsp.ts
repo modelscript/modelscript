@@ -88,11 +88,19 @@ export interface LspCompletionItem {
 export function validateC(source: string, options: CLintOptions = {}): LspDiagnostic[] {
   const diags: LspDiagnostic[] = [];
 
+  const lines = source.split(/\r?\n/);
+
   // 1. Run static lint rules
   const rawLints: CDiagnostic[] = lintCSource(source, options);
   for (const lint of rawLints) {
-    const lineNum = Math.max(0, (lint.line ?? 1) - 1);
-    const colNum = Math.max(0, (lint.col ?? 1) - 1);
+    const lineNum = Math.min(Math.max(0, (lint.line ?? 1) - 1), Math.max(0, lines.length - 1));
+    const lineText = lines[lineNum] ?? "";
+    let colNum = Math.max(0, Math.min((lint.col ?? 1) - 1, lineText.length));
+    while (colNum < lineText.length && (lineText[colNum] === " " || lineText[colNum] === "\t")) {
+      colNum++;
+    }
+    const tok = lineText.slice(colNum).match(/^[A-Za-z_][A-Za-z0-9_]*|^[0-9]+(?:\.[0-9]+)?|^[^\s;(){},]+/);
+    const endCol = Math.min(lineText.length, colNum + (tok ? tok[0].length : 1));
     let sev: 1 | 2 | 3 | 4 = 1;
     if (lint.severity === "warning") sev = 2;
     else if (lint.severity === "info") sev = 3;
@@ -100,7 +108,7 @@ export function validateC(source: string, options: CLintOptions = {}): LspDiagno
     diags.push({
       range: {
         start: { line: lineNum, character: colNum },
-        end: { line: lineNum, character: colNum + 10 },
+        end: { line: lineNum, character: endCol },
       },
       severity: sev,
       code: `M${lint.code}`,

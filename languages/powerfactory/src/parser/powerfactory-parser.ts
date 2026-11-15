@@ -8,6 +8,7 @@
  * structured PowerFactoryModel.
  */
 
+import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
 import { strFromU8, unzipSync } from "fflate";
 import type {
   ElmBay,
@@ -101,18 +102,30 @@ export function parsePowerFactoryText(text: string, modelName = "PowerFactory_Gr
  */
 export function parsePowerFactoryXml(xmlText: string, targetModel?: PowerFactoryModel): PowerFactoryModel {
   const model = targetModel ?? createEmptyPowerFactoryModel();
+  const doc = parseXml(xmlText);
+  if (!doc.root) return model;
 
-  const dataObjectRegex =
-    /<(DataObject|Elm[A-Za-z0-9_]+|Typ[A-Za-z0-9_]+|Sta[A-Za-z0-9_]+|Set[A-Za-z0-9_]+|Int[A-Za-z0-9_]+)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/gi;
+  const elements: XmlElement[] = [];
+  const collectElements = (el: XmlElement): void => {
+    const colonIdx = el.name.indexOf(":");
+    const rawTag = colonIdx !== -1 ? el.name.slice(colonIdx + 1) : el.name;
+    if (
+      /^(?:DataObject|Elm[A-Za-z0-9_]+|Typ[A-Za-z0-9_]+|Sta[A-Za-z0-9_]+|Set[A-Za-z0-9_]+|Int[A-Za-z0-9_]+)$/i.test(
+        rawTag,
+      )
+    ) {
+      elements.push(el);
+    }
+    for (const child of el.children) {
+      collectElements(child);
+    }
+  };
+  collectElements(doc.root);
 
-  let match: RegExpExecArray | null;
-  while ((match = dataObjectRegex.exec(xmlText)) !== null) {
-    const rawTag = match[1]!;
-    const rawAttrs = match[2] || "";
-    const innerContent = match[3] || "";
-
-    const attrs = parseXmlAttributes(rawAttrs);
-    parseChildTagsIntoAttributes(innerContent, attrs);
+  for (const el of elements) {
+    const colonIdx = el.name.indexOf(":");
+    const rawTag = colonIdx !== -1 ? el.name.slice(colonIdx + 1) : el.name;
+    const attrs = extractPowerFactoryAttrs(el);
 
     const className = rawTag === "DataObject" ? attrs["class"] || "" : rawTag;
 
@@ -308,10 +321,11 @@ export function parsePowerFactoryXml(xmlText: string, targetModel?: PowerFactory
           loc_name: locName,
           graphics: [],
         };
-        const grfRegex = /<IntGrf\s+([^>]*)\/?>/gi;
-        let grfMatch: RegExpExecArray | null;
-        while ((grfMatch = grfRegex.exec(innerContent)) !== null) {
-          const gAttrs = parseXmlAttributes(grfMatch[1] ?? "");
+        for (const child of el.children) {
+          const cColon = child.name.indexOf(":");
+          const cTag = cColon !== -1 ? child.name.slice(cColon + 1) : child.name;
+          if (cTag.toLowerCase() !== "intgrf") continue;
+          const gAttrs = extractPowerFactoryAttrs(child);
           if (gAttrs["pDataObj"]) {
             desktop.graphics.push({
               elementId: cleanRef(gAttrs["pDataObj"]),
@@ -432,32 +446,22 @@ export function parsePowerFactoryAscii(text: string, model: PowerFactoryModel): 
   }
 }
 
-/** Parses XML tag attributes: key="value" or key='value'. */
-function parseXmlAttributes(raw: string): Record<string, string> {
+/** Extracts XML attributes and leaf child element values into an attribute map. */
+function extractPowerFactoryAttrs(el: XmlElement): Record<string, string> {
   const result: Record<string, string> = {};
-  const attrRegex = /([A-Za-z0-9_:]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
-  let match: RegExpExecArray | null;
-  while ((match = attrRegex.exec(raw)) !== null) {
-    const k = match[1];
-    const v = match[2] ?? match[3];
-    if (k && v !== undefined) {
-      result[k] = v;
+  for (const attr of el.attributes) {
+    result[attr.name] = attr.value;
+  }
+  for (const child of el.children) {
+    if (child.children.length > 0) continue;
+    const colonIdx = child.name.indexOf(":");
+    const key = colonIdx !== -1 ? child.name.slice(colonIdx + 1) : child.name;
+    const value = child.text.trim();
+    if (value && !result[key]) {
+      result[key] = value;
     }
   }
   return result;
-}
-
-/** Ingests child elements: <attrName>value</attrName> into attribute map. */
-function parseChildTagsIntoAttributes(xmlContent: string, attrs: Record<string, string>): void {
-  const tagRegex = /<([A-Za-z0-9_]+)>([^<]+)<\/\1>/g;
-  let match: RegExpExecArray | null;
-  while ((match = tagRegex.exec(xmlContent)) !== null) {
-    const k = match[1];
-    const v = match[2]?.trim();
-    if (k && v !== undefined && !attrs[k]) {
-      attrs[k] = v;
-    }
-  }
 }
 
 /** Cleans object references (e.g. "ElmTerm\Bus1.ElmTerm" -> "Bus1"). */

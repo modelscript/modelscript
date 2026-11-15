@@ -142,4 +142,36 @@ describe("Morsel Diagram Coordinate Grid Centering on Load Completion", () => {
       "MorselVisualizerPane.tsx must trigger zoomToFit in onRenderComplete if not already centered",
     );
   });
+
+  it("verifies Diagram.tsx ResizeObserver preserves zoom/pan once fitted and does not re-center on selection resize", () => {
+    const src = fs.readFileSync(diagramEditorPath, "utf-8");
+
+    assert.ok(
+      src.includes("hasFittedViewportRef"),
+      "Diagram.tsx must track hasFittedViewportRef to avoid re-centering on every container resize",
+    );
+    assert.ok(
+      src.includes("!hasFittedViewportRef.current"),
+      "Diagram.tsx ResizeObserver must only auto-fit when hasFittedViewportRef.current is false",
+    );
+  });
+
+  it("verifies loading placeholders do not lock in zoomed-out viewports", () => {
+    const diagramSrc = fs.readFileSync(diagramPkgPath, "utf-8");
+    const servicePath = path.resolve(import.meta.dirname, "../../../packages/lsp/src/services/diagram-service.ts");
+    const serviceSrc = fs.readFileSync(servicePath, "utf-8");
+
+    assert.ok(
+      diagramSrc.includes("lastRenderWasLoading") && diagramSrc.includes("renderFitGeneration"),
+      "packages/diagram renderDiagramInternal must track loading transitions and cancel stale recenter timers",
+    );
+    assert.ok(
+      diagramSrc.includes("if (!isCurrentLoading && (isFirstRender || moduleChanged || loadingCompleted))"),
+      "packages/diagram renderDiagramInternal must skip initial fit on loading state and fit when loading completes",
+    );
+    assert.ok(
+      !serviceSrc.includes("coordinateSystem: { x: 0, y: 0, width: 1000, height: 1000 }"),
+      "diagram-service.ts loading placeholder must not use oversized 1000x1000 coordinateSystem",
+    );
+  });
 });

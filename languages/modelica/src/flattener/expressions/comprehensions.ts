@@ -12,6 +12,7 @@ import { BinOp, DAEBuilder, VarType, type QueryDB } from "@modelscript/runtime";
 import type { SyntaxNode } from "../../../src-gen/bindings.js";
 import { ModelicaErrorCode } from "../../errors.js";
 import { getFlatteningState } from "../support/state.js";
+import { isAsciiDigitsOnly } from "./cst-utils.js";
 import { getConstVal } from "./eval.js";
 
 export function cartesianProduct<T>(arrays: T[][]): T[][] {
@@ -140,7 +141,7 @@ export function findArraySubscriptsForIter(
               let subs: (number | string)[] = [];
               let found = distinctSubs.size > 0;
               if (distinctSubs.size > 0) {
-                subs = [...distinctSubs].map((s) => (/^\d+$/.test(s) ? parseInt(s, 10) : s));
+                subs = [...distinctSubs].map((s) => (isAsciiDigitsOnly(s) ? parseInt(s, 10) : s));
               } else if (db) {
                 const state = getFlatteningState(dae);
                 const parts = baseName.split(".");

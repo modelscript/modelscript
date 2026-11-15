@@ -124,9 +124,19 @@ export function getAntimonyDocumentSymbols(text: string): LspDocumentSymbol[] {
   const mod = doc.mainModule;
   const symbols: LspDocumentSymbol[] = [];
 
+  const lines = text.split(/\r?\n/);
+  const makeRange = (startLine: number, endLine: number): LspRange => {
+    const sLineText = lines[startLine] ?? "";
+    const eLineText = lines[endLine] ?? "";
+    const leadMatch = /\S/.exec(sLineText);
+    const startChar = leadMatch ? leadMatch.index : 0;
+    const endChar = Math.max(startChar, eLineText.trimEnd().length);
+    return { start: { line: startLine, character: startChar }, end: { line: endLine, character: endChar } };
+  };
+
   const rootRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: text.split("\n").length, character: 0 },
+    end: { line: lines.length, character: 0 },
   };
 
   const children: LspDocumentSymbol[] = [];
@@ -134,10 +144,7 @@ export function getAntimonyDocumentSymbols(text: string): LspDocumentSymbol[] {
   for (const s of mod.species.values()) {
     const startLine = s.range ? Math.max(0, s.range.startLine - 1) : 0;
     const endLine = s.range ? Math.max(0, s.range.endLine - 1) : startLine;
-    const r: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: endLine, character: 40 },
-    };
+    const r = makeRange(startLine, endLine);
     const conc = s.initialConcentration ?? s.initialAmount ?? 0;
     children.push({
       name: s.id,
@@ -151,10 +158,7 @@ export function getAntimonyDocumentSymbols(text: string): LspDocumentSymbol[] {
   for (const rxn of mod.reactions.values()) {
     const startLine = rxn.range ? Math.max(0, rxn.range.startLine - 1) : 0;
     const endLine = rxn.range ? Math.max(0, rxn.range.endLine - 1) : startLine;
-    const r: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: endLine, character: 40 },
-    };
+    const r = makeRange(startLine, endLine);
     const reactStr = rxn.reactants.map((ref) => ref.species).join(" + ");
     const prodStr = rxn.products.map((ref) => ref.species).join(" + ");
     const arrow = rxn.reversible ? "->" : "=>";
@@ -170,10 +174,7 @@ export function getAntimonyDocumentSymbols(text: string): LspDocumentSymbol[] {
   for (const ev of mod.events) {
     const startLine = ev.range ? Math.max(0, ev.range.startLine - 1) : 0;
     const endLine = ev.range ? Math.max(0, ev.range.endLine - 1) : startLine;
-    const r: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: endLine, character: 40 },
-    };
+    const r = makeRange(startLine, endLine);
     children.push({
       name: ev.id,
       detail: `at (${ev.trigger})`,

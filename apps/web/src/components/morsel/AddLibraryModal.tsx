@@ -42,6 +42,7 @@ import {
   globalClassIconCache,
   installDependency,
   searchClasses,
+  setActiveStandard,
   uninstallDependency,
   type CatalogComponentInfo,
   type MountedLibraryEntry,
@@ -223,7 +224,10 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
 }) => {
   const toast = useToast();
   const { colorMode: themeMode, resolvedColorMode } = useTheme();
-  const isDark = propColorMode === "dark" || (!propColorMode && (themeMode === "dark" || resolvedColorMode === "dark"));
+  const isDark =
+    propColorMode === "dark" ||
+    (!propColorMode &&
+      (themeMode === "dark" || themeMode === "night" || resolvedColorMode === "dark" || resolvedColorMode === "night"));
 
   const [viewMode, setViewMode] = useState<HubViewMode>("components");
   const [searchQuery, setSearchQuery] = useState("");
@@ -832,6 +836,23 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
       }
     },
     [onUninstallPackage, syncMountedState, toast],
+  );
+
+  const executeToggleStandardProfile = useCallback(
+    async (pkgName: string, nextActive: boolean) => {
+      setBusyPackage(pkgName);
+      try {
+        await setActiveStandard(pkgName, nextActive);
+        await syncMountedState();
+        toast.info(`Standard pack '${pkgName}' is now ${nextActive ? "globally active" : "import-scoped"}.`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error(`Failed to update standard profile for '${pkgName}': ${msg}`);
+      } finally {
+        setBusyPackage(null);
+      }
+    },
+    [syncMountedState, toast],
   );
 
   // Place component (auto-installs parent library if not mounted!)
@@ -1818,6 +1839,22 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                                     {pkg.language}
                                   </span>
                                 )}
+                                {(mountedInfo?.category === "standard-pack" || mountedInfo?.standardCode) && (
+                                  <span
+                                    data-testid={`stdpack-badge-${pkg.name}`}
+                                    style={{
+                                      fontSize: 10.5,
+                                      fontWeight: 600,
+                                      padding: "1px 6px",
+                                      borderRadius: 5,
+                                      backgroundColor: isDark ? "rgba(59,130,246,0.18)" : "rgba(37,99,235,0.1)",
+                                      border: `1px solid ${isDark ? "rgba(96,165,250,0.4)" : "rgba(37,99,235,0.3)"}`,
+                                      color: isDark ? "#93c5fd" : "#1d4ed8",
+                                    }}
+                                  >
+                                    {mountedInfo.standardCode || "Standard Pack"}
+                                  </span>
+                                )}
                               </div>
                               <div
                                 style={{ fontSize: 11.5, color: palette.muted, marginTop: 2, display: "flex", gap: 8 }}
@@ -1901,6 +1938,35 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                           )}
 
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            {(mountedInfo?.category === "standard-pack" || mountedInfo?.standardCode) && (
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                data-testid={`stdpack-toggle-${pkg.name}`}
+                                title={
+                                  mountedInfo.active
+                                    ? "Globally enforced across workspace models (click to switch to import-scoped)"
+                                    : "Import-scoped enforcement (click to enable globally across workspace)"
+                                }
+                                onClick={() => void executeToggleStandardProfile(pkg.name, !mountedInfo.active)}
+                                style={{
+                                  borderRadius: 7,
+                                  padding: "5px 9px",
+                                  fontSize: 11.5,
+                                  fontWeight: 600,
+                                  cursor: isBusy ? "wait" : "pointer",
+                                  border: `1px solid ${mountedInfo.active ? (isDark ? "rgba(59,130,246,0.55)" : "rgba(37,99,235,0.45)") : palette.border}`,
+                                  backgroundColor: mountedInfo.active
+                                    ? isDark
+                                      ? "rgba(59,130,246,0.22)"
+                                      : "rgba(37,99,235,0.12)"
+                                    : "transparent",
+                                  color: mountedInfo.active ? (isDark ? "#93c5fd" : "#1d4ed8") : palette.muted,
+                                }}
+                              >
+                                {mountedInfo.active ? "Profile: Active" : "Profile: Import-only"}
+                              </button>
+                            )}
                             {isInstalledSameVer ? (
                               <>
                                 <span

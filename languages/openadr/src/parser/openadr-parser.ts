@@ -1,6 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import { createWasmParserSync, type SyntaxNode } from "@modelscript/openadr/wasm-parser";
+import { createRequire } from "node:module";
 import type { OadrEvent, OadrEventStatus, OadrInterval, OadrProgram, OadrSignalType, OpenAdrDeck } from "../types.js";
+
+const require = createRequire(import.meta.url);
+let cachedOadrParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+
+function getOadrWasmParser(): ReturnType<typeof createWasmParserSync>["parser"] {
+  if (!cachedOadrParser) {
+    const wasmPath = require.resolve("@modelscript/openadr/parser.wasm");
+    cachedOadrParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedOadrParser;
+}
 
 export function parseOpenAdr(text: string): OpenAdrDeck {
   const trimmed = text.trim();
@@ -8,7 +22,7 @@ export function parseOpenAdr(text: string): OpenAdrDeck {
     return parseJsonOpenAdr(trimmed);
   }
   if (trimmed.startsWith("<")) {
-    return parseXmlOpenAdr(trimmed);
+    return parseXmlOpenAdr(text);
   }
   return parseDeclarativeOpenAdr(text);
 }
@@ -62,136 +76,237 @@ function parseJsonOpenAdr(jsonStr: string): OpenAdrDeck {
   }
 }
 
+function localName(name: string): string {
+  const idx = name.indexOf(":");
+  return idx >= 0 ? name.slice(idx + 1) : name;
+}
+
+function computeLineStarts(text: string): number[] {
+  const starts = [0];
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === 10) starts.push(i + 1);
+  }
+  return starts;
+}
+
+function offsetToLine(lineStarts: number[], offset: number): number {
+  let lo = 0;
+  let hi = lineStarts.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (lineStarts[mid]! <= offset) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return hi + 1;
+}
+
+function findDescendants(root: XmlElement, targetLocalLower: string, out: XmlElement[] = []): XmlElement[] {
+  for (const child of root.children) {
+    if (localName(child.name).toLowerCase() === targetLocalLower) {
+      out.push(child);
+    }
+    findDescendants(child, targetLocalLower, out);
+  }
+  return out;
+}
+
+function findFirstDescendant(root: XmlElement, targetLocalLower: string): XmlElement | undefined {
+  for (const child of root.children) {
+    if (localName(child.name).toLowerCase() === targetLocalLower) return child;
+    const nested = findFirstDescendant(child, targetLocalLower);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+
+function getElementText(el: XmlElement): string {
+  return (el.cdata.length > 0 ? el.cdata.join("") : el.text).trim();
+}
+
+function parseIsoDurationSeconds(raw: string): number | undefined {
+  const s = raw.trim().toUpperCase();
+  if (!s.startsWith("PT") || !s.endsWith("S")) return undefined;
+  const digits = s.slice(2, -1);
+  if (digits.length === 0) return undefined;
+  for (let i = 0; i < digits.length; i++) {
+    const code = digits.charCodeAt(i);
+    if (code < 48 || code > 57) return undefined;
+  }
+  return Number.parseInt(digits, 10);
+}
+
 function parseXmlOpenAdr(xmlStr: string): OpenAdrDeck {
+  const doc = parseXml(xmlStr);
+  if (!doc.root) return { programs: [], events: [] };
+
+  const lineStarts = computeLineStarts(xmlStr);
+  const eventEls =
+    localName(doc.root.name).toLowerCase() === "eievent" ? [doc.root] : findDescendants(doc.root, "eievent");
+
   const events: OadrEvent[] = [];
-  const eventMatches = Array.from(xmlStr.matchAll(/<(?:\w+:)?eiEvent\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?eiEvent>/gi));
+  for (let i = 0; i < eventEls.length; i++) {
+    const evtEl = eventEls[i]!;
+    const idEl = findFirstDescendant(evtEl, "eventid");
+    const statusEl = findFirstDescendant(evtEl, "eventstatus");
+    const venEl = findFirstDescendant(evtEl, "venid");
+    const signalTypeEl = findFirstDescendant(evtEl, "signaltype");
 
-  for (let i = 0; i < eventMatches.length; i++) {
-    const block = eventMatches[i]![2]!;
-    const idMatch = /<(?:\w+:)?eventID>([^<]+)<\//i.exec(block);
-    const statusMatch = /<(?:\w+:)?eventStatus>([^<]+)<\//i.exec(block);
-    const venMatch = /<(?:\w+:)?venID>([^<]+)<\//i.exec(block);
-    const signalTypeMatch = /<(?:\w+:)?signalType>([^<]+)<\//i.exec(block);
-
+    const intervalEls = findDescendants(evtEl, "interval");
     const intervals: OadrInterval[] = [];
-    const intervalMatches = Array.from(block.matchAll(/<(?:\w+:)?interval\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?interval>/gi));
+    for (const itEl of intervalEls) {
+      const dtstartEl = findFirstDescendant(itEl, "dtstart");
+      const dateTimeEl = dtstartEl
+        ? findFirstDescendant(dtstartEl, "date-time")
+        : findFirstDescendant(itEl, "date-time");
 
-    for (let j = 0; j < intervalMatches.length; j++) {
-      const itBlock = intervalMatches[j]![2]!;
-      const dtMatch = /<(?:\w+:)?dtstart>[\s\S]*?<(?:\w+:)?date-time>([^<]+)<\//i.exec(itBlock);
-      const durMatch = /<(?:\w+:)?duration>[\s\S]*?<(?:\w+:)?duration>PT(\d+)S<\//i.exec(itBlock);
-      const durSec = durMatch ? parseInt(durMatch[1]!, 10) : 3600;
-      const payloadMatch = /<(?:\w+:)?payloadFloat>([^<]+)<\//i.exec(itBlock);
-      const payload = payloadMatch ? parseFloat(payloadMatch[1]!) : 100.0;
+      let durSec = 3600;
+      const outerDurEl = findFirstDescendant(itEl, "duration");
+      if (outerDurEl) {
+        const innerDurEl = findFirstDescendant(outerDurEl, "duration") ?? outerDurEl;
+        const parsedDur = parseIsoDurationSeconds(getElementText(innerDurEl));
+        if (parsedDur !== undefined) durSec = parsedDur;
+      }
+
+      const payloadEl = findFirstDescendant(itEl, "payloadfloat");
+      const payloadRaw = payloadEl ? Number.parseFloat(getElementText(payloadEl)) : Number.NaN;
+      const payload = Number.isFinite(payloadRaw) ? payloadRaw : 100.0;
 
       intervals.push({
-        start: dtMatch ? dtMatch[1]!.trim() : new Date().toISOString(),
+        start: dateTimeEl ? getElementText(dateTimeEl) : new Date().toISOString(),
         durationSeconds: durSec,
         payload,
-        line: i + 1,
+        line: offsetToLine(lineStarts, itEl.start),
       });
     }
 
+    const idText = idEl ? getElementText(idEl) : "";
+    const statusText = statusEl ? getElementText(statusEl).toLowerCase() : "";
+    const signalTypeText = signalTypeEl ? getElementText(signalTypeEl).toLowerCase() : "";
+    const venText = venEl ? getElementText(venEl) : "";
+
     events.push({
-      id: idMatch ? idMatch[1]!.trim() : `OADR-EVT-${i + 1}`,
-      status: (statusMatch ? statusMatch[1]!.trim().toLowerCase() : "active") as OadrEventStatus,
-      signalType: (signalTypeMatch ? signalTypeMatch[1]!.trim().toLowerCase() : "setpoint") as OadrSignalType,
-      targetVenId: venMatch ? venMatch[1]!.trim() : undefined,
+      id: idText || `OADR-EVT-${i + 1}`,
+      status: (statusText || "active") as OadrEventStatus,
+      signalType: (signalTypeText || "setpoint") as OadrSignalType,
+      targetVenId: venText || undefined,
       intervals,
-      line: i + 1,
+      line: offsetToLine(lineStarts, evtEl.start),
     });
   }
 
   return { programs: [], events };
 }
 
-function parseDeclarativeOpenAdr(text: string): OpenAdrDeck {
-  const lines = text.split(/\r?\n/);
-  const programs: OadrProgram[] = [];
-  const allEvents: OadrEvent[] = [];
+function unquote(raw: string): string {
+  const s = raw.trim();
+  if (s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))) {
+    return s.slice(1, -1);
+  }
+  return s;
+}
 
-  let currentProgram: OadrProgram | null = null;
-  let currentEvent: OadrEvent | null = null;
-  let currentInterval: OadrInterval | null = null;
+function applyProperty(
+  key: string,
+  val: string,
+  currentProgram: OadrProgram | null,
+  currentEvent: OadrEvent | null,
+  currentInterval: OadrInterval | null,
+): void {
+  if (currentInterval) {
+    if (key === "start") currentInterval.start = val;
+    else if (key === "durationSeconds" || key === "duration") currentInterval.durationSeconds = Number.parseFloat(val);
+    else if (key === "payload" || key === "signalPayload") currentInterval.payload = Number.parseFloat(val);
+  } else if (currentEvent) {
+    if (key === "status") currentEvent.status = val as OadrEventStatus;
+    else if (key === "signalType") currentEvent.signalType = val as OadrSignalType;
+    else if (key === "targetVenId") currentEvent.targetVenId = val;
+    else if (key === "programId") currentEvent.programId = val;
+  } else if (currentProgram) {
+    if (key === "programId" || key === "id") currentProgram.id = val;
+    else if (key === "name") currentProgram.name = val;
+  }
+}
 
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]!;
-    const line = rawLine.trim();
-    if (!line || line.startsWith("//") || line.startsWith("#")) continue;
-
-    const progMatch = /^program\s+["']?([^"'{]+)["']?\s*\{?/.exec(line);
-    if (progMatch) {
-      currentProgram = {
-        id: progMatch[1]!.trim(),
-        name: progMatch[1]!.trim(),
-        events: [],
-        line: i + 1,
-      };
-      programs.push(currentProgram);
-      continue;
+function walkDeclarativeNode(
+  node: SyntaxNode,
+  currentProgram: OadrProgram | null,
+  currentEvent: OadrEvent | null,
+  currentInterval: OadrInterval | null,
+  programs: OadrProgram[],
+  allEvents: OadrEvent[],
+): void {
+  if (node.type === "ProgramDecl") {
+    const nameNode = node.childForFieldName("name");
+    const progName = nameNode ? unquote(nameNode.text) : `PROGRAM-${programs.length + 1}`;
+    const prog: OadrProgram = {
+      id: progName,
+      name: progName,
+      events: [],
+      line: node.startPosition.row + 1,
+    };
+    programs.push(prog);
+    for (const child of node.children) {
+      walkDeclarativeNode(child, prog, null, null, programs, allEvents);
     }
-
-    const evtMatch = /^event\s+["']?([^"'{]+)["']?\s*\{?/.exec(line);
-    if (evtMatch) {
-      currentEvent = {
-        id: evtMatch[1]!.trim(),
-        status: "active",
-        signalType: "setpoint",
-        intervals: [],
-        line: i + 1,
-      };
-      if (currentProgram) {
-        currentProgram.events.push(currentEvent);
-      }
-      allEvents.push(currentEvent);
-      continue;
-    }
-
-    if (line.startsWith("interval") && line.includes("{") && currentEvent) {
-      currentInterval = {
-        start: new Date().toISOString(),
-        durationSeconds: 3600,
-        payload: 100.0,
-        line: i + 1,
-      };
-      currentEvent.intervals.push(currentInterval);
-      continue;
-    }
-
-    const kvMatch = /^([A-Za-z0-9_]+)\s*[:=]\s*(.+)/.exec(line);
-    if (kvMatch) {
-      const key = kvMatch[1]!;
-      let val = kvMatch[2]!.replace(/[;,]/g, "").trim();
-      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-        val = val.substring(1, val.length - 1);
-      }
-
-      if (currentInterval) {
-        if (key === "start") currentInterval.start = val;
-        else if (key === "durationSeconds" || key === "duration") currentInterval.durationSeconds = parseFloat(val);
-        else if (key === "payload" || key === "signalPayload") currentInterval.payload = parseFloat(val);
-      } else if (currentEvent) {
-        if (key === "status") currentEvent.status = val as typeof currentEvent.status;
-        else if (key === "signalType") currentEvent.signalType = val as typeof currentEvent.signalType;
-        else if (key === "targetVenId") currentEvent.targetVenId = val;
-        else if (key === "programId") currentEvent.programId = val;
-      } else if (currentProgram) {
-        if (key === "programId" || key === "id") currentProgram.id = val;
-        else if (key === "name") currentProgram.name = val;
-      }
-      continue;
-    }
-
-    if (line === "}" || line.startsWith("}")) {
-      if (currentInterval) {
-        currentInterval = null;
-      } else if (currentEvent) {
-        currentEvent = null;
-      } else if (currentProgram) {
-        currentProgram = null;
-      }
-    }
+    return;
   }
 
+  if (node.type === "EventDecl") {
+    const nameNode = node.childForFieldName("name");
+    const evtId = nameNode ? unquote(nameNode.text) : `EVENT-${allEvents.length + 1}`;
+    const evt: OadrEvent = {
+      id: evtId,
+      status: "active",
+      signalType: "setpoint",
+      intervals: [],
+      line: node.startPosition.row + 1,
+    };
+    if (currentProgram) {
+      currentProgram.events.push(evt);
+    }
+    allEvents.push(evt);
+    for (const child of node.children) {
+      walkDeclarativeNode(child, currentProgram, evt, null, programs, allEvents);
+    }
+    return;
+  }
+
+  if (node.type === "IntervalDecl") {
+    if (!currentEvent) return;
+    const interval: OadrInterval = {
+      start: new Date().toISOString(),
+      durationSeconds: 3600,
+      payload: 100.0,
+      line: node.startPosition.row + 1,
+    };
+    currentEvent.intervals.push(interval);
+    for (const child of node.children) {
+      walkDeclarativeNode(child, currentProgram, currentEvent, interval, programs, allEvents);
+    }
+    return;
+  }
+
+  if (node.type === "PropertyDecl") {
+    const keyNode = node.childForFieldName("key");
+    const valNode = node.childForFieldName("value");
+    if (keyNode && valNode) {
+      applyProperty(keyNode.text.trim(), unquote(valNode.text), currentProgram, currentEvent, currentInterval);
+    }
+    return;
+  }
+
+  for (const child of node.children) {
+    walkDeclarativeNode(child, currentProgram, currentEvent, currentInterval, programs, allEvents);
+  }
+}
+
+function parseDeclarativeOpenAdr(text: string): OpenAdrDeck {
+  const parser = getOadrWasmParser();
+  const tree = parser.parse(text);
+  const programs: OadrProgram[] = [];
+  const allEvents: OadrEvent[] = [];
+  if (tree?.rootNode) {
+    walkDeclarativeNode(tree.rootNode, null, null, null, programs, allEvents);
+  }
   return { programs, events: allEvents };
 }
