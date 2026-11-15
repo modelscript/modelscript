@@ -1,14 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createWasmParserSync } from "@modelscript/eclipse/wasm-parser";
 import {
   collectWorkspaceDocuments,
   findIncludeCycle,
+  groupCstLeavesByLine,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import { parseEclipse } from "../parser/index.js";
 import { lintEclipse } from "./index.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getEclipseWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/eclipse/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Performs multi-file ECLIPSE reservoir deck workspace linting by resolving
@@ -27,6 +40,7 @@ export function lintEclipseWorkspace(workspace: WorkspaceDocumentInput, rootUri?
   const edges = new Map<string, string[]>();
   const expandedLines: string[] = [];
   const visited = new Set<string>();
+  const parser = getEclipseWasmParser();
 
   function expand(uri: string): void {
     if (visited.has(uri)) return;
@@ -36,13 +50,22 @@ export function lintEclipseWorkspace(workspace: WorkspaceDocumentInput, rootUri?
     edges.set(uri, outEdges);
 
     const lines = text.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i] ?? "";
-      if (/^\s*INCLUDE\b/i.test(line)) {
-        const nextLine = lines[i + 1] ?? "";
-        const m = nextLine.match(/^\s*(?:'([^']+)'|"([^"]+)"|([^\s/]+))/);
-        const targetRaw = m?.[1] ?? m?.[2] ?? m?.[3] ?? "";
-        if (targetRaw) {
+    const tree = parser.parse(text);
+    const cstLines = groupCstLeavesByLine(tree?.rootNode);
+    const tokensByRow = new Map(cstLines.map((l) => [l.row, l.tokens]));
+    const skipRows = new Set<number>();
+
+    for (let i = 0; i < cstLines.length; i++) {
+      const cur = cstLines[i];
+      if (!cur) continue;
+      if (cur.tokens[0]?.text.toUpperCase() === "INCLUDE") {
+        const next = cstLines[i + 1];
+        const nextRowTokens = next && next.row > cur.row ? next.tokens : tokensByRow.get(cur.row + 1);
+        const targetTok = nextRowTokens?.[0];
+        const targetRaw = targetTok ? targetTok.text.replace(/^['"]|['"]$/g, "").trim() : "";
+        if (targetRaw && targetRaw !== "/") {
+          skipRows.add(cur.row);
+          if (next) skipRows.add(next.row);
           const resolved = resolveRelativeUri(uri, targetRaw, docs);
           if (!resolved) {
             diagnostics.push({
@@ -56,11 +79,14 @@ export function lintEclipseWorkspace(workspace: WorkspaceDocumentInput, rootUri?
             outEdges.push(resolved);
             expand(resolved);
           }
-          i++;
-          continue;
         }
       }
-      expandedLines.push(line);
+    }
+
+    for (let row = 0; row < lines.length; row++) {
+      if (!skipRows.has(row)) {
+        expandedLines.push(lines[row] ?? "");
+      }
     }
   }
 

@@ -8,7 +8,7 @@
  * Grammar (TGG) rules linking SPICE electrical components with Modelica physical models.
  */
 
-import { language, tggComplement, tggDefaultVal, tggEq, tggRule } from "@modelscript/dsl";
+import { language } from "@modelscript/dsl";
 import { spiceNetlistGrammar } from "./grammar/spice-grammar.js";
 import { canIndexSpiceFile, indexSpiceFile } from "./indexing.js";
 import { lintSpiceCircuit } from "./lints/rules.js";
@@ -18,6 +18,7 @@ import { spiceToModelica } from "./projections/modelica.js";
 import { solveAc } from "./solvers/ac.js";
 import { solveOp } from "./solvers/op.js";
 import { solveTran } from "./solvers/tran.js";
+import { spicePolyglotConfig } from "./tgg/index.js";
 
 export const spiceLanguage = language({
   name: "spice",
@@ -184,124 +185,7 @@ export const spiceLanguage = language({
     },
   ],
 
-  polyglot: {
-    typeMaps: {
-      spice: {
-        Real: "Real",
-        Integer: "Integer",
-        Voltage: "Real",
-        Current: "Real",
-      },
-    },
-    rules: [
-      // SPICE Resistor <-> Modelica Resistor
-      tggRule({
-        name: "SpiceResistorToModelicaResistor",
-        sourceLang: "spice",
-        targetLang: "modelica",
-        source: ($, v) => $.Component({ name: v("name"), kind: "R", value: v("rVal") }),
-        target: ($, v) =>
-          $.ComponentClause({
-            name: v("name"),
-            typeSpecifier: "Modelica.Electrical.Analog.Basic.Resistor",
-            modification: v("rVal"),
-          }),
-        where: (v) => [tggEq(v("name"), v("name")), tggEq(v("rVal"), v("rVal")), tggComplement(["nodes", "span"])],
-      }),
-
-      // SPICE Capacitor <-> Modelica Capacitor
-      tggRule({
-        name: "SpiceCapacitorToModelicaCapacitor",
-        sourceLang: "spice",
-        targetLang: "modelica",
-        source: ($, v) => $.Component({ name: v("name"), kind: "C", value: v("cVal") }),
-        target: ($, v) =>
-          $.ComponentClause({
-            name: v("name"),
-            typeSpecifier: "Modelica.Electrical.Analog.Basic.Capacitor",
-            modification: v("cVal"),
-          }),
-        where: (v) => [tggEq(v("name"), v("name")), tggEq(v("cVal"), v("cVal")), tggComplement(["nodes", "span"])],
-      }),
-
-      // SPICE Inductor <-> Modelica Inductor
-      tggRule({
-        name: "SpiceInductorToModelicaInductor",
-        sourceLang: "spice",
-        targetLang: "modelica",
-        source: ($, v) => $.Component({ name: v("name"), kind: "L", value: v("lVal") }),
-        target: ($, v) =>
-          $.ComponentClause({
-            name: v("name"),
-            typeSpecifier: "Modelica.Electrical.Analog.Basic.Inductor",
-            modification: v("lVal"),
-          }),
-        where: (v) => [tggEq(v("name"), v("name")), tggEq(v("lVal"), v("lVal")), tggComplement(["nodes", "span"])],
-      }),
-
-      // SPICE Circuit <-> Modelica Model
-      tggRule({
-        name: "SpiceCircuitToModelicaModel",
-        sourceLang: "spice",
-        targetLang: "modelica",
-        source: ($, v) => $.Circuit({ title: v("title") }),
-        target: ($, v) => $.ClassDefinition({ name: v("title"), classKind: "model" }),
-        where: (v) => [
-          tggEq(v("title"), v("title")),
-          tggDefaultVal(v("isAbstract"), false),
-          tggComplement(["components", "subcircuits", "models", "directives"]),
-        ],
-      }),
-
-      // SPICE Voltage Source <-> Modelica Constant Voltage
-      tggRule({
-        name: "SpiceVoltageSourceToModelicaConstantVoltage",
-        sourceLang: "spice",
-        targetLang: "modelica",
-        source: ($, v) => $.Component({ name: v("name"), kind: "V", value: v("vVal") }),
-        target: ($, v) =>
-          $.ComponentClause({
-            name: v("name"),
-            typeSpecifier: "Modelica.Electrical.Analog.Sources.ConstantVoltage",
-            modification: v("vVal"),
-          }),
-        where: (v) => [
-          tggEq(v("name"), v("name")),
-          tggEq(v("vVal"), v("vVal")),
-          tggComplement(["nodes", "sourceSpec"]),
-        ],
-      }),
-
-      // SPICE Current Source <-> Modelica Constant Current
-      tggRule({
-        name: "SpiceCurrentSourceToModelicaConstantCurrent",
-        sourceLang: "spice",
-        targetLang: "modelica",
-        source: ($, v) => $.Component({ name: v("name"), kind: "I", value: v("iVal") }),
-        target: ($, v) =>
-          $.ComponentClause({
-            name: v("name"),
-            typeSpecifier: "Modelica.Electrical.Analog.Sources.ConstantCurrent",
-            modification: v("iVal"),
-          }),
-        where: (v) => [
-          tggEq(v("name"), v("name")),
-          tggEq(v("iVal"), v("iVal")),
-          tggComplement(["nodes", "sourceSpec"]),
-        ],
-      }),
-
-      // SPICE Component <-> SysML v2 Part Definition
-      tggRule({
-        name: "SpiceComponentToSysmlPart",
-        sourceLang: "spice",
-        targetLang: "sysml2",
-        source: ($, v) => $.Component({ name: v("name"), kind: v("kind") }),
-        target: ($, v) => $.PartDefinition({ name: v("name"), declaredType: v("kind") }),
-        where: (v) => [tggEq(v("name"), v("name")), tggDefaultVal(v("isAbstract"), false)],
-      }),
-    ],
-  },
+  polyglot: spicePolyglotConfig,
 });
 
 export default spiceLanguage;

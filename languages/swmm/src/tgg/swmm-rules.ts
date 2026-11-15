@@ -15,13 +15,13 @@ export const swmmTggRules = [
     sourceLang: "swmm",
     targetLang: "modelica",
     source: ($, v) =>
-      $.SwmmConduit({
+      $["SwmmConduit"]?.({
         name: v("name"),
         length: v("length"),
         roughness: v("roughness"),
       }),
     target: ($, v) =>
-      $.ModelicaComponent({
+      $["ModelicaComponent"]?.({
         type: "Modelica.Fluid.Pipes.StaticPipe",
         name: v("name"),
         length: v("length"),
@@ -41,7 +41,7 @@ export const swmmTggRules = [
     sourceLang: "swmm",
     targetLang: "sysml2",
     source: ($, v) =>
-      $.SwmmSubcatchment({
+      $["SwmmSubcatchment"]?.({
         name: v("name"),
         area: v("area"),
         width: v("width"),
@@ -49,7 +49,7 @@ export const swmmTggRules = [
         imperv: v("imperv"),
       }),
     target: ($, v) =>
-      $.SysMLPartDefinition({
+      $["SysMLPartDefinition"]?.({
         name: v("name"),
         area: v("area"),
         width: v("width"),

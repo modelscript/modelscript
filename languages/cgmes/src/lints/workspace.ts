@@ -2,6 +2,7 @@
 
 import {
   collectWorkspaceDocuments,
+  collectXmlElementsFromWasm,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
@@ -11,7 +12,7 @@ import { lintCgmesModel } from "./index.js";
 /**
  * Performs multi-file CGMES RDF/XML profile linting across a workspace
  * (`EQ`, `TP`, `SSH`, `SV`, `DL`, `GL`), checking cross-profile `rdf:resource` /
- * `rdf:about` references and running ENTSO-E CGMES validation rules on the merged model.
+ * `rdf:about` references via XML WASM CST and running ENTSO-E CGMES validation rules on the merged model.
  */
 export function lintCgmesWorkspace(workspace: WorkspaceDocumentInput, rootUri?: string): WorkspaceLintDiagnostic[] {
   const docs = collectWorkspaceDocuments(workspace);
@@ -24,11 +25,17 @@ export function lintCgmesWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
   const referencedIds: Array<{ uri: string; id: string }> = [];
 
   for (const [uri, xml] of entries) {
-    for (const m of xml.matchAll(/\brdf:(?:ID|about)=["']#?([^"']+)["']/g)) {
-      if (m[1]) definedIds.add(m[1]);
-    }
-    for (const m of xml.matchAll(/\brdf:resource=["']#([^"']+)["']/g)) {
-      if (m[1]) referencedIds.push({ uri, id: m[1] });
+    for (const { attrs } of collectXmlElementsFromWasm(xml)) {
+      const defRaw = attrs["rdf:ID"] ?? attrs["rdf:about"];
+      if (defRaw) {
+        const clean = defRaw.startsWith("#") ? defRaw.slice(1) : defRaw;
+        if (clean) definedIds.add(clean);
+      }
+      const resRaw = attrs["rdf:resource"];
+      if (resRaw?.startsWith("#")) {
+        const id = resRaw.slice(1);
+        if (id) referencedIds.push({ uri, id });
+      }
     }
   }
 

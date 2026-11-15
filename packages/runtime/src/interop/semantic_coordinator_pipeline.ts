@@ -59,6 +59,9 @@ export interface ResolvedDigitalThreadWorkspace {
     cfd: number;
     urdf: number;
     step: number;
+    powerRms: number;
+    powerEmt: number;
+    telemetry: number;
   };
   hypergraph: DigitalThreadHypergraph;
   threadSlot: number;
@@ -75,6 +78,17 @@ const LANG_BY_EXT: { ext: string; lang: string; domain: ThreadDomain; fallbackNs
   { ext: ".urdf", lang: "xml", domain: ThreadDomain.CAD, fallbackNs: "URDF::Robot" },
   { ext: ".step", lang: "step", domain: ThreadDomain.GDT, fallbackNs: "STEP::PMI" },
   { ext: ".stp", lang: "step", domain: ThreadDomain.GDT, fallbackNs: "STEP::PMI" },
+  { ext: ".raw", lang: "psse", domain: ThreadDomain.PowerRMS, fallbackNs: "PSSE::Powerflow" },
+  { ext: ".dyr", lang: "psse", domain: ThreadDomain.PowerRMS, fallbackNs: "PSSE::Dynamics" },
+  { ext: ".seq", lang: "psse", domain: ThreadDomain.PowerRMS, fallbackNs: "PSSE::Sequence" },
+  { ext: ".pscx", lang: "pscad", domain: ThreadDomain.PowerEMT, fallbackNs: "PSCAD::Network" },
+  { ext: ".dss", lang: "opendss", domain: ThreadDomain.PowerEMT, fallbackNs: "OpenDSS::Corridor" },
+  { ext: ".olr", lang: "oneliner", domain: ThreadDomain.PowerEMT, fallbackNs: "OneLiner::Protection" },
+  { ext: ".p3743", lang: "p3743", domain: ThreadDomain.PowerEMT, fallbackNs: "P3743::EMT" },
+  { ext: ".cfg", lang: "comtrade", domain: ThreadDomain.Telemetry, fallbackNs: "COMTRADE::Config" },
+  { ext: ".dat", lang: "comtrade", domain: ThreadDomain.Telemetry, fallbackNs: "COMTRADE::Waveform" },
+  { ext: ".cff", lang: "comtrade", domain: ThreadDomain.Telemetry, fallbackNs: "COMTRADE::Combined" },
+  { ext: ".soe", lang: "comfede", domain: ThreadDomain.Telemetry, fallbackNs: "COMFEDE::SOE" },
 ];
 
 /**
@@ -100,6 +114,9 @@ export function resolveDigitalThreadWorkspace(
     cfd: -1,
     urdf: -1,
     step: -1,
+    powerRms: -1,
+    powerEmt: -1,
+    telemetry: -1,
   };
 
   const documents: DigitalThreadDocument[] = files.map((f, idx) => {
@@ -122,6 +139,9 @@ export function resolveDigitalThreadWorkspace(
     else if (lang === "cfd" && roleIndex.cfd < 0) roleIndex.cfd = idx;
     else if ((lang === "xml" || lower.endsWith(".urdf")) && roleIndex.urdf < 0) roleIndex.urdf = idx;
     else if (lang === "step" && roleIndex.step < 0) roleIndex.step = idx;
+    else if (threadDomain === ThreadDomain.PowerRMS && roleIndex.powerRms < 0) roleIndex.powerRms = idx;
+    else if (threadDomain === ThreadDomain.PowerEMT && roleIndex.powerEmt < 0) roleIndex.powerEmt = idx;
+    else if (threadDomain === ThreadDomain.Telemetry && roleIndex.telemetry < 0) roleIndex.telemetry = idx;
 
     return {
       uri: f.uri,
@@ -135,11 +155,13 @@ export function resolveDigitalThreadWorkspace(
 
   const scenarioId =
     explicitScenarioId ??
-    (roleIndex.cfd >= 0
-      ? "ev-battery-coldplate"
-      : roleIndex.step >= 0 || roleIndex.urdf >= 0
-        ? "robotics-gdt-tolerance"
-        : "aerospace-actuator");
+    (roleIndex.powerEmt >= 0 || roleIndex.powerRms >= 0
+      ? "grid-emt-interconnection"
+      : roleIndex.cfd >= 0
+        ? "ev-battery-coldplate"
+        : roleIndex.step >= 0 || roleIndex.urdf >= 0
+          ? "robotics-gdt-tolerance"
+          : "aerospace-actuator");
 
   const hypergraph = new DigitalThreadHypergraph(Math.max(16, documents.length * 4));
   const threadSlot = hypergraph.createThread(1001, 1, ThreadRelation.Verifies);

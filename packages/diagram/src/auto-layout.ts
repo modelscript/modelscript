@@ -80,9 +80,9 @@ export interface AutoLayoutGraphLike {
   getCellById: (id: string) => AutoLayoutNodeLike | null | undefined;
   batchUpdate: (name: string, fn: () => void) => void;
   container?: { clientWidth?: number; clientHeight?: number } | null;
-  options?: { width?: number; height?: number; onAction?: (action: any) => void };
-  zoomToFit?: (opts?: any) => void;
-  zoomToRect?: (rect: any, opts?: any) => void;
+  options?: { width?: number; height?: number; onAction?: (action: { type: string; items: PlacementItem[] }) => void };
+  zoomToFit?: (opts?: Record<string, unknown>) => void;
+  zoomToRect?: (rect: { x: number; y: number; width: number; height: number }, opts?: Record<string, unknown>) => void;
   centerContent?: () => void;
   centerPoint?: (x: number, y: number) => void;
 }
@@ -95,7 +95,7 @@ export interface AutoLayoutOptions {
   optimizePorts?: boolean | undefined;
   showProgress?: boolean | undefined;
   onAction?: (action: { type: "move"; items: PlacementItem[] }) => void;
-  updateSolderDots?: (graph: any) => void;
+  updateSolderDots?: (graph: AutoLayoutGraphLike) => void;
 }
 
 /**

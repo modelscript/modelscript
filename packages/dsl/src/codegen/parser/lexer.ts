@@ -23,22 +23,33 @@ export function toCodePoints(str: string): number[] {
   return result;
 }
 
-export function generateLexer(grammar: LanguageOptions<any>, normalized: NormalizedGrammar): string {
+interface LexerRuleMeta {
+  type?: string;
+  value?: unknown;
+  name?: string;
+  rule?: Rule<string>;
+  arg?: Rule<string>;
+  args?: Rule<string>[];
+  children?: Rule<string>[];
+}
+
+export function generateLexer(grammar: LanguageOptions, normalized: NormalizedGrammar): string {
   // Extract all token patterns from the grammar rules
   const stringTokens = new Map<string, string>();
   const regexTokens = new Map<string, string>();
 
-  function extractTokens(rule: Rule<any>) {
+  function extractTokens(rule: Rule<string>) {
     if (!rule) return;
     if (
       typeof rule === "string" ||
       rule instanceof RegExp ||
       Object.prototype.toString.call(rule) === "[object RegExp]"
     ) {
-      rule = { type: "TOKEN", value: rule } as any;
+      rule = { type: "TOKEN", value: rule } as unknown as Rule<string>;
     }
+    const meta = rule as unknown as LexerRuleMeta;
     const ruleType = (rule.type || "").toUpperCase();
-    const ruleValue = rule.value !== undefined ? rule.value : (rule as any).arg;
+    const ruleValue = rule.value !== undefined ? rule.value : meta.arg;
     if (ruleType === "TOKEN" && ruleValue) {
       const isRegex =
         ruleValue instanceof RegExp ||
@@ -52,18 +63,14 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
         stringTokens.set(key, ruleValue as string);
       }
     }
-    const children =
-      rule.children ||
-      (rule as any).args ||
-      ((rule as any).arg ? [(rule as any).arg] : []) ||
-      ((rule as any).rule ? [(rule as any).rule] : []);
+    const children = rule.children || meta.args || (meta.arg ? [meta.arg] : []) || (meta.rule ? [meta.rule] : []);
     if (children) {
       for (const child of children) {
         extractTokens(child);
       }
     }
-    if ((rule as any).rule) {
-      extractTokens((rule as any).rule);
+    if (meta.rule) {
+      extractTokens(meta.rule);
     }
   }
 
@@ -74,7 +81,7 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
         get: (_target, prop: string) => ({ type: "SYMBOL", value: prop }),
       },
     );
-    const rule = toRule(grammar.rules[ruleName]!(dummy$ as any));
+    const rule = toRule(grammar.rules[ruleName]!(dummy$ as never));
     extractTokens(rule);
   }
 
@@ -89,33 +96,33 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
 
   if (grammar.word) {
     const dummy$ = new Proxy({}, { get: (_t, p: string) => ({ type: "SYMBOL", value: p }) });
-    let wResult = grammar.word;
-    if (typeof grammar.word === "function") wResult = (grammar as any).word(dummy$ as any);
-    const wordRule = toRule(wResult as any);
+    let wResult: unknown = grammar.word;
+    if (typeof grammar.word === "function") {
+      wResult = (grammar.word as (d: never) => unknown)(dummy$ as never);
+    }
+    const wordRule = toRule(wResult as Parameters<typeof toRule>[0]);
+    const wordMeta = wordRule as unknown as LexerRuleMeta;
     if (wordRule.type === "SYMBOL") {
       wordName = wordRule.value as string;
     } else {
-      wordName = (wordRule as any).name || (wordRule as any).value?.toString();
+      wordName = wordMeta.name || wordMeta.value?.toString() || null;
     }
   }
 
   if (wordName && grammar.rules?.[wordName]) {
     const dummy$ = new Proxy({}, { get: (_target, prop: string) => ({ type: "SYMBOL", value: prop }) });
-    let rule = toRule(grammar.rules[wordName]!(dummy$ as any));
+    let rule = toRule(grammar.rules[wordName]!(dummy$ as never));
     let rType = (rule.type || "").toUpperCase();
     if (rType === "DEF" || rType === "REF") {
+      const meta = rule as unknown as LexerRuleMeta;
       rule =
-        (rule as any).rule ||
-        ((rule as any).args ? (rule as any).args[0] : null) ||
-        (rule.children ? rule.children[0] : null) ||
-        (rule as any).arg ||
-        rule;
+        meta.rule || (meta.args ? meta.args[0] : null) || (rule.children ? rule.children[0] : null) || meta.arg || rule;
       rType = (rule.type || "").toUpperCase();
     }
     if (rType === "TOKEN" && rule.value) {
       let patternStr = "";
       if (rule.value instanceof RegExp || Object.prototype.toString.call(rule.value) === "[object RegExp]") {
-        patternStr = rule.value.source;
+        patternStr = (rule.value as RegExp).source;
       } else if (typeof rule.value === "string" && rule.value.startsWith("/") && rule.value.lastIndexOf("/") > 0) {
         patternStr = rule.value.substring(1, rule.value.lastIndexOf("/"));
       }
@@ -156,27 +163,29 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
   lexerCode += `\nexport let is_extra_token: usize = 0;\n`;
   lexerCode += `export function initExtras(): void {\n`;
   lexerCode += `  if (is_extra_token == 0) {\n    let extraCap: u32 = ((MAX_TERMINAL_ID as u32) + 1) > 2048 ? ((MAX_TERMINAL_ID as u32) + 1) : 2048;\n    is_extra_token = atomicChunkAlloc(extraCap);\n    memory.fill(is_extra_token, 0, extraCap);\n  }\n`;
-  const findUnderlyingTokenValue = (r: any): any => {
-    if (!r) return undefined;
-    const t = (r.type || "").toUpperCase();
+  const findUnderlyingTokenValue = (r: unknown): unknown => {
+    if (!r || typeof r !== "object") return undefined;
+    const obj = r as LexerRuleMeta & { child?: unknown };
+    const t = (obj.type || "").toUpperCase();
     if (t === "TOKEN") {
-      return r.value !== undefined ? r.value : (r.arg ?? r.child ?? r.children);
+      return obj.value !== undefined ? obj.value : (obj.arg ?? obj.child ?? obj.children);
     }
-    if (r.rule) return findUnderlyingTokenValue(r.rule);
-    if (r.arg) return findUnderlyingTokenValue(r.arg);
-    if (r.children && r.children.length === 1) return findUnderlyingTokenValue(r.children[0]);
-    if (r.args && r.args.length === 1) return findUnderlyingTokenValue(r.args[0]);
+    if (obj.rule) return findUnderlyingTokenValue(obj.rule);
+    if (obj.arg) return findUnderlyingTokenValue(obj.arg);
+    if (obj.children && obj.children.length === 1) return findUnderlyingTokenValue(obj.children[0]);
+    if (obj.args && obj.args.length === 1) return findUnderlyingTokenValue(obj.args[0]);
     return undefined;
   };
   if (normalized.extras) {
     for (const rule of normalized.extras) {
+      const meta = rule as unknown as LexerRuleMeta;
       const rType = (rule.type || "").toUpperCase();
       if (rType === "SYMBOL") {
-        const symName = (rule as any).name || (rule as any).value;
+        const symName = meta.name || String(meta.value ?? "");
         const evalRule = normalized.evaluatedRules[symName];
         const tokVal = findUnderlyingTokenValue(evalRule);
         if (tokVal !== undefined) {
-          let val = tokVal ? tokVal.toString() : symName;
+          let val = tokVal ? String(tokVal) : symName;
           if (typeof tokVal === "string" && !(val.startsWith("/") && val.endsWith("/"))) {
             val = `"${tokVal}"`;
           }
@@ -192,13 +201,12 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
       } else {
         const tokVal = findUnderlyingTokenValue(rule);
         if (tokVal !== undefined) {
-          let val = tokVal ? tokVal.toString() : "";
+          let val = tokVal ? String(tokVal) : "";
           if (typeof tokVal === "string" && !(val.startsWith("/") && val.endsWith("/"))) {
             val = `"${tokVal}"`;
           }
           const mappedInt =
-            normalized.symToInt.get(val) ??
-            ((rule as any).name ? normalized.symToInt.get((rule as any).name) : undefined);
+            normalized.symToInt.get(val) ?? (meta.name ? normalized.symToInt.get(meta.name) : undefined);
           if (mappedInt !== undefined) {
             lexerCode += `  store<u8>(is_extra_token + <u32>${mappedInt}, 1);\n`;
           }
@@ -318,7 +326,8 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     hasWhitespaceExtra = true;
   }
 
-  const sp = (grammar as any).primitives;
+  const sp = (grammar as LanguageOptions & { primitives?: { nestedComment?: unknown; lineComment?: unknown } })
+    .primitives;
   const hasComments = sp && (sp.nestedComment || sp.lineComment);
 
   if (hasWhitespaceExtra || hasComments) {
@@ -613,10 +622,11 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     lexerCode += `  let lastAcceptingState = -1;\n`;
     lexerCode += `  let lastAcceptingLen: u32 = 0;\n`;
 
+    const dfaClassRanges = (dfa as unknown as { classRanges: Array<{ s: number; e: number; c: number }> }).classRanges;
     lexerGlobals += `  // DFA Transitions\n`;
-    lexerGlobals += `  const classRangesS: StaticArray<i32> = [${(dfa as any).classRanges.map((r: any) => r.s).join(",")}];\n`;
-    lexerGlobals += `  const classRangesE: StaticArray<i32> = [${(dfa as any).classRanges.map((r: any) => r.e).join(",")}];\n`;
-    lexerGlobals += `  const classRangesC: StaticArray<i32> = [${(dfa as any).classRanges.map((r: any) => r.c).join(",")}];\n`;
+    lexerGlobals += `  const classRangesS: StaticArray<i32> = [${dfaClassRanges.map((r) => r.s).join(",")}];\n`;
+    lexerGlobals += `  const classRangesE: StaticArray<i32> = [${dfaClassRanges.map((r) => r.e).join(",")}];\n`;
+    lexerGlobals += `  const classRangesC: StaticArray<i32> = [${dfaClassRanges.map((r) => r.c).join(",")}];\n`;
     lexerGlobals += `  const dfaTable: StaticArray<i32> = [${dfa.table.join(",")}];\n`;
 
     lexerCode += `  let nextState = -1;\n`;
@@ -624,7 +634,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     lexerCode += `    let c: i32 = peekChar(lexPos + dfaLexLen);\n`;
     lexerCode += `    let charLen: u32 = peekCharLen(lexPos + dfaLexLen);\n`;
     lexerCode += `    let cls = -1;\n`;
-    lexerCode += `    let l = 0, r = ${(dfa as any).classRanges.length - 1};\n`;
+    lexerCode += `    let l = 0, r = ${dfaClassRanges.length - 1};\n`;
     lexerCode += `    while (l <= r) {\n`;
     lexerCode += `      let m = (l + r) >> 1;\n`;
     lexerCode += `      if (c < classRangesS[m]) r = m - 1;\n`;
@@ -704,22 +714,20 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
             isWordToken = true;
           } else if (grammar.rules?.[wordName]) {
             const dummy$ = new Proxy({}, { get: (_t, p: string) => ({ type: "SYMBOL", value: p }) });
-            const wRule = toRule(grammar.rules[wordName]!(dummy$ as any));
-            const checkWordRule = (r: any): boolean => {
-              if (!r) return false;
-              if (r.type === "TOKEN" && r.value) {
-                const strVal = r.value.toString();
+            const wRule = toRule(grammar.rules[wordName]!(dummy$ as never));
+            const checkWordRule = (r: unknown): boolean => {
+              if (!r || typeof r !== "object") return false;
+              const obj = r as LexerRuleMeta & { child?: unknown };
+              if (obj.type === "TOKEN" && obj.value) {
+                const strVal = String(obj.value);
                 const mappedInt = normalized.symToInt.get(strVal);
                 if (mappedInt !== undefined && "T_" + mappedInt === tokenName) return true;
-                if (
-                  strVal.toUpperCase() === tokenName.toUpperCase() ||
-                  strVal === tokenName ||
-                  (r as any).name === tokenName
-                )
+                if (strVal.toUpperCase() === tokenName.toUpperCase() || strVal === tokenName || obj.name === tokenName)
                   return true;
               }
-              if (r.children) {
-                for (const child of r.children) {
+              const children = (r as { children?: unknown[] }).children;
+              if (children) {
+                for (const child of children) {
                   if (checkWordRule(child)) return true;
                 }
               }
@@ -861,7 +869,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     for (const mwk of sp.multiWordKeywords) {
       const words = mwk.split(/\s+/);
       if (words.length < 2) continue;
-      const firstWord = words[0];
+      const firstWord = words[0]!;
       const restWords = words.slice(1).join(" ");
       const tokenInt = normalized.symToInt.get(`"${mwk}"`) ?? normalized.symToInt.get(mwk);
       if (tokenInt) {
@@ -975,15 +983,20 @@ export function scanIsEof(): boolean {
 
 // --- External Scanner Custom Logic ---
 `;
-    let rawScanner: any = grammar.scanner;
-    if (typeof rawScanner?.scan === "function") {
-      rawScanner = rawScanner.scan;
+    let rawScanner: unknown = grammar.scanner;
+    if (
+      rawScanner &&
+      typeof rawScanner === "object" &&
+      "scan" in rawScanner &&
+      typeof (rawScanner as { scan?: unknown }).scan === "function"
+    ) {
+      rawScanner = (rawScanner as { scan: unknown }).scan;
     }
     const dummy$ = new Proxy({}, { get: (_, prop) => ({ type: "SYMBOL", value: String(prop) }) });
-    let scannerFn: any = rawScanner;
+    let scannerFn: unknown = rawScanner;
     try {
       if (typeof rawScanner === "function" && rawScanner.length === 1) {
-        const evaluated = rawScanner(dummy$);
+        const evaluated = (rawScanner as (d: unknown) => unknown)(dummy$);
         if (typeof evaluated === "function") {
           scannerFn = evaluated;
         }
@@ -994,9 +1007,9 @@ export function scanIsEof(): boolean {
     const extNames = new Set<string>();
     if (grammar.externals) {
       const dummy$ = new Proxy({}, { get: (_, prop) => ({ type: "SYMBOL", value: String(prop) }) });
-      const extRules = grammar.externals(dummy$ as any);
+      const extRules = grammar.externals(dummy$ as never);
       for (const ext of extRules) {
-        if (ext && ext.value) extNames.add(ext.value);
+        if (ext && ext.value) extNames.add(String(ext.value));
       }
     }
     const transpileRes = transpileQuery(scannerFn, {

@@ -50,7 +50,7 @@ function findSwcElements(el: XmlElement | null, out: XmlElement[] = []): XmlElem
 
 function findDirectChild(el: XmlElement | undefined, tagName: string): XmlElement | undefined {
   if (!el) return undefined;
-  return el.children.find((c: any) => c.name.toUpperCase() === tagName.toUpperCase());
+  return el.children.find((c: XmlElement) => c.name.toUpperCase() === tagName.toUpperCase());
 }
 
 function findXmlElements(el: XmlElement | null | undefined, tagName: string, out: XmlElement[] = []): XmlElement[] {
@@ -153,10 +153,7 @@ export function projectAutosarViaTgg(
       .trim();
   });
 
-  const sysmlText = transformer.transform(
-    { kind: "AutosarModel", name: rootPackageName, properties: {} },
-    "sysml2",
-  );
+  const sysmlText = transformer.transform({ kind: "AutosarModel", name: rootPackageName, properties: {} }, "sysml2");
   return { sysmlText, transformer, model };
 }
 
@@ -230,7 +227,8 @@ export function synchronizeSysmlToAutosar(
       const portsContainer = findDirectChild(swcEl, "PORTS");
       const existingPortEls = portsContainer
         ? portsContainer.children.filter(
-            (c: any) => c.name.toUpperCase() === "R-PORT-PROTOTYPE" || c.name.toUpperCase() === "P-PORT-PROTOTYPE",
+            (c: XmlElement) =>
+              c.name.toUpperCase() === "R-PORT-PROTOTYPE" || c.name.toUpperCase() === "P-PORT-PROTOTYPE",
           )
         : [];
       const matchedPortEls = new Set<XmlElement>();
@@ -281,7 +279,7 @@ export function synchronizeSysmlToAutosar(
         }
 
         const existingEl = existingPortEls.find(
-          (el: any) => findDirectChild(el, "SHORT-NAME")?.text === resolvedPortName,
+          (el: XmlElement) => findDirectChild(el, "SHORT-NAME")?.text === resolvedPortName,
         );
         if (existingEl) {
           matchedPortEls.add(existingEl);
@@ -304,7 +302,7 @@ export function synchronizeSysmlToAutosar(
       // Synchronize runnables via declarative TGG rule (#4 RunnableEntity) and XML CST splices
       const runnablesContainer = findXmlElements(swcEl, "RUNNABLES")[0];
       const existingRunnableEls = runnablesContainer
-        ? runnablesContainer.children.filter((c: any) => c.name.toUpperCase() === "RUNNABLE-ENTITY")
+        ? runnablesContainer.children.filter((c: XmlElement) => c.name.toUpperCase() === "RUNNABLE-ENTITY")
         : [];
       const matchedRunnableEls = new Set<XmlElement>();
       const actionNames = new Set(partDef.actions.map((a) => a.name));
@@ -335,7 +333,7 @@ export function synchronizeSysmlToAutosar(
         }
 
         let existingRunEl = existingRunnableEls.find(
-          (el: any) => findDirectChild(el, "SHORT-NAME")?.text === resolvedRunnableName,
+          (el: XmlElement) => findDirectChild(el, "SHORT-NAME")?.text === resolvedRunnableName,
         );
         if (!existingRunEl && actIdx < existingRunnableEls.length) {
           const candidate = existingRunnableEls[actIdx]!;

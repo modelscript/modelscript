@@ -1,13 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createWasmParserSync } from "@modelscript/pslf/wasm-parser";
 import {
   collectWorkspaceDocuments,
+  groupCstLeavesByLine,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import { parsePslfDyd } from "../parser/dyd-parser.js";
 import { parsePslfEpc } from "../parser/epc-parser.js";
 import { lintPslfDyd, lintPslfEpc } from "./index.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getPslfWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/pslf/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Performs multi-file GE PSLF workspace linting across `.epc` power-flow and
@@ -19,11 +32,14 @@ export function lintPslfWorkspace(workspace: WorkspaceDocumentInput, rootUri?: s
   const entries = Array.from(docs.entries());
   if (entries.length === 0) return diagnostics;
 
+  const parser = getPslfWasmParser();
   let epcUri: string | undefined;
   let epc: ReturnType<typeof parsePslfEpc> | undefined;
   const dydEntries: Array<[string, string]> = [];
 
   for (const [uri, text] of entries) {
+    const cstTree = parser.parse(text);
+    void groupCstLeavesByLine(cstTree?.rootNode);
     if (uri.toLowerCase().endsWith(".dyd")) {
       dydEntries.push([uri, text]);
     } else if (!epc && (uri === rootUri || uri.toLowerCase().endsWith(".epc") || entries.length === 1)) {

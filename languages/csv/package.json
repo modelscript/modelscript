@@ -38,7 +38,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelscript/dsl": "*"
+    "@modelscript/dsl": "*",
+    "@modelscript/runtime": "*"
   },
   "devDependencies": {
     "rimraf": "^6.1.0",

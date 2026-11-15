@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createWasmParserSync } from "@modelscript/hec-ras/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import type {
   BoundaryCondition,
   BoundaryType,
@@ -11,8 +14,20 @@ import type {
   StationElevation,
 } from "../types.js";
 
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getHecRasWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/hec-ras/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 export function parseGeometry(text: string): HecRasGeometry {
-  const lines = text.split(/\r?\n/);
+  const cstTree = getHecRasWasmParser().parse(text);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
+  const lines = cstLines.map(({ tokens }) => cstLineText(text, tokens));
   const reaches: HecRasReach[] = [];
   const crossSections: HecRasCrossSection[] = [];
   const inlineStructures: HecRasInlineStructure[] = [];
@@ -51,7 +66,10 @@ export function parseGeometry(text: string): HecRasGeometry {
         while (j < lines.length && coords.length < count) {
           const l = lines[j]!.trim();
           if (l.includes("=") || l.startsWith("Type RM")) break;
-          const xy = l.split(/[\s,]+/).filter(Boolean).map(Number);
+          const xy = l
+            .split(/[\s,]+/)
+            .filter(Boolean)
+            .map(Number);
           for (let k = 0; k < xy.length - 1; k += 2) {
             coords.push({ x: xy[k]!, y: xy[k + 1]! });
           }
@@ -107,7 +125,11 @@ export function parseGeometry(text: string): HecRasGeometry {
         } else if (sub.includes("Inline Structure")) {
           isInline = true;
         } else if (sub.startsWith("Weir Data=")) {
-          const parts = sub.substring("Weir Data=".length).split(/[\s,]+/).filter(Boolean).map(Number);
+          const parts = sub
+            .substring("Weir Data=".length)
+            .split(/[\s,]+/)
+            .filter(Boolean)
+            .map(Number);
           if (parts.length >= 2) {
             weirCrest = parts[0]!;
             weirLen = parts[1]!;
@@ -119,17 +141,26 @@ export function parseGeometry(text: string): HecRasGeometry {
           while (j < lines.length && stationElevations.length < count) {
             const l = lines[j]!.trim();
             if (l.includes("=")) break;
-            const vals = l.split(/[\s,]+/).filter(Boolean).map(Number);
+            const vals = l
+              .split(/[\s,]+/)
+              .filter(Boolean)
+              .map(Number);
             for (let k = 0; k < vals.length - 1; k += 2) {
               stationElevations.push({ station: vals[k]!, elevation: vals[k + 1]! });
             }
             j++;
           }
           continue; // j already incremented
-        } else if (sub.startsWith("Cross Section Reach Lengths and Manning Values=") || sub.startsWith("Reach Lengths=")) {
+        } else if (
+          sub.startsWith("Cross Section Reach Lengths and Manning Values=") ||
+          sub.startsWith("Reach Lengths=")
+        ) {
           j++;
           if (j < lines.length) {
-            const vals = lines[j]!.trim().split(/[\s,]+/).filter(Boolean).map(Number);
+            const vals = lines[j]!.trim()
+              .split(/[\s,]+/)
+              .filter(Boolean)
+              .map(Number);
             if (vals.length >= 3) {
               leftOverbankLen = vals[0]!;
               channelLen = vals[1]!;
@@ -142,13 +173,21 @@ export function parseGeometry(text: string): HecRasGeometry {
             }
           }
         } else if (sub.startsWith("Bank Sta=")) {
-          const b = sub.substring("Bank Sta=".length).split(/[\s,]+/).filter(Boolean).map(Number);
+          const b = sub
+            .substring("Bank Sta=".length)
+            .split(/[\s,]+/)
+            .filter(Boolean)
+            .map(Number);
           if (b.length >= 2) {
             leftBank = b[0]!;
             rightBank = b[1]!;
           }
         } else if (sub.startsWith("Exp/Contr=") || sub.startsWith("Contraction and Expansion=")) {
-          const c = sub.split(/[\s,=]+/).filter(Boolean).map(Number).filter((n) => !isNaN(n));
+          const c = sub
+            .split(/[\s,=]+/)
+            .filter(Boolean)
+            .map(Number)
+            .filter((n) => !isNaN(n));
           if (c.length >= 2) {
             contrCoeff = c[0]!;
             expCoeff = c[1]!;
@@ -163,7 +202,7 @@ export function parseGeometry(text: string): HecRasGeometry {
           reach: currentReach,
           station,
           weirCrestElevation: weirCrest || (stationElevations[0]?.elevation ?? 100),
-          weirLength: weirLen || (rightBank - leftBank || 50),
+          weirLength: weirLen || rightBank - leftBank || 50,
           dischargeCoefficient: weirCoef,
           line: startLine,
         });
@@ -263,7 +302,10 @@ export function parseFlow(text: string): HecRasFlow {
           while (j < lines.length) {
             const l = lines[j]!.trim();
             if (l.includes("=")) break;
-            const vals = l.split(/[\s,]+/).filter(Boolean).map(Number);
+            const vals = l
+              .split(/[\s,]+/)
+              .filter(Boolean)
+              .map(Number);
             for (let k = 0; k < vals.length - 1; k += 2) {
               hydrograph.push({ timeHours: vals[k]!, flowOrStage: vals[k + 1]! });
             }

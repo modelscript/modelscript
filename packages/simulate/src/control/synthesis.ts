@@ -9,7 +9,7 @@
  *   3. Exact Zero-Order Hold Discretization & Box-Constrained Linear Model Predictive Control (MPC)
  */
 
-import { VarAttrKind, type DAEBuilder } from "@modelscript/runtime";
+import { getDefaultWasmExports, VarAttrKind, type DAEBuilder } from "@modelscript/runtime";
 import {
   computeBodeResponse,
   computeEigenStructure,
@@ -302,7 +302,50 @@ export interface LqrResult {
   riccatiResidual: number;
 }
 
+type DenseMatMulWasmExports = {
+  memory?: WebAssembly.Memory;
+  __new?: (size: number, id: number) => number;
+  __pin?: (ptr: number) => number;
+  __unpin?: (ptr: number) => void;
+  denseMatMulWasm?: (aPtr: number, bPtr: number, cPtr: number, m: number, k: number, n: number) => void;
+};
+
+let matMulWasmScratch: { wasm: DenseMatMulWasmExports; ptr: number; capBytes: number } | null = null;
+
 function matMul(A: Float64Array, B: Float64Array, m: number, k: number, n: number): Float64Array {
+  if (m * k * n >= 1000) {
+    const wasm = getDefaultWasmExports() as DenseMatMulWasmExports | null;
+    if (
+      wasm &&
+      typeof wasm.denseMatMulWasm === "function" &&
+      typeof wasm.__new === "function" &&
+      wasm.memory instanceof WebAssembly.Memory
+    ) {
+      const aLen = m * k;
+      const bLen = k * n;
+      const cLen = m * n;
+      const totalBytes = (aLen + bLen + cLen) * 8;
+      if (!matMulWasmScratch || matMulWasmScratch.wasm !== wasm || matMulWasmScratch.capBytes < totalBytes) {
+        if (matMulWasmScratch && typeof wasm.__unpin === "function" && matMulWasmScratch.wasm === wasm) {
+          wasm.__unpin(matMulWasmScratch.ptr);
+        }
+        const capBytes = Math.max(totalBytes, 8192);
+        const ptr = wasm.__new(capBytes, 0);
+        if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+        matMulWasmScratch = { wasm, ptr, capBytes };
+      }
+      const aPtr = matMulWasmScratch.ptr;
+      const bPtr = aPtr + aLen * 8;
+      const cPtr = bPtr + bLen * 8;
+      new Float64Array(wasm.memory.buffer, aPtr, aLen).set(A.subarray(0, aLen));
+      new Float64Array(wasm.memory.buffer, bPtr, bLen).set(B.subarray(0, bLen));
+      wasm.denseMatMulWasm(aPtr, bPtr, cPtr, m, k, n);
+      const C = new Float64Array(cLen);
+      C.set(new Float64Array(wasm.memory.buffer, cPtr, cLen));
+      return C;
+    }
+  }
+
   const C = new Float64Array(m * n);
   for (let i = 0; i < m; i++) {
     for (let p = 0; p < k; p++) {

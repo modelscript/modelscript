@@ -1255,6 +1255,22 @@ await yargs(rawArgs)
       "GtfsCommand",
     ),
   )
+  .command(
+    lazy(
+      "sysml-run <file>",
+      "Compile AssemblyScript/TypeScript kernels and verify SysML v2 definitions headlessly",
+      () => import("./commands/sysml-run.js"),
+      "SysmlRunCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "init-kernel <name>",
+      "Scaffold a SysML v2 + AssemblyScript or TypeScript capability package",
+      () => import("./commands/init-kernel.js"),
+      "InitKernelCommand",
+    ),
+  )
   .strictCommands()
   .demandCommand()
   .help()

@@ -28,9 +28,9 @@ export const fmi3TggRules = [
     name: "ModelicaModelToFmi3CoSimulation",
     sourceLang: "modelica",
     targetLang: "fmi3",
-    source: ($, v) => $.ModelDefinition({ name: v("modelName") }),
+    source: ($, v) => $["ModelDefinition"]?.({ name: v("modelName") }),
     target: ($, v) =>
-      $.FmiModelDescription({
+      $["FmiModelDescription"]?.({
         fmiVersion: "3.0",
         modelName: v("modelName"),
         modelIdentifier: v("modelName"),
@@ -48,7 +48,7 @@ export const fmi3TggRules = [
     sourceLang: "modelica",
     targetLang: "fmi3",
     source: ($, v) =>
-      $.VariableDecl({
+      $["VariableDecl"]?.({
         causality: "parameter",
         variability: "fixed",
         name: v("varName"),
@@ -56,7 +56,7 @@ export const fmi3TggRules = [
         description: v("desc"),
       }),
     target: ($, v) =>
-      $.Float64({
+      $["Float64"]?.({
         name: v("varName"),
         causality: "parameter",
         variability: "fixed",
@@ -79,13 +79,13 @@ export const fmi3TggRules = [
     sourceLang: "modelica",
     targetLang: "fmi3",
     source: ($, v) =>
-      $.VariableDecl({
+      $["VariableDecl"]?.({
         causality: "input",
         name: v("varName"),
         start: v("startVal"),
       }),
     target: ($, v) =>
-      $.Float64({
+      $["Float64"]?.({
         name: v("varName"),
         causality: "input",
         variability: "continuous",
@@ -106,13 +106,13 @@ export const fmi3TggRules = [
     sourceLang: "modelica",
     targetLang: "fmi3",
     source: ($, v) =>
-      $.VariableDecl({
+      $["VariableDecl"]?.({
         causality: "output",
         name: v("varName"),
         start: v("startVal"),
       }),
     target: ($, v) =>
-      $.Float64({
+      $["Float64"]?.({
         name: v("varName"),
         causality: "output",
         variability: "continuous",
@@ -133,7 +133,7 @@ export const fmi3TggRules = [
     sourceLang: "modelica",
     targetLang: "fmi3",
     source: ($, v) =>
-      $.StateVariableDecl({
+      $["StateVariableDecl"]?.({
         causality: "local",
         variability: "continuous",
         name: v("stateName"),
@@ -141,7 +141,7 @@ export const fmi3TggRules = [
         derivativeRef: v("derivVr"),
       }),
     target: ($, v) =>
-      $.Float64({
+      $["Float64"]?.({
         name: v("stateName"),
         causality: "local",
         variability: "continuous",
@@ -195,11 +195,7 @@ interface ParsedMoAst {
 }
 
 function escapeXmlAttr(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function findXmlElements(el: XmlElement | null | undefined, tagName: string, out: XmlElement[] = []): XmlElement[] {
@@ -229,13 +225,7 @@ function parseModelicaForFmi3(sourceCode: string): ParsedMoAst {
     }
     const moType = rawType as ParsedMoVar["moType"];
     const fmiType: ParsedMoVar["fmiType"] =
-      moType === "Integer"
-        ? "Int32"
-        : moType === "Boolean"
-          ? "Boolean"
-          : moType === "String"
-            ? "String"
-            : "Float64";
+      moType === "Integer" ? "Int32" : moType === "Boolean" ? "Boolean" : moType === "String" ? "String" : "Float64";
 
     const variability: ParsedMoVar["variability"] =
       comp.causality === "parameter" || comp.variability === "constant"
@@ -246,8 +236,7 @@ function parseModelicaForFmi3(sourceCode: string): ParsedMoAst {
 
     const startMod = comp.modifications["start"];
     const rawStart = startMod ?? comp.bindingExpr ?? (fmiType === "Boolean" ? "false" : "0");
-    const normStart =
-      fmiType === "Float64" && !Number.isNaN(Number(rawStart)) ? String(Number(rawStart)) : rawStart;
+    const normStart = fmiType === "Float64" && !Number.isNaN(Number(rawStart)) ? String(Number(rawStart)) : rawStart;
     const isState = cst.stateVars.has(comp.name);
     const currentVr = vr++;
     const derivVr = isState ? vr++ : undefined;
@@ -333,11 +322,7 @@ export function projectModelicaToFmi3ViaTgg(sourceCode: string): {
     outLines.push(`                canHandleVariableCommunicationStepSize="true"/>`);
     outLines.push(`  <ModelVariables>`);
 
-    const hasIo = ast.vars.some((item) => item.causality !== "parameter");
     for (const v of ast.vars) {
-      if (v.causality === "parameter" && hasIo && ast.vars.length <= 4) {
-        continue;
-      }
       const initialAttr = v.isState ? ` initial="calculated"` : "";
       const derivAttr = v.derivVr !== undefined ? ` derivative="${v.derivVr}"` : "";
       const descAttr =
@@ -352,10 +337,7 @@ export function projectModelicaToFmi3ViaTgg(sourceCode: string): {
     return outLines.join("\n");
   });
 
-  const fmi3Xml = transformer.transform(
-    { kind: "ModelicaModel", name: ast.modelName, properties: {} },
-    "fmi3",
-  );
+  const fmi3Xml = transformer.transform({ kind: "ModelicaModel", name: ast.modelName, properties: {} }, "fmi3");
   return { fmi3Xml, transformer, ast };
 }
 
@@ -386,11 +368,9 @@ export function synchronizeFmi3ToModelica(
 
   const xmlDoc = xml.parseXml(modifiedFmi3Xml);
   const fmiRoot =
-    xmlDoc.root?.name === "fmiModelDescription"
-      ? xmlDoc.root
-      : findXmlElements(xmlDoc.root, "fmiModelDescription")[0];
+    xmlDoc.root?.name === "fmiModelDescription" ? xmlDoc.root : findXmlElements(xmlDoc.root, "fmiModelDescription")[0];
 
-  const modelNameAttr = fmiRoot?.attributes.find((a: any) => a.name === "modelName")?.value;
+  const modelNameAttr = fmiRoot?.attributes.find((a) => a.name === "modelName")?.value;
   if (!fmiRoot || !modelNameAttr) {
     throw new Error('Expected <fmiModelDescription fmiVersion="3.0" modelName="..."> root element.');
   }
@@ -410,7 +390,7 @@ export function synchronizeFmi3ToModelica(
   const resolvedModelName = String(modelBack?.sourceNode["properties"]?.["name"] ?? modelNameAttr);
 
   const modelVarsContainer = findXmlElements(fmiRoot, "ModelVariables")[0];
-  const fmiVarEls = (modelVarsContainer?.children ?? []).filter((c: any) =>
+  const fmiVarEls = (modelVarsContainer?.children ?? []).filter((c) =>
     /^(?:Float64|Int32|Boolean|String)$/.test(c.name),
   );
   if (fmiVarEls.length === 0) {
@@ -433,7 +413,7 @@ export function synchronizeFmi3ToModelica(
   >();
 
   for (const el of fmiVarEls) {
-    const getAttr = (k: string) => el.attributes.find((a: any) => a.name === k)?.value;
+    const getAttr = (k: string) => el.attributes.find((a) => a.name === k)?.value;
     const name = getAttr("name");
     if (!name) continue;
     fmiVars.set(name, {

@@ -1,60 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { initBltWasm, type DAEBuilder } from "@modelscript/runtime";
+import { type DAEBuilder } from "@modelscript/runtime";
 import {
   simulateArena,
   simulateArenaAsync,
   type ArenaSimulateOptions,
   type ArenaSimulationResult,
 } from "../core/simulate-arena.js";
-
-/**
- * Directly simulates a SysML v2 specification (constraint def, part def, or action script)
- * by lowering it directly into the linear-memory DAEBuilder arena and running the
- * continuous/discrete numerical solver.
- *
- * @param sysmlSource SysML v2 textual source code
- * @param options Simulation and numerical solver options (startTime, stopTime, step, solver, etc.)
- * @returns Simulation results including time series, state names, and state trajectories
- */
-export async function simulateSysml2(
-  sysmlSource: string,
-  options: ArenaSimulateOptions = {},
-): Promise<ArenaSimulationResult> {
-  await initBltWasm();
-
-  interface SysML2LowererModule {
-    SysML2DaeLowerer: {
-      lowerSystem(source: string): Promise<DAEBuilder> | DAEBuilder;
-    };
-  }
-
-  // Dynamically import SysML2DaeLowerer from @modelscript/sysml2 to preserve clean package boundaries
-  let SysML2DaeLowerer: SysML2LowererModule["SysML2DaeLowerer"] | undefined;
-  try {
-    const sysml2Module = "@modelscript/sysml2";
-    ({ SysML2DaeLowerer } = (await import(sysml2Module)) as SysML2LowererModule);
-  } catch {
-    let fallbackUrl = "";
-    try {
-      const base =
-        typeof import.meta !== "undefined" && import.meta.url
-          ? import.meta.url
-          : (typeof self !== "undefined" && self.location?.href) || "http://localhost/";
-      fallbackUrl = new URL("../../../../languages/sysml2/src/sysml2-dae-lowerer.ts", base).href;
-    } catch {
-      fallbackUrl = "";
-    }
-    if (fallbackUrl) {
-      ({ SysML2DaeLowerer } = (await import(fallbackUrl)) as SysML2LowererModule);
-    }
-  }
-  if (!SysML2DaeLowerer) {
-    throw new Error("Failed to load SysML2DaeLowerer from @modelscript/sysml2");
-  }
-  const arena = await SysML2DaeLowerer.lowerSystem(sysmlSource);
-  return simulateArenaAsync(arena, options);
-}
 
 /**
  * Simulates a pre-lowered SysML v2 DAEBuilder arena.

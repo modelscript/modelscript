@@ -7,12 +7,26 @@
  * high-voltage electrical networks, transformers, transmission lines, and switches.
  */
 
+import { createWasmParserSync } from "@modelscript/atp/wasm-parser";
+import { cstLineText, groupCstLeavesByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import type { AtpBranch, AtpCase, AtpSimulationControl, AtpSource, AtpSwitch } from "../types.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getAtpWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/atp/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 type ParserSection = "HEADER" | "CONTROL" | "BRANCH" | "SWITCH" | "SOURCE" | "OUTPUT" | "UNKNOWN";
 
 export function parseAtp(content: string): AtpCase {
-  const lines = content.split(/\r?\n/);
+  const cstTree = getAtpWasmParser().parse(content);
+  const cstLines = groupCstLeavesByLine(cstTree?.rootNode);
 
   let title = "ATP_Simulation_Case";
   const control: AtpSimulationControl = {
@@ -28,8 +42,8 @@ export function parseAtp(content: string): AtpCase {
   let currentSection: ParserSection = "HEADER";
   let controlParsed = false;
 
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]!;
+  for (const { tokens: cstTokens } of cstLines) {
+    const rawLine = cstLineText(content, cstTokens);
     const trimmed = rawLine.trim();
 
     if (trimmed.length === 0) {

@@ -2,6 +2,7 @@
 
 import {
   collectWorkspaceDocuments,
+  collectXmlElementsFromWasm,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
@@ -12,7 +13,7 @@ const BUILTIN_IEC_FBS = new Set(["TON", "TOF", "TP", "CTU", "CTD", "CTUD", "R_TR
 
 /**
  * Performs multi-file IEC 61131-3 PLCopen workspace linting across multiple
- * `.xml` POU/library files, verifying cross-file derived FB/DUT type references.
+ * `.xml` POU/library files, verifying cross-file derived FB/DUT type references via XML WASM CST.
  */
 export function lintPlcopenWorkspace(workspace: WorkspaceDocumentInput, rootUri?: string): WorkspaceLintDiagnostic[] {
   const docs = collectWorkspaceDocuments(workspace);
@@ -21,17 +22,25 @@ export function lintPlcopenWorkspace(workspace: WorkspaceDocumentInput, rootUri?
   if (entries.length === 0) return diagnostics;
 
   const knownTypes = new Set<string>(BUILTIN_IEC_FBS);
-  const parsedDocs: Array<{ uri: string; xml: string; proj: ReturnType<typeof parsePlcopenXml> }> = [];
+  const parsedDocs: Array<{
+    uri: string;
+    elements: ReturnType<typeof collectXmlElementsFromWasm>;
+    proj: ReturnType<typeof parsePlcopenXml>;
+  }> = [];
 
   for (const [uri, xml] of entries) {
     const proj = parsePlcopenXml(xml);
-    parsedDocs.push({ uri, xml, proj });
-    for (const m of xml.matchAll(/<(?:pou|dataType)\b[^>]*\bname=["']([^"']+)["']/gi)) {
-      if (m[1]) knownTypes.add(m[1]);
+    const elements = collectXmlElementsFromWasm(xml);
+    parsedDocs.push({ uri, elements, proj });
+    for (const { tagName, attrs } of elements) {
+      const lowerTag = tagName.toLowerCase();
+      if ((lowerTag === "pou" || lowerTag === "datatype") && attrs["name"]) {
+        knownTypes.add(attrs["name"]);
+      }
     }
   }
 
-  for (const { uri, xml, proj } of parsedDocs) {
+  for (const { uri, elements, proj } of parsedDocs) {
     if (rootUri && entries.length === 0) continue;
     for (const d of lintPlcProject(proj)) {
       diagnostics.push({
@@ -43,8 +52,9 @@ export function lintPlcopenWorkspace(workspace: WorkspaceDocumentInput, rootUri?
       });
     }
 
-    for (const m of xml.matchAll(/<derived\b[^>]*\bname=["']([^"']+)["']/gi)) {
-      const typeName = m[1];
+    for (const { tagName, attrs } of elements) {
+      if (tagName.toLowerCase() !== "derived") continue;
+      const typeName = attrs["name"];
       if (typeName && !knownTypes.has(typeName)) {
         diagnostics.push({
           uri,

@@ -471,7 +471,7 @@ export function analyzeModelBlt(
     const blockEquations = orderedEqs.map((eIdx) => equations[eIdx]!);
     const blockVariables = orderedVars.map((vIdx) => variables[vIdx]!);
 
-    let blockType: BltBlock["blockType"] = "analytic";
+    let blockType: BltBlock["blockType"];
     if (isLoop) {
       const hasNonlinear = orderedEqs.some((eIdx) =>
         orderedVars.some((vIdx) => rawIncidence[`${eIdx}:${vIdx}`] === "nonlinear"),

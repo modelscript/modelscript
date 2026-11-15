@@ -1112,7 +1112,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           outputs,
           strategy: strategy ?? "sobol",
           numSamples: numSamples ?? 50,
-          simulateOptions: simOpts as any,
+          simulateOptions: simOpts as Parameters<typeof runArenaDoE>[1]["simulateOptions"],
         });
 
         const summary = {
@@ -1191,7 +1191,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           parameterNames,
           nominalValues,
           perturbationFactor,
-          simOpts as any,
+          simOpts as Parameters<typeof runSensitivityAnalysisArena>[4],
         );
 
         // Convert Maps to plain objects for JSON serialization
@@ -6254,7 +6254,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         headDownstreamM: initialHeadDownstreamM ?? 70.0,
       };
       const type = eventType ?? "VALVE_CLOSURE";
-      const event: any = {
+      const event: Parameters<typeof solveWaterHammerMoc>[2] = {
         type,
         durationSeconds: closureTimeSeconds,
       };
@@ -6947,7 +6947,9 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     async ({ databaseFilePath, tablesJson, flowUnits }) => {
       const { parseWaterGemsDatabase, serializeInp } = await import("@modelscript/epanet");
       const input = databaseFilePath ? databaseFilePath : JSON.parse(tablesJson ?? "{}");
-      const network = parseWaterGemsDatabase(input, { flowUnits: (flowUnits as any) ?? "GPM" });
+      const network = parseWaterGemsDatabase(input, {
+        flowUnits: (flowUnits as NonNullable<Parameters<typeof parseWaterGemsDatabase>[1]>["flowUnits"]) ?? "GPM",
+      });
       const inpContent = serializeInp(network);
 
       return {
@@ -7046,7 +7048,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         rainfallIntensityMmPerHr: rainfallIntensityMmPerHr ?? 45.0,
       });
 
-      const floodedCells: any[] = [];
+      const floodedCells: { cellId: number; maxDepthM: number; maxVelocityMps: number; maxHazardRating: number }[] = [];
       for (const [cellId, summary] of res.cells) {
         if (summary.isFlooded) {
           floodedCells.push({
@@ -7285,21 +7287,23 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         generatedAt: new Date().toISOString(),
       };
 
+      const typedLayout = layout as Parameters<typeof compileToIPC2581>[0];
+
       if (format === "all" || format === "ipc2581") {
-        const xml = compileToIPC2581(layout as any, { assemblyName: projectName, revision });
+        const xml = compileToIPC2581(typedLayout, { assemblyName: projectName, revision });
         result["ipc2581_length_bytes"] = Buffer.byteLength(xml, "utf8");
         result["ipc2581_xml_preview"] = xml.slice(0, 500) + "...";
       }
 
       if (format === "all" || format === "odb") {
-        const odb = compileToODB(layout as any, { jobName: projectName.toLowerCase() });
+        const odb = compileToODB(typedLayout, { jobName: projectName.toLowerCase() });
         const tar = odb.toTar();
         result["odb_files_count"] = odb.files.size;
         result["odb_tar_size_bytes"] = tar.length;
       }
 
       if (format === "all" || format === "centroid") {
-        const records = generateCentroidRecords(layout as any);
+        const records = generateCentroidRecords(typedLayout);
         result["centroid_components_count"] = records.length;
         result["centroid_standard_csv"] = formatStandardCentroidCsv(records);
         result["centroid_jlcpcb_cpl"] = formatJlcpcbCplCsv(records);
@@ -7307,7 +7311,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       }
 
       if (format === "all") {
-        const mfgFiles = generateManufacturingFiles(layout as any);
+        const mfgFiles = generateManufacturingFiles(typedLayout);
         result["gerber_layers_generated"] = mfgFiles.map((f) => f.filename);
       }
 
@@ -7996,7 +8000,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
             circumferenceAtGroundLineMeters: 0.95,
             circumferenceAtTopMeters: 0.55,
             constructionGrade: "grade-2",
-            loadingDistrict: (args.loadingDistrict as any) ?? "heavy",
+            loadingDistrict: (args.loadingDistrict as CsaPoleAnalysisConfig["loadingDistrict"]) ?? "heavy",
             attachments: args.attachments.map((a) => ({
               id: a.id,
               type: "telecom-fiber",

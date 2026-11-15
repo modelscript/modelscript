@@ -116,7 +116,7 @@ export class AmplRepl {
       output: this.output,
       completer: (l: string) => this.completer(l),
       prompt: this.promptStr,
-      terminal: (this.input as any).isTTY ?? false,
+      terminal: (this.input as { isTTY?: boolean }).isTTY ?? false,
     });
 
     rl.prompt();
@@ -137,7 +137,7 @@ export class AmplRepl {
             resolve();
             return;
           }
-          if (!isClosed && !(rl as any).closed) {
+          if (!isClosed && !(rl as unknown as { closed?: boolean }).closed) {
             rl.setPrompt(this.promptStr);
             rl.prompt();
           }
@@ -161,8 +161,8 @@ export class AmplRepl {
           rl.pause();
           try {
             await this.session.evalScript(commandToRun);
-          } catch (err: any) {
-            this.write(`Error: ${err?.message ?? String(err)}\n`);
+          } catch (err: unknown) {
+            this.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
           } finally {
             rl.resume();
           }
@@ -172,7 +172,7 @@ export class AmplRepl {
           rl.setPrompt("  ... ");
         }
 
-        if (!isClosed && !(rl as any).closed) {
+        if (!isClosed && !(rl as unknown as { closed?: boolean }).closed) {
           rl.prompt();
         }
       });

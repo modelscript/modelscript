@@ -2,6 +2,7 @@
 
 import {
   collectWorkspaceDocuments,
+  collectXmlElementsFromWasm,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
@@ -9,10 +10,19 @@ import {
 import { parseAutomationML } from "../parser/index.js";
 import { lintAutomationML } from "./index.js";
 
+const AML_LIB_TAGS = new Set([
+  "roleclass",
+  "interfaceclass",
+  "systemunitclass",
+  "roleclasslib",
+  "interfaceclasslib",
+  "systemunitclasslib",
+]);
+
 /**
  * Performs multi-file AutomationML (CAEX) workspace linting across `.aml` files,
  * checking `ExternalReference/@Path` and cross-file `RefBaseSystemUnitPath` /
- * `RefBaseClassPath` library references.
+ * `RefBaseClassPath` library references via XML WASM CST.
  */
 export function lintAutomationMLWorkspace(
   workspace: WorkspaceDocumentInput,
@@ -24,19 +34,24 @@ export function lintAutomationMLWorkspace(
   if (entries.length === 0) return diagnostics;
 
   const knownLibNames = new Set<string>();
-  const parsedDocs: Array<{ uri: string; xml: string; doc: ReturnType<typeof parseAutomationML> }> = [];
+  const parsedDocs: Array<{
+    uri: string;
+    elements: ReturnType<typeof collectXmlElementsFromWasm>;
+    doc: ReturnType<typeof parseAutomationML>;
+  }> = [];
 
   for (const [uri, xml] of entries) {
     const doc = parseAutomationML(xml);
-    parsedDocs.push({ uri, xml, doc });
-    for (const m of xml.matchAll(
-      /<(?:RoleClass|InterfaceClass|SystemUnitClass|RoleClassLib|InterfaceClassLib|SystemUnitClassLib)\b[^>]*\bName=["']([^"']+)["']/gi,
-    )) {
-      if (m[1]) knownLibNames.add(m[1]);
+    const elements = collectXmlElementsFromWasm(xml);
+    parsedDocs.push({ uri, elements, doc });
+    for (const { tagName, attrs } of elements) {
+      if (AML_LIB_TAGS.has(tagName.toLowerCase()) && attrs["Name"]) {
+        knownLibNames.add(attrs["Name"]);
+      }
     }
   }
 
-  for (const { uri, xml, doc } of parsedDocs) {
+  for (const { uri, elements, doc } of parsedDocs) {
     if (rootUri && entries.length === 0) continue;
     for (const d of lintAutomationML(doc)) {
       diagnostics.push({
@@ -48,33 +63,33 @@ export function lintAutomationMLWorkspace(
       });
     }
 
-    for (const m of xml.matchAll(/<ExternalReference\b[^>]*\bPath=["']([^"']+)["']/gi)) {
-      const refPath = m[1];
-      if (refPath && !resolveRelativeUri(uri, refPath, docs)) {
-        diagnostics.push({
-          uri,
-          code: "AM3001",
-          rule: "unresolved-aml-external-reference",
-          severity: "error",
-          message: `AutomationML ExternalReference Path '${refPath}' was not found in the workspace.`,
-        });
-      }
-    }
-
-    if (knownLibNames.size > 0) {
-      for (const m of xml.matchAll(
-        /\b(?:RefBaseSystemUnitPath|RefBaseClassPath|RefBaseRoleClassPath)=["']([^"']+)["']/gi,
-      )) {
-        const refPath = m[1];
-        const leaf = refPath?.split("/").filter(Boolean).pop();
-        if (leaf && !knownLibNames.has(leaf)) {
+    for (const { tagName, attrs } of elements) {
+      if (tagName.toLowerCase() === "externalreference") {
+        const refPath = attrs["Path"];
+        if (refPath && !resolveRelativeUri(uri, refPath, docs)) {
           diagnostics.push({
             uri,
-            code: "AM3002",
-            rule: "unresolved-aml-class-path",
-            severity: "warning",
-            message: `AutomationML class reference '${refPath}' does not match any library class in the workspace.`,
+            code: "AM3001",
+            rule: "unresolved-aml-external-reference",
+            severity: "error",
+            message: `AutomationML ExternalReference Path '${refPath}' was not found in the workspace.`,
           });
+        }
+      }
+
+      if (knownLibNames.size > 0) {
+        for (const attrKey of ["RefBaseSystemUnitPath", "RefBaseClassPath", "RefBaseRoleClassPath"]) {
+          const refPath = attrs[attrKey];
+          const leaf = refPath?.split("/").filter(Boolean).pop();
+          if (leaf && !knownLibNames.has(leaf)) {
+            diagnostics.push({
+              uri,
+              code: "AM3002",
+              rule: "unresolved-aml-class-path",
+              severity: "warning",
+              message: `AutomationML class reference '${refPath}' does not match any library class in the workspace.`,
+            });
+          }
         }
       }
     }

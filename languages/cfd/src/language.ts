@@ -9,15 +9,13 @@ import {
   prec,
   repeat,
   seq,
-  tggComplement,
-  tggEq,
-  tggRule,
   type ActionExecutionContext,
   type QueryDB,
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/dsl";
 import { canIndexCfd, indexCfdDocument } from "./indexing.js";
+import { cfdPolyglotConfig } from "./tgg/index.js";
 import type { MaterializeOptions } from "./types.js";
 
 interface CfdActionContext extends ActionExecutionContext {
@@ -226,69 +224,7 @@ export const cfdLanguage = language({
   ],
 
   // Triple Graph Grammar (TGG) rules linking CFD directives and markers to Modelica and SysML v2
-  polyglot: {
-    languages: ["modelica", "sysml2"],
-    rules: [
-      tggRule({
-        name: "CfdDragPolarToModelicaParam",
-        sourceLang: "cfd",
-        targetLang: "modelica",
-        priority: 15,
-        source: ($, v) => $.Directive({ key: "CD", value: v("cdVal") }),
-        target: ($, v) => $.ComponentClause({ name: "Cd", defaultValue: v("cdVal") }),
-        where: (v) => [tggEq(v("cdVal"), v("cdVal")), tggComplement(["refArea", "cl"])],
-      }),
-      tggRule({
-        name: "CfdDragPolarToSysmlAttribute",
-        sourceLang: "cfd",
-        targetLang: "sysml2",
-        priority: 15,
-        source: ($, v) => $.Directive({ key: "CD", value: v("cdVal") }),
-        target: ($, v) => $.AttributeUsage({ declaredName: "aeroDragCoeff", defaultValue: v("cdVal") }),
-        where: (v) => [tggEq(v("cdVal"), v("cdVal")), tggComplement(["refArea", "cl"])],
-      }),
-      tggRule({
-        name: "CfdInletToModelicaFluidPort",
-        sourceLang: "cfd",
-        targetLang: "modelica",
-        priority: 10,
-        source: ($, v) => $.Directive({ key: "MARKER_INLET", value: v("markerVal") }),
-        target: ($, _v) => $.ComponentClause({ name: "inlet", typeSpecifier: "Modelica.Fluid.Interfaces.FluidPort_a" }),
-        where: (_v) => [tggComplement(["dialect", "meshFilename", "options"])],
-      }),
-      tggRule({
-        name: "CfdHeatFluxToModelicaHeatPort",
-        sourceLang: "cfd",
-        targetLang: "modelica",
-        priority: 10,
-        source: ($, v) => $.Directive({ key: "MARKER_HEATFLUX", value: v("markerVal") }),
-        target: ($, _v) =>
-          $.ComponentClause({
-            name: "heatPort",
-            typeSpecifier: "Modelica.Thermal.HeatTransfer.Interfaces.HeatPort_a",
-          }),
-        where: (_v) => [tggComplement(["dialect", "meshFilename", "options"])],
-      }),
-      tggRule({
-        name: "CfdMarkerToSysmlPort",
-        sourceLang: "cfd",
-        targetLang: "sysml2",
-        priority: 5,
-        source: ($, v) => $.Directive({ key: "MARKER_SYM", value: v("markerVal") }),
-        target: ($, v) => $.PortUsage({ declaredName: "marker_sym", declaredType: v("markerVal") }),
-        where: (v) => [tggEq(v("markerVal"), v("markerVal")), tggComplement(["dialect", "options"])],
-      }),
-      tggRule({
-        name: "CfdDirectiveToSysmlConstraint",
-        sourceLang: "cfd",
-        targetLang: "sysml2",
-        priority: 0,
-        source: ($, v) => $.Directive({ key: v("dirKey"), value: v("dirVal") }),
-        target: ($, v) => $.ConstraintUsage({ declaredName: v("dirKey") }),
-        where: (v) => [tggEq(v("dirKey"), v("dirKey")), tggComplement(["dirVal"])],
-      }),
-    ],
-  },
+  polyglot: cfdPolyglotConfig,
 
   primitives: {
     lineComment: "%",

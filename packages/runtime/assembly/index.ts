@@ -20,6 +20,8 @@ export * from "../src/wasm/gpu/gpu_buffers";
 export * from "../src/wasm/solvers/groebner";
 export * from "../src/wasm/solvers/integrators";
 export * from "../src/wasm/solvers/matrix";
+export * from "../src/wasm/solvers/pinn";
+export * from "../src/wasm/solvers/ran_coverage";
 export * from "../src/wasm/solvers/rodas4p";
 export * from "../src/wasm/solvers/symplectic";
 export * from "../src/wasm/autodiff/interval";
@@ -69,6 +71,9 @@ export * from "../src/wasm/simulation/verifier";
 export * from "../src/wasm/simulation/vmap";
 export * from "../src/wasm/solvers/integrate";
 export * from "../src/wasm/solvers/linalg";
+export * from "../src/wasm/linalg/krylov";
+export * from "../src/wasm/optimization/cma_es";
+export * from "../src/wasm/optimization/nsga3";
 export * from "../src/wasm/structural/blt";
 export {
   isTargetVar,

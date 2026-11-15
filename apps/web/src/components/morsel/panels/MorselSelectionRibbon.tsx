@@ -7,7 +7,7 @@ import { getComponentDomain } from "../ComponentList";
 
 export interface MorselSelectionRibbonProps {
   selectedComponent: string;
-  selectedProperties?: any;
+  selectedProperties?: Record<string, unknown>;
   colorMode: string;
   onRotate: (deltaDegrees?: number) => void;
   onFlip: (axis?: "x" | "y") => void;

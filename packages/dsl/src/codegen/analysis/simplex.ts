@@ -6,7 +6,9 @@ import { simplexCode } from "../../src-gen/runtime-templates.js";
 /**
  * Returns the AssemblyScript source code for the native LRA Simplex tableau solver.
  */
-export function generateSimplex(grammarDef?: any): string {
+export function generateSimplex(grammarDef?: {
+  semantics?: { reasoner?: { smt?: { maxSimplexVars?: number } } };
+}): string {
   const maxVars = grammarDef?.semantics?.reasoner?.smt?.maxSimplexVars || 200;
   if (maxVars === 200) {
     return simplexCode;

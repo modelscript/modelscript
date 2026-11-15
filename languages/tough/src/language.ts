@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { iniSectionRules, language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerToughToDae } from "./dae/index.js";
 import { canIndexToughFile, indexToughFile } from "./indexing.js";
 import { lintTough } from "./lints/index.js";
 import { parseTough } from "./parser/index.js";
 import { solveGeothermalWells } from "./solver/index.js";
+import { toughPolyglotConfig } from "./tgg/index.js";
 
 export const toughLanguage = language({
+  polyglot: toughPolyglotConfig,
   name: "tough",
   fileExtensions: [".tough", ".dat", ".tgh"],
   maturity: "experimental",
@@ -59,4 +61,8 @@ export const toughLanguage = language({
       },
     },
   ],
+  extras: ($) => [/[ \t\r\n]+/, $["IniComment"]!],
+  rules: iniSectionRules,
 });
+
+export default toughLanguage;

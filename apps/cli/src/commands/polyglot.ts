@@ -595,7 +595,7 @@ const ProjectCommand: CommandModule<{}, ProjectArgs> = {
             if (targetParser) {
               const synced = CstUnparser.syncTargetSource(
                 existingText,
-                node,
+                node as Parameters<typeof CstUnparser.syncTargetSource>[1],
                 args.target,
                 targetParser as unknown as Parameters<typeof CstUnparser.syncTargetSource>[3],
               );

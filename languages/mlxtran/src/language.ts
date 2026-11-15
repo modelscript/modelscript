@@ -7,12 +7,14 @@ import { lintMlxtran } from "./lints/mlxtran-linter.js";
 import { parseMlxtran } from "./parser/mlxtran-parser.js";
 import { mlxtranToModelica } from "./projections/mlxtran-to-modelica.js";
 import { solveMlxtranPk } from "./solvers/mlxtran-solver.js";
+import { mlxtranPolyglotConfig } from "./tgg/index.js";
 import type { MlxtranSimOptions } from "./types.js";
 
 /**
  * ModelScript Monolix MLXTRAN Pharmacometrics (.mlxtran) Language Definition.
  */
 export const mlxtranLanguage = language({
+  polyglot: mlxtranPolyglotConfig,
   name: "mlxtran",
   fileExtensions: [".mlxtran"],
   maturity: "beta",

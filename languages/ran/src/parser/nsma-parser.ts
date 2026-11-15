@@ -4,10 +4,24 @@
  * Parser for NSMA WG16.99.050 (*.adf, *.nsma) antenna radiation pattern files.
  */
 
+import { createWasmParserSync } from "@modelscript/ran/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import type { AntennaCut, AntennaPatternDeck, AntennaPatternPoint, AntennaPolarization } from "../types.js";
 
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getRanWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/ran/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 export function parseNsmaAdf(content: string, filename = "antenna.adf"): AntennaPatternDeck {
-  const lines = content.split(/\r?\n/);
+  const cstTree = getRanWasmParser().parse(content);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
 
   let description = "";
   let manufacturer = "";
@@ -24,8 +38,8 @@ export function parseNsmaAdf(content: string, filename = "antenna.adf"): Antenna
 
   let currentCut: "horizontal" | "vertical" | null = null;
 
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]?.trim();
+  for (const { tokens: cstTokens } of cstLines) {
+    const rawLine = cstLineText(content, cstTokens).trim();
     if (!rawLine || rawLine.startsWith("!")) continue;
 
     const colonIdx = rawLine.indexOf(":");

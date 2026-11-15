@@ -1156,14 +1156,27 @@ function evalFlatExpr(expr: FlatExpression, vec: number[], variables: Instantiat
   return sum;
 }
 
-function evalTree(tree: any, vec: number[], variables: InstantiatedVar[]): number {
+interface EvalTreeNode {
+  kind: string;
+  value?: number | string;
+  name?: string;
+  indices?: EvalTreeNode[];
+  expr?: EvalTreeNode;
+  op?: string;
+  left?: EvalTreeNode;
+  right?: EvalTreeNode;
+  args?: EvalTreeNode[];
+  fn?: string;
+}
+
+function evalTree(tree: EvalTreeNode | undefined, vec: number[], variables: InstantiatedVar[]): number {
   if (!tree) return 0;
-  if (tree.kind === "number") return tree.value;
+  if (tree.kind === "number") return typeof tree.value === "number" ? tree.value : 0;
   if (tree.kind === "identifier" || tree.kind === "subscript") {
     const name =
       tree.kind === "identifier"
         ? tree.name
-        : `${tree.name}[${tree.indices.map((i: any) => i.value ?? i.name).join(",")}]`;
+        : `${tree.name}[${(tree.indices ?? []).map((i) => i.value ?? i.name).join(",")}]`;
     const idx = variables.findIndex((v) => v.name === name);
     return idx >= 0 ? (vec[idx] ?? 0) : 0;
   }
@@ -1189,7 +1202,7 @@ function evalTree(tree: any, vec: number[], variables: InstantiatedVar[]): numbe
     }
   }
   if (tree.kind === "call") {
-    const args = (tree.args ?? []).map((a: any) => evalTree(a, vec, variables));
+    const args = (tree.args ?? []).map((a) => evalTree(a, vec, variables));
     switch (String(tree.fn).toLowerCase()) {
       case "abs":
         return Math.abs(args[0] ?? 0);

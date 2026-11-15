@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { LanguageAction } from "@modelscript/dsl/dsl/action-types.js";
+import type { ActionExecutionContext, LanguageAction } from "@modelscript/dsl/dsl/action-types.js";
 import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
 
 export interface SysmlActionWorkspaceManager {
@@ -8,7 +8,7 @@ export interface SysmlActionWorkspaceManager {
   getFileContent?: ((uri: string) => Promise<string> | string) | undefined;
 }
 
-export interface SysmlActionContext {
+export interface SysmlActionContext extends ActionExecutionContext {
   uri?: string | undefined;
   queryDB?: QueryDB | undefined;
   workspaceManager?: SysmlActionWorkspaceManager | undefined;

@@ -15,8 +15,10 @@ import { lintOpenSimDocument } from "./lints/index.js";
 import { parseOpenSim } from "./parser/index.js";
 import { openSimToModelica, openSimToUrdf } from "./projections/index.js";
 import { simulateMuscleDynamics, type OpenSimSimulationOptions } from "./solvers/index.js";
+import { opensimPolyglotConfig } from "./tgg/index.js";
 
 export const openSimLanguage = language({
+  polyglot: opensimPolyglotConfig,
   name: "opensim",
   fileExtensions: [".osim"],
   maturity: "beta",

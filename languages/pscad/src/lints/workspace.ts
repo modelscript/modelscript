@@ -2,6 +2,7 @@
 
 import {
   collectWorkspaceDocuments,
+  collectXmlElementsFromWasm,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
@@ -24,8 +25,11 @@ export function lintPscadWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
 
   for (const [uri, xml] of entries) {
     if (uri.toLowerCase().endsWith(".pslx")) {
-      for (const m of xml.matchAll(/<Definition\b[^>]*\bname=["']([^"']+)["']/gi)) {
-        if (m[1]) libraryDefs.add(m[1]);
+      for (const el of collectXmlElementsFromWasm(xml)) {
+        const defName = el.attrs["name"];
+        if (el.tagName.toLowerCase() === "definition" && defName) {
+          libraryDefs.add(defName);
+        }
       }
     } else if (uri.toLowerCase().endsWith(".pscx") || uri === rootUri || entries.length === 1) {
       pscxEntries.push([uri, xml]);
@@ -45,11 +49,11 @@ export function lintPscadWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
     }
 
     // Check referenced external source files (Fortran/C companions or library paths)
-    for (const m of xml.matchAll(
-      /<(?:File|SourceFile|Library)\b[^>]*\b(?:path|src|name)=["']([^"']+\.(?:f|f90|for|c|pslx))["']/gi,
-    )) {
-      const refPath = m[1];
-      if (refPath && !resolveRelativeUri(uri, refPath, docs)) {
+    for (const el of collectXmlElementsFromWasm(xml)) {
+      const tag = el.tagName.toLowerCase();
+      if (tag !== "file" && tag !== "sourcefile" && tag !== "library") continue;
+      const refPath = el.attrs["path"] ?? el.attrs["src"] ?? el.attrs["name"];
+      if (refPath && /\.(?:f|f90|for|c|pslx)$/i.test(refPath) && !resolveRelativeUri(uri, refPath, docs)) {
         diagnostics.push({
           uri,
           code: "M6020",

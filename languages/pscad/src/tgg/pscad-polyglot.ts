@@ -50,12 +50,13 @@ export const pscadPolyglotConfig: PolyglotConfig = {
       name: "PscadComponentToModelicaClass",
       sourceLang: "pscad",
       targetLang: "modelica",
+      priority: 15,
       source: ($, v) =>
-        $.pscad_component({
+        $["pscad_component"]?.({
           name: v("className"),
         }),
       target: ($, v) =>
-        $.ClassDefinition({
+        $["ClassDefinition"]?.({
           name: v("className"),
         }),
       where: (v) => [
@@ -70,12 +71,13 @@ export const pscadPolyglotConfig: PolyglotConfig = {
       name: "PscadUserCmpDefnToModelicaClass",
       sourceLang: "pscad",
       targetLang: "modelica",
+      priority: 10,
       source: ($, v) =>
-        $.UserCmpDefn({
+        $["UserCmpDefn"]?.({
           name: v("className"),
         }),
       target: ($, v) =>
-        $.ClassDefinition({
+        $["ClassDefinition"]?.({
           name: v("className"),
         }),
       where: (v) => [tggEq(v("className"), v("className")), tggComplement(["iconSvg", "flyBy"])],
@@ -86,12 +88,13 @@ export const pscadPolyglotConfig: PolyglotConfig = {
       name: "PscadProjectToModelicaClass",
       sourceLang: "pscad",
       targetLang: "modelica",
+      priority: 5,
       source: ($, v) =>
-        $.pscad_project({
+        $["pscad_project"]?.({
           name: v("className"),
         }),
       target: ($, v) =>
-        $.ClassDefinition({
+        $["ClassDefinition"]?.({
           name: v("className"),
         }),
       where: (v) => [tggEq(v("className"), v("className")), tggComplement(["projectType"])],
@@ -102,12 +105,13 @@ export const pscadPolyglotConfig: PolyglotConfig = {
       name: "PscadLibraryToModelicaPackage",
       sourceLang: "pscad",
       targetLang: "modelica",
+      priority: 0,
       source: ($, v) =>
-        $.pscad_library({
+        $["pscad_library"]?.({
           name: v("pkgName"),
         }),
       target: ($, v) =>
-        $.ClassDefinition({
+        $["ClassDefinition"]?.({
           name: v("pkgName"),
         }),
       where: (v) => [tggEq(v("pkgName"), v("pkgName")), tggComplement(["projectType"])],
@@ -118,12 +122,13 @@ export const pscadPolyglotConfig: PolyglotConfig = {
       name: "PscadComponentToSysmlPartDef",
       sourceLang: "pscad",
       targetLang: "sysml2",
+      priority: 10,
       source: ($, v) =>
-        $.pscad_component({
+        $["pscad_component"]?.({
           name: v("className"),
         }),
       target: ($, v) =>
-        $.PartDefinition({
+        $["PartDefinition"]?.({
           declaredName: v("className"),
         }),
       where: (v) => [tggEq(v("className"), v("className")), tggComplement(["iconSvg", "flyBy"])],
@@ -134,12 +139,13 @@ export const pscadPolyglotConfig: PolyglotConfig = {
       name: "PscadProjectToSysmlPartDef",
       sourceLang: "pscad",
       targetLang: "sysml2",
+      priority: 0,
       source: ($, v) =>
-        $.pscad_project({
+        $["pscad_project"]?.({
           name: v("className"),
         }),
       target: ($, v) =>
-        $.PartDefinition({
+        $["PartDefinition"]?.({
           declaredName: v("className"),
         }),
       where: (v) => [tggEq(v("className"), v("className")), tggComplement(["projectType"])],
@@ -152,12 +158,12 @@ export const pscadPolyglotConfig: PolyglotConfig = {
       targetLang: "modelica",
       priority: 15,
       source: ($, v) =>
-        $.pscad_port({
+        $["pscad_port"]?.({
           name: v("portName"),
           typeSpecifier: v("typeName"),
         }),
       target: ($, v) =>
-        $.ComponentClause({
+        $["ComponentClause"]?.({
           name: v("portName"),
           typeSpecifier: v("typeName"),
         }),
@@ -174,13 +180,13 @@ export const pscadPolyglotConfig: PolyglotConfig = {
       sourceLang: "pscad",
       targetLang: "modelica",
       source: ($, v) =>
-        $.pscad_parameter({
+        $["pscad_parameter"]?.({
           name: v("paramName"),
           typeSpecifier: v("typeName"),
           defaultValue: v("val"),
         }),
       target: ($, v) =>
-        $.ComponentClause({
+        $["ComponentClause"]?.({
           name: v("paramName"),
           typeSpecifier: v("typeName"),
           binding: v("val"),

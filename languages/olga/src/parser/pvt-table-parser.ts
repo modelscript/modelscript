@@ -361,13 +361,28 @@ function normalizePropertyTag(tag: string): string {
   }
 }
 
+import { createWasmParserSync } from "@modelscript/olga/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getOlgaWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/olga/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 /**
  * Parses an OLGA, Multiflash, or PVTsim fluid property table (.tab / .pvt).
  */
 export function parsePvtTable(tableText: string): PvtTableData {
-  const lines = tableText
-    .split(/\r?\n/)
-    .map((l) => l.trim())
+  const cstTree = getOlgaWasmParser().parse(tableText);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
+  const lines = cstLines
+    .map(({ tokens }) => cstLineText(tableText, tokens).trim())
     .filter((l) => l.length > 0 && !l.startsWith("#"));
 
   let title = "Multiphase Fluid Table";

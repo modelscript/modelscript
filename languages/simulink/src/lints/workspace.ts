@@ -2,6 +2,7 @@
 
 import {
   collectWorkspaceDocuments,
+  collectXmlElementsFromWasm,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
@@ -41,29 +42,31 @@ export function lintSimulinkWorkspace(workspace: WorkspaceDocumentInput, rootUri
       });
     }
 
-    for (const m of xml.matchAll(/<P\b[^>]*\bName=["']ModelName(?:Dialog)?["'][^>]*>([^<]+)<\/P>/gi)) {
-      const refModel = m[1]?.trim().replace(/\.(?:slx|mdl)$/i, "");
-      if (refModel && !modelNames.has(refModel)) {
-        diagnostics.push({
-          uri,
-          code: "SL3001",
-          rule: "unresolved-simulink-modelref",
-          severity: "error",
-          message: `Simulink ModelReference '${refModel}' was not found in the workspace.`,
-        });
-      }
-    }
-
-    for (const m of xml.matchAll(/<P\b[^>]*\bName=["']DataDictionary["'][^>]*>([^<]+)<\/P>/gi)) {
-      const sldd = m[1]?.trim();
-      if (sldd && !resolveRelativeUri(uri, sldd, docs)) {
-        diagnostics.push({
-          uri,
-          code: "SL3002",
-          rule: "unresolved-simulink-sldd",
-          severity: "error",
-          message: `Simulink DataDictionary '${sldd}' was not found in the workspace.`,
-        });
+    for (const el of collectXmlElementsFromWasm(xml)) {
+      if (el.tagName.toLowerCase() !== "p") continue;
+      const propName = (el.attrs["Name"] ?? el.attrs["name"] ?? "").toLowerCase();
+      if (propName === "modelname" || propName === "modelnamedialog") {
+        const refModel = el.text.trim().replace(/\.(?:slx|mdl)$/i, "");
+        if (refModel && !modelNames.has(refModel)) {
+          diagnostics.push({
+            uri,
+            code: "SL3001",
+            rule: "unresolved-simulink-modelref",
+            severity: "error",
+            message: `Simulink ModelReference '${refModel}' was not found in the workspace.`,
+          });
+        }
+      } else if (propName === "datadictionary") {
+        const sldd = el.text.trim();
+        if (sldd && !resolveRelativeUri(uri, sldd, docs)) {
+          diagnostics.push({
+            uri,
+            code: "SL3002",
+            rule: "unresolved-simulink-sldd",
+            severity: "error",
+            message: `Simulink DataDictionary '${sldd}' was not found in the workspace.`,
+          });
+        }
       }
     }
   }

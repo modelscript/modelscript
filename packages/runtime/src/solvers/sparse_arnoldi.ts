@@ -25,12 +25,52 @@
  *   stable algorithms for updating the Gram-Schmidt QR factorization." Mathematics of Computation, 30(136), 772-795.
  */
 
-import {
-  type SparseCCSMatrix,
-  sparseLuFactor,
-  sparseLuSolve,
-  SparseTripletBuilder,
-} from "./sparse_lu.js";
+import { getDefaultWasmExports } from "../dae/wasm_dae.js";
+import { type SparseCCSMatrix, sparseLuFactor, sparseLuSolve, SparseTripletBuilder } from "./sparse_lu.js";
+
+interface ArnoldiWasmScratch {
+  wasm: any;
+  capQ: number;
+  capN: number;
+  capM: number;
+  qMatPtr: number;
+  wPtr: number;
+  hColPtr: number;
+}
+
+let arnoldiScratch: ArnoldiWasmScratch | null = null;
+
+function ensureArnoldiScratch(wasm: any, n: number, m: number): ArnoldiWasmScratch | null {
+  if (!wasm || typeof wasm.__new !== "function") return null;
+  const qElems = n * (m + 1);
+  if (
+    arnoldiScratch &&
+    arnoldiScratch.wasm === wasm &&
+    arnoldiScratch.capQ >= qElems &&
+    arnoldiScratch.capN >= n &&
+    arnoldiScratch.capM >= m
+  ) {
+    return arnoldiScratch;
+  }
+  const capN = Math.max(n, 64);
+  const capM = Math.max(m, 32);
+  const capQ = Math.max(qElems, capN * (capM + 1));
+  const alloc = (bytes: number): number => {
+    const ptr = wasm.__new(bytes, 0);
+    if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+    return ptr;
+  };
+  arnoldiScratch = {
+    wasm,
+    capQ,
+    capN,
+    capM,
+    qMatPtr: alloc(capQ * 8),
+    wPtr: alloc(capN * 8),
+    hColPtr: alloc(capM * 8),
+  };
+  return arnoldiScratch;
+}
 
 export interface LinearOperator {
   /** Dimension N of the vector space. */
@@ -125,41 +165,58 @@ export function arnoldiIteration(
   const w = new Float64Array(n);
   let actualSteps = m;
 
+  const wasm: any = n >= 16 ? getDefaultWasmExports() : null;
+  const wasmScratch = wasm && typeof wasm.mgsOrthogonalizeWasm === "function" ? ensureArnoldiScratch(wasm, n, m) : null;
+  if (wasmScratch) {
+    new Float64Array(wasm.memory.buffer, wasmScratch.qMatPtr, n).set(v1);
+  }
+
   for (let j = 0; j < m; j++) {
     const vj = V.subarray(j * n, (j + 1) * n);
     // w = Op(v_j)
     op.apply(vj, w);
 
-    let initialNormW = 0;
-    for (let i = 0; i < n; i++) initialNormW += w[i]! * w[i]!;
-    initialNormW = Math.sqrt(initialNormW);
-
-    // 1. Modified Gram-Schmidt orthogonalization against v_0 .. v_j
-    for (let i = 0; i <= j; i++) {
-      const vi = V.subarray(i * n, (i + 1) * n);
-      let dot = 0;
-      for (let k = 0; k < n; k++) dot += vi[k]! * w[k]!;
-      H[i * m + j] = dot;
-      for (let k = 0; k < n; k++) w[k] = w[k]! - dot * vi[k]!;
-    }
-
-    // Compute norm after first orthogonalization pass
     let normW = 0;
-    for (let k = 0; k < n; k++) normW += w[k]! * w[k]!;
-    normW = Math.sqrt(normW);
+    if (wasmScratch) {
+      new Float64Array(wasm.memory.buffer, wasmScratch.wPtr, n).set(w);
+      normW = wasm.mgsOrthogonalizeWasm(n, j, wasmScratch.qMatPtr, wasmScratch.wPtr, wasmScratch.hColPtr);
+      const outBuf = wasm.memory.buffer;
+      const hCol = new Float64Array(outBuf, wasmScratch.hColPtr, j + 1);
+      for (let i = 0; i <= j; i++) {
+        H[i * m + j] = hCol[i]!;
+      }
+      w.set(new Float64Array(outBuf, wasmScratch.wPtr, n));
+    } else {
+      let initialNormW = 0;
+      for (let i = 0; i < n; i++) initialNormW += w[i]! * w[i]!;
+      initialNormW = Math.sqrt(initialNormW);
 
-    // 2. DGKS reorthogonalization criterion: if norm fell significantly, reorthogonalize
-    if (normW < 0.7071 * initialNormW && initialNormW > 1e-12) {
+      // 1. Modified Gram-Schmidt orthogonalization against v_0 .. v_j
       for (let i = 0; i <= j; i++) {
         const vi = V.subarray(i * n, (i + 1) * n);
         let dot = 0;
         for (let k = 0; k < n; k++) dot += vi[k]! * w[k]!;
-        H[i * m + j] = (H[i * m + j] ?? 0) + dot;
+        H[i * m + j] = dot;
         for (let k = 0; k < n; k++) w[k] = w[k]! - dot * vi[k]!;
       }
-      normW = 0;
+
+      // Compute norm after first orthogonalization pass
       for (let k = 0; k < n; k++) normW += w[k]! * w[k]!;
       normW = Math.sqrt(normW);
+
+      // 2. DGKS reorthogonalization criterion: if norm fell significantly, reorthogonalize
+      if (normW < 0.7071 * initialNormW && initialNormW > 1e-12) {
+        for (let i = 0; i <= j; i++) {
+          const vi = V.subarray(i * n, (i + 1) * n);
+          let dot = 0;
+          for (let k = 0; k < n; k++) dot += vi[k]! * w[k]!;
+          H[i * m + j] = (H[i * m + j] ?? 0) + dot;
+          for (let k = 0; k < n; k++) w[k] = w[k]! - dot * vi[k]!;
+        }
+        normW = 0;
+        for (let k = 0; k < n; k++) normW += w[k]! * w[k]!;
+        normW = Math.sqrt(normW);
+      }
     }
 
     H[(j + 1) * m + j] = normW;
@@ -177,6 +234,9 @@ export function arnoldiIteration(
     const vjNext = V.subarray((j + 1) * n, (j + 2) * n);
     const invNorm = 1.0 / normW;
     for (let k = 0; k < n; k++) vjNext[k] = w[k]! * invNorm;
+    if (wasmScratch) {
+      new Float64Array(wasm.memory.buffer, wasmScratch.qMatPtr + (j + 1) * n * 8, n).set(vjNext);
+    }
   }
 
   return { V, H, actualSteps };
@@ -483,10 +543,7 @@ export function computeHessenbergEigenvectors(
  *
  *   theta = 1 / (lambda - sigma)  <=>  lambda = sigma + 1 / theta
  */
-export function sparseArnoldiEigensolver(
-  op: LinearOperator,
-  options: ArnoldiOptions = {},
-): ArnoldiResult {
+export function sparseArnoldiEigensolver(op: LinearOperator, options: ArnoldiOptions = {}): ArnoldiResult {
   const n = op.dim;
   const k = Math.min(n, options.k ?? 10);
   const m = Math.min(n, Math.max(k + 4, options.m ?? Math.max(2 * k, 20)));

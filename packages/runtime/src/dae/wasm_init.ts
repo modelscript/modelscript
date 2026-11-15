@@ -14,6 +14,7 @@
 import { type DomainBox, Interval, solveSBB } from "../analysis/wasm_interval.js";
 import { StaticTapeBuilder, TapeOpKind, evaluateTapeForward, evaluateTapeReverse } from "../autodiff/wasm_tape.js";
 import { luFactorFlat, luSolveFlat } from "../solvers/wasm_gaussian.js";
+import { getArenaRuntimeState } from "./arena_runtime_state.js";
 import {
   BinOp,
   DAEBuilder,
@@ -1777,11 +1778,12 @@ export function solveImplicitBlock(
  * @returns Solver result with computed initial values.
  */
 export function solveInitialEquationsArena(arena: DAEBuilder, initialValues: Float64Array): ArenaInitSolverResult {
-  (arena as any)._isInitialPhase = true;
+  const runtimeState = getArenaRuntimeState(arena);
+  runtimeState.isInitialPhase = true;
   try {
     return solveInitialEquationsArenaInner(arena, initialValues);
   } finally {
-    (arena as any)._isInitialPhase = false;
+    runtimeState.isInitialPhase = false;
   }
 }
 

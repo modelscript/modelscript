@@ -4,15 +4,17 @@
  * ModelScript Radio Access Network (RAN), NSMA WG16.99.050 (.adf/.nsma), and Planet (.msi/.planet) Language Definition.
  */
 
-import { language } from "@modelscript/dsl";
+import { cardDeckRules, language } from "@modelscript/dsl";
 import { DAEBuilder } from "@modelscript/runtime";
 import { lowerRanLinkToDae } from "./dae/lowering.js";
 import { ranIndexing } from "./indexing.js";
 import { lintAntennaPatternDeck } from "./lints/ran-linter.js";
 import { parseNsmaAdf } from "./parser/nsma-parser.js";
 import { parsePlanetPat } from "./parser/planet-parser.js";
+import { ranPolyglotConfig } from "./tgg/index.js";
 
 export const ranLanguage = language({
+  polyglot: ranPolyglotConfig,
   name: "ran",
   fileExtensions: [".adf", ".nsma", ".msi", ".planet", ".pat"],
   maturity: "stable",
@@ -68,6 +70,8 @@ export const ranLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
 
 export default ranLanguage;

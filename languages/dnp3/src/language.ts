@@ -4,15 +4,17 @@
  * ModelScript IEEE 1815 / DNP3 Language Definition.
  */
 
-import { language } from "@modelscript/dsl";
+import { cardDeckRules, language } from "@modelscript/dsl";
 import { processTelemetryStream } from "./analysis/telemetry-processor.js";
 import { lowerDnp3ToDae } from "./dae/dnp3-to-dae.js";
 import { canIndexDnp3, indexDnp3Document } from "./indexing.js";
 import { lintDnp3Profile } from "./lints/index.js";
 import { parseDnp3 } from "./parser/dnp3-parser.js";
 import { writeDnp3Xml } from "./parser/dnp3-writer.js";
+import { dnp3PolyglotConfig } from "./tgg/index.js";
 
 export const dnp3Language = language({
+  polyglot: dnp3PolyglotConfig,
   name: "dnp3",
   fileExtensions: [".dnp3", ".xml", ".json"],
   maturity: "beta",
@@ -102,4 +104,8 @@ export const dnp3Language = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
+
+export default dnp3Language;

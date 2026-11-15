@@ -660,10 +660,13 @@ const tsEmt: CommandModule<CosimArgs, TsEmtArgs> = {
     console.log(`  Duration: ${args.duration} s`);
 
     const result = await runTsEmtCoSimulation(
-      (tsOpts: any) => simulatePsseTransient(pCase, tsOpts),
-      (emtOpts: any) => {
+      (tsOpts) =>
+        simulatePsseTransient(pCase, tsOpts as unknown as Parameters<typeof simulatePsseTransient>[1]) as ReturnType<
+          Parameters<typeof runTsEmtCoSimulation>[0]
+        >,
+      (emtOpts) => {
         const solver = new EmtSolver(netlist, emtOpts);
-        return solver.solve();
+        return solver.solve() as ReturnType<Parameters<typeof runTsEmtCoSimulation>[1]>;
       },
       {
         durationSec: args.duration,
@@ -743,7 +746,7 @@ interface MultiTsEmtArgs extends CosimArgs {
 const multiTsEmt: CommandModule<CosimArgs, MultiTsEmtArgs> = {
   command: "multi-ts-emt <raw>",
   describe: "Run concurrent multi-plant TS-EMT hybrid co-simulation (PSS/E transmission + multiple PSCAD plants)",
-  builder: ((yargs: any) => {
+  builder: (yargs) => {
     return yargs
       .positional("raw", {
         description: "Path to PSS/E base case (.raw)",
@@ -781,8 +784,8 @@ const multiTsEmt: CommandModule<CosimArgs, MultiTsEmtArgs> = {
         alias: "o",
         description: "Output JSON report file path",
         type: "string",
-      });
-  }) as any,
+      }) as unknown as import("yargs").Argv<MultiTsEmtArgs>;
+  },
   handler: async (args) => {
     const rawContent = fs.readFileSync(args.raw, "utf-8");
     const { parseRaw, simulatePsseTransient } = await import("@modelscript/psse");
@@ -830,19 +833,31 @@ const multiTsEmt: CommandModule<CosimArgs, MultiTsEmtArgs> = {
           pscadBusId: p.emtBusId,
         },
       ],
-      runner: (emtOpts: any) => {
+      runner: (
+        emtOpts: Parameters<
+          NonNullable<Parameters<typeof runMultiPlantTsEmtCoSimulation>[1]["plants"][number]["runner"]>
+        >[0],
+      ) => {
         const solver = new EmtSolver(p.netlist, emtOpts);
-        return solver.solve();
+        return solver.solve() as ReturnType<
+          NonNullable<Parameters<typeof runMultiPlantTsEmtCoSimulation>[1]["plants"][number]["runner"]>
+        >;
       },
     }));
 
-    const result = await runMultiPlantTsEmtCoSimulation((tsOpts: any) => simulatePsseTransient(pCase, tsOpts), {
-      durationSec: args.duration,
-      dtTsSec: args["dt-ts"],
-      dtEmtSec: args["dt-emt"],
-      extrapolation: args.extrapolation,
-      plants,
-    });
+    const result = await runMultiPlantTsEmtCoSimulation(
+      (tsOpts) =>
+        simulatePsseTransient(pCase, tsOpts as unknown as Parameters<typeof simulatePsseTransient>[1]) as ReturnType<
+          Parameters<typeof runMultiPlantTsEmtCoSimulation>[0]
+        >,
+      {
+        durationSec: args.duration,
+        dtTsSec: args["dt-ts"],
+        dtEmtSec: args["dt-emt"],
+        extrapolation: args.extrapolation,
+        plants,
+      },
+    );
 
     console.log(`\n✔ Concurrent Multi-Plant TS-EMT Co-Simulation Completed in ${result.wallClockTimeMs} ms:`);
     console.log(`  Total TS Macro-Steps: ${result.totalMacroSteps}`);

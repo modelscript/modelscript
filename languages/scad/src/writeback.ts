@@ -17,7 +17,12 @@ export const scadWriteback: WritebackHandler = (ctx: WritebackContext): Writebac
 
   // 1. Try ScadPatcher if root CST is provided
   if (rootCst && entry.name) {
-    const patchRes = ScadPatcher.patchVariable(fullText, rootCst, entry.name, newValue);
+    const patchRes = ScadPatcher.patchVariable(
+      fullText,
+      rootCst as Parameters<typeof ScadPatcher.patchVariable>[1],
+      entry.name,
+      newValue,
+    );
     if (patchRes) {
       return {
         startOffset: patchRes.replacedRange.startOffset,
@@ -30,7 +35,10 @@ export const scadWriteback: WritebackHandler = (ctx: WritebackContext): Writebac
   // 2. Exact CST node field range from AST indexing
   if (entry.fieldRanges) {
     const valField =
-      entry.fieldRanges.value ?? entry.fieldRanges.expression ?? entry.fieldRanges.val ?? entry.fieldRanges.initializer;
+      entry.fieldRanges["value"] ??
+      entry.fieldRanges["expression"] ??
+      entry.fieldRanges["val"] ??
+      entry.fieldRanges["initializer"];
     if (
       valField &&
       valField.startOffset != null &&

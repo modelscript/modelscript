@@ -145,7 +145,10 @@ export const MatpowerCommand: CommandModule<Record<string, unknown>, Record<stri
         const tier = (argv["tier"] as "direct" | "ampl") || "direct";
 
         // Convert mpc to GenericPowerCase for OPF
-        const busMap = new Map<number, any>();
+        const busMap = new Map<
+          number,
+          { i: number; name: string; baseKv: number; ide: number; vm: number; va: number; vMin: number; vMax: number }
+        >();
         for (const b of mpc.bus) {
           busMap.set(b.bus_i, {
             i: b.bus_i,
@@ -159,9 +162,9 @@ export const MatpowerCommand: CommandModule<Record<string, unknown>, Record<stri
           });
         }
         const loads = mpc.bus
-          .filter((b: any) => b.pd !== 0 || b.qd !== 0)
-          .map((b: any) => ({ i: b.bus_i, pl: b.pd, ql: b.qd, status: 1 }));
-        const generators = mpc.gen.map((g: any, idx: number) => ({
+          .filter((b) => b.pd !== 0 || b.qd !== 0)
+          .map((b) => ({ i: b.bus_i, pl: b.pd, ql: b.qd, status: 1 }));
+        const generators = mpc.gen.map((g, idx: number) => ({
           i: g.bus,
           id: String(idx + 1),
           pg: g.pg,
@@ -172,7 +175,7 @@ export const MatpowerCommand: CommandModule<Record<string, unknown>, Record<stri
           qt: g.qmax,
           stat: g.status,
         }));
-        const branches = mpc.branch.map((br: any) => ({
+        const branches = mpc.branch.map((br) => ({
           i: br.fbus,
           j: br.tbus,
           ckt: "1",

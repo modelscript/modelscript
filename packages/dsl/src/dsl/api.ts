@@ -62,7 +62,7 @@ export interface BuildResult {
   };
   syntaxNames?: string[] | undefined;
   fieldNames?: string[] | undefined;
-  table?: any;
+  table?: unknown;
   /** Any unresolved grammar conflicts (shift/reduce or reduce/reduce). */
   conflicts?: GrammarConflictDiagnostic[] | undefined;
   /** Static grammar validation diagnostics (undefined rules, unreachable rules, nullable repeats, etc.). */
@@ -81,13 +81,14 @@ export interface BuildResult {
  * @returns The final build result containing code strings and parser metadata
  */
 export function buildParser(languageDef: LanguageOptions, options?: BuildOptions): BuildResult {
+  const symTarget = languageDef as unknown as Record<symbol, unknown>;
   if (options?.sourcePath) {
-    (languageDef as any)[SOURCE_PATH_SYMBOL] = options.sourcePath;
+    symTarget[SOURCE_PATH_SYMBOL] = options.sourcePath;
   } else if (options?.sourceUrl) {
-    (languageDef as any)[SOURCE_PATH_SYMBOL] = resolveSourceUrl(options.sourceUrl);
+    symTarget[SOURCE_PATH_SYMBOL] = resolveSourceUrl(options.sourceUrl);
   }
   if (options?.sourceText) {
-    (languageDef as any)[SOURCE_TEXT_SYMBOL] = options.sourceText;
+    symTarget[SOURCE_TEXT_SYMBOL] = options.sourceText;
   }
 
   const result = generateParser(languageDef);

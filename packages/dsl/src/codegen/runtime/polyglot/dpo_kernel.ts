@@ -44,6 +44,7 @@ export class DpoGraph {
   nodeCount: u32;
   edgeCount: u32;
   freeNodeHead: u32; // 1-based slot index (0 = empty)
+  topologyVersion: u32;
 
   init(initialNodes: u32 = 512, initialEdges: u32 = 1024): void {
     this.nodes = createChunkedUint32Array(initialNodes * DPO_NODE_STRIDE);
@@ -51,6 +52,7 @@ export class DpoGraph {
     this.nodeCount = 0;
     this.edgeCount = 0;
     this.freeNodeHead = 0;
+    this.topologyVersion = 1;
   }
 
   @inline
@@ -123,6 +125,7 @@ export class DpoGraph {
     let tgtOffset = tgtSlot * DPO_NODE_STRIDE;
     let tgtDeg = this.nodes.get(tgtOffset + DPO_NODE_DEGREE);
     this.nodes.set(tgtOffset + DPO_NODE_DEGREE, tgtDeg + 1);
+    this.topologyVersion++;
 
     return edgeSlot + 1; // 1-based edge ID
   }
@@ -169,6 +172,7 @@ export class DpoGraph {
     // Mark edge tombstoned
     let newFlags = (flags | DPO_FLAG_TOMBSTONE) & ~DPO_FLAG_ACTIVE;
     this.edges.set(edgeOffset + DPO_EDGE_TYPE, (edgeMeta & 0xffff0000) | (newFlags as u32));
+    this.topologyVersion++;
 
     let srcId = this.edges.get(edgeOffset + DPO_EDGE_SOURCE);
     let tgtId = this.edges.get(edgeOffset + DPO_EDGE_TARGET);

@@ -18,14 +18,27 @@
   "license": "AGPL-3.0-or-later",
   "author": "Mohamad Omar Nachawati <omar@modelscript.org>",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./parser.wasm": "./dist/parser.wasm",
+    "./wasm-parser": {
+      "types": "./src-gen/bindings.d.ts",
+      "default": "./src-gen/bindings.js"
+    }
+  },
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
   "files": [
     "dist",
-    "src"
+    "src",
+    "src-gen/**"
   ],
   "scripts": {
-    "build": "tsc -b",
+    "build": "node ../../scripts/build-language-parser.js && tsc -b",
+    "build:parser": "node ../../scripts/build-language-parser.js --force",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "lint": "eslint src/ --ext .ts --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js"

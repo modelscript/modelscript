@@ -18,13 +18,20 @@ function escapeRegExp(string: string) {
  * @param acc Accumulator dictionary mapping token classes to sets of token strings.
  * @param currentClass Inherited token class override.
  */
-function collectTokens(rule: Rule<any>, acc: Record<string, Set<string>>, currentClass?: TokenClass) {
+interface RuleWithMeta extends Rule<string> {
+  rule?: Rule<string>;
+  args?: Rule<string>[];
+  arg?: Rule<string>;
+}
+
+function collectTokens(rule: Rule<string>, acc: Record<string, Set<string>>, currentClass?: TokenClass) {
   if (!rule) return;
   if (rule.type === "SYNTAX_TOKEN") {
     currentClass = rule.value as TokenClass;
   }
-  if (rule.type === "SEMANTIC" && (rule.value as any)?.type) {
-    currentClass = (rule.value as any).type as TokenClass;
+  const semanticVal = rule.value as { type?: string } | undefined;
+  if (rule.type === "SEMANTIC" && semanticVal?.type) {
+    currentClass = semanticVal.type as TokenClass;
   }
   if (rule.type === "TOKEN" && typeof rule.value === "string") {
     const cls = currentClass || "other";
@@ -32,8 +39,9 @@ function collectTokens(rule: Rule<any>, acc: Record<string, Set<string>>, curren
     acc[cls].add(rule.value);
   }
 
-  if (rule.type === "def" && (rule as any).rule) {
-    collectTokens((rule as any).rule, acc, currentClass);
+  const meta = rule as RuleWithMeta;
+  if (rule.type === "def" && meta.rule) {
+    collectTokens(meta.rule, acc, currentClass);
   }
 
   if (rule.children) {
@@ -42,14 +50,14 @@ function collectTokens(rule: Rule<any>, acc: Record<string, Set<string>>, curren
     }
   }
 
-  if ((rule as any).args && Array.isArray((rule as any).args)) {
-    for (const child of (rule as any).args) {
+  if (meta.args && Array.isArray(meta.args)) {
+    for (const child of meta.args) {
       collectTokens(child, acc, currentClass);
     }
   }
 
-  if ((rule as any).arg) {
-    collectTokens((rule as any).arg, acc, currentClass);
+  if (meta.arg) {
+    collectTokens(meta.arg, acc, currentClass);
   }
 }
 
@@ -72,14 +80,14 @@ export function generateTextMate(langConfig: LanguageOptions): { tm: string; mon
   );
 
   for (const ruleFn of Object.values(langConfig.rules ?? {})) {
-    const rule = (ruleFn as any)($);
+    const rule = (ruleFn as (d: Record<string, unknown>) => Rule<string>)($);
     collectTokens(rule, acc);
   }
 
   if (langConfig.reserved) {
     for (const [cls, ruleFn] of Object.entries(langConfig.reserved)) {
       if (typeof ruleFn === "function") {
-        const rule = (ruleFn as any)($);
+        const rule = (ruleFn as (d: Record<string, unknown>) => Rule<string> | Array<string | Rule<string>>)($);
         if (Array.isArray(rule)) {
           acc[cls] = acc[cls] || new Set();
           for (const word of rule) {

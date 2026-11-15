@@ -3,12 +3,25 @@
 import {
   collectWorkspaceDocuments,
   findIncludeCycle,
+  groupCstLeavesByLine,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { createWasmParserSync } from "@modelscript/topas/wasm-parser";
+import { createRequire } from "node:module";
 import { parseTopas } from "../parser/index.js";
 import { lintTopasDocument } from "./index.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getTopasWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/topas/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Performs multi-file TOPAS/Geant4 workspace linting by resolving `includeFile = ...`
@@ -24,6 +37,7 @@ export function lintTopasWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
   const edges = new Map<string, string[]>();
   const expandedLines: string[] = [];
   const visited = new Set<string>();
+  const parser = getTopasWasmParser();
 
   function expand(uri: string): void {
     if (visited.has(uri)) return;
@@ -32,10 +46,19 @@ export function lintTopasWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
     const outEdges: string[] = [];
     edges.set(uri, outEdges);
 
-    for (const line of text.split(/\r?\n/)) {
-      const m = line.match(/^\s*includeFile\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))/i);
+    const tree = parser.parse(text);
+    const rawLines = text.split(/\r?\n/);
+    const includeRows = new Map<number, string>();
+    for (const { row } of groupCstLeavesByLine(tree?.rootNode)) {
+      const m = (rawLines[row] ?? "").match(/^\s*includeFile\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))/i);
       if (m) {
-        const targetRaw = m[1] ?? m[2] ?? m[3] ?? "";
+        includeRows.set(row, m[1] ?? m[2] ?? m[3] ?? "");
+      }
+    }
+
+    for (let row = 0; row < rawLines.length; row++) {
+      const targetRaw = includeRows.get(row);
+      if (targetRaw !== undefined) {
         const resolved = resolveRelativeUri(uri, targetRaw, docs);
         if (!resolved) {
           diagnostics.push({
@@ -50,7 +73,7 @@ export function lintTopasWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
           expand(resolved);
         }
       } else {
-        expandedLines.push(line);
+        expandedLines.push(rawLines[row] ?? "");
       }
     }
   }

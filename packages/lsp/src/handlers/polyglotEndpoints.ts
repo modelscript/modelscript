@@ -621,7 +621,12 @@ export function registerPolyglotEndpoints(
         const transformer = new PolyglotTransformer();
 
         if (params.options?.includeInferredFeatures) {
-          transformer.addReasonerFact("hasFeature", node.name, "inferredStiffness:Real");
+          for (const superCls of node.superclasses ?? []) {
+            transformer.addReasonerFact("subClassOf", node.name, superCls);
+          }
+          for (const attr of node.attributes ?? []) {
+            transformer.addReasonerFact("hasFeature", node.name, `${attr.name}:${attr.type}`);
+          }
         }
 
         let targetSource = transformer.transform(node, params.targetLang);
@@ -643,7 +648,12 @@ export function registerPolyglotEndpoints(
             if (params.targetLang === "sysml2") targetParser = getSysmlParser();
             else if (params.targetLang === "modelica") targetParser = getModelicaParser();
             if (targetParser) {
-              const synced = CstUnparser.syncTargetSource(existingText, node, params.targetLang, targetParser);
+              const synced = CstUnparser.syncTargetSource(
+                existingText,
+                node as Parameters<typeof CstUnparser.syncTargetSource>[1],
+                params.targetLang,
+                targetParser,
+              );
               if (synced && synced.text) {
                 targetSource = synced.text;
               }
@@ -689,6 +699,9 @@ export function registerPolyglotEndpoints(
               updatedCount++;
             }
           }
+          if (typeof corr.propagateAllStale === "function") {
+            updatedCount += corr.propagateAllStale();
+          }
         }
         return { success: true, updatedCount };
       } catch (err: any) {
@@ -723,23 +736,35 @@ export function registerPolyglotEndpoints(
     try {
       const qe = workspaceManager?.unifiedWorkspace?.queryEngine;
       const corr = qe?.getCorrespondenceIndex();
+      const doc = params.uri ? documents.get(params.uri) : undefined;
+      const symMap = workspaceManager?.unifiedWorkspace?.index?.symbols;
       const conflicts: { slot: number; source: number; target: number; rule: number }[] = [];
       if (corr) {
         const conflictDiags: Diagnostic[] = [];
         for (let slot = 0; slot < corr.count; slot++) {
           if (typeof corr.isConflicted === "function" && corr.isConflicted(slot) && !corr.isRemoved(slot)) {
+            const srcId = corr.getSource(slot);
+            const tgtId = corr.getTarget(slot);
             conflicts.push({
               slot,
-              source: corr.getSource(slot),
-              target: corr.getTarget(slot),
+              source: srcId,
+              target: tgtId,
               rule: corr.getRule(slot),
             });
+            let range = { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } };
+            const symEntry = symMap?.get?.(srcId) ?? symMap?.get?.(tgtId);
+            if (doc && symEntry && typeof symEntry.startOffset === "number" && typeof symEntry.endOffset === "number") {
+              range = {
+                start: doc.positionAt(symEntry.startOffset),
+                end: doc.positionAt(symEntry.endOffset),
+              };
+            }
             conflictDiags.push({
-              range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+              range,
               severity: DiagnosticSeverity.Error,
               code: "CORR_FLAG_CONFLICT",
               source: "polyglot-tgg",
-              message: `Cross-domain physical/parametric constraint conflict in correspondence link slot #${slot} (source #${corr.getSource(slot)} <-> target #${corr.getTarget(slot)}).`,
+              message: `Cross-domain physical/parametric constraint conflict in correspondence link slot #${slot} (source #${srcId} <-> target #${tgtId}).`,
             });
           }
         }

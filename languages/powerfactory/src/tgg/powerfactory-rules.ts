@@ -15,12 +15,12 @@ export const powerFactoryTggRules = [
     sourceLang: "powerfactory",
     targetLang: "psse",
     source: ($, v) =>
-      $.ElmTerm({
+      $["ElmTerm"]?.({
         loc_name: v("name"),
         uknom: v("basekV"),
       }),
     target: ($, v) =>
-      $.PsseBus({
+      $["PsseBus"]?.({
         name: v("name"),
         basekV: v("basekV"),
       }),
@@ -37,14 +37,14 @@ export const powerFactoryTggRules = [
     sourceLang: "powerfactory",
     targetLang: "modelica",
     source: ($, v) =>
-      $.ElmSym({
+      $["ElmSym"]?.({
         loc_name: v("name"),
         pgini: v("pMW"),
         qgini: v("qMvar"),
         usetp: v("vSetPu"),
       }),
     target: ($, v) =>
-      $.ModelicaComponent({
+      $["ModelicaComponent"]?.({
         type: "OpenIPSL.Electrical.Machines.PSSE.GENROU",
         name: v("name"),
         P_0: v("pMW"),
@@ -66,14 +66,14 @@ export const powerFactoryTggRules = [
     sourceLang: "powerfactory",
     targetLang: "psse",
     source: ($, v) =>
-      $.ElmLne({
+      $["ElmLne"]?.({
         loc_name: v("name"),
         dline: v("lengthKm"),
         r1: v("r1"),
         x1: v("x1"),
       }),
     target: ($, v) =>
-      $.PsseBranch({
+      $["PsseBranch"]?.({
         id: v("name"),
         r: v("r1"),
         x: v("x1"),
@@ -83,7 +83,7 @@ export const powerFactoryTggRules = [
       tggEq(v("r1"), v("r1")),
       tggEq(v("x1"), v("x1")),
       tggReconcilePhysics(v("lengthKm"), v("lengthKm"), { min: 0.001, max: 10000 }),
-      tggComplement(["id", "bus1Id", "bus2Id", "typId", "b1", "r0", "x0", "b0", "inom", "outserv"]),
+      tggComplement(["id", "bus1Id", "bus2Id", "typId", "dline", "b1", "r0", "x0", "b0", "inom", "outserv"]),
     ],
   }),
 
@@ -92,13 +92,13 @@ export const powerFactoryTggRules = [
     sourceLang: "powerfactory",
     targetLang: "modelica",
     source: ($, v) =>
-      $.ElmLod({
+      $["ElmLod"]?.({
         loc_name: v("name"),
         plini: v("pMW"),
         qlini: v("qMvar"),
       }),
     target: ($, v) =>
-      $.ModelicaComponent({
+      $["ModelicaComponent"]?.({
         type: "OpenIPSL.Electrical.Loads.PSSE.Load",
         name: v("name"),
         P_0: v("pMW"),
@@ -117,13 +117,13 @@ export const powerFactoryTggRules = [
     sourceLang: "powerfactory",
     targetLang: "psse",
     source: ($, v) =>
-      $.ElmTr2({
+      $["ElmTr2"]?.({
         loc_name: v("name"),
         strn: v("ratingMVA"),
         nntap: v("tapPos"),
       }),
     target: ($, v) =>
-      $.PsseTransformer({
+      $["PsseTransformer"]?.({
         name: v("name"),
         sbase1_2: v("ratingMVA"),
         windv1: v("tapPos"),

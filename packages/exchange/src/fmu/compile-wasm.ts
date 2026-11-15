@@ -232,8 +232,8 @@ export async function compileAsToWasm(
  */
 export async function isEmscriptenAvailable(): Promise<boolean> {
   try {
-    const { execSync } = await import("child_process");
-    execSync("emcc --version", { stdio: "pipe" });
+    const { execFileSync } = await import("child_process");
+    execFileSync("emcc", ["--version"], { stdio: "pipe" });
     return true;
   } catch {
     return false;

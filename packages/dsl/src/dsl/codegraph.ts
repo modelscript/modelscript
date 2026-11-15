@@ -37,6 +37,12 @@ export interface TensorAPI {
   getBool(handle: TensorHandle, flatIndex: u32): boolean;
 }
 
+export interface ScopePoolAPI {
+  stringOffsets: { get(id: u32): u32 };
+  stringLengths: { get(id: u32): u32 };
+  charBuffer: { get(idx: u32): u32 };
+}
+
 /**
  * Hierarchical Scope and FQN Stack API for zero-GC prefix management.
  */
@@ -53,7 +59,7 @@ export interface ScopeAPI {
   equals(id1: u32, id2: u32): boolean;
   hasPrefix(id: u32, prefixId: u32): boolean;
   getSuffixAfterPrefix(id: u32, prefixId: u32): u32;
-  pool: any;
+  pool: ScopePoolAPI;
 }
 
 /**
@@ -209,7 +215,7 @@ export interface DaeAPI {
   getVarShapeDim(varIdx: u32, dimIdx: u32): i32;
   extractEquations(rootId: u32): void;
   reset(): void;
-  exprData: any;
+  exprData: unknown;
   lookupVariableByName(nameId: u32): i32;
   getExprKind(exprId: u32): i32;
   getExprData1(exprId: u32): u32;
@@ -242,7 +248,7 @@ export interface MapAPI {
  * API for instantiating and mutating logical entities and objects in the typed model graph.
  */
 export interface ModelAPI<
-  ModelAttrs extends Record<string, Record<string, any>> = Record<string, Record<string, any>>,
+  ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > {
   create(type: Extract<keyof ModelAttrs, string> | (string & {}) | u16): u32;
   clone(nodeId: u32, deep: boolean): u32;
@@ -297,8 +303,8 @@ export interface ModelAPI<
  * Exposes methods to query AST nodes, allocate memory, and interact with the Semantic Reasoner.
  */
 export interface CodeGraph<
-  ModelAttrs extends Record<string, Record<string, any>> = any,
-  RuleName extends string = any,
+  ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
+  RuleName extends string = string,
   FieldName extends string = string,
   QueryName extends string = string,
 > {

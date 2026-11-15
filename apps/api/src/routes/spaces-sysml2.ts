@@ -27,8 +27,13 @@ export function createSpaceSysml2Router(database?: LibraryDatabase | null, servi
   const router = createRouter({ mergeParams: true });
   const omgService = service || new SysML2OmgService(database);
 
-  function getProjectId(req: Request): string {
-    if ((req as any).spaceProjectId) return (req as any).spaceProjectId;
+  type SpaceSysmlRequest = Request & {
+    spaceProjectId?: string;
+    omgProject?: NonNullable<ReturnType<SysML2OmgService["getProject"]>>;
+  };
+
+  function getProjectId(req: SpaceSysmlRequest): string {
+    if (req.spaceProjectId) return req.spaceProjectId;
     const ns = getParam(req.params["namespace"]).replace(/^@/, "");
     const slug = getParam(req.params["slug"]);
     if (ns && slug) return `urn:ansatz:space:${ns}:${slug}`;
@@ -54,7 +59,7 @@ export function createSpaceSysml2Router(database?: LibraryDatabase | null, servi
   }
 
   // Middleware: resolve space & ensure OMG project exists
-  router.use((req: Request, res: Response, next) => {
+  router.use((req: SpaceSysmlRequest, res: Response, next) => {
     const namespace = getParam(req.params["namespace"]);
     const slug = getParam(req.params["slug"]);
 
@@ -64,7 +69,7 @@ export function createSpaceSysml2Router(database?: LibraryDatabase | null, servi
     }
 
     const projectId = `urn:ansatz:space:${namespace.replace(/^@/, "")}:${slug}`;
-    (req as any).spaceProjectId = projectId;
+    req.spaceProjectId = projectId;
     req.params["projectId"] = projectId;
 
     let project = omgService.getProject(projectId);
@@ -87,7 +92,7 @@ export function createSpaceSysml2Router(database?: LibraryDatabase | null, servi
       project = omgService.createProject(spaceName, description, projectId);
     }
 
-    (req as any).omgProject = project;
+    req.omgProject = project;
     next();
   });
 
@@ -97,8 +102,8 @@ export function createSpaceSysml2Router(database?: LibraryDatabase | null, servi
   /**
    * GET /: Get Space OMG Project descriptor
    */
-  router.get("/", (req: Request, res: Response) => {
-    const project = (req as any).omgProject;
+  router.get("/", (req: SpaceSysmlRequest, res: Response) => {
+    const project = req.omgProject;
     sendJsonLd(req, res, project);
   });
 
@@ -149,8 +154,8 @@ export function createSpaceSysml2Router(database?: LibraryDatabase | null, servi
   /**
    * GET /elements: Convenience endpoint to query elements at HEAD of default branch
    */
-  router.get("/elements", (req: Request, res: Response) => {
-    const project = (req as any).omgProject;
+  router.get("/elements", (req: SpaceSysmlRequest, res: Response) => {
+    const project = req.omgProject!;
     const headCommitId = project.defaultBranch?.headCommitId;
     if (!headCommitId) {
       sendJsonLd(req, res, { "@type": "Collection", members: [], totalCount: 0 });

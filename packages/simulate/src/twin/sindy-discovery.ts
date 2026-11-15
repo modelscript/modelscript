@@ -25,6 +25,7 @@ import {
   Variability,
   areDimensionsEqual,
   formatDimension,
+  getDefaultWasmExports,
   type DimensionVector,
 } from "@modelscript/runtime";
 import { solveDenseLinearSystem } from "../control/linearize.js";
@@ -347,6 +348,8 @@ export function buildPhysicsCandidateLibrary(
 // 2. Column-Normalized STLSQ Solver with Pareto BIC Selection
 // ─────────────────────────────────────────────────────────────────────────────
 
+let stlsqWasmScratch: { wasm: unknown; ptr: number; capBytes: number } | null = null;
+
 function solveStlsqSingleThreshold(
   Theta: Float64Array,
   colNorms: Float64Array,
@@ -379,25 +382,95 @@ function solveStlsqSingleThreshold(
     const G = new Float64Array(nActive * nActive);
     const rhs = new Float64Array(nActive);
 
-    for (let a = 0; a < nActive; a++) {
-      const colA = activeIndices[a]!;
-      const normA = colNorms[colA]!;
-      let sumY = 0;
-      for (let s = 0; s < nSamples; s++) {
-        sumY += (Theta[s * nTerms + colA]! / normA) * yCol[s]!;
-      }
-      rhs[a] = sumY;
-
-      for (let b = a; b < nActive; b++) {
-        const colB = activeIndices[b]!;
-        const normB = colNorms[colB]!;
-        let sumG = 0;
-        for (let s = 0; s < nSamples; s++) {
-          sumG += (Theta[s * nTerms + colA]! / normA) * (Theta[s * nTerms + colB]! / normB);
+    let usedWasmGram = false;
+    if (nSamples * nActive * nActive >= 2048) {
+      const wasm = getDefaultWasmExports() as {
+        memory?: WebAssembly.Memory;
+        __new?: (size: number, id: number) => number;
+        __pin?: (ptr: number) => number;
+        __unpin?: (ptr: number) => void;
+        stlsqGramWasm?: (
+          thetaPtr: number,
+          colNormsPtr: number,
+          yPtr: number,
+          activeIdxPtr: number,
+          nSamples: number,
+          nTerms: number,
+          nActive: number,
+          ridgeLambda: number,
+          gOutPtr: number,
+          rhsOutPtr: number,
+        ) => void;
+      } | null;
+      if (
+        wasm &&
+        typeof wasm.stlsqGramWasm === "function" &&
+        typeof wasm.__new === "function" &&
+        wasm.memory instanceof WebAssembly.Memory
+      ) {
+        const thetaLen = nSamples * nTerms;
+        const gLen = nActive * nActive;
+        const f64Count = thetaLen + nTerms + nSamples + gLen + nActive;
+        const totalBytes = f64Count * 8 + nActive * 4;
+        if (!stlsqWasmScratch || stlsqWasmScratch.wasm !== wasm || stlsqWasmScratch.capBytes < totalBytes) {
+          if (stlsqWasmScratch && typeof wasm.__unpin === "function" && stlsqWasmScratch.wasm === wasm) {
+            wasm.__unpin(stlsqWasmScratch.ptr);
+          }
+          const capBytes = Math.max(totalBytes, 16384);
+          const ptr = wasm.__new(capBytes, 0);
+          if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+          stlsqWasmScratch = { wasm, ptr, capBytes };
         }
-        if (a === b) sumG += ridgeLambda;
-        G[a * nActive + b] = sumG;
-        G[b * nActive + a] = sumG;
+        const thetaPtr = stlsqWasmScratch.ptr;
+        const colNormsPtr = thetaPtr + thetaLen * 8;
+        const yPtr = colNormsPtr + nTerms * 8;
+        const gOutPtr = yPtr + nSamples * 8;
+        const rhsOutPtr = gOutPtr + gLen * 8;
+        const activeIdxPtr = rhsOutPtr + nActive * 8;
+        const buf = wasm.memory.buffer;
+        new Float64Array(buf, thetaPtr, thetaLen).set(Theta.subarray(0, thetaLen));
+        new Float64Array(buf, colNormsPtr, nTerms).set(colNorms.subarray(0, nTerms));
+        new Float64Array(buf, yPtr, nSamples).set(yCol.subarray(0, nSamples));
+        new Int32Array(buf, activeIdxPtr, nActive).set(activeIndices);
+        wasm.stlsqGramWasm(
+          thetaPtr,
+          colNormsPtr,
+          yPtr,
+          activeIdxPtr,
+          nSamples,
+          nTerms,
+          nActive,
+          ridgeLambda,
+          gOutPtr,
+          rhsOutPtr,
+        );
+        G.set(new Float64Array(wasm.memory.buffer, gOutPtr, gLen));
+        rhs.set(new Float64Array(wasm.memory.buffer, rhsOutPtr, nActive));
+        usedWasmGram = true;
+      }
+    }
+
+    if (!usedWasmGram) {
+      for (let a = 0; a < nActive; a++) {
+        const colA = activeIndices[a]!;
+        const normA = colNorms[colA]!;
+        let sumY = 0;
+        for (let s = 0; s < nSamples; s++) {
+          sumY += (Theta[s * nTerms + colA]! / normA) * yCol[s]!;
+        }
+        rhs[a] = sumY;
+
+        for (let b = a; b < nActive; b++) {
+          const colB = activeIndices[b]!;
+          const normB = colNorms[colB]!;
+          let sumG = 0;
+          for (let s = 0; s < nSamples; s++) {
+            sumG += (Theta[s * nTerms + colA]! / normA) * (Theta[s * nTerms + colB]! / normB);
+          }
+          if (a === b) sumG += ridgeLambda;
+          G[a * nActive + b] = sumG;
+          G[b * nActive + a] = sumG;
+        }
       }
     }
 

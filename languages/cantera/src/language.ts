@@ -8,11 +8,13 @@ import { lintCantera } from "./lints/index.js";
 import { parseCantera } from "./parser/cantera-parser.js";
 import { canteraToModelica } from "./projections/cantera-to-modelica.js";
 import { solveCanteraReactor, type CanteraReactorOptions } from "./solvers/kinetics-solver.js";
+import { canteraPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript Cantera Chemical Kinetics & Thermochemistry (.yaml, .cti) Language Definition.
  */
 export const canteraLanguage = language({
+  polyglot: canteraPolyglotConfig,
   name: "cantera",
   fileExtensions: [".yaml", ".yml", ".cti"],
   maturity: "beta",

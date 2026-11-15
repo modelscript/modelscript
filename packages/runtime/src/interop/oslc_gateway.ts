@@ -393,11 +393,11 @@ export class OslcGateway {
   // --------------------------------------------------------------------------
 
   exportJsonLd(domain: "rm" | "qm" | "am" | "cm" | "all" = "all"): object {
-    const graph: any[] = [];
+    const graph: Record<string, unknown>[] = [];
 
     if (domain === "rm" || domain === "all") {
       for (const req of this.requirements.values()) {
-        const item: any = {
+        const item: Record<string, unknown> = {
           "@id": req.uri,
           "@type": ["oslc_rm:Requirement", "oslc:Resource"],
           "dcterms:identifier": req.identifier,
@@ -426,7 +426,7 @@ export class OslcGateway {
 
     if (domain === "qm" || domain === "all") {
       for (const res of this.testResults.values()) {
-        const item: any = {
+        const item: Record<string, unknown> = {
           "@id": res.uri,
           "@type": ["oslc_qm:TestResult", "oslc:Resource"],
           "dcterms:identifier": res.identifier,
@@ -449,7 +449,7 @@ export class OslcGateway {
 
     if (domain === "am" || domain === "all") {
       for (const elem of this.architectureElements.values()) {
-        const item: any = {
+        const item: Record<string, unknown> = {
           "@id": elem.uri,
           "@type": ["oslc_am:Resource", "oslc:Resource"],
           "dcterms:identifier": elem.identifier,
@@ -477,7 +477,7 @@ export class OslcGateway {
 
     if (domain === "cm" || domain === "all") {
       for (const cr of this.changeRequests.values()) {
-        const item: any = {
+        const item: Record<string, unknown> = {
           "@id": cr.uri,
           "@type": ["oslc_cm:ChangeRequest", "oslc:Resource"],
           "dcterms:identifier": cr.identifier,

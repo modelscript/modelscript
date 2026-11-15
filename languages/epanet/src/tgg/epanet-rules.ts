@@ -15,13 +15,13 @@ export const epanetTggRules = [
     sourceLang: "epanet",
     targetLang: "modelica",
     source: ($, v) =>
-      $.EpanetJunction({
+      $["EpanetJunction"]?.({
         id: v("name"),
         elevation: v("elevation"),
         demand: v("demand"),
       }),
     target: ($, v) =>
-      $.ModelicaComponent({
+      $["ModelicaComponent"]?.({
         type: "Modelica.Fluid.Fittings.TeeJunctionVolume",
         name: v("name"),
         height: v("elevation"),
@@ -40,14 +40,14 @@ export const epanetTggRules = [
     sourceLang: "epanet",
     targetLang: "modelica",
     source: ($, v) =>
-      $.EpanetPipe({
+      $["EpanetPipe"]?.({
         id: v("name"),
         length: v("length"),
         diameter: v("diameter"),
         roughness: v("roughness"),
       }),
     target: ($, v) =>
-      $.ModelicaComponent({
+      $["ModelicaComponent"]?.({
         type: "Modelica.Fluid.Pipes.DynamicPipe",
         name: v("name"),
         length: v("length"),
@@ -70,13 +70,13 @@ export const epanetTggRules = [
     sourceLang: "epanet",
     targetLang: "sysml2",
     source: ($, v) =>
-      $.EpanetPipe({
+      $["EpanetPipe"]?.({
         id: v("name"),
         length: v("length"),
         diameter: v("diameter"),
       }),
     target: ($, v) =>
-      $.SysMLPartDefinition({
+      $["SysMLPartDefinition"]?.({
         name: v("name"),
         length: v("length"),
         diameter: v("diameter"),

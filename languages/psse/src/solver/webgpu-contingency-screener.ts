@@ -232,9 +232,55 @@ export function evaluateBatchedLodfCpu(
 // WebGPU Contingency Screener Class
 // ============================================================================
 
+interface WebGpuBuffer {
+  getMappedRange(): ArrayBuffer;
+  unmap(): void;
+  mapAsync(mode: number): Promise<void>;
+  destroy(): void;
+}
+
+interface WebGpuPipeline {
+  getBindGroupLayout(index: number): unknown;
+}
+
+interface WebGpuDevice {
+  createShaderModule(desc: { code: string }): unknown;
+  createComputePipelineAsync(desc: unknown): Promise<WebGpuPipeline>;
+  createBuffer(desc: { size: number; usage: number; mappedAtCreation?: boolean }): WebGpuBuffer;
+  createBindGroup(desc: {
+    layout: unknown;
+    entries: Array<{ binding: number; resource: { buffer: WebGpuBuffer } }>;
+  }): unknown;
+  createCommandEncoder(): {
+    beginComputePass(): {
+      setPipeline(pipeline: WebGpuPipeline): void;
+      setBindGroup(index: number, bindGroup: unknown): void;
+      dispatchWorkgroups(workgroupCountX: number): void;
+      end(): void;
+    };
+    copyBufferToBuffer(
+      source: WebGpuBuffer,
+      sourceOffset: number,
+      destination: WebGpuBuffer,
+      destinationOffset: number,
+      size: number,
+    ): void;
+    finish(): unknown;
+  };
+  queue: {
+    submit(commandBuffers: unknown[]): void;
+  };
+}
+
+interface WebGpuGlobal {
+  navigator?: { gpu?: { requestAdapter(): Promise<{ requestDevice(): Promise<WebGpuDevice> } | null> } };
+  GPUBufferUsage?: { UNIFORM: number; COPY_DST: number; STORAGE: number; COPY_SRC: number; MAP_READ: number };
+  GPUMapMode?: { READ: number };
+}
+
 export class WebGpuContingencyScreener {
-  private device: any = null;
-  private pipeline: any = null;
+  private device: WebGpuDevice | null = null;
+  private pipeline: WebGpuPipeline | null = null;
   private initialized = false;
 
   /**
@@ -244,7 +290,7 @@ export class WebGpuContingencyScreener {
     if (this.initialized) return this.device !== null;
     this.initialized = true;
 
-    const g = globalThis as any;
+    const g = globalThis as unknown as WebGpuGlobal;
     if (typeof g.navigator === "undefined" || !g.navigator.gpu) {
       return false;
     }
@@ -291,8 +337,9 @@ export class WebGpuContingencyScreener {
       try {
         const M = baseFlows.length;
         const dev = this.device;
-        const GPUBufferUsage = (globalThis as any).GPUBufferUsage;
-        const GPUMapMode = (globalThis as any).GPUMapMode;
+        const g = globalThis as unknown as WebGpuGlobal;
+        const GPUBufferUsage = g.GPUBufferUsage!;
+        const GPUMapMode = g.GPUMapMode!;
 
         const paramsData = new ArrayBuffer(16);
         const paramsU32 = new Uint32Array(paramsData);
@@ -308,17 +355,12 @@ export class WebGpuContingencyScreener {
             usage,
             mappedAtCreation: true,
           });
-          new Uint8Array(buf.getMappedRange()).set(
-            new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
-          );
+          new Uint8Array(buf.getMappedRange()).set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
           buf.unmap();
           return buf;
         };
 
-        const paramsBuf = makeBuffer(
-          new Uint8Array(paramsData),
-          GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-        );
+        const paramsBuf = makeBuffer(new Uint8Array(paramsData), GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
         const flowsBuf = makeBuffer(new Float32Array(baseFlows), GPUBufferUsage.STORAGE);
         const ratingsBuf = makeBuffer(new Float32Array(ratings), GPUBufferUsage.STORAGE);
         const lodfBuf = makeBuffer(new Float32Array(lodfMatrix), GPUBufferUsage.STORAGE);
@@ -375,13 +417,7 @@ export class WebGpuContingencyScreener {
       }
     }
 
-    const metrics = evaluateBatchedLodfCpu(
-      baseFlows,
-      ratings,
-      lodfMatrix,
-      outagePairs,
-      overloadThresholdPercent,
-    );
+    const metrics = evaluateBatchedLodfCpu(baseFlows, ratings, lodfMatrix, outagePairs, overloadThresholdPercent);
     return { metrics, backend: "cpu-typed-array" };
   }
 }
@@ -538,7 +574,7 @@ export async function screenContingenciesBatchAsync(
 
   for (const cand of topCandidates) {
     const ctg = cand.contingency;
-    const activeFilter = (br: any) => {
+    const activeFilter = (br: { i: number; j: number; ckt: string }) => {
       const k1 = `${br.i}_${br.j}_${br.ckt}`;
       const k2 = `${br.j}_${br.i}_${br.ckt}`;
       return !cand.trippedBranches.has(k1) && !cand.trippedBranches.has(k2);

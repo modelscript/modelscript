@@ -90,7 +90,9 @@ function getBindingValue(entry: SymbolEntry | null | undefined): unknown {
 function getTypeName(entry: SymbolEntry | null | undefined): string | undefined {
   if (!entry) return undefined;
   const meta = entry.metadata || {};
-  return (meta["typeName"] as string) || (meta["type"] as string) || (entry as any).typeName;
+  return (
+    (meta["typeName"] as string) || (meta["type"] as string) || (entry as SymbolEntry & { typeName?: string }).typeName
+  );
 }
 
 function parseNumericValue(val: unknown): number | null {

@@ -54,14 +54,31 @@ export class MouserConnector {
 
       if (!res.ok) return this.generateMockQuotes(mpn);
 
-      const data = (await res.json()) as any;
+      const data = (await res.json()) as {
+        SearchResults?: {
+          Parts?: Array<{
+            Availability?: string;
+            PriceBreaks?: Array<{ Quantity?: number; Price?: string }>;
+            MouserPartNumber?: string;
+            ManufacturerPartNumber?: string;
+            Manufacturer?: string;
+            Min?: number;
+            Mult?: number;
+            LeadTime?: string;
+            ProductDetailUrl?: string;
+            DataSheetUrl?: string;
+            ROHSStatus?: string;
+            LifecycleStatus?: string;
+          }>;
+        };
+      };
       const parts = data?.SearchResults?.Parts ?? [];
       const quotes: DistributorQuote[] = [];
 
       for (const p of parts) {
         const stockStr = (p.Availability ?? "0").replace(/[^0-9]/g, "");
         const stock = parseInt(stockStr, 10) || 0;
-        const priceBreaks = (p.PriceBreaks ?? []).map((pb: any) => ({
+        const priceBreaks = (p.PriceBreaks ?? []).map((pb) => ({
           quantity: pb.Quantity ?? 1,
           unitPrice: parseFloat((pb.Price ?? "0").replace(/[^0-9.]/g, "")) || 0,
         }));

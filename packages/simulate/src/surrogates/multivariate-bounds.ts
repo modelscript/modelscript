@@ -10,6 +10,8 @@
  *   D_M^2(u) = (u - \bar{u})^T \Sigma^{-1} (u - \bar{u}) <= \chi^2_{d, 1-\alpha}
  */
 
+import { solveDenseLinearSystem } from "../control/linearize.js";
+
 export interface MultivariateBounds {
   /** Mean vector \bar{u} for each input parameter. */
   mean: number[];
@@ -127,59 +129,28 @@ export function isMultivariateExtrapolating(bounds: MultivariateBounds, point: n
 }
 
 /**
- * Standard Gauss-Jordan matrix inversion with partial pivoting.
+ * Matrix inversion via WASM-backed flat LU factorization (`solveDenseLinearSystem`).
  */
 function invertSquareMatrix(A: number[][], n: number): number[][] {
-  // Augmented matrix [A | I]
-  const aug: number[][] = Array.from({ length: n }, (_, i) => {
-    const row = new Array<number>(2 * n).fill(0);
+  const flatA = new Float64Array(n * n);
+  const eye = new Float64Array(n * n);
+  for (let i = 0; i < n; i++) {
+    const row = A[i]!;
     for (let j = 0; j < n; j++) {
-      row[j] = A[i]![j]!;
+      flatA[i * n + j] = row[j]!;
     }
-    row[n + i] = 1.0;
-    return row;
-  });
-
-  for (let col = 0; col < n; col++) {
-    // Find pivot
-    let maxVal = Math.abs(aug[col]![col]!);
-    let maxRow = col;
-    for (let r = col + 1; r < n; r++) {
-      const val = Math.abs(aug[r]![col]!);
-      if (val > maxVal) {
-        maxVal = val;
-        maxRow = r;
-      }
-    }
-
-    if (maxRow !== col) {
-      const tmp = aug[col]!;
-      aug[col] = aug[maxRow]!;
-      aug[maxRow] = tmp;
-    }
-
-    const pivot = aug[col]![col]!;
-    const invPivot = Math.abs(pivot) > 1e-15 ? 1.0 / pivot : 1.0;
-    for (let c = 0; c < 2 * n; c++) {
-      aug[col]![c]! *= invPivot;
-    }
-
-    for (let r = 0; r < n; r++) {
-      if (r === col) continue;
-      const factor = aug[r]![col]!;
-      if (Math.abs(factor) > 1e-15) {
-        for (let c = 0; c < 2 * n; c++) {
-          aug[r]![c]! -= factor * aug[col]![c]!;
-        }
-      }
-    }
+    eye[i * n + i] = 1.0;
   }
 
-  // Extract inverse
-  const inv: number[][] = Array.from({ length: n }, (_, i) => {
-    return aug[i]!.slice(n);
-  });
-
+  const { X } = solveDenseLinearSystem(flatA, eye, n, n, 1e-12);
+  const inv: number[][] = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const row = new Array<number>(n);
+    for (let j = 0; j < n; j++) {
+      row[j] = X[i * n + j]!;
+    }
+    inv[i] = row;
+  }
   return inv;
 }
 

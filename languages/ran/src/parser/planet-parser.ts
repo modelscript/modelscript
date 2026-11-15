@@ -4,11 +4,25 @@
  * Parser for Planet / TIA-329 (*.pat, *.msi) antenna radiation pattern files.
  */
 
+import { createWasmParserSync } from "@modelscript/ran/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import type { AntennaCut, AntennaPatternDeck, AntennaPatternPoint, AntennaPolarization } from "../types.js";
 import { computeFrontToBackRatio, computeHalfPowerBeamwidth } from "./nsma-parser.js";
 
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getRanWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/ran/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 export function parsePlanetPat(content: string, filename = "antenna.pat"): AntennaPatternDeck {
-  const lines = content.split(/\r?\n/);
+  const cstTree = getRanWasmParser().parse(content);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
 
   let name = "";
   let gainDbi = 0.0;
@@ -21,8 +35,8 @@ export function parsePlanetPat(content: string, filename = "antenna.pat"): Anten
 
   let currentSection: "header" | "horizontal" | "vertical" = "header";
 
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]?.trim();
+  for (const { tokens: cstTokens } of cstLines) {
+    const rawLine = cstLineText(content, cstTokens).trim();
     if (!rawLine || rawLine.startsWith("#") || rawLine.startsWith(";")) continue;
 
     const upper = rawLine.toUpperCase();

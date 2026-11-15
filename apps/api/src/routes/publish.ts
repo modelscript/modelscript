@@ -154,7 +154,7 @@ export function publishRouter(
         return;
       }
 
-      (req as any).oidcAttestation = oidcVerify.attestation;
+      (req as Request & { oidcAttestation?: OidcAttestation }).oidcAttestation = oidcVerify.attestation;
       if (!req.user) {
         const botUser = database.getOrCreateCiBotUser({
           provider: oidcVerify.attestation.provider,
@@ -165,7 +165,7 @@ export function publishRouter(
           ...botUser,
           role: botUser.account_type || "bot",
           accountType: botUser.account_type || "bot",
-        } as any;
+        } as unknown as NonNullable<Request["user"]>;
       }
       next();
       return;
@@ -177,7 +177,7 @@ export function publishRouter(
       if (oidcHeader) {
         verifyOidcToken(oidcHeader).then((v) => {
           if (v.valid && v.attestation) {
-            (req as any).oidcAttestation = v.attestation;
+            (req as Request & { oidcAttestation?: OidcAttestation }).oidcAttestation = v.attestation;
           }
           next();
         });
@@ -279,7 +279,7 @@ export function publishRouter(
       }
 
       // 1.6 RBAC / OIDC authorization check for scoped packages and package maintainership
-      const oidcAttestation = (req as any).oidcAttestation as OidcAttestation | undefined;
+      const oidcAttestation = (req as Request & { oidcAttestation?: OidcAttestation }).oidcAttestation;
       let oidcAuthorized = false;
       if (oidcAttestation) {
         const oidcAuth = verifyOidcPackageAuthorization(oidcAttestation, name, database);

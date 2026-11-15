@@ -6,8 +6,10 @@ import { indexHecRasFile } from "./indexing.js";
 import { lintHecRas } from "./lints/rules.js";
 import { parseHecRas } from "./parser/hec-ras-parser.js";
 import { solveWaterSurfaceProfile } from "./solver/steady-step-solver.js";
+import { hecRasPolyglotConfig } from "./tgg/index.js";
 
 export const hecRasLanguage = language({
+  polyglot: hecRasPolyglotConfig,
   name: "hec-ras",
   fileExtensions: [".g01", ".g02", ".rasgeo", ".u01", ".f01", ".prj"],
   maturity: "experimental",

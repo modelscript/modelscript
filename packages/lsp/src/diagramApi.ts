@@ -1233,11 +1233,11 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
       const { graphicsConfig, options } = compileDiagramConfigToPolyglot(config);
       diagramData = buildPolyglotDiagram(
         symbolIndex,
-        graphicsConfig,
+        graphicsConfig as Parameters<typeof buildPolyglotDiagram>[1],
         params.uri,
         resolver,
         params.diagramType ?? "All",
-        options,
+        options as Parameters<typeof buildPolyglotDiagram>[5],
       );
     } else {
       const syntaxNames = this.deps.getSyntaxNames?.(params.uri);

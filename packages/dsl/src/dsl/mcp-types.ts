@@ -10,7 +10,7 @@ export interface McpPropertySchema {
   type: McpPrimitiveType;
   description?: string | undefined;
   required?: boolean | undefined;
-  default?: any;
+  default?: unknown;
   enum?: string[] | undefined;
   items?: McpPropertySchema | undefined;
   properties?: Record<string, McpPropertySchema> | undefined;
@@ -25,7 +25,7 @@ export interface McpToolDeclaration<_RuleName extends string = string, QueryName
   targetAction?: string | undefined;
   inWasmHandler?: string | undefined;
   pure?: boolean | undefined;
-  handler?: ((args: any, context: any) => Promise<any> | any) | undefined;
+  handler?(args: Record<string, unknown>, context: unknown): Promise<unknown> | unknown;
 }
 
 export interface McpResourceDeclaration {
@@ -34,14 +34,12 @@ export interface McpResourceDeclaration {
   mimeType?: string | undefined;
   description?: string | undefined;
   inWasmProvider?: string | undefined;
-  provider?:
-    | ((
-        uri: string,
-        context: any,
-      ) =>
-        | Promise<{ text?: string | undefined; blob?: Uint8Array | undefined; mimeType?: string | undefined }>
-        | { text?: string | undefined; blob?: Uint8Array | undefined; mimeType?: string | undefined })
-    | undefined;
+  provider?(
+    uri: string,
+    context: unknown,
+  ):
+    | Promise<{ text?: string | undefined; blob?: Uint8Array | undefined; mimeType?: string | undefined }>
+    | { text?: string | undefined; blob?: Uint8Array | undefined; mimeType?: string | undefined };
 }
 
 export interface McpPromptDeclaration {
@@ -55,7 +53,7 @@ export interface McpDeclarationConfig<
   RuleName extends string = string,
   _FieldName extends string = string,
   QueryName extends string = string,
-  _ModelAttrs extends Record<string, Record<string, any>> = any,
+  _ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > {
   serverName?: string | undefined;
   serverVersion?: string | undefined;

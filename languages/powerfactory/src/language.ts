@@ -13,11 +13,13 @@ import { parseDsl } from "./dsl/dsl-parser.js";
 import { transpileDslToModelica } from "./dsl/dsl-transpiler.js";
 import { lintPowerFactoryModel } from "./lints/index.js";
 import { parsePowerFactoryText } from "./parser/powerfactory-parser.js";
+import { executePythonPowerFactoryScript } from "./powerfactory-shim.js";
 import { powerFactoryToModelica } from "./projections/powerfactory-to-modelica.js";
 import { powerFactoryToPsse } from "./projections/powerfactory-to-psse.js";
-import { executePythonPowerFactoryScript } from "./powerfactory-shim.js";
+import { powerfactoryPolyglotConfig } from "./tgg/index.js";
 
 export const powerFactoryLanguage = language({
+  polyglot: powerfactoryPolyglotConfig,
   name: "powerfactory",
   fileExtensions: [".dz", ".pfd", ".dsl"],
   maturity: "beta",

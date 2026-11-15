@@ -205,7 +205,10 @@ export const Compile: CommandModule<{}, CompileArgs> = {
         const fileUri = "file://" + path.resolve(p);
 
         sysmlIndex?.register(fileUri, () => tree?.rootNode as unknown as RegisterAstReturn);
-        (sysmlIndex as any)?.indexCst?.(fileUri, tree?.rootNode ?? tree);
+        (sysmlIndex as unknown as { indexCst?: (uri: string, node: unknown) => void })?.indexCst?.(
+          fileUri,
+          tree?.rootNode ?? tree,
+        );
       } else if (p.endsWith(".mo")) {
         await context.addLibrary(p);
         if (hasSysML && mIdx) {
@@ -298,7 +301,9 @@ export const Compile: CommandModule<{}, CompileArgs> = {
       const primarySource = fs.readFileSync(primaryPath, "utf-8");
       arena = await SysML2DaeLowerer.lowerSystem(primarySource, undefined, {
         queryDb,
-        workspaceIndex: sysmlIndex as any,
+        workspaceIndex: sysmlIndex as unknown as NonNullable<
+          Parameters<typeof SysML2DaeLowerer.lowerSystem>[2]
+        >["workspaceIndex"],
         rootComponentName: args.model || args.name,
       });
     } else {

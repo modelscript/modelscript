@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { solveDenseLinearSystem } from "../control/linearize.js";
+
 export interface HilC99BranchSpec {
   fromNode: number;
   toNode: number;
@@ -52,62 +54,14 @@ function sanitizeCIdentifier(raw: string): string {
 }
 
 /**
- * Inverts an N x N dense matrix in-place via Gauss-Jordan elimination with partial pivoting.
+ * Inverts an N x N dense matrix via WASM-backed flat LU factorization (`solveDenseLinearSystem`).
  */
 function invertDenseMatrix(mat: Float64Array, n: number): Float64Array {
-  const a = new Float64Array(mat);
-  const inv = new Float64Array(n * n);
+  const eye = new Float64Array(n * n);
   for (let i = 0; i < n; i++) {
-    inv[i * n + i] = 1.0;
+    eye[i * n + i] = 1.0;
   }
-
-  for (let k = 0; k < n; k++) {
-    let maxRow = k;
-    let maxVal = Math.abs(a[k * n + k]!);
-    for (let i = k + 1; i < n; i++) {
-      const v = Math.abs(a[i * n + k]!);
-      if (v > maxVal) {
-        maxVal = v;
-        maxRow = i;
-      }
-    }
-
-    if (maxVal < 1e-15) {
-      // Regularize isolated node
-      a[k * n + k] = 1e-9;
-      maxRow = k;
-    }
-
-    if (maxRow !== k) {
-      for (let j = 0; j < n; j++) {
-        const tmpA = a[k * n + j]!;
-        a[k * n + j] = a[maxRow * n + j]!;
-        a[maxRow * n + j] = tmpA;
-
-        const tmpI = inv[k * n + j]!;
-        inv[k * n + j] = inv[maxRow * n + j]!;
-        inv[maxRow * n + j] = tmpI;
-      }
-    }
-
-    const pivot = a[k * n + k]!;
-    for (let j = 0; j < n; j++) {
-      a[k * n + j] = a[k * n + j]! / pivot;
-      inv[k * n + j] = inv[k * n + j]! / pivot;
-    }
-
-    for (let i = 0; i < n; i++) {
-      if (i === k) continue;
-      const factor = a[i * n + k]!;
-      if (factor === 0.0) continue;
-      for (let j = 0; j < n; j++) {
-        a[i * n + j] = a[i * n + j]! - factor * a[k * n + j]!;
-        inv[i * n + j] = inv[i * n + j]! - factor * inv[k * n + j]!;
-      }
-    }
-  }
-
-  return inv;
+  return solveDenseLinearSystem(mat, eye, n, n, 1e-9).X;
 }
 
 function stampConductance(G: Float64Array, n: number, fromNode: number, toNode: number, g: number): void {

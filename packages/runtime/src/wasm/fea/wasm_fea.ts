@@ -1101,3 +1101,136 @@ export function fea_assemble_csr_values(
   }
 }
 
+/**
+ * Flat-buffer Boundary Layer Inflation Extruder:
+ * Computes vertex normals, extrudes structured prism layers, and decomposes each prism into 3 tetrahedra.
+ */
+export function extrudeBoundaryLayersWasm(
+  surfCoordsPtr: usize,
+  surfTrisPtr: usize,
+  numBaseNodes: u32,
+  numBaseTris: u32,
+  numLayers: u32,
+  h1: f64,
+  growthRatio: f64,
+  normalsPtr: usize,
+  nodeCoordsOutPtr: usize,
+  elementsOutPtr: usize,
+): void {
+  const baseCoordCount = numBaseNodes * 3;
+  for (let i: u32 = 0; i < baseCoordCount; i++) {
+    store<f32>(normalsPtr + ((i as usize) << 2), 0.0);
+    store<f32>(nodeCoordsOutPtr + ((i as usize) << 2), load<f32>(surfCoordsPtr + ((i as usize) << 2)));
+  }
+
+  for (let t: u32 = 0; t < numBaseTris; t++) {
+    const tOff = t * 3;
+    const n0 = load<u32>(surfTrisPtr + ((tOff as usize) << 2)) * 3;
+    const n1 = load<u32>(surfTrisPtr + (((tOff + 1) as usize) << 2)) * 3;
+    const n2 = load<u32>(surfTrisPtr + (((tOff + 2) as usize) << 2)) * 3;
+
+    const x0 = <f64>load<f32>(surfCoordsPtr + ((n0 as usize) << 2));
+    const y0 = <f64>load<f32>(surfCoordsPtr + (((n0 + 1) as usize) << 2));
+    const z0 = <f64>load<f32>(surfCoordsPtr + (((n0 + 2) as usize) << 2));
+
+    const ax = <f64>load<f32>(surfCoordsPtr + ((n1 as usize) << 2)) - x0;
+    const ay = <f64>load<f32>(surfCoordsPtr + (((n1 + 1) as usize) << 2)) - y0;
+    const az = <f64>load<f32>(surfCoordsPtr + (((n1 + 2) as usize) << 2)) - z0;
+
+    const bx = <f64>load<f32>(surfCoordsPtr + ((n2 as usize) << 2)) - x0;
+    const by = <f64>load<f32>(surfCoordsPtr + (((n2 + 1) as usize) << 2)) - y0;
+    const bz = <f64>load<f32>(surfCoordsPtr + (((n2 + 2) as usize) << 2)) - z0;
+
+    const nx = <f32>(ay * bz - az * by);
+    const ny = <f32>(az * bx - ax * bz);
+    const nz = <f32>(ax * by - ay * bx);
+
+    for (let v: u32 = 0; v < 3; v++) {
+      const idx = v == 0 ? n0 : v == 1 ? n1 : n2;
+      const p0 = normalsPtr + ((idx as usize) << 2);
+      const p1 = normalsPtr + (((idx + 1) as usize) << 2);
+      const p2 = normalsPtr + (((idx + 2) as usize) << 2);
+      store<f32>(p0, load<f32>(p0) + nx);
+      store<f32>(p1, load<f32>(p1) + ny);
+      store<f32>(p2, load<f32>(p2) + nz);
+    }
+  }
+
+  for (let i: u32 = 0; i < numBaseNodes; i++) {
+    const idx = i * 3;
+    const p0 = normalsPtr + ((idx as usize) << 2);
+    const p1 = normalsPtr + (((idx + 1) as usize) << 2);
+    const p2 = normalsPtr + (((idx + 2) as usize) << 2);
+    const nx = <f64>load<f32>(p0);
+    const ny = <f64>load<f32>(p1);
+    const nz = <f64>load<f32>(p2);
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (len > 1e-12) {
+      const invLen = 1.0 / len;
+      store<f32>(p0, <f32>(nx * invLen));
+      store<f32>(p1, <f32>(ny * invLen));
+      store<f32>(p2, <f32>(nz * invLen));
+    } else {
+      store<f32>(p2, 1.0);
+    }
+  }
+
+  let currentHeight: f64 = 0.0;
+  let stepHeight: f64 = h1;
+  for (let layer: u32 = 1; layer <= numLayers; layer++) {
+    currentHeight += stepHeight;
+    stepHeight *= growthRatio;
+    const layerOffset = layer * baseCoordCount;
+
+    for (let i: u32 = 0; i < numBaseNodes; i++) {
+      const baseIdx = i * 3;
+      const targetIdx = layerOffset + baseIdx;
+      const nx = <f64>load<f32>(normalsPtr + ((baseIdx as usize) << 2));
+      const ny = <f64>load<f32>(normalsPtr + (((baseIdx + 1) as usize) << 2));
+      const nz = <f64>load<f32>(normalsPtr + (((baseIdx + 2) as usize) << 2));
+
+      const sx = <f64>load<f32>(surfCoordsPtr + ((baseIdx as usize) << 2));
+      const sy = <f64>load<f32>(surfCoordsPtr + (((baseIdx + 1) as usize) << 2));
+      const sz = <f64>load<f32>(surfCoordsPtr + (((baseIdx + 2) as usize) << 2));
+
+      store<f32>(nodeCoordsOutPtr + ((targetIdx as usize) << 2), <f32>(sx + nx * currentHeight));
+      store<f32>(nodeCoordsOutPtr + (((targetIdx + 1) as usize) << 2), <f32>(sy + ny * currentHeight));
+      store<f32>(nodeCoordsOutPtr + (((targetIdx + 2) as usize) << 2), <f32>(sz + nz * currentHeight));
+    }
+  }
+
+  let elemPtr: usize = 0;
+  for (let layer: u32 = 0; layer < numLayers; layer++) {
+    const bottomBase = layer * numBaseNodes;
+    const topBase = (layer + 1) * numBaseNodes;
+    for (let t: u32 = 0; t < numBaseTris; t++) {
+      const tOff = t * 3;
+      const i0 = load<u32>(surfTrisPtr + ((tOff as usize) << 2));
+      const i1 = load<u32>(surfTrisPtr + (((tOff + 1) as usize) << 2));
+      const i2 = load<u32>(surfTrisPtr + (((tOff + 2) as usize) << 2));
+
+      const n0 = bottomBase + i0;
+      const n1 = bottomBase + i1;
+      const n2 = bottomBase + i2;
+      const m0 = topBase + i0;
+      const m1 = topBase + i1;
+      const m2 = topBase + i2;
+
+      store<u32>(elementsOutPtr + (elemPtr << 2), n0); elemPtr++;
+      store<u32>(elementsOutPtr + (elemPtr << 2), n1); elemPtr++;
+      store<u32>(elementsOutPtr + (elemPtr << 2), n2); elemPtr++;
+      store<u32>(elementsOutPtr + (elemPtr << 2), m2); elemPtr++;
+
+      store<u32>(elementsOutPtr + (elemPtr << 2), n0); elemPtr++;
+      store<u32>(elementsOutPtr + (elemPtr << 2), n1); elemPtr++;
+      store<u32>(elementsOutPtr + (elemPtr << 2), m1); elemPtr++;
+      store<u32>(elementsOutPtr + (elemPtr << 2), m2); elemPtr++;
+
+      store<u32>(elementsOutPtr + (elemPtr << 2), n0); elemPtr++;
+      store<u32>(elementsOutPtr + (elemPtr << 2), m0); elemPtr++;
+      store<u32>(elementsOutPtr + (elemPtr << 2), m1); elemPtr++;
+      store<u32>(elementsOutPtr + (elemPtr << 2), m2); elemPtr++;
+    }
+  }
+}
+

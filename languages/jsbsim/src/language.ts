@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language } from "@modelscript/dsl";
+import { language, xmlRules } from "@modelscript/dsl";
 import { lowerJsbsimToDae } from "./dae/jsbsim-to-dae.js";
 import { lintJsbsim } from "./lints/index.js";
 import { parseJsbsim } from "./parser/jsbsim-parser.js";
 import { jsbsimToModelica } from "./projections/jsbsim-to-modelica.js";
 import { solveFlightDynamics, type FlightSolverOptions } from "./solvers/flight-solver.js";
+import { jsbsimPolyglotConfig } from "./tgg/index.js";
 
 interface JsbsimActionContext {
   documentText?: string | undefined;
@@ -15,6 +16,7 @@ interface JsbsimActionContext {
  * ModelScript JSBSim 2.0 Aircraft Flight Dynamics (.xml) Language Definition.
  */
 export const jsbsimLanguage = language({
+  polyglot: jsbsimPolyglotConfig,
   name: "jsbsim",
   fileExtensions: [".jsbsim", ".jsbsim.xml", ".xml"],
   maturity: "experimental",
@@ -218,4 +220,8 @@ export const jsbsimLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: xmlRules,
 });
+
+export default jsbsimLanguage;

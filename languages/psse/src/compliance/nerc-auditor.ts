@@ -13,7 +13,7 @@
 import { analyzeN1Contingencies, solvePowerFlow } from "../solver/ac-powerflow.js";
 import type { PsseCase, PsseDyrRecord } from "../types.js";
 
-export type NercStandardId = "MOD-025-2" | "MOD-026-1" | "MOD-027-1" | "TPL-001-4";
+export type NercStandardId = "MOD-025-2" | "MOD-026-1" | "MOD-027-1" | "MOD-032-1" | "FAC-002-4" | "TPL-001-4";
 
 export type ComplianceSeverity = "pass" | "warning" | "violation";
 
@@ -723,4 +723,117 @@ function badge(severity: ComplianceSeverity): string {
 
 function countSev(findings: NercFinding[], standard: NercStandardId, severity: ComplianceSeverity): number {
   return findings.filter((f) => f.standard === standard && f.severity === severity).length;
+}
+
+export interface Mod032AuditResult {
+  severity: ComplianceSeverity;
+  findings: NercFinding[];
+  completenessScore: number;
+}
+
+/**
+ * NERC MOD-032-1: Data for Power System Modeling and Analysis.
+ * Verifies cross-file completeness and parameter sanity across .raw, .dyr, and .seq submissions.
+ */
+export function auditMod032DataCompleteness(psseCase: PsseCase): Mod032AuditResult {
+  const findings: NercFinding[] = [];
+  let checks = 0;
+  let passed = 0;
+
+  // 1. Check active generators have corresponding .dyr machine models
+  const dyrByBus = new Set<number>();
+  for (const rec of psseCase.dyr?.records ?? []) {
+    dyrByBus.add(rec.ibus);
+  }
+  for (const gen of psseCase.generators) {
+    if (gen.stat === 0) continue;
+    checks++;
+    if (dyrByBus.has(gen.i)) {
+      passed++;
+    } else {
+      findings.push({
+        standard: "MOD-032-1",
+        element: `Gen ${gen.i}:${gen.id}`,
+        severity: "violation",
+        rule: "MOD-032-1 R2 Dynamic Data",
+        description: `In-service generator at bus ${gen.i} ('${gen.id}') has no dynamic (.dyr) model.`,
+      });
+    }
+  }
+
+  // 2. Check sequence data presence if .seq is attached
+  if (psseCase.seq) {
+    checks++;
+    if (psseCase.seq.branches.length > 0 || psseCase.seq.generators.length > 0) {
+      passed++;
+    } else {
+      findings.push({
+        standard: "MOD-032-1",
+        element: "Sequence Data (.seq)",
+        severity: "warning",
+        rule: "MOD-032-1 R2 Short-Circuit Data",
+        description: "Attached .seq case contains no branch or generator sequence impedance records.",
+      });
+    }
+  }
+
+  const completenessScore = checks > 0 ? passed / checks : 1.0;
+  const severity: ComplianceSeverity = findings.some((f) => f.severity === "violation")
+    ? "violation"
+    : findings.some((f) => f.severity === "warning")
+      ? "warning"
+      : "pass";
+
+  return { severity, findings, completenessScore };
+}
+
+export interface Fac002InterconnectionResult {
+  severity: ComplianceSeverity;
+  findings: NercFinding[];
+  materialModificationDetected: boolean;
+}
+
+/**
+ * NERC FAC-002-4: Facility Interconnection Studies.
+ * Evaluates steady-state powerflow convergence, voltage/thermal impacts, and SCR degradation.
+ */
+export function auditFac002Interconnection(
+  psseCase: PsseCase,
+  options?: { poiScr?: number | undefined; scrThreshold?: number | undefined },
+): Fac002InterconnectionResult {
+  const findings: NercFinding[] = [];
+  const pf = solvePowerFlow(psseCase);
+
+  if (!pf.converged) {
+    findings.push({
+      standard: "FAC-002-4",
+      element: "Base Case Powerflow",
+      severity: "violation",
+      rule: "FAC-002-4 R1 Steady-State Study",
+      description: "Interconnection base case failed AC powerflow convergence.",
+    });
+  }
+
+  const scrThreshold = options?.scrThreshold ?? 2.0;
+  let materialModificationDetected = false;
+  if (options?.poiScr !== undefined && options.poiScr < scrThreshold) {
+    materialModificationDetected = true;
+    findings.push({
+      standard: "FAC-002-4",
+      element: "POI Grid Strength",
+      severity: "warning",
+      rule: "FAC-002-4 R1 / EMT Screening",
+      description: `POI SCR (${options.poiScr.toFixed(2)}) < ${scrThreshold.toFixed(2)}; full EMT interconnection study required.`,
+      observedValue: options.poiScr.toFixed(2),
+      expectedRange: `>= ${scrThreshold.toFixed(2)}`,
+    });
+  }
+
+  const severity: ComplianceSeverity = findings.some((f) => f.severity === "violation")
+    ? "violation"
+    : findings.some((f) => f.severity === "warning")
+      ? "warning"
+      : "pass";
+
+  return { severity, findings, materialModificationDetected };
 }

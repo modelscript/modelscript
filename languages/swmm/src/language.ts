@@ -7,15 +7,17 @@ import { lintSwmm } from "./lints/index.js";
 import { parseSwmm } from "./parser/swmm-parser.js";
 import { swmmToModelica } from "./projections/swmm-to-modelica.js";
 import { routeNetworkFlow } from "./solver/hydraulic-solver.js";
+import { swmmPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript US EPA SWMM 5.x (.inp) Language Definition.
  */
 export const swmmLanguage = language({
+  polyglot: swmmPolyglotConfig,
   name: "swmm",
   fileExtensions: [".swmm", ".inp", ".swmm.inp"],
   maturity: "experimental",
-  extras: ($) => [/[ \t\r\n]+/, $.IniComment],
+  extras: ($) => [/[ \t\r\n]+/, $["IniComment"]!],
   rules: iniSectionRules,
   indexing: {
     indexFile: indexSwmmFile,
@@ -105,3 +107,5 @@ export const swmmLanguage = language({
     },
   ],
 });
+
+export default swmmLanguage;

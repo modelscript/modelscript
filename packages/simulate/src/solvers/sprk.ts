@@ -54,7 +54,7 @@ export interface SPRKOptions {
   hamiltonian?: ((t: number, q: Float64Array, p: Float64Array) => number) | undefined;
 }
 
-export interface HamiltonianProblem<P = any> {
+export interface HamiltonianProblem<P = unknown> {
   /** Kinetic vector field: dq/dt = dH/dp (velocities) */
   evaluateQ: (t: number, p: Float64Array, q: Float64Array, params?: P) => Float64Array | number[];
   /** Potential vector field: dp/dt = -dH/dq (forces) */
@@ -257,7 +257,10 @@ export function stepYoshida8(
  *
  * Guarantees zero secular energy drift, preserving phase-space volume and first integrals over millions of steps.
  */
-export function solveSPRK<P = any>(problem: HamiltonianProblem<P> | ODEProblem<P>, options?: SPRKOptions): SPRKResult {
+export function solveSPRK<P = unknown>(
+  problem: HamiltonianProblem<P> | ODEProblem<P>,
+  options?: SPRKOptions,
+): SPRKResult {
   const method = options?.method ?? "forest-ruth4";
   const [t0, tEnd] = problem.tSpan;
   const totalDuration = tEnd - t0;

@@ -142,7 +142,7 @@ export interface DslIndexFileContext {
   /** Language identifier (e.g. 'psse'). */
   readonly language: string;
   /** Optional parsed CST tree if a WASM parser is registered for this extension. */
-  readonly tree?: any;
+  readonly tree?: unknown;
   /** Emit a symbol (and any nested `children`) into the file's `SymbolIndex`, returning its allocated `SymbolId`. */
   emitSymbol(symbol: DslSymbolInput): number;
   /** Imperative helper to emit a single symbol with an optional `parentId`, returning its allocated `SymbolId`. */
@@ -152,11 +152,11 @@ export interface DslIndexFileContext {
     parentId?: number | null,
     startOffset?: number,
     endOffset?: number,
-    metadata?: Record<string, any>,
+    metadata?: Record<string, unknown>,
     options?: DslAddSymbolOptions,
   ): number;
   /** Returns the mutable per-file `SymbolIndex` currently being populated for `uri`. */
-  getFileIndex(): any;
+  getFileIndex(): unknown;
   /** Store an arbitrary parsed domain model (e.g. `PsseCase`, `PsseDyrCase`) keyed by URI (and optional slot key) on `UnifiedWorkspace`. */
   setParsedModel<T = unknown>(model: T, key?: string): void;
   /** Retrieve a previously stored parsed domain model for any URI in the workspace. */
@@ -185,7 +185,7 @@ export interface LanguageIndexingConfig {
   /**
    * Optional CST indexer hooks (`IndexerHook[]`) used when indexing WASM GLR parse trees.
    */
-  indexerHooks?: any[] | (() => any[]) | undefined;
+  indexerHooks?: unknown[] | (() => unknown[]) | undefined;
   /**
    * Whether directory paths imply nested package scopes (e.g. Modelica `package.mo`).
    */
@@ -229,7 +229,7 @@ export interface WorkspaceIndexingHooks {
    * Reads the enclosing scope FQN declared inside a file (e.g. Modelica `within A.B;`).
    * Returns `""` for an explicit root scope, or `null` when the file declares none.
    */
-  extractDeclaredScope?: ((rootNode: any) => string | null) | undefined;
+  extractDeclaredScope?: { bivarianceHack(rootNode: unknown): string | null }["bivarianceHack"] | undefined;
   /** True when a file whose declared scope is the root should keep its directory-derived parent (e.g. `package.mo`). */
   keepsDirectoryScopeAtRoot?: ((uri: string) => boolean) | undefined;
   /** Resolves a pending lazily-registered file for an FQN that has no direct file mapping. */
@@ -240,10 +240,16 @@ export interface WorkspaceIndexingHooks {
   skipNodeTypes?: ReadonlySet<string> | undefined;
   /** Indexes a whole non-grammar resource (e.g. a tabular data file). Return `undefined` when not handled. */
   indexResource?:
-    | ((uri: string, rootNode: any, parentFQN: string | undefined) => SyntheticSymbolSpec | undefined)
+    | {
+        bivarianceHack(uri: string, rootNode: unknown, parentFQN: string | undefined): SyntheticSymbolSpec | undefined;
+      }["bivarianceHack"]
     | undefined;
   /** Extra symbols implied by a CST node beyond the registered `indexerHooks` (e.g. `class extends X`). */
-  synthesizeSymbols?: ((node: any, hasEnclosingSymbol: boolean) => SyntheticSymbolSpec[] | undefined) | undefined;
+  synthesizeSymbols?:
+    | {
+        bivarianceHack(node: unknown, hasEnclosingSymbol: boolean): SyntheticSymbolSpec[] | undefined;
+      }["bivarianceHack"]
+    | undefined;
   /** True if a hydrated stub symbol is an un-named placeholder that must be discarded. */
   isCorruptedStub?: ((entry: { kind?: string; name: string }) => boolean) | undefined;
 }
@@ -264,7 +270,7 @@ export interface LanguageOptions<
   RuleName extends string = string,
   FieldName extends string = string,
   QueryName extends string = string,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > {
   /** The name of the language (e.g., 'modelica', 'javascript'). */
   name: string;
@@ -304,7 +310,7 @@ export interface LanguageOptions<
   /**
    * Declarative Dataflow & Control Flow Analysis Configuration
    */
-  dataflow?: any;
+  dataflow?: unknown;
 
   /**
    * A rule name or token representing the language's typical keyword structure.
@@ -322,18 +328,20 @@ export interface LanguageOptions<
    * Host Queries allow WASM to call out to the host environment (Node.js/V8)
    * for complex semantic resolutions (e.g. multi-file workspace lookups) via FFI.
    */
-  hostQueries?: Record<string, (facade: any, arg1: u32, arg2: u32, arg3: u32) => u32> | undefined;
+  hostQueries?:
+    | Record<string, { bivarianceHack(facade: unknown, arg1: u32, arg2: u32, arg3: u32): u32 }["bivarianceHack"]>
+    | undefined;
 
   /**
    * Tokens to skip automatically (e.g., whitespace, comments) everywhere in the grammar.
    */
-  extras?: (($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => RuleLike<any>[]) | undefined;
+  extras?: (($: Record<string, Rule<string>> & Record<RuleName, Rule<string>>) => RuleLike<string>[]) | undefined;
 
   /** Composable Scanner Primitives (Phase 1) */
   primitives?: ScannerPrimitives | undefined;
 
   /** External Scanner (Context-Sensitive Lexing) */
-  externals?: (($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => Rule<any>[]) | undefined;
+  externals?: (($: Record<string, Rule<string>> & Record<RuleName, Rule<string>>) => Rule<string>[]) | undefined;
 
   /** External scanner logic compiled down to zero-overhead AssemblyScript / WASM. */
   scanner?:
@@ -347,8 +355,8 @@ export interface LanguageOptions<
    * in the generated AST. Useful for aliases and unifying node queries.
    */
   supertypes?:
-    | (($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => (string | Rule<any>)[])
-    | (string | Rule<any>)[]
+    | (($: Record<string, Rule<string>> & Record<RuleName, Rule<string>>) => (string | Rule<string>)[])
+    | (string | Rule<string>)[]
     | undefined;
 
   /** Rules that should be inlined directly into their parents during codegen to reduce AST depth. */
@@ -356,7 +364,7 @@ export interface LanguageOptions<
 
   /** Expected GLR conflicts. Specifies arrays of rule names that can legitimately conflict. */
   conflicts?:
-    | (($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => RuleLike<any>[][])
+    | (($: Record<string, Rule<string>> & Record<RuleName, Rule<string>>) => RuleLike<string>[][])
     | NoInfer<RuleName>[][]
     | undefined;
 
@@ -365,8 +373,8 @@ export interface LanguageOptions<
 
   /** Default precedence/associativity matrices for conflict resolution. */
   precedences?:
-    | (($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => (string | RuleLike<any>)[][])
-    | (string | RuleLike<any>)[][]
+    | (($: Record<string, Rule<string>> & Record<RuleName, Rule<string>>) => (string | RuleLike<string>)[][])
+    | (string | RuleLike<string>)[][]
     | undefined;
 
   /**
@@ -376,7 +384,9 @@ export interface LanguageOptions<
   brackets?: [string, string][] | undefined;
 
   /** Reserved keywords to omit from generic identifier matching. */
-  reserved?: Record<string, ($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => Rule<any>[]> | undefined;
+  reserved?:
+    | Record<string, ($: Record<string, Rule<string>> & Record<RuleName, Rule<string>>) => Rule<string>[]>
+    | undefined;
 
   model?:
     | Partial<
@@ -394,22 +404,22 @@ export interface LanguageOptions<
   lints?: Record<string, CompilerLint<RuleName, FieldName, QueryName, ModelAttrs>> | undefined;
 
   /** Canonical Diagnostic / Error Codes Dictionary */
-  errorCodes?: Record<string, any> | undefined;
+  errorCodes?: Record<string, unknown> | undefined;
 
   /**
    * First-Class AssemblyScript / TypeScript Custom Classes
    * Injected as zero-GC `@unmanaged export class` definitions into WebAssembly linear memory.
    */
   classes?:
-    | ((new (...args: any[]) => any) | ((...args: any[]) => any))[]
-    | Record<string, (new (...args: any[]) => any) | ((...args: any[]) => any)>
+    | ((new (...args: never[]) => unknown) | ((...args: never[]) => unknown))[]
+    | Record<string, (new (...args: never[]) => unknown) | ((...args: never[]) => unknown)>
     | undefined;
 
   /**
    * First-Class AssemblyScript / TypeScript Custom Helper Functions
    * Injected as exported functions into WebAssembly linear memory.
    */
-  functions?: ((...args: any[]) => any)[] | Record<string, (...args: any[]) => any> | undefined;
+  functions?: ((...args: never[]) => unknown)[] | Record<string, (...args: never[]) => unknown> | undefined;
 
   /**
    * Supplemental language-specific AssemblyScript runtime files
@@ -471,7 +481,7 @@ export interface LanguageOptions<
     | {
         indentSize?: number | undefined;
         newlineBeforeBrace?: boolean | undefined;
-        rules?: Record<string, (node: any, out: any) => void> | undefined;
+        rules?: Record<string, { bivarianceHack(node: unknown, out: unknown): void }["bivarianceHack"]> | undefined;
       }
     | undefined;
 
@@ -511,8 +521,8 @@ export interface LanguageOptions<
         {
           lattice?: string[] | undefined;
           direction?: "forward" | "backward" | undefined;
-          join?: ((...args: any[]) => any) | undefined;
-          transfer?: ((...args: any[]) => any) | undefined;
+          join?: ((...args: never[]) => unknown) | undefined;
+          transfer?: ((...args: never[]) => unknown) | undefined;
         }
       >
     | undefined;
@@ -523,11 +533,11 @@ export interface LanguageOptions<
         rules: (
           | {
               name: string;
-              lhs: TransformCombinator | string | ((...args: any[]) => any);
-              rhs: TransformCombinator | string | ((...args: any[]) => any);
+              lhs: TransformCombinator | string | ((...args: never[]) => unknown);
+              rhs: TransformCombinator | string | ((...args: never[]) => unknown);
             }
-          | Record<string, (...args: any[]) => [any, any] | any>
-          | Record<string, any>
+          | Record<string, (...args: never[]) => unknown>
+          | Record<string, unknown>
         )[];
       }
     | undefined;
@@ -536,7 +546,9 @@ export interface LanguageOptions<
   typeSystem?:
     | {
         constraints?: ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs> | undefined;
-        subtypingPredicates?: (string | ((db: any, sourceId: number, targetId: number) => boolean))[] | undefined;
+        subtypingPredicates?:
+          | (string | { bivarianceHack(db: unknown, sourceId: number, targetId: number): boolean }["bivarianceHack"])[]
+          | undefined;
         customCode?: string | undefined;
       }
     | undefined;
@@ -544,8 +556,8 @@ export interface LanguageOptions<
   /** DL-Lite / Datalog Semantic Reasoning Engine Configuration */
   semantics?:
     | {
-        rules?: (string | ((...args: any[]) => any) | object)[] | undefined;
-        axioms?: (string | ((...args: any[]) => any) | object)[] | undefined;
+        rules?: (string | ((...args: never[]) => unknown) | object)[] | undefined;
+        axioms?: (string | ((...args: never[]) => unknown) | object)[] | undefined;
         vocabularies?: string[] | undefined;
         extensions?: Record<string, string[]> | undefined;
         maxArity?: number | undefined;
@@ -719,21 +731,25 @@ export function language<
   RuleName extends string,
   FieldName extends string = string,
   QueryName extends string = string,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 >(
   options: LanguageOptions<RuleName, FieldName, QueryName, ModelAttrs>,
 ): LanguageOptions<RuleName, FieldName, QueryName, ModelAttrs> {
+  const mutableOptions = options as LanguageOptions<RuleName, FieldName, QueryName, ModelAttrs> & {
+    [SOURCE_PATH_SYMBOL]?: string | undefined;
+    [SOURCE_TEXT_SYMBOL]?: string | undefined;
+  };
   if (options.sourcePath) {
-    (options as any)[SOURCE_PATH_SYMBOL] = options.sourcePath;
+    mutableOptions[SOURCE_PATH_SYMBOL] = options.sourcePath;
   } else if (options.sourceUrl) {
-    (options as any)[SOURCE_PATH_SYMBOL] = resolveSourceUrl(options.sourceUrl);
+    mutableOptions[SOURCE_PATH_SYMBOL] = resolveSourceUrl(options.sourceUrl);
   }
   if (options.sourceText) {
-    (options as any)[SOURCE_TEXT_SYMBOL] = options.sourceText;
+    mutableOptions[SOURCE_TEXT_SYMBOL] = options.sourceText;
   }
 
   // Auto-detect caller source file path via stack trace if not explicitly provided
-  if (!(options as any)[SOURCE_PATH_SYMBOL] && !(options as any)[SOURCE_TEXT_SYMBOL]) {
+  if (!mutableOptions[SOURCE_PATH_SYMBOL] && !mutableOptions[SOURCE_TEXT_SYMBOL]) {
     try {
       const err = new Error();
       if (err.stack) {
@@ -758,7 +774,7 @@ export function language<
           }
           const match = line.match(/(?:file:\/\/)?(\/[^:\s)]+):(?:\d+):(?:\d+)/);
           if (match && match[1]) {
-            (options as any)[SOURCE_PATH_SYMBOL] = match[1];
+            mutableOptions[SOURCE_PATH_SYMBOL] = match[1];
             break;
           }
         }

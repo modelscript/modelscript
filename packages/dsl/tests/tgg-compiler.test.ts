@@ -91,7 +91,10 @@ describe("AOT TGG Compiler", () => {
     expect(result.sourceCode).toContain("export function tgg_propagate_all_stale");
 
     // Verify correspondence index integration
-    expect(result.sourceCode).toContain("corr.addLink(sourceNodeId, targetNodeId, 0, CORR_FLAG_SYNCED, 0);");
+    expect(result.sourceCode).toContain(
+      "corr.addLink(sourceNodeId, targetNodeId, 0, CORR_FLAG_SYNCED, 0, parentSlot);",
+    );
+    expect(result.sourceCode).toContain("corr.clearStale(slot);");
     expect(result.sourceCode).toContain("corr.findBySource(sourceNodeId);");
   });
 
@@ -275,5 +278,38 @@ describe("AOT TGG Compiler", () => {
     );
     expect(losslessReport.status).toBe("PROVEN_LOSSLESS");
     expect(losslessReport.leakedAttributes.length).toBe(0);
+  });
+
+  it("should resolve syntaxTypes from grammar.symToInt, emit ArenaStringPool URI ops, and invert general affine units", () => {
+    const rules = [
+      tggRule({
+        name: "SyntaxTypedUriRule",
+        source: ($, v) => $.PartDefinition({ id: v("srcId"), tempF: v("tf") }),
+        target: ($, v) => $.ClassDefinition({ iri: v("tgtIri"), tempC: v("tc") }),
+        where: (v) => [tggFormatUri(v("srcId"), "urn:ms:", v("tgtIri")), tggInvertible("tc = (tf - 32) / 1.8")],
+      }),
+    ];
+
+    const compiled = compileTGGRules(rules, {
+      syntaxTypes: {
+        PartDefinition: 42,
+        ClassDefinition: 77,
+      },
+    });
+
+    expect(compiled.sourceCode).toContain("case 42:");
+    expect(compiled.sourceCode).toContain("case 77:");
+    expect(compiled.sourceCode).toContain("stringPool_concatRawIds(arena.stringPoolPtr,");
+    expect(compiled.sourceCode).toContain("stringPool_stripPrefixId(arena.stringPoolPtr,");
+
+    const invUnit = invertExpression("(tf - 32) / 1.8", "tc");
+    expect(invUnit.isInvertible).toBe(true);
+    expect(invUnit.kind).toBe("unit");
+    expect(invUnit.invertedExpr).toBe("tc * 1.8 + 32");
+
+    const invShift = invertExpression("p + 101325", "pAbs");
+    expect(invShift.isInvertible).toBe(true);
+    expect(invShift.kind).toBe("affine");
+    expect(invShift.invertedExpr).toBe("pAbs - 101325");
   });
 });

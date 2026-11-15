@@ -7,8 +7,8 @@ import { ruleCombinators, TransformCombinator } from "../../dsl/language.js";
  */
 export interface RewriteRule {
   name: string;
-  lhs: TransformCombinator | string | ((...args: any[]) => any);
-  rhs: TransformCombinator | string | ((...args: any[]) => any);
+  lhs: TransformCombinator | string | ((...args: never[]) => unknown);
+  rhs: TransformCombinator | string | ((...args: never[]) => unknown);
 }
 
 /**
@@ -53,11 +53,12 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "            let right = ufFind((key & 0xFFFFFF) as u32);\n\n";
 
   for (let rule of rules) {
-    if (typeof rule === "object" && rule !== null && !(rule as any).lhs) {
-      const keys = Object.keys(rule);
+    if (typeof rule === "object" && rule !== null && !("lhs" in rule)) {
+      const ruleMap = rule as unknown as Record<string, unknown>;
+      const keys = Object.keys(ruleMap);
       if (keys.length === 1) {
         const name = keys[0]!;
-        const fn = (rule as any)[name];
+        const fn = ruleMap[name];
         if (typeof fn === "function") {
           const res = fn(ruleCombinators.var("x"), ruleCombinators.var("y"));
           if (Array.isArray(res) && res.length === 2) {
@@ -208,10 +209,10 @@ type Expr = string | { op: string; left: Expr; right: Expr };
 /**
  * Resolves rule LHS/RHS from function lambdas, TransformCombinators, or strings.
  */
-function resolveRuleExpr(expr: any): string {
+function resolveRuleExpr(expr: unknown): string {
   if (typeof expr === "function") {
     const paramNames = ["x", "y", "z", "w", "a", "b", "c", "d"];
-    const args: any[] = [ruleCombinators];
+    const args: unknown[] = [ruleCombinators];
     const funcLength = expr.length;
     for (let i = 1; i < funcLength; i++) {
       args.push(ruleCombinators.var(paramNames[(i - 1) % paramNames.length]!));
@@ -219,8 +220,13 @@ function resolveRuleExpr(expr: any): string {
     const res = expr(...args);
     return res instanceof TransformCombinator ? res.toSExpr() : String(res);
   }
-  if (typeof expr === "object" && typeof expr?.toSExpr === "function") {
-    return expr.toSExpr();
+  if (
+    typeof expr === "object" &&
+    expr !== null &&
+    "toSExpr" in expr &&
+    typeof (expr as { toSExpr?: unknown }).toSExpr === "function"
+  ) {
+    return (expr as { toSExpr: () => string }).toSExpr();
   }
   return String(expr);
 }

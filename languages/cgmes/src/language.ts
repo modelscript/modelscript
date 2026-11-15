@@ -4,14 +4,16 @@
  * ModelScript ENTSO-E CGMES (IEC 61970 CIM) Language Definition.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, xmlRules } from "@modelscript/dsl";
 import { formatPowerFlowReport, solvePowerFlow } from "@modelscript/psse";
 import { lintCgmesModel } from "./lints/index.js";
 import { parseCgmesRdf } from "./parser/cgmes-rdf-parser.js";
 import { cgmesToModelica } from "./projections/cgmes-to-modelica.js";
 import { cgmesToPsse } from "./projections/cgmes-to-psse.js";
+import { cgmesPolyglotConfig } from "./tgg/index.js";
 
 export const cgmesLanguage = language({
+  polyglot: cgmesPolyglotConfig,
   name: "cgmes",
   fileExtensions: [".cgmes", ".xml", ".rdf"],
   maturity: "beta",
@@ -62,6 +64,8 @@ export const cgmesLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: xmlRules,
 });
 
 export default cgmesLanguage;

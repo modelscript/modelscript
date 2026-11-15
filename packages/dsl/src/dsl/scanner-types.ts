@@ -56,7 +56,7 @@ export interface LexerContext {
   /** Skips whitespace characters (spaces, tabs, newlines). */
   skipWhitespace(): void;
   /** Checks whether a specific token symbol is expected by the parser in this state. */
-  isExpected(token: number | any): boolean;
+  isExpected(token: unknown): boolean;
   /** Returns true if at or beyond EOF. */
   isEof(): boolean;
 }
@@ -66,7 +66,7 @@ export interface LexerContext {
  */
 export interface ValidTokens {
   /** Returns true if the given terminal symbol is expected in the current parser state. */
-  has(token: number | any): boolean;
+  has(token: unknown): boolean;
   [key: number]: boolean;
 }
 
@@ -74,6 +74,6 @@ export interface ValidTokens {
  * First-class external scanner lambda function compiling down to AssemblyScript / WASM.
  */
 export type ExternalScannerFunction =
-  | (($: Record<string, any>, lexer: LexerContext, valid: ValidTokens) => number)
+  | (($: Record<string, unknown>, lexer: LexerContext, valid: ValidTokens) => number)
   | ((lexer: LexerContext, valid: ValidTokens) => number)
-  | (($: Record<string, any>) => (lexer: LexerContext, valid: ValidTokens) => number);
+  | (($: Record<string, unknown>) => (lexer: LexerContext, valid: ValidTokens) => number);

@@ -8,7 +8,7 @@
  * SysML v2 and Modelica physical models.
  */
 
-import { language, tggComplement, tggDefaultVal, tggEq, tggRule, type TabularMutationRequest } from "@modelscript/dsl";
+import { language, type TabularMutationRequest } from "@modelscript/dsl";
 import { buildReqIfDiagram, renderReqIfDiagramSvg, reqifDiagramConfig } from "./diagram.js";
 import { reqifIndexing } from "./indexing.js";
 import { parseReqIf } from "./parser/reqif-parser.js";
@@ -22,6 +22,7 @@ import {
   updateReqIfRequirementCell,
   validateReqIfTabularCell,
 } from "./tabular.js";
+import { reqifPolyglotConfig } from "./tgg/index.js";
 import { verifyReqIfEntailment } from "./verification/entailment.js";
 
 export const reqifLanguage = language({
@@ -212,74 +213,7 @@ export const reqifLanguage = language({
     },
   },
 
-  polyglot: {
-    typeMaps: {
-      reqif: {
-        String: "String",
-        Real: "Real",
-        Integer: "Integer",
-        Boolean: "Boolean",
-      },
-    },
-    rules: [
-      // ReqIF <-> SysML v2
-      tggRule({
-        name: "ReqIfSpecificationToSysmlPackage",
-        sourceLang: "reqif",
-        targetLang: "sysml2",
-        source: ($, v) => $.Specification({ identifier: v("specId"), longName: v("title") }),
-        target: ($, v) => $.PackageDefinition({ declaredName: v("title") }),
-        where: (v) => [tggEq(v("title"), v("title")), tggComplement(["identifier", "children"])],
-      }),
-      tggRule({
-        name: "ReqIfSpecObjectToSysmlRequirement",
-        sourceLang: "reqif",
-        targetLang: "sysml2",
-        source: ($, v) => $.SpecObject({ identifier: v("reqId"), text: v("docText") }),
-        target: ($, v) => $.RequirementUsage({ declaredName: v("reqId") }),
-        where: (v) => [tggEq(v("reqId"), v("reqId")), tggComplement(["attributes", "contract", "span"])],
-      }),
-      tggRule({
-        name: "ReqIfRelationToSysmlSatisfy",
-        sourceLang: "reqif",
-        targetLang: "sysml2",
-        source: ($, v) => $.SpecRelation({ relationType: "satisfies", sourceId: v("src"), targetId: v("tgt") }),
-        target: ($, v) => $.SatisfyRequirementUsage({ declaredName: v("src") }),
-        where: (v) => [tggEq(v("src"), v("src")), tggComplement(["targetId", "typeRef"])],
-      }),
-      tggRule({
-        name: "ReqIfRelationToSysmlVerify",
-        sourceLang: "reqif",
-        targetLang: "sysml2",
-        source: ($, v) => $.SpecRelation({ relationType: "verifies", sourceId: v("src"), targetId: v("tgt") }),
-        target: ($, v) => $.VerificationCaseUsage({ declaredName: v("src") }),
-        where: (v) => [tggEq(v("src"), v("src")), tggComplement(["targetId", "typeRef"])],
-      }),
-
-      // ReqIF <-> Modelica
-      tggRule({
-        name: "ReqIfSpecificationToModelicaVerifier",
-        sourceLang: "reqif",
-        targetLang: "modelica",
-        source: ($, v) => $.Specification({ identifier: v("specId"), longName: v("title") }),
-        target: ($, v) => $.ClassDefinition({ name: v("title"), classKind: "block" }),
-        where: (v) => [
-          tggEq(v("title"), v("title")),
-          tggDefaultVal(v("isAbstract"), false),
-          tggComplement(["identifier", "children"]),
-        ],
-      }),
-      tggRule({
-        name: "ReqIfSpecObjectToModelicaAssert",
-        sourceLang: "reqif",
-        targetLang: "modelica",
-        source: ($, v) => $.SpecObject({ identifier: v("reqId"), text: v("reqText") }),
-        target: ($, v) =>
-          $.ComponentClause({ name: v("reqId"), typeSpecifier: "Modelica.Blocks.Interfaces.BooleanOutput" }),
-        where: (v) => [tggEq(v("reqId"), v("reqId")), tggComplement(["attributes", "contract"])],
-      }),
-    ],
-  },
+  polyglot: reqifPolyglotConfig,
 });
 
 export default reqifLanguage;

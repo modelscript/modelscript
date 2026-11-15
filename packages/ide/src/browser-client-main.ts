@@ -15,6 +15,7 @@ import { registerCloudCommands } from "./controllers/cloud-controller.js";
 import { registerCosimCommands } from "./controllers/cosim-controller.js";
 import { registerCustomEditors } from "./controllers/custom-editors-controller.js";
 import { registerSimulationCommands } from "./controllers/simulation-controller.js";
+import { registerSysmlRunnerCommands } from "./controllers/sysml-runner-controller.js";
 import { TreeViewController } from "./controllers/tree-view-controller.js";
 import { CosimViewProvider } from "./cosim-panel.js";
 import { activeDebugSession } from "./debug-adapter.js";
@@ -342,6 +343,7 @@ export async function activate(context: vscode.ExtensionContext) {
       markdownService.scheduleMarkdownRefresh(),
     ),
     ...registerCadAndMeshingCommands(context, lspManager.client),
+    ...registerSysmlRunnerCommands(context, lspManager.client),
     registerPolyglotActions(context, lspManager.client),
     registerMultiDomainScaffolding(context),
   );

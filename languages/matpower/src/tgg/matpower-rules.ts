@@ -15,14 +15,14 @@ export const matpowerTggRules = [
     sourceLang: "matpower",
     targetLang: "psse",
     source: ($, v) =>
-      $.MatpowerBus({
+      $["MatpowerBus"]?.({
         bus_i: v("busId"),
         baseKV: v("baseKV"),
         vm: v("vm"),
         va: v("va"),
       }),
     target: ($, v) =>
-      $.PsseBus({
+      $["PsseBus"]?.({
         i: v("busId"),
         basekV: v("baseKV"),
         vm: v("vm"),
@@ -44,14 +44,14 @@ export const matpowerTggRules = [
     sourceLang: "matpower",
     targetLang: "modelica",
     source: ($, v) =>
-      $.MatpowerGen({
+      $["MatpowerGen"]?.({
         bus: v("busId"),
         pg: v("pg"),
         qg: v("qg"),
         vg: v("vg"),
       }),
     target: ($, v) =>
-      $.ModelicaComponent({
+      $["ModelicaComponent"]?.({
         type: "OpenIPSL.Electrical.Machines.PSSE.GENROU",
         bus: v("busId"),
         P_0: v("pg"),
@@ -73,7 +73,7 @@ export const matpowerTggRules = [
     sourceLang: "matpower",
     targetLang: "psse",
     source: ($, v) =>
-      $.MatpowerBranch({
+      $["MatpowerBranch"]?.({
         fbus: v("fromBus"),
         tbus: v("toBus"),
         r: v("r"),
@@ -81,7 +81,7 @@ export const matpowerTggRules = [
         b: v("b"),
       }),
     target: ($, v) =>
-      $.PsseBranch({
+      $["PsseBranch"]?.({
         i: v("fromBus"),
         j: v("toBus"),
         r: v("r"),

@@ -68,7 +68,7 @@ export interface ParameterReconcileResult {
 }
 
 export interface SimplexReconcileResult {
-  status: "OPTIMAL" | "INFEASIBLE" | "UNBOUNDED";
+  status: "OPTIMAL" | "INFEASIBLE" | "UNBOUNDED" | "ITERATION_LIMIT";
   problemName?: string | undefined;
   parameters: Record<string, ParameterReconcileResult>;
   totalWeightedDeviation: number;
@@ -103,15 +103,16 @@ export class PhysicsSimplexReconciler {
       let minVal = def.bounds?.min;
       let maxVal = def.bounds?.max;
 
-      // If bounds are unassigned, derive reasonable envelope from domain proposals
+      // If bounds are unassigned, use a wide non-binding envelope so linear constraints are not artificially clipped
       if (minVal === undefined || maxVal === undefined) {
         const propVals = def.proposals.map((p) => p.value);
         const minProp = propVals.length > 0 ? Math.min(...propVals) : 0;
         const maxProp = propVals.length > 0 ? Math.max(...propVals) : 100;
-        const span = Math.max(Math.abs(maxProp - minProp), Math.abs(minProp) * 0.5, 1.0);
+        const scale = Math.max(Math.abs(maxProp - minProp), Math.abs(minProp), Math.abs(maxProp), 1.0);
+        const wideMargin = scale * 1e4;
 
-        if (minVal === undefined) minVal = Math.min(0, minProp - span);
-        if (maxVal === undefined) maxVal = maxProp + span;
+        if (minVal === undefined) minVal = Math.min(0, minProp) - wideMargin;
+        if (maxVal === undefined) maxVal = Math.max(0, maxProp) + wideMargin;
       }
 
       if (minVal > maxVal) {
@@ -288,7 +289,9 @@ export class PhysicsSimplexReconciler {
         recommendation:
           solveResult.status === "INFEASIBLE"
             ? "Physical constraints are mutually contradictory. Relax boundary envelopes or tolerance limits."
-            : "Optimization problem is unbounded.",
+            : solveResult.status === "ITERATION_LIMIT"
+              ? "Simplex solver reached iteration limit without converging."
+              : "Optimization problem is unbounded.",
       };
     }
 
@@ -348,7 +351,7 @@ export class PhysicsSimplexReconciler {
 }
 
 interface TableauSolveResult {
-  status: "OPTIMAL" | "INFEASIBLE" | "UNBOUNDED";
+  status: "OPTIMAL" | "INFEASIBLE" | "UNBOUNDED" | "ITERATION_LIMIT";
   optimalObjective: number;
   solution: number[];
   activeConstraints: string[];
@@ -473,17 +476,30 @@ function solveSimplexTableau(
       }
     }
 
+    const maxIters = Math.max(500, numRows * numCols * 2);
     let iter = 0;
-    while (iter++ < 500) {
+    let phase1Converged = false;
+    while (iter++ < maxIters) {
+      // Use Dantzig's rule initially, switching to Bland's smallest-subscript rule after 100 pivots to prevent cycling
+      const useBland = iter > 100;
       let enterCol = -1;
       let minCost = -1e-9;
       for (let c = 0; c < numEligibleCols; c++) {
-        if (T[numRows]![c]! < minCost) {
-          minCost = T[numRows]![c]!;
-          enterCol = c;
+        if (T[numRows]![c]! < -1e-9) {
+          if (useBland) {
+            enterCol = c;
+            break;
+          }
+          if (T[numRows]![c]! < minCost) {
+            minCost = T[numRows]![c]!;
+            enterCol = c;
+          }
         }
       }
-      if (enterCol === -1) break;
+      if (enterCol === -1) {
+        phase1Converged = true;
+        break;
+      }
 
       let leaveRow = -1;
       let minRatio = Infinity;
@@ -491,14 +507,29 @@ function solveSimplexTableau(
         const coeff = T[r]![enterCol]!;
         if (coeff > 1e-9) {
           const ratio = Math.max(0, T[r]![numCols]!) / coeff;
-          if (ratio < minRatio - 1e-12) {
+          if (
+            ratio < minRatio - 1e-12 ||
+            (Math.abs(ratio - minRatio) <= 1e-12 && leaveRow !== -1 && basic[r]! < basic[leaveRow]!)
+          ) {
             minRatio = ratio;
             leaveRow = r;
           }
         }
       }
-      if (leaveRow === -1) break;
+      if (leaveRow === -1) {
+        phase1Converged = true;
+        break;
+      }
       pivot(leaveRow, enterCol);
+    }
+
+    if (!phase1Converged) {
+      return {
+        status: "ITERATION_LIMIT",
+        optimalObjective: Infinity,
+        solution: [],
+        activeConstraints: ["Phase I simplex reached iteration limit"],
+      };
     }
 
     // Check feasibility: artificial objective should be ~0
@@ -558,19 +589,31 @@ function solveSimplexTableau(
   }
 
   // Simplex Phase II iterations
+  const maxIters2 = Math.max(500, numRows * numCols * 2);
   let iter2 = 0;
+  let phase2Converged = false;
   const maxStructuralCols = numStructuralVars + numSlack;
 
-  while (iter2++ < 500) {
+  while (iter2++ < maxIters2) {
+    const useBland = iter2 > 100;
     let enterCol = -1;
     let minCost = -1e-9;
     for (let c = 0; c < maxStructuralCols; c++) {
-      if (T[numRows]![c]! < minCost) {
-        minCost = T[numRows]![c]!;
-        enterCol = c;
+      if (T[numRows]![c]! < -1e-9) {
+        if (useBland) {
+          enterCol = c;
+          break;
+        }
+        if (T[numRows]![c]! < minCost) {
+          minCost = T[numRows]![c]!;
+          enterCol = c;
+        }
       }
     }
-    if (enterCol === -1) break;
+    if (enterCol === -1) {
+      phase2Converged = true;
+      break;
+    }
 
     let leaveRow = -1;
     let minRatio = Infinity;
@@ -578,7 +621,10 @@ function solveSimplexTableau(
       const coeff = T[r]![enterCol]!;
       if (coeff > 1e-9) {
         const ratio = Math.max(0, T[r]![numCols]!) / coeff;
-        if (ratio < minRatio - 1e-12) {
+        if (
+          ratio < minRatio - 1e-12 ||
+          (Math.abs(ratio - minRatio) <= 1e-12 && leaveRow !== -1 && basic[r]! < basic[leaveRow]!)
+        ) {
           minRatio = ratio;
           leaveRow = r;
         }
@@ -595,6 +641,15 @@ function solveSimplexTableau(
     }
 
     pivot(leaveRow, enterCol);
+  }
+
+  if (!phase2Converged) {
+    return {
+      status: "ITERATION_LIMIT",
+      optimalObjective: Infinity,
+      solution: [],
+      activeConstraints: ["Phase II simplex reached iteration limit"],
+    };
   }
 
   // Extract solution

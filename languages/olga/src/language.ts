@@ -13,9 +13,6 @@ import {
   language,
   repeat,
   seq,
-  tggComplement,
-  tggEq,
-  tggRule,
   type ActionExecutionContext,
   type QueryDB,
   type SymbolEntry,
@@ -26,6 +23,7 @@ import { lintOlgaModel } from "./lints/index.js";
 import { parseOlga, serializeKeyDeck } from "./parser/index.js";
 import { olgaToSysml2 } from "./projections/olga-to-sysml2.js";
 import { simulateDriftFlux } from "./solver/drift-flux-dae.js";
+import { olgaPolyglotConfig } from "./tgg/index.js";
 import { verifyFlowAssuranceTrajectory } from "./verification/flow-assurance-verifier.js";
 
 export const olgaLanguage = language({
@@ -186,39 +184,7 @@ export const olgaLanguage = language({
     },
   ],
 
-  polyglot: {
-    languages: ["sysml2", "modelica"],
-    rules: [
-      tggRule({
-        name: "OlgaFlowpathToSysmlPart",
-        sourceLang: "olga",
-        targetLang: "sysml2",
-        priority: 10,
-        source: ($, v) => $.FlowpathElement({ name: v("fpName") }),
-        target: ($, v) => $.PartUsage({ declaredName: v("fpName"), declaredType: "FlowlineRiserSystem" }),
-        where: (v) => [tggEq(v("fpName"), v("fpName")), tggComplement(["diameter"])],
-      }),
-      tggRule({
-        name: "OlgaValveToSysmlPart",
-        sourceLang: "olga",
-        targetLang: "sysml2",
-        priority: 10,
-        source: ($, v) => $.ValveElement({ name: v("vName") }),
-        target: ($, v) => $.PartUsage({ declaredName: v("vName"), declaredType: "ChokeValve" }),
-        where: (v) => [tggEq(v("vName"), v("vName")), tggComplement(["cd"])],
-      }),
-      tggRule({
-        name: "OlgaNodeToModelicaFluidPort",
-        sourceLang: "olga",
-        targetLang: "modelica",
-        priority: 10,
-        source: ($, v) => $.NodeElement({ name: v("nName") }),
-        target: ($, v) =>
-          $.ComponentClause({ name: v("nName"), typeSpecifier: "Modelica.Fluid.Interfaces.FluidPort_a" }),
-        where: (v) => [tggEq(v("nName"), v("nName")), tggComplement(["pressure"])],
-      }),
-    ],
-  },
+  polyglot: olgaPolyglotConfig,
 
   primitives: {
     lineComment: "<!--",

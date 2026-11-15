@@ -117,10 +117,11 @@ export function ensureBuiltInPscadLibraryRegistered(): LoadedLibraryPackage | un
     typeof (process as unknown as { getBuiltinModule?: (id: string) => unknown }).getBuiltinModule === "function"
   ) {
     try {
-      const getMod = (process as unknown as { getBuiltinModule: (id: string) => any }).getBuiltinModule;
-      const nodeFs = getMod("node:fs");
-      const nodePath = getMod("node:path");
-      const nodeUrl = getMod("node:url");
+      const getMod = (process as unknown as { getBuiltinModule: <T = Record<string, unknown>>(id: string) => T })
+        .getBuiltinModule;
+      const nodeFs = getMod<typeof import("node:fs")>("node:fs");
+      const nodePath = getMod<typeof import("node:path")>("node:path");
+      const nodeUrl = getMod<typeof import("node:url")>("node:url");
       const here = nodePath.dirname(nodeUrl.fileURLToPath(import.meta.url));
       const candidates = [
         nodePath.resolve(here, "../../assets/pscad-master-lib"),

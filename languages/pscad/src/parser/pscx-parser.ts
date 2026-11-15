@@ -986,6 +986,11 @@ function snapWireConnections(mod: PscxModule): void {
         for (let k = 0; k < wire.vertices.length - 1; k++) {
           if (pointToSegmentDistance(p.world, wire.vertices[k]!, wire.vertices[k + 1]!) <= segTol) {
             connectedSet.add(p.id);
+            if (dStart <= 19 && !wire.startPortId && (dStart <= dEnd || Boolean(wire.endPortId))) {
+              wire.startPortId = p.id;
+            } else if (dEnd <= 19 && !wire.endPortId) {
+              wire.endPortId = p.id;
+            }
             break;
           }
         }

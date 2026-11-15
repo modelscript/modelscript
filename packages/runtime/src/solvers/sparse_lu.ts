@@ -15,6 +15,7 @@
  *     ISBN: 978-0-898716-13-9. (CSparse / KLU Sparse Factorization Algorithms)
  */
 
+import { getDefaultWasmExports } from "../dae/wasm_dae.js";
 import { luFactor, luSolve } from "./wasm_gaussian.js";
 
 /**
@@ -530,6 +531,61 @@ export function flatToCCS(A: Float64Array, n: number, tol = 1e-15): SparseCCSMat
  * @param allowPerturbationOrOptions Boolean perturbation flag or SparseLuOptions object
  * @returns SparseLU factors or null if singular (when perturbation is disabled)
  */
+interface SparseLuWasmScratch {
+  wasm: any;
+  capN: number;
+  capNnz: number;
+  colPtrPtr: number;
+  rowPtr: number;
+  valPtr: number;
+  colPermPtr: number;
+  bPtr: number;
+  xPtr: number;
+  metaPtr: number;
+}
+
+let sparseLuScratch: SparseLuWasmScratch | null = null;
+const sparseLuWasmHandles = new WeakMap<SparseLU, { wasm: any; luPtr: number }>();
+const sparseLuFinalizer =
+  typeof FinalizationRegistry !== "undefined"
+    ? new FinalizationRegistry<{ wasm: any; luPtr: number }>(({ wasm, luPtr }) => {
+        if (typeof wasm?.flatSparseLuFree === "function") {
+          try {
+            wasm.flatSparseLuFree(luPtr);
+          } catch {
+            // ignore if WASM instance already torn down
+          }
+        }
+      })
+    : null;
+
+function ensureSparseLuScratch(wasm: any, n: number, nnz: number): SparseLuWasmScratch | null {
+  if (!wasm || typeof wasm.__new !== "function") return null;
+  if (sparseLuScratch && sparseLuScratch.wasm === wasm && sparseLuScratch.capN >= n && sparseLuScratch.capNnz >= nnz) {
+    return sparseLuScratch;
+  }
+  const capN = Math.max(n, 128);
+  const capNnz = Math.max(nnz, 1024);
+  const alloc = (bytes: number): number => {
+    const ptr = wasm.__new(bytes, 0);
+    if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+    return ptr;
+  };
+  sparseLuScratch = {
+    wasm,
+    capN,
+    capNnz,
+    colPtrPtr: alloc((capN + 1) * 4),
+    rowPtr: alloc(capNnz * 4),
+    valPtr: alloc(capNnz * 8),
+    colPermPtr: alloc(capN * 4),
+    bPtr: alloc(capN * 8),
+    xPtr: alloc(capN * 8),
+    metaPtr: alloc(12 * 4),
+  };
+  return sparseLuScratch;
+}
+
 export function sparseLuFactor(
   A: SparseCCSMatrix,
   allowPerturbationOrOptions: boolean | SparseLuOptions = true,
@@ -545,6 +601,86 @@ export function sparseLuFactor(
   const colPerm = opts.colPerm ?? (useAmd ? computeAmdOrdering(A) : undefined);
   const pivotThreshold = opts.pivotThreshold ?? (colPerm ? 0.1 : 1.0);
   const keepStructural = opts.keepStructuralPattern ?? false;
+
+  if (n >= 16) {
+    const wasm: any = getDefaultWasmExports();
+    if (wasm && typeof wasm.flatSparseLuFactor === "function" && typeof wasm.flatSparseLuGetMeta === "function") {
+      const nnz = A.nnz;
+      const s = ensureSparseLuScratch(wasm, n, nnz);
+      if (s) {
+        const buf = wasm.memory.buffer;
+        new Int32Array(buf, s.colPtrPtr, n + 1).set(A.colPtr.subarray(0, n + 1));
+        if (nnz > 0) {
+          new Int32Array(buf, s.rowPtr, nnz).set(A.rowIndices.subarray(0, nnz));
+          new Float64Array(buf, s.valPtr, nnz).set(A.values.subarray(0, nnz));
+        }
+        let colPermArg = 0;
+        if (colPerm) {
+          new Int32Array(buf, s.colPermPtr, n).set(colPerm.subarray(0, n));
+          colPermArg = s.colPermPtr;
+        }
+        const luPtr: number = wasm.flatSparseLuFactor(
+          n,
+          nnz,
+          s.colPtrPtr,
+          s.rowPtr,
+          s.valPtr,
+          colPermArg,
+          allowPerturbation ? 1 : 0,
+          pivotThreshold,
+          keepStructural ? 1 : 0,
+        );
+        if (luPtr === 0) return null;
+
+        wasm.flatSparseLuGetMeta(luPtr, s.metaPtr);
+        const outBuf = wasm.memory.buffer;
+        const meta = new Uint32Array(outBuf, s.metaPtr, 12);
+        const lLen = meta[1]!;
+        const uLen = meta[2]!;
+
+        const lColPtr = new Int32Array(n + 1);
+        lColPtr.set(new Int32Array(outBuf, meta[3]!, n + 1));
+        const lRowIndices = new Int32Array(lLen);
+        lRowIndices.set(new Int32Array(outBuf, meta[4]!, lLen));
+        const lValues = new Float64Array(lLen);
+        lValues.set(new Float64Array(outBuf, meta[5]!, lLen));
+
+        const uColPtr = new Int32Array(n + 1);
+        uColPtr.set(new Int32Array(outBuf, meta[6]!, n + 1));
+        const uRowIndices = new Int32Array(uLen);
+        uRowIndices.set(new Int32Array(outBuf, meta[7]!, uLen));
+        const uValues = new Float64Array(uLen);
+        uValues.set(new Float64Array(outBuf, meta[8]!, uLen));
+
+        const uDiagInv = new Float64Array(n);
+        uDiagInv.set(new Float64Array(outBuf, meta[9]!, n));
+        const perm = new Int32Array(n);
+        perm.set(new Int32Array(outBuf, meta[10]!, n));
+        const permInv = new Int32Array(n);
+        permInv.set(new Int32Array(outBuf, meta[11]!, n));
+
+        const luObj: SparseLU = {
+          n,
+          lColPtr,
+          lRowIndices,
+          lValues,
+          uColPtr,
+          uRowIndices,
+          uValues,
+          uDiagInv,
+          perm,
+          permInv,
+          colPerm,
+          scratchY: new Float64Array(n),
+          hasSymbolicPattern: keepStructural,
+        };
+        const handle = { wasm, luPtr };
+        sparseLuWasmHandles.set(luObj, handle);
+        sparseLuFinalizer?.register(luObj, handle);
+        return luObj;
+      }
+    }
+  }
 
   const perm = new Int32Array(n);
   // pinv[origRow] = pivot step k (0..n-1), or -1 if origRow has not been pivoted yet
@@ -808,6 +944,32 @@ export function sparseLuRefactorize(
 
   const allowPerturbation = options.allowPerturbation ?? false;
   const maxGrowth = options.maxMultiplierGrowth ?? 1e4;
+
+  const handle = sparseLuWasmHandles.get(lu);
+  if (handle && typeof handle.wasm?.flatSparseLuRefactorize === "function") {
+    const wasm = handle.wasm;
+    const nnz = A.nnz;
+    const s = ensureSparseLuScratch(wasm, n, nnz);
+    if (s) {
+      const buf = wasm.memory.buffer;
+      new Int32Array(buf, s.colPtrPtr, n + 1).set(A.colPtr.subarray(0, n + 1));
+      if (nnz > 0) {
+        new Int32Array(buf, s.rowPtr, nnz).set(A.rowIndices.subarray(0, nnz));
+        new Float64Array(buf, s.valPtr, nnz).set(A.values.subarray(0, nnz));
+      }
+      return Boolean(
+        wasm.flatSparseLuRefactorize(
+          handle.luPtr,
+          s.colPtrPtr,
+          s.rowPtr,
+          s.valPtr,
+          allowPerturbation ? 1 : 0,
+          maxGrowth,
+        ),
+      );
+    }
+  }
+
   const denseX = lu.scratchX && lu.scratchX.length >= n ? lu.scratchX : (lu.scratchX = new Float64Array(n));
   const pinv = lu.permInv;
   const colPerm = lu.colPerm;
@@ -902,8 +1064,21 @@ export function sparseLuRefactorize(
  */
 export function sparseLuSolve(lu: SparseLU, b: Float64Array, outX?: Float64Array): Float64Array {
   const n = lu.n;
-  const y = lu.scratchY;
   const x = outX && outX.length >= n ? outX : new Float64Array(n);
+
+  const handle = sparseLuWasmHandles.get(lu);
+  if (handle && typeof handle.wasm?.flatSparseLuSolve === "function") {
+    const wasm = handle.wasm;
+    const s = ensureSparseLuScratch(wasm, n, 0);
+    if (s) {
+      new Float64Array(wasm.memory.buffer, s.bPtr, n).set(b.subarray(0, n));
+      wasm.flatSparseLuSolve(handle.luPtr, s.bPtr, s.xPtr);
+      x.set(new Float64Array(wasm.memory.buffer, s.xPtr, n));
+      return x;
+    }
+  }
+
+  const y = lu.scratchY;
   const colPerm = lu.colPerm;
 
   // 1. Permute RHS: y = P * b

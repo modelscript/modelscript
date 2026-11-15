@@ -59,11 +59,27 @@ export function tokenizeSimpackLine(line: string): string[] {
   return tokens;
 }
 
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createWasmParserSync } from "@modelscript/simpack/wasm-parser";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getSimpackWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/simpack/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 /**
  * Parses classic SIMPACK ASCII card decks (.sim, .mbs).
  * Supports parameter definitions (set <param> = <expr>) and mathematical expressions.
  */
 export function parseSimDeck(source: string, defaultName: string = "SimpackModel"): SimpackModel {
+  const cstTree = getSimpackWasmParser().parse(source);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   const model: SimpackModel = {
     name: defaultName,
     bodies: new Map<string, SimpackBody>(),
@@ -73,10 +89,9 @@ export function parseSimDeck(source: string, defaultName: string = "SimpackModel
   };
 
   const scope = new Map<string, number>();
-  const lines = source.split(/\r?\n/);
 
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
+  for (const { tokens: cstTokens } of cstLines) {
+    const line = cstLineText(source, cstTokens).trim();
     if (!line || line.startsWith("$") || line.startsWith("#") || line.startsWith("!")) {
       continue;
     }
@@ -199,7 +214,10 @@ export function parseSimDeck(source: string, defaultName: string = "SimpackModel
             }
           : {}),
       });
-    } else if ((cmd === "contact" || cmd === "$contact" || cmd === "wheel_rail" || cmd === "$wheel_rail") && tokens.length >= 4) {
+    } else if (
+      (cmd === "contact" || cmd === "$contact" || cmd === "wheel_rail" || cmd === "$wheel_rail") &&
+      tokens.length >= 4
+    ) {
       const id = tokens[1] ?? `contact_${model.forces.size + 1}`;
       const markerA = tokens[2] ?? "";
       const markerB = tokens[3] ?? "";
@@ -221,4 +239,3 @@ export function parseSimDeck(source: string, defaultName: string = "SimpackModel
 
   return model;
 }
-

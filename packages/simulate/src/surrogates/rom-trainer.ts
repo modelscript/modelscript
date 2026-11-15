@@ -11,8 +11,47 @@
  * Pure TypeScript — no TensorFlow/ONNX dependencies.
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
 import type { ArenaDoEResult } from "../uq/doe.js";
 import { computeMultivariateBounds, type MultivariateBounds } from "./multivariate-bounds.js";
+
+interface RomLuWasmExports {
+  memory: WebAssembly.Memory;
+  __new(bytes: number, id: number): number;
+  __pin?(ptr: number): void;
+  solveDenseMultiRhs(aPtr: number, bPtr: number, n: number, m: number, regularization: number, metaPtr: number): number;
+}
+
+interface RomLuScratch {
+  wasm: RomLuWasmExports;
+  capN: number;
+  aPtr: number;
+  bPtr: number;
+  ipivPtr: number;
+}
+
+let romLuScratch: RomLuScratch | null = null;
+
+function ensureRomLuScratch(wasm: RomLuWasmExports, n: number): RomLuScratch | null {
+  if (!wasm || typeof wasm.__new !== "function") return null;
+  if (romLuScratch && romLuScratch.wasm === wasm && romLuScratch.capN >= n) {
+    return romLuScratch;
+  }
+  const capN = Math.max(n, 32);
+  const alloc = (bytes: number): number => {
+    const ptr = wasm.__new(bytes, 0);
+    if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+    return ptr;
+  };
+  romLuScratch = {
+    wasm,
+    capN,
+    aPtr: alloc(capN * capN * 8),
+    bPtr: alloc(capN * 8),
+    ipivPtr: alloc(capN * 4),
+  };
+  return romLuScratch;
+}
 
 export type { MultivariateBounds };
 
@@ -243,6 +282,25 @@ function trainPolynomial(
 
 function solveLinearSystem(A: number[][], b: number[]): number[] {
   const n = A.length;
+  if (n >= 12) {
+    const wasm = getDefaultWasmExports() as RomLuWasmExports | null;
+    if (wasm && typeof wasm.solveDenseMultiRhs === "function") {
+      const s = ensureRomLuScratch(wasm, n);
+      if (s) {
+        const buf = wasm.memory.buffer;
+        const aView = new Float64Array(buf, s.aPtr, n * n);
+        for (let i = 0; i < n; i++) {
+          const row = A[i]!;
+          for (let j = 0; j < n; j++) aView[i * n + j] = row[j]!;
+        }
+        const bView = new Float64Array(buf, s.bPtr, n);
+        for (let i = 0; i < n; i++) bView[i] = b[i]!;
+        wasm.solveDenseMultiRhs(n, 1, s.aPtr, s.bPtr, s.ipivPtr, 0.0);
+        const out = new Float64Array(wasm.memory.buffer, s.bPtr, n);
+        return Array.from(out);
+      }
+    }
+  }
   const aug: number[][] = A.map((row, i) => [...row, b[i]!]);
   for (let col = 0; col < n; col++) {
     // Pivot

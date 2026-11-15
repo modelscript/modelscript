@@ -1,12 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createWasmParserSync } from "@modelscript/easy5/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import type { Easy5Table } from "../types.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getEasy5WasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/easy5/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Parses EASY5 1D/2D lookup table data (.tab or embedded table text).
  */
 export function parseEasy5Table(tableText: string): Easy5Table {
-  const lines = tableText.split(/\r?\n/);
+  const cstTree = getEasy5WasmParser().parse(tableText);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   let name = "LookupTable";
   let dimension: 1 | 2 | 3 = 1;
   let xValues: number[] = [];
@@ -15,7 +29,8 @@ export function parseEasy5Table(tableText: string): Easy5Table {
 
   let inData = false;
 
-  for (const line of lines) {
+  for (const { tokens } of cstLines) {
+    const line = cstLineText(tableText, tokens);
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("!") || trimmed.startsWith("#")) continue;
 

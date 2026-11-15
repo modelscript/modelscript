@@ -103,7 +103,7 @@ export interface VisualPortConfig<
   RuleName extends string = string,
   FieldName extends string = string,
   QueryName extends string = string,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > {
   /** Query or rule to retrieve child port nodes */
   query?:
@@ -125,7 +125,7 @@ export interface VisualCompartmentConfig<
   RuleName extends string = string,
   FieldName extends string = string,
   QueryName extends string = string,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > {
   header: string;
   query:
@@ -142,7 +142,7 @@ export interface ReactiveAnimationChannel {
   /** Signal / variable name in the simulation state vector (e.g., 'phi', 'temperature', 'active') */
   signal?: string | undefined;
   /** Value transformation callback (converts simulation numeric state to visual attribute value) */
-  transform?: ((db: CodeGraph, node: u32, signalValue: f64) => any) | undefined;
+  transform?: ((db: CodeGraph, node: u32, signalValue: f64) => unknown) | undefined;
 }
 
 /** Configuration for simulation-time reactive animations & dynamic selection */
@@ -152,7 +152,7 @@ export interface ReactiveDynamicsConfig {
   /** Extract static design-time AST argument vs dynamic simulation AST expression */
   extractDynamicSelect?: ((db: CodeGraph, callNode: u32) => { staticExpr: u32; dynamicExpr: u32 }) | undefined;
   /** Evaluates dynamic AST expression against live state lookup */
-  evaluateDynamic?: ((db: CodeGraph, dynamicExprNode: u32, getState: (varName: string) => f64) => any) | undefined;
+  evaluateDynamic?: ((db: CodeGraph, dynamicExprNode: u32, getState: (varName: string) => f64) => unknown) | undefined;
   /** Static animation channel bindings */
   channels?: ReactiveAnimationChannel[] | undefined;
 }
@@ -210,7 +210,7 @@ export interface VisualNodeConfig<
   RuleName extends string = string,
   FieldName extends string = string,
   QueryName extends string = string,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > {
   role?: "node" | "group" | "compartment" | undefined;
   label?: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => string) | undefined;
@@ -228,7 +228,11 @@ export interface VisualNodeConfig<
    * Inspects AST nodes, symbols, or types and returns visual elements or vector markup.
    */
   render?:
-    | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32, env: EvaluationEnvironment) => VisualElement[] | any)
+    | ((
+        db: CodeGraph<ModelAttrs, RuleName, FieldName>,
+        node: u32,
+        env: EvaluationEnvironment,
+      ) => VisualElement[] | unknown)
     | undefined;
 
   /**
@@ -247,7 +251,7 @@ export interface VisualNodeConfig<
 
   /** Dynamic template expansions & property bindings (e.g. %name, %R, %class) */
   propertyBindings?:
-    | Record<string, FieldName | string | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => any)>
+    | Record<string, FieldName | string | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => unknown)>
     | undefined;
 
   /** Dual view definition (Icon schematic vs internal Diagram architecture) */
@@ -268,7 +272,7 @@ export interface VisualEdgeConfig<
   RuleName extends string = string,
   FieldName extends string = string,
   _QueryName extends string = string,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > {
   source: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string);
   target: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string);
@@ -308,7 +312,10 @@ export interface DiagramProjectionConfig<RuleName extends string = string, _Fiel
   scope?: ((db: CodeGraph, root: u32) => Cursor) | undefined;
   expose?: string[] | ((db: CodeGraph, root: u32) => Cursor) | undefined;
   /** Node filter predicate */
-  filter?: ((db: CodeGraph, node: u32) => boolean) | ((entry: any) => boolean) | undefined;
+  filter?:
+    | ((db: CodeGraph, node: u32) => boolean)
+    | { bivarianceHack(entry: unknown): boolean }["bivarianceHack"]
+    | undefined;
   /** Layout strategy */
   defaultLayout?: "dagre" | "elk" | "grid" | "force" | "tree" | "sequence" | "circular" | "manual" | undefined;
 }
@@ -378,7 +385,7 @@ export interface DiagramPaletteItem {
   className: string;
   iconSvg?: string | undefined;
   description?: string | undefined;
-  defaultProps?: Record<string, any> | undefined;
+  defaultProps?: Record<string, unknown> | undefined;
 }
 
 /** Category grouping for diagram palette items */
@@ -399,7 +406,7 @@ export interface DiagramPaletteConfig {
  */
 export interface EvaluationEnvironment {
   /** Retrieves variable or parameter value by identifier */
-  get(identifier: string): any;
+  get(identifier: string): unknown;
   /** Numerical value lookup */
   getNumber(identifier: string): f64;
   /** String value lookup */
@@ -418,7 +425,7 @@ export interface ExpressionEvaluatorConfig {
    * Evaluates ANY in-language AST expression node using an evaluation environment.
    * Works identically for design-time parameter resolution and 60 FPS simulation playback.
    */
-  evaluate?: ((db: CodeGraph, exprNode: u32, env: EvaluationEnvironment) => any) | undefined;
+  evaluate?: ((db: CodeGraph, exprNode: u32, env: EvaluationEnvironment) => unknown) | undefined;
 
   /**
    * Optional recognizer for languages with explicit static/dynamic wrapper syntax (e.g. Modelica DynamicSelect)
@@ -444,20 +451,20 @@ export type PropertyFieldKind =
 /** A single option in a choice/dropdown field */
 export interface PropertyChoiceOption {
   label: string;
-  value: any;
+  value: unknown;
   description?: string | undefined;
   icon?: string | undefined;
 }
 
 /** Dynamic condition predicate for property visibility or enablement */
-export type PropertyPredicate = string | ((ctx: any) => boolean);
+export type PropertyPredicate = string | { bivarianceHack(ctx: unknown): boolean }["bivarianceHack"];
 
 /** Field-level validation rule */
 export interface PropertyFieldValidation {
   min?: number | undefined;
   max?: number | undefined;
   pattern?: string | undefined;
-  validate?: ((value: any, ctx: any) => string | null) | undefined;
+  validate?: { bivarianceHack(value: unknown, ctx: unknown): string | null }["bivarianceHack"] | undefined;
 }
 
 /** Declarative property field definition */
@@ -467,9 +474,12 @@ export interface PropertyFieldConfig {
   kind: PropertyFieldKind;
   description?: string | undefined;
   placeholder?: string | undefined;
-  defaultValue?: any;
+  defaultValue?: unknown;
   unit?: string | undefined;
-  choices?: (string | PropertyChoiceOption)[] | ((ctx: any) => (string | PropertyChoiceOption)[]) | undefined;
+  choices?:
+    | (string | PropertyChoiceOption)[]
+    | { bivarianceHack(ctx: unknown): (string | PropertyChoiceOption)[] }["bivarianceHack"]
+    | undefined;
   enabledIf?: PropertyPredicate | undefined;
   visibleIf?: PropertyPredicate | undefined;
   required?: boolean | undefined;
@@ -498,21 +508,37 @@ export interface PropertyTabConfig {
 
 /** Schema for an entity rule */
 export interface EntityPropertySchema<_RuleName extends string = string> {
-  title?: string | ((node: any) => string) | undefined;
-  icon?: string | ((node: any) => string) | undefined;
+  title?: string | { bivarianceHack(node: unknown): string }["bivarianceHack"] | undefined;
+  icon?: string | { bivarianceHack(node: unknown): string }["bivarianceHack"] | undefined;
   tabs: PropertyTabConfig[];
 }
 
 /** In-model dynamic property and annotation discovery (e.g. Modelica Dialog) */
 export interface InModelPropertyDiscoveryHook {
-  extractSchema?: ((db: any, node: any, queryEngine: any) => EntityPropertySchema | null) | undefined;
-  extractValues?: ((db: any, node: any, queryEngine: any) => Record<string, any> | null) | undefined;
+  extractSchema?:
+    | {
+        bivarianceHack(db: unknown, node: unknown, queryEngine: unknown): EntityPropertySchema | null;
+      }["bivarianceHack"]
+    | undefined;
+  extractValues?:
+    | {
+        bivarianceHack(db: unknown, node: unknown, queryEngine: unknown): Record<string, unknown> | null;
+      }["bivarianceHack"]
+    | undefined;
 }
 
 /** AST mutation handler for updating properties back to source code */
 export interface PropertyMutator<_RuleName extends string = string> {
-  updateProperty?: ((db: any, node: any, key: string, value: any, previousValue?: any) => any) | undefined;
-  updateModifier?: ((docText: string, node: any, paramName: string, newValue: any) => any) | undefined;
+  updateProperty?:
+    | {
+        bivarianceHack(db: unknown, node: unknown, key: string, value: unknown, previousValue?: unknown): unknown;
+      }["bivarianceHack"]
+    | undefined;
+  updateModifier?:
+    | {
+        bivarianceHack(docText: string, node: unknown, paramName: string, newValue: unknown): unknown;
+      }["bivarianceHack"]
+    | undefined;
 }
 
 /** Property Inspector configuration for a language */
@@ -520,7 +546,7 @@ export interface PropertyInspectorConfig<
   RuleName extends string = string,
   _FieldName extends string = string,
   _QueryName extends string = string,
-  _ModelAttrs extends Record<string, Record<string, any>> = any,
+  _ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > {
   entities?: Partial<Record<NoInfer<RuleName>, EntityPropertySchema<RuleName>>> | undefined;
   inModelDiscovery?: InModelPropertyDiscoveryHook | undefined;
@@ -553,10 +579,10 @@ export interface SidecarConfig {
   format?: "json" | "yaml" | "custom" | undefined;
 
   /** Custom serializer (Layout object -> string) */
-  serialize?: ((layout: any) => string) | undefined;
+  serialize?: { bivarianceHack(layout: unknown): string }["bivarianceHack"] | undefined;
 
   /** Custom parser (string -> Layout object) */
-  parse?: ((content: string) => any) | undefined;
+  parse?: ((content: string) => unknown) | undefined;
 }
 
 /**
@@ -566,7 +592,7 @@ export interface DiagramConfig<
   RuleName extends string = string,
   FieldName extends string = string,
   QueryName extends string = string,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > {
   /** Declarative Property Inspector Configuration */
   properties?: PropertyInspectorConfig<RuleName, FieldName, QueryName, ModelAttrs> | undefined;
@@ -614,7 +640,14 @@ export interface DiagramConfig<
         rule?: string | undefined;
         formatPlacement?: ((x: number, y: number, w?: number, h?: number, r?: number) => string) | undefined;
         parsePlacement?:
-          | ((node: any) => { x: number; y: number; width?: number | undefined; height?: number | undefined })
+          | {
+              bivarianceHack(node: unknown): {
+                x: number;
+                y: number;
+                width?: number | undefined;
+                height?: number | undefined;
+              };
+            }["bivarianceHack"]
           | undefined;
         /** Declarative sidecar file options (used when persistence is "sidecar") */
         sidecar?: SidecarConfig | undefined;
@@ -635,24 +668,25 @@ export interface DiagramConfig<
  * and PolyglotDiagramOptions consumed by buildPolyglotDiagram.
  */
 export function compileDiagramConfigToPolyglot(diagramConfig?: DiagramConfig): {
-  gfxConfig: Record<string, any>;
-  graphicsConfig: Record<string, any>;
+  gfxConfig: Record<string, unknown>;
+  graphicsConfig: Record<string, unknown>;
   options: {
-    customProjections?: Record<string, any> | undefined;
+    customProjections?: Record<string, DiagramProjectionConfig> | undefined;
     structuralKinds?: string[] | undefined;
     standaloneKinds?: string[] | undefined;
     usageKinds?: string[] | undefined;
     definitionKinds?: string[] | undefined;
     portKinds?: string[] | undefined;
     reactiveDynamics?: boolean | undefined;
-    inModelDiscovery?: any;
+    inModelDiscovery?: InModelProjectionDiscoveryConfig | undefined;
     solderDots?: boolean | undefined;
     mutations?: VisualMutationConfig | undefined;
     palette?: DiagramPaletteConfig | undefined;
-    placement?: any;
+    placement?: DiagramConfig["placement"];
+    properties?: PropertyInspectorConfig | undefined;
   };
 } {
-  const gfxConfig: Record<string, any> = {};
+  const gfxConfig: Record<string, unknown> = {};
   if (!diagramConfig || Object.keys(diagramConfig).length === 0) {
     return { gfxConfig, graphicsConfig: gfxConfig, options: {} };
   }
@@ -665,10 +699,10 @@ export function compileDiagramConfigToPolyglot(diagramConfig?: DiagramConfig): {
     const shape = nodeCfg.shape || "rect";
     const size = nodeCfg.size;
 
-    const ports: any = {};
+    const ports: Record<string, unknown> = {};
     if (nodeCfg.ports) {
       if (nodeCfg.ports.items && nodeCfg.ports.items.length > 0) {
-        ports.items = nodeCfg.ports.items.map((p) => ({
+        ports["items"] = nodeCfg.ports.items.map((p) => ({
           id: p.id,
           group: p.side || "auto",
           args: p.x !== undefined || p.y !== undefined ? { x: p.x, y: p.y, angle: p.angle } : undefined,
@@ -676,7 +710,7 @@ export function compileDiagramConfigToPolyglot(diagramConfig?: DiagramConfig): {
         }));
       }
       if (nodeCfg.ports.group) {
-        ports.groups = {
+        ports["groups"] = {
           [nodeCfg.ports.group]: { position: nodeCfg.ports.group },
         };
       }
@@ -725,7 +759,7 @@ export function compileDiagramConfigToPolyglot(diagramConfig?: DiagramConfig): {
         ports: portsObj,
         compartments,
         attrs: nodeAttrs,
-        animation: (nodeCfg as any).animation || (nodeCfg as any).animations,
+        animation: nodeCfg.animation || (nodeCfg as { animations?: ReactiveDynamicsConfig }).animations,
       },
     };
   }
@@ -779,7 +813,7 @@ export function compileDiagramConfigToPolyglot(diagramConfig?: DiagramConfig): {
                 },
               }
             : undefined,
-        animation: (edgeCfg as any).animation || (edgeCfg as any).animations,
+        animation: edgeCfg.animation || (edgeCfg as { animations?: ReactiveDynamicsConfig }).animations,
       },
     };
   }
@@ -810,13 +844,13 @@ export type DiagramPortConfig<
   R extends string = string,
   F extends string = string,
   Q extends string = string,
-  M extends Record<string, Record<string, any>> = any,
+  M extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > = VisualPortConfig<R, F, Q, M>;
 export type DiagramCompartmentConfig<
   R extends string = string,
   F extends string = string,
   Q extends string = string,
-  M extends Record<string, Record<string, any>> = any,
+  M extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > = VisualCompartmentConfig<R, F, Q, M>;
 export type DiagramAnimationBinding = ReactiveAnimationChannel;
 export type DiagramAnimationConfig = ReactiveDynamicsConfig;
@@ -824,13 +858,13 @@ export type DiagramNodeConfig<
   R extends string = string,
   F extends string = string,
   Q extends string = string,
-  M extends Record<string, Record<string, any>> = any,
+  M extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > = VisualNodeConfig<R, F, Q, M>;
 export type DiagramEdgeConfig<
   R extends string = string,
   F extends string = string,
   Q extends string = string,
-  M extends Record<string, Record<string, any>> = any,
+  M extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > = VisualEdgeConfig<R, F, Q, M>;
 export type DiagramViewConfig = DiagramProjectionConfig;
 export type DiagramMutationConfig = VisualMutationConfig;

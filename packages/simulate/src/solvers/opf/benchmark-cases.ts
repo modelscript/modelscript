@@ -33,10 +33,10 @@ export function generateSyntheticGrid(numBuses: number, options: SyntheticGridOp
   const targetLoad = options.totalLoadMw ?? numBuses * 35.0; // ~35 MW avg per bus
   const reserveMargin = options.generationReserveMargin ?? 1.35;
 
-  const buses = new Map<number, any>();
-  const generators: any[] = [];
-  const loads: any[] = [];
-  const branches: any[] = [];
+  const buses: GenericPowerCase["buses"] = new Map();
+  const generators: GenericPowerCase["generators"] = [];
+  const loads: GenericPowerCase["loads"] = [];
+  const branches: GenericPowerCase["branches"] = [];
   const generatorCosts = new Map<string, { c1: number; c0: number; c2: number }>();
 
   // Distribute buses across areas
@@ -44,7 +44,6 @@ export function generateSyntheticGrid(numBuses: number, options: SyntheticGridOp
 
   // 1. Create Buses
   for (let i = 1; i <= numBuses; i++) {
-    const area = Math.min(numAreas, Math.floor((i - 1) / busesPerArea) + 1);
     const isSlack = i === 1;
     const isHub = (i - 1) % busesPerArea === 0;
 
@@ -53,9 +52,6 @@ export function generateSyntheticGrid(numBuses: number, options: SyntheticGridOp
       name: `BUS_${i}`,
       baseKv: isSlack || isHub ? 345.0 : i % 3 === 0 ? 230.0 : 138.0,
       ide: isSlack ? 3 : isHub ? 2 : 1, // 3: Slack, 2: PV, 1: PQ
-      area,
-      zone: 1,
-      owner: 1,
       vm: 1.0,
       va: 0.0,
       vMin: 0.94,
@@ -94,7 +90,7 @@ export function generateSyntheticGrid(numBuses: number, options: SyntheticGridOp
     const bNum = loadBuses[idx]!;
     const pl = Number((rawLoads[idx]! * scale).toFixed(2));
     const ql = Number((pl * 0.25).toFixed(2));
-    loads.push({ i: bNum, id: "1", pl, ql, status: 1 });
+    loads.push({ i: bNum, pl, ql, status: 1 });
   }
 
   const actualTotalLoad = loads.reduce((acc, l) => acc + l.pl, 0);

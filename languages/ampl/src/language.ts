@@ -4,7 +4,7 @@
  * @modelscript/ampl — AMPL Language Definition and Action Handlers.
  */
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { cardDeckRules, language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerAmplToDae } from "./dae/index.js";
 import { canIndexAmpl, indexAmplDocument } from "./indexing.js";
 import { instantiateAmpl } from "./instantiator/index.js";
@@ -16,9 +16,11 @@ import { parseAmplModel } from "./parser/ampl-mod-parser.js";
 import { amplToModelica } from "./projections/ampl-to-modelica.js";
 import { runAmplScript } from "./runtime/index.js";
 import { solveAmpl } from "./solvers/index.js";
+import { amplPolyglotConfig } from "./tgg/index.js";
 import type { AmplSolverOptions } from "./types.js";
 
 export const amplLanguage = language({
+  polyglot: amplPolyglotConfig,
   name: "ampl",
   fileExtensions: [".mod", ".dat", ".run", ".ampl", ".mps"],
   maturity: "beta",
@@ -168,4 +170,8 @@ export const amplLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
+
+export default amplLanguage;

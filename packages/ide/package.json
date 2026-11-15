@@ -39,6 +39,7 @@
     "@modelscript/rocets": "*",
     "@modelscript/runtime": "*",
     "@modelscript/scad": "*",
+    "@modelscript/sdk": "*",
     "@modelscript/sima": "*",
     "@modelscript/simpack": "*",
     "@modelscript/simulate": "*",

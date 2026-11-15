@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
 import type {
   ContingencyDefinition,
   MonitoredBranch,
@@ -9,6 +10,15 @@ import type {
   PsseSubCase,
   SubsystemDefinition,
 } from "../types.js";
+import { createPsseWasmParserSync } from "./wasm-loader.js";
+
+let cachedParser: ReturnType<typeof createPsseWasmParserSync>["parser"] | undefined;
+function getPsseWasmParser() {
+  if (!cachedParser) {
+    cachedParser = createPsseWasmParserSync().parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Checks whether a document string looks like a PSS/E `.con` Contingency Data file.
@@ -29,19 +39,18 @@ export function isLikelyConContent(source: string): boolean {
  * Parses a PSS/E `.con` Contingency Specification file into structured definitions.
  */
 export function parseCon(source: string): PsseConCase {
+  const cstTree = getPsseWasmParser().parse(source);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   const contingencies: ContingencyDefinition[] = [];
   const byName = new Map<string, ContingencyDefinition>();
 
-  const lines = source.split(/\r?\n/);
   let currentDef: ContingencyDefinition | null = null;
-  let charOffset = 0;
 
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]!;
+  for (const { row: i, tokens: cstTokens } of cstLines) {
+    const rawLine = cstLineText(source, cstTokens);
     const lineNum = i + 1;
-    const startOffset = charOffset;
+    const startOffset = Math.max(0, (cstTokens[0]?.startIndex ?? 0) - (cstTokens[0]?.startPosition?.column ?? 0));
     const endOffset = startOffset + rawLine.length;
-    charOffset = endOffset + 1;
 
     const trimmed = rawLine.trim();
     if (!trimmed || trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.startsWith("@!")) {

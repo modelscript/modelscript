@@ -28,8 +28,8 @@
  * Pure TypeScript — no native dependencies.
  */
 
-import { DAEBuilder } from "@modelscript/runtime";
-import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
+import { DAEBuilder, getDefaultWasmExports } from "@modelscript/runtime";
+import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
 import { solveDaeAdjoint } from "../../core/dae-adjoint-solver.js";
 import { ArenaSimulator, simulateArena } from "../../core/simulate-arena.js";
 import { type BlackBoxProblem } from "../solvers/blackbox.js";
@@ -471,35 +471,83 @@ export class ModelicaCalibrator {
 
     for (iter = 0; iter < maxIter; iter++) {
       // Build normal equations: (J'J + λI) Δθ = -J'r
-      const JtJ = new Array<Float64Array>(nParams);
-      for (let i = 0; i < nParams; i++) {
-        JtJ[i] = new Float64Array(nParams);
-      }
+      const JtJ = new Float64Array(nParams * nParams);
       const Jtr = new Float64Array(nParams);
 
-      for (let i = 0; i < nParams; i++) {
-        for (let j = 0; j <= i; j++) {
-          let sum = 0;
-          for (let k = 0; k < nResiduals; k++) {
-            sum += jacobian[k]![i]! * jacobian[k]![j]!;
-          }
-          JtJ[i]![j] = sum;
-          JtJ[j]![i] = sum;
-        }
-        // Add damping
-        JtJ[i]![i] = (JtJ[i]![i] ?? 0) + lambda;
+      let usedWasmLm = false;
+      if (nResiduals * nParams >= 64) {
+        const wasm = getDefaultWasmExports() as {
+          memory?: WebAssembly.Memory;
+          __new?: (size: number, id: number) => number;
+          __pin?: (ptr: number) => number;
+          __unpin?: (ptr: number) => void;
+          lmNormalEquationsWasm?: (
+            jPtr: number,
+            rPtr: number,
+            nResiduals: number,
+            nParams: number,
+            lambda: number,
+            jtjPtr: number,
+            negJtrPtr: number,
+          ) => void;
+        } | null;
+        if (
+          wasm &&
+          typeof wasm.lmNormalEquationsWasm === "function" &&
+          typeof wasm.__new === "function" &&
+          wasm.memory instanceof WebAssembly.Memory
+        ) {
+          const jCount = nResiduals * nParams;
+          const totalBytes = (jCount + nResiduals + nParams * nParams + nParams) * 8 + 16;
+          const ptr = wasm.__new(totalBytes, 0);
+          if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+          const jPtr = (ptr + 7) & ~7;
+          const rPtr = jPtr + jCount * 8;
+          const jtjPtr = rPtr + nResiduals * 8;
+          const negJtrPtr = jtjPtr + nParams * nParams * 8;
 
-        // Compute J'r
-        let jtr = 0;
-        for (let k = 0; k < nResiduals; k++) {
-          jtr += jacobian[k]![i]! * residuals[k]!;
+          const buf = wasm.memory.buffer;
+          const jView = new Float64Array(buf, jPtr, jCount);
+          for (let k = 0; k < nResiduals; k++) {
+            jView.set(jacobian[k]!, k * nParams);
+          }
+          new Float64Array(buf, rPtr, nResiduals).set(residuals);
+
+          wasm.lmNormalEquationsWasm(jPtr, rPtr, nResiduals, nParams, lambda, jtjPtr, negJtrPtr);
+
+          const outBuf = wasm.memory.buffer;
+          JtJ.set(new Float64Array(outBuf, jtjPtr, nParams * nParams));
+          Jtr.set(new Float64Array(outBuf, negJtrPtr, nParams));
+          if (typeof wasm.__unpin === "function") wasm.__unpin(ptr);
+          usedWasmLm = true;
         }
-        Jtr[i] = -jtr;
+      }
+
+      if (!usedWasmLm) {
+        for (let i = 0; i < nParams; i++) {
+          for (let j = 0; j <= i; j++) {
+            let sum = 0;
+            for (let k = 0; k < nResiduals; k++) {
+              sum += jacobian[k]![i]! * jacobian[k]![j]!;
+            }
+            JtJ[i * nParams + j] = sum;
+            JtJ[j * nParams + i] = sum;
+          }
+          // Add damping
+          JtJ[i * nParams + i] = (JtJ[i * nParams + i] ?? 0) + lambda;
+
+          // Compute J'r
+          let jtr = 0;
+          for (let k = 0; k < nResiduals; k++) {
+            jtr += jacobian[k]![i]! * residuals[k]!;
+          }
+          Jtr[i] = -jtr;
+        }
       }
 
       // Solve for step: (J'J + λI) Δθ = -J'r
-      const lu = luFactor(JtJ, nParams);
-      luSolve(lu, Jtr);
+      const lu = luFactorFlat(JtJ, nParams);
+      luSolveFlat(lu, Jtr);
       const step = Jtr;
 
       // Project step onto box constraints
@@ -599,10 +647,9 @@ export class ModelicaCalibrator {
     }
 
     // BFGS Hessian approximation
-    const H = new Array<Float64Array>(nParams);
+    const H = new Float64Array(nParams * nParams);
     for (let i = 0; i < nParams; i++) {
-      H[i] = new Float64Array(nParams);
-      H[i]![i] = 1.0;
+      H[i * nParams + i] = 1.0;
     }
 
     const grad = new Float64Array(nParams);
@@ -629,8 +676,8 @@ export class ModelicaCalibrator {
       // Compute search direction: d = -H⁻¹ · grad (using H as approx Hessian)
       const rhs = new Float64Array(nParams);
       for (let i = 0; i < nParams; i++) rhs[i] = -grad[i]!;
-      const lu = luFactor(H, nParams);
-      luSolve(lu, rhs);
+      const lu = luFactorFlat(new Float64Array(H), nParams);
+      luSolveFlat(lu, rhs);
       const d = rhs;
 
       // Project onto box constraints
@@ -690,7 +737,7 @@ export class ModelicaCalibrator {
         const Hs = new Float64Array(nParams);
         for (let i = 0; i < nParams; i++) {
           let sum = 0;
-          for (let j = 0; j < nParams; j++) sum += H[i]![j]! * s[j]!;
+          for (let j = 0; j < nParams; j++) sum += H[i * nParams + j]! * s[j]!;
           Hs[i] = sum;
         }
         let sHs = 0;
@@ -699,7 +746,7 @@ export class ModelicaCalibrator {
         if (sHs > 1e-12) {
           for (let i = 0; i < nParams; i++) {
             for (let j = 0; j < nParams; j++) {
-              H[i]![j] = H[i]![j]! + (y[i]! * y[j]!) / sy - (Hs[i]! * Hs[j]!) / sHs;
+              H[i * nParams + j] = H[i * nParams + j]! + (y[i]! * y[j]!) / sy - (Hs[i]! * Hs[j]!) / sHs;
             }
           }
         }

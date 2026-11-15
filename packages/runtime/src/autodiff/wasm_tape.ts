@@ -9,8 +9,41 @@
  */
 
 import type { DAEBuilder } from "../dae/wasm_dae.js";
-import { BinOp, ExprKind, UnaryOp } from "../dae/wasm_dae.js";
+import { BinOp, ExprKind, getDefaultWasmExports, UnaryOp } from "../dae/wasm_dae.js";
 import { StringInterner } from "../workspace/wasm_string_pool.js";
+
+interface StaticTapeWasmScratch {
+  wasm: any;
+  capLen: number;
+  opDataPtr: number;
+  valDataPtr: number;
+  tPtr: number;
+  dtPtr: number;
+}
+
+let staticTapeScratch: StaticTapeWasmScratch | null = null;
+
+function ensureStaticTapeScratch(wasm: any, len: number): StaticTapeWasmScratch | null {
+  if (!wasm || typeof wasm.__new !== "function") return null;
+  if (staticTapeScratch && staticTapeScratch.wasm === wasm && staticTapeScratch.capLen >= len) {
+    return staticTapeScratch;
+  }
+  const capLen = Math.max(len, 256);
+  const alloc = (bytes: number): number => {
+    const ptr = wasm.__new(bytes, 0);
+    if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+    return ptr;
+  };
+  staticTapeScratch = {
+    wasm,
+    capLen,
+    opDataPtr: alloc(capLen * 16),
+    valDataPtr: alloc(capLen * 8),
+    tPtr: alloc(capLen * 8),
+    dtPtr: alloc(capLen * 8),
+  };
+  return staticTapeScratch;
+}
 
 /**
  * Opcode kinds for nodes in the static Wengert differentiation tape,
@@ -834,9 +867,41 @@ function extractDer(arena: DAEBuilder, exprId: number): string | null {
  * Evaluate a tape forward pass at runtime, returning the value array.
  */
 export function evaluateTapeForward(builder: StaticTapeBuilder, varValues: Map<string, number>): Float64Array {
-  const t = new Float64Array(builder.length);
+  const len = builder.length;
   const { opData, valData, interner } = builder;
   const TAPE_STRIDE = 4;
+
+  if (len >= 32) {
+    const wasm: any = getDefaultWasmExports();
+    if (wasm && typeof wasm.staticTapeForwardWasm === "function") {
+      const s = ensureStaticTapeScratch(wasm, len);
+      if (s) {
+        const buf = wasm.memory.buffer;
+        new Uint32Array(buf, s.opDataPtr, len * TAPE_STRIDE).set(opData.subarray(0, len * TAPE_STRIDE));
+        new Float64Array(buf, s.valDataPtr, len).set(valData.subarray(0, len));
+        const tView = new Float64Array(buf, s.tPtr, len);
+        for (let i = 0; i < len; i++) {
+          const offset = i * TAPE_STRIDE;
+          const kind = opData[offset] as TapeOpKind;
+          if (kind === TapeOpKind.Var) {
+            tView[i] = varValues.get(interner.resolve(opData[offset + 1]!) || "") ?? 0;
+          } else if (kind === TapeOpKind.VecVar) {
+            const baseName = interner.resolve(opData[offset + 1]!) || "";
+            const count = opData[offset + 2]!;
+            for (let k = 0; k < count; k++) {
+              tView[i + k] = varValues.get(`${baseName}[${k + 1}]`) ?? 0;
+            }
+          }
+        }
+        wasm.staticTapeForwardWasm(len, s.opDataPtr, s.valDataPtr, s.tPtr);
+        const out = new Float64Array(len);
+        out.set(new Float64Array(wasm.memory.buffer, s.tPtr, len));
+        return out;
+      }
+    }
+  }
+
+  const t = new Float64Array(len);
 
   for (let i = 0; i < builder.length; i++) {
     const offset = i * TAPE_STRIDE;
@@ -934,16 +999,60 @@ export function evaluateTapeForward(builder: StaticTapeBuilder, varValues: Map<s
 /**
  * Evaluate the reverse-mode AD sweep on a tape, returning gradients for all variables.
  */
+function collectTapeGradients(
+  len: number,
+  opData: Uint32Array | Int32Array,
+  interner: StringInterner,
+  dt: Float64Array,
+): Map<string, number> {
+  const TAPE_STRIDE = 4;
+  const gradients = new Map<string, number>();
+  for (let i = 0; i < len; i++) {
+    const offset = i * TAPE_STRIDE;
+    const kind = opData[offset] as TapeOpKind;
+    if (kind === TapeOpKind.Var) {
+      const a = opData[offset + 1]!;
+      const name = interner.resolve(a) || "";
+      gradients.set(name, (gradients.get(name) ?? 0) + (dt[i] ?? 0));
+    } else if (kind === TapeOpKind.VecVar) {
+      const a = opData[offset + 1]!;
+      const b = opData[offset + 2]!;
+      const baseName = interner.resolve(a) || "";
+      for (let k = 0; k < b; k++) {
+        const name = `${baseName}[${k + 1}]`;
+        gradients.set(name, (gradients.get(name) ?? 0) + (dt[i + k] ?? 0));
+      }
+    }
+  }
+  return gradients;
+}
+
 export function evaluateTapeReverse(
   builder: StaticTapeBuilder,
   t: Float64Array,
   outputIndex: number,
 ): Map<string, number> {
-  const dt = new Float64Array(builder.length);
-  dt[outputIndex] = 1.0;
-
+  const len = builder.length;
   const { opData, interner } = builder;
   const TAPE_STRIDE = 4;
+
+  if (len >= 32) {
+    const wasm: any = getDefaultWasmExports();
+    if (wasm && typeof wasm.staticTapeReverseWasm === "function") {
+      const s = ensureStaticTapeScratch(wasm, len);
+      if (s) {
+        const buf = wasm.memory.buffer;
+        new Uint32Array(buf, s.opDataPtr, len * TAPE_STRIDE).set(opData.subarray(0, len * TAPE_STRIDE));
+        new Float64Array(buf, s.tPtr, len).set(t.subarray(0, len));
+        wasm.staticTapeReverseWasm(len, s.opDataPtr, s.tPtr, s.dtPtr, outputIndex);
+        const dtOut = new Float64Array(wasm.memory.buffer, s.dtPtr, len);
+        return collectTapeGradients(len, opData, interner, dtOut);
+      }
+    }
+  }
+
+  const dt = new Float64Array(len);
+  dt[outputIndex] = 1.0;
 
   for (let i = builder.length - 1; i >= 0; i--) {
     if (dt[i] === 0) continue;
@@ -1040,26 +1149,7 @@ export function evaluateTapeReverse(
     }
   }
 
-  // Collect variable gradients
-  const gradients = new Map<string, number>();
-  for (let i = 0; i < builder.length; i++) {
-    const offset = i * TAPE_STRIDE;
-    const kind = opData[offset] as TapeOpKind;
-    if (kind === TapeOpKind.Var) {
-      const a = opData[offset + 1]!;
-      const name = interner.resolve(a) || "";
-      gradients.set(name, (gradients.get(name) ?? 0) + (dt[i] ?? 0));
-    } else if (kind === TapeOpKind.VecVar) {
-      const a = opData[offset + 1]!;
-      const b = opData[offset + 2]!;
-      const baseName = interner.resolve(a) || "";
-      for (let k = 0; k < b; k++) {
-        const name = `${baseName}[${k + 1}]`;
-        gradients.set(name, (gradients.get(name) ?? 0) + (dt[i + k] ?? 0));
-      }
-    }
-  }
-  return gradients;
+  return collectTapeGradients(len, opData, interner, dt);
 }
 
 /**

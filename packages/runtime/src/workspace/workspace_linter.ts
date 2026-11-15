@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { xml } from "@modelscript/dsl";
 import type { UnifiedWorkspace } from "./wasm_workspace.js";
 
 /**
@@ -139,4 +140,212 @@ export function findIncludeCycle(edges: ReadonlyMap<string, readonly string[]>, 
   }
 
   return dfs(startUri);
+}
+
+/** Minimal structural interface matching WASM GLR parser `SyntaxNode`s. */
+export interface CstNodeLike {
+  type: string;
+  text: string;
+  namedChildren?: readonly CstNodeLike[] | undefined;
+  children?: readonly CstNodeLike[] | undefined;
+  startPosition?: { row: number; column: number } | undefined;
+  startIndex?: number | undefined;
+  endIndex?: number | undefined;
+}
+
+/**
+ * Traverses a WASM CST iteratively and returns all nodes whose `type` is in `targetTypes`.
+ */
+export function collectCstNodes(root: CstNodeLike | null | undefined, targetTypes: readonly string[]): CstNodeLike[] {
+  if (!root) return [];
+  const wanted = new Set(targetTypes);
+  const out: CstNodeLike[] = [];
+  const stack: CstNodeLike[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (wanted.has(node.type)) out.push(node);
+    const kids = node.namedChildren ?? node.children ?? [];
+    for (let i = kids.length - 1; i >= 0; i--) {
+      stack.push(kids[i]!);
+    }
+  }
+  return out;
+}
+
+/**
+ * Extracts `{ tagName, attrs, node }` records from an XML WASM CST (`xmlRules` or `Element`/`Attribute`).
+ */
+export function extractXmlTagAttributesFromCst(
+  root: CstNodeLike | null | undefined,
+): Array<{ tagName: string; attrs: Record<string, string>; node: CstNodeLike }> {
+  const tags = collectCstNodes(root, ["XmlSelfClosingTag", "XmlOpenTag", "Element"]);
+  const results: Array<{ tagName: string; attrs: Record<string, string>; node: CstNodeLike }> = [];
+  for (const tag of tags) {
+    const kids = tag.namedChildren ?? tag.children ?? [];
+    const nameNode = kids.find((k) => k.type === "XmlName" || k.type === "TagIdentifier");
+    const tagName = nameNode?.text ?? "";
+    const attrs: Record<string, string> = {};
+    for (const attr of kids) {
+      if (attr.type !== "XmlAttribute" && attr.type !== "Attribute") continue;
+      const akids = attr.namedChildren ?? attr.children ?? [];
+      const kNode = akids.find((k) => k.type === "XmlName" || k.type === "AttrIdentifier");
+      const vNode = akids.find((k) => k.type === "XmlAttrValue" || k.type === "StringLiteral");
+      if (kNode && vNode) {
+        attrs[kNode.text] = vNode.text.replace(/^["']|["']$/g, "");
+      }
+    }
+    results.push({ tagName, attrs, node: tag });
+  }
+  return results;
+}
+
+/**
+ * Returns all leaf (token) nodes in a WASM CST in source order.
+ */
+export function extractCstLeafNodes(root: CstNodeLike | null | undefined): CstNodeLike[] {
+  if (!root) return [];
+  const out: CstNodeLike[] = [];
+  const stack: CstNodeLike[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    const kids = node.namedChildren ?? node.children ?? [];
+    if (kids.length === 0) {
+      out.push(node);
+    } else {
+      for (let i = kids.length - 1; i >= 0; i--) {
+        stack.push(kids[i]!);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Parses `xmlText` using `@modelscript/dsl`'s compiled XML WASM GLR parser and
+ * returns all elements with `{ tagName, attrs, text }`.
+ */
+export function collectXmlElementsFromWasm(
+  xmlText: string,
+): Array<{ tagName: string; attrs: Record<string, string>; text: string }> {
+  const doc = xml.parseXml(xmlText);
+  if (!doc.root) return [];
+  const out: Array<{ tagName: string; attrs: Record<string, string>; text: string }> = [];
+  const stack = [doc.root];
+  while (stack.length > 0) {
+    const el = stack.pop()!;
+    const attrs: Record<string, string> = {};
+    for (const a of el.attributes) {
+      attrs[a.name] = a.value;
+    }
+    out.push({ tagName: el.name, attrs, text: el.text });
+    for (let i = el.children.length - 1; i >= 0; i--) {
+      stack.push(el.children[i]!);
+    }
+  }
+  return out;
+}
+
+/**
+ * Groups WASM CST leaf tokens by 0-based source line (`startPosition.row`).
+ */
+export function groupCstLeavesByLine(
+  root: CstNodeLike | null | undefined,
+): Array<{ row: number; tokens: CstNodeLike[] }> {
+  const leaves = extractCstLeafNodes(root);
+  const byRow = new Map<number, CstNodeLike[]>();
+  for (const leaf of leaves) {
+    const row = leaf.startPosition?.row ?? 0;
+    let bucket = byRow.get(row);
+    if (!bucket) {
+      bucket = [];
+      byRow.set(row, bucket);
+    }
+    bucket.push(leaf);
+  }
+  return Array.from(byRow.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([row, tokens]) => ({ row, tokens }));
+}
+
+/**
+ * Groups all WASM CST leaf tokens (including unnamed keywords and punctuation via
+ * `children`) by 0-based source line (`startPosition.row`).
+ */
+export function groupAllCstTokensByLine(
+  root: CstNodeLike | null | undefined,
+): Array<{ row: number; tokens: CstNodeLike[] }> {
+  if (!root) return [];
+  const leaves: CstNodeLike[] = [];
+  const stack: CstNodeLike[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    const kids = (node.children && node.children.length > 0 ? node.children : node.namedChildren) ?? [];
+    if (kids.length === 0) {
+      leaves.push(node);
+    } else {
+      for (let i = kids.length - 1; i >= 0; i--) {
+        stack.push(kids[i]!);
+      }
+    }
+  }
+  const byRow = new Map<number, CstNodeLike[]>();
+  const pushLeaf = (row: number, token: CstNodeLike) => {
+    let bucket = byRow.get(row);
+    if (!bucket) {
+      bucket = [];
+      byRow.set(row, bucket);
+    }
+    bucket.push(token);
+  };
+  for (const leaf of leaves) {
+    const startRow = leaf.startPosition?.row ?? 0;
+    const text = leaf.text ?? "";
+    if (!text.includes("\n")) {
+      pushLeaf(startRow, leaf);
+      continue;
+    }
+    let pos = 0;
+    let r = startRow;
+    const baseIdx = leaf.startIndex;
+    while (pos <= text.length) {
+      const nl = text.indexOf("\n", pos);
+      const end = nl === -1 ? text.length : nl;
+      const slice = text.slice(pos, end).replace(/\r$/, "");
+      if (slice.length > 0) {
+        pushLeaf(r, {
+          type: leaf.type,
+          text: slice,
+          startPosition: {
+            row: r,
+            column: r === startRow ? (leaf.startPosition?.column ?? 0) : 0,
+          },
+          startIndex: typeof baseIdx === "number" ? baseIdx + pos : undefined,
+          endIndex: typeof baseIdx === "number" ? baseIdx + pos + slice.length : undefined,
+        });
+      }
+      if (nl === -1) break;
+      pos = nl + 1;
+      r++;
+    }
+  }
+  return Array.from(byRow.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([row, tokens]) => ({ row, tokens }));
+}
+
+/**
+ * Reconstructs the source slice spanned by a CST line's leaf tokens using their
+ * exact byte offsets when available, falling back to token text concatenation.
+ */
+export function cstLineText(source: string, tokens: CstNodeLike[]): string {
+  if (tokens.length === 0) return "";
+  const first = tokens[0]!;
+  const last = tokens[tokens.length - 1]!;
+  if (typeof first.startIndex === "number" && typeof last.endIndex === "number" && last.endIndex >= first.startIndex) {
+    return source.slice(first.startIndex, last.endIndex);
+  }
+  return tokens
+    .map((t) => t.text ?? "")
+    .filter(Boolean)
+    .join(" ");
 }

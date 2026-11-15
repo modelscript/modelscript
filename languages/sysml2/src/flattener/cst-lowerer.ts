@@ -448,7 +448,9 @@ export class SysML2CstFlattener {
     this.queryDb = options.queryDb;
     this.workspaceIndex = options.workspaceIndex;
     if (!this.queryDb && this.workspaceIndex) {
-      const idx = this.workspaceIndex as any;
+      const idx = this.workspaceIndex as {
+        getIndex?: (opts: { eager: boolean }) => { toQueryDB?: () => QueryDB | undefined };
+      };
       if (typeof idx.getIndex === "function") {
         const unified = idx.getIndex({ eager: true });
         if (typeof unified.toQueryDB === "function") {

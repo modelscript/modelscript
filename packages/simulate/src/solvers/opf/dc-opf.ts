@@ -14,6 +14,7 @@
  *   - Transmission branch shadow prices / congestion rents
  */
 
+import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
 import { solveDirectDcOpf } from "./direct-dc-opf.js";
 import { formatOpfReport } from "./format-report.js";
 import type {
@@ -26,50 +27,25 @@ import type {
 } from "./types.js";
 
 /**
- * Inverts a real matrix A via Gauss-Jordan elimination with partial pivoting.
+ * Inverts a real matrix A via flat LU factorization (WASM-accelerated for n >= 16).
  */
-function invertDense(A: Float64Array, n: number): Float64Array | null {
-  const aug = new Float64Array(n * 2 * n);
+export function invertDense(A: Float64Array, n: number): Float64Array | null {
+  if (n === 0) return new Float64Array(0);
+  const work = new Float64Array(A.subarray(0, n * n));
+  const lu = luFactorFlat(work, n);
   for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) aug[i * 2 * n + j] = A[i * n + j]!;
-    aug[i * 2 * n + (n + i)] = 1.0;
-  }
-
-  for (let i = 0; i < n; i++) {
-    let maxRow = i;
-    let maxVal = Math.abs(aug[i * 2 * n + i]!);
-    for (let k = i + 1; k < n; k++) {
-      const val = Math.abs(aug[k * 2 * n + i]!);
-      if (val > maxVal) {
-        maxVal = val;
-        maxRow = k;
-      }
-    }
-    if (maxVal < 1e-12) return null;
-    if (maxRow !== i) {
-      for (let k = 0; k < 2 * n; k++) {
-        const tmp = aug[i * 2 * n + k]!;
-        aug[i * 2 * n + k] = aug[maxRow * 2 * n + k]!;
-        aug[maxRow * 2 * n + k] = tmp;
-      }
-    }
-    const pivot = aug[i * 2 * n + i]!;
-    for (let k = 0; k < 2 * n; k++) {
-      aug[i * 2 * n + k] = (aug[i * 2 * n + k] ?? 0) / pivot;
-    }
-    for (let k = 0; k < n; k++) {
-      if (k === i) continue;
-      const factor = aug[k * 2 * n + i]!;
-      for (let j = 0; j < 2 * n; j++) {
-        aug[k * 2 * n + j] = (aug[k * 2 * n + j] ?? 0) - factor * aug[i * 2 * n + j]!;
-      }
-    }
+    const diag = work[i * n + i]!;
+    if (!Number.isFinite(diag) || Math.abs(diag) < 1e-12) return null;
   }
 
   const inv = new Float64Array(n * n);
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      inv[i * n + j] = aug[i * 2 * n + (n + j)]!;
+  const col = new Float64Array(n);
+  for (let j = 0; j < n; j++) {
+    col.fill(0);
+    col[j] = 1.0;
+    luSolveFlat(lu, col);
+    for (let i = 0; i < n; i++) {
+      inv[i * n + j] = col[i]!;
     }
   }
   return inv;

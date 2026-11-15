@@ -15,8 +15,10 @@ import { parseQif } from "./parser/index.js";
 import { qifToModelica, qifToSysML2 } from "./projections/index.js";
 import { evaluateQifSpc, lowerQifToDae } from "./spc/index.js";
 import { reconcileStepWithQif } from "./step-bridge/index.js";
+import { qifPolyglotConfig } from "./tgg/index.js";
 
 export const qifLanguage = language({
+  polyglot: qifPolyglotConfig,
   name: "qif",
   fileExtensions: [".qif", ".qif.xml"],
   maturity: "experimental",

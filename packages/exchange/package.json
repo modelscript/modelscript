@@ -38,6 +38,10 @@
       "types": "./dist/ssp/index.d.ts",
       "default": "./dist/ssp/index.js"
     },
+    "./p3743": {
+      "types": "./dist/p3743/index.d.ts",
+      "default": "./dist/p3743/index.js"
+    },
     "./lens": {
       "types": "./dist/lens/index.d.ts",
       "default": "./dist/lens/index.js"

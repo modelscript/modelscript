@@ -10,6 +10,7 @@
  *   - State-matrix eigenstructure (poles, damping ratios, natural frequencies) via Francis QR iteration
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
 import type { LtiStateSpaceModel } from "./linearize.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -451,6 +452,56 @@ function reduceToUpperHessenberg(H: Float64Array, n: number): void {
   }
 }
 
+type HessenbergQrWasmExports = {
+  memory?: WebAssembly.Memory;
+  __new?: (size: number, id: number) => number;
+  __pin?: (ptr: number) => number;
+  __unpin?: (ptr: number) => void;
+  hessenbergQrEigenvaluesWasm?: (aInPtr: number, n: number, reOutPtr: number, imOutPtr: number) => number;
+};
+
+let hessenbergQrScratch: { wasm: HessenbergQrWasmExports; ptr: number; capBytes: number } | null = null;
+
+/**
+ * Computes all real and complex eigenvalues via WASM Hessenberg QR when `n >= 6`
+ * and the WASM kernel is loaded; returns `null` otherwise.
+ */
+export function tryHessenbergQrEigenvaluesWasm(A: Float64Array, n: number): { re: number; im: number }[] | null {
+  if (n < 6) return null;
+  const wasm = getDefaultWasmExports() as HessenbergQrWasmExports | null;
+  if (
+    !wasm ||
+    typeof wasm.hessenbergQrEigenvaluesWasm !== "function" ||
+    typeof wasm.__new !== "function" ||
+    !(wasm.memory instanceof WebAssembly.Memory)
+  ) {
+    return null;
+  }
+  const nn = n * n;
+  const totalBytes = (nn + 2 * n) * 8;
+  if (!hessenbergQrScratch || hessenbergQrScratch.wasm !== wasm || hessenbergQrScratch.capBytes < totalBytes) {
+    if (hessenbergQrScratch && typeof wasm.__unpin === "function" && hessenbergQrScratch.wasm === wasm) {
+      wasm.__unpin(hessenbergQrScratch.ptr);
+    }
+    const capBytes = Math.max(totalBytes, 8192);
+    const ptr = wasm.__new(capBytes, 0);
+    if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+    hessenbergQrScratch = { wasm, ptr, capBytes };
+  }
+  const aPtr = hessenbergQrScratch.ptr;
+  const rePtr = aPtr + nn * 8;
+  const imPtr = rePtr + n * 8;
+  new Float64Array(wasm.memory.buffer, aPtr, nn).set(A.subarray(0, nn));
+  const count = wasm.hessenbergQrEigenvaluesWasm(aPtr, n, rePtr, imPtr);
+  const reView = new Float64Array(wasm.memory.buffer, rePtr, count);
+  const imView = new Float64Array(wasm.memory.buffer, imPtr, count);
+  const out: { re: number; im: number }[] = new Array(count);
+  for (let i = 0; i < count; i++) {
+    out[i] = { re: reView[i]!, im: imView[i]! };
+  }
+  return out;
+}
+
 /**
  * Compute eigenvalues, damping ratios, and natural frequencies of an n x n state matrix A.
  */
@@ -469,6 +520,25 @@ export function computeEigenStructure(A: Float64Array, n: number): PoleAnalysis[
         stable: re < -1e-12,
       },
     ];
+  }
+
+  const wasmPoles = tryHessenbergQrEigenvaluesWasm(A, n);
+  if (wasmPoles !== null) {
+    return wasmPoles
+      .sort((p1, p2) => p2.re - p1.re || Math.abs(p1.im) - Math.abs(p2.im))
+      .map(({ re, im }) => {
+        const wn = Math.hypot(re, im);
+        const zeta = wn > 1e-15 ? -re / wn : 1.0;
+        const tau = Math.abs(re) > 1e-15 ? -1.0 / re : Infinity;
+        return {
+          real: re,
+          imag: im,
+          naturalFrequency: wn,
+          dampingRatio: zeta,
+          timeConstant: tau,
+          stable: re < -1e-12,
+        };
+      });
   }
 
   const H = new Float64Array(A);

@@ -792,9 +792,9 @@ export function tessellateScadSource(scadCode: string): {
     const argsStr = m[1]!;
     const [tx, ty, tz] = resolveActiveTranslation(m.index);
     const vecMatch = /\[\s*([^\]]+)\s*\]/.exec(argsStr);
-    let sx = 0.4;
-    let sy = 0.4;
-    let sz = 0.4;
+    let sx: number;
+    let sy: number;
+    let sz: number;
     if (vecMatch?.[1]) {
       const dims = splitTopLevelArgs(vecMatch[1]);
       sx = Math.max(0.2, Math.abs(evalScadExpr(dims[0], vars, 10)) / 25);

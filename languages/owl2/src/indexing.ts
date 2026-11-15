@@ -22,7 +22,7 @@ export interface Owl2FileInfo {
  */
 export function indexOwl2Document(ctx: DslIndexFileContext): void {
   const { uri, text } = ctx;
-  const fileIndex = ctx.getFileIndex();
+  const fileIndex = ctx.getFileIndex() as SymbolIndex;
 
   const prefixes = new Map<string, string>([
     ["owl:", "http://www.w3.org/2002/07/owl#"],

@@ -17,12 +17,12 @@ export const autosarTggRules = [
     sourceLang: "autosar",
     targetLang: "sysml2",
     source: ($, v) =>
-      $.SwComponent({
+      $["SwComponent"]?.({
         shortName: v("swcName"),
         kind: v("swcKind"),
       }),
     target: ($, v) =>
-      $.PartDefinition({
+      $["PartDefinition"]?.({
         name: v("swcName"),
         stereotype: v("swcKind"),
       }),
@@ -39,12 +39,12 @@ export const autosarTggRules = [
     sourceLang: "autosar",
     targetLang: "sysml2",
     source: ($, v) =>
-      $.PortPrototype({
+      $["PortPrototype"]?.({
         shortName: v("portName"),
         direction: "required",
       }),
     target: ($, v) =>
-      $.PortUsage({
+      $["PortUsage"]?.({
         name: v("portName"),
         direction: "in",
       }),
@@ -61,12 +61,12 @@ export const autosarTggRules = [
     sourceLang: "autosar",
     targetLang: "sysml2",
     source: ($, v) =>
-      $.PortPrototype({
+      $["PortPrototype"]?.({
         shortName: v("portName"),
         direction: "provided",
       }),
     target: ($, v) =>
-      $.PortUsage({
+      $["PortUsage"]?.({
         name: v("portName"),
         direction: "out",
       }),
@@ -83,11 +83,11 @@ export const autosarTggRules = [
     sourceLang: "autosar",
     targetLang: "sysml2",
     source: ($, v) =>
-      $.RunnableEntity({
+      $["RunnableEntity"]?.({
         shortName: v("runnableName"),
       }),
     target: ($, v) =>
-      $.ActionUsage({
+      $["ActionUsage"]?.({
         name: v("runnableName"),
       }),
     where: (v) => [
@@ -103,12 +103,12 @@ export const autosarTggRules = [
     sourceLang: "autosar",
     targetLang: "sysml2",
     source: ($, v) =>
-      $.AssemblySwConnector({
+      $["AssemblySwConnector"]?.({
         provider: v("provRef"),
         requirer: v("reqRef"),
       }),
     target: ($, v) =>
-      $.ConnectionUsage({
+      $["ConnectionUsage"]?.({
         source: v("provRef"),
         target: v("reqRef"),
       }),
@@ -125,13 +125,13 @@ export const autosarTggRules = [
     sourceLang: "autosar",
     targetLang: "sysml2",
     source: ($, v) =>
-      $.ClientServerPort({
+      $["ClientServerPort"]?.({
         shortName: v("portName"),
         interfaceName: v("ifName"),
         direction: "required",
       }),
     target: ($, v) =>
-      $.ConjugatedPortUsage({
+      $["ConjugatedPortUsage"]?.({
         name: v("portName"),
         portType: v("ifName"),
         isConjugated: true,

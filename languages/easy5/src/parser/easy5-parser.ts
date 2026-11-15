@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createWasmParserSync } from "@modelscript/easy5/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import { getBlockDescriptor } from "../catalog/gp-library.js";
 import type {
   Easy5Component,
@@ -10,11 +13,22 @@ import type {
   Easy5Table,
 } from "../types.js";
 
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getEasy5WasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/easy5/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 /**
  * Parses EASY5 model source text (.ez5, .ezm, .ezd, .eas).
  */
 export function parseEasy5(sourceText: string): Easy5Model {
-  const lines = sourceText.split(/\r?\n/);
+  const cstTree = getEasy5WasmParser().parse(sourceText);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   const components = new Map<string, Easy5Component>();
   const connections: Easy5Connection[] = [];
   const tables = new Map<string, Easy5Table>();
@@ -29,18 +43,20 @@ export function parseEasy5(sourceText: string): Easy5Model {
 
   let currentSection = "";
 
-  const lineStarts: number[] = [0];
-  for (let i = 0; i < sourceText.length; i++) {
-    if (sourceText[i] === "\n") lineStarts.push(i + 1);
+  const lineStarts = new Map<number, number>();
+  for (const { row, tokens } of cstLines) {
+    if (tokens.length > 0 && typeof tokens[0]!.startIndex === "number") {
+      lineStarts.set(row, tokens[0]!.startIndex);
+    }
   }
 
   function getOffset(lineIdx: number, colIdx: number): number {
-    const start = lineStarts[lineIdx] ?? 0;
+    const start = lineStarts.get(lineIdx) ?? 0;
     return start + colIdx;
   }
 
-  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-    const line = lines[lineIdx]!;
+  for (const { row: lineIdx, tokens } of cstLines) {
+    const line = cstLineText(sourceText, tokens);
     const trimmed = line.trim();
 
     // Check Fortran block accumulation first

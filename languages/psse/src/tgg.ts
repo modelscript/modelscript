@@ -47,14 +47,15 @@ export const pssePolyglotConfig: PolyglotConfig = {
       name: "PsseModelToModelicaClass",
       sourceLang: "psse",
       targetLang: "modelica",
+      priority: 15,
       source: ($, v) =>
-        $.psse_model({
+        $["psse_model"]?.({
           name: v("className"),
           psseModel: v("psseModel"),
           psseCategory: v("category"),
         }),
       target: ($, v) =>
-        $.ClassDefinition({
+        $["ClassDefinition"]?.({
           name: v("className"),
         }),
       where: (v) => [
@@ -69,13 +70,14 @@ export const pssePolyglotConfig: PolyglotConfig = {
       name: "PsseModelToSysmlPartDef",
       sourceLang: "psse",
       targetLang: "sysml2",
+      priority: 10,
       source: ($, v) =>
-        $.psse_model({
+        $["psse_model"]?.({
           name: v("className"),
           psseModel: v("psseModel"),
         }),
       target: ($, v) =>
-        $.PartDefinition({
+        $["PartDefinition"]?.({
           declaredName: v("className"),
         }),
       where: (v) => [tggEq(v("className"), v("className")), tggComplement(["psseModel", "lowerComponentToDae"])],
@@ -86,14 +88,15 @@ export const pssePolyglotConfig: PolyglotConfig = {
       name: "PsseCaseToModelicaClass",
       sourceLang: "psse",
       targetLang: "modelica",
+      priority: 10,
       source: ($, v) =>
-        $.psse_case({
+        $["psse_case"]?.({
           name: v("caseName"),
           sbase: v("sbase"),
           basfrq: v("basfrq"),
         }),
       target: ($, v) =>
-        $.ClassDefinition({
+        $["ClassDefinition"]?.({
           name: v("caseName"),
         }),
       where: (v) => [
@@ -107,13 +110,14 @@ export const pssePolyglotConfig: PolyglotConfig = {
       name: "PsseDyrCaseToModelicaClass",
       sourceLang: "psse",
       targetLang: "modelica",
+      priority: 5,
       source: ($, v) =>
-        $.psse_dyr_case({
+        $["psse_dyr_case"]?.({
           name: v("caseName"),
           recordCount: v("recordCount"),
         }),
       target: ($, v) =>
-        $.ClassDefinition({
+        $["ClassDefinition"]?.({
           name: v("caseName"),
         }),
       where: (v) => [tggEq(v("caseName"), v("caseName")), tggComplement(["recordCount"])],
@@ -124,12 +128,13 @@ export const pssePolyglotConfig: PolyglotConfig = {
       name: "PsseCaseToSysmlPartDef",
       sourceLang: "psse",
       targetLang: "sysml2",
+      priority: 0,
       source: ($, v) =>
-        $.psse_case({
+        $["psse_case"]?.({
           name: v("caseName"),
         }),
       target: ($, v) =>
-        $.PartDefinition({
+        $["PartDefinition"]?.({
           declaredName: v("caseName"),
         }),
       where: (v) => [tggEq(v("caseName"), v("caseName")), tggComplement(["sbase", "basfrq", "rev"])],
@@ -140,13 +145,14 @@ export const pssePolyglotConfig: PolyglotConfig = {
       name: "PsseDyrRecordToModelicaComponent",
       sourceLang: "psse",
       targetLang: "modelica",
+      priority: 10,
       source: ($, v) =>
-        $.psse_dyr_record({
+        $["psse_dyr_record"]?.({
           name: v("compName"),
           typeSpecifier: v("typeName"),
         }),
       target: ($, v) =>
-        $.ComponentClause({
+        $["ComponentClause"]?.({
           name: v("compName"),
           typeSpecifier: v("typeName"),
         }),
@@ -164,13 +170,13 @@ export const pssePolyglotConfig: PolyglotConfig = {
       targetLang: "modelica",
       priority: 15,
       source: ($, v) =>
-        $.psse_port({
+        $["psse_port"]?.({
           name: v("portName"),
           typeSpecifier: v("typeName"),
           causality: v("dir"),
         }),
       target: ($, v) =>
-        $.ComponentClause({
+        $["ComponentClause"]?.({
           name: v("portName"),
           typeSpecifier: v("typeName"),
         }),
@@ -186,14 +192,15 @@ export const pssePolyglotConfig: PolyglotConfig = {
       name: "PsseParamToModelicaComponent",
       sourceLang: "psse",
       targetLang: "modelica",
+      priority: 5,
       source: ($, v) =>
-        $.psse_parameter({
+        $["psse_parameter"]?.({
           name: v("paramName"),
           typeSpecifier: v("typeName"),
           defaultValue: v("val"),
         }),
       target: ($, v) =>
-        $.ComponentClause({
+        $["ComponentClause"]?.({
           name: v("paramName"),
           typeSpecifier: v("typeName"),
           binding: v("val"),

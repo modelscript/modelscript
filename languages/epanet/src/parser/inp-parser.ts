@@ -7,6 +7,9 @@
  * whitespace tokenization, inline comment stripping, and line/col tracking.
  */
 
+import { createWasmParserSync } from "@modelscript/epanet/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import type {
   EpanetControl,
   EpanetFlowUnits,
@@ -16,8 +19,19 @@ import type {
   EpanetValveType,
 } from "../types.js";
 
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getEpanetWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/epanet/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 export function parseInp(source: string, filename?: string): EpanetNetwork {
-  const lines = source.split(/\r?\n/);
+  const cstTree = getEpanetWasmParser().parse(source);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
 
   const net: EpanetNetwork = {
     junctions: [],
@@ -43,10 +57,10 @@ export function parseInp(source: string, filename?: string): EpanetNetwork {
   };
 
   let currentSection = "";
-  let currentOffset = 0;
 
-  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-    const rawLine = lines[lineIdx]!;
+  for (const { row: lineIdx, tokens: cstTokens } of cstLines) {
+    const rawLine = cstLineText(source, cstTokens);
+    let currentOffset = Math.max(0, (cstTokens[0]?.startIndex ?? 0) - (cstTokens[0]?.startPosition?.column ?? 0));
     const lineLen = rawLine.length + 1; // + newline
     const lineNum = lineIdx + 1;
 
@@ -77,7 +91,7 @@ export function parseInp(source: string, filename?: string): EpanetNetwork {
       continue;
     }
 
-    const colNum = rawLine.indexOf(tokens[0]!) + 1;
+    const colNum = (cstTokens[0]?.startPosition?.column ?? 0) + 1;
     const range: EpanetRange = {
       startLine: lineNum,
       startColumn: Math.max(1, colNum),
@@ -399,7 +413,9 @@ export function serializeInp(net: EpanetNetwork): string {
 
   if (net.pipes.length > 0) {
     out.push("[PIPES]");
-    out.push(";ID              Node1            Node2            Length      Diameter    Roughness   MinorLoss   Status");
+    out.push(
+      ";ID              Node1            Node2            Length      Diameter    Roughness   MinorLoss   Status",
+    );
     for (const p of net.pipes) {
       out.push(
         `${p.id.padEnd(16, " ")} ${p.node1.padEnd(16, " ")} ${p.node2.padEnd(16, " ")} ${p.length.toFixed(1).padEnd(11, " ")} ${p.diameter.toFixed(1).padEnd(11, " ")} ${p.roughness.toFixed(1).padEnd(11, " ")} ${(p.minorLoss ?? 0).toFixed(2).padEnd(11, " ")} ${p.status ?? "Open"}`,

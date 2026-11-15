@@ -10,7 +10,7 @@
  *   4. Hydrant fire flow drawdown vectors and available fire flow (AFF) limits
  */
 
-import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
+import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
 
 export interface WaterNodeDef {
   id: string;
@@ -155,7 +155,7 @@ export function calculateWaterNetworkSensitivities(
   }
 
   const nFree = freeNodes.length;
-  const Yred = Array.from({ length: nFree }, () => new Float64Array(nFree));
+  const Yred = new Float64Array(nFree * nFree);
 
   for (let p = 0; p < P; p++) {
     const u = pipeFromNodes[p]!;
@@ -166,35 +166,35 @@ export function calculateWaterNetworkSensitivities(
     const fv = nodeToFreeMap[v]!;
 
     if (fu >= 0) {
-      Yred[fu]![fu]! += y;
+      Yred[fu * nFree + fu]! += y;
       if (fv >= 0) {
-        Yred[fu]![fv]! -= y;
+        Yred[fu * nFree + fv]! -= y;
       }
     }
     if (fv >= 0) {
-      Yred[fv]![fv]! += y;
+      Yred[fv * nFree + fv]! += y;
       if (fu >= 0) {
-        Yred[fv]![fu]! -= y;
+        Yred[fv * nFree + fu]! -= y;
       }
     }
   }
 
   // Regularize diagonal if any isolated components
   for (let f = 0; f < nFree; f++) {
-    if (Yred[f]![f]! < 1e-6) {
-      Yred[f]![f] = 1.0;
+    if (Yred[f * nFree + f]! < 1e-6) {
+      Yred[f * nFree + f] = 1.0;
     }
   }
 
   // 3. Invert reduced admittance matrix to obtain head sensitivity
   const S_free = Array.from({ length: nFree }, () => new Float64Array(nFree));
   if (nFree > 0) {
-    const fact = luFactor(Yred, nFree);
+    const fact = luFactorFlat(Yred, nFree);
     const e = new Float64Array(nFree);
     for (let col = 0; col < nFree; col++) {
       e.fill(0);
       e[col] = 1.0;
-      luSolve(fact, e);
+      luSolveFlat(fact, e);
       for (let row = 0; row < nFree; row++) {
         S_free[row]![col] = e[row]!;
       }

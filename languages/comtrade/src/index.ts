@@ -12,6 +12,8 @@ export * from "./indexing.js";
 export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";
+export * from "./parser/comfede.js";
+export * from "./parser/comname.js";
 export * from "./parser/comtrade-reader.js";
 export * from "./parser/comtrade-writer.js";
 export * from "./types.js";

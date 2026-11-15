@@ -15,8 +15,10 @@ import { lintTopasDocument } from "./lints/rules.js";
 import { parseTopas } from "./parser/index.js";
 import { computeBraggPeakDepthDose, lowerTopasToDae } from "./physics/index.js";
 import { topasToModelica, topasToScad } from "./projections/index.js";
+import { topasPolyglotConfig } from "./tgg/index.js";
 
 export const topasLanguage = language({
+  polyglot: topasPolyglotConfig,
   name: "topas",
   fileExtensions: [".topas", ".mac"],
   maturity: "experimental",

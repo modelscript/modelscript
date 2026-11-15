@@ -2,6 +2,7 @@
 
 import {
   collectWorkspaceDocuments,
+  collectXmlElementsFromWasm,
   findIncludeCycle,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
@@ -12,8 +13,8 @@ import { lintCellmlDocument } from "./index.js";
 
 /**
  * Performs multi-file CellML 1.1/2.0 workspace linting across `.cellml` files,
- * resolving `<import xlink:href="...">` dependencies, detecting cycles, and
- * linting each parsed model.
+ * resolving `<import xlink:href="...">` dependencies via XML WASM CST, detecting cycles,
+ * and linting each parsed model.
  */
 export function lintCellmlWorkspace(workspace: WorkspaceDocumentInput, rootUri?: string): WorkspaceLintDiagnostic[] {
   const docs = collectWorkspaceDocuments(workspace);
@@ -39,8 +40,9 @@ export function lintCellmlWorkspace(workspace: WorkspaceDocumentInput, rootUri?:
       });
     }
 
-    for (const m of xml.matchAll(/<import\b[^>]*\bxlink:href=["']([^"']+)["']/gi)) {
-      const href = m[1]?.trim();
+    for (const { tagName, attrs } of collectXmlElementsFromWasm(xml)) {
+      if (tagName.toLowerCase() !== "import") continue;
+      const href = (attrs["xlink:href"] ?? attrs["href"])?.trim();
       if (!href || /^https?:\/\//i.test(href)) continue;
       const resolved = resolveRelativeUri(uri, href, docs);
       if (!resolved) {

@@ -131,7 +131,7 @@ export function lint__nmtranAll(db: QueryDB, entry: SymbolEntry): LintResult[] |
 /**
  * Query hooks dispatch table registered with WasmQueryEngine for rule `nmtran_model`.
  */
-export const nmtranQueryHooks: Record<string, Record<string, any>> = {
+export const nmtranQueryHooks: Record<string, Record<string, (db: QueryDB, entry: SymbolEntry) => unknown>> = {
   nmtran_model: {
     nmtranDocument,
     lint__nmtranProblemBlock,

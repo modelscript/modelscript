@@ -7,15 +7,17 @@
  * DAE lowering, closed-loop virtual commissioning, and SSP/SysML2/Modelica projections.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, xmlRules } from "@modelscript/dsl";
 import { runAmlVirtualCommissioning } from "./cosim/index.js";
 import { lowerAutomationMLToDae } from "./dae/index.js";
 import { indexAutomationMLDocument } from "./indexing.js";
 import { lintAutomationML } from "./lints/rules.js";
 import { parseAutomationML } from "./parser/index.js";
 import { amlToModelica, amlToSsp, amlToSysML2 } from "./projections/index.js";
+import { automationmlPolyglotConfig } from "./tgg/index.js";
 
 export const automationMLLanguage = language({
+  polyglot: automationmlPolyglotConfig,
   name: "automationml",
   fileExtensions: [".aml", ".caex"],
   maturity: "experimental",
@@ -25,9 +27,8 @@ export const automationMLLanguage = language({
   lsp: {
     fileExtensions: [".aml", ".caex"],
   },
-  rules: {
-    Root: () => "automationml",
-  },
+  extras: () => [/[ \t\r\n]+/],
+  rules: xmlRules,
 
   actions: [
     {

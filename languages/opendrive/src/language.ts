@@ -14,8 +14,10 @@ import { indexOpenDriveFile } from "./indexing.js";
 import { lintOpenDrive } from "./lints/rules.js";
 import { parseOpenDrive } from "./parser/index.js";
 import { opendriveToGensys } from "./projections/opendrive-to-gensys.js";
+import { opendrivePolyglotConfig } from "./tgg/index.js";
 
 export const opendriveLanguage = language({
+  polyglot: opendrivePolyglotConfig,
   name: "opendrive",
   fileExtensions: [".xodr", ".xml"],
   maturity: "experimental",

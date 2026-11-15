@@ -17,7 +17,12 @@ import { bindingsTemplateDtsCode, bindingsTemplateJsCode } from "../../src-gen/r
  * @returns An object containing the final JS source, DTS source, and exported syntax/field arrays.
  */
 export function generateJavaScriptWrapper(
-  grammarDef: any,
+  grammarDef: {
+    name: string;
+    lints?:
+      | Record<string, { code?: string | number | undefined; message?: unknown; severity?: string | undefined }>
+      | undefined;
+  },
   normalized: NormalizedGrammar,
 ): {
   js: string;
@@ -66,8 +71,12 @@ export function generateJavaScriptWrapper(
     let nextLintId = 2000;
     let first = true;
     for (const [_lintName, lint] of Object.entries(grammarDef.lints)) {
-      const lintId =
-        typeof lint === "object" && lint !== null && (lint as any).code ? (lint as any).code : nextLintId++;
+      const lintObj = (typeof lint === "object" && lint !== null ? lint : {}) as {
+        code?: string | number;
+        message?: unknown;
+        severity?: string;
+      };
+      const lintId = lintObj.code ? lintObj.code : nextLintId++;
       if (!first) {
         lintMessagesStr += ",";
         lintSeveritiesStr += ",";
@@ -75,21 +84,21 @@ export function generateJavaScriptWrapper(
       }
       first = false;
 
-      const msg = (lint as any).message;
+      const msg = lintObj.message;
       if (typeof msg === "function") {
         lintMessagesStr += `"${lintId}": ${msg.toString()}`;
       } else {
         lintMessagesStr += `"${lintId}": ${JSON.stringify(msg)}`;
       }
 
-      const sev = (lint as any).severity;
+      const sev = lintObj.severity;
       let sevNum = 1; // error
       if (sev === "warning") sevNum = 2;
       else if (sev === "info") sevNum = 3;
       else if (sev === "notification") sevNum = 4;
       lintSeveritiesStr += `"${lintId}": ${sevNum}`;
 
-      const customCode = (lint as any).code;
+      const customCode = lintObj.code;
       if (customCode !== undefined) {
         lintCodesStr += `"${lintId}": ${JSON.stringify(customCode)}`;
       } else {
@@ -217,7 +226,7 @@ function sanitizeTypeName(name: string): string {
  * - Cst namespace with zero-allocation static field accessors
  */
 export function generateCstFacade(
-  _grammarDef: any,
+  _grammarDef: unknown,
   normalized: NormalizedGrammar,
   fieldNamesArr: string[],
 ): { js: string; dts: string } {

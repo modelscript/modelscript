@@ -11,7 +11,7 @@ export interface ConfigLayoutEntry {
   type: ConfigOption["type"];
   offset: number;
   size: number;
-  defaultValue: any;
+  defaultValue: unknown;
   choices?: string[] | undefined;
   min?: number | undefined;
   max?: number | undefined;
@@ -29,7 +29,7 @@ export interface ConfigLayoutResult {
 export function generateConfigDomain(
   schema: ConfigSchema,
   mode: ConfigCompilationMode = "dynamicRuntime",
-  userValues: Record<string, any> = {},
+  userValues: Record<string, unknown> = {},
 ): ConfigLayoutResult {
   const entries = new Map<string, ConfigLayoutEntry>();
 
@@ -86,8 +86,8 @@ export function generateConfigDomain(
       size,
       defaultValue: valueOverride,
       choices,
-      min: (opt as any).min,
-      max: (opt as any).max,
+      min: opt.type === "int" || opt.type === "float" ? opt.min : undefined,
+      max: opt.type === "int" || opt.type === "float" ? opt.max : undefined,
     });
 
     currentOffset += size;
@@ -126,7 +126,7 @@ export function generateConfigDomain(
     } else if (entry.type === "bool") {
       code += `  store<u8>(ptr + ${entry.offset}, ${entry.defaultValue ? 1 : 0});\n`;
     } else if (entry.type === "enum") {
-      const idx = entry.choices ? Math.max(0, entry.choices.indexOf(entry.defaultValue)) : 0;
+      const idx = entry.choices ? Math.max(0, entry.choices.indexOf(String(entry.defaultValue))) : 0;
       code += `  store<u8>(ptr + ${entry.offset}, ${idx});\n`;
     }
   }
@@ -147,7 +147,7 @@ export function generateConfigDomain(
         const val =
           entry.type === "enum"
             ? entry.choices
-              ? Math.max(0, entry.choices.indexOf(entry.defaultValue))
+              ? Math.max(0, entry.choices.indexOf(String(entry.defaultValue)))
               : 0
             : entry.defaultValue
               ? 1

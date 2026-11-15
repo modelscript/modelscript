@@ -3167,21 +3167,23 @@ export function buildPolyglotDiagram(
 
     if (srcCell && tgtCell && validNodeIdSet.has(srcCell) && validNodeIdSet.has(tgtCell)) {
       if (typeof edge.source === "object" && edge.source?.port) {
+        const srcPortId = (edge.source as { port: string }).port;
         const srcNode = nodes.find((n) => n.id === srcCell);
-        const hasPort = srcNode?.ports?.items?.some((p) => p.id === (edge.source as any).port);
+        const hasPort = srcNode?.ports?.items?.some((p) => p.id === srcPortId);
         if (!hasPort && srcNode) {
           if (!srcNode.ports) srcNode.ports = { groups: {}, items: [] };
           if (!srcNode.ports.items) srcNode.ports.items = [];
-          srcNode.ports.items.push({ id: (edge.source as any).port, group: "out" });
+          srcNode.ports.items.push({ id: srcPortId, group: "out" });
         }
       }
       if (typeof edge.target === "object" && edge.target?.port) {
+        const tgtPortId = (edge.target as { port: string }).port;
         const tgtNode = nodes.find((n) => n.id === tgtCell);
-        const hasPort = tgtNode?.ports?.items?.some((p) => p.id === (edge.target as any).port);
+        const hasPort = tgtNode?.ports?.items?.some((p) => p.id === tgtPortId);
         if (!hasPort && tgtNode) {
           if (!tgtNode.ports) tgtNode.ports = { groups: {}, items: [] };
           if (!tgtNode.ports.items) tgtNode.ports.items = [];
-          tgtNode.ports.items.push({ id: (edge.target as any).port, group: "in" });
+          tgtNode.ports.items.push({ id: tgtPortId, group: "in" });
         }
       }
       sanitizedEdges.push(edge);

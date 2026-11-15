@@ -6,8 +6,10 @@ import { indexOpenAdrFile } from "./indexing.js";
 import { lintOpenAdr } from "./lints/rules.js";
 import { parseOpenAdr } from "./parser/openadr-parser.js";
 import { evaluateCurtailment } from "./solver/curtailment-evaluator.js";
+import { openadrPolyglotConfig } from "./tgg/index.js";
 
 export const openadrLanguage = language({
+  polyglot: openadrPolyglotConfig,
   name: "openadr",
   fileExtensions: [".oadr", ".oadr.xml", ".oadr.json", ".xml", ".json"],
   maturity: "experimental",

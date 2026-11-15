@@ -19,11 +19,74 @@
  *   IEEE Transactions on Evolutionary Computation, 18(4), 577-601.
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
+
+interface Nsga3WasmExports {
+  memory: WebAssembly.Memory;
+  __new(bytes: number, id: number): number;
+  __pin?(ptr: number): void;
+  nsga3AssociateAndNichingWasm?(
+    n: number,
+    rCount: number,
+    m: number,
+    objsPtr: number,
+    refPtsPtr: number,
+    ranksPtr: number,
+    distPtr: number,
+  ): void;
+}
+
+interface Nsga3WasmScratch {
+  wasm: Nsga3WasmExports;
+  capN: number;
+  capR: number;
+  capM: number;
+  objsPtr: number;
+  refPtsPtr: number;
+  ranksPtr: number;
+  distPtr: number;
+}
+
+let nsga3Scratch: Nsga3WasmScratch | null = null;
+
+function ensureNsga3Scratch(wasm: Nsga3WasmExports, n: number, rCount: number, m: number): Nsga3WasmScratch | null {
+  if (!wasm || typeof wasm.__new !== "function") return null;
+  if (
+    nsga3Scratch &&
+    nsga3Scratch.wasm === wasm &&
+    nsga3Scratch.capN >= n &&
+    nsga3Scratch.capR >= rCount &&
+    nsga3Scratch.capM >= m
+  ) {
+    return nsga3Scratch;
+  }
+  const capN = Math.max(n, 128);
+  const capR = Math.max(rCount, 128);
+  const capM = Math.max(m, 8);
+  const alloc = (bytes: number): number => {
+    const ptr = wasm.__new(bytes, 0);
+    if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+    return ptr;
+  };
+  nsga3Scratch = {
+    wasm,
+    capN,
+    capR,
+    capM,
+    objsPtr: alloc(capN * capM * 8),
+    refPtsPtr: alloc(capR * capM * 8),
+    ranksPtr: alloc(capN * 4),
+    distPtr: alloc(capN * 8),
+  };
+  return nsga3Scratch;
+}
+
 import { solveDcOpf } from "../../solvers/opf/dc-opf.js";
 import type { GenericPowerCase } from "../../solvers/opf/types.js";
 import {
   createRng,
   evaluateMultiObjectiveBatchOrSingle,
+  fastNonDominatedSortWasm,
   type MultiObjectiveOptions,
   type MultiObjectiveProblem,
   type MultiObjectiveResult,
@@ -84,6 +147,9 @@ function dominates(objA: Float64Array, objB: Float64Array): boolean {
 
 /** Fast non-dominated sorting into hierarchical Pareto fronts. */
 function fastNonDominatedSort(pop: InternalIndividual[]): InternalIndividual[][] {
+  const wasmFronts = fastNonDominatedSortWasm(pop);
+  if (wasmFronts) return wasmFronts;
+
   const fronts: InternalIndividual[][] = [[]];
 
   for (let i = 0; i < pop.length; i++) {
@@ -132,11 +198,7 @@ function fastNonDominatedSort(pop: InternalIndividual[]): InternalIndividual[][]
 /**
  * Normalizes objective values using ideal point and extreme point intercepts.
  */
-function normalizeObjectives(
-  pop: InternalIndividual[],
-  M: number,
-  idealPoint: Float64Array,
-): Float64Array {
+function normalizeObjectives(pop: InternalIndividual[], M: number, idealPoint: Float64Array): Float64Array {
   // Update ideal point
   for (let m = 0; m < M; m++) {
     let minVal = idealPoint[m]!;
@@ -198,10 +260,45 @@ function perpendicularDistance(point: Float64Array, refLine: Float64Array): numb
 /**
  * Associates each population member with its nearest reference point.
  */
-function associateWithReferencePoints(
-  pop: InternalIndividual[],
-  refPoints: Float64Array[],
-): void {
+function associateWithReferencePoints(pop: InternalIndividual[], refPoints: Float64Array[]): void {
+  const n = pop.length;
+  const rCount = refPoints.length;
+  if (n >= 16 && rCount > 0) {
+    const m = pop[0]?.normalizedObjectives.length ?? 0;
+    if (m > 0) {
+      const wasm = getDefaultWasmExports() as unknown as
+        | (ReturnType<typeof getDefaultWasmExports> & {
+            nsga3AssociateRefPointsWasm?: (...args: number[]) => void;
+            memory: WebAssembly.Memory;
+          })
+        | null;
+      if (wasm && typeof wasm.nsga3AssociateRefPointsWasm === "function") {
+        const s = ensureNsga3Scratch(wasm, n, rCount, m);
+        if (s) {
+          const buf = wasm.memory.buffer;
+          const objsView = new Float64Array(buf, s.objsPtr, n * m);
+          for (let i = 0; i < n; i++) {
+            objsView.set(pop[i]!.normalizedObjectives.subarray(0, m), i * m);
+          }
+          const refView = new Float64Array(buf, s.refPtsPtr, rCount * m);
+          for (let r = 0; r < rCount; r++) {
+            refView.set(refPoints[r]!.subarray(0, m), r * m);
+          }
+          wasm.nsga3AssociateRefPointsWasm(n, rCount, m, s.objsPtr, s.refPtsPtr, s.ranksPtr, s.distPtr);
+          const outBuf = wasm.memory.buffer;
+          const idxView = new Int32Array(outBuf, s.ranksPtr, n);
+          const distView = new Float64Array(outBuf, s.distPtr, n);
+          for (let i = 0; i < n; i++) {
+            const ind = pop[i]!;
+            ind.associatedRefPoint = idxView[i]!;
+            ind.perpendicularDistance = distView[i]!;
+          }
+          return;
+        }
+      }
+    }
+  }
+
   for (const ind of pop) {
     let bestRef = 0;
     let minDistance = Infinity;
@@ -239,10 +336,7 @@ function nichePreservationSelection(
   }
 
   // Group candidate individuals from lastFront by associated reference point
-  const candidatesByRef: InternalIndividual[][] = Array.from(
-    { length: refPoints.length },
-    () => [],
-  );
+  const candidatesByRef: InternalIndividual[][] = Array.from({ length: refPoints.length }, () => []);
   for (const ind of lastFront) {
     candidatesByRef[ind.associatedRefPoint]!.push(ind);
   }
@@ -272,14 +366,14 @@ function nichePreservationSelection(
 
     const minRefCandidates: number[] = [];
     for (const r of activeRefs) {
-      if ((rho[r]!) === minRho) minRefCandidates.push(r);
+      if ((rho[r] ?? Infinity) === minRho) minRefCandidates.push(r);
     }
 
     const chosenRef = minRefCandidates[Math.floor(rng() * minRefCandidates.length)]!;
     const candidates = candidatesByRef[chosenRef]!;
 
     let chosenInd: InternalIndividual;
-    if ((rho[chosenRef]!) === 0) {
+    if ((rho[chosenRef] ?? 0) === 0) {
       // Pick individual with smallest perpendicular distance
       candidates.sort((a, b) => a.perpendicularDistance - b.perpendicularDistance);
       chosenInd = candidates.shift()!;
@@ -321,12 +415,18 @@ function sbx(
 
         let beta = 1.0 + (2.0 * (y1 - lb)) / (y2 - y1);
         let alpha = 2.0 - Math.pow(beta, -(eta + 1.0));
-        let betaq = u <= 1.0 / alpha ? Math.pow(u * alpha, 1.0 / (eta + 1.0)) : Math.pow(1.0 / (2.0 - u * alpha), 1.0 / (eta + 1.0));
+        let betaq =
+          u <= 1.0 / alpha
+            ? Math.pow(u * alpha, 1.0 / (eta + 1.0))
+            : Math.pow(1.0 / (2.0 - u * alpha), 1.0 / (eta + 1.0));
         let ch1 = 0.5 * (y1 + y2 - betaq * (y2 - y1));
 
         beta = 1.0 + (2.0 * (ub - y2)) / (y2 - y1);
         alpha = 2.0 - Math.pow(beta, -(eta + 1.0));
-        betaq = u <= 1.0 / alpha ? Math.pow(u * alpha, 1.0 / (eta + 1.0)) : Math.pow(1.0 / (2.0 - u * alpha), 1.0 / (eta + 1.0));
+        betaq =
+          u <= 1.0 / alpha
+            ? Math.pow(u * alpha, 1.0 / (eta + 1.0))
+            : Math.pow(1.0 / (2.0 - u * alpha), 1.0 / (eta + 1.0));
         let ch2 = 0.5 * (y1 + y2 + betaq * (y2 - y1));
 
         c1[i] = Math.max(lb, Math.min(ub, ch1));
@@ -446,7 +546,10 @@ export async function solveNsga3(
       const p1 = population[idx1]!.point;
       const p2 = population[idx2]!.point;
 
-      let [c1, c2] = rng() < pc ? sbx(p1, p2, problem.bounds.min, problem.bounds.max, etaC, rng) : [new Float64Array(p1), new Float64Array(p2)];
+      let [c1, c2] =
+        rng() < pc
+          ? sbx(p1, p2, problem.bounds.min, problem.bounds.max, etaC, rng)
+          : [new Float64Array(p1), new Float64Array(p2)];
 
       c1 = polynomialMutation(c1, problem.bounds.min, problem.bounds.max, pm, etaM, rng);
       c2 = polynomialMutation(c2, problem.bounds.min, problem.bounds.max, pm, etaM, rng);

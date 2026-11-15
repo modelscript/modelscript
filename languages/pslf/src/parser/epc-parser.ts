@@ -60,11 +60,26 @@ export function tokenizeEpcLine(line: string): string[] {
   return tokens;
 }
 
+import { createWasmParserSync } from "@modelscript/pslf/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getPslfWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/pslf/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 /**
  * Parses a GE PSLF .epc power flow file.
  */
 export function parsePslfEpc(content: string): PslfEpcCase {
-  const lines = content.split(/\r?\n/);
+  const cstTree = getPslfWasmParser().parse(content);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   const buses = new Map<number, PslfBus>();
   const generators: PslfGenerator[] = [];
   const loads: PslfLoad[] = [];
@@ -79,8 +94,8 @@ export function parsePslfEpc(content: string): PslfEpcCase {
   let mbaseMva = 100.0;
   let baseFreqHz = 60.0;
 
-  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-    const rawLine = lines[lineIdx]!.trim();
+  for (const { tokens: cstTokens } of cstLines) {
+    const rawLine = cstLineText(content, cstTokens).trim();
     if (rawLine.length === 0) continue;
 
     // Comments

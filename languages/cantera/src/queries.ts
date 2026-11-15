@@ -25,8 +25,8 @@ export function canteraDocument(_db: QueryDB, entry: SymbolEntry): CanteraMechan
   if (!entry) return null;
 
   if (entry.metadata?.["doc"]) {
-    const metaDoc: any = entry.metadata["doc"];
-    return metaDoc.mechanism ? (metaDoc.mechanism as CanteraMechanism) : (metaDoc as CanteraMechanism);
+    const metaDoc = entry.metadata["doc"] as { mechanism?: CanteraMechanism } | CanteraMechanism;
+    return "mechanism" in metaDoc && metaDoc.mechanism ? metaDoc.mechanism : (metaDoc as CanteraMechanism);
   }
 
   const raw = (entry.metadata?.["rawSource"] as string) || (entry.metadata?.["text"] as string);
@@ -162,7 +162,7 @@ export function lint__canteraAll(db: QueryDB, entry: SymbolEntry): LintResult[] 
 /**
  * Query hooks dispatch table registered with WasmQueryEngine for rule `cantera_mechanism`.
  */
-export const canteraQueryHooks: Record<string, Record<string, any>> = {
+export const canteraQueryHooks: Record<string, Record<string, (db: QueryDB, entry: SymbolEntry) => unknown>> = {
   cantera_mechanism: {
     canteraDocument,
     lint__canteraStoichiometry,

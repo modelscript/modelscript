@@ -14,8 +14,10 @@ import { lowerIgtlToDae, solveTransformChainAndPivot } from "./kinematics/index.
 import { lintIgtlDocument } from "./lints/rules.js";
 import { parseIgtl } from "./parser/index.js";
 import { igtlToModelica, igtlToUrdf } from "./projections/index.js";
+import { igtlPolyglotConfig } from "./tgg/index.js";
 
 export const igtlLanguage = language({
+  polyglot: igtlPolyglotConfig,
   name: "igtl",
   fileExtensions: [".igtl.json", ".igtl", ".plus.xml"],
   maturity: "experimental",

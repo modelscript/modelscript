@@ -263,7 +263,10 @@ export async function verifyOidcToken(token: string, options?: OidcVerifyOptions
       const jwks = await fetchJwks(issuer);
       const matchingKey = kid ? jwks.find((k) => k.kid === kid) : jwks[0];
       if (matchingKey) {
-        const pubKey = crypto.createPublicKey({ key: matchingKey as any, format: "jwk" });
+        const pubKey = crypto.createPublicKey({
+          key: matchingKey as unknown as crypto.JsonWebKeyInput["key"],
+          format: "jwk",
+        });
         const verifier = crypto.createVerify("RSA-SHA256");
         verifier.update(signingInput);
         signatureVerified = verifier.verify(pubKey, signatureBytes);

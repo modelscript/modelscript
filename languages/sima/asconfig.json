@@ -13,7 +13,7 @@
   "options": {
     "bindings": "raw",
     "initialMemory": 16,
-    "maximumMemory": 256,
+    "maximumMemory": 4096,
     "disableWarning": ["235"]
   }
 }

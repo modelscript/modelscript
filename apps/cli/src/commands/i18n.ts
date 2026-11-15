@@ -40,7 +40,7 @@ export const I18n: CommandModule<Record<string, unknown>, I18nArgs> = {
     const context = Context.createBatch(new NodeFileSystem());
 
     const i18nConfig = extractI18nConfig(modelicaLang);
-    const extractor = new I18nExtractor(i18nConfig);
+    const extractor = new I18nExtractor(i18nConfig as ConstructorParameters<typeof I18nExtractor>[0]);
 
     for (const path of args.paths) {
       const library = await context.addLibrary(path);

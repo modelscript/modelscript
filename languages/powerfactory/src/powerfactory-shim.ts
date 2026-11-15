@@ -30,7 +30,7 @@ export class PowerFactoryDataObject {
   public id: string;
   public loc_name: string;
   public className: string;
-  public attributes = new Map<string, any>();
+  public attributes = new Map<string, unknown>();
 
   constructor(id: string, loc_name: string, className: string) {
     this.id = id;
@@ -38,11 +38,11 @@ export class PowerFactoryDataObject {
     this.className = className;
   }
 
-  public GetAttribute(name: string): any {
+  public GetAttribute(name: string): unknown {
     return this.attributes.get(name);
   }
 
-  public SetAttribute(name: string, value: any): void {
+  public SetAttribute(name: string, value: unknown): void {
     this.attributes.set(name, value);
   }
 }
@@ -151,7 +151,8 @@ export class PowerFactorySession {
   }
 
   public activateProject(name: string): PowerFactoryProject | null {
-    const file = this.virtualFiles.get(name) ?? this.virtualFiles.get(`${name}.dz`) ?? this.virtualFiles.get(`${name}.xml`);
+    const file =
+      this.virtualFiles.get(name) ?? this.virtualFiles.get(`${name}.dz`) ?? this.virtualFiles.get(`${name}.xml`);
     if (file) {
       const model = parsePowerFactoryFile(file, name);
       return this.loadModel(model);
@@ -204,10 +205,12 @@ export class PowerFactorySession {
           }
         }
 
-        this.messages.push(`[LDF] Solved AC Power Flow in ${pfSol.iterations} iterations. Max mismatch: ${pfSol.maxMismatchPu.toExponential(3)} pu.`);
+        this.messages.push(
+          `[LDF] Solved AC Power Flow in ${pfSol.iterations} iterations. Max mismatch: ${pfSol.maxMismatchPu.toExponential(3)} pu.`,
+        );
         return 0; // Success
-      } catch (e: any) {
-        this.messages.push(`[ERROR] AC Power Flow failed: ${e?.message ?? e}`);
+      } catch (e: unknown) {
+        this.messages.push(`[ERROR] AC Power Flow failed: ${e instanceof Error ? e.message : String(e)}`);
         return 2;
       }
     } else if (cmdName === "ComShc") {
@@ -228,10 +231,12 @@ export class PowerFactorySession {
           }
         }
 
-        this.messages.push(`[SHC] Calculated short-circuit fault currents across ${scRes.buses.length} buses. Max fault: ${scRes.maxFaultCurrentKa.toFixed(2)} kA.`);
+        this.messages.push(
+          `[SHC] Calculated short-circuit fault currents across ${scRes.buses.length} buses. Max fault: ${scRes.maxFaultCurrentKa.toFixed(2)} kA.`,
+        );
         return 0;
-      } catch (e: any) {
-        this.messages.push(`[ERROR] Short Circuit failed: ${e?.message ?? e}`);
+      } catch (e: unknown) {
+        this.messages.push(`[ERROR] Short Circuit failed: ${e instanceof Error ? e.message : String(e)}`);
         return 2;
       }
     }
@@ -302,7 +307,9 @@ export function executePythonPowerFactoryScript(
   }
 
   // Auto-load first virtual grid file if present
-  const firstGrid = Object.keys(virtualFiles).find((f) => f.endsWith(".dz") || f.endsWith(".xml") || f.endsWith(".pfd"));
+  const firstGrid = Object.keys(virtualFiles).find(
+    (f) => f.endsWith(".dz") || f.endsWith(".xml") || f.endsWith(".pfd"),
+  );
   if (firstGrid) {
     session.activateProject(firstGrid);
   }
@@ -315,7 +322,7 @@ export function executePythonPowerFactoryScript(
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
 
-    if (line.includes("app.GetFromStudyCase(\"ComLdf\")") || line.includes("app.GetFromStudyCase('ComLdf')")) {
+    if (line.includes('app.GetFromStudyCase("ComLdf")') || line.includes("app.GetFromStudyCase('ComLdf')")) {
       app.GetFromStudyCase("ComLdf");
     }
     if (line.endsWith(".Execute()") || line.includes(".Execute()")) {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { TGGRuleOptions } from "../../dsl/language.js";
+import type { TGGConstraint, TGGRuleOptions } from "../../dsl/language.js";
 import { invertExpression } from "../analysis/inversion.js";
 
 export type LosslessnessStatus = "PROVEN_LOSSLESS" | "LOSSLESS_WITH_COMPLEMENT" | "INFORMATION_LOSS";
@@ -28,7 +28,7 @@ export interface LosslessnessReport {
 export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?: string[]): LosslessnessReport {
   const ruleName = rule.name || "unnamed_rule";
 
-  const $proxy: any = new Proxy(
+  const $proxy = new Proxy(
     {},
     {
       get:
@@ -53,12 +53,16 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
           };
         },
     },
-  );
+  ) as unknown as import("../../dsl/language.js").TGGPatternBuilderProxy;
 
   const vProxy = (name: string) => `__var_${name}`;
 
-  const evaluatedSource = typeof rule.source === "function" ? rule.source($proxy, vProxy) : rule.source;
-  const evaluatedTarget = typeof rule.target === "function" ? rule.target($proxy, vProxy) : rule.target;
+  const evaluatedSource = (typeof rule.source === "function" ? rule.source($proxy, vProxy) : rule.source) as
+    | { nodeType?: string; bindings?: Record<string, unknown> }
+    | undefined;
+  const evaluatedTarget = (typeof rule.target === "function" ? rule.target($proxy, vProxy) : rule.target) as
+    | { nodeType?: string; bindings?: Record<string, unknown> }
+    | undefined;
   const constraints = typeof rule.where === "function" ? rule.where(vProxy) : rule.where || [];
 
   const sourceType = evaluatedSource?.nodeType || "UnknownSource";
@@ -70,8 +74,8 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
     typeof evaluatedTarget?.bindings === "object" && evaluatedTarget?.bindings !== null ? evaluatedTarget.bindings : {};
 
   // Extract declared complement fields
-  const complementConstraint = constraints.find((c: any) => c.kind === "complement");
-  const complementAttributes: string[] = complementConstraint?.args?.[0] || [];
+  const complementConstraint = constraints.find((c: { kind?: string; args?: unknown[] }) => c.kind === "complement");
+  const complementAttributes: string[] = (complementConstraint?.args?.[0] as string[] | undefined) || [];
 
   // Determine all source attributes under consideration
   const knownSourceAttrs = new Set<string>([...Object.keys(srcBindings), ...(sourceSchemaAttrs || [])]);
@@ -113,7 +117,7 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
         : typeof srcVar === "string"
           ? srcVar
           : undefined;
-    const isArgMatching = (arg: any) =>
+    const isArgMatching = (arg: unknown) =>
       arg === attr ||
       arg === srcVar ||
       (strippedSrcVar !== undefined && arg === strippedSrcVar) ||
@@ -143,7 +147,7 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
       } else if (c.kind === "invertible") {
         const candidateHints = strippedSrcVar && strippedSrcVar !== attr ? [strippedSrcVar, attr] : [attr];
         for (const hint of candidateHints) {
-          const inv = invertExpression(c.args[0], "y", hint);
+          const inv = invertExpression(String(c.args[0]), "y", hint);
           if (inv.isInvertible && (isArgMatching(inv.sourceVar) || inv.sourceVar === hint)) {
             isMapped = true;
             break;
@@ -238,7 +242,7 @@ export interface SynthesizedComplement {
   sourceType: string;
   fields: string[];
   byteSize: number;
-  syntheticConstraint: any;
+  syntheticConstraint: unknown;
 }
 
 /**
@@ -283,7 +287,7 @@ export function autoSynthesizeComplements(rules: TGGRuleOptions[]): {
         ...rule,
         where: (vProxy) => {
           const existing = typeof originalWhere === "function" ? originalWhere(vProxy) : originalWhere || [];
-          return [...existing, synth.syntheticConstraint];
+          return [...existing, synth.syntheticConstraint as TGGConstraint];
         },
       };
       updatedRules.push(updatedRule);

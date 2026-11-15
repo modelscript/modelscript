@@ -3106,22 +3106,23 @@ Rather than writing ad-hoc imperative glue code, engineers write declarative rul
 A TGG rule specifies patterns in the source, correspondence, and target graphs simultaneously:
 
 ```typescript
-import { tggRule } from "@modelscript/dsl/tgg";
+import { tggComplement, tggEq, tggRule } from "@modelscript/dsl";
 
 export const ComponentToModel = tggRule({
   name: "ComponentToModel",
-  source: (s) => ({
-    part: s.node("PartUsage", { name: s.var("compName") }),
-    port: s.node("PortUsage", { parent: s.nodeRef("part") }),
-  }),
-  target: (t) => ({
-    model: t.node("ModelDefinition", { name: t.var("compName") }),
-    pin: t.node("PinConnector", { parent: t.nodeRef("model") }),
-  }),
-  correspondence: (c) => ({
-    tracePart: c.link("part", "model"),
-    tracePort: c.link("port", "pin"),
-  }),
+  sourceLang: "sysml2",
+  targetLang: "modelica",
+  context: {
+    source: ($, v) => $.PartDefinition({ name: v("parentName") }),
+    target: ($, v) => $.ModelicaModel({ name: v("parentName") }),
+  },
+  source: ($, v) => $.PartUsage({ name: v("compName"), type: v("compType") }),
+  target: ($, v) => $.ModelicaComponent({ name: v("compName"), type: v("compType") }),
+  where: (v) => [
+    tggEq(v("compName"), v("compName")),
+    tggEq(v("compType"), v("compType")),
+    tggComplement(["docComment", "placementAnnotation"]),
+  ],
 });
 ```
 
@@ -8935,7 +8936,7 @@ CANONICAL URL: https://modelscript.org/languages/ampl
 
 # AMPL-Compatible Mathematical Programming (`.mod`, `.dat`, `.run`, `.nl`, `.mps`)
 
-`@modelscript/ampl` (`languages/ampl`) provides first-class support for **AMPL-compatible** (*A Mathematical Programming Language*) modeling, the industry-standard algebraic modeling language for linear, mixed-integer, nonlinear, logical, and complementarity mathematical optimization.
+`@modelscript/ampl` (`languages/ampl`) provides first-class support for **AMPL-compatible** (_A Mathematical Programming Language_) modeling, the industry-standard algebraic modeling language for linear, mixed-integer, nonlinear, logical, and complementarity mathematical optimization.
 
 In ModelScript, AMPL bridges declarative operations research, supply chain planning, optimal control, and steady-state process design with the rest of the polyglot physical engineering ecosystem—connecting directly to ModelScript's in-WebAssembly COIN-OR solvers (CLP, CBC, IPOPT, Couenne), external commercial solvers (CPLEX, HiGHS, SCIP), and the linear-memory WebAssembly `DAEBuilder` arena.
 
@@ -8943,14 +8944,14 @@ In ModelScript, AMPL bridges declarative operations research, supply chain plann
 
 ## Supported Extensions & Document Models
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.mod` | AMPL Model File | Declarative model declarations defining `set`, `param`, `var`, `minimize`/`maximize`, `subject to`, `table`, and `check` statements with relational indexing comprehensions. |
-| `.dat` | AMPL Data File | Tabular parameter values, 2D matrix representations (`param (tr): ... :=`), $n$-D slices (`[*, *, k]`), and literal set membership definitions. |
-| `.run` | AMPL Script File | Imperative optimization scripting (`for`, `repeat while/until`, `if-then-else`, `let`, `fix`/`unfix`, `drop`/`restore`, `objective`, `solve`, `display`, `printf`, `read table`, `write table`). |
-| `.nl` | AMPL Solver Library | Universal ASCII intermediate representation with full prefix nonlinear expression opcode trees (`C<k>`, `O<k>`, `o0`–`o53`, `v<k>`, `n<c>`) for external and WASM solvers. |
-| `.sol` | AMPL Solution File | Standard solution vector, objective value, status code, and dual shadow price interchange format. |
-| `.mps` | MPS Format File | Industry-standard Mathematical Programming System fixed/free column-oriented format for LP, MILP, and `SOS1`/`SOS2` problems. |
+| Extension | Format              | Description                                                                                                                                                                                      |
+| :-------- | :------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.mod`    | AMPL Model File     | Declarative model declarations defining `set`, `param`, `var`, `minimize`/`maximize`, `subject to`, `table`, and `check` statements with relational indexing comprehensions.                     |
+| `.dat`    | AMPL Data File      | Tabular parameter values, 2D matrix representations (`param (tr): ... :=`), $n$-D slices (`[*, *, k]`), and literal set membership definitions.                                                  |
+| `.run`    | AMPL Script File    | Imperative optimization scripting (`for`, `repeat while/until`, `if-then-else`, `let`, `fix`/`unfix`, `drop`/`restore`, `objective`, `solve`, `display`, `printf`, `read table`, `write table`). |
+| `.nl`     | AMPL Solver Library | Universal ASCII intermediate representation with full prefix nonlinear expression opcode trees (`C<k>`, `O<k>`, `o0`–`o53`, `v<k>`, `n<c>`) for external and WASM solvers.                       |
+| `.sol`    | AMPL Solution File  | Standard solution vector, objective value, status code, and dual shadow price interchange format.                                                                                                |
+| `.mps`    | MPS Format File     | Industry-standard Mathematical Programming System fixed/free column-oriented format for LP, MILP, and `SOS1`/`SOS2` problems.                                                                    |
 
 ---
 
@@ -9090,13 +9091,13 @@ Decision variables and algebraic constraints lower directly into ModelScript's s
 
 The `@modelscript/ampl` test suite includes automated benchmark verification against canonical operations research and Netlib problems:
 
-| Benchmark ID | Problem Name | Class | Ground Truth Objective ($Z^*$) | ModelScript Status | Parity |
-| :--- | :--- | :---: | :---: | :---: | :---: |
-| `BM1_HITCHCOCK` | Hitchcock-Koopmans Transportation Network | LP | `1707.5000` | **PASS** | Exact ($< 10^{-4}$) |
-| `BM2_LOT_SIZING` | Wagner-Whitin Dynamic Production Lot-Sizing | LP | `10570.0000` | **PASS** | Exact ($< 10^{-2}$) |
-| `BM3_REFINERY_BLEND` | Petroleum Refinery Feedstock Blending | LP | `2113.6364` | **PASS** | Exact ($< 10^{-4}$) |
-| `BM4_CAPITAL_BUDGET` | Capital Budgeting 0-1 Knapsack | MILP | `38.0000` | **PASS** | Exact Integer |
-| `BM5_MARKOWITZ_RISK` | Markowitz Mean-Variance Portfolio Risk | NLP | `0.0355` | **PASS** | KKT Point ($< 10^{-3}$) |
+| Benchmark ID         | Problem Name                                | Class | Ground Truth Objective ($Z^*$) | ModelScript Status |         Parity          |
+| :------------------- | :------------------------------------------ | :---: | :----------------------------: | :----------------: | :---------------------: |
+| `BM1_HITCHCOCK`      | Hitchcock-Koopmans Transportation Network   |  LP   |          `1707.5000`           |      **PASS**      |   Exact ($< 10^{-4}$)   |
+| `BM2_LOT_SIZING`     | Wagner-Whitin Dynamic Production Lot-Sizing |  LP   |          `10570.0000`          |      **PASS**      |   Exact ($< 10^{-2}$)   |
+| `BM3_REFINERY_BLEND` | Petroleum Refinery Feedstock Blending       |  LP   |          `2113.6364`           |      **PASS**      |   Exact ($< 10^{-4}$)   |
+| `BM4_CAPITAL_BUDGET` | Capital Budgeting 0-1 Knapsack              | MILP  |           `38.0000`            |      **PASS**      |      Exact Integer      |
+| `BM5_MARKOWITZ_RISK` | Markowitz Mean-Variance Portfolio Risk      |  NLP  |            `0.0355`            |      **PASS**      | KKT Point ($< 10^{-3}$) |
 
 ---
 
@@ -12091,10 +12092,10 @@ CANONICAL URL: https://modelscript.org/languages/gtfs
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
+| Extension       | Format            | Description                                                                                          |
+| :-------------- | :---------------- | :--------------------------------------------------------------------------------------------------- |
 | `.gtfs`, `.zip` | GTFS Transit Feed | Standard multi-table archive containing `routes.txt`, `stops.txt`, `trips.txt`, and `stop_times.txt` |
-| `.txt`, `.csv` | GTFS Section Text | Concatenated or standalone schedule tables |
+| `.txt`, `.csv`  | GTFS Section Text | Concatenated or standalone schedule tables                                                           |
 
 ---
 
@@ -12881,13 +12882,13 @@ The `@modelscript/powerfactory` language package (`languages/powerfactory`) prov
 
 ## Supported Object Classes & File Formats
 
-| Format / Class                  | Specification                      | Key Structural Features                                                                                  |
-| :------------------------------ | :--------------------------------- | :------------------------------------------------------------------------------------------------------- |
-| **`.dz` / `.pfd` / `.dgs`**     | Project Archive & Data Exchange    | Substations (`ElmSubstat`), terminals (`ElmTerm`), switches (`StaSwitch`, `ElmCoup`), graphic netboards  |
-| **`ElmLne` / `TypLne`**         | AC Transmission Lines & Cables     | Positive/zero-sequence impedance ($R_1, X_1, B_1, R_0, X_0, B_0$), thermal rating, parallel circuits     |
-| **`ElmTr2` / `ElmTr3`**         | 2- & 3-Winding Power Transformers  | HV/MV/LV nominal voltages, vector groups (`YNd11`, `Dyn5`), off-nominal tap changers, short-circuit $u_k$|
-| **`ElmSym` / `ElmGenstat`**     | Synchronous & Static IBR Generators| Active/reactive dispatch, voltage setpoint $u_{\text{setp}}$, capability curves, synchronous reactances  |
-| **`.dsl` (`BlkDef`)**           | DIgSILENT Simulation Language      | Continuous transfer functions, PI/lag/lead-lag blocks, state derivatives, and non-linear limiters        |
+| Format / Class              | Specification                       | Key Structural Features                                                                                   |
+| :-------------------------- | :---------------------------------- | :-------------------------------------------------------------------------------------------------------- |
+| **`.dz` / `.pfd` / `.dgs`** | Project Archive & Data Exchange     | Substations (`ElmSubstat`), terminals (`ElmTerm`), switches (`StaSwitch`, `ElmCoup`), graphic netboards   |
+| **`ElmLne` / `TypLne`**     | AC Transmission Lines & Cables      | Positive/zero-sequence impedance ($R_1, X_1, B_1, R_0, X_0, B_0$), thermal rating, parallel circuits      |
+| **`ElmTr2` / `ElmTr3`**     | 2- & 3-Winding Power Transformers   | HV/MV/LV nominal voltages, vector groups (`YNd11`, `Dyn5`), off-nominal tap changers, short-circuit $u_k$ |
+| **`ElmSym` / `ElmGenstat`** | Synchronous & Static IBR Generators | Active/reactive dispatch, voltage setpoint $u_{\text{setp}}$, capability curves, synchronous reactances   |
+| **`.dsl` (`BlkDef`)**       | DIgSILENT Simulation Language       | Continuous transfer functions, PI/lag/lead-lag blocks, state derivatives, and non-linear limiters         |
 
 ---
 
@@ -13473,10 +13474,10 @@ CANONICAL URL: https://modelscript.org/languages/ocpp
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.ocpp` | OCPP Network Manifest | Station hierarchy, EVSE connector ratings, and charging session states |
-| `.json` | OCPP 2.0.1 JSON Payload | JSON schema conforming EV charging schedules and composite profiles |
+| Extension | Format                  | Description                                                            |
+| :-------- | :---------------------- | :--------------------------------------------------------------------- |
+| `.ocpp`   | OCPP Network Manifest   | Station hierarchy, EVSE connector ratings, and charging session states |
+| `.json`   | OCPP 2.0.1 JSON Payload | JSON schema conforming EV charging schedules and composite profiles    |
 
 ---
 
@@ -13559,11 +13560,11 @@ CANONICAL URL: https://modelscript.org/languages/openadr
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.oadr` | OpenADR Unified Payload | Demand response program declarations, event intervals, and signal limits |
-| `.xml` | OpenADR 2.0b `oadrDistributeEvent` | Standard XML schema for utility-to-facility event distribution |
-| `.json` | OpenADR 3.0 REST/JSON | Lightweight JSON schema for cloud DR orchestrators and microgrid aggregators |
+| Extension | Format                             | Description                                                                  |
+| :-------- | :--------------------------------- | :--------------------------------------------------------------------------- |
+| `.oadr`   | OpenADR Unified Payload            | Demand response program declarations, event intervals, and signal limits     |
+| `.xml`    | OpenADR 2.0b `oadrDistributeEvent` | Standard XML schema for utility-to-facility event distribution               |
+| `.json`   | OpenADR 3.0 REST/JSON              | Lightweight JSON schema for cloud DR orchestrators and microgrid aggregators |
 
 ---
 
@@ -13644,10 +13645,10 @@ CANONICAL URL: https://modelscript.org/languages/tough
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.tgh`, `.tough` | TOUGH Input Deck | Standard LBNL fixed-width ASCII block deck for reservoir modeling |
-| `.dat` | TOUGH / MULKOM Data File | Classic geothermal reservoir simulation deck |
+| Extension        | Format                   | Description                                                       |
+| :--------------- | :----------------------- | :---------------------------------------------------------------- |
+| `.tgh`, `.tough` | TOUGH Input Deck         | Standard LBNL fixed-width ASCII block deck for reservoir modeling |
+| `.dat`           | TOUGH / MULKOM Data File | Classic geothermal reservoir simulation deck                      |
 
 ---
 
@@ -16882,11 +16883,11 @@ CANONICAL URL: https://modelscript.org/languages/hec-ras
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.g01`, `.g02`, `.g03` | HEC-RAS Geometry File | River reach coordinates, cross-section station-elevations, Manning's $n$, and weir structures |
-| `.rasgeo`, `.geo` | Modern HEC-RAS ASCII Geometry | Unified multi-reach geometry exchange format |
-| `.f01`, `.f02` | HEC-RAS Steady Flow File | Boundary conditions (known WS, critical depth, normal depth, rating curves) |
+| Extension              | Format                        | Description                                                                                   |
+| :--------------------- | :---------------------------- | :-------------------------------------------------------------------------------------------- |
+| `.g01`, `.g02`, `.g03` | HEC-RAS Geometry File         | River reach coordinates, cross-section station-elevations, Manning's $n$, and weir structures |
+| `.rasgeo`, `.geo`      | Modern HEC-RAS ASCII Geometry | Unified multi-reach geometry exchange format                                                  |
+| `.f01`, `.f02`         | HEC-RAS Steady Flow File      | Boundary conditions (known WS, critical depth, normal depth, rating curves)                   |
 
 ---
 
@@ -16972,13 +16973,13 @@ CANONICAL URL: https://modelscript.org/languages/modflow
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.dis`, `.dis6` | MODFLOW Discretization Package | 3D layered regular grid dimensions ($\Delta r, \Delta c$, top, bottom elevations) |
-| `.npf` | Node Property Flow Package | Horizontal/vertical hydraulic conductivities ($K_{xx}, K_{33}$) and storage properties |
-| `.wel` | Well Package | Extraction and injection well pumping rates per grid cell |
-| `.riv` | River Package | Surface water-groundwater hydraulic exchange conductance and river stage |
-| `.chd` | Constant-Head Package | Fixed piezometric head boundary conditions |
+| Extension       | Format                         | Description                                                                            |
+| :-------------- | :----------------------------- | :------------------------------------------------------------------------------------- |
+| `.dis`, `.dis6` | MODFLOW Discretization Package | 3D layered regular grid dimensions ($\Delta r, \Delta c$, top, bottom elevations)      |
+| `.npf`          | Node Property Flow Package     | Horizontal/vertical hydraulic conductivities ($K_{xx}, K_{33}$) and storage properties |
+| `.wel`          | Well Package                   | Extraction and injection well pumping rates per grid cell                              |
+| `.riv`          | River Package                  | Surface water-groundwater hydraulic exchange conductance and river stage               |
+| `.chd`          | Constant-Head Package          | Fixed piezometric head boundary conditions                                             |
 
 ---
 
@@ -17064,10 +17065,10 @@ CANONICAL URL: https://modelscript.org/languages/landgem
 
 ## Supported Extensions & Standards
 
-| Extension | Format | Description |
-| :--- | :--- | :--- |
-| `.landgem`, `.lfg` | EPA LandGEM Model | Annual solid waste acceptance cohorts, methane capacity $L_0$, and decay rates $k$ |
-| `.biogas` | Biogas / ADM1 Digester Deck | CSTR reactor parameters, hydraulic retention times (HRT), and influent COD loads |
+| Extension          | Format                      | Description                                                                        |
+| :----------------- | :-------------------------- | :--------------------------------------------------------------------------------- |
+| `.landgem`, `.lfg` | EPA LandGEM Model           | Annual solid waste acceptance cohorts, methane capacity $L_0$, and decay rates $k$ |
+| `.biogas`          | Biogas / ADM1 Digester Deck | CSTR reactor parameters, hydraulic retention times (HRT), and influent COD loads   |
 
 ---
 
@@ -22600,14 +22601,14 @@ npx msx dossier build plant-manifest.json --out plant-rsaw.md --key keys/ed25519
 npx msx gatekeeper evaluate submission.zip --interconnection Western --mva 150 --kv 230 --out scorecard.json
 ```
 
-| Format / Dossier                | Schema / Standard                       | Key Payload Contents                                                                                                                                        |
-| :------------------------------ | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **SARIF** (`sarif`)             | OASIS SARIF v2.1.0                      | Rule descriptors (`M1000`–`M6040`, `S1001`–`S5008`), physical file locations (1-indexed line/column spans), severity levels, and counterexample code flows. |
-| **CTRF** (`ctrf`)               | CTRF v0.0.0 JSON                        | Standardized `results.summary` (`tests`, `passed`, `failed`, `skipped`) and per-property verification duration and witness traces.                          |
-| **JUnit** (`junit`)             | JUnit XML                               | `<testsuites>` and `<testcase>` elements with `<failure>` stack traces for falsified invariants or lint errors.                                             |
-| **DHF** (`dhf`)                 | FDA 21 CFR 820.30 / ISO 13485           | End-to-end Requirements Traceability Matrix (RTM), formal proof summaries, simulation verification evidence, and SHA-256 artifact integrity digests.        |
-| **NERC RSAW / OSCAL** (`dossier`)| NERC PRC-024-3 / MOD-026 / OSCAL 1.1.2 | Automated Reliability Standard Audit Worksheet (RSAW), NIST OSCAL Assessment Results JSON, FERC CEII header watermarks, and Ed25519 cryptographic tokens.   |
-| **Grid Gatekeeper** (`gatekeeper`)| NERC MOD-032-1 / IEEE Std 2800-2022   | 5-stage interconnection screening scorecard (MOD-032 completeness, 20 s flat-start drift, weak-grid $\text{SCR}=1.5$, IEEE 2800 LVRT/HVRT, EMT-RMS parity). |
+| Format / Dossier                   | Schema / Standard                      | Key Payload Contents                                                                                                                                        |
+| :--------------------------------- | :------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SARIF** (`sarif`)                | OASIS SARIF v2.1.0                     | Rule descriptors (`M1000`–`M6040`, `S1001`–`S5008`), physical file locations (1-indexed line/column spans), severity levels, and counterexample code flows. |
+| **CTRF** (`ctrf`)                  | CTRF v0.0.0 JSON                       | Standardized `results.summary` (`tests`, `passed`, `failed`, `skipped`) and per-property verification duration and witness traces.                          |
+| **JUnit** (`junit`)                | JUnit XML                              | `<testsuites>` and `<testcase>` elements with `<failure>` stack traces for falsified invariants or lint errors.                                             |
+| **DHF** (`dhf`)                    | FDA 21 CFR 820.30 / ISO 13485          | End-to-end Requirements Traceability Matrix (RTM), formal proof summaries, simulation verification evidence, and SHA-256 artifact integrity digests.        |
+| **NERC RSAW / OSCAL** (`dossier`)  | NERC PRC-024-3 / MOD-026 / OSCAL 1.1.2 | Automated Reliability Standard Audit Worksheet (RSAW), NIST OSCAL Assessment Results JSON, FERC CEII header watermarks, and Ed25519 cryptographic tokens.   |
+| **Grid Gatekeeper** (`gatekeeper`) | NERC MOD-032-1 / IEEE Std 2800-2022    | 5-stage interconnection screening scorecard (MOD-032 completeness, 20 s flat-start drift, weak-grid $\text{SCR}=1.5$, IEEE 2800 LVRT/HVRT, EMT-RMS parity). |
 
 ---
 
@@ -22648,28 +22649,28 @@ npx msx ddp to-aasx PumpStation.ddp -o PumpStation.aasx
 
 `@modelscript/cad` and the polyglot language plugins provide direct geometric, scene-graph, and mesh interoperability:
 
-| Domain                         | Format / Standard                                              | Extensions                               | Capabilities                                                                                                                                                              |
-| :----------------------------- | :------------------------------------------------------------- | :--------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **3D B-Rep CAD**               | **ISO 10303-21 STEP** (AP203 / AP214 / AP242)                  | `.stp`, `.step`                          | Native GLR parser for `DATA` entity graphs (`ADVANCED_FACE`, `B_SPLINE_SURFACE_WITH_KNOTS`, `MANIFOLD_SOLID_BREP`, `PRODUCT_DEFINITION`) and OpenCASCADE B-Rep export.    |
+| Domain                         | Format / Standard                                              | Extensions                               | Capabilities                                                                                                                                                               |
+| :----------------------------- | :------------------------------------------------------------- | :--------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **3D B-Rep CAD**               | **ISO 10303-21 STEP** (AP203 / AP214 / AP242)                  | `.stp`, `.step`                          | Native GLR parser for `DATA` entity graphs (`ADVANCED_FACE`, `B_SPLINE_SURFACE_WITH_KNOTS`, `MANIFOLD_SOLID_BREP`, `PRODUCT_DEFINITION`) and OpenCASCADE B-Rep export.     |
 | **Parametric CSG & Meshes**    | **OpenSCAD**, **STL**, **OBJ**, **glTF 2.0 / GLB**             | `.scad`, `.stl`, `.obj`, `.gltf`, `.glb` | Evaluates `.scad` scripts and Modelica `Visualizers` (`msx csg`) into watertight boundary-representation solids, 3D formal verification overlays, and glTF 2.0 web assets. |
-| **3D Scene Graph & Physics**   | **Pixar OpenUSD (`UsdPhysics` & `UsdShade`)**                  | `.usda`, `.usdc`, `.usdz`                | Parses and exports hierarchical `Xform`/`Mesh` prims, `PhysicsRigidBodyAPI` mass/inertia, joints, PBR materials, and 3D reachability-tube / SOS barrier-shell overlays.   |
-| **ECAD / PCB Manufacturing**   | **Gerber RS-274X / X2**, **Excellon**, **IPC-2581**, **ODB++** | `.gbr`, `.gtl`, `.gbl`, `.drl`           | Parses aperture definitions (`%ADD...*%`), copper traces, solder mask layers, and NC drill coordinates for 3D PCB stackup rendering and thermal-electrical co-simulation. |
-| **CFD (Fluid Dynamics)**       | **SU2- & OpenFOAM-Compatible**, **CGNS / VTK**                 | `.cfg`, `.su2`, `.vtk`                   | Parses and validates SU2 solver configurations (`SOLVER=RANS`, boundary markers, CFL schedules) and unstructured finite-volume meshes (`NDIME=`, `NELEM=`, `NPOIN=`).     |
-| **FEA (Structural / Thermal)** | **CalculiX- & Abaqus-Compatible**, **NASTRAN-Compatible BDF**  | `.inp`, `.bdf`, `.frd`                   | Parses `*NODE`, `*ELEMENT`, `*MATERIAL`, `*ELASTIC`, `*STEP`, and `*BOUNDARY` decks for thermo-mechanical ROM extraction and stress verification.                         |
+| **3D Scene Graph & Physics**   | **Pixar OpenUSD (`UsdPhysics` & `UsdShade`)**                  | `.usda`, `.usdc`, `.usdz`                | Parses and exports hierarchical `Xform`/`Mesh` prims, `PhysicsRigidBodyAPI` mass/inertia, joints, PBR materials, and 3D reachability-tube / SOS barrier-shell overlays.    |
+| **ECAD / PCB Manufacturing**   | **Gerber RS-274X / X2**, **Excellon**, **IPC-2581**, **ODB++** | `.gbr`, `.gtl`, `.gbl`, `.drl`           | Parses aperture definitions (`%ADD...*%`), copper traces, solder mask layers, and NC drill coordinates for 3D PCB stackup rendering and thermal-electrical co-simulation.  |
+| **CFD (Fluid Dynamics)**       | **SU2- & OpenFOAM-Compatible**, **CGNS / VTK**                 | `.cfg`, `.su2`, `.vtk`                   | Parses and validates SU2 solver configurations (`SOLVER=RANS`, boundary markers, CFL schedules) and unstructured finite-volume meshes (`NDIME=`, `NELEM=`, `NPOIN=`).      |
+| **FEA (Structural / Thermal)** | **CalculiX- & Abaqus-Compatible**, **NASTRAN-Compatible BDF**  | `.inp`, `.bdf`, `.frd`                   | Parses `*NODE`, `*ELEMENT`, `*MATERIAL`, `*ELASTIC`, `*STEP`, and `*BOUNDARY` decks for thermo-mechanical ROM extraction and stress verification.                          |
 
 ---
 
 ## 8. Power Systems, Grid Interconnect & Electronics (PSCAD, PSS/E, PowerFactory, PSLF, CGMES, OpenDSS, SPICE)
 
-| Format                        | Extensions                     | CLI / Tooling                                                                  | Capabilities                                                                                                                                                                         |
-| :---------------------------- | :----------------------------- | :----------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **PSCAD EMT**                 | `.pscx`, `.pswx`, `.psmx`      | `msx pscad <lint\|diagram\|sim\|verify-ieee2800\|export-modelica\|export-ssp>` | Parses hierarchical XML schematics, Blackbox/CSMF control blocks, transmission line segments, and executes nodal admittance EMT simulation and IEEE Std 2800-2022 compliance checks. |
-| **Siemens PSS/E**             | `.raw`, `.dyr`, `.seq`         | `msx psse <lint\|powerflow\|sim\|contingency\|eigen\|short-circuit\|cct>`      | Parses v33/v34/v35 power flow and dynamic records (`GENROU`, `REGCA1`, `REECA1`, `REPCA1`), runs AC/DC power flow, $N-1$ contingency screening, and exports OpenIPSL Modelica.      |
-| **DIgSILENT PowerFactory**    | `.dsl`, `.dgs`                 | `msx powerfactory <lint\|sim\|powerflow\|short-circuit\|modal\|harmonic\|emt>` | Compiles Composite Models (`ElmComp`), Block Definitions (`BlkDef`), and DGS network tables (`ElmTerm`, `ElmSym`, `ElmLne`) for RMS/EMT simulation, IEC 60909 fault, and Modelica.   |
-| **GE Vernova PSLF**           | `.epc`, `.dyd`                 | `msx pslf <lint\|powerflow\|sim\|short-circuit\|wecc\|export-modelica>`        | Parses WECC power flow (`.epc`) and dynamic model libraries (`.dyd`), executes WECC disturbance ride-through and oscillatory damping studies, and converts to/from PSS/E & Modelica. |
-| **ENTSO-E CIM / CGMES**       | `.xml`, `.rdf`                 | `@modelscript/cgmes` (`parseCgmes`, `solveCgmesPowerFlow`, `lowerCgmesToModelica`) | Parses IEC 61970-600-2 CGMES v2.4.15 / v3.0 `EQ`, `SSH`, `TP`, `SV`, and `DY` RDF/XML profiles, runs multi-island AC power flow, and lowers directly to `DAEBuilder` and Modelica.    |
-| **EPRI OpenDSS**              | `.dss`                         | `msx opendss <lint\|powerflow\|hosting-capacity\|volt-var\|flisr\|qsts>`       | Solves unbalanced 3-phase multi-wire distribution networks, IEEE 1547 DER hosting capacity, smart-inverter Volt-VAR droop, FLISR restoration, and 24-hour QSTS profiles.             |
-| **SPICE & Verilog-A**         | `.sp`, `.cir`, `.net`, `.va`   | TGG Synchronization (`msx align`), `@modelscript/spice`, `@modelscript/verilog-a` | Bi-directionally maps SPICE netlists and compact semiconductor device equations (`I(p,n) <+ ...`, `ddt()`) to `Modelica.Electrical.Analog` / `Spice3` components.                    |
+| Format                     | Extensions                   | CLI / Tooling                                                                      | Capabilities                                                                                                                                                                         |
+| :------------------------- | :--------------------------- | :--------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **PSCAD EMT**              | `.pscx`, `.pswx`, `.psmx`    | `msx pscad <lint\|diagram\|sim\|verify-ieee2800\|export-modelica\|export-ssp>`     | Parses hierarchical XML schematics, Blackbox/CSMF control blocks, transmission line segments, and executes nodal admittance EMT simulation and IEEE Std 2800-2022 compliance checks. |
+| **Siemens PSS/E**          | `.raw`, `.dyr`, `.seq`       | `msx psse <lint\|powerflow\|sim\|contingency\|eigen\|short-circuit\|cct>`          | Parses v33/v34/v35 power flow and dynamic records (`GENROU`, `REGCA1`, `REECA1`, `REPCA1`), runs AC/DC power flow, $N-1$ contingency screening, and exports OpenIPSL Modelica.       |
+| **DIgSILENT PowerFactory** | `.dsl`, `.dgs`               | `msx powerfactory <lint\|sim\|powerflow\|short-circuit\|modal\|harmonic\|emt>`     | Compiles Composite Models (`ElmComp`), Block Definitions (`BlkDef`), and DGS network tables (`ElmTerm`, `ElmSym`, `ElmLne`) for RMS/EMT simulation, IEC 60909 fault, and Modelica.   |
+| **GE Vernova PSLF**        | `.epc`, `.dyd`               | `msx pslf <lint\|powerflow\|sim\|short-circuit\|wecc\|export-modelica>`            | Parses WECC power flow (`.epc`) and dynamic model libraries (`.dyd`), executes WECC disturbance ride-through and oscillatory damping studies, and converts to/from PSS/E & Modelica. |
+| **ENTSO-E CIM / CGMES**    | `.xml`, `.rdf`               | `@modelscript/cgmes` (`parseCgmes`, `solveCgmesPowerFlow`, `lowerCgmesToModelica`) | Parses IEC 61970-600-2 CGMES v2.4.15 / v3.0 `EQ`, `SSH`, `TP`, `SV`, and `DY` RDF/XML profiles, runs multi-island AC power flow, and lowers directly to `DAEBuilder` and Modelica.   |
+| **EPRI OpenDSS**           | `.dss`                       | `msx opendss <lint\|powerflow\|hosting-capacity\|volt-var\|flisr\|qsts>`           | Solves unbalanced 3-phase multi-wire distribution networks, IEEE 1547 DER hosting capacity, smart-inverter Volt-VAR droop, FLISR restoration, and 24-hour QSTS profiles.             |
+| **SPICE & Verilog-A**      | `.sp`, `.cir`, `.net`, `.va` | TGG Synchronization (`msx align`), `@modelscript/spice`, `@modelscript/verilog-a`  | Bi-directionally maps SPICE netlists and compact semiconductor device equations (`I(p,n) <+ ...`, `ddt()`) to `Modelica.Electrical.Analog` / `Spice3` components.                    |
 
 ---
 

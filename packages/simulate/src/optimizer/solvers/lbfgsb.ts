@@ -31,6 +31,8 @@
  *   - Direct TypedArray vectorization for fast WebAssembly memory interoperability.
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
+
 export interface LbfgsbOptions {
   /** Maximum number of stored displacement/gradient pairs (default: 8). */
   m?: number | undefined;
@@ -121,76 +123,137 @@ export function lbfgsbSolve(
 
     // Compute two-loop recursion search direction d = -H_k * g
     const d = new Float64Array(n);
-    const q = new Float64Array(grad);
-
-    // Zero out active variable components
-    for (let i = 0; i < n; i++) {
-      if (active[i]) q[i] = 0;
-    }
-
     const k = sHistory.length;
-    const alphas = new Float64Array(k);
 
-    // Loop 1 (backward)
-    for (let i = k - 1; i >= 0; i--) {
-      const s = sHistory[i]!;
-      const y = yHistory[i]!;
-      const rho = rhoHistory[i]!;
+    let usedWasmTwoLoop = false;
+    if (n >= 16 || (k >= 2 && n >= 8)) {
+      const wasm = getDefaultWasmExports() as {
+        memory?: WebAssembly.Memory;
+        __new?: (size: number, id: number) => number;
+        __pin?: (ptr: number) => number;
+        __unpin?: (ptr: number) => void;
+        lbfgsTwoLoopWasm?: (
+          n: number,
+          k: number,
+          gradPtr: number,
+          activePtr: number,
+          sFlatPtr: number,
+          yFlatPtr: number,
+          rhoPtr: number,
+          dOutPtr: number,
+          scratchPtr: number,
+        ) => void;
+      } | null;
+      if (
+        wasm &&
+        typeof wasm.lbfgsTwoLoopWasm === "function" &&
+        typeof wasm.__new === "function" &&
+        wasm.memory instanceof WebAssembly.Memory
+      ) {
+        const kn = k * n;
+        const f64Count = n + kn + kn + k + n + (2 * n + k);
+        const totalBytes = f64Count * 8 + n + 16;
+        const ptr = wasm.__new(totalBytes, 0);
+        if (typeof wasm.__pin === "function") wasm.__pin(ptr);
 
-      let dotSq = 0;
-      for (let j = 0; j < n; j++) {
-        if (!active[j]) dotSq += s[j]! * q[j]!;
-      }
-      const alpha = rho * dotSq;
-      alphas[i] = alpha;
+        const gradPtr = (ptr + 7) & ~7;
+        const sFlatPtr = gradPtr + n * 8;
+        const yFlatPtr = sFlatPtr + kn * 8;
+        const rhoPtr = yFlatPtr + kn * 8;
+        const dOutPtr = rhoPtr + k * 8;
+        const scratchPtr = dOutPtr + n * 8;
+        const activePtr = scratchPtr + (2 * n + k) * 8;
 
-      for (let j = 0; j < n; j++) {
-        if (!active[j]) q[j] = q[j]! - alpha * y[j]!;
+        const buf = wasm.memory.buffer;
+        new Float64Array(buf, gradPtr, n).set(grad);
+        const sView = new Float64Array(buf, sFlatPtr, kn);
+        const yView = new Float64Array(buf, yFlatPtr, kn);
+        const rhoView = new Float64Array(buf, rhoPtr, k);
+        for (let i = 0; i < k; i++) {
+          sView.set(sHistory[i]!, i * n);
+          yView.set(yHistory[i]!, i * n);
+          rhoView[i] = rhoHistory[i]!;
+        }
+        new Uint8Array(buf, activePtr, n).set(active);
+
+        wasm.lbfgsTwoLoopWasm(n, k, gradPtr, activePtr, sFlatPtr, yFlatPtr, rhoPtr, dOutPtr, scratchPtr);
+        d.set(new Float64Array(wasm.memory.buffer, dOutPtr, n));
+        if (typeof wasm.__unpin === "function") wasm.__unpin(ptr);
+        usedWasmTwoLoop = true;
       }
     }
 
-    // Initial Hessian scaling: gamma = (s_{k-1} . y_{k-1}) / (y_{k-1} . y_{k-1})
-    let gamma = 1.0;
-    if (k > 0) {
-      const sLast = sHistory[k - 1]!;
-      const yLast = yHistory[k - 1]!;
-      let sy = 0;
-      let yy = 0;
+    if (!usedWasmTwoLoop) {
+      const q = new Float64Array(grad);
+
+      // Zero out active variable components
+      for (let i = 0; i < n; i++) {
+        if (active[i]) q[i] = 0;
+      }
+
+      const alphas = new Float64Array(k);
+
+      // Loop 1 (backward)
+      for (let i = k - 1; i >= 0; i--) {
+        const s = sHistory[i]!;
+        const y = yHistory[i]!;
+        const rho = rhoHistory[i]!;
+
+        let dotSq = 0;
+        for (let j = 0; j < n; j++) {
+          if (!active[j]) dotSq += s[j]! * q[j]!;
+        }
+        const alpha = rho * dotSq;
+        alphas[i] = alpha;
+
+        for (let j = 0; j < n; j++) {
+          if (!active[j]) q[j] = q[j]! - alpha * y[j]!;
+        }
+      }
+
+      // Initial Hessian scaling: gamma = (s_{k-1} . y_{k-1}) / (y_{k-1} . y_{k-1})
+      let gamma = 1.0;
+      if (k > 0) {
+        const sLast = sHistory[k - 1]!;
+        const yLast = yHistory[k - 1]!;
+        let sy = 0;
+        let yy = 0;
+        for (let j = 0; j < n; j++) {
+          sy += sLast[j]! * yLast[j]!;
+          yy += yLast[j]! * yLast[j]!;
+        }
+        if (yy > 1e-14) {
+          gamma = Math.max(1e-8, Math.min(1e8, sy / yy));
+        }
+      }
+
+      // r = gamma * q
+      const r = new Float64Array(n);
       for (let j = 0; j < n; j++) {
-        sy += sLast[j]! * yLast[j]!;
-        yy += yLast[j]! * yLast[j]!;
+        if (!active[j]) r[j] = gamma * q[j]!;
       }
-      if (yy > 1e-14) {
-        gamma = Math.max(1e-8, Math.min(1e8, sy / yy));
+
+      // Loop 2 (forward)
+      for (let i = 0; i < k; i++) {
+        const s = sHistory[i]!;
+        const y = yHistory[i]!;
+        const rho = rhoHistory[i]!;
+
+        let dotYr = 0;
+        for (let j = 0; j < n; j++) {
+          if (!active[j]) dotYr += y[j]! * r[j]!;
+        }
+        const beta = rho * dotYr;
+
+        for (let j = 0; j < n; j++) {
+          if (!active[j]) r[j] = r[j]! + s[j]! * (alphas[i]! - beta);
+        }
       }
-    }
 
-    // r = gamma * q
-    const r = new Float64Array(n);
-    for (let j = 0; j < n; j++) {
-      if (!active[j]) r[j] = gamma * q[j]!;
-    }
-
-    // Loop 2 (forward)
-    for (let i = 0; i < k; i++) {
-      const s = sHistory[i]!;
-      const y = yHistory[i]!;
-      const rho = rhoHistory[i]!;
-
-      let dotYr = 0;
+      // d = -r on free variables, 0 on active variables
       for (let j = 0; j < n; j++) {
-        if (!active[j]) dotYr += y[j]! * r[j]!;
+        d[j] = active[j] ? 0.0 : -r[j]!;
       }
-      const beta = rho * dotYr;
-
-      for (let j = 0; j < n; j++) {
-        if (!active[j]) r[j] = r[j]! + s[j]! * (alphas[i]! - beta);
-      }
-    }
-
-    // d = -r on free variables, 0 on active variables
-    for (let j = 0; j < n; j++) {
-      d[j] = active[j] ? 0.0 : -r[j]!;
     }
 
     // Ensure d is a descent direction: g . d < 0 on free variables

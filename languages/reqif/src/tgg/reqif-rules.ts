@@ -25,13 +25,13 @@ export const reqifTggRules = [
     sourceLang: "reqif",
     targetLang: "sysml2",
     source: ($, v) =>
-      $.SpecObject({
+      $["SpecObject"]?.({
         identifier: v("reqId"),
         text: v("reqText"),
         asilLevel: v("asil"),
       }),
     target: ($, v) =>
-      $.RequirementDefinition({
+      $["RequirementDefinition"]?.({
         name: v("defName"),
         doc: v("reqText"),
         reqId: v("reqId"),
@@ -52,13 +52,13 @@ export const reqifTggRules = [
     sourceLang: "reqif",
     targetLang: "sysml2",
     source: ($, v) =>
-      $.Contract({
+      $["Contract"]?.({
         variable: v("varName"),
         comparator: v("op"),
         limitValue: v("limit"),
       }),
     target: ($, v) =>
-      $.RequireConstraint({
+      $["RequireConstraint"]?.({
         variable: v("varName"),
         operator: v("op"),
         rhs: v("limit"),
@@ -79,13 +79,13 @@ export const reqifTggRules = [
     sourceLang: "reqif",
     targetLang: "sysml2",
     source: ($, v) =>
-      $.SpecRelation({
+      $["SpecRelation"]?.({
         relationType: "satisfies",
         sourceId: v("byElem"),
         targetId: v("reqRef"),
       }),
     target: ($, v) =>
-      $.SatisfyRequirementUsage({
+      $["SatisfyRequirementUsage"]?.({
         requirement: v("reqRef"),
         by: v("byElem"),
       }),
@@ -102,13 +102,13 @@ export const reqifTggRules = [
     sourceLang: "reqif",
     targetLang: "modelica",
     source: ($, v) =>
-      $.SpecObject({
+      $["SpecObject"]?.({
         identifier: v("reqId"),
         variable: v("varName"),
         limitValue: v("limit"),
       }),
     target: ($, v) =>
-      $.VerificationBlock({
+      $["VerificationBlock"]?.({
         name: v("reqId"),
         monitoredInput: v("varName"),
         threshold: v("limit"),

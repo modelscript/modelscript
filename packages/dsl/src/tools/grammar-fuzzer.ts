@@ -186,12 +186,19 @@ export function mutateSample(sample: string, seed = 1): string {
  * Verifies `parse -> CstUnparser.unparseNode -> parse` round-trip invariants for a CST parser.
  */
 export function verifyRoundTrip(
-  parser: { parse(text: string): any },
+  parser: {
+    parse(text: string): {
+      rootNode?: (Parameters<typeof CstUnparser.unparseNode>[0] & { hasError?: boolean }) | null;
+      hasError?: boolean;
+    } | null;
+  },
   sample: string,
-  unparser: (root: any) => string = (root) => CstUnparser.unparseNode(root),
+  unparser: (root: Parameters<typeof CstUnparser.unparseNode>[0]) => string = (root) => CstUnparser.unparseNode(root),
 ): { ok: boolean; unparsed: string; reason?: string } {
   const tree1 = parser.parse(sample);
-  const root1 = tree1?.rootNode ?? tree1;
+  type FuzzNode = Parameters<typeof CstUnparser.unparseNode>[0] & { hasError?: boolean };
+  const rawRoot1 = tree1 && "rootNode" in tree1 ? tree1.rootNode : tree1;
+  const root1 = (rawRoot1 ?? null) as FuzzNode | null;
   if (!root1) {
     return { ok: false, unparsed: "", reason: "Initial parse returned null/undefined rootNode." };
   }
@@ -200,7 +207,8 @@ export function verifyRoundTrip(
   }
   const unparsed = unparser(root1);
   const tree2 = parser.parse(unparsed);
-  const root2 = tree2?.rootNode ?? tree2;
+  const rawRoot2 = tree2 && "rootNode" in tree2 ? tree2.rootNode : tree2;
+  const root2 = (rawRoot2 ?? null) as FuzzNode | null;
   if (!root2 || root2.hasError) {
     return { ok: false, unparsed, reason: "Re-parse of unparsed output failed or produced syntax errors." };
   }

@@ -9,6 +9,7 @@
 
 import type { QueryDB, SymbolId } from "../runtime.js";
 import { evaluateMslCFunction, isMslCFunction } from "../util/msl_ffi.js";
+import { getArenaRuntimeState } from "./arena_runtime_state.js";
 import { DAEBuilder, ExprKind, StmtKind, VarType } from "./wasm_dae.js";
 import {
   evalRawSubscriptIndex,
@@ -331,12 +332,12 @@ export function executeArenaStatements(
         const bodySlots = countArenaStatementSlots(arena, blockStartIdx, bodyStmtCount);
         nextIdx = blockStartIdx + bodySlots;
 
-        let whenActive: Map<number, boolean> | undefined = (arena as any)._stmtWhenActive;
+        let whenActive: Map<number, boolean> | undefined = getArenaRuntimeState(arena).stmtWhenActive;
         if (!whenActive) {
           whenActive = new Map<number, boolean>();
-          (arena as any)._stmtWhenActive = whenActive;
+          getArenaRuntimeState(arena).stmtWhenActive = whenActive;
         }
-        const isInit = Boolean((arena as any)._isInitialPhase);
+        const isInit = Boolean(getArenaRuntimeState(arena).isInitialPhase);
 
         const condVal = evaluateArenaRuntime(arena, condExprId, valuesByStringId);
         const condNow = condVal !== 0;
@@ -389,15 +390,15 @@ export function executeArenaStatements(
             const newVal = evaluateArenaRuntime(arena, valExprId, valuesByStringId);
             const assignedName = assignArenaTargetRuntime(arena, firstArg, newVal, valuesByStringId);
             if (assignedName) {
-              let pending: Map<string, number> | undefined = (arena as any)._pendingReinits;
+              let pending: Map<string, number> | undefined = getArenaRuntimeState(arena).pendingReinits;
               if (!pending) {
                 pending = new Map<string, number>();
-                (arena as any)._pendingReinits = pending;
+                getArenaRuntimeState(arena).pendingReinits = pending;
               }
               pending.set(assignedName, newVal);
             }
           } else if (funcName === "terminate") {
-            (arena as any)._terminateRequested = true;
+            getArenaRuntimeState(arena).terminateRequested = true;
           } else if (funcName === "assert" || funcName === "print") {
             // consume built-in
           } else {
@@ -462,8 +463,8 @@ export function executeArenaStatements(
           } else if (functionLookup) {
             const result = functionLookup(funcNameId, argValues);
             const lastOuts =
-              ((fnArena as any)?._lastOutputs as number[] | undefined) ??
-              ((arena as any)._lastFunctionOutputs as number[] | undefined);
+              (fnArena ? (getArenaRuntimeState(fnArena).lastOutputs as number[] | undefined) : undefined) ??
+              (getArenaRuntimeState(arena).lastFunctionOutputs as number[] | undefined);
             if (Array.isArray(lastOuts) && lastOuts.length > 0) {
               outputValues = lastOuts;
             } else if (result !== null) {
@@ -655,11 +656,12 @@ export function executeArenaFunction(
     }
 
     const outputs = outputIds.map((id) => valuesByStringId[id] ?? 0);
-    (funcArena as any)._lastOutputs = outputs;
-    (funcArena as any)._lastFunctionOutputs = outputs;
-    const rootArena = (funcArena as any).parentDae;
+    const funcState = getArenaRuntimeState(funcArena);
+    funcState.lastOutputs = outputs;
+    funcState.lastFunctionOutputs = outputs;
+    const rootArena = (funcArena as any).parentDae as DAEBuilder | undefined;
     if (rootArena) {
-      rootArena._lastFunctionOutputs = outputs;
+      getArenaRuntimeState(rootArena).lastFunctionOutputs = outputs;
     }
 
     if (outputIds.length > 0) {
@@ -814,12 +816,12 @@ export async function executeArenaStatementsAsync(
         const bodySlots = countArenaStatementSlots(arena, blockStartIdx, bodyStmtCount);
         nextIdx = blockStartIdx + bodySlots;
 
-        let whenActive: Map<number, boolean> | undefined = (arena as any)._stmtWhenActive;
+        let whenActive: Map<number, boolean> | undefined = getArenaRuntimeState(arena).stmtWhenActive;
         if (!whenActive) {
           whenActive = new Map<number, boolean>();
-          (arena as any)._stmtWhenActive = whenActive;
+          getArenaRuntimeState(arena).stmtWhenActive = whenActive;
         }
-        const isInit = Boolean((arena as any)._isInitialPhase);
+        const isInit = Boolean(getArenaRuntimeState(arena).isInitialPhase);
 
         const condVal = evaluateArenaRuntime(arena, condExprId, valuesByStringId);
         const condNow = condVal !== 0;
@@ -886,15 +888,15 @@ export async function executeArenaStatementsAsync(
             const newVal = evaluateArenaRuntime(arena, valExprId, valuesByStringId);
             const assignedName = assignArenaTargetRuntime(arena, firstArg, newVal, valuesByStringId);
             if (assignedName) {
-              let pending: Map<string, number> | undefined = (arena as any)._pendingReinits;
+              let pending: Map<string, number> | undefined = getArenaRuntimeState(arena).pendingReinits;
               if (!pending) {
                 pending = new Map<string, number>();
-                (arena as any)._pendingReinits = pending;
+                getArenaRuntimeState(arena).pendingReinits = pending;
               }
               pending.set(assignedName, newVal);
             }
           } else if (funcName === "terminate") {
-            (arena as any)._terminateRequested = true;
+            getArenaRuntimeState(arena).terminateRequested = true;
           } else if (funcName === "assert" || funcName === "print") {
             // consume built-in
           } else {
@@ -959,8 +961,8 @@ export async function executeArenaStatementsAsync(
           } else if (functionLookup) {
             const result = functionLookup(funcNameId, argValues);
             const lastOuts =
-              ((fnArena as any)?._lastOutputs as number[] | undefined) ??
-              ((arena as any)._lastFunctionOutputs as number[] | undefined);
+              (fnArena ? (getArenaRuntimeState(fnArena).lastOutputs as number[] | undefined) : undefined) ??
+              (getArenaRuntimeState(arena).lastFunctionOutputs as number[] | undefined);
             if (Array.isArray(lastOuts) && lastOuts.length > 0) {
               outputValues = lastOuts;
             } else if (result !== null) {
@@ -1575,12 +1577,12 @@ export function executeArenaCEvalStatements(
         const bodySlots = countArenaStatementSlots(arena, blockStartIdx, bodyStmtCount);
         nextIdx = blockStartIdx + bodySlots;
 
-        let whenActive: Map<number, boolean> | undefined = (arena as any)._stmtWhenActive;
+        let whenActive: Map<number, boolean> | undefined = getArenaRuntimeState(arena).stmtWhenActive;
         if (!whenActive) {
           whenActive = new Map<number, boolean>();
-          (arena as any)._stmtWhenActive = whenActive;
+          getArenaRuntimeState(arena).stmtWhenActive = whenActive;
         }
-        const isInit = Boolean((arena as any)._isInitialPhase);
+        const isInit = Boolean(getArenaRuntimeState(arena).isInitialPhase);
 
         const condVal = evaluateArenaExpression(arena, condExprId, env, db, scopeId, undefined, false, functionLookup);
         const condNow = condVal === true || (typeof condVal === "number" && condVal !== 0);

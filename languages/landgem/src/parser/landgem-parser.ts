@@ -1,18 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type {
-  LandgemModel,
-  LandfillSite,
-  DigesterParameters,
-  WasteCohort,
-  LandgemParameters,
-} from "../types.js";
+import { createWasmParserSync } from "@modelscript/landgem/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
+import type { DigesterParameters, LandfillSite, LandgemModel, LandgemParameters, WasteCohort } from "../types.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getLandgemWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/landgem/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Parses LandGEM and anaerobic digestion (biogas) model declarations.
  */
 export function parseLandgem(content: string): LandgemModel {
-  const lines = content.split(/\r?\n/);
+  const cstTree = getLandgemWasmParser().parse(content);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
 
   const sites: LandfillSite[] = [];
   const digesters: DigesterParameters[] = [];
@@ -21,8 +29,8 @@ export function parseLandgem(content: string): LandgemModel {
   let currentDigester: DigesterParameters | null = null;
   let inWasteBlock = false;
 
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]!;
+  for (const { row: i, tokens: cstTokens } of cstLines) {
+    const rawLine = cstLineText(content, cstTokens);
     const line = rawLine.replace(/(#|!|\/\/).*$/, "").trim();
     if (!line) continue;
 

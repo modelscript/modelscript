@@ -4,15 +4,17 @@
  * ModelScript USACE HEC-HMS Language Definition.
  */
 
-import { language } from "@modelscript/dsl";
+import { iniSectionRules, language } from "@modelscript/dsl";
 import { lowerHmsToDae } from "./dae/hec-hms-to-dae.js";
 import { simulateSubbasinRunoff } from "./hydrology/scs-cn.js";
 import { lintHmsBasin } from "./lints/index.js";
 import { parseHmsBasin } from "./parser/hms-parser.js";
 import { hmsHydrographToHecRasU01 } from "./projections/hms-to-hecras.js";
+import { hecHmsPolyglotConfig } from "./tgg/index.js";
 import type { HmsHydrographPoint } from "./types.js";
 
 export const hecHmsLanguage = language({
+  polyglot: hecHmsPolyglotConfig,
   name: "hec-hms",
   fileExtensions: [".basin", ".hms", ".met", ".control"],
   maturity: "beta",
@@ -179,6 +181,8 @@ export const hecHmsLanguage = language({
       },
     },
   ],
+  extras: ($) => [/[ \t\r\n]+/, $["IniComment"]!],
+  rules: iniSectionRules,
 });
 
 export default hecHmsLanguage;

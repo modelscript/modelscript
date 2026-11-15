@@ -158,8 +158,11 @@ function parseUnitValue(raw: string | undefined, defaultVal: number): number {
  * Tokenizes line-oriented OLGA keyword directives.
  * Directives can be continued using ampersand (&) or commas at line ends.
  */
-function tokenizeDirectives(text: string): DirectiveToken[] {
-  const lines = text.split(/\r?\n/);
+function tokenizeDirectives(
+  text: string,
+  cstLines: Array<{ row: number; tokens: import("@modelscript/runtime").CstNodeLike[] }>,
+): DirectiveToken[] {
+  const lines = cstLines.map(({ tokens }) => cstLineText(text, tokens));
   const directives: DirectiveToken[] = [];
   let currentBuffer = "";
 
@@ -248,11 +251,27 @@ function tokenizeDirectives(text: string): DirectiveToken[] {
   return directives;
 }
 
+import { createWasmParserSync } from "@modelscript/olga/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getOlgaWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/olga/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 /**
  * Parses an OLGA keyword input deck (.key / .genkey).
  */
 export function parseKeyDeck(keyText: string): OlgaModel {
-  const directives = tokenizeDirectives(keyText);
+  const cstTree = getOlgaWasmParser().parse(keyText);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
+  const directives = tokenizeDirectives(keyText, cstLines);
 
   let title = "OLGA Keyword Case";
   let author: string | undefined;

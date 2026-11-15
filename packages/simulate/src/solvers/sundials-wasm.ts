@@ -355,7 +355,9 @@ export class CvodeSolver {
     for (const ptr of this.registeredFunctions) {
       try {
         this.module.removeFunction(ptr);
-      } catch {}
+      } catch (err) {
+        console.debug("[SundialsWasm] removeFunction cleanup skipped:", err);
+      }
     }
     this.registeredFunctions = [];
   }
@@ -527,7 +529,9 @@ export class CvodeDaeDirectSolver {
     if (this.varValuesPtr && this.freeScratchFn) {
       try {
         this.freeScratchFn(this.varValuesPtr);
-      } catch {}
+      } catch (err) {
+        console.debug("[SundialsWasm] freeScratchFn cleanup skipped:", err);
+      }
       this.varValuesPtr = 0;
       this.freeScratchFn = null;
     }

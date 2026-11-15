@@ -480,14 +480,19 @@ export const FiberCommand: CommandModule<Record<string, unknown>, Record<string,
 
         console.log(`\n=== FCC Broadband Data Collection (BDC) Spatial Fabric ===`);
         console.log(`Technology:       ${techCode} (${techDescription})`);
-        console.log(`H3 Resolution:    Res ${dataset.resolution} (~${dataset.resolution === 9 ? "174m edge" : "461m edge"})`);
+        console.log(
+          `H3 Resolution:    Res ${dataset.resolution} (~${dataset.resolution === 9 ? "174m edge" : "461m edge"})`,
+        );
         console.log(`Max Advertised:   ${downMbps} Mbps Down / ${upMbps} Mbps Up`);
         console.log(`Low Latency:      ${lowLatency ? "Yes (<=100ms RTT)" : "No"}`);
         console.log(`Provider:         ${providerName}`);
         console.log(`Total Points:     ${samplePoints.length}`);
         console.log(`Total Hexagons:   ${dataset.totalHexagons}`);
         console.log(
-          `Sample H3 IDs:    ${dataset.hexagons.slice(0, 5).map((h) => h.h3Index).join(", ")}${dataset.totalHexagons > 5 ? "..." : ""}`,
+          `Sample H3 IDs:    ${dataset.hexagons
+            .slice(0, 5)
+            .map((h) => h.h3Index)
+            .join(", ")}${dataset.totalHexagons > 5 ? "..." : ""}`,
         );
 
         const outPath = argv["out"] as string | undefined;
@@ -509,7 +514,7 @@ export const FiberCommand: CommandModule<Record<string, unknown>, Record<string,
         const std = String(argv["standard"] ?? "nesc").toLowerCase();
 
         if (std.includes("csa") || std.includes("canada")) {
-          const lengthM = Number(argv["length-m"] ?? (Number(argv["length"] ?? 40.0) * 0.3048));
+          const lengthM = Number(argv["length-m"] ?? Number(argv["length"] ?? 40.0) * 0.3048);
           const csaConfig: CsaPoleAnalysisConfig = {
             poleId: "POLE-DIST-01",
             species: "western-red-cedar",
@@ -517,7 +522,7 @@ export const FiberCommand: CommandModule<Record<string, unknown>, Record<string,
             circumferenceAtGroundLineMeters: 0.95,
             circumferenceAtTopMeters: 0.55,
             constructionGrade: "grade-2",
-            loadingDistrict: (argv["district"] as any) ?? "heavy",
+            loadingDistrict: (argv["district"] as CsaPoleAnalysisConfig["loadingDistrict"]) ?? "heavy",
             attachments: [
               {
                 id: "FIBER-PROP",
@@ -536,18 +541,22 @@ export const FiberCommand: CommandModule<Record<string, unknown>, Record<string,
           console.log(`Pole Identification:        ${report.poleId}`);
           console.log(`Loading District:           ${report.district.toUpperCase()}`);
           console.log(`Construction Grade:         ${report.constructionGrade} (phi = ${report.resistanceFactorPhi})`);
-          console.log(`Length / Setting Depth:     ${lengthM.toFixed(1)} m (${report.settingDepthMeters} m buried, ${report.aboveGroundHeightMeters} m AGL)`);
+          console.log(
+            `Length / Setting Depth:     ${lengthM.toFixed(1)} m (${report.settingDepthMeters} m buried, ${report.aboveGroundHeightMeters} m AGL)`,
+          );
           console.log(`Section Modulus (Z):        ${report.groundLineSectionModulusM3.toFixed(6)} m³`);
           console.log(`Resisting Moment Capacity:  ${report.resistingMomentCapacityNm.toLocaleString()} N·m`);
           console.log(`Total Ground-Line Moment:   ${report.totalGroundLineMomentNm.toLocaleString()} N·m`);
           console.log(`Pole Capacity Utilization:  ${report.poleCapacityUtilizationPercent.toFixed(1)} %`);
-          console.log(`Compliance Verdict:         ${report.isCompliant ? "✓ PASS (Meets CSA C22.3 No. 1)" : "⚠ FAIL (Overloaded)"}`);
+          console.log(
+            `Compliance Verdict:         ${report.isCompliant ? "✓ PASS (Meets CSA C22.3 No. 1)" : "⚠ FAIL (Overloaded)"}`,
+          );
           console.log(`================================================================\n`);
           return;
         }
 
         if (std.includes("euro") || std.includes("en50341") || std.includes("cenelec")) {
-          const heightM = Number(argv["length-m"] ?? (Number(argv["length"] ?? 40.0) * 0.3048));
+          const heightM = Number(argv["length-m"] ?? Number(argv["length"] ?? 40.0) * 0.3048);
           const euroConfig: EurocodeMastLoadingConfig = {
             mastId: "POLE-DIST-01",
             basicWindVelocityMPerS: 25.0,
@@ -576,7 +585,9 @@ export const FiberCommand: CommandModule<Record<string, unknown>, Record<string,
           console.log(`Design Bending Moment (Ed): ${report.designBendingMomentEdNm.toLocaleString()} N·m`);
           console.log(`Design Resistance (Rd):     ${report.designResistanceMomentRdNm.toLocaleString()} N·m`);
           console.log(`ULS Utilization Ratio:      ${report.utilizationRatioPercent.toFixed(1)} %`);
-          console.log(`Compliance Verdict:         ${report.isCompliant ? "✓ PASS (Meets Eurocode 3 ULS)" : "⚠ FAIL (ULS Resistance Exceeded)"}`);
+          console.log(
+            `Compliance Verdict:         ${report.isCompliant ? "✓ PASS (Meets Eurocode 3 ULS)" : "⚠ FAIL (ULS Resistance Exceeded)"}`,
+          );
           console.log(`================================================================\n`);
           return;
         }

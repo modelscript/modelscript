@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
+
 export interface BoundaryLayerOptions {
   /** First layer height in meters (default: 0.0005 = 0.5mm). */
   firstLayerHeight?: number | undefined;
@@ -39,6 +41,87 @@ export class BoundaryLayerExtruder {
 
     const numBaseNodes = surfaceCoords.length / 3;
     const numBaseTriangles = surfaceTriangles.length / 3;
+
+    const totalNodes = numBaseNodes * (numLayers + 1);
+    const nodeCoords = new Float32Array(totalNodes * 3);
+    const totalTets = numBaseTriangles * numLayers * 3;
+    const elements = new Uint32Array(totalTets * 4);
+    const layerNodeIndices: number[][] = [];
+    for (let layer = 0; layer <= numLayers; layer++) {
+      const base = layer * numBaseNodes;
+      layerNodeIndices.push(Array.from({ length: numBaseNodes }, (_, i) => base + i));
+    }
+
+    const wasm = getDefaultWasmExports() as {
+      memory?: WebAssembly.Memory;
+      __new?: (size: number, id: number) => number;
+      __pin?: (ptr: number) => number;
+      __unpin?: (ptr: number) => void;
+      extrudeBoundaryLayersWasm?: (
+        surfCoordsPtr: number,
+        surfTrisPtr: number,
+        numBaseNodes: number,
+        numBaseTris: number,
+        numLayers: number,
+        h1: number,
+        growthRatio: number,
+        normalsPtr: number,
+        nodeCoordsOutPtr: number,
+        elementsOutPtr: number,
+      ) => void;
+    } | null;
+
+    if (
+      wasm &&
+      typeof wasm.extrudeBoundaryLayersWasm === "function" &&
+      typeof wasm.__new === "function" &&
+      wasm.memory instanceof WebAssembly.Memory
+    ) {
+      const surfCoordsBytes = surfaceCoords.length * 4;
+      const surfTrisBytes = surfaceTriangles.length * 4;
+      const normalsBytes = numBaseNodes * 3 * 4;
+      const nodeCoordsBytes = nodeCoords.length * 4;
+      const elementsBytes = elements.length * 4;
+      const totalBytes = surfCoordsBytes + surfTrisBytes + normalsBytes + nodeCoordsBytes + elementsBytes + 32;
+
+      const ptr = wasm.__new(totalBytes, 0);
+      if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+      const surfCoordsPtr = (ptr + 3) & ~3;
+      const surfTrisPtr = surfCoordsPtr + surfCoordsBytes;
+      const normalsPtr = surfTrisPtr + surfTrisBytes;
+      const nodeCoordsOutPtr = normalsPtr + normalsBytes;
+      const elementsOutPtr = nodeCoordsOutPtr + nodeCoordsBytes;
+
+      const buf = wasm.memory.buffer;
+      new Float32Array(buf, surfCoordsPtr, surfaceCoords.length).set(surfaceCoords);
+      new Uint32Array(buf, surfTrisPtr, surfaceTriangles.length).set(surfaceTriangles);
+
+      wasm.extrudeBoundaryLayersWasm(
+        surfCoordsPtr,
+        surfTrisPtr,
+        numBaseNodes,
+        numBaseTriangles,
+        numLayers,
+        h1,
+        r,
+        normalsPtr,
+        nodeCoordsOutPtr,
+        elementsOutPtr,
+      );
+
+      const outBuf = wasm.memory.buffer;
+      nodeCoords.set(new Float32Array(outBuf, nodeCoordsOutPtr, nodeCoords.length));
+      elements.set(new Uint32Array(outBuf, elementsOutPtr, elements.length));
+      if (typeof wasm.__unpin === "function") wasm.__unpin(ptr);
+
+      return {
+        nodeCoords,
+        elements,
+        numNodes: totalNodes,
+        numElements: totalTets,
+        layerNodeIndices,
+      };
+    }
 
     // 1. Calculate vertex normals on the base surface
     const vertexNormals = new Float32Array(numBaseNodes * 3);
@@ -81,15 +164,9 @@ export class BoundaryLayerExtruder {
     }
 
     // 2. Generate layered node coordinates
-    const totalNodes = numBaseNodes * (numLayers + 1);
-    const nodeCoords = new Float32Array(totalNodes * 3);
-    const layerNodeIndices: number[][] = [];
-
-    // Copy base layer (layer 0)
     for (let i = 0; i < surfaceCoords.length; i++) {
       nodeCoords[i] = surfaceCoords[i]!;
     }
-    layerNodeIndices.push(Array.from({ length: numBaseNodes }, (_, i) => i));
 
     let currentHeight = 0;
     let stepHeight = h1;
@@ -99,7 +176,6 @@ export class BoundaryLayerExtruder {
       stepHeight *= r;
 
       const layerOffset = layer * numBaseNodes * 3;
-      const layerNodes: number[] = [];
 
       for (let i = 0; i < numBaseNodes; i++) {
         const baseIdx = i * 3;
@@ -112,16 +188,11 @@ export class BoundaryLayerExtruder {
         nodeCoords[targetIdx + 0] = surfaceCoords[baseIdx + 0]! + nx * currentHeight;
         nodeCoords[targetIdx + 1] = surfaceCoords[baseIdx + 1]! + ny * currentHeight;
         nodeCoords[targetIdx + 2] = surfaceCoords[baseIdx + 2]! + nz * currentHeight;
-
-        layerNodes.push(layer * numBaseNodes + i);
       }
-      layerNodeIndices.push(layerNodes);
     }
 
     // 3. Decompose each triangular prism between layers into 3 tetrahedra
     // Prism vertices: bottom [n0, n1, n2], top [m0, m1, m2]
-    const totalTets = numBaseTriangles * numLayers * 3;
-    const elements = new Uint32Array(totalTets * 4);
     let elemPtr = 0;
 
     for (let layer = 0; layer < numLayers; layer++) {

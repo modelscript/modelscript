@@ -30,7 +30,7 @@ export function rfqRouter(eqService?: EngineeringQueryService): Router {
     try {
       const spaceId = String(req.params["id"]);
       const { projectName, revision, oemName, oemContact, layout, bomComponents, targetQuantity, fabricationSpecs } =
-        req.body as any;
+        req.body as Partial<Parameters<typeof RfqBundleGenerator.generateBundle>[0]>;
 
       if (!layout || !bomComponents) {
         res.status(400).json({ error: "Missing required 'layout' or 'bomComponents' in payload." });
@@ -120,7 +120,7 @@ export function rfqRouter(eqService?: EngineeringQueryService): Router {
         authorId,
         authorName,
         authorOrg,
-      } = req.body as any;
+      } = req.body as Partial<Parameters<typeof eqs.createEQ>[0]>;
 
       if (!revision || !boardCoordinates || !layer || !title || !description) {
         res.status(400).json({ error: "Missing required fields for Engineering Query." });
@@ -167,7 +167,9 @@ export function rfqRouter(eqService?: EngineeringQueryService): Router {
   router.patch("/:id/eq/:eqId", (req: Request, res: Response) => {
     try {
       const eqId = String(req.params["eqId"]);
-      const { status, resolutionNotes, resolvedById, resolvedByName } = req.body as any;
+      const { status, resolutionNotes, resolvedById, resolvedByName } = req.body as Partial<
+        Parameters<typeof eqs.resolveEQ>[1]
+      >;
 
       if (!status || !resolutionNotes) {
         res.status(400).json({ error: "Missing 'status' or 'resolutionNotes'." });

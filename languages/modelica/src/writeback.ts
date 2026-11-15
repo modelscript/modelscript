@@ -42,10 +42,10 @@ export const modelicaWriteback: WritebackHandler = (ctx: WritebackContext): Writ
   // 0. Exact CST node field range from AST indexing (Tier 0)
   if (entry.fieldRanges) {
     const valField =
-      entry.fieldRanges.value ??
-      entry.fieldRanges.expression ??
-      entry.fieldRanges.modification ??
-      entry.fieldRanges.binding;
+      entry.fieldRanges["value"] ??
+      entry.fieldRanges["expression"] ??
+      entry.fieldRanges["modification"] ??
+      entry.fieldRanges["binding"];
     if (
       valField &&
       valField.startOffset != null &&
@@ -94,8 +94,11 @@ export const modelicaWriteback: WritebackHandler = (ctx: WritebackContext): Writ
 
   // 2. Lexical scope fallback for parameter bindings, strictly constrained to enclosing parent class
   const name = entry.name;
-  if (name && entry.parentId != null && queryEngine?.index?.symbols) {
-    const parent = queryEngine.index.symbols.get(entry.parentId);
+  const typedQueryEngine = queryEngine as
+    | { index?: { symbols?: Map<number, { startOffset?: number; endOffset?: number }> } }
+    | undefined;
+  if (name && entry.parentId != null && typedQueryEngine?.index?.symbols) {
+    const parent = typedQueryEngine.index.symbols.get(entry.parentId);
     if (parent && parent.startOffset != null && parent.endOffset != null && parent.endOffset > parent.startOffset) {
       const parentText = fullText.substring(parent.startOffset, parent.endOffset);
       const regex = new RegExp(`(\\b${escapeRegex(name)}\\s*=\\s*)([^;"\\r\\n]+)`);

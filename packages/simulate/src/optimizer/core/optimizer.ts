@@ -15,7 +15,7 @@
  */
 
 import { DAEBuilder, Variability } from "@modelscript/runtime";
-import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
+import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
 import { StaticTapeBuilder, evaluateTapeForward, evaluateTapeReverse } from "@modelscript/runtime/wasm_tape.js";
 import { ArenaSimulator, simulateArena } from "../../core/simulate-arena.js";
 import type { SolverOptions } from "../../core/solver-options.js";
@@ -408,20 +408,19 @@ function sqpSolve(
     //   [J   0 ] [lambda] = [-c   ]
 
     const kktSize = n + nEq;
-    const KKT = new Array<Float64Array>(kktSize);
-    for (let i = 0; i < kktSize; i++) KKT[i] = new Float64Array(kktSize);
+    const KKT = new Float64Array(kktSize * kktSize);
 
     // Fill H block
     for (let i = 0; i < n; i++) {
       for (let j = 0; j < n; j++) {
-        KKT[i]![j] = H[i]![j]!;
+        KKT[i * kktSize + j] = H[i]![j]!;
       }
     }
     // Fill J and J' blocks
     for (let i = 0; i < nEq; i++) {
       for (let j = 0; j < n; j++) {
-        KKT[n + i]![j] = J[i]![j]!;
-        KKT[j]![n + i] = J[i]![j]!;
+        KKT[(n + i) * kktSize + j] = J[i]![j]!;
+        KKT[j * kktSize + (n + i)] = J[i]![j]!;
       }
     }
 
@@ -431,8 +430,8 @@ function sqpSolve(
     for (let i = 0; i < nEq; i++) rhs[n + i] = -c[i]!;
 
     // Solve via LU
-    const lu = luFactor(KKT, kktSize);
-    luSolve(lu, rhs);
+    const lu = luFactorFlat(KKT, kktSize);
+    luSolveFlat(lu, rhs);
 
     const d = rhs.subarray(0, n);
     // Update multiplier estimates from QP KKT solution

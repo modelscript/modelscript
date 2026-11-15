@@ -49,7 +49,7 @@ export const VERN9_SUBSTEPS: readonly number[] = [2, 4, 6, 8, 10];
  */
 function explicitSymmetricSweep(
   f: ODEProblem["f"],
-  p: any,
+  p: Parameters<ODEProblem["f"]>[2],
   t: number,
   y0: Float64Array,
   f0: Float64Array,

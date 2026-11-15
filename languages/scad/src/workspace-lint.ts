@@ -1,13 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  collectCstNodes,
   collectWorkspaceDocuments,
   findIncludeCycle,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { createWasmParserSync } from "@modelscript/scad/parser";
+import { createRequire } from "node:module";
 import { lintScad } from "./index.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getScadWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/scad/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Performs multi-file OpenSCAD workspace linting by resolving `include <...>` and
@@ -25,6 +38,7 @@ export async function lintScadWorkspace(
 
   const entryUri = rootUri ?? entries[0]![0];
   const edges = new Map<string, string[]>();
+  const parser = getScadWasmParser();
 
   for (const [uri, text] of entries) {
     const outEdges: string[] = [];
@@ -40,8 +54,11 @@ export async function lintScadWorkspace(
       });
     }
 
-    for (const m of text.matchAll(/^\s*(?:include|use)\s*<([^>\r\n]+)>/gm)) {
-      const target = m[1]?.trim();
+    const tree = parser.parse(text);
+    for (const node of collectCstNodes(tree?.rootNode, ["INCLUDE_DIRECTIVE", "USE_DIRECTIVE"])) {
+      const lt = node.text.indexOf("<");
+      const gt = node.text.lastIndexOf(">");
+      const target = lt >= 0 && gt > lt ? node.text.slice(lt + 1, gt).trim() : "";
       if (!target) continue;
       const resolved = resolveRelativeUri(uri, target, docs);
       if (!resolved) {

@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createWasmParser } from "../src-gen/bindings.js";
 import { Context } from "../src/context.js";
+import { getFlatteningState } from "../src/flattener/support/state.js";
 import { NodeFileSystem } from "./node-filesystem.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -164,7 +165,8 @@ end M;`,
     );
     const dae = ctx.flattenArena("M", undefined, uri, { backend: "hybrid", eliminateAliases: false });
     expect(dae).not.toBeNull();
-    expect((dae as any).innerComponents?.has("env")).toBe(true);
-    expect((dae as any).outerToInner?.get("s.env")).toBe("env");
+    const state = getFlatteningState(dae!);
+    expect(state.innerComponents?.has("env")).toBe(true);
+    expect(state.outerToInner?.get("s.env")).toBe("env");
   });
 });

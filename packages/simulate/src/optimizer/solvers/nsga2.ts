@@ -20,6 +20,7 @@
 import {
   createRng,
   evaluateMultiObjectiveBatchOrSingle,
+  fastNonDominatedSortWasm,
   type MultiObjectiveCandidate,
   type MultiObjectiveOptions,
   type MultiObjectiveProblem,
@@ -56,6 +57,9 @@ function dominates(objA: Float64Array, objB: Float64Array): boolean {
  * Performs fast non-dominated sorting on a population.
  */
 function fastNonDominatedSort(pop: InternalIndividual[]): InternalIndividual[][] {
+  const wasmFronts = fastNonDominatedSortWasm(pop);
+  if (wasmFronts) return wasmFronts;
+
   const fronts: InternalIndividual[][] = [[]];
 
   for (let i = 0; i < pop.length; i++) {

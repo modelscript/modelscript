@@ -34,21 +34,36 @@ export interface FbiModel {
   modes: FbiModalCoordinate[];
 }
 
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createWasmParserSync } from "@modelscript/simpack/wasm-parser";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getSimpackWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/simpack/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 /**
  * Parses SIMPACK Flexible Body Interface files (.fbi).
  * Extracts modal degrees of freedom, natural frequencies, generalized mass/stiffness,
  * and boundary node eigenvector shapes.
  */
 export function parseFbiFile(content: string, defaultName: string = "FlexBody"): FbiModel {
-  const lines = content.split(/\r?\n/);
+  const cstTree = getSimpackWasmParser().parse(content);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   const modes: FbiModalCoordinate[] = [];
   const nodes: FbiNode[] = [];
   let numNodes = 0;
   let numModes = 0;
   let modelName = defaultName;
 
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
+  for (const { tokens: cstTokens } of cstLines) {
+    const line = cstLineText(content, cstTokens).trim();
     if (!line || line.startsWith("#") || line.startsWith("$") || line.startsWith("!")) {
       continue;
     }

@@ -1,13 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createWasmParserSync } from "@modelscript/energyplus/wasm-parser";
 import {
   collectWorkspaceDocuments,
+  extractCstLeafNodes,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import { parseEnergyPlus } from "../parser/index.js";
 import { lintEnergyPlus } from "./index.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getEnergyPlusWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/energyplus/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Performs multi-file EnergyPlus workspace linting across `.idf`/`.epJSON`,
@@ -21,6 +34,7 @@ export function lintEnergyPlusWorkspace(
   const diagnostics: WorkspaceLintDiagnostic[] = [];
   const entries = Array.from(docs.entries());
   if (entries.length === 0) return diagnostics;
+  const parser = getEnergyPlusWasmParser();
 
   for (const [uri, text] of entries) {
     if (uri.toLowerCase().endsWith(".epw") || uri.toLowerCase().endsWith(".csv")) continue;
@@ -37,9 +51,10 @@ export function lintEnergyPlusWorkspace(
       });
     }
 
-    for (const m of text.matchAll(/([^\s,;]+\.(?:csv|epw))\b/gi)) {
-      const ref = m[1]?.trim();
-      if (ref && !resolveRelativeUri(uri, ref, docs)) {
+    const tree = parser.parse(text);
+    for (const leaf of extractCstLeafNodes(tree?.rootNode)) {
+      const ref = leaf.text.replace(/^["']|["']$/g, "").trim();
+      if (/\.(?:csv|epw)$/i.test(ref) && !resolveRelativeUri(uri, ref, docs)) {
         diagnostics.push({
           uri,
           code: "EP3001",

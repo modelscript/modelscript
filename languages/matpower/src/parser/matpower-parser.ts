@@ -4,53 +4,65 @@
  * High-performance MATPOWER case file (.m) parser.
  */
 
+import { createWasmParserSync } from "@modelscript/matpower/wasm-parser";
+import { groupCstLeavesByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import type { MatpowerBranch, MatpowerBus, MatpowerCase, MatpowerGen, MatpowerGenCost } from "../types.js";
 
-/**
- * Parses numeric tokens from a matrix block in MATPOWER .m format.
- */
-function parseMatrixRows(block: string): number[][] {
-  const rows: number[][] = [];
-  const lines = block.split(/\r?\n/);
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getMatpowerWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/matpower/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
+type CstLine = { row: number; tokens: CstNodeLike[] };
+
+/**
+ * Parses numeric tokens from CST lines inside a MATPOWER matrix block.
+ */
+function parseMatrixRows(blockLines: CstLine[]): number[][] {
+  const rows: number[][] = [];
   let currentRow: number[] = [];
 
-  for (const rawLine of lines) {
-    // Strip comments (% or //)
-    let line = rawLine;
-    const commentIdx = line.search(/%|\/\//);
-    if (commentIdx >= 0) {
-      line = line.slice(0, commentIdx);
-    }
-    line = line.trim();
-    if (!line) continue;
-
-    // Check for row terminator ';'
-    const segments = line.split(";");
-    for (let s = 0; s < segments.length; s++) {
-      const seg = segments[s]!.trim();
-      if (seg.length > 0) {
-        // Split by whitespace or comma
-        const tokens = seg.split(/[\s,]+/);
-        for (const tok of tokens) {
-          const num = Number.parseFloat(tok);
-          if (!Number.isNaN(num)) {
-            currentRow.push(num);
-          }
+  for (const { tokens } of blockLines) {
+    let hasContinuation = false;
+    for (let i = 0; i < tokens.length; i++) {
+      const tok = tokens[i]!;
+      const txt = tok.text;
+      if (txt === "%" || txt === "//") break;
+      if (txt === "...") {
+        hasContinuation = true;
+        break;
+      }
+      if (txt === ";") {
+        if (currentRow.length > 0) {
+          rows.push(currentRow);
+          currentRow = [];
+        }
+        continue;
+      }
+      // Handle leading '-' before a number token if lexer split them
+      if (txt === "-" && i + 1 < tokens.length) {
+        const nextNum = Number.parseFloat(tokens[i + 1]!.text);
+        if (!Number.isNaN(nextNum)) {
+          currentRow.push(-nextNum);
+          i++;
+          continue;
         }
       }
-
-      // If there is another segment on this line (i.e. we hit a semicolon),
-      // or if this segment ended with a semicolon, finalize the current row
-      if (s < segments.length - 1 && currentRow.length > 0) {
-        rows.push(currentRow);
-        currentRow = [];
+      for (const part of txt.split(/[\s,;]+/)) {
+        if (!part) continue;
+        const num = Number.parseFloat(part);
+        if (!Number.isNaN(num)) {
+          currentRow.push(num);
+        }
       }
     }
-
-    // In MATLAB matrix notation, a newline within brackets also terminates a row
-    // if the line didn't end with a continuation marker ('...')
-    if (!line.endsWith("...") && currentRow.length > 0) {
+    if (!hasContinuation && currentRow.length > 0) {
       rows.push(currentRow);
       currentRow = [];
     }
@@ -59,59 +71,108 @@ function parseMatrixRows(block: string): number[][] {
   if (currentRow.length > 0) {
     rows.push(currentRow);
   }
-
   return rows;
 }
 
 /**
- * Extracts the contents enclosed by `[ ... ]` or `{ ... }` for a given property name.
+ * Extracts CST lines enclosed by `[ ... ]` or `{ ... }` for a given property name.
  */
-function extractBlock(text: string, prop: string): string | null {
-  const regex = new RegExp(`(?:mpc\\.)?${prop}\\s*=\\s*[\\[\\{]([\\s\\S]*?)[\\]\\}]\\s*;?`, "i");
-  const match = text.match(regex);
-  return match ? match[1]! : null;
+function extractBlock(lines: CstLine[], prop: string): CstLine[] | null {
+  const target = prop.toLowerCase();
+  let capturing = false;
+  let openChar = "[";
+  let closeChar = "]";
+  const collected: CstLine[] = [];
+
+  for (const line of lines) {
+    if (!capturing) {
+      const toks = line.tokens;
+      const propIdx = toks.findIndex(
+        (t) => t.text.toLowerCase() === target || t.text.toLowerCase() === `mpc.${target}`,
+      );
+      if (propIdx === -1) continue;
+      const eqIdx = toks.findIndex((t, idx) => idx > propIdx && t.text.includes("="));
+      if (eqIdx === -1) continue;
+      const openIdx = toks.findIndex((t, idx) => idx >= eqIdx && (t.text.includes("[") || t.text.includes("{")));
+      if (openIdx === -1) continue;
+      openChar = toks[openIdx]!.text.includes("{") ? "{" : "[";
+      closeChar = openChar === "{" ? "}" : "]";
+      capturing = true;
+      const afterOpen = toks.slice(openIdx + 1);
+      const closeIdx = afterOpen.findIndex((t) => t.text.includes(closeChar));
+      if (closeIdx >= 0) {
+        if (closeIdx > 0) collected.push({ row: line.row, tokens: afterOpen.slice(0, closeIdx) });
+        return collected;
+      }
+      if (afterOpen.length > 0) collected.push({ row: line.row, tokens: afterOpen });
+    } else {
+      const closeIdx = line.tokens.findIndex((t) => t.text.includes(closeChar));
+      if (closeIdx >= 0) {
+        if (closeIdx > 0) collected.push({ row: line.row, tokens: line.tokens.slice(0, closeIdx) });
+        return collected;
+      }
+      collected.push(line);
+    }
+  }
+  return capturing ? collected : null;
 }
 
 /**
  * Parses a MATPOWER case .m string into a typed MatpowerCase structure.
  */
 export function parseMatpowerCase(source: string): MatpowerCase {
+  const tree = getMatpowerWasmParser().parse(source);
+  const cstLines = groupCstLeavesByLine(tree?.rootNode);
+
   // 1. Extract case name from function definition if present
   let caseName = "case_matpower";
-  const funcMatch = source.match(/function\s+(?:\[?\s*\w+\s*\]?\s*=\s*)?([A-Za-z0-9_]+)/i);
-  if (funcMatch && funcMatch[1]) {
-    caseName = funcMatch[1];
+  for (const { tokens } of cstLines) {
+    if (tokens[0]?.text.toLowerCase() === "function") {
+      const eqIdx = tokens.findIndex((t) => t.text === "=");
+      const nameTok = eqIdx >= 0 ? tokens[eqIdx + 1] : tokens[1];
+      if (nameTok && /^[A-Za-z_][A-Za-z0-9_]*$/.test(nameTok.text)) {
+        caseName = nameTok.text;
+      }
+      break;
+    }
   }
 
-  // 2. Extract version and baseMVA
+  // 2. Extract version and baseMVA from CST tokens
   let version = "2";
-  const versionMatch = source.match(/(?:mpc\.)?version\s*=\s*['"]([^'"]+)['"]/i);
-  if (versionMatch && versionMatch[1]) {
-    version = versionMatch[1];
-  }
-
   let baseMVA = 100.0;
-  const baseMvaMatch = source.match(/(?:mpc\.)?baseMVA\s*=\s*([0-9.]+)/i);
-  if (baseMvaMatch && baseMvaMatch[1]) {
-    baseMVA = Number.parseFloat(baseMvaMatch[1]);
+  for (const { tokens } of cstLines) {
+    const joined = tokens.map((t) => t.text).join(" ");
+    const vIdx = tokens.findIndex((t) => t.text.toLowerCase() === "version" || t.text.toLowerCase() === "mpc.version");
+    if (vIdx >= 0) {
+      const strTok = tokens.slice(vIdx + 1).find((t) => /^['"]/.test(t.text));
+      if (strTok) version = strTok.text.replace(/^['"]|['"]$/g, "");
+    }
+    const bIdx = tokens.findIndex((t) => t.text.toLowerCase() === "basemva" || t.text.toLowerCase() === "mpc.basemva");
+    if (bIdx >= 0) {
+      const numTok = tokens.slice(bIdx + 1).find((t) => !Number.isNaN(Number.parseFloat(t.text)));
+      if (numTok) baseMVA = Number.parseFloat(numTok.text);
+    }
+    void joined;
   }
 
   // 3. Extract bus names if available: mpc.bus_name = { 'Bus 1', ... };
   const busNames = new Map<number, string>();
-  const busNameBlock = extractBlock(source, "bus_name");
+  const busNameBlock = extractBlock(cstLines, "bus_name");
   if (busNameBlock) {
-    const nameMatches = busNameBlock.matchAll(/['"]([^'"]+)['"]/g);
     let idx = 1;
-    for (const m of nameMatches) {
-      if (m[1]) {
-        busNames.set(idx++, m[1]);
+    for (const { tokens } of busNameBlock) {
+      for (const tok of tokens) {
+        if (/^['"]/.test(tok.text)) {
+          const val = tok.text.replace(/^['"]|['"]$/g, "");
+          if (val) busNames.set(idx++, val);
+        }
       }
     }
   }
 
   // 4. Parse bus data
   const buses: MatpowerBus[] = [];
-  const busBlock = extractBlock(source, "bus");
+  const busBlock = extractBlock(cstLines, "bus");
   if (busBlock) {
     const rows = parseMatrixRows(busBlock);
     for (let r = 0; r < rows.length; r++) {
@@ -139,7 +200,7 @@ export function parseMatpowerCase(source: string): MatpowerCase {
 
   // 5. Parse generator data
   const generators: MatpowerGen[] = [];
-  const genBlock = extractBlock(source, "gen");
+  const genBlock = extractBlock(cstLines, "gen");
   if (genBlock) {
     const rows = parseMatrixRows(genBlock);
     for (let r = 0; r < rows.length; r++) {
@@ -173,7 +234,7 @@ export function parseMatpowerCase(source: string): MatpowerCase {
 
   // 6. Parse branch data
   const branches: MatpowerBranch[] = [];
-  const branchBlock = extractBlock(source, "branch");
+  const branchBlock = extractBlock(cstLines, "branch");
   if (branchBlock) {
     const rows = parseMatrixRows(branchBlock);
     for (let r = 0; r < rows.length; r++) {
@@ -199,7 +260,7 @@ export function parseMatpowerCase(source: string): MatpowerCase {
 
   // 7. Parse generator cost data (optional)
   const gencosts: MatpowerGenCost[] = [];
-  const gencostBlock = extractBlock(source, "gencost");
+  const gencostBlock = extractBlock(cstLines, "gencost");
   if (gencostBlock) {
     const rows = parseMatrixRows(gencostBlock);
     for (let r = 0; r < rows.length; r++) {

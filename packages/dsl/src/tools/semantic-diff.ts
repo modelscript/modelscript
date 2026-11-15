@@ -4,7 +4,7 @@ import type { QueryDB, SymbolEntry, SymbolId } from "../dsl/types.js";
 
 export interface DiffConfig {
   /** Deterministic identity generator for unnamed or ordered nodes when mapping versions. */
-  identity?: string | ((self: any) => string) | undefined;
+  identity?: string | ((self: SymbolEntry) => string) | undefined;
   /** Semantic fields to ignore in diff tracking (like documentation or formatting annotations). */
   ignore?: string[] | undefined;
   /** Attributes where changes are flagged as non-breaking/minor. */
@@ -159,8 +159,8 @@ export function computeSemanticDiff(
   }
 
   // 3. Type check
-  const oldType = oldMeta["typeName"] || oldMeta["type"] || (oldEntry as any).typeName;
-  const newType = newMeta["typeName"] || newMeta["type"] || (newEntry as any).typeName;
+  const oldType = oldMeta["typeName"] || oldMeta["type"] || (oldEntry as SymbolEntry & { typeName?: unknown }).typeName;
+  const newType = newMeta["typeName"] || newMeta["type"] || (newEntry as SymbolEntry & { typeName?: unknown }).typeName;
   if (oldType && newType && oldType !== newType) {
     isUpdated = true;
     nodeIsBreaking = true;
@@ -209,8 +209,12 @@ export function computeSemanticDiff(
     });
   }
 
-  const oldArgs = oldNode.db["argsOf"](oldNode.id)?.hash;
-  const newArgs = newNode.db["argsOf"](newNode.id)?.hash;
+  const oldArgs = (oldNode.db["argsOf"] as ((id: SymbolId) => { hash?: unknown } | undefined) | undefined)?.(
+    oldNode.id,
+  )?.hash;
+  const newArgs = (newNode.db["argsOf"] as ((id: SymbolId) => { hash?: unknown } | undefined) | undefined)?.(
+    newNode.id,
+  )?.hash;
   if (oldArgs !== newArgs) {
     isUpdated = true;
     nodeIsBreaking = true;

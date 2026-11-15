@@ -15,8 +15,10 @@ import { canIndexDicomRt, indexDicomRtDocument } from "./indexing.js";
 import { lintDicomRtDocument } from "./lints/rules.js";
 import { parseDicomRt } from "./parser/index.js";
 import { dicomRtToScad, dicomRtToSysML2 } from "./projections/index.js";
+import { dicomRtPolyglotConfig } from "./tgg/index.js";
 
 export const dicomRtLanguage = language({
+  polyglot: dicomRtPolyglotConfig,
   name: "dicom-rt",
   fileExtensions: [".dcm.json", ".dcm.xml", ".rtplan", ".rtstruct", ".rtdose", ".dicom-rt"],
   maturity: "experimental",

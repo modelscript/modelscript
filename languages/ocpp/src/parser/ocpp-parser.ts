@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type {
-  ChargingProfile,
-  ChargingSession,
-  ChargingStation,
-  Connector,
-  Evse,
-  OcppNetwork,
-} from "../types.js";
+import type { ChargingProfile, ChargingSession, ChargingStation, Connector, Evse, OcppNetwork } from "../types.js";
 
 export function parseOcpp(text: string): OcppNetwork {
   const trimmed = text.trim();
@@ -24,14 +17,14 @@ function parseJsonOcpp(jsonStr: string): OcppNetwork {
     // Case 1: An OcppNetwork object { stations: [...] }
     if (raw && Array.isArray(raw.stations)) {
       return {
-        stations: raw.stations.map((s: any, idx: number) => normalizeStation(s, idx + 1)),
+        stations: raw.stations.map((s: RawOcppStation, idx: number) => normalizeStation(s, idx + 1)),
       };
     }
 
     // Case 2: Array of stations [...]
     if (Array.isArray(raw)) {
       return {
-        stations: raw.map((s: any, idx: number) => normalizeStation(s, idx + 1)),
+        stations: raw.map((s: RawOcppStation, idx: number) => normalizeStation(s, idx + 1)),
       };
     }
 
@@ -47,17 +40,16 @@ function parseJsonOcpp(jsonStr: string): OcppNetwork {
             id: cp.chargingSchedule?.chargingScheduleId ?? 1,
             chargingRateUnit: cp.chargingSchedule?.chargingRateUnit ?? "kW",
             durationSeconds: cp.chargingSchedule?.duration,
-            chargingSchedulePeriod: (cp.chargingSchedule?.chargingSchedulePeriod ?? []).map((p: any) => ({
-              startPeriod: p.startPeriod ?? 0,
-              limit: p.limit ?? 0,
-              numberPhases: p.numberPhases,
-            })),
+            chargingSchedulePeriod: (cp.chargingSchedule?.chargingSchedulePeriod ?? []).map(
+              (p: { startPeriod?: number; limit?: number; numberPhases?: number }) => ({
+                startPeriod: p.startPeriod ?? 0,
+                limit: p.limit ?? 0,
+                numberPhases: p.numberPhases,
+              }),
+            ),
           },
         };
-        const maxKw = profile.chargingSchedule.chargingSchedulePeriod.reduce(
-          (max, p) => Math.max(max, p.limit),
-          100.0,
-        );
+        const maxKw = profile.chargingSchedule.chargingSchedulePeriod.reduce((max, p) => Math.max(max, p.limit), 100.0);
         return {
           stations: [
             {
@@ -103,7 +95,39 @@ function parseJsonOcpp(jsonStr: string): OcppNetwork {
   }
 }
 
-function normalizeStation(s: any, defaultLine: number): ChargingStation {
+interface RawOcppSession {
+  transactionId?: unknown;
+  evBatteryCapacityKWh?: unknown;
+  currentSoC?: unknown;
+  targetSoC?: unknown;
+  departureMinutes?: unknown;
+  allocatedPowerKW?: unknown;
+}
+
+interface RawOcppConnector {
+  id?: unknown;
+  type?: unknown;
+  maxPowerKW?: unknown;
+  status?: Connector["status"];
+  currentSession?: RawOcppSession;
+}
+
+interface RawOcppEvse {
+  id?: unknown;
+  connectors?: RawOcppConnector[];
+}
+
+interface RawOcppStation {
+  id?: unknown;
+  stationId?: unknown;
+  model?: string | undefined;
+  vendor?: string | undefined;
+  gridLimitKW?: unknown;
+  maxPowerKW?: unknown;
+  evses?: RawOcppEvse[];
+}
+
+function normalizeStation(s: RawOcppStation, defaultLine: number): ChargingStation {
   const evses: Evse[] = [];
   if (Array.isArray(s.evses)) {
     for (const e of s.evses) {
@@ -118,7 +142,9 @@ function normalizeStation(s: any, defaultLine: number): ChargingStation {
               currentSoC: Number(c.currentSession.currentSoC ?? 0.2),
               targetSoC: Number(c.currentSession.targetSoC ?? 0.8),
               departureMinutes: Number(c.currentSession.departureMinutes ?? 60),
-              allocatedPowerKW: c.currentSession.allocatedPowerKW ? Number(c.currentSession.allocatedPowerKW) : undefined,
+              allocatedPowerKW: c.currentSession.allocatedPowerKW
+                ? Number(c.currentSession.allocatedPowerKW)
+                : undefined,
             };
           }
           connectors.push({
@@ -234,7 +260,7 @@ function parseDeclarativeOcpp(text: string): OcppNetwork {
       } else if (currentConnector) {
         if (key === "type") currentConnector.type = val;
         else if (key === "maxPowerKW") currentConnector.maxPowerKW = parseFloat(val);
-        else if (key === "status") currentConnector.status = val as any;
+        else if (key === "status") currentConnector.status = val as Connector["status"];
       } else if (currentStation) {
         if (key === "model") currentStation.model = val;
         else if (key === "vendor") currentStation.vendor = val;

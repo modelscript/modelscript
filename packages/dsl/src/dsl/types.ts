@@ -46,7 +46,7 @@ export interface SymbolEntry {
   documentUri?: string | undefined;
   /** Optional language identifier of the source grammar that produced this symbol. */
   language?: string | undefined;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -72,6 +72,6 @@ export interface QueryDB {
   /** Evaluates a parameterized semantic query `queryName` for symbol `id` with additional `args` and optional cache `hashOverride`. */
   queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>, hashOverride?: string): T;
   /** Creates or retrieves a specialized clone of `baseSymbolId` parameterized by `options` (e.g., class modifications). */
-  specialize?(baseSymbolId: SymbolId, options: any): SymbolId;
-  [key: string]: any;
+  specialize?(baseSymbolId: SymbolId, options: unknown): SymbolId;
+  [key: string]: unknown;
 }

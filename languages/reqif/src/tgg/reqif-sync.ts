@@ -327,7 +327,7 @@ export function synchronizeSysml2ToReqIf(
     const xmlEl =
       specObjElements.find(
         (el) =>
-          el.attributes.find((a: any) => a.name.toUpperCase() === "IDENTIFIER")?.value ===
+          el.attributes.find((a) => a.name.toUpperCase() === "IDENTIFIER")?.value ===
           (origObj?.identifier ?? resolvedReqId),
       ) ?? specObjElements[idx];
 
@@ -340,7 +340,7 @@ export function synchronizeSysml2ToReqIf(
         splices.push(xml.setElementTextSplice(theValueEl, reconciledText));
       } else {
         const attrValEl = findXmlElements(xmlEl, "ATTRIBUTE-VALUE-STRING")[0];
-        if (attrValEl && attrValEl.attributes.some((a: any) => a.name.toUpperCase() === "THE-VALUE")) {
+        if (attrValEl && attrValEl.attributes.some((a) => a.name.toUpperCase() === "THE-VALUE")) {
           splices.push(xml.setAttributeSplice(attrValEl, "THE-VALUE", reconciledText, originalReqIfXml));
         }
       }

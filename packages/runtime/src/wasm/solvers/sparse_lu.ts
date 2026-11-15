@@ -313,3 +313,502 @@ export function dae_sparseLuSolve(luPtr: u32, bPtr: u32, xPtr: u32): boolean {
   let lu = changetype<SparseLU>(luPtr);
   return sparseLuSolve(lu, bPtr as usize, xPtr as usize);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Flat-Buffer Gilbert-Peierls Sparse LU (with Threshold Pivoting & Refactorize)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@unmanaged
+export class FlatSparseLU {
+  n: u32;
+  lLen: u32;
+  uLen: u32;
+  lCap: u32;
+  uCap: u32;
+  hasColPerm: u32;
+  hasSymbolicPattern: u32;
+  lColPtr: usize;
+  lRowIndices: usize;
+  lValues: usize;
+  uColPtr: usize;
+  uRowIndices: usize;
+  uValues: usize;
+  uDiagInv: usize;
+  perm: usize;
+  permInv: usize;
+  colPerm: usize;
+  scratchX: usize;
+  scratchY: usize;
+}
+
+@inline
+function growI32Buf(ptr: usize, oldLen: u32, newCap: u32): usize {
+  let newPtr = heap.alloc((newCap as usize) << 2);
+  memory.copy(newPtr, ptr, (oldLen as usize) << 2);
+  heap.free(ptr);
+  return newPtr;
+}
+
+@inline
+function growF64Buf(ptr: usize, oldLen: u32, newCap: u32): usize {
+  let newPtr = heap.alloc((newCap as usize) << 3);
+  memory.copy(newPtr, ptr, (oldLen as usize) << 3);
+  heap.free(ptr);
+  return newPtr;
+}
+
+export function flatSparseLuFree(luPtr: u32): void {
+  if (luPtr == 0) return;
+  let lu = changetype<FlatSparseLU>(luPtr as usize);
+  if (lu.lColPtr != 0) heap.free(lu.lColPtr);
+  if (lu.lRowIndices != 0) heap.free(lu.lRowIndices);
+  if (lu.lValues != 0) heap.free(lu.lValues);
+  if (lu.uColPtr != 0) heap.free(lu.uColPtr);
+  if (lu.uRowIndices != 0) heap.free(lu.uRowIndices);
+  if (lu.uValues != 0) heap.free(lu.uValues);
+  if (lu.uDiagInv != 0) heap.free(lu.uDiagInv);
+  if (lu.perm != 0) heap.free(lu.perm);
+  if (lu.permInv != 0) heap.free(lu.permInv);
+  if (lu.colPerm != 0) heap.free(lu.colPerm);
+  if (lu.scratchX != 0) heap.free(lu.scratchX);
+  if (lu.scratchY != 0) heap.free(lu.scratchY);
+  heap.free(luPtr as usize);
+}
+
+export function flatSparseLuFactor(
+  n: u32,
+  nnz: u32,
+  aColPtrPtr: u32,
+  aRowIndicesPtr: u32,
+  aValuesPtr: u32,
+  colPermPtr: u32,
+  allowPerturbation: bool,
+  pivotThreshold: f64,
+  keepStructural: bool,
+): u32 {
+  let aColPtr = aColPtrPtr as usize;
+  let aRowIndices = aRowIndicesPtr as usize;
+  let aValues = aValuesPtr as usize;
+
+  let initCap: u32 = nnz * 3 + n * 2;
+  if (initCap < 64) initCap = 64;
+
+  let luPtr = heap.alloc(offsetof<FlatSparseLU>());
+  let lu = changetype<FlatSparseLU>(luPtr);
+  lu.n = n;
+  lu.lLen = 0;
+  lu.uLen = 0;
+  lu.lCap = initCap;
+  lu.uCap = initCap;
+  lu.hasColPerm = colPermPtr != 0 ? 1 : 0;
+  lu.hasSymbolicPattern = keepStructural ? 1 : 0;
+
+  let nBytesI32 = (n as usize) << 2;
+  let np1BytesI32 = ((n + 1) as usize) << 2;
+  let nBytesF64 = (n as usize) << 3;
+
+  lu.lColPtr = heap.alloc(np1BytesI32);
+  lu.uColPtr = heap.alloc(np1BytesI32);
+  lu.lRowIndices = heap.alloc((initCap as usize) << 2);
+  lu.lValues = heap.alloc((initCap as usize) << 3);
+  lu.uRowIndices = heap.alloc((initCap as usize) << 2);
+  lu.uValues = heap.alloc((initCap as usize) << 3);
+  lu.uDiagInv = heap.alloc(nBytesF64);
+  lu.perm = heap.alloc(nBytesI32);
+  lu.permInv = heap.alloc(nBytesI32);
+  lu.scratchX = heap.alloc(nBytesF64);
+  lu.scratchY = heap.alloc(nBytesF64);
+  if (colPermPtr != 0) {
+    lu.colPerm = heap.alloc(nBytesI32);
+    memory.copy(lu.colPerm, colPermPtr as usize, nBytesI32);
+  } else {
+    lu.colPerm = 0;
+  }
+
+  memory.fill(lu.permInv, 0xff, nBytesI32);
+  memory.fill(lu.scratchX, 0, nBytesF64);
+  memory.fill(lu.uDiagInv, 0, nBytesF64);
+
+  let xiPtr = heap.alloc(nBytesI32);
+  let visitedPtr = heap.alloc(nBytesI32);
+  let dfsRowPtr = heap.alloc(nBytesI32);
+  let dfsPtrPtr = heap.alloc(nBytesI32);
+  memory.fill(visitedPtr, 0xff, nBytesI32);
+
+  let lLen: u32 = 0;
+  let uLen: u32 = 0;
+  let fallbackCursor: u32 = 0;
+  let failed = false;
+
+  for (let k: u32 = 0; k < n; k++) {
+    store<i32>(lu.lColPtr + ((k as usize) << 2), lLen as i32);
+    store<i32>(lu.uColPtr + ((k as usize) << 2), uLen as i32);
+
+    let col: u32 = lu.colPerm != 0 ? (load<i32>(lu.colPerm + ((k as usize) << 2)) as u32) : k;
+    let aStart = load<i32>(aColPtr + ((col as usize) << 2)) as u32;
+    let aEnd = load<i32>(aColPtr + (((col + 1) as usize) << 2)) as u32;
+
+    // 1. Gilbert-Peierls Reachability DFS over L(:, 0..k-1)
+    let top: u32 = n;
+    for (let p: u32 = aStart; p < aEnd; p++) {
+      let startRow = load<i32>(aRowIndices + ((p as usize) << 2)) as u32;
+      if (load<i32>(visitedPtr + ((startRow as usize) << 2)) == (k as i32)) continue;
+
+      let stackTop: i32 = 0;
+      store<i32>(dfsRowPtr, startRow as i32);
+      let j0 = load<i32>(lu.permInv + ((startRow as usize) << 2));
+      let initLp: i32 = j0 >= 0 ? load<i32>(lu.lColPtr + ((j0 as usize) << 2)) + 1 : 0;
+      store<i32>(dfsPtrPtr, initLp);
+      store<i32>(visitedPtr + ((startRow as usize) << 2), k as i32);
+
+      while (stackTop >= 0) {
+        let stOff = (stackTop as usize) << 2;
+        let currRow = load<i32>(dfsRowPtr + stOff) as u32;
+        let j = load<i32>(lu.permInv + ((currRow as usize) << 2));
+        if (j >= 0) {
+          let lEnd = load<i32>(lu.lColPtr + (((j + 1) as usize) << 2));
+          let lp = load<i32>(dfsPtrPtr + stOff);
+          while (lp < lEnd) {
+            let lr = load<i32>(lu.lRowIndices + ((lp as usize) << 2)) as u32;
+            if (load<i32>(visitedPtr + ((lr as usize) << 2)) != (k as i32)) break;
+            lp++;
+          }
+          store<i32>(dfsPtrPtr + stOff, lp + 1);
+          if (lp < lEnd) {
+            let childRow = load<i32>(lu.lRowIndices + ((lp as usize) << 2)) as u32;
+            store<i32>(visitedPtr + ((childRow as usize) << 2), k as i32);
+            stackTop++;
+            let nextOff = (stackTop as usize) << 2;
+            store<i32>(dfsRowPtr + nextOff, childRow as i32);
+            let cj = load<i32>(lu.permInv + ((childRow as usize) << 2));
+            let cLp: i32 = cj >= 0 ? load<i32>(lu.lColPtr + ((cj as usize) << 2)) + 1 : 0;
+            store<i32>(dfsPtrPtr + nextOff, cLp);
+            continue;
+          }
+        }
+        top--;
+        store<i32>(xiPtr + ((top as usize) << 2), currRow as i32);
+        stackTop--;
+      }
+    }
+
+    // 2. Scatter A(:, col) into scratchX
+    for (let p: u32 = aStart; p < aEnd; p++) {
+      let r = load<i32>(aRowIndices + ((p as usize) << 2)) as u32;
+      store<f64>(lu.scratchX + ((r as usize) << 3), load<f64>(aValues + ((p as usize) << 3)));
+    }
+
+    // 3. Sparse triangular solve L(0..k-1) * u = A(:, col)
+    for (let px: u32 = top; px < n; px++) {
+      let r = load<i32>(xiPtr + ((px as usize) << 2)) as u32;
+      let j = load<i32>(lu.permInv + ((r as usize) << 2));
+      if (j < 0) continue;
+      let xj = load<f64>(lu.scratchX + ((r as usize) << 3));
+      if (Math.abs(xj) <= 1e-16) continue;
+
+      let lStart = (load<i32>(lu.lColPtr + ((j as usize) << 2)) + 1) as u32;
+      let lEnd = load<i32>(lu.lColPtr + (((j + 1) as usize) << 2)) as u32;
+      for (let lp: u32 = lStart; lp < lEnd; lp++) {
+        let lr = load<i32>(lu.lRowIndices + ((lp as usize) << 2)) as u32;
+        let lVal = load<f64>(lu.lValues + ((lp as usize) << 3));
+        let off = (lr as usize) << 3;
+        store<f64>(lu.scratchX + off, load<f64>(lu.scratchX + off) - xj * lVal);
+      }
+    }
+
+    // 4. Threshold Partial Pivoting among unpivoted rows in xi[top..n-1]
+    let maxVal: f64 = -1.0;
+    let pivotRow: i32 = -1;
+    for (let px: u32 = top; px < n; px++) {
+      let r = load<i32>(xiPtr + ((px as usize) << 2)) as u32;
+      if (load<i32>(lu.permInv + ((r as usize) << 2)) < 0) {
+        let absVal = Math.abs(load<f64>(lu.scratchX + ((r as usize) << 3)));
+        if (absVal > maxVal) {
+          maxVal = absVal;
+          pivotRow = r as i32;
+        }
+      }
+    }
+
+    if (pivotThreshold < 1.0 && load<i32>(lu.permInv + ((col as usize) << 2)) < 0 && maxVal > 0.0) {
+      let diagAbs = Math.abs(load<f64>(lu.scratchX + ((col as usize) << 3)));
+      if (diagAbs >= pivotThreshold * maxVal && diagAbs >= 1e-12) {
+        pivotRow = col as i32;
+        maxVal = diagAbs;
+      }
+    }
+
+    if (pivotRow < 0 || maxVal < 1e-14) {
+      if (!allowPerturbation) {
+        failed = true;
+        break;
+      }
+      if (pivotRow < 0) {
+        if (load<i32>(lu.permInv + ((col as usize) << 2)) < 0) {
+          pivotRow = col as i32;
+        } else {
+          while (fallbackCursor < n && load<i32>(lu.permInv + ((fallbackCursor as usize) << 2)) >= 0) {
+            fallbackCursor++;
+          }
+          pivotRow = fallbackCursor as i32;
+        }
+      }
+      let pOff = (pivotRow as usize) << 3;
+      let cur = load<f64>(lu.scratchX + pOff);
+      store<f64>(lu.scratchX + pOff, cur >= 0.0 ? 1e-6 : -1e-6);
+    }
+
+    let pivU = pivotRow as u32;
+    store<i32>(lu.perm + ((k as usize) << 2), pivU as i32);
+    store<i32>(lu.permInv + ((pivU as usize) << 2), k as i32);
+
+    let pivotVal = load<f64>(lu.scratchX + ((pivU as usize) << 3));
+    store<f64>(lu.scratchX + ((pivU as usize) << 3), 0.0);
+
+    // 5. Extract U(:, k) and L(:, k)
+    let neededU = uLen + (n - top) + 2;
+    if (neededU > lu.uCap) {
+      let newCap = lu.uCap * 2 + (n - top) + 16;
+      lu.uRowIndices = growI32Buf(lu.uRowIndices, uLen, newCap);
+      lu.uValues = growF64Buf(lu.uValues, uLen, newCap);
+      lu.uCap = newCap;
+    }
+
+    let neededL = lLen + (n - top) + 2;
+    if (neededL > lu.lCap) {
+      let newCap = lu.lCap * 2 + (n - top) + 16;
+      lu.lRowIndices = growI32Buf(lu.lRowIndices, lLen, newCap);
+      lu.lValues = growF64Buf(lu.lValues, lLen, newCap);
+      lu.lCap = newCap;
+    }
+
+    let invPivot: f64 = 1.0 / pivotVal;
+    store<f64>(lu.uDiagInv + ((k as usize) << 3), invPivot);
+
+    // Unit diagonal of L(:, k)
+    store<i32>(lu.lRowIndices + ((lLen as usize) << 2), pivU as i32);
+    store<f64>(lu.lValues + ((lLen as usize) << 3), 1.0);
+    lLen++;
+
+    for (let px: u32 = top; px < n; px++) {
+      let r = load<i32>(xiPtr + ((px as usize) << 2)) as u32;
+      if (r == pivU) continue;
+      let val = load<f64>(lu.scratchX + ((r as usize) << 3));
+      store<f64>(lu.scratchX + ((r as usize) << 3), 0.0);
+
+      let j = load<i32>(lu.permInv + ((r as usize) << 2));
+      if (j >= 0) {
+        if (keepStructural || Math.abs(val) > 1e-16) {
+          store<i32>(lu.uRowIndices + ((uLen as usize) << 2), j);
+          store<f64>(lu.uValues + ((uLen as usize) << 3), val);
+          uLen++;
+        }
+      } else {
+        if (keepStructural || Math.abs(val) > 1e-16) {
+          store<i32>(lu.lRowIndices + ((lLen as usize) << 2), r as i32);
+          store<f64>(lu.lValues + ((lLen as usize) << 3), val * invPivot);
+          lLen++;
+        }
+      }
+    }
+
+    // Diagonal of U(:, k) stored last
+    store<i32>(lu.uRowIndices + ((uLen as usize) << 2), k as i32);
+    store<f64>(lu.uValues + ((uLen as usize) << 3), pivotVal);
+    uLen++;
+  }
+
+  heap.free(xiPtr);
+  heap.free(visitedPtr);
+  heap.free(dfsRowPtr);
+  heap.free(dfsPtrPtr);
+
+  if (failed) {
+    flatSparseLuFree(luPtr as u32);
+    return 0;
+  }
+
+  store<i32>(lu.lColPtr + ((n as usize) << 2), lLen as i32);
+  store<i32>(lu.uColPtr + ((n as usize) << 2), uLen as i32);
+  lu.lLen = lLen;
+  lu.uLen = uLen;
+
+  // Map L row indices in-place from original row space to permuted pivot index permInv[r]
+  for (let p: u32 = 0; p < lLen; p++) {
+    let origRow = load<i32>(lu.lRowIndices + ((p as usize) << 2)) as u32;
+    store<i32>(lu.lRowIndices + ((p as usize) << 2), load<i32>(lu.permInv + ((origRow as usize) << 2)));
+  }
+
+  return luPtr as u32;
+}
+
+export function flatSparseLuRefactorize(
+  luPtr: u32,
+  aColPtrPtr: u32,
+  aRowIndicesPtr: u32,
+  aValuesPtr: u32,
+  allowPerturbation: bool,
+  maxGrowth: f64,
+): bool {
+  if (luPtr == 0) return false;
+  let lu = changetype<FlatSparseLU>(luPtr as usize);
+  if (lu.hasSymbolicPattern == 0) return false;
+
+  let n = lu.n;
+  let aColPtr = aColPtrPtr as usize;
+  let aRowIndices = aRowIndicesPtr as usize;
+  let aValues = aValuesPtr as usize;
+  let denseX = lu.scratchX;
+  let pinv = lu.permInv;
+  let colPerm = lu.colPerm;
+
+  for (let k: u32 = 0; k < n; k++) {
+    let col: u32 = colPerm != 0 ? (load<i32>(colPerm + ((k as usize) << 2)) as u32) : k;
+    let aStart = load<i32>(aColPtr + ((col as usize) << 2)) as u32;
+    let aEnd = load<i32>(aColPtr + (((col + 1) as usize) << 2)) as u32;
+
+    for (let p: u32 = aStart; p < aEnd; p++) {
+      let origRow = load<i32>(aRowIndices + ((p as usize) << 2)) as u32;
+      let permRow = load<i32>(pinv + ((origRow as usize) << 2)) as u32;
+      store<f64>(denseX + ((permRow as usize) << 3), load<f64>(aValues + ((p as usize) << 3)));
+    }
+
+    let uStart = load<i32>(lu.uColPtr + ((k as usize) << 2)) as u32;
+    let uEnd = load<i32>(lu.uColPtr + (((k + 1) as usize) << 2)) as u32;
+    let uDiagPos = uEnd - 1;
+
+    for (let up: u32 = uStart; up < uDiagPos; up++) {
+      let j = load<i32>(lu.uRowIndices + ((up as usize) << 2)) as u32;
+      let jOff = (j as usize) << 3;
+      let xj = load<f64>(denseX + jOff);
+      store<f64>(lu.uValues + ((up as usize) << 3), xj);
+      store<f64>(denseX + jOff, 0.0);
+      if (Math.abs(xj) <= 1e-16) continue;
+
+      let lStart = (load<i32>(lu.lColPtr + ((j as usize) << 2)) + 1) as u32;
+      let lEnd = load<i32>(lu.lColPtr + (((j + 1) as usize) << 2)) as u32;
+      for (let lp: u32 = lStart; lp < lEnd; lp++) {
+        let lr = load<i32>(lu.lRowIndices + ((lp as usize) << 2)) as u32;
+        let lVal = load<f64>(lu.lValues + ((lp as usize) << 3));
+        let lrOff = (lr as usize) << 3;
+        store<f64>(denseX + lrOff, load<f64>(denseX + lrOff) - xj * lVal);
+      }
+    }
+
+    let kOff = (k as usize) << 3;
+    let pivotVal = load<f64>(denseX + kOff);
+    store<f64>(denseX + kOff, 0.0);
+    if (Math.abs(pivotVal) < 1e-12) {
+      if (!allowPerturbation) {
+        let lStart = (load<i32>(lu.lColPtr + ((k as usize) << 2)) + 1) as u32;
+        let lEnd = load<i32>(lu.lColPtr + (((k + 1) as usize) << 2)) as u32;
+        for (let lp: u32 = lStart; lp < lEnd; lp++) {
+          let lr = load<i32>(lu.lRowIndices + ((lp as usize) << 2)) as u32;
+          store<f64>(denseX + ((lr as usize) << 3), 0.0);
+        }
+        return false;
+      }
+      pivotVal = pivotVal >= 0.0 ? 1e-6 : -1e-6;
+    }
+
+    store<f64>(lu.uValues + ((uDiagPos as usize) << 3), pivotVal);
+    let invPivot: f64 = 1.0 / pivotVal;
+    store<f64>(lu.uDiagInv + kOff, invPivot);
+
+    let lStart = load<i32>(lu.lColPtr + ((k as usize) << 2)) as u32;
+    let lEnd = load<i32>(lu.lColPtr + (((k + 1) as usize) << 2)) as u32;
+    store<f64>(lu.lValues + ((lStart as usize) << 3), 1.0);
+
+    let unstable = false;
+    for (let lp: u32 = lStart + 1; lp < lEnd; lp++) {
+      let lr = load<i32>(lu.lRowIndices + ((lp as usize) << 2)) as u32;
+      let lrOff = (lr as usize) << 3;
+      let mult = load<f64>(denseX + lrOff) * invPivot;
+      store<f64>(denseX + lrOff, 0.0);
+      store<f64>(lu.lValues + ((lp as usize) << 3), mult);
+      if (Math.abs(mult) > maxGrowth) {
+        unstable = true;
+      }
+    }
+
+    if (unstable && !allowPerturbation) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function flatSparseLuSolve(luPtr: u32, bPtr: u32, xPtr: u32): bool {
+  if (luPtr == 0 || bPtr == 0 || xPtr == 0) return false;
+  let lu = changetype<FlatSparseLU>(luPtr as usize);
+  let n = lu.n;
+  let y = lu.scratchY;
+  let b = bPtr as usize;
+  let x = xPtr as usize;
+  let colPerm = lu.colPerm;
+
+  // 1. Permute RHS: y = P * b
+  for (let i: u32 = 0; i < n; i++) {
+    let pi = load<i32>(lu.perm + ((i as usize) << 2)) as u32;
+    store<f64>(y + ((i as usize) << 3), load<f64>(b + ((pi as usize) << 3)));
+  }
+
+  // 2. Forward substitution: L * z = y
+  for (let col: u32 = 0; col < n; col++) {
+    let diagVal = load<f64>(y + ((col as usize) << 3));
+    if (Math.abs(diagVal) < 1e-15) continue;
+
+    let start = (load<i32>(lu.lColPtr + ((col as usize) << 2)) + 1) as u32;
+    let end = load<i32>(lu.lColPtr + (((col + 1) as usize) << 2)) as u32;
+    for (let p: u32 = start; p < end; p++) {
+      let row = load<i32>(lu.lRowIndices + ((p as usize) << 2)) as u32;
+      let lVal = load<f64>(lu.lValues + ((p as usize) << 3));
+      let rOff = (row as usize) << 3;
+      store<f64>(y + rOff, load<f64>(y + rOff) - diagVal * lVal);
+    }
+  }
+
+  // 3. Back substitution: U * w = z and x = Q * w
+  for (let col: i32 = (n as i32) - 1; col >= 0; col--) {
+    let uCol = col as u32;
+    let start = load<i32>(lu.uColPtr + ((uCol as usize) << 2)) as u32;
+    let end = load<i32>(lu.uColPtr + (((uCol + 1) as usize) << 2)) as u32;
+
+    let solCol = load<f64>(y + ((uCol as usize) << 3)) * load<f64>(lu.uDiagInv + ((uCol as usize) << 3));
+    if (colPerm != 0) {
+      let qCol = load<i32>(colPerm + ((uCol as usize) << 2)) as u32;
+      store<f64>(x + ((qCol as usize) << 3), solCol);
+    } else {
+      store<f64>(x + ((uCol as usize) << 3), solCol);
+    }
+
+    for (let p: u32 = start; p < end; p++) {
+      let row = load<i32>(lu.uRowIndices + ((p as usize) << 2)) as u32;
+      if (row < uCol) {
+        let uVal = load<f64>(lu.uValues + ((p as usize) << 3));
+        let rOff = (row as usize) << 3;
+        store<f64>(y + rOff, load<f64>(y + rOff) - solCol * uVal);
+      }
+    }
+  }
+
+  return true;
+}
+
+export function flatSparseLuGetMeta(luPtr: u32, outMetaPtr: u32): void {
+  let lu = changetype<FlatSparseLU>(luPtr as usize);
+  let out = outMetaPtr as usize;
+  store<u32>(out, lu.n);
+  store<u32>(out + 4, lu.lLen);
+  store<u32>(out + 8, lu.uLen);
+  store<u32>(out + 12, lu.lColPtr as u32);
+  store<u32>(out + 16, lu.lRowIndices as u32);
+  store<u32>(out + 20, lu.lValues as u32);
+  store<u32>(out + 24, lu.uColPtr as u32);
+  store<u32>(out + 28, lu.uRowIndices as u32);
+  store<u32>(out + 32, lu.uValues as u32);
+  store<u32>(out + 36, lu.uDiagInv as u32);
+  store<u32>(out + 40, lu.perm as u32);
+  store<u32>(out + 44, lu.permInv as u32);
+}

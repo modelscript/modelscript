@@ -47,7 +47,7 @@ export function projectSimulinkViaTgg(
 
   let idx = 0;
   for (const block of model.rootSystem.blocks.values()) {
-    const blockProps: Record<string, any> = {
+    const blockProps: Record<string, unknown> = {
       blockType: block.type,
       name: block.name,
       gain: block.parameters.get("Gain"),
@@ -504,11 +504,10 @@ function patchSlxXmlViaCst(originalXml: string, model: SimulinkModel): string {
   }
 
   const splices: Splice[] = [];
-  const sysEl =
-    xmlDoc.root.name.toUpperCase() === "SYSTEM" ? xmlDoc.root : findXmlElements(xmlDoc.root, "System")[0];
+  const sysEl = xmlDoc.root.name.toUpperCase() === "SYSTEM" ? xmlDoc.root : findXmlElements(xmlDoc.root, "System")[0];
 
   if (sysEl && model.name && model.name !== "SimulinkModel") {
-    const nameAttr = sysEl.attributes.find((a: any) => a.name === "Name");
+    const nameAttr = sysEl.attributes.find((a) => a.name === "Name");
     if (nameAttr && nameAttr.value !== model.name) {
       splices.push(xml.setAttributeSplice(sysEl, "Name", model.name, originalXml));
     }
@@ -520,24 +519,24 @@ function patchSlxXmlViaCst(originalXml: string, model: SimulinkModel): string {
   for (const block of model.rootSystem.blocks.values()) {
     const blockEl = blockEls.find(
       (el) =>
-        el.attributes.find((a: any) => a.name === "SID")?.value === block.id ||
-        el.attributes.find((a: any) => a.name === "Name")?.value === block.name,
+        el.attributes.find((a) => a.name === "SID")?.value === block.id ||
+        el.attributes.find((a) => a.name === "Name")?.value === block.name,
     );
 
     if (blockEl) {
       matchedBlockNames.add(block.name);
-      const nameAttr = blockEl.attributes.find((a: any) => a.name === "Name");
+      const nameAttr = blockEl.attributes.find((a) => a.name === "Name");
       if (nameAttr && nameAttr.value !== block.name) {
         splices.push(xml.setAttributeSplice(blockEl, "Name", block.name, originalXml));
       }
 
-      const pEls = blockEl.children.filter((c: any) => c.name === "P");
+      const pEls = blockEl.children.filter((c) => c.name === "P");
       for (const [k, v] of block.parameters) {
         let formatted = String(v);
         if (k === "Gain" && typeof v === "number" && Number.isInteger(v)) {
           formatted = `${v}.0`;
         }
-        const pEl = pEls.find((p: any) => p.attributes.find((a: any) => a.name === "Name")?.value === k);
+        const pEl = pEls.find((p) => p.attributes.find((a) => a.name === "Name")?.value === k);
         if (pEl && !pEl.selfClosing) {
           if (pEl.text !== formatted) {
             splices.push(xml.setElementTextSplice(pEl, formatted));
@@ -551,7 +550,11 @@ function patchSlxXmlViaCst(originalXml: string, model: SimulinkModel): string {
       const sidAttr = block.id && block.id !== block.name ? ` SID="${block.id}"` : "";
       if (block.parameters.size === 0) {
         splices.push(
-          xml.appendChildSplice(sysEl, `<Block BlockType="${block.type}" Name="${block.name}"${sidAttr}/>`, originalXml),
+          xml.appendChildSplice(
+            sysEl,
+            `<Block BlockType="${block.type}" Name="${block.name}"${sidAttr}/>`,
+            originalXml,
+          ),
         );
       } else {
         const paramLines: string[] = [];

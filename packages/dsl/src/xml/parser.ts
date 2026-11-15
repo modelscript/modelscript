@@ -49,7 +49,10 @@ export function getXmlWasmParser(): Parser | null {
 export function ensureXmlParser(): void {
   if (cached) return;
 
-  const globalWasm = (globalThis as any).__MODEL_SCRIPT_XML_WASM__;
+  const globalWasm = (globalThis as Record<string, unknown>)["__MODEL_SCRIPT_XML_WASM__"] as
+    | string
+    | Uint8Array
+    | undefined;
   if (globalWasm) {
     try {
       initXmlParser(globalWasm);
@@ -115,18 +118,20 @@ export function ensureXmlParser(): void {
 }
 
 function collectErrors(n: SyntaxNode, out: { start: number; end: number }[]): void {
-  const isMissing = typeof (n as any).isMissing === "function" ? (n as any).isMissing() : n.isMissing;
+  const nodeWithFns = n as unknown as { isMissing?: boolean | (() => boolean); hasError?: boolean | (() => boolean) };
+  const isMissing = typeof nodeWithFns.isMissing === "function" ? nodeWithFns.isMissing() : n.isMissing;
   if (n.type === "ERROR" || isMissing) {
     out.push({ start: n.startOffset, end: n.endOffset });
     return;
   }
-  const hasError = typeof (n as any).hasError === "function" ? (n as any).hasError() : n.hasError;
+  const hasError = typeof nodeWithFns.hasError === "function" ? nodeWithFns.hasError() : n.hasError;
   if (!hasError) return;
   for (const c of n.children) collectErrors(c, out);
 }
 
 function convert(n: SyntaxNode, source: string, parent: XmlElement | null): XmlElement | null {
-  const isMissing = typeof (n as any).isMissing === "function" ? (n as any).isMissing() : n.isMissing;
+  const nodeWithFns = n as unknown as { isMissing?: boolean | (() => boolean) };
+  const isMissing = typeof nodeWithFns.isMissing === "function" ? nodeWithFns.isMissing() : n.isMissing;
   if (n.type === "ERROR" || isMissing) return null;
 
   const openNode = n.childForFieldName("open");

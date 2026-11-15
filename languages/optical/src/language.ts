@@ -4,13 +4,15 @@
  * ModelScript Optical DWDM / OpenROADM & OTDR (Telcordia SR-4731 .sor) Language Definition.
  */
 
-import { language } from "@modelscript/dsl";
+import { cardDeckRules, language } from "@modelscript/dsl";
 import { lowerOpticalEdfaToDae } from "./dae/optical-to-dae.js";
 import { indexOpticalFile } from "./indexing.js";
 import { lintOpticalTopology } from "./lints/optical-linter.js";
 import { parseOpenRoadmTopology } from "./parser/openroadm-parser.js";
+import { opticalPolyglotConfig } from "./tgg/index.js";
 
 export const opticalLanguage = language({
+  polyglot: opticalPolyglotConfig,
   name: "optical",
   fileExtensions: [".sor", ".openroadm.json", ".json"],
   maturity: "stable",
@@ -61,6 +63,8 @@ export const opticalLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
 
 export default opticalLanguage;

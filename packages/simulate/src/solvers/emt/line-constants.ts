@@ -40,11 +40,22 @@ export interface OverheadConductorSpec {
   bundleSpacingM?: number | undefined;
 }
 
+export interface TwoLayerSoilSpec {
+  /** Upper soil layer resistivity (Ohm*m), e.g. from geological borings. */
+  upperResistivityOhmM: number;
+  /** Lower deep-earth bedrock resistivity (Ohm*m). */
+  lowerResistivityOhmM: number;
+  /** Thickness of the upper soil layer (m). */
+  upperLayerDepthM: number;
+}
+
 export interface OverheadTowerGeometryConfig {
   lengthKm: number;
   conductors: OverheadConductorSpec[];
   /** Homogeneous earth resistivity (Ohm*m, default: 100.0). */
   soilResistivityOhmM?: number | undefined;
+  /** Optional 2-layer stratified earth model from geological borings (overrides homogeneous soilResistivityOhmM). */
+  twoLayerSoil?: TwoLayerSoilSpec | undefined;
   /** Whether phases are transposed across the line length (default: true). */
   transposed?: boolean | undefined;
 }
@@ -225,6 +236,65 @@ function kronReduceRealLast(P: Float64Array, m: number): Float64Array {
 }
 
 /**
+ * Computes complex earth-return penetration depth p(omega) = pRe + j*pIm (meters)
+ * for homogeneous or 2-layer stratified soil using Deri-Tevan-Semlyen (1981).
+ */
+export function computeComplexEarthPenetrationDepth(
+  omega: number,
+  mu0: number,
+  rhoHomogeneous: number,
+  twoLayerSoil?: TwoLayerSoilSpec,
+): { pRe: number; pIm: number } {
+  if (!twoLayerSoil) {
+    const deltaEarth = Math.sqrt((2.0 * rhoHomogeneous) / (omega * mu0));
+    return { pRe: 0.5 * deltaEarth, pIm: -0.5 * deltaEarth };
+  }
+
+  const rho1 = Math.max(0.1, twoLayerSoil.upperResistivityOhmM);
+  const rho2 = Math.max(0.1, twoLayerSoil.lowerResistivityOhmM);
+  const h1 = Math.max(0.01, twoLayerSoil.upperLayerDepthM);
+
+  const delta1 = Math.sqrt((2.0 * rho1) / (omega * mu0));
+  const delta2 = Math.sqrt((2.0 * rho2) / (omega * mu0));
+
+  // p1 = 0.5*delta1*(1 - j), p2 = 0.5*delta2*(1 - j)
+  const p1Re = 0.5 * delta1;
+  const p1Im = -0.5 * delta1;
+  const p2Re = 0.5 * delta2;
+  const p2Im = -0.5 * delta2;
+
+  // gamma1 * h1 = (h1 / delta1) * (1 + j) = a + j*a
+  const a = h1 / delta1;
+  // tanh(a + j*a) = (sinh(2a) + j*sin(2a)) / (cosh(2a) + cos(2a))
+  let thRe: number;
+  let thIm: number;
+  if (a > 20) {
+    thRe = 1.0;
+    thIm = 0.0;
+  } else {
+    const denom = Math.cosh(2 * a) + Math.cos(2 * a);
+    thRe = Math.sinh(2 * a) / denom;
+    thIm = Math.sin(2 * a) / denom;
+  }
+
+  // num = p1 * th + p2
+  const numRe = p1Re * thRe - p1Im * thIm + p2Re;
+  const numIm = p1Re * thIm + p1Im * thRe + p2Im;
+  // den = p1 + p2 * th
+  const denRe = p1Re + (p2Re * thRe - p2Im * thIm);
+  const denIm = p1Im + (p2Re * thIm + p2Im * thRe);
+  const denMag2 = Math.max(1e-30, denRe * denRe + denIm * denIm);
+  // ratio = num / den
+  const ratRe = (numRe * denRe + numIm * denIm) / denMag2;
+  const ratIm = (numIm * denRe - numRe * denIm) / denMag2;
+
+  return {
+    pRe: p1Re * ratRe - p1Im * ratIm,
+    pIm: p1Re * ratIm + p1Im * ratRe,
+  };
+}
+
+/**
  * Computes multiconductor overhead transmission line electrical parameters at frequency `freqHz`
  * from tower conductor coordinates, bundle geometry, shield wires, and soil resistivity
  * using Deri-Semlyen / Carson complex ground return and Maxwell potential coefficients.
@@ -267,10 +337,8 @@ export function computeMulticonductorLineConstants(
   const m = ordered.length;
   const bundles = ordered.map(computeBundleEquivalentRadii);
 
-  // Complex earth penetration depth p = 1 / sqrt(j * omega * mu0 / rhoSoil) = (delta / 2) * (1 - j)
-  const deltaEarth = Math.sqrt((2.0 * rhoSoil) / (omega * mu0));
-  const pRe = 0.5 * deltaEarth;
-  const pIm = -0.5 * deltaEarth;
+  // Complex earth penetration depth p = pRe + j * pIm (homogeneous or 2-layer soil)
+  const { pRe, pIm } = computeComplexEarthPenetrationDepth(omega, mu0, rhoSoil, geom.twoLayerSoil);
   const kMagFactor = (omega * mu0 * 1000.0) / (2.0 * Math.PI); // Ohm/km scale
   const kPotFactor = 1.0 / (2.0 * Math.PI * eps0 * 1000.0); // km/F scale
 

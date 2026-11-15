@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { iniSectionRules, language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerBnglToDae } from "./dae/bngl-to-dae.js";
 import { indexBnglDocument } from "./indexing.js";
 import { lintBngl } from "./lints/index.js";
 import { parseBngl } from "./parser/bngl-parser.js";
 import { bnglToModelica, bnglToSbmlXml } from "./projections/bngl-projections.js";
 import { generateBnglNetwork, solveBngl, type BnglSolverOptions } from "./solvers/bngl-solver.js";
+import { bnglPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript BioNetGen Rule-Based Modeling Language (.bngl) Definition.
  */
 export const bnglLanguage = language({
+  polyglot: bnglPolyglotConfig,
   name: "bngl",
   fileExtensions: [".bngl"],
   maturity: "experimental",
@@ -142,4 +144,8 @@ export const bnglLanguage = language({
       },
     },
   ],
+  extras: ($) => [/[ \t\r\n]+/, $["IniComment"]!],
+  rules: iniSectionRules,
 });
+
+export default bnglLanguage;

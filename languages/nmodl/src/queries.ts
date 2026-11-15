@@ -146,7 +146,7 @@ export function lint__nmodlAll(db: QueryDB, entry: SymbolEntry): LintResult[] | 
 /**
  * Query hooks dispatch table registered with WasmQueryEngine for rule `nmodl_channel`.
  */
-export const nmodlQueryHooks: Record<string, Record<string, any>> = {
+export const nmodlQueryHooks: Record<string, Record<string, (db: QueryDB, entry: SymbolEntry) => unknown>> = {
   nmodl_channel: {
     nmodlDocument,
     lint__nmodlNeuronBlock,

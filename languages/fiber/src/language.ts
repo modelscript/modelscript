@@ -10,8 +10,10 @@ import { findNetworkSrlgSpofs, type SrlgNetwork, type SrlgPath } from "./analysi
 import { lowerFiberNetworkToDae } from "./dae/lowering.js";
 import { canIndexFiber, indexFiberDocument } from "./indexing.js";
 import { parseFiberGis } from "./parser/fiber-gis-parser.js";
+import { fiberPolyglotConfig } from "./tgg/index.js";
 
 export const fiberLanguage = language({
+  polyglot: fiberPolyglotConfig,
   name: "fiber",
   fileExtensions: [".fiber.geojson", ".osp.json"],
   maturity: "stable",

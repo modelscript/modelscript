@@ -3,12 +3,25 @@
 import {
   collectWorkspaceDocuments,
   findIncludeCycle,
+  groupCstLeavesByLine,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { createWasmParserSync } from "@modelscript/verilog-a/wasm-parser";
+import { createRequire } from "node:module";
 import { parseVerilogA } from "../parser/verilog-a-parser.js";
 import { lintVerilogA } from "./rules.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getVerilogAWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/verilog-a/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 const BUILTIN_VAMS_HEADERS = new Set(["disciplines.vams", "constants.vams", "disciplines.h", "constants.h"]);
 
@@ -28,6 +41,7 @@ export function lintVerilogAWorkspace(workspace: WorkspaceDocumentInput, rootUri
   const edges = new Map<string, string[]>();
   const expandedParts: string[] = [];
   const visited = new Set<string>();
+  const parser = getVerilogAWasmParser();
 
   function expand(uri: string): void {
     if (visited.has(uri)) return;
@@ -36,10 +50,23 @@ export function lintVerilogAWorkspace(workspace: WorkspaceDocumentInput, rootUri
     const outEdges: string[] = [];
     edges.set(uri, outEdges);
 
-    for (const line of text.split(/\r?\n/)) {
-      const m = line.match(/^\s*`include\s+(?:"([^"]+)"|<([^>]+)>)/i);
+    const tree = parser.parse(text);
+    const rawLines = text.split(/\r?\n/);
+    const includeRows = new Map<number, string>();
+    for (const { row, tokens } of groupCstLeavesByLine(tree?.rootNode)) {
+      const joined = tokens
+        .map((t) => t.text)
+        .join("")
+        .trim();
+      const m = joined.match(/^`include\s+(?:"([^"]+)"|<([^>]+)>)/i);
       if (m) {
-        const targetRaw = m[1] ?? m[2] ?? "";
+        includeRows.set(row, m[1] ?? m[2] ?? "");
+      }
+    }
+
+    for (let row = 0; row < rawLines.length; row++) {
+      const targetRaw = includeRows.get(row);
+      if (targetRaw !== undefined) {
         const resolved = resolveRelativeUri(uri, targetRaw, docs);
         if (!resolved) {
           const base = targetRaw.split("/").pop()?.toLowerCase() ?? "";
@@ -57,7 +84,7 @@ export function lintVerilogAWorkspace(workspace: WorkspaceDocumentInput, rootUri
           expand(resolved);
         }
       } else {
-        expandedParts.push(line);
+        expandedParts.push(rawLines[row] ?? "");
       }
     }
   }

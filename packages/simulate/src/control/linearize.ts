@@ -22,6 +22,7 @@ import {
   ExprKind,
   Variability,
   evaluateArenaDualExpression,
+  getDefaultWasmExports,
   hasArrayEquations,
   scalarizeArena,
 } from "@modelscript/runtime";
@@ -344,6 +345,54 @@ function buildInitialOperatingPoint(
   };
 }
 
+interface MultiRhsWasmExports {
+  memory: WebAssembly.Memory;
+  __new(bytes: number, id: number): number;
+  __pin?(ptr: number): void;
+  solveDenseMultiRhs(
+    luPtr: number,
+    rhsPtr: number,
+    n: number,
+    m: number,
+    regularization: number,
+    metaPtr: number,
+  ): number;
+}
+
+interface MultiRhsWasmScratch {
+  wasm: MultiRhsWasmExports;
+  capN: number;
+  capM: number;
+  luPtr: number;
+  rhsPtr: number;
+  metaPtr: number;
+}
+
+let multiRhsScratch: MultiRhsWasmScratch | null = null;
+
+function ensureMultiRhsScratch(wasm: MultiRhsWasmExports, n: number, m: number): MultiRhsWasmScratch | null {
+  if (!wasm || typeof wasm.__new !== "function") return null;
+  if (multiRhsScratch && multiRhsScratch.wasm === wasm && multiRhsScratch.capN >= n && multiRhsScratch.capM >= m) {
+    return multiRhsScratch;
+  }
+  const capN = Math.max(n, 64);
+  const capM = Math.max(m, 32);
+  const alloc = (bytes: number): number => {
+    const ptr = wasm.__new(bytes, 0);
+    if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+    return ptr;
+  };
+  multiRhsScratch = {
+    wasm,
+    capN,
+    capM,
+    luPtr: alloc(capN * capN * 8),
+    rhsPtr: alloc(capN * capM * 8),
+    metaPtr: alloc(8),
+  };
+  return multiRhsScratch;
+}
+
 /**
  * Solve a dense linear system A * X = B with Tikhonov regularization fallback for near-singular pivots.
  * A is n x n (row-major), B is n x m (row-major). Returns X in R^{n x m} and minimum pivot ratio.
@@ -357,6 +406,26 @@ export function solveDenseLinearSystem(
 ): { X: Float64Array; minPivotRatio: number; regularized: boolean } {
   if (n === 0) {
     return { X: new Float64Array(0), minPivotRatio: 1.0, regularized: false };
+  }
+
+  if (n >= 12 && m > 0) {
+    const wasm = getDefaultWasmExports() as MultiRhsWasmExports | null;
+    if (wasm && typeof wasm.solveDenseMultiRhs === "function") {
+      const s = ensureMultiRhsScratch(wasm, n, m);
+      if (s) {
+        const aLen = n * n;
+        const bLen = n * m;
+        const buf = wasm.memory.buffer;
+        new Float64Array(buf, s.luPtr, aLen).set(A.subarray(0, aLen));
+        new Float64Array(buf, s.rhsPtr, bLen).set(B.subarray(0, bLen));
+        const regFlag: number = wasm.solveDenseMultiRhs(s.luPtr, s.rhsPtr, n, m, regularization, s.metaPtr);
+        const outBuf = wasm.memory.buffer;
+        const X = new Float64Array(bLen);
+        X.set(new Float64Array(outBuf, s.rhsPtr, bLen));
+        const minPivotRatio = new Float64Array(outBuf, s.metaPtr, 1)[0] ?? 0;
+        return { X, minPivotRatio, regularized: regFlag !== 0 };
+      }
+    }
   }
 
   const lu = new Float64Array(A);

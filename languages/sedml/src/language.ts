@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { language, xmlRules, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerSedmlToDae } from "./dae/sedml-to-dae.js";
 import { sedmlIndexing } from "./indexing.js";
 import { lintSedml } from "./lints/index.js";
 import { parseSedml } from "./parser/sedml-parser.js";
 import { sedmlToModelica } from "./projections/sedml-to-modelica.js";
 import { executeSedmlExperiment, type SedmlRunnerOptions } from "./solvers/sedml-runner.js";
+import { sedmlPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript Simulation Experiment Description Markup Language (.sedml, .xml) Language Definition.
  */
 export const sedmlLanguage = language({
+  polyglot: sedmlPolyglotConfig,
   name: "sedml",
   fileExtensions: [".sedml", ".xml"],
   maturity: "experimental",
@@ -108,4 +110,8 @@ export const sedmlLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: xmlRules,
 });
+
+export default sedmlLanguage;

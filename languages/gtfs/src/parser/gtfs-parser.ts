@@ -1,19 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type {
-  GtfsFeed,
-  GtfsRoute,
-  GtfsStop,
-  GtfsStopTime,
-  GtfsTrip,
-  VehicleKinematicsParams,
-} from "../types.js";
+import { createWasmParserSync } from "@modelscript/gtfs/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
+import type { GtfsFeed, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip, VehicleKinematicsParams } from "../types.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getGtfsWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/gtfs/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Parses multi-table GTFS schedule text feeds or concatenated CSV sections.
  */
 export function parseGtfs(content: string): GtfsFeed {
-  const lines = content.split(/\r?\n/);
+  const cstTree = getGtfsWasmParser().parse(content);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
 
   const stops: GtfsStop[] = [];
   const routes: GtfsRoute[] = [];
@@ -21,20 +28,20 @@ export function parseGtfs(content: string): GtfsFeed {
   const stopTimes: GtfsStopTime[] = [];
 
   let vehicle: VehicleKinematicsParams = {
-    massKg: 18500.0,       // Standard 12m electric city bus with passengers
-    frontalAreaM2: 7.5,    // Bus frontal area
-    dragCoeff: 0.65,       // Aerodynamic drag
-    rollingResist: 0.008,  // Heavy vehicle rolling resistance
-    auxPowerKW: 10.0,      // HVAC + auxiliary systems
-    batteryKWh: 350.0,     // 350 kWh LFP/NMC battery pack
+    massKg: 18500.0, // Standard 12m electric city bus with passengers
+    frontalAreaM2: 7.5, // Bus frontal area
+    dragCoeff: 0.65, // Aerodynamic drag
+    rollingResist: 0.008, // Heavy vehicle rolling resistance
+    auxPowerKW: 10.0, // HVAC + auxiliary systems
+    batteryKWh: 350.0, // 350 kWh LFP/NMC battery pack
     regenEfficiency: 0.65,
   };
 
   let activeSection: "STOPS" | "ROUTES" | "TRIPS" | "STOP_TIMES" | "VEHICLE" | null = null;
   let headerMap: Map<string, number> = new Map();
 
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]!;
+  for (const { row: i, tokens: cstTokens } of cstLines) {
+    const rawLine = cstLineText(content, cstTokens);
     const line = rawLine.trim();
     if (!line) continue;
 
@@ -71,7 +78,10 @@ export function parseGtfs(content: string): GtfsFeed {
     const tokens = typeof delimiter === "string" ? line.split(",").map((s) => s.trim()) : line.split(delimiter);
 
     // Header row detection
-    if (headerMap.size === 0 && (tokens.includes("stop_id") || tokens.includes("route_id") || tokens.includes("trip_id"))) {
+    if (
+      headerMap.size === 0 &&
+      (tokens.includes("stop_id") || tokens.includes("route_id") || tokens.includes("trip_id"))
+    ) {
       for (let idx = 0; idx < tokens.length; idx++) {
         headerMap.set(tokens[idx]!.toLowerCase(), idx);
       }
@@ -90,7 +100,10 @@ export function parseGtfs(content: string): GtfsFeed {
       parseVehicleRow(tokens);
     } else {
       // Heuristic row detection if no section tag
-      if (tokens.length >= 4 && (tokens[0]?.startsWith("STOP") || tokens[1]?.includes("Station") || tokens[1]?.includes("Center"))) {
+      if (
+        tokens.length >= 4 &&
+        (tokens[0]?.startsWith("STOP") || tokens[1]?.includes("Station") || tokens[1]?.includes("Center"))
+      ) {
         parseStopRow(tokens, headerMap, i + 1);
       }
     }

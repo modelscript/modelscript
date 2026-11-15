@@ -35,16 +35,31 @@ export class XmlStreamReader {
     if (typeof source === "string") {
       this.buffer = source;
       this.isDoneReading = true;
-    } else if (typeof (source as any)[Symbol.asyncIterator] === "function") {
+    } else if (
+      typeof source === "object" &&
+      source !== null &&
+      Symbol.asyncIterator in source &&
+      typeof (source as AsyncIterable<string | Uint8Array>)[Symbol.asyncIterator] === "function"
+    ) {
       this.iterator = (source as AsyncIterable<string | Uint8Array>)[Symbol.asyncIterator]();
-    } else if (typeof (source as any)[Symbol.iterator] === "function") {
+    } else if (
+      typeof source === "object" &&
+      source !== null &&
+      Symbol.iterator in source &&
+      typeof (source as Iterable<string | Uint8Array>)[Symbol.iterator] === "function"
+    ) {
       const syncIter = (source as Iterable<string | Uint8Array>)[Symbol.iterator]();
       this.iterator = {
         async next() {
           return syncIter.next();
         },
       };
-    } else if (typeof (source as any).getReader === "function") {
+    } else if (
+      typeof source === "object" &&
+      source !== null &&
+      "getReader" in source &&
+      typeof (source as ReadableStream<Uint8Array>).getReader === "function"
+    ) {
       const reader = (source as ReadableStream<Uint8Array>).getReader();
       this.iterator = {
         async next(): Promise<IteratorResult<string | Uint8Array>> {

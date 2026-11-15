@@ -4,15 +4,17 @@
  * ModelScript Alternative Transients Program (ATP-EMTP) Language Definition.
  */
 
-import { language } from "@modelscript/dsl";
+import { cardDeckRules, language } from "@modelscript/dsl";
 import { simulateAtpCase } from "./analysis/transient-solver.js";
 import { lowerAtpToDae } from "./dae/atp-to-dae.js";
 import { canIndexAtp, indexAtpDocument } from "./indexing.js";
 import { lintAtpCase } from "./lints/index.js";
 import { parseAtp } from "./parser/atp-parser.js";
 import { writeAtp } from "./parser/atp-writer.js";
+import { atpPolyglotConfig } from "./tgg/index.js";
 
 export const atpLanguage = language({
+  polyglot: atpPolyglotConfig,
   name: "atp",
   fileExtensions: [".atp", ".dat"],
   maturity: "beta",
@@ -90,4 +92,8 @@ export const atpLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
+
+export default atpLanguage;

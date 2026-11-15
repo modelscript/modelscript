@@ -288,8 +288,39 @@ describe("Commercial Production Hardening (Pillars 1, 2, & 3)", () => {
       const captchaOk = await verifyCaptchaToken("airgap-client-token", "10.0.0.5", "");
       assert.equal(captchaOk.success, true);
 
-      // Readiness probe returns 200 in production airgapped appliance when JWT_SECRET and admin exist
+      // Readiness probe returns 200 in production airgapped appliance when JWT_SECRET, admin, and valid EE license exist
       const prevJwtSecret = process.env["JWT_SECRET"];
+      const prevLicenseKey = process.env["MSX_LICENSE_KEY"];
+      const prevLicensePub = process.env["MSX_LICENSE_PUBLIC_KEY"];
+      const eePkg = ["@modelscript", "ee"].join("/");
+      const { generateLicenseKeyPair, signEnterpriseLicense } = (await import(eePkg)) as {
+        generateLicenseKeyPair: () => { publicKeyPem: string; privateKeyPem: string };
+        signEnterpriseLicense: (
+          claims: {
+            sub: string;
+            org: string;
+            tier: string;
+            seats: number;
+            features: string[];
+            exp: number;
+          },
+          privateKeyPem?: string,
+        ) => string;
+      };
+      const kp = generateLicenseKeyPair();
+      const nowSec = Math.floor(Date.now() / 1000);
+      process.env["MSX_LICENSE_PUBLIC_KEY"] = kp.publicKeyPem;
+      process.env["MSX_LICENSE_KEY"] = signEnterpriseLicense(
+        {
+          sub: "grid-appliance-test",
+          org: "Test Utility",
+          tier: "appliance",
+          seats: 0,
+          features: ["airgap_compliance"],
+          exp: nowSec + 3600,
+        },
+        kp.privateKeyPem,
+      );
       process.env["JWT_SECRET"] = crypto.randomBytes(32).toString("hex");
       process.env["ADMIN_INIT_USERNAME"] = "grid_admin";
       process.env["ADMIN_INIT_PASSWORD"] = "StrongUtilityPass!2026";
@@ -303,6 +334,16 @@ describe("Commercial Production Hardening (Pillars 1, 2, & 3)", () => {
         delete process.env["JWT_SECRET"];
       } else {
         process.env["JWT_SECRET"] = prevJwtSecret;
+      }
+      if (prevLicenseKey === undefined) {
+        delete process.env["MSX_LICENSE_KEY"];
+      } else {
+        process.env["MSX_LICENSE_KEY"] = prevLicenseKey;
+      }
+      if (prevLicensePub === undefined) {
+        delete process.env["MSX_LICENSE_PUBLIC_KEY"];
+      } else {
+        process.env["MSX_LICENSE_PUBLIC_KEY"] = prevLicensePub;
       }
     } finally {
       process.env["NODE_ENV"] = prevNodeEnv;

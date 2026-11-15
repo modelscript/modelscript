@@ -8,11 +8,13 @@ import { lintRelap5 } from "./lints/index.js";
 import { parseRelap5 } from "./parser/relap5-parser.js";
 import { relap5ToModelica } from "./projections/relap5-to-modelica.js";
 import { solvePointKinetics, type KineticsSolverOptions } from "./solvers/point-kinetics-solver.js";
+import { relap5PolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript US NRC RELAP5-3D (.i, .inp, .r5) Language Definition.
  */
 export const relap5Language = language({
+  polyglot: relap5PolyglotConfig,
   name: "relap5",
   fileExtensions: [".i", ".inp", ".r5"],
   maturity: "experimental",

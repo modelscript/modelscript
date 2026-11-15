@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { cardDeckRules, language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerAntimonyToDae } from "./dae/antimony-to-dae.js";
 import { indexAntimonyDocument } from "./indexing.js";
 import { lintAntimony } from "./lints/index.js";
 import { parseAntimony } from "./parser/antimony-parser.js";
 import { antimonyToModelica, antimonyToSbmlXml } from "./projections/antimony-projections.js";
 import { solveAntimony, type AntimonySolverOptions } from "./solvers/antimony-solver.js";
+import { antimonyPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript Antimony Modular Reaction Network Language (.ant) Definition.
  */
 export const antimonyLanguage = language({
+  polyglot: antimonyPolyglotConfig,
   name: "antimony",
   fileExtensions: [".ant"],
   maturity: "experimental",
@@ -119,4 +121,8 @@ export const antimonyLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
+
+export default antimonyLanguage;

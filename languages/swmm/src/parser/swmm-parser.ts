@@ -4,6 +4,9 @@
  * @modelscript/swmm — High-Performance Zero-Regex Parser & Serializer for US EPA SWMM 5.x (.inp) Decks.
  */
 
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createWasmParserSync } from "@modelscript/swmm/wasm-parser";
+import { createRequire } from "node:module";
 import type {
   SwmmCrossSection,
   SwmmDeck,
@@ -14,6 +17,16 @@ import type {
   SwmmWeir,
 } from "../types.js";
 
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getSwmmWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/swmm/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 interface RawToken {
   text: string;
   startCol: number;
@@ -21,6 +34,8 @@ interface RawToken {
 }
 
 export function parseSwmm(source: string): SwmmDeck {
+  const cstTree = getSwmmWasmParser().parse(source);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   const deck: SwmmDeck = {
     flowUnits: "CFS",
     routingModel: "DYNWAVE",
@@ -41,16 +56,13 @@ export function parseSwmm(source: string): SwmmDeck {
   const seenNodes = new Set<string>();
   const seenLinks = new Set<string>();
 
-  const lines = source.split(/\r?\n/);
   let currentSection = "";
-  let currentOffset = 0;
   const titleLines: string[] = [];
 
-  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-    const rawLine = lines[lineIdx]!;
+  for (const { row: lineIdx, tokens: cstTokens } of cstLines) {
+    const rawLine = cstLineText(source, cstTokens);
     const lineNum = lineIdx + 1;
-    const lineStartOffset = currentOffset;
-    currentOffset += rawLine.length + 1; // including newline
+    const lineStartOffset = Math.max(0, (cstTokens[0]?.startIndex ?? 0) - (cstTokens[0]?.startPosition?.column ?? 0));
 
     // Strip comments starting with ';'
     let cleanLine = rawLine;
@@ -371,13 +383,15 @@ export function parseSwmm(source: string): SwmmDeck {
     deck.title = titleLines.join(" ");
   }
 
+  const lastCstLine = cstLines[cstLines.length - 1];
+  const lastLineLen = lastCstLine ? cstLineText(source, lastCstLine.tokens).length : 0;
   deck.range = {
     startLine: 1,
     startColumn: 1,
-    endLine: lines.length,
-    endColumn: (lines[lines.length - 1]?.length ?? 0) + 1,
+    endLine: (lastCstLine?.row ?? 0) + 1,
+    endColumn: lastLineLen + 1,
     startOffset: 0,
-    endOffset: currentOffset,
+    endOffset: source.length,
   };
 
   return deck;

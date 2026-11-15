@@ -295,7 +295,10 @@ end FinalAndAttributes;
 
     const printed = printArenaDAE(wasmArena);
     assert(printed.includes("Real x = 5.0;"), `printed output should contain 'Real x = 5.0;', got: ${printed}`);
-    assert(printed.includes("y = x + u + count;"), `printed output should preserve equation, got: ${printed}`);
+    assert(
+      printed.includes("y = x + u + /*Real*/(count);"),
+      `printed output should preserve equation, got: ${printed}`,
+    );
     console.log(
       "   ✔ non-parameter variable initial bindings correctly preserved and lowered in wasm & hybrid backends",
     );

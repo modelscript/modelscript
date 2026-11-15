@@ -109,6 +109,7 @@
     "@modelscript/sbml": "*",
     "@modelscript/scad": "*",
     "@modelscript/scl": "*",
+    "@modelscript/sdk": "*",
     "@modelscript/sel": "*",
     "@modelscript/sima": "*",
     "@modelscript/simpack": "*",

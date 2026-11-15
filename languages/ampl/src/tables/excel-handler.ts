@@ -9,9 +9,24 @@ import path from "node:path";
 
 const require = createRequire(import.meta.url);
 
-function getAdmZipClass(): any {
+interface AdmZipEntry {
+  entryName: string;
+}
+
+interface AdmZipInstance {
+  getEntry(name: string): AdmZipEntry | null;
+  getEntries(): AdmZipEntry[];
+  readAsText(entry: AdmZipEntry): string;
+  addFile(name: string, data: Buffer): void;
+  writeZip(targetFileName: string): void;
+  toBuffer(): Buffer;
+}
+
+type AdmZipCtor = new (fileNameOrBuffer?: string | Buffer) => AdmZipInstance;
+
+function getAdmZipClass(): AdmZipCtor {
   try {
-    return require("adm-zip");
+    return require("adm-zip") as AdmZipCtor;
   } catch (err) {
     throw new Error(
       `Excel (.xlsx) driver requires 'adm-zip'. Error: ${err instanceof Error ? err.message : String(err)}`,
@@ -56,7 +71,7 @@ export function readExcelTableRows(xlsxFilePath: string, baseDir?: string): Reco
   // Read sheet1.xml
   const sheetEntry =
     zip.getEntry("xl/worksheets/sheet1.xml") ??
-    zip.getEntries().find((e: any) => e.entryName.startsWith("xl/worksheets/sheet") && e.entryName.endsWith(".xml"));
+    zip.getEntries().find((e) => e.entryName.startsWith("xl/worksheets/sheet") && e.entryName.endsWith(".xml"));
 
   if (!sheetEntry) {
     return [];

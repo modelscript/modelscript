@@ -11,7 +11,7 @@ import { LanguageOptions } from "../../dsl/language.js";
  * @param normalized The normalized grammar containing symbol-to-int mapping tables.
  * @returns The generated TypeScript/AssemblyScript source code string for enum definitions.
  */
-export function generateTypes(grammar: LanguageOptions<any>, normalized: NormalizedGrammar): string {
+export function generateTypes(grammar: LanguageOptions, normalized: NormalizedGrammar): string {
   let typeCode = `// Token and Node Types for ${grammar.name}\n`;
 
   typeCode += `export enum SyntaxType {\n`;
@@ -147,7 +147,7 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
   }
 
   if (grammar.lints) {
-    for (const lint of Object.values(grammar.lints) as any[]) {
+    for (const lint of Object.values(grammar.lints) as Array<{ nodes?: string[] }>) {
       if (lint && Array.isArray(lint.nodes)) {
         for (const nodeName of lint.nodes) {
           if (typeof nodeName === "string") {
@@ -204,8 +204,10 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
   typeCode += `export enum NodeFlag {\n`;
   typeCode += `  NONE = 0,\n`;
   if (grammar.model) {
-    for (const modelKey of Object.keys(grammar.model)) {
-      const attrs = (grammar.model as any)[modelKey];
+    const modelMap = grammar.model as Record<string, Record<string, { type?: string }>>;
+    for (const modelKey of Object.keys(modelMap)) {
+      const attrs = modelMap[modelKey];
+      if (!attrs) continue;
       for (const attrKey of Object.keys(attrs)) {
         const attr = attrs[attrKey];
         if (typeof attr === "object" && (attr?.type === "flag" || attr?.type === "bool")) {
@@ -271,8 +273,10 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
   typeCode += `export enum Property {\n`;
   typeCode += `  NONE = 0,\n`;
   if (grammar.model) {
-    for (const modelKey of Object.keys(grammar.model)) {
-      const attrs = (grammar.model as any)[modelKey];
+    const modelMap = grammar.model as Record<string, Record<string, { type?: string }>>;
+    for (const modelKey of Object.keys(modelMap)) {
+      const attrs = modelMap[modelKey];
+      if (!attrs) continue;
       for (const attrKey of Object.keys(attrs)) {
         const attr = attrs[attrKey];
         if (typeof attr === "object" && typeof attr?.type === "string") {

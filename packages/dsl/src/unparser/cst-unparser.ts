@@ -12,6 +12,25 @@ import type {
   UnparseResult,
 } from "./types.js";
 
+export type SyncTargetHandler = (
+  root: SyntaxNode,
+  targetSource: string,
+  sourceNode: { name?: string; attributes?: { name: string; value?: unknown }[]; [key: string]: unknown },
+) => { startIndex: number; endIndex: number; newText: string }[];
+
+const SYNC_TARGET_HANDLERS = new Map<string, SyncTargetHandler>();
+
+/**
+ * Registers a custom CST synchronization handler for a target language.
+ */
+export function registerSyncTargetHandler(lang: string, handler: SyncTargetHandler): void {
+  SYNC_TARGET_HANDLERS.set(lang.toLowerCase(), handler);
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * Converts a CST Point ({ row, column }) to an LSP UnparsePosition ({ line, character }).
  */
@@ -93,7 +112,8 @@ export class CstUnparser {
       throw new Error("[CstUnparser.patchAndUnparse] target node is required.");
     }
 
-    const sourceCode = (target.tree as any)?.sourceCode ?? target.tree?.rootNode?.text ?? "";
+    const sourceCode =
+      (target.tree as unknown as { sourceCode?: string })?.sourceCode ?? target.tree?.rootNode?.text ?? "";
 
     // 1. Direct Node Replacement
     if (patch.replaceText !== undefined) {
@@ -247,9 +267,10 @@ export class CstUnparser {
     // Inspect target's named children or arguments
     const namedKids =
       target.namedChildren ??
-      target.children.filter((c) =>
-        typeof (c as any).isNamed === "function" ? (c as any).isNamed() : Boolean(c.isNamed),
-      );
+      target.children.filter((c) => {
+        const nodeWithFn = c as unknown as { isNamed?: boolean | (() => boolean) };
+        return typeof nodeWithFn.isNamed === "function" ? nodeWithFn.isNamed() : Boolean(c.isNamed);
+      });
 
     if (namedKids.length === 0) {
       // Empty parent node: look for opening delimiter like '(' or '{'
@@ -514,9 +535,18 @@ export class CstUnparser {
    */
   static syncTargetSource(
     targetSource: string,
-    sourceNode: any,
+    sourceNode: {
+      name?: string;
+      attributes?: Array<{ name: string; type?: string; value?: unknown }>;
+      ports?: Array<{ name: string; type?: string; isConjugated?: boolean }>;
+      components?: Array<{ name: string; typeSpecifier?: string; dimensions?: unknown; multiplicity?: unknown }>;
+    },
     targetLang: string,
-    targetParser?: any,
+    targetParser?: {
+      parse: (s: string) => {
+        rootNode?: { type?: string; text: string; children?: unknown[]; startIndex: number; endIndex: number } | null;
+      };
+    },
   ): UnparseResult {
     if (!targetSource || targetSource.trim().length === 0 || !targetParser) {
       return {
@@ -531,8 +561,15 @@ export class CstUnparser {
     }
 
     try {
+      interface SyncCstNode {
+        type?: string;
+        text: string;
+        children?: SyncCstNode[];
+        startIndex: number;
+        endIndex: number;
+      }
       const tree = targetParser.parse(targetSource);
-      const root = tree.rootNode;
+      const root = tree.rootNode as SyncCstNode | null | undefined;
       if (!root) {
         return {
           text: targetSource,
@@ -542,7 +579,11 @@ export class CstUnparser {
         };
       }
 
-      function findNodes(node: any, predicate: (n: any) => boolean, results: any[] = []): any[] {
+      function findNodes(
+        node: SyncCstNode | null | undefined,
+        predicate: (n: SyncCstNode) => boolean,
+        results: SyncCstNode[] = [],
+      ): SyncCstNode[] {
         if (!node) return results;
         if (predicate(node)) results.push(node);
         for (const c of node.children || []) findNodes(c, predicate, results);
@@ -584,7 +625,7 @@ export class CstUnparser {
           defNodes[0] ||
           root;
 
-        const existingAttrs = new Map<string, any>();
+        const existingAttrs = new Map<string, SyncCstNode>();
         const attrNodes = findNodes(def, (n) => n.type === "AttributeUsage" || n.text?.startsWith("attribute "));
         for (const a of attrNodes) {
           const nameNode = findNodes(a, (n) => n.type === "Name" || n.type === "ID")[0];
@@ -592,7 +633,7 @@ export class CstUnparser {
           if (name) existingAttrs.set(name, a);
         }
 
-        const existingPorts = new Map<string, any>();
+        const existingPorts = new Map<string, SyncCstNode>();
         const portNodes = findNodes(def, (n) => n.type === "PortUsage" || n.text?.startsWith("port "));
         for (const p of portNodes) {
           const nameNode = findNodes(p, (n) => n.type === "Name" || n.type === "ID")[0];
@@ -600,7 +641,7 @@ export class CstUnparser {
           if (name) existingPorts.set(name, p);
         }
 
-        const existingParts = new Map<string, any>();
+        const existingParts = new Map<string, SyncCstNode>();
         const partNodes = findNodes(def, (n) => n.type === "PartUsage" || n.text?.startsWith("part "));
         for (const p of partNodes) {
           const nameNode = findNodes(p, (n) => n.type === "Name" || n.type === "ID")[0];
@@ -683,7 +724,7 @@ export class CstUnparser {
           defNodes[0] ||
           root;
 
-        const existingVars = new Map<string, any>();
+        const existingVars = new Map<string, SyncCstNode>();
         const compDecls = findNodes(
           def,
           (n) =>
@@ -760,6 +801,28 @@ export class CstUnparser {
             endIndex: insertOffset,
             newText: insertions.join("\n") + "\n",
           });
+        }
+      } else {
+        const customHandler = SYNC_TARGET_HANDLERS.get(targetLang.toLowerCase());
+        if (customHandler) {
+          patches.push(
+            ...customHandler(root as unknown as Parameters<typeof customHandler>[0], targetSource, sourceNode),
+          );
+        } else if (sourceNode.attributes && sourceNode.attributes.length > 0) {
+          // Generic grammar-agnostic fallback: locate attribute identifier tokens and patch adjacent literal values
+          for (const attr of sourceNode.attributes) {
+            if (attr.value === undefined) continue;
+            const attrRegex = new RegExp(`(\\b${escapeRegExp(attr.name)}\\b\\s*(?:=|:)\\s*)([^;\\n,}\\)]+)`);
+            const m = attrRegex.exec(targetSource);
+            if (m && m[1] !== undefined && m[2] !== undefined) {
+              const valStart = m.index + m[1].length;
+              const valEnd = valStart + m[2].trimEnd().length;
+              const newVal = String(attr.value);
+              if (targetSource.slice(valStart, valEnd) !== newVal) {
+                patches.push({ startIndex: valStart, endIndex: valEnd, newText: newVal });
+              }
+            }
+          }
         }
       }
 

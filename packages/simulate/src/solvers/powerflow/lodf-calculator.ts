@@ -12,7 +12,7 @@
  *   - Zimmerman, R. D., et al. (2011). "MATPOWER: Steady-State Operations, Planning, and Analysis Tools". IEEE Trans. Power Syst.
  */
 
-import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
+import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
 import type { GenericPowerCase } from "../opf/types.js";
 
 export interface BranchSensitivityInfo {
@@ -49,7 +49,7 @@ export function calculateNetworkSensitivities(
   const B = busCount;
 
   // 1. Assemble B_bus matrix (B x B)
-  const Bbus = Array.from({ length: B }, () => new Float64Array(B));
+  const Bbus = new Float64Array(B * B);
   const bLine = new Float64Array(L);
 
   for (let l = 0; l < L; l++) {
@@ -62,10 +62,10 @@ export function calculateNetworkSensitivities(
     const from = br.fromBus;
     const to = br.toBus;
     if (from >= 0 && from < B && to >= 0 && to < B) {
-      Bbus[from]![from]! += b;
-      Bbus[to]![to]! += b;
-      Bbus[from]![to]! -= b;
-      Bbus[to]![from]! -= b;
+      Bbus[from * B + from]! += b;
+      Bbus[to * B + to]! += b;
+      Bbus[from * B + to]! -= b;
+      Bbus[to * B + from]! -= b;
     }
   }
 
@@ -81,19 +81,19 @@ export function calculateNetworkSensitivities(
     }
   }
 
-  const BbusRed = Array.from({ length: nRed }, () => new Float64Array(nRed));
+  const BbusRed = new Float64Array(nRed * nRed);
   for (let i = 0; i < B; i++) {
     const ri = busMap[i]!;
     if (ri < 0) continue;
     for (let j = 0; j < B; j++) {
       const rj = busMap[j]!;
       if (rj < 0) continue;
-      BbusRed[ri]![rj] = Bbus[i]![j]!;
+      BbusRed[ri * nRed + rj] = Bbus[i * B + j]!;
     }
   }
 
   // Factorize reduced Bbus
-  const fact = luFactor(BbusRed, nRed);
+  const fact = luFactorFlat(BbusRed, nRed);
 
   // Compute full X_bus (B x B) by solving BbusRed * x_col = e_col
   const Xbus = Array.from({ length: B }, () => new Float64Array(B));
@@ -102,7 +102,7 @@ export function calculateNetworkSensitivities(
   for (let col = 0; col < nRed; col++) {
     e.fill(0);
     e[col] = 1.0;
-    luSolve(fact, e);
+    luSolveFlat(fact, e);
 
     // Map reduced column back to original bus index
     let origCol = 0;

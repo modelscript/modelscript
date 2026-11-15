@@ -15,6 +15,7 @@
  *   arXiv:1604.00772 [cs.NE].
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
 import {
   type BlackBoxProblem,
   createRng,
@@ -22,6 +23,148 @@ import {
   type SingleObjectiveOptions,
   type SingleObjectiveResult,
 } from "./blackbox.js";
+
+interface CmaEsWasmExports {
+  memory: WebAssembly.Memory;
+  __new(bytes: number, id: number): number;
+  __pin?(ptr: number): void;
+  cmaEsUpdateCovarianceWasm(
+    n: number,
+    mu: number,
+    cPtr: number,
+    pCPtr: number,
+    yMuPtr: number,
+    weightsPtr: number,
+    cOldFactor: number,
+    c1: number,
+    cMu: number,
+    bPtr: number,
+    dPtr: number,
+    eigValsPtr: number,
+  ): number;
+}
+
+interface CmaEsWasmScratch {
+  wasm: CmaEsWasmExports;
+  capN: number;
+  capMu: number;
+  cPtr: number;
+  bPtr: number;
+  dPtr: number;
+  eigValsPtr: number;
+  pCPtr: number;
+  yMuPtr: number;
+  weightsPtr: number;
+}
+
+let cmaEsScratch: CmaEsWasmScratch | null = null;
+
+function ensureCmaEsScratch(wasm: CmaEsWasmExports, n: number, mu: number): CmaEsWasmScratch | null {
+  if (!wasm || typeof wasm.__new !== "function") return null;
+  if (cmaEsScratch && cmaEsScratch.wasm === wasm && cmaEsScratch.capN >= n && cmaEsScratch.capMu >= mu) {
+    return cmaEsScratch;
+  }
+  const capN = Math.max(n, 32);
+  const capMu = Math.max(mu, 32);
+  const alloc = (bytes: number): number => {
+    const ptr = wasm.__new(bytes, 0);
+    if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+    return ptr;
+  };
+  cmaEsScratch = {
+    wasm,
+    capN,
+    capMu,
+    cPtr: alloc(capN * capN * 8),
+    bPtr: alloc(capN * capN * 8),
+    dPtr: alloc(capN * 8),
+    eigValsPtr: alloc(capN * 8),
+    pCPtr: alloc(capN * 8),
+    yMuPtr: alloc(capMu * capN * 8),
+    weightsPtr: alloc(capMu * 8),
+  };
+  return cmaEsScratch;
+}
+
+function updateCovarianceAndEigen(
+  n: number,
+  mu: number,
+  C: Float64Array,
+  B: Float64Array,
+  D: Float64Array,
+  eigVals: Float64Array,
+  pC: Float64Array,
+  candidateRecords: ReadonlyArray<{ y: Float64Array }>,
+  weights: Float64Array,
+  cOldFactor: number,
+  c1: number,
+  cMu: number,
+): void {
+  if (n >= 8) {
+    const wasm = getDefaultWasmExports() as CmaEsWasmExports | null;
+    if (wasm && typeof wasm.cmaEsUpdateCovarianceWasm === "function") {
+      const s = ensureCmaEsScratch(wasm, n, mu);
+      if (s) {
+        const nn = n * n;
+        const buf = wasm.memory.buffer;
+        new Float64Array(buf, s.cPtr, nn).set(C.subarray(0, nn));
+        new Float64Array(buf, s.pCPtr, n).set(pC.subarray(0, n));
+        new Float64Array(buf, s.weightsPtr, mu).set(weights.subarray(0, mu));
+        const yMuView = new Float64Array(buf, s.yMuPtr, mu * n);
+        for (let k = 0; k < mu; k++) {
+          yMuView.set(candidateRecords[k]!.y.subarray(0, n), k * n);
+        }
+
+        wasm.cmaEsUpdateCovarianceWasm(
+          n,
+          mu,
+          s.cPtr,
+          s.bPtr,
+          s.dPtr,
+          s.eigValsPtr,
+          s.pCPtr,
+          s.yMuPtr,
+          s.weightsPtr,
+          cOldFactor,
+          c1,
+          cMu,
+        );
+
+        const outBuf = wasm.memory.buffer;
+        C.set(new Float64Array(outBuf, s.cPtr, nn));
+        B.set(new Float64Array(outBuf, s.bPtr, nn));
+        D.set(new Float64Array(outBuf, s.dPtr, n));
+        eigVals.set(new Float64Array(outBuf, s.eigValsPtr, n));
+        return;
+      }
+    }
+  }
+
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      let rankMuSum = 0;
+      for (let k = 0; k < mu; k++) {
+        const yk = candidateRecords[k]!.y;
+        rankMuSum += weights[k]! * yk[i]! * yk[j]!;
+      }
+
+      C[i * n + j] = cOldFactor * C[i * n + j]! + c1 * pC[i]! * pC[j]! + cMu * rankMuSum;
+    }
+  }
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const avg = 0.5 * (C[i * n + j]! + C[j * n + i]!);
+      C[i * n + j] = avg;
+      C[j * n + i] = avg;
+    }
+  }
+
+  jacobiEigendecomposition(C, n, B, eigVals);
+  for (let i = 0; i < n; i++) {
+    D[i] = Math.sqrt(Math.max(1e-14, eigVals[i]!));
+  }
+}
 
 export interface CmaEsOptions extends SingleObjectiveOptions {
   /** Initial standard deviation sigma0. Default: 0.3 * (max - min). */
@@ -384,32 +527,7 @@ export async function cmaesSolve(problem: BlackBoxProblem, options?: CmaEsOption
     const deltaHSigma = (1.0 - hSigma) * cc * (2.0 - cc);
     const cOldFactor = 1.0 - c1 - cMu + c1 * deltaHSigma;
 
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        let rankMuSum = 0;
-        for (let k = 0; k < mu; k++) {
-          const yk = candidateRecords[k]!.y;
-          rankMuSum += weights[k]! * yk[i]! * yk[j]!;
-        }
-
-        C[i * n + j] = cOldFactor * C[i * n + j]! + c1 * pC[i]! * pC[j]! + cMu * rankMuSum;
-      }
-    }
-
-    // Force symmetry in C
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        const avg = 0.5 * (C[i * n + j]! + C[j * n + i]!);
-        C[i * n + j] = avg;
-        C[j * n + i] = avg;
-      }
-    }
-
-    // 10. Update eigendecomposition of C
-    jacobiEigendecomposition(C, n, B, eigVals);
-    for (let i = 0; i < n; i++) {
-      D[i] = Math.sqrt(Math.max(1e-14, eigVals[i]!));
-    }
+    updateCovarianceAndEigen(n, mu, C, B, D, eigVals, pC, candidateRecords, weights, cOldFactor, c1, cMu);
   }
 
   return {
@@ -666,30 +784,7 @@ export function cmaesSolveSync(problem: BlackBoxProblem, options?: CmaEsOptions)
     const deltaHSigma = (1.0 - hSigma) * cc * (2.0 - cc);
     const cOldFactor = 1.0 - c1 - cMu + c1 * deltaHSigma;
 
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        let rankMuSum = 0;
-        for (let k = 0; k < mu; k++) {
-          const yk = candidateRecords[k]!.y;
-          rankMuSum += weights[k]! * yk[i]! * yk[j]!;
-        }
-
-        C[i * n + j] = cOldFactor * C[i * n + j]! + c1 * pC[i]! * pC[j]! + cMu * rankMuSum;
-      }
-    }
-
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        const avg = 0.5 * (C[i * n + j]! + C[j * n + i]!);
-        C[i * n + j] = avg;
-        C[j * n + i] = avg;
-      }
-    }
-
-    jacobiEigendecomposition(C, n, B, eigVals);
-    for (let i = 0; i < n; i++) {
-      D[i] = Math.sqrt(Math.max(1e-14, eigVals[i]!));
-    }
+    updateCovarianceAndEigen(n, mu, C, B, D, eigVals, pC, candidateRecords, weights, cOldFactor, c1, cMu);
   }
 
   return {

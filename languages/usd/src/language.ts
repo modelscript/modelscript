@@ -5,11 +5,13 @@ import { lowerUsdToDae } from "./dae/usd-to-dae.js";
 import { indexUsdFile } from "./indexing.js";
 import { lintUsdStage } from "./lints/index.js";
 import { parseUsd } from "./parser/index.js";
+import { usdPolyglotConfig } from "./tgg/index.js";
 
 /**
  * DSL language specification for OpenUSD (.usd, .usda, .usdc, .usdz) scene description.
  */
 export const usdLanguage = language({
+  polyglot: usdPolyglotConfig,
   name: "usd",
   fileExtensions: [".usd", ".usda", ".usdc", ".usdz"],
   maturity: "beta",
@@ -54,51 +56,52 @@ export const usdLanguage = language({
   ],
 
   rules: {
-    Stage: ($) => seq(choice($.Header, ""), repeat(choice($.PrimDef, $.Comment, $.MetadataAssignment))),
+    Stage: ($) => seq(choice($["Header"]!, ""), repeat(choice($["PrimDef"]!, $["Comment"]!, $["MetadataAssignment"]!))),
 
     Header: () => /#usda\s+[0-9]+\.[0-9]+/,
 
-    MetadataAssignment: ($) => seq($.Identifier, "=", choice($.StringLiteral, $.NumberLiteral, $.Identifier)),
+    MetadataAssignment: ($) =>
+      seq($["Identifier"]!, "=", choice($["StringLiteral"]!, $["NumberLiteral"]!, $["Identifier"]!)),
 
     PrimDef: ($) =>
       seq(
         choice("def", "over", "class"),
-        $.Identifier,
-        $.StringLiteral,
-        choice(seq("(", repeat(choice($.MetadataItem, $.Comment)), ")"), ""),
+        $["Identifier"]!,
+        $["StringLiteral"]!,
+        choice(seq("(", repeat(choice($["MetadataItem"]!, $["Comment"]!)), ")"), ""),
         "{",
-        repeat(choice($.PrimDef, $.AttributeDef, $.RelationshipDef, $.Comment)),
+        repeat(choice($["PrimDef"]!, $["AttributeDef"]!, $["RelationshipDef"]!, $["Comment"]!)),
         "}",
       ),
 
     AttributeDef: ($) =>
       seq(
         choice("uniform", ""),
-        $.TypeIdentifier,
-        $.Identifier,
-        choice(seq("=", $.Value), seq(".timeSamples", "=", "{", repeat($.TimeSample), "}")),
+        $["TypeIdentifier"]!,
+        $["Identifier"]!,
+        choice(seq("=", $["Value"]!), seq(".timeSamples", "=", "{", repeat($["TimeSample"]!), "}")),
       ),
 
     RelationshipDef: ($) =>
-      seq("rel", $.Identifier, "=", choice($.PathReference, seq("[", repeat($.PathReference), "]"))),
+      seq("rel", $["Identifier"]!, "=", choice($["PathReference"]!, seq("[", repeat($["PathReference"]!), "]"))),
 
-    MetadataItem: ($) => seq(choice("prepend", "append", ""), $.Identifier, "=", $.Value),
+    MetadataItem: ($) => seq(choice("prepend", "append", ""), $["Identifier"]!, "=", $["Value"]!),
 
-    TimeSample: ($) => seq($.NumberLiteral, ":", $.Value, choice(",", "")),
+    TimeSample: ($) => seq($["NumberLiteral"]!, ":", $["Value"]!, choice(",", "")),
 
     Value: ($) =>
       choice(
-        $.StringLiteral,
-        $.NumberLiteral,
-        $.BooleanLiteral,
-        $.PathReference,
-        $.TupleValue,
-        $.ArrayValue,
-        $.Identifier,
+        $["StringLiteral"]!,
+        $["NumberLiteral"]!,
+        $["BooleanLiteral"]!,
+        $["PathReference"]!,
+        $["TupleValue"]!,
+        $["ArrayValue"]!,
+        $["Identifier"]!,
       ),
 
-    TupleValue: ($) => seq("(", repeat(choice($.NumberLiteral, $.StringLiteral, $.Identifier, ",")), ")"),
-    ArrayValue: ($) => seq("[", repeat(choice($.Value, ",")), "]"),
+    TupleValue: ($) => seq("(", repeat(choice($["NumberLiteral"]!, $["StringLiteral"]!, $["Identifier"]!, ",")), ")"),
+    ArrayValue: ($) => seq("[", repeat(choice($["Value"]!, ",")), "]"),
 
     PathReference: () => /<[^>]+>/,
     TypeIdentifier: () => /[A-Za-z_][A-Za-z0-9_:[\]]*/,

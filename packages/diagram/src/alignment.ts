@@ -683,7 +683,7 @@ export interface VisualFlipNodeLike {
 }
 
 export interface VisualFlipGraphLike {
-  findViewByCell?: ((cell: any) => { container?: Element | null | undefined } | null | undefined) | undefined;
+  findViewByCell?(cell: VisualFlipNodeLike): { container?: Element | null | undefined } | null | undefined;
 }
 
 /**
@@ -707,7 +707,7 @@ export function applyNodeFlipVisuals(
   const ty = flipY ? height : 0;
 
   const view =
-    targetGraph && typeof targetGraph.findViewByCell === "function" ? (targetGraph.findViewByCell(node) as any) : null;
+    targetGraph && typeof targetGraph.findViewByCell === "function" ? targetGraph.findViewByCell(node) : null;
   const container = (view?.container || node.container) as SVGElement | HTMLElement | undefined;
   if (!container) return;
 
@@ -751,12 +751,12 @@ export function applyNodeFlipVisuals(
   // 2. Flip the ports in DOM
   const curData = (typeof node.getData === "function" ? node.getData() : {}) || {};
   let basePorts = curData["basePorts"] as
-    | { id: string; group?: string; args?: { x?: number; y?: number; angle?: number } }[]
+    | { id: string; group?: string | undefined; args?: { x?: number; y?: number; angle?: number } }[]
     | undefined;
 
   if (!basePorts) {
     const rawPorts = typeof node.getPorts === "function" ? node.getPorts() : [];
-    basePorts = rawPorts.map((p: any) => {
+    basePorts = rawPorts.map((p) => {
       let bx = p.args?.x ?? 0;
       let by = p.args?.y ?? 0;
       let ba = p.args?.angle ?? 0;

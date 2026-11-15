@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language } from "@modelscript/dsl";
+import { cardDeckRules, language } from "@modelscript/dsl";
 import { lowerIbisToDae } from "./dae/ibis-to-dae.js";
 import { lintIbis } from "./lints/index.js";
 import { parseIbis } from "./parser/ibis-parser.js";
 import { ibisToModelica } from "./projections/ibis-to-modelica.js";
 import { calculateOutputResistance, evaluateBufferCurrent } from "./solvers/buffer-solver.js";
+import { ibisPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript ANSI/EIA-656-B IBIS (.ibs) Language Definition.
  */
 export const ibisLanguage = language({
+  polyglot: ibisPolyglotConfig,
   name: "ibis",
   fileExtensions: [".ibs"],
   maturity: "experimental",
@@ -158,4 +160,8 @@ export const ibisLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
+
+export default ibisLanguage;

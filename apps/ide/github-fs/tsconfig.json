@@ -1,14 +1,13 @@
 {
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "module": "ES2020",
     "target": "ES2024",
     "lib": ["ES2024", "WebWorker"],
     "rootDir": "src",
-    "sourceMap": true,
-    "strict": true,
     "moduleResolution": "bundler",
     "noEmit": true,
-    "skipLibCheck": true
+    "incremental": false
   },
   "include": ["src/**/*.ts"]
 }

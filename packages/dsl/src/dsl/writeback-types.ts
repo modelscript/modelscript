@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { SymbolEntry } from "./types.js";
+
 /**
  * Context provided to a language-specific writeback handler.
  */
 export interface WritebackContext {
   /** The symbol entry being updated (from the workspace symbol index) */
-  entry: any;
+  entry: SymbolEntry;
   /** Full source code text of the document */
   fullText: string;
   /** The new value string to write */
   newValue: string;
   /** Optional parsed CST/AST root node if available */
-  rootCst?: any;
+  rootCst?: unknown;
   /** Optional Salsa query engine or workspace index */
-  queryEngine?: any;
+  queryEngine?: unknown;
   /** Document URI */
   uri?: string | undefined;
 }

@@ -125,7 +125,7 @@ export const OpfCommand: CommandModule<Record<string, unknown>, Record<string, u
     if (action === "solve") {
       const tier = (argv["tier"] as "direct" | "ampl") || "direct";
       const formulation = (argv["formulation"] as "dc" | "ac") || "dc";
-      const solver = argv["solver"] as any;
+      const solver = argv["solver"] as NonNullable<Parameters<typeof solveDcOpfAsync>[1]>["solver"];
       const enforceThermalLimits = argv["thermal-limits"] !== false;
       const format = (argv["format"] as string) || "report";
       const outPath = argv["out"] ? path.resolve(process.cwd(), String(argv["out"])) : undefined;

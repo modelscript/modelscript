@@ -4,13 +4,15 @@
  * ModelScript GE PSLF Language Definition.
  */
 
-import { language } from "@modelscript/dsl";
+import { cardDeckRules, language } from "@modelscript/dsl";
 import { formatPowerFlowReport, solvePowerFlow } from "@modelscript/psse";
 import { lintPslfEpc } from "./lints/index.js";
 import { parsePslfEpc } from "./parser/epc-parser.js";
 import { pslfEpcToPsseRaw } from "./projections/pslf-to-psse.js";
+import { pslfPolyglotConfig } from "./tgg/index.js";
 
 export const pslfLanguage = language({
+  polyglot: pslfPolyglotConfig,
   name: "pslf",
   fileExtensions: [".epc", ".dyd"],
   maturity: "beta",
@@ -50,7 +52,8 @@ export const pslfLanguage = language({
     {
       id: "lint_pslf_model",
       title: "Lint PSLF Base Case",
-      description: "Checks GE PSLF .epc and .dyd model files for topological, electrical, and data integrity violations.",
+      description:
+        "Checks GE PSLF .epc and .dyd model files for topological, electrical, and data integrity violations.",
       category: "verify",
       execute: async (ctx, params: { documentText?: string | undefined }) => {
         const text = params?.documentText ?? ctx?.documentText;
@@ -60,6 +63,8 @@ export const pslfLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
 
 export default pslfLanguage;

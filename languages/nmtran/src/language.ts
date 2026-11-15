@@ -7,11 +7,13 @@ import { lintNmtran } from "./lints/index.js";
 import { parseNmtran } from "./parser/nmtran-parser.js";
 import { nmtranToModelica } from "./projections/nmtran-to-modelica.js";
 import { solveNmtranPkPd, type PkPdSolverOptions } from "./solvers/pkpd-solver.js";
+import { nmtranPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript NONMEM / NMTRAN Pharmacometrics (.ctl, .mod) Language Definition.
  */
 export const nmtranLanguage = language({
+  polyglot: nmtranPolyglotConfig,
   name: "nmtran",
   fileExtensions: [".ctl", ".mod"],
   maturity: "beta",

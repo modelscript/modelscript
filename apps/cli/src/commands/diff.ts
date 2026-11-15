@@ -222,7 +222,11 @@ export const Diff: CommandModule<{}, DiffArgs> = {
 
       if (!oldNode && !newNode) continue;
 
-      const diff = computeSemanticDiff(oldNode, newNode, { orderAgnostic, breakingOnly });
+      const diff = computeSemanticDiff(
+        oldNode as Parameters<typeof computeSemanticDiff>[0],
+        newNode as Parameters<typeof computeSemanticDiff>[1],
+        { orderAgnostic, breakingOnly },
+      );
       if (diff.action !== "none") {
         allEdits.push(diff);
         if (diff.isBreaking) hasBreaking = true;

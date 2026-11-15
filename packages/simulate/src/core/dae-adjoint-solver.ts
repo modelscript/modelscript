@@ -15,7 +15,7 @@
 
 import type { DAEBuilder } from "@modelscript/runtime";
 import { Dual, evaluateArenaDualExpression } from "@modelscript/runtime";
-import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
+import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
 import { DenseHermiteCheckpointTape } from "./dense-checkpoint-tape.js";
 import type { ArenaSimulationResult } from "./simulate-arena.js";
 import { ArenaSimulator, initializeArenaEnvironment } from "./simulate-arena.js";
@@ -541,9 +541,9 @@ export class DaeAdjointSolver {
           }
         }
 
-        const fact = luFactor(M_flat, n);
+        const fact = luFactorFlat(M_flat, n);
         const lambdaSol = new Float64Array(b);
-        luSolve(fact, lambdaSol);
+        luSolveFlat(fact, lambdaSol);
 
         for (let i = 0; i < n; i++) {
           const xName = this.stateNames[i]!;
@@ -601,9 +601,9 @@ export class DaeAdjointSolver {
           }
         }
 
-        const fact1 = luFactor(M1_flat, n);
+        const fact1 = luFactorFlat(M1_flat, n);
         const lambdaMid = new Float64Array(b1);
-        luSolve(fact1, lambdaMid);
+        luSolveFlat(fact1, lambdaMid);
 
         // Stage 2: BDF2 step to tCurr
         const w1 = 1.0 / (gamma * (2.0 - gamma));
@@ -626,9 +626,9 @@ export class DaeAdjointSolver {
           }
         }
 
-        const fact2 = luFactor(M2_flat, n);
+        const fact2 = luFactorFlat(M2_flat, n);
         const lambdaSol = new Float64Array(b2);
-        luSolve(fact2, lambdaSol);
+        luSolveFlat(fact2, lambdaSol);
 
         for (let i = 0; i < n; i++) {
           const xName = this.stateNames[i]!;
@@ -866,9 +866,9 @@ export class DaeAdjointSolver {
         }
       }
 
-      const fact1 = luFactor(M1, n);
+      const fact1 = luFactorFlat(M1, n);
       const deltaY = new Float64Array(R1);
-      luSolve(fact1, deltaY);
+      luSolveFlat(fact1, deltaY);
 
       for (let i = 0; i < n; i++) yGamma[i] = yGamma[i]! - deltaY[i]!;
     }
@@ -898,9 +898,9 @@ export class DaeAdjointSolver {
         }
       }
 
-      const fact2 = luFactor(M2, n);
+      const fact2 = luFactorFlat(M2, n);
       const deltaY = new Float64Array(R2);
-      luSolve(fact2, deltaY);
+      luSolveFlat(fact2, deltaY);
 
       for (let i = 0; i < n; i++) y1[i] = y1[i]! - deltaY[i]!;
     }

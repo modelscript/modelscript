@@ -8,7 +8,7 @@ export interface TranspileOptions {
   queryIdMap?: Map<string, number> | undefined;
   hostQueryIdMap?: Map<string, number> | undefined;
   attrIdMap?: Map<string, number> | undefined;
-  rules?: Record<string, any> | undefined;
+  rules?: Record<string, unknown> | undefined;
   externals?: string[] | Set<string> | undefined;
   fieldToInt?: Map<string, number> | Set<string> | undefined;
 }
@@ -17,7 +17,7 @@ export interface TranspileOptions {
  * Transpiles TypeScript user query functions or lambdas into AssemblyScript arena query logic.
  */
 export function transpileQuery(
-  queryFn: any,
+  queryFn: unknown,
   options: TranspileOptions | "query" | "lint" | "lsp" | "subtyping" | "dataflow" = "query",
 ): { body: string; params: string[] } {
   const opts: TranspileOptions = typeof options === "string" ? { context: options } : options;
@@ -28,9 +28,16 @@ export function transpileQuery(
   const fieldToInt = opts.fieldToInt;
 
   let queryStr: string;
-  if (typeof queryFn === "object" && queryFn !== null && "kind" in queryFn && typeof queryFn.getText === "function") {
-    const sf = typeof queryFn.getSourceFile === "function" ? queryFn.getSourceFile() : undefined;
-    queryStr = queryFn.getText(sf);
+  if (
+    typeof queryFn === "object" &&
+    queryFn !== null &&
+    "kind" in queryFn &&
+    "getText" in queryFn &&
+    typeof (queryFn as { getText?: unknown }).getText === "function"
+  ) {
+    const astFn = queryFn as { getText: (sf?: unknown) => string; getSourceFile?: () => unknown };
+    const sf = typeof astFn.getSourceFile === "function" ? astFn.getSourceFile() : undefined;
+    queryStr = astFn.getText(sf);
   } else if (typeof queryFn === "function") {
     queryStr = queryFn.toString();
   } else {
@@ -466,7 +473,7 @@ export function transpileQuery(
           ? opts.externals instanceof Set
             ? opts.externals.has(rawName) || opts.externals.has(upper)
             : Array.isArray(opts.externals)
-              ? (opts.externals as any).includes(rawName) || (opts.externals as any).includes(upper)
+              ? opts.externals.includes(rawName) || opts.externals.includes(upper)
               : false
           : false;
         const existsInRules = isExternal || (rules ? Boolean(rules[rawName] || rules[upper]) : true);
@@ -1330,8 +1337,9 @@ export function validateLanguageQueries(languageDef: {
   }
   if (typeof languageDef.scanner === "function") {
     diagnostics.push(...validateTranspilableSubset(languageDef.scanner, "scanner"));
-  } else if (languageDef.scanner && typeof (languageDef.scanner as any).scan === "function") {
-    diagnostics.push(...validateTranspilableSubset((languageDef.scanner as any).scan, "scanner.scan"));
+  } else if (languageDef.scanner && typeof (languageDef.scanner as { scan?: unknown }).scan === "function") {
+    const scannerObj = languageDef.scanner as { scan: unknown };
+    diagnostics.push(...validateTranspilableSubset(scannerObj.scan, "scanner.scan"));
   }
   return diagnostics;
 }

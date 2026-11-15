@@ -1,12 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { ModflowModel, DiscretizationData, NpfData, WellData, RiverData, ChdData } from "../types.js";
+import { createWasmParserSync } from "@modelscript/modflow/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
+import type { ChdData, DiscretizationData, ModflowModel, NpfData, RiverData, WellData } from "../types.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getModflowWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/modflow/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Parses a MODFLOW 6 or classic simulation file/deck.
  */
 export function parseModflow(content: string, modelName = "MODFLOW_Aquifer"): ModflowModel {
-  const lines = content.split(/\r?\n/);
+  const cstTree = getModflowWasmParser().parse(content);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
 
   let nlay = 1;
   let nrow = 1;
@@ -28,8 +42,8 @@ export function parseModflow(content: string, modelName = "MODFLOW_Aquifer"): Mo
 
   let currentBlock: string | null = null;
 
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]!;
+  for (const { row: i, tokens: cstTokens } of cstLines) {
+    const rawLine = cstLineText(content, cstTokens);
     // Strip comments (#, !, //)
     const lineWithoutComment = rawLine.replace(/(#|!|\/\/).*$/, "").trim();
     if (!lineWithoutComment) continue;
@@ -76,7 +90,10 @@ export function parseModflow(content: string, modelName = "MODFLOW_Aquifer"): Mo
         const val = parseFloat(tokens[tokens[1].toUpperCase() === "CONSTANT" ? 2 : 1]!);
         if (!isNaN(val)) top = val;
       } else if (upper0 === "BOTM") {
-        const nums = tokens.slice(1).map(Number).filter((n) => !isNaN(n));
+        const nums = tokens
+          .slice(1)
+          .map(Number)
+          .filter((n) => !isNaN(n));
         if (nums.length > 0) botm = nums;
       } else if (upper0 === "K" && tokens[1]) {
         const val = parseFloat(tokens[tokens[1].toUpperCase() === "CONSTANT" ? 2 : 1]!);
@@ -115,7 +132,10 @@ export function parseModflow(content: string, modelName = "MODFLOW_Aquifer"): Mo
       const val = parseFloat(tokens[idx]!);
       if (!isNaN(val)) top = val;
     } else if (key === "BOTM") {
-      const nums = tokens.slice(1).map(Number).filter((n) => !isNaN(n));
+      const nums = tokens
+        .slice(1)
+        .map(Number)
+        .filter((n) => !isNaN(n));
       if (nums.length > 0) botm = nums;
     }
   }

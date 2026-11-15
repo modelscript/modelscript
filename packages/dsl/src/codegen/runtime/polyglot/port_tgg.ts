@@ -105,12 +105,33 @@ export class TggPortBalancer {
 
   /**
    * Evaluates Kirchhoff conservation balances across the connected set:
-   * 1. Across/Potential variable equality: across(root) == across(port_k)
-   * 2. Through/Flow variable zero-sum: sum(flow(port_k)) == 0
+   * 1. Across/Potential variable compatibility across ports in the same junction
+   * 2. Through/Flow variable zero-sum: |sum(flow(port_k))| <= tolerance
    */
   @inline
   isSameJunction(portA: u32, portB: u32): boolean {
     return this.find(portA) == this.find(portB);
+  }
+
+  verifyAcrossCompatibility(portA: u32, portB: u32): boolean {
+    if (!this.isSameJunction(portA, portB)) return false;
+    let aA = this.getAcrossVar(portA);
+    let aB = this.getAcrossVar(portB);
+    return aA != 0 && aB != 0;
+  }
+
+  verifyJunctionFlowBalance(portId: u32, flowsPtr: usize, tolerance: f64 = 1e-6): boolean {
+    let root = this.find(portId);
+    if (root == 0 || flowsPtr == 0) return false;
+    let netFlow: f64 = 0.0;
+    let memberCount: u32 = 0;
+    for (let slot: u32 = 0; slot < this.portCount; slot++) {
+      if (this.find(slot + 1) == root) {
+        netFlow += load<f64>(flowsPtr + ((slot as usize) << 3));
+        memberCount++;
+      }
+    }
+    return memberCount > 0 && Math.abs(netFlow) <= tolerance;
   }
 }
 
@@ -127,6 +148,10 @@ export function port_register(ptr: usize, acrossVar: u32, flowVar: u32): u32 {
 
 export function port_connect(ptr: usize, portA: u32, portB: u32): boolean {
   return changetype<TggPortBalancer>(ptr).union(portA, portB);
+}
+
+export function port_verify_junction_balance(ptr: usize, portId: u32, flowsPtr: usize, tolerance: f64 = 1e-6): boolean {
+  return changetype<TggPortBalancer>(ptr).verifyJunctionFlowBalance(portId, flowsPtr, tolerance);
 }
 
 export function port_is_same_junction(ptr: usize, portA: u32, portB: u32): boolean {

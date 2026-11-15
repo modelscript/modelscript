@@ -2,11 +2,13 @@
 
 import { choice, field, language, repeat, seq } from "@modelscript/dsl";
 import { simpackIndexing } from "./indexing.js";
+import { simpackPolyglotConfig } from "./tgg/index.js";
 
 /**
  * DSL language specification for SIMPACK multibody models (.spck, .sim, .mbs).
  */
 export const simpackLanguage = language({
+  polyglot: simpackPolyglotConfig,
   name: "simpack",
   fileExtensions: [".spck", ".sim", ".mbs"],
   maturity: "beta",
@@ -16,37 +18,38 @@ export const simpackLanguage = language({
   },
 
   rules: {
-    Deck: ($) => repeat(choice($.CardStatement, $.Comment)),
+    Deck: ($) => repeat(choice($["CardStatement"]!, $["Comment"]!)),
 
-    CardStatement: ($) => choice($.BodyCard, $.MarkerCard, $.JointCard, $.GenericCard),
+    CardStatement: ($) => choice($["BodyCard"]!, $["MarkerCard"]!, $["JointCard"]!, $["GenericCard"]!),
 
     BodyCard: ($) =>
       seq(
         choice("body", "$body", "BODY", "$BODY"),
-        field("id", $.Identifier),
-        field("name", $.Identifier),
-        field("mass", $.NumberLiteral),
-        repeat($.NumberLiteral),
+        field("id", $["Identifier"]!),
+        field("name", $["Identifier"]!),
+        field("mass", $["NumberLiteral"]!),
+        repeat($["NumberLiteral"]!),
       ),
 
     MarkerCard: ($) =>
       seq(
         choice("marker", "$marker", "MARKER", "$MARKER"),
-        field("id", $.Identifier),
-        field("body", $.Identifier),
-        repeat($.NumberLiteral),
+        field("id", $["Identifier"]!),
+        field("body", $["Identifier"]!),
+        repeat($["NumberLiteral"]!),
       ),
 
     JointCard: ($) =>
       seq(
         choice("joint", "$joint", "JOINT", "$JOINT"),
-        field("id", $.Identifier),
-        field("type", $.Identifier),
-        field("from", $.Identifier),
-        field("to", $.Identifier),
+        field("id", $["Identifier"]!),
+        field("type", $["Identifier"]!),
+        field("from", $["Identifier"]!),
+        field("to", $["Identifier"]!),
       ),
 
-    GenericCard: ($) => seq($.Identifier, repeat(choice($.NumberLiteral, $.Identifier, $.StringLiteral))),
+    GenericCard: ($) =>
+      seq($["Identifier"]!, repeat(choice($["NumberLiteral"]!, $["Identifier"]!, $["StringLiteral"]!))),
 
     Identifier: () => /[A-Za-z_$][A-Za-z0-9_:-]*/,
     NumberLiteral: () => /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/,

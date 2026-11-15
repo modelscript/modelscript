@@ -14,12 +14,14 @@ import { lintEpanet } from "./lints/rules.js";
 import { parseInp } from "./parser/index.js";
 import { epanetToModelica } from "./projections/epanet-to-modelica.js";
 import { solveHydraulics } from "./solver/todini-ggm.js";
+import { epanetPolyglotConfig } from "./tgg/index.js";
 
 export const epanetLanguage = language({
+  polyglot: epanetPolyglotConfig,
   name: "epanet",
   fileExtensions: [".epanet", ".epanet.inp", ".inp", ".net"],
   maturity: "experimental",
-  extras: ($) => [/[ \t\r\n]+/, $.IniComment],
+  extras: ($) => [/[ \t\r\n]+/, $["IniComment"]!],
   indexing: {
     indexFile: indexEpanetDocument,
     canIndex: canIndexEpanet,

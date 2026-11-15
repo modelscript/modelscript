@@ -1,14 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createWasmParserSync } from "@modelscript/ampl/wasm-parser";
 import {
   collectWorkspaceDocuments,
+  groupCstLeavesByLine,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import { parseAmplData } from "../parser/ampl-dat-parser.js";
 import { parseAmplModel } from "../parser/ampl-mod-parser.js";
 import { lintAmpl } from "./ampl-linter.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getAmplWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/ampl/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
+const AMPL_RUN_FILE_COMMANDS = new Set(["model", "data", "include", "commands"]);
 
 /**
  * Performs multi-file AMPL workspace linting across `.mod` (model), `.dat` (data),
@@ -76,9 +91,15 @@ export function lintAmplWorkspace(workspace: WorkspaceDocumentInput, rootUri?: s
     }
   }
 
+  const parser = getAmplWasmParser();
   for (const [uri, text] of runEntries) {
-    for (const m of text.matchAll(/^\s*(?:model|data|include|commands)\s+([^;\s]+)\s*;/gim)) {
-      const ref = m[1]?.replace(/^["']|["']$/g, "");
+    const tree = parser.parse(text);
+    for (const { tokens } of groupCstLeavesByLine(tree?.rootNode)) {
+      const cmd = tokens[0]?.text.toLowerCase();
+      if (!cmd || !AMPL_RUN_FILE_COMMANDS.has(cmd)) continue;
+      const targetTok = tokens[1];
+      if (!targetTok || targetTok.text === ";") continue;
+      const ref = targetTok.text.replace(/^["']|["']$/g, "");
       if (ref && !resolveRelativeUri(uri, ref, docs)) {
         diagnostics.push({
           uri,

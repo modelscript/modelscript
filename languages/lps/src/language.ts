@@ -7,13 +7,14 @@
  * transient Euler simulation, line pack analysis, and SysML v2 projection).
  */
 
-import { language } from "@modelscript/dsl";
+import { cardDeckRules, language } from "@modelscript/dsl";
 import { lintLpsModel } from "./lints/index.js";
 import { parseLps } from "./parser/index.js";
 import { lpsToSysml2 } from "./projections/lps-to-sysml2.js";
 import { LinePackEngine } from "./solver/line-pack/line-pack-engine.js";
 import { SteadyNetworkSolver } from "./solver/steady/steady-network-solver.js";
 import { GasEulerDaeSolver } from "./solver/transient/gas-euler-dae.js";
+import { lpsPolyglotConfig } from "./tgg/index.js";
 import { PipelineVerifier } from "./verification/pipeline-verifier.js";
 
 interface LpsActionContext {
@@ -21,6 +22,7 @@ interface LpsActionContext {
 }
 
 export const lpsLanguage = language({
+  polyglot: lpsPolyglotConfig,
   name: "lps",
   fileExtensions: [".lps", ".tgx", ".tlx", ".tgn", ".tln", ".psg", ".psl"],
   maturity: "stable",
@@ -217,4 +219,8 @@ export const lpsLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
+
+export default lpsLanguage;

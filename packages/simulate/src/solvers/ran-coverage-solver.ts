@@ -12,6 +12,7 @@
  * - Multi-sector composite best-server and RSRP coverage map generation
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
 import { RAYTRACE_PROPAGATION_WGSL } from "../gpu/shaders/raytrace_propagation.wgsl.js";
 
 export interface UrbanObstacle3D {
@@ -163,7 +164,11 @@ export class RanCoverageSolver {
 
     // Check WebGPU availability if not explicitly forced to CPU
     if (!options?.forceCpu && typeof globalThis !== "undefined") {
-      const navGpu = (globalThis as { navigator?: { gpu?: any } })?.navigator?.gpu;
+      const navGpu = (
+        globalThis as {
+          navigator?: { gpu?: { requestAdapter(): Promise<{ requestDevice(): Promise<GPUDevice | null> } | null> } };
+        }
+      )?.navigator?.gpu;
       if (navGpu) {
         try {
           const adapter = await navGpu.requestAdapter();
@@ -202,83 +207,186 @@ export class RanCoverageSolver {
     let countDiffracted = 0;
     let countShadow = 0;
 
-    for (let y = 0; y < this.gridHeight; y++) {
-      for (let x = 0; x < this.gridWidth; x++) {
-        const idx = y * this.gridWidth + x;
-        const rxX = this.bounds.originX + (x + 0.5) * this.bounds.stepMeters;
-        const rxY = this.bounds.originY + (y + 0.5) * this.bounds.stepMeters;
-        const rxPos: [number, number, number] = [rxX, rxY, rxHeight];
+    const wasm = getDefaultWasmExports() as {
+      memory?: WebAssembly.Memory;
+      __new?: (size: number, id: number) => number;
+      __pin?: (ptr: number) => number;
+      __unpin?: (ptr: number) => void;
+      ranCoverageGridWasm?: (
+        gridWidth: number,
+        gridHeight: number,
+        originX: number,
+        originY: number,
+        stepMeters: number,
+        rxHeight: number,
+        txX: number,
+        txY: number,
+        txZ: number,
+        carrierFreqGhz: number,
+        azimuthDeg: number,
+        downTiltDeg: number,
+        eirpDbm: number,
+        obsPtr: number,
+        numObstacles: number,
+        rsrpOutPtr: number,
+        plOutPtr: number,
+        mechOutPtr: number,
+        statsOutPtr: number,
+      ) => void;
+    } | null;
 
-        const dx = rxPos[0] - txPos[0];
-        const dy = rxPos[1] - txPos[1];
-        const dz = rxPos[2] - txPos[2];
-        const directDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        const rayDir: [number, number, number] = [dx / directDist, dy / directDist, dz / directDist];
+    if (
+      wasm &&
+      typeof wasm.ranCoverageGridWasm === "function" &&
+      typeof wasm.__new === "function" &&
+      wasm.memory instanceof WebAssembly.Memory
+    ) {
+      const numObs = this.obstacles.length;
+      const obsBytes = Math.max(1, numObs) * 48;
+      const rsrpBytes = this.totalPoints * 4;
+      const plBytes = this.totalPoints * 4;
+      const mechBytes = this.totalPoints;
+      const statsBytes = 64;
+      const totalBytes = obsBytes + rsrpBytes + plBytes + mechBytes + statsBytes + 32;
 
-        // 1. Line-of-Sight (LOS) occlusion test against obstacles
-        let isLos = true;
-        let maxObstacleHeight = 0.0;
-        let obstacleDist = 0.0;
+      const ptr = wasm.__new(totalBytes, 0);
+      if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+      const obsPtr = (ptr + 7) & ~7;
+      const statsPtr = obsPtr + obsBytes;
+      const rsrpPtr = statsPtr + statsBytes;
+      const plPtr = rsrpPtr + rsrpBytes;
+      const mechPtr = plPtr + plBytes;
 
-        for (const obs of this.obstacles) {
-          const [tEnter, tExit] = intersectRayAABB(txPos, rayDir, obs);
-          if (tEnter < tExit && tEnter > 0.0 && tEnter < directDist) {
-            isLos = false;
-            if (obs.maxZ > maxObstacleHeight) {
-              maxObstacleHeight = obs.maxZ;
-              obstacleDist = tEnter;
+      if (numObs > 0) {
+        const obsView = new Float64Array(wasm.memory.buffer, obsPtr, numObs * 6);
+        for (let i = 0; i < numObs; i++) {
+          const o = this.obstacles[i]!;
+          const base = i * 6;
+          obsView[base] = o.minX;
+          obsView[base + 1] = o.maxX;
+          obsView[base + 2] = o.minY;
+          obsView[base + 3] = o.maxY;
+          obsView[base + 4] = o.minZ;
+          obsView[base + 5] = o.maxZ;
+        }
+      }
+
+      wasm.ranCoverageGridWasm(
+        this.gridWidth,
+        this.gridHeight,
+        this.bounds.originX,
+        this.bounds.originY,
+        this.bounds.stepMeters,
+        rxHeight,
+        txPos[0],
+        txPos[1],
+        txPos[2],
+        sector.carrierFrequencyGhz,
+        sector.azimuthDeg,
+        sector.downTiltDeg,
+        sector.eirpDbm,
+        obsPtr,
+        numObs,
+        rsrpPtr,
+        plPtr,
+        mechPtr,
+        statsPtr,
+      );
+
+      const outBuf = wasm.memory.buffer;
+      rsrpGrid.set(new Float32Array(outBuf, rsrpPtr, this.totalPoints));
+      pathLossGrid.set(new Float32Array(outBuf, plPtr, this.totalPoints));
+      mechanismGrid.set(new Uint8Array(outBuf, mechPtr, this.totalPoints));
+      const st = new Float64Array(outBuf, statsPtr, 8);
+      sumRsrp = st[0]!;
+      minRsrp = st[1]!;
+      maxRsrp = st[2]!;
+      countAbove95 = st[3]!;
+      countAbove110 = st[4]!;
+      countLos = st[5]!;
+      countDiffracted = st[6]!;
+      countShadow = st[7]!;
+
+      if (typeof wasm.__unpin === "function") wasm.__unpin(ptr);
+    } else {
+      for (let y = 0; y < this.gridHeight; y++) {
+        for (let x = 0; x < this.gridWidth; x++) {
+          const idx = y * this.gridWidth + x;
+          const rxX = this.bounds.originX + (x + 0.5) * this.bounds.stepMeters;
+          const rxY = this.bounds.originY + (y + 0.5) * this.bounds.stepMeters;
+          const rxPos: [number, number, number] = [rxX, rxY, rxHeight];
+
+          const dx = rxPos[0] - txPos[0];
+          const dy = rxPos[1] - txPos[1];
+          const dz = rxPos[2] - txPos[2];
+          const directDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          const rayDir: [number, number, number] = [dx / directDist, dy / directDist, dz / directDist];
+
+          // 1. Line-of-Sight (LOS) occlusion test against obstacles
+          let isLos = true;
+          let maxObstacleHeight = 0.0;
+          let obstacleDist = 0.0;
+
+          for (const obs of this.obstacles) {
+            const [tEnter, tExit] = intersectRayAABB(txPos, rayDir, obs);
+            if (tEnter < tExit && tEnter > 0.0 && tEnter < directDist) {
+              isLos = false;
+              if (obs.maxZ > maxObstacleHeight) {
+                maxObstacleHeight = obs.maxZ;
+                obstacleDist = tEnter;
+              }
             }
           }
-        }
 
-        // Antenna pattern loss
-        const groundDist = Math.sqrt(dx * dx + dy * dy);
-        let rayAzimuth = Math.atan2(dy, dx) * (180.0 / PI);
-        if (rayAzimuth < 0.0) rayAzimuth += 360.0;
-        let azimDelta = Math.abs(rayAzimuth - sector.azimuthDeg) % 360.0;
-        if (azimDelta > 180.0) azimDelta = 360.0 - azimDelta;
+          // Antenna pattern loss
+          const groundDist = Math.sqrt(dx * dx + dy * dy);
+          let rayAzimuth = Math.atan2(dy, dx) * (180.0 / PI);
+          if (rayAzimuth < 0.0) rayAzimuth += 360.0;
+          let azimDelta = Math.abs(rayAzimuth - sector.azimuthDeg) % 360.0;
+          if (azimDelta > 180.0) azimDelta = 360.0 - azimDelta;
 
-        const elevationAngle = Math.atan2(txPos[2] - rxHeight, Math.max(0.1, groundDist)) * (180.0 / PI);
-        const elevDelta = Math.abs(elevationAngle - sector.downTiltDeg);
+          const elevationAngle = Math.atan2(txPos[2] - rxHeight, Math.max(0.1, groundDist)) * (180.0 / PI);
+          const elevDelta = Math.abs(elevationAngle - sector.downTiltDeg);
 
-        const antennaLoss = compute3GppAntennaLoss(azimDelta, elevDelta);
-        const fspl = computeFsplDb(directDist, sector.carrierFrequencyGhz);
+          const antennaLoss = compute3GppAntennaLoss(azimDelta, elevDelta);
+          const fspl = computeFsplDb(directDist, sector.carrierFrequencyGhz);
 
-        let totalLoss = fspl + antennaLoss;
-        let mechanism = 0; // LOS
+          let totalLoss = fspl + antennaLoss;
+          let mechanism = 0; // LOS
 
-        if (!isLos) {
-          // Knife-edge diffraction via ITU-R P.526
-          const d1 = Math.max(1.0, obstacleDist);
-          const d2 = Math.max(1.0, directDist - obstacleDist);
-          const losLineZ = txPos[2] + (rxHeight - txPos[2]) * (d1 / directDist);
-          const clearance = maxObstacleHeight - losLineZ;
+          if (!isLos) {
+            // Knife-edge diffraction via ITU-R P.526
+            const d1 = Math.max(1.0, obstacleDist);
+            const d2 = Math.max(1.0, directDist - obstacleDist);
+            const losLineZ = txPos[2] + (rxHeight - txPos[2]) * (d1 / directDist);
+            const clearance = maxObstacleHeight - losLineZ;
 
-          const nu = clearance * Math.sqrt((2.0 / wavelength) * (1.0 / d1 + 1.0 / d2));
-          const diffLoss = computeKnifeEdgeLossDb(nu);
+            const nu = clearance * Math.sqrt((2.0 / wavelength) * (1.0 / d1 + 1.0 / d2));
+            const diffLoss = computeKnifeEdgeLossDb(nu);
 
-          totalLoss = fspl + antennaLoss + diffLoss;
-          mechanism = 2; // Diffracted
+            totalLoss = fspl + antennaLoss + diffLoss;
+            mechanism = 2; // Diffracted
 
-          if (diffLoss > 45.0) {
-            mechanism = 3; // Deep Shadow
+            if (diffLoss > 45.0) {
+              mechanism = 3; // Deep Shadow
+            }
           }
+
+          const rsrp = sector.eirpDbm - totalLoss;
+          rsrpGrid[idx] = Math.round(rsrp * 10) / 10;
+          pathLossGrid[idx] = Math.round(totalLoss * 10) / 10;
+          mechanismGrid[idx] = mechanism;
+
+          sumRsrp += rsrp;
+          if (rsrp < minRsrp) minRsrp = rsrp;
+          if (rsrp > maxRsrp) maxRsrp = rsrp;
+          if (rsrp >= -95.0) countAbove95++;
+          if (rsrp >= -110.0) countAbove110++;
+
+          if (mechanism === 0) countLos++;
+          else if (mechanism === 2) countDiffracted++;
+          else if (mechanism === 3) countShadow++;
         }
-
-        const rsrp = sector.eirpDbm - totalLoss;
-        rsrpGrid[idx] = Math.round(rsrp * 10) / 10;
-        pathLossGrid[idx] = Math.round(totalLoss * 10) / 10;
-        mechanismGrid[idx] = mechanism;
-
-        sumRsrp += rsrp;
-        if (rsrp < minRsrp) minRsrp = rsrp;
-        if (rsrp > maxRsrp) maxRsrp = rsrp;
-        if (rsrp >= -95.0) countAbove95++;
-        if (rsrp >= -110.0) countAbove110++;
-
-        if (mechanism === 0) countLos++;
-        else if (mechanism === 2) countDiffracted++;
-        else if (mechanism === 3) countShadow++;
       }
     }
 
@@ -311,7 +419,7 @@ export class RanCoverageSolver {
    * Executes WebGPU compute shader pipeline for batched hardware propagation.
    */
   private async solveOnWebGpu(
-    device: any,
+    device: GPUDevice,
     sector: BaseStationSector,
     rxHeight: number,
   ): Promise<CoverageSimulationResult> {

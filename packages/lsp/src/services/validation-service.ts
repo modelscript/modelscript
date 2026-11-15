@@ -12,7 +12,9 @@ import { WorkspaceManager } from "./workspace-manager.js";
 import { getModelicaErrorCodeDef } from "@modelscript/modelica";
 import {
   type CorrespondenceDiagnostic,
+  cstLineText,
   extractCrossLanguageLinks,
+  groupAllCstTokensByLine,
   isTypeLikeSymbol,
   PolyglotDriftChecker,
   type PolyglotModelSource,
@@ -1548,7 +1550,7 @@ export class ValidationService {
           }
         }
       }
-      this.fallbackRegexValidation(textDocument);
+      this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
       return;
     }
 
@@ -3745,12 +3747,60 @@ export class ValidationService {
   /**
    * Validates a CFD configuration file (`.cfg`, `.su2`, `.foam`, `.cfd`) and emits aerodynamic polar diagnostics.
    */
+  private countSubstringOccurrences(haystack: string, needle: string): number {
+    if (!needle) return 0;
+    let count = 0;
+    let pos = 0;
+    while ((pos = haystack.indexOf(needle, pos)) !== -1) {
+      count++;
+      pos += needle.length;
+    }
+    return count;
+  }
+
+  private findFirstInlineCommentIndex(rawLine: string): number {
+    let best = -1;
+    for (const marker of ["%", "//", "#"]) {
+      const idx = rawLine.indexOf(marker);
+      if (idx !== -1 && (best === -1 || idx < best)) {
+        best = idx;
+      }
+    }
+    return best;
+  }
+
+  private getCstOrLineEntries(text: string, cstRoot: any): Array<{ line: number; rawLine: string }> {
+    if (cstRoot) {
+      return groupAllCstTokensByLine(cstRoot).map(({ row, tokens }) => ({
+        line: row,
+        rawLine: cstLineText(text, tokens),
+      }));
+    }
+    const entries: Array<{ line: number; rawLine: string }> = [];
+    let start = 0;
+    let line = 0;
+    while (start <= text.length) {
+      const nl = text.indexOf("\n", start);
+      const end = nl === -1 ? text.length : nl;
+      const rawLine = end > start && text[end - 1] === "\r" ? text.slice(start, end - 1) : text.slice(start, end);
+      entries.push({ line, rawLine });
+      if (nl === -1) break;
+      start = nl + 1;
+      line++;
+    }
+    return entries;
+  }
+
   public async validateCfdDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const cfdDiagnostics: Diagnostic[] = [];
 
     try {
       this.connection.console.info(`[cfd] Validating ${textDocument.uri} (${text.length} chars)`);
+      await this.parserService?.ensureLanguageParserLoaded?.("cfd");
+      const cfdParser = _plugin?.parser ?? this.parserService?.getParser?.("cfd");
+      const cfdCst = cfdParser?.parse?.(text);
+
       const { parseCfdConfig, getCfdDialect, extractCfdSlicingProperties } = (await import("@modelscript/cfd")) as any;
       const isOpenFoam = textDocument.uri.toLowerCase().endsWith(".foam") || text.includes("FoamFile");
       const cfdDialectId = isOpenFoam ? "openfoam" : "su2";
@@ -3761,27 +3811,26 @@ export class ValidationService {
 
       this.documentManager.documentTrees.set(textDocument.uri, {
         text,
-        tree: { rootNode: { text, data: cfdData } },
+        tree: cfdCst?.rootNode ? cfdCst : { rootNode: { text, data: cfdData } },
         classCache: new Map(),
       });
 
-      const lines = text.split(/\r?\n/);
-      for (let i = 0; i < lines.length; i++) {
-        const rawLine = lines[i]!;
+      const lineEntries = this.getCstOrLineEntries(text, cfdCst?.rootNode);
+      for (const { line: i, rawLine } of lineEntries) {
         const trimmed = rawLine.trim();
         if (!trimmed || trimmed.startsWith("%") || trimmed.startsWith("//") || trimmed.startsWith("#")) {
           continue;
         }
 
         // Strip inline comments (% or // or #)
-        const commentMatch = rawLine.match(/(%|\/\/|#)/);
-        const codeLine = commentMatch ? rawLine.slice(0, commentMatch.index) : rawLine;
+        const commentIdx = this.findFirstInlineCommentIndex(rawLine);
+        const codeLine = commentIdx !== -1 ? rawLine.slice(0, commentIdx) : rawLine;
         const cleanCode = codeLine.trim();
         if (!cleanCode) continue;
 
         if (isOpenFoam) {
-          const openBraces = (cleanCode.match(/\{\{/g) || []).length;
-          const closeBraces = (cleanCode.match(/\}\}/g) || []).length;
+          const openBraces = this.countSubstringOccurrences(cleanCode, "{{");
+          const closeBraces = this.countSubstringOccurrences(cleanCode, "}}");
           if (openBraces !== closeBraces) {
             const col = rawLine.indexOf(cleanCode);
             cfdDiagnostics.push({
@@ -3835,8 +3884,8 @@ export class ValidationService {
           });
         } else {
           // Parentheses balance
-          const openParens = (val.match(/\(/g) || []).length;
-          const closeParens = (val.match(/\)/g) || []).length;
+          const openParens = this.countSubstringOccurrences(val, "(");
+          const closeParens = this.countSubstringOccurrences(val, ")");
           if (openParens !== closeParens) {
             const valCol = rawLine.indexOf(val);
             cfdDiagnostics.push({
@@ -3848,8 +3897,8 @@ export class ValidationService {
           }
 
           // Embedded expression balance {{ ... }}
-          const openBraces = (val.match(/\{\{/g) || []).length;
-          const closeBraces = (val.match(/\}\}/g) || []).length;
+          const openBraces = this.countSubstringOccurrences(val, "{{");
+          const closeBraces = this.countSubstringOccurrences(val, "}}");
           if (openBraces !== closeBraces) {
             const valCol = rawLine.indexOf(val);
             cfdDiagnostics.push({
@@ -3865,9 +3914,7 @@ export class ValidationService {
       // Cross-domain aerodynamic parity diagnostics
       if (this.diagnosticsConfig.showInformationalBadges !== false) {
         const cfdProps = extractCfdSlicingProperties(text);
-        const cfdLines = text.split(/\r?\n/);
-        for (let i = 0; i < cfdLines.length; i++) {
-          const line = cfdLines[i]!;
+        for (const { line: i, rawLine: line } of lineEntries) {
           if (/^\s*REF_AREA\s*=/i.test(line)) {
             cfdDiagnostics.push({
               severity: DiagnosticSeverity.Information,
@@ -3906,6 +3953,10 @@ export class ValidationService {
 
     try {
       this.connection.console.info(`[fea] Validating ${textDocument.uri} (${text.length} chars)`);
+      await this.parserService?.ensureLanguageParserLoaded?.("fea");
+      const feaParser = _plugin?.parser ?? this.parserService?.getParser?.("fea");
+      const feaCst = feaParser?.parse?.(text);
+
       const { parseFeaDeck, getFeaDialect, extractFeaSlicingProperties } = (await import("@modelscript/fea")) as any;
       const isBdf =
         textDocument.uri.toLowerCase().endsWith(".bdf") ||
@@ -3917,7 +3968,7 @@ export class ValidationService {
 
       this.documentManager.documentTrees.set(textDocument.uri, {
         text,
-        tree: { rootNode: { text, data: feaData } },
+        tree: feaCst?.rootNode ? feaCst : { rootNode: { text, data: feaData } },
         classCache: new Map(),
       });
 
@@ -3981,9 +4032,8 @@ export class ValidationService {
         "COUPLING",
       ]);
 
-      const lines = text.split(/\r?\n/);
-      for (let i = 0; i < lines.length; i++) {
-        const rawLine = lines[i]!;
+      const lineEntries = this.getCstOrLineEntries(text, feaCst?.rootNode);
+      for (const { line: i, rawLine } of lineEntries) {
         const trimmed = rawLine.trim();
         if (!trimmed || trimmed.startsWith("**") || trimmed.startsWith("$") || trimmed.startsWith("#")) {
           continue;
@@ -4049,8 +4099,8 @@ export class ValidationService {
         }
 
         // Data line: validate embedded expressions {{ ... }} are balanced
-        const openBraces = (trimmed.match(/\{\{/g) || []).length;
-        const closeBraces = (trimmed.match(/\}\}/g) || []).length;
+        const openBraces = this.countSubstringOccurrences(trimmed, "{{");
+        const closeBraces = this.countSubstringOccurrences(trimmed, "}}");
         if (openBraces !== closeBraces) {
           const col = rawLine.indexOf(trimmed);
           feaDiagnostics.push({
@@ -5842,28 +5892,6 @@ export class ValidationService {
       this.workspaceManager.documentContexts.set(uri, context);
       this.workspaceManager.documentContexts.set(effectiveUri, context);
     }
-  }
-
-  /**
-   * Minimal regex-based fallback validator (checks unclosed block comments) when WASM parsers are unavailable.
-   */
-  private fallbackRegexValidation(textDocument: TextDocument): void {
-    const text = textDocument.getText();
-    const diagnostics: Diagnostic[] = [];
-    const openComments = (text.match(/\/\*/g) || []).length;
-    const closeComments = (text.match(/\*\//g) || []).length;
-    if (openComments > closeComments) {
-      diagnostics.push({
-        severity: DiagnosticSeverity.Error,
-        range: {
-          start: textDocument.positionAt(text.lastIndexOf("/*")),
-          end: textDocument.positionAt(text.lastIndexOf("/*") + 2),
-        },
-        message: "Unclosed block comment.",
-        source: "modelscript",
-      });
-    }
-    this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
   }
 
   /**

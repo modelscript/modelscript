@@ -4,14 +4,29 @@
  * GE PSLF Dynamic Data (.dyd) Parser.
  */
 
+import { createWasmParserSync } from "@modelscript/pslf/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import type { PslfDydCase, PslfDynamicModel } from "../types.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getPslfWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/pslf/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Parses a GE PSLF .dyd dynamic model data file.
  */
 export function parsePslfDyd(content: string): PslfDydCase {
+  const cstTree = getPslfWasmParser().parse(content);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   const models: PslfDynamicModel[] = [];
-  const lines = content.split(/\r?\n/);
+  const lines = cstLines.map(({ tokens }) => cstLineText(content, tokens));
 
   let currentBlock = "";
   let currentComment: string | undefined;

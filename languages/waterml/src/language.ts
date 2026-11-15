@@ -4,7 +4,7 @@
  * ModelScript OGC WaterML 2.0 / TimeseriesML Language Definition.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, xmlRules } from "@modelscript/dsl";
 import { fitRatingCurve } from "./analysis/rating-curve.js";
 import { lowerWaterMlToDae } from "./dae/waterml-to-dae.js";
 import { canIndexWaterMlFile, indexWaterMlFile } from "./indexing.js";
@@ -12,8 +12,10 @@ import { lintWaterMlDocument } from "./lints/index.js";
 import { parseWaterMl } from "./parser/waterml-parser.js";
 import { writeWaterMlXml } from "./parser/waterml-writer.js";
 import { projectWaterMlToEpanet, projectWaterMlToHecRas } from "./projections/waterml-to-boundary.js";
+import { watermlPolyglotConfig } from "./tgg/index.js";
 
 export const watermlLanguage = language({
+  polyglot: watermlPolyglotConfig,
   name: "waterml",
   fileExtensions: [".waterml", ".wml2", ".xml", ".json"],
   maturity: "beta",
@@ -137,4 +139,8 @@ export const watermlLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: xmlRules,
 });
+
+export default watermlLanguage;

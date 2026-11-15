@@ -4,15 +4,17 @@
  * ModelScript SEL Relay Language Definition.
  */
 
-import { language } from "@modelscript/dsl";
+import { cardDeckRules, language } from "@modelscript/dsl";
 import { evaluateRelayProtection } from "./analysis/selogic-evaluator.js";
 import { lowerSELToDae } from "./dae/sel-to-dae.js";
 import { selIndexing } from "./indexing.js";
 import { lintSELSettings } from "./lints/index.js";
 import { parseSELSettings } from "./parser/sel-parser.js";
 import { writeSELAscii, writeSELJson } from "./parser/sel-writer.js";
+import { selPolyglotConfig } from "./tgg/index.js";
 
 export const selLanguage = language({
+  polyglot: selPolyglotConfig,
   name: "sel",
   fileExtensions: [".rcf", ".rdb", ".sel", ".txt"],
   maturity: "beta",
@@ -117,4 +119,8 @@ export const selLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
+
+export default selLanguage;

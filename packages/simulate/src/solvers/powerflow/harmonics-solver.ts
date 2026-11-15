@@ -16,6 +16,8 @@
  * - Arrillaga, J., & Watson, N. R. (2003). Power System Harmonics. John Wiley & Sons.
  */
 
+import { solveDenseLinearSystem } from "../../control/linearize.js";
+
 export interface HarmonicSourceInjection {
   busIndex: number;
   /** Harmonic order h (e.g. 5, 7, 11, 13). */
@@ -100,10 +102,7 @@ export interface HarmonicAnalysisResult {
  * Builds the complex nodal admittance matrix Y_bus(h) for harmonic order h.
  * Incorporates conductor skin effect: R(h) = R_1 * sqrt(h), X_L(h) = h * X_L, B_C(h) = h * B_C.
  */
-function buildHarmonicYbus(
-  system: HarmonicSystemSpec,
-  h: number,
-): { g: Float64Array; b: Float64Array } {
+function buildHarmonicYbus(system: HarmonicSystemSpec, h: number): { g: Float64Array; b: Float64Array } {
   const n = system.numBuses;
   const g = new Float64Array(n * n);
   const b = new Float64Array(n * n);
@@ -187,47 +186,7 @@ function solveComplexLinearSystem(
     rhs[i + n] = rhsI[i] ?? 0;
   }
 
-  // Gaussian elimination with partial pivoting
-  for (let i = 0; i < dim2; i++) {
-    let maxRow = i;
-    let maxVal = Math.abs(A[i * dim2 + i]!);
-    for (let k = i + 1; k < dim2; k++) {
-      const v = Math.abs(A[k * dim2 + i]!);
-      if (v > maxVal) {
-        maxVal = v;
-        maxRow = k;
-      }
-    }
-    if (maxVal < 1e-14) {
-      A[i * dim2 + i] = 1e-6; // Pivot regularization
-    } else if (maxRow !== i) {
-      for (let c = i; c < dim2; c++) {
-        const tmp = A[i * dim2 + c]!;
-        A[i * dim2 + c] = A[maxRow * dim2 + c]!;
-        A[maxRow * dim2 + c] = tmp;
-      }
-      const tb = rhs[i]!;
-      rhs[i] = rhs[maxRow]!;
-      rhs[maxRow] = tb;
-    }
-
-    const piv = A[i * dim2 + i]!;
-    for (let k = i + 1; k < dim2; k++) {
-      const factor = A[k * dim2 + i]! / piv;
-      for (let c = i; c < dim2; c++) {
-        A[k * dim2 + c] = A[k * dim2 + c]! - factor * A[i * dim2 + c]!;
-      }
-      rhs[k] = rhs[k]! - factor * rhs[i]!;
-    }
-  }
-
-  const sol = new Float64Array(dim2);
-  for (let i = dim2 - 1; i >= 0; i--) {
-    let sum = rhs[i]!;
-    for (let c = i + 1; c < dim2; c++) sum -= A[i * dim2 + c]! * sol[c]!;
-    const piv = A[i * dim2 + i]!;
-    sol[i] = Math.abs(piv) > 1e-14 ? sum / piv : 0;
-  }
+  const { X: sol } = solveDenseLinearSystem(A, rhs, dim2, 1, 1e-6);
 
   const vr = new Float64Array(n);
   const vi = new Float64Array(n);

@@ -155,7 +155,6 @@ export function generatePegase9241Case(options?: { stressMultiplier?: number }):
         i: bNum,
         name: `PEG_${baseKv}K_${bNum}`,
         baseKv,
-        basekv: baseKv,
         ide: busType,
         area: areaId,
         zone: Math.floor(r / 2) + 1,
@@ -166,7 +165,8 @@ export function generatePegase9241Case(options?: { stressMultiplier?: number }):
         nvlo: 0.9,
         evhi: 1.15,
         evlo: 0.85,
-      } as any);
+        basekv: baseKv,
+      } as typeof buses extends Map<number, infer V> ? V & { basekv: number } : never);
 
       // Generator placement with realistic European plant sizes
       if (hasGen || isSlack) {

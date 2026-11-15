@@ -630,7 +630,8 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
       }
 
       const text = fs.readFileSync(absPath, "utf-8");
-      const parsed = action === "sld" || action === "idv" ? (null as any) : parseRaw(text);
+      const parsed =
+        action === "sld" || action === "idv" ? (null as unknown as ReturnType<typeof parseRaw>) : parseRaw(text);
 
       switch (action) {
         case "lint": {

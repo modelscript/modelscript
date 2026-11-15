@@ -68,11 +68,8 @@ export const Parse: CommandModule<{}, ParseArgs> = {
         console.error("Parse failed. No tree returned.");
         process.exit(1);
       }
-      const rootHasError = Boolean(
-        typeof (tree.rootNode as any).hasError === "function"
-          ? (tree.rootNode as any).hasError()
-          : (tree.rootNode as any).hasError,
-      );
+      const rootNode = tree.rootNode as unknown as { hasError?: boolean | (() => boolean) };
+      const rootHasError = Boolean(typeof rootNode.hasError === "function" ? rootNode.hasError() : rootNode.hasError);
       if (rootHasError) {
         console.error(`\n[Syntax Errors Detected in ${resolved.manifest.name}]`);
       }

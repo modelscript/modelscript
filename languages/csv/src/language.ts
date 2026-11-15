@@ -8,15 +8,12 @@ import {
   optional,
   repeat,
   seq,
-  tggComplement,
-  tggDefaultVal,
-  tggEq,
-  tggRule,
   type QueryDB,
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/dsl";
 import { lintCsv, parseCsvHeaderAnnotation, type CsvDiagnostic, type CsvVarType } from "./csv-parser.js";
+import { csvPolyglotConfig } from "./tgg/index.js";
 
 export { lintCsv, parseCsvHeaderAnnotation, type CsvDiagnostic, type CsvVarType };
 
@@ -225,7 +222,11 @@ export const csvLanguage = language({
           },
           // Validate header uniqueness, row column counts, mixed delimiters, numeric cells, and time monotonicity
           lint__csvTableValidity: (db: QueryDB, self: SymbolEntry) => {
-            const text = db["cstText"](self.startOffset, self.endOffset, self);
+            const text = (
+              db as unknown as {
+                cstText?: (start?: number, end?: number, entry?: SymbolEntry) => string | null;
+              }
+            ).cstText?.(self.startOffset, self.endOffset, self);
             if (!text) return null;
             const diags = lintCsv(text, self.startOffset ?? 0);
             if (diags.length === 0) return null;
@@ -289,36 +290,7 @@ export const csvLanguage = language({
   },
 
   // Polyglot TGG rules mapping CSV files and virtual columns to Modelica packages and constant components
-  polyglot: {
-    languages: ["modelica"],
-    rules: [
-      tggRule({
-        name: "CsvDocumentToModelicaPackage",
-        sourceLang: "csv",
-        targetLang: "modelica",
-        source: ($, v) => $.SourceFile({ rows: v("docName") }),
-        target: ($, v) => $.ClassDefinition({ name: v("docName"), classKind: "package" }),
-        where: (v) => [
-          tggEq(v("docName"), v("docName")),
-          tggDefaultVal(v("isAbstract"), false),
-          tggComplement(["rows", "headers"]),
-        ],
-      }),
-      tggRule({
-        name: "CsvVirtualComponentToModelicaComponent",
-        sourceLang: "csv",
-        targetLang: "modelica",
-        source: ($, v) => $.CSVVirtualComponent({ name: v("varName"), typeSpecifier: v("typeName") }),
-        target: ($, v) => $.ComponentClause({ name: v("varName"), typeSpecifier: v("typeName") }),
-        where: (v) => [
-          tggEq(v("varName"), v("varName")),
-          tggEq(v("typeName"), v("typeName")),
-          tggDefaultVal(v("causality"), "local"),
-          tggDefaultVal(v("variability"), "constant"),
-        ],
-      }),
-    ],
-  },
+  polyglot: csvPolyglotConfig,
 });
 
 export default csvLanguage;

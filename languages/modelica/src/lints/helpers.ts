@@ -4282,7 +4282,12 @@ export function getInvalidTransitionPriorityNode(db: CodeGraph, callNode: u32, $
             if (idx2 == 1) from2 = a2;
             if (idx2 == 4 || idx2 == 7) prio2 = a2;
           }
-          if (from2 != 0 && prio2 != 0 && db.ast.textEqualsNode(fromArg, from2) && db.ast.textEqualsNode(prioArg, prio2)) {
+          if (
+            from2 != 0 &&
+            prio2 != 0 &&
+            db.ast.textEqualsNode(fromArg, from2) &&
+            db.ast.textEqualsNode(prioArg, prio2)
+          ) {
             return prioArg;
           }
         }
@@ -4314,4 +4319,3 @@ export function getNonClockedOperatorArgNode(db: CodeGraph, callNode: u32, $: an
   }
   return 0;
 }
-

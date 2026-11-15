@@ -162,7 +162,6 @@ export function analyzeMultibodyKinematics(code: string, lines: string[]): Multi
   // 2. ADAMS (.adm), GENSYS, and SIMPACK line-oriented records
   if (bodies.length === 0 && joints.length === 0) {
     const markerToPart = new Map<string, string>();
-    let currentPart = "";
     for (let i = 0; i < lines.length; i++) {
       const t = lines[i]!.trim();
       if (!t || t.startsWith("!") || t.startsWith("#") || t.startsWith("//")) continue;
@@ -170,7 +169,7 @@ export function analyzeMultibodyKinematics(code: string, lines: string[]): Multi
       // ADAMS PART/id, GROUND or MASS = ...
       const adamsPart = /^PART\/(\d+)(.*)$/i.exec(t);
       if (adamsPart) {
-        currentPart = `PART_${adamsPart[1]}`;
+        const currentPart = `PART_${adamsPart[1]}`;
         const rest = adamsPart[2]!;
         const isGround = /\bGROUND\b/i.test(rest);
         const mass = Number(/\bMASS\s*=\s*([0-9.eE+-]+)/i.exec(rest)?.[1] ?? (isGround ? 0 : 1));

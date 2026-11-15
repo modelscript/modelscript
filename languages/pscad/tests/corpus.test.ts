@@ -11,8 +11,9 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { clearPscadSources, registerPscadSource } from "../src/model/workspace-registry.js";
 import { computeCorpusMetrics, formatCorpusReport, type CorpusFileMetrics } from "./corpus-metrics.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -39,6 +40,15 @@ const BASELINES: Record<string, { portCoverage: number; wireAttachment: number; 
 const files = findFiles(corpusDir);
 
 describe("PSCAD real-world corpus", { skip: files.length === 0 ? `no corpus at ${corpusDir}` : false }, () => {
+  before(() => {
+    for (const file of files) {
+      registerPscadSource(file, fs.readFileSync(file, "utf-8"));
+    }
+  });
+  after(() => {
+    clearPscadSources();
+  });
+
   const rows: CorpusFileMetrics[] = [];
 
   for (const file of files) {

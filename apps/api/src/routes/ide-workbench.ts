@@ -1384,7 +1384,8 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
     try {
       const raw = readFileSync(regPath, "utf-8");
       return res.type("application/json").send(raw);
-    } catch {
+    } catch (err) {
+      console.error("[IDE Workbench] Failed to read user language registry:", err);
       return res.status(500).json({ error: "Failed to read user language registry" });
     }
   });

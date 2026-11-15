@@ -1140,11 +1140,24 @@ export function isLikelyDyrContent(source: string): boolean {
   return false;
 }
 
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createPsseWasmParserSync } from "./wasm-loader.js";
+
+let cachedParser: ReturnType<typeof createPsseWasmParserSync>["parser"] | undefined;
+function getPsseWasmParser() {
+  if (!cachedParser) {
+    cachedParser = createPsseWasmParserSync().parser;
+  }
+  return cachedParser;
+}
+
 /**
  * Parses a PSS/E `.dyr` Dynamic Data file into structured dynamic equipment records.
  * Supports multi-line records terminated by `/` as well as single-line records.
  */
 export function parseDyr(source: string): PsseDyrCase {
+  const cstTree = getPsseWasmParser().parse(source);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   const records: PsseDyrRecord[] = [];
   const generatorsByBusId = new Map<string, PsseDyrRecord>();
   const excitersByBusId = new Map<string, PsseDyrRecord>();
@@ -1153,7 +1166,7 @@ export function parseDyr(source: string): PsseDyrCase {
   const loadsByBusId = new Map<string, PsseDyrRecord>();
   const factsByBusId = new Map<string, PsseDyrRecord>();
 
-  const lines = source.split(/\r?\n/);
+  const lines = cstLines;
   let currentBuffer = "";
   let recordStartOffset = 0;
   let recordStartLine = 1;
@@ -1252,10 +1265,11 @@ export function parseDyr(source: string): PsseDyrCase {
   };
 
   for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]!;
-    const lineNum = i + 1;
-    const lineStart = currentOffset;
-    const lineEnd = currentOffset + rawLine.length;
+    const entry = lines[i]!;
+    const rawLine = cstLineText(source, entry.tokens);
+    const lineNum = entry.row + 1;
+    const lineStart = Math.max(0, (entry.tokens[0]?.startIndex ?? 0) - (entry.tokens[0]?.startPosition?.column ?? 0));
+    const lineEnd = entry.tokens[entry.tokens.length - 1]?.endIndex ?? lineStart + rawLine.length;
     currentOffset = lineEnd + 1;
 
     const trimmed = rawLine.trim();
@@ -1292,7 +1306,8 @@ export function parseDyr(source: string): PsseDyrCase {
     } else {
       // Check if the next non-empty line starts a new record (single-line .dyr without trailing '/')
       currentBuffer += " " + rawLine;
-      const nextLine = lines[i + 1]?.trim() ?? "";
+      const nextEntry = lines[i + 1];
+      const nextLine = nextEntry ? cstLineText(source, nextEntry.tokens).trim() : "";
       if (!nextLine || /^\d+(?:,\s*|\s+)'/.test(nextLine)) {
         flushRecord(currentBuffer, recordStartOffset, lineEnd, recordStartLine);
         currentBuffer = "";

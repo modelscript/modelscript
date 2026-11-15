@@ -356,7 +356,11 @@ export const psseLanguage = language({
             return db.childrenOf(self.id).map((c) => c.id);
           },
           lint__psseGridValidity: (db: QueryDB, self: SymbolEntry) => {
-            const text = db["cstText"](self.startOffset, self.endOffset, self);
+            const text = (
+              db as unknown as {
+                cstText?: (start?: number, end?: number, entry?: SymbolEntry) => string | null;
+              }
+            ).cstText?.(self.startOffset, self.endOffset, self);
             if (!text) return null;
             const parsed = parseRaw(text);
             const diags = lintPsse(parsed);

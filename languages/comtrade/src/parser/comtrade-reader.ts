@@ -8,6 +8,9 @@
  * recovering true scaled physical engineering measurements (kV, A, MW).
  */
 
+import { createWasmParserSync } from "@modelscript/comtrade/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import type {
   ComtradeAnalogChannel,
   ComtradeConfig,
@@ -16,6 +19,16 @@ import type {
   ComtradeRecord,
   ComtradeSamplingRate,
 } from "../types.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getComtradeWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/comtrade/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 function parseComtradeTimestamp(line?: string): Date {
   if (!line) return new Date();
@@ -36,10 +49,9 @@ function parseComtradeTimestamp(line?: string): Date {
  * Parses COMTRADE .cfg header content into a strongly-typed ComtradeConfig object.
  */
 export function parseComtradeConfig(cfgContent: string): ComtradeConfig {
-  const cfgLines = cfgContent
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
+  const cstTree = getComtradeWasmParser().parse(cfgContent);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
+  const cfgLines = cstLines.map(({ tokens }) => cstLineText(cfgContent, tokens).trim()).filter((l) => l.length > 0);
 
   if (cfgLines.length < 5) {
     throw new Error("Invalid COMTRADE .cfg file: insufficient lines.");
@@ -259,12 +271,13 @@ export function parseComtradeDatAscii(datContent: string, config: ComtradeConfig
     digitalData: digitalMap,
   };
 
-  // Provide array-like access on analogData / digitalData for backward compatibility
+  const analogRec = record.analogData as unknown as Record<number, number[]>;
   for (let a = 0; a < analogList.length; a++) {
-    (record.analogData as any)[a] = analogList[a];
+    analogRec[a] = analogList[a]!;
   }
+  const digitalRec = record.digitalData as unknown as Record<number, number[]>;
   for (let d = 0; d < digitalList.length; d++) {
-    (record.digitalData as any)[d] = digitalList[d];
+    digitalRec[d] = digitalList[d]!;
   }
 
   return record;
@@ -351,11 +364,13 @@ export function parseComtradeDatBinary(bytes: Uint8Array, config: ComtradeConfig
     digitalData: digitalMap,
   };
 
+  const analogRec = record.analogData as unknown as Record<number, number[]>;
   for (let a = 0; a < analogList.length; a++) {
-    (record.analogData as any)[a] = analogList[a];
+    analogRec[a] = analogList[a]!;
   }
+  const digitalRec = record.digitalData as unknown as Record<number, number[]>;
   for (let d = 0; d < digitalList.length; d++) {
-    (record.digitalData as any)[d] = digitalList[d];
+    digitalRec[d] = digitalList[d]!;
   }
 
   return record;

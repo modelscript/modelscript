@@ -7,15 +7,17 @@
  * RK4 / Rush-Larsen electrophysiology ODE simulation, DAEBuilder lowering, and Modelica / SBML projections.
  */
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { language, xmlRules, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerCellmlToDae } from "./dae/index.js";
 import { canIndexCellml, indexCellmlDocument } from "./indexing.js";
 import { lintCellmlDocument } from "./lints/index.js";
 import { parseCellml } from "./parser/index.js";
 import { cellmlToModelica, cellmlToSbml } from "./projections/index.js";
 import { solveCellml, type CellmlSolverOptions } from "./solvers/index.js";
+import { cellmlPolyglotConfig } from "./tgg/index.js";
 
 export const cellmlLanguage = language({
+  polyglot: cellmlPolyglotConfig,
   name: "cellml",
   fileExtensions: [".cellml", ".xml"],
   maturity: "experimental",
@@ -26,9 +28,8 @@ export const cellmlLanguage = language({
   lsp: {
     fileExtensions: [".cellml", ".xml"],
   },
-  rules: {
-    Root: () => "cellml",
-  },
+  extras: () => [/[ \t\r\n]+/],
+  rules: xmlRules,
 
   writeback: {
     operators: ["="],

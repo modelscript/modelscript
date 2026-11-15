@@ -14,8 +14,10 @@ import { lintNiftiDocument } from "./lints/rules.js";
 import { extractIsoSurfaceMesh, lowerNiftiToDae } from "./mesh/index.js";
 import { parseNifti } from "./parser/index.js";
 import { niftiToScad, niftiToStep } from "./projections/index.js";
+import { niftiPolyglotConfig } from "./tgg/index.js";
 
 export const niftiLanguage = language({
+  polyglot: niftiPolyglotConfig,
   name: "nifti",
   fileExtensions: [".nii.json", ".nii.gz", ".nii", ".nrrd", ".nhdr"],
   maturity: "experimental",

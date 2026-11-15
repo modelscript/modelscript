@@ -67,17 +67,29 @@ function splitSeqLine(line: string): string[] {
   return tokens;
 }
 
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createPsseWasmParserSync } from "./wasm-loader.js";
+
+let cachedParser: ReturnType<typeof createPsseWasmParserSync>["parser"] | undefined;
+function getPsseWasmParser() {
+  if (!cachedParser) {
+    cachedParser = createPsseWasmParserSync().parser;
+  }
+  return cachedParser;
+}
+
 /**
  * Parses a PSS/E `.seq` sequence data file string into a structured `PsseSeqCase`.
  */
 export function parseSeq(source: string): PsseSeqCase {
+  const cstTree = getPsseWasmParser().parse(source);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   const generators: SeqGeneratorRecord[] = [];
   const branches: SeqBranchRecord[] = [];
   const mutuals: SeqMutualRecord[] = [];
   const transformers: SeqTransformerRecord[] = [];
   const shunts: SeqShuntRecord[] = [];
 
-  const lines = source.split(/\r?\n/);
   // Sections:
   // 0: Header / Machine sequence impedances
   // 1: Constant-admittance loads (neg/zero) — skipped or folded
@@ -88,7 +100,8 @@ export function parseSeq(source: string): PsseSeqCase {
   let section = 0;
   let seenHeader = false;
 
-  for (const rawLine of lines) {
+  for (const { tokens: cstTokens } of cstLines) {
+    const rawLine = cstLineText(source, cstTokens);
     const trimmed = rawLine.trim();
     if (!trimmed || trimmed.startsWith("@!") || trimmed.startsWith("//")) continue;
     if (/^Q\b/i.test(trimmed)) break;

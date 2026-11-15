@@ -15,9 +15,9 @@ export const easy5TggRules = [
     name: "Easy5GainToModelicaGain",
     sourceLang: "easy5",
     targetLang: "modelica",
-    source: ($, v) => $.Component({ type: "GP/GA", id: v("name"), K: v("k") }),
+    source: ($, v) => $["Component"]?.({ type: "GP/GA", id: v("name"), K: v("k") }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Math.Gain",
         k: v("k"),
@@ -35,9 +35,9 @@ export const easy5TggRules = [
     name: "Easy5IntegratorToModelicaIntegrator",
     sourceLang: "easy5",
     targetLang: "modelica",
-    source: ($, v) => $.Component({ type: "GP/IN", id: v("name"), GAIN: v("k"), S0: v("y_start") }),
+    source: ($, v) => $["Component"]?.({ type: "GP/IN", id: v("name"), GAIN: v("k"), S0: v("y_start") }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Continuous.Integrator",
         k: v("k"),
@@ -58,9 +58,9 @@ export const easy5TggRules = [
     name: "Easy5SumToModelicaAdd",
     sourceLang: "easy5",
     targetLang: "modelica",
-    source: ($, v) => $.Component({ type: "GP/SJ", id: v("name") }),
+    source: ($, v) => $["Component"]?.({ type: "GP/SJ", id: v("name") }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Math.Add",
       }),
@@ -72,9 +72,9 @@ export const easy5TggRules = [
     name: "Easy5TransferFcnToModelicaTransferFunction",
     sourceLang: "easy5",
     targetLang: "modelica",
-    source: ($, v) => $.Component({ type: "GP/TF", id: v("name"), NUM: v("b"), DEN: v("a") }),
+    source: ($, v) => $["Component"]?.({ type: "GP/TF", id: v("name"), NUM: v("b"), DEN: v("a") }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Continuous.TransferFunction",
         b: v("b"),
@@ -94,7 +94,7 @@ export const easy5TggRules = [
     sourceLang: "easy5",
     targetLang: "modelica",
     source: ($, v) =>
-      $.Component({
+      $["Component"]?.({
         type: "GP/LA",
         id: v("name"),
         GAIN: v("gain"),
@@ -102,11 +102,11 @@ export const easy5TggRules = [
         TAU2: v("tau2"),
       }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Continuous.TransferFunction",
       }),
-    where: (v) => [tggEq(v("name"), v("name")), tggComplement(["location", "ports"])],
+    where: (v) => [tggEq(v("name"), v("name")), tggComplement(["location", "ports", "GAIN", "TAU1", "TAU2"])],
   }),
 
   // 6. GP/LM (Limiter) <-> Modelica.Blocks.Nonlinear.Limiter
@@ -114,9 +114,9 @@ export const easy5TggRules = [
     name: "Easy5LimiterToModelicaLimiter",
     sourceLang: "easy5",
     targetLang: "modelica",
-    source: ($, v) => $.Component({ type: "GP/LM", id: v("name"), UL: v("uMax"), LL: v("uMin") }),
+    source: ($, v) => $["Component"]?.({ type: "GP/LM", id: v("name"), UL: v("uMax"), LL: v("uMin") }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Nonlinear.Limiter",
         uMax: v("uMax"),
@@ -136,18 +136,22 @@ export const easy5TggRules = [
     sourceLang: "easy5",
     targetLang: "modelica",
     source: ($, v) =>
-      $.Connection({
+      $["Connection"]?.({
         fromComponent: v("fromComp"),
         fromPort: v("fromPort"),
         toComponent: v("toComp"),
         toPort: v("toPort"),
       }),
     target: ($, v) =>
-      $.ConnectEquation({
+      $["ConnectEquation"]?.({
         source: v("srcConn"),
         target: v("dstConn"),
       }),
-    where: (v) => [tggEq(v("srcConn"), v("srcConn")), tggEq(v("dstConn"), v("dstConn"))],
+    where: (v) => [
+      tggEq(v("srcConn"), v("srcConn")),
+      tggEq(v("dstConn"), v("dstConn")),
+      tggComplement(["fromComponent", "fromPort", "toComponent", "toPort"]),
+    ],
   }),
 
   // 8. EASY5 Component <-> SysML v2 Part Definition
@@ -155,8 +159,8 @@ export const easy5TggRules = [
     name: "Easy5ComponentToSysmlPart",
     sourceLang: "easy5",
     targetLang: "sysml2",
-    source: ($, v) => $.Component({ id: v("name"), type: v("compType") }),
-    target: ($, v) => $.PartDefinition({ name: v("name"), declaredType: v("compType") }),
+    source: ($, v) => $["Component"]?.({ id: v("name"), type: v("compType") }),
+    target: ($, v) => $["PartDefinition"]?.({ name: v("name"), declaredType: v("compType") }),
     where: (v) => [tggEq(v("name"), v("name")), tggDefaultVal(v("isAbstract"), false)],
   }),
 ];

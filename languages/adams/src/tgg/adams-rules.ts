@@ -15,12 +15,12 @@ export const adamsTggRules = [
     sourceLang: "adams",
     targetLang: "urdf",
     source: ($, v) =>
-      $.AdamsPart({
+      $["AdamsPart"]?.({
         name: v("name"),
         mass: v("mass"),
       }),
     target: ($, v) =>
-      $.UrdfLink({
+      $["UrdfLink"]?.({
         name: v("name"),
         mass: v("mass"),
       }),
@@ -37,12 +37,12 @@ export const adamsTggRules = [
     sourceLang: "adams",
     targetLang: "modelica",
     source: ($, v) =>
-      $.AdamsPart({
+      $["AdamsPart"]?.({
         name: v("name"),
         mass: v("mass"),
       }),
     target: ($, v) =>
-      $.ModelicaComponent({
+      $["ModelicaComponent"]?.({
         type: "Modelica.Mechanics.MultiBody.Parts.Body",
         name: v("name"),
         m: v("mass"),
@@ -60,12 +60,12 @@ export const adamsTggRules = [
     sourceLang: "adams",
     targetLang: "urdf",
     source: ($, v) =>
-      $.AdamsJoint({
+      $["AdamsJoint"]?.({
         name: v("name"),
         type: v("jointType"),
       }),
     target: ($, v) =>
-      $.UrdfJoint({
+      $["UrdfJoint"]?.({
         name: v("name"),
         type: v("jointType"),
       }),

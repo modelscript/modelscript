@@ -609,7 +609,15 @@ export const modelicaActionHandlers: Record<
   query: async (context: ActionExecutionContext, inputs: any) => {
     const name = inputs?.name;
     if (!name) throw new Error("Missing required class name");
-    const queryEngine = context.queryEngine;
+    const queryEngine = context.queryEngine as
+      | {
+          toQueryDB?: () => unknown;
+          index: {
+            symbols: Map<number, { kind: number; name: string; typeText?: string; comment?: string }>;
+            childrenOf: Map<number, number[]>;
+          };
+        }
+      | undefined;
     if (!queryEngine) throw new Error("QueryEngine not available");
 
     const queryDB = queryEngine.toQueryDB ? queryEngine.toQueryDB() : null;

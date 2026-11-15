@@ -107,7 +107,7 @@ export interface EmtPlantConfig {
       currentInjection?: (t: number) => { ia: number; ib: number; ic: number } | undefined;
     }>;
     onStep?: (t: number, stepIdx: number, busVoltages: Map<string, { a: number; b: number; c: number }>) => void;
-  }) => any | Promise<any>;
+  }) => TsEmtCoSimResult["emtTrajectory"] | Promise<TsEmtCoSimResult["emtTrajectory"]>;
   /** Boundary port configurations mapping TS buses to this plant's EMT buses. */
   boundaryPorts: TsEmtBoundaryPortConfig[];
 }
@@ -168,7 +168,7 @@ export interface MultiPlantTsEmtResult {
       maxRotorAngleSpreadDeg: number;
     };
   };
-  plantTrajectories: Map<string, any>;
+  plantTrajectories: Map<string, TsEmtCoSimResult["emtTrajectory"]>;
 }
 
 /**
@@ -344,7 +344,7 @@ export async function runMultiPlantTsEmtCoSimulation(
     boundaryInjections: Array<{ busNumber: number; inject: (t: number) => { irPu: number; iiPu: number } }>;
     onStep?: (t: number, busVoltages: Map<number, { vmPu: number; vaRad: number }>) => void;
     fault?: MultiPlantTsEmtOptions["fault"];
-  }) => any | Promise<any>,
+  }) => MultiPlantTsEmtResult["tsTrajectory"] | Promise<MultiPlantTsEmtResult["tsTrajectory"]>,
   options: MultiPlantTsEmtOptions,
 ): Promise<MultiPlantTsEmtResult> {
   const t0 = Date.now();
@@ -388,7 +388,7 @@ export async function runMultiPlantTsEmtCoSimulation(
   }
 
   // 1. Run all EMT plants concurrently via Promise.all
-  const plantTrajectories = new Map<string, any>();
+  const plantTrajectories = new Map<string, TsEmtCoSimResult["emtTrajectory"]>();
   const emtPromises = options.plants.map(async (plant) => {
     const plantPorts = portStates.filter((p) => p.plantId === plant.id);
 
@@ -577,7 +577,7 @@ export class MultiPlantTsEmtCoSimOrchestrator {
       boundaryInjections: Array<{ busNumber: number; inject: (t: number) => { irPu: number; iiPu: number } }>;
       onStep?: (t: number, busVoltages: Map<number, { vmPu: number; vaRad: number }>) => void;
       fault?: MultiPlantTsEmtOptions["fault"];
-    }) => any | Promise<any>,
+    }) => MultiPlantTsEmtResult["tsTrajectory"] | Promise<MultiPlantTsEmtResult["tsTrajectory"]>,
   ): Promise<MultiPlantTsEmtResult> {
     const fullOpts: MultiPlantTsEmtOptions = {
       ...this.options,
@@ -598,7 +598,7 @@ export async function runTsEmtCoSimulation(
     boundaryInjections: Array<{ busNumber: number; inject: (t: number) => { irPu: number; iiPu: number } }>;
     onStep?: (t: number, busVoltages: Map<number, { vmPu: number; vaRad: number }>) => void;
     fault?: TsEmtCoSimOptions["fault"];
-  }) => any,
+  }) => MultiPlantTsEmtResult["tsTrajectory"] | Promise<MultiPlantTsEmtResult["tsTrajectory"]>,
   pscadRunner: (options: {
     durationSec: number;
     timeStepSec: number;
@@ -608,7 +608,7 @@ export async function runTsEmtCoSimulation(
       currentInjection?: (t: number) => { ia: number; ib: number; ic: number } | undefined;
     }>;
     onStep?: (t: number, stepIdx: number, busVoltages: Map<string, { a: number; b: number; c: number }>) => void;
-  }) => any,
+  }) => TsEmtCoSimResult["emtTrajectory"] | Promise<TsEmtCoSimResult["emtTrajectory"]>,
   options: TsEmtCoSimOptions,
 ): Promise<TsEmtCoSimResult> {
   const multiResult = await runMultiPlantTsEmtCoSimulation(psseRunner, {
@@ -643,6 +643,6 @@ export async function runTsEmtCoSimulation(
     ratioM: multiResult.ratioM,
     wallClockTimeMs: multiResult.wallClockTimeMs,
     tsTrajectory: multiResult.tsTrajectory,
-    emtTrajectory: multiResult.plantTrajectories.get("EMT_Plant_1"),
+    emtTrajectory: multiResult.plantTrajectories.get("EMT_Plant_1")!,
   };
 }

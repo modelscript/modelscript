@@ -43,6 +43,23 @@ import {
 import { DigitalThreadHypergraph, type BlastRadiusResult } from "./thread_hypergraph.js";
 import { DOMAIN_NAME_TO_INDEX } from "./thread_serializer.js";
 
+const CONNECTOR_CONJUGATIONS = new Map<string, string>([
+  ["Pin", "NegativePin"],
+  ["PositivePin", "NegativePin"],
+  ["NegativePin", "PositivePin"],
+  ["Flange", "Flange_b"],
+  ["HeatPort", "HeatPort_b"],
+  ["RealInput", "RealOutput"],
+  ["RealOutput", "RealInput"],
+]);
+
+/**
+ * Registers a conjugated connector type mapping for directional port projection.
+ */
+export function registerConnectorConjugation(portType: string, conjugatedType: string): void {
+  CONNECTOR_CONJUGATIONS.set(portType, conjugatedType);
+}
+
 export type { EvaluatedTGGRule, GraphSyncChange, GraphSyncResult, PatternMatchResult };
 
 /**
@@ -147,14 +164,25 @@ export class PolyglotTransformer {
   /** Reverse mapping of literal ID to thread slot */
   private literalIdToThreadSlot = new Map<number, number>();
 
+  /** Optional unified CompiledTGGPlan IR shared with WASM kernel. */
+  public compiledPlan?:
+    | { rules: { rule: TGGRuleOptions }[]; typeMaps: Record<string, Record<string, string>> }
+    | undefined;
+
   /**
    * Initializes a new PolyglotTransformer instance.
    *
-   * @param config - Optional configuration declaring TGG rules, type mappings, and reasoner bindings.
+   * @param config - Optional configuration declaring TGG rules, compiled plan IR, type mappings, and reasoner bindings.
    * @param typeRegistry - Optional custom WorkspaceTypeRegistry instance.
    * @param coordinator - Optional custom SemanticTheoryCoordinator instance.
    */
-  constructor(config?: PolyglotConfig, typeRegistry?: WorkspaceTypeRegistry, coordinator?: SemanticTheoryCoordinator) {
+  constructor(
+    config?: PolyglotConfig & {
+      plan?: { rules: { rule: TGGRuleOptions }[]; typeMaps: Record<string, Record<string, string>> };
+    },
+    typeRegistry?: WorkspaceTypeRegistry,
+    coordinator?: SemanticTheoryCoordinator,
+  ) {
     this.typeRegistry = typeRegistry || new WorkspaceTypeRegistry();
     this.coordinator = coordinator || new SemanticTheoryCoordinator();
     if (!coordinator) {
@@ -165,10 +193,11 @@ export class PolyglotTransformer {
       this.coordinator.registerOracle(new FlowAlgebraOracle());
     }
     if (config) {
-      this.rules = config.rules || [];
-      this.typeMaps = config.typeMaps || {};
-      if (config.typeMaps) {
-        for (const [targetLang, mappings] of Object.entries(config.typeMaps)) {
+      this.compiledPlan = config.plan;
+      this.rules = config.rules || (config.plan ? config.plan.rules.map((r) => r.rule) : []);
+      this.typeMaps = config.typeMaps || config.plan?.typeMaps || {};
+      if (Object.keys(this.typeMaps).length > 0) {
+        for (const [targetLang, mappings] of Object.entries(this.typeMaps)) {
           for (const [srcType, tgtType] of Object.entries(mappings)) {
             this.typeRegistry.registerTypeMapping("", targetLang, srcType, tgtType);
           }
@@ -176,6 +205,35 @@ export class PolyglotTransformer {
       }
     }
     this.registerDefaultEmitters();
+  }
+
+  /**
+   * Incremental Salsa/LSP delta bridge: pushes added, updated, and removed symbol nodes
+   * through declarative TGG rules without re-evaluating untouched model elements.
+   */
+  syncSymbolDeltas(
+    deltas: { added?: PolyglotNode[]; updated?: PolyglotNode[]; removed?: string[] },
+    targetLang: string,
+  ): { applied: number; retracted: number; targets: PolyglotNode[] } {
+    let applied = 0;
+    let retracted = 0;
+    const targets: PolyglotNode[] = [];
+
+    for (const id of deltas.removed ?? []) {
+      if (this.retract(id)) {
+        retracted++;
+      }
+    }
+
+    for (const node of [...(deltas.added ?? []), ...(deltas.updated ?? [])]) {
+      const res = this.evaluateRuleForward(node, targetLang, `${node.kind}:${node.name}`);
+      if (res) {
+        targets.push(res.targetNode);
+        applied++;
+      }
+    }
+
+    return { applied, retracted, targets };
   }
 
   /**
@@ -204,14 +262,12 @@ export class PolyglotTransformer {
         for (const port of node.ports) {
           let portType = port.type;
           if (port.isConjugated) {
-            if (portType === "Pin" || portType === "PositivePin") portType = "NegativePin";
-            else if (portType === "NegativePin") portType = "PositivePin";
+            const mapped = CONNECTOR_CONJUGATIONS.get(portType);
+            if (mapped) portType = mapped;
             else if (portType.endsWith("_a")) portType = portType.slice(0, -2) + "_b";
             else if (portType.endsWith("_b")) portType = portType.slice(0, -2) + "_a";
-            else if (portType === "Flange") portType = "Flange_b";
-            else if (portType === "HeatPort") portType = "HeatPort_b";
-            else if (portType === "RealInput" || port.direction === "in") portType = "RealOutput";
-            else if (portType === "RealOutput" || port.direction === "out") portType = "RealInput";
+            else if (port.direction === "in") portType = "RealOutput";
+            else if (port.direction === "out") portType = "RealInput";
           } else {
             if (port.direction === "in" && portType !== "RealInput") portType = "RealInput";
             else if (port.direction === "out" && portType !== "RealOutput") portType = "RealOutput";
@@ -432,7 +488,16 @@ export class PolyglotTransformer {
           lines.push(`  ${c.typeSpecifier}();`);
         }
       } else {
-        lines.push(`  cube([10, 10, 10], center = true);`);
+        const props = (node["properties"] as Record<string, unknown> | undefined) ?? {};
+        const dims = Array.isArray(props["dimensions"]) ? props["dimensions"] : props["size"];
+        const radius = typeof props["radius"] === "number" ? props["radius"] : undefined;
+        if (radius !== undefined) {
+          lines.push(`  sphere(r = ${radius});`);
+        } else if (Array.isArray(dims) && dims.length >= 3) {
+          lines.push(`  cube([${dims[0]}, ${dims[1]}, ${dims[2]}], center = true);`);
+        } else {
+          lines.push(`  cube([10, 10, 10], center = true);`);
+        }
       }
       lines.push(`}`);
       lines.push(`\n${node.name}();`);
@@ -445,7 +510,8 @@ export class PolyglotTransformer {
       lines.push("ISO-10303-21;");
       lines.push("HEADER;");
       lines.push("FILE_DESCRIPTION(('ModelScript Polyglot STEP Export'), '2;1');");
-      lines.push(`FILE_NAME('${node.name}.step', '2026-09-27', ('ModelScript'), ('Engineering'), '', '', '');`);
+      const isoDate = new Date().toISOString().slice(0, 10);
+      lines.push(`FILE_NAME('${node.name}.step', '${isoDate}', ('ModelScript'), ('Engineering'), '', '', '');`);
       lines.push("FILE_SCHEMA(('CONFIG_CONTROL_DESIGN'));");
       lines.push("ENDSEC;");
       lines.push("DATA;");
@@ -610,7 +676,10 @@ export class PolyglotTransformer {
 
     for (const nac of nacConstraints) {
       const [forbiddenPattern] = nac.args;
-      const forbiddenName = typeof forbiddenPattern === "object" ? forbiddenPattern.nodeType : String(forbiddenPattern);
+      const forbiddenName =
+        typeof forbiddenPattern === "object" && forbiddenPattern !== null && "nodeType" in forbiddenPattern
+          ? String((forbiddenPattern as { nodeType: unknown }).nodeType)
+          : String(forbiddenPattern);
 
       // Check if node has a child, attribute, or port matching the forbidden pattern
       const hasMatchingAttribute = (node.attributes || []).some(
@@ -657,6 +726,8 @@ export class PolyglotTransformer {
 
   /** N-Ary digital thread alignments: threadId -> domain projections */
   private threads = new Map<string, Record<string, PolyglotNode>>();
+  private threadNumericIds = new Map<string, number>();
+  private nextThreadNumericId = 1;
 
   /** In-memory linear memory compatible Digital Thread Hypergraph */
   private hypergraph: DigitalThreadHypergraph = new DigitalThreadHypergraph();
@@ -707,17 +778,19 @@ export class PolyglotTransformer {
   registerThread(threadId: string, domainNodes: Record<string, PolyglotNode>): void {
     this.threads.set(threadId, domainNodes);
 
-    // Sync with linear-memory Struct-of-Arrays hypergraph
-    const numericId = parseInt(threadId.replace(/\D/g, "") || "1", 10);
+    // Sync with linear-memory Struct-of-Arrays hypergraph using collision-free interned IDs
+    let numericId = this.threadNumericIds.get(threadId);
+    if (numericId === undefined) {
+      numericId = this.nextThreadNumericId++;
+      this.threadNumericIds.set(threadId, numericId);
+    }
     const slot = this.hypergraph.createThread(numericId);
 
     let pseudoNodeId = 100;
     for (const [domName, node] of Object.entries(domainNodes)) {
-      const domIdx = DOMAIN_NAME_TO_INDEX[domName.toLowerCase()];
-      if (domIdx !== undefined) {
-        const nodeId = node.id || pseudoNodeId++;
-        this.hypergraph.bindDomainNode(slot, domIdx, nodeId);
-      }
+      const domIdx = DOMAIN_NAME_TO_INDEX[domName.toLowerCase()] ?? this.hypergraph.resolveOrRegisterDomain(domName);
+      const nodeId = node.id || pseudoNodeId++;
+      this.hypergraph.bindDomainNode(slot, domIdx, nodeId);
     }
   }
 
@@ -1027,7 +1100,7 @@ export class PolyglotTransformer {
     updatedConstraints: any[],
     ruleName?: string,
   ): CoordinatorSatResult | null {
-    const domIdx = DOMAIN_NAME_TO_INDEX[domainName.toLowerCase()];
+    const domIdx = DOMAIN_NAME_TO_INDEX[domainName.toLowerCase()] ?? this.hypergraph.getDomainId(domainName);
     if (domIdx === undefined) return null;
     const slots = this.hypergraph.findSlotsByDomainNode(domIdx, nodeId);
     if (slots.length === 0) return null;
@@ -1044,7 +1117,7 @@ export class PolyglotTransformer {
    * marking them stale in linear memory.
    */
   invalidateBlastRadius(domainName: string, nodeId: number): BlastRadiusResult | null {
-    const domIdx = DOMAIN_NAME_TO_INDEX[domainName.toLowerCase()];
+    const domIdx = DOMAIN_NAME_TO_INDEX[domainName.toLowerCase()] ?? this.hypergraph.getDomainId(domainName);
     if (domIdx === undefined) return null;
     this.hypergraph.markBlastRadiusStale(domIdx, nodeId);
     return this.hypergraph.computeBlastRadius(domIdx, nodeId);
@@ -1065,7 +1138,7 @@ export class PolyglotTransformer {
     reconciledSlots: number[];
     satResults: Map<number, CoordinatorSatResult>;
   } | null {
-    const domIdx = DOMAIN_NAME_TO_INDEX[domainName.toLowerCase()];
+    const domIdx = DOMAIN_NAME_TO_INDEX[domainName.toLowerCase()] ?? this.hypergraph.getDomainId(domainName);
     if (domIdx === undefined) return null;
 
     const blastRadius = this.hypergraph.computeBlastRadius(domIdx, nodeId);
@@ -1115,6 +1188,7 @@ export class PolyglotTransformer {
     sourceNode: PolyglotNode,
     targetLang?: string,
     threadId?: string,
+    contextNode?: PolyglotNode,
   ): { targetNode: PolyglotNode; matchedRule: EvaluatedTGGRule; env: Record<string, any> } | null {
     const candidates: PatternMatchResult[] = [];
     for (const r of this.rules) {
@@ -1122,7 +1196,7 @@ export class PolyglotTransformer {
         continue;
       }
       const desc = evaluateRuleDescriptor(r);
-      const m = matchNodePattern(sourceNode, desc.sourcePattern, desc, this);
+      const m = matchNodePattern(sourceNode, desc.sourcePattern, desc, this, contextNode, desc.contextSourcePattern);
       if (m) candidates.push(m);
     }
     if (candidates.length === 0) return null;
@@ -1172,6 +1246,7 @@ export class PolyglotTransformer {
       strategy?: "source-wins" | "target-wins" | "physics-simplex";
       threadId?: string;
       fallbackThreadId?: string;
+      contextNode?: PolyglotNode;
     },
   ): {
     sourceNode: PolyglotNode;
@@ -1186,7 +1261,14 @@ export class PolyglotTransformer {
         continue;
       }
       const desc = evaluateRuleDescriptor(r);
-      const m = matchNodePattern(targetNode, desc.targetPattern, desc, this);
+      const m = matchNodePattern(
+        targetNode,
+        desc.targetPattern,
+        desc,
+        this,
+        options?.contextNode,
+        desc.contextTargetPattern,
+      );
       if (m) candidates.push(m);
     }
     if (candidates.length === 0) return null;
@@ -1289,7 +1371,12 @@ export class PolyglotTransformer {
 
     if (Array.isArray(sourceGraph["children"])) {
       projectedRoot["children"] = (sourceGraph["children"] as PolyglotNode[]).map((child, idx) => {
-        const res = this.evaluateRuleForward(child, targetLang, `child:${child.kind || "node"}:${child.name || idx}`);
+        const res = this.evaluateRuleForward(
+          child,
+          targetLang,
+          `child:${child.kind || "node"}:${child.name || idx}`,
+          sourceGraph,
+        );
         const outChild = res ? res.targetNode : { ...child };
         // Also index by positional slot for rename resilience
         const comp = this.getComplement(`child:${child.kind || "node"}:${child.name || idx}`);
@@ -1340,6 +1427,7 @@ export class PolyglotTransformer {
           ...(strategy ? { strategy } : {}),
           threadId: `child:${tgtChild.kind || "node"}:${tgtChild.name}`,
           fallbackThreadId: `pos:${idx}`,
+          contextNode: modifiedTarget,
         });
         if (backRes) {
           reconciledChildren.push(backRes.sourceNode);
@@ -1372,10 +1460,19 @@ export class PolyglotTransformer {
     const preserveSpecs = rule.elements.filter((e) => e.action === "preserve");
     const createSpecs = rule.elements.filter((e) => e.action === "create");
 
+    const resolveSpecName = (spec: {
+      nodeType: string;
+      bindings?: Record<string, unknown> | undefined;
+    }): string | undefined => {
+      if (matchBindings[spec.nodeType]) return matchBindings[spec.nodeType];
+      const bName = spec.bindings?.["name"];
+      return bName != null ? String(bName) : undefined;
+    };
+
     // 1. Check Identification Condition
     const matchedNames = new Set<string>();
     for (const spec of [...deleteSpecs, ...preserveSpecs]) {
-      const boundName = matchBindings[spec.nodeType] || spec.bindings?.["name"];
+      const boundName = resolveSpecName(spec);
       if (boundName) {
         if (matchedNames.has(boundName) && spec.action === "delete") {
           return {
@@ -1392,12 +1489,12 @@ export class PolyglotTransformer {
     if (rule.danglingEdgePolicy === "strict" || !rule.danglingEdgePolicy) {
       const knownNodeNames = new Set<string>();
       for (const spec of [...deleteSpecs, ...preserveSpecs]) {
-        const boundName = matchBindings[spec.nodeType] || spec.bindings?.["name"];
+        const boundName = resolveSpecName(spec);
         if (boundName) knownNodeNames.add(boundName);
       }
 
       for (const delSpec of deleteSpecs) {
-        const targetName = matchBindings[delSpec.nodeType] || delSpec.bindings?.["name"];
+        const targetName = resolveSpecName(delSpec);
         if (!targetName) continue;
 
         const connections = (containerNode as any).connections || [];
@@ -1431,7 +1528,7 @@ export class PolyglotTransformer {
     const recycledNodes: string[] = [];
 
     for (const delSpec of deleteSpecs) {
-      const targetName = matchBindings[delSpec.nodeType] || delSpec.bindings?.["name"];
+      const targetName = resolveSpecName(delSpec);
       if (!targetName) continue;
 
       if (containerNode.components) {
@@ -1495,7 +1592,7 @@ export class PolyglotTransformer {
       status: "SUCCESS",
       recycledNodes,
       createdNodes,
-      preservedNodes: preserveSpecs.map((s) => matchBindings[s.nodeType] || s.bindings?.["name"] || s.nodeType),
+      preservedNodes: preserveSpecs.map((s) => resolveSpecName(s) || s.nodeType),
       negativeDelta,
       positiveDelta,
       targetSyncResult,

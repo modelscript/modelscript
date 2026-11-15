@@ -23,9 +23,9 @@ export const simulinkTggRules = [
     name: "SimulinkGainToModelicaGain",
     sourceLang: "simulink",
     targetLang: "modelica",
-    source: ($, v) => $.Block({ type: "Gain", name: v("name"), Gain: v("k") }),
+    source: ($, v) => $["Block"]?.({ type: "Gain", name: v("name"), Gain: v("k") }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Math.Gain",
         k: v("k"),
@@ -43,9 +43,9 @@ export const simulinkTggRules = [
     name: "SimulinkIntegratorToModelicaIntegrator",
     sourceLang: "simulink",
     targetLang: "modelica",
-    source: ($, v) => $.Block({ type: "Integrator", name: v("name"), InitialCondition: v("ic") }),
+    source: ($, v) => $["Block"]?.({ type: "Integrator", name: v("name"), InitialCondition: v("ic") }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Continuous.Integrator",
         y_start: v("ic"),
@@ -63,9 +63,9 @@ export const simulinkTggRules = [
     name: "SimulinkConstantToModelicaConstant",
     sourceLang: "simulink",
     targetLang: "modelica",
-    source: ($, v) => $.Block({ type: "Constant", name: v("name"), Value: v("val") }),
+    source: ($, v) => $["Block"]?.({ type: "Constant", name: v("name"), Value: v("val") }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Sources.Constant",
         k: v("val"),
@@ -83,9 +83,9 @@ export const simulinkTggRules = [
     name: "SimulinkSumToAdd",
     sourceLang: "simulink",
     targetLang: "modelica",
-    source: ($, v) => $.Block({ type: "Sum", name: v("name"), Inputs: "++" }),
+    source: ($, v) => $["Block"]?.({ type: "Sum", name: v("name"), Inputs: "++" }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Math.Add",
       }),
@@ -97,9 +97,9 @@ export const simulinkTggRules = [
     name: "SimulinkSumToFeedback",
     sourceLang: "simulink",
     targetLang: "modelica",
-    source: ($, v) => $.Block({ type: "Sum", name: v("name"), Inputs: "+-" }),
+    source: ($, v) => $["Block"]?.({ type: "Sum", name: v("name"), Inputs: "+-" }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Math.Feedback",
       }),
@@ -112,14 +112,14 @@ export const simulinkTggRules = [
     sourceLang: "simulink",
     targetLang: "modelica",
     source: ($, v) =>
-      $.Block({
+      $["Block"]?.({
         type: "TransferFcn",
         name: v("name"),
         Numerator: v("num"),
         Denominator: v("den"),
       }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Continuous.TransferFunction",
         b: v("num"),
@@ -139,14 +139,14 @@ export const simulinkTggRules = [
     sourceLang: "simulink",
     targetLang: "modelica",
     source: ($, v) =>
-      $.Block({
+      $["Block"]?.({
         type: "UnitDelay",
         name: v("name"),
         SampleTime: v("st"),
         InitialCondition: v("ic"),
       }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Discrete.UnitDelay",
         samplePeriod: v("st"),
@@ -165,9 +165,9 @@ export const simulinkTggRules = [
     name: "SimulinkInportToRealInput",
     sourceLang: "simulink",
     targetLang: "modelica",
-    source: ($, v) => $.Block({ type: "Inport", name: v("name") }),
+    source: ($, v) => $["Block"]?.({ type: "Inport", name: v("name") }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Interfaces.RealInput",
       }),
@@ -179,9 +179,9 @@ export const simulinkTggRules = [
     name: "SimulinkOutportToRealOutput",
     sourceLang: "simulink",
     targetLang: "modelica",
-    source: ($, v) => $.Block({ type: "Outport", name: v("name") }),
+    source: ($, v) => $["Block"]?.({ type: "Outport", name: v("name") }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Interfaces.RealOutput",
       }),
@@ -194,14 +194,14 @@ export const simulinkTggRules = [
     sourceLang: "simulink",
     targetLang: "modelica",
     source: ($, v) =>
-      $.Line({
+      $["Line"]?.({
         srcBlock: v("src"),
         srcPort: v("srcP"),
         dstBlock: v("dst"),
         dstPort: v("dstP"),
       }),
     target: ($, v) =>
-      $.ConnectEquation({
+      $["ConnectEquation"]?.({
         source: v("srcConn"),
         target: v("dstConn"),
       }),
@@ -217,8 +217,8 @@ export const simulinkTggRules = [
     name: "SimulinkBlockToSysmlPart",
     sourceLang: "simulink",
     targetLang: "sysml2",
-    source: ($, v) => $.Block({ name: v("name"), type: v("blockType") }),
-    target: ($, v) => $.PartDefinition({ name: v("name"), declaredType: v("blockType") }),
+    source: ($, v) => $["Block"]?.({ name: v("name"), type: v("blockType") }),
+    target: ($, v) => $["PartDefinition"]?.({ name: v("name"), declaredType: v("blockType") }),
     where: (v) => [tggEq(v("name"), v("name")), tggDefaultVal(v("isAbstract"), false)],
   }),
 
@@ -228,7 +228,7 @@ export const simulinkTggRules = [
     sourceLang: "simulink",
     targetLang: "modelica",
     source: ($, v) =>
-      $.Block({
+      $["Block"]?.({
         type: "DiscreteFilter",
         name: v("name"),
         Numerator: v("num"),
@@ -236,7 +236,7 @@ export const simulinkTggRules = [
         SampleTime: v("st"),
       }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: "Modelica.Blocks.Discrete.TransferFunction",
         b: v("num"),
@@ -262,13 +262,13 @@ export const simulinkTggRules = [
     sourceLang: "simulink",
     targetLang: "modelica",
     source: ($, v) =>
-      $.Block({
+      $["Block"]?.({
         type: "SubSystem",
         name: v("name"),
         subModelType: v("subType"),
       }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("name"),
         typeSpecifier: v("subType"),
       }),

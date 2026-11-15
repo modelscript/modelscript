@@ -15,13 +15,13 @@ export const canteraTggRules = [
     sourceLang: "cantera",
     targetLang: "modelica",
     source: ($, v) =>
-      $.CanteraPhase({
+      $["CanteraPhase"]?.({
         name: v("name"),
         temperature: v("T"),
         pressure: v("P"),
       }),
     target: ($, v) =>
-      $.ModelicaComponent({
+      $["ModelicaComponent"]?.({
         type: "Modelica.Media.IdealGases.MixtureGases.FlueGas",
         name: v("name"),
         T_default: v("T"),
@@ -42,14 +42,14 @@ export const canteraTggRules = [
     sourceLang: "cantera",
     targetLang: "modelica",
     source: ($, v) =>
-      $.CanteraReaction({
+      $["CanteraReaction"]?.({
         equation: v("equation"),
         A: v("A"),
         b: v("b"),
         Ea: v("Ea"),
       }),
     target: ($, v) =>
-      $.ModelicaRecord({
+      $["ModelicaRecord"]?.({
         type: "Modelica.Fluid.Reactions.ArrheniusKinetics",
         equation: v("equation"),
         A: v("A"),
@@ -71,13 +71,13 @@ export const canteraTggRules = [
     sourceLang: "cantera",
     targetLang: "sysml2",
     source: ($, v) =>
-      $.CanteraPhase({
+      $["CanteraPhase"]?.({
         name: v("name"),
         temperature: v("T"),
         pressure: v("P"),
       }),
     target: ($, v) =>
-      $.SysMLPartDefinition({
+      $["SysMLPartDefinition"]?.({
         name: v("name"),
         temperature_K: v("T"),
         pressure_Pa: v("P"),

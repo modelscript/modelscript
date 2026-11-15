@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { language, xmlRules, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerSbolToDae } from "./dae/sbol-to-dae.js";
 import { sbolIndexing } from "./indexing.js";
 import { lintSbol } from "./lints/index.js";
 import { parseSbol } from "./parser/sbol-parser.js";
 import { sbolToModelica, sbolToSbmlXml } from "./projections/sbol-projections.js";
 import { solveGeneticCircuit, type GeneticCircuitSolverOptions } from "./solvers/genetic-circuit-solver.js";
+import { sbolPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript Synthetic Biology Open Language (.sbol, .ttl) Language Definition.
  */
 export const sbolLanguage = language({
+  polyglot: sbolPolyglotConfig,
   name: "sbol",
   fileExtensions: [".sbol", ".ttl"],
   maturity: "experimental",
@@ -122,4 +124,8 @@ export const sbolLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: xmlRules,
 });
+
+export default sbolLanguage;

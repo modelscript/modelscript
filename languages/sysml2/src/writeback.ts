@@ -18,10 +18,10 @@ export const sysml2Writeback: WritebackHandler = (ctx: WritebackContext): Writeb
   // 0. Exact CST node field range from AST indexing (Tier 0)
   if (entry.fieldRanges) {
     const valField =
-      entry.fieldRanges.value ??
-      entry.fieldRanges.expression ??
-      entry.fieldRanges.ownedRelatedElement ??
-      entry.fieldRanges.featureValue;
+      entry.fieldRanges["value"] ??
+      entry.fieldRanges["expression"] ??
+      entry.fieldRanges["ownedRelatedElement"] ??
+      entry.fieldRanges["featureValue"];
     if (
       valField &&
       valField.startOffset != null &&

@@ -141,12 +141,17 @@ export const DEFAULT_NODE_DOMAIN_MAP: Record<string, string> = {
 
 export function inferRuleLanguages(
   rule: TGGRuleOptions,
-  evaluatedSource: any,
-  evaluatedTarget: any,
+  evaluatedSource: { lang?: string; domain?: string; nodeType?: string; type?: string } | null | undefined,
+  evaluatedTarget: { lang?: string; domain?: string; nodeType?: string; type?: string } | null | undefined,
   constraints: TGGConstraint[] = [],
   nodeDomainMap?: Record<string, string>,
 ): { sourceLang?: string | undefined; targetLang?: string | undefined } {
-  const anyRule = rule as any;
+  const anyRule = rule as TGGRuleOptions & {
+    sourceLanguage?: string;
+    domain?: string;
+    targetLanguage?: string;
+    targetSyncDomain?: string;
+  };
   let sourceLang: string | undefined =
     rule.sourceLang || anyRule.sourceLanguage || anyRule.domain || evaluatedSource?.lang || evaluatedSource?.domain;
   let targetLang: string | undefined =
@@ -182,8 +187,10 @@ export function inferRuleLanguages(
     }
   }
 
-  // 2. Lookup source and target AST node types in dynamic/registered node-to-domain map
-  const effectiveDomainMap = nodeDomainMap ? { ...DEFAULT_NODE_DOMAIN_MAP, ...nodeDomainMap } : DEFAULT_NODE_DOMAIN_MAP;
+  const dynamicObj = Object.fromEntries(DYNAMIC_NODE_DOMAIN_MAP);
+  const effectiveDomainMap = nodeDomainMap
+    ? { ...DEFAULT_NODE_DOMAIN_MAP, ...dynamicObj, ...nodeDomainMap }
+    : { ...DEFAULT_NODE_DOMAIN_MAP, ...dynamicObj };
   const srcType = evaluatedSource?.nodeType || "";
   const tgtType = evaluatedTarget?.nodeType || "";
   if (!sourceLang && srcType && effectiveDomainMap[srcType]) {
@@ -224,13 +231,31 @@ export function inferRuleLanguages(
   return { sourceLang, targetLang };
 }
 
+const DYNAMIC_NODE_DOMAIN_MAP = new Map<string, string>();
+
+/**
+ * Registers a grammar node type to a language domain for Critical Pair Analysis.
+ */
+export function registerNodeDomain(nodeType: string, domain: string): void {
+  DYNAMIC_NODE_DOMAIN_MAP.set(nodeType, domain);
+}
+
+/**
+ * Batch-registers grammar node types to language domains for Critical Pair Analysis.
+ */
+export function registerNodeDomains(map: Record<string, string>): void {
+  for (const [k, v] of Object.entries(map)) {
+    DYNAMIC_NODE_DOMAIN_MAP.set(k, v);
+  }
+}
+
 interface RuleSignature {
   index: number;
   name: string;
   sourceNodeType: string;
   targetNodeType: string;
-  sourceBindings: Record<string, any>;
-  targetBindings: Record<string, any>;
+  sourceBindings: Record<string, unknown>;
+  targetBindings: Record<string, unknown>;
   constraints: TGGConstraint[];
   priority: number;
   targetLang?: string | undefined;
@@ -242,11 +267,12 @@ interface RuleSignature {
  * Identifies rule overlaps, target attribute collisions, non-deterministic ambiguities,
  * and cyclic ping-pong synchronization dependencies.
  */
-export function runCPA(rules: TGGRuleOptions[]): CpaReport {
+export function runCPA(rules: TGGRuleOptions[], options?: { nodeDomainMap?: Record<string, string> }): CpaReport {
   const conflicts: CpaConflict[] = [];
   const signatures: RuleSignature[] = [];
+  const extraDomainMap = options?.nodeDomainMap;
 
-  const $proxy: any = new Proxy(
+  const $proxy = new Proxy(
     {},
     {
       get:
@@ -271,17 +297,27 @@ export function runCPA(rules: TGGRuleOptions[]): CpaReport {
           };
         },
     },
-  );
+  ) as unknown as import("../../dsl/language.js").TGGPatternBuilderProxy;
 
   const vProxy = (name: string) => `__var_${name}`;
 
   // 1. Extract rule signatures
   for (let i = 0; i < rules.length; i++) {
     const rule = rules[i]!;
-    const evaluatedSource = typeof rule.source === "function" ? rule.source($proxy, vProxy) : rule.source;
-    const evaluatedTarget = typeof rule.target === "function" ? rule.target($proxy, vProxy) : rule.target;
+    const evaluatedSource = (typeof rule.source === "function" ? rule.source($proxy, vProxy) : rule.source) as
+      | { nodeType?: string; bindings?: Record<string, unknown>; lang?: string; domain?: string; type?: string }
+      | undefined;
+    const evaluatedTarget = (typeof rule.target === "function" ? rule.target($proxy, vProxy) : rule.target) as
+      | { nodeType?: string; bindings?: Record<string, unknown>; lang?: string; domain?: string; type?: string }
+      | undefined;
     const constraints = typeof rule.where === "function" ? rule.where(vProxy) : rule.where || [];
-    const { sourceLang, targetLang } = inferRuleLanguages(rule, evaluatedSource, evaluatedTarget, constraints);
+    const { sourceLang, targetLang } = inferRuleLanguages(
+      rule,
+      evaluatedSource,
+      evaluatedTarget,
+      constraints,
+      extraDomainMap,
+    );
 
     signatures.push({
       index: i,
@@ -326,8 +362,12 @@ export function runCPA(rules: TGGRuleOptions[]): CpaReport {
         }
 
         // Check for mutually exclusive NACs
-        const r1Nacs = r1.constraints.filter((c) => c.kind === "not").map((c) => String(c.args[0]));
-        const r2Nacs = r2.constraints.filter((c) => c.kind === "not").map((c) => String(c.args[0]));
+        const extractNacType = (arg: unknown): string =>
+          typeof arg === "object" && arg !== null && "nodeType" in arg
+            ? String((arg as { nodeType: unknown }).nodeType)
+            : String(arg);
+        const r1Nacs = r1.constraints.filter((c) => c.kind === "not").map((c) => extractNacType(c.args[0]));
+        const r2Nacs = r2.constraints.filter((c) => c.kind === "not").map((c) => extractNacType(c.args[0]));
         let hasDisjointNac = false;
         for (const nac of r1Nacs) {
           if (r2.sourceNodeType === nac || Object.values(r2.sourceBindings).some((v) => String(v) === nac)) {

@@ -28,6 +28,8 @@ export enum ThreadDomain {
   CostCarbon = 13, // Cost & Embodied Carbon LCA
   Verification = 14, // Test verification matrices & compliance
   Software = 15, // Firmware / sBOM
+  PowerRMS = 16, // PSS/E .raw / .dyr / .seq positive-sequence & transient stability
+  PowerEMT = 17, // PSCAD .pscx / IEEE P3743 / OpenDSS / OneLiner EMT & protection
 }
 
 export enum ThreadRelation {
@@ -41,9 +43,9 @@ export enum ThreadRelation {
   AllocatesTo = 7, // Function allocates to hardware/software
 }
 
-export const MAX_THREAD_DOMAINS = 16;
+export const MAX_THREAD_DOMAINS = 18;
 export const THREAD_HEADER_WORDS = 6;
-export const THREAD_STRIDE = THREAD_HEADER_WORDS + MAX_THREAD_DOMAINS; // 22 words
+export const THREAD_STRIDE = THREAD_HEADER_WORDS + MAX_THREAD_DOMAINS; // 24 words
 
 export const THREAD_FIELD_ID = 0;
 export const THREAD_FIELD_MASK = 1; // Bitmask of active domains (uint32, 16 bits used)
@@ -108,9 +110,90 @@ export class DigitalThreadHypergraph {
   private threadIdToSlot: Map<number, number> = new Map();
   // Map composite key `(domainIdx << 32) | nodeId` to array of slots
   private nodeToThreadSlots: Map<bigint, number[]> = new Map();
+  // Sparse overflow storage for domain indices >= MAX_THREAD_DOMAINS (supports all 93+ polyglot languages)
+  private overflowDomainNodes: Map<number, Map<number, number>> = new Map();
+  private domainNameToId: Map<string, number> = new Map([
+    ["sysml2", ThreadDomain.SysML2],
+    ["sysml", ThreadDomain.SysML2],
+    ["modelica", ThreadDomain.Modelica],
+    ["cad", ThreadDomain.CAD],
+    ["step", ThreadDomain.CAD],
+    ["scad", ThreadDomain.CAD],
+    ["requirements", ThreadDomain.Requirements],
+    ["reqif", ThreadDomain.Requirements],
+    ["fea", ThreadDomain.FEA],
+    ["cfd", ThreadDomain.CFD],
+    ["bom", ThreadDomain.BOM],
+    ["fmu", ThreadDomain.FMU],
+    ["fmi3", ThreadDomain.FMU],
+    ["fmi", ThreadDomain.FMU],
+    ["gdt", ThreadDomain.GDT],
+    ["qif", ThreadDomain.GDT],
+    ["telemetry", ThreadDomain.Telemetry],
+    ["safety", ThreadDomain.Safety],
+    ["surrogate", ThreadDomain.Surrogate],
+    ["manufacturing", ThreadDomain.Manufacturing],
+    ["costcarbon", ThreadDomain.CostCarbon],
+    ["verification", ThreadDomain.Verification],
+    ["software", ThreadDomain.Software],
+    ["powerrms", ThreadDomain.PowerRMS],
+    ["psse", ThreadDomain.PowerRMS],
+    ["powerfactory", ThreadDomain.PowerRMS],
+    ["poweremt", ThreadDomain.PowerEMT],
+    ["pscad", ThreadDomain.PowerEMT],
+  ]);
+  private domainIdToName: Map<number, string> = new Map([
+    [ThreadDomain.SysML2, "sysml2"],
+    [ThreadDomain.Modelica, "modelica"],
+    [ThreadDomain.CAD, "cad"],
+    [ThreadDomain.Requirements, "requirements"],
+    [ThreadDomain.FEA, "fea"],
+    [ThreadDomain.CFD, "cfd"],
+    [ThreadDomain.BOM, "bom"],
+    [ThreadDomain.FMU, "fmu"],
+    [ThreadDomain.GDT, "gdt"],
+    [ThreadDomain.Telemetry, "telemetry"],
+    [ThreadDomain.Safety, "safety"],
+    [ThreadDomain.Surrogate, "surrogate"],
+    [ThreadDomain.Manufacturing, "manufacturing"],
+    [ThreadDomain.CostCarbon, "costcarbon"],
+    [ThreadDomain.Verification, "verification"],
+    [ThreadDomain.Software, "software"],
+    [ThreadDomain.PowerRMS, "powerrms"],
+    [ThreadDomain.PowerEMT, "poweremt"],
+  ]);
+  private nextDynamicDomainId: number = MAX_THREAD_DOMAINS;
   private slotConflicts: Map<number, ConflictClause> = new Map();
   private slotEqualities: Map<number, SharedEquality[]> = new Map();
   private listeners: Set<HypergraphStatusListener> = new Set();
+
+  /**
+   * Resolves a domain/language name to its numeric domain ID, dynamically allocating a new ID
+   * beyond MAX_THREAD_DOMAINS (18) for any of the 93+ polyglot languages.
+   */
+  resolveOrRegisterDomain(domainName: string): number {
+    const key = domainName.toLowerCase();
+    const existing = this.domainNameToId.get(key);
+    if (existing !== undefined) return existing;
+    const allocated = this.nextDynamicDomainId++;
+    this.domainNameToId.set(key, allocated);
+    this.domainIdToName.set(allocated, key);
+    return allocated;
+  }
+
+  /**
+   * Looks up a registered domain ID without allocating.
+   */
+  getDomainId(domainName: string): number | undefined {
+    return this.domainNameToId.get(domainName.toLowerCase());
+  }
+
+  /**
+   * Returns the canonical domain name for a numeric domain ID.
+   */
+  getDomainName(domainId: number): string | undefined {
+    return this.domainIdToName.get(domainId);
+  }
 
   /**
    * Registers a listener callback invoked when thread slots transition status (sat, conflict, stale, removed).
@@ -205,12 +288,34 @@ export class DigitalThreadHypergraph {
   }
 
   bindDomainNode(slot: number, domainIdx: ThreadDomain | number, nodeId: number): void {
-    if (slot >= this.count || domainIdx >= MAX_THREAD_DOMAINS) return;
-    const offset = slot * THREAD_STRIDE;
+    if (slot >= this.count || domainIdx < 0) return;
 
-    let mask = this.data[offset + THREAD_FIELD_MASK]!;
-    const prevNodeId = this.data[offset + THREAD_HEADER_WORDS + domainIdx]!;
-    if ((mask & (1 << domainIdx)) !== 0 && prevNodeId !== 0 && prevNodeId !== nodeId) {
+    let prevNodeId = 0;
+    let hadPrev = false;
+
+    if (domainIdx < MAX_THREAD_DOMAINS) {
+      const offset = slot * THREAD_STRIDE;
+      let mask = this.data[offset + THREAD_FIELD_MASK]!;
+      prevNodeId = this.data[offset + THREAD_HEADER_WORDS + domainIdx]!;
+      hadPrev = (mask & (1 << domainIdx)) !== 0;
+      mask |= 1 << domainIdx;
+      this.data[offset + THREAD_FIELD_MASK] = mask;
+      this.data[offset + THREAD_HEADER_WORDS + domainIdx] = nodeId;
+    } else {
+      let slotMap = this.overflowDomainNodes.get(slot);
+      if (!slotMap) {
+        slotMap = new Map();
+        this.overflowDomainNodes.set(slot, slotMap);
+      }
+      const prev = slotMap.get(domainIdx);
+      if (prev !== undefined) {
+        prevNodeId = prev;
+        hadPrev = true;
+      }
+      slotMap.set(domainIdx, nodeId);
+    }
+
+    if (hadPrev && prevNodeId !== 0 && prevNodeId !== nodeId) {
       const oldKey = (BigInt(domainIdx) << 32n) | BigInt(prevNodeId >>> 0);
       const oldSlots = this.nodeToThreadSlots.get(oldKey);
       if (oldSlots) {
@@ -223,10 +328,6 @@ export class DigitalThreadHypergraph {
       }
     }
 
-    mask |= 1 << domainIdx;
-    this.data[offset + THREAD_FIELD_MASK] = mask;
-    this.data[offset + THREAD_HEADER_WORDS + domainIdx] = nodeId;
-
     const key = (BigInt(domainIdx) << 32n) | BigInt(nodeId >>> 0);
     const slots = this.nodeToThreadSlots.get(key) || [];
     if (!slots.includes(slot)) {
@@ -236,8 +337,11 @@ export class DigitalThreadHypergraph {
   }
 
   getDomainNode(slot: number, domainIdx: ThreadDomain | number): number {
-    if (slot >= this.count || domainIdx >= MAX_THREAD_DOMAINS) return 0;
-    return this.data[slot * THREAD_STRIDE + THREAD_HEADER_WORDS + domainIdx]!;
+    if (slot >= this.count || domainIdx < 0) return 0;
+    if (domainIdx < MAX_THREAD_DOMAINS) {
+      return this.data[slot * THREAD_STRIDE + THREAD_HEADER_WORDS + domainIdx]!;
+    }
+    return this.overflowDomainNodes.get(slot)?.get(domainIdx) ?? 0;
   }
 
   findSlotsByDomainNode(domainIdx: ThreadDomain | number, nodeId: number, branchId?: number): number[] {
@@ -397,6 +501,12 @@ export class DigitalThreadHypergraph {
     for (let d = 0; d < MAX_THREAD_DOMAINS; d++) {
       if ((domainMask & (1 << d)) !== 0) {
         domainNodes[d] = this.data[offset + THREAD_HEADER_WORDS + d]!;
+      }
+    }
+    const overflow = this.overflowDomainNodes.get(slot);
+    if (overflow) {
+      for (const [d, nodeId] of overflow.entries()) {
+        domainNodes[d] = nodeId;
       }
     }
 

@@ -1099,7 +1099,7 @@ function parseDeclarationStatement(
   if (!afterQualifiers) return;
 
   // Read TypeSpec: e.g. `Real`, `Modelica.Blocks.Sources.Sine`, `Real[3]`, or `enumeration(...)`
-  let typeEnd = 0;
+  let typeEnd: number;
   if (afterQualifiers.startsWith("enumeration")) {
     const m = /^enumeration\s*\([^)]*\)/.exec(afterQualifiers);
     if (!m) return;

@@ -34,22 +34,23 @@ Rather than writing ad-hoc imperative glue code, engineers write declarative rul
 A TGG rule specifies patterns in the source, correspondence, and target graphs simultaneously:
 
 ```typescript
-import { tggRule } from "@modelscript/dsl/tgg";
+import { tggComplement, tggEq, tggRule } from "@modelscript/dsl";
 
 export const ComponentToModel = tggRule({
   name: "ComponentToModel",
-  source: (s) => ({
-    part: s.node("PartUsage", { name: s.var("compName") }),
-    port: s.node("PortUsage", { parent: s.nodeRef("part") }),
-  }),
-  target: (t) => ({
-    model: t.node("ModelDefinition", { name: t.var("compName") }),
-    pin: t.node("PinConnector", { parent: t.nodeRef("model") }),
-  }),
-  correspondence: (c) => ({
-    tracePart: c.link("part", "model"),
-    tracePort: c.link("port", "pin"),
-  }),
+  sourceLang: "sysml2",
+  targetLang: "modelica",
+  context: {
+    source: ($, v) => $.PartDefinition({ name: v("parentName") }),
+    target: ($, v) => $.ModelicaModel({ name: v("parentName") }),
+  },
+  source: ($, v) => $.PartUsage({ name: v("compName"), type: v("compType") }),
+  target: ($, v) => $.ModelicaComponent({ name: v("compName"), type: v("compType") }),
+  where: (v) => [
+    tggEq(v("compName"), v("compName")),
+    tggEq(v("compType"), v("compType")),
+    tggComplement(["docComment", "placementAnnotation"]),
+  ],
 });
 ```
 

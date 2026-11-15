@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { iniSectionRules, language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerModflowToDae } from "./dae/index.js";
 import { lintModflow } from "./lints/index.js";
 import { parseModflow } from "./parser/index.js";
 import { solveAquiferBalance } from "./solver/index.js";
+import { modflowPolyglotConfig } from "./tgg/index.js";
 
 export const modflowLanguage = language({
+  polyglot: modflowPolyglotConfig,
   name: "modflow",
   fileExtensions: [".dis", ".dis6", ".npf", ".npf6", ".wel", ".wel6", ".riv", ".riv6", ".chd", ".chd6", ".nam"],
   maturity: "experimental",
@@ -147,4 +149,8 @@ export const modflowLanguage = language({
       },
     },
   ],
+  extras: ($) => [/[ \t\r\n]+/, $["IniComment"]!],
+  rules: iniSectionRules,
 });
+
+export default modflowLanguage;

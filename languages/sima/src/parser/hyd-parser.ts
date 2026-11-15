@@ -5,10 +5,24 @@
  * and WAMIT 1st-order Force RAO / added mass / damping tables.
  */
 
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createWasmParserSync } from "@modelscript/sima/wasm-parser";
+import { createRequire } from "node:module";
 import type { HydrodynamicData, HydrodynamicRaoEntry } from "../types.js";
 
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getSimaWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/sima/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 export function parseHydFile(text: string): HydrodynamicData {
-  const lines = text.split(/\r?\n/);
+  const cstTree = getSimaWasmParser().parse(text);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   const frequencies: number[] = [];
   const headings: number[] = [];
   const raos: Record<number, HydrodynamicRaoEntry[]> = {};
@@ -17,8 +31,8 @@ export function parseHydFile(text: string): HydrodynamicData {
   let readingHeadings = false;
   let readingRaos = false;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!.trim();
+  for (const { tokens: cstTokens } of cstLines) {
+    const line = cstLineText(text, cstTokens).trim();
     if (!line || line.startsWith("!") || line.startsWith("#")) {
       continue;
     }

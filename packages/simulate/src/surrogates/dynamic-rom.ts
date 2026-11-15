@@ -17,7 +17,15 @@
  * creating first-class state variables (`der(r_i) = ...`) that couple two-way with 1D Modelica plants.
  */
 
-import { BinOp, Causality, DAEBuilder, EqKind, VarType, Variability } from "@modelscript/runtime";
+import {
+  BinOp,
+  Causality,
+  DAEBuilder,
+  EqKind,
+  VarType,
+  Variability,
+  getDefaultWasmExports,
+} from "@modelscript/runtime";
 import { solveDenseLinearSystem } from "../control/linearize.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,11 +74,52 @@ export interface PodBasisDecomposition {
   modalDerivatives: Float64Array[];
 }
 
+let dynRomWasmScratch: { wasm: Record<string, unknown>; ptr: number; capBytes: number } | null = null;
+
 function jacobiSymmetricEigen(
   C_in: Float64Array,
   M: number,
   maxSweeps: number = 80,
 ): { eigenvalues: Float64Array; eigenvectors: Float64Array } {
+  if (M >= 8) {
+    const wasm = getDefaultWasmExports() as {
+      memory?: WebAssembly.Memory;
+      __new?: (size: number, id: number) => number;
+      __pin?: (ptr: number) => number;
+      __unpin?: (ptr: number) => void;
+      jacobiEigendecompositionWasm?: (aInPtr: number, n: number, vPtr: number, dPtr: number, maxSweeps: number) => void;
+    } | null;
+    if (
+      wasm &&
+      typeof wasm.jacobiEigendecompositionWasm === "function" &&
+      typeof wasm.__new === "function" &&
+      wasm.memory instanceof WebAssembly.Memory
+    ) {
+      const mm = M * M;
+      const totalBytes = (2 * mm + M) * 8;
+      if (!dynRomWasmScratch || dynRomWasmScratch.wasm !== wasm || dynRomWasmScratch.capBytes < totalBytes) {
+        if (dynRomWasmScratch && typeof wasm.__unpin === "function" && dynRomWasmScratch.wasm === wasm) {
+          wasm.__unpin(dynRomWasmScratch.ptr);
+        }
+        const capBytes = Math.max(totalBytes, 4096);
+        const ptr = wasm.__new(capBytes, 0);
+        if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+        dynRomWasmScratch = { wasm, ptr, capBytes };
+      }
+      const basePtr = dynRomWasmScratch.ptr;
+      const aPtr = basePtr;
+      const vPtr = basePtr + mm * 8;
+      const dPtr = vPtr + mm * 8;
+      new Float64Array(wasm.memory.buffer, aPtr, mm).set(C_in);
+      wasm.jacobiEigendecompositionWasm(aPtr, M, vPtr, dPtr, maxSweeps);
+      const eigenvalues = new Float64Array(M);
+      eigenvalues.set(new Float64Array(wasm.memory.buffer, dPtr, M));
+      const eigenvectors = new Float64Array(mm);
+      eigenvectors.set(new Float64Array(wasm.memory.buffer, vPtr, mm));
+      return { eigenvalues, eigenvectors };
+    }
+  }
+
   const A = new Float64Array(C_in);
   const V = new Float64Array(M * M);
   for (let i = 0; i < M; i++) V[i * M + i] = 1.0;

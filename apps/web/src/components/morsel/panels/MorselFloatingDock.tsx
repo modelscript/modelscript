@@ -47,7 +47,7 @@ export interface MorselFloatingDockProps {
   onSelectDialect?: ((dialect: string) => void) | undefined;
   treeVisible: boolean;
   setTreeVisible: React.Dispatch<React.SetStateAction<boolean>>;
-  translations: any;
+  translations: Record<string, string>;
   onNewModel: (e: React.MouseEvent) => void;
   openFileButtonRef: React.RefObject<HTMLButtonElement | null>;
   onOpenFile: () => void;

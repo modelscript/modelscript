@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { computeRealMatrixEigenvalues, continueEquilibriumPALC } from "../src/analysis/bifurcation-palc.js";
+import { tryHessenbergQrEigenvaluesWasm } from "../src/control/frequency.js";
 
 describe("Bifurcation Analysis & Pseudo-Arclength Continuation (PALC) Engine (Track 4)", () => {
   it("traverses an S-shaped bistable curve with two Saddle-Node (Fold) bifurcations and classifies branch stability", () => {
@@ -92,5 +93,39 @@ describe("Bifurcation Analysis & Pseudo-Arclength Continuation (PALC) Engine (Tr
     assert.ok(Math.abs(Math.abs(eigs[0]!.im) - 1.5) < 1e-10);
     assert.ok(Math.abs(eigs[2]!.re - -2.0) < 1e-10);
     assert.ok(Math.abs(eigs[2]!.im) < 1e-10);
+  });
+
+  it("computes eigenvalues via WASM Hessenberg QR for n = 8 >= 6", () => {
+    const n = 8;
+    // Block-diagonal + upper-triangular coupling: eigenvalues are 1..4 and (-1 +- 2i), (-3 +- 4i)
+    const A = new Float64Array(n * n);
+    A[0 * n + 0] = -1.0;
+    A[0 * n + 1] = -2.0;
+    A[1 * n + 0] = 2.0;
+    A[1 * n + 1] = -1.0;
+    A[2 * n + 2] = -3.0;
+    A[2 * n + 3] = -4.0;
+    A[3 * n + 2] = 4.0;
+    A[3 * n + 3] = -3.0;
+    A[4 * n + 4] = 1.0;
+    A[5 * n + 5] = 2.0;
+    A[6 * n + 6] = 3.0;
+    A[7 * n + 7] = 4.0;
+    // Add off-diagonal coupling so Householder reduction is non-trivial
+    A[0 * n + 4] = 0.7;
+    A[2 * n + 6] = -1.2;
+    A[4 * n + 7] = 0.9;
+
+    const wasmEigs = tryHessenbergQrEigenvaluesWasm(A, n);
+    assert.ok(wasmEigs !== null, "Expected WASM Hessenberg QR to execute for n = 8");
+    const eigs = computeRealMatrixEigenvalues(A, n);
+    assert.equal(eigs.length, 8);
+    // Sorted descending by real part: 4, 3, 2, 1, -1+2i, -1-2i, -3+4i, -3-4i
+    assert.ok(Math.abs(eigs[0]!.re - 4.0) < 1e-10 && Math.abs(eigs[0]!.im) < 1e-10);
+    assert.ok(Math.abs(eigs[1]!.re - 3.0) < 1e-10 && Math.abs(eigs[1]!.im) < 1e-10);
+    assert.ok(Math.abs(eigs[2]!.re - 2.0) < 1e-10 && Math.abs(eigs[2]!.im) < 1e-10);
+    assert.ok(Math.abs(eigs[3]!.re - 1.0) < 1e-10 && Math.abs(eigs[3]!.im) < 1e-10);
+    assert.ok(Math.abs(eigs[4]!.re - -1.0) < 1e-10 && Math.abs(Math.abs(eigs[4]!.im) - 2.0) < 1e-10);
+    assert.ok(Math.abs(eigs[6]!.re - -3.0) < 1e-10 && Math.abs(Math.abs(eigs[6]!.im) - 4.0) < 1e-10);
   });
 });

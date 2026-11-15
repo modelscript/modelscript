@@ -476,7 +476,8 @@ export async function solveDirectAcOpf(powerCase: GenericPowerCase, options: Opf
     },
   );
 
-  const solX = (res as any).solution ?? (res as any).variables?.["solution"] ?? Array.from(x0);
+  const resTyped = res as unknown as { solution?: number[]; variables?: Record<string, number[]> };
+  const solX = resTyped.solution ?? resTyped.variables?.["solution"] ?? Array.from(x0);
   const success =
     (res.status as unknown) === 0 ||
     (res.status as unknown) === 1 ||

@@ -28,7 +28,7 @@
  * - PI step-size controller tuned for rapid convergence through stiff transients and sharp discontinuities.
  */
 
-import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
+import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
 import type { CommonSolverResult, DAEProblem, ODEProblem, SolverStats } from "../core/problem-types.js";
 
 // ── RODAS4P Steinebach Butcher Tableau Coefficients ──
@@ -304,19 +304,19 @@ export function rodas4p(
     stats.jacobianEvals!++;
     const dfdt = computeDfDt(f, t, y, f0);
 
-    // Form iteration matrix W = (1 / (h * gamma)) * M - J
+    // Form flat iteration matrix W = (1 / (h * gamma)) * M - J
     const fac = 1.0 / (h * gamma);
-    const W: Float64Array[] = new Array(n);
+    const W = new Float64Array(n * n);
     for (let i = 0; i < n; i++) {
-      W[i] = new Float64Array(n);
+      const rowOff = i * n;
       for (let j = 0; j < n; j++) {
         const mij = massMatrix ? (massMatrix[i]?.[j] ?? 0) : i === j ? 1.0 : 0.0;
-        W[i]![j] = fac * mij - (J[i]![j] ?? 0);
+        W[rowOff + j] = fac * mij - (J[i]![j] ?? 0);
       }
     }
 
-    // LU factorize W once per step
-    const lu = luFactor(W, n);
+    // LU factorize W once per step (dispatches to WASM for n >= 16)
+    const lu = luFactorFlat(W, n);
     stats.luFactorizations!++;
 
     const invH = 1.0 / h;
@@ -326,7 +326,7 @@ export function rodas4p(
       rhs[i] = (f0[i] ?? 0) + h * D1 * dfdt[i]!;
     }
     k1.set(rhs);
-    luSolve(lu, k1);
+    luSolveFlat(lu, k1);
     applyMass(Mk1, k1, massMatrix, n);
 
     // ── Stage 2: y_stage = y + a21 * k1 ──
@@ -341,7 +341,7 @@ export function rodas4p(
       rhs[i] = (f1[i] ?? 0) + C21 * invH * Mk1[i]! + h * D2 * dfdt[i]!;
     }
     k2.set(rhs);
-    luSolve(lu, k2);
+    luSolveFlat(lu, k2);
     applyMass(Mk2, k2, massMatrix, n);
 
     // ── Stage 3: y_stage = y + a31 * k1 + a32 * k2 ──
@@ -356,7 +356,7 @@ export function rodas4p(
       rhs[i] = (f2[i] ?? 0) + invH * (C31 * Mk1[i]! + C32 * Mk2[i]!) + h * D3 * dfdt[i]!;
     }
     k3.set(rhs);
-    luSolve(lu, k3);
+    luSolveFlat(lu, k3);
     applyMass(Mk3, k3, massMatrix, n);
 
     // ── Stage 4: y_stage = y + a41 * k1 + a42 * k2 + a43 * k3 ──
@@ -371,7 +371,7 @@ export function rodas4p(
       rhs[i] = (f3[i] ?? 0) + invH * (C41 * Mk1[i]! + C42 * Mk2[i]! + C43 * Mk3[i]!) + h * D4 * dfdt[i]!;
     }
     k4.set(rhs);
-    luSolve(lu, k4);
+    luSolveFlat(lu, k4);
     applyMass(Mk4, k4, massMatrix, n);
 
     // ── Stage 5: y5 = y + a51*k1 + a52*k2 + a53*k3 + a54*k4 ──
@@ -386,7 +386,7 @@ export function rodas4p(
       rhs[i] = (f4[i] ?? 0) + invH * (C51 * Mk1[i]! + C52 * Mk2[i]! + C53 * Mk3[i]! + C54 * Mk4[i]!);
     }
     k5.set(rhs);
-    luSolve(lu, k5);
+    luSolveFlat(lu, k5);
     applyMass(Mk5, k5, massMatrix, n);
 
     // y_embedded = yStage + k5 (3rd-order embedded solution)
@@ -404,7 +404,7 @@ export function rodas4p(
         (fEmbedded[i] ?? 0) + invH * (C61 * Mk1[i]! + C62 * Mk2[i]! + C63 * Mk3[i]! + C64 * Mk4[i]! + C65 * Mk5[i]!);
     }
     k6.set(rhs);
-    luSolve(lu, k6);
+    luSolveFlat(lu, k6);
 
     // ── 4th-Order Solution: yNew = yEmbedded + k6 ──
     const yNew = new Array<number>(n);
@@ -642,23 +642,23 @@ export function rosenbrock23(
     const J = computeJacobian(f, t, y, f0);
     stats.jacobianEvals!++;
 
-    // 2. Assemble Rosenbrock iteration matrix W = M - d * h * J (where M is massMatrix or I)
-    const W: Float64Array[] = new Array(n);
+    // 2. Assemble flat Rosenbrock iteration matrix W = M - d * h * J (where M is massMatrix or I)
+    const W = new Float64Array(n * n);
     for (let i = 0; i < n; i++) {
-      W[i] = new Float64Array(n);
+      const rowOff = i * n;
       for (let j = 0; j < n; j++) {
         const mij = massMatrix ? (massMatrix[i]?.[j] ?? 0) : i === j ? 1.0 : 0.0;
-        W[i]![j] = mij - d * h * (J[i]![j] ?? 0);
+        W[rowOff + j] = mij - d * h * (J[i]![j] ?? 0);
       }
     }
 
-    // Factor W once per step and reuse across both stages
-    const lu = luFactor(W, n);
+    // Factor W once per step and reuse across both stages (dispatches to WASM for n >= 16)
+    const lu = luFactorFlat(W, n);
     stats.luFactorizations!++;
 
     // 3. Stage 1 solve: W * k1 = h * f(t, y)
     for (let i = 0; i < n; i++) k1[i] = h * (f0[i] ?? 0);
-    luSolve(lu, k1);
+    luSolveFlat(lu, k1);
 
     // 4. Stage 2 evaluation at yStage2 = y + k1
     const yStage2 = new Array<number>(n);
@@ -676,7 +676,7 @@ export function rosenbrock23(
       rhs2[i] = h * (f1[i] ?? 0) + 2.0 * h * (f0[i] ?? 0) - 2.0 * Mk1;
     }
     k2.set(rhs2);
-    luSolve(lu, k2);
+    luSolveFlat(lu, k2);
 
     // 5. 2nd-order state update: yNew = y + 0.5 * (k1 + k2)
     const yNew = new Array<number>(n);

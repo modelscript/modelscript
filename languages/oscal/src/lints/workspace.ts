@@ -2,12 +2,46 @@
 
 import {
   collectWorkspaceDocuments,
+  collectXmlElementsFromWasm,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
 import { parseOscal } from "../parser/index.js";
 import { lintOscalDocument } from "./rules.js";
+
+function collectOscalHrefs(raw: string): string[] {
+  const hrefs: string[] = [];
+  const trimmed = raw.trimStart();
+  if (trimmed.startsWith("<")) {
+    for (const el of collectXmlElementsFromWasm(raw)) {
+      const href = el.attrs["href"];
+      if (href) hrefs.push(href);
+    }
+    return hrefs;
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    const stack: unknown[] = [parsed];
+    while (stack.length > 0) {
+      const cur = stack.pop();
+      if (Array.isArray(cur)) {
+        for (const item of cur) stack.push(item);
+      } else if (cur && typeof cur === "object") {
+        for (const [k, v] of Object.entries(cur as Record<string, unknown>)) {
+          if (k === "href" && typeof v === "string") {
+            hrefs.push(v);
+          } else if (v && typeof v === "object") {
+            stack.push(v);
+          }
+        }
+      }
+    }
+  } catch {
+    // Malformed JSON is already reported by parseOscal/lintOscalDocument
+  }
+  return hrefs;
+}
 
 /**
  * Performs multi-file NIST OSCAL workspace linting across Catalogs, Profiles,
@@ -46,8 +80,7 @@ export function lintOscalWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
     }
 
     // Check cross-file import hrefs ("import-profile", "import-ssp", "import-ap", "href")
-    for (const m of raw.matchAll(/"href"\s*:\s*"([^"]+)"/g)) {
-      const href = m[1];
+    for (const href of collectOscalHrefs(raw)) {
       if (!href || href.startsWith("#") || /^https?:\/\//i.test(href)) continue;
       if (!resolveRelativeUri(uri, href, docs)) {
         diagnostics.push({

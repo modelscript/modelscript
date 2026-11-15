@@ -1,0 +1,33 @@
+{
+  "name": "@modelscript/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript and AssemblyScript SDK for authoring user-defined ModelScript capabilities, visual artifacts, and WASM kernels",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./assembly": "./assembly/index.ts"
+  },
+  "files": [
+    "src/**",
+    "assembly/**",
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "test": "node ../../scripts/test-runner.js --tsconfig tsconfig.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "assemblyscript": "^0.28.19",
+    "typescript": "^5.9.3"
+  },
+  "modelscript": {
+    "tier": "stable",
+    "category": "core"
+  }
+}

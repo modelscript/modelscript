@@ -271,7 +271,10 @@ export function xmlLanguage(spec: XmlLanguageSpec): XmlLanguageModel {
  * Converts an `XmlLanguageSpec` into a unified `LanguageOptions` definition backed by the
  * lossless XML CST grammar, pre-wiring `fileExtensions`, `lsp`, and root-tag `canIndex` disambiguation.
  */
-export function toXmlLanguageOptions(spec: XmlLanguageSpec, overrides?: Record<string, any>): Record<string, any> {
+export function toXmlLanguageOptions(
+  spec: XmlLanguageSpec,
+  overrides?: Record<string, unknown>,
+): Record<string, unknown> {
   const rootSpec = spec.elements[spec.root];
   const rootTags = rootSpec ? rootSpec.tags : [spec.root];
   return {

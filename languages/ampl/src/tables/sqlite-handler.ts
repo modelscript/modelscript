@@ -9,9 +9,22 @@ import path from "node:path";
 
 const require = createRequire(import.meta.url);
 
-function getSqliteDatabaseClass(): any {
+interface SqliteStatement {
+  all(...params: unknown[]): Array<Record<string, unknown>>;
+  run(...params: unknown[]): void;
+}
+
+interface SqliteDatabase {
+  exec(sql: string): void;
+  prepare(sql: string): SqliteStatement;
+  close(): void;
+}
+
+type SqliteDatabaseCtor = new (path: string, options?: { readOnly?: boolean }) => SqliteDatabase;
+
+function getSqliteDatabaseClass(): SqliteDatabaseCtor {
   try {
-    const { DatabaseSync } = require("node:sqlite");
+    const { DatabaseSync } = require("node:sqlite") as { DatabaseSync: SqliteDatabaseCtor };
     return DatabaseSync;
   } catch (err) {
     throw new Error(

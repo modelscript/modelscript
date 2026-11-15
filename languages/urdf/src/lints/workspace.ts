@@ -2,6 +2,7 @@
 
 import {
   collectWorkspaceDocuments,
+  collectXmlElementsFromWasm,
   findIncludeCycle,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
@@ -12,7 +13,7 @@ import { lintUrdfRobot } from "./index.js";
 
 /**
  * Performs multi-file URDF / Xacro workspace linting, resolving `xacro:include`
- * and `<mesh filename="..."/>` / `<texture filename="..."/>` asset URIs
+ * and `<mesh filename="..."/>` / `<texture filename="..."/>` asset URIs via XML WASM CST
  * across workspace files.
  */
 export function lintUrdfWorkspace(workspace: WorkspaceDocumentInput, rootUri?: string): WorkspaceLintDiagnostic[] {
@@ -40,35 +41,37 @@ export function lintUrdfWorkspace(workspace: WorkspaceDocumentInput, rootUri?: s
       });
     }
 
-    for (const m of text.matchAll(/<xacro:include\b[^>]*\bfilename=["']([^"']+)["']/gi)) {
-      const refPath = m[1]?.replace(/^\$\(find\s+[^)]+\)\/?/i, "").trim();
-      if (!refPath) continue;
-      const resolved = resolveRelativeUri(uri, refPath, docs);
-      if (!resolved) {
-        diagnostics.push({
-          uri,
-          code: "UR3001",
-          rule: "unresolved-xacro-include",
-          severity: "error",
-          message: `Xacro include '${m[1]}' was not found in the workspace.`,
-        });
-      } else {
-        outEdges.push(resolved);
-      }
-    }
-
-    for (const m of text.matchAll(/<(?:mesh|texture)\b[^>]*\bfilename=["']([^"']+)["']/gi)) {
-      const rawFile = m[1]?.trim();
-      if (!rawFile) continue;
-      const stripped = rawFile.replace(/^package:\/\/[^/]+\//i, "").replace(/^file:\/\//i, "");
-      if (!resolveRelativeUri(uri, stripped, docs)) {
-        diagnostics.push({
-          uri,
-          code: "UR3002",
-          rule: "unresolved-urdf-asset",
-          severity: "warning",
-          message: `URDF asset '${rawFile}' was not found in the workspace.`,
-        });
+    for (const { tagName, attrs } of collectXmlElementsFromWasm(text)) {
+      const lowerTag = tagName.toLowerCase();
+      if (lowerTag === "xacro:include") {
+        const rawFilename = attrs["filename"];
+        const refPath = rawFilename?.replace(/^\$\(find\s+[^)]+\)\/?/i, "").trim();
+        if (!refPath) continue;
+        const resolved = resolveRelativeUri(uri, refPath, docs);
+        if (!resolved) {
+          diagnostics.push({
+            uri,
+            code: "UR3001",
+            rule: "unresolved-xacro-include",
+            severity: "error",
+            message: `Xacro include '${rawFilename}' was not found in the workspace.`,
+          });
+        } else {
+          outEdges.push(resolved);
+        }
+      } else if (lowerTag === "mesh" || lowerTag === "texture") {
+        const rawFile = attrs["filename"]?.trim();
+        if (!rawFile) continue;
+        const stripped = rawFile.replace(/^package:\/\/[^/]+\//i, "").replace(/^file:\/\//i, "");
+        if (!resolveRelativeUri(uri, stripped, docs)) {
+          diagnostics.push({
+            uri,
+            code: "UR3002",
+            rule: "unresolved-urdf-asset",
+            severity: "warning",
+            message: `URDF asset '${rawFile}' was not found in the workspace.`,
+          });
+        }
       }
     }
   }

@@ -7,7 +7,7 @@
  * DAE lowering, Virtual PLC scan execution, and Modelica/SysML projections.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, xmlRules } from "@modelscript/dsl";
 import { lowerPlcopenToDae } from "./dae/plcopen-to-dae.js";
 import { indexPlcopenFile } from "./indexing.js";
 import { lintPlcProject } from "./lints/rules.js";
@@ -15,8 +15,10 @@ import { parsePlcopen } from "./parser/index.js";
 import { plcopenToModelica } from "./projections/plcopen-to-modelica.js";
 import { plcopenToSysML } from "./projections/plcopen-to-sysml.js";
 import { VirtualPlc } from "./solver/virtual-plc.js";
+import { plcopenPolyglotConfig } from "./tgg/index.js";
 
 export const plcopenLanguage = language({
+  polyglot: plcopenPolyglotConfig,
   name: "plcopen",
   fileExtensions: [".xml", ".plcopen", ".plcopen.xml", ".st"],
   maturity: "experimental",
@@ -39,9 +41,8 @@ export const plcopenLanguage = language({
   lsp: {
     fileExtensions: [".xml", ".plcopen", ".plcopen.xml", ".st"],
   },
-  rules: {
-    Root: () => "plcopen",
-  },
+  extras: () => [/[ \t\r\n]+/],
+  rules: xmlRules,
 
   actions: [
     {

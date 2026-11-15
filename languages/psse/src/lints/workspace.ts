@@ -2,13 +2,23 @@
 
 import {
   collectWorkspaceDocuments,
+  groupCstLeavesByLine,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
 import { isLikelyDyrContent, parseDyr } from "../parser/dyr-parser.js";
 import { parseRaw } from "../parser/raw-parser.js";
 import { parseSeq } from "../parser/seq-parser.js";
+import { createPsseWasmParserSync } from "../parser/wasm-loader.js";
 import { lintPsse } from "./index.js";
+
+let cachedParser: ReturnType<typeof createPsseWasmParserSync>["parser"] | undefined;
+function getPsseWasmParser() {
+  if (!cachedParser) {
+    cachedParser = createPsseWasmParserSync().parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Performs multi-file PSS/E workspace linting across `.raw`, `.dyr`, and `.seq`
@@ -21,12 +31,15 @@ export function lintPsseWorkspace(workspace: WorkspaceDocumentInput, rootUri?: s
   const entries = Array.from(docs.entries());
   if (entries.length === 0) return diagnostics;
 
+  const parser = getPsseWasmParser();
   let rawUri: string | undefined;
   let rawCase: ReturnType<typeof parseRaw> | undefined;
   const dyrEntries: Array<[string, string]> = [];
   const seqEntries: Array<[string, string]> = [];
 
   for (const [uri, text] of entries) {
+    const cstTree = parser.parse(text);
+    void groupCstLeavesByLine(cstTree?.rootNode);
     const lower = uri.toLowerCase();
     if (lower.endsWith(".dyr") || (!lower.endsWith(".raw") && !lower.endsWith(".seq") && isLikelyDyrContent(text))) {
       dyrEntries.push([uri, text]);

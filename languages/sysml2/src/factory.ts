@@ -110,7 +110,11 @@ export function createSysML2QueryEngine(
   cacheStore?: NonNullable<ConstructorParameters<typeof QueryEngine>[2]>["cacheStore"],
   maxMemos?: number,
 ): QueryEngine {
-  return new QueryEngine(index, queryHooks, { tree, cacheStore, ...(maxMemos !== undefined && { maxMemos }) });
+  return new QueryEngine(index, queryHooks as ConstructorParameters<typeof QueryEngine>[1], {
+    tree,
+    cacheStore,
+    ...(maxMemos !== undefined && { maxMemos }),
+  });
 }
 
 /**
@@ -138,21 +142,28 @@ export function buildSysML2DiagramData(
     | "Package"
     | string = "All",
 ): PolyglotDiagramData {
-  return buildPolyglotDiagram(index, gfxConfig, documentUri, resolver, diagramType, {
-    customProjections: sysml2Views,
-    structuralKinds: sysml2StructuralKinds,
-    standaloneKinds: sysml2StandaloneChildKinds,
-    usageKinds: sysml2UsageKinds,
-    definitionKinds: sysml2DefinitionKinds,
-    typingRules: sysml2TypingRules,
-    subclassificationRules: sysml2SubclassificationRules,
-    subsettingRules: sysml2SubsettingRules,
-    redefinitionRules: sysml2RedefinitionRules,
-    inModelDiscovery: {
-      rule: "ViewDefinition",
-      nameField: "name",
+  return buildPolyglotDiagram(
+    index,
+    gfxConfig as Parameters<typeof buildPolyglotDiagram>[1],
+    documentUri,
+    resolver,
+    diagramType,
+    {
+      customProjections: sysml2Views,
+      structuralKinds: sysml2StructuralKinds,
+      standaloneKinds: sysml2StandaloneChildKinds,
+      usageKinds: sysml2UsageKinds,
+      definitionKinds: sysml2DefinitionKinds,
+      typingRules: sysml2TypingRules,
+      subclassificationRules: sysml2SubclassificationRules,
+      subsettingRules: sysml2SubsettingRules,
+      redefinitionRules: sysml2RedefinitionRules,
+      inModelDiscovery: {
+        rule: "ViewDefinition",
+        nameField: "name",
+      },
     },
-  });
+  );
 }
 
 export interface VerificationDiagnostic {

@@ -109,8 +109,11 @@ export function sideToNormal(side: PortSide): PortNormal {
 
 export interface RouterPortConfig {
   id?: string | undefined;
+  name?: string | undefined;
   args?: { x?: number | undefined; y?: number | undefined } | undefined;
-  position?: { args?: { x?: number | undefined; y?: number | undefined } | undefined } | undefined;
+  position?:
+    | { name?: string | undefined; args?: { x?: number | undefined; y?: number | undefined } | undefined }
+    | undefined;
   group?: string | undefined;
   side?: string | undefined;
   x?: number | undefined;
@@ -129,7 +132,7 @@ export interface RouterNodeLike {
   getBBox?: (() => Partial<RectLike> | null | undefined) | undefined;
   getAngle?: (() => number | undefined) | undefined;
   getData?: (() => Record<string, unknown> | null | undefined) | undefined;
-  getPortProp?: ((portId: string, prop?: string) => any) | undefined;
+  getPortProp?: ((portId: string, prop?: string) => RouterPortConfig | null | undefined) | undefined;
   getPort?: ((portId: string) => RouterPortConfig | null | undefined) | undefined;
   getPorts?: (() => RouterPortConfig[] | null | undefined) | undefined;
 }
@@ -164,6 +167,7 @@ export interface RouterGraphLike {
   getNodes?: (() => RouterNodeLike[]) | undefined;
   getCellById?: ((id?: string) => RouterNodeLike | null | undefined) | undefined;
   getConnectedEdges?: ((node: RouterNodeLike) => RouterEdgeLike[]) | undefined;
+  findViewByCell?(cell: RouterEdgeLike): { routePoints?: PointLike[] | undefined } | null | undefined;
 }
 
 export interface RouterEdgeViewLike {
@@ -301,15 +305,15 @@ export function resolveNodePortWorldPoint(
     const portProp = typeof node.getPortProp === "function" ? node.getPortProp(portId) : null;
     const portObj = !portProp && typeof node.getPort === "function" ? node.getPort(portId) : null;
     const portList = typeof node.getPorts === "function" ? node.getPorts() : null;
-    const matchedPort = portList?.find?.((p: any) => p && (p.id === portId || p.name === portId));
+    const matchedPort = portList?.find?.((p) => p && (p.id === portId || p.name === portId));
 
     let args =
       portProp?.args ??
       portObj?.args ??
-      (matchedPort as any)?.args ??
-      (portProp as any)?.position?.args ??
-      (portObj as any)?.position?.args ??
-      (matchedPort as any)?.position?.args ??
+      matchedPort?.args ??
+      portProp?.position?.args ??
+      portObj?.position?.args ??
+      matchedPort?.position?.args ??
       (typeof node.getPortProp === "function" ? node.getPortProp(portId, "args") : null);
 
     const pos = typeof node.getPosition === "function" ? node.getPosition() : null;
@@ -323,13 +327,13 @@ export function resolveNodePortWorldPoint(
       const groupName =
         portProp?.group ??
         portObj?.group ??
-        (matchedPort as any)?.group ??
-        (portProp as any)?.side ??
-        (portObj as any)?.side ??
-        (matchedPort as any)?.side ??
-        (portProp as any)?.position?.name ??
-        (portObj as any)?.position?.name ??
-        (matchedPort as any)?.position?.name;
+        matchedPort?.group ??
+        portProp?.side ??
+        portObj?.side ??
+        matchedPort?.side ??
+        portProp?.position?.name ??
+        portObj?.position?.name ??
+        matchedPort?.position?.name;
       if (groupName === "left" || groupName === "in") {
         args = { x: 0, y: unrotH / 2 };
       } else if (groupName === "right" || groupName === "out") {
@@ -350,7 +354,8 @@ export function resolveNodePortWorldPoint(
       let dx = parsedX - unrotW / 2;
       let dy = parsedY - unrotH / 2;
 
-      const data = typeof (node as any).getData === "function" ? (node as any).getData() : (node as any).data;
+      const data =
+        typeof node.getData === "function" ? node.getData() : (node as { data?: Record<string, unknown> | null }).data;
       const flipX = Boolean(data?.["flipX"]);
       const flipY = Boolean(data?.["flipY"]);
       if (flipX) dx = -dx;
@@ -399,7 +404,8 @@ export function getPortOutwardNormal(
 ): PortNormal | null {
   if (!node) return null;
   const bbox = getNodeBBox(node);
-  const data = typeof (node as any).getData === "function" ? (node as any).getData() : (node as any).data;
+  const data =
+    typeof node.getData === "function" ? node.getData() : (node as { data?: Record<string, unknown> | null }).data;
   const flipX = Boolean(data?.["flipX"]);
   const flipY = Boolean(data?.["flipY"]);
   const angleDeg = typeof node.getAngle === "function" ? node.getAngle() || 0 : node.angle || 0;
@@ -426,15 +432,10 @@ export function getPortOutwardNormal(
     const portProp = typeof node.getPortProp === "function" ? node.getPortProp(portId) : null;
     const portObj = !portProp && typeof node.getPort === "function" ? node.getPort(portId) : null;
     const portList = typeof node.getPorts === "function" ? node.getPorts() : null;
-    const matchedPort = portList?.find?.((p: any) => p && (p.id === portId || p.name === portId));
+    const matchedPort = portList?.find?.((p) => p && (p.id === portId || p.name === portId));
 
     const explicitSide =
-      portProp?.side ??
-      portObj?.side ??
-      (matchedPort as any)?.side ??
-      (portProp as any)?.group ??
-      (portObj as any)?.group ??
-      (matchedPort as any)?.group;
+      portProp?.side ?? portObj?.side ?? matchedPort?.side ?? portProp?.group ?? portObj?.group ?? matchedPort?.group;
 
     if (explicitSide === "top" || explicitSide === "bottom" || explicitSide === "left" || explicitSide === "right") {
       const baseNx = explicitSide === "right" ? 1 : explicitSide === "left" ? -1 : 0;
@@ -451,10 +452,10 @@ export function getPortOutwardNormal(
     const args =
       portProp?.args ??
       portObj?.args ??
-      (matchedPort as any)?.args ??
-      (portProp as any)?.position?.args ??
-      (portObj as any)?.position?.args ??
-      (matchedPort as any)?.position?.args ??
+      matchedPort?.args ??
+      portProp?.position?.args ??
+      portObj?.position?.args ??
+      matchedPort?.position?.args ??
       (typeof node.getPortProp === "function" ? node.getPortProp(portId, "args") : null);
 
     const size = typeof node.getSize === "function" ? node.getSize() : null;
@@ -1337,7 +1338,7 @@ export function translateConnectedEdgeStubs(
     typeof g?.getConnectedEdges === "function"
       ? g.getConnectedEdges(node)
       : typeof g?.getEdges === "function"
-        ? g.getEdges().filter((e: any) => {
+        ? g.getEdges().filter((e) => {
             const sId =
               typeof e.getSourceCellId === "function"
                 ? e.getSourceCellId()
@@ -2807,7 +2808,10 @@ export function computeOrthogonalRoute(
  *  - Unbound live interactive drag edges (`!sourceCellId || !targetCellId`)
  *  - Unrouted 0-vertex chords that cut diagonally or impale a component's interior before routing
  */
-export function collectCommittedExistingWires(graph: any, excludeEdgeId?: string | null): PointLike[][] {
+export function collectCommittedExistingWires(
+  graph: RouterGraphLike | null | undefined,
+  excludeEdgeId?: string | null,
+): PointLike[][] {
   const wires: PointLike[][] = [];
   if (!graph || typeof graph.getEdges !== "function") return wires;
 

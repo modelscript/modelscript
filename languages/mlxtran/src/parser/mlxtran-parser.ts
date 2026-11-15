@@ -6,6 +6,9 @@
  * Extracts [LONGITUDINAL], input lists, EQUATION blocks, OUTPUT lists, and PK macros.
  */
 
+import { createWasmParserSync } from "@modelscript/mlxtran/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import type {
   MlxtranDocument,
   MlxtranEquation,
@@ -15,6 +18,16 @@ import type {
   MlxtranParameter,
   MlxtranRange,
 } from "../types.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getMlxtranWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/mlxtran/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 function stripComments(line: string): string {
   let inString = false;
@@ -32,7 +45,8 @@ function stripComments(line: string): string {
 }
 
 export function parseMlxtran(source: string): MlxtranDocument {
-  const lines = source.split(/\r?\n/);
+  const cstTree = getMlxtranWasmParser().parse(source);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   const rawBlocks: Record<string, string> = {};
 
   const inputs: MlxtranParameter[] = [];
@@ -45,12 +59,10 @@ export function parseMlxtran(source: string): MlxtranDocument {
   let modelName = "MlxtranModel";
   let description: string | undefined;
 
-  let offset = 0;
-  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-    const rawLine = lines[lineIdx]!;
-    const lineStartOffset = offset;
-    const lineEndOffset = offset + rawLine.length;
-    offset = lineEndOffset + 1; // +1 for newline
+  for (const { row: lineIdx, tokens: cstTokens } of cstLines) {
+    const lineStartOffset = Math.max(0, (cstTokens[0]?.startIndex ?? 0) - (cstTokens[0]?.startPosition?.column ?? 0));
+    const rawLine = cstLineText(source, cstTokens);
+    const lineEndOffset = cstTokens[cstTokens.length - 1]?.endIndex ?? lineStartOffset + rawLine.length;
 
     const cleanLine = stripComments(rawLine).trim();
     if (cleanLine.length === 0) continue;

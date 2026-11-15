@@ -27,7 +27,7 @@ export interface ContainerToolkit {
     extractAttr(xml: string, tag: string, attr: string): string | null;
     extractAttrFromStr(attrStr: string, attrName: string): string | null;
     extractTags(xml: string, tag: string): { attrs: string; body: string }[];
-    parse(xml: string): Record<string, any>;
+    parse(xml: string): Record<string, unknown>;
   };
   /** Raw compression / decompression routines */
   inflate: (compressed: Uint8Array) => Uint8Array;
@@ -72,9 +72,9 @@ export interface ContainerExtractionResult {
   /** Member entries exposed to the virtual file system / workspace */
   entries?: ContainerFileEntry[] | undefined;
   /** Optional metadata dictionary */
-  metadata?: Record<string, any> | undefined;
+  metadata?: Record<string, unknown> | undefined;
   /** Optional projection callback to synthesize virtual target language source (e.g. Modelica block) */
-  project?: ((targetLanguage: string) => string | any | null) | undefined;
+  project?: ((targetLanguage: string) => unknown) | undefined;
 }
 
 /** Function signature for custom container extractor lambdas */

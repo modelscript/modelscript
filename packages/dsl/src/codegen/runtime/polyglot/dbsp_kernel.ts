@@ -103,11 +103,17 @@ export class LeapfrogIterator {
   keys: ChunkedUint32Array;
   length: u32;
   cursor: u32;
+  cachedGraphPtr: usize;
+  cachedVersion: u32;
+  cachedEdgeType: u16;
+  cachedUseSource: boolean;
 
   init(keysArray: ChunkedUint32Array, len: u32): void {
     this.keys = keysArray;
     this.length = len;
     this.cursor = 0;
+    this.cachedGraphPtr = 0;
+    this.cachedVersion = 0;
   }
 
   @inline
@@ -122,13 +128,41 @@ export class LeapfrogIterator {
   }
 
   /**
-   * Seeks to the smallest key >= targetKey.
+   * Seeks to the smallest key >= targetKey in O(log(delta)) using exponential (galloping) binary search.
    */
   @inline
   seek(targetKey: u32): void {
-    while (this.cursor < this.length && this.keys.get(this.cursor) < targetKey) {
-      this.cursor++;
+    if (this.cursor >= this.length) return;
+    if (this.keys.get(this.cursor) >= targetKey) return;
+
+    // Exponential galloping phase
+    let low: u32 = this.cursor;
+    let step: u32 = 1;
+    let high: u32 = low + step;
+    while (high < this.length && this.keys.get(high) < targetKey) {
+      low = high;
+      step <<= 1;
+      high = low + step;
     }
+    if (high >= this.length) {
+      high = this.length - 1;
+    }
+
+    // Binary search phase in [low, high]
+    let lo: u32 = low + 1;
+    let hi: u32 = high;
+    let ans: u32 = this.length;
+    while (lo <= hi) {
+      let mid: u32 = lo + ((hi - lo) >>> 1);
+      if (this.keys.get(mid) >= targetKey) {
+        ans = mid;
+        if (mid == 0) break;
+        hi = mid - 1;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    this.cursor = ans;
   }
 
   @inline
@@ -137,14 +171,36 @@ export class LeapfrogIterator {
   }
 }
 
+function quickSortU32(arr: ChunkedUint32Array, left: i32, right: i32): void {
+  if (left >= right) return;
+  let pivot = arr.get(((left + right) >>> 1) as u32);
+  let i = left;
+  let j = right;
+  while (i <= j) {
+    while (arr.get(i as u32) < pivot) i++;
+    while (arr.get(j as u32) > pivot) j--;
+    if (i <= j) {
+      let tmp = arr.get(i as u32);
+      arr.set(i as u32, arr.get(j as u32));
+      arr.set(j as u32, tmp);
+      i++;
+      j--;
+    }
+  }
+  if (left < j) quickSortU32(arr, left, j);
+  if (i < right) quickSortU32(arr, i, right);
+}
+
 /**
- * Initializes a LeapfrogIterator in linear memory with sorted unique target node IDs
+ * Initializes a LeapfrogIterator in linear memory with sorted unique node IDs
  * extracted from active edges in a DpoGraph matching edgeTypeHash (or all edges if 0).
+ * Extracts target node IDs by default, or source node IDs when useSource is true.
  */
 export function leapfrog_init_from_dpo_edges(
   iterPtr: usize,
   graphPtr: usize,
-  edgeTypeHash: u16 = 0
+  edgeTypeHash: u16 = 0,
+  useSource: boolean = false
 ): void {
   let iter = changetype<LeapfrogIterator>(iterPtr);
   if (graphPtr == 0) {
@@ -152,9 +208,19 @@ export function leapfrog_init_from_dpo_edges(
     return;
   }
   let g = changetype<DpoGraph>(graphPtr);
+  if (
+    iter.cachedGraphPtr == graphPtr &&
+    iter.cachedVersion != 0 &&
+    iter.cachedVersion == g.topologyVersion &&
+    iter.cachedEdgeType == edgeTypeHash &&
+    iter.cachedUseSource == useSource
+  ) {
+    iter.cursor = 0;
+    return;
+  }
   let totalEdges = g.edgeCount;
   let keys = createChunkedUint32Array(totalEdges > 0 ? totalEdges : 1);
-  let len: u32 = 0;
+  let rawLen: u32 = 0;
 
   for (let eIdx: u32 = 0; eIdx < totalEdges; eIdx++) {
     let eOffset = eIdx * DPO_EDGE_STRIDE;
@@ -166,27 +232,31 @@ export function leapfrog_init_from_dpo_edges(
       (flags & DPO_FLAG_TOMBSTONE) == 0 &&
       (edgeTypeHash == 0 || eType == edgeTypeHash)
     ) {
-      let targetNode = g.edges.get(eOffset + DPO_EDGE_TARGET);
-      let duplicate = false;
-      for (let k: u32 = 0; k < len; k++) {
-        if (keys.get(k) == targetNode) {
-          duplicate = true;
-          break;
-        }
-      }
-      if (!duplicate) {
-        let insertPos: i32 = (len as i32) - 1;
-        while (insertPos >= 0 && keys.get(insertPos as u32) > targetNode) {
-          keys.set((insertPos + 1) as u32, keys.get(insertPos as u32));
-          insertPos--;
-        }
-        keys.set((insertPos + 1) as u32, targetNode);
-        len++;
-      }
+      let nodeId = useSource
+        ? g.edges.get(eOffset + DPO_EDGE_SOURCE)
+        : g.edges.get(eOffset + DPO_EDGE_TARGET);
+      keys.set(rawLen++, nodeId);
     }
   }
 
-  iter.init(keys, len);
+  if (rawLen > 1) {
+    quickSortU32(keys, 0, (rawLen as i32) - 1);
+  }
+
+  // In-place linear deduplication
+  let uniqueLen: u32 = 0;
+  for (let i: u32 = 0; i < rawLen; i++) {
+    let v = keys.get(i);
+    if (uniqueLen == 0 || keys.get(uniqueLen - 1) != v) {
+      keys.set(uniqueLen++, v);
+    }
+  }
+
+  iter.init(keys, uniqueLen);
+  iter.cachedGraphPtr = graphPtr;
+  iter.cachedVersion = g.topologyVersion;
+  iter.cachedEdgeType = edgeTypeHash;
+  iter.cachedUseSource = useSource;
 }
 
 /**
@@ -351,7 +421,8 @@ export function zset_union_add(dstPtr: usize, srcPtr: usize): u32 {
 export function dbsp_fixed_point_differentiate(
   frontierPtr: usize,
   accumulatedPtr: usize,
-  maxIterations: u32 = 100
+  maxIterations: u32 = 100,
+  graphPtr: usize = 0
 ): u32 {
   let frontier = changetype<ZSet>(frontierPtr);
   let accumulated = changetype<ZSet>(accumulatedPtr);
@@ -361,10 +432,43 @@ export function dbsp_fixed_point_differentiate(
     zset_union_add(accumulatedPtr, frontierPtr);
     iterations++;
 
-    // In a concrete recursive step, frontier is derived via Df(R, ΔR).
-    // For convergence testing, consolidate accumulated set.
-    zset_consolidate(accumulatedPtr);
-    frontier.clear();
+    if (graphPtr != 0) {
+      let g = changetype<DpoGraph>(graphPtr);
+      let nextFrontier = changetype<ZSet>(createZSet(frontier.count > 0 ? frontier.count * 2 : 16));
+      for (let fIdx: u32 = 0; fIdx < frontier.count; fIdx++) {
+        let srcNode = frontier.getElement(fIdx);
+        let weight = frontier.getWeight(fIdx);
+        if (weight == 0) continue;
+        for (let eIdx: u32 = 0; eIdx < g.edgeCount; eIdx++) {
+          let eOffset = eIdx * DPO_EDGE_STRIDE;
+          let typeWord = g.edges.get(eOffset + DPO_EDGE_TYPE);
+          let flags = (typeWord & 0xffff) as u16;
+          if ((flags & DPO_FLAG_ACTIVE) == 0 || (flags & DPO_FLAG_TOMBSTONE) != 0) continue;
+          if (g.edges.get(eOffset + DPO_EDGE_SOURCE) == srcNode) {
+            let dstNode = g.edges.get(eOffset + DPO_EDGE_TARGET);
+            // Only enqueue newly discovered nodes not already in accumulated
+            let seen = false;
+            for (let aIdx: u32 = 0; aIdx < accumulated.count; aIdx++) {
+              if (accumulated.getElement(aIdx) == dstNode && accumulated.getWeight(aIdx) != 0) {
+                seen = true;
+                break;
+              }
+            }
+            if (!seen) {
+              nextFrontier.add(dstNode, weight, iterations);
+            }
+          }
+        }
+      }
+      zset_consolidate(changetype<usize>(nextFrontier));
+      frontier.clear();
+      for (let nIdx: u32 = 0; nIdx < nextFrontier.count; nIdx++) {
+        frontier.add(nextFrontier.getElement(nIdx), nextFrontier.getWeight(nIdx), nextFrontier.getTimestamp(nIdx));
+      }
+    } else {
+      zset_consolidate(accumulatedPtr);
+      frontier.clear();
+    }
   }
 
   return iterations;

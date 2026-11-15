@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language } from "@modelscript/dsl";
+import { cardDeckRules, language } from "@modelscript/dsl";
 import { lowerAspenToDae } from "./dae/aspen-to-dae.js";
 import { canIndexAspen, indexAspenDocument } from "./indexing.js";
 import { lintAspen } from "./lints/index.js";
 import { parseAspen } from "./parser/aspen-parser.js";
 import { aspenToModelica } from "./projections/aspen-to-modelica.js";
 import { solveFlashRachfordRice } from "./solvers/flash-solver.js";
+import { aspenPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript Aspen Plus Input Deck (.in, .inp, .bkp) Language Definition.
  */
 export const aspenLanguage = language({
+  polyglot: aspenPolyglotConfig,
   name: "aspen",
   fileExtensions: [".in", ".inp", ".bkp", ".aspen.inp"],
   maturity: "experimental",
@@ -110,4 +112,8 @@ export const aspenLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
+
+export default aspenLanguage;

@@ -567,9 +567,13 @@ export function registerMiscEndpoints(context: LspContext) {
             const oldNode = oldId !== null ? { id: oldId, db: oldDb.toQueryDB() } : null;
             const newNode = newId !== null ? { id: newId, db: newDb.toQueryDB() } : null;
 
-            const diff = computeSemanticDiff(oldNode, newNode, {
-              orderAgnostic: true,
-            });
+            const diff = computeSemanticDiff(
+              oldNode as Parameters<typeof computeSemanticDiff>[0],
+              newNode as Parameters<typeof computeSemanticDiff>[1],
+              {
+                orderAgnostic: true,
+              },
+            );
 
             const collectDescriptions = (edit: any) => {
               if (edit.description) descriptions.push(edit.description);
@@ -707,9 +711,13 @@ export function registerMiscEndpoints(context: LspContext) {
           const oldNode = oldId !== null ? { id: oldId, db: oldDb.toQueryDB() } : null;
           const newNode = newId !== null ? { id: newId, db: newDb.toQueryDB() } : null;
 
-          const diff = computeSemanticDiff(oldNode, newNode, {
-            orderAgnostic: true,
-          });
+          const diff = computeSemanticDiff(
+            oldNode as Parameters<typeof computeSemanticDiff>[0],
+            newNode as Parameters<typeof computeSemanticDiff>[1],
+            {
+              orderAgnostic: true,
+            },
+          );
 
           const flattenDiffs = (edit: SemanticEdit) => {
             if (edit.action !== "none" && edit.description) {

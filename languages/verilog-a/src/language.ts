@@ -14,8 +14,10 @@ import { lintVerilogA } from "./lints/rules.js";
 import { parseVerilogA } from "./parser/verilog-a-parser.js";
 import { verilogAToModelica } from "./projections/verilog-a-to-modelica.js";
 import { verilogAToSpice } from "./projections/verilog-a-to-spice.js";
+import { verilogAPolyglotConfig } from "./tgg/index.js";
 
 export const verilogALanguage = language({
+  polyglot: verilogAPolyglotConfig,
   name: "verilog-a",
   fileExtensions: [".va", ".vams"],
   maturity: "experimental",

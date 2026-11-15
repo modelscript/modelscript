@@ -1,14 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createWasmParserSync } from "@modelscript/gtsuite/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import type { GtTableMap } from "../types.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getGtSuiteWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/gtsuite/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Parses GT-SUITE tabular performance map data (.dat, .txt, .inp).
  */
 export function parseGtTableMap(rawText: string, defaultId = "map1"): GtTableMap {
-  const lines = rawText
-    .split(/\r?\n/)
-    .map((l) => l.trim())
+  const cstTree = getGtSuiteWasmParser().parse(rawText);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
+  const lines = cstLines
+    .map(({ tokens }) => cstLineText(rawText, tokens).trim())
     .filter((l) => l.length > 0 && !l.startsWith("#") && !l.startsWith("//") && !l.startsWith("!"));
 
   let id = defaultId;

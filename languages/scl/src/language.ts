@@ -4,15 +4,17 @@
  * ModelScript IEC 61850 SCL Language Definition.
  */
 
-import { language } from "@modelscript/dsl";
+import { language, xmlRules } from "@modelscript/dsl";
 import { validateGooseStreams } from "./analysis/goose-validator.js";
 import { lowerSclToDae } from "./dae/scl-to-dae.js";
 import { sclIndexing } from "./indexing.js";
 import { lintSclDocument } from "./lints/index.js";
 import { parseSclXml } from "./parser/scl-parser.js";
 import { sclToGridTopology } from "./projections/scl-to-grid.js";
+import { sclPolyglotConfig } from "./tgg/index.js";
 
 export const sclLanguage = language({
+  polyglot: sclPolyglotConfig,
   name: "scl",
   fileExtensions: [".scd", ".cid", ".icd", ".ssd", ".iid", ".scl"],
   maturity: "beta",
@@ -89,4 +91,8 @@ export const sclLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: xmlRules,
 });
+
+export default sclLanguage;

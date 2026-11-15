@@ -38,12 +38,17 @@ export class CorrespondenceIndex {
   count: u32;
   sourceToSlot: UnmanagedMap64;
   targetToSlot: UnmanagedMap64;
+  compFreelistHeads: usize; // pointer to 8 x u32 freelist heads (size classes 16B..2048B)
 
   init(initialCapacity: u32 = 1024): void {
     this.data = createChunkedUint32Array(initialCapacity * CORR_STRIDE);
     this.count = 0;
     this.sourceToSlot = changetype<UnmanagedMap64>(createMap64());
     this.targetToSlot = changetype<UnmanagedMap64>(createMap64());
+    this.compFreelistHeads = atomicChunkAlloc(32); // 8 * sizeof<u32>()
+    for (let i: usize = 0; i < 8; i++) {
+      store<u32>(this.compFreelistHeads + (i << 2), 0);
+    }
   }
 
   /**
@@ -76,6 +81,7 @@ export class CorrespondenceIndex {
     }
 
     let slot: u32;
+    let isNewOrRetargeted = false;
     if (existingSlotPlusOne != 0) {
       slot = existingSlotPlusOne - 1;
       let offsetOld = slot * CORR_STRIDE;
@@ -83,11 +89,13 @@ export class CorrespondenceIndex {
       if (oldTarget != targetNodeId) {
         if (oldTarget != 0) this.targetToSlot.set(oldTarget as u64, 0);
         if (targetNodeId != 0) this.targetToSlot.set(targetNodeId as u64, slot + 1);
+        isNewOrRetargeted = true;
       }
     } else {
       slot = this.count++;
       this.sourceToSlot.set(key, slot + 1);
       if (targetNodeId != 0) this.targetToSlot.set(targetNodeId as u64, slot + 1);
+      isNewOrRetargeted = true;
     }
 
     let offset = slot * CORR_STRIDE;
@@ -97,9 +105,13 @@ export class CorrespondenceIndex {
     this.data.set(offset + CORR_TARGET, targetNodeId);
     this.data.set(offset + CORR_META, meta);
     this.data.set(offset + CORR_REVISION, revision);
-    this.data.set(offset + CORR_COMPLEMENT_PTR, 0);
-    this.data.set(offset + CORR_THREAD_ID, 0);
-    this.data.set(offset + CORR_PARENT_SLOT, parentSlot);
+    if (isNewOrRetargeted) {
+      this.data.set(offset + CORR_COMPLEMENT_PTR, 0);
+      this.data.set(offset + CORR_THREAD_ID, 0);
+      this.data.set(offset + CORR_PARENT_SLOT, parentSlot);
+    } else if (parentSlot != CORR_NO_PARENT) {
+      this.data.set(offset + CORR_PARENT_SLOT, parentSlot);
+    }
 
     return slot;
   }
@@ -144,6 +156,16 @@ export class CorrespondenceIndex {
     let meta = this.data.get(offset);
     let ruleId = (meta >>> 16) as u16;
     let flags = ((meta & 0xffff) as u16) | CORR_FLAG_STALE;
+    this.data.set(offset, ((ruleId as u32) << 16) | (flags as u32));
+  }
+
+  @inline
+  clearStale(slot: u32): void {
+    if (slot >= this.count) return;
+    let offset = slot * CORR_STRIDE + CORR_META;
+    let meta = this.data.get(offset);
+    let ruleId = (meta >>> 16) as u16;
+    let flags = ((meta & 0xffff) as u16) & ~CORR_FLAG_STALE;
     this.data.set(offset, ((ruleId as u32) << 16) | (flags as u32));
   }
 
@@ -270,6 +292,55 @@ export class CorrespondenceIndex {
   setComplement(slot: u32, ptr: u32): void {
     if (slot >= this.count) return;
     this.data.set(slot * CORR_STRIDE + CORR_COMPLEMENT_PTR, ptr);
+  }
+
+  /**
+   * Allocates a complement buffer from the size-classed freelist (16B..2048B).
+   * Stores a 4-byte size-class header immediately preceding the returned pointer.
+   */
+  allocComplement(byteSize: u32): u32 {
+    let cls: u32 = 0;
+    let cap: u32 = 16;
+    while (cap < byteSize && cls < 7) {
+      cap <<= 1;
+      cls++;
+    }
+    let headOffset = (cls as usize) << 2;
+    let freePtr = load<u32>(this.compFreelistHeads + headOffset);
+    if (freePtr != 0) {
+      let nextFree = load<u32>(freePtr as usize);
+      store<u32>(this.compFreelistHeads + headOffset, nextFree);
+      return freePtr;
+    }
+    let allocSize = (cap > byteSize ? cap : byteSize) + 4;
+    let raw = atomicChunkAlloc(allocSize);
+    store<u32>(raw, cls);
+    return (raw + 4) as u32;
+  }
+
+  /**
+   * Returns a previously allocated complement buffer to its size-classed freelist.
+   */
+  freeComplement(ptr: u32): void {
+    if (ptr <= 4) return;
+    let cls = load<u32>((ptr as usize) - 4);
+    if (cls >= 8) return;
+    let headOffset = (cls as usize) << 2;
+    let prevHead = load<u32>(this.compFreelistHeads + headOffset);
+    store<u32>(ptr as usize, prevHead);
+    store<u32>(this.compFreelistHeads + headOffset, ptr);
+  }
+
+  /**
+   * Atomically replaces a slot's complement pointer, recycling the previous buffer.
+   */
+  updateComplement(slot: u32, newPtr: u32): void {
+    if (slot >= this.count) return;
+    let oldPtr = this.getComplement(slot);
+    if (oldPtr != 0 && oldPtr != newPtr) {
+      this.freeComplement(oldPtr);
+    }
+    this.setComplement(slot, newPtr);
   }
 
   @inline
@@ -423,6 +494,18 @@ export function corr_getComplement(ptr: usize, slot: u32): u32 {
 
 export function corr_setComplement(ptr: usize, slot: u32, compPtr: u32): void {
   changetype<CorrespondenceIndex>(ptr).setComplement(slot, compPtr);
+}
+
+export function corr_allocComplement(ptr: usize, byteSize: u32): u32 {
+  return changetype<CorrespondenceIndex>(ptr).allocComplement(byteSize);
+}
+
+export function corr_freeComplement(ptr: usize, compPtr: u32): void {
+  changetype<CorrespondenceIndex>(ptr).freeComplement(compPtr);
+}
+
+export function corr_updateComplement(ptr: usize, slot: u32, compPtr: u32): void {
+  changetype<CorrespondenceIndex>(ptr).updateComplement(slot, compPtr);
 }
 
 export function corr_getThreadId(ptr: usize, slot: u32): u32 {

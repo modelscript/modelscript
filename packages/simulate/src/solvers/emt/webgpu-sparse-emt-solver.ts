@@ -128,7 +128,11 @@ export class WebGpuSparseEmtSolver {
 
     if (!gpuDevice && !options.preferCpu && typeof navigator !== "undefined" && "gpu" in navigator) {
       try {
-        const adapter = await (navigator as any).gpu.requestAdapter();
+        const adapter = await (
+          navigator as unknown as {
+            gpu?: { requestAdapter(): Promise<{ requestDevice(): Promise<GPUDevice | null> } | null> };
+          }
+        ).gpu?.requestAdapter();
         if (adapter) {
           gpuDevice = await adapter.requestDevice();
         }

@@ -19,13 +19,7 @@
  */
 
 import { bicgstab, denseMatVec, gmres, jacobiPreconditioner, jfnkSolve } from "@modelscript/runtime";
-import {
-  luFactor,
-  luFactorFlat,
-  luSolve,
-  luSolveFlat,
-  type LUFactorizationFlat,
-} from "@modelscript/runtime/wasm_gaussian.js";
+import { luFactorFlat, luSolveFlat, type LUFactorizationFlat } from "@modelscript/runtime/wasm_gaussian.js";
 import type { CommonSolverResult, DAEProblem, ODEProblem, SolverStats } from "../core/problem-types.js";
 
 export interface RadauIIAOptions {
@@ -433,7 +427,8 @@ export class RadauIIASolver {
     // Right hand side evaluator
     const evalF = (tEval: number, yEval: Float64Array, outF: Float64Array): void => {
       fEvals++;
-      const res = this.problem.f(tEval, Array.from(yEval), undefined as any, (this.problem as any).p);
+      const problemP = (this.problem as unknown as { p?: number[] | Record<string, number> | undefined }).p;
+      const res = this.problem.f(tEval, Array.from(yEval), undefined, problemP);
       for (let i = 0; i < n; i++) outF[i] = res[i] ?? 0;
     };
 
@@ -441,7 +436,8 @@ export class RadauIIASolver {
     const evalJ = (tEval: number, yEval: Float64Array, outJ: Float64Array): void => {
       jacobianEvals++;
       if (this.problem.jac) {
-        const Jmat = this.problem.jac(tEval, Array.from(yEval), (this.problem as any).p);
+        const problemP = (this.problem as unknown as { p?: number[] | Record<string, number> | undefined }).p;
+        const Jmat = this.problem.jac(tEval, Array.from(yEval), problemP);
         for (let i = 0; i < n; i++) {
           for (let j = 0; j < n; j++) {
             outJ[i * n + j] = Jmat[i]?.[j] ?? 0;
@@ -550,14 +546,14 @@ export class RadauIIASolver {
         );
         if (jfnkRes.converged) {
           stepConverged = true;
-          Z_sol = jfnkRes.x as any;
+          Z_sol = jfnkRes.x as Float64Array<ArrayBuffer>;
         }
       } else {
         // Evaluate system Jacobian at step start
         const J = new Float64Array(n * n);
         evalJ(t, y, J);
 
-        let fact: ReturnType<typeof luFactor> | null = null;
+        let fact: LUFactorizationFlat | null = null;
         let factReal: LUFactorizationFlat | null = null;
         let Mat: Float64Array | null = null;
 
@@ -609,7 +605,7 @@ export class RadauIIASolver {
 
           if (linearSolverMode === "direct") {
             try {
-              fact = luFactor(Mat, sn);
+              fact = luFactorFlat(Mat, sn);
               luFactorizations++;
             } catch {
               h *= 0.5;
@@ -675,7 +671,7 @@ export class RadauIIASolver {
             }
           } else if (linearSolverMode === "direct" && fact) {
             for (let k = 0; k < sn; k++) deltaZ[k] = -R[k]!;
-            luSolve(fact, deltaZ);
+            luSolveFlat(fact, deltaZ);
           } else if (linearSolverMode === "gmres") {
             for (let k = 0; k < sn; k++) deltaZ[k] = -R[k]!;
             const res = gmres(matVecOp, deltaZ, {

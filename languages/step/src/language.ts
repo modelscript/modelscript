@@ -1,19 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  choice,
-  def,
-  field,
-  language,
-  optional,
-  ref,
-  repeat,
-  repeat1,
-  seq,
-  tggComplement,
-  tggEq,
-  tggRule,
-} from "@modelscript/dsl";
+import { choice, def, field, language, optional, ref, repeat, repeat1, seq } from "@modelscript/dsl";
 import type { UnifiedWorkspace } from "@modelscript/runtime";
 import {
   getStepAssemblyModel,
@@ -22,6 +9,7 @@ import {
   indexStepFileSync,
   type OcctMesh,
 } from "./indexing.js";
+import { stepPolyglotConfig } from "./tgg/index.js";
 
 interface StepActionContext {
   uri?: string | undefined;
@@ -98,9 +86,10 @@ export const stepLanguage = language({
       description: "Opens the interactive 3D WebGL assembly and solid geometry viewer.",
       category: "query",
       execute: async (
-        ctx: StepActionContext,
+        rawCtx: import("@modelscript/dsl/dsl/action-types.js").ActionExecutionContext,
         params: { documentText?: string | undefined; uri?: string | undefined },
       ) => {
+        const ctx = rawCtx as StepActionContext;
         const targetUri = params?.uri || ctx.uri;
         const meshes = [...getStepMeshes(ctx.workspaceManager?.unifiedWorkspace, targetUri)];
         return {
@@ -131,9 +120,10 @@ export const stepLanguage = language({
       description: "Extracts kinematic joints and mass properties to generate a Modelica MultiBody simulation model.",
       category: "transform",
       execute: async (
-        ctx: StepActionContext,
+        rawCtx: import("@modelscript/dsl/dsl/action-types.js").ActionExecutionContext,
         params: { documentText?: string | undefined; uri?: string | undefined },
       ) => {
+        const ctx = rawCtx as StepActionContext;
         const targetUri = params?.uri || ctx.uri;
         const filename = targetUri ? targetUri.split("/").pop() || "assembly" : "assembly";
         const name = filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_]/g, "_");
@@ -296,7 +286,7 @@ export const stepLanguage = language({
       description: "Discretizes 3D CAD boundary surfaces and volumes into an FEA hexahedral/tetrahedral mesh deck.",
       category: "transform",
       execute: async (
-        ctx: StepActionContext,
+        rawCtx: import("@modelscript/dsl/dsl/action-types.js").ActionExecutionContext,
         params: {
           documentText?: string | undefined;
           uri?: string | undefined;
@@ -305,6 +295,7 @@ export const stepLanguage = language({
           layers?: number | undefined;
         },
       ) => {
+        const ctx = rawCtx as StepActionContext;
         const targetUri = params?.uri || ctx.uri;
         const filename = targetUri ? targetUri.split("/").pop() || "part" : "part";
         const baseName = filename.replace(/\.[^/.]+$/, "");
@@ -362,7 +353,7 @@ export const stepLanguage = language({
       description: "Generates aerodynamic surface and volume computational meshes for SU2 CFD analysis.",
       category: "transform",
       execute: async (
-        ctx: StepActionContext,
+        rawCtx: import("@modelscript/dsl/dsl/action-types.js").ActionExecutionContext,
         params: {
           documentText?: string | undefined;
           uri?: string | undefined;
@@ -370,6 +361,7 @@ export const stepLanguage = language({
           layers?: number | undefined;
         },
       ) => {
+        const ctx = rawCtx as StepActionContext;
         const targetUri = params?.uri || ctx.uri;
         const filename = targetUri ? targetUri.split("/").pop() || "body" : "body";
         const baseName = filename.replace(/\.[^/.]+$/, "");
@@ -425,9 +417,10 @@ export const stepLanguage = language({
       category: "transform",
       description: "Scaffolds a Modelica static structural FEA study targeting this CAD model.",
       execute: async (
-        ctx: StepActionContext,
+        rawCtx: import("@modelscript/dsl/dsl/action-types.js").ActionExecutionContext,
         params: { documentText?: string | undefined; uri?: string | undefined },
       ) => {
+        const ctx = rawCtx as StepActionContext;
         const targetUri = params?.uri || ctx.uri;
         const filename = targetUri ? targetUri.split("/").pop() || "study" : "study";
         const baseName = filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_]/g, "_");
@@ -473,9 +466,10 @@ export const stepLanguage = language({
       category: "transform",
       description: "Scaffolds a Modelica steady-state CFD study targeting this CAD model.",
       execute: async (
-        ctx: StepActionContext,
+        rawCtx: import("@modelscript/dsl/dsl/action-types.js").ActionExecutionContext,
         params: { documentText?: string | undefined; uri?: string | undefined },
       ) => {
+        const ctx = rawCtx as StepActionContext;
         const targetUri = params?.uri || ctx.uri;
         const filename = targetUri ? targetUri.split("/").pop() || "study" : "study";
         const baseName = filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_]/g, "_");
@@ -537,63 +531,7 @@ export const stepLanguage = language({
   },
 
   // Polyglot Triple Graph Grammar (TGG) rules linking STEP products, properties, placements, and joints to SysML v2 and Modelica
-  polyglot: {
-    languages: ["sysml2", "modelica"],
-    rules: [
-      tggRule({
-        name: "StepProductToSysML2Part",
-        sourceLang: "step",
-        targetLang: "sysml2",
-        source: ($, v) => $.ProductDefinition({ name: v("prodName") }),
-        target: ($, v) => $.PartDefinition({ declaredName: v("prodName") }),
-        where: (v) => [tggEq(v("prodName"), v("prodName")), tggComplement(["description", "id", "formation"])],
-      }),
-      tggRule({
-        name: "StepPropertyToSysML2Attribute",
-        sourceLang: "step",
-        targetLang: "sysml2",
-        source: ($, v) => $.PropertyDefinition({ name: v("propName"), value: v("val") }),
-        target: ($, v) => $.AttributeUsage({ declaredName: v("propName"), defaultValue: v("val") }),
-        where: (v) => [
-          tggEq(v("propName"), v("propName")),
-          tggEq(v("val"), v("val")),
-          tggComplement(["definition", "representation"]),
-        ],
-      }),
-      tggRule({
-        name: "StepPlacementToSysML2Port",
-        sourceLang: "step",
-        targetLang: "sysml2",
-        source: ($, v) => $.Axis2Placement3D({ name: v("frameName") }),
-        target: ($, v) => $.PortUsage({ declaredName: v("frameName") }),
-        where: (v) => [tggEq(v("frameName"), v("frameName")), tggComplement(["location", "axis", "refDirection"])],
-      }),
-      tggRule({
-        name: "StepRevoluteJointToModelicaRevolute",
-        sourceLang: "step",
-        targetLang: "modelica",
-        source: ($, v) => $.KinematicPair({ name: v("jointName"), pairType: "revolute" }),
-        target: ($, v) =>
-          $.ComponentClause({
-            name: v("jointName"),
-            typeSpecifier: "Modelica.Mechanics.MultiBody.Joints.Revolute",
-          }),
-        where: (v) => [tggEq(v("jointName"), v("jointName")), tggComplement(["axis", "limits", "origin"])],
-      }),
-      tggRule({
-        name: "StepPrismaticJointToModelicaPrismatic",
-        sourceLang: "step",
-        targetLang: "modelica",
-        source: ($, v) => $.KinematicPair({ name: v("jointName"), pairType: "prismatic" }),
-        target: ($, v) =>
-          $.ComponentClause({
-            name: v("jointName"),
-            typeSpecifier: "Modelica.Mechanics.MultiBody.Joints.Prismatic",
-          }),
-        where: (v) => [tggEq(v("jointName"), v("jointName")), tggComplement(["axis", "limits", "origin"])],
-      }),
-    ],
-  },
+  polyglot: stepPolyglotConfig,
 
   lsp: {
     fileExtensions: [".step", ".stp", ".p21"],
@@ -603,7 +541,11 @@ export const stepLanguage = language({
     },
     handlers: {
       // LSP request handler that maps a STEP assembly into a Modelica MultiBody model
-      "modelscript/generateMultiBody": async (ctx: StepActionContext, params: { uri: string }) => {
+      "modelscript/generateMultiBody": async (
+        rawCtx: import("@modelscript/dsl").LanguageRequestContext,
+        params: { uri: string },
+      ) => {
+        const ctx = rawCtx as StepActionContext;
         const model = getStepAssemblyModel(ctx.workspaceManager?.unifiedWorkspace, params.uri);
         if (!model) {
           throw new Error(`No STEP assembly found for ${params.uri}`);
@@ -622,9 +564,10 @@ export const stepLanguage = language({
       },
       // LSP request handler that returns triangulated 3D WebGL meshes via OCCT or B-Rep loop fallback
       "modelscript/getStepMeshes": async (
-        ctx: StepActionContext,
+        rawCtx: import("@modelscript/dsl").LanguageRequestContext,
         params: { uri: string; documentText?: string | undefined },
       ): Promise<StepSerializedMesh[]> => {
+        const ctx = rawCtx as StepActionContext;
         const unifiedWs = ctx.workspaceManager?.unifiedWorkspace;
         let targetUri = params.uri;
         if (!/\.(step|stp|p21)$/i.test(targetUri)) {

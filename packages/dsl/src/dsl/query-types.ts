@@ -14,9 +14,9 @@ export type ASTQueryFunction<
   RuleName extends string = string,
   FieldName extends string = string,
   _QueryName extends string = string,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
   // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
-> = (graph: CodeGraph<ModelAttrs, RuleName, FieldName>, queryArg: u32, ...args: any[]) => u32 | boolean | void;
+> = (graph: CodeGraph<ModelAttrs, RuleName, FieldName>, queryArg: u32, ...args: never[]) => u32 | boolean | void;
 
 /**
  * Signature of an arena-native CST lint function that inspects `CodeGraph` nodes and emits diagnostics via `graph.diagnostic()`.
@@ -25,7 +25,7 @@ export type ASTLintFunction<
   RuleName extends string = string,
   FieldName extends string = string,
   _QueryName extends string = string,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > = (
   graph: CodeGraph<ModelAttrs, RuleName, FieldName>,
   queryArg: u32,
@@ -51,7 +51,7 @@ export interface DiagnosticContext<FieldName extends string = string> {
   /** Backward compatible child field dictionary */
   fields: Record<FieldName | (string & {}), string>;
   /** Direct field text access (e.g. `target.name` or `target.type`) */
-  [field: string]: any;
+  [field: string]: unknown;
 }
 
 /**
@@ -60,7 +60,7 @@ export interface DiagnosticContext<FieldName extends string = string> {
 export interface CompilerLintFix<
   RuleName extends string = string,
   FieldName extends string = string,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > {
   /** Human-readable title displayed in the IDE code action menu, or a formatter computing it from the target node. */
   title: string | ((target: DiagnosticContext<FieldName>) => string);
@@ -89,7 +89,7 @@ export interface CompilerLint<
   RuleName extends string = string,
   FieldName extends string = string,
   QueryName extends string = string,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > {
   /** Grammar rule names (node kinds) that trigger evaluation of this lint rule. */
   nodes?: NoInfer<RuleName>[] | undefined;
@@ -129,7 +129,7 @@ export interface CompilationPipeline<
   RuleName extends string = string,
   FieldName extends string = string,
   QueryName extends string = string,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 > {
   /** Human-readable name identifying this compilation pipeline. */
   label: string;
@@ -204,10 +204,10 @@ export function hint(message: string, options?: LintRangeOptions): LintResult {
  * or an object pairing an `execute` function with an optional cycle `recovery` fallback handler.
  */
 export type QueryFnOrObject =
-  | ((db: any, self: any, ...args: any[]) => any)
+  | { bivarianceHack(db: unknown, self: unknown, ...args: unknown[]): unknown }["bivarianceHack"]
   | {
       /** Evaluates the semantic query for `self` against the memoized `db`. */
-      execute(db: any, self: any, ...args: any[]): any;
+      execute(db: unknown, self: unknown, ...args: unknown[]): unknown;
       /** Fallback handler invoked when a dependency cycle is detected during query evaluation. */
-      recovery?(self: any, ...args: any[]): any;
+      recovery?(self: unknown, ...args: unknown[]): unknown;
     };

@@ -8,11 +8,13 @@ import { lintPdb } from "./lints/index.js";
 import { parsePdb } from "./parser/pdb-parser.js";
 import { pdbToModelica } from "./projections/pdb-to-modelica.js";
 import { solveProteinBiophysics, type ProteinBiophysicsOptions } from "./solvers/protein-biophysics-solver.js";
+import { pdbPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript Protein Data Bank (.pdb, .ent) & Macromolecular CIF (.cif, .mmcif) Language Definition.
  */
 export const pdbLanguage = language({
+  polyglot: pdbPolyglotConfig,
   name: "pdb",
   fileExtensions: [".pdb", ".ent", ".cif", ".mmcif"],
   maturity: "beta",

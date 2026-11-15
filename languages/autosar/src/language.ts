@@ -2,11 +2,13 @@
 
 import { choice, language, repeat, seq } from "@modelscript/dsl";
 import { indexAutosarDocument } from "./indexing.js";
+import { autosarPolyglotConfig } from "./tgg/index.js";
 
 /**
  * DSL language specification for AUTOSAR Classic and Adaptive XML files (.arxml).
  */
 export const autosarLanguage = language({
+  polyglot: autosarPolyglotConfig,
   name: "autosar",
   fileExtensions: [".arxml"],
   maturity: "experimental",
@@ -18,17 +20,20 @@ export const autosarLanguage = language({
   },
 
   rules: {
-    Document: ($) => repeat(choice($.XmlElement, $.Comment)),
+    Document: ($) => repeat(choice($["XmlElement"]!, $["Comment"]!)),
 
     XmlElement: ($) =>
       seq(
         "<",
-        $.TagName,
-        repeat($.Attribute),
-        choice("/>", seq(">", repeat(choice($.XmlElement, $.TextContent, $.Comment)), "</", $.TagName, ">")),
+        $["TagName"]!,
+        repeat($["Attribute"]!),
+        choice(
+          "/>",
+          seq(">", repeat(choice($["XmlElement"]!, $["TextContent"]!, $["Comment"]!)), "</", $["TagName"]!, ">"),
+        ),
       ),
 
-    Attribute: ($) => seq($.AttributeName, "=", $.StringLiteral),
+    Attribute: ($) => seq($["AttributeName"]!, "=", $["StringLiteral"]!),
 
     TagName: () => /[A-Za-z_][A-Za-z0-9_-]*/,
     AttributeName: () => /[A-Za-z_][A-Za-z0-9_:-]*/,

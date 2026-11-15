@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type {
-  OadrEvent,
-  OadrEventStatus,
-  OadrInterval,
-  OadrProgram,
-  OadrSignalType,
-  OpenAdrDeck,
-} from "../types.js";
+import type { OadrEvent, OadrEventStatus, OadrInterval, OadrProgram, OadrSignalType, OpenAdrDeck } from "../types.js";
 
 export function parseOpenAdr(text: string): OpenAdrDeck {
   const trimmed = text.trim();
@@ -26,11 +19,7 @@ function parseJsonOpenAdr(jsonStr: string): OpenAdrDeck {
     const events: OadrEvent[] = [];
     const programs: OadrProgram[] = [];
 
-    const rawEvents = Array.isArray(raw)
-      ? raw
-      : Array.isArray(raw.events)
-        ? raw.events
-        : [raw];
+    const rawEvents = Array.isArray(raw) ? raw : Array.isArray(raw.events) ? raw.events : [raw];
 
     for (let i = 0; i < rawEvents.length; i++) {
       const e = rawEvents[i];
@@ -182,8 +171,8 @@ function parseDeclarativeOpenAdr(text: string): OpenAdrDeck {
         else if (key === "durationSeconds" || key === "duration") currentInterval.durationSeconds = parseFloat(val);
         else if (key === "payload" || key === "signalPayload") currentInterval.payload = parseFloat(val);
       } else if (currentEvent) {
-        if (key === "status") currentEvent.status = val as any;
-        else if (key === "signalType") currentEvent.signalType = val as any;
+        if (key === "status") currentEvent.status = val as typeof currentEvent.status;
+        else if (key === "signalType") currentEvent.signalType = val as typeof currentEvent.signalType;
         else if (key === "targetVenId") currentEvent.targetVenId = val;
         else if (key === "programId") currentEvent.programId = val;
       } else if (currentProgram) {

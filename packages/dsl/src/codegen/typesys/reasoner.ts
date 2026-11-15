@@ -41,21 +41,32 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
   const maxArity = Math.max(grammar.semantics?.maxArity || 2, 3);
   const FACT_STRIDE = 1 + maxArity;
 
-  let rawRules = [
+  interface RuleAtomLike {
+    predicate: string;
+    args: unknown[];
+  }
+  interface RuleObjectLike {
+    head: RuleAtomLike;
+    body: RuleAtomLike[];
+  }
+  type RawRuleEntry = string | ((...args: string[]) => string | RuleObjectLike) | RuleObjectLike;
+
+  const reasonerCfg = grammar.semantics?.reasoner as { rules?: RawRuleEntry[] } | undefined;
+  const rawRules: RawRuleEntry[] = [
     ...(grammar.semantics?.rules || []),
-    ...((grammar.semantics?.reasoner as any)?.rules || []),
+    ...(reasonerCfg?.rules || []),
     ...(grammar.semantics?.axioms || []),
-  ];
-  let rules: string[] = rawRules.map((r: any) => {
+  ] as RawRuleEntry[];
+  let rules: string[] = rawRules.map((r: RawRuleEntry) => {
     if (typeof r === "string") return r;
     if (typeof r === "function") {
       const paramNames = ["x", "y", "z", "w", "a", "b", "c", "d"];
       const args = paramNames.slice(0, r.length);
       r = r(...args);
     }
-    if (typeof r === "object" && r !== null && r.head && r.body) {
+    if (typeof r === "object" && r !== null && "head" in r && "body" in r && r.head && r.body) {
       const headStr = `${r.head.predicate}(${r.head.args.join(", ")})`;
-      const bodyStr = r.body.map((b: any) => `${b.predicate}(${b.args.join(", ")})`).join(", ");
+      const bodyStr = r.body.map((b: RuleAtomLike) => `${b.predicate}(${b.args.join(", ")})`).join(", ");
       return `${headStr} :- ${bodyStr}`;
     }
     return String(r);
@@ -592,13 +603,13 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
 
   if (pathCfg) {
     // Parse ownership and naming predicate hashes
-    const pathObj = pathCfg as any;
+    const pathObj = pathCfg as { ownership?: string; naming?: string; subsetting?: string };
     const ownsMatch = pathObj.ownership ? pathObj.ownership.match(/^(\w+)\(/) : null;
     const nameMatch = pathObj.naming ? pathObj.naming.match(/^(\w+)\(/) : null;
 
     if (ownsMatch && nameMatch) {
-      const ownsHash = getDJB2Hash(ownsMatch[1]);
-      const nameHash = getDJB2Hash(nameMatch[1]);
+      const ownsHash = getDJB2Hash(ownsMatch[1]!);
+      const nameHash = getDJB2Hash(nameMatch[1]!);
       const subsetsHash = pathObj.subsetting ? getDJB2Hash(pathObj.subsetting.match(/^(\w+)\(/)?.[1] || "") : 0;
 
       pathResolutionCode = `

@@ -275,7 +275,9 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       }
       return false;
     });
-    let pendingPolyglotThreadPayload: any = null;
+    let pendingPolyglotThreadPayload:
+      | Parameters<typeof import("@modelscript/runtime").UnifiedVerifier.attachPolyglotDigitalThread>[1]
+      | null = null;
     if (args.coordinator || hasPolyglotCaeFiles || cliUniqueExts.size >= 2 || hasPolyglotDirective) {
       const [
         { createPolyglotCoordinator, COORDINATOR_SCENARIOS, UnifiedVerifier },
@@ -355,6 +357,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         explicitScenario,
       );
 
+      const suggestedEditsVal = (res as unknown as { suggestedEdits?: unknown }).suggestedEdits;
       const initialEdits: Array<{
         fileIndex: number;
         fileName: string;
@@ -363,7 +366,17 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         endOffset?: number;
         newText: string;
         description: string;
-      }> = "suggestedEdits" in res && Array.isArray((res as any).suggestedEdits) ? (res as any).suggestedEdits : [];
+      }> = Array.isArray(suggestedEditsVal)
+        ? (suggestedEditsVal as Array<{
+            fileIndex: number;
+            fileName: string;
+            line: number;
+            startOffset?: number;
+            endOffset?: number;
+            newText: string;
+            description: string;
+          }>)
+        : [];
 
       if ((args.fix || args.sync) && initialEdits.length > 0) {
         const editsByIdx = new Map<number, typeof initialEdits>();
@@ -465,7 +478,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
           args.format === "ctrf" ||
           args.format === "dhf"
         ) {
-          const baseReport: any = {
+          const baseReport: Parameters<typeof UnifiedVerifier.attachPolyglotDigitalThread>[0] = {
             timestamp: new Date().toISOString(),
             target: paths.join(", "),
             summary: {

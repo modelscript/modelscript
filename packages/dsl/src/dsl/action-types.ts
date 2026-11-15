@@ -10,7 +10,7 @@ export interface ActionInputDefinition {
   type: "string" | "number" | "boolean" | "array" | "object";
   description?: string | undefined;
   required?: boolean | undefined;
-  default?: any;
+  default?: unknown;
   enum?: string[] | undefined;
   items?: { type: "string" | "number" | "boolean" } | undefined;
   properties?: Record<string, ActionInputDefinition> | undefined;
@@ -73,16 +73,16 @@ export interface ActionExecutionContext {
   uri?: string | undefined;
   languageId: string;
   documentText?: string | undefined;
-  cstNode?: any;
-  symbolIndex?: any;
-  queryEngine?: any;
-  workspaceManager?: any;
-  connection?: any;
+  cstNode?: unknown;
+  symbolIndex?: unknown;
+  queryEngine?: unknown;
+  workspaceManager?: unknown;
+  connection?: unknown;
   notifyProgress?: ((message: string, increment?: number) => void) | undefined;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
-export interface LanguageAction<TInputs extends Record<string, any> = Record<string, any>, TOutputs = any> {
+export interface LanguageAction<TInputs extends Record<string, unknown> = Record<string, unknown>, TOutputs = unknown> {
   id: string; // e.g. "flatten", "simulate", "query", "parse"
   title: string; // e.g. "Flatten Model to DAE"
   description: string;
@@ -90,10 +90,14 @@ export interface LanguageAction<TInputs extends Record<string, any> = Record<str
   inputs?: Record<string, ActionInputDefinition> | undefined;
   output?: ActionOutputDefinition | undefined;
   ui?: ActionUIManifest | undefined;
-  execute?: ((context: ActionExecutionContext, inputs: TInputs) => Promise<TOutputs> | TOutputs) | undefined;
+  execute?:
+    | {
+        bivarianceHack(context: ActionExecutionContext, inputs: TInputs): Promise<TOutputs> | TOutputs;
+      }["bivarianceHack"]
+    | undefined;
 }
 
-export function languageAction<TInputs extends Record<string, any> = Record<string, any>, TOutputs = any>(
+export function languageAction<TInputs extends Record<string, unknown> = Record<string, unknown>, TOutputs = unknown>(
   action: LanguageAction<TInputs, TOutputs>,
 ): LanguageAction<TInputs, TOutputs> {
   return action;

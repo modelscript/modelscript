@@ -267,7 +267,16 @@ export interface NormalizedLanguage {
 /**
  * Normalizes a list of LanguageOptions into standard descriptors.
  */
-export function normalizeLanguages(languages: (LanguageOptions | any)[]): NormalizedLanguage[] {
+type LanguageInputLike = LanguageOptions & {
+  displayName?: string;
+  maturity?: LanguageMaturity;
+  extensions?: string[];
+  fileExtensions?: string[];
+  lsp?: { fileExtensions?: string[]; fileExtension?: string; icons?: unknown };
+  primitives?: { lineComment?: string; nestedComment?: unknown };
+};
+
+export function normalizeLanguages(languages: LanguageInputLike[]): NormalizedLanguage[] {
   return languages.map((lang) => {
     const rawName = lang.name || "dsl";
     const id = rawName.toLowerCase().replace(/[^a-z0-9_-]/g, "");
@@ -302,7 +311,10 @@ export function normalizeLanguages(languages: (LanguageOptions | any)[]): Normal
 
     // Extract comment delimiters
     const lineComment = lang.primitives?.lineComment || "//";
-    const blockComment = lang.primitives?.nestedComment || { open: "/*", close: "*/" };
+    const blockComment = (lang.primitives?.nestedComment as { open: string; close: string } | undefined) || {
+      open: "/*",
+      close: "*/",
+    };
 
     return {
       id,
@@ -314,7 +326,7 @@ export function normalizeLanguages(languages: (LanguageOptions | any)[]): Normal
       options: lang,
       lineComment,
       blockComment,
-      icon: lang.lsp?.icons,
+      icon: lang.lsp?.icons as NormalizedLanguage["icon"],
     };
   });
 }
@@ -322,7 +334,10 @@ export function normalizeLanguages(languages: (LanguageOptions | any)[]): Normal
 /**
  * Generates the package.json manifest for the unified VS Code extension.
  */
-export function generatePackageJson(languages: NormalizedLanguage[], options?: ExtensionOptions): Record<string, any> {
+export function generatePackageJson(
+  languages: NormalizedLanguage[],
+  options?: ExtensionOptions,
+): Record<string, unknown> {
   const isMultiLang = languages.length > 1;
   const primaryLang = languages[0] || { id: "modelscript", name: "ModelScript", displayName: "ModelScript" };
 
@@ -338,9 +353,9 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       ? "Complete multi-language modeling, diagramming, and simulation environment for VS Code."
       : `VS Code support for ${primaryLang.displayName} with syntax highlighting, diagnostics, and diagram editing.`);
 
-  const contributesLanguages: any[] = [];
-  const contributesGrammars: any[] = [];
-  const customEditors: any[] = [];
+  const contributesLanguages: Record<string, unknown>[] = [];
+  const contributesGrammars: Record<string, unknown>[] = [];
+  const customEditors: Record<string, unknown>[] = [];
   const activationEvents: string[] = [
     "onStartupFinished",
     "onUri",
@@ -359,7 +374,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       }
     }
 
-    const langEntry: any = {
+    const langEntry: Record<string, unknown> = {
       id: lang.id,
       aliases,
       extensions: lang.fileExtensions,
@@ -367,7 +382,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     };
 
     if (lang.icon) {
-      langEntry.icon = lang.icon;
+      langEntry["icon"] = lang.icon;
     }
 
     contributesLanguages.push(langEntry);
@@ -380,14 +395,14 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
 
     if (lang.id === "sysml2") {
       activationEvents.push("onLanguage:sysml");
-      const sysmlEntry: any = {
+      const sysmlEntry: Record<string, unknown> = {
         id: "sysml",
         aliases: ["SysML", "sysml"],
         extensions: [".sysml"],
         configuration: `./language-configuration-sysml.json`,
       };
       if (lang.icon) {
-        sysmlEntry.icon = lang.icon;
+        sysmlEntry["icon"] = lang.icon;
       }
       contributesLanguages.push(sysmlEntry);
       contributesGrammars.push({
@@ -653,7 +668,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   }
 
   // Collect commands, menus, language model tools, and keybindings from language actions
-  const commands: any[] = [
+  const commands: Record<string, unknown>[] = [
     {
       command: "modelscript.configureFeatures",
       title: "ModelScript: Configure Features & Release Channel...",
@@ -854,7 +869,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     },
   ];
 
-  const submenus: any[] = [
+  const submenus: Record<string, unknown>[] = [
     {
       id: "modelscript.editorTitle.moreActions",
       label: "ModelScript Actions",
@@ -878,7 +893,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   ];
 
   // Secondary actions are folded into the ModelScript Actions overflow menu by default (when editorTitleActions == 'compact')
-  const editorMoreActionsMenus: any[] = [
+  const editorMoreActionsMenus: Record<string, unknown>[] = [
     {
       command: "modelscript.openDroneReachabilityDemo",
       when: "(editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == sysml || resourceLangId == sysml) && modelscript.feature.demos",
@@ -901,7 +916,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     },
   ];
 
-  const editorTitleMenus: any[] = [
+  const editorTitleMenus: Record<string, unknown>[] = [
     {
       command: "modelscript.openDroneReachabilityDemo",
       when: "(editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == sysml || resourceLangId == sysml) && config.modelscript.ui.editorTitleActions == 'all' && modelscript.feature.demos",
@@ -924,7 +939,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     },
   ];
 
-  const editorContextMenus: any[] = [
+  const editorContextMenus: Record<string, unknown>[] = [
     {
       command: "modelscript.generateFeaMesh",
       when: "(resourceExtname == .step || resourceExtname == .stp || resourceExtname == .scad || editorLangId == scad || resourceLangId == scad) && modelscript.feature.caeWorkbench",
@@ -941,7 +956,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       group: "4_polyglot@3",
     },
   ];
-  const explorerContextMenus: any[] = [
+  const explorerContextMenus: Record<string, unknown>[] = [
     {
       command: "modelscript.generateFeaMesh",
       when: "(resourceExtname == .step || resourceExtname == .stp || resourceExtname == .scad) && modelscript.feature.caeWorkbench",
@@ -974,7 +989,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       },
     );
   }
-  const commandPaletteMenus: any[] = [
+  const commandPaletteMenus: Record<string, unknown>[] = [
     {
       command: "modelscript.openDroneReachabilityDemo",
       when: "modelscript.feature.demos",
@@ -1000,8 +1015,8 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       when: "modelscript.feature.coSimulation",
     },
   ];
-  const languageModelTools: any[] = [];
-  const keybindings: any[] = [];
+  const languageModelTools: Record<string, unknown>[] = [];
+  const keybindings: Record<string, unknown>[] = [];
   const hasKnownWorkspaceLang = languages.some((l) => l.id in DEFAULT_LANGUAGE_MATURITY);
 
   // Automatically contribute diagram open/source buttons to editor/title for supported diagram languages
@@ -1014,7 +1029,8 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       if (!isSupportedDiagramLang) continue;
       // Check if language explicitly defined its own custom diagram action (Method 2)
       const hasCustomDiagramAction = (lang.options.actions || []).some(
-        (a: any) => (a.id === "open_diagram" || a.id === "diagram" || a.id === "openDiagram") && a.ui?.editorTitle,
+        (a: LanguageAction) =>
+          (a.id === "open_diagram" || a.id === "diagram" || a.id === "openDiagram") && a.ui?.editorTitle,
       );
       if (!hasCustomDiagramAction) {
         diagramLangIds.add(lang.id);
@@ -1094,7 +1110,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
               : tool.category === "transformation"
                 ? "transform"
                 : "query") as ActionCategory,
-            inputs: tool.inputSchema as any,
+            inputs: tool.inputSchema as unknown as LanguageAction["inputs"],
             ui: {
               languageModelTool: {
                 name: tool.name.startsWith("modelscript_") ? tool.name : `modelscript_${cleanId}`,
@@ -1118,13 +1134,13 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       const commandId = `modelscript.${lang.id}.${action.id}`;
       const category = action.ui?.commandPalette?.category || lang.displayName;
 
-      const cmdEntry: any = {
+      const cmdEntry: Record<string, unknown> = {
         command: commandId,
         title: action.title,
         category,
       };
       if (action.ui?.editorTitle?.icon) {
-        cmdEntry.icon = action.ui.editorTitle.icon;
+        cmdEntry["icon"] = action.ui.editorTitle.icon;
       }
       commands.push(cmdEntry);
 
@@ -1201,7 +1217,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
       if (!registeredToolNames.has(toolName)) {
         registeredToolNames.add(toolName);
 
-        const properties: Record<string, any> = {};
+        const properties: Record<string, unknown> = {};
         const required: string[] = [];
         if (action.inputs) {
           for (const [propName, propDef] of Object.entries(action.inputs)) {
@@ -1463,7 +1479,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     category: "ModelScript",
   });
 
-  const contributes: Record<string, any> = {
+  const contributes: Record<string, unknown> = {
     languages: contributesLanguages,
     grammars: contributesGrammars,
     customEditors,
@@ -1682,7 +1698,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
   ];
 
   // Build per-language enable/disable settings with maturity badges
-  const languageToggleProperties: Record<string, any> = {
+  const languageToggleProperties: Record<string, unknown> = {
     "modelscript.languages.maturityTier": {
       type: "string",
       enum: ["stable", "beta", "experimental"],
@@ -2131,7 +2147,7 @@ export function generatePackageJson(languages: NormalizedLanguage[], options?: E
     },
   ];
 
-  const manifest: Record<string, any> = {
+  const manifest: Record<string, unknown> = {
     name,
     displayName,
     version,
@@ -2489,7 +2505,7 @@ const DEFAULT_VSCODEIGNORE = ["**/*.map", "**/*.ts", "tsconfig.json", "src/**", 
  * Returns a list of relative paths and string/binary contents.
  */
 export function bundleExtension(
-  languagesInput: (LanguageOptions | any)[] | LanguageOptions,
+  languagesInput: LanguageInputLike[] | LanguageInputLike,
   options?: ExtensionOptions,
 ): ExtensionGeneratedFile[] {
   const rawList = Array.isArray(languagesInput) ? languagesInput : [languagesInput];

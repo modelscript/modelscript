@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { iniSectionRules, language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerLandgemToDae } from "./dae/index.js";
 import { lintLandgem } from "./lints/index.js";
 import { parseLandgem } from "./parser/index.js";
 import { solveBiogas } from "./solver/index.js";
+import { landgemPolyglotConfig } from "./tgg/index.js";
 
 export const landgemLanguage = language({
+  polyglot: landgemPolyglotConfig,
   name: "landgem",
   fileExtensions: [".landgem", ".lfg", ".biogas"],
   maturity: "experimental",
@@ -113,4 +115,8 @@ export const landgemLanguage = language({
       },
     },
   ],
+  extras: ($) => [/[ \t\r\n]+/, $["IniComment"]!],
+  rules: iniSectionRules,
 });
+
+export default landgemLanguage;

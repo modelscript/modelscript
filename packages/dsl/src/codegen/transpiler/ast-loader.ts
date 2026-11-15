@@ -26,12 +26,10 @@ export interface ExtractedLanguageAST {
  * @returns Extracted AST mapping container or null if extraction fails
  */
 export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageAST | null {
-  const fs = (typeof process !== "undefined" ? (process as any).getBuiltinModule?.("node:fs") : undefined) as
-    | typeof fsType
-    | undefined;
-  const path = (typeof process !== "undefined" ? (process as any).getBuiltinModule?.("node:path") : undefined) as
-    | typeof pathType
-    | undefined;
+  const proc =
+    typeof process !== "undefined" ? (process as unknown as { getBuiltinModule?: (id: string) => unknown }) : undefined;
+  const fs = proc?.getBuiltinModule?.("node:fs") as typeof fsType | undefined;
+  const path = proc?.getBuiltinModule?.("node:path") as typeof pathType | undefined;
   let sourceText = "";
   let filePath = "language.ts";
 

@@ -15,8 +15,10 @@ import { lintOscalDocument } from "./lints/rules.js";
 import { parseOscal, serializeOscal } from "./parser/index.js";
 import { oscalToReqif, oscalToSysML2 } from "./projections/index.js";
 import { resolveOscalProfile } from "./resolver/index.js";
+import { oscalPolyglotConfig } from "./tgg/index.js";
 
 export const oscalLanguage = language({
+  polyglot: oscalPolyglotConfig,
   name: "oscal",
   fileExtensions: [
     ".oscal",

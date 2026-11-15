@@ -379,7 +379,7 @@ export const PSSE_MODEL_DEFAULTS: Record<string, Record<string, number>> = {
   },
 };
 
-function buildPortPlacement(direction: "input" | "output", y: number): Record<string, any> {
+function buildPortPlacement(direction: "input" | "output", y: number): Record<string, unknown> {
   const ext =
     direction === "input"
       ? [
@@ -409,7 +409,7 @@ function buildPortPlacement(direction: "input" | "output", y: number): Record<st
   };
 }
 
-function buildConnectorIconAnnotation(direction: "input" | "output"): Record<string, any> {
+function buildConnectorIconAnnotation(direction: "input" | "output"): Record<string, unknown> {
   const fill = direction === "input" ? [37, 99, 235] : [255, 255, 255];
   return {
     "@type": "Icon",
@@ -442,7 +442,7 @@ function buildConnectorIconAnnotation(direction: "input" | "output"): Record<str
 function buildModelIconSvgAndAnnotation(
   modelName: string,
   category: PsseDyrCategory,
-): { iconSvg: string; iconAnnotation: Record<string, any> } {
+): { iconSvg: string; iconAnnotation: Record<string, unknown> } {
   const upper = modelName.toUpperCase();
   const isConverter = upper.startsWith("REGC");
 

@@ -14,8 +14,10 @@ import { canIndexEnergyPlus, indexEnergyPlusDocument } from "./indexing.js";
 import { lintEnergyPlus } from "./lints/rules.js";
 import { parseEnergyPlus } from "./parser/index.js";
 import { energyPlusToModelica } from "./projections/energyplus-to-modelica.js";
+import { energyplusPolyglotConfig } from "./tgg/index.js";
 
 export const energyplusLanguage = language({
+  polyglot: energyplusPolyglotConfig,
   name: "energyplus",
   fileExtensions: [".idf", ".epjson"],
   maturity: "experimental",

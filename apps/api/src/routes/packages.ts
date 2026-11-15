@@ -2470,7 +2470,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
           dependsOn: rootDependsOn,
         });
 
-        const allAdvisories: Array<{ advisory: any; purl: string }> = [];
+        const allAdvisories: Array<{ advisory: (typeof rootOsvScan.vulnerabilities)[number]; purl: string }> = [];
         for (const adv of rootOsvScan.vulnerabilities) {
           allAdvisories.push({ advisory: adv, purl: rootPurl });
         }

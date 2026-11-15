@@ -14,10 +14,10 @@ export interface CompiledLanguageBundle {
   name: string;
   extensions: string[];
   wasmBytes: Uint8Array;
-  monarch: any;
-  textmate: any;
+  monarch: unknown;
+  textmate: unknown;
   jsWrapper: string;
-  parserInfo: any;
+  parserInfo: unknown;
   languageDef?: LanguageOptions | undefined;
 }
 
@@ -32,7 +32,10 @@ export async function compileDslToWasm(
   const id = langDef.name.toLowerCase();
 
   let extensions: string[] = [];
-  const anyLang = langDef as any;
+  const anyLang = langDef as LanguageOptions & {
+    lsp?: { fileExtensions?: string[] };
+    fileExtensions?: string[];
+  };
   if (anyLang.lsp?.fileExtensions && Array.isArray(anyLang.lsp.fileExtensions)) {
     extensions = anyLang.lsp.fileExtensions.map((e: string) => (e.startsWith(".") ? e : `.${e}`));
   } else if (anyLang.fileExtensions && Array.isArray(anyLang.fileExtensions)) {
@@ -55,17 +58,21 @@ export async function compileDslToWasm(
   // Extract Monarch and TextMate
   const monarchFile = buildResult.assemblyScriptFiles.find((f) => f.filename === "monarch.json");
   const tmFile = buildResult.assemblyScriptFiles.find((f) => f.filename === "tmLanguage.json");
-  const monarch = monarchFile ? JSON.parse(monarchFile.content) : null;
-  const textmate = tmFile ? JSON.parse(tmFile.content) : null;
+  const monarch: unknown = monarchFile ? JSON.parse(monarchFile.content) : null;
+  const textmate: unknown = tmFile ? JSON.parse(tmFile.content) : null;
 
   // 3. Compile AssemblyScript to WASM in-memory (opaque import so browser bundlers do not inline asc/binaryen)
-  let ascModule: any = null;
+  interface AscModuleLike {
+    default?: AscModuleLike;
+    main: (args: string[], options: Record<string, unknown>) => Promise<{ error?: Error | null }>;
+  }
+  let ascModule: AscModuleLike | null = null;
   const ascMainPkg = ["assemblyscript", "asc"].join("/");
   const ascDistPkg = ["assemblyscript", "dist", "asc.js"].join("/");
   try {
-    ascModule = await import(/* @vite-ignore */ ascMainPkg);
+    ascModule = (await import(/* @vite-ignore */ ascMainPkg)) as AscModuleLike;
   } catch {
-    ascModule = await import(/* @vite-ignore */ ascDistPkg);
+    ascModule = (await import(/* @vite-ignore */ ascDistPkg)) as AscModuleLike;
   }
   const asc = ascModule?.default ?? ascModule;
 

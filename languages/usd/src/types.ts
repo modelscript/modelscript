@@ -17,12 +17,14 @@ export interface SourceRange {
 
 export type UsdSpecifier = "def" | "over" | "class";
 
+export type UsdValue = string | number | boolean | null | undefined | UsdValue[] | { [key: string]: UsdValue };
+
 export interface UsdAttribute {
   name: string;
   type: string;
-  value: any;
-  timeSamples?: Map<number, any> | undefined;
-  metadata?: Record<string, any> | undefined;
+  value: UsdValue;
+  timeSamples?: Map<number, UsdValue> | undefined;
+  metadata?: Record<string, UsdValue> | undefined;
   range?: SourceRange | undefined;
 }
 
@@ -54,7 +56,7 @@ export interface UsdStageMetadata {
   startTimeCode?: number | undefined;
   endTimeCode?: number | undefined;
   subLayers?: string[] | undefined;
-  customLayerData?: Record<string, any> | undefined;
+  customLayerData?: Record<string, UsdValue> | undefined;
 }
 
 export interface UsdStage {

@@ -416,7 +416,20 @@ export function ensurePatchedSegmentsTool(x6Instance?: unknown): void {
     SegmentsClass.prototype.onHandleChanging = function (args: { handle: unknown; e: unknown }) {
       origOnHandleChanging.call(this, args);
 
-      const cell = (this as any).cellView?.cell;
+      const cell = (
+        this as unknown as {
+          cellView?: {
+            cell?: {
+              getSource?: () => { port?: string } | null;
+              source?: { port?: string } | null;
+              getTarget?: () => { port?: string } | null;
+              target?: { port?: string } | null;
+              prop?: (path: string[]) => unknown;
+              removeProp?: (path: string[]) => void;
+            };
+          };
+        }
+      ).cellView?.cell;
       if (cell) {
         const rawSrc = typeof cell.getSource === "function" ? cell.getSource() : cell.source;
         const rawTgt = typeof cell.getTarget === "function" ? cell.getTarget() : cell.target;
@@ -441,8 +454,22 @@ export function ensurePatchedSegmentsTool(x6Instance?: unknown): void {
     SegmentsClass.prototype.onHandleChanged = function (args: { e: unknown }) {
       origOnHandleChanged.call(this, args);
 
-      const edge = (this as any).cellView?.cell;
-      const edgeView = (this as any).cellView;
+      const edgeView = (
+        this as unknown as {
+          cellView?: {
+            cell?: Parameters<typeof extractEdgePruneOptions>[1] & {
+              getSourcePoint?: () => PointLike | null;
+              getTargetPoint?: () => PointLike | null;
+              getVertices?: () => PointLike[] | null;
+              setVertices?: (verts: PointLike[], opts?: { ignoreSnap?: boolean; ui?: boolean }) => void;
+            };
+            sourceAnchor?: PointLike | null;
+            targetAnchor?: PointLike | null;
+            graph?: Parameters<typeof extractEdgePruneOptions>[0];
+          };
+        }
+      ).cellView;
+      const edge = edgeView?.cell;
       if (edge && edgeView) {
         const srcPt = typeof edge.getSourcePoint === "function" ? edge.getSourcePoint() : edgeView.sourceAnchor;
         const tgtPt = typeof edge.getTargetPoint === "function" ? edge.getTargetPoint() : edgeView.targetAnchor;
@@ -460,6 +487,24 @@ export function ensurePatchedSegmentsTool(x6Instance?: unknown): void {
   SegmentsClass.__modelscript_patched = true;
 }
 
+interface ResizeMarkupNode {
+  tagName?: string;
+  attrs?: { width?: number; height?: number; transform?: string; [key: string]: unknown };
+  children?: ResizeMarkupNode[];
+}
+
+interface ResizeNodeLike {
+  isNode?: () => boolean;
+  getMarkup?: () => {
+    attrs?: { width?: number; height?: number; [key: string]: unknown };
+    children?: ResizeMarkupNode[];
+  } | null;
+}
+
+interface ResizeGraphLike {
+  findViewByCell?: (cell: ResizeNodeLike) => { container?: HTMLElement | SVGElement | null } | null;
+}
+
 /**
  * Scales and updates a node's visual SVG elements, viewBox boundaries, background/hitbox rects,
  * and connection ports in real-time when the node is resized by the user or layout engine.
@@ -473,8 +518,14 @@ export function updateNodeVisualOnResize(
   prevHeight?: number,
 ): void {
   if (!node || !graph || newWidth <= 0 || newHeight <= 0) return;
-  const anyNode = node as any;
-  const anyGraph = graph as any;
+  const anyNode = node as ResizeNodeLike & {
+    getSize?: () => { width?: number; height?: number } | null;
+    getPorts?: () => Array<{ id?: string; args?: { x?: number | string; y?: number | string } }>;
+    setPortProp?: (portId: string, prop: string, val: unknown) => void;
+    getData?: () => Record<string, unknown> | null;
+    setData?: (data: Record<string, unknown>, opts?: Record<string, unknown>) => void;
+  };
+  const anyGraph = graph as ResizeGraphLike;
 
   if (typeof anyNode.isNode === "function" && !anyNode.isNode()) return;
 
@@ -494,7 +545,7 @@ export function updateNodeVisualOnResize(
   const ports = typeof anyNode.getPorts === "function" ? anyNode.getPorts() : [];
   if (Array.isArray(ports) && ports.length > 0) {
     const data = typeof anyNode.getData === "function" ? anyNode.getData() || {} : {};
-    let portRatios = data.__portRatios as Record<string, { rx: number; ry: number }> | undefined;
+    let portRatios = data["__portRatios"] as Record<string, { rx: number; ry: number }> | undefined;
 
     if (!portRatios) {
       portRatios = {};
@@ -511,13 +562,13 @@ export function updateNodeVisualOnResize(
       }
       if (baseW <= 0) {
         baseW =
-          (typeof data.origWidth === "number" ? data.origWidth : 0) ||
+          (typeof data["origWidth"] === "number" ? data["origWidth"] : 0) ||
           (typeof anyNode.getSize === "function" ? anyNode.getSize()?.width : 0) ||
           newWidth;
       }
       if (baseH <= 0) {
         baseH =
-          (typeof data.origHeight === "number" ? data.origHeight : 0) ||
+          (typeof data["origHeight"] === "number" ? data["origHeight"] : 0) ||
           (typeof anyNode.getSize === "function" ? anyNode.getSize()?.height : 0) ||
           newHeight;
       }
@@ -590,15 +641,15 @@ export function updateNodeVisualOnResize(
 
   // Keep stored markup attributes in sync if markup is attached
   const curMarkup = typeof anyNode.getMarkup === "function" ? anyNode.getMarkup() : null;
-  if (curMarkup && typeof curMarkup === "object" && (curMarkup as any).attrs) {
-    const m = curMarkup as any;
-    m.attrs.width = newWidth;
-    m.attrs.height = newHeight;
-    const updateMarkupSubtree = (item: any) => {
+  if (curMarkup && typeof curMarkup === "object" && curMarkup.attrs) {
+    const m = curMarkup;
+    m.attrs!["width"] = newWidth;
+    m.attrs!["height"] = newHeight;
+    const updateMarkupSubtree = (item: ResizeMarkupNode) => {
       if (!item) return;
       if (item.tagName === "rect" && item.attrs) {
-        item.attrs.width = newWidth;
-        item.attrs.height = newHeight;
+        item.attrs["width"] = newWidth;
+        item.attrs["height"] = newHeight;
       } else if (item.tagName === "g") {
         if (item.attrs?.transform) {
           const scaleMatch = String(item.attrs.transform).match(/scale\s*\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)/);
@@ -648,12 +699,36 @@ export function ensurePatchedTransformTool(x6Instance?: unknown): void {
   const TransformClass = anyX6.Transform;
   if (!TransformClass || TransformClass.__modelscript_patched) return;
 
-  const patchProto = (proto: any) => {
+  interface TransformInstanceThis {
+    node?: {
+      getBBox?: () => { width: number; height: number } | null;
+      getSize?: () => { width: number; height: number } | null;
+      resize?: (width: number, height: number, opts?: Record<string, unknown>) => void;
+    };
+    options?: {
+      preserveAspectRatio?: boolean;
+      __basePreserveAspectRatio?: boolean;
+      rotateGrid?: number;
+      __baseRotateGrid?: number;
+    };
+    getEventData?: (evt: unknown) => { action?: string } | null;
+    __initialBBox?: { width: number; height: number };
+    __initialAspectRatio?: number;
+  }
+
+  interface TransformProtoLike {
+    __modelscript_patched?: boolean;
+    startResizing?: (this: TransformInstanceThis, evt: unknown) => unknown;
+    onMouseMove?: (this: TransformInstanceThis, evt: unknown) => unknown;
+    resizeNode?: (...args: unknown[]) => unknown;
+  }
+
+  const patchProto = (proto: TransformProtoLike | null | undefined) => {
     if (!proto || proto.__modelscript_patched) return;
 
     const origStartResizing = proto.startResizing;
     if (typeof origStartResizing === "function") {
-      proto.startResizing = function (evt: unknown) {
+      proto.startResizing = function (this: TransformInstanceThis, evt: unknown) {
         const bbox = typeof this.node?.getBBox === "function" ? this.node.getBBox() : null;
         if (bbox && bbox.width > 0 && bbox.height > 0) {
           this.__initialBBox = { width: bbox.width, height: bbox.height };
@@ -665,7 +740,7 @@ export function ensurePatchedTransformTool(x6Instance?: unknown): void {
 
     const origOnMouseMove = proto.onMouseMove;
     if (typeof origOnMouseMove === "function") {
-      proto.onMouseMove = function (evt: unknown) {
+      proto.onMouseMove = function (this: TransformInstanceThis, evt: unknown) {
         const data = typeof this.getEventData === "function" ? this.getEventData(evt) : null;
         const e = evt as MouseEvent | null;
 

@@ -9,7 +9,7 @@ export interface IndexerHook {
   metadataFieldPaths?: Record<string, string> | undefined;
 }
 
-export type QueryHooks = Record<string, any>;
+export type QueryHooks = Record<string, unknown>;
 
 export interface SelfAccessor {
   readonly [key: string]: SelfAccessor;
@@ -22,13 +22,13 @@ export function createSelfProxy(path: string = ""): SelfAccessor {
     get(_, prop) {
       if (prop === SCOPE_PATH) return path;
       const newPath = path ? `${path}.${String(prop)}` : String(prop);
-      return createSelfProxy(newPath) as any;
+      return createSelfProxy(newPath);
     },
   });
 }
 
 export function extractScopePath(accessor: SelfAccessor): string {
-  return (accessor as any)[SCOPE_PATH] as string;
+  return (accessor as unknown as Record<symbol, string>)[SCOPE_PATH] ?? "";
 }
 
 export interface QueryHookInfo {
@@ -44,7 +44,58 @@ export interface RefHookInfo {
   resolve: "lexical" | "qualified";
 }
 
-function createSymbolProxy(): Record<string, any> {
+interface HookRuleAstLike {
+  type?: string;
+  options?: {
+    symbol?: (self: SelfAccessor) => {
+      kind?: string;
+      name?: SelfAccessor;
+      exports?: SelfAccessor[];
+      inherits?: SelfAccessor[];
+      attributes?: Record<string, SelfAccessor>;
+    };
+    name?: (self: SelfAccessor) => SelfAccessor | string;
+    queries?: Record<string, unknown>;
+    lints?: Record<string, unknown>;
+    i18n?: unknown;
+    graphics?: unknown;
+    visual?: unknown;
+  };
+  value?: HookRuleAstLike["options"];
+  children?: unknown[];
+  args?: unknown[];
+  arg?: unknown;
+  rule?: unknown;
+}
+
+interface HookLangConfig {
+  symbols?:
+    | Record<
+        string,
+        | {
+            kind?: string | undefined;
+            name?: string | undefined;
+            exports?: string | string[] | undefined;
+            inherits?: string | string[] | undefined;
+            attributes?: Record<string, string> | undefined;
+          }
+        | undefined
+      >
+    | undefined;
+  rules?:
+    | Record<string, { bivarianceHack(d: Record<string, unknown>): unknown }["bivarianceHack"] | undefined>
+    | undefined;
+  graphics?: Record<string, unknown> | undefined;
+  visual?:
+    | {
+        entities?: Record<string, unknown> | undefined;
+        connections?: Record<string, unknown> | undefined;
+      }
+    | undefined;
+  indexing?: import("../dsl/language.js").LanguageIndexingConfig | undefined;
+}
+
+function createSymbolProxy(): Record<string, unknown> {
   return new Proxy(
     {},
     {
@@ -59,12 +110,13 @@ function createSymbolProxy(): Record<string, any> {
  * Walks the evaluated language config and extracts IndexerHook[]
  * from all rules wrapped in `def()` and from `symbols` config.
  */
-export function extractIndexerHooks(langConfig: any, $?: Record<string, any>): IndexerHook[] {
+export function extractIndexerHooks(langConfig: HookLangConfig, $?: Record<string, unknown>): IndexerHook[] {
   const hooks: IndexerHook[] = [];
   const proxy = $ ?? createSymbolProxy();
 
   if (langConfig.symbols && typeof langConfig.symbols === "object") {
-    for (const [ruleName, symConfig] of Object.entries<any>(langConfig.symbols)) {
+    for (const [ruleName, symConfig] of Object.entries(langConfig.symbols)) {
+      if (!symConfig) continue;
       hooks.push({
         ruleName,
         kind: symConfig.kind || "Class",
@@ -86,7 +138,7 @@ export function extractIndexerHooks(langConfig: any, $?: Record<string, any>): I
 
   if (!langConfig.rules) return hooks;
 
-  for (const [ruleName, ruleFn] of Object.entries<any>(langConfig.rules)) {
+  for (const [ruleName, ruleFn] of Object.entries(langConfig.rules)) {
     if (typeof ruleFn !== "function") continue;
     const ruleAST = ruleFn(proxy);
     collectIndexerHooks(ruleAST, ruleName, hooks);
@@ -95,13 +147,13 @@ export function extractIndexerHooks(langConfig: any, $?: Record<string, any>): I
   return hooks;
 }
 
-function collectIndexerHooks(node: any, ruleName: string, hooks: IndexerHook[]): void {
+function collectIndexerHooks(node: unknown, ruleName: string, hooks: IndexerHook[]): void {
   if (!node || typeof node !== "object") return;
-
-  const t = (node.type || "").toUpperCase();
+  const ast = node as HookRuleAstLike;
+  const t = (ast.type || "").toUpperCase();
 
   if (t === "DEF") {
-    const options = node.options || node.value;
+    const options = ast.options || ast.value;
     if (options) {
       let kind = "Unknown";
       let namePath = "name";
@@ -124,7 +176,7 @@ function collectIndexerHooks(node: any, ruleName: string, hooks: IndexerHook[]):
         }
         if (symConfig.attributes) {
           for (const [key, accessor] of Object.entries(symConfig.attributes)) {
-            metadataFieldPaths[key] = extractScopePath(accessor as any);
+            metadataFieldPaths[key] = extractScopePath(accessor);
           }
         }
       }
@@ -139,20 +191,20 @@ function collectIndexerHooks(node: any, ruleName: string, hooks: IndexerHook[]):
       });
     }
   } else if (t === "REF") {
-    const opts = node.options || node.value || {};
+    const opts = ast.options || ast.value || {};
     let namePath = "name";
     if (opts.name) {
       const self = createSelfProxy();
       const accessor = opts.name(self);
       if (typeof accessor === "string" && accessor === "$self") {
         namePath = "$self";
-      } else {
+      } else if (typeof accessor !== "string") {
         namePath = extractScopePath(accessor);
       }
     }
     hooks.push({
       ruleName,
-      kind: "Reference" as any,
+      kind: "Reference",
       namePath,
       exportPaths: [],
       inheritPaths: [],
@@ -160,7 +212,7 @@ function collectIndexerHooks(node: any, ruleName: string, hooks: IndexerHook[]):
     });
   }
 
-  const children = node.children || node.args || (node.arg ? [node.arg] : []) || (node.rule ? [node.rule] : []);
+  const children = ast.children || ast.args || (ast.arg ? [ast.arg] : []) || (ast.rule ? [ast.rule] : []);
   if (Array.isArray(children)) {
     for (const child of children) {
       collectIndexerHooks(child, ruleName, hooks);
@@ -172,15 +224,15 @@ function collectIndexerHooks(node: any, ruleName: string, hooks: IndexerHook[]):
  * Walks the evaluated language config and extracts QueryHookInfo[]
  * for rules with queries or lints in their `def()` options.
  */
-export function extractQueryHooks(langConfig: any, $?: Record<string, any>): QueryHookInfo[] {
+export function extractQueryHooks(langConfig: HookLangConfig, $?: Record<string, unknown>): QueryHookInfo[] {
   const hooks: QueryHookInfo[] = [];
   const proxy = $ ?? createSymbolProxy();
 
   if (!langConfig.rules) return hooks;
 
-  for (const [ruleName, ruleFn] of Object.entries<any>(langConfig.rules)) {
+  for (const [ruleName, ruleFn] of Object.entries(langConfig.rules)) {
     if (typeof ruleFn !== "function") continue;
-    const ruleAST = ruleFn(proxy);
+    const ruleAST = ruleFn(proxy) as HookRuleAstLike | null | undefined;
 
     if (!ruleAST) continue;
     const t = (ruleAST.type || "").toUpperCase();
@@ -202,25 +254,25 @@ export function extractQueryHooks(langConfig: any, $?: Record<string, any>): Que
  * Directly extracts a Map<string, QueryHooks> from the language definition
  * by merging query functions and lint__<name> functions.
  */
-export function extractQueryHooksMap(langConfig: any, $?: Record<string, any>): Map<string, QueryHooks> {
+export function extractQueryHooksMap(langConfig: HookLangConfig, $?: Record<string, unknown>): Map<string, QueryHooks> {
   const hooks = new Map<string, QueryHooks>();
   if (!langConfig?.rules) return hooks;
 
   const proxy = $ ?? createSymbolProxy();
 
-  for (const [ruleName, ruleFn] of Object.entries<any>(langConfig.rules)) {
+  for (const [ruleName, ruleFn] of Object.entries(langConfig.rules)) {
     if (typeof ruleFn !== "function") continue;
-    const ruleAST = ruleFn(proxy);
+    const ruleAST = ruleFn(proxy) as HookRuleAstLike | null | undefined;
     if (!ruleAST) continue;
     const t = (ruleAST.type || "").toUpperCase();
     if (t !== "DEF") continue;
     const options = ruleAST.options || ruleAST.value;
     if (!options) continue;
 
-    const merged: Record<string, any> = {};
+    const merged: Record<string, unknown> = {};
     if (options.queries) Object.assign(merged, options.queries);
     if (options.lints) {
-      for (const [lintName, fn] of Object.entries<any>(options.lints)) {
+      for (const [lintName, fn] of Object.entries(options.lints)) {
         merged["lint__" + lintName] = fn;
       }
     }
@@ -235,13 +287,13 @@ export function extractQueryHooksMap(langConfig: any, $?: Record<string, any>): 
 /**
  * Walks the evaluated language configuration to identify reference sites.
  */
-export function extractRefHooks(langConfig: any, $?: Record<string, any>): RefHookInfo[] {
+export function extractRefHooks(langConfig: HookLangConfig, $?: Record<string, unknown>): RefHookInfo[] {
   const hooks: RefHookInfo[] = [];
   const proxy = $ ?? createSymbolProxy();
 
   if (!langConfig.rules) return hooks;
 
-  for (const [ruleName, ruleFn] of Object.entries<any>(langConfig.rules)) {
+  for (const [ruleName, ruleFn] of Object.entries(langConfig.rules)) {
     if (typeof ruleFn !== "function") continue;
     const ruleAST = ruleFn(proxy);
     if (!ruleAST) continue;
@@ -252,20 +304,24 @@ export function extractRefHooks(langConfig: any, $?: Record<string, any>): RefHo
   return hooks;
 }
 
-function collectRefNodes(node: any, ruleName: string, hooks: RefHookInfo[]): void {
+function collectRefNodes(node: unknown, ruleName: string, hooks: RefHookInfo[]): void {
   if (!node || typeof node !== "object") return;
-
-  const t = (node.type || "").toUpperCase();
+  const ast = node as HookRuleAstLike;
+  const t = (ast.type || "").toUpperCase();
 
   if (t === "REF") {
-    const opts = node.options || node.value || {};
+    const opts = (ast.options || ast.value || {}) as {
+      name?: (self: SelfAccessor) => SelfAccessor | string;
+      targetKinds?: string[];
+      resolve?: "lexical" | "qualified";
+    };
     let namePath = "name";
     if (opts.name) {
       const self = createSelfProxy();
       const accessor = opts.name(self);
       if (typeof accessor === "string" && accessor === "$self") {
         namePath = "$self";
-      } else {
+      } else if (typeof accessor !== "string") {
         namePath = extractScopePath(accessor);
       }
     }
@@ -278,7 +334,14 @@ function collectRefNodes(node: any, ruleName: string, hooks: RefHookInfo[]): voi
   }
 
   if (t === "DEF") {
-    const options = node.options || node.value;
+    const options = (ast.options || ast.value) as
+      | {
+          symbol?: (self: SelfAccessor) => {
+            name?: SelfAccessor;
+            ref?: { targetKinds?: string[]; resolve?: "lexical" | "qualified" };
+          };
+        }
+      | undefined;
     if (options && typeof options.symbol === "function") {
       const self = createSelfProxy();
       const symConfig = options.symbol(self);
@@ -297,7 +360,7 @@ function collectRefNodes(node: any, ruleName: string, hooks: RefHookInfo[]): voi
     }
   }
 
-  const children = node.children || node.args || (node.arg ? [node.arg] : []) || (node.rule ? [node.rule] : []);
+  const children = ast.children || ast.args || (ast.arg ? [ast.arg] : []) || (ast.rule ? [ast.rule] : []);
   if (Array.isArray(children)) {
     for (const child of children) {
       collectRefNodes(child, ruleName, hooks);
@@ -308,15 +371,15 @@ function collectRefNodes(node: any, ruleName: string, hooks: RefHookInfo[]): voi
 /**
  * Extracts I18nConfig mappings from language definition.
  */
-export function extractI18nConfig(langConfig: any, $?: Record<string, any>): Record<string, any> {
-  const configs: Record<string, any> = {};
+export function extractI18nConfig(langConfig: HookLangConfig, $?: Record<string, unknown>): Record<string, unknown> {
+  const configs: Record<string, unknown> = {};
   if (!langConfig?.rules) return configs;
 
   const proxy = $ ?? createSymbolProxy();
 
-  for (const [ruleName, ruleFn] of Object.entries<any>(langConfig.rules)) {
+  for (const [ruleName, ruleFn] of Object.entries(langConfig.rules)) {
     if (typeof ruleFn !== "function") continue;
-    const ruleAST = ruleFn(proxy);
+    const ruleAST = ruleFn(proxy) as HookRuleAstLike | null | undefined;
     if (!ruleAST) continue;
     const t = (ruleAST.type || "").toUpperCase();
     if (t !== "DEF") continue;
@@ -332,8 +395,11 @@ export function extractI18nConfig(langConfig: any, $?: Record<string, any>): Rec
 /**
  * Extracts GraphicsConfig mappings from language definition.
  */
-export function extractGraphicsConfig(langConfig: any, $?: Record<string, any>): Record<string, any> {
-  const configs: Record<string, any> = {};
+export function extractGraphicsConfig(
+  langConfig: HookLangConfig,
+  $?: Record<string, unknown>,
+): Record<string, unknown> {
+  const configs: Record<string, unknown> = {};
   if (!langConfig) return configs;
 
   // 1. Check top-level langConfig.graphics or langConfig.visual
@@ -351,17 +417,17 @@ export function extractGraphicsConfig(langConfig: any, $?: Record<string, any>):
 
   const proxy = $ ?? createSymbolProxy();
 
-  for (const [ruleName, ruleFn] of Object.entries<any>(langConfig.rules)) {
+  for (const [ruleName, ruleFn] of Object.entries(langConfig.rules)) {
     if (typeof ruleFn !== "function") continue;
     try {
-      const ruleAST = ruleFn(proxy);
+      const ruleAST = ruleFn(proxy) as HookRuleAstLike | null | undefined;
       if (!ruleAST) continue;
       const t = (ruleAST.type || "").toUpperCase();
       if (t !== "DEF") continue;
       const options = ruleAST.options || ruleAST.value;
       const gfx = options?.graphics ?? options?.visual;
       if (gfx) {
-        configs[ruleName] = typeof gfx === "function" ? gfx() : gfx;
+        configs[ruleName] = typeof gfx === "function" ? (gfx as () => unknown)() : gfx;
       }
     } catch {
       // ignore rules that throw on proxy evaluation
@@ -375,7 +441,7 @@ export function extractGraphicsConfig(langConfig: any, $?: Record<string, any>):
  * Extracts declarative `LanguageIndexingConfig` from a language definition, if defined.
  */
 export function extractIndexingConfig(
-  langConfig: any,
+  langConfig: HookLangConfig,
 ): import("../dsl/language.js").LanguageIndexingConfig | undefined {
   if (!langConfig || typeof langConfig !== "object") return undefined;
   return langConfig.indexing;

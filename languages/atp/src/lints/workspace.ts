@@ -1,14 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createWasmParserSync } from "@modelscript/atp/wasm-parser";
 import {
   collectWorkspaceDocuments,
   findIncludeCycle,
+  groupCstLeavesByLine,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import { parseAtp } from "../parser/atp-parser.js";
 import { lintAtpCase } from "./index.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getAtpWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/atp/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Performs multi-file ATP/EMTP workspace linting by resolving `$INCLUDE`
@@ -24,18 +37,30 @@ export function lintAtpWorkspace(workspace: WorkspaceDocumentInput, rootUri?: st
   const edges = new Map<string, string[]>();
   const expandedLines: string[] = [];
   const visited = new Set<string>();
+  const parser = getAtpWasmParser();
 
   function expand(uri: string): void {
     if (visited.has(uri)) return;
     visited.add(uri);
     const text = docs.get(uri) ?? "";
+    const rawLines = text.split(/\r?\n/);
     const outEdges: string[] = [];
     edges.set(uri, outEdges);
 
-    for (const line of text.split(/\r?\n/)) {
-      const m = line.match(/^\s*\$INCLUDE\b[,\s]*(?:"([^"]+)"|'([^']+)'|([^\s,]+))/i);
-      if (m) {
-        const targetRaw = m[1] ?? m[2] ?? m[3] ?? "";
+    const includeRows = new Map<number, string>();
+    const tree = parser.parse(text);
+    for (const { row, tokens } of groupCstLeavesByLine(tree?.rootNode)) {
+      if (tokens[0]?.text.toUpperCase() === "$INCLUDE") {
+        const targetTok = tokens.slice(1).find((t) => t.type !== "DeckPunct" && t.text !== ",");
+        if (targetTok) {
+          includeRows.set(row, targetTok.text.replace(/^["']|["']$/g, "").trim());
+        }
+      }
+    }
+
+    for (let row = 0; row < rawLines.length; row++) {
+      const targetRaw = includeRows.get(row);
+      if (targetRaw !== undefined) {
         const resolved = resolveRelativeUri(uri, targetRaw, docs);
         if (!resolved) {
           diagnostics.push({
@@ -50,7 +75,7 @@ export function lintAtpWorkspace(workspace: WorkspaceDocumentInput, rootUri?: st
           expand(resolved);
         }
       } else {
-        expandedLines.push(line);
+        expandedLines.push(rawLines[row] ?? "");
       }
     }
   }

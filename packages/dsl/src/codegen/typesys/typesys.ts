@@ -22,14 +22,20 @@ export function generateTypeSystem(grammar: GrammarOptions, customCode: string):
       if (typeof pred === "string") {
         subtypingLogic += `  if (factExists(${getDJB2Hash(pred)}, sourceId, targetId)) return true;\n`;
       } else if (typeof pred === "function" || typeof pred === "object") {
-        const anyPred = pred as any;
+        const anyPred = pred as unknown as {
+          predicate?: string;
+          isSubtypeHelper?: boolean;
+          args?: unknown[];
+        } | null;
         if (anyPred && (anyPred.predicate === "subtype" || anyPred.isSubtypeHelper)) {
-          const formatTypeVal = (val: any): string => {
+          const formatTypeVal = (val: unknown): string => {
             if (val === undefined || val === null) return "0";
+            let resolved = val;
             if (typeof val === "object") {
-              val = val.value || val.name || val.id || JSON.stringify(val);
+              const obj = val as { value?: unknown; name?: unknown; id?: unknown };
+              resolved = obj.value || obj.name || obj.id || JSON.stringify(val);
             }
-            const sVal = String(val);
+            const sVal = String(resolved);
             if (/^\d+$/.test(sVal)) return sVal;
             if (sVal.startsWith("VarType.") || sVal.startsWith("SyntaxType.") || sVal.startsWith("<")) return sVal;
             if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(sVal)) {

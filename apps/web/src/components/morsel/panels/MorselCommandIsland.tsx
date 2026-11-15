@@ -12,7 +12,7 @@ export interface MorselCommandIslandProps {
   onRotateSelected?: () => void;
   onAutoLayout?: () => void;
   colorMode: "dark" | "light";
-  translations?: any;
+  translations?: Record<string, string>;
   supportsDiagram?: boolean;
 }
 

@@ -4,6 +4,9 @@
  * Parser for USACE HEC-HMS basin and project files (.basin, .hms).
  */
 
+import { createWasmParserSync } from "@modelscript/hec-hms/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import type {
   HmsBasinModel,
   HmsJunction,
@@ -14,10 +17,22 @@ import type {
   HmsUnitSystem,
 } from "../types.js";
 
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getHecHmsWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/hec-hms/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 /**
  * Parses a HEC-HMS .basin model file.
  */
 export function parseHmsBasin(content: string): HmsBasinModel {
+  const cstTree = getHecHmsWasmParser().parse(content);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   let basinName = "BasinModel";
   let unitSystem: HmsUnitSystem = "Metric";
 
@@ -27,8 +42,8 @@ export function parseHmsBasin(content: string): HmsBasinModel {
   const reservoirs = new Map<string, HmsReservoir>();
   const sinks = new Map<string, HmsSink>();
 
-  // Normalize lines and parse blocks
-  const lines = content.split(/\r?\n/);
+  // Normalize lines from CST tokens and parse blocks
+  const lines = cstLines.map(({ tokens }) => cstLineText(content, tokens));
   let currentBlockType: string | null = null;
   let currentBlockName: string | null = null;
   let currentProps = new Map<string, string>();

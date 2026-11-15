@@ -18,7 +18,7 @@ export interface MorselViewportHudProps {
   isSnapActive: boolean;
   onToggleSnap: () => void;
   colorMode: "dark" | "light";
-  translations?: any;
+  translations?: Record<string, string>;
 }
 
 const ZOOM_PRESETS = [

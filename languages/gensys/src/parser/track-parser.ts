@@ -1,14 +1,47 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createWasmParserSync } from "@modelscript/gensys/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import type { TrackGeometry, TrackIrregularityPoint } from "../types.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getGensysWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/gensys/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Parses track geometry and irregularity files (.geom, .trax).
  * Format: distance, alignment_left, alignment_right, vertical_left, vertical_right, cant, curvature
  */
 export function parseTrackGeometry(source: string, name: string = "Track"): TrackGeometry {
+  const parser = getGensysWasmParser();
   const points: TrackIrregularityPoint[] = [];
-  const lines = source.split(/\r?\n/);
+  const lines: string[] = [];
+
+  // Parse in ~2 KB line-aligned chunks to stay within WASM GLR arena bounds on large .trax files
+  let pos = 0;
+  while (pos < source.length) {
+    let next = pos + 2048;
+    if (next < source.length) {
+      const nl = source.indexOf("\n", next);
+      next = nl === -1 ? source.length : nl + 1;
+    } else {
+      next = source.length;
+    }
+    const chunk = source.slice(pos, next);
+    const cstTree = parser.parse(chunk);
+    const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
+    for (const { tokens } of cstLines) {
+      lines.push(cstLineText(chunk, tokens));
+    }
+    pos = next;
+  }
 
   for (const rawLine of lines) {
     const line = rawLine.trim();

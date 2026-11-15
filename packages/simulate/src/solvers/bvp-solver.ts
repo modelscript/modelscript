@@ -33,7 +33,7 @@
  * - Supports boundary condition functions with optional free parameter vectors `p`.
  */
 
-import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
+import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
 import type { BVPOptions, BVPProblem, CommonSolverResult, SolverStats } from "../core/problem-types.js";
 import { tsit5 } from "./tsit5.js";
 
@@ -156,10 +156,7 @@ export function solveBvpShooting(problem: BVPProblem, options: BVPOptions = {}):
     // Compute finite-difference Jacobian of R with respect to S.
     // Decouple subintervals: perturbing s_m only requires integrating subinterval m,
     // reducing total interval integrations from O(M^2 * n) to O(M * n).
-    const Jac: Float64Array[] = new Array(totalVars);
-    for (let i = 0; i < totalVars; i++) {
-      Jac[i] = new Float64Array(totalVars);
-    }
+    const Jac = new Float64Array(totalVars * totalVars);
 
     for (let m = 0; m < numIntervals; m++) {
       const yNode = new Array<number>(n);
@@ -179,13 +176,13 @@ export function solveBvpShooting(problem: BVPProblem, options: BVPOptions = {}):
         if (m < numIntervals - 1) {
           const phi_base = endStates[m]!;
           for (let i = 0; i < n; i++) {
-            Jac[m * n + i]![j] = -((phi_pert[i] ?? 0) - (phi_base[i] ?? 0)) / hPert;
+            Jac[(m * n + i) * totalVars + j] = -((phi_pert[i] ?? 0) - (phi_base[i] ?? 0)) / hPert;
           }
         }
 
         // 2. If m > 0, effect of s_m on R_{m-1} = s_m - phi_{m-1}:
         if (m > 0) {
-          Jac[(m - 1) * n + k]![j] = 1.0;
+          Jac[((m - 1) * n + k) * totalVars + j] = 1.0;
         }
 
         // 3. Boundary conditions: bc(s_0, phi_{M-1}) = 0
@@ -195,7 +192,7 @@ export function solveBvpShooting(problem: BVPProblem, options: BVPOptions = {}):
           s0_pert[k] = s0_pert[k]! + hPert;
           const bc_pert = problem.bc(s0_pert, phi_pert, problem.p);
           for (let i = 0; i < n; i++) {
-            Jac[i]![j] = ((bc_pert[i] ?? 0) - (R[i] ?? 0)) / hPert;
+            Jac[i * totalVars + j] = ((bc_pert[i] ?? 0) - (R[i] ?? 0)) / hPert;
           }
         } else {
           if (m === 0) {
@@ -204,7 +201,8 @@ export function solveBvpShooting(problem: BVPProblem, options: BVPOptions = {}):
             s0_pert[k] = s0_pert[k]! + hPert;
             const bc_pert = problem.bc(s0_pert, endStates[numIntervals - 1]!, problem.p);
             for (let i = 0; i < n; i++) {
-              Jac[(numIntervals - 1) * n + i]![j] = ((bc_pert[i] ?? 0) - (R[(numIntervals - 1) * n + i] ?? 0)) / hPert;
+              Jac[((numIntervals - 1) * n + i) * totalVars + j] =
+                ((bc_pert[i] ?? 0) - (R[(numIntervals - 1) * n + i] ?? 0)) / hPert;
             }
           }
           if (m === numIntervals - 1) {
@@ -212,19 +210,20 @@ export function solveBvpShooting(problem: BVPProblem, options: BVPOptions = {}):
             for (let i = 0; i < n; i++) s0[i] = S[i] ?? 0;
             const bc_pert = problem.bc(s0, phi_pert, problem.p);
             for (let i = 0; i < n; i++) {
-              Jac[(numIntervals - 1) * n + i]![j] = ((bc_pert[i] ?? 0) - (R[(numIntervals - 1) * n + i] ?? 0)) / hPert;
+              Jac[((numIntervals - 1) * n + i) * totalVars + j] =
+                ((bc_pert[i] ?? 0) - (R[(numIntervals - 1) * n + i] ?? 0)) / hPert;
             }
           }
         }
       }
     }
 
-    const lu = luFactor(Jac, totalVars);
+    const lu = luFactorFlat(Jac, totalVars);
     stats.luFactorizations!++;
 
     const delta = new Float64Array(totalVars);
     for (let i = 0; i < totalVars; i++) delta[i] = -(R[i] ?? 0);
-    luSolve(lu, delta);
+    luSolveFlat(lu, delta);
 
     // Line search / damping
     let damping = 1.0;
@@ -370,8 +369,7 @@ export function solveBvpCollocation(problem: BVPProblem, options: BVPOptions = {
     }
 
     // Numerical Jacobian of residual
-    const Jac: Float64Array[] = new Array(totalVars);
-    for (let i = 0; i < totalVars; i++) Jac[i] = new Float64Array(totalVars);
+    const Jac = new Float64Array(totalVars * totalVars);
 
     for (let j = 0; j < totalVars; j++) {
       const orig = Y[j] ?? 0;
@@ -381,16 +379,16 @@ export function solveBvpCollocation(problem: BVPProblem, options: BVPOptions = {
       Y[j] = orig;
 
       for (let i = 0; i < totalVars; i++) {
-        Jac[i]![j] = ((R_pert[i] ?? 0) - (R[i] ?? 0)) / hPert;
+        Jac[i * totalVars + j] = ((R_pert[i] ?? 0) - (R[i] ?? 0)) / hPert;
       }
     }
 
-    const lu = luFactor(Jac, totalVars);
+    const lu = luFactorFlat(Jac, totalVars);
     stats.luFactorizations!++;
 
     const delta = new Float64Array(totalVars);
     for (let i = 0; i < totalVars; i++) delta[i] = -(R[i] ?? 0);
-    luSolve(lu, delta);
+    luSolveFlat(lu, delta);
 
     for (let i = 0; i < totalVars; i++) {
       Y[i] = (Y[i] ?? 0) + (delta[i] ?? 0);

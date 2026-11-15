@@ -222,6 +222,8 @@ const DOMAIN_META: Record<ThreadDomain, { label: string; oracle: string }> = {
   [ThreadDomain.CostCarbon]: { label: "CostCarbon", oracle: "ConstraintTheoryOracle" },
   [ThreadDomain.Verification]: { label: "Verification", oracle: "ConstraintTheoryOracle" },
   [ThreadDomain.Software]: { label: "Software", oracle: "AbstractDomainOracle" },
+  [ThreadDomain.PowerRMS]: { label: "PowerRMS", oracle: "DynamicSimulationOracle" },
+  [ThreadDomain.PowerEMT]: { label: "PowerEMT", oracle: "DynamicSimulationOracle" },
 };
 
 const EXT_TO_LANG: Array<{ ext: string; lang: string; domain: ThreadDomain }> = [
@@ -238,6 +240,13 @@ const EXT_TO_LANG: Array<{ ext: string; lang: string; domain: ThreadDomain }> = 
   { ext: ".stp", lang: "step", domain: ThreadDomain.GDT },
   { ext: ".reqif", lang: "reqif", domain: ThreadDomain.Requirements },
   { ext: ".sp", lang: "spice", domain: ThreadDomain.Modelica },
+  { ext: ".raw", lang: "psse", domain: ThreadDomain.PowerRMS },
+  { ext: ".dyr", lang: "psse", domain: ThreadDomain.PowerRMS },
+  { ext: ".seq", lang: "psse", domain: ThreadDomain.PowerRMS },
+  { ext: ".pscx", lang: "pscad", domain: ThreadDomain.PowerEMT },
+  { ext: ".dss", lang: "opendss", domain: ThreadDomain.PowerEMT },
+  { ext: ".olr", lang: "oneliner", domain: ThreadDomain.PowerEMT },
+  { ext: ".p3743", lang: "p3743", domain: ThreadDomain.PowerEMT },
   { ext: ".cir", lang: "spice", domain: ThreadDomain.Modelica },
   { ext: ".va", lang: "verilog-a", domain: ThreadDomain.Modelica },
   { ext: ".owl", lang: "owl2", domain: ThreadDomain.Safety },

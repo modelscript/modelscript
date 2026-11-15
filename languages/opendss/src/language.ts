@@ -8,11 +8,13 @@ import { lintOpenDss } from "./lints/index.js";
 import { parseOpenDss } from "./parser/opendss-parser.js";
 import { openDssToModelica } from "./projections/opendss-to-modelica.js";
 import { solveDistributionPowerFlow } from "./solvers/power-flow-solver.js";
+import { opendssPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript EPRI OpenDSS (.dss) Language Definition.
  */
 export const openDssLanguage = language({
+  polyglot: opendssPolyglotConfig,
   name: "opendss",
   fileExtensions: [".dss"],
   maturity: "experimental",

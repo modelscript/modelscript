@@ -13,9 +13,17 @@ import { transpileClass, transpileQuery as transpileQueryExternal } from "../tra
  * @param grammar Language DSL options object containing query definitions.
  * @returns AssemblyScript source code string for the graph query bridge.
  */
-export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
-  const sourceText = (grammar as any).sourceText || (grammar as any)[SOURCE_TEXT_SYMBOL];
-  const sourcePath = (grammar as any).sourcePath || (grammar as any)[SOURCE_PATH_SYMBOL];
+export function generateCodeGraphBridge(grammar: LanguageOptions): string {
+  const grammarExt = grammar as LanguageOptions & {
+    sourceText?: string;
+    sourcePath?: string;
+    externals?: string[] | Set<string>;
+    fieldToInt?: Map<string, number> | Set<string>;
+    [SOURCE_TEXT_SYMBOL]?: string;
+    [SOURCE_PATH_SYMBOL]?: string;
+  };
+  const sourceText = grammarExt.sourceText || grammarExt[SOURCE_TEXT_SYMBOL];
+  const sourcePath = grammarExt.sourcePath || grammarExt[SOURCE_PATH_SYMBOL];
   const hasQueries = !!(
     grammar.queries ||
     grammar.pipelines ||
@@ -48,7 +56,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
   let nextBlackboardId = 100;
   if (grammar.model) {
     for (const [, attrs] of Object.entries(grammar.model)) {
-      for (const attrName of Object.keys(attrs as any)) {
+      for (const attrName of Object.keys(attrs as Record<string, unknown>)) {
         if (!attrIdMap.has(attrName)) {
           attrIdMap.set(attrName, nextBlackboardId++);
         }
@@ -73,7 +81,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
   }
 
   function transpileQuery(
-    queryFn: any,
+    queryFn: unknown,
     context: "query" | "lint" | "lsp" = "query",
   ): { body: string; params: string[] } {
     return transpileQueryExternal(queryFn, {
@@ -82,8 +90,8 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
       hostQueryIdMap,
       attrIdMap,
       rules: grammar.rules,
-      externals: (grammar as any).externals,
-      fieldToInt: (grammar as any).fieldToInt,
+      externals: grammarExt.externals,
+      fieldToInt: grammarExt.fieldToInt,
     });
   }
 
@@ -181,9 +189,9 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
   }
 
   if (grammar.model) {
-    const attrsByName = new Map<string, { nodeName: string; config: any }[]>();
+    const attrsByName = new Map<string, { nodeName: string; config: unknown }[]>();
     for (const [nodeName, attrs] of Object.entries(grammar.model)) {
-      for (const [attrName, config] of Object.entries(attrs as any)) {
+      for (const [attrName, config] of Object.entries(attrs as Record<string, unknown>)) {
         if (!attrsByName.has(attrName)) attrsByName.set(attrName, []);
         attrsByName.get(attrName)!.push({ nodeName, config });
       }
@@ -196,9 +204,9 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
       for (const { nodeName, config } of configs) {
         let asQueryStr = "";
         let queryInfo: { body: string; params: string[] } | null = null;
-        let attrConfig = config as any;
-        if (typeof attrConfig === "function") {
-          queryInfo = transpileQuery(attrConfig);
+        const attrConfig = config as { compute?: unknown; default?: unknown };
+        if (typeof config === "function") {
+          queryInfo = transpileQuery(config);
           asQueryStr = queryInfo.body;
         } else if (attrConfig.compute) {
           queryInfo = transpileQuery(attrConfig.compute);
@@ -234,13 +242,8 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
   if (grammar.lints) {
     for (const [lintName, lint] of Object.entries(grammar.lints)) {
       const astNode = ast?.lints?.get(lintName);
-      const queryFn =
-        astNode ||
-        (typeof lint === "object" && lint !== null && (lint as any).query
-          ? (lint as any).query
-          : typeof lint === "string"
-            ? lint
-            : null);
+      const lintObj = (typeof lint === "object" && lint !== null ? lint : null) as { query?: unknown } | null;
+      const queryFn = astNode || (lintObj?.query ? lintObj.query : typeof lint === "string" ? lint : null);
       if (!queryFn) continue;
       let queryInfo = transpileQuery(queryFn, "lint");
       let asQueryStr = queryInfo.body;
@@ -288,7 +291,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
       let pipelinePassCode = "";
       let passIdx = 0;
       const astPasses = ast?.pipelines?.get(pipelineName);
-      const passes = (pipeline as any).passes || [];
+      const passes = (pipeline as { passes?: unknown[] }).passes || [];
       for (let i = 0; i < passes.length; i++) {
         const passFn = astPasses && astPasses[i] ? astPasses[i] : passes[i];
         const passInfo = transpileQuery(passFn);

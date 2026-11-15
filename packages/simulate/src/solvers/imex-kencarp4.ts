@@ -17,7 +17,7 @@
  *   Table A.7 (`ARK4(3)6L[2]SA`). https://doi.org/10.1016/S0168-9274(02)00138-1
  */
 
-import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
+import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
 import type { CommonSolverResult, ODEProblem, SolverStats } from "../core/problem-types.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -151,7 +151,7 @@ export function kencarp4(problem: IMEXODEProblem | ODEProblem, options: KenCarp4
   const fStiffFn = isImex ? problem.fStiff : problem.f;
   const fNonStiffFn = isImex ? problem.fNonStiff : options.fNonStiff;
   const jacStiffFn = isImex ? problem.jacStiff : problem.jac;
-  const param = problem.p as any;
+  const param = problem.p as Parameters<NonNullable<typeof fStiffFn>>[2];
 
   let t = t0;
   const y = new Float64Array(problem.y0);
@@ -221,6 +221,8 @@ export function kencarp4(problem: IMEXODEProblem | ODEProblem, options: KenCarp4
   const resVec = new Float64Array(n);
   const J = new Float64Array(n * n);
   const W = new Float64Array(n * n);
+  const piv = new Int32Array(n);
+  const scale = new Float64Array(n);
   const yNew = new Float64Array(n);
   const yHat = new Float64Array(n);
 
@@ -244,9 +246,9 @@ export function kencarp4(problem: IMEXODEProblem | ODEProblem, options: KenCarp4
       }
     }
 
-    let fact: ReturnType<typeof luFactor> | null = null;
+    let fact: ReturnType<typeof luFactorFlat> | null = null;
     try {
-      fact = luFactor(W, n);
+      fact = luFactorFlat(W, n, piv, scale);
       luFactorizations++;
     } catch {
       rejectedSteps++;
@@ -294,7 +296,7 @@ export function kencarp4(problem: IMEXODEProblem | ODEProblem, options: KenCarp4
           break;
         }
 
-        luSolve(fact, resVec);
+        luSolveFlat(fact, resVec);
 
         let maxDelta = 0.0;
         for (let i = 0; i < n; i++) {

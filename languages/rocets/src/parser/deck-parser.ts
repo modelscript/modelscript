@@ -15,8 +15,24 @@ import type {
   RocetsPort,
 } from "../types.js";
 
+import { createWasmParserSync } from "@modelscript/rocets/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getRocetsWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/rocets/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 export function parseRocets(sourceText: string): RocetsEngineModel {
-  const lines = sourceText.split(/\r?\n/);
+  const cstTree = getRocetsWasmParser().parse(sourceText);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
+  const lines = cstLines.map(({ tokens }) => cstLineText(sourceText, tokens));
   let modelName = "ROCETS_ENGINE";
   let modelTitle: string | undefined;
 

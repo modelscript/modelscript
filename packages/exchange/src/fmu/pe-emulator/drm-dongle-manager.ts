@@ -179,6 +179,24 @@ export class LoopbackDaemonProvider implements DrmDongleProvider {
 // 2. WebUSB Direct Hardware Provider (navigator.usb)
 // =========================================================================
 
+interface UsbDeviceInfo {
+  vendorId: number;
+  productId: number;
+  serialNumber?: string;
+  productName?: string;
+}
+
+interface NavigatorWithWebUsb {
+  usb?: {
+    requestDevice(options: { filters: Array<{ vendorId: number }> }): Promise<UsbDeviceInfo>;
+    getDevices(): Promise<UsbDeviceInfo[]>;
+  };
+  hid?: {
+    requestDevice(options: { filters: Array<{ vendorId: number }> }): Promise<UsbDeviceInfo[]>;
+    getDevices(): Promise<UsbDeviceInfo[]>;
+  };
+}
+
 export class WebUsbDongleProvider implements DrmDongleProvider {
   public readonly id = "webusb-hardware";
   public readonly name = "WebUSB Physical Dongle (navigator.usb)";
@@ -192,7 +210,11 @@ export class WebUsbDongleProvider implements DrmDongleProvider {
   }
 
   isAvailable(): boolean {
-    return typeof navigator !== "undefined" && "usb" in navigator && typeof (navigator as any).usb === "object";
+    return (
+      typeof navigator !== "undefined" &&
+      "usb" in navigator &&
+      typeof (navigator as unknown as NavigatorWithWebUsb).usb === "object"
+    );
   }
 
   /**
@@ -201,7 +223,7 @@ export class WebUsbDongleProvider implements DrmDongleProvider {
   async requestPairing(): Promise<DrmDongleInfo | null> {
     if (!this.isAvailable()) return null;
     try {
-      const usb = (navigator as any).usb;
+      const usb = (navigator as unknown as NavigatorWithWebUsb).usb!;
       const device = await usb.requestDevice({
         filters: [
           { vendorId: 0x064f }, // Wibu-Systems
@@ -229,8 +251,8 @@ export class WebUsbDongleProvider implements DrmDongleProvider {
   async detectDongles(): Promise<DrmDongleInfo[]> {
     if (!this.isAvailable()) return [];
     try {
-      const usb = (navigator as any).usb;
-      const devices: any[] = await usb.getDevices();
+      const usb = (navigator as unknown as NavigatorWithWebUsb).usb!;
+      const devices = await usb.getDevices();
       return devices
         .filter((d) => d.vendorId === 0x064f || d.vendorId === 0x0529)
         .map((d) => ({
@@ -282,18 +304,22 @@ export class WebHidDongleProvider implements DrmDongleProvider {
   private readonly activeSessions = new Map<bigint, DrmLicenseSession>();
 
   isAvailable(): boolean {
-    return typeof navigator !== "undefined" && "hid" in navigator && typeof (navigator as any).hid === "object";
+    return (
+      typeof navigator !== "undefined" &&
+      "hid" in navigator &&
+      typeof (navigator as unknown as NavigatorWithWebUsb).hid === "object"
+    );
   }
 
   async requestPairing(): Promise<DrmDongleInfo | null> {
     if (!this.isAvailable()) return null;
     try {
-      const hid = (navigator as any).hid;
+      const hid = (navigator as unknown as NavigatorWithWebUsb).hid!;
       const devices = await hid.requestDevice({
         filters: [{ vendorId: 0x0529 }], // Sentinel HASP HID collections
       });
       if (devices.length === 0) return null;
-      const d = devices[0];
+      const d = devices[0]!;
       return {
         id: `webhid-${d.vendorId}-${d.productId}`,
         type: "sentinel",
@@ -313,8 +339,8 @@ export class WebHidDongleProvider implements DrmDongleProvider {
   async detectDongles(): Promise<DrmDongleInfo[]> {
     if (!this.isAvailable()) return [];
     try {
-      const hid = (navigator as any).hid;
-      const devices: any[] = await hid.getDevices();
+      const hid = (navigator as unknown as NavigatorWithWebUsb).hid!;
+      const devices = await hid.getDevices();
       return devices
         .filter((d) => d.vendorId === 0x0529)
         .map((d) => ({

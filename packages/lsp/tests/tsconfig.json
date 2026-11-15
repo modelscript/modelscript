@@ -1,11 +1,8 @@
 {
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
-    "module": "nodenext",
-    "target": "esnext",
-    "lib": ["esnext", "dom"],
-    "types": ["node"],
-    "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "incremental": false
   },
   "include": ["**/*"],
   "exclude": ["scratch*/**/*", "wasm/**/*"]

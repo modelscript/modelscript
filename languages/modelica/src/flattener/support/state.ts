@@ -2,6 +2,13 @@
 
 import type { DAEBuilder, SymbolId } from "@modelscript/runtime";
 
+export interface SourceSpan {
+  startOffset: number;
+  endOffset: number;
+  startPosition?: unknown;
+  endPosition?: unknown;
+}
+
 export interface FlatteningState {
   innerOuterComponents: Set<string>;
   innerComponents?: Set<string> | undefined;
@@ -11,7 +18,7 @@ export interface FlatteningState {
   constantAliases?: Map<string, string> | undefined;
   stateOutputVars?: Set<string> | undefined;
   isInsidePrevious?: boolean | undefined;
-  currentCompClauseRange?: { startOffset: number; endOffset: number; startPosition?: any; endPosition?: any } | any;
+  currentCompClauseRange?: SourceSpan | any;
   outerNonConstantAccess?: any[] | undefined;
   currentPrefix?: string | undefined;
   tmpVarMap?: Map<string, string> | undefined;
@@ -25,7 +32,7 @@ export interface FlatteningState {
   functionParameterNames?: Set<string> | undefined;
   hasAlgorithmSection?: boolean | undefined;
   inAlgorithmSection?: boolean | undefined;
-  stmtRanges: Map<number, { startOffset: number; endOffset: number; startPosition?: any; endPosition?: any }>;
+  stmtRanges: Map<number, SourceSpan>;
   lastLoweredShape?: number[] | undefined;
   deducedOutputShapes: Map<string, number[]>;
   ignoredEqIndices?: Set<number> | undefined;
@@ -46,280 +53,148 @@ export interface FlatteningState {
   pendingFinalParamNames?: Set<string> | undefined;
 }
 
-export function getFlatteningState(dae: DAEBuilder, flattener?: any): FlatteningState {
-  const d = dae as any;
-  if (flattener && !d.flattener) {
-    d.flattener = flattener;
+interface FlattenerHostLike {
+  innerOuterComponents?: Set<string>;
+  activeLoopVars?: Set<string>;
+  currentPrefix?: string;
+  db?: unknown;
+  currentClassId?: SymbolId;
+  currentRootClassId?: SymbolId;
+  pushLoopVar?: (name: string) => void;
+  popLoopVar?: (name: string) => void;
+}
+
+const flatteningStateStore = new WeakMap<DAEBuilder, FlatteningState>();
+
+export function getFlatteningState(dae: DAEBuilder, flattener?: FlattenerHostLike): FlatteningState {
+  const existing = flatteningStateStore.get(dae);
+  if (existing) {
+    if (flattener && !existing.flattener) {
+      existing.flattener = flattener;
+    }
+    return existing;
   }
-  if (d.flatteningState) return d.flatteningState;
-  const getF = () => d.flattener ?? flattener;
+
+  let activeFlattener: FlattenerHostLike | undefined = flattener;
+  let innerOuterComponentsStore: Set<string> | undefined;
+  let activeLoopVarsStore: Set<string> | undefined;
+  let currentPrefixStore: string | undefined;
+  let stmtRangesStore: Map<number, SourceSpan> | undefined;
+  let deducedOutputShapesStore: Map<string, number[]> | undefined;
+  let dbStore: unknown;
+  let currentClassIdStore: SymbolId | undefined;
+  let currentRootClassIdStore: SymbolId | undefined;
+  let isRealNameCacheStore: Map<number | string, boolean> | undefined;
+
+  const getF = (): FlattenerHostLike | undefined => activeFlattener ?? flattener;
+
   const state: FlatteningState = {
     get innerOuterComponents(): Set<string> {
       const f = getF();
-      if (!d.innerOuterComponents && f?.innerOuterComponents) {
-        d.innerOuterComponents = f.innerOuterComponents;
+      if (!innerOuterComponentsStore && f?.innerOuterComponents) {
+        innerOuterComponentsStore = f.innerOuterComponents;
       }
-      return d.innerOuterComponents ?? f?.innerOuterComponents ?? (d.innerOuterComponents = new Set<string>());
+      return innerOuterComponentsStore ?? f?.innerOuterComponents ?? (innerOuterComponentsStore = new Set<string>());
     },
     set innerOuterComponents(val: Set<string>) {
       const f = getF();
-      d.innerOuterComponents = val;
+      innerOuterComponentsStore = val;
       if (f) f.innerOuterComponents = val;
     },
-    get innerComponents(): Set<string> | undefined {
-      return d.innerComponents;
-    },
-    set innerComponents(val: Set<string> | undefined) {
-      d.innerComponents = val;
-    },
+    innerComponents: undefined,
     get activeLoopVars(): Set<string> {
       const f = getF();
-      if (!d.activeLoopVars && f?.activeLoopVars) {
-        d.activeLoopVars = f.activeLoopVars;
+      if (!activeLoopVarsStore && f?.activeLoopVars) {
+        activeLoopVarsStore = f.activeLoopVars;
       }
-      return d.activeLoopVars ?? f?.activeLoopVars ?? (d.activeLoopVars = new Set<string>());
+      return activeLoopVarsStore ?? f?.activeLoopVars ?? (activeLoopVarsStore = new Set<string>());
     },
     set activeLoopVars(val: Set<string>) {
       const f = getF();
-      d.activeLoopVars = val;
+      activeLoopVarsStore = val;
       if (f) f.activeLoopVars = val;
     },
-    get scopeDeclaredNames(): Map<string, Set<string>> | undefined {
-      return d.scopeDeclaredNames;
-    },
-    set scopeDeclaredNames(val: Map<string, Set<string>> | undefined) {
-      d.scopeDeclaredNames = val;
-    },
-    get outerToInner(): Map<string, string> | undefined {
-      return d.outerToInner;
-    },
-    set outerToInner(val: Map<string, string> | undefined) {
-      d.outerToInner = val;
-    },
-    get constantAliases(): Map<string, string> | undefined {
-      return d.constantAliases;
-    },
-    set constantAliases(val: Map<string, string> | undefined) {
-      d.constantAliases = val;
-    },
-    get stateOutputVars(): Set<string> | undefined {
-      return d.stateOutputVars;
-    },
-    set stateOutputVars(val: Set<string> | undefined) {
-      d.stateOutputVars = val;
-    },
-    get isInsidePrevious(): boolean | undefined {
-      return d.isInsidePrevious;
-    },
-    set isInsidePrevious(val: boolean | undefined) {
-      d.isInsidePrevious = val;
-    },
-    get currentCompClauseRange():
-      | { startOffset: number; endOffset: number; startPosition?: any; endPosition?: any }
-      | any {
-      return d.currentCompClauseRange;
-    },
-    set currentCompClauseRange(
-      val: { startOffset: number; endOffset: number; startPosition?: any; endPosition?: any } | any,
-    ) {
-      d.currentCompClauseRange = val;
-    },
-    get outerNonConstantAccess(): any[] | undefined {
-      return d.outerNonConstantAccess;
-    },
-    set outerNonConstantAccess(val: any[] | undefined) {
-      d.outerNonConstantAccess = val;
-    },
+    scopeDeclaredNames: undefined,
+    outerToInner: undefined,
+    constantAliases: undefined,
+    stateOutputVars: undefined,
+    isInsidePrevious: undefined,
+    currentCompClauseRange: undefined,
+    outerNonConstantAccess: undefined,
     get currentPrefix(): string | undefined {
-      return d.currentPrefix ?? getF()?.currentPrefix;
+      return currentPrefixStore ?? getF()?.currentPrefix;
     },
     set currentPrefix(val: string | undefined) {
-      d.currentPrefix = val;
+      currentPrefixStore = val;
     },
-    get tmpVarMap(): Map<string, string> | undefined {
-      return d._tmpVarMap;
+    tmpVarMap: undefined,
+    tmpVarCounter: undefined,
+    linspaceCounter: undefined,
+    exprArrayShapes: undefined,
+    namedArrayShapes: undefined,
+    namedArrayTypes: undefined,
+    recordVarFieldExprs: undefined,
+    formalFunctionParams: undefined,
+    functionParameterNames: undefined,
+    hasAlgorithmSection: undefined,
+    inAlgorithmSection: undefined,
+    get stmtRanges(): Map<number, SourceSpan> {
+      return (stmtRangesStore ??= new Map());
     },
-    set tmpVarMap(val: Map<string, string> | undefined) {
-      d._tmpVarMap = val;
+    set stmtRanges(val: Map<number, SourceSpan>) {
+      stmtRangesStore = val;
     },
-    get tmpVarCounter(): number | undefined {
-      return d._tmpVarCounter;
-    },
-    set tmpVarCounter(val: number | undefined) {
-      d._tmpVarCounter = val;
-    },
-    get linspaceCounter(): number | undefined {
-      return d._linspaceCounter;
-    },
-    set linspaceCounter(val: number | undefined) {
-      d._linspaceCounter = val;
-    },
-    get exprArrayShapes(): Map<number, number[]> | undefined {
-      return d.exprArrayShapes;
-    },
-    set exprArrayShapes(val: Map<number, number[]> | undefined) {
-      d.exprArrayShapes = val;
-    },
-    get namedArrayShapes(): Map<string, number[]> | undefined {
-      return d.namedArrayShapes;
-    },
-    set namedArrayShapes(val: Map<string, number[]> | undefined) {
-      d.namedArrayShapes = val;
-    },
-    get namedArrayTypes(): Map<string, number> | undefined {
-      return d.namedArrayTypes;
-    },
-    set namedArrayTypes(val: Map<string, number> | undefined) {
-      d.namedArrayTypes = val;
-    },
-    get recordVarFieldExprs(): Map<string, Map<string, number>> | undefined {
-      return d.recordVarFieldExprs;
-    },
-    set recordVarFieldExprs(val: Map<string, Map<string, number>> | undefined) {
-      d.recordVarFieldExprs = val;
-    },
-    get formalFunctionParams(): Map<string, { targetSymId: SymbolId; targetName: string }> | undefined {
-      return d.formalFunctionParams;
-    },
-    set formalFunctionParams(val: Map<string, { targetSymId: SymbolId; targetName: string }> | undefined) {
-      d.formalFunctionParams = val;
-    },
-    get functionParameterNames(): Set<string> | undefined {
-      return d.functionParameterNames;
-    },
-    set functionParameterNames(val: Set<string> | undefined) {
-      d.functionParameterNames = val;
-    },
-    get hasAlgorithmSection(): boolean | undefined {
-      return d.hasAlgorithmSection;
-    },
-    set hasAlgorithmSection(val: boolean | undefined) {
-      d.hasAlgorithmSection = val;
-    },
-    get inAlgorithmSection(): boolean | undefined {
-      return d.inAlgorithmSection;
-    },
-    set inAlgorithmSection(val: boolean | undefined) {
-      d.inAlgorithmSection = val;
-    },
-    get stmtRanges(): Map<number, { startOffset: number; endOffset: number; startPosition?: any; endPosition?: any }> {
-      return (d.stmtRanges ??= new Map());
-    },
-    set stmtRanges(
-      val: Map<number, { startOffset: number; endOffset: number; startPosition?: any; endPosition?: any }>,
-    ) {
-      d.stmtRanges = val;
-    },
-    get lastLoweredShape(): number[] | undefined {
-      return d.lastLoweredShape;
-    },
-    set lastLoweredShape(val: number[] | undefined) {
-      d.lastLoweredShape = val;
-    },
+    lastLoweredShape: undefined,
     get deducedOutputShapes(): Map<string, number[]> {
-      return (d.deducedOutputShapes ??= new Map());
+      return (deducedOutputShapesStore ??= new Map());
     },
     set deducedOutputShapes(val: Map<string, number[]>) {
-      d.deducedOutputShapes = val;
+      deducedOutputShapesStore = val;
     },
-    get ignoredEqIndices(): Set<number> | undefined {
-      return d.ignoredEqIndices;
+    ignoredEqIndices: undefined,
+    wasmFlattener: undefined,
+    emptyWasmEnv: undefined,
+    wasmErrorCode: undefined,
+    wasmBail: undefined,
+    get db(): unknown {
+      return dbStore ?? getF()?.db;
     },
-    set ignoredEqIndices(val: Set<number> | undefined) {
-      d.ignoredEqIndices = val;
+    set db(val: unknown) {
+      dbStore = val;
     },
-    get wasmFlattener(): number | undefined {
-      return d._wasmFlattener;
+    get flattener(): FlattenerHostLike | undefined {
+      return activeFlattener ?? flattener;
     },
-    set wasmFlattener(val: number | undefined) {
-      d._wasmFlattener = val;
-    },
-    get emptyWasmEnv(): any {
-      return d._emptyWasmEnv;
-    },
-    set emptyWasmEnv(val: any) {
-      d._emptyWasmEnv = val;
-    },
-    get wasmErrorCode(): number | undefined {
-      return d.wasmErrorCode;
-    },
-    set wasmErrorCode(val: number | undefined) {
-      d.wasmErrorCode = val;
-    },
-    get wasmBail(): any {
-      return d.wasmBail;
-    },
-    set wasmBail(val: any) {
-      d.wasmBail = val;
-    },
-    get db(): any {
-      return d.db ?? getF()?.db;
-    },
-    set db(val: any) {
-      d.db = val;
-    },
-    get flattener(): any {
-      return d.flattener ?? flattener;
-    },
-    set flattener(val: any) {
-      d.flattener = val;
+    set flattener(val: FlattenerHostLike | undefined) {
+      activeFlattener = val;
     },
     get currentClassId(): SymbolId | undefined {
-      return d.currentClassId ?? getF()?.currentClassId ?? getF()?.currentRootClassId;
+      return currentClassIdStore ?? getF()?.currentClassId ?? getF()?.currentRootClassId;
     },
     set currentClassId(val: SymbolId | undefined) {
-      d.currentClassId = val;
+      currentClassIdStore = val;
     },
     get currentRootClassId(): SymbolId | undefined {
-      return d.currentRootClassId ?? getF()?.currentRootClassId ?? d.currentClassId;
+      return currentRootClassIdStore ?? getF()?.currentRootClassId ?? currentClassIdStore;
     },
     set currentRootClassId(val: SymbolId | undefined) {
-      d.currentRootClassId = val;
+      currentRootClassIdStore = val;
     },
-    get modelName(): string | undefined {
-      return d.modelName;
-    },
-    set modelName(val: string | undefined) {
-      d.modelName = val;
-    },
+    modelName: undefined,
     get isRealNameCache(): Map<number | string, boolean> {
-      return (d._isRealNameCache ??= new Map());
+      return (isRealNameCacheStore ??= new Map());
     },
     set isRealNameCache(val: Map<number | string, boolean>) {
-      d._isRealNameCache = val;
+      isRealNameCacheStore = val;
     },
-    get varPrefixSet(): Set<string> | undefined {
-      return d._varPrefixSet;
-    },
-    set varPrefixSet(val: Set<string> | undefined) {
-      d._varPrefixSet = val;
-    },
-    get varPrefixCount(): number | undefined {
-      return d._varPrefixCount;
-    },
-    set varPrefixCount(val: number | undefined) {
-      d._varPrefixCount = val;
-    },
-    get overconstrainedConnections(): any {
-      return d.overconstrainedConnections;
-    },
-    set overconstrainedConnections(val: any) {
-      d.overconstrainedConnections = val;
-    },
-    get overconstrainedEquationIds(): Set<number> | undefined {
-      return d.overconstrainedEquationIds;
-    },
-    set overconstrainedEquationIds(val: Set<number> | undefined) {
-      d.overconstrainedEquationIds = val;
-    },
-    get pendingFinalParamNames(): Set<string> | undefined {
-      return d.pendingFinalParamNames;
-    },
-    set pendingFinalParamNames(val: Set<string> | undefined) {
-      d.pendingFinalParamNames = val;
-    },
+    varPrefixSet: undefined,
+    varPrefixCount: undefined,
+    overconstrainedConnections: undefined,
+    overconstrainedEquationIds: undefined,
+    pendingFinalParamNames: undefined,
   };
-  d.flatteningState = state;
+
+  flatteningStateStore.set(dae, state);
   return state;
 }
 
@@ -355,7 +230,7 @@ export function setNamedArrayShape(dae: DAEBuilder, name: string, shape: number[
   }
 }
 
-export function pushLoopVar(flattener: any, name: string): void {
+export function pushLoopVar(flattener: FlattenerHostLike | null | undefined, name: string): void {
   if (!flattener) return;
   if (typeof flattener.pushLoopVar === "function") {
     flattener.pushLoopVar(name);
@@ -364,7 +239,7 @@ export function pushLoopVar(flattener: any, name: string): void {
   }
 }
 
-export function popLoopVar(flattener: any, name: string): void {
+export function popLoopVar(flattener: FlattenerHostLike | null | undefined, name: string): void {
   if (!flattener) return;
   if (typeof flattener.popLoopVar === "function") {
     flattener.popLoopVar(name);

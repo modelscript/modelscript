@@ -164,7 +164,7 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
         <InspectorTabs
           ariaLabel="Transit cockpit views"
           value={subTab}
-          onChange={(id) => setSubTab(id as any)}
+          onChange={(id) => setSubTab(id as "marey" | "charging" | "fleet")}
           tabs={[
             { id: "marey", label: `Marey Stringline (${trips.length} Trips)` },
             { id: "charging", label: "Depot Grid & Load Profile" },

@@ -483,7 +483,7 @@ export const sysml2Language = language({
     Annotation: ($) =>
       ref({
         syntax: field("annotatedElement", $["QualifiedName"]!),
-        name: (self) => self.annotatedElement,
+        name: (self: SysmlRuleSelf) => self["annotatedElement"],
         targetKinds: ["Element"],
         resolve: "qualified",
       }),
@@ -569,7 +569,7 @@ export const sysml2Language = language({
     MetadataTyping: ($) =>
       ref({
         syntax: field("type", $["QualifiedName"]!),
-        name: (self) => self.type,
+        name: (self: SysmlRuleSelf) => self["type"],
         targetKinds: ["Metaclass"],
         resolve: "qualified",
       }),
@@ -674,13 +674,13 @@ export const sysml2Language = language({
           "for",
           ref({
             syntax: field("memberElement", $["QualifiedName"]!),
-            name: (self) => self.memberElement,
+            name: (self: SysmlRuleSelf) => self["memberElement"],
             targetKinds: ["Element"],
             resolve: "qualified",
           }),
           $["_RelationshipBody"]!,
         ),
-        symbol: (self) => ({ kind: "Alias", name: self.memberName }),
+        symbol: (self: SysmlRuleSelf) => ({ kind: "Alias", name: self["memberName"] }),
         model: {
           name: "AliasNode" as const,
           visitable: true,
@@ -698,9 +698,9 @@ export const sysml2Language = language({
     MembershipImport: ($) =>
       def({
         syntax: seq($["_ImportPrefix"]!, $["_ImportedMembership"]!),
-        symbol: (self) => ({
+        symbol: (self: SysmlRuleSelf) => ({
           kind: "Import",
-          name: self.importedMembership,
+          name: self["importedMembership"],
           attributes: {
             isImportAll: self.isImportAll,
             isRecursive: self.isRecursive,
@@ -714,7 +714,7 @@ export const sysml2Language = language({
       seq(
         ref({
           syntax: field("importedMembership", $["QualifiedName"]!),
-          name: (self) => self.importedMembership,
+          name: (self: SysmlRuleSelf) => self["importedMembership"],
           targetKinds: ["Membership"],
           resolve: "qualified",
         }),
@@ -743,7 +743,7 @@ export const sysml2Language = language({
       seq(
         ref({
           syntax: field("importedNamespace", $["QualifiedName"]!),
-          name: (self) => self.importedNamespace,
+          name: (self: SysmlRuleSelf) => self.importedNamespace,
           targetKinds: ["Namespace"],
           resolve: "qualified",
         }),
@@ -855,7 +855,7 @@ export const sysml2Language = language({
     OwnedSubclassification: ($) =>
       ref({
         syntax: field("superclassifier", $["QualifiedName"]!),
-        name: (self) => self.superclassifier,
+        name: (self: SysmlRuleSelf) => self["superclassifier"],
         targetKinds: ["Classifier"],
         resolve: "qualified",
       }),
@@ -902,7 +902,7 @@ export const sysml2Language = language({
       choice(
         ref({
           syntax: field("type", $["QualifiedName"]!),
-          name: (self) => self.type,
+          name: (self: SysmlRuleSelf) => self["type"],
           targetKinds: ["Type"],
           resolve: "qualified",
         }),
@@ -913,7 +913,7 @@ export const sysml2Language = language({
       choice(
         ref({
           syntax: field("subsettedFeature", $["QualifiedName"]!),
-          name: (self) => self.subsettedFeature,
+          name: (self: SysmlRuleSelf) => self["subsettedFeature"],
           targetKinds: ["Feature"],
           resolve: "qualified",
         }),
@@ -924,7 +924,7 @@ export const sysml2Language = language({
       choice(
         ref({
           syntax: field("referencedFeature", $["QualifiedName"]!),
-          name: (self) => self.referencedFeature,
+          name: (self: SysmlRuleSelf) => self["referencedFeature"],
           targetKinds: ["Feature"],
           resolve: "qualified",
         }),
@@ -935,7 +935,7 @@ export const sysml2Language = language({
       choice(
         ref({
           syntax: field("crossedFeature", $["QualifiedName"]!),
-          name: (self) => self.crossedFeature,
+          name: (self: SysmlRuleSelf) => self["crossedFeature"],
           targetKinds: ["Feature"],
           resolve: "qualified",
         }),
@@ -946,7 +946,7 @@ export const sysml2Language = language({
       choice(
         ref({
           syntax: field("redefinedFeature", $["QualifiedName"]!),
-          name: (self) => self.redefinedFeature,
+          name: (self: SysmlRuleSelf) => self["redefinedFeature"],
           targetKinds: ["Feature"],
           resolve: "qualified",
         }),
@@ -1137,7 +1137,7 @@ export const sysml2Language = language({
     EnumeratedValue: ($) =>
       def({
         syntax: seq(repeat($["_usage_modifier"]!), optional("enum"), $["_Usage"]!),
-        symbol: (self) => ({ kind: "EnumerationValue", name: self.declaredName }),
+        symbol: (self: SysmlRuleSelf) => ({ kind: "EnumerationValue", name: self.declaredName }),
         model: {
           name: "EnumerationValueNode" as const,
           visitable: true,
@@ -1281,7 +1281,7 @@ export const sysml2Language = language({
         "~",
         ref({
           syntax: field("conjugatedPortDefinition", $["QualifiedName"]!),
-          name: (self) => self.conjugatedPortDefinition,
+          name: (self: SysmlRuleSelf) => self["conjugatedPortDefinition"],
           targetKinds: ["ConjugatedPortDefinition"],
           resolve: "qualified",
         }),
@@ -1331,7 +1331,7 @@ export const sysml2Language = language({
         lints: connectionLints,
         graphics: () => sysmlEdgeGraphics({ stroke: "#546e7a", label: "«connect»", connector: "jumpover" }),
         diff: {
-          identity: (self) => self.name || `connection_${self.id}`,
+          identity: (self: SysmlRuleSelf) => self["name"] || `connection_${self["id"]}`,
         },
       }),
 
@@ -1546,7 +1546,7 @@ export const sysml2Language = language({
     FlowFeature: ($) =>
       ref({
         syntax: field("ownedRelationship", $["QualifiedName"]!),
-        name: (self) => self.ownedRelationship,
+        name: (self: SysmlRuleSelf) => self["ownedRelationship"],
         targetKinds: ["Feature"],
         resolve: "qualified",
       }),
@@ -2702,7 +2702,7 @@ export const sysml2Language = language({
           optional(seq(optional($["_UsageDeclaration"]!), "first")),
           ref({
             syntax: field("source", $["QualifiedName"]!),
-            name: (self) => self.source,
+            name: (self: SysmlRuleSelf) => self["source"],
             targetKinds: ["Feature"],
             resolve: "qualified",
           }),
@@ -2995,7 +2995,7 @@ export const sysml2Language = language({
     ReferenceTyping: ($) =>
       ref({
         syntax: field("type", $["QualifiedName"]!),
-        name: (self) => self.type,
+        name: (self: SysmlRuleSelf) => self["type"],
         targetKinds: ["Type"],
         resolve: "qualified",
       }),
@@ -3130,7 +3130,7 @@ export const sysml2Language = language({
     FeatureChainMember: ($) =>
       ref({
         syntax: field("memberElement", $["QualifiedName"]!),
-        name: (self) => self.memberElement,
+        name: (self: SysmlRuleSelf) => self["memberElement"],
         targetKinds: ["Feature"],
         resolve: "qualified",
       }),
@@ -3163,7 +3163,7 @@ export const sysml2Language = language({
     FeatureReferenceMember: ($) =>
       ref({
         syntax: field("memberElement", $["QualifiedName"]!),
-        name: (self) => self.memberElement,
+        name: (self: SysmlRuleSelf) => self["memberElement"],
         targetKinds: ["Feature"],
         resolve: "qualified",
       }),
@@ -3171,7 +3171,7 @@ export const sysml2Language = language({
     ElementReferenceMember: ($) =>
       ref({
         syntax: field("memberElement", $["QualifiedName"]!),
-        name: (self) => self.memberElement,
+        name: (self: SysmlRuleSelf) => self["memberElement"],
         targetKinds: ["Element"],
         resolve: "qualified",
       }),
@@ -3186,7 +3186,7 @@ export const sysml2Language = language({
       choice(
         ref({
           syntax: field("memberElement", $["QualifiedName"]!),
-          name: (self) => self.memberElement,
+          name: (self: SysmlRuleSelf) => self["memberElement"],
           targetKinds: ["Type"],
           resolve: "qualified",
         }),
@@ -3202,7 +3202,7 @@ export const sysml2Language = language({
     OwnedFeatureChaining: ($) =>
       ref({
         syntax: field("chainingFeature", $["QualifiedName"]!),
-        name: (self) => self.chainingFeature,
+        name: (self: SysmlRuleSelf) => self["chainingFeature"],
         targetKinds: ["Feature"],
         resolve: "qualified",
       }),
@@ -3228,7 +3228,7 @@ export const sysml2Language = language({
     ParameterRedefinition: ($) =>
       ref({
         syntax: field("redefinedFeature", $["QualifiedName"]!),
-        name: (self) => self.redefinedFeature,
+        name: (self: SysmlRuleSelf) => self["redefinedFeature"],
         targetKinds: ["Feature"],
         resolve: "qualified",
       }),

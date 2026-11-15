@@ -2,13 +2,28 @@
 
 import type { RocetsPerformanceMap } from "../types.js";
 
+import { createWasmParserSync } from "@modelscript/rocets/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getRocetsWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/rocets/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 /**
  * Parses turbomachinery pump/turbine performance map tables.
  */
 export function parseRocetsMap(sourceText: string): RocetsPerformanceMap {
-  const lines = sourceText
-    .split(/\r?\n/)
-    .map((l) => l.trim())
+  const cstTree = getRocetsWasmParser().parse(sourceText);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
+  const lines = cstLines
+    .map(({ tokens }) => cstLineText(sourceText, tokens).trim())
     .filter((l) => l && !l.startsWith("#"));
   let name = "CUSTOM_MAP";
 

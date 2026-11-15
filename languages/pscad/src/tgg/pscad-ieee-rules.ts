@@ -27,11 +27,11 @@ export const pscadIeeeTggRules = [
     sourceLang: "pscad",
     targetLang: "ieee2800",
     source: ($, v) =>
-      $.PscadProject({
+      $["PscadProject"]?.({
         name: v("projName"),
       }),
     target: ($, v) =>
-      $.Ieee2800VerificationHeader({
+      $["Ieee2800VerificationHeader"]?.({
         projectName: v("projName"),
       }),
     where: (v) => [
@@ -47,11 +47,11 @@ export const pscadIeeeTggRules = [
     sourceLang: "pscad",
     targetLang: "ieee2800",
     source: ($, v) =>
-      $.PscadIbrComponent({
+      $["PscadIbrComponent"]?.({
         LVRT_mode: v("lvrtMode"),
       }),
     target: ($, v) =>
-      $.Ieee2800Clause532({
+      $["Ieee2800Clause532"]?.({
         lvrtBehavior: v("lvrtBehavior"),
       }),
     where: (v) => [
@@ -67,11 +67,11 @@ export const pscadIeeeTggRules = [
     sourceLang: "pscad",
     targetLang: "ieee2800",
     source: ($, v) =>
-      $.PscadIbrVoltageLoop({
+      $["PscadIbrVoltageLoop"]?.({
         Kp_v: v("Kp_v"),
       }),
     target: ($, v) =>
-      $.Ieee2800Clause541({
+      $["Ieee2800Clause541"]?.({
         stepResponseMs: v("stepResponseMs"),
       }),
     where: (v) => [
@@ -88,11 +88,11 @@ export const pscadIeeeTggRules = [
     sourceLang: "pscad",
     targetLang: "ieee2800",
     source: ($, v) =>
-      $.PscadIbrCurrentLoop({
+      $["PscadIbrCurrentLoop"]?.({
         Ki_v: v("Ki_v"),
       }),
     target: ($, v) =>
-      $.Ieee2800Clause722({
+      $["Ieee2800Clause722"]?.({
         recoveryPct: v("recoveryPct"),
       }),
     where: (v) => [

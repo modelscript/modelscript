@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { choice, def, field, language, optional, prec, repeat, seq, tggEq, tggRule, token } from "@modelscript/dsl";
+import { choice, def, field, language, optional, prec, repeat, seq, token } from "@modelscript/dsl";
+import { fortranPolyglotConfig } from "./tgg/index.js";
 
 /**
  * Precedence levels for Fortran arithmetic, relational, and logical expressions.
@@ -146,29 +147,7 @@ export const fortranLanguage = language({
     },
   ],
 
-  polyglot: {
-    languages: ["modelica"],
-    rules: [
-      tggRule({
-        name: "FortranSubroutineToModelicaFunction",
-        sourceLang: "fortran",
-        targetLang: "modelica",
-        priority: 10,
-        source: ($, v) => $.SubroutineDeclaration({ name: v("subName") }),
-        target: ($, v) => $.FunctionDefinition({ declaredName: v("subName") }),
-        where: (v) => [tggEq(v("subName"), v("subName"))],
-      }),
-      tggRule({
-        name: "FortranAssignToModelicaEquation",
-        sourceLang: "fortran",
-        targetLang: "modelica",
-        priority: 5,
-        source: ($, v) => $.AssignmentStatement({ target: v("lhs"), value: v("rhs") }),
-        target: ($, v) => $.EqualityEquation({ left: v("lhs"), right: v("rhs") }),
-        where: (v) => [tggEq(v("lhs"), v("lhs")), tggEq(v("rhs"), v("rhs"))],
-      }),
-    ],
-  },
+  polyglot: fortranPolyglotConfig,
 
   primitives: {
     lineComment: "!",

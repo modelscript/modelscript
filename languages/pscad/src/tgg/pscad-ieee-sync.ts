@@ -293,17 +293,15 @@ export function synchronizeIeee2800ToPscad(
   const compEls = findXmlElements(xmlDoc.root, "Component");
   const ibrCompEl =
     compEls.find((el) => {
-      const defn = el.attributes.find((a: any) => a.name === "defn" || a.name === "type")?.value ?? "";
+      const defn = el.attributes.find((a) => a.name === "defn" || a.name === "type")?.value ?? "";
       return /ibr|renewable|inverter|pv/i.test(defn);
     }) ?? compEls[compEls.length - 1];
 
   const upsertParamSplice = (compEl: XmlElement, paramName: string, paramValue: string) => {
-    const paramEls = compEl.children.filter((c: any) => c.name.toLowerCase() === "param");
-    const existingParam = paramEls.find(
-      (p: any) => p.attributes.find((a: any) => a.name === "name")?.value === paramName,
-    );
+    const paramEls = compEl.children.filter((c) => c.name.toLowerCase() === "param");
+    const existingParam = paramEls.find((p) => p.attributes.find((a) => a.name === "name")?.value === paramName);
     if (existingParam) {
-      const curVal = existingParam.attributes.find((a: any) => a.name === "value")?.value;
+      const curVal = existingParam.attributes.find((a) => a.name === "value")?.value;
       if (curVal !== paramValue) {
         splices.push(xml.setAttributeSplice(existingParam, "value", paramValue, originalPscadXml));
       }

@@ -257,11 +257,11 @@ export function executePmrRun(netlist: EmtNetlist, task: PmrTask): PmrRunRecord 
   const minPoleTime = Math.min(task.poleClosingTimesSec.a, task.poleClosingTimesSec.b, task.poleClosingTimesSec.c);
 
   // Clone branches and set switch closing time with 3-pole independent scatter
-  const clonedBranches = (netlist.branches ?? []).map((br: any) => {
+  const clonedBranches = (netlist.branches ?? []).map((br) => {
     if (br.id === task.breakerId) {
       return {
         ...br,
-        status: "open",
+        status: "open" as const,
         initialClosed: false,
         closeTimeSec: minPoleTime,
         poleCloseTimesSec: {
@@ -358,11 +358,11 @@ export function executePmrRunWithTrajectory(
   const t0 = performance.now();
   const minPoleTime = Math.min(task.poleClosingTimesSec.a, task.poleClosingTimesSec.b, task.poleClosingTimesSec.c);
 
-  const clonedBranches = (netlist.branches ?? []).map((br: any) => {
+  const clonedBranches = (netlist.branches ?? []).map((br) => {
     if (br.id === task.breakerId) {
       return {
         ...br,
-        status: "open",
+        status: "open" as const,
         initialClosed: false,
         closeTimeSec: minPoleTime,
         poleCloseTimesSec: {

@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BinOp, Causality, EqKind, type IDaeBuilder, Variability, VarType } from "@modelscript/runtime";
+import {
+  BinOp,
+  Causality,
+  EqKind,
+  getDefaultWasmExports,
+  type IDaeBuilder,
+  Variability,
+  VarType,
+} from "@modelscript/runtime";
 import type { SnapshotMatrixDataset } from "./cfd-snapshot-collector.js";
 import { computeMultivariateBounds, type MultivariateBounds } from "./multivariate-bounds.js";
 
@@ -72,6 +80,7 @@ export interface PodSurrogateData {
  *   allowing seamless inlining of CFD surrogate blocks into Modelica models without external FMU wrappers.
  */
 export class CfdPodSurrogate {
+  private static wasmScratch: { wasm: Record<string, unknown>; ptr: number; capBytes: number } | null = null;
   public readonly numFeatures: number;
   public readonly numModes: number;
   public readonly meanField: Float64Array;
@@ -635,6 +644,61 @@ export class CfdPodSurrogate {
     n: number,
     maxIter = 100,
   ): { eigenvalues: Float64Array; eigenvectors: Float64Array } {
+    if (n >= 8) {
+      const wasm = getDefaultWasmExports() as {
+        memory?: WebAssembly.Memory;
+        __new?: (size: number, id: number) => number;
+        __pin?: (ptr: number) => number;
+        __unpin?: (ptr: number) => void;
+        jacobiEigendecompositionWasm?: (
+          aInPtr: number,
+          n: number,
+          vPtr: number,
+          dPtr: number,
+          maxSweeps: number,
+        ) => void;
+      } | null;
+      if (
+        wasm &&
+        typeof wasm.jacobiEigendecompositionWasm === "function" &&
+        typeof wasm.__new === "function" &&
+        wasm.memory instanceof WebAssembly.Memory
+      ) {
+        const nn = n * n;
+        const totalBytes = (2 * nn + n) * 8;
+        if (
+          !CfdPodSurrogate.wasmScratch ||
+          CfdPodSurrogate.wasmScratch.wasm !== wasm ||
+          CfdPodSurrogate.wasmScratch.capBytes < totalBytes
+        ) {
+          if (
+            CfdPodSurrogate.wasmScratch &&
+            typeof wasm.__unpin === "function" &&
+            CfdPodSurrogate.wasmScratch.wasm === wasm
+          ) {
+            wasm.__unpin(CfdPodSurrogate.wasmScratch.ptr);
+          }
+          const capBytes = Math.max(totalBytes, 4096);
+          const ptr = wasm.__new(capBytes, 0);
+          if (typeof wasm.__pin === "function") {
+            wasm.__pin(ptr);
+          }
+          CfdPodSurrogate.wasmScratch = { wasm, ptr, capBytes };
+        }
+        const basePtr = CfdPodSurrogate.wasmScratch.ptr;
+        const aPtr = basePtr;
+        const vPtr = basePtr + nn * 8;
+        const dPtr = vPtr + nn * 8;
+        new Float64Array(wasm.memory.buffer, aPtr, nn).set(A_in);
+        wasm.jacobiEigendecompositionWasm(aPtr, n, vPtr, dPtr, maxIter);
+        const eigenvalues = new Float64Array(n);
+        eigenvalues.set(new Float64Array(wasm.memory.buffer, dPtr, n));
+        const eigenvectors = new Float64Array(nn);
+        eigenvectors.set(new Float64Array(wasm.memory.buffer, vPtr, nn));
+        return { eigenvalues, eigenvectors };
+      }
+    }
+
     const A = new Float64Array(A_in);
     const V = new Float64Array(n * n);
     for (let i = 0; i < n; i++) V[i * n + i] = 1.0; // identity

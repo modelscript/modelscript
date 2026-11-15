@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { cardDeckRules, language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerGtfsToDae } from "./dae/index.js";
 import { lintGtfs } from "./lints/index.js";
 import { parseGtfs } from "./parser/index.js";
 import { solveDepotCharging, solveTractionProfiles } from "./solver/index.js";
+import { gtfsPolyglotConfig } from "./tgg/index.js";
 
 export const gtfsLanguage = language({
+  polyglot: gtfsPolyglotConfig,
   name: "gtfs",
   fileExtensions: [".gtfs", ".gtfs.txt", ".gtfs-rt"],
   maturity: "experimental",
@@ -128,4 +130,8 @@ export const gtfsLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
+
+export default gtfsLanguage;

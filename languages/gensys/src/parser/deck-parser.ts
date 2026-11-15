@@ -63,7 +63,23 @@ export function tokenizeGensysLine(line: string): string[] {
  * - Inline comments
  * - Case-insensitive commands
  */
+import { createWasmParserSync } from "@modelscript/gensys/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getGensysWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/gensys/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 export function parseGensysDeck(source: string, name: string = "GensysModel"): GensysModel {
+  const cstTree = getGensysWasmParser().parse(source);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   const model: GensysModel = {
     name,
     subsystems: [],
@@ -73,7 +89,7 @@ export function parseGensysDeck(source: string, name: string = "GensysModel"): G
   };
 
   const scope = new Map<string, number>();
-  const rawLines = source.split(/\r?\n/);
+  const rawLines = cstLines.map(({ tokens }) => cstLineText(source, tokens));
   const physicalStatements: string[] = [];
   let buffer = "";
 
@@ -323,4 +339,3 @@ export function parseGensysDeck(source: string, name: string = "GensysModel"): G
 
   return model;
 }
-

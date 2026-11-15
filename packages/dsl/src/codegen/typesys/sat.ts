@@ -7,11 +7,12 @@ import { satCode } from "../../src-gen/runtime-templates.js";
 /**
  * Returns the AssemblyScript source code for the DPLL(T) CDCL SAT solver.
  */
-export function generateSAT(grammarDef: LanguageOptions, _normalized?: any): string {
+export function generateSAT(grammarDef: LanguageOptions, _normalized?: unknown): string {
+  const smtTheories = (grammarDef.semantics?.reasoner as { smt?: { theories?: string[] } } | undefined)?.smt?.theories;
   const hasEgraph =
-    !!(grammarDef as any).optimization?.egraph ||
-    !!(grammarDef.semantics?.reasoner as any)?.smt?.theories?.includes("EUF");
-  const hasLRA = !!(grammarDef.semantics?.reasoner as any)?.smt?.theories?.includes("LRA");
+    !!(grammarDef as LanguageOptions & { optimization?: { egraph?: unknown } }).optimization?.egraph ||
+    !!smtTheories?.includes("EUF");
+  const hasLRA = !!smtTheories?.includes("LRA");
 
   let code = satCode;
   if (hasLRA) {

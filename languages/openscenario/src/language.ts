@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { language, xmlRules, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerOpenScenarioToDae } from "./dae/openscenario-to-dae.js";
 import { indexOpenScenarioFile } from "./indexing.js";
 import { lintOpenScenario } from "./lints/index.js";
 import { parseOpenScenario } from "./parser/openscenario-parser.js";
 import { openScenarioToModelica } from "./projections/openscenario-to-modelica.js";
 import { simulateScenario, type OrchestratorOptions } from "./solvers/scenario-orchestrator.js";
+import { openscenarioPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript ASAM OpenSCENARIO (.xosc, .osc) Language Definition.
  */
 export const openScenarioLanguage = language({
+  polyglot: openscenarioPolyglotConfig,
   name: "openscenario",
   fileExtensions: [".xosc", ".osc", ".xml"],
   maturity: "experimental",
@@ -110,6 +112,10 @@ export const openScenarioLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: xmlRules,
 });
 
 export const openscenarioLanguage = openScenarioLanguage;
+
+export default openscenarioLanguage;

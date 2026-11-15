@@ -21,7 +21,7 @@ export interface TrajectoryChartProps {
   sweepResults?: { value: number; y: number[][] }[] | null | undefined;
   baselineData: Record<string, number | string>[] | null;
   colors: string[];
-  onChartClick: (e: any) => void;
+  onChartClick: (e: { activeLabel?: string | number | undefined } | null) => void;
 }
 
 export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({

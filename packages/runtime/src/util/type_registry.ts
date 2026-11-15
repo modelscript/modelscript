@@ -146,6 +146,8 @@ export class WorkspaceTypeRegistry {
       String: "STRING",
     },
     psse: {
+      "PSSEDynamics.Interfaces.SignalInput": "REAL",
+      "PSSEDynamics.Interfaces.SignalOutput": "REAL",
       REAL: "REAL",
       real: "REAL",
       float: "REAL",

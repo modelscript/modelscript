@@ -257,6 +257,20 @@ export default defineConfig([
     },
   },
   {
+    files: [
+      "ee/src/**/*.{ts,tsx}",
+      "apps/desktop/src/**/*.{ts,tsx}",
+      "packages/cad/src/**/*.{ts,tsx}",
+      "packages/embed/src/**/*.{ts,tsx}",
+      "packages/exchange/src/**/*.{ts,tsx}",
+      "packages/react/src/**/*.{ts,tsx}",
+      "packages/simulate/src/**/*.{ts,tsx}",
+    ],
+    rules: {
+      "no-empty": "error",
+    },
+  },
+  {
     files: ["packages/**/*.{ts,tsx}", "languages/**/*.{ts,tsx}", "apps/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": [
@@ -338,7 +352,6 @@ export default defineConfig([
     files: ["apps/web/src/components/morsel/**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
-      "no-useless-assignment": "off",
       "react-hooks/refs": "off",
       "react-hooks/exhaustive-deps": "off",
       "react-hooks/immutability": "off",

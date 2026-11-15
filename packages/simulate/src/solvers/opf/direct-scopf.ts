@@ -12,6 +12,7 @@
  * - Decomposes Locational Marginal Prices (LMPs) into Energy, Base Congestion, and Security Congestion
  */
 
+import { invertDense } from "./dc-opf.js";
 import { solveDirectDcOpf } from "./direct-dc-opf.js";
 import type {
   BindingContingencyConstraint,
@@ -20,54 +21,6 @@ import type {
   ScopfOptions,
   ScopfSolution,
 } from "./types.js";
-
-/** Inverts a small/medium dense matrix with partial pivoting. */
-function invertDenseMatrix(A: Float64Array, n: number): Float64Array | null {
-  const aug = new Float64Array(n * 2 * n);
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) aug[i * 2 * n + j] = A[i * n + j]!;
-    aug[i * 2 * n + (n + i)] = 1.0;
-  }
-
-  for (let i = 0; i < n; i++) {
-    let maxRow = i;
-    let maxVal = Math.abs(aug[i * 2 * n + i]!);
-    for (let k = i + 1; k < n; k++) {
-      const val = Math.abs(aug[k * 2 * n + i]!);
-      if (val > maxVal) {
-        maxVal = val;
-        maxRow = k;
-      }
-    }
-    if (maxVal < 1e-12) return null;
-    if (maxRow !== i) {
-      for (let k = 0; k < 2 * n; k++) {
-        const tmp = aug[i * 2 * n + k]!;
-        aug[i * 2 * n + k] = aug[maxRow * 2 * n + k]!;
-        aug[maxRow * 2 * n + k] = tmp;
-      }
-    }
-    const pivot = aug[i * 2 * n + i]!;
-    for (let k = 0; k < 2 * n; k++) {
-      aug[i * 2 * n + k] = (aug[i * 2 * n + k] ?? 0) / pivot;
-    }
-    for (let k = 0; k < n; k++) {
-      if (k === i) continue;
-      const factor = aug[k * 2 * n + i]!;
-      for (let j = 0; j < 2 * n; j++) {
-        aug[k * 2 * n + j] = (aug[k * 2 * n + j] ?? 0) - factor * aug[i * 2 * n + j]!;
-      }
-    }
-  }
-
-  const inv = new Float64Array(n * n);
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      inv[i * n + j] = aug[i * 2 * n + (n + j)]!;
-    }
-  }
-  return inv;
-}
 
 interface InternalBranch {
   idx: number;
@@ -165,7 +118,7 @@ export function solveDirectScopf(powerCase: GenericPowerCase, options: ScopfOpti
   }
 
   // Invert reduced Bbus to obtain nodal sensitivity matrix Xbus
-  const invB = invertDenseMatrix(BbusReduced, nReduced);
+  const invB = invertDense(BbusReduced, nReduced);
   const Xbus = new Float64Array(N * N);
   if (invB) {
     for (let i = 0; i < N; i++) {

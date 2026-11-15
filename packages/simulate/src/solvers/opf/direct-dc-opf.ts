@@ -16,6 +16,7 @@
  *   - Transmission branch shadow prices
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
 import { formatOpfReport } from "./format-report.js";
 import type {
   GenericPowerCase,
@@ -218,34 +219,143 @@ export function solveDirectSimplex(lp: DirectLpData): DirectLpResult {
   let iterations = 0;
   const maxIters = (numRows + totalCols) * 10;
 
-  function pivot(pRow: number, pCol: number) {
-    const pivotVal = tab[pRow]![pCol]!;
-    const invPivot = 1.0 / pivotVal;
-    const rowP = tab[pRow]!;
-    for (let j = 0; j < totalCols; j++) rowP[j] = (rowP[j] ?? 0) * invPivot;
+  const wasm = getDefaultWasmExports() as {
+    memory?: WebAssembly.Memory;
+    __new?: (size: number, id: number) => number;
+    __pin?: (ptr: number) => number;
+    __unpin?: (ptr: number) => void;
+    simplexTwoPhaseTableauWasm?: (
+      tabPtr: number,
+      basicVarsPtr: number,
+      isArtificialPtr: number,
+      numRows: number,
+      totalCols: number,
+      p2ColLimit: number,
+      numArtificials: number,
+      maxIters: number,
+    ) => number;
+  } | null;
 
-    for (let i = 0; i < numRows + 2; i++) {
-      if (i === pRow) continue;
-      const factor = tab[i]![pCol]!;
-      if (Math.abs(factor) > 1e-15) {
-        const rowI = tab[i]!;
-        for (let j = 0; j < totalCols; j++) {
-          rowI[j] = (rowI[j] ?? 0) - factor * (rowP[j] ?? 0);
+  if (
+    wasm &&
+    typeof wasm.simplexTwoPhaseTableauWasm === "function" &&
+    typeof wasm.__new === "function" &&
+    wasm.memory instanceof WebAssembly.Memory
+  ) {
+    const totalRows = numRows + 2;
+    const tabLen = totalRows * totalCols;
+    const tabBytes = tabLen * 8;
+    const bvBytes = numRows * 4;
+    const artBytes = totalCols;
+    const totalBytes = tabBytes + bvBytes + artBytes + 16;
+
+    const ptr = wasm.__new(totalBytes, 0);
+    if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+    const tabPtr = ptr;
+    const bvPtr = ptr + tabBytes;
+    const artPtr = bvPtr + bvBytes;
+
+    const buf = wasm.memory.buffer;
+    const flatTab = new Float64Array(buf, tabPtr, tabLen);
+    for (let i = 0; i < totalRows; i++) {
+      flatTab.set(tab[i]!, i * totalCols);
+    }
+    const bvView = new Int32Array(buf, bvPtr, numRows);
+    for (let i = 0; i < numRows; i++) bvView[i] = basicVars[i]!;
+    const artView = new Uint8Array(buf, artPtr, totalCols);
+    artView.fill(0);
+    for (const c of artificialCols) artView[c] = 1;
+
+    const resIters = wasm.simplexTwoPhaseTableauWasm(
+      tabPtr,
+      bvPtr,
+      artPtr,
+      numRows,
+      totalCols,
+      n + numSlacks,
+      numArtificials,
+      maxIters,
+    );
+
+    const outBuf = wasm.memory.buffer;
+    const outTab = new Float64Array(outBuf, tabPtr, tabLen);
+    for (let i = 0; i < totalRows; i++) {
+      tab[i]!.set(outTab.subarray(i * totalCols, (i + 1) * totalCols));
+    }
+    const outBv = new Int32Array(outBuf, bvPtr, numRows);
+    for (let i = 0; i < numRows; i++) basicVars[i] = outBv[i]!;
+
+    if (typeof wasm.__unpin === "function") wasm.__unpin(ptr);
+
+    if (resIters < 0) {
+      return { optimal: false, x: [], duals: [], obj: 0, iterations: -(resIters + 1) };
+    }
+    iterations = resIters;
+  } else {
+    function pivot(pRow: number, pCol: number) {
+      const pivotVal = tab[pRow]![pCol]!;
+      const invPivot = 1.0 / pivotVal;
+      const rowP = tab[pRow]!;
+      for (let j = 0; j < totalCols; j++) rowP[j] = (rowP[j] ?? 0) * invPivot;
+
+      for (let i = 0; i < numRows + 2; i++) {
+        if (i === pRow) continue;
+        const factor = tab[i]![pCol]!;
+        if (Math.abs(factor) > 1e-15) {
+          const rowI = tab[i]!;
+          for (let j = 0; j < totalCols; j++) {
+            rowI[j] = (rowI[j] ?? 0) - factor * (rowP[j] ?? 0);
+          }
         }
       }
+      basicVars[pRow] = pCol;
     }
-    basicVars[pRow] = pCol;
-  }
 
-  // Phase 1 execution
-  if (numArtificials > 0) {
+    // Phase 1 execution
+    if (numArtificials > 0) {
+      while (iterations++ < maxIters) {
+        let enterCol = -1;
+        let minVal = -1e-8;
+        for (let j = 0; j < totalCols - 1; j++) {
+          if (artificialCols.includes(j)) continue;
+          if (tab[phase1Row]![j]! < minVal) {
+            minVal = tab[phase1Row]![j]!;
+            enterCol = j;
+          }
+        }
+        if (enterCol === -1) break;
+
+        let leaveRow = -1;
+        let minRatio = 1e20;
+        for (let i = 0; i < numRows; i++) {
+          const coef = tab[i]![enterCol]!;
+          if (coef > 1e-9) {
+            const ratio = tab[i]![totalCols - 1]! / coef;
+            if (ratio < minRatio) {
+              minRatio = ratio;
+              leaveRow = i;
+            }
+          }
+        }
+        if (leaveRow === -1) {
+          return { optimal: false, x: [], duals: [], obj: 0, iterations };
+        }
+        pivot(leaveRow, enterCol);
+      }
+
+      const phase1Obj = -tab[phase1Row]![totalCols - 1]!;
+      if (phase1Obj > 1e-4) {
+        return { optimal: false, x: [], duals: [], obj: 0, iterations };
+      }
+    }
+
+    // Phase 2 execution
     while (iterations++ < maxIters) {
       let enterCol = -1;
-      let minVal = -1e-8;
-      for (let j = 0; j < totalCols - 1; j++) {
-        if (artificialCols.includes(j)) continue;
-        if (tab[phase1Row]![j]! < minVal) {
-          minVal = tab[phase1Row]![j]!;
+      let minVal = -1e-9;
+      for (let j = 0; j < n + numSlacks; j++) {
+        if (tab[phase2Row]![j]! < minVal) {
+          minVal = tab[phase2Row]![j]!;
           enterCol = j;
         }
       }
@@ -263,44 +373,9 @@ export function solveDirectSimplex(lp: DirectLpData): DirectLpResult {
           }
         }
       }
-      if (leaveRow === -1) {
-        return { optimal: false, x: [], duals: [], obj: 0, iterations };
-      }
+      if (leaveRow === -1) break; // Unbounded or at optimum
       pivot(leaveRow, enterCol);
     }
-
-    const phase1Obj = -tab[phase1Row]![totalCols - 1]!;
-    if (phase1Obj > 1e-4) {
-      return { optimal: false, x: [], duals: [], obj: 0, iterations };
-    }
-  }
-
-  // Phase 2 execution
-  while (iterations++ < maxIters) {
-    let enterCol = -1;
-    let minVal = -1e-9;
-    for (let j = 0; j < n + numSlacks; j++) {
-      if (tab[phase2Row]![j]! < minVal) {
-        minVal = tab[phase2Row]![j]!;
-        enterCol = j;
-      }
-    }
-    if (enterCol === -1) break;
-
-    let leaveRow = -1;
-    let minRatio = 1e20;
-    for (let i = 0; i < numRows; i++) {
-      const coef = tab[i]![enterCol]!;
-      if (coef > 1e-9) {
-        const ratio = tab[i]![totalCols - 1]! / coef;
-        if (ratio < minRatio) {
-          minRatio = ratio;
-          leaveRow = i;
-        }
-      }
-    }
-    if (leaveRow === -1) break; // Unbounded or at optimum
-    pivot(leaveRow, enterCol);
   }
 
   // Extract primal vector x

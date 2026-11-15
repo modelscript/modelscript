@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { cardDeckRules, language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerGpromsToDae } from "./dae/gproms-to-dae.js";
 import { indexGpromsDocument } from "./indexing.js";
 import { lintGproms } from "./lints/index.js";
 import { parseGproms } from "./parser/gproms-parser.js";
 import { gpromsToModelica } from "./projections/gproms-to-modelica.js";
 import { solveGpromsProcess, type GpromsSolverOptions } from "./solvers/gproms-solver.js";
+import { gpromsPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript gPROMS Process Modeling Language (.gproms, .pml) Language Definition.
  */
 export const gpromsLanguage = language({
+  polyglot: gpromsPolyglotConfig,
   name: "gproms",
   fileExtensions: [".gproms", ".pml"],
   maturity: "experimental",
@@ -111,4 +113,8 @@ export const gpromsLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
+
+export default gpromsLanguage;

@@ -86,15 +86,27 @@ function tokenizeIdvLine(line: string): string[] {
   return tokens.map((t) => t.replace(/^["']|["']$/g, "").trim());
 }
 
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createPsseWasmParserSync } from "./wasm-loader.js";
+
+let cachedParser: ReturnType<typeof createPsseWasmParserSync>["parser"] | undefined;
+function getPsseWasmParser() {
+  if (!cachedParser) {
+    cachedParser = createPsseWasmParserSync().parser;
+  }
+  return cachedParser;
+}
+
 /**
  * Parses an .idv script text into a sequence of executable IdvCommand objects.
  */
 export function parseIdv(script: string): IdvCommand[] {
+  const cstTree = getPsseWasmParser().parse(script);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   const commands: IdvCommand[] = [];
-  const lines = script.split(/\r?\n/);
 
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]!;
+  for (const { row: i, tokens: cstTokens } of cstLines) {
+    const rawLine = cstLineText(script, cstTokens);
     const tokens = tokenizeIdvLine(rawLine);
     if (tokens.length === 0) continue;
 

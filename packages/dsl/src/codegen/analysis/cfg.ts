@@ -14,8 +14,48 @@ import { cfgBuilderCode } from "../../src-gen/runtime-templates.js";
  *     SwitchStmt: { branchList: 'cases' } // Multi-way branch
  *   }
  */
-export function generateCFG(grammar: LanguageOptions<any>, normalized?: any): string {
-  const cfgNodes = (grammar as any).cfgNodes;
+interface CfgNodeFieldSpec {
+  payload: { name: string };
+}
+
+interface CfgNodeConfig {
+  type?: string;
+  condition?: string;
+  trueBranch?: string;
+  falseBranch?: string;
+  branchList?: string;
+  isLoop?: boolean;
+  isBreak?: boolean;
+  isContinue?: boolean;
+  isReturn?: boolean;
+  tryBody?: string;
+  catchBody?: string;
+  finallyBody?: string;
+  payload?: {
+    cond?: CfgNodeFieldSpec;
+    body?: CfgNodeFieldSpec;
+    then?: CfgNodeFieldSpec;
+    else?: CfgNodeFieldSpec;
+    cases?: CfgNodeFieldSpec;
+    expr?: CfgNodeFieldSpec;
+    steps?: CfgNodeFieldSpec[];
+    target?: CfgNodeFieldSpec;
+    arguments?: CfgNodeFieldSpec;
+    [key: string]: CfgNodeFieldSpec | CfgNodeFieldSpec[] | undefined;
+  };
+}
+
+interface CfgNormalizedRule {
+  type: string;
+  value?: string;
+  children?: CfgNormalizedRule[];
+}
+
+export function generateCFG(
+  grammar: LanguageOptions,
+  normalized?: { evaluatedRules?: Record<string, CfgNormalizedRule> },
+): string {
+  const cfgNodes = (grammar as { cfgNodes?: Record<string, CfgNodeConfig> }).cfgNodes;
   if (!cfgNodes || Object.keys(cfgNodes).length === 0) {
     return `// CFG Construction Disabled (no cfgNodes configured)
 export let firstBlock: u32 = 0;
@@ -100,13 +140,13 @@ function buildCFGNode(nodeId: u32, currentBlk: u32): u32 {
     switch (nodeType) {
 `;
 
-  for (const [nodeName, config] of Object.entries(cfgNodes) as [string, any][]) {
+  for (const [nodeName, config] of Object.entries(cfgNodes)) {
     const safeName = `SyntaxType.${nodeName.toUpperCase()}`;
 
     code += `        case <u16>${safeName}: {\n`;
 
     if (config.type === "LOOP") {
-      const payload = config.payload;
+      const payload = config.payload ?? {};
       code += `            // ${nodeName}: LOOP node\n`;
       if (payload.cond) code += emitFieldAccess("condNode", nodeName, payload.cond.payload.name);
       if (payload.body) code += emitFieldAccess("trueBodyNode", nodeName, payload.body.payload.name);
@@ -125,16 +165,17 @@ function buildCFGNode(nodeId: u32, currentBlk: u32): u32 {
       code += `            if (bodyEnd != 0) store<u32>(bodyEnd + BLOCK_TRUE_BRANCH, currentBlk);\n`;
       code += `            return exitBlock;\n`;
     } else if (config.type === "SEQ") {
-      const payload = config.payload;
+      const payload = config.payload ?? {};
       code += `            // ${nodeName}: SEQ node\n`;
       code += `            let blk = currentBlk;\n`;
-      for (let i = 0; i < payload.steps.length; i++) {
-        code += emitFieldAccess(`step${i}`, nodeName, payload.steps[i].payload.name);
+      const steps = payload.steps ?? [];
+      for (let i = 0; i < steps.length; i++) {
+        code += emitFieldAccess(`step${i}`, nodeName, steps[i]!.payload.name);
         code += `            if (step${i} != 0) blk = buildCFGNode(step${i}, blk);\n`;
       }
       code += `            return blk;\n`;
     } else if (config.type === "CALL") {
-      const payload = config.payload;
+      const payload = config.payload ?? {};
       code += `            // ${nodeName}: CALL inter-procedural node\n`;
       if (payload.target) code += emitFieldAccess("targetNode", nodeName, payload.target.payload.name);
       if (payload.arguments) code += emitFieldAccess("argsNode", nodeName, payload.arguments.payload.name);

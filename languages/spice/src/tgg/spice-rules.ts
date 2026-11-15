@@ -16,13 +16,13 @@ export const spiceTggRules = [
     sourceLang: "spice",
     targetLang: "modelica",
     source: ($, v) =>
-      $.SpiceComponent({
+      $["SpiceComponent"]?.({
         kind: "R",
         name: v("name"),
         value: v("resistance"),
       }),
     target: ($, v) =>
-      $.ModelicaComponent({
+      $["ModelicaComponent"]?.({
         type: "Modelica.Electrical.Analog.Basic.Resistor",
         name: v("name"),
         R: v("resistance"),
@@ -40,13 +40,13 @@ export const spiceTggRules = [
     sourceLang: "spice",
     targetLang: "modelica",
     source: ($, v) =>
-      $.SpiceComponent({
+      $["SpiceComponent"]?.({
         kind: "C",
         name: v("name"),
         value: v("capacitance"),
       }),
     target: ($, v) =>
-      $.ModelicaComponent({
+      $["ModelicaComponent"]?.({
         type: "Modelica.Electrical.Analog.Basic.Capacitor",
         name: v("name"),
         C: v("capacitance"),
@@ -64,13 +64,13 @@ export const spiceTggRules = [
     sourceLang: "spice",
     targetLang: "modelica",
     source: ($, v) =>
-      $.SpiceComponent({
+      $["SpiceComponent"]?.({
         kind: "L",
         name: v("name"),
         value: v("inductance"),
       }),
     target: ($, v) =>
-      $.ModelicaComponent({
+      $["ModelicaComponent"]?.({
         type: "Modelica.Electrical.Analog.Basic.Inductor",
         name: v("name"),
         L: v("inductance"),
@@ -88,13 +88,13 @@ export const spiceTggRules = [
     sourceLang: "spice",
     targetLang: "modelica",
     source: ($, v) =>
-      $.SpiceComponent({
+      $["SpiceComponent"]?.({
         kind: "V",
         name: v("name"),
         value: v("voltage"),
       }),
     target: ($, v) =>
-      $.ModelicaComponent({
+      $["ModelicaComponent"]?.({
         type: "Modelica.Electrical.Analog.Sources.ConstantVoltage",
         name: v("name"),
         V: v("voltage"),
@@ -112,11 +112,11 @@ export const spiceTggRules = [
     sourceLang: "spice",
     targetLang: "sysml2",
     source: ($, v) =>
-      $.SpiceCircuit({
+      $["SpiceCircuit"]?.({
         title: v("circuitName"),
       }),
     target: ($, v) =>
-      $.PartDefinition({
+      $["PartDefinition"]?.({
         name: v("circuitName"),
       }),
     where: (v) => [

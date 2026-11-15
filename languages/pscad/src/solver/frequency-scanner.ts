@@ -68,8 +68,8 @@ export function runFrequencyScan(netlist: EmtNetlist, options: FrequencyScanOpti
       busIdxMap.set(id, busList.length - 1);
     }
   } else if (Array.isArray(netlist.buses)) {
-    for (const b of netlist.buses as any[]) {
-      const id = b.id ?? b;
+    for (const b of netlist.buses as Array<string | { id?: string }>) {
+      const id = typeof b === "string" ? b : (b.id ?? String(b));
       busList.push(id);
       busIdxMap.set(id, busList.length - 1);
     }
@@ -78,9 +78,10 @@ export function runFrequencyScan(netlist: EmtNetlist, options: FrequencyScanOpti
   // Fallback: discover buses from branches/sources if buses array was empty
   if (busList.length === 0) {
     const discovered = new Set<string>();
-    for (const br of (netlist.branches ?? []) as any[]) {
-      if (br.fromBus && br.fromBus !== "0" && br.fromBus !== "GND") discovered.add(br.fromBus);
-      if (br.toBus && br.toBus !== "0" && br.toBus !== "GND") discovered.add(br.toBus);
+    for (const br of netlist.branches ?? []) {
+      const brBus = br as unknown as { fromBus?: string; toBus?: string };
+      if (brBus.fromBus && brBus.fromBus !== "0" && brBus.fromBus !== "GND") discovered.add(brBus.fromBus);
+      if (brBus.toBus && brBus.toBus !== "0" && brBus.toBus !== "GND") discovered.add(brBus.toBus);
     }
     for (const s of netlist.sources ?? []) {
       if (s.bus && s.bus !== "0" && s.bus !== "GND") discovered.add(s.bus);
@@ -132,7 +133,8 @@ export function runFrequencyScan(netlist: EmtNetlist, options: FrequencyScanOpti
       const bIdx = busIdxMap.get(s.bus);
       if (bIdx !== undefined) {
         const rSrc = s.rSourceOhm && s.rSourceOhm > 0 ? s.rSourceOhm : 0.5;
-        const lSrc = (s.lSourceH && s.lSourceH > 0 ? s.lSourceH : (s as any).lSourceHenry) ?? 0.01;
+        const sExt = s as unknown as { lSourceHenry?: number };
+        const lSrc = (s.lSourceH && s.lSourceH > 0 ? s.lSourceH : sExt.lSourceHenry) ?? 0.01;
         const zRe = rSrc;
         const zIm = omega * lSrc;
         const zMag2 = zRe * zRe + zIm * zIm;
@@ -141,14 +143,29 @@ export function runFrequencyScan(netlist: EmtNetlist, options: FrequencyScanOpti
     }
 
     // 2. Transmission lines and series R-L-C branches
-    for (const br of (netlist.branches ?? []) as any[]) {
-      if (br.kind === "switch" && br.status === "open") continue;
-      const i1 = busIdxMap.get(br.fromBus ?? br.from ?? "") ?? -1;
-      const i2 = busIdxMap.get(br.toBus ?? br.to ?? "") ?? -1;
+    for (const br of netlist.branches ?? []) {
+      const brExt = br as unknown as {
+        kind?: string;
+        status?: string;
+        fromBus?: string;
+        from?: string;
+        toBus?: string;
+        to?: string;
+        rOhm?: number;
+        resistanceOhm?: number;
+        lHenry?: number;
+        inductanceH?: number;
+        cFarad?: number;
+        capacitanceF?: number;
+        shuntC?: number;
+      };
+      if (brExt.kind === "switch" && brExt.status === "open") continue;
+      const i1 = busIdxMap.get(brExt.fromBus ?? brExt.from ?? "") ?? -1;
+      const i2 = busIdxMap.get(brExt.toBus ?? brExt.to ?? "") ?? -1;
 
-      const r = br.rOhm ?? br.resistanceOhm ?? 0.1;
-      const l = br.lHenry ?? br.inductanceH ?? 0.02;
-      const c = br.cFarad ?? br.capacitanceF ?? 0.0;
+      const r = brExt.rOhm ?? brExt.resistanceOhm ?? 0.1;
+      const l = brExt.lHenry ?? brExt.inductanceH ?? 0.02;
+      const c = brExt.cFarad ?? brExt.capacitanceF ?? 0.0;
 
       let zRe = r;
       let zIm = omega * l;
@@ -162,7 +179,7 @@ export function runFrequencyScan(netlist: EmtNetlist, options: FrequencyScanOpti
       }
 
       // Shunt line charging capacitance
-      const cShunt = br.shuntC ?? 0.0;
+      const cShunt = brExt.shuntC ?? 0.0;
       if (cShunt > 0) {
         if (i1 >= 0) B[i1 * n + i1] = B[i1 * n + i1]! + 0.5 * omega * cShunt;
         if (i2 >= 0) B[i2 * n + i2] = B[i2 * n + i2]! + 0.5 * omega * cShunt;
@@ -170,11 +187,20 @@ export function runFrequencyScan(netlist: EmtNetlist, options: FrequencyScanOpti
     }
 
     // 3. Transformers
-    for (const tr of (netlist.transformers ?? []) as any[]) {
-      const i1 = busIdxMap.get(tr.fromBus) ?? -1;
-      const i2 = busIdxMap.get(tr.toBus) ?? -1;
-      const r = tr.windingLossFraction ? tr.windingLossFraction * 10.0 : 0.05;
-      const l = tr.leakageLHenry ? tr.leakageLHenry : (tr.leakageReactancePu ?? 0.1) * (100.0 / (2 * Math.PI * f0));
+    for (const tr of netlist.transformers ?? []) {
+      const trExt = tr as unknown as {
+        fromBus: string;
+        toBus: string;
+        windingLossFraction?: number;
+        leakageLHenry?: number;
+        leakageReactancePu?: number;
+      };
+      const i1 = busIdxMap.get(trExt.fromBus) ?? -1;
+      const i2 = busIdxMap.get(trExt.toBus) ?? -1;
+      const r = trExt.windingLossFraction ? trExt.windingLossFraction * 10.0 : 0.05;
+      const l = trExt.leakageLHenry
+        ? trExt.leakageLHenry
+        : (trExt.leakageReactancePu ?? 0.1) * (100.0 / (2 * Math.PI * f0));
       const zRe = r;
       const zIm = omega * l;
       const zMag2 = zRe * zRe + zIm * zIm;
@@ -207,7 +233,12 @@ export function runFrequencyScan(netlist: EmtNetlist, options: FrequencyScanOpti
     let zRe = zGridRe;
     let zIm = zGridIm;
 
-    if (modelIbr && (netlist.fmuInstances ?? []).some((fmu: any) => busIdxMap.get(fmu.busId) === targetIdx)) {
+    if (
+      modelIbr &&
+      (netlist.fmuInstances ?? []).some(
+        (fmu) => busIdxMap.get((fmu as unknown as { busId?: string }).busId ?? "") === targetIdx,
+      )
+    ) {
       if (f < f0) {
         const deltaF = (f0 - f) / f0;
         const rIbr = -2.5 * deltaF * Math.exp(-Math.pow((f - 30.0) / 20.0, 2)) - 0.2;

@@ -1,14 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createWasmParserSync } from "@modelscript/opendss/wasm-parser";
 import {
   collectWorkspaceDocuments,
   findIncludeCycle,
+  groupCstLeavesByLine,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import { parseOpenDss } from "../parser/opendss-parser.js";
 import { lintOpenDss } from "./opendss-linter.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getOpenDssWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/opendss/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Performs multi-file OpenDSS workspace linting by resolving `Redirect` and `Compile`
@@ -26,6 +39,7 @@ export function lintOpenDssWorkspace(workspace: WorkspaceDocumentInput, rootUri?
   const edges = new Map<string, string[]>();
   const expandedLines: string[] = [];
   const visited = new Set<string>();
+  const parser = getOpenDssWasmParser();
 
   function expand(uri: string): void {
     if (visited.has(uri)) return;
@@ -34,10 +48,19 @@ export function lintOpenDssWorkspace(workspace: WorkspaceDocumentInput, rootUri?
     const outEdges: string[] = [];
     edges.set(uri, outEdges);
 
-    for (const line of text.split(/\r?\n/)) {
-      const m = line.match(/^\s*(?:redirect|compile)\s+(?:"([^"]+)"|'([^']+)'|(\S+))/i);
+    const tree = parser.parse(text);
+    const rawLines = text.split(/\r?\n/);
+    const redirectRows = new Map<number, string>();
+    for (const { row } of groupCstLeavesByLine(tree?.rootNode)) {
+      const m = (rawLines[row] ?? "").match(/^\s*(?:redirect|compile)\s+(?:"([^"]+)"|'([^']+)'|(\S+))/i);
       if (m) {
-        const targetRaw = m[1] ?? m[2] ?? m[3] ?? "";
+        redirectRows.set(row, m[1] ?? m[2] ?? m[3] ?? "");
+      }
+    }
+
+    for (let row = 0; row < rawLines.length; row++) {
+      const targetRaw = redirectRows.get(row);
+      if (targetRaw !== undefined) {
         const resolved = resolveRelativeUri(uri, targetRaw, docs);
         if (!resolved) {
           diagnostics.push({
@@ -52,7 +75,7 @@ export function lintOpenDssWorkspace(workspace: WorkspaceDocumentInput, rootUri?
           expand(resolved);
         }
       } else {
-        expandedLines.push(line);
+        expandedLines.push(rawLines[row] ?? "");
       }
     }
   }

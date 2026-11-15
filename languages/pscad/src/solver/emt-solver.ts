@@ -1038,9 +1038,15 @@ export class EmtSolver {
         const { ia, ib, ic } = this.registerBranchBuffers(br.id);
         const initialClosed = br.status !== "open";
         const actionTimeSec = (initialClosed ? br.openTimeSec : br.closeTimeSec) ?? 1e9;
+        type PoleTimesShape = { a?: number; b?: number; c?: number; [idx: number]: number | undefined };
+        const brPole = br as unknown as {
+          poleOpenTimesSec?: PoleTimesShape;
+          poleCloseTimesSec?: PoleTimesShape;
+          poleActionTimesSec?: PoleTimesShape;
+        };
         const poleTimes = initialClosed
-          ? (br as any).poleOpenTimesSec
-          : ((br as any).poleCloseTimesSec ?? (br as any).poleActionTimesSec);
+          ? brPole.poleOpenTimesSec
+          : (brPole.poleCloseTimesSec ?? brPole.poleActionTimesSec);
         const poleActionTimesSec: [number, number, number] | undefined = poleTimes
           ? [
               poleTimes.a ?? poleTimes[0] ?? actionTimeSec,
@@ -1872,7 +1878,11 @@ export class EmtSolver {
           executionTimeMs,
         },
       };
-    } catch {
+    } catch (err) {
+      console.warn(
+        "[EMT:wasm] Fast-path failed, falling back to TS solver:",
+        err instanceof Error ? err.message : String(err),
+      );
       return null;
     }
   }

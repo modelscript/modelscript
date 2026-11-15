@@ -9,6 +9,7 @@
 
 import { PolyglotTransformer } from "@modelscript/runtime";
 import { parseSpice } from "../parser/spice-parser.js";
+import { spiceTggRules } from "./spice-rules.js";
 import type { ParsedModelicaElectrical, ReconciledChange, SyncOptions, SyncResult } from "./types.js";
 
 export function parseModelicaElectrical(sourceText: string): ParsedModelicaElectrical {
@@ -86,17 +87,33 @@ export function synchronizeModelicaToSpice(
 ): SyncResult {
   const circuit = parseSpice(originalSpiceText);
   const parsedModelica = parseModelicaElectrical(modifiedModelicaText);
-  const transformer = new PolyglotTransformer();
+  const transformer = new PolyglotTransformer({ rules: spiceTggRules });
   const changes: ReconciledChange[] = [];
   const strategy = options?.strategy ?? "target-wins";
 
   const updatedValues = new Map<string, number>();
   const existingCompNames = new Set<string>();
 
-  // 1. Identify parameter modifications across existing components
+  // 1. Identify parameter modifications across existing components via declarative TGG rules
   for (const comp of circuit.components) {
     const normName = comp.name.toUpperCase();
     existingCompNames.add(normName);
+
+    const spiceNode = {
+      kind: "SpiceComponent",
+      name: comp.name,
+      properties: {
+        kind: comp.kind,
+        name: comp.name,
+        value: comp.value ?? 1.0,
+        nodes: comp.nodes,
+        model: comp.model,
+        params: comp.params,
+        rawValueExpr: comp.rawValueExpr,
+        span: comp.span,
+      },
+    };
+    transformer.evaluateRuleForward(spiceNode, "modelica", `spice:${normName}`);
 
     const moComp = parsedModelica.components.get(normName);
     if (moComp) {
@@ -104,7 +121,23 @@ export function synchronizeModelicaToSpice(
       const newVal = moComp.value;
 
       if (newVal !== oldVal) {
-        const resolved = resolveParameterConflict(transformer, normName, oldVal, newVal, strategy, options);
+        const paramKey = moComp.kind === "R" ? "R" : moComp.kind === "C" ? "C" : moComp.kind === "L" ? "L" : "V";
+        const moNode = {
+          kind: "ModelicaComponent",
+          name: moComp.name,
+          properties: {
+            type: moComp.fullType,
+            name: moComp.name,
+            [paramKey]: newVal,
+          },
+        };
+        const bwd = transformer.evaluateRuleBackward(moNode, "spice", {
+          threadId: `spice:${normName}`,
+          strategy,
+        });
+        const bwdProps = bwd?.sourceNode["properties"] as Record<string, unknown> | undefined;
+        const tggVal = bwdProps && bwdProps["value"] !== undefined ? Number(bwdProps["value"]) : newVal;
+        const resolved = resolveParameterConflict(transformer, normName, oldVal, tggVal, strategy, options);
         updatedValues.set(normName, resolved);
         changes.push({
           target: "parameter",

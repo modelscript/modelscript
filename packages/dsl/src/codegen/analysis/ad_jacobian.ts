@@ -7,7 +7,7 @@ import { ad_jacobianCode } from "../../src-gen/runtime-templates.js";
 /**
  * Returns the AssemblyScript source code for Jacobian and Hessian sparsity extraction.
  */
-export function generateAdJacobian(grammarDef: LanguageOptions, _normalized?: any): string {
-  if (!(grammarDef as any).acausal && (grammarDef as any).name !== "Calc") return "";
+export function generateAdJacobian(grammarDef: LanguageOptions, _normalized?: unknown): string {
+  if (!(grammarDef as LanguageOptions & { acausal?: boolean }).acausal && grammarDef.name !== "Calc") return "";
   return ad_jacobianCode;
 }

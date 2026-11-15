@@ -4,7 +4,7 @@
  * @modelscript/usd — High-performance ASCII OpenUSD (.usda) Streaming Parser.
  */
 
-import type { UsdPrim, UsdSpecifier, UsdStage, UsdStageMetadata } from "../types.js";
+import type { UsdPrim, UsdSpecifier, UsdStage, UsdStageMetadata, UsdValue } from "../types.js";
 
 export function parseUsd(content: string): UsdStage {
   const stageMetadata: UsdStageMetadata = {};
@@ -114,7 +114,7 @@ export function parseUsd(content: string): UsdStage {
     return p;
   }
 
-  function readValue(): any {
+  function readValue(): UsdValue {
     skipWhitespaceAndComments();
     if (idx >= len) return null;
 
@@ -128,7 +128,7 @@ export function parseUsd(content: string): UsdStage {
     if (ch === "(") {
       // Tuple / vector / matrix
       advance();
-      const items: any[] = [];
+      const items: UsdValue[] = [];
       while (idx < len) {
         skipWhitespaceAndComments();
         if (consume(")")) break;
@@ -142,7 +142,7 @@ export function parseUsd(content: string): UsdStage {
     if (ch === "[") {
       // Array
       advance();
-      const items: any[] = [];
+      const items: UsdValue[] = [];
       while (idx < len) {
         skipWhitespaceAndComments();
         if (consume("]")) break;
@@ -157,7 +157,7 @@ export function parseUsd(content: string): UsdStage {
     if (ch === "{") {
       // Dictionary / block literal (e.g. customLayerData = { ... })
       advance();
-      const dict: Record<string, any> = {};
+      const dict: Record<string, UsdValue> = {};
       while (idx < len) {
         skipWhitespaceAndComments();
         if (consume("}")) break;
@@ -212,7 +212,8 @@ export function parseUsd(content: string): UsdStage {
       else if (key === "timeCodesPerSecond") stageMetadata.timeCodesPerSecond = Number(val);
       else if (key === "startTimeCode") stageMetadata.startTimeCode = Number(val);
       else if (key === "endTimeCode") stageMetadata.endTimeCode = Number(val);
-      else if (key === "subLayers" && Array.isArray(val)) stageMetadata.subLayers = val;
+      else if (key === "subLayers" && Array.isArray(val))
+        stageMetadata.subLayers = val.filter((v): v is string => typeof v === "string");
     }
   }
 
@@ -353,7 +354,7 @@ export function parseUsd(content: string): UsdStage {
             readIdentifier(); // consume .timeSamples
           }
           consume("=");
-          const timeSamples = new Map<number, any>();
+          const timeSamples = new Map<number, UsdValue>();
           if (consume("{")) {
             while (idx < len) {
               skipWhitespaceAndComments();
@@ -381,7 +382,7 @@ export function parseUsd(content: string): UsdStage {
           attrType = "auto";
         }
 
-        let attrVal: any = null;
+        let attrVal: UsdValue = null;
         if (consume("=")) {
           attrVal = readValue();
         }

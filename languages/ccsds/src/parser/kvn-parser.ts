@@ -7,6 +7,9 @@
  * Orbit Parameter Message (OPM), and Orbit Mean-Elements Message (OMM) decks.
  */
 
+import { createWasmParserSync } from "@modelscript/ccsds/wasm-parser";
+import { cstLineText, groupCstLeavesByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import type {
   CcsdsDocument,
   CcsdsEphemerisPoint,
@@ -19,13 +22,24 @@ import type {
   CcsdsSpacecraftParameters,
 } from "../types.js";
 
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getCcsdsWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/ccsds/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
 function parseEpochSeconds(epochStr: string): number {
   const ts = Date.parse(epochStr);
   return Number.isNaN(ts) ? 0 : ts / 1000.0;
 }
 
 export function parseKvn(source: string): CcsdsDocument {
-  const lines = source.split(/\r?\n/);
+  const cstTree = getCcsdsWasmParser().parse(source);
+  const cstLines = groupCstLeavesByLine(cstTree?.rootNode);
   const totalLength = source.length;
 
   let format: "OEM" | "OPM" | "OMM" = "OEM";
@@ -53,12 +67,10 @@ export function parseKvn(source: string): CcsdsDocument {
 
   let inMeta = false;
   let inData = false;
-  let offset = 0;
 
-  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-    const rawLine = lines[lineIdx]!;
-    const lineStartOffset = offset;
-    offset += rawLine.length + 1; // + newline
+  for (const { row: lineIdx, tokens } of cstLines) {
+    const rawLine = cstLineText(source, tokens);
+    const lineStartOffset = tokens[0]?.startIndex ?? 0;
     const line = rawLine.trim();
 
     if (!line || line.startsWith("COMMENT") || line.startsWith("#")) {
@@ -270,11 +282,13 @@ export function parseKvn(source: string): CcsdsDocument {
     }
   }
 
+  const lastCstLine = cstLines[cstLines.length - 1];
+  const lastLineLen = lastCstLine ? cstLineText(source, lastCstLine.tokens).length : 0;
   const docRange: CcsdsRange = {
     startLine: 1,
     startColumn: 1,
-    endLine: lines.length,
-    endColumn: (lines[lines.length - 1]?.length ?? 0) + 1,
+    endLine: (lastCstLine?.row ?? 0) + 1,
+    endColumn: lastLineLen + 1,
     startOffset: 0,
     endOffset: totalLength,
   };

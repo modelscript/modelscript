@@ -53,6 +53,8 @@
       "@modelscript/design-tokens/*": ["./packages/design-tokens/src/*"],
       "@modelscript/ide-client": ["./packages/ide/src/browser-client-main.ts"],
       "@modelscript/ide-client/*": ["./packages/ide/src/*"],
+      "@modelscript/sdk": ["./packages/sdk/src/index.ts"],
+      "@modelscript/sdk/*": ["./packages/sdk/src/*"],
       "@modelscript/adams": ["./languages/adams/src/index.ts"],
       "@modelscript/adams/*": ["./languages/adams/src/*"],
       "@modelscript/ampl": ["./languages/ampl/src/index.ts"],

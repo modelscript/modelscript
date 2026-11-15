@@ -154,7 +154,7 @@ export function lint__smilesAll(db: QueryDB, entry: SymbolEntry): LintResult[] |
 /**
  * Query hooks dispatch table registered with WasmQueryEngine for rule `smiles_molecule`.
  */
-export const smilesQueryHooks: Record<string, Record<string, any>> = {
+export const smilesQueryHooks: Record<string, Record<string, (db: QueryDB, entry: SymbolEntry) => unknown>> = {
   smiles_molecule: {
     smilesDocument,
     lint__smilesValence,

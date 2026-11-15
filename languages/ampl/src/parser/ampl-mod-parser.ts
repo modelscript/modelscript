@@ -112,10 +112,7 @@ export class AmplModParser {
         this.advance();
       } else {
         // If an identifier is followed by colon or indexing then colon, it is an unnamed-keyword constraint
-        if (
-          this.isNameToken(this.peek()) &&
-          (this.peekNext().value === ":" || this.peekNext().value === "{")
-        ) {
+        if (this.isNameToken(this.peek()) && (this.peekNext().value === ":" || this.peekNext().value === "{")) {
           this.parseConstraintDecl(model);
         } else {
           this.advance();
@@ -324,7 +321,12 @@ export class AmplModParser {
           conIndices = this.parseBracketIndices();
         }
         let coeff: AmplExpr;
-        if (!this.checkPunctuation(";") && !this.checkPunctuation(",") && !this.checkKeyword("coeff") && !this.checkKeyword("obj")) {
+        if (
+          !this.checkPunctuation(";") &&
+          !this.checkPunctuation(",") &&
+          !this.checkKeyword("coeff") &&
+          !this.checkKeyword("obj")
+        ) {
           coeff = this.parseUnary();
         } else {
           coeff = { kind: "number", value: 1 };
@@ -689,7 +691,12 @@ export class AmplModParser {
         if (expr.kind === "identifier") colName = expr.name;
         else if (expr.kind === "subscript") colName = expr.name;
         else if (expr.kind === "suffix") {
-          const base = expr.target.kind === "identifier" ? expr.target.name : (expr.target.kind === "subscript" ? expr.target.name : "col");
+          const base =
+            expr.target.kind === "identifier"
+              ? expr.target.name
+              : expr.target.kind === "subscript"
+                ? expr.target.name
+                : "col";
           colName = expr.suffix === "val" ? base : `${base}.${expr.suffix}`;
         } else {
           colName = `col_${valueColumns.length + 1}`;
@@ -761,7 +768,13 @@ export class AmplModParser {
 
     // Optional colon followed by net_in / net_out
     if (this.matchPunctuation(":")) {
-      while (!this.checkOperator("=") && !this.checkOperator("<=") && !this.checkOperator(">=") && !this.checkPunctuation(";") && !this.isAtEnd()) {
+      while (
+        !this.checkOperator("=") &&
+        !this.checkOperator("<=") &&
+        !this.checkOperator(">=") &&
+        !this.checkPunctuation(";") &&
+        !this.isAtEnd()
+      ) {
         if (this.matchKeyword("net_in")) {
           netDirection = "net_in";
         } else if (this.matchKeyword("net_out")) {
@@ -965,7 +978,10 @@ export class AmplModParser {
     while (!this.checkPunctuation(";") && !this.isAtEnd()) {
       if (this.matchPunctuation(",")) {
         continue;
-      } else if (this.matchKeyword("in") || (this.peek().type === "IDENTIFIER" && this.peek().value.toUpperCase() === "IN")) {
+      } else if (
+        this.matchKeyword("in") ||
+        (this.peek().type === "IDENTIFIER" && this.peek().value.toUpperCase() === "IN")
+      ) {
         direction = "IN";
         if (this.peek().type === "IDENTIFIER") this.advance();
       } else if (this.peek().type === "IDENTIFIER" && this.peek().value.toUpperCase() === "OUT") {
@@ -1363,7 +1379,7 @@ export class AmplModParser {
       const op = opToken.value.toLowerCase() as AmplBinaryOp;
       const right = this.parseExpression(prec + (this.isRightAssociative(op) ? 0 : 1));
 
-      if (op === ".." as any) {
+      if ((op as string) === "..") {
         let step: AmplExpr | undefined;
         if (this.matchKeyword("by")) {
           step = this.parseExpression(4);
@@ -1390,12 +1406,7 @@ export class AmplModParser {
   }
 
   private parseUnary(): AmplExpr {
-    if (
-      this.matchOperator("+") ||
-      this.matchOperator("-") ||
-      this.matchOperator("!") ||
-      this.matchKeyword("not")
-    ) {
+    if (this.matchOperator("+") || this.matchOperator("-") || this.matchOperator("!") || this.matchKeyword("not")) {
       const opToken = this.previous();
       const operand = this.parseUnary();
       return {
@@ -1646,7 +1657,9 @@ export class AmplModParser {
       };
     }
 
-    throw new Error(`Unexpected token '${token.value}' at line ${token.range.start.line}, column ${token.range.start.column}`);
+    throw new Error(
+      `Unexpected token '${token.value}' at line ${token.range.start.line}, column ${token.range.start.column}`,
+    );
   }
 
   // ── Precedence ──
@@ -1699,7 +1712,16 @@ export class AmplModParser {
 
   private matchRelOp(): boolean {
     const val = this.peek().value;
-    if (val === "<=" || val === ">=" || val === "==" || val === "=" || val === "!=" || val === "<>" || val === "<" || val === ">") {
+    if (
+      val === "<=" ||
+      val === ">=" ||
+      val === "==" ||
+      val === "=" ||
+      val === "!=" ||
+      val === "<>" ||
+      val === "<" ||
+      val === ">"
+    ) {
       this.advance();
       return true;
     }
@@ -1709,11 +1731,23 @@ export class AmplModParser {
   // ── Helper methods ──
 
   private peek(): Token {
-    return this.tokens[this.pos] ?? { type: "EOF", value: "", range: { start: { line: 0, column: 0, offset: 0 }, end: { line: 0, column: 0, offset: 0 } } };
+    return (
+      this.tokens[this.pos] ?? {
+        type: "EOF",
+        value: "",
+        range: { start: { line: 0, column: 0, offset: 0 }, end: { line: 0, column: 0, offset: 0 } },
+      }
+    );
   }
 
   private peekNext(): Token {
-    return this.tokens[this.pos + 1] ?? { type: "EOF", value: "", range: { start: { line: 0, column: 0, offset: 0 }, end: { line: 0, column: 0, offset: 0 } } };
+    return (
+      this.tokens[this.pos + 1] ?? {
+        type: "EOF",
+        value: "",
+        range: { start: { line: 0, column: 0, offset: 0 }, end: { line: 0, column: 0, offset: 0 } },
+      }
+    );
   }
 
   private previous(): Token {
@@ -1735,7 +1769,9 @@ export class AmplModParser {
 
   private consumeName(message: string): Token {
     if (this.isNameToken(this.peek())) return this.advance();
-    throw new Error(`${message}. Found '${this.peek().value}' at line ${this.peek().range.start.line}, column ${this.peek().range.start.column}`);
+    throw new Error(
+      `${message}. Found '${this.peek().value}' at line ${this.peek().range.start.line}, column ${this.peek().range.start.column}`,
+    );
   }
 
   private match(type: Token["type"]): boolean {
@@ -1805,7 +1841,9 @@ export class AmplModParser {
 
   private consume(type: Token["type"], message: string): Token {
     if (this.check(type)) return this.advance();
-    throw new Error(`${message}. Found '${this.peek().value}' at line ${this.peek().range.start.line}, column ${this.peek().range.start.column}`);
+    throw new Error(
+      `${message}. Found '${this.peek().value}' at line ${this.peek().range.start.line}, column ${this.peek().range.start.column}`,
+    );
   }
 
   private consumeKeyword(val: string, message: string): Token {
@@ -1815,17 +1853,23 @@ export class AmplModParser {
     ) {
       return this.advance();
     }
-    throw new Error(`${message}. Found '${this.peek().value}' at line ${this.peek().range.start.line}, column ${this.peek().range.start.column}`);
+    throw new Error(
+      `${message}. Found '${this.peek().value}' at line ${this.peek().range.start.line}, column ${this.peek().range.start.column}`,
+    );
   }
 
   private consumeOperator(val: string, message: string): Token {
     if (this.checkOperator(val)) return this.advance();
-    throw new Error(`${message}. Found '${this.peek().value}' at line ${this.peek().range.start.line}, column ${this.peek().range.start.column}`);
+    throw new Error(
+      `${message}. Found '${this.peek().value}' at line ${this.peek().range.start.line}, column ${this.peek().range.start.column}`,
+    );
   }
 
   private consumePunctuation(val: string, message: string): Token {
     if (this.checkPunctuation(val)) return this.advance();
-    throw new Error(`${message}. Found '${this.peek().value}' at line ${this.peek().range.start.line}, column ${this.peek().range.start.column}`);
+    throw new Error(
+      `${message}. Found '${this.peek().value}' at line ${this.peek().range.start.line}, column ${this.peek().range.start.column}`,
+    );
   }
 }
 

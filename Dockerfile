@@ -42,6 +42,7 @@ COPY packages/lsp/package.json packages/lsp/
 COPY packages/mcp/package.json packages/mcp/
 COPY packages/react/package.json packages/react/
 COPY packages/runtime/package.json packages/runtime/
+COPY packages/sdk/package.json packages/sdk/
 COPY packages/simulate/package.json packages/simulate/
 
 # Languages manifests

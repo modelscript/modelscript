@@ -99,7 +99,7 @@ function buildCfgString(record: ComtradeRecord, dataFormatOverride?: ComtradeDat
 
   cfgLines.push(`${sampleRates.length}`);
   for (const sr of sampleRates) {
-    const rate = (sr as any).rateHz ?? (sr as any).rate ?? 10000;
+    const rate = sr.rateHz ?? sr.rate ?? 10000;
     cfgLines.push(`${rate},${sr.lastSampleNumber}`);
   }
 
@@ -320,7 +320,12 @@ function computeChannelScale(arr: Float64Array | number[]): { multiplierA: numbe
  * Converts EMT simulation results into a COMTRADE disturbance record.
  */
 export function emtResultToComtrade(
-  result: any,
+  result: {
+    time?: number[] | Float64Array | undefined;
+    variables?: Record<string, number[]> | undefined;
+    busVoltages?: Map<string, Float64Array> | undefined;
+    branchCurrents?: Map<string, Float64Array> | undefined;
+  },
   optionsOrStationName: string | { stationName: string; recDevId?: string; nominalFrequency?: number },
   recordingDevIdParam?: string,
 ): ComtradeRecord {
@@ -496,11 +501,13 @@ export function emtResultToComtrade(
     digitalData: digitalMap,
   };
 
+  const analogRec = rec.analogData as unknown as Record<number, number[]>;
   for (let a = 0; a < analogList.length; a++) {
-    (rec.analogData as any)[a] = analogList[a];
+    analogRec[a] = analogList[a]!;
   }
+  const digitalRec = rec.digitalData as unknown as Record<number, number[]>;
   for (let d = 0; d < digitalList.length; d++) {
-    (rec.digitalData as any)[d] = digitalList[d];
+    digitalRec[d] = digitalList[d]!;
   }
 
   return rec;

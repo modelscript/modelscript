@@ -232,9 +232,13 @@ export function synchronizeModelicaToUrdf(
   const changes: UrdfSyncChange[] = [];
 
   const moCst = parseModelicaCst(modifiedModelicaText);
-  const bodyComps = moCst.components.filter((c) => c.typeSpecifier.endsWith("Parts.Body") || c.typeSpecifier === "Body");
+  const bodyComps = moCst.components.filter(
+    (c) => c.typeSpecifier.endsWith("Parts.Body") || c.typeSpecifier === "Body",
+  );
   if (bodyComps.length === 0) {
-    throw new Error("Expected at least one 'Parts.Body <name>(m = ..., I_11 = ..., I_22 = ..., I_33 = ...);' declaration.");
+    throw new Error(
+      "Expected at least one 'Parts.Body <name>(m = ..., I_11 = ..., I_22 = ..., I_33 = ...);' declaration.",
+    );
   }
 
   const origLinks = Array.from(robot.links.values());
@@ -248,8 +252,7 @@ export function synchronizeModelicaToUrdf(
     const newI33 = parseFloat(bComp.modifications["I_33"] ?? "0.1");
 
     const existingLink =
-      robot.links.get(bComp.name) ??
-      (bodyComps.length === origLinks.length ? origLinks[idx] : undefined);
+      robot.links.get(bComp.name) ?? (bodyComps.length === origLinks.length ? origLinks[idx] : undefined);
     const threadKey = existingLink ? `link:${existingLink.name}` : `link:${bComp.name}`;
 
     const backRes = transformer.evaluateRuleBackward(
@@ -376,16 +379,11 @@ export function synchronizeModelicaToUrdf(
     const axisStr = `${rawVec[0]} ${rawVec[1]} ${rawVec[2]}`;
 
     const existingJoint =
-      robot.joints.get(jComp.name) ??
-      (jointComps.length === origJoints.length ? origJoints[idx] : undefined);
+      robot.joints.get(jComp.name) ?? (jointComps.length === origJoints.length ? origJoints[idx] : undefined);
     const threadKey = existingJoint ? `joint:${existingJoint.name}` : `joint:${jComp.name}`;
 
     const targetTypeSpec =
-      jKind === "prismatic"
-        ? "Joints.Prismatic"
-        : jKind === "fixed"
-          ? "Joints.Fixed"
-          : "Joints.Revolute";
+      jKind === "prismatic" ? "Joints.Prismatic" : jKind === "fixed" ? "Joints.Fixed" : "Joints.Revolute";
 
     const backRes = transformer.evaluateRuleBackward(
       {
@@ -543,11 +541,11 @@ function patchUrdfXmlViaCst(originalXml: string, robot: UrdfRobot): string {
   let linkIdx = 0;
   for (const link of robot.links.values()) {
     const linkEl =
-      linkEls.find((el) => el.attributes.find((a: any) => a.name === "name")?.value === link.name) ?? linkEls[linkIdx];
+      linkEls.find((el) => el.attributes.find((a) => a.name === "name")?.value === link.name) ?? linkEls[linkIdx];
     linkIdx++;
 
     if (linkEl && link.inertial) {
-      const nameAttr = linkEl.attributes.find((a: any) => a.name === "name");
+      const nameAttr = linkEl.attributes.find((a) => a.name === "name");
       if (nameAttr && nameAttr.value !== link.name) {
         splices.push(xml.setAttributeSplice(linkEl, "name", link.name, originalXml));
       }
@@ -561,14 +559,14 @@ function patchUrdfXmlViaCst(originalXml: string, robot: UrdfRobot): string {
       const massStr = isCompact ? fmtMass(link.inertial.mass) : String(link.inertial.mass);
 
       if (massEl) {
-        const curMass = massEl.attributes.find((a: any) => a.name === "value")?.value;
+        const curMass = massEl.attributes.find((a) => a.name === "value")?.value;
         if (curMass !== massStr && Number(curMass) !== link.inertial.mass) {
           splices.push(xml.setAttributeSplice(massEl, "value", massStr, originalXml));
         }
       }
       if (inertiaEl) {
         const updateAttrIfChanged = (attrName: string, numVal: number) => {
-          const cur = inertiaEl.attributes.find((a: any) => a.name === attrName)?.value;
+          const cur = inertiaEl.attributes.find((a) => a.name === attrName)?.value;
           if (cur === undefined || Number(cur) !== numVal) {
             splices.push(xml.setAttributeSplice(inertiaEl, attrName, String(numVal), originalXml));
           }
@@ -587,35 +585,39 @@ function patchUrdfXmlViaCst(originalXml: string, robot: UrdfRobot): string {
   let jointIdx = 0;
   for (const joint of robot.joints.values()) {
     const jointEl =
-      jointEls.find((el) => el.attributes.find((a: any) => a.name === "name")?.value === joint.name) ?? jointEls[jointIdx];
+      jointEls.find((el) => el.attributes.find((a) => a.name === "name")?.value === joint.name) ?? jointEls[jointIdx];
     jointIdx++;
 
     if (jointEl) {
-      const nameAttr = jointEl.attributes.find((a: any) => a.name === "name");
+      const nameAttr = jointEl.attributes.find((a) => a.name === "name");
       if (nameAttr && nameAttr.value !== joint.name) {
         splices.push(xml.setAttributeSplice(jointEl, "name", joint.name, originalXml));
       }
-      const typeAttr = jointEl.attributes.find((a: any) => a.name === "type");
-      if (typeAttr && typeAttr.value !== joint.type && !(typeAttr.value === "continuous" && joint.type === "revolute")) {
+      const typeAttr = jointEl.attributes.find((a) => a.name === "type");
+      if (
+        typeAttr &&
+        typeAttr.value !== joint.type &&
+        !(typeAttr.value === "continuous" && joint.type === "revolute")
+      ) {
         splices.push(xml.setAttributeSplice(jointEl, "type", joint.type, originalXml));
       }
       const parentEl = findXmlElements(jointEl, "parent")[0];
-      if (parentEl && parentEl.attributes.find((a: any) => a.name === "link")?.value !== joint.parentLink) {
+      if (parentEl && parentEl.attributes.find((a) => a.name === "link")?.value !== joint.parentLink) {
         splices.push(xml.setAttributeSplice(parentEl, "link", joint.parentLink, originalXml));
       }
       const childEl = findXmlElements(jointEl, "child")[0];
-      if (childEl && childEl.attributes.find((a: any) => a.name === "link")?.value !== joint.childLink) {
+      if (childEl && childEl.attributes.find((a) => a.name === "link")?.value !== joint.childLink) {
         splices.push(xml.setAttributeSplice(childEl, "link", joint.childLink, originalXml));
       }
       const axisEl = findXmlElements(jointEl, "axis")[0];
       const newXyz = `${joint.axis.x} ${joint.axis.y} ${joint.axis.z}`;
-      if (axisEl && axisEl.attributes.find((a: any) => a.name === "xyz")?.value !== newXyz) {
+      if (axisEl && axisEl.attributes.find((a) => a.name === "xyz")?.value !== newXyz) {
         splices.push(xml.setAttributeSplice(axisEl, "xyz", newXyz, originalXml));
       }
       if (joint.origin) {
         const originEl = findXmlElements(jointEl, "origin")[0];
         const origXyz = `${joint.origin.xyz.x} ${joint.origin.xyz.y} ${joint.origin.xyz.z}`;
-        if (originEl && originEl.attributes.find((a: any) => a.name === "xyz")?.value !== origXyz) {
+        if (originEl && originEl.attributes.find((a) => a.name === "xyz")?.value !== origXyz) {
           splices.push(xml.setAttributeSplice(originEl, "xyz", origXyz, originalXml));
         }
       }

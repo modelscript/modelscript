@@ -457,16 +457,18 @@ class XmlTreeCursor implements TreeCursor {
  */
 export function createXmlCstTree(doc: XmlDocument): Tree {
   const lineStarts = computeLineStarts(doc.source);
-  const treeObj: Partial<Tree> = {};
+  const treeObj: Record<string, unknown> = {};
 
-  const rootNode = doc.root ? new XmlCstNode(doc.root, doc.source, treeObj as Tree, lineStarts, null) : null;
+  const rootNode = doc.root ? new XmlCstNode(doc.root, doc.source, treeObj as unknown as Tree, lineStarts, null) : null;
 
-  (treeObj as any).rootNode = rootNode;
-  (treeObj as any).rootNodeId = rootNode?.id ?? 0;
-  (treeObj as any).source = doc.source;
-  (treeObj as any).lineStarts = lineStarts;
-  (treeObj as any).edit = () => {};
-  (treeObj as any).walk = () => rootNode?.walk();
+  Object.assign(treeObj, {
+    rootNode,
+    rootNodeId: rootNode?.id ?? 0,
+    source: doc.source,
+    lineStarts,
+    edit: () => {},
+    walk: () => rootNode?.walk(),
+  });
 
-  return treeObj as Tree;
+  return treeObj as unknown as Tree;
 }

@@ -42,8 +42,22 @@ export interface Production {
   /** AST named fields assigned to specific RHS symbols. */
   fields?: { index: number; fieldId: number }[] | undefined;
   /** Semantic token assignments applied to specific RHS symbols. */
-  semantics?: { index: number; type: string; modifiers: any }[] | undefined;
+  semantics?: { index: number; type: string; modifiers: unknown }[] | undefined;
 }
+
+/** Structural shape of a DSL rule node inspected during grammar normalization. */
+export interface GrammarRuleNode {
+  type: string;
+  value?: unknown;
+  name?: string | undefined;
+  arg?: unknown;
+  args?: (GrammarRuleNode | string | RegExp)[] | undefined;
+  children?: (GrammarRuleNode | string | RegExp)[] | undefined;
+  rule?: GrammarRuleNode | string | RegExp | undefined;
+  precedence?: number | undefined;
+}
+
+export type GrammarRuleInput = GrammarRuleNode | string | RegExp | null | undefined;
 
 /** Context passed down during grammar flattening to propagate precedence, associativity, and field names. */
 export interface FlattenContext {
@@ -66,7 +80,7 @@ export interface FlattenResult {
   /** Optional AST field name assigned to this symbol occurrence. */
   field?: string | undefined;
   /** Optional LSP semantic token type and modifiers attached to this symbol. */
-  semantic?: { type: string; modifiers: any } | undefined;
+  semantic?: { type: string; modifiers: unknown } | undefined;
 }
 
 /**
@@ -74,22 +88,39 @@ export interface FlattenResult {
  */
 export interface RuleNormalizer {
   /** Flattens a DSL rule node and its children into a sequence of `FlattenResult` items, registering synthetic productions on `g` as needed. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[];
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[];
   /** Returns a canonical EBNF string representation of `rule` used for naming and deduplicating synthetic rules. */
-  getEBNF(g: NormalizedGrammar, rule: any, getChild: (r: any) => any, getChildren: (r: any) => any[]): string;
+  getEBNF(
+    g: NormalizedGrammar,
+    rule: GrammarRuleNode,
+    getChild: (r: GrammarRuleNode) => GrammarRuleInput,
+    getChildren: (r: GrammarRuleNode) => (GrammarRuleNode | string | RegExp)[],
+  ): string;
 }
 
 /** Normalizes a direct symbol reference. */
 export class SymbolNormalizer implements RuleNormalizer {
   /** Returns a single `FlattenResult` referencing the target symbol name with the inherited field context. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, _children: any[], p: FlattenContext): FlattenResult[] {
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    _children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
     if (typeof rule.value === "string") {
       g.recordSymbolRef(ctx, rule.value);
     }
-    return [{ sym: rule.value, field: p.field }];
+    return [{ sym: String(rule.value), field: p.field }];
   }
   /** Formats the referenced symbol name as its literal EBNF identifier. */
-  getEBNF(_g: NormalizedGrammar, rule: any): string {
+  getEBNF(_g: NormalizedGrammar, rule: GrammarRuleNode): string {
     return rule.value as string;
   }
 }
@@ -97,7 +128,13 @@ export class SymbolNormalizer implements RuleNormalizer {
 /** Normalizes a terminal token (string or regex), extracting it into the grammar's terminal set. */
 export class TokenNormalizer implements RuleNormalizer {
   /** Registers the string literal or regular expression in `g.terminals` and returns its terminal symbol reference. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, _children: any[], p: FlattenContext): FlattenResult[] {
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    _children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
     if (rule.children && rule.children.length > 0 && rule.value === undefined) {
       return g.flatten(ctx, rule.children[0], p);
     }
@@ -108,7 +145,7 @@ export class TokenNormalizer implements RuleNormalizer {
     ) {
       throw new Error(`Invalid token value in context '${ctx}': expected string or RegExp, got ${typeof val}`);
     }
-    let tokenName = val.toString();
+    let tokenName = (val as string | RegExp).toString();
     if (typeof val === "string") {
       tokenName = `"${val}"`;
     }
@@ -116,14 +153,14 @@ export class TokenNormalizer implements RuleNormalizer {
     return [{ sym: tokenName, field: p.field }];
   }
   /** Formats the token pattern as a quoted string literal or `/regex/` in EBNF notation. */
-  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
     if (rule.children && rule.children.length > 0 && rule.value === undefined) {
       return g.getEBNF(getChild(rule));
     }
     return typeof rule.value === "string"
       ? `"${rule.value}"`
       : rule.value instanceof RegExp || Object.prototype.toString.call(rule.value) === "[object RegExp]"
-        ? `/${rule.value.source}/`
+        ? `/${(rule.value as RegExp).source}/`
         : "token";
   }
 }
@@ -131,7 +168,13 @@ export class TokenNormalizer implements RuleNormalizer {
 /** Normalizes a sequence of rules by concatenating their flattened results. */
 export class SeqNormalizer implements RuleNormalizer {
   /** Flattens each child rule in order and concatenates their resulting symbol sequences. */
-  normalize(g: NormalizedGrammar, ctx: string, _rule: any, children: any[], p: FlattenContext): FlattenResult[] {
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    _rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
     const seqSyms: FlattenResult[] = [];
     for (const child of children) {
       seqSyms.push(...g.flatten(ctx, child, { ...p }));
@@ -139,9 +182,14 @@ export class SeqNormalizer implements RuleNormalizer {
     return seqSyms;
   }
   /** Formats the sequence as a parenthesized space-separated list of child EBNF expressions. */
-  getEBNF(g: NormalizedGrammar, rule: any, _getChild: any, getChildren: any): string {
+  getEBNF(
+    g: NormalizedGrammar,
+    rule: GrammarRuleNode,
+    _getChild: (r: GrammarRuleNode) => GrammarRuleInput,
+    getChildren: (r: GrammarRuleNode) => (GrammarRuleNode | string | RegExp)[],
+  ): string {
     return `(${getChildren(rule)
-      .map((c: any) => g.getEBNF(c))
+      .map((c) => g.getEBNF(c))
       .join(" ")})`;
   }
 }
@@ -149,7 +197,13 @@ export class SeqNormalizer implements RuleNormalizer {
 /** Normalizes a choice of rules by creating a synthetic non-terminal with multiple productions. */
 export class ChoiceNormalizer implements RuleNormalizer {
   /** Synthesizes a helper non-terminal with one production per alternative branch and returns a reference to it. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
     const choiceSym = g.nextSynthetic(g.getEBNF(rule), p, rule, ctx);
     if (g.nonTerminals.has(choiceSym)) return [{ sym: choiceSym, field: p.field }];
 
@@ -161,9 +215,14 @@ export class ChoiceNormalizer implements RuleNormalizer {
     return [{ sym: choiceSym, field: p.field }];
   }
   /** Formats the alternation as a parenthesized `|`-separated list of child EBNF expressions. */
-  getEBNF(g: NormalizedGrammar, rule: any, _getChild: any, getChildren: any): string {
+  getEBNF(
+    g: NormalizedGrammar,
+    rule: GrammarRuleNode,
+    _getChild: (r: GrammarRuleNode) => GrammarRuleInput,
+    getChildren: (r: GrammarRuleNode) => (GrammarRuleNode | string | RegExp)[],
+  ): string {
     return `(${getChildren(rule)
-      .map((c: any) => g.getEBNF(c))
+      .map((c) => g.getEBNF(c))
       .join(" | ")})`;
   }
 }
@@ -171,7 +230,13 @@ export class ChoiceNormalizer implements RuleNormalizer {
 /** Normalizes a zero-or-more repetition (*), creating a recursive synthetic list production. */
 export class RepeatNormalizer implements RuleNormalizer {
   /** Synthesizes a left-recursive list non-terminal with a recursive step production and an empty base production. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
     const childP: FlattenContext = { ...p };
     const childSyms = g.flatten(ctx, children[0], childP);
     const repeatSym = g.nextSynthetic(g.getEBNF(rule), p, rule, ctx);
@@ -183,7 +248,7 @@ export class RepeatNormalizer implements RuleNormalizer {
     return [{ sym: repeatSym, field: p.field }];
   }
   /** Formats the repetition with a trailing Kleene star (`*`) in EBNF notation. */
-  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
     return `${g.getEBNF(getChild(rule))}*`;
   }
 }
@@ -191,7 +256,13 @@ export class RepeatNormalizer implements RuleNormalizer {
 /** Normalizes a one-or-more repetition (+), creating a recursive synthetic list production. */
 export class Repeat1Normalizer implements RuleNormalizer {
   /** Synthesizes a left-recursive list non-terminal with a single-element base production and a recursive step production. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
     const childP: FlattenContext = { ...p };
     const childSyms = g.flatten(ctx, children[0], childP);
     const repeatSym = g.nextSynthetic(g.getEBNF(rule), p, rule, ctx);
@@ -203,7 +274,7 @@ export class Repeat1Normalizer implements RuleNormalizer {
     return [{ sym: repeatSym, field: p.field }];
   }
   /** Formats the one-or-more repetition with a trailing Kleene plus (`+`) in EBNF notation. */
-  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
     return `${g.getEBNF(getChild(rule))}+`;
   }
 }
@@ -212,8 +283,8 @@ export class Repeat1Normalizer implements RuleNormalizer {
 function normalizePrec(
   g: NormalizedGrammar,
   ctx: string,
-  rule: any,
-  children: any[],
+  rule: GrammarRuleNode,
+  children: (GrammarRuleNode | string | RegExp)[],
   p: FlattenContext,
   childP: FlattenContext,
 ): FlattenResult[] {
@@ -230,12 +301,18 @@ function normalizePrec(
 /** Propagates static precedence to child rules without associativity. */
 export class PrecNormalizer implements RuleNormalizer {
   /** Wraps the child rule in a synthetic non-terminal carrying the specified static precedence level. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
-    const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence };
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
+    const childP = { ...p, prec: (rule.value !== undefined ? rule.value : rule.precedence) as number | undefined };
     return normalizePrec(g, ctx, rule, children, p, childP);
   }
   /** Returns the EBNF string of the underlying child rule. */
-  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
     return g.getEBNF(getChild(rule));
   }
 }
@@ -243,12 +320,22 @@ export class PrecNormalizer implements RuleNormalizer {
 /** Propagates static precedence with left-associativity to child rules. */
 export class PrecLeftNormalizer implements RuleNormalizer {
   /** Wraps the child rule in a synthetic non-terminal carrying static precedence and `"left"` associativity. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
-    const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence, assoc: "left" as const };
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
+    const childP = {
+      ...p,
+      prec: (rule.value !== undefined ? rule.value : rule.precedence) as number | undefined,
+      assoc: "left" as const,
+    };
     return normalizePrec(g, ctx, rule, children, p, childP);
   }
   /** Returns the EBNF string of the underlying child rule. */
-  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
     return g.getEBNF(getChild(rule));
   }
 }
@@ -256,12 +343,22 @@ export class PrecLeftNormalizer implements RuleNormalizer {
 /** Propagates static precedence with right-associativity to child rules. */
 export class PrecRightNormalizer implements RuleNormalizer {
   /** Wraps the child rule in a synthetic non-terminal carrying static precedence and `"right"` associativity. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
-    const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence, assoc: "right" as const };
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
+    const childP = {
+      ...p,
+      prec: (rule.value !== undefined ? rule.value : rule.precedence) as number | undefined,
+      assoc: "right" as const,
+    };
     return normalizePrec(g, ctx, rule, children, p, childP);
   }
   /** Returns the EBNF string of the underlying child rule. */
-  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
     return g.getEBNF(getChild(rule));
   }
 }
@@ -269,12 +366,21 @@ export class PrecRightNormalizer implements RuleNormalizer {
 /** Propagates dynamic precedence for runtime GLR conflict resolution. */
 export class PrecDynamicNormalizer implements RuleNormalizer {
   /** Wraps the child rule in a synthetic non-terminal carrying the specified dynamic precedence value. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
-    const childP = { ...p, dynamicPrec: rule.value !== undefined ? rule.value : rule.precedence };
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
+    const childP = {
+      ...p,
+      dynamicPrec: (rule.value !== undefined ? rule.value : rule.precedence) as number | undefined,
+    };
     return normalizePrec(g, ctx, rule, children, p, childP);
   }
   /** Returns the EBNF string of the underlying child rule. */
-  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
     return g.getEBNF(getChild(rule));
   }
 }
@@ -282,11 +388,17 @@ export class PrecDynamicNormalizer implements RuleNormalizer {
 /** Normalizes symbol definition (`DEF`), reference (`REF`), `RESERVED`, and `TOKEN_IMMEDIATE` wrapper rules by delegating to their inner syntax rule. */
 export class DefRefNormalizer implements RuleNormalizer {
   /** Flattens the inner syntax rule wrapped by this definition or reference combinator. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
     return g.flatten(ctx, rule.rule || children[0], p);
   }
   /** Returns the EBNF string of the inner syntax rule. */
-  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
     return g.getEBNF(getChild(rule));
   }
 }
@@ -294,7 +406,13 @@ export class DefRefNormalizer implements RuleNormalizer {
 /** Normalizes an optional rule (?) by creating an empty epsilon production. */
 export class OptionalNormalizer implements RuleNormalizer {
   /** Synthesizes a helper non-terminal with one production matching the child rule and one empty epsilon production. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
     const optSym = g.nextSynthetic(g.getEBNF(rule), p, rule, ctx);
     if (g.nonTerminals.has(optSym)) return [{ sym: optSym, field: p.field }];
 
@@ -304,7 +422,7 @@ export class OptionalNormalizer implements RuleNormalizer {
     return [{ sym: optSym, field: p.field }];
   }
   /** Formats the optional rule with a trailing question mark (`?`) in EBNF notation. */
-  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
     return `${g.getEBNF(getChild(rule))}?`;
   }
 }
@@ -324,8 +442,14 @@ export class BlankNormalizer implements RuleNormalizer {
 /** Attaches an AST field name to the result of a child rule. */
 export class FieldNormalizer implements RuleNormalizer {
   /** Registers the field name in `g.fieldToInt` and annotates flattened child symbols with the field name. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
-    const fieldName = rule.value;
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
+    const fieldName = rule.value as string | undefined;
     if (fieldName && !g.fieldToInt.has(fieldName)) {
       g.fieldToInt.set(fieldName, g.fieldToInt.size + 1);
     }
@@ -341,7 +465,7 @@ export class FieldNormalizer implements RuleNormalizer {
     return res;
   }
   /** Returns the EBNF string of the underlying child rule. */
-  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
     return g.getEBNF(getChild(rule));
   }
 }
@@ -349,17 +473,23 @@ export class FieldNormalizer implements RuleNormalizer {
 /** Attaches an AST alias to the result of a child rule. */
 export class AliasNormalizer implements RuleNormalizer {
   /** Flattens the child rule and attaches the target alias name to each resulting symbol entry. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
     const res = g.flatten(ctx, children[0], p);
     for (const r of res) {
       if (!r.alias) {
-        r.alias = rule.value;
+        r.alias = rule.value as string | undefined;
       }
     }
     return res;
   }
   /** Returns the EBNF string of the underlying child rule. */
-  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
     return g.getEBNF(getChild(rule));
   }
 }
@@ -367,17 +497,23 @@ export class AliasNormalizer implements RuleNormalizer {
 /** Attaches LSP semantic token modifiers to the result of a child rule. */
 export class SemanticNormalizer implements RuleNormalizer {
   /** Flattens the child rule and attaches the semantic token classification metadata to each resulting symbol entry. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
     const res = g.flatten(ctx, children[0], p);
     for (const r of res) {
       if (!r.semantic) {
-        r.semantic = rule.value;
+        r.semantic = rule.value as { type: string; modifiers: unknown } | undefined;
       }
     }
     return res;
   }
   /** Returns the EBNF string of the underlying child rule. */
-  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
     return g.getEBNF(getChild(rule));
   }
 }
@@ -385,11 +521,17 @@ export class SemanticNormalizer implements RuleNormalizer {
 /** Normalizes a syntax token by passing through its child rule transparently. */
 export class SyntaxTokenNormalizer implements RuleNormalizer {
   /** Transparently flattens the wrapped child rule without introducing additional productions. */
-  normalize(g: NormalizedGrammar, ctx: string, _rule: any, children: any[], p: FlattenContext): FlattenResult[] {
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    _rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
     return g.flatten(ctx, children[0], p);
   }
   /** Returns the EBNF string of the underlying child rule. */
-  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
     return g.getEBNF(getChild(rule));
   }
 }
@@ -397,7 +539,13 @@ export class SyntaxTokenNormalizer implements RuleNormalizer {
 /** Extracts synchronization tokens for error recovery and passes through the child rule. */
 export class SyncNormalizer implements RuleNormalizer {
   /** Registers synchronization token literals in `g.localSyncTokens` and flattens the child rule. */
-  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
     const tokens = rule.value as string[];
     for (const t of tokens) {
       g.localSyncTokens.add(t);
@@ -405,7 +553,7 @@ export class SyncNormalizer implements RuleNormalizer {
     return g.flatten(ctx, children[0], p);
   }
   /** Returns the EBNF string of the underlying child rule. */
-  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
     return g.getEBNF(getChild(rule));
   }
 }
@@ -473,11 +621,11 @@ export class NormalizedGrammar {
   localSyncTokens = new Set<string>();
 
   /** Evaluated AST `Rule` trees keyed by their declared rule name. */
-  evaluatedRules: Record<string, Rule<any>> = {};
+  evaluatedRules: Record<string, Rule<string>> = {};
   /** Explicit GLR conflict groups declared in the grammar specification. */
   conflicts: string[][] = [];
   /** Extra trivia rules (e.g., whitespace and comments) allowed between any tokens. */
-  extras: Rule<any>[] = [];
+  extras: Rule<string>[] = [];
   /** List of rule names marked to be inlined / hidden from the public CST. */
   inlineRules: string[] = [];
   /** Mapping from supertype rule names to their constituent subtype symbol names. */
@@ -508,7 +656,7 @@ export class NormalizedGrammar {
   /**
    * Evaluates and flattens a declarative `LanguageOptions` specification into normalized BNF productions.
    */
-  constructor(grammar: LanguageOptions<any>) {
+  constructor(grammar: LanguageOptions) {
     this.name = grammar.name || "Grammar";
     this.strictConflicts = !!grammar.strictConflicts;
     const dummy$ = new Proxy(
@@ -516,17 +664,17 @@ export class NormalizedGrammar {
       {
         get: (_target, prop: string) => ({ type: "SYMBOL", value: prop }),
       },
-    );
+    ) as Record<string, Rule<string>>;
     if (typeof grammar.conflicts === "function") {
-      const confs = grammar.conflicts(dummy$ as any) as any[][];
+      const confs = grammar.conflicts(dummy$) as (GrammarRuleNode | string)[][];
       this.conflicts = confs.map((group) =>
         group
           .map((rule) => {
             if (typeof rule === "string") return rule;
-            if (rule.type === "SYMBOL") return rule.value || rule.name;
+            if (rule.type === "SYMBOL") return String(rule.value || rule.name || "");
             if (rule.type === "TOKEN") {
               const val = rule.value !== undefined ? rule.value : rule.arg;
-              return `"${val}"`;
+              return `"${String(val)}"`;
             }
             return "";
           })
@@ -537,15 +685,14 @@ export class NormalizedGrammar {
     }
 
     if (grammar.extras) {
-      this.extras = grammar.extras(dummy$ as any).map(toRule);
+      this.extras = grammar.extras(dummy$).map(toRule);
       for (const rule of this.extras) {
         this.flatten("_extras", rule, {});
       }
     }
 
     if (grammar.precedences) {
-      const precDef =
-        typeof grammar.precedences === "function" ? (grammar.precedences as any)(dummy$ as any) : grammar.precedences;
+      const precDef = typeof grammar.precedences === "function" ? grammar.precedences(dummy$) : grammar.precedences;
       if (Array.isArray(precDef)) {
         let precVal = precDef.length;
         for (const group of precDef) {
@@ -553,9 +700,9 @@ export class NormalizedGrammar {
             for (const rawItem of group) {
               const item =
                 typeof rawItem === "object" && rawItem !== null && "value" in rawItem
-                  ? (rawItem as any).value
+                  ? (rawItem as GrammarRuleNode).value
                   : typeof rawItem === "object" && rawItem !== null && "name" in rawItem
-                    ? (rawItem as any).name
+                    ? (rawItem as GrammarRuleNode).name
                     : rawItem;
               if (typeof item === "string") {
                 this.globalPrecedences.set(item, precVal);
@@ -574,11 +721,11 @@ export class NormalizedGrammar {
 
     if (grammar.reserved) {
       for (const [key, resolver] of Object.entries(grammar.reserved)) {
-        const rules = resolver(dummy$ as any).map(toRule);
+        const rules = resolver(dummy$).map(toRule);
         const tokens = new Set<string>();
-        const extractToken = (r: Rule<any>) => {
+        const extractToken = (r: Rule<string>) => {
           if (r.type === "SYMBOL") tokens.add(r.value as string);
-          else if (r.type === "TOKEN") tokens.add(`"${r.value}"`);
+          else if (r.type === "TOKEN") tokens.add(`"${String(r.value)}"`);
           else if (r.type === "SYNTAX_TOKEN" && r.children) {
             for (const child of r.children) extractToken(child);
           }
@@ -588,9 +735,10 @@ export class NormalizedGrammar {
       }
     }
 
-    if (typeof grammar.inline === "function") {
-      const dummy$ = new Proxy({}, { get: (_t, p: string) => p });
-      this.inlineRules = (grammar.inline as any)(dummy$ as any) || [];
+    const inlineOpt = grammar.inline as unknown;
+    if (typeof inlineOpt === "function") {
+      const strDummy$ = new Proxy({}, { get: (_t, p: string) => p }) as Record<string, string>;
+      this.inlineRules = (inlineOpt as (d: Record<string, string>) => string[])(strDummy$) || [];
     } else {
       this.inlineRules = grammar.inline || [];
     }
@@ -602,7 +750,7 @@ export class NormalizedGrammar {
       }
     }
 
-    const isTerminalRule = (r: any): boolean => {
+    const isTerminalRule = (r: Rule<string> | undefined): boolean => {
       if (!r) return false;
       if (r.type === "TOKEN" && r.value) return true;
       if (r.children && r.children.length === 1) {
@@ -615,7 +763,7 @@ export class NormalizedGrammar {
 
     // Evaluate all rules to build the graph
     for (const ruleName in grammar.rules) {
-      const evalRule = toRule(grammar.rules[ruleName]!(dummy$ as any));
+      const evalRule = toRule(grammar.rules[ruleName]!(dummy$));
       this.evaluatedRules[ruleName] = evalRule;
       if (isTerminalRule(evalRule)) {
         this.terminals.add(ruleName);
@@ -625,16 +773,16 @@ export class NormalizedGrammar {
     }
 
     if (grammar.supertypes) {
-      const rawSupertypes =
-        typeof grammar.supertypes === "function" ? (grammar.supertypes as any)(dummy$ as any) : grammar.supertypes;
+      const rawSupertypes = typeof grammar.supertypes === "function" ? grammar.supertypes(dummy$) : grammar.supertypes;
       const rawList = Array.isArray(rawSupertypes) ? rawSupertypes : [];
       for (const item of rawList) {
-        const stName = typeof item === "string" ? item : item?.value || item?.name;
+        const itemNode = typeof item === "object" && item !== null ? (item as GrammarRuleNode) : undefined;
+        const stName = typeof item === "string" ? item : itemNode?.value || itemNode?.name;
         if (typeof stName === "string") {
           const targetRule = this.evaluatedRules[stName];
           if (targetRule && targetRule.type === "CHOICE") {
             const subTypes: string[] = [];
-            const extractSymbols = (r: Rule<any>) => {
+            const extractSymbols = (r: Rule<string>) => {
               if (r.type === "SYMBOL") {
                 subTypes.push(r.value as string);
               } else if (r.type === "CHOICE" && r.children) {
@@ -654,9 +802,9 @@ export class NormalizedGrammar {
       if (typeof grammar.word === "string") {
         wordKey = grammar.word;
       } else if (typeof grammar.word === "function") {
-        const dummy$ = new Proxy({}, { get: (_t, p: string) => ({ type: "SYMBOL", value: p }) });
-        const res = (grammar.word as any)(dummy$);
-        wordKey = typeof res === "string" ? res : res?.value || res?.name;
+        const res = (grammar.word as (d: Record<string, Rule<string>>) => unknown)(dummy$);
+        const resNode = typeof res === "object" && res !== null ? (res as GrammarRuleNode) : undefined;
+        wordKey = typeof res === "string" ? res : (resNode?.value as string | undefined) || resNode?.name || null;
       }
     }
     if (wordKey && this.evaluatedRules[wordKey]) {
@@ -665,7 +813,7 @@ export class NormalizedGrammar {
       if (wordRule.type === "TOKEN" && wordRule.value) {
         let patternStr = "";
         if (wordRule.value instanceof RegExp || Object.prototype.toString.call(wordRule.value) === "[object RegExp]") {
-          patternStr = wordRule.value.source;
+          patternStr = (wordRule.value as RegExp).source;
         } else if (
           typeof wordRule.value === "string" &&
           wordRule.value.startsWith("/") &&
@@ -681,7 +829,7 @@ export class NormalizedGrammar {
       if (wordRegex) {
         const extractedKeywords: string[] = [];
 
-        function findKeywords(r: Rule<any>) {
+        function findKeywords(r: Rule<string>) {
           if (r.type === "TOKEN" && r.value && typeof r.value === "string" && !r.value.startsWith("/")) {
             if (wordRegex!.test(r.value)) {
               if (!extractedKeywords.includes(r.value)) {
@@ -711,11 +859,11 @@ export class NormalizedGrammar {
 
     // Add externals
     if (grammar.externals) {
-      const extRules = grammar.externals(dummy$ as any);
+      const extRules = grammar.externals(dummy$);
       for (const ext of extRules) {
         if (ext.type === "SYMBOL") {
-          this.terminals.add(ext.value);
-          this.entrySymbols.add(ext.value);
+          this.terminals.add(String(ext.value));
+          this.entrySymbols.add(String(ext.value));
         }
       }
     }
@@ -762,7 +910,7 @@ export class NormalizedGrammar {
       sym: SymbolName;
       alias?: string | undefined;
       field?: string | undefined;
-      semantic?: { type: string; modifiers: any } | undefined;
+      semantic?: { type: string; modifiers: unknown } | undefined;
     }[],
     prec?: number,
     assoc?: "left" | "right",
@@ -785,7 +933,7 @@ export class NormalizedGrammar {
       .filter((a) => a !== null) as {
       index: number;
       type: string;
-      modifiers: any;
+      modifiers: unknown;
     }[];
 
     this.productions.push({
@@ -818,24 +966,26 @@ export class NormalizedGrammar {
   /**
    * Formats a DSL rule tree into a human-readable EBNF string by delegating to the rule's `RuleNormalizer`.
    */
-  getEBNF(rule: any): string {
+  getEBNF(rule: GrammarRuleInput): string {
     if (typeof rule === "string") return rule;
-    if (rule instanceof RegExp || Object.prototype.toString.call(rule) === "[object RegExp]") return `/${rule.source}/`;
+    if (rule instanceof RegExp || Object.prototype.toString.call(rule) === "[object RegExp]") {
+      return `/${(rule as RegExp).source}/`;
+    }
     if (!rule || !rule.type) return "unknown";
 
-    const getChild = (r: any): any => {
+    const getChild = (r: GrammarRuleNode): GrammarRuleInput => {
       if (!r) return null;
-      if (r.arg) return r.arg;
+      if (r.arg !== undefined) return r.arg as GrammarRuleInput;
       if (r.children && r.children.length > 0) return r.children[0];
       if (r.args && r.args.length > 0) return r.args[0];
       return null;
     };
 
-    const getChildren = (r: any): any[] => {
+    const getChildren = (r: GrammarRuleNode): (GrammarRuleNode | string | RegExp)[] => {
       if (!r) return [];
       if (r.children) return r.children;
       if (r.args) return r.args;
-      if (r.arg) return [r.arg];
+      if (r.arg !== undefined) return [r.arg as GrammarRuleNode | string | RegExp];
       return [];
     };
 
@@ -849,47 +999,51 @@ export class NormalizedGrammar {
   /**
    * Computes a structural signature string for `rule` that includes `field`, `alias`, and `semanticToken` annotations for deduplicating synthetic rules.
    */
-  getRuleSignature(rule: any): string {
+  getRuleSignature(rule: GrammarRuleInput): string {
     if (typeof rule === "string") return rule;
-    if (rule instanceof RegExp || Object.prototype.toString.call(rule) === "[object RegExp]") return `/${rule.source}/`;
+    if (rule instanceof RegExp || Object.prototype.toString.call(rule) === "[object RegExp]") {
+      return `/${(rule as RegExp).source}/`;
+    }
     if (!rule || !rule.type) return "unknown";
 
-    const getChild = (r: any): any => {
+    const getChild = (r: GrammarRuleNode): GrammarRuleInput => {
       if (!r) return null;
-      if (r.arg) return r.arg;
+      if (r.arg !== undefined) return r.arg as GrammarRuleInput;
       if (r.children && r.children.length > 0) return r.children[0];
       if (r.args && r.args.length > 0) return r.args[0];
       return null;
     };
 
-    const getChildren = (r: any): any[] => {
+    const getChildren = (r: GrammarRuleNode): (GrammarRuleNode | string | RegExp)[] => {
       if (!r) return [];
       if (r.children) return r.children;
       if (r.args) return r.args;
-      if (r.arg) return [r.arg];
+      if (r.arg !== undefined) return [r.arg as GrammarRuleNode | string | RegExp];
       return [];
     };
 
     const t = rule.type.toUpperCase();
-    if (t === "FIELD") return `field(${rule.value},${this.getRuleSignature(getChild(rule))})`;
-    if (t === "ALIAS") return `alias(${rule.value},${this.getRuleSignature(getChild(rule))})`;
-    if (t === "SEMANTIC" || t === "SEMANTIC_TOKEN")
-      return `sem(${rule.value?.type || rule.value},${this.getRuleSignature(getChild(rule))})`;
+    if (t === "FIELD") return `field(${String(rule.value)},${this.getRuleSignature(getChild(rule))})`;
+    if (t === "ALIAS") return `alias(${String(rule.value)},${this.getRuleSignature(getChild(rule))})`;
+    if (t === "SEMANTIC" || t === "SEMANTIC_TOKEN") {
+      const valType = (rule.value as { type?: string } | undefined)?.type ?? rule.value;
+      return `sem(${String(valType)},${this.getRuleSignature(getChild(rule))})`;
+    }
     if (t === "SEQ")
       return `(${getChildren(rule)
-        .map((c: any) => this.getRuleSignature(c))
+        .map((c) => this.getRuleSignature(c))
         .join(" ")})`;
     if (t === "CHOICE")
       return `(${getChildren(rule)
-        .map((c: any) => this.getRuleSignature(c))
+        .map((c) => this.getRuleSignature(c))
         .join(" | ")})`;
     if (t === "REPEAT") return `${this.getRuleSignature(getChild(rule))}*`;
     if (t === "REPEAT1") return `${this.getRuleSignature(getChild(rule))}+`;
     if (t === "OPTIONAL") return `${this.getRuleSignature(getChild(rule))}?`;
-    if (t === "PREC") return `prec(${rule.value},${this.getRuleSignature(getChild(rule))})`;
-    if (t === "PREC_LEFT") return `prec.left(${rule.value},${this.getRuleSignature(getChild(rule))})`;
-    if (t === "PREC_RIGHT") return `prec.right(${rule.value},${this.getRuleSignature(getChild(rule))})`;
-    if (t === "PREC_DYNAMIC") return `prec.dynamic(${rule.value},${this.getRuleSignature(getChild(rule))})`;
+    if (t === "PREC") return `prec(${String(rule.value)},${this.getRuleSignature(getChild(rule))})`;
+    if (t === "PREC_LEFT") return `prec.left(${String(rule.value)},${this.getRuleSignature(getChild(rule))})`;
+    if (t === "PREC_RIGHT") return `prec.right(${String(rule.value)},${this.getRuleSignature(getChild(rule))})`;
+    if (t === "PREC_DYNAMIC") return `prec.dynamic(${String(rule.value)},${this.getRuleSignature(getChild(rule))})`;
     if (t === "SYNTAX_TOKEN") return this.getRuleSignature(getChild(rule));
     if (t === "DEF" || t === "REF" || t === "DEF_REF") return this.getRuleSignature(rule.rule || getChild(rule));
     return this.getEBNF(rule);
@@ -906,7 +1060,7 @@ export class NormalizedGrammar {
       dynamicPrec?: number | undefined;
       field?: string | undefined;
     },
-    rule?: any,
+    rule?: GrammarRuleNode,
     ctx?: string,
   ): string {
     const sig = rule ? this.getRuleSignature(rule) : ebnf;
@@ -937,13 +1091,14 @@ export class NormalizedGrammar {
       if (rule) {
         if (rule.value && typeof rule.value === "string") set.add(rule.value);
         if (rule.name && typeof rule.name === "string") set.add(rule.name);
-        const children = rule.children || rule.args || (rule.arg ? [rule.arg] : []);
+        const children = rule.children || rule.args || (rule.arg !== undefined ? [rule.arg] : []);
         for (const c of children) {
           if (c && typeof c === "object") {
-            if (c.type === "SYMBOL" && (c.value || c.name)) {
-              set.add(c.value || c.name);
-            } else if (c.value && typeof c.value === "string") {
-              set.add(c.value);
+            const childNode = c as GrammarRuleNode;
+            if (childNode.type === "SYMBOL" && (childNode.value || childNode.name)) {
+              set.add(String(childNode.value || childNode.name));
+            } else if (childNode.value && typeof childNode.value === "string") {
+              set.add(childNode.value);
             }
           }
         }
@@ -957,30 +1112,34 @@ export class NormalizedGrammar {
    * Recursively flattens a nested DSL `Rule` within `contextName` into a flat sequence of `FlattenResult` symbol references.
    */
   // Returns the symbol name representing this rule
-  flatten(contextName: string, rule: Rule | any, p: FlattenContext): FlattenResult[] {
+  flatten(contextName: string, rule: Rule | GrammarRuleInput, p: FlattenContext): FlattenResult[] {
     if (!rule) {
       throw new Error(
         `Invalid grammar rule encountered in context '${contextName}'. This usually means an array contains undefined or a referenced rule is missing.`,
       );
     }
 
+    let node: GrammarRuleNode;
     if (
       typeof rule === "string" ||
       rule instanceof RegExp ||
       Object.prototype.toString.call(rule) === "[object RegExp]"
     ) {
-      rule = { type: "TOKEN", value: rule };
+      node = { type: "TOKEN", value: rule };
+    } else {
+      node = rule as GrammarRuleNode;
     }
-    const ruleType = (rule.type || "").toUpperCase();
-    const children = rule.children || rule.args || (rule.arg ? [rule.arg] : []);
+    const ruleType = (node.type || "").toUpperCase();
+    const children =
+      node.children || node.args || (node.arg !== undefined ? [node.arg as GrammarRuleNode | string | RegExp] : []);
 
     const normalizer = RULE_NORMALIZERS[ruleType];
     if (normalizer) {
-      return normalizer.normalize(this, contextName, rule, children, p);
+      return normalizer.normalize(this, contextName, node, children, p);
     }
 
-    console.error("UNKNOWN RULE:", rule);
-    throw new Error(`Unknown rule type: ${rule.type}`);
+    console.error("UNKNOWN RULE:", node);
+    throw new Error(`Unknown rule type: ${node.type}`);
   }
 }
 

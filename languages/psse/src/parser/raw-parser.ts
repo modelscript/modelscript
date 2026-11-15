@@ -76,28 +76,39 @@ function parseStr(val: string | undefined, def = ""): string {
   return val.replace(/^['"]|['"]$/g, "").trim();
 }
 
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createPsseWasmParserSync } from "./wasm-loader.js";
+
+let cachedParser: ReturnType<typeof createPsseWasmParserSync>["parser"] | undefined;
+function getPsseWasmParser() {
+  if (!cachedParser) {
+    cachedParser = createPsseWasmParserSync().parser;
+  }
+  return cachedParser;
+}
+
 /**
  * Parses PSS/E RAW format text into a structured `PsseCase`.
  */
 export function parseRaw(text: string): PsseCase {
-  const lines = text.split(/\r?\n/);
+  const cstTree = getPsseWasmParser().parse(text);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
+  const lines = cstLines.map(({ row, tokens }) => {
+    const start = Math.max(0, (tokens[0]?.startIndex ?? 0) - (tokens[0]?.startPosition?.column ?? 0));
+    const l = cstLineText(text, tokens);
+    const end = tokens[tokens.length - 1]?.endIndex ?? start + l.length;
+    return { line: text.slice(start, end), lineNum: row + 1, startOffset: start, endOffset: end };
+  });
   let lineIdx = 0;
-  let charOffset = 0;
 
   function nextLine(): { line: string; lineNum: number; startOffset: number; endOffset: number } | null {
     if (lineIdx >= lines.length) return null;
-    const l = lines[lineIdx]!;
-    const start = charOffset;
-    const end = start + l.length;
-    // Add 1 for newline in offset tracking
-    charOffset = end + 1;
-    lineIdx++;
-    return { line: l, lineNum: lineIdx, startOffset: start, endOffset: end };
+    return lines[lineIdx++]!;
   }
 
   // Skip any leading comment lines (@! or /) before the Case Identification header
   while (lineIdx < lines.length) {
-    const peek = lines[lineIdx]!.trim();
+    const peek = lines[lineIdx]!.line.trim();
     if (peek === "" || peek.startsWith("@!") || peek.startsWith("/")) {
       nextLine();
     } else {
@@ -144,14 +155,14 @@ export function parseRaw(text: string): PsseCase {
 
   // 2. Title Line 1 (unless the file omits title lines and starts Bus Data immediately)
   let title1 = "";
-  if (lineIdx < lines.length && !isLikelyBusRecord(lines[lineIdx]!)) {
+  if (lineIdx < lines.length && !isLikelyBusRecord(lines[lineIdx]!.line)) {
     const t1 = nextLine();
     title1 = t1 ? t1.line.trim() : "";
   }
 
   // 3. Title Line 2 (unless Bus Data starts on line 3)
   let title2 = "";
-  if (lineIdx < lines.length && !isLikelyBusRecord(lines[lineIdx]!)) {
+  if (lineIdx < lines.length && !isLikelyBusRecord(lines[lineIdx]!.line)) {
     const t2 = nextLine();
     title2 = t2 ? t2.line.trim() : "";
   }
@@ -453,13 +464,13 @@ export function parseRaw(text: string): PsseCase {
           let ipr: number | undefined;
           let ipi: number | undefined;
           // Consume optional rectifier/inverter continuation lines if present in 3-line v33 format
-          const peek1 = lines[lineIdx]?.trim() ?? "";
+          const peek1 = lines[lineIdx]?.line.trim() ?? "";
           if (peek1 && !/^(?:0(?:\s*,|\s*\/|\s*$)|Q(?:\s*,|\s*\/|\s*$))/i.test(peek1)) {
             const p1Toks = tokenizeRawLine(peek1);
             if (p1Toks.length >= 10 && !peek1.startsWith("'")) {
               nextLine();
               ipr = parseNum(p1Toks[0], 0);
-              const peek2 = lines[lineIdx]?.trim() ?? "";
+              const peek2 = lines[lineIdx]?.line.trim() ?? "";
               if (peek2 && !/^(?:0(?:\s*,|\s*\/|\s*$)|Q(?:\s*,|\s*\/|\s*$))/i.test(peek2)) {
                 const p2Toks = tokenizeRawLine(peek2);
                 nextLine();
@@ -490,12 +501,12 @@ export function parseRaw(text: string): PsseCase {
         if (name) {
           let ibus1: number | undefined;
           let ibus2: number | undefined;
-          const peek1 = lines[lineIdx]?.trim() ?? "";
+          const peek1 = lines[lineIdx]?.line.trim() ?? "";
           if (peek1 && !/^(?:0(?:\s*,|\s*\/|\s*$)|Q(?:\s*,|\s*\/|\s*$))/i.test(peek1) && !peek1.startsWith("'")) {
             const p1Toks = tokenizeRawLine(peek1);
             nextLine();
             ibus1 = parseNum(p1Toks[0], 0);
-            const peek2 = lines[lineIdx]?.trim() ?? "";
+            const peek2 = lines[lineIdx]?.line.trim() ?? "";
             if (peek2 && !/^(?:0(?:\s*,|\s*\/|\s*$)|Q(?:\s*,|\s*\/|\s*$))/i.test(peek2) && !peek2.startsWith("'")) {
               const p2Toks = tokenizeRawLine(peek2);
               nextLine();

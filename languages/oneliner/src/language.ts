@@ -4,15 +4,17 @@
  * ModelScript ASPEN OneLiner / CAPE Language Definition.
  */
 
-import { language } from "@modelscript/dsl";
+import { cardDeckRules, language } from "@modelscript/dsl";
 import { calculateBusFaultCurrents, calculateOvercurrentTripTime } from "./analysis/fault-solver.js";
 import { lowerOneLinerToDae } from "./dae/oneliner-to-dae.js";
 import { indexOneLinerFile } from "./indexing.js";
 import { lintOneLinerCase } from "./lints/index.js";
 import { parseOneLiner } from "./parser/oneliner-parser.js";
 import { writeOneLinerDxt } from "./parser/oneliner-writer.js";
+import { onelinerPolyglotConfig } from "./tgg/index.js";
 
 export const onelinerLanguage = language({
+  polyglot: onelinerPolyglotConfig,
   name: "oneliner",
   fileExtensions: [".olx", ".dxt"],
   maturity: "beta",
@@ -121,4 +123,8 @@ export const onelinerLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
+
+export default onelinerLanguage;

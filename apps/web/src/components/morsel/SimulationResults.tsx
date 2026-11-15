@@ -564,7 +564,7 @@ export function SimulationResults({
     dispatchTimeScrub(null);
   };
 
-  const handleChartClick = (e: any) => {
+  const handleChartClick = (e: { activeLabel?: string | number | undefined } | null) => {
     if (!e || e.activeLabel === undefined) return;
     const t = Number(e.activeLabel);
     if (isNaN(t)) return;

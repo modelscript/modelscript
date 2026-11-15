@@ -6,6 +6,9 @@
  * Extracts TITLE, NEURON, PARAMETER, ASSIGNED, STATE, BREAKPOINT, and DERIVATIVE blocks.
  */
 
+import { createWasmParserSync } from "@modelscript/nmodl/wasm-parser";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import type {
   NmodlDocument,
   NmodlEquation,
@@ -15,6 +18,16 @@ import type {
   NmodlRange,
   NmodlVariable,
 } from "../types.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getNmodlWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/nmodl/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 function stripComments(line: string): string {
   let inString = false;
@@ -32,7 +45,8 @@ function stripComments(line: string): string {
 }
 
 export function parseNmodl(source: string): NmodlDocument {
-  const lines = source.split(/\r?\n/);
+  const cstTree = getNmodlWasmParser().parse(source);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   const rawBlocks: Record<string, string> = {};
 
   let title: string | undefined;
@@ -51,12 +65,10 @@ export function parseNmodl(source: string): NmodlDocument {
   let blockDepth = 0;
   let blockContent = "";
 
-  let offset = 0;
-  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-    const rawLine = lines[lineIdx]!;
-    const lineStartOffset = offset;
-    const lineEndOffset = offset + rawLine.length;
-    offset = lineEndOffset + 1;
+  for (const { row: lineIdx, tokens: cstTokens } of cstLines) {
+    const lineStartOffset = Math.max(0, (cstTokens[0]?.startIndex ?? 0) - (cstTokens[0]?.startPosition?.column ?? 0));
+    const rawLine = cstLineText(source, cstTokens);
+    const lineEndOffset = cstTokens[cstTokens.length - 1]?.endIndex ?? lineStartOffset + rawLine.length;
 
     const cleanLine = stripComments(rawLine).trim();
     if (cleanLine.length === 0) continue;

@@ -91,7 +91,30 @@ export class NexarConnector {
         return this.generateMockQuotes(mpn);
       }
 
-      const data = (await res.json()) as any;
+      const data = (await res.json()) as {
+        data?: {
+          supSearchMpn?: {
+            results?: Array<{
+              part?: {
+                mpn?: string;
+                manufacturer?: { name?: string };
+                sellers?: Array<{
+                  company?: { name?: string };
+                  offers?: Array<{
+                    sku?: string;
+                    packaging?: string;
+                    moq?: number;
+                    orderMultiple?: number;
+                    clickUrl?: string;
+                    inventoryLevels?: Array<{ quantity?: number }>;
+                    prices?: Array<{ quantity?: number; price?: number; currency?: string }>;
+                  }>;
+                }>;
+              };
+            }>;
+          };
+        };
+      };
       const parts = data?.data?.supSearchMpn?.results ?? [];
       const quotes: DistributorQuote[] = [];
 
@@ -104,15 +127,18 @@ export class NexarConnector {
           const sellerName = seller.company?.name ?? "OctopartAggregated";
           for (const offer of seller.offers ?? []) {
             const stock = offer.inventoryLevels?.[0]?.quantity ?? 0;
-            const priceBreaks = (offer.prices ?? []).map((p: any) => ({
+            const priceBreaks = (offer.prices ?? []).map((p) => ({
               quantity: p.quantity ?? 1,
               unitPrice: p.price ?? 0,
             }));
 
+            const knownDistributors = ["DigiKey", "Mouser", "Arrow", "Avnet", "Future", "Newark"];
+            const distributor = (
+              knownDistributors.includes(sellerName) ? sellerName : "OctopartAggregated"
+            ) as DistributorQuote["distributor"];
+
             quotes.push({
-              distributor: (["DigiKey", "Mouser", "Arrow", "Avnet", "Future", "Newark"].includes(sellerName)
-                ? sellerName
-                : "OctopartAggregated") as any,
+              distributor,
               sku: offer.sku ?? `${sellerName}-${mpn}`,
               mpn: part.mpn ?? mpn,
               manufacturer: mfr,
@@ -159,8 +185,8 @@ export class NexarConnector {
         }),
       });
       if (!res.ok) return null;
-      const data = (await res.json()) as any;
-      this.accessToken = data.access_token;
+      const data = (await res.json()) as { access_token?: string; expires_in?: number };
+      this.accessToken = data.access_token ?? null;
       this.tokenExpiresAt = Date.now() + (data.expires_in ?? 3600) * 1000;
       return this.accessToken;
     } catch {

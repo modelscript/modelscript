@@ -5300,10 +5300,10 @@ if (typeof document !== "undefined") {
 export function autoLayoutDiagram(targetGraph?: Graph | null, options?: AutoLayoutOptions): boolean {
   const g = targetGraph ?? graph;
   if (!g || g.disposed) return false;
-  return coreAutoLayoutDiagram(g as any, {
+  return coreAutoLayoutDiagram(g as unknown as Parameters<typeof coreAutoLayoutDiagram>[0], {
     ...options,
     onAction: (act) => enqueueDiagramAction(act, g),
-    updateSolderDots: (target) => updateSolderDots(target as Graph),
+    updateSolderDots: (target) => updateSolderDots(target as unknown as Graph),
   });
 }
 
@@ -5322,10 +5322,10 @@ export async function autoLayoutDiagramAsync(
 ): Promise<boolean> {
   const g = targetGraph ?? graph;
   if (!g || g.disposed) return false;
-  return coreAutoLayoutDiagramAsync(g as any, {
+  return coreAutoLayoutDiagramAsync(g as unknown as Parameters<typeof coreAutoLayoutDiagramAsync>[0], {
     ...options,
     onAction: (act) => enqueueDiagramAction(act, g),
-    updateSolderDots: (target) => updateSolderDots(target as Graph),
+    updateSolderDots: (target) => updateSolderDots(target as unknown as Graph),
   });
 }
 

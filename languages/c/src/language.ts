@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { choice, def, field, language, optional, prec, repeat, seq, tggEq, tggRule, token } from "@modelscript/dsl";
+import { choice, def, field, language, optional, prec, repeat, seq, token } from "@modelscript/dsl";
+import { cPolyglotConfig } from "./tgg/index.js";
 
 /**
  * Precedence levels for C arithmetic, relational, logical, and bitwise operators.
@@ -39,29 +40,7 @@ export const cLanguage = language({
     },
   },
 
-  polyglot: {
-    languages: ["modelica"],
-    rules: [
-      tggRule({
-        name: "CFunctionToModelicaFunction",
-        sourceLang: "c",
-        targetLang: "modelica",
-        priority: 10,
-        source: ($, v) => $.FunctionDefinition({ name: v("fnName") }),
-        target: ($, v) => $.FunctionDefinition({ declaredName: v("fnName") }),
-        where: (v) => [tggEq(v("fnName"), v("fnName"))],
-      }),
-      tggRule({
-        name: "CStructToModelicaRecord",
-        sourceLang: "c",
-        targetLang: "modelica",
-        priority: 8,
-        source: ($, v) => $.StructSpecifier({ name: v("structName") }),
-        target: ($, v) => $.RecordDefinition({ declaredName: v("structName") }),
-        where: (v) => [tggEq(v("structName"), v("structName"))],
-      }),
-    ],
-  },
+  polyglot: cPolyglotConfig,
 
   symbols: {
     FunctionDefinition: { name: "name", kind: "Function", scope: true, icon: "symbol-function" },

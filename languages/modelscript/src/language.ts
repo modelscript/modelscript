@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { choice, def, field, language, optional, prec, repeat, repeat1, seq, tggEq, tggRule } from "@modelscript/dsl";
+import { choice, def, field, language, optional, prec, repeat, repeat1, seq } from "@modelscript/dsl";
+import { modelscriptPolyglotConfig } from "./tgg/index.js";
 
 /**
  * Operator precedence levels for the ModelScript GLR grammar, ordered from
@@ -390,55 +391,7 @@ export const modelscriptLanguage = language({
   },
 
   // Cross-language type mappings and TGG rules linking ModelScript to Modelica and SysML v2
-  polyglot: {
-    languages: ["modelica", "sysml2"],
-    typeMaps: {
-      modelica: {
-        i32: "Integer",
-        u32: "Integer",
-        i64: "Integer",
-        u64: "Integer",
-        usize: "Integer",
-        f32: "Real",
-        f64: "Real",
-        bool: "Boolean",
-        string: "String",
-      },
-      sysml2: {
-        i32: "KerML::Integer",
-        u32: "KerML::Integer",
-        i64: "KerML::Integer",
-        u64: "KerML::Integer",
-        usize: "KerML::Integer",
-        f32: "ISQ::Real",
-        f64: "ISQ::Real",
-        bool: "KerML::Boolean",
-        string: "KerML::String",
-      },
-    },
-    rules: [
-      // Synchronizes a ModelScript struct declaration with a Modelica record definition
-      tggRule({
-        name: "ModelScriptStructToModelicaRecord",
-        sourceLang: "modelscript",
-        targetLang: "modelica",
-        priority: 10,
-        source: ($, v) => $.StructDeclaration({ name: v("name") }),
-        target: ($, v) => $.ClassDefinition({ name: v("name"), classKind: "record" }),
-        where: (v) => [tggEq(v("name"), v("name"))],
-      }),
-      // Synchronizes a ModelScript variable binding with a Modelica component modification
-      tggRule({
-        name: "ModelScriptParamToModelicaMod",
-        sourceLang: "modelscript",
-        targetLang: "modelica",
-        priority: 10,
-        source: ($, v) => $.VariableDeclaration({ name: v("paramName"), value: v("paramVal") }),
-        target: ($, v) => $.ComponentClause({ name: v("paramName"), modification: v("paramVal") }),
-        where: (v) => [tggEq(v("paramName"), v("paramName")), tggEq(v("paramVal"), v("paramVal"))],
-      }),
-    ],
-  },
+  polyglot: modelscriptPolyglotConfig,
 });
 
 export default modelscriptLanguage;

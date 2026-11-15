@@ -9,13 +9,38 @@
  * `SemanticTheoryCoordinator` and shadow complement store.
  */
 
+import { invertExpression } from "@modelscript/dsl/codegen/analysis/inversion";
 import type { TGGConstraint, TGGPattern, TGGRuleOptions } from "@modelscript/dsl/dsl/language.js";
 import type { PolyglotNode, PolyglotTransformer } from "./polyglot-transformer.js";
+
+const NODE_NAME_KEYS: string[] = [
+  "name",
+  "id",
+  "reqId",
+  "blockName",
+  "jointName",
+  "varName",
+  "swcName",
+  "portName",
+  "runnableName",
+  "modelName",
+];
+
+/**
+ * Registers an additional property key used to resolve a PolyglotNode's canonical name.
+ */
+export function registerNodeNameKey(key: string): void {
+  if (!NODE_NAME_KEYS.includes(key)) {
+    NODE_NAME_KEYS.push(key);
+  }
+}
 
 export interface EvaluatedTGGRule {
   rule: TGGRuleOptions;
   sourcePattern: TGGPattern;
   targetPattern: TGGPattern;
+  contextSourcePattern?: TGGPattern | undefined;
+  contextTargetPattern?: TGGPattern | undefined;
   constraints: TGGConstraint[];
   priority: number;
 }
@@ -75,19 +100,29 @@ const varTokenProxy = (name: string): string => `${VAR_PREFIX}${name}`;
 export function evaluateRuleDescriptor(rule: TGGRuleOptions): EvaluatedTGGRule {
   const sourcePattern: TGGPattern =
     typeof rule.source === "function"
-      ? rule.source(patternBuilderProxy, varTokenProxy)
-      : (rule.source ?? { nodeType: "Unknown", bindings: {} });
+      ? (rule.source(patternBuilderProxy, varTokenProxy) as TGGPattern)
+      : ((rule.source as TGGPattern | undefined) ?? { nodeType: "Unknown", bindings: {} });
   const targetPattern: TGGPattern =
     typeof rule.target === "function"
-      ? rule.target(patternBuilderProxy, varTokenProxy)
-      : (rule.target ?? { nodeType: "Unknown", bindings: {} });
+      ? (rule.target(patternBuilderProxy, varTokenProxy) as TGGPattern)
+      : ((rule.target as TGGPattern | undefined) ?? { nodeType: "Unknown", bindings: {} });
   const constraints: TGGConstraint[] =
     typeof rule.where === "function" ? rule.where(varTokenProxy) : (rule.where ?? []);
+
+  const ctxObj = typeof rule.context === "function" ? rule.context(patternBuilderProxy, varTokenProxy) : rule.context;
+  const evalPat = (p: any): TGGPattern | undefined => {
+    if (!p) return undefined;
+    return typeof p === "function" ? p(patternBuilderProxy, varTokenProxy) : p;
+  };
+  const contextSourcePattern = evalPat(ctxObj?.source);
+  const contextTargetPattern = evalPat(ctxObj?.target);
 
   return {
     rule,
     sourcePattern,
     targetPattern,
+    ...(contextSourcePattern ? { contextSourcePattern } : {}),
+    ...(contextTargetPattern ? { contextTargetPattern } : {}),
     constraints,
     priority: rule.priority ?? 0,
   };
@@ -128,12 +163,42 @@ export function matchNodePattern(
   pattern: TGGPattern,
   evaluatedRule: EvaluatedTGGRule,
   transformer?: PolyglotTransformer,
+  contextNode?: PolyglotNode,
+  contextPattern?: TGGPattern,
 ): PatternMatchResult | null {
   if (transformer && !transformer.checkNAC(evaluatedRule.rule, node)) {
     return null;
   }
 
   let specificity = 0;
+  const env: Record<string, any> = {};
+  const varToProp: Record<string, string> = {};
+
+  if (contextPattern) {
+    if (!contextNode) return null;
+    if (contextNode.kind && contextPattern.nodeType && contextNode.kind !== contextPattern.nodeType) {
+      if (!contextNode["typeSpecifier"] || !typesMatch(contextNode["typeSpecifier"], contextPattern.nodeType)) {
+        return null;
+      }
+    }
+    specificity += 1;
+    for (const [ctxKey, ctxExpected] of Object.entries(contextPattern.bindings || {})) {
+      const ctxActual = readNodeProperty(contextNode, ctxKey);
+      if (isVarToken(ctxExpected)) {
+        const varName = stripVar(ctxExpected);
+        if (ctxActual !== undefined) {
+          env[varName] = ctxActual;
+          varToProp[varName] = ctxKey;
+          specificity += 1;
+        }
+      } else if (ctxActual === undefined || String(ctxActual) !== String(ctxExpected)) {
+        return null;
+      } else {
+        specificity += 1;
+      }
+    }
+  }
+
   if (node.kind && pattern.nodeType) {
     if (node.kind === pattern.nodeType) {
       specificity += 2;
@@ -143,9 +208,6 @@ export function matchNodePattern(
       return null;
     }
   }
-
-  const env: Record<string, any> = {};
-  const varToProp: Record<string, string> = {};
 
   for (const [propKey, expectedVal] of Object.entries(pattern.bindings || {})) {
     const actualVal = readNodeProperty(node, propKey);
@@ -179,6 +241,151 @@ export function matchNodePattern(
   };
 }
 
+function evalSafeArithmeticExpr(expr: string): number | null {
+  let pos = 0;
+  const len = expr.length;
+
+  const skipWs = () => {
+    while (pos < len && /\s/.test(expr[pos]!)) pos++;
+  };
+
+  const parseExpr = (): number => {
+    let left = parseTerm();
+    while (true) {
+      skipWs();
+      const ch = expr[pos];
+      if (ch === "+") {
+        pos++;
+        left += parseTerm();
+      } else if (ch === "-") {
+        pos++;
+        left -= parseTerm();
+      } else {
+        break;
+      }
+    }
+    return left;
+  };
+
+  const parseTerm = (): number => {
+    let left = parsePower();
+    while (true) {
+      skipWs();
+      const ch = expr[pos];
+      if (ch === "*") {
+        pos++;
+        left *= parsePower();
+      } else if (ch === "/") {
+        pos++;
+        left /= parsePower();
+      } else {
+        break;
+      }
+    }
+    return left;
+  };
+
+  const parsePower = (): number => {
+    const base = parseUnary();
+    skipWs();
+    if (expr[pos] === "^") {
+      pos++;
+      return Math.pow(base, parsePower());
+    }
+    if (expr[pos] === "*" && expr[pos + 1] === "*") {
+      pos += 2;
+      return Math.pow(base, parsePower());
+    }
+    return base;
+  };
+
+  const parseUnary = (): number => {
+    skipWs();
+    if (expr[pos] === "-") {
+      pos++;
+      return -parseUnary();
+    }
+    if (expr[pos] === "+") {
+      pos++;
+      return parseUnary();
+    }
+    return parsePrimary();
+  };
+
+  const parsePrimary = (): number => {
+    skipWs();
+    if (expr[pos] === "(") {
+      pos++;
+      const val = parseExpr();
+      skipWs();
+      if (expr[pos] !== ")") throw new Error("Unclosed parenthesis");
+      pos++;
+      return val;
+    }
+
+    const numMatch = /^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(expr.slice(pos));
+    if (numMatch) {
+      pos += numMatch[0].length;
+      return Number(numMatch[0]);
+    }
+
+    const fnMatch = /^(?:Math\.)?([A-Za-z_]\w*)\s*\(/.exec(expr.slice(pos));
+    if (fnMatch) {
+      const fnName = fnMatch[1]!;
+      pos += fnMatch[0].length;
+      const args: number[] = [];
+      skipWs();
+      if (expr[pos] !== ")") {
+        args.push(parseExpr());
+        skipWs();
+        while (expr[pos] === ",") {
+          pos++;
+          args.push(parseExpr());
+          skipWs();
+        }
+      }
+      if (expr[pos] !== ")") throw new Error("Unclosed function call");
+      pos++;
+      switch (fnName) {
+        case "sqrt":
+          return Math.sqrt(args[0]!);
+        case "pow":
+          return Math.pow(args[0]!, args[1]!);
+        case "exp":
+          return Math.exp(args[0]!);
+        case "log":
+        case "ln":
+          return Math.log(args[0]!);
+        case "abs":
+          return Math.abs(args[0]!);
+        case "sin":
+          return Math.sin(args[0]!);
+        case "cos":
+          return Math.cos(args[0]!);
+        case "tan":
+          return Math.tan(args[0]!);
+        case "min":
+          return Math.min(...args);
+        case "max":
+          return Math.max(...args);
+        default:
+          throw new Error(`Unsupported function: ${fnName}`);
+      }
+    }
+
+    throw new Error(`Unexpected token at ${pos}`);
+  };
+
+  try {
+    const val = parseExpr();
+    skipWs();
+    if (pos !== len || !Number.isFinite(val)) return null;
+    return val;
+  } catch {
+    return null;
+  }
+}
+
 function evalSimpleInvertibleExpr(exprStr: string, env: Record<string, any>): void {
   const s = exprStr.trim();
   const assignIdx = s.indexOf("=");
@@ -187,10 +394,10 @@ function evalSimpleInvertibleExpr(exprStr: string, env: Record<string, any>): vo
   const rhs = s.slice(assignIdx + 1).trim();
   if (!lhs || env[lhs] !== undefined) return;
 
-  // Replace bound identifiers in rhs
-  let resolvedRhs = rhs;
+  const mathReserved = new Set(["Math", "sqrt", "pow", "exp", "log", "ln", "abs", "sin", "cos", "tan", "min", "max"]);
   let allResolved = true;
-  resolvedRhs = resolvedRhs.replace(/\b([A-Za-z_]\w*)\b/g, (ident) => {
+  const resolvedRhs = rhs.replace(/\b([A-Za-z_]\w*)\b/g, (ident) => {
+    if (mathReserved.has(ident)) return ident;
     if (ident in env && env[ident] !== undefined) {
       return String(env[ident]);
     }
@@ -199,16 +406,9 @@ function evalSimpleInvertibleExpr(exprStr: string, env: Record<string, any>): vo
   });
 
   if (!allResolved) return;
-  if (/^[\d.+\-*/()\s]+$/.test(resolvedRhs)) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval
-      const val = Function(`"use strict"; return (${resolvedRhs});`)();
-      if (typeof val === "number" && Number.isFinite(val)) {
-        env[lhs] = val;
-      }
-    } catch {
-      env[lhs] = resolvedRhs;
-    }
+  const numericVal = evalSafeArithmeticExpr(resolvedRhs);
+  if (numericVal !== null) {
+    env[lhs] = numericVal;
   } else {
     env[lhs] = resolvedRhs;
   }
@@ -251,7 +451,7 @@ export function solveWhereConstraints(
         const tgtVar = isVarToken(rawTgt) ? stripVar(rawTgt) : null;
         const dict: Record<string, string> =
           typeof mapOrName === "object" && mapOrName !== null
-            ? mapOrName
+            ? (mapOrName as Record<string, string>)
             : (typeMaps[String(mapOrName)] ?? typeMaps[String(mapOrName).toLowerCase()] ?? {});
 
         if (direction === "forward" && srcVar && tgtVar && env[srcVar] !== undefined && env[tgtVar] === undefined) {
@@ -289,8 +489,66 @@ export function solveWhereConstraints(
         const [fwdExpr, bwdExpr] = c.args;
         if (direction === "forward" && typeof fwdExpr === "string") {
           evalSimpleInvertibleExpr(fwdExpr, env);
-        } else if (direction === "backward" && typeof bwdExpr === "string") {
-          evalSimpleInvertibleExpr(bwdExpr, env);
+        } else if (direction === "backward") {
+          if (typeof bwdExpr === "string" && bwdExpr.trim().length > 0) {
+            evalSimpleInvertibleExpr(bwdExpr, env);
+          } else if (typeof fwdExpr === "string") {
+            const inv = invertExpression(fwdExpr);
+            if (inv.isInvertible && inv.sourceVar && inv.invertedExpr) {
+              evalSimpleInvertibleExpr(`${inv.sourceVar} = ${inv.invertedExpr}`, env);
+            }
+          }
+        }
+      } else if (c.kind === "compute") {
+        const [rawTarget, expr] = c.args;
+        const targetVar = isVarToken(rawTarget) ? stripVar(rawTarget) : String(rawTarget ?? "");
+        if (targetVar && env[targetVar] === undefined && typeof expr === "string") {
+          evalSimpleInvertibleExpr(`${targetVar} = ${expr}`, env);
+        }
+      } else if (c.kind === "exprMap" || c.kind === "physicalPort") {
+        const [rawA, rawB] = c.args;
+        const varA = isVarToken(rawA) ? stripVar(rawA) : null;
+        const varB = isVarToken(rawB) ? stripVar(rawB) : null;
+        const valA = varA ? env[varA] : rawA;
+        const valB = varB ? env[varB] : rawB;
+        if (direction === "forward" && varB && env[varB] === undefined && valA !== undefined) {
+          env[varB] = valA;
+        } else if (direction === "backward" && varA && env[varA] === undefined && valB !== undefined) {
+          env[varA] = valB;
+        }
+      } else if (c.kind === "path") {
+        const [rawRoot, pathStr, rawTarget] = c.args;
+        const rootVar = isVarToken(rawRoot) ? stripVar(rawRoot) : null;
+        const targetVar = isVarToken(rawTarget) ? stripVar(rawTarget) : null;
+        const rootObj = rootVar ? env[rootVar] : rawRoot;
+        if (
+          targetVar &&
+          env[targetVar] === undefined &&
+          rootObj &&
+          typeof rootObj === "object" &&
+          typeof pathStr === "string"
+        ) {
+          let cur: any = rootObj;
+          for (const seg of pathStr.split("/").filter(Boolean)) {
+            if (cur == null) break;
+            cur = cur[seg];
+          }
+          if (cur !== undefined) env[targetVar] = cur;
+        }
+      } else if (c.kind === "mapList") {
+        const [rawSrc, rawTgt] = c.args;
+        const srcVar = isVarToken(rawSrc) ? stripVar(rawSrc) : null;
+        const tgtVar = isVarToken(rawTgt) ? stripVar(rawTgt) : null;
+        if (direction === "forward" && srcVar && tgtVar && Array.isArray(env[srcVar]) && env[tgtVar] === undefined) {
+          env[tgtVar] = [...env[srcVar]];
+        } else if (
+          direction === "backward" &&
+          srcVar &&
+          tgtVar &&
+          Array.isArray(env[tgtVar]) &&
+          env[srcVar] === undefined
+        ) {
+          env[srcVar] = [...env[tgtVar]];
         }
       }
     }
@@ -358,19 +616,8 @@ export function instantiateNodePattern(
     }
   }
 
-  const resolvedName = String(
-    properties["name"] ??
-      properties["id"] ??
-      properties["reqId"] ??
-      properties["blockName"] ??
-      properties["jointName"] ??
-      properties["varName"] ??
-      properties["swcName"] ??
-      properties["portName"] ??
-      properties["runnableName"] ??
-      properties["modelName"] ??
-      fallbackName,
-  );
+  const resolvedKey = NODE_NAME_KEYS.find((k) => properties[k] !== undefined && properties[k] !== null);
+  const resolvedName = String(resolvedKey ? properties[resolvedKey] : fallbackName);
 
   const node: PolyglotNode = {
     ...properties,

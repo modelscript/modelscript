@@ -306,7 +306,10 @@ export async function solveAmplOpf(powerCase: GenericPowerCase, options: OpfOpti
   const problem = instantiateAmpl(model, data);
 
   const amplResult = await solveAmpl(problem, {
-    solver: options.solver && options.solver !== "auto" ? (options.solver as any) : undefined,
+    solver:
+      options.solver && options.solver !== "auto"
+        ? (options.solver as NonNullable<Parameters<typeof solveAmpl>[1]>["solver"])
+        : undefined,
     tolerance: options.tolerance ?? 1e-6,
     presolve: true,
   });

@@ -3,11 +3,13 @@
 import { language } from "@modelscript/dsl";
 import { gensysDeckGrammar } from "./grammar/gensys-grammar.js";
 import { indexGensysDocument } from "./indexing.js";
+import { gensysPolyglotConfig } from "./tgg/index.js";
 
 /**
  * DSL language specification for GENSYS railway vehicle models and track geometry.
  */
 export const gensysLanguage = language({
+  polyglot: gensysPolyglotConfig,
   name: "gensys",
   fileExtensions: [".calc", ".run", ".sub", ".geom", ".trax", ".wheel"],
   maturity: "stable",

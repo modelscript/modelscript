@@ -13,9 +13,11 @@ import { indexThreeMfFile } from "./indexing.js";
 import { lintThreeMfDocument } from "./lints/rules.js";
 import { parseThreeMf } from "./parser/index.js";
 import { threeMfToScad, threeMfToStep } from "./projections/index.js";
+import { threeMfPolyglotConfig } from "./tgg/index.js";
 import { lowerThreeMfToDae, verifyMeshTopology } from "./topology/index.js";
 
 export const threeMfLanguage = language({
+  polyglot: threeMfPolyglotConfig,
   name: "three-mf",
   fileExtensions: [".3mf"],
   maturity: "experimental",

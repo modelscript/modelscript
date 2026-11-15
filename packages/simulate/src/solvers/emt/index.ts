@@ -21,3 +21,4 @@ export * from "./wasm-emt-bridge.js";
 export * from "./webgpu-sparse-emt-solver.js";
 export * from "./wgsl/mmc-valve-kernel.wgsl.js";
 export * from "./wgsl/sparse-emt-solver.wgsl.js";
+export * from "./wideband-corridor-compiler.js";

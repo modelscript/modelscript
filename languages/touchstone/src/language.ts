@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language } from "@modelscript/dsl";
+import { cardDeckRules, language } from "@modelscript/dsl";
 import { lowerTouchstoneToDae } from "./dae/touchstone-to-dae.js";
 import { indexTouchstoneFile } from "./indexing.js";
 import { lintTouchstone } from "./lints/index.js";
 import { parseTouchstone } from "./parser/touchstone-parser.js";
 import { touchstoneToModelica } from "./projections/touchstone-to-modelica.js";
 import { fitStateSpaceModel, verifyPassivity } from "./solvers/vector-fitting.js";
+import { touchstonePolyglotConfig } from "./tgg/index.js";
 
 const touchstoneExtensions = [
   ".s1p",
@@ -30,6 +31,7 @@ const touchstoneExtensions = [
  * ModelScript Touchstone N-Port (.sNp, .ts2) Language Definition.
  */
 export const touchstoneLanguage = language({
+  polyglot: touchstonePolyglotConfig,
   name: "touchstone",
   maturity: "beta",
   fileExtensions: touchstoneExtensions,
@@ -133,4 +135,8 @@ export const touchstoneLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
+
+export default touchstoneLanguage;

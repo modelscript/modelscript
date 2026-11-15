@@ -8,6 +8,7 @@
 
 import type { QueryDB, SymbolEntry, SymbolId } from "../runtime.js";
 import { evaluateMslCFunction, isMslCFunction } from "../util/msl_ffi.js";
+import { getArenaRuntimeState } from "./arena_runtime_state.js";
 import { BinOp, DAEBuilder, ExprKind, UnaryOp, Variability } from "./wasm_dae.js";
 import {
   evaluateArenaFunctionCall,
@@ -312,7 +313,7 @@ export function evaluateArenaDualExpression(
 
     case ExprKind.Pre: {
       const argId = arena.getExprData1(exprId);
-      const preEnv = preValuesByStringId ?? (arena as any)._preValuesByStringId;
+      const preEnv = preValuesByStringId ?? getArenaRuntimeState(arena).preValuesByStringId;
       if (preEnv instanceof Float64Array) {
         return Dual.constant(evaluateArenaRuntime(arena, argId, preEnv, preEnv));
       }
@@ -463,10 +464,10 @@ export function evaluateArenaDualExpression(
       const firstArgId = arena.getExprLeft(exprId);
 
       if (funcName === "initial") {
-        return Dual.constant((arena as any)._isInitialPhase ? 1 : 0);
+        return Dual.constant(getArenaRuntimeState(arena).isInitialPhase ? 1 : 0);
       }
       if (funcName === "terminal") {
-        if ((arena as any)._isTerminalPhase) return Dual.constant(1);
+        if (getArenaRuntimeState(arena).isTerminalPhase) return Dual.constant(1);
         const termId = arena.interner.intern("$terminal");
         const termDual = Array.isArray(dualVarsByStringId)
           ? dualVarsByStringId[termId]
@@ -475,7 +476,7 @@ export function evaluateArenaDualExpression(
       }
       if (funcName === "pre") {
         if (argCount <= 0) return Dual.constant(0);
-        const preEnv = preValuesByStringId ?? (arena as any)._preValuesByStringId;
+        const preEnv = preValuesByStringId ?? getArenaRuntimeState(arena).preValuesByStringId;
         if (preEnv instanceof Float64Array) {
           return Dual.constant(evaluateArenaRuntime(arena, firstArgId, preEnv, preEnv));
         }
@@ -749,7 +750,9 @@ export function evaluateArenaDualFlat(
     case ExprKind.Pre: {
       const argId = arena.getExprData1(exprId);
       const snapshotEnv =
-        preValuesByStringId ?? ((arena as any)._preValuesByStringId as Float64Array | undefined) ?? valuesByStringId;
+        preValuesByStringId ??
+        (getArenaRuntimeState(arena).preValuesByStringId as Float64Array | undefined) ??
+        valuesByStringId;
       stack[sp] = evaluateArenaRuntime(arena, argId, snapshotEnv, snapshotEnv);
       stack[sp + 1] = 0.0;
       return true;
@@ -957,13 +960,13 @@ export function evaluateArenaDualFlat(
       const firstArgId = arena.getExprLeft(exprId);
 
       if (funcName === "initial") {
-        stack[sp] = (arena as any)._isInitialPhase ? 1.0 : 0.0;
+        stack[sp] = getArenaRuntimeState(arena).isInitialPhase ? 1.0 : 0.0;
         stack[sp + 1] = 0.0;
         return true;
       }
       if (funcName === "terminal") {
         const termId = arena.interner.intern("$terminal");
-        stack[sp] = (arena as any)._isTerminalPhase || valuesByStringId[termId] === 1 ? 1.0 : 0.0;
+        stack[sp] = getArenaRuntimeState(arena).isTerminalPhase || valuesByStringId[termId] === 1 ? 1.0 : 0.0;
         stack[sp + 1] = 0.0;
         return true;
       }
@@ -971,7 +974,7 @@ export function evaluateArenaDualFlat(
         if (argCount > 0) {
           const snapshotEnv =
             preValuesByStringId ??
-            ((arena as any)._preValuesByStringId as Float64Array | undefined) ??
+            (getArenaRuntimeState(arena).preValuesByStringId as Float64Array | undefined) ??
             valuesByStringId;
           stack[sp] = evaluateArenaRuntime(arena, firstArgId, snapshotEnv, snapshotEnv);
         } else {
@@ -1498,9 +1501,8 @@ export function evaluateArenaRuntime(
             : 1;
         if (idx <= 1) return firstVal;
         const rootArena = ((arena as any).parentDae as DAEBuilder | undefined) ?? arena;
-        const lastOuts = ((arena as any)._lastFunctionOutputs ?? (rootArena as any)._lastFunctionOutputs) as
-          | number[]
-          | undefined;
+        const lastOuts = (getArenaRuntimeState(arena).lastFunctionOutputs ??
+          getArenaRuntimeState(rootArena).lastFunctionOutputs) as number[] | undefined;
         if (Array.isArray(lastOuts) && idx - 1 < lastOuts.length) {
           return lastOuts[idx - 1] ?? firstVal;
         }
@@ -1616,9 +1618,9 @@ export function evaluateArenaRuntime(
           return 0;
         }
         case "initial":
-          return (arena as any)._isInitialPhase ? 1 : 0;
+          return getArenaRuntimeState(arena).isInitialPhase ? 1 : 0;
         case "terminal": {
-          if ((arena as any)._isTerminalPhase) return 1;
+          if (getArenaRuntimeState(arena).isTerminalPhase) return 1;
           const termId =
             typeof (arena as any).intern === "function"
               ? (arena as any).intern("$terminal")
@@ -1643,10 +1645,12 @@ export function evaluateArenaRuntime(
             if (delayTime <= 0) return currVal;
             const timeId = arena.interner.intern("time");
             const currentTime = valuesByStringId[timeId] ?? 0;
-            let delayMap = (arena as any)._delayHistory as Map<number, { t: number[]; v: number[] }> | undefined;
+            let delayMap = getArenaRuntimeState(arena).delayHistory as
+              | Map<number, { t: number[]; v: number[] }>
+              | undefined;
             if (!delayMap) {
               delayMap = new Map();
-              (arena as any)._delayHistory = delayMap;
+              getArenaRuntimeState(arena).delayHistory = delayMap;
             }
             let buf = delayMap.get(exprId);
             if (!buf) {
@@ -2010,8 +2014,9 @@ export function evaluateArenaRuntime(
         };
         if (!fnArena.externalDecl) {
           const res = executeArenaFunction(fnArena, argVals, parentLookup);
-          if (Array.isArray((fnArena as any)._lastOutputs)) {
-            (arena as any)._lastFunctionOutputs = (fnArena as any)._lastOutputs;
+          const fnOutputs = getArenaRuntimeState(fnArena).lastOutputs;
+          if (Array.isArray(fnOutputs)) {
+            getArenaRuntimeState(arena).lastFunctionOutputs = fnOutputs;
           }
           if (res !== null && Number.isFinite(res)) return res;
         }

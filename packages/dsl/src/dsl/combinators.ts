@@ -16,9 +16,9 @@ export interface Rule<F extends string = string> {
   /** The type of the rule (e.g., 'SEQ', 'CHOICE', 'TOKEN', 'FIELD', etc.) */
   type: string;
   /** Optional metadata or literal value for the rule (e.g., field name, regex string, precedence level) */
-  value?: any;
+  value?: unknown;
   /** Child rules that this rule composes */
-  children?: Rule<any>[] | undefined;
+  children?: Rule<string>[] | undefined;
 }
 
 /**
@@ -30,7 +30,7 @@ export type RuleLike<F extends string = string> = Rule<F> | string | RegExp;
  * A function that takes a map of all grammar rules and returns a grammar definition rule.
  */
 export type RuleBuilder<RuleName extends string, FieldName extends string = string> = (
-  $: Record<RuleName | (string & {}), RuleLike<any>>,
+  $: Record<RuleName | (string & {}), RuleLike<string>>,
 ) => RuleLike<FieldName>;
 
 /**
@@ -39,10 +39,10 @@ export type RuleBuilder<RuleName extends string, FieldName extends string = stri
 export type ExtractF<T> = T extends (infer U)[]
   ? U extends Rule<infer F>
     ? F
-    : any
+    : never
   : T extends Rule<infer F>
     ? F
-    : any;
+    : never;
 
 /**
  * Coerces strings and RegExps into `token` rules, leaving existing `Rule` objects unchanged.
@@ -56,7 +56,7 @@ export function toRule<F extends string = string>(r: RuleLike<F>): Rule<F> {
  * Matches a sequence of rules, one after the other.
  * Equivalent to concatenation in EBNF: `A B C`
  */
-export function seq<T extends RuleLike<any>[]>(...rules: T): Rule<ExtractF<T[number]>> {
+export function seq<T extends RuleLike<string>[]>(...rules: T): Rule<ExtractF<T[number]>> {
   return { type: "SEQ", children: rules.map(toRule) };
 }
 
@@ -64,7 +64,7 @@ export function seq<T extends RuleLike<any>[]>(...rules: T): Rule<ExtractF<T[num
  * Matches any one of the provided rules.
  * Equivalent to alternation in EBNF: `A | B | C`
  */
-export function choice<T extends RuleLike<any>[]>(...rules: T): Rule<ExtractF<T[number]>> {
+export function choice<T extends RuleLike<string>[]>(...rules: T): Rule<ExtractF<T[number]>> {
   return { type: "CHOICE", children: rules.map(toRule) };
 }
 
@@ -138,7 +138,7 @@ export function sepByTrailing<F1 extends string, F2 extends string>(
  * Assigns a specific field name to the matched rule in the AST output.
  * Fields make querying and traversing the AST substantially easier.
  */
-export function field<F extends string = string>(name: F, rule: RuleLike<any>): Rule<F> {
+export function field<F extends string = string>(name: F, rule: RuleLike<string>): Rule<F> {
   return { type: "FIELD", value: name, children: [toRule(rule)] };
 }
 
@@ -160,9 +160,10 @@ export function token<F extends string = string>(pattern: RuleLike<F>): Rule<F> 
 /**
  * Matches a token immediately adjacent to the previous token without allowing intervening extras/whitespace.
  */
-(token as any).immediate = function <F extends string = string>(rule: RuleLike<F>): Rule<F> {
-  return { type: "TOKEN_IMMEDIATE", children: [toRule(rule)] };
-};
+(token as typeof token & { immediate: <F extends string = string>(rule: RuleLike<F>) => Rule<F> }).immediate =
+  function <F extends string = string>(rule: RuleLike<F>): Rule<F> {
+    return { type: "TOKEN_IMMEDIATE", children: [toRule(rule)] };
+  };
 
 /**
  * Renames a matched rule in the AST output. Useful for overriding generic rule names with specific context.
@@ -181,21 +182,21 @@ export type TokenClass = "keyword" | "type" | "operator" | "string" | "number" |
 /**
  * Wraps a grammar rule with a lexical `TokenClass` for syntax highlighting.
  */
-export function syntaxToken<F extends string = string>(tokenClass: TokenClass, rule: RuleLike<F>): any {
+export function syntaxToken<F extends string = string>(tokenClass: TokenClass, rule: RuleLike<F>): Rule<F> {
   return { type: "SYNTAX_TOKEN", value: tokenClass, children: [toRule(rule)] };
 }
 
 /**
  * Marks a grammar rule as a language keyword for syntax highlighting and lexical classification.
  */
-export function keyword<F extends string = string>(rule: RuleLike<F>): any {
+export function keyword<F extends string = string>(rule: RuleLike<F>): Rule<F> {
   return syntaxToken("keyword", rule);
 }
 
 /**
  * Marks a grammar rule as an operator token for syntax highlighting and lexical classification.
  */
-export function op<F extends string = string>(rule: RuleLike<F>): any {
+export function op<F extends string = string>(rule: RuleLike<F>): Rule<F> {
   return syntaxToken("operator", rule);
 }
 
@@ -250,7 +251,7 @@ export function semanticToken<
   RuleName extends string = string,
   FieldName extends string = never,
   QueryName extends string = never,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
+  ModelAttrs extends Record<string, Record<string, unknown>> = Record<string, Record<string, unknown>>,
 >(
   tokenType: SemanticTokenType | (string & {}),
   rule: RuleLike<F>,
@@ -311,7 +312,7 @@ prec.dynamic = function <F extends string = string>(value: number, rule: RuleLik
 /**
  * Matches the empty string (epsilon production).
  */
-export function blank(): any {
+export function blank(): Rule<never> {
   return { type: "BLANK" };
 }
 
@@ -322,22 +323,24 @@ export interface DefConfig<F extends string = string> {
   /** Underlying grammar syntax rule matched for this symbol definition. */
   syntax?: RuleLike<F> | undefined;
   /** Field name or extractor function yielding the symbol's declared identifier. */
-  name?: string | ((self: any) => any) | undefined;
+  name?: string | { bivarianceHack(self: unknown): unknown }["bivarianceHack"] | undefined;
   /** Extractor function computing custom symbol metadata from the AST node. */
-  symbol?: ((self: any) => any) | undefined;
+  symbol?: { bivarianceHack(self: unknown): unknown }["bivarianceHack"] | undefined;
   /** Semantic queries attached to symbols produced by this definition rule. */
   queries?: Record<string, QueryFnOrObject> | undefined;
   /** Symbol-level lint functions evaluated against `QueryDB` and the indexed `SymbolEntry`. */
   lint?:
-    | Record<string, (db: QueryDB, self: SymbolEntry, ...args: any[]) => LintResult | LintResult[] | null>
+    | Record<string, (db: QueryDB, self: SymbolEntry, ...args: unknown[]) => LintResult | LintResult[] | null>
     | undefined;
   /** Additional AST or compiler lint definitions associated with this definition. */
-  lints?: Record<string, any> | undefined;
+  lints?: Record<string, unknown> | undefined;
   /** Semantic diffing configuration (e.g., custom identity extractor for matching symbols across versions). */
-  diff?: { identity?: ((self: any) => any) | undefined; [key: string]: any } | undefined;
+  diff?:
+    | { identity?: { bivarianceHack(self: unknown): unknown }["bivarianceHack"] | undefined; [key: string]: unknown }
+    | undefined;
   /** Domain model attribute schema attached to this symbol definition. */
-  model?: any;
-  [key: string]: any;
+  model?: unknown;
+  [key: string]: unknown;
 }
 
 /**
@@ -347,22 +350,24 @@ export interface RefConfig<F extends string = string> {
   /** Underlying grammar syntax rule matched for this symbol reference. */
   syntax?: RuleLike<F> | undefined;
   /** Field name or extractor function yielding the referenced target identifier. */
-  name?: string | ((self: any) => any) | undefined;
+  name?: string | { bivarianceHack(self: unknown): unknown }["bivarianceHack"] | undefined;
   /** Extractor function computing custom reference metadata from the AST node. */
-  symbol?: ((self: any) => any) | undefined;
+  symbol?: { bivarianceHack(self: unknown): unknown }["bivarianceHack"] | undefined;
   /** Semantic queries attached to this reference rule. */
   queries?: Record<string, QueryFnOrObject> | undefined;
   /** Symbol-level lint functions evaluated against `QueryDB` and the indexed `SymbolEntry`. */
   lint?:
-    | Record<string, (db: QueryDB, self: SymbolEntry, ...args: any[]) => LintResult | LintResult[] | null>
+    | Record<string, (db: QueryDB, self: SymbolEntry, ...args: unknown[]) => LintResult | LintResult[] | null>
     | undefined;
   /** Additional AST or compiler lint definitions associated with this reference. */
-  lints?: Record<string, any> | undefined;
+  lints?: Record<string, unknown> | undefined;
   /** Semantic diffing configuration for comparing references across versions. */
-  diff?: { identity?: ((self: any) => any) | undefined; [key: string]: any } | undefined;
+  diff?:
+    | { identity?: { bivarianceHack(self: unknown): unknown }["bivarianceHack"] | undefined; [key: string]: unknown }
+    | undefined;
   /** Domain model attribute schema attached to this symbol reference. */
-  model?: any;
-  [key: string]: any;
+  model?: unknown;
+  [key: string]: unknown;
 }
 
 /**
@@ -370,7 +375,7 @@ export interface RefConfig<F extends string = string> {
  */
 export function def<F extends string = string>(config: DefConfig<F>): Rule<F> {
   const { syntax, ...options } = config;
-  return { type: "DEF" as any, value: options, children: syntax ? [toRule(syntax)] : [] } as any;
+  return { type: "DEF", value: options, children: syntax ? [toRule(syntax)] : [] } as Rule<F>;
 }
 
 /**
@@ -378,7 +383,7 @@ export function def<F extends string = string>(config: DefConfig<F>): Rule<F> {
  */
 export function ref<F extends string = string>(config: RefConfig<F>): Rule<F> {
   const { syntax, ...options } = config;
-  return { type: "REF" as any, value: options, children: syntax ? [toRule(syntax)] : [] } as any;
+  return { type: "REF", value: options, children: syntax ? [toRule(syntax)] : [] } as Rule<F>;
 }
 
 // --- E-Graph Rewrite Rule Combinators ---
@@ -392,7 +397,7 @@ export class TransformCombinator {
     /** The operator or node tag name (e.g., `"add"`, `"mul"`, `"variable"`, `"constant"`). */
     public op: string,
     /** The child operands or pattern arguments for this expression node. */
-    public args: any[],
+    public args: unknown[],
   ) {}
 
   /**
@@ -407,19 +412,19 @@ export class TransformCombinator {
 }
 
 /** Constructs an E-Graph addition expression `(add a b)`. */
-export function add(a: any, b: any) {
+export function add(a: unknown, b: unknown) {
   return new TransformCombinator("add", [a, b]);
 }
 /** Constructs an E-Graph subtraction expression `(sub a b)`. */
-export function sub(a: any, b: any) {
+export function sub(a: unknown, b: unknown) {
   return new TransformCombinator("sub", [a, b]);
 }
 /** Constructs an E-Graph multiplication expression `(mul a b)`. */
-export function mul(a: any, b: any) {
+export function mul(a: unknown, b: unknown) {
   return new TransformCombinator("mul", [a, b]);
 }
 /** Constructs an E-Graph division expression `(div a b)`. */
-export function div(a: any, b: any) {
+export function div(a: unknown, b: unknown) {
   return new TransformCombinator("div", [a, b]);
 }
 /** Constructs an E-Graph numeric constant literal node. */
@@ -435,47 +440,47 @@ export function variable(name: string) {
 /** Shorthand alias for `variable`. */
 export const v = variable;
 /** Constructs an E-Graph unary negation expression `(neg a)`. */
-export function neg(a: any) {
+export function neg(a: unknown) {
   return new TransformCombinator("neg", [a]);
 }
 /** Constructs an E-Graph absolute value expression `(abs a)`. */
-export function abs(a: any) {
+export function abs(a: unknown) {
   return new TransformCombinator("abs", [a]);
 }
 /** Constructs an E-Graph equality comparison expression `(eq a b)`. */
-export function eq(a: any, b: any) {
+export function eq(a: unknown, b: unknown) {
   return new TransformCombinator("eq", [a, b]);
 }
 /** Constructs an E-Graph inequality comparison expression `(neq a b)`. */
-export function neq(a: any, b: any) {
+export function neq(a: unknown, b: unknown) {
   return new TransformCombinator("neq", [a, b]);
 }
 /** Constructs an E-Graph less-than comparison expression `(lt a b)`. */
-export function lt(a: any, b: any) {
+export function lt(a: unknown, b: unknown) {
   return new TransformCombinator("lt", [a, b]);
 }
 /** Constructs an E-Graph greater-than comparison expression `(gt a b)`. */
-export function gt(a: any, b: any) {
+export function gt(a: unknown, b: unknown) {
   return new TransformCombinator("gt", [a, b]);
 }
 /** Constructs an E-Graph logical AND expression `(and a b)`. */
-export function and(a: any, b: any) {
+export function and(a: unknown, b: unknown) {
   return new TransformCombinator("and", [a, b]);
 }
 /** Constructs an E-Graph logical OR expression `(or a b)`. */
-export function or(a: any, b: any) {
+export function or(a: unknown, b: unknown) {
   return new TransformCombinator("or", [a, b]);
 }
 /** Constructs an E-Graph logical NOT expression `(not a)`. */
-export function not(a: any) {
+export function not(a: unknown) {
   return new TransformCombinator("not", [a]);
 }
 /** Constructs an E-Graph trigonometric sine expression `(sin a)`. */
-export function sin(a: any) {
+export function sin(a: unknown) {
   return new TransformCombinator("sin", [a]);
 }
 /** Constructs an E-Graph trigonometric cosine expression `(cos a)`. */
-export function cos(a: any) {
+export function cos(a: unknown) {
   return new TransformCombinator("cos", [a]);
 }
 
@@ -505,17 +510,21 @@ export const ruleCombinators = {
 /**
  * Declares a subtyping relation fact and runtime type-check predicate between `sourceType` and `targetType`.
  */
-export function subtype(sourceType: any, targetType: any) {
-  const unwrap = (v: any) => (typeof v === "object" && v !== null ? v.value || v.name || v.id || String(v) : String(v));
+export function subtype(sourceType: unknown, targetType: unknown) {
+  const unwrap = (val: unknown) => {
+    if (typeof val === "object" && val !== null) {
+      const obj = val as { value?: unknown; name?: unknown; id?: unknown };
+      return String(obj.value ?? obj.name ?? obj.id ?? val);
+    }
+    return String(val);
+  };
   const f = fact("subtype", unwrap(sourceType), unwrap(targetType));
-  const fn: any = (db: any, source: number, target: number) => {
+  const fn = (db: { ast: { getType(id: number): unknown } }, source: number, target: number) => {
     const sType = typeof sourceType === "number" ? sourceType : db.ast.getType(source);
     const tType = typeof targetType === "number" ? targetType : db.ast.getType(target);
     return sType === tType;
   };
-  Object.assign(fn, f);
-  fn.args = [sourceType, targetType];
-  return fn;
+  return Object.assign(fn, f, { args: [sourceType, targetType] });
 }
 /** Alias for `subtype`. */
 export const Subtype = subtype;
@@ -541,14 +550,11 @@ export const Fact = fact;
 /**
  * Proxy object that dynamically creates `REF` rule references on property access (e.g., `$.expression`).
  */
-export const $: any = new Proxy(
-  {},
-  {
-    get(_target, prop: string) {
-      return { type: "REF", value: prop };
-    },
+export const $: Record<string, Rule<string>> = new Proxy({} as Record<string, Rule<string>>, {
+  get(_target, prop: string) {
+    return { type: "REF", value: prop };
   },
-);
+});
 
 // --- Functional Combinators for CFG, DFA & Abstract Domains ---
 
@@ -559,7 +565,7 @@ export interface FlowNode {
   /** The control-flow construct type (e.g., `'SEQ'`, `'BRANCH'`, `'LOOP'`, `'CALL'`). */
   type: string;
   /** Configuration payload describing the control-flow edges and child AST fields. */
-  payload: any;
+  payload: Record<string, unknown>;
 }
 
 /**
@@ -567,50 +573,50 @@ export interface FlowNode {
  */
 export const flow = {
   /** Evaluates a named child AST field within an optional lexical scope. */
-  field(name: string, scope?: any): FlowNode {
+  field(name: string, scope?: unknown): FlowNode {
     return { type: "FIELD", payload: { name, scope } };
   },
   /** Iterates over a named list of child AST nodes, optionally mapping each child through `mapper`. */
-  children(name: string, mapper?: (node: any) => any): FlowNode {
+  children(name: string, mapper?: { bivarianceHack(node: unknown): unknown }["bivarianceHack"]): FlowNode {
     return { type: "CHILDREN", payload: { name, mapper } };
   },
   /** Executes a sequence of control-flow steps in order. */
-  seq(...steps: any[]): FlowNode {
+  seq(...steps: unknown[]): FlowNode {
     return { type: "SEQ", payload: { steps } };
   },
   /** Models a conditional branch with `cond`, `then`, and optional `else` paths. */
-  branch(config: { cond: any; then: any; else?: any }): FlowNode {
+  branch(config: { cond: unknown; then: unknown; else?: unknown }): FlowNode {
     return { type: "BRANCH", payload: config };
   },
   /** Models a generic `while`/`loop` construct with optional `cond`, `body`, and `step`. */
-  loop(config: { cond?: any; body: any; step?: any }): FlowNode {
+  loop(config: { cond?: unknown; body: unknown; step?: unknown }): FlowNode {
     return { type: "LOOP", payload: config };
   },
   /** Models a structured `for` loop with `init`, `cond`, `step`, and `body` phases. */
-  for(config: { init?: any; cond?: any; step?: any; body: any }): FlowNode {
+  for(config: { init?: unknown; cond?: unknown; step?: unknown; body: unknown }): FlowNode {
     return { type: "FOR", payload: config };
   },
   /** Models a multi-way `switch` dispatch over a `discriminant`, `cases`, and optional `default`. */
-  switch(config: { discriminant: any; cases: any; default?: any }): FlowNode {
+  switch(config: { discriminant: unknown; cases: unknown; default?: unknown }): FlowNode {
     return { type: "SWITCH", payload: config };
   },
   /** Models exception handling flow with `body`, `catchers`, `else`, and `finally` blocks. */
-  try(config: { body: any; catchers?: any; else?: any; finally?: any }): FlowNode {
+  try(config: { body: unknown; catchers?: unknown; else?: unknown; finally?: unknown }): FlowNode {
     return { type: "TRY", payload: config };
   },
   /** Models a function or method invocation site and its argument evaluation order. */
   call(config: {
-    target: any;
-    arguments?: any;
-    positional?: any;
-    keywords?: any;
-    spreadPositional?: any;
-    spreadKeywords?: any;
+    target: unknown;
+    arguments?: unknown;
+    positional?: unknown;
+    keywords?: unknown;
+    spreadPositional?: unknown;
+    spreadKeywords?: unknown;
   }): FlowNode {
     return { type: "CALL", payload: config };
   },
   /** Models stack unwinding with cleanup handlers executed upon scope exit. */
-  unwind(config: { body: any; cleanups: any }): FlowNode {
+  unwind(config: { body: unknown; cleanups: unknown }): FlowNode {
     return { type: "UNWIND", payload: config };
   },
   /** Maps grammar rule names to their corresponding CFG construction `FlowNode` definitions. */
@@ -624,23 +630,25 @@ export const flow = {
  */
 export const domain = {
   /** Configures the relational Octagon abstract domain ($\pm x \pm y \le c$). */
-  octagon(opts?: { varExtractor?: ((node: any, graph: any) => string | null) | undefined }): any {
+  octagon(opts?: {
+    varExtractor?: { bivarianceHack(node: unknown, graph: unknown): string | null }["bivarianceHack"] | undefined;
+  }): Record<string, unknown> {
     return { kind: "octagon", varExtractor: opts?.varExtractor };
   },
   /** Configures the non-relational Interval abstract domain ($[a, b]$). */
-  interval(): any {
+  interval(): Record<string, unknown> {
     return { kind: "interval" };
   },
   /** Configures a finite Bitset dataflow domain (e.g., for liveness or reaching definitions). */
-  bitset(): any {
+  bitset(): Record<string, unknown> {
     return { kind: "bitset" };
   },
   /** Configures a pointer/reference Alias analysis domain. */
-  alias(): any {
+  alias(): Record<string, unknown> {
     return { kind: "alias" };
   },
   /** Combines multiple abstract domains into a reduced Cartesian product domain. */
-  product(...domains: any[]): any {
+  product(...domains: unknown[]): Record<string, unknown> {
     return { kind: "product", domains };
   },
   /** Configures a Differential-Algebraic Equation (DAE) structural and symbolic reduction domain. */
@@ -654,7 +662,7 @@ export const domain = {
     isolationMethods?:
       | ("explicit" | "linear" | "quadratic" | "harmonic" | "lambertW" | "treePeeling" | "fixedPoint" | "groebner")[]
       | undefined;
-  }): any {
+  }): Record<string, unknown> {
     return { kind: "dae", ...opts };
   },
   /** Configures a numerical ODE/DAE time-domain simulation solver domain. */
@@ -664,19 +672,22 @@ export const domain = {
     stopTime?: number | undefined;
     stepSize?: number | undefined;
     tolerance?: number | undefined;
-  }): any {
+  }): Record<string, unknown> {
     return { kind: "simulation", ...opts };
   },
   /** Configures incremental workspace indexing and Salsa query memoization. */
-  workspace(opts?: { incrementalQueries?: boolean | undefined; memoization?: "salsa" | "naive" | undefined }): any {
+  workspace(opts?: {
+    incrementalQueries?: boolean | undefined;
+    memoization?: "salsa" | "naive" | undefined;
+  }): Record<string, unknown> {
     return { kind: "workspace", ...opts };
   },
   /** Configures an ontological / Datalog deductive reasoner domain. */
   reasoner(opts?: {
     expressivity?: "OWL2RL" | "DL-Lite" | "RDFS" | undefined;
     datalogFixpoint?: "semi-naive" | "naive" | undefined;
-    axioms?: any[] | undefined;
-  }): any {
+    axioms?: unknown[] | undefined;
+  }): Record<string, unknown> {
     return { kind: "reasoner", ...opts };
   },
 };
@@ -686,19 +697,19 @@ export const domain = {
  */
 export const transfer = {
   /** Attaches a transfer function handler to a specific AST or CFG `nodeType`. */
-  on(nodeType: any, transferFn: any): any {
+  on(nodeType: unknown, transferFn: unknown): Record<string, unknown> {
     return { nodeType, transferFn };
   },
   /** Models an abstract state assignment updating `lhs` with the abstract evaluation of `rhs`. */
-  assign(lhs: any, rhs: any): any {
+  assign(lhs: unknown, rhs: unknown): Record<string, unknown> {
     return { type: "ASSIGN", lhs, rhs };
   },
   /** Models an abstract guard assumption restricting the abstract state to satisfy `cond`. */
-  assume(cond: any): any {
+  assume(cond: unknown): Record<string, unknown> {
     return { type: "ASSUME", cond };
   },
   /** Havocs / forgets abstract state constraints associated with `variable`. */
-  kill(variable: any): any {
+  kill(variable: unknown): Record<string, unknown> {
     return { type: "KILL", variable };
   },
 };
@@ -708,7 +719,7 @@ export const transfer = {
  */
 export const check = {
   /** Asserts that `predicate` holds at `nodeType`, emitting `message` as a diagnostic when violated. */
-  assert(nodeType: any, predicate: any, message: string): any {
+  assert(nodeType: unknown, predicate: unknown, message: string): Record<string, unknown> {
     return { nodeType, predicate, message };
   },
 };
@@ -717,10 +728,10 @@ export const check = {
  * Configures a static analysis pass combining a Control-Flow Graph (`cfg`), abstract `domain`, `transfers`, and `diagnostics`.
  */
 export function analysis(config: {
-  cfg?: any;
-  domain: any;
-  transfers?: any[] | undefined;
-  diagnostics?: any[] | undefined;
-}): any {
+  cfg?: unknown;
+  domain: unknown;
+  transfers?: unknown[] | undefined;
+  diagnostics?: unknown[] | undefined;
+}): Record<string, unknown> {
   return config;
 }

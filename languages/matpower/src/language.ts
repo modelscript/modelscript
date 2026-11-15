@@ -4,14 +4,16 @@
  * ModelScript MATPOWER Language Definition.
  */
 
-import { language } from "@modelscript/dsl";
+import { cardDeckRules, language } from "@modelscript/dsl";
 import { formatPowerFlowReport, solvePowerFlow } from "@modelscript/psse";
 import { lowerMatpowerToDae } from "./dae/matpower-to-dae.js";
 import { lintMatpowerCase } from "./lints/index.js";
 import { parseMatpowerCase } from "./parser/matpower-parser.js";
 import { matpowerToPsseRaw } from "./projections/matpower-to-psse.js";
+import { matpowerPolyglotConfig } from "./tgg/index.js";
 
 export const matpowerLanguage = language({
+  polyglot: matpowerPolyglotConfig,
   name: "matpower",
   fileExtensions: [".m", ".matpower"],
   maturity: "beta",
@@ -123,6 +125,8 @@ export const matpowerLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
 
 export default matpowerLanguage;

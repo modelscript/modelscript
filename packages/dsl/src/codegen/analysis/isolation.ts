@@ -10,6 +10,6 @@ export * from "./inversion.js";
  * Generates the AssemblyScript isolation domain module containing all 8 symbolic isolation
  * algorithms, domain guards, and re-exports for non-linear iterative solvers.
  */
-export function generateIsolationDomain(_grammarDef?: LanguageOptions<any>): string {
+export function generateIsolationDomain(_grammarDef?: LanguageOptions): string {
   return isolation_domainCode;
 }

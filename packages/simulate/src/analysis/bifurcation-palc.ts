@@ -16,7 +16,8 @@
  *   SIAM. https://doi.org/10.1137/1.9780898719543
  */
 
-import { luFactor, luSolve } from "@modelscript/runtime/wasm_gaussian.js";
+import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
+import { tryHessenbergQrEigenvaluesWasm } from "../control/frequency.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public Types & Interfaces
@@ -144,6 +145,11 @@ export function computeRealMatrixEigenvalues(J: Float64Array, n: number): Comple
         { re, im: -im },
       ];
     }
+  }
+
+  const wasmEigs = tryHessenbergQrEigenvaluesWasm(J, n);
+  if (wasmEigs !== null) {
+    return wasmEigs.sort((a, b) => b.re - a.re || Math.abs(b.im) - Math.abs(a.im));
   }
 
   // Copy J for in-place Householder reduction to Upper Hessenberg form
@@ -355,8 +361,8 @@ function computeUnitTangent(
   const rhs = new Float64Array(m);
   rhs[n] = 1.0;
 
-  const fact = luFactor(B, m);
-  luSolve(fact, rhs);
+  const fact = luFactorFlat(B, m);
+  luSolveFlat(fact, rhs);
 
   let normSq = rhs[n]! * rhs[n]!;
   for (let i = 0; i < n; i++) normSq += rhs[i]! * rhs[i]!;
@@ -421,8 +427,8 @@ function palcCorrectorStep(
     B[n * m + n] = tp;
 
     try {
-      const fact = luFactor(B, m);
-      luSolve(fact, rhs);
+      const fact = luFactorFlat(B, m);
+      luSolveFlat(fact, rhs);
     } catch {
       return { converged: false, x, p, iter };
     }
@@ -496,8 +502,8 @@ export function continueEquilibriumPALC(problem: BifurcationProblem, options: PA
     if (maxR <= tol) break;
     evaluateJacobians(problem, x, p, Jx, Jp);
     try {
-      const fact = luFactor(new Float64Array(Jx), n);
-      luSolve(fact, rhs);
+      const fact = luFactorFlat(new Float64Array(Jx), n);
+      luSolveFlat(fact, rhs);
       for (let i = 0; i < n; i++) x[i] = x[i]! + rhs[i]!;
     } catch {
       break;
@@ -551,7 +557,7 @@ export function continueEquilibriumPALC(problem: BifurcationProblem, options: PA
   // Step 3: Pseudo-arclength continuation loop
   for (let step = 1; step <= maxSteps; step++) {
     let accepted = false;
-    let xNext: Float64Array<any> = new Float64Array(n);
+    let xNext: Float64Array<ArrayBufferLike> = new Float64Array(n);
     let pNext = p;
     let usedIter = 0;
 
@@ -590,7 +596,7 @@ export function continueEquilibriumPALC(problem: BifurcationProblem, options: PA
         let aLo = 0.0;
         let aHi = ds;
         let tpLo = currPt.tangentP;
-        let xFold: Float64Array<any> = new Float64Array(xNext);
+        let xFold: Float64Array<ArrayBufferLike> = new Float64Array(xNext);
         let pFold = pNext;
 
         for (let b = 0; b < 12; b++) {
@@ -640,7 +646,7 @@ export function continueEquilibriumPALC(problem: BifurcationProblem, options: PA
         let aLo = 0.0;
         let aHi = ds;
         let reLo = hopfPrev.re;
-        let xHopf: Float64Array<any> = new Float64Array(xNext);
+        let xHopf: Float64Array<ArrayBufferLike> = new Float64Array(xNext);
         let pHopf = pNext;
         let freqHopf = 0.5 * (hopfPrev.freq + hopfNext.freq);
         let hopfEigs = nextPt.eigenvalues;

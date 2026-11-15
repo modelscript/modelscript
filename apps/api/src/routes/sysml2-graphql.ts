@@ -138,7 +138,8 @@ export function createSysml2GraphQLSchema(omgService: SysML2OmgService): GraphQL
       },
       relationships: {
         type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(RelationshipType))),
-        resolve: (c) => (omgService as any).relationships?.get(c["@id"]) || [],
+        resolve: (c) =>
+          (omgService as unknown as { relationships?: Map<string, unknown[]> }).relationships?.get(c["@id"]) || [],
       },
     }),
   });

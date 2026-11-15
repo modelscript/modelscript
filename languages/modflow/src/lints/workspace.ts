@@ -1,13 +1,48 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createWasmParserSync } from "@modelscript/modflow/wasm-parser";
 import {
   collectWorkspaceDocuments,
+  groupCstLeavesByLine,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import { parseModflow } from "../parser/index.js";
 import { lintModflow } from "./index.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getModflowWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/modflow/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
+
+const MODFLOW_NAM_PACKAGES = new Set([
+  "DIS",
+  "DIS6",
+  "NPF",
+  "NPF6",
+  "IC",
+  "IC6",
+  "OC",
+  "OC6",
+  "WEL",
+  "WEL6",
+  "CHD",
+  "CHD6",
+  "RCH",
+  "RCH6",
+  "BAS6",
+  "LPF",
+  "PCG",
+  "SMS",
+  "DATA",
+]);
 
 /**
  * Performs multi-file MODFLOW workspace linting across `.nam` namefiles and
@@ -19,16 +54,16 @@ export function lintModflowWorkspace(workspace: WorkspaceDocumentInput, rootUri?
   const diagnostics: WorkspaceLintDiagnostic[] = [];
   const entries = Array.from(docs.entries());
   if (entries.length === 0) return diagnostics;
+  const parser = getModflowWasmParser();
 
   for (const [uri, text] of entries) {
     if (uri.toLowerCase().endsWith(".nam")) {
-      for (const line of text.split(/\r?\n/)) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith("#") || /^(?:BEGIN|END)\b/i.test(trimmed)) continue;
-        const m = trimmed.match(
-          /^(?:DIS6?|NPF6?|IC6?|OC6?|WEL6?|CHD6?|RCH6?|BAS6|LPF|PCG|SMS|DATA)\s+(?:\d+\s+)?([^\s#]+)/i,
-        );
-        const ref = m?.[1]?.replace(/^["']|["']$/g, "");
+      const tree = parser.parse(text);
+      for (const { tokens } of groupCstLeavesByLine(tree?.rootNode)) {
+        const pkg = tokens[0]?.text.toUpperCase();
+        if (!pkg || pkg === "BEGIN" || pkg === "END" || !MODFLOW_NAM_PACKAGES.has(pkg)) continue;
+        const idx = tokens[1] && /^\d+$/.test(tokens[1].text) ? 2 : 1;
+        const ref = tokens[idx]?.text.replace(/^["']|["']$/g, "");
         if (ref && !resolveRelativeUri(uri, ref, docs)) {
           diagnostics.push({
             uri,

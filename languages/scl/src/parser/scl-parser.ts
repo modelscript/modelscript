@@ -380,7 +380,7 @@ export function parseSclXml(xmlText: string): SclDocument {
                   doName: eAttrs["doName"],
                   daName: eAttrs["daName"],
                   intAddr: eAttrs["intAddr"],
-                  serviceType: (eAttrs["serviceType"] as any) || "GOOSE",
+                  serviceType: (eAttrs["serviceType"] as "GOOSE" | "SMV" | "Report" | undefined) || "GOOSE",
                 });
               }
             }

@@ -3,12 +3,25 @@
 import {
   collectWorkspaceDocuments,
   findIncludeCycle,
+  groupCstLeavesByLine,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { createWasmParserSync } from "@modelscript/spice/wasm-parser";
+import { createRequire } from "node:module";
 import { parseSpice } from "../parser/spice-parser.js";
 import { lintSpiceCircuit } from "./rules.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getSpiceWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/spice/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Performs multi-file SPICE workspace linting by resolving `.include` / `.lib`
@@ -25,6 +38,7 @@ export function lintSpiceWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
   const edges = new Map<string, string[]>();
   const expandedLines: string[] = [];
   const visited = new Set<string>();
+  const parser = getSpiceWasmParser();
 
   function expand(uri: string): void {
     if (visited.has(uri)) return;
@@ -33,10 +47,23 @@ export function lintSpiceWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
     const outEdges: string[] = [];
     edges.set(uri, outEdges);
 
-    for (const line of text.split(/\r?\n/)) {
-      const m = line.match(/^\s*\.(?:include|inc|lib)\s+(?:"([^"]+)"|'([^']+)'|(\S+))/i);
+    const tree = parser.parse(text);
+    const rawLines = text.split(/\r?\n/);
+    const includeRows = new Map<number, string>();
+    for (const { row, tokens } of groupCstLeavesByLine(tree?.rootNode)) {
+      const joined = tokens
+        .map((t) => t.text)
+        .join("")
+        .trim();
+      const m = joined.match(/^\.(?:include|inc|lib)\s+(?:"([^"]+)"|'([^']+)'|(\S+))/i);
       if (m) {
-        const targetRaw = m[1] ?? m[2] ?? m[3] ?? "";
+        includeRows.set(row, m[1] ?? m[2] ?? m[3] ?? "");
+      }
+    }
+
+    for (let row = 0; row < rawLines.length; row++) {
+      const targetRaw = includeRows.get(row);
+      if (targetRaw !== undefined) {
         const resolved = resolveRelativeUri(uri, targetRaw, docs);
         if (!resolved) {
           diagnostics.push({
@@ -51,7 +78,7 @@ export function lintSpiceWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
           expand(resolved);
         }
       } else {
-        expandedLines.push(line);
+        expandedLines.push(rawLines[row] ?? "");
       }
     }
   }

@@ -1217,7 +1217,7 @@ export function screenContingencies(
 
   for (const cand of topCandidates) {
     const ctg = cand.contingency;
-    const activeFilter = (br: any) => {
+    const activeFilter = (br: { i: number; j: number; ckt: string }) => {
       const k1 = `${br.i}_${br.j}_${br.ckt}`;
       const k2 = `${br.j}_${br.i}_${br.ckt}`;
       return !cand.trippedBranches.has(k1) && !cand.trippedBranches.has(k2);

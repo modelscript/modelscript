@@ -424,7 +424,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
           if (parser) {
             ws.register(uri, () => {
               const tree = parser.parse(content);
-              return (tree?.rootNode ?? tree) as any;
+              return (tree?.rootNode ?? tree) as unknown as ReturnType<NonNullable<Parameters<typeof ws.register>[1]>>;
             });
           }
           if (!primarySource || (args.name && content.includes(args.name))) {

@@ -505,7 +505,7 @@ process.on(
         }
       }
       for (const [k, v] of sysml2QueryHooks.entries()) {
-        polyglotHooks.set(k, v);
+        polyglotHooks.set(k, v as Parameters<typeof polyglotHooks.set>[1]);
       }
 
       const polyglotEngine = new QueryEngine(unifiedSymbolIndex, polyglotHooks);

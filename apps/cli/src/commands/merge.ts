@@ -249,9 +249,15 @@ export const Merge: CommandModule<{}, MergeArgs> = {
     };
 
     const mergeResult = computeThreeWayMerge(
-      baseIndexed.rootId !== null ? { id: baseIndexed.rootId, db: baseIndexed.db.toQueryDB() } : null,
-      oursIndexed.rootId !== null ? { id: oursIndexed.rootId, db: oursIndexed.db.toQueryDB() } : null,
-      theirsIndexed.rootId !== null ? { id: theirsIndexed.rootId, db: theirsIndexed.db.toQueryDB() } : null,
+      (baseIndexed.rootId !== null ? { id: baseIndexed.rootId, db: baseIndexed.db.toQueryDB() } : null) as Parameters<
+        typeof computeThreeWayMerge
+      >[0],
+      (oursIndexed.rootId !== null ? { id: oursIndexed.rootId, db: oursIndexed.db.toQueryDB() } : null) as Parameters<
+        typeof computeThreeWayMerge
+      >[1],
+      (theirsIndexed.rootId !== null
+        ? { id: theirsIndexed.rootId, db: theirsIndexed.db.toQueryDB() }
+        : null) as Parameters<typeof computeThreeWayMerge>[2],
       {
         strategy,
         orderAgnostic,

@@ -2,11 +2,13 @@
 
 import { choice, language, repeat, seq } from "@modelscript/dsl";
 import { canIndexUrdfFile, indexUrdfFile } from "./indexing.js";
+import { urdfPolyglotConfig } from "./tgg/index.js";
 
 /**
  * DSL language specification for ROS URDF, SDFormat, and Xacro files (.urdf, .sdf, .xacro).
  */
 export const urdfLanguage = language({
+  polyglot: urdfPolyglotConfig,
   name: "urdf",
   fileExtensions: [".urdf", ".sdf", ".xacro"],
   maturity: "experimental",
@@ -19,17 +21,20 @@ export const urdfLanguage = language({
   },
 
   rules: {
-    Document: ($) => repeat(choice($.Element, $.Comment)),
+    Document: ($) => repeat(choice($["Element"]!, $["Comment"]!)),
 
     Element: ($) =>
       seq(
         "<",
-        $.TagIdentifier,
-        repeat($.Attribute),
-        choice("/>", seq(">", repeat(choice($.Element, $.TextContent, $.Comment)), "</", $.TagIdentifier, ">")),
+        $["TagIdentifier"]!,
+        repeat($["Attribute"]!),
+        choice(
+          "/>",
+          seq(">", repeat(choice($["Element"]!, $["TextContent"]!, $["Comment"]!)), "</", $["TagIdentifier"]!, ">"),
+        ),
       ),
 
-    Attribute: ($) => seq($.AttrIdentifier, "=", $.StringLiteral),
+    Attribute: ($) => seq($["AttrIdentifier"]!, "=", $["StringLiteral"]!),
 
     TagIdentifier: () => /[A-Za-z_:][A-Za-z0-9_:-]*/,
     AttrIdentifier: () => /[A-Za-z_:][A-Za-z0-9_:-]*/,

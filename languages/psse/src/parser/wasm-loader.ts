@@ -6,7 +6,12 @@ import { createWasmParser, createWasmParserSync } from "@modelscript/dsl/binding
  * Resolves the URL or absolute file path to the native PSS/E WebAssembly parser binary.
  */
 export function getPsseWasmPath(): string {
-  const url = new URL("../../dist/parser.wasm", import.meta.url);
+  const rel = import.meta.url.includes("/dist/src/")
+    ? "../../parser.wasm"
+    : import.meta.url.includes("/dist/")
+      ? "../parser.wasm"
+      : "../../dist/parser.wasm";
+  const url = new URL(rel, import.meta.url);
   if (url.protocol === "file:") {
     const pathname = decodeURIComponent(url.pathname);
     return typeof process !== "undefined" && process?.platform === "win32" && pathname.startsWith("/")

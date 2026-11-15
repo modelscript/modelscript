@@ -129,7 +129,18 @@ export function compileWcojMatcher(plan: WcojPlan): string {
   code += `): u32 {\n`;
   code += `  let matchCount: u32 = 0;\n\n`;
 
-  if (plan.isCyclic && plan.variableOrder.length >= 3) {
+  if (plan.edges.length > 3) {
+    code += `  // Generalized ${plan.variableOrder.length}-variable, ${plan.edges.length}-edge Leapfrog Triejoin plan\n`;
+    for (let eIdx = 0; eIdx < plan.edges.length; eIdx++) {
+      const eHash = plan.edges[eIdx]?.edgeType ? (getDJB2Hash(plan.edges[eIdx]!.edgeType) & 0xffff) >>> 0 : 0;
+      code += `  let iter${eIdx + 1}Ptr = atomicChunkAlloc(sizeof<LeapfrogIterator>());\n`;
+      code += `  leapfrog_init_from_dpo_edges(iter${eIdx + 1}Ptr, graphPtr, ${eHash} as u16);\n`;
+    }
+    code += `  matchCount = leapfrog_intersect_3(iter1Ptr, iter2Ptr, iter3Ptr, resultZSetPtr);\n`;
+    for (let eIdx = 3; eIdx < plan.edges.length; eIdx++) {
+      code += `  matchCount = leapfrog_intersect_2(iter1Ptr, iter${eIdx + 1}Ptr, resultZSetPtr);\n`;
+    }
+  } else if (plan.isCyclic && plan.variableOrder.length >= 3) {
     const [v1, v2, v3] = plan.variableOrder;
     const e1Hash = plan.edges[0]?.edgeType ? (getDJB2Hash(plan.edges[0].edgeType) & 0xffff) >>> 0 : 0;
     const e2Hash = plan.edges[1]?.edgeType ? (getDJB2Hash(plan.edges[1].edgeType) & 0xffff) >>> 0 : e1Hash;

@@ -41,9 +41,9 @@ function resolveChannelSignal(
   }
 
   if (!signal) {
-    // If not found yet, check if index 0 has data
-    if (typeof channel === "number" && (record.analogData as any)?.[channel]) {
-      signal = (record.analogData as any)[channel];
+    const analogIndexed = record.analogData as unknown as Record<number, Float64Array | number[]> | undefined;
+    if (typeof channel === "number" && analogIndexed?.[channel]) {
+      signal = analogIndexed[channel];
     } else {
       throw new Error(`Channel '${channel}' not found in COMTRADE record.`);
     }

@@ -15,12 +15,12 @@ import { add, constant, cos, div, mul, neg, sin, sub, TransformCombinator } from
 type C = TransformCombinator;
 
 // Helper: create a named node
-function node(op: string, ...children: any[]): C {
+function node(op: string, ...children: unknown[]): C {
   return new TransformCombinator(op, children);
 }
 
 // Helper: access child at index
-function child(a: any, idx: number): C {
+function child(a: unknown, idx: number): C {
   return new TransformCombinator("child", [a, idx]);
 }
 

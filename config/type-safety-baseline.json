@@ -2,11 +2,11 @@
   "description": "Per-package type-safety ratchet ceilings for explicit 'any' and '@ts-expect-error'/'@ts-ignore' in src/. Counts may decrease but must never increase.",
   "packages": {
     "apps/api": {
-      "explicitAny": 42,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "apps/cli": {
-      "explicitAny": 28,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "apps/desktop": {
@@ -26,7 +26,7 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 894,
+      "explicitAny": 885,
       "tsComments": 0
     },
     "ee": {
@@ -38,7 +38,7 @@
       "tsComments": 0
     },
     "languages/ampl": {
-      "explicitAny": 12,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/antimony": {
@@ -62,7 +62,7 @@
       "tsComments": 0
     },
     "languages/autosar": {
-      "explicitAny": 5,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/bngl": {
@@ -74,7 +74,7 @@
       "tsComments": 0
     },
     "languages/cantera": {
-      "explicitAny": 2,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/ccsds": {
@@ -94,7 +94,7 @@
       "tsComments": 0
     },
     "languages/comtrade": {
-      "explicitAny": 13,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/csv": {
@@ -194,11 +194,11 @@
       "tsComments": 0
     },
     "languages/mlxtran": {
-      "explicitAny": 1,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/modelica": {
-      "explicitAny": 3328,
+      "explicitAny": 3285,
       "tsComments": 0
     },
     "languages/modelscript": {
@@ -214,15 +214,15 @@
       "tsComments": 0
     },
     "languages/nmodl": {
-      "explicitAny": 1,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/nmtran": {
-      "explicitAny": 1,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/ocpp": {
-      "explicitAny": 5,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/olga": {
@@ -234,7 +234,7 @@
       "tsComments": 0
     },
     "languages/openadr": {
-      "explicitAny": 2,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/opendrive": {
@@ -278,11 +278,11 @@
       "tsComments": 0
     },
     "languages/powerfactory": {
-      "explicitAny": 5,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/pscad": {
-      "explicitAny": 20,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/pslf": {
@@ -290,7 +290,7 @@
       "tsComments": 0
     },
     "languages/psse": {
-      "explicitAny": 11,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/qif": {
@@ -306,7 +306,7 @@
       "tsComments": 0
     },
     "languages/reqif": {
-      "explicitAny": 2,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/rocets": {
@@ -326,7 +326,7 @@
       "tsComments": 0
     },
     "languages/scl": {
-      "explicitAny": 1,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/sedml": {
@@ -346,11 +346,11 @@
       "tsComments": 0
     },
     "languages/simulink": {
-      "explicitAny": 8,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/smiles": {
-      "explicitAny": 1,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/spice": {
@@ -370,7 +370,7 @@
       "tsComments": 0
     },
     "languages/sysml2": {
-      "explicitAny": 1,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/three-mf": {
@@ -390,11 +390,11 @@
       "tsComments": 0
     },
     "languages/urdf": {
-      "explicitAny": 11,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/usd": {
-      "explicitAny": 10,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/verilog-a": {
@@ -414,11 +414,11 @@
       "tsComments": 0
     },
     "packages/diagram": {
-      "explicitAny": 52,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "packages/dsl": {
-      "explicitAny": 783,
+      "explicitAny": 3,
       "tsComments": 0
     },
     "packages/embed": {
@@ -438,7 +438,7 @@
       "tsComments": 0
     },
     "packages/exchange": {
-      "explicitAny": 16,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "packages/ide": {
@@ -446,11 +446,11 @@
       "tsComments": 0
     },
     "packages/lsp": {
-      "explicitAny": 1830,
+      "explicitAny": 1829,
       "tsComments": 0
     },
     "packages/mcp": {
-      "explicitAny": 10,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "packages/react": {
@@ -458,11 +458,15 @@
       "tsComments": 0
     },
     "packages/runtime": {
-      "explicitAny": 858,
+      "explicitAny": 818,
+      "tsComments": 0
+    },
+    "packages/sdk": {
+      "explicitAny": 0,
       "tsComments": 0
     },
     "packages/simulate": {
-      "explicitAny": 40,
+      "explicitAny": 0,
       "tsComments": 0
     }
   }

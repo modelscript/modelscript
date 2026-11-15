@@ -154,10 +154,10 @@ export class ProvenanceGraph {
    * Serializes the provenance graph to standard W3C PROV-O JSON-LD.
    */
   toJsonLd(): string {
-    const graph: any[] = [];
+    const graph: Record<string, unknown>[] = [];
 
     for (const ag of this.agents.values()) {
-      const node: any = {
+      const node: Record<string, unknown> = {
         "@id": ag.id.startsWith("agent:") ? ag.id : `agent:${ag.id}`,
         "@type": ["prov:Agent", `prov:${ag.type}`],
         "prov:name": ag.name,
@@ -167,7 +167,7 @@ export class ProvenanceGraph {
     }
 
     for (const act of this.activities.values()) {
-      const node: any = {
+      const node: Record<string, unknown> = {
         "@id": act.id.startsWith("activity:") ? act.id : `activity:${act.id}`,
         "@type": ["prov:Activity", `ms:${act.type}`],
         "prov:startedAtTime": act.startedAtTime,
@@ -184,7 +184,7 @@ export class ProvenanceGraph {
     }
 
     for (const ent of this.entities.values()) {
-      const node: any = {
+      const node: Record<string, unknown> = {
         "@id": ent.id.startsWith("entity:") ? ent.id : `entity:${ent.id}`,
         "@type": ["prov:Entity", `ms:${ent.type}`],
       };

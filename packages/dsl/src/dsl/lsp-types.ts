@@ -9,20 +9,19 @@
  */
 export interface LanguageRequestContext {
   uri: string;
-  workspaceManager?: any;
-  parserService?: any;
-  sharedContext?: any;
-  validationService?: any;
-  connection?: any;
-  plugin?: any;
-  queryDB?: any;
-  [key: string]: any;
+  workspaceManager?: unknown;
+  parserService?: unknown;
+  sharedContext?: unknown;
+  validationService?: unknown;
+  connection?: unknown;
+  plugin?: unknown;
+  queryDB?: unknown;
+  [key: string]: unknown;
 }
 
 /**
  * Custom protocol handler for language-specific JSON-RPC requests.
  */
-export type LanguageProtocolHandler<TParams = any, TResult = any> = (
-  context: LanguageRequestContext,
-  params: TParams,
-) => Promise<TResult> | TResult;
+export type LanguageProtocolHandler<TParams = unknown, TResult = unknown> = {
+  bivarianceHack(context: LanguageRequestContext, params: TParams): Promise<TResult> | TResult;
+}["bivarianceHack"];

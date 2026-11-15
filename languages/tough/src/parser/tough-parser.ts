@@ -1,16 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type {
-  ToughConnection,
-  ToughDeck,
-  ToughElement,
-  ToughGenerator,
-  ToughIncon,
-  ToughRock,
-} from "../types.js";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
+import { createWasmParserSync } from "@modelscript/tough/wasm-parser";
+import { createRequire } from "node:module";
+import type { ToughConnection, ToughDeck, ToughElement, ToughGenerator, ToughIncon, ToughRock } from "../types.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getToughWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/tough/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 export function parseTough(text: string): ToughDeck {
-  const lines = text.split(/\r?\n/);
+  const cstTree = getToughWasmParser().parse(text);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
   const rocks: ToughRock[] = [];
   const elements: ToughElement[] = [];
   const connections: ToughConnection[] = [];
@@ -20,27 +27,14 @@ export function parseTough(text: string): ToughDeck {
   let title: string | undefined;
   let activeBlock = "";
 
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]!;
+  for (const { row: i, tokens: cstTokens } of cstLines) {
+    const rawLine = cstLineText(text, cstTokens);
     const trimmed = rawLine.trim();
     if (!trimmed || trimmed.startsWith("+++") || trimmed.startsWith("#")) continue;
 
     // Check for block headers
     const upper = trimmed.toUpperCase();
-    if (
-      [
-        "ROCKS",
-        "ELEME",
-        "CONNE",
-        "GENER",
-        "INCON",
-        "PARAM",
-        "START",
-        "ENDCY",
-        "FOFT",
-        "COFT",
-      ].includes(upper)
-    ) {
+    if (["ROCKS", "ELEME", "CONNE", "GENER", "INCON", "PARAM", "START", "ENDCY", "FOFT", "COFT"].includes(upper)) {
       activeBlock = upper;
       continue;
     }
@@ -103,7 +97,10 @@ export function parseTough(text: string): ToughDeck {
       if (matchedRock && rockIdx > 0) {
         name = rawLine.substring(0, rockIdx).trim();
         rockName = matchedRock.name;
-        const rest = rawLine.substring(rockIdx + matchedRock.name.length).trim().split(/[\s,]+/)[0];
+        const rest = rawLine
+          .substring(rockIdx + matchedRock.name.length)
+          .trim()
+          .split(/[\s,]+/)[0];
         volume = parseFloat(rest || "1000.0") || 1000.0;
       } else {
         const parts = trimmed.split(/[\s,]+/).filter(Boolean);
@@ -141,7 +138,12 @@ export function parseTough(text: string): ToughDeck {
             if (idx2 >= 0 && idx2 < 5) {
               elem1 = e1.name;
               elem2 = e2.name;
-              const restNums = after1.substring(idx2 + e2.name.length).trim().split(/[\s,]+/).map(Number).filter((n) => !isNaN(n));
+              const restNums = after1
+                .substring(idx2 + e2.name.length)
+                .trim()
+                .split(/[\s,]+/)
+                .map(Number)
+                .filter((n) => !isNaN(n));
               d1 = restNums[0] ?? 50.0;
               d2 = restNums[1] ?? 50.0;
               area = restNums[2] ?? 1000.0;
@@ -200,7 +202,12 @@ export function parseTough(text: string): ToughDeck {
         if (typeMatch) {
           name = afterElem.substring(0, typeMatch.index).trim();
           type = typeMatch[1]!.toUpperCase();
-          const restNums = afterElem.substring(typeMatch.index + 4).trim().split(/[\s,]+/).map(Number).filter((n) => !isNaN(n));
+          const restNums = afterElem
+            .substring(typeMatch.index + 4)
+            .trim()
+            .split(/[\s,]+/)
+            .map(Number)
+            .filter((n) => !isNaN(n));
           rate = restNums[0] ?? 0.0;
           enthalpy = restNums[1] ?? 0.0;
         }
@@ -241,7 +248,11 @@ export function parseTough(text: string): ToughDeck {
       if (matchedElem) {
         elem = matchedElem.name;
         const afterElem = rawLine.substring(rawLine.indexOf(matchedElem.name) + matchedElem.name.length);
-        const restNums = afterElem.trim().split(/[\s,]+/).map(Number).filter((n) => !isNaN(n));
+        const restNums = afterElem
+          .trim()
+          .split(/[\s,]+/)
+          .map(Number)
+          .filter((n) => !isNaN(n));
         p = restNums[0] ?? 1.0e7;
         t = restNums[1] ?? 200.0;
       } else {

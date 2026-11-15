@@ -31,7 +31,7 @@ export interface MorselMobileTabBarProps {
   setShowCadView: (show: boolean) => void;
   setShowAnalysisView?: ((show: boolean) => void) | undefined;
   onSimulate: () => void;
-  simulationStatus: any;
+  simulationStatus: { status?: string } | null | undefined;
   dialect?: string | undefined;
   onSelectDialect?: ((dialect: string) => void) | undefined;
   onNewModel?: ((e: React.MouseEvent) => void) | undefined;

@@ -39,7 +39,7 @@ function isIdentChar(c: number): boolean {
  */
 export function indexScadDocument(ctx: DslIndexFileContext): void {
   const { uri, text } = ctx;
-  const fileIndex = ctx.getFileIndex();
+  const fileIndex = ctx.getFileIndex() as SymbolIndex;
 
   const modules = new Map<string, SymbolEntry>();
   const functions = new Map<string, SymbolEntry>();

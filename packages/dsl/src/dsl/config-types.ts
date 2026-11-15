@@ -33,7 +33,7 @@ export interface BoolOption {
   description?: string | undefined;
 }
 
-export type ConfigOption = EnumOption<any> | IntOption | FloatOption | BoolOption;
+export type ConfigOption = EnumOption<string> | IntOption | FloatOption | BoolOption;
 export type ConfigSchemaCategory = Record<string, ConfigOption>;
 export type ConfigSchema = Record<string, ConfigSchemaCategory>;
 

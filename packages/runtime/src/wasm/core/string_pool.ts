@@ -376,6 +376,58 @@ export class ArenaStringPool {
     return id;
   }
 
+  concatRawIds(prefixId: u32, suffixId: u32): u32 {
+    if (prefixId == 0) return suffixId;
+    if (suffixId == 0) return prefixId;
+
+    let prefLen = prefixId < this.stringCount ? this.stringLengths.get(prefixId) : 0;
+    let prefStart = prefixId < this.stringCount ? this.stringOffsets.get(prefixId) : 0;
+    let suffLen = suffixId < this.stringCount ? this.stringLengths.get(suffixId) : 0;
+    let suffStart = suffixId < this.stringCount ? this.stringOffsets.get(suffixId) : 0;
+    let totalLen = prefLen + suffLen;
+    if (totalLen == 0) return 0;
+
+    let tempStart = this.charOffset;
+    for (let i: u32 = 0; i < prefLen; i++) {
+      this.charBuffer.set(tempStart + i, this.charBuffer.get(prefStart + i));
+    }
+    for (let i: u32 = 0; i < suffLen; i++) {
+      this.charBuffer.set(tempStart + prefLen + i, this.charBuffer.get(suffStart + i));
+    }
+
+    let h = hashChunkedBytes64(this.charBuffer, tempStart, totalLen);
+    let existingId = this.getStringMap().get(h);
+    if (existingId != 0 && this._matchesChunk(existingId, tempStart, totalLen)) {
+      return existingId;
+    }
+
+    let id = this.stringCount++;
+    this.stringOffsets.set(id, tempStart);
+    this.stringLengths.set(id, totalLen);
+    this.charOffset += totalLen;
+    this.getStringMap().set(h, id);
+    return id;
+  }
+
+  stripPrefixId(fullId: u32, prefixId: u32): u32 {
+    if (fullId == 0 || fullId >= this.stringCount) return 0;
+    if (prefixId == 0 || prefixId >= this.stringCount) return fullId;
+
+    let fullLen = this.stringLengths.get(fullId);
+    let fullStart = this.stringOffsets.get(fullId);
+    let prefLen = this.stringLengths.get(prefixId);
+    let prefStart = this.stringOffsets.get(prefixId);
+    if (prefLen == 0 || fullLen < prefLen) return fullId;
+
+    for (let i: u32 = 0; i < prefLen; i++) {
+      if (this.charBuffer.get(fullStart + i) != this.charBuffer.get(prefStart + i)) {
+        return fullId;
+      }
+    }
+    if (fullLen == prefLen) return 0;
+    return this.internChunk(fullStart + prefLen, fullLen - prefLen);
+  }
+
   internIndexedName(baseNameId: u32, indices: StaticArray<u32>, dimCount: u32): u32 {
     if (baseNameId == 0 || baseNameId >= this.stringCount || dimCount == 0) return baseNameId;
 
@@ -734,6 +786,16 @@ export function stringPool_lookupUtf8(poolPtr: usize, strPtr: usize, len: u32): 
 export function stringPool_concatIds(poolPtr: usize, id1: u32, id2: u32): u32 {
   if (poolPtr == 0) return 0;
   return changetype<ArenaStringPool>(poolPtr).concatIds(id1, id2);
+}
+
+export function stringPool_concatRawIds(poolPtr: usize, prefixId: u32, suffixId: u32): u32 {
+  if (poolPtr == 0) return 0;
+  return changetype<ArenaStringPool>(poolPtr).concatRawIds(prefixId, suffixId);
+}
+
+export function stringPool_stripPrefixId(poolPtr: usize, fullId: u32, prefixId: u32): u32 {
+  if (poolPtr == 0) return 0;
+  return changetype<ArenaStringPool>(poolPtr).stripPrefixId(fullId, prefixId);
 }
 
 export function stringPool_getOffset(poolPtr: usize, id: u32): u32 {

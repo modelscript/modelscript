@@ -2,6 +2,7 @@
 
 import type * as FsTypes from "node:fs";
 import type * as PathTypes from "node:path";
+import type { LanguageOptions } from "../../dsl/language.js";
 import type { NormalizedLanguage } from "./extension-generator.js";
 import { normalizeLanguages } from "./extension-generator.js";
 
@@ -39,7 +40,7 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
   const pathId = "node:path";
   const fs = (await import(fsId)) as typeof FsTypes;
   const path = (await import(pathId)) as typeof PathTypes;
-  const dynamicImport = (m: string): Promise<any> => import(m);
+  const dynamicImport = (m: string): Promise<Record<string, unknown>> => import(m);
   const normalizedLangs: NormalizedLanguage[] = [];
   const wasmAssets: DiscoveredLanguageAsset[] = [];
   const manifest: DiscoveredLanguageManifestEntry[] = [];
@@ -56,15 +57,20 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
     const pkgPath = path.join(langDir, "package.json");
     if (!fs.existsSync(pkgPath)) continue;
 
-    let pkg: any = {};
+    let pkg: { name?: string; version?: string; [key: string]: unknown } = {};
     try {
-      pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+      pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+        name?: string;
+        version?: string;
+        [key: string]: unknown;
+      };
     } catch {
       continue;
     }
 
     const pkgName = pkg.name || `@modelscript/${dirent.name}`;
-    let langDef: any = null;
+    let langDef: LanguageOptions | null = null;
+    const isLangObj = (v: unknown): v is LanguageOptions => Boolean(v && typeof v === "object" && "name" in v);
 
     // 1. Try importing directly from workspace source files first (preserves recent edits under tsx)
     const fileCandidates = [
@@ -77,11 +83,11 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
       if (fs.existsSync(candidate)) {
         try {
           const mod = await dynamicImport(candidate);
-          langDef =
-            mod.default ||
-            mod[`${dirent.name}Language`] ||
-            Object.values(mod).find((v: any) => v && typeof v === "object" && v.name);
-          if (langDef) break;
+          const candidateDef = mod["default"] || mod[`${dirent.name}Language`] || Object.values(mod).find(isLangObj);
+          if (isLangObj(candidateDef)) {
+            langDef = candidateDef;
+            break;
+          }
         } catch {
           // continue
         }
@@ -92,10 +98,10 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
     if (!langDef) {
       try {
         const mod = await dynamicImport(`${pkgName}/language`);
-        langDef =
-          mod.default ||
-          mod[`${dirent.name}Language`] ||
-          Object.values(mod).find((v: any) => v && typeof v === "object" && v.name);
+        const candidateDef = mod["default"] || mod[`${dirent.name}Language`] || Object.values(mod).find(isLangObj);
+        if (isLangObj(candidateDef)) {
+          langDef = candidateDef;
+        }
       } catch {
         // continue
       }
@@ -103,15 +109,14 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
 
     if (!langDef) {
       // Fallback: construct basic descriptor if package declares language name
+      const msMeta = pkg["modelscript"] as { extensions?: string[] } | undefined;
       langDef = {
         name: dirent.name,
-        lsp: {
-          fileExtensions: pkg.modelscript?.extensions || [`.${dirent.name}`],
-        },
+        fileExtensions: msMeta?.extensions || [`.${dirent.name}`],
       };
     }
 
-    const [normalized] = normalizeLanguages([langDef]);
+    const [normalized] = normalizeLanguages([langDef as Parameters<typeof normalizeLanguages>[0][number]]);
     normalizedLangs.push(normalized!);
 
     // 3. Discover native GLR parser.wasm
@@ -160,11 +165,12 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
       try {
         const fileUrl = path.isAbsolute(foundBindings) ? `file://${foundBindings}` : foundBindings;
         const mod = await dynamicImport(fileUrl);
-        if (mod && Array.isArray(mod.SYNTAX_NAMES) && mod.SYNTAX_NAMES.length > 0) {
-          syntaxNames = mod.SYNTAX_NAMES;
+        if (mod && Array.isArray(mod["SYNTAX_NAMES"]) && mod["SYNTAX_NAMES"].length > 0) {
+          syntaxNames = mod["SYNTAX_NAMES"] as string[];
         }
-        if (mod && mod.FIELD_NAMES && typeof mod.FIELD_NAMES === "object" && Object.keys(mod.FIELD_NAMES).length > 0) {
-          fieldNames = mod.FIELD_NAMES;
+        const rawFieldNames = mod?.["FIELD_NAMES"];
+        if (rawFieldNames && typeof rawFieldNames === "object" && Object.keys(rawFieldNames).length > 0) {
+          fieldNames = rawFieldNames as Record<string, number>;
         }
       } catch {
         // Fallback to regex extraction

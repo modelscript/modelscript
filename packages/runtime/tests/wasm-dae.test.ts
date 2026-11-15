@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert";
+import { getArenaRuntimeState } from "../src/dae/arena_runtime_state.js";
 import {
   BinOp,
   Causality,
@@ -194,9 +195,9 @@ console.log("Testing WASM DAE Arena Architecture & Data Structures...");
   const changeCall = dae.addCallExpr("change", [dae.addNameExpr("x")]);
   const delayCall = dae.addCallExpr("delay", [dae.addNameExpr("x"), dae.addRealLiteral(0.5)]);
 
-  (dae as any)._isInitialPhase = true;
+  getArenaRuntimeState(dae).isInitialPhase = true;
   assert.strictEqual(evaluateArenaRuntime(dae, initCall, env), 1);
-  (dae as any)._isInitialPhase = false;
+  getArenaRuntimeState(dae).isInitialPhase = false;
 
   env[timeId] = 1.5;
   assert.strictEqual(evaluateArenaRuntime(dae, sampleCall, env), 1);

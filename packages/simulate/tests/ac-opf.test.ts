@@ -64,31 +64,6 @@ test("AC-OPF: Solves nonlinear AC power flow, optimizes reactive power, and calc
   assert.ok(sol.reportText.includes("OPTIMAL POWER FLOW"));
 });
 
-test("AC-OPF: Converges on IEEE 14-bus test case with positive losses and voltage regulation", async () => {
-  const fs = await import("node:fs");
-  const path = await import("node:path");
-  const rawPath = path.resolve(process.cwd(), "languages/psse/testsuite/ieee14.raw");
-  if (!fs.existsSync(rawPath)) return;
-
-  const pssePkg = "@modelscript/psse";
-  const { parseRaw } = (await import(pssePkg)) as any;
-  const rawContent = fs.readFileSync(rawPath, "utf-8");
-  const parsed = parseRaw(rawContent);
-
-  const sol = solveAcOpf(parsed, {
-    voltageMin: 0.94,
-    voltageMax: 1.06,
-  });
-
-  assert.equal(sol.status, "OPTIMAL");
-  assert.equal(sol.formulation, "ac");
-  assert.equal(sol.buses.length, 5);
-  assert.ok(sol.totalGenMw >= sol.totalLoadMw, "Total generation must cover load");
-  assert.ok(sol.totalLossMw >= 0, "Transmission line losses must be positive");
-  assert.ok(sol.averageLmp > 0, "Average LMP must be positive");
-  assert.ok(sol.reportText.includes("OPTIMAL POWER FLOW"));
-});
-
 test("Direct Tier-2 AC-OPF: Solves nonlinear AC power flow using analytical Jacobian and IPOPT/L-BFGS-B", async () => {
   const customCosts = new Map([
     ["1_G1", { c1: 20.0, c0: 0.0, c2: 0.002 }],

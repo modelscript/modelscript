@@ -2770,8 +2770,9 @@ function lintViaDeclarativeTggRules(
         const numVal = Number(rawVal);
         if (rawVal === undefined || Number.isNaN(numVal)) continue;
 
-        const minBound = typeof bounds.min === "number" ? bounds.min : -Infinity;
-        const maxBound = typeof bounds.max === "number" ? bounds.max : Infinity;
+        const b = bounds as { min?: unknown; max?: unknown };
+        const minBound = typeof b.min === "number" ? b.min : -Infinity;
+        const maxBound = typeof b.max === "number" ? b.max : Infinity;
 
         if (numVal < minBound || numVal > maxBound) {
           const propName = match.varToProp[srcVar] ?? match.varToProp[tgtVar] ?? srcVar;

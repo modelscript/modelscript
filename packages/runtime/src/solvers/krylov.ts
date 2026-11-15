@@ -21,6 +21,7 @@
  *   https://doi.org/10.1016/j.jcp.2003.08.010
  */
 
+import { getDefaultWasmExports } from "../dae/wasm_dae.js";
 import type { SparseCCSMatrix } from "./sparse_lu.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -201,8 +202,138 @@ export function jacobiPreconditioner(A: SparseCCSMatrix | Float64Array, nOverrid
  * Converts `A` into a sorted Compressed Sparse Row (CSR) structure (guaranteeing a diagonal
  * slot for every row) and executes Saad's IKJ in-place elimination over the sparsity pattern.
  */
+interface KrylovWasmExports {
+  memory: WebAssembly.Memory;
+  __new(bytes: number, id: number): number;
+  __pin?(ptr: number): void;
+  ilu0FreeWasm?(iluPtr: number): void;
+  ilu0FactorWasm(colPtrPtr: number, rowPtr: number, valPtr: number, n: number, metaPtr: number): number;
+  ilu0SolveWasm(iluPtr: number, bPtr: number, xPtr: number): void;
+  gmresCcsWasm(
+    colPtrPtr: number,
+    rowPtr: number,
+    valPtr: number,
+    bPtr: number,
+    xPtr: number,
+    n: number,
+    tol: number,
+    maxIter: number,
+    restart: number,
+    iluPtr: number,
+    metaPtr: number,
+  ): number;
+  bicgstabCcsWasm(
+    colPtrPtr: number,
+    rowPtr: number,
+    valPtr: number,
+    bPtr: number,
+    xPtr: number,
+    n: number,
+    tol: number,
+    maxIter: number,
+    iluPtr: number,
+    metaPtr: number,
+  ): number;
+}
+
+interface KrylovWasmScratch {
+  wasm: KrylovWasmExports;
+  capN: number;
+  capNnz: number;
+  colPtrPtr: number;
+  rowPtr: number;
+  valPtr: number;
+  bPtr: number;
+  xPtr: number;
+  metaPtr: number;
+}
+
+let krylovScratch: KrylovWasmScratch | null = null;
+const ilu0WasmHandles = new WeakMap<ILU0Factorization, { wasm: KrylovWasmExports; iluPtr: number }>();
+const precondToIlu0 = new WeakMap<Preconditioner, ILU0Factorization>();
+const ilu0Finalizer =
+  typeof FinalizationRegistry !== "undefined"
+    ? new FinalizationRegistry<{ wasm: KrylovWasmExports; iluPtr: number }>(({ wasm, iluPtr }) => {
+        if (typeof wasm?.ilu0FreeWasm === "function") {
+          try {
+            wasm.ilu0FreeWasm(iluPtr);
+          } catch {
+            // ignore
+          }
+        }
+      })
+    : null;
+
+function ensureKrylovScratch(wasm: KrylovWasmExports, n: number, nnz: number): KrylovWasmScratch | null {
+  if (!wasm || typeof wasm.__new !== "function") return null;
+  if (krylovScratch && krylovScratch.wasm === wasm && krylovScratch.capN >= n && krylovScratch.capNnz >= nnz) {
+    return krylovScratch;
+  }
+  const capN = Math.max(n, 128);
+  const capNnz = Math.max(nnz, 1024);
+  const alloc = (bytes: number): number => {
+    const ptr = wasm.__new(bytes, 0);
+    if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+    return ptr;
+  };
+  krylovScratch = {
+    wasm,
+    capN,
+    capNnz,
+    colPtrPtr: alloc((capN + 1) * 4),
+    rowPtr: alloc(capNnz * 4),
+    valPtr: alloc(capNnz * 8),
+    bPtr: alloc(capN * 8),
+    xPtr: alloc(capN * 8),
+    metaPtr: alloc(8 * 4),
+  };
+  return krylovScratch;
+}
+
 export function ilu0Factor(A: SparseCCSMatrix): ILU0Factorization {
   const n = A.nRows;
+
+  if (n >= 16) {
+    const wasm = getDefaultWasmExports() as KrylovWasmExports | null;
+    if (wasm && typeof wasm.ilu0FactorWasm === "function") {
+      const nnz = A.nnz;
+      const s = ensureKrylovScratch(wasm, n, nnz);
+      if (s) {
+        const buf = wasm.memory.buffer;
+        new Int32Array(buf, s.colPtrPtr, n + 1).set(A.colPtr.subarray(0, n + 1));
+        if (nnz > 0) {
+          new Int32Array(buf, s.rowPtr, nnz).set(A.rowIndices.subarray(0, nnz));
+          new Float64Array(buf, s.valPtr, nnz).set(A.values.subarray(0, nnz));
+        }
+        const iluPtr: number = wasm.ilu0FactorWasm(n, s.colPtrPtr, s.rowPtr, s.valPtr, s.metaPtr);
+        if (iluPtr !== 0) {
+          const outBuf = wasm.memory.buffer;
+          const meta = new Uint32Array(outBuf, s.metaPtr, 5);
+          const totalNnz = meta[0]!;
+          const rowPtr = new Int32Array(n + 1);
+          rowPtr.set(new Int32Array(outBuf, meta[1]!, n + 1));
+          const colIndices = new Int32Array(totalNnz);
+          colIndices.set(new Int32Array(outBuf, meta[2]!, totalNnz));
+          const luValues = new Float64Array(totalNnz);
+          luValues.set(new Float64Array(outBuf, meta[3]!, totalNnz));
+          const diagPtr = new Int32Array(n);
+          diagPtr.set(new Int32Array(outBuf, meta[4]!, n));
+          const iluObj: ILU0Factorization = {
+            n,
+            rowPtr,
+            colIndices,
+            luValues,
+            diagPtr,
+            scratchY: new Float64Array(n),
+          };
+          const handle = { wasm, iluPtr };
+          ilu0WasmHandles.set(iluObj, handle);
+          ilu0Finalizer?.register(iluObj, handle);
+          return iluObj;
+        }
+      }
+    }
+  }
 
   // Step 1: Collect entries per row from CCS, ensuring diagonal entry (i, i) exists
   const rowCounts = new Int32Array(n);
@@ -340,6 +471,18 @@ export function ilu0Factor(A: SparseCCSMatrix): ILU0Factorization {
 export function ilu0Solve(ilu: ILU0Factorization, r: Float64Array, out: Float64Array): void {
   const { n, rowPtr, colIndices, luValues, diagPtr, scratchY } = ilu;
 
+  const handle = ilu0WasmHandles.get(ilu);
+  if (handle && typeof handle.wasm?.ilu0SolveWasm === "function") {
+    const wasm = handle.wasm;
+    const s = ensureKrylovScratch(wasm, n, 0);
+    if (s) {
+      new Float64Array(wasm.memory.buffer, s.bPtr, n).set(r.subarray(0, n));
+      wasm.ilu0SolveWasm(handle.iluPtr, s.bPtr, s.xPtr);
+      out.set(new Float64Array(wasm.memory.buffer, s.xPtr, n));
+      return;
+    }
+  }
+
   // Forward substitution: L * y = r (L has unit diagonal)
   for (let i = 0; i < n; i++) {
     let sum = r[i]!;
@@ -368,7 +511,9 @@ export function ilu0Solve(ilu: ILU0Factorization, r: Float64Array, out: Float64A
  */
 export function ilu0Preconditioner(A: SparseCCSMatrix): Preconditioner {
   const ilu = ilu0Factor(A);
-  return (r, out) => ilu0Solve(ilu, r, out);
+  const fn: Preconditioner = (r, out) => ilu0Solve(ilu, r, out);
+  precondToIlu0.set(fn, ilu);
+  return fn;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -386,12 +531,61 @@ export function gmres(
   options: KrylovOptions = {},
   x0?: Float64Array,
 ): KrylovResult {
-  const matVec = normalizeOperator(matVecOrMatrix);
   const n = b.length;
   const tol = options.tol ?? 1e-10;
   const maxIter = options.maxIter ?? Math.max(200, n * 2);
-  const m = Math.min(options.restart ?? 30, n, maxIter);
+  const restart = options.restart ?? 30;
   const precond = options.preconditioner;
+
+  if (typeof matVecOrMatrix !== "function" && n >= 16) {
+    const ilu = precond ? precondToIlu0.get(precond) : undefined;
+    if (!precond || ilu) {
+      const wasm = getDefaultWasmExports() as KrylovWasmExports | null;
+      if (wasm && typeof wasm.gmresCcsWasm === "function") {
+        const A = matVecOrMatrix;
+        const iluHandle = ilu ? ilu0WasmHandles.get(ilu) : undefined;
+        if (!precond || (iluHandle && iluHandle.wasm === wasm)) {
+          const s = ensureKrylovScratch(wasm, n, A.nnz);
+          if (s) {
+            const buf = wasm.memory.buffer;
+            new Int32Array(buf, s.colPtrPtr, n + 1).set(A.colPtr.subarray(0, n + 1));
+            if (A.nnz > 0) {
+              new Int32Array(buf, s.rowPtr, A.nnz).set(A.rowIndices.subarray(0, A.nnz));
+              new Float64Array(buf, s.valPtr, A.nnz).set(A.values.subarray(0, A.nnz));
+            }
+            new Float64Array(buf, s.bPtr, n).set(b.subarray(0, n));
+            const xView = new Float64Array(buf, s.xPtr, n);
+            if (x0) xView.set(x0.subarray(0, n));
+            else xView.fill(0);
+
+            const res: number = wasm.gmresCcsWasm(
+              n,
+              s.colPtrPtr,
+              s.rowPtr,
+              s.valPtr,
+              s.bPtr,
+              s.xPtr,
+              iluHandle ? iluHandle.iluPtr : 0,
+              tol,
+              maxIter,
+              restart,
+              s.metaPtr,
+            );
+            const outBuf = wasm.memory.buffer;
+            const xOut = new Float64Array(n);
+            xOut.set(new Float64Array(outBuf, s.xPtr, n));
+            const residualNorm = new Float64Array(outBuf, s.metaPtr, 1)[0] ?? 0;
+            const converged = res >= 0;
+            const iterations = converged ? res : -res - 1;
+            return { x: xOut, converged, iterations, residualNorm };
+          }
+        }
+      }
+    }
+  }
+
+  const matVec = normalizeOperator(matVecOrMatrix);
+  const m = Math.min(restart, n, maxIter);
 
   const x = x0 ? new Float64Array(x0) : new Float64Array(n);
   const r = new Float64Array(n);
@@ -561,11 +755,58 @@ export function bicgstab(
   options: KrylovOptions = {},
   x0?: Float64Array,
 ): KrylovResult {
-  const matVec = normalizeOperator(matVecOrMatrix);
   const n = b.length;
   const tol = options.tol ?? 1e-10;
   const maxIter = options.maxIter ?? Math.max(200, n * 2);
   const precond = options.preconditioner;
+
+  if (typeof matVecOrMatrix !== "function" && n >= 16) {
+    const ilu = precond ? precondToIlu0.get(precond) : undefined;
+    if (!precond || ilu) {
+      const wasm = getDefaultWasmExports() as KrylovWasmExports | null;
+      if (wasm && typeof wasm.bicgstabCcsWasm === "function") {
+        const A = matVecOrMatrix;
+        const iluHandle = ilu ? ilu0WasmHandles.get(ilu) : undefined;
+        if (!precond || (iluHandle && iluHandle.wasm === wasm)) {
+          const s = ensureKrylovScratch(wasm, n, A.nnz);
+          if (s) {
+            const buf = wasm.memory.buffer;
+            new Int32Array(buf, s.colPtrPtr, n + 1).set(A.colPtr.subarray(0, n + 1));
+            if (A.nnz > 0) {
+              new Int32Array(buf, s.rowPtr, A.nnz).set(A.rowIndices.subarray(0, A.nnz));
+              new Float64Array(buf, s.valPtr, A.nnz).set(A.values.subarray(0, A.nnz));
+            }
+            new Float64Array(buf, s.bPtr, n).set(b.subarray(0, n));
+            const xView = new Float64Array(buf, s.xPtr, n);
+            if (x0) xView.set(x0.subarray(0, n));
+            else xView.fill(0);
+
+            const res: number = wasm.bicgstabCcsWasm(
+              n,
+              s.colPtrPtr,
+              s.rowPtr,
+              s.valPtr,
+              s.bPtr,
+              s.xPtr,
+              iluHandle ? iluHandle.iluPtr : 0,
+              tol,
+              maxIter,
+              s.metaPtr,
+            );
+            const outBuf = wasm.memory.buffer;
+            const xOut = new Float64Array(n);
+            xOut.set(new Float64Array(outBuf, s.xPtr, n));
+            const residualNorm = new Float64Array(outBuf, s.metaPtr, 1)[0] ?? 0;
+            const converged = res >= 0;
+            const iterations = converged ? res : -res - 1;
+            return { x: xOut, converged, iterations, residualNorm };
+          }
+        }
+      }
+    }
+  }
+
+  const matVec = normalizeOperator(matVecOrMatrix);
 
   const x = x0 ? new Float64Array(x0) : new Float64Array(n);
   const r = new Float64Array(n);

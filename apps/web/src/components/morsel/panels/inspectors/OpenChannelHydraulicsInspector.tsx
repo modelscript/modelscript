@@ -240,7 +240,7 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
         <InspectorTabs
           ariaLabel="Open channel hydraulics views"
           value={subTab}
-          onChange={(id) => setSubTab(id as any)}
+          onChange={(id) => setSubTab(id as "profile" | "section" | "table")}
           tabs={[
             { id: "profile", label: `WSP & EGL Profile (${sections.length} XS)` },
             { id: "section", label: `Cross-Section STA ${activeSection.station}` },

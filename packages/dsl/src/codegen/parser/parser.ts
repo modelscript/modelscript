@@ -105,7 +105,7 @@ export interface ParserGenerationResult {
  * @returns The generated grammar, LR automaton, and GLR action/goto tables
  */
 export function generateParser<RuleName extends string>(options: LanguageOptions<RuleName>): ParserGenerationResult {
-  const grammar = new NormalizedGrammar(options as unknown as LanguageOptions<any>);
+  const grammar = new NormalizedGrammar(options as unknown as LanguageOptions);
   const automaton = new LRAutomaton(grammar);
   const table = new GLRTable(grammar, automaton);
 
@@ -147,13 +147,13 @@ export interface GeneratedFile {
  * @returns Array of AssemblyScript file payloads to be compiled by `asc`
  */
 export function generateParserTables(
-  originalGrammar: LanguageOptions<any>,
+  originalGrammar: LanguageOptions,
   grammar: NormalizedGrammar,
   table: GLRTable,
   syncTokens: string[] = [],
   preprocessorHook = "",
 ): GeneratedFile[] {
-  (originalGrammar as any).fieldToInt = grammar.fieldToInt;
+  (originalGrammar as LanguageOptions & { fieldToInt?: Map<string, number> }).fieldToInt = grammar.fieldToInt;
   const LEX_FN = preprocessorHook ? preprocessorHook : "lex";
   let code = `import { ChunkedUint32Array, ChunkedInt32Array, UnmanagedUint32Array } from "./array";\nimport { allocNode, getInputBuffer, atomicChunkAlloc, getArenaOffset, getNodeType, getNodeFirstChild, getNodeNextSibling } from "./arena";\nimport { DaeBuilder } from "./dae";\nimport { allocDiagnostic } from "./graph";\nimport { CorrespondenceIndex } from "./correspondence";\nimport { PolyglotArena } from "./polyglot_arena";\nexport { getInputBuffer } from "./arena";\nimport { decodeHexIntArray, decodeHexU16Array, decodeHexByteArray } from "./encoding";\nexport { decodeHexIntArray, decodeHexU16Array, decodeHexByteArray };\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\nexport let expected_tokens: usize = 0;\n\n`;
 
@@ -199,7 +199,7 @@ export function generateParserTables(
     actionEntryOffsets.push(actionEntryData.length);
     const actions = table.actionTable.get(stateId)!;
 
-    const entries: { symId: number; acts: any[] }[] = [];
+    const entries: { symId: number; acts: Array<{ type: number; target?: number | undefined }> }[] = [];
     for (const [sym, acts] of actions.entries()) {
       const sortedActs = [...acts].sort((a, b) => {
         if (a.type !== b.type) return a.type - b.type;
@@ -999,18 +999,17 @@ export function generateParserTables(
     let nextLintId = 2000;
     const nodeLints = new Map<string, string[]>();
     for (const [lintName, lint] of Object.entries(originalGrammar.lints)) {
-      const queryFn =
-        typeof lint === "object" && lint !== null && (lint as any).query
-          ? (lint as any).query
-          : typeof lint === "string"
-            ? lint
-            : null;
+      const lintObj = (typeof lint === "object" && lint !== null ? lint : null) as {
+        query?: unknown;
+        code?: string | number;
+        nodes?: string[];
+      } | null;
+      const queryFn = lintObj?.query ? lintObj.query : typeof lint === "string" ? lint : null;
       if (!queryFn) continue;
-      const lintId =
-        typeof lint === "object" && lint !== null && (lint as any).code ? (lint as any).code : nextLintId++;
+      const lintId = lintObj?.code ? lintObj.code : nextLintId++;
       const fnName = `lint_${lintName}`;
       validLintFns.push(fnName);
-      for (const nodeName of (lint as any).nodes || []) {
+      for (const nodeName of lintObj?.nodes || []) {
         if (!nodeLints.has(nodeName)) nodeLints.set(nodeName, []);
         nodeLints.get(nodeName)!.push(`${fnName}(node, ${lintId}, nodeStart, nodeEnd);`);
       }
@@ -1150,9 +1149,10 @@ export function generateParserTables(
   if (originalGrammar.semantics) {
     const rsCode = generateReasoner(originalGrammar, grammar);
     code += "\n" + extractExports(rsCode, "./reasoner");
-    if ((originalGrammar.semantics.reasoner as any)?.smt) {
-      if ((originalGrammar.semantics.reasoner as any)?.smt?.theories?.includes("LRA")) {
-        const simplexCode = generateSimplex(originalGrammar);
+    const reasonerCfg = originalGrammar.semantics.reasoner as { smt?: { theories?: string[] } } | undefined;
+    if (reasonerCfg?.smt) {
+      if (reasonerCfg.smt.theories?.includes("LRA")) {
+        const simplexCode = generateSimplex(originalGrammar as Parameters<typeof generateSimplex>[0]);
         code += "\n" + extractExports(simplexCode, "./simplex");
       }
       const satCode = generateSAT(originalGrammar, grammar);
@@ -1175,7 +1175,12 @@ export function generateParserTables(
   }
 
   if (originalGrammar.simplification?.rules && originalGrammar.simplification.rules.length > 0) {
-    code += `\n` + generateEGraphEngine(originalGrammar, originalGrammar.simplification.rules);
+    code +=
+      `\n` +
+      generateEGraphEngine(
+        originalGrammar,
+        originalGrammar.simplification.rules as Parameters<typeof generateEGraphEngine>[1],
+      );
   } else {
     code += `\nexport function saturateEGraph(): void {}\nexport function initDPExtractor(): void {}\nexport function extractAst(rootClass: u32, dae: DaeBuilder): u32 { return 0; }\nexport function simplifyAst(exprId: u32, dae: DaeBuilder): u32 { return exprId; }\nexport function proveInductive(rootNode: u32, dae: DaeBuilder): boolean { return false; }\n`;
   }
@@ -1229,19 +1234,26 @@ export function generateParserTables(
     outFiles.push({ filename: s.filename, content: s.content });
   }
 
-  const fs = (typeof process !== "undefined" ? (process as any).getBuiltinModule?.("node:fs") : undefined) as
-    | typeof fsType
-    | undefined;
-  const path = (typeof process !== "undefined" ? (process as any).getBuiltinModule?.("node:path") : undefined) as
-    | typeof pathType
-    | undefined;
-  const sourcePath = (originalGrammar as any).sourcePath || (originalGrammar as any)[SOURCE_PATH_SYMBOL];
+  const proc =
+    typeof process !== "undefined" ? (process as unknown as { getBuiltinModule?: (m: string) => unknown }) : undefined;
+  const fs = proc?.getBuiltinModule?.("node:fs") as typeof fsType | undefined;
+  const path = proc?.getBuiltinModule?.("node:path") as typeof pathType | undefined;
+  const grammarExt = originalGrammar as LanguageOptions & {
+    sourcePath?: string;
+    sourceText?: string;
+    [SOURCE_PATH_SYMBOL]?: string;
+    [SOURCE_TEXT_SYMBOL]?: string;
+  };
+  const sourcePath = grammarExt.sourcePath || grammarExt[SOURCE_PATH_SYMBOL];
   const sourceDir = sourcePath && path ? path.dirname(sourcePath) : typeof process !== "undefined" ? process.cwd() : "";
 
-  const loadRuntimeFile = (rf: any): { filename: string; content: string } | null => {
+  const loadRuntimeFile = (rf: unknown): { filename: string; content: string } | null => {
     if (!fs || !path) {
-      if (rf && typeof rf === "object" && rf.filename && rf.content !== undefined) {
-        return { filename: rf.filename, content: rf.content };
+      if (rf && typeof rf === "object" && "filename" in rf && "content" in rf) {
+        const obj = rf as { filename?: unknown; content?: unknown };
+        if (typeof obj.filename === "string" && obj.content !== undefined) {
+          return { filename: obj.filename, content: String(obj.content) };
+        }
       }
       return null;
     }
@@ -1266,16 +1278,17 @@ export function generateParserTables(
       }
       throw new Error(`Runtime file path not found: ${rf} (resolved to ${resolvedPath})`);
     } else if (rf && typeof rf === "object") {
-      let content = rf.content;
-      let filename = rf.filename;
-      if (!content && rf.path) {
-        let resolvedPath = path.isAbsolute(rf.path) ? rf.path : path.resolve(sourceDir, rf.path);
+      const rfObj = rf as { content?: string; filename?: string; path?: string };
+      let content = rfObj.content;
+      let filename = rfObj.filename;
+      if (!content && rfObj.path) {
+        let resolvedPath = path.isAbsolute(rfObj.path) ? rfObj.path : path.resolve(sourceDir, rfObj.path);
         if (!fs.existsSync(resolvedPath)) {
           const stripped = resolvedPath.replace(/[/\\]dist[/\\]assembly[/\\]/, "/assembly/");
           if (fs.existsSync(stripped)) {
             resolvedPath = stripped;
           } else {
-            const relToSource = path.resolve(sourceDir, "..", "assembly", path.basename(rf.path));
+            const relToSource = path.resolve(sourceDir, "..", "assembly", path.basename(rfObj.path));
             if (fs.existsSync(relToSource)) {
               resolvedPath = relToSource;
             }
@@ -1285,7 +1298,7 @@ export function generateParserTables(
           content = fs.readFileSync(resolvedPath, "utf-8");
           if (!filename) filename = path.basename(resolvedPath);
         } else {
-          throw new Error(`Runtime file path not found: ${rf.path} (resolved to ${resolvedPath})`);
+          throw new Error(`Runtime file path not found: ${rfObj.path} (resolved to ${resolvedPath})`);
         }
       }
       if (filename && content !== undefined) {
@@ -1331,7 +1344,10 @@ export function generateParserTables(
     outFiles.push({ filename: "reasoner.ts", content: generateReasoner(originalGrammar, grammar) });
   }
   if (originalGrammar.polyglot) {
-    outFiles.push({ filename: "tgg.ts", content: compileTGGRules(originalGrammar.polyglot).sourceCode });
+    outFiles.push({
+      filename: "tgg.ts",
+      content: compileTGGRules(originalGrammar.polyglot, { syntaxTypes: grammar.symToInt }).sourceCode,
+    });
   }
   if (originalGrammar.mcp) {
     outFiles.push({
@@ -1387,7 +1403,7 @@ export function generateParserTables(
   // Section 11: Abstract Interpretation, CFG/SSA, and Custom Runtime Transpilation
   if (originalGrammar.cfgNodes || originalGrammar.analysis || Boolean(originalGrammar.domains?.["bounds"])) {
     let layoutContent = generateBlockLayoutConstants();
-    let cfgContent = generateCFG(originalGrammar, grammar);
+    let cfgContent = generateCFG(originalGrammar, grammar as unknown as Parameters<typeof generateCFG>[1]);
     let ssaContent = generateSSA();
     let aliasContent = generateAliasAnalysis();
     let octagonContent = generateOctagonDomain();
@@ -1422,7 +1438,7 @@ import { AdTape } from "./tape";
 
 `;
 
-    const sourceText = (originalGrammar as any).sourceText || (originalGrammar as any)[SOURCE_TEXT_SYMBOL];
+    const sourceText = grammarExt.sourceText || grammarExt[SOURCE_TEXT_SYMBOL];
     const ast = sourceText ? extractLanguageAST(sourceText) : sourcePath ? extractLanguageAST(sourcePath) : null;
 
     if (originalGrammar.classes) {
@@ -1430,7 +1446,7 @@ import { AdTape } from "./tape";
         ? originalGrammar.classes
         : Object.entries(originalGrammar.classes);
       for (const cls of classList) {
-        let clsTarget: any = cls;
+        let clsTarget: unknown = cls;
         if (ast && ast.classes) {
           const clsName =
             typeof cls === "function" ? cls.name : typeof cls === "string" ? cls : Array.isArray(cls) ? cls[0] : "";
@@ -1441,7 +1457,7 @@ import { AdTape } from "./tape";
         if (Array.isArray(cls) && clsTarget === cls) {
           clsTarget = cls[1];
         }
-        customRuntimeCode += transpileClass(clsTarget) + "\n\n";
+        customRuntimeCode += transpileClass(clsTarget as Parameters<typeof transpileClass>[0]) + "\n\n";
       }
     }
 
@@ -1450,7 +1466,7 @@ import { AdTape } from "./tape";
         ? originalGrammar.functions
         : Object.entries(originalGrammar.functions);
       for (const fn of fnList) {
-        let fnTarget: any = fn;
+        let fnTarget: unknown = fn;
         if (ast && ast.functions) {
           const fnName =
             typeof fn === "function" ? fn.name : typeof fn === "string" ? fn : Array.isArray(fn) ? fn[0] : "";
@@ -1461,7 +1477,8 @@ import { AdTape } from "./tape";
         if (Array.isArray(fn) && fnTarget === fn) {
           fnTarget = fn[1];
         }
-        customRuntimeCode += transpileHelperFunction(fnTarget) + "\n\n";
+        customRuntimeCode +=
+          transpileHelperFunction(fnTarget as Parameters<typeof transpileHelperFunction>[0]) + "\n\n";
       }
     }
 

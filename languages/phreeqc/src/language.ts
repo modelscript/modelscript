@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { iniSectionRules, language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerPhreeqcToDae } from "./dae/phreeqc-to-dae.js";
 import { indexPhreeqcFile } from "./indexing.js";
 import { lintPhreeqc } from "./lints/index.js";
 import { parsePhreeqc } from "./parser/phreeqc-parser.js";
 import { phreeqcToModelica } from "./projections/phreeqc-to-modelica.js";
 import { solvePhreeqcSpeciation, type SpeciationSolverOptions } from "./solvers/speciation-solver.js";
+import { phreeqcPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript USGS PHREEQC Aqueous Geochemistry & Reactive Transport (.pqi, .dat) Language Definition.
  */
 export const phreeqcLanguage = language({
+  polyglot: phreeqcPolyglotConfig,
   name: "phreeqc",
   fileExtensions: [".pqi", ".dat"],
   maturity: "experimental",
@@ -118,4 +120,8 @@ export const phreeqcLanguage = language({
       },
     },
   ],
+  extras: ($) => [/[ \t\r\n]+/, $["IniComment"]!],
+  rules: iniSectionRules,
 });
+
+export default phreeqcLanguage;

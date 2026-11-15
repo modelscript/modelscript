@@ -107,7 +107,9 @@ export function serializeArtifactAttachment(
   try {
     parsedConfig =
       typeof artifact.view_config === "string" ? JSON.parse(artifact.view_config) : artifact.view_config || {};
-  } catch {}
+  } catch (err) {
+    console.warn("[Federation] Malformed artifact view_config JSON:", err instanceof Error ? err.message : String(err));
+  }
 
   const mimeMap: Record<string, string> = {
     "cad-step": "model/step",

@@ -2,6 +2,7 @@
 
 import {
   collectWorkspaceDocuments,
+  collectXmlElementsFromWasm,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
@@ -35,36 +36,34 @@ export function lintSspWorkspace(workspace: WorkspaceDocumentInput, rootUri?: st
           message: d.message,
         });
       }
-      for (const m of text.matchAll(
-        /<ssd:Component\b[^>]*\bsource=["']([^"']+)["']|<Component\b[^>]*\bsource=["']([^"']+)["']/gi,
-      )) {
-        const src = m[1] ?? m[2];
-        if (!src) continue;
-        const resolved =
-          resolveRelativeUri(uri, src, docs) ??
-          resolveRelativeUri(uri, `${src.replace(/\/+$/, "")}/modelDescription.xml`, docs);
-        if (!resolved) {
-          diagnostics.push({
-            uri,
-            code: "SSP3001",
-            rule: "unresolved-ssp-component-source",
-            severity: "error",
-            message: `SSP Component source '${src}' was not found in the workspace.`,
-          });
-        }
-      }
-      for (const m of text.matchAll(
-        /<(?:ssd:)?ParameterBindings\b[^>]*>[\s\S]*?<(?:ssd:)?ParameterValues\b[^>]*\bsource=["']([^"']+)["']/gi,
-      )) {
-        const ssvSrc = m[1];
-        if (ssvSrc && !resolveRelativeUri(uri, ssvSrc, docs)) {
-          diagnostics.push({
-            uri,
-            code: "SSP3002",
-            rule: "unresolved-ssp-ssv-source",
-            severity: "error",
-            message: `SSP ParameterValues source '${ssvSrc}' was not found in the workspace.`,
-          });
+      for (const el of collectXmlElementsFromWasm(text)) {
+        const localName = (el.tagName.includes(":") ? el.tagName.split(":").pop()! : el.tagName).toLowerCase();
+        if (localName === "component") {
+          const src = el.attrs["source"];
+          if (!src) continue;
+          const resolved =
+            resolveRelativeUri(uri, src, docs) ??
+            resolveRelativeUri(uri, `${src.replace(/\/+$/, "")}/modelDescription.xml`, docs);
+          if (!resolved) {
+            diagnostics.push({
+              uri,
+              code: "SSP3001",
+              rule: "unresolved-ssp-component-source",
+              severity: "error",
+              message: `SSP Component source '${src}' was not found in the workspace.`,
+            });
+          }
+        } else if (localName === "parametervalues") {
+          const ssvSrc = el.attrs["source"];
+          if (ssvSrc && !resolveRelativeUri(uri, ssvSrc, docs)) {
+            diagnostics.push({
+              uri,
+              code: "SSP3002",
+              rule: "unresolved-ssp-ssv-source",
+              severity: "error",
+              message: `SSP ParameterValues source '${ssvSrc}' was not found in the workspace.`,
+            });
+          }
         }
       }
     } else if (lower.endsWith(".ssv")) {

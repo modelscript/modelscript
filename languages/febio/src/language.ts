@@ -14,8 +14,10 @@ import { lintFebioDocument } from "./lints/rules.js";
 import { parseFebio } from "./parser/index.js";
 import { febioToCalculixInp, febioToModelica } from "./projections/index.js";
 import { lowerFebioToDae, solveHyperelasticMechanics } from "./solver/index.js";
+import { febioPolyglotConfig } from "./tgg/index.js";
 
 export const febioLanguage = language({
+  polyglot: febioPolyglotConfig,
   name: "febio",
   fileExtensions: [".feb", ".scn"],
   maturity: "experimental",

@@ -1281,8 +1281,10 @@ export class ParserService {
             manifest = await resp.json();
           }
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        this.connection.console.warn(
+          `[ParserService] Failed to fetch languages-manifest.json: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
 
       if (!manifest || manifest.length === 0) {

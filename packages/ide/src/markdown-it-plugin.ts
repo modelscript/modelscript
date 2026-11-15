@@ -195,7 +195,7 @@ interface MarkdownItCoreState {
   Token: new (type: string, tag: string, nesting: number) => MarkdownItToken;
 }
 
-interface MarkdownItLike {
+export interface MarkdownItLike {
   block: {
     ruler: {
       before(

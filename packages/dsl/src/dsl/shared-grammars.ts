@@ -69,37 +69,38 @@ export function createJsonLanguage(name: string, overrides?: SharedLanguageOverr
 
 type XmlKey =
   | "Document"
-  | "XmlProlog"
-  | "XmlElement"
-  | "XmlSelfClosingTag"
-  | "XmlMatchedElement"
-  | "XmlOpenTag"
-  | "XmlCloseTag"
-  | "XmlAttribute"
-  | "XmlName"
-  | "XmlAttrValue"
-  | "XmlComment"
-  | "XmlCdata"
-  | "XmlText";
+  | "Element"
+  | "EmptyTag"
+  | "StartTag"
+  | "CloseTag"
+  | "Text"
+  | "CData"
+  | "COMMENT"
+  | "PROCESSING_INSTRUCTION";
 
 /**
- * Shared XML engineering document grammar rules (ReqIF, URDF, SBML, CellML, SSP, SCL, etc.).
+ * Shared conflict-free XML engineering document grammar rules (ReqIF, URDF, SBML, CellML, SSP, SCL, etc.).
  */
 export const xmlRules = {
-  Document: ($): RuleLike<string> => seq(optional($.XmlProlog), repeat(choice($.XmlComment, $.XmlElement))),
-  XmlProlog: ($): RuleLike<string> => seq("<?xml", repeat($.XmlAttribute), "?>"),
-  XmlElement: ($): RuleLike<string> => choice($.XmlSelfClosingTag, $.XmlMatchedElement),
-  XmlSelfClosingTag: ($): RuleLike<string> => seq("<", field("tagName", $.XmlName), repeat($.XmlAttribute), "/>"),
-  XmlMatchedElement: ($): RuleLike<string> =>
-    seq($.XmlOpenTag, repeat(choice($.XmlElement, $.XmlComment, $.XmlCdata, $.XmlText)), $.XmlCloseTag),
-  XmlOpenTag: ($): RuleLike<string> => seq("<", field("tagName", $.XmlName), repeat($.XmlAttribute), ">"),
-  XmlCloseTag: ($): RuleLike<string> => seq("</", field("tagName", $.XmlName), ">"),
-  XmlAttribute: ($): RuleLike<string> => seq(field("attrName", $.XmlName), "=", field("attrValue", $.XmlAttrValue)),
-  XmlName: (): RuleLike<string> => /[A-Za-z_:][A-Za-z0-9_.:-]*/,
-  XmlAttrValue: (): RuleLike<string> => choice(/"[^"]*"/, /'[^']*'/),
-  XmlComment: (): RuleLike<string> => token(/<!--[\s\S]*?-->/),
-  XmlCdata: (): RuleLike<string> => token(/<!\[CDATA\[[\s\S]*?\]\]>/),
-  XmlText: (): RuleLike<string> => /[^<]+/,
+  Document: ($): RuleLike<string> => repeat($.Element),
+  Element: ($): RuleLike<string> =>
+    choice(
+      field("open", $.EmptyTag),
+      seq(
+        field("open", $.StartTag),
+        repeat(field("children", choice($.Element, $.CData, $.Text))),
+        field("endName", $.CloseTag),
+      ),
+    ),
+  EmptyTag: (): RuleLike<string> =>
+    /<[A-Za-z_:][A-Za-z0-9_.:-]*([ \t\r\n]+[A-Za-z_:][A-Za-z0-9_.:-]*[ \t\r\n]*=[ \t\r\n]*("[^"]*"|'[^']*'))*[ \t\r\n]*\/>/,
+  StartTag: (): RuleLike<string> =>
+    /<[A-Za-z_:][A-Za-z0-9_.:-]*([ \t\r\n]+[A-Za-z_:][A-Za-z0-9_.:-]*[ \t\r\n]*=[ \t\r\n]*("[^"]*"|'[^']*'))*[ \t\r\n]*>/,
+  CloseTag: (): RuleLike<string> => /<\/[A-Za-z_:][A-Za-z0-9_.:-]*[ \t\r\n]*>/,
+  Text: (): RuleLike<string> => /[^<\s][^<]*/,
+  CData: (): RuleLike<string> => /<!\[CDATA\[([^\]]|\][^\]]|\]\][^>])*\]\]>/,
+  COMMENT: (): RuleLike<string> => /<!--([^-]|-[^-])*-->/,
+  PROCESSING_INSTRUCTION: (): RuleLike<string> => /<\?([a-zA-Z_:][a-zA-Z0-9_.:-]*|\s)([^?]|\?[^>])*\?>/,
 } satisfies Record<XmlKey, RuleBuilder<XmlKey, string>>;
 
 /**
@@ -108,10 +109,10 @@ export const xmlRules = {
 export function createXmlLanguage(name: string, overrides?: SharedLanguageOverrides<keyof typeof xmlRules>) {
   return language({
     name,
-    extras: () => [/[ \t\r\n]+/],
+    extras: ($) => [/\s/, $.COMMENT, $.PROCESSING_INSTRUCTION],
     lsp: {
-      folding: ["XmlMatchedElement", "XmlComment"],
-      outline: ["XmlMatchedElement", "XmlSelfClosingTag"],
+      folding: ["Element", "COMMENT"],
+      outline: ["Element"],
     },
     ...overrides,
     rules: {
@@ -199,6 +200,36 @@ export function createKeyValueBlockLanguage(
     ...overrides,
     rules: {
       ...keyValueBlockRules,
+      ...overrides?.rules,
+    },
+  });
+}
+
+type CardDeckKey = "Document" | "DeckToken" | "DeckNumber" | "DeckString" | "DeckIdentifier" | "DeckPunct";
+
+/**
+ * Shared free-form engineering card-deck / token-stream grammar rules
+ * (PSS/E, PSLF, MATPOWER, MODFLOW, ECLIPSE, ATP, SWMM, PHREEQC, etc.).
+ */
+export const cardDeckRules = {
+  Document: ($): RuleLike<string> => repeat($.DeckToken),
+  DeckToken: ($): RuleLike<string> => choice($.DeckNumber, $.DeckString, $.DeckIdentifier, $.DeckPunct),
+  DeckNumber: (): RuleLike<string> => /[-+]?[0-9]*\.?[0-9]+([eEdD][-+]?[0-9]+)?/,
+  DeckString: (): RuleLike<string> => /'[^']*'|"[^"]*"/,
+  DeckIdentifier: (): RuleLike<string> => /[A-Za-z_@!$][A-Za-z0-9_@!$.-]*/,
+  DeckPunct: (): RuleLike<string> => /[,:;()[\]{}=+*<>~#%&$^|\\/?-]+/,
+} satisfies Record<CardDeckKey, RuleBuilder<CardDeckKey, string>>;
+
+/**
+ * Creates a complete `@modelscript/dsl` LanguageDefinition for card-deck / token-record formats.
+ */
+export function createCardDeckLanguage(name: string, overrides?: SharedLanguageOverrides<keyof typeof cardDeckRules>) {
+  return language({
+    name,
+    extras: () => [/[ \t\r\n]+/],
+    ...overrides,
+    rules: {
+      ...cardDeckRules,
       ...overrides?.rules,
     },
   });

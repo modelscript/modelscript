@@ -15,8 +15,10 @@ import { lintCcsds } from "./lints/rules.js";
 import { parseCcsds } from "./parser/index.js";
 import { ccsdsToModelica } from "./projections/ccsds-to-modelica.js";
 import { ccsdsToSysml } from "./projections/ccsds-to-sysml.js";
+import { ccsdsPolyglotConfig } from "./tgg/index.js";
 
 export const ccsdsLanguage = language({
+  polyglot: ccsdsPolyglotConfig,
   name: "ccsds",
   fileExtensions: [".oem", ".opm", ".omm", ".xtce", ".xml"],
   maturity: "experimental",

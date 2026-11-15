@@ -104,7 +104,8 @@ export function inspectPairSemanticEnvelope(
         const [rawVar, , bounds] = c.args;
         const varName = typeof rawVar === "string" && rawVar.startsWith("__var_") ? rawVar.slice(6) : String(rawVar);
         if (bounds && typeof bounds === "object") {
-          physicsBounds.push(`${varName} in [${bounds.min}, ${bounds.max}]`);
+          const b = bounds as { min?: unknown; max?: unknown };
+          physicsBounds.push(`${varName} in [${b.min}, ${b.max}]`);
         }
       } else if (c.kind === "invertible") {
         const [fwd, bwd] = c.args;

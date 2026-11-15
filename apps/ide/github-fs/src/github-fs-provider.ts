@@ -77,10 +77,10 @@ async function githubFetch(apiPath: string): Promise<Response> {
   const msConfig = vscode.workspace.getConfiguration("modelscript");
   const ansatzToken = msConfig.get<string>("cloud.authToken")?.trim() || msConfig.get<string>("apiKey")?.trim();
   if (ghToken) {
-    headers.Authorization = `Bearer ${ghToken}`;
+    headers["Authorization"] = `Bearer ${ghToken}`;
   } else if (isSameOriginProxy && ansatzToken) {
     // Authenticate private/internal Ansatz Spaces via the same-origin /api/github endpoint
-    headers.Authorization = `Bearer ${ansatzToken}`;
+    headers["Authorization"] = `Bearer ${ansatzToken}`;
   }
 
   const response = await fetch(url, {

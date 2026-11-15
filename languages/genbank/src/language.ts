@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { iniSectionRules, language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerGenbankToDae } from "./dae/genbank-to-dae.js";
 import { indexGenbankDocument } from "./indexing.js";
 import { lintGenbank } from "./lints/index.js";
 import { parseGenbank } from "./parser/genbank-parser.js";
 import { genbankToModelica, genbankToSbolXml } from "./projections/genbank-projections.js";
 import { analyzeGenbankSequence } from "./solvers/sequence-solver.js";
+import { genbankPolyglotConfig } from "./tgg/index.js";
 import type { SequenceAnalysisOptions } from "./types.js";
 
 /**
  * ModelScript GenBank & FASTA (.gb, .gbk, .fasta, .fa) Language Definition.
  */
 export const genbankLanguage = language({
+  polyglot: genbankPolyglotConfig,
   name: "genbank",
   fileExtensions: [".gb", ".gbk", ".fasta", ".fa"],
   maturity: "experimental",
@@ -137,4 +139,8 @@ export const genbankLanguage = language({
       },
     },
   ],
+  extras: ($) => [/[ \t\r\n]+/, $["IniComment"]!],
+  rules: iniSectionRules,
 });
+
+export default genbankLanguage;

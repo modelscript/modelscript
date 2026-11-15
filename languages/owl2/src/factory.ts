@@ -95,7 +95,7 @@ export function createOWL2QueryEngine(
   cacheStore?: QueryCacheStore,
   maxMemos?: number,
 ): QueryEngine {
-  return new QueryEngine(index, queryHooks, {
+  return new QueryEngine(index, queryHooks as ConstructorParameters<typeof QueryEngine>[1], {
     tree,
     cacheStore,
     ...(maxMemos !== undefined && { maxMemos }),

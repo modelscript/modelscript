@@ -767,7 +767,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       const ed = editorRef.current;
       if (!ed) return;
       const currentText = ed.getValue();
-      let nextText = currentText;
+      let nextText: string;
       if (dialect === "sysml2" && currentText.lastIndexOf("}") !== -1) {
         const idx = currentText.lastIndexOf("}");
         nextText = `${currentText.slice(0, idx)}${snippet}${currentText.slice(idx)}`;

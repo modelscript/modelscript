@@ -34,7 +34,7 @@ export const EXTRA_MASTER_PORT_LAYOUTS: Record<string, MasterPortLayout[]> = {
   upramp: SISO,
   trig: SRC,
   bin_delay: [sig("in", 0, 0), OUT],
-  fp_int: [sig("in", 0, 72), OUT],
+  fp_int: [sig("in1", -36, 0), sig("in2", -36, 36), sig("in", 0, 72), OUT],
 
   // Single-in/single-out functions
   inv: SISO,
@@ -64,7 +64,7 @@ export const EXTRA_MASTER_PORT_LAYOUTS: Record<string, MasterPortLayout[]> = {
   export: [IN],
   datatap: [sig("in", 0, 0), sig("tap", 0, -18)],
   datamerge: [sig("out", 0, 0)],
-  breakout: [sig("in", 0, 0)],
+  breakout: [sig("in", 0, 0), sig("out1", 36, -36), sig("out2", 36, 0), sig("out3", 36, 36)],
   nodeloop: [sig("loop", 0, -36)],
   radiolink: [sig("link", 0, 0)],
   abcdq0: [sig("abc", -36, 0, 3), sig("dq0", 36, 0, 3)],

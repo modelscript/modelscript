@@ -410,3 +410,217 @@ export function dae_tapeGetVarGrad(tapePtr: u32, varId: u32): f64 {
   }
   return gradSum;
 }
+
+/**
+ * Forward sweep for `StaticTapeBuilder` (stride-4 opData, f64 valData, f64 t).
+ * Assumes `Var` (1) and `VecVar` (14) slots in `tPtr` are already populated by the caller.
+ */
+export function staticTapeForwardWasm(
+  length: u32,
+  opDataPtr: u32,
+  valDataPtr: u32,
+  tPtr: u32,
+): void {
+  let opData = opDataPtr as usize;
+  let valData = valDataPtr as usize;
+  let t = tPtr as usize;
+
+  for (let i: u32 = 0; i < length; i++) {
+    let off = (i as usize) << 4; // 4 * 4 bytes per op
+    let kind = load<u32>(opData + off);
+    let a = load<u32>(opData + off + 4);
+    let b = load<u32>(opData + off + 8);
+    let c = load<u32>(opData + off + 12);
+    let iOff = (i as usize) << 3;
+
+    if (kind == 0) {
+      // Const
+      store<f64>(t + iOff, load<f64>(valData + iOff));
+    } else if (kind == 1 || kind == 14 || kind == 21) {
+      // Var, VecVar (pre-populated), Nop
+    } else if (kind == 2) {
+      store<f64>(t + iOff, load<f64>(t + ((a as usize) << 3)) + load<f64>(t + ((b as usize) << 3)));
+    } else if (kind == 3) {
+      store<f64>(t + iOff, load<f64>(t + ((a as usize) << 3)) - load<f64>(t + ((b as usize) << 3)));
+    } else if (kind == 4) {
+      store<f64>(t + iOff, load<f64>(t + ((a as usize) << 3)) * load<f64>(t + ((b as usize) << 3)));
+    } else if (kind == 5) {
+      store<f64>(t + iOff, load<f64>(t + ((a as usize) << 3)) / load<f64>(t + ((b as usize) << 3)));
+    } else if (kind == 6) {
+      store<f64>(t + iOff, Math.pow(load<f64>(t + ((a as usize) << 3)), load<f64>(t + ((b as usize) << 3))));
+    } else if (kind == 7) {
+      store<f64>(t + iOff, -load<f64>(t + ((a as usize) << 3)));
+    } else if (kind == 8) {
+      store<f64>(t + iOff, Math.sin(load<f64>(t + ((a as usize) << 3))));
+    } else if (kind == 9) {
+      store<f64>(t + iOff, Math.cos(load<f64>(t + ((a as usize) << 3))));
+    } else if (kind == 10) {
+      store<f64>(t + iOff, Math.tan(load<f64>(t + ((a as usize) << 3))));
+    } else if (kind == 11) {
+      store<f64>(t + iOff, Math.exp(load<f64>(t + ((a as usize) << 3))));
+    } else if (kind == 12) {
+      store<f64>(t + iOff, Math.log(load<f64>(t + ((a as usize) << 3))));
+    } else if (kind == 13) {
+      store<f64>(t + iOff, Math.sqrt(load<f64>(t + ((a as usize) << 3))));
+    } else if (kind == 15) {
+      // VecConst
+      for (let k: u32 = 0; k < b; k++) {
+        let kOff = ((i + k) as usize) << 3;
+        store<f64>(t + kOff, load<f64>(valData + kOff));
+      }
+    } else if (kind == 16) {
+      // VecAdd
+      for (let k: u32 = 0; k < b; k++) {
+        store<f64>(
+          t + (((i + k) as usize) << 3),
+          load<f64>(t + (((a + k) as usize) << 3)) + load<f64>(t + (((c + k) as usize) << 3)),
+        );
+      }
+    } else if (kind == 17) {
+      // VecSub
+      for (let k: u32 = 0; k < b; k++) {
+        store<f64>(
+          t + (((i + k) as usize) << 3),
+          load<f64>(t + (((a + k) as usize) << 3)) - load<f64>(t + (((c + k) as usize) << 3)),
+        );
+      }
+    } else if (kind == 18) {
+      // VecMul
+      for (let k: u32 = 0; k < b; k++) {
+        store<f64>(
+          t + (((i + k) as usize) << 3),
+          load<f64>(t + (((a + k) as usize) << 3)) * load<f64>(t + (((c + k) as usize) << 3)),
+        );
+      }
+    } else if (kind == 19) {
+      // VecNeg
+      for (let k: u32 = 0; k < b; k++) {
+        store<f64>(t + (((i + k) as usize) << 3), -load<f64>(t + (((a + k) as usize) << 3)));
+      }
+    } else if (kind == 20) {
+      // VecSubscript
+      store<f64>(t + iOff, load<f64>(t + (((a + c) as usize) << 3)));
+    }
+  }
+}
+
+/**
+ * Reverse-mode adjoint sweep for `StaticTapeBuilder` in linear memory.
+ */
+export function staticTapeReverseWasm(
+  length: u32,
+  opDataPtr: u32,
+  tPtr: u32,
+  dtPtr: u32,
+  outputIndex: u32,
+): void {
+  let opData = opDataPtr as usize;
+  let t = tPtr as usize;
+  let dt = dtPtr as usize;
+  memory.fill(dt, 0, (length as usize) << 3);
+  if (outputIndex < length) {
+    store<f64>(dt + ((outputIndex as usize) << 3), 1.0);
+  }
+
+  for (let idx: i32 = (length as i32) - 1; idx >= 0; idx--) {
+    let i = idx as u32;
+    let iOff = (i as usize) << 3;
+    let dti = load<f64>(dt + iOff);
+    if (dti == 0.0) continue;
+
+    let off = (i as usize) << 4;
+    let kind = load<u32>(opData + off);
+    let a = load<u32>(opData + off + 4);
+    let b = load<u32>(opData + off + 8);
+    let c = load<u32>(opData + off + 12);
+
+    if (kind == 2) {
+      let aOff = (a as usize) << 3;
+      let bOff = (b as usize) << 3;
+      store<f64>(dt + aOff, load<f64>(dt + aOff) + dti);
+      store<f64>(dt + bOff, load<f64>(dt + bOff) + dti);
+    } else if (kind == 3) {
+      let aOff = (a as usize) << 3;
+      let bOff = (b as usize) << 3;
+      store<f64>(dt + aOff, load<f64>(dt + aOff) + dti);
+      store<f64>(dt + bOff, load<f64>(dt + bOff) - dti);
+    } else if (kind == 4) {
+      let aOff = (a as usize) << 3;
+      let bOff = (b as usize) << 3;
+      store<f64>(dt + aOff, load<f64>(dt + aOff) + dti * load<f64>(t + bOff));
+      store<f64>(dt + bOff, load<f64>(dt + bOff) + dti * load<f64>(t + aOff));
+    } else if (kind == 5) {
+      let aOff = (a as usize) << 3;
+      let bOff = (b as usize) << 3;
+      let tb = load<f64>(t + bOff);
+      store<f64>(dt + aOff, load<f64>(dt + aOff) + dti / tb);
+      store<f64>(dt + bOff, load<f64>(dt + bOff) - (dti * load<f64>(t + aOff)) / (tb * tb));
+    } else if (kind == 6) {
+      let aOff = (a as usize) << 3;
+      let bOff = (b as usize) << 3;
+      let base = load<f64>(t + aOff);
+      let exp = load<f64>(t + bOff);
+      store<f64>(dt + aOff, load<f64>(dt + aOff) + dti * exp * Math.pow(base, exp - 1.0));
+      store<f64>(dt + bOff, load<f64>(dt + bOff) + dti * load<f64>(t + iOff) * Math.log(base));
+    } else if (kind == 7) {
+      let aOff = (a as usize) << 3;
+      store<f64>(dt + aOff, load<f64>(dt + aOff) - dti);
+    } else if (kind == 8) {
+      let aOff = (a as usize) << 3;
+      store<f64>(dt + aOff, load<f64>(dt + aOff) + dti * Math.cos(load<f64>(t + aOff)));
+    } else if (kind == 9) {
+      let aOff = (a as usize) << 3;
+      store<f64>(dt + aOff, load<f64>(dt + aOff) - dti * Math.sin(load<f64>(t + aOff)));
+    } else if (kind == 10) {
+      let aOff = (a as usize) << 3;
+      let ti = load<f64>(t + iOff);
+      store<f64>(dt + aOff, load<f64>(dt + aOff) + dti * (1.0 + ti * ti));
+    } else if (kind == 11) {
+      let aOff = (a as usize) << 3;
+      store<f64>(dt + aOff, load<f64>(dt + aOff) + dti * load<f64>(t + iOff));
+    } else if (kind == 12) {
+      let aOff = (a as usize) << 3;
+      store<f64>(dt + aOff, load<f64>(dt + aOff) + dti / load<f64>(t + aOff));
+    } else if (kind == 13) {
+      let aOff = (a as usize) << 3;
+      store<f64>(dt + aOff, load<f64>(dt + aOff) + dti / (2.0 * load<f64>(t + iOff)));
+    } else if (kind == 16) {
+      // VecAdd
+      for (let k: u32 = 0; k < b; k++) {
+        let dk = load<f64>(dt + (((i + k) as usize) << 3));
+        let akOff = ((a + k) as usize) << 3;
+        let ckOff = ((c + k) as usize) << 3;
+        store<f64>(dt + akOff, load<f64>(dt + akOff) + dk);
+        store<f64>(dt + ckOff, load<f64>(dt + ckOff) + dk);
+      }
+    } else if (kind == 17) {
+      // VecSub
+      for (let k: u32 = 0; k < b; k++) {
+        let dk = load<f64>(dt + (((i + k) as usize) << 3));
+        let akOff = ((a + k) as usize) << 3;
+        let ckOff = ((c + k) as usize) << 3;
+        store<f64>(dt + akOff, load<f64>(dt + akOff) + dk);
+        store<f64>(dt + ckOff, load<f64>(dt + ckOff) - dk);
+      }
+    } else if (kind == 18) {
+      // VecMul
+      for (let k: u32 = 0; k < b; k++) {
+        let dk = load<f64>(dt + (((i + k) as usize) << 3));
+        let akOff = ((a + k) as usize) << 3;
+        let ckOff = ((c + k) as usize) << 3;
+        store<f64>(dt + akOff, load<f64>(dt + akOff) + dk * load<f64>(t + ckOff));
+        store<f64>(dt + ckOff, load<f64>(dt + ckOff) + dk * load<f64>(t + akOff));
+      }
+    } else if (kind == 19) {
+      // VecNeg
+      for (let k: u32 = 0; k < b; k++) {
+        let akOff = ((a + k) as usize) << 3;
+        store<f64>(dt + akOff, load<f64>(dt + akOff) - load<f64>(dt + (((i + k) as usize) << 3)));
+      }
+    } else if (kind == 20) {
+      // VecSubscript
+      let acOff = ((a + c) as usize) << 3;
+      store<f64>(dt + acOff, load<f64>(dt + acOff) + dti);
+    }
+  }
+}

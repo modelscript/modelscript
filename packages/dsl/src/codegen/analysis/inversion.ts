@@ -201,15 +201,31 @@ export function invertExpression(
     };
   }
 
-  // 4. Standard Temperature Unit conversions
-  if (trimmed.includes("- 273.15")) {
-    const src = trimmed.replace("- 273.15", "").trim();
+  // 4. General affine unit conversions: (x +/- offset) * scale, (x +/- offset) / scale, and x +/- offset
+  const parenUnitMatch = trimmed.match(/^\(\s*([a-zA-Z_]\w*)\s*([+-])\s*([\d.]+)\s*\)\s*([*/])\s*([\d.]+)$/);
+  if (parenUnitMatch) {
+    const [, sourceVar, op1, offsetVal, op2, scaleVal] = parenUnitMatch;
+    const invOp1 = op1 === "+" ? "-" : "+";
+    const invOp2 = op2 === "*" ? "/" : "*";
     return {
       isInvertible: true,
       kind: "unit",
-      sourceVar: src,
+      sourceVar,
       targetVar: targetVarName,
-      invertedExpr: `${targetVarName} + 273.15`,
+      invertedExpr: `${targetVarName} ${invOp2} ${scaleVal} ${invOp1} ${offsetVal}`,
+    };
+  }
+
+  const offsetShiftMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*([+-])\s*([\d.]+)$/);
+  if (offsetShiftMatch) {
+    const [, sourceVar, op, offsetVal] = offsetShiftMatch;
+    const invOp = op === "+" ? "-" : "+";
+    return {
+      isInvertible: true,
+      kind: "unit",
+      sourceVar,
+      targetVar: targetVarName,
+      invertedExpr: `${targetVarName} ${invOp} ${offsetVal}`,
     };
   }
 

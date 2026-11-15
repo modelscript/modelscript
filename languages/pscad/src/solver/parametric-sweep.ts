@@ -86,16 +86,17 @@ export function runPointOnWaveSweep(netlist: EmtNetlist, options: PointOnWaveOpt
   const dt = options.timeStepSec ?? 25e-6;
 
   // Locate target circuit breaker or default to first switch
-  const switches = (netlist.branches ?? []).filter((b: any) => b.kind === "switch");
-  const targetSw = options.breakerId ? switches.find((s: any) => s.id === options.breakerId) : switches[0];
+  const switches = (netlist.branches ?? []).filter((b) => b.kind === "switch");
+  const targetSw = options.breakerId ? switches.find((s) => s.id === options.breakerId) : switches[0];
 
   const breakerId = targetSw?.id ?? "BRK_1";
 
   // Derive base peak kV from first source or default
+  const firstSource = netlist.sources?.[0];
   const baseKvLL =
-    (netlist.sources?.[0]?.vPeakKv
-      ? (netlist.sources[0].vPeakKv * Math.sqrt(3.0)) / Math.SQRT2
-      : (netlist.sources?.[0] as any)?.voltageKvLL) ?? 230.0;
+    (firstSource?.vPeakKv
+      ? (firstSource.vPeakKv * Math.sqrt(3.0)) / Math.SQRT2
+      : (firstSource as unknown as { voltageKvLL?: number } | undefined)?.voltageKvLL) ?? 230.0;
   const basePeakKv = options.basePeakKv ?? (baseKvLL * Math.SQRT2) / Math.sqrt(3.0);
 
   const runs: PointOnWaveRunRecord[] = [];
@@ -113,14 +114,14 @@ export function runPointOnWaveSweep(netlist: EmtNetlist, options: PointOnWaveOpt
     const tC = baseCloseTime + angleDelaySec + gaussianRandom(0.0, poleScatter);
 
     // Deep clone netlist for this individual run
-    const clonedBranches = (netlist.branches ?? []).map((br: any) => {
+    const clonedBranches = (netlist.branches ?? []).map((br) => {
       if (br.id === breakerId) {
         return {
           ...br,
-          status: "open",
+          status: "open" as const,
           initialClosed: false,
           closeTimeSec: Math.min(tA, tB, tC),
-          poleCloseTimesSec: [tA, tB, tC],
+          poleCloseTimesSec: { a: tA, b: tB, c: tC },
           openTimeSec: 1e9,
         };
       }

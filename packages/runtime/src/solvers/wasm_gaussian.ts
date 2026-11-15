@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { StaticTapeBuilder, TapeOpKind } from "../autodiff/wasm_tape.js";
+import { getDefaultWasmExports } from "../dae/wasm_dae.js";
 
 /**
  * WebAssembly-backed Gaussian Uncertainty Propagation & Dense Linear Algebra.
@@ -593,6 +594,41 @@ export interface LUFactorizationFlat {
   n: number;
 }
 
+interface DenseLuWasmScratch {
+  wasm: any;
+  capN: number;
+  matPtr: number;
+  pivPtr: number;
+  scalePtr: number;
+  bPtr: number;
+  scratchPtr: number;
+}
+
+let denseLuScratch: DenseLuWasmScratch | null = null;
+
+function ensureDenseLuScratch(wasm: any, n: number): DenseLuWasmScratch | null {
+  if (!wasm || typeof wasm.__new !== "function") return null;
+  if (denseLuScratch && denseLuScratch.wasm === wasm && denseLuScratch.capN >= n) {
+    return denseLuScratch;
+  }
+  const capN = Math.max(n, 64);
+  const alloc = (bytes: number): number => {
+    const ptr = wasm.__new(bytes, 0);
+    if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+    return ptr;
+  };
+  denseLuScratch = {
+    wasm,
+    capN,
+    matPtr: alloc(capN * capN * 8),
+    pivPtr: alloc(capN * 4),
+    scalePtr: alloc(capN * 8),
+    bPtr: alloc(capN * 8),
+    scratchPtr: alloc(capN * 8),
+  };
+  return denseLuScratch;
+}
+
 /**
  * Factor a dense n×n matrix stored as a contiguous 1D row-major Float64Array into PA = LU
  * with row equilibration, partial pivoting, and unrolled vector operations.
@@ -606,6 +642,23 @@ export function luFactorFlat(
 ): LUFactorizationFlat {
   const piv = outPiv && outPiv.length >= n ? outPiv : new Int32Array(n);
   const rowScale = outScale && outScale.length >= n ? outScale : new Float64Array(n);
+
+  if (n >= 16) {
+    const wasm: any = getDefaultWasmExports();
+    if (wasm && typeof wasm.luFactorFlatInPlace === "function") {
+      const s = ensureDenseLuScratch(wasm, n);
+      if (s) {
+        const len = n * n;
+        new Float64Array(wasm.memory.buffer, s.matPtr, len).set(mat.subarray(0, len));
+        wasm.luFactorFlatInPlace(s.matPtr, s.pivPtr, s.scalePtr, n);
+        const buf = wasm.memory.buffer;
+        mat.set(new Float64Array(buf, s.matPtr, len));
+        piv.set(new Int32Array(buf, s.pivPtr, n));
+        rowScale.set(new Float64Array(buf, s.scalePtr, n));
+        return { mat, piv, rowScale, n };
+      }
+    }
+  }
 
   for (let i = 0; i < n; i++) piv[i] = i;
 
@@ -685,6 +738,25 @@ export function luFactorFlat(
  */
 export function luSolveFlat(fact: LUFactorizationFlat, b: Float64Array, scratchPb?: Float64Array): void {
   const { mat, piv, rowScale, n } = fact;
+
+  if (n >= 16) {
+    const wasm: any = getDefaultWasmExports();
+    if (wasm && typeof wasm.luSolveFlatInPlace === "function") {
+      const s = ensureDenseLuScratch(wasm, n);
+      if (s) {
+        const len = n * n;
+        const buf = wasm.memory.buffer;
+        new Float64Array(buf, s.matPtr, len).set(mat.subarray(0, len));
+        new Int32Array(buf, s.pivPtr, n).set(piv.subarray(0, n));
+        new Float64Array(buf, s.scalePtr, n).set(rowScale.subarray(0, n));
+        new Float64Array(buf, s.bPtr, n).set(b.subarray(0, n));
+        wasm.luSolveFlatInPlace(s.matPtr, s.pivPtr, s.scalePtr, s.bPtr, s.scratchPtr, n);
+        b.set(new Float64Array(wasm.memory.buffer, s.bPtr, n));
+        return;
+      }
+    }
+  }
+
   const pb = scratchPb && scratchPb.length >= n ? scratchPb : new Float64Array(n);
 
   for (let i = 0; i < n; i++) {

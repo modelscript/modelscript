@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { language, xmlRules, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerSbmlToDae } from "./dae/sbml-to-dae.js";
 import { sbmlIndexing } from "./indexing.js";
 import { lintSbml } from "./lints/index.js";
 import { parseSbml } from "./parser/sbml-parser.js";
 import { sbmlToModelica } from "./projections/sbml-to-modelica.js";
 import { solveReactions, type ReactionSolverOptions } from "./solvers/reaction-solver.js";
+import { sbmlPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript Systems Biology Markup Language (.sbml, .xml) Language Definition.
  */
 export const sbmlLanguage = language({
+  polyglot: sbmlPolyglotConfig,
   name: "sbml",
   fileExtensions: [".sbml", ".xml"],
   maturity: "experimental",
@@ -103,4 +105,8 @@ export const sbmlLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: xmlRules,
 });
+
+export default sbmlLanguage;

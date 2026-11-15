@@ -70,7 +70,7 @@ export function lintComtradeCfg(cfg: ComtradeConfig): ComtradeDiagnostic[] {
     });
   } else {
     for (let r = 0; r < rates.length; r++) {
-      const rateHz = (rates[r] as any).rateHz ?? (rates[r] as any).rate ?? 0;
+      const rateHz = rates[r]!.rateHz ?? rates[r]!.rate ?? 0;
       if (rateHz <= 0) {
         diagnostics.push({
           code: ComtradeErrorCode.INVALID_SAMPLE_RATE,

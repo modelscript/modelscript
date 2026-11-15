@@ -6,8 +6,10 @@ import { indexOcppFile } from "./indexing.js";
 import { lintOcpp } from "./lints/rules.js";
 import { parseOcpp } from "./parser/ocpp-parser.js";
 import { scheduleSmartCharging } from "./solver/charging-scheduler.js";
+import { ocppPolyglotConfig } from "./tgg/index.js";
 
 export const ocppLanguage = language({
+  polyglot: ocppPolyglotConfig,
   name: "ocpp",
   fileExtensions: [".ocpp", ".ocpp.json", ".cpo", ".json"],
   maturity: "experimental",

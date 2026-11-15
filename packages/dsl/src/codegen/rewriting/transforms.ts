@@ -16,12 +16,21 @@ import { transformsBaseCode } from "../../src-gen/runtime-templates.js";
  * @param grammarDef Language grammar definition containing optional `transforms` pipelines.
  * @returns Generated AssemblyScript source code implementing `transform_<pipeline>` functions.
  */
-export function generateTransforms(grammarDef: LanguageOptions<any>): string {
+interface TransformTemplateNode {
+  __isPlaceholder?: boolean;
+  name?: string | symbol;
+  op?: string;
+  args?: unknown[];
+  lo?: unknown;
+  hi?: unknown;
+}
+
+export function generateTransforms(grammarDef: LanguageOptions): string {
   // Inspect which built-in numerical/symbolic transform pipelines are declared on the grammar.
-  const transformsDef = (grammarDef as any).transforms;
-  const hasInterval = !!(transformsDef && transformsDef.interval);
-  const hasTangent = !!(transformsDef && transformsDef.tangent);
-  const hasAdjoint = !!(transformsDef && transformsDef.adjoint);
+  const transformsDef = (grammarDef as LanguageOptions & { transforms?: Record<string, unknown> }).transforms;
+  const hasInterval = !!(transformsDef && transformsDef["interval"]);
+  const hasTangent = !!(transformsDef && transformsDef["tangent"]);
+  const hasAdjoint = !!(transformsDef && transformsDef["adjoint"]);
 
   // Emit no-op fallback stubs when tangent or adjoint differentiation pipelines are omitted.
   let out = "";
@@ -80,12 +89,12 @@ export function evaluateIntervalBounds(nodeId: u32): void {
   // - Level 2 (`placeholders.a.lo`, `placeholders.a.hi`, `placeholders.a.val`) captures sub-property
   //   projections (`"a.lo"`, `"a.hi"`, `"a.val"`) used by interval arithmetic and tangent rules.
   const handler = {
-    get(_target: any, prop: string | symbol) {
+    get(_target: object, prop: string | symbol) {
       if (prop === "__isPlaceholder") return false;
       if (typeof prop === "symbol") return undefined;
       const base = createPlaceholder(prop);
       return new Proxy(base, {
-        get(t: any, subProp: string | symbol) {
+        get(t: { name: string | symbol; toString: () => string }, subProp: string | symbol) {
           if (subProp === "__isPlaceholder") return true;
           if (subProp === "name") return t.name;
           if (subProp === "toString") return t.toString;
@@ -102,9 +111,9 @@ export function evaluateIntervalBounds(nodeId: u32): void {
   // to capture the declarative pattern -> replacement template dictionary.
   for (const [pipelineName, pipelineFunc] of Object.entries(transformsDef || {})) {
     out += `\n// Pipeline: ${pipelineName}\n`;
-    let rules: any;
+    let rules: Record<string, unknown>;
     try {
-      rules = (pipelineFunc as any)(placeholders);
+      rules = (pipelineFunc as (p: unknown) => Record<string, unknown>)(placeholders);
     } catch (e) {
       out += `// Error evaluating pipeline ${pipelineName}: ${e}\n`;
       continue;
@@ -119,18 +128,19 @@ export function evaluateIntervalBounds(nodeId: u32): void {
       out += `    switch(type) {\n`;
 
       // Recursively lowers a captured adjoint contribution template into AssemblyScript arena allocations.
-      const emitTemplateAdjoint = (tmpl: any): string => {
+      const emitTemplateAdjoint = (tmpl: unknown): string => {
         if (tmpl == null) return "0";
         if (typeof tmpl === "number") return `allocConstantNode(${tmpl})`;
         if (tmpl === "dY") return `dY`;
-        if (tmpl.__isPlaceholder) {
-          const varName = String(tmpl.name).replace(/\$\$/g, "").split(".")[0];
+        const node = tmpl as TransformTemplateNode;
+        if (node.__isPlaceholder) {
+          const varName = String(node.name).replace(/\$\$/g, "").split(".")[0];
           return `${varName}_ptr`;
         }
-        if (tmpl.op && tmpl.args) {
-          let argsEmit = tmpl.args.map((a: any) => emitTemplateAdjoint(a));
+        if (node.op && node.args) {
+          let argsEmit = node.args.map((a: unknown) => emitTemplateAdjoint(a));
           while (argsEmit.length < 3) argsEmit.push("0");
-          return `allocNode(<u16>SyntaxType.${tmpl.op.toUpperCase()}, ${argsEmit[0]}, ${argsEmit[1]}, ${argsEmit[2]})`;
+          return `allocNode(<u16>SyntaxType.${node.op.toUpperCase()}, ${argsEmit[0]}, ${argsEmit[1]}, ${argsEmit[2]})`;
         }
         return "0";
       };
@@ -150,7 +160,7 @@ export function evaluateIntervalBounds(nodeId: u32): void {
               currChild = `getNodeNextSibling(${arg}_ptr)`;
             }
           }
-          for (const [childName, contrib] of Object.entries(templateMap as any)) {
+          for (const [childName, contrib] of Object.entries(templateMap as Record<string, unknown>)) {
             const childAdjointVar = `dY_${childName.replace(/\$\$/g, "")}`;
             out += `            let ${childAdjointVar} = ${emitTemplateAdjoint(contrib)};\n`;
           }
@@ -173,13 +183,14 @@ export function evaluateIntervalBounds(nodeId: u32): void {
       // - `.val` -> recursive `transform_<pipeline>(<var>_ptr, ctxVar)`
       // - `.lo` / `.hi` -> first/second child of the transformed interval node
       // - `{ lo, hi }` -> `allocNode(SyntaxType.INTERVAL, loEmit, hiEmit, 0)`
-      const emitTemplate = (tmpl: any): string => {
+      const emitTemplate = (tmpl: unknown): string => {
         if (tmpl == null) return "0";
         if (typeof tmpl === "number") {
           return `allocConstantNode(${tmpl})`;
         }
-        if (tmpl.__isPlaceholder) {
-          const parts = String(tmpl.name).replace(/\$\$/g, "").split(".");
+        const node = tmpl as TransformTemplateNode;
+        if (node.__isPlaceholder) {
+          const parts = String(node.name).replace(/\$\$/g, "").split(".");
           const varName = parts[0];
           const prop = parts[1];
           if (prop) {
@@ -197,15 +208,15 @@ export function evaluateIntervalBounds(nodeId: u32): void {
             return `${varName}_ptr`;
           }
         }
-        if (tmpl.op && tmpl.args) {
-          let argsEmit = tmpl.args.map((a: any) => emitTemplate(a));
+        if (node.op && node.args) {
+          let argsEmit = node.args.map((a: unknown) => emitTemplate(a));
           while (argsEmit.length < 3) argsEmit.push("0");
-          return `allocNode(<u16>SyntaxType.${tmpl.op.toUpperCase()}, ${argsEmit[0]}, ${argsEmit[1]}, ${argsEmit[2]})`;
+          return `allocNode(<u16>SyntaxType.${node.op.toUpperCase()}, ${argsEmit[0]}, ${argsEmit[1]}, ${argsEmit[2]})`;
         }
         if (typeof tmpl === "object" && !Array.isArray(tmpl)) {
-          if ("lo" in tmpl && "hi" in tmpl) {
-            let loEmit = emitTemplate(tmpl.lo);
-            let hiEmit = emitTemplate(tmpl.hi);
+          if ("lo" in node && "hi" in node) {
+            let loEmit = emitTemplate(node.lo);
+            let hiEmit = emitTemplate(node.hi);
             return `allocNode(<u16>SyntaxType.INTERVAL, ${loEmit}, ${hiEmit}, 0)`;
           }
         }

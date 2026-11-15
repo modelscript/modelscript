@@ -4,11 +4,12 @@ import { PolyglotConfig, TGGConstraint, TGGRuleOptions } from "../../dsl/languag
 import type { u32 } from "../../dsl/primitives.js";
 import { invertExpression } from "../analysis/inversion.js";
 import { getDJB2Hash } from "../shared/utils.js";
-import { inferRuleLanguages, runCPA, type CpaConflict, type CpaReport } from "./cpa.js";
+import { inferRuleLanguages, registerNodeDomain, runCPA, type CpaConflict, type CpaReport } from "./cpa.js";
 import { verifySuiteLosslessness, type LosslessnessReport } from "./losslessness.js";
 
 export {
   inferRuleLanguages,
+  registerNodeDomain,
   runCPA,
   verifySuiteLosslessness,
   type CpaConflict,
@@ -16,10 +17,36 @@ export {
   type LosslessnessReport,
 };
 
+export interface CompiledTGGRulePlan {
+  ruleName: string;
+  sourceLang?: string | undefined;
+  targetLang?: string | undefined;
+  sourceNodeType: string;
+  targetNodeType: string;
+  sourceTypeId: number;
+  targetTypeId: number;
+  sourceBindings: Record<string, unknown>;
+  targetBindings: Record<string, unknown>;
+  constraints: TGGConstraint[];
+  rule: TGGRuleOptions;
+}
+
+export interface CompiledTGGPlan {
+  rules: CompiledTGGRulePlan[];
+  typeMaps: Record<string, Record<string, string>>;
+  cpaReport: CpaReport;
+  losslessnessReport: {
+    isFullyLossless: boolean;
+    reports: LosslessnessReport[];
+    leakedRuleCount: number;
+  };
+}
+
 export interface CompiledTGGOutput {
   sourceCode: string;
   ruleCount: number;
   ruleNames: string[];
+  plan?: CompiledTGGPlan | undefined;
   cpaReport?: CpaReport | undefined;
   losslessnessReport?:
     | {
@@ -30,11 +57,11 @@ export interface CompiledTGGOutput {
     | undefined;
 }
 
-function stripVarPrefix(v: any): string {
+function stripVarPrefix(v: unknown): string {
   return typeof v === "string" && v.startsWith("__var_") ? v.slice(6) : String(v ?? "");
 }
 
-function findBoundProperty(bindings: Record<string, any>, v: any, fallback: string): string {
+function findBoundProperty(bindings: Record<string, unknown>, v: unknown, fallback: string): string {
   const rawName = stripVarPrefix(v);
   return (
     Object.keys(bindings).find((k) => bindings[k] === v || stripVarPrefix(bindings[k]) === rawName || k === rawName) ||
@@ -45,7 +72,8 @@ function findBoundProperty(bindings: Record<string, any>, v: any, fallback: stri
 
 function formatFloatLiteral(n: number): string {
   if (!Number.isFinite(n)) return "0.0";
-  return Number.isInteger(n) ? `${n}.0` : `${n}`;
+  const s = String(n);
+  return s.includes(".") || s.includes("e") || s.includes("E") ? s : `${s}.0`;
 }
 
 function compileAlgebraicExprToAS(
@@ -65,11 +93,13 @@ function compileAlgebraicExprToAS(
     }
   }
   s = s.replace(/\b([a-zA-Z_]\w*|\d+(?:\.\d+)?)\s*(?:\*\*|\^)\s*(\d+(?:\.\d+)?)\b/g, "Math.pow($1, $2)");
-  const reserved = new Set(["Math", "sqrt", "pow", "exp", "log", "ln", "abs", "sin", "cos", "tan", "min", "max"]);
-  s = s.replace(/\b([a-zA-Z_]\w*)\b/g, (match) => {
-    if (reserved.has(match)) return match === "ln" ? "log" : match;
-    if (boundVarExprs && boundVarExprs[match] !== undefined) {
-      return boundVarExprs[match]!;
+  const mathFuncs = new Set(["sqrt", "pow", "exp", "log", "ln", "abs", "sin", "cos", "tan", "min", "max"]);
+  s = s.replace(/(Math\.)?\b([a-zA-Z_]\w*)\b/g, (fullMatch, mathPrefix, ident) => {
+    if (mathPrefix) return fullMatch;
+    if (ident === "Math") return "Math";
+    if (mathFuncs.has(ident)) return ident === "ln" ? "Math.log" : `Math.${ident}`;
+    if (boundVarExprs && boundVarExprs[ident] !== undefined) {
+      return boundVarExprs[ident]!;
     }
     return inputVarIdent;
   });
@@ -77,7 +107,7 @@ function compileAlgebraicExprToAS(
 }
 
 function buildBoundVarExprMap(
-  bindings: Record<string, any>,
+  bindings: Record<string, unknown>,
   nodeVarIdent: string,
   primaryProp: string,
   primaryVarIdent: string,
@@ -131,13 +161,14 @@ export function compileTGGRules(
     targetLang?: string | undefined;
     strictCpa?: boolean | undefined;
     verifyLossless?: boolean | undefined;
+    syntaxTypes?: Map<string, number> | Record<string, number> | undefined;
   } = {},
 ): CompiledTGGOutput {
   const allRules: TGGRuleOptions[] = Array.isArray(config) ? config : config.rules || [];
   const _typeMaps = !Array.isArray(config) ? config.typeMaps || {} : {};
 
   // Helper Proxy to evaluate pattern builder functions during compilation
-  const $proxy: any = new Proxy(
+  const $proxy = new Proxy(
     {},
     {
       get:
@@ -162,9 +193,19 @@ export function compileTGGRules(
           };
         },
     },
-  );
+  ) as unknown as import("../../dsl/language.js").TGGPatternBuilderProxy;
 
   const vProxy = (name: string) => `__var_${name}`;
+
+  const lookupSyntaxType = (nodeType: string): number | undefined => {
+    if (!options.syntaxTypes) return undefined;
+    if (options.syntaxTypes instanceof Map) {
+      return options.syntaxTypes.get(nodeType);
+    }
+    return Object.prototype.hasOwnProperty.call(options.syntaxTypes, nodeType)
+      ? options.syntaxTypes[nodeType]
+      : undefined;
+  };
 
   // Track 16-bit truncated node type hashes to prevent silent collisions across distinct node types
   const usedHash16ToType = new Map<number, string>();
@@ -172,6 +213,13 @@ export function compileTGGRules(
   const getCollisionFreeNodeHash = (nodeType: string): number => {
     const existing = resolvedNodeTypeHash.get(nodeType);
     if (existing !== undefined) return existing;
+    const syntaxId = lookupSyntaxType(nodeType);
+    if (syntaxId !== undefined && syntaxId > 0) {
+      const h = syntaxId >>> 0;
+      usedHash16ToType.set(h & 0xffff, nodeType);
+      resolvedNodeTypeHash.set(nodeType, h);
+      return h;
+    }
     let h = getDJB2Hash(nodeType) >>> 0;
     let h16 = h & 0xffff;
     while (h16 === 0 || (usedHash16ToType.has(h16) && usedHash16ToType.get(h16) !== nodeType)) {
@@ -185,8 +233,12 @@ export function compileTGGRules(
 
   // Evaluate and infer languages for all rules
   const evaluatedRules = allRules.map((rule, rIdx) => {
-    const evaluatedSource = typeof rule.source === "function" ? rule.source($proxy, vProxy) : rule.source;
-    const evaluatedTarget = typeof rule.target === "function" ? rule.target($proxy, vProxy) : rule.target;
+    const evaluatedSource = (typeof rule.source === "function" ? rule.source($proxy, vProxy) : rule.source) as
+      | { nodeType?: string; bindings?: Record<string, unknown> }
+      | undefined;
+    const evaluatedTarget = (typeof rule.target === "function" ? rule.target($proxy, vProxy) : rule.target) as
+      | { nodeType?: string; bindings?: Record<string, unknown> }
+      | undefined;
     const constraints: TGGConstraint[] = typeof rule.where === "function" ? rule.where(vProxy) : rule.where || [];
     const { sourceLang, targetLang } = inferRuleLanguages(rule, evaluatedSource, evaluatedTarget, constraints);
     const sourceNodeType = evaluatedSource?.nodeType || "UnknownNode";
@@ -220,6 +272,15 @@ export function compileTGGRules(
     return true;
   });
 
+  for (const r of activeRules) {
+    if (r.sourceLang && r.sourceNodeType && r.sourceNodeType !== "UnknownNode") {
+      registerNodeDomain(r.sourceNodeType, r.sourceLang);
+    }
+    if (r.targetLang && r.targetNodeType && r.targetNodeType !== "UnknownNode") {
+      registerNodeDomain(r.targetNodeType, r.targetLang);
+    }
+  }
+
   const rulesToCompile = activeRules.map((r) => r.rule);
 
   // 1. Run Ahead-of-Time Critical Pair Analysis
@@ -251,6 +312,7 @@ export function compileTGGRules(
   code += `// ============================================================================\n`;
   code += `import { CorrespondenceIndex, CORR_FLAG_SYNCED, CORR_FLAG_STALE, CORR_FLAG_CONFLICT } from "./correspondence";\n`;
   code += `import { PolyglotArena } from "./polyglot_arena";\n`;
+  code += `import { stringPool_internUtf8, stringPool_concatRawIds, stringPool_stripPrefixId } from "./string_pool";\n`;
   code += `import { graph, ModelAPI } from "./graph";\n`;
   code += `import { getNodeType, getNodeFirstChild, getNodeNextSibling, ast_createNode, atomicChunkAlloc } from "./arena";\n`;
   code += `import { tgg_reconcile_scalar, tgg_reconcile_interval, tgg_reconcile_physics_simplex } from "./tgg_reconciler";\n\n`;
@@ -377,10 +439,24 @@ export function compileTGGRules(
         const tgtProp = findBoundProperty(tgtBindings, targetVar, "iri");
         const srcPropHash = getDJB2Hash(srcProp) as u32;
         const tgtPropHash = getDJB2Hash(tgtProp) as u32;
-        const prefixHash = prefix ? (getDJB2Hash(String(prefix)) as u32) : 0;
+        const prefixStr = prefix ? String(prefix) : "";
+        const prefixHash = prefixStr ? (getDJB2Hash(prefixStr) as u32) : 0;
         code += `  // Format URI: ${targetVar} = ${JSON.stringify(prefix)} + ${idVar}\n`;
         code += `  let __idVal_${idx}_${cIdx} = graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32);\n`;
-        code += `  let __uriVal_${idx}_${cIdx}: u32 = __idVal_${idx}_${cIdx} != 0 ? (__idVal_${idx}_${cIdx} ^ (${prefixHash} as u32)) : 0;\n`;
+        code += `  let __uriVal_${idx}_${cIdx}: u32 = 0;\n`;
+        code += `  if (__idVal_${idx}_${cIdx} != 0) {\n`;
+        code += `    if (arena.stringPoolPtr != 0) {\n`;
+        if (prefixStr.length > 0) {
+          code += `      let __prefBuf_${idx}_${cIdx} = String.UTF8.encode(${JSON.stringify(prefixStr)});\n`;
+          code += `      let __prefId_${idx}_${cIdx} = stringPool_internUtf8(arena.stringPoolPtr, changetype<usize>(__prefBuf_${idx}_${cIdx}), __prefBuf_${idx}_${cIdx}.byteLength as u32);\n`;
+          code += `      __uriVal_${idx}_${cIdx} = stringPool_concatRawIds(arena.stringPoolPtr, __prefId_${idx}_${cIdx}, __idVal_${idx}_${cIdx});\n`;
+        } else {
+          code += `      __uriVal_${idx}_${cIdx} = __idVal_${idx}_${cIdx};\n`;
+        }
+        code += `    } else {\n`;
+        code += `      __uriVal_${idx}_${cIdx} = __idVal_${idx}_${cIdx} ^ (${prefixHash} as u32);\n`;
+        code += `    }\n`;
+        code += `  }\n`;
         code += `  graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, __uriVal_${idx}_${cIdx});\n`;
       } else if (c.kind === "mapList") {
         const [sourceListVar, targetListVar, mapper] = c.args;
@@ -512,10 +588,10 @@ export function compileTGGRules(
         const [sourceVar, targetVar, strategy] = c.args;
         code += `  // Conflict reconciliation policy: ${sourceVar} <-> ${targetVar} (${strategy})\n`;
       } else if (c.kind === "reconcilePhysics") {
-        const [sourceVar, targetVar, bounds] = c.args;
+        const [sourceVar, targetVar, bounds] = c.args as [string, string, { min?: number; max?: number }?];
         code += `  // Physics reconciliation policy: ${sourceVar} <-> ${targetVar} bounds=[${bounds?.min ?? -1e9}, ${bounds?.max ?? 1e9}]\n`;
       } else if (c.kind === "complement") {
-        const [fields] = c.args;
+        const [fields] = c.args as [string[]?];
         code += `  // Shadow complement preserved fields: [${(fields || []).join(", ")}]\n`;
       } else if (c.kind === "invertible") {
         const [fwd, bwd] = c.args;
@@ -530,10 +606,24 @@ export function compileTGGRules(
           const prefixMatch = String(fwd || "")
             .trim()
             .match(/^"([^"]+)"/);
-          const prefixHash = prefixMatch ? (getDJB2Hash(prefixMatch[1]!) as u32) : 0;
+          const prefixStr = prefixMatch ? prefixMatch[1]! : "";
+          const prefixHash = prefixStr ? (getDJB2Hash(prefixStr) as u32) : 0;
           code += `  {\n`;
           code += `    let __invId_fwd_${idx}_${cIdx} = graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32);\n`;
-          code += `    let __invOut_fwd_${idx}_${cIdx}: u32 = __invId_fwd_${idx}_${cIdx} != 0 ? (__invId_fwd_${idx}_${cIdx} ^ (${prefixHash} as u32)) : 0;\n`;
+          code += `    let __invOut_fwd_${idx}_${cIdx}: u32 = 0;\n`;
+          code += `    if (__invId_fwd_${idx}_${cIdx} != 0) {\n`;
+          code += `      if (arena.stringPoolPtr != 0) {\n`;
+          if (prefixStr.length > 0) {
+            code += `        let __prefBuf_fwd_${idx}_${cIdx} = String.UTF8.encode(${JSON.stringify(prefixStr)});\n`;
+            code += `        let __prefId_fwd_${idx}_${cIdx} = stringPool_internUtf8(arena.stringPoolPtr, changetype<usize>(__prefBuf_fwd_${idx}_${cIdx}), __prefBuf_fwd_${idx}_${cIdx}.byteLength as u32);\n`;
+            code += `        __invOut_fwd_${idx}_${cIdx} = stringPool_concatRawIds(arena.stringPoolPtr, __prefId_fwd_${idx}_${cIdx}, __invId_fwd_${idx}_${cIdx});\n`;
+          } else {
+            code += `        __invOut_fwd_${idx}_${cIdx} = __invId_fwd_${idx}_${cIdx};\n`;
+          }
+          code += `      } else {\n`;
+          code += `        __invOut_fwd_${idx}_${cIdx} = __invId_fwd_${idx}_${cIdx} ^ (${prefixHash} as u32);\n`;
+          code += `      }\n`;
+          code += `    }\n`;
           code += `    graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, __invOut_fwd_${idx}_${cIdx});\n`;
           code += `  }\n`;
         } else {
@@ -572,7 +662,7 @@ export function compileTGGRules(
     }
 
     const compConstraint = constraints.find((c) => c.kind === "complement");
-    const compFields: string[] = compConstraint?.args?.[0] || [];
+    const compFields: string[] = (compConstraint?.args?.[0] as string[] | undefined) || [];
 
     code += `  // Register bidirectional link in correspondence index\n`;
     code += `  let corrSlot = corr.addLink(sourceNodeId, targetNodeId, ${idx}, CORR_FLAG_SYNCED, 0, parentSlot);\n`;
@@ -657,10 +747,24 @@ export function compileTGGRules(
         const tgtProp = findBoundProperty(tgtBindings, targetVar, "iri");
         const srcPropHash = getDJB2Hash(srcProp) as u32;
         const tgtPropHash = getDJB2Hash(tgtProp) as u32;
-        const prefixHash = prefix ? (getDJB2Hash(String(prefix)) as u32) : 0;
+        const prefixStr = prefix ? String(prefix) : "";
+        const prefixHash = prefixStr ? (getDJB2Hash(prefixStr) as u32) : 0;
         code += `  // Reverse Format URI: strip prefix ${JSON.stringify(prefix)} from ${targetVar} -> ${idVar}\n`;
         code += `  let __uriVal_bwd_${idx}_${cIdx} = graph.model.getProperty<u32>(targetNodeId, ${tgtPropHash} as u32);\n`;
-        code += `  let __idVal_bwd_${idx}_${cIdx}: u32 = __uriVal_bwd_${idx}_${cIdx} != 0 ? (__uriVal_bwd_${idx}_${cIdx} ^ (${prefixHash} as u32)) : 0;\n`;
+        code += `  let __idVal_bwd_${idx}_${cIdx}: u32 = 0;\n`;
+        code += `  if (__uriVal_bwd_${idx}_${cIdx} != 0) {\n`;
+        code += `    if (arena.stringPoolPtr != 0) {\n`;
+        if (prefixStr.length > 0) {
+          code += `      let __prefBuf_bwd_${idx}_${cIdx} = String.UTF8.encode(${JSON.stringify(prefixStr)});\n`;
+          code += `      let __prefId_bwd_${idx}_${cIdx} = stringPool_internUtf8(arena.stringPoolPtr, changetype<usize>(__prefBuf_bwd_${idx}_${cIdx}), __prefBuf_bwd_${idx}_${cIdx}.byteLength as u32);\n`;
+          code += `      __idVal_bwd_${idx}_${cIdx} = stringPool_stripPrefixId(arena.stringPoolPtr, __uriVal_bwd_${idx}_${cIdx}, __prefId_bwd_${idx}_${cIdx});\n`;
+        } else {
+          code += `      __idVal_bwd_${idx}_${cIdx} = __uriVal_bwd_${idx}_${cIdx};\n`;
+        }
+        code += `    } else {\n`;
+        code += `      __idVal_bwd_${idx}_${cIdx} = __uriVal_bwd_${idx}_${cIdx} ^ (${prefixHash} as u32);\n`;
+        code += `    }\n`;
+        code += `  }\n`;
         code += `  graph.model.setProperty<u32>(sourceNodeId, ${srcPropHash} as u32, __idVal_bwd_${idx}_${cIdx});\n`;
       } else if (c.kind === "mapList") {
         const [sourceListVar, targetListVar, mapper] = c.args;
@@ -777,10 +881,24 @@ export function compileTGGRules(
           const prefixMatch = String(fwd || "")
             .trim()
             .match(/^"([^"]+)"/);
-          const prefixHash = prefixMatch ? (getDJB2Hash(prefixMatch[1]!) as u32) : 0;
+          const prefixStr = prefixMatch ? prefixMatch[1]! : "";
+          const prefixHash = prefixStr ? (getDJB2Hash(prefixStr) as u32) : 0;
           code += `  {\n`;
           code += `    let __invOut_bwd_${idx}_${cIdx} = graph.model.getProperty<u32>(targetNodeId, ${tgtPropHash} as u32);\n`;
-          code += `    let __invId_bwd_${idx}_${cIdx}: u32 = __invOut_bwd_${idx}_${cIdx} != 0 ? (__invOut_bwd_${idx}_${cIdx} ^ (${prefixHash} as u32)) : 0;\n`;
+          code += `    let __invId_bwd_${idx}_${cIdx}: u32 = 0;\n`;
+          code += `    if (__invOut_bwd_${idx}_${cIdx} != 0) {\n`;
+          code += `      if (arena.stringPoolPtr != 0) {\n`;
+          if (prefixStr.length > 0) {
+            code += `        let __prefBuf_bwd_${idx}_${cIdx} = String.UTF8.encode(${JSON.stringify(prefixStr)});\n`;
+            code += `        let __prefId_bwd_${idx}_${cIdx} = stringPool_internUtf8(arena.stringPoolPtr, changetype<usize>(__prefBuf_bwd_${idx}_${cIdx}), __prefBuf_bwd_${idx}_${cIdx}.byteLength as u32);\n`;
+            code += `        __invId_bwd_${idx}_${cIdx} = stringPool_stripPrefixId(arena.stringPoolPtr, __invOut_bwd_${idx}_${cIdx}, __prefId_bwd_${idx}_${cIdx});\n`;
+          } else {
+            code += `        __invId_bwd_${idx}_${cIdx} = __invOut_bwd_${idx}_${cIdx};\n`;
+          }
+          code += `      } else {\n`;
+          code += `        __invId_bwd_${idx}_${cIdx} = __invOut_bwd_${idx}_${cIdx} ^ (${prefixHash} as u32);\n`;
+          code += `      }\n`;
+          code += `    }\n`;
           code += `    graph.model.setProperty<u32>(sourceNodeId, ${srcPropHash} as u32, __invId_bwd_${idx}_${cIdx});\n`;
           code += `  }\n`;
         } else {
@@ -836,19 +954,23 @@ export function compileTGGRules(
       }
     }
 
-    code += `  let corrSlot = corr.addLink(sourceNodeId, targetNodeId, ${idx}, CORR_FLAG_SYNCED, 0, parentSlot);\n`;
     if (compFields.length > 0) {
-      code += `  // Restore preserved shadow complement fiber from linear memory\n`;
+      code += `  // Read preserved shadow complement fiber before updating correspondence link\n`;
+      code += `  let __existingCompPtr: usize = 0;\n`;
       code += `  let targetSlotPlusOne = corr.targetToSlot.get(targetNodeId as u64);\n`;
       code += `  if (targetSlotPlusOne != 0) {\n`;
-      code += `    let compPtr = corr.getComplement((targetSlotPlusOne - 1) as u32);\n`;
-      code += `    if (compPtr != 0) {\n`;
+      code += `    __existingCompPtr = corr.getComplement((targetSlotPlusOne - 1) as u32);\n`;
+      code += `  }\n`;
+    }
+    code += `  let corrSlot = corr.addLink(sourceNodeId, targetNodeId, ${idx}, CORR_FLAG_SYNCED, 0, parentSlot);\n`;
+    if (compFields.length > 0) {
+      code += `  if (__existingCompPtr != 0) {\n`;
+      code += `    corr.setComplement(corrSlot, __existingCompPtr);\n`;
       for (let fIdx = 0; fIdx < compFields.length; fIdx++) {
-        code += `      let compHash_${fIdx} = load<u32>((compPtr as usize) + ${fIdx * 8});\n`;
-        code += `      let compVal_${fIdx} = load<u32>((compPtr as usize) + ${fIdx * 8 + 4});\n`;
-        code += `      graph.model.setProperty<u32>(sourceNodeId, compHash_${fIdx}, compVal_${fIdx});\n`;
+        code += `    let compHash_${fIdx} = load<u32>((__existingCompPtr as usize) + ${fIdx * 8});\n`;
+        code += `    let compVal_${fIdx} = load<u32>((__existingCompPtr as usize) + ${fIdx * 8 + 4});\n`;
+        code += `    graph.model.setProperty<u32>(sourceNodeId, compHash_${fIdx}, compVal_${fIdx});\n`;
       }
-      code += `    }\n`;
       code += `  }\n`;
     }
     code += `  return sourceNodeId;\n`;
@@ -876,7 +998,10 @@ export function compileTGGRules(
       : defaultTgtPropName;
     const recSrcPropHash = getDJB2Hash(recSrcPropName) as u32;
     const recTgtPropHash = getDJB2Hash(recTgtPropName) as u32;
-    const physBounds = recPhysConstraint?.args?.[2] || { min: 0, max: 1000 };
+    const physBounds = (recPhysConstraint?.args?.[2] as { min?: number; max?: number } | undefined) || {
+      min: 0,
+      max: 1000,
+    };
     const physMinStr = formatFloatLiteral(physBounds.min ?? 0);
     const physMaxStr = formatFloatLiteral(physBounds.max ?? 1000);
 
@@ -890,7 +1015,7 @@ export function compileTGGRules(
 
     // Incremental propagation
     code += `// --- Rule ${idx}: ${ruleName} (Incremental Propagate) ---\n`;
-    code += `export function tgg_propagate_${ruleName}(slot: u32, corr: CorrespondenceIndex): void {\n`;
+    code += `export function tgg_propagate_${ruleName}(slot: u32, corr: CorrespondenceIndex, stringPoolPtr: usize = 0): void {\n`;
     code += `  let sourceNodeId = corr.getSource(slot);\n`;
     code += `  let targetNodeId = corr.getTarget(slot);\n`;
     code += `  if (sourceNodeId == 0 || targetNodeId == 0) return;\n`;
@@ -987,9 +1112,23 @@ export function compileTGGRules(
         const tgtProp = findBoundProperty(tgtBindings, targetVar, "iri");
         const srcPropHash = getDJB2Hash(srcProp) as u32;
         const tgtPropHash = getDJB2Hash(tgtProp) as u32;
-        const prefixHash = prefix ? (getDJB2Hash(String(prefix)) as u32) : 0;
+        const prefixStr = prefix ? String(prefix) : "";
+        const prefixHash = prefixStr ? (getDJB2Hash(prefixStr) as u32) : 0;
         code += `    let __idVal_prop_${idx}_${cIdx} = graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32);\n`;
-        code += `    let __uriVal_prop_${idx}_${cIdx}: u32 = __idVal_prop_${idx}_${cIdx} != 0 ? (__idVal_prop_${idx}_${cIdx} ^ (${prefixHash} as u32)) : 0;\n`;
+        code += `    let __uriVal_prop_${idx}_${cIdx}: u32 = 0;\n`;
+        code += `    if (__idVal_prop_${idx}_${cIdx} != 0) {\n`;
+        code += `      if (stringPoolPtr != 0) {\n`;
+        if (prefixStr.length > 0) {
+          code += `        let __prefBuf_prop_${idx}_${cIdx} = String.UTF8.encode(${JSON.stringify(prefixStr)});\n`;
+          code += `        let __prefId_prop_${idx}_${cIdx} = stringPool_internUtf8(stringPoolPtr, changetype<usize>(__prefBuf_prop_${idx}_${cIdx}), __prefBuf_prop_${idx}_${cIdx}.byteLength as u32);\n`;
+          code += `        __uriVal_prop_${idx}_${cIdx} = stringPool_concatRawIds(stringPoolPtr, __prefId_prop_${idx}_${cIdx}, __idVal_prop_${idx}_${cIdx});\n`;
+        } else {
+          code += `        __uriVal_prop_${idx}_${cIdx} = __idVal_prop_${idx}_${cIdx};\n`;
+        }
+        code += `      } else {\n`;
+        code += `        __uriVal_prop_${idx}_${cIdx} = __idVal_prop_${idx}_${cIdx} ^ (${prefixHash} as u32);\n`;
+        code += `      }\n`;
+        code += `    }\n`;
         code += `    graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, __uriVal_prop_${idx}_${cIdx});\n`;
       } else if (c.kind === "compute") {
         const [targetVar, queryName, sourceVar] = c.args;
@@ -1015,9 +1154,23 @@ export function compileTGGRules(
           const prefixMatch = String(fwd || "")
             .trim()
             .match(/^"([^"]+)"/);
-          const prefixHash = prefixMatch ? (getDJB2Hash(prefixMatch[1]!) as u32) : 0;
+          const prefixStr = prefixMatch ? prefixMatch[1]! : "";
+          const prefixHash = prefixStr ? (getDJB2Hash(prefixStr) as u32) : 0;
           code += `    let __invId_prop_${idx}_${cIdx} = graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32);\n`;
-          code += `    let __invOut_prop_${idx}_${cIdx}: u32 = __invId_prop_${idx}_${cIdx} != 0 ? (__invId_prop_${idx}_${cIdx} ^ (${prefixHash} as u32)) : 0;\n`;
+          code += `    let __invOut_prop_${idx}_${cIdx}: u32 = 0;\n`;
+          code += `    if (__invId_prop_${idx}_${cIdx} != 0) {\n`;
+          code += `      if (stringPoolPtr != 0) {\n`;
+          if (prefixStr.length > 0) {
+            code += `        let __prefBuf_iprop_${idx}_${cIdx} = String.UTF8.encode(${JSON.stringify(prefixStr)});\n`;
+            code += `        let __prefId_iprop_${idx}_${cIdx} = stringPool_internUtf8(stringPoolPtr, changetype<usize>(__prefBuf_iprop_${idx}_${cIdx}), __prefBuf_iprop_${idx}_${cIdx}.byteLength as u32);\n`;
+            code += `        __invOut_prop_${idx}_${cIdx} = stringPool_concatRawIds(stringPoolPtr, __prefId_iprop_${idx}_${cIdx}, __invId_prop_${idx}_${cIdx});\n`;
+          } else {
+            code += `        __invOut_prop_${idx}_${cIdx} = __invId_prop_${idx}_${cIdx};\n`;
+          }
+          code += `      } else {\n`;
+          code += `        __invOut_prop_${idx}_${cIdx} = __invId_prop_${idx}_${cIdx} ^ (${prefixHash} as u32);\n`;
+          code += `      }\n`;
+          code += `    }\n`;
           code += `    graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, __invOut_prop_${idx}_${cIdx});\n`;
         } else {
           const srcVarIdent = `__invSrc_prop_${idx}_${cIdx}`;
@@ -1031,8 +1184,8 @@ export function compileTGGRules(
     }
     code += `  }\n`;
     code += `  \n`;
-    code += `  // Reset STALE flag\n`;
-    code += `  corr.addLink(sourceNodeId, targetNodeId, ${idx}, CORR_FLAG_SYNCED, 0);\n`;
+    code += `  // Reset STALE flag without overwriting complement/thread/parent metadata\n`;
+    code += `  corr.clearStale(slot);\n`;
     code += `}\n\n`;
   }
 
@@ -1122,13 +1275,23 @@ export function compileTGGRules(
   code += `export function tgg_retract_dispatch(sourceNodeTypeHash: u32, sourceNodeId: u32, corr: CorrespondenceIndex, arena: PolyglotArena): u32 {\n`;
   code += `  switch (sourceNodeTypeHash) {\n`;
   for (const [srcHash, group] of rulesBySourceHash.entries()) {
-    code += `    case ${srcHash}: return tgg_retract_${group[0]!.ruleName}(sourceNodeId, corr, arena);\n`;
+    if (group.length === 1) {
+      code += `    case ${srcHash}: return tgg_retract_${group[0]!.ruleName}(sourceNodeId, corr, arena);\n`;
+    } else {
+      code += `    case ${srcHash}: {\n`;
+      code += `      let retracted: u32 = 0;\n`;
+      for (const r of group) {
+        code += `      retracted += tgg_retract_${r.ruleName}(sourceNodeId, corr, arena);\n`;
+      }
+      code += `      return retracted;\n`;
+      code += `    }\n`;
+    }
   }
   code += `    default: return 0;\n`;
   code += `  }\n`;
   code += `}\n\n`;
 
-  code += `export function tgg_propagate_all_stale(corr: CorrespondenceIndex): u32 {\n`;
+  code += `export function tgg_propagate_all_stale(corr: CorrespondenceIndex, stringPoolPtr: usize = 0): u32 {\n`;
   code += `  let updatedCount: u32 = 0;\n`;
   code += `  for (let slot: u32 = 0; slot < corr.count; slot++) {\n`;
   code += `    if (corr.isStale(slot) && !corr.isRemoved(slot)) {\n`;
@@ -1136,7 +1299,7 @@ export function compileTGGRules(
   code += `      switch (ruleId) {\n`;
   for (let rIdx = 0; rIdx < activeRules.length; rIdx++) {
     const ruleName = activeRules[rIdx]!.ruleName;
-    code += `        case ${rIdx}: tgg_propagate_${ruleName}(slot, corr); updatedCount++; break;\n`;
+    code += `        case ${rIdx}: tgg_propagate_${ruleName}(slot, corr, stringPoolPtr); updatedCount++; break;\n`;
   }
   code += `        default: break;\n`;
   code += `      }\n`;
@@ -1155,18 +1318,25 @@ export function compileTGGRules(
   code += `      let ruleId = corr.getRule(slot);\n`;
   code += `      let srcPropHash: u32 = ${fallbackPropHash} as u32;\n`;
   code += `      let tgtPropHash: u32 = ${fallbackPropHash} as u32;\n`;
+  code += `      let hasPhysBounds: boolean = false;\n`;
+  code += `      let physMin: f64 = -1e308;\n`;
+  code += `      let physMax: f64 = 1e308;\n`;
   if (ruleReconcileMeta.length > 0) {
     code += `      switch (ruleId) {\n`;
     for (let rIdx = 0; rIdx < ruleReconcileMeta.length; rIdx++) {
       const rm = ruleReconcileMeta[rIdx]!;
-      code += `        case ${rIdx}: srcPropHash = ${rm.srcPropHash} as u32; tgtPropHash = ${rm.tgtPropHash} as u32; break;\n`;
+      if (rm.hasPhysBounds) {
+        code += `        case ${rIdx}: srcPropHash = ${rm.srcPropHash} as u32; tgtPropHash = ${rm.tgtPropHash} as u32; hasPhysBounds = true; physMin = ${rm.minStr}; physMax = ${rm.maxStr}; break;\n`;
+      } else {
+        code += `        case ${rIdx}: srcPropHash = ${rm.srcPropHash} as u32; tgtPropHash = ${rm.tgtPropHash} as u32; break;\n`;
+      }
     }
     code += `        default: break;\n`;
     code += `      }\n`;
   }
   code += `      let srcVal = sourceNodeId != 0 ? graph.model.getProperty<f64>(sourceNodeId, srcPropHash) : 0.0;\n`;
   code += `      let tgtVal = targetNodeId != 0 ? graph.model.getProperty<f64>(targetNodeId, tgtPropHash) : 0.0;\n`;
-  code += `      let recVal = tgg_reconcile_scalar(slot, srcVal, tgtVal, strategy, corr);\n`;
+  code += `      let recVal = hasPhysBounds ? tgg_reconcile_physics_simplex(slot, srcVal, tgtVal, physMin, physMax, corr) : tgg_reconcile_scalar(slot, srcVal, tgtVal, strategy, corr);\n`;
   code += `      if (!corr.isConflicted(slot)) {\n`;
   code += `        if (sourceNodeId != 0) graph.model.setProperty<f64>(sourceNodeId, srcPropHash, recVal);\n`;
   code += `        if (targetNodeId != 0) graph.model.setProperty<f64>(targetNodeId, tgtPropHash, recVal);\n`;
@@ -1177,11 +1347,48 @@ export function compileTGGRules(
   code += `  return resolvedCount;\n`;
   code += `}\n`;
 
+  const plan: CompiledTGGPlan = {
+    rules: activeRules.map((r) => ({
+      ruleName: r.ruleName,
+      sourceLang: r.sourceLang,
+      targetLang: r.targetLang,
+      sourceNodeType: r.sourceNodeType,
+      targetNodeType: r.targetNodeType,
+      sourceTypeId: getCollisionFreeNodeHash(r.sourceNodeType),
+      targetTypeId: getCollisionFreeNodeHash(r.targetNodeType),
+      sourceBindings: (r.evaluatedSource?.bindings as Record<string, unknown>) || {},
+      targetBindings: (r.evaluatedTarget?.bindings as Record<string, unknown>) || {},
+      constraints: r.constraints,
+      rule: r.rule,
+    })),
+    typeMaps: _typeMaps,
+    cpaReport,
+    losslessnessReport,
+  };
+
   return {
     sourceCode: code,
     ruleCount: activeRules.length,
     ruleNames,
+    plan,
     cpaReport,
     losslessnessReport,
   };
+}
+
+/**
+ * Builds the unified, CPA- and losslessness-validated CompiledTGGPlan IR
+ * shared by both the WASM compiler and the TypeScript host runtime.
+ */
+export function planTGGRules(
+  config: PolyglotConfig | TGGRuleOptions[],
+  options: {
+    sourceLang?: string | undefined;
+    targetLang?: string | undefined;
+    strictCpa?: boolean | undefined;
+    verifyLossless?: boolean | undefined;
+    syntaxTypes?: Map<string, number> | Record<string, number> | undefined;
+  } = {},
+): CompiledTGGPlan {
+  return compileTGGRules(config, options).plan!;
 }

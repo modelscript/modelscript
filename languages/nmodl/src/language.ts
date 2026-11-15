@@ -7,12 +7,14 @@ import { lintNmodl } from "./lints/nmodl-linter.js";
 import { parseNmodl } from "./parser/nmodl-parser.js";
 import { nmodlToModelica } from "./projections/nmodl-to-modelica.js";
 import { solveNmodlActionPotential } from "./solvers/nmodl-solver.js";
+import { nmodlPolyglotConfig } from "./tgg/index.js";
 import type { NmodlSimOptions } from "./types.js";
 
 /**
  * ModelScript NEURON NMODL (.mod) Language Definition.
  */
 export const nmodlLanguage = language({
+  polyglot: nmodlPolyglotConfig,
   name: "nmodl",
   fileExtensions: [".mod"],
   maturity: "beta",

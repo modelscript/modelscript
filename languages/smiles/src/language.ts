@@ -8,11 +8,13 @@ import { lintSmiles } from "./lints/index.js";
 import { parseSmilesDocument } from "./parser/smiles-parser.js";
 import { smilesToAspenDeck, smilesToModelica } from "./projections/smiles-to-modelica.js";
 import { solveMolecularProperties } from "./solvers/property-estimator.js";
+import { smilesPolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript Cheminformatics SMILES/SMARTS & MDL Molfile/SDF (.smi, .smarts, .mol, .sdf) Language Definition.
  */
 export const smilesLanguage = language({
+  polyglot: smilesPolyglotConfig,
   name: "smiles",
   fileExtensions: [".smi", ".smarts", ".mol", ".sdf"],
   maturity: "beta",

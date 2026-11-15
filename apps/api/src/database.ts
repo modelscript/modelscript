@@ -8125,6 +8125,8 @@ export class LibraryDatabase {
     let verifiedEntries = 0;
     let expectedPrevHash: string | null = null;
     let headHash: string | null = null;
+    const hasCustomSecret = auditSecret !== "msx-audit-chain-v1";
+    let seenCustomSecretEntry = false;
 
     for (const row of rows) {
       if (!row.entry_hash) {
@@ -8167,16 +8169,26 @@ export class LibraryDatabase {
         ].join("|"),
       ];
 
-      const hasCustomSecret = auditSecret !== "msx-audit-chain-v1";
+      let matchedCustomSecret = false;
       const matchesHash = candidatePayloads.some((payload) => {
         const hmac = crypto.createHmac("sha256", auditSecret).update(payload).digest("hex");
-        if (hmac === row.entry_hash) return true;
-        if (!hasCustomSecret) {
+        if (hmac === row.entry_hash) {
+          if (hasCustomSecret) matchedCustomSecret = true;
+          return true;
+        }
+        if (!seenCustomSecretEntry) {
+          if (hasCustomSecret) {
+            const defaultHmac = crypto.createHmac("sha256", "msx-audit-chain-v1").update(payload).digest("hex");
+            if (defaultHmac === row.entry_hash) return true;
+          }
           const sha = crypto.createHash("sha256").update(payload).digest("hex");
           return sha === row.entry_hash;
         }
         return false;
       });
+      if (matchedCustomSecret) {
+        seenCustomSecretEntry = true;
+      }
 
       const legacyPayload: string = [
         prevHash,
@@ -8188,7 +8200,7 @@ export class LibraryDatabase {
         row.details ?? "",
       ].join("|");
       const matchesLegacy =
-        !hasCustomSecret && crypto.createHash("sha256").update(legacyPayload).digest("hex") === row.entry_hash;
+        !seenCustomSecretEntry && crypto.createHash("sha256").update(legacyPayload).digest("hex") === row.entry_hash;
 
       if (!matchesHash && !matchesLegacy) {
         const brokenResult = {

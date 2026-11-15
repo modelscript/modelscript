@@ -236,7 +236,7 @@ export class ArenaSimulator {
     bytecode: Int32Array;
     litArray: Float64Array;
     hasSystemBlocks: boolean;
-    systemBlocks: any[];
+    systemBlocks: unknown[];
   } | null = null;
 
   /** Extracted when-clauses for event handling. */
@@ -688,7 +688,7 @@ export class ArenaSimulator {
       }
     }
 
-    const yResult = (totalStates > 10000 ? y_out : y_out.map((row: any) => Array.from(row))) as unknown as number[][];
+    const yResult = (totalStates > 10000 ? y_out : y_out.map((row) => Array.from(row))) as unknown as number[][];
 
     return {
       t: t_out,
@@ -903,7 +903,11 @@ export class ArenaSimulator {
    * reproduces the value the alias is equal to.
    */
   private resolveOutIds(ids: number[]): number[] {
-    const arena = this.arena as any;
+    const arena = this.arena as unknown as {
+      getAlias?: (v: number) => number;
+      lookupVariable: (id: number) => number | undefined;
+      isVarRemoved: (v: number) => boolean;
+    };
     if (typeof arena.getAlias !== "function") return ids;
     let out: number[] | null = null;
     for (let k = 0; k < ids.length; k++) {
@@ -3549,7 +3553,7 @@ export class ArenaSimulator {
         env: Float64Array,
         xTrial: Float64Array,
         R_out: Float64Array,
-        helpers: any,
+        helpers: Record<string, unknown>,
       ) => number;
       plan.compiledResiduals = (env: Float64Array, xTrial: Float64Array, R_out: Float64Array) =>
         rawResFn(env, xTrial, R_out, helpers);
@@ -4665,7 +4669,17 @@ export class ArenaSimulator {
         this.executionBlocks.length > 4000 ||
         (!hasAnySystemBlock &&
           (this.executionBlocks.length > 500 ||
-            (this.executionBlocks.length > 50 && typeof (arena as any).exports?.sim_evalFlatBytecode === "function")))
+            (this.executionBlocks.length > 50 &&
+              typeof (
+                arena as unknown as {
+                  exports?: {
+                    memory?: WebAssembly.Memory;
+                    atomicChunkAlloc?: (bytes: number) => number;
+                    sim_evalFlatBytecode?: (...args: number[]) => number;
+                    sim_runBytecodeSimulationLoop?: (...args: number[]) => number;
+                  };
+                }
+              ).exports?.sim_evalFlatBytecode === "function")))
       ) {
         const flatBc = this.compileFlatBytecode(helpers);
         if (flatBc) return flatBc;
@@ -4792,7 +4806,11 @@ export class ArenaSimulator {
       }
       const hasContinuousSideEffects =
         this.arena.algorithmSections.length > 0 ||
-        Boolean(this.fmuRegistry || this.fmuLoader || (this.arena.extensionMetadata as any)?.fmuInstances?.length);
+        Boolean(
+          this.fmuRegistry ||
+          this.fmuLoader ||
+          (this.arena.extensionMetadata as { fmuInstances?: unknown[] } | undefined)?.fmuInstances?.length,
+        );
       const envTokenRe = /\benv\[(\d+)\]/g;
 
       // Chunk into functions of at most 4,000 statements to stay within V8 JIT limits
@@ -4995,7 +5013,7 @@ export class ArenaSimulator {
     bytecode: Int32Array;
     litArray: Float64Array;
     hasSystemBlocks: boolean;
-    systemBlocks: Extract<import("@modelscript/runtime").ArenaExecutionBlock, { type: "system" }>[];
+    systemBlocks: unknown[];
   } | null {
     if (this._cachedFlatBytecode) return this._cachedFlatBytecode;
 
@@ -5118,7 +5136,16 @@ export class ArenaSimulator {
     let bcPtr = 0;
     let litPtr = 0;
 
-    const wasmExports = (arena as any).exports;
+    const wasmExports = (
+      arena as unknown as {
+        exports?: {
+          memory?: WebAssembly.Memory;
+          atomicChunkAlloc?: (bytes: number) => number;
+          sim_evalFlatBytecode?: (...args: number[]) => number;
+          sim_runBytecodeSimulationLoop?: (...args: number[]) => number;
+        };
+      }
+    ).exports;
     if (
       systemBlocks.length === 0 &&
       wasmExports &&
@@ -5153,12 +5180,21 @@ export class ArenaSimulator {
    * Compiles execution blocks into a flat linear bytecode plan for massive models (> 2,000 blocks),
    * bypassing V8 string code generation and `new Function` compilation overhead.
    */
-  private compileFlatBytecode(helpers: any): ((env: Float64Array) => void) | null {
+  private compileFlatBytecode(helpers: Record<string, unknown>): ((env: Float64Array) => void) | null {
     const flatBc = this.prepareFlatBytecode();
     if (!flatBc) return null;
 
     const arena = this.arena;
-    const wasmExports = (arena as any).exports;
+    const wasmExports = (
+      arena as unknown as {
+        exports?: {
+          memory?: WebAssembly.Memory;
+          atomicChunkAlloc?: (bytes: number) => number;
+          sim_evalFlatBytecode?: (...args: number[]) => number;
+          sim_runBytecodeSimulationLoop?: (...args: number[]) => number;
+        };
+      }
+    ).exports;
     const { bcPtr, bytecodeLen, litPtr, bytecode, litArray, hasSystemBlocks, systemBlocks } = flatBc;
 
     // Direct In-WASM Linear Bytecode Execution path
@@ -5187,7 +5223,7 @@ export class ArenaSimulator {
           needsCopyBack = true;
         }
 
-        wasmExports.sim_evalFlatBytecode(
+        wasmExports.sim_evalFlatBytecode?.(
           arena.ptr,
           bcPtr,
           bytecodeLen,
@@ -5266,14 +5302,19 @@ export class ArenaSimulator {
             // OP_EXPR
             const target = bytecode[ptr++] as number;
             const exprId = bytecode[ptr++] as number;
-            env[target] = helpers.evalExpr(exprId, env);
+            env[target] = (helpers["evalExpr"] as (exprId: number, env: Float64Array) => number)(exprId, env);
             break;
           }
           case 9: {
             // OP_SYSTEM
             const sysIdx = bytecode[ptr++] as number;
             const blk = systemBlocks[sysIdx];
-            if (blk) this.solveNewtonBlock(blk, env);
+            if (blk) {
+              this.solveNewtonBlock(
+                blk as Extract<import("@modelscript/runtime").ArenaExecutionBlock, { type: "system" }>,
+                env,
+              );
+            }
             break;
           }
           default:
@@ -5288,7 +5329,15 @@ export class ArenaSimulator {
    * using sim_runBytecodeSimulationLoop without host context-switching.
    */
   public canRunWasmSimulationLoop(): boolean {
-    const wasmExports = (this.arena as any).exports;
+    const wasmExports = (
+      this.arena as unknown as {
+        exports?: {
+          sim_runBytecodeSimulationLoop?: unknown;
+          atomicChunkAlloc?: unknown;
+          memory?: unknown;
+        };
+      }
+    ).exports;
     if (
       !wasmExports ||
       typeof wasmExports.sim_runBytecodeSimulationLoop !== "function" ||
@@ -5315,15 +5364,43 @@ export class ArenaSimulator {
     stateStringIds: number[],
     derivStringIds: number[],
     timeId: number,
-    options?: any,
+    options?: {
+      solver?: string | undefined;
+      atol?: number | undefined;
+      rtol?: number | undefined;
+      safetySpec?:
+        | {
+            invariants?: Array<{ expr: string }>;
+            guarantees?: Array<{ expr: string }>;
+            [key: string]: unknown;
+          }
+        | undefined;
+      safetyMode?: string | undefined;
+      intervalMode?: boolean | undefined;
+      outputStringIds?: number[] | undefined;
+    },
   ): {
     t: number[];
     y: Float64Array[];
     terminatedEarly: boolean;
-    safetyViolations: any[];
-    intervalIssues: any[];
+    safetyViolations: Array<{
+      t: number;
+      monitorName?: string | undefined;
+      robustness: number;
+      details?: string | undefined;
+    }>;
+    intervalIssues: string[];
   } {
-    const wasmExports = (this.arena as any).exports;
+    const wasmExports = (
+      this.arena as unknown as {
+        exports?: {
+          memory: WebAssembly.Memory;
+          atomicChunkAlloc: (bytes: number) => number;
+          atomicChunkFree: (ptr: number) => void;
+          sim_runBytecodeSimulationLoop: (...args: number[]) => number;
+        } & Record<string, unknown>;
+      }
+    ).exports!;
     const mem = wasmExports.memory as WebAssembly.Memory;
     const n = stateStringIds.length;
     const startTime = valuesByStringId[timeId] ?? 0;
@@ -6040,7 +6117,18 @@ export class ArenaSimulator {
         numberOfIntervals: steps,
         step,
         solver: options?.solver,
-      }) as any;
+      }) as unknown as {
+        t: number[];
+        y: Float64Array[];
+        terminatedEarly: boolean;
+        safetyViolations: Array<{
+          t: number;
+          monitorName?: string | undefined;
+          robustness: number;
+          details?: string | undefined;
+        }>;
+        intervalIssues: string[];
+      };
     }
     const solver = options?.solver ?? "rk4";
     const timeId = this.arena.interner.intern("time");
@@ -8021,7 +8109,16 @@ export function initializeArenaEnvironment(
   const startTime = options?.startTime ?? arena.experiment.startTime ?? 0;
   const envSize = Math.max(arena.interner.size + 256, 4096);
   let valuesByStringId: Float64Array;
-  const wasmExports = (arena as any).exports;
+  const wasmExports = (
+    arena as unknown as {
+      exports?: {
+        memory?: WebAssembly.Memory;
+        atomicChunkAlloc?: (bytes: number) => number;
+        sim_evalFlatBytecode?: (...args: number[]) => number;
+        sim_runBytecodeSimulationLoop?: (...args: number[]) => number;
+      };
+    }
+  ).exports;
   if (typeof wasmExports?.atomicChunkAlloc === "function" && wasmExports?.memory instanceof WebAssembly.Memory) {
     const ptr = wasmExports.atomicChunkAlloc(envSize * 8);
     valuesByStringId = new Float64Array(wasmExports.memory.buffer, ptr, envSize);
@@ -8457,7 +8554,7 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
 
   // ── Step 7: Transform to row-major output ──
   const t = rawResult.t;
-  const y: number[][] = (rawResult.y as any[]).map((row: any) => Array.from(row));
+  const y: number[][] = (rawResult.y as ArrayLike<number>[]).map((row) => Array.from(row));
 
   let outNames = stateNames;
   let outY = y;
@@ -8543,7 +8640,16 @@ export async function simulateArenaAsync(
 
   const envSize = Math.max(arena.interner.size + 256, 4096);
   let valuesByStringId: Float64Array;
-  const wasmExports = (arena as any).exports;
+  const wasmExports = (
+    arena as unknown as {
+      exports?: {
+        memory?: WebAssembly.Memory;
+        atomicChunkAlloc?: (bytes: number) => number;
+        sim_evalFlatBytecode?: (...args: number[]) => number;
+        sim_runBytecodeSimulationLoop?: (...args: number[]) => number;
+      };
+    }
+  ).exports;
   if (typeof wasmExports?.atomicChunkAlloc === "function" && wasmExports?.memory instanceof WebAssembly.Memory) {
     const ptr = wasmExports.atomicChunkAlloc(envSize * 8);
     valuesByStringId = new Float64Array(wasmExports.memory.buffer, ptr, envSize);

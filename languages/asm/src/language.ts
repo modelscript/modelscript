@@ -4,15 +4,17 @@
  * ModelScript IWA Activated Sludge Models (ASM) Language Definition.
  */
 
-import { language } from "@modelscript/dsl";
+import { cardDeckRules, language } from "@modelscript/dsl";
 import { evaluateTakacsClarifierDerivatives } from "./clarifier/takacs.js";
 import { lowerAsmToDae } from "./dae/asm-to-dae.js";
 import { indexAsmDocument } from "./indexing.js";
 import { lintAsmPlant } from "./lints/index.js";
 import { computeAsm1ConversionRates, evaluateAsm1ProcessRates } from "./models/asm1.js";
 import { parseAsmPlant } from "./parser/asm-parser.js";
+import { asmPolyglotConfig } from "./tgg/index.js";
 
 export const asmLanguage = language({
+  polyglot: asmPolyglotConfig,
   name: "asm",
   fileExtensions: [".asm", ".bsm", ".wrrf"],
   maturity: "beta",
@@ -105,4 +107,8 @@ export const asmLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
+
+export default asmLanguage;

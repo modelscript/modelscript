@@ -27,6 +27,7 @@
  * - Exports directly to self-contained Modelica surrogate blocks.
  */
 
+import { getDefaultWasmExports } from "@modelscript/runtime";
 import {
   generateCollocationPoints,
   generateMultiDimCollocationPoints,
@@ -457,8 +458,222 @@ export function forwardMultiDimPINN(
   return { u, du, d2u };
 }
 
+type PinnWasmExports = {
+  memory?: WebAssembly.Memory;
+  __new?: (size: number, id: number) => number;
+  __pin?: (ptr: number) => number;
+  __unpin?: (ptr: number) => void;
+  pinnJetForwardWasm?: (
+    nLayers: number,
+    actKind: number,
+    dirIdx: number,
+    totalNodes: number,
+    layerDimsPtr: number,
+    wPtr: number,
+    bPtr: number,
+    wOffsetsPtr: number,
+    bOffsetsPtr: number,
+    actOffsetsPtr: number,
+    cachePtr: number,
+    actScratchPtr: number,
+  ) => void;
+  pinnJetBackwardWasm?: (
+    nLayers: number,
+    totalNodes: number,
+    maxDim: number,
+    layerDimsPtr: number,
+    wPtr: number,
+    wOffsetsPtr: number,
+    bOffsetsPtr: number,
+    actOffsetsPtr: number,
+    cachePtr: number,
+    scratchPtr: number,
+    gradWPtr: number,
+    gradBPtr: number,
+  ) => void;
+};
+
+let pinnWasmScratch: { wasm: PinnWasmExports; ptr: number; capBytes: number } | null = null;
+
+interface WasmPinnSession {
+  forward: (coords: readonly number[], dirIdx: number, yOut: number[], dyOut: number[], d2yOut: number[]) => void;
+  backward: (barY: readonly number[], barDy: readonly number[], barD2y: readonly number[]) => void;
+  extractGradients: (gradW: number[][][], gradB: number[][]) => void;
+}
+
+function createWasmPinnSession(layers: readonly PINNLayer[], activation: PINNActivation): WasmPinnSession | null {
+  const nLayers = layers.length;
+  if (nLayers === 0) return null;
+  const wasm = getDefaultWasmExports() as PinnWasmExports | null;
+  if (
+    !wasm ||
+    typeof wasm.pinnJetForwardWasm !== "function" ||
+    typeof wasm.pinnJetBackwardWasm !== "function" ||
+    typeof wasm.__new !== "function" ||
+    !(wasm.memory instanceof WebAssembly.Memory)
+  ) {
+    return null;
+  }
+
+  const actKind = activation === "sin" ? 1 : activation === "gelu" ? 2 : 0;
+  const d0 = layers[0]!.W[0]?.length ?? 1;
+  const layerDims = new Int32Array(nLayers + 1);
+  const wOffsets = new Int32Array(nLayers);
+  const bOffsets = new Int32Array(nLayers);
+  const actOffsets = new Int32Array(nLayers + 1);
+
+  layerDims[0] = d0;
+  let totalW = 0;
+  let totalB = 0;
+  let totalNodes = d0;
+  let maxDim = d0;
+  for (let l = 0; l < nLayers; l++) {
+    const fanOut = layers[l]!.W.length;
+    const fanIn = layerDims[l]!;
+    layerDims[l + 1] = fanOut;
+    wOffsets[l] = totalW;
+    bOffsets[l] = totalB;
+    actOffsets[l + 1] = totalNodes;
+    totalW += fanOut * fanIn;
+    totalB += fanOut;
+    totalNodes += fanOut;
+    if (fanOut > maxDim) maxDim = fanOut;
+  }
+  const outDim = layerDims[nLayers]!;
+  const outOff = actOffsets[nLayers]!;
+
+  const i32Count = nLayers + 1 + nLayers + nLayers + (nLayers + 1);
+  const f64Count = totalW + totalB + totalW + totalB + 8 * totalNodes + 6 * maxDim + 4;
+  const totalBytes = i32Count * 4 + f64Count * 8 + 8;
+
+  if (!pinnWasmScratch || pinnWasmScratch.wasm !== wasm || pinnWasmScratch.capBytes < totalBytes) {
+    if (pinnWasmScratch && typeof wasm.__unpin === "function" && pinnWasmScratch.wasm === wasm) {
+      wasm.__unpin(pinnWasmScratch.ptr);
+    }
+    const capBytes = Math.max(totalBytes, 16384);
+    const ptr = wasm.__new(capBytes, 0);
+    if (typeof wasm.__pin === "function") wasm.__pin(ptr);
+    pinnWasmScratch = { wasm, ptr, capBytes };
+  }
+
+  // Align f64 base to 8 bytes
+  const basePtr = pinnWasmScratch.ptr;
+  const f64Base = (basePtr + i32Count * 4 + 7) & ~7;
+  const layerDimsPtr = basePtr;
+  const wOffsetsPtr = layerDimsPtr + (nLayers + 1) * 4;
+  const bOffsetsPtr = wOffsetsPtr + nLayers * 4;
+  const actOffsetsPtr = bOffsetsPtr + nLayers * 4;
+
+  const wPtr = f64Base;
+  const bPtr = wPtr + totalW * 8;
+  const gradWPtr = bPtr + totalB * 8;
+  const gradBPtr = gradWPtr + totalW * 8;
+  const cachePtr = gradBPtr + totalB * 8;
+  const scratchPtr = cachePtr + 8 * totalNodes * 8;
+  const actScratchPtr = scratchPtr + 6 * maxDim * 8;
+
+  const buf = wasm.memory.buffer;
+  new Int32Array(buf, layerDimsPtr, nLayers + 1).set(layerDims);
+  new Int32Array(buf, wOffsetsPtr, nLayers).set(wOffsets);
+  new Int32Array(buf, bOffsetsPtr, nLayers).set(bOffsets);
+  new Int32Array(buf, actOffsetsPtr, nLayers + 1).set(actOffsets);
+
+  const wView = new Float64Array(buf, wPtr, totalW);
+  const bView = new Float64Array(buf, bPtr, totalB);
+  for (let l = 0; l < nLayers; l++) {
+    const layer = layers[l]!;
+    const fanOut = layer.W.length;
+    const fanIn = layerDims[l]!;
+    let wIdx = wOffsets[l]!;
+    const bIdx = bOffsets[l]!;
+    for (let i = 0; i < fanOut; i++) {
+      bView[bIdx + i] = layer.b[i]!;
+      const row = layer.W[i]!;
+      for (let j = 0; j < fanIn; j++) {
+        wView[wIdx++] = row[j]!;
+      }
+    }
+  }
+  new Float64Array(buf, gradWPtr, totalW).fill(0.0);
+  new Float64Array(buf, gradBPtr, totalB).fill(0.0);
+
+  return {
+    forward(coords, dirIdx, yOut, dyOut, d2yOut) {
+      const mBuf = wasm.memory!.buffer;
+      const aView = new Float64Array(mBuf, cachePtr, d0);
+      for (let i = 0; i < d0; i++) aView[i] = coords[i]!;
+      wasm.pinnJetForwardWasm!(
+        nLayers,
+        actKind,
+        dirIdx,
+        totalNodes,
+        layerDimsPtr,
+        wPtr,
+        bPtr,
+        wOffsetsPtr,
+        bOffsetsPtr,
+        actOffsetsPtr,
+        cachePtr,
+        actScratchPtr,
+      );
+      const outBuf = wasm.memory!.buffer;
+      const yView = new Float64Array(outBuf, cachePtr + outOff * 8, outDim);
+      const dyView = new Float64Array(outBuf, cachePtr + (totalNodes + outOff) * 8, outDim);
+      const d2yView = new Float64Array(outBuf, cachePtr + (2 * totalNodes + outOff) * 8, outDim);
+      for (let i = 0; i < outDim; i++) {
+        yOut[i] = yView[i]!;
+        dyOut[i] = dyView[i]!;
+        d2yOut[i] = d2yView[i]!;
+      }
+    },
+    backward(barY, barDy, barD2y) {
+      const mBuf = wasm.memory!.buffer;
+      const bA = new Float64Array(mBuf, scratchPtr, outDim);
+      const bDa = new Float64Array(mBuf, scratchPtr + maxDim * 8, outDim);
+      const bD2a = new Float64Array(mBuf, scratchPtr + 2 * maxDim * 8, outDim);
+      for (let i = 0; i < outDim; i++) {
+        bA[i] = barY[i] ?? 0.0;
+        bDa[i] = barDy[i] ?? 0.0;
+        bD2a[i] = barD2y[i] ?? 0.0;
+      }
+      wasm.pinnJetBackwardWasm!(
+        nLayers,
+        totalNodes,
+        maxDim,
+        layerDimsPtr,
+        wPtr,
+        wOffsetsPtr,
+        bOffsetsPtr,
+        actOffsetsPtr,
+        cachePtr,
+        scratchPtr,
+        gradWPtr,
+        gradBPtr,
+      );
+    },
+    extractGradients(gradW, gradB) {
+      const mBuf = wasm.memory!.buffer;
+      const gwView = new Float64Array(mBuf, gradWPtr, totalW);
+      const gbView = new Float64Array(mBuf, gradBPtr, totalB);
+      for (let l = 0; l < nLayers; l++) {
+        const fanOut = layerDims[l + 1]!;
+        const fanIn = layerDims[l]!;
+        let wIdx = wOffsets[l]!;
+        const bIdx = bOffsets[l]!;
+        for (let i = 0; i < fanOut; i++) {
+          gradB[l]![i] = gbView[bIdx + i]!;
+          const gRow = gradW[l]![i]!;
+          for (let j = 0; j < fanIn; j++) {
+            gRow[j] = gwView[wIdx++]!;
+          }
+        }
+      }
+    },
+  };
+}
+
 /**
- * Computes the exact analytical loss and weight/bias gradients $(\nabla_W \mathcal{L}, \nabla_b \mathcal{L})$
+ * Computes total multi-objective PINN loss and exact analytical gradients $\nabla_W \mathcal{L}, \nabla_b \mathcal{L}$
  * for a 1D DAE PINN in a single forward-backward sweep per collocation point.
  */
 export function computeAnalyticalPINNGradients(
@@ -476,6 +691,11 @@ export function computeAnalyticalPINNGradients(
   const gradB: number[][] = layers.map((l) => new Array<number>(l.b.length).fill(0.0));
 
   const zeroVec = new Array<number>(stateDim).fill(0.0);
+  const wasmSession = createWasmPinnSession(layers, activation);
+  const yBuf = new Array<number>(stateDim);
+  const dyBuf = new Array<number>(stateDim);
+  const d2yBuf = new Array<number>(stateDim);
+  const coordBuf = [0.0];
 
   // 1. Initial conditions loss & exact gradients
   let icLoss = 0.0;
@@ -483,23 +703,39 @@ export function computeAnalyticalPINNGradients(
   const scaleIC = (2.0 * wIC) / nIC;
 
   for (const ic of config.initialConditions) {
-    const jet = forwardPINNJetWithCache([ic.t], 0, layers, activation);
+    let cache: LayerJetCache[] | null = null;
+    if (wasmSession) {
+      coordBuf[0] = ic.t;
+      wasmSession.forward(coordBuf, 0, yBuf, dyBuf, d2yBuf);
+    } else {
+      const jet = forwardPINNJetWithCache([ic.t], 0, layers, activation);
+      for (let i = 0; i < stateDim; i++) {
+        yBuf[i] = jet.y[i]!;
+        dyBuf[i] = jet.dy[i]!;
+      }
+      cache = jet.cache;
+    }
+
     const barY = new Array<number>(stateDim).fill(0.0);
     const barDy = new Array<number>(stateDim).fill(0.0);
 
     for (let i = 0; i < stateDim; i++) {
-      const errY = jet.y[i]! - ic.y[i]!;
+      const errY = yBuf[i]! - ic.y[i]!;
       icLoss += errY * errY;
       barY[i] = scaleIC * errY;
 
       if (ic.dy && ic.dy[i] !== undefined) {
-        const errDy = jet.dy[i]! - ic.dy[i]!;
+        const errDy = dyBuf[i]! - ic.dy[i]!;
         icLoss += errDy * errDy;
         barDy[i] = scaleIC * errDy;
       }
     }
 
-    backwardPINNJet(layers, jet.cache, barY, barDy, zeroVec, gradW, gradB);
+    if (wasmSession) {
+      wasmSession.backward(barY, barDy, zeroVec);
+    } else {
+      backwardPINNJet(layers, cache!, barY, barDy, zeroVec, gradW, gradB);
+    }
   }
   icLoss /= nIC;
 
@@ -511,8 +747,21 @@ export function computeAnalyticalPINNGradients(
 
   for (let k = 0; k < collocations.length; k++) {
     const t = collocations[k]!;
-    const jet = forwardPINNJetWithCache([t], 0, layers, activation);
-    const res0 = config.physicsResidual(t, jet.y, jet.dy, jet.d2y);
+    let cache: LayerJetCache[] | null = null;
+    if (wasmSession) {
+      coordBuf[0] = t;
+      wasmSession.forward(coordBuf, 0, yBuf, dyBuf, d2yBuf);
+    } else {
+      const jet = forwardPINNJetWithCache([t], 0, layers, activation);
+      for (let i = 0; i < stateDim; i++) {
+        yBuf[i] = jet.y[i]!;
+        dyBuf[i] = jet.dy[i]!;
+        d2yBuf[i] = jet.d2y[i]!;
+      }
+      cache = jet.cache;
+    }
+
+    const res0 = config.physicsResidual(t, yBuf, dyBuf, d2yBuf);
     const nR = res0.length;
 
     for (let r = 0; r < nR; r++) {
@@ -523,33 +772,33 @@ export function computeAnalyticalPINNGradients(
     const barDy = new Array<number>(stateDim).fill(0.0);
     const barD2y = new Array<number>(stateDim).fill(0.0);
 
-    const yPert = [...jet.y];
-    const dyPert = [...jet.dy];
-    const d2yPert = [...jet.d2y];
+    const yPert = [...yBuf];
+    const dyPert = [...dyBuf];
+    const d2yPert = [...d2yBuf];
 
     for (let i = 0; i < stateDim; i++) {
       // Sensitivity wrt y_i
       const origY = yPert[i]!;
       yPert[i] = origY + epsRes;
-      const rYp = config.physicsResidual(t, yPert, jet.dy, jet.d2y);
+      const rYp = config.physicsResidual(t, yPert, dyBuf, d2yBuf);
       yPert[i] = origY - epsRes;
-      const rYm = config.physicsResidual(t, yPert, jet.dy, jet.d2y);
+      const rYm = config.physicsResidual(t, yPert, dyBuf, d2yBuf);
       yPert[i] = origY;
 
       // Sensitivity wrt dy_i
       const origDy = dyPert[i]!;
       dyPert[i] = origDy + epsRes;
-      const rDyp = config.physicsResidual(t, jet.y, dyPert, jet.d2y);
+      const rDyp = config.physicsResidual(t, yBuf, dyPert, d2yBuf);
       dyPert[i] = origDy - epsRes;
-      const rDym = config.physicsResidual(t, jet.y, dyPert, jet.d2y);
+      const rDym = config.physicsResidual(t, yBuf, dyPert, d2yBuf);
       dyPert[i] = origDy;
 
       // Sensitivity wrt d2y_i
       const origD2y = d2yPert[i]!;
       d2yPert[i] = origD2y + epsRes;
-      const rD2yp = config.physicsResidual(t, jet.y, jet.dy, d2yPert);
+      const rD2yp = config.physicsResidual(t, yBuf, dyBuf, d2yPert);
       d2yPert[i] = origD2y - epsRes;
-      const rD2ym = config.physicsResidual(t, jet.y, jet.dy, d2yPert);
+      const rD2ym = config.physicsResidual(t, yBuf, dyBuf, d2yPert);
       d2yPert[i] = origD2y;
 
       let gY = 0.0;
@@ -568,7 +817,11 @@ export function computeAnalyticalPINNGradients(
       barD2y[i] = scalePhys * gD2y;
     }
 
-    backwardPINNJet(layers, jet.cache, barY, barDy, barD2y, gradW, gradB);
+    if (wasmSession) {
+      wasmSession.backward(barY, barDy, barD2y);
+    } else {
+      backwardPINNJet(layers, cache!, barY, barDy, barD2y, gradW, gradB);
+    }
   }
   physLoss /= nC;
 
@@ -578,16 +831,32 @@ export function computeAnalyticalPINNGradients(
     const nObs = config.observations.length;
     const scaleData = (2.0 * wData) / nObs;
     for (const obs of config.observations) {
-      const jet = forwardPINNJetWithCache([obs.t], 0, layers, activation);
+      let cache: LayerJetCache[] | null = null;
+      if (wasmSession) {
+        coordBuf[0] = obs.t;
+        wasmSession.forward(coordBuf, 0, yBuf, dyBuf, d2yBuf);
+      } else {
+        const jet = forwardPINNJetWithCache([obs.t], 0, layers, activation);
+        for (let i = 0; i < stateDim; i++) yBuf[i] = jet.y[i]!;
+        cache = jet.cache;
+      }
       const barY = new Array<number>(stateDim).fill(0.0);
       for (let i = 0; i < stateDim; i++) {
-        const err = jet.y[i]! - obs.y[i]!;
+        const err = yBuf[i]! - obs.y[i]!;
         dataLoss += err * err;
         barY[i] = scaleData * err;
       }
-      backwardPINNJet(layers, jet.cache, barY, zeroVec, zeroVec, gradW, gradB);
+      if (wasmSession) {
+        wasmSession.backward(barY, zeroVec, zeroVec);
+      } else {
+        backwardPINNJet(layers, cache!, barY, zeroVec, zeroVec, gradW, gradB);
+      }
     }
     dataLoss /= nObs;
+  }
+
+  if (wasmSession) {
+    wasmSession.extractGradients(gradW, gradB);
   }
 
   const total = wIC * icLoss + wPhys * physLoss + wData * dataLoss;
@@ -883,20 +1152,35 @@ export function trainPDEPINN(config: PDEPINNConfig): TrainedPDEPINN {
     adamStep++;
     const gradW: number[][][] = layers.map((l) => l.W.map((r) => new Array<number>(r.length).fill(0.0)));
     const gradB: number[][] = layers.map((l) => new Array<number>(l.b.length).fill(0.0));
+    const wasmSession = createWasmPinnSession(layers, activation);
+    const uTmp = new Array<number>(stateDim);
+    const duTmp = new Array<number>(stateDim);
+    const d2uTmp = new Array<number>(stateDim);
 
     // 1. Boundary & Initial Conditions
     let bcLoss = 0.0;
     const nBC = Math.max(1, config.boundaryConditions.length);
     const scaleBC = (2.0 * wBC) / nBC;
     for (const bc of config.boundaryConditions) {
-      const jet = forwardPINNJetWithCache(bc.coords, 0, layers, activation);
+      let cache: LayerJetCache[] | null = null;
+      if (wasmSession) {
+        wasmSession.forward(bc.coords, 0, uTmp, duTmp, d2uTmp);
+      } else {
+        const jet = forwardPINNJetWithCache(bc.coords, 0, layers, activation);
+        for (let i = 0; i < stateDim; i++) uTmp[i] = jet.y[i]!;
+        cache = jet.cache;
+      }
       const barU = new Array<number>(stateDim).fill(0.0);
       for (let i = 0; i < stateDim; i++) {
-        const err = jet.y[i]! - bc.u[i]!;
+        const err = uTmp[i]! - bc.u[i]!;
         bcLoss += err * err;
         barU[i] = scaleBC * err;
       }
-      backwardPINNJet(layers, jet.cache, barU, zeroVec, zeroVec, gradW, gradB);
+      if (wasmSession) {
+        wasmSession.backward(barU, zeroVec, zeroVec);
+      } else {
+        backwardPINNJet(layers, cache!, barU, zeroVec, zeroVec, gradW, gradB);
+      }
     }
     bcLoss /= nBC;
 
@@ -908,16 +1192,27 @@ export function trainPDEPINN(config: PDEPINNConfig): TrainedPDEPINN {
 
     for (let cIdx = 0; cIdx < collocations.length; cIdx++) {
       const pt = collocations[cIdx]!;
-      const jets = new Array<ReturnType<typeof forwardPINNJetWithCache>>(inputDim);
+      const jets = wasmSession ? null : new Array<ReturnType<typeof forwardPINNJetWithCache>>(inputDim);
       const du: number[][] = [];
       const d2u: number[][] = [];
+      let u: number[] = [];
       for (let d = 0; d < inputDim; d++) {
-        const j = forwardPINNJetWithCache(pt, d, layers, activation);
-        jets[d] = j;
-        du.push(j.dy);
-        d2u.push(j.d2y);
+        if (wasmSession) {
+          const yOut = d === 0 ? new Array<number>(stateDim) : uTmp;
+          const dyOut = new Array<number>(stateDim);
+          const d2yOut = new Array<number>(stateDim);
+          wasmSession.forward(pt, d, yOut, dyOut, d2yOut);
+          if (d === 0) u = yOut;
+          du.push(dyOut);
+          d2u.push(d2yOut);
+        } else {
+          const j = forwardPINNJetWithCache(pt, d, layers, activation);
+          jets![d] = j;
+          if (d === 0) u = j.y;
+          du.push(j.dy);
+          d2u.push(j.d2y);
+        }
       }
-      const u = jets[0]!.y;
       const res0 = config.pdeResidual(pt, u, du, d2u);
       const nR = res0.length;
       for (let r = 0; r < nR; r++) {
@@ -971,10 +1266,20 @@ export function trainPDEPINN(config: PDEPINNConfig): TrainedPDEPINN {
           barD2u[i] = scalePDE * gD2u;
         }
 
-        backwardPINNJet(layers, jets[d]!.cache, d === 0 ? barU : zeroVec, barDu, barD2u, gradW, gradB);
+        if (wasmSession) {
+          if (d !== inputDim - 1) {
+            wasmSession.forward(pt, d, uTmp, duTmp, d2uTmp);
+          }
+          wasmSession.backward(d === 0 ? barU : zeroVec, barDu, barD2u);
+        } else {
+          backwardPINNJet(layers, jets![d]!.cache, d === 0 ? barU : zeroVec, barDu, barD2u, gradW, gradB);
+        }
       }
     }
     pdeLoss /= nC;
+    if (wasmSession) {
+      wasmSession.extractGradients(gradW, gradB);
+    }
 
     const totalLoss = wBC * bcLoss + wPDE * pdeLoss;
     latestLoss = totalLoss;

@@ -61,13 +61,29 @@ export class DigiKeyConnector {
 
       if (!res.ok) return this.generateMockQuotes(mpn);
 
-      const data = (await res.json()) as any;
+      const data = (await res.json()) as {
+        Products?: Array<{
+          QuantityAvailable?: number;
+          StandardPricing?: Array<{ BreakQuantity?: number; UnitPrice?: number }>;
+          DigiKeyPartNumber?: string;
+          ManufacturerPartNumber?: string;
+          Manufacturer?: { Value?: string };
+          Packaging?: { Value?: string };
+          MinimumOrderQuantity?: number;
+          OrderMultiple?: number;
+          ManufacturerLeadWeeks?: number;
+          ProductUrl?: string;
+          DatasheetUrl?: string;
+          RoHSStatus?: { Value?: string };
+          ProductStatus?: { Value?: string };
+        }>;
+      };
       const products = data.Products ?? [];
       const quotes: DistributorQuote[] = [];
 
       for (const p of products) {
         const stock = p.QuantityAvailable ?? 0;
-        const priceBreaks = (p.StandardPricing ?? []).map((pb: any) => ({
+        const priceBreaks = (p.StandardPricing ?? []).map((pb) => ({
           quantity: pb.BreakQuantity ?? 1,
           unitPrice: pb.UnitPrice ?? 0,
         }));
@@ -123,8 +139,8 @@ export class DigiKeyConnector {
         }),
       });
       if (!res.ok) return null;
-      const data = (await res.json()) as any;
-      this.accessToken = data.access_token;
+      const data = (await res.json()) as { access_token?: string; expires_in?: number };
+      this.accessToken = data.access_token ?? null;
       this.tokenExpiresAt = Date.now() + (data.expires_in ?? 3600) * 1000;
       return this.accessToken;
     } catch {

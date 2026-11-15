@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { cardDeckRules, language, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerEclipseToDae } from "./dae/eclipse-to-dae.js";
 import { canIndexEclipse, indexEclipseDocument } from "./indexing.js";
 import { lintEclipse } from "./lints/index.js";
 import { parseEclipse } from "./parser/eclipse-parser.js";
 import { eclipseToModelica } from "./projections/eclipse-to-modelica.js";
 import { solveReservoirDepletion, type ReservoirSolverOptions } from "./solvers/reservoir-solver.js";
+import { eclipsePolyglotConfig } from "./tgg/index.js";
 
 /**
  * ModelScript Schlumberger ECLIPSE Reservoir (.data, .dat, .inc) Language Definition.
  */
 export const eclipseLanguage = language({
+  polyglot: eclipsePolyglotConfig,
   name: "eclipse",
   fileExtensions: [".data", ".dat", ".inc"],
   maturity: "experimental",
@@ -107,4 +109,8 @@ export const eclipseLanguage = language({
       },
     },
   ],
+  extras: () => [/[ \t\r\n]+/],
+  rules: cardDeckRules,
 });
+
+export default eclipseLanguage;

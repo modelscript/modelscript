@@ -2,6 +2,7 @@
 
 import {
   collectWorkspaceDocuments,
+  collectXmlElementsFromWasm,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
@@ -11,7 +12,7 @@ import { lintSedml } from "./index.js";
 
 /**
  * Performs multi-file SED-ML workspace linting across `.sedml`/`.omex` workspaces,
- * validating `<model source="..."/>` targets against workspace SBML/CellML files.
+ * validating `<model source="..."/>` targets via XML WASM CST against workspace SBML/CellML files.
  */
 export function lintSedmlWorkspace(workspace: WorkspaceDocumentInput, rootUri?: string): WorkspaceLintDiagnostic[] {
   const docs = collectWorkspaceDocuments(workspace);
@@ -21,7 +22,8 @@ export function lintSedmlWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
 
   for (const [uri, xml] of entries) {
     if (!/\.(?:sedml|xml)$/i.test(uri) && uri !== rootUri && entries.length > 1) continue;
-    if (!xml.includes("<sedML")) continue;
+    const elements = collectXmlElementsFromWasm(xml);
+    if (!elements.some((t) => t.tagName.toLowerCase() === "sedml")) continue;
 
     const doc = parseSedml(xml);
     for (const d of lintSedml(doc)) {
@@ -34,8 +36,9 @@ export function lintSedmlWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
       });
     }
 
-    for (const m of xml.matchAll(/<model\b[^>]*\bsource=["']([^"']+)["']/gi)) {
-      const src = m[1]?.trim();
+    for (const { tagName, attrs } of elements) {
+      if (tagName.toLowerCase() !== "model") continue;
+      const src = attrs["source"]?.trim();
       if (!src || src.startsWith("#") || /^https?:\/\//i.test(src)) continue;
       if (!resolveRelativeUri(uri, src, docs)) {
         diagnostics.push({

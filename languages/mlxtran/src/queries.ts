@@ -135,7 +135,7 @@ export function lint__mlxtranAll(db: QueryDB, entry: SymbolEntry): LintResult[] 
 /**
  * Query hooks dispatch table registered with WasmQueryEngine for rule `mlxtran_model`.
  */
-export const mlxtranQueryHooks: Record<string, Record<string, any>> = {
+export const mlxtranQueryHooks: Record<string, Record<string, (db: QueryDB, entry: SymbolEntry) => unknown>> = {
   mlxtran_model: {
     mlxtranDocument,
     lint__mlxtranLongitudinal,

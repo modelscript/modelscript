@@ -1,13 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createWasmParserSync } from "@modelscript/hec-ras/wasm-parser";
 import {
   collectWorkspaceDocuments,
+  groupCstLeavesByLine,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { createRequire } from "node:module";
 import { parseFlow, parseGeometry, parseHecRas } from "../parser/index.js";
 import { lintHecRas } from "./index.js";
+
+const require = createRequire(import.meta.url);
+let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
+function getHecRasWasmParser() {
+  if (!cachedParser) {
+    const wasmPath = require.resolve("@modelscript/hec-ras/parser.wasm");
+    cachedParser = createWasmParserSync(wasmPath).parser;
+  }
+  return cachedParser;
+}
 
 /**
  * Performs multi-file HEC-RAS workspace linting across `.prj` project files,
@@ -27,12 +40,19 @@ export function lintHecRasWorkspace(workspace: WorkspaceDocumentInput, rootUri?:
   let geomText: string | undefined;
   let flowText: string | undefined;
   let geomUri = entries[0]![0];
+  const parser = getHecRasWasmParser();
 
   for (const [uri, text] of entries) {
     const lower = uri.toLowerCase();
     if (lower.endsWith(".prj")) {
-      for (const m of text.matchAll(/^(?:Geom|Flow|Unsteady)\s+File\s*=\s*([^\r\n]+)/gim)) {
-        const ext = m[1]?.trim();
+      const tree = parser.parse(text);
+      for (const { tokens } of groupCstLeavesByLine(tree?.rootNode)) {
+        const joined = tokens
+          .map((t) => t.text)
+          .join("")
+          .trim();
+        const m = joined.match(/^(?:Geom|Flow|Unsteady)\s+File\s*=\s*([^\r\n]+)/i);
+        const ext = m?.[1]?.trim();
         if (!ext) continue;
         const candidate = ext.includes(".") ? ext : `${baseStem}.${ext}`;
         if (!resolveRelativeUri(uri, candidate, docs)) {

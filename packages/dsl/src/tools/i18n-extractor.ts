@@ -8,8 +8,8 @@ export interface I18nTextConfig {
 export interface I18nConfig {
   texts?: (string | I18nTextConfig)[] | undefined;
   traverse?: string[] | undefined;
-  scope?: ((self: any) => string | null) | undefined;
-  extract?: ((db: any, self: any) => any) | undefined;
+  scope?(self: TSNode): string | null;
+  extract?(db: unknown, self: TSNode): unknown;
 }
 
 export interface TSPoint {

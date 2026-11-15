@@ -23,12 +23,9 @@ export const urdfTggRules = [
     name: "UrdfRobotToModelicaModel",
     sourceLang: "urdf",
     targetLang: "modelica",
-    source: ($, v) => $.Robot({ name: v("robotName") }),
-    target: ($, v) => $.ModelDefinition({ name: v("robotName") }),
-    where: (v) => [
-      tggEq(v("robotName"), v("robotName")),
-      tggComplement(["materials"]),
-    ],
+    source: ($, v) => $["Robot"]?.({ name: v("robotName") }),
+    target: ($, v) => $["ModelDefinition"]?.({ name: v("robotName") }),
+    where: (v) => [tggEq(v("robotName"), v("robotName")), tggComplement(["materials"])],
   }),
 
   // 2. URDF Link Inertial <-> Modelica.Mechanics.MultiBody.Parts.Body
@@ -37,7 +34,7 @@ export const urdfTggRules = [
     sourceLang: "urdf",
     targetLang: "modelica",
     source: ($, v) =>
-      $.Link({
+      $["Link"]?.({
         name: v("linkName"),
         mass: v("m"),
         ixx: v("i11"),
@@ -45,7 +42,7 @@ export const urdfTggRules = [
         izz: v("i33"),
       }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("linkName"),
         typeSpecifier: "Parts.Body",
         m: v("m"),
@@ -77,13 +74,13 @@ export const urdfTggRules = [
     sourceLang: "urdf",
     targetLang: "modelica",
     source: ($, v) =>
-      $.Joint({
+      $["Joint"]?.({
         type: "revolute",
         name: v("jointName"),
         axis: v("axisVec"),
       }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("jointName"),
         typeSpecifier: "Joints.Revolute",
         n: v("axisVec"),
@@ -102,13 +99,13 @@ export const urdfTggRules = [
     sourceLang: "urdf",
     targetLang: "modelica",
     source: ($, v) =>
-      $.Joint({
+      $["Joint"]?.({
         type: "prismatic",
         name: v("jointName"),
         axis: v("axisVec"),
       }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("jointName"),
         typeSpecifier: "Joints.Prismatic",
         e: v("axisVec"),
@@ -127,19 +124,16 @@ export const urdfTggRules = [
     sourceLang: "urdf",
     targetLang: "modelica",
     source: ($, v) =>
-      $.Joint({
+      $["Joint"]?.({
         type: "fixed",
         name: v("jointName"),
       }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("jointName"),
         typeSpecifier: "Joints.Fixed",
       }),
-    where: (v) => [
-      tggEq(v("jointName"), v("jointName")),
-      tggComplement(["parentLink", "childLink", "origin"]),
-    ],
+    where: (v) => [tggEq(v("jointName"), v("jointName")), tggComplement(["parentLink", "childLink", "origin"])],
   }),
 
   // 6. URDF Parent/Child Joint Topology <-> MultiBody Frame Connect Equations
@@ -148,22 +142,18 @@ export const urdfTggRules = [
     sourceLang: "urdf",
     targetLang: "modelica",
     source: ($, v) =>
-      $.JointTopology({
+      $["JointTopology"]?.({
         parentLink: v("parent"),
         jointName: v("joint"),
         childLink: v("child"),
       }),
     target: ($, v) =>
-      $.ConnectChain({
+      $["ConnectChain"]?.({
         parentFrame: v("parent"),
         joint: v("joint"),
         childFrame: v("child"),
       }),
-    where: (v) => [
-      tggEq(v("parent"), v("parent")),
-      tggEq(v("joint"), v("joint")),
-      tggEq(v("child"), v("child")),
-    ],
+    where: (v) => [tggEq(v("parent"), v("parent")), tggEq(v("joint"), v("joint")), tggEq(v("child"), v("child"))],
   }),
 
   // 7. URDF Frame Origin Offset (<origin xyz="..."/>) <-> MultiBody Parts.FixedTranslation
@@ -172,12 +162,12 @@ export const urdfTggRules = [
     sourceLang: "urdf",
     targetLang: "modelica",
     source: ($, v) =>
-      $.Origin({
+      $["Origin"]?.({
         name: v("originName"),
         xyz: v("rVec"),
       }),
     target: ($, v) =>
-      $.ComponentDeclaration({
+      $["ComponentDeclaration"]?.({
         name: v("originName"),
         typeSpecifier: "Parts.FixedTranslation",
         r: v("rVec"),

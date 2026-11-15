@@ -18,7 +18,7 @@ import { transpileQuery } from "../transpiler/transpiler.js";
 /**
  * Transpiles a DSL callback function body into AssemblyScript source code using the TypeScript Compiler API.
  */
-function transpileCallback(fn: (...args: any[]) => any, paramNames: string[], fallbackExpr: string): string {
+function transpileCallback(fn: (...args: never[]) => unknown, paramNames: string[], fallbackExpr: string): string {
   try {
     const res = transpileQuery(fn, "dataflow");
     if (res && res.body) {
@@ -44,7 +44,7 @@ function transpileCallback(fn: (...args: any[]) => any, paramNames: string[], fa
   }
 }
 
-export function generateDataflow(grammarDef: LanguageOptions<any>): string {
+export function generateDataflow(grammarDef: LanguageOptions): string {
   if (!grammarDef.analysis) return "// Dataflow Analysis Disabled\n";
 
   let out = `
@@ -74,9 +74,14 @@ ${dataflowFrameworkCode}
       }
     }
 
-    let isBackward = (config as any).direction === "backward";
+    const analysisCfg = config as {
+      direction?: string;
+      join?: (...args: never[]) => unknown;
+      transfer?: (...args: never[]) => unknown;
+    };
+    let isBackward = analysisCfg.direction === "backward";
 
-    const joinFn = (config as any).join;
+    const joinFn = analysisCfg.join;
     let joinBody: string;
     if (joinFn && typeof joinFn === "function") {
       joinBody = transpileCallback(joinFn, ["state1", "state2"], "state1 > state2 ? state1 : state2");
@@ -91,7 +96,7 @@ export function dataflowJoin_${analysisName}(state1: u32, state2: u32): u32 {
 }
 `;
 
-    const transferFn = (config as any).transfer;
+    const transferFn = analysisCfg.transfer;
     if (transferFn && typeof transferFn === "function") {
       const transferBody = transpileCallback(transferFn, ["nodeId", "stateIn"], "stateIn");
       out += `

@@ -352,11 +352,11 @@ function resolveSymbolIdByName(
     queryEngine: {
       index: {
         byName: Map<string, number[]>;
-        symbols: Map<number, Record<string, unknown>>;
+        symbols: Map<number, object>;
       };
       toQueryDB: () => {
         childrenOf: (id: number) => { id?: number | undefined; name?: string | undefined }[] | undefined;
-        symbol: (id: number) => Record<string, unknown> | undefined;
+        symbol: (id: number) => object | undefined;
       };
     };
   },
@@ -398,26 +398,111 @@ interface CstNodeLike {
   children?: CstNodeLike[] | undefined;
 }
 
+interface AnnotationEvaluatorInstance {
+  evaluate: (node: CstNodeLike, name: string) => unknown;
+}
+
+type AnnotationEvaluatorConstructor = new (ctx?: unknown) => AnnotationEvaluatorInstance;
+
+interface ComponentAdapterLike {
+  id: number;
+  name: string;
+  typeName?: string | undefined;
+  entry: {
+    id?: number | undefined;
+    name?: string | undefined;
+    kind?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+  };
+  cstNode: CstNodeLike | null;
+  abstractSyntaxNode: CstNodeLike | null;
+  classInstance: ClassAdapterLike | null;
+  classKind: string;
+  modification: {
+    expression?: { text: string } | undefined;
+    getModificationArgument: (argName: string) => { expression?: { text: string } | undefined } | undefined;
+  };
+  parent?: ClassAdapterLike;
+  annotation?: ((key?: string | undefined, ...args: unknown[]) => unknown) | undefined;
+}
+
+interface ConnectEquationAdapterLike {
+  lhs: string;
+  rhs: string;
+  cstNode: CstNodeLike | null;
+  annotation: (name: string) => unknown;
+}
+
+interface ExtendsAdapterLike {
+  name: string;
+  classInstance: ClassAdapterLike | null;
+}
+
+interface ClassAdapterLike {
+  id: number;
+  db: unknown;
+  context: unknown;
+  cstNode: CstNodeLike | null;
+  abstractSyntaxNode: CstNodeLike | null;
+  isClassInstance: boolean;
+  name: string;
+  classKind: string;
+  entry: {
+    id?: number | undefined;
+    name?: string | undefined;
+    kind?: string | undefined;
+    metadata?: Record<string, unknown> | undefined;
+  };
+  components: ComponentAdapterLike[];
+  connectEquations: ConnectEquationAdapterLike[];
+  extendsClassInstances: ExtendsAdapterLike[];
+  resolveName?: (parts: string[]) => ComponentAdapterLike | null;
+  annotation?: ((key?: string | undefined, ...args: unknown[]) => unknown) | undefined;
+}
+
+interface QueryDBChildEntry {
+  id: number;
+  name: string;
+  kind?: string | undefined;
+  ruleName?: string | undefined;
+  typeName?: string | undefined;
+  metadata?: Record<string, unknown> | undefined;
+}
+
+interface QueryDBAdapterLike {
+  childrenOf: (id: number) => QueryDBChildEntry[] | undefined;
+  symbol: (id: number) =>
+    | {
+        id?: number | undefined;
+        name: string;
+        kind?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+      }
+    | undefined;
+  cstNode: (id: number) => unknown;
+  query: (name: string, id: number) => unknown;
+}
+
 function buildClassAdapter(
-  context: any,
+  context: Parameters<typeof resolveSymbolIdByName>[0],
   symbolId: number,
-  AnnotationEvaluatorClass: any,
+  AnnotationEvaluatorClass: AnnotationEvaluatorConstructor,
   visited = new Set<number>(),
-): any {
+): ClassAdapterLike | null {
   if (visited.has(symbolId)) return null;
   visited.add(symbolId);
 
-  const queryDB = context.queryEngine.toQueryDB();
+  const queryDB = context.queryEngine.toQueryDB() as unknown as QueryDBAdapterLike;
   const entry = queryDB.symbol(symbolId);
   if (!entry) return null;
   const cstNode = queryDB.cstNode(symbolId) as CstNodeLike | null;
   const children = queryDB.childrenOf(symbolId) || [];
 
-  const components: any[] = [];
+  const components: ComponentAdapterLike[] = [];
 
-  const connectEquations: any[] = [];
+  const connectEquations: ConnectEquationAdapterLike[] = [];
 
-  const extendsClassInstances: any[] = [];
+  const extendsClassInstances: ExtendsAdapterLike[] = [];
 
   for (const child of children) {
     if (child.kind === "Component" || child.kind === "Variable") {
@@ -525,7 +610,7 @@ function buildClassAdapter(
     }
   }
 
-  const adapter: any = {
+  const adapter: ClassAdapterLike = {
     id: symbolId,
     db: queryDB,
     context,
@@ -547,7 +632,7 @@ function buildClassAdapter(
     let found = components.find((c) => c.name === first);
     if (!found) {
       for (const ext of extendsClassInstances) {
-        found = ext.classInstance?.resolveName?.([first]);
+        found = ext.classInstance?.resolveName?.([first]) ?? undefined;
         if (found) break;
       }
     }
@@ -559,17 +644,18 @@ function buildClassAdapter(
   const evaluator = new AnnotationEvaluatorClass(adapter);
   for (const comp of components) {
     comp.parent = adapter;
-    const childCst = comp.cstNode ?? queryDB.cstNode(comp.id);
-    comp.annotation = (name: string) => (childCst ? evaluator.evaluate(childCst, name) : null);
+    const childCst = comp.cstNode ?? (queryDB.cstNode(comp.id) as CstNodeLike | null);
+    comp.annotation = (name?: string) => (childCst && name ? evaluator.evaluate(childCst, name) : null);
   }
 
-  adapter.annotation = (
-    name: string,
-    _ctx?: { classInstance?: unknown; modification?: unknown; cstNode?: unknown },
-  ) => {
-    if (!cstNode) return null;
-    if (_ctx && (_ctx.classInstance || _ctx.modification || _ctx.cstNode)) {
-      return new AnnotationEvaluatorClass({ componentInstance: _ctx, classInstance: adapter }).evaluate(cstNode, name);
+  adapter.annotation = (name?: string, _ctx?: unknown) => {
+    if (!cstNode || !name) return null;
+    const ctxObj = _ctx as { classInstance?: unknown; modification?: unknown; cstNode?: unknown } | undefined;
+    if (ctxObj && (ctxObj.classInstance || ctxObj.modification || ctxObj.cstNode)) {
+      return new AnnotationEvaluatorClass({ componentInstance: ctxObj, classInstance: adapter }).evaluate(
+        cstNode,
+        name,
+      );
     }
     return evaluator.evaluate(cstNode, name);
   };
@@ -577,18 +663,63 @@ function buildClassAdapter(
   return adapter;
 }
 
+interface DiagramPortLike {
+  id?: string | undefined;
+  markup?: unknown;
+  args?: { x?: number | undefined; y?: number | undefined; angle?: number | undefined } | undefined;
+}
+
+interface DiagramNodeLike {
+  id?: string | undefined;
+  x?: number | undefined;
+  y?: number | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  angle?: number | undefined;
+  opacity?: number | undefined;
+  label?: string | undefined;
+  name?: string | undefined;
+  markup?: unknown;
+  attrs?: { label?: { text?: string | undefined } | undefined } | undefined;
+  data?: object | undefined;
+  ports?: DiagramPortLike[] | { items?: DiagramPortLike[] | undefined } | undefined;
+}
+
+interface DiagramEdgeLike {
+  source?: { cell?: string | undefined; port?: string | undefined } | undefined;
+  target?: { cell?: string | undefined; port?: string | undefined } | undefined;
+  vertices?: { x: number; y: number }[] | undefined;
+  data?: { points?: { x: number; y: number }[] | undefined } | undefined;
+  attrs?:
+    | {
+        line?:
+          | {
+              stroke?: string | undefined;
+              strokeWidth?: number | undefined;
+              strokeDasharray?: string | number | undefined;
+            }
+          | undefined;
+      }
+    | undefined;
+}
+
 /**
  * Stage 1 Renderer: Renders a non-empty Modelica Diagram into a 800x450 SVG thumbnail.
  */
 export function renderModelicaDiagramThumbnailSvg(
-  diagData: any,
-
-  x6MarkupToSvg: (markup: any) => string,
+  diagData: {
+    nodes?: DiagramNodeLike[] | undefined;
+    edges?: DiagramEdgeLike[] | undefined;
+    solderDots?: Array<{ x: number; y: number; r?: number | undefined; color?: string | undefined }> | undefined;
+    diagramBackground?: unknown;
+    coordinateSystem?: { extent?: [[number, number], [number, number]] | undefined } | null | undefined;
+  },
+  x6MarkupToSvg: (markup: unknown) => string,
   className: string,
   classKind: string,
 ): string {
-  const nodes = Array.isArray(diagData?.nodes) ? diagData.nodes : [];
-  const edges = Array.isArray(diagData?.edges) ? diagData.edges : [];
+  const nodes: DiagramNodeLike[] = Array.isArray(diagData?.nodes) ? diagData.nodes : [];
+  const edges: DiagramEdgeLike[] = Array.isArray(diagData?.edges) ? diagData.edges : [];
   const solderDots = Array.isArray(diagData?.solderDots) ? diagData.solderDots : [];
 
   // Compute bounding box in diagram coordinate space
@@ -616,7 +747,7 @@ export function renderModelicaDiagramThumbnailSvg(
 
   // Helper to resolve port world coordinates
 
-  const resolvePortPoint = (node: any, px: number, py: number): { x: number; y: number } => {
+  const resolvePortPoint = (node: DiagramNodeLike, px: number, py: number): { x: number; y: number } => {
     const nx = Number(node?.x ?? 0);
     const ny = Number(node?.y ?? 0);
     const angleDeg = Number(node?.angle ?? 0);
@@ -641,15 +772,15 @@ export function renderModelicaDiagramThumbnailSvg(
     if (Array.isArray(edge?.data?.points) && edge.data.points.length >= 2) {
       pts = edge.data.points;
     } else {
-      const srcNode = nodes.find((n: any) => n.id === edge?.source?.cell);
+      const srcNode = nodes.find((n) => n.id === edge?.source?.cell);
 
-      const tgtNode = nodes.find((n: any) => n.id === edge?.target?.cell);
+      const tgtNode = nodes.find((n) => n.id === edge?.target?.cell);
       const srcPorts = Array.isArray(srcNode?.ports) ? srcNode.ports : srcNode?.ports?.items;
       const tgtPorts = Array.isArray(tgtNode?.ports) ? tgtNode.ports : tgtNode?.ports?.items;
 
-      const srcPort = srcPorts?.find((p: any) => p.id === edge?.source?.port);
+      const srcPort = srcPorts?.find((p) => p.id === edge?.source?.port);
 
-      const tgtPort = tgtPorts?.find((p: any) => p.id === edge?.target?.port);
+      const tgtPort = tgtPorts?.find((p) => p.id === edge?.target?.port);
 
       const p1 =
         srcNode && typeof srcPort?.args?.x === "number" && typeof srcPort?.args?.y === "number"
@@ -1289,10 +1420,18 @@ export async function preprocessModelicaArtifact(
         const hasDiagramEdges =
           (diagData.edges?.length ?? 0) > 0 &&
           (hasDiagramNodes ||
-            diagData.edges.some((e: any) => Array.isArray(e?.data?.points) && e.data.points.length >= 2));
+            diagData.edges.some(
+              (e: { data?: { points?: unknown[] | undefined } | undefined }) =>
+                Array.isArray(e?.data?.points) && e.data.points.length >= 2,
+            ));
 
         if (hasDiagramNodes || hasDiagramBg || hasDiagramEdges) {
-          const svg = renderModelicaDiagramThumbnailSvg(diagData, x6MarkupToSvg, className, classKind);
+          const svg = renderModelicaDiagramThumbnailSvg(
+            diagData,
+            (markup) => x6MarkupToSvg(markup as Parameters<typeof x6MarkupToSvg>[0]),
+            className,
+            classKind,
+          );
           const nodeCount = diagData.nodes?.length ?? 0;
           const connectionCount = diagData.edges?.length ?? 0;
           return {
@@ -1401,7 +1540,7 @@ export async function preprocessModelicaArtifact(
                     ? Math.min(1000, Math.max(50, Math.round((stopTime - startTime) / stepSize)))
                     : 300);
 
-                const simRes = simulateArena(arena as any, {
+                const simRes = simulateArena(arena as Parameters<typeof simulateArena>[0], {
                   startTime,
                   stopTime,
                   numberOfIntervals,

@@ -651,7 +651,12 @@ export const Install: CommandModule<{}, InstallArgs> = {
         const linkResult = defaultPackageStore.linkToWorkspace(storePackageDir, destDir);
 
         // Fetch pre-compiled salsa-index.db if provided by registry (and not offline)
-        if (installSourceType === "network" && !isOffline) {
+        const destIndexFile = path.join(destDir, ".modelscript", "salsa-index.db");
+        if (
+          (installSourceType === "network" || installSourceType === "store") &&
+          !isOffline &&
+          !existsSync(destIndexFile)
+        ) {
           const indexUrl = `${API_URL}/api/v1/libraries/${packagePath}/${encodeURIComponent(resolvedVersion)}/salsa-index.db`;
           try {
             const idxRes = await fetch(indexUrl, { headers });
@@ -660,10 +665,11 @@ export const Install: CommandModule<{}, InstallArgs> = {
               if (idxBuf.length > 0) {
                 const metaDir = path.join(destDir, ".modelscript");
                 mkdirSync(metaDir, { recursive: true });
-                writeFileSync(path.join(metaDir, "salsa-index.db"), idxBuf);
-                console.log(
-                  `✓ Cached pre-compiled Salsa index: ${path.relative(cwd, path.join(metaDir, "salsa-index.db"))}`,
-                );
+                writeFileSync(destIndexFile, idxBuf);
+                const storeMetaDir = path.join(storePackageDir, ".modelscript");
+                mkdirSync(storeMetaDir, { recursive: true });
+                writeFileSync(path.join(storeMetaDir, "salsa-index.db"), idxBuf);
+                console.log(`✓ Cached pre-compiled Salsa index: ${path.relative(cwd, destIndexFile)}`);
               }
             }
           } catch {

@@ -9,15 +9,13 @@ import {
   prec,
   repeat,
   seq,
-  tggComplement,
-  tggEq,
-  tggRule,
   type ActionExecutionContext,
   type QueryDB,
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/dsl";
 import { canIndexFea, indexFeaDocument } from "./indexing.js";
+import { feaPolyglotConfig } from "./tgg/index.js";
 import type { MaterializeOptions } from "./types.js";
 
 interface FeaActionContext extends ActionExecutionContext {
@@ -228,73 +226,7 @@ export const feaLanguage = language({
   ],
 
   // Triple Graph Grammar (TGG) rules synchronizing FEA keyword cards with SysML v2 and Modelica
-  polyglot: {
-    languages: ["sysml2", "modelica"],
-    rules: [
-      tggRule({
-        name: "FeaStressMassToModelicaParam",
-        sourceLang: "fea",
-        targetLang: "modelica",
-        priority: 15,
-        source: ($, v) => $.KeywordCard({ name: "MASS", parameter: v("massVal") }),
-        target: ($, v) => $.ComponentClause({ name: "m", defaultValue: v("massVal") }),
-        where: (v) => [tggEq(v("massVal"), v("massVal")), tggComplement(["elset", "material"])],
-      }),
-      tggRule({
-        name: "FeaStressMassToSysmlAttribute",
-        sourceLang: "fea",
-        targetLang: "sysml2",
-        priority: 15,
-        source: ($, v) => $.KeywordCard({ name: "MASS", parameter: v("massVal") }),
-        target: ($, v) => $.AttributeUsage({ declaredName: "totalMass", defaultValue: v("massVal") }),
-        where: (v) => [tggEq(v("massVal"), v("massVal")), tggComplement(["elset", "material"])],
-      }),
-      tggRule({
-        name: "FeaMaterialToSysmlAttribute",
-        sourceLang: "fea",
-        targetLang: "sysml2",
-        priority: 5,
-        source: ($, v) => $.KeywordCard({ name: "MATERIAL", parameter: v("modulus") }),
-        target: ($, v) => $.AttributeUsage({ declaredName: "material", defaultValue: v("modulus") }),
-        where: (v) => [tggEq(v("modulus"), v("modulus")), tggComplement(["nu", "rho", "yieldStrength"])],
-      }),
-      tggRule({
-        name: "FeaBoundaryFixToModelicaFixed",
-        sourceLang: "fea",
-        targetLang: "modelica",
-        priority: 10,
-        source: ($, v) => $.KeywordCard({ name: "BOUNDARY", parameter: v("nodeId") }),
-        target: ($, _v) =>
-          $.ComponentClause({
-            name: "fixedBoundary",
-            typeSpecifier: "Modelica.Mechanics.Translational.Components.Fixed",
-          }),
-        where: (_v) => [tggComplement(["nodeId", "dofs"])],
-      }),
-      tggRule({
-        name: "FeaSpringToModelicaSpring",
-        sourceLang: "fea",
-        targetLang: "modelica",
-        priority: 10,
-        source: ($, v) => $.KeywordCard({ name: "SPRING", parameter: v("stiffness") }),
-        target: ($, _v) =>
-          $.ComponentClause({
-            name: "springComponent",
-            typeSpecifier: "Modelica.Mechanics.Translational.Components.Spring",
-          }),
-        where: (_v) => [tggComplement(["stiffness", "damping"])],
-      }),
-      tggRule({
-        name: "FeaLoadCaseToSysmlRequirement",
-        sourceLang: "fea",
-        targetLang: "sysml2",
-        priority: 0,
-        source: ($, v) => $.KeywordCard({ name: "LOADCASE", parameter: v("limitVal") }),
-        target: ($, _v) => $.ConstraintUsage({ declaredName: "loadCase" }),
-        where: (_v) => [tggComplement(["limitVal", "loadSteps"])],
-      }),
-    ],
-  },
+  polyglot: feaPolyglotConfig,
 
   primitives: {
     lineComment: "**",

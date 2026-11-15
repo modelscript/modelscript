@@ -81,15 +81,19 @@ export class KubeRayDriver implements HpcDriver {
       }
       const res = await this.fetchFn(url, init);
       const text = await res.text();
-      let data: any = {};
+      let data: Record<string, unknown> = {};
       try {
-        data = text ? JSON.parse(text) : {};
+        data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
       } catch {
         data = { rawText: text };
       }
 
       if (!res.ok) {
-        throw new Error(data.message || data.error || `Ray Job API error: HTTP ${res.status} (${method} ${endpoint})`);
+        const errMsg =
+          (typeof data["message"] === "string" && data["message"]) ||
+          (typeof data["error"] === "string" && data["error"]) ||
+          `Ray Job API error: HTTP ${res.status} (${method} ${endpoint})`;
+        throw new Error(errMsg);
       }
 
       return { status: res.status, data: data as T };
