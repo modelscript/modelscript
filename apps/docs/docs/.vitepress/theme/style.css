@@ -44,15 +44,15 @@ body {
 
   /* Semantic tier tokens — shared across Format Strip, Language Explorer,
      Language Header, Capability Matrix, and Industry Pages. */
-  --ms-tier-stable: #059669;
-  --ms-tier-stable-bg: rgba(16, 185, 129, 0.12);
-  --ms-tier-stable-border: rgba(16, 185, 129, 0.34);
-  --ms-tier-beta: #4f46e5;
-  --ms-tier-beta-bg: rgba(99, 102, 241, 0.12);
-  --ms-tier-beta-border: rgba(99, 102, 241, 0.34);
-  --ms-tier-preview: #d97706;
-  --ms-tier-preview-bg: rgba(245, 158, 11, 0.12);
-  --ms-tier-preview-border: rgba(245, 158, 11, 0.34);
+  --ms-tier-beta: #059669;
+  --ms-tier-beta-bg: rgba(16, 185, 129, 0.12);
+  --ms-tier-beta-border: rgba(16, 185, 129, 0.34);
+  --ms-tier-alpha: #4f46e5;
+  --ms-tier-alpha-bg: rgba(99, 102, 241, 0.12);
+  --ms-tier-alpha-border: rgba(99, 102, 241, 0.34);
+  --ms-tier-pre-alpha: #d97706;
+  --ms-tier-pre-alpha-bg: rgba(245, 158, 11, 0.12);
+  --ms-tier-pre-alpha-border: rgba(245, 158, 11, 0.34);
 }
 
 .dark {
@@ -77,15 +77,15 @@ body {
   --sx-ink-soft: rgba(148, 163, 184, 0.09);
   --sx-label: #94a3b8;
 
-  --ms-tier-stable: #34d399;
-  --ms-tier-stable-bg: rgba(16, 185, 129, 0.15);
-  --ms-tier-stable-border: rgba(52, 211, 153, 0.38);
-  --ms-tier-beta: #818cf8;
-  --ms-tier-beta-bg: rgba(129, 140, 248, 0.15);
-  --ms-tier-beta-border: rgba(129, 140, 248, 0.38);
-  --ms-tier-preview: #fbbf24;
-  --ms-tier-preview-bg: rgba(251, 191, 36, 0.14);
-  --ms-tier-preview-border: rgba(251, 191, 36, 0.36);
+  --ms-tier-beta: #34d399;
+  --ms-tier-beta-bg: rgba(16, 185, 129, 0.15);
+  --ms-tier-beta-border: rgba(52, 211, 153, 0.38);
+  --ms-tier-alpha: #818cf8;
+  --ms-tier-alpha-bg: rgba(129, 140, 248, 0.15);
+  --ms-tier-alpha-border: rgba(129, 140, 248, 0.38);
+  --ms-tier-pre-alpha: #fbbf24;
+  --ms-tier-pre-alpha-bg: rgba(251, 191, 36, 0.14);
+  --ms-tier-pre-alpha-border: rgba(251, 191, 36, 0.36);
 }
 
 .VPNavBar:not(.home.top) .content-body,

@@ -54,6 +54,7 @@ export interface BusRecord {
   evhi?: number | undefined;
   evlo?: number | undefined;
   span?: SourceSpan | undefined;
+  fieldSpans?: SourceSpan[] | undefined;
 }
 
 /**
@@ -114,6 +115,7 @@ export interface GeneratorRecord {
   o1?: number | undefined;
   f1?: number | undefined;
   span?: SourceSpan | undefined;
+  fieldSpans?: SourceSpan[] | undefined;
 }
 
 /**
@@ -139,6 +141,7 @@ export interface BranchRecord {
   o1?: number | undefined;
   f1?: number | undefined;
   span?: SourceSpan | undefined;
+  fieldSpans?: SourceSpan[] | undefined;
 }
 
 /**

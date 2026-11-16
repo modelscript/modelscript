@@ -18,7 +18,7 @@
     "verify": "msx pscad verify-ieee2800 Microgrid_IBR.pscx"
   },
   "modelscript": {
-    "tier": "stable",
+    "tier": "beta",
     "category": "example"
   }
 }

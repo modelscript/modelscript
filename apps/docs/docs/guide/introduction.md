@@ -50,7 +50,7 @@ flowchart LR
 
 ## Core Pillars of ModelScript
 
-### 1. Code-First Engineering Across 92 Languages (26 Stable & 66 Beta)
+### 1. Code-First Engineering Across 92 Languages (26 Beta & 66 Alpha)
 
 Every model, schematic, requirement, netlist, and mesh configuration lives as clean text in Git. Engineers diff, review, merge, and gate physical hardware designs using standard pull requests, SARIF code scanning, and reproducible CI/CD pipelines.
 

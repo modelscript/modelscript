@@ -7,7 +7,7 @@
  * reactions, stoichiometry, and MathML / infix kinetic laws.
  */
 
-import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlElement } from "@modelscript/dsl/xml";
 import type {
   SbmlCompartment,
   SbmlDocument,
@@ -23,6 +23,7 @@ import type {
   SbmlSpecies,
   SbmlSpeciesReference,
 } from "../types.js";
+import { parseSbmlXmlDocument } from "./wasm-loader.js";
 
 function getAttr(elem: XmlElement, name: string): string | undefined {
   const a = elem.attributes.find((attr) => attr.name.toLowerCase() === name.toLowerCase());
@@ -185,8 +186,12 @@ function extractFormulaFromElement(elem: XmlElement): string {
   return elem.text?.trim() ?? "";
 }
 
-export function parseSbml(source: string, filename?: string): SbmlDocument {
-  const doc = parseXml(source);
+export function parseSbml(
+  source: string,
+  filename?: string,
+  options?: { cstTree?: { rootNode?: unknown } | null | undefined },
+): SbmlDocument {
+  const doc = parseSbmlXmlDocument(source, options?.cstTree);
   const root = doc.root;
 
   if (!root || (root.name.toLowerCase() !== "sbml" && root.name.toLowerCase() !== "model")) {

@@ -553,6 +553,19 @@ export class SpiceParser {
       }
 
       const component = this.parseComponent(tokens, pLine.text, span);
+      const tokenSpans: SpiceSourceSpan[] = [];
+      for (const m of pLine.text.matchAll(/\S+/g)) {
+        const idx = m.index ?? 0;
+        tokenSpans.push({
+          startLine: span.startLine,
+          startCol: idx + 1,
+          endLine: span.startLine,
+          endCol: idx + m[0].length + 1,
+          startOffset: span.startOffset + idx,
+          endOffset: span.startOffset + idx + m[0].length,
+        });
+      }
+      component.tokenSpans = tokenSpans;
       if (currentSubcircuit) {
         currentSubcircuit.components.push(component);
       } else {

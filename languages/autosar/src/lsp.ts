@@ -80,9 +80,13 @@ const DEFAULT_RANGE: LspRange = {
 /**
  * Validates an AUTOSAR document and produces LSP diagnostics.
  */
-export function validateAutosar(content: string, _uri: string = "model.arxml"): LspDiagnostic[] {
+export function validateAutosar(
+  content: string,
+  _uri: string = "model.arxml",
+  cstTree?: { rootNode?: unknown } | null,
+): LspDiagnostic[] {
   try {
-    const model = parseArxml(content);
+    const model = parseArxml(content, { cstTree });
     const rawDiags = lintAutosarModel(model);
 
     return rawDiags.map((d) => ({

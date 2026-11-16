@@ -4,6 +4,7 @@ import {
   collectWorkspaceDocuments,
   collectXmlElementsFromWasm,
   findIncludeCycle,
+  offsetSpanToRange,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
@@ -38,38 +39,57 @@ export function lintUrdfWorkspace(workspace: WorkspaceDocumentInput, rootUri?: s
         rule: "urdf-lint",
         severity: d.severity,
         message: d.message,
+        line: d.range?.startLine,
+        column: d.range?.startColumn,
+        endLine: d.range?.endLine,
+        endColumn: d.range?.endColumn,
+        range: d.range,
       });
     }
 
-    for (const { tagName, attrs } of collectXmlElementsFromWasm(text)) {
-      const lowerTag = tagName.toLowerCase();
+    for (const el of collectXmlElementsFromWasm(text)) {
+      const lowerTag = el.tagName.toLowerCase();
       if (lowerTag === "xacro:include") {
-        const rawFilename = attrs["filename"];
+        const rawFilename = el.attrs["filename"];
         const refPath = rawFilename?.replace(/^\$\(find\s+[^)]+\)\/?/i, "").trim();
         if (!refPath) continue;
         const resolved = resolveRelativeUri(uri, refPath, docs);
         if (!resolved) {
+          const span = el.attrSpans["filename"] ?? { start: el.start, end: el.openEnd };
+          const r = offsetSpanToRange(text, span.start, span.end);
           diagnostics.push({
             uri,
             code: "UR3001",
             rule: "unresolved-xacro-include",
             severity: "error",
             message: `Xacro include '${rawFilename}' was not found in the workspace.`,
+            line: r.startLine,
+            column: r.startColumn,
+            endLine: r.endLine,
+            endColumn: r.endColumn,
+            range: r,
           });
         } else {
           outEdges.push(resolved);
         }
       } else if (lowerTag === "mesh" || lowerTag === "texture") {
-        const rawFile = attrs["filename"]?.trim();
+        const rawFile = el.attrs["filename"]?.trim();
         if (!rawFile) continue;
         const stripped = rawFile.replace(/^package:\/\/[^/]+\//i, "").replace(/^file:\/\//i, "");
         if (!resolveRelativeUri(uri, stripped, docs)) {
+          const span = el.attrSpans["filename"] ?? { start: el.start, end: el.openEnd };
+          const r = offsetSpanToRange(text, span.start, span.end);
           diagnostics.push({
             uri,
             code: "UR3002",
             rule: "unresolved-urdf-asset",
             severity: "warning",
             message: `URDF asset '${rawFile}' was not found in the workspace.`,
+            line: r.startLine,
+            column: r.startColumn,
+            endLine: r.endLine,
+            endColumn: r.endColumn,
+            range: r,
           });
         }
       }

@@ -19,6 +19,18 @@ export interface WorkspaceLintDiagnostic {
   message: string;
   line?: number | undefined;
   column?: number | undefined;
+  endLine?: number | undefined;
+  endColumn?: number | undefined;
+  range?:
+    | {
+        startLine: number;
+        startColumn: number;
+        endLine: number;
+        endColumn: number;
+        startOffset?: number | undefined;
+        endOffset?: number | undefined;
+      }
+    | undefined;
 }
 
 /**
@@ -224,20 +236,85 @@ export function extractCstLeafNodes(root: CstNodeLike | null | undefined): CstNo
  * Parses `xmlText` using `@modelscript/dsl`'s compiled XML WASM GLR parser and
  * returns all elements with `{ tagName, attrs, text }`.
  */
-export function collectXmlElementsFromWasm(
-  xmlText: string,
-): Array<{ tagName: string; attrs: Record<string, string>; text: string }> {
+export interface XmlElementWithSpans {
+  tagName: string;
+  attrs: Record<string, string>;
+  text: string;
+  start: number;
+  end: number;
+  openEnd: number;
+  closeStart: number;
+  attrSpans: Record<string, { start: number; end: number }>;
+}
+
+/**
+ * Converts a `[startOffset, endOffset]` span in `text` to a 1-based line/column range.
+ */
+export function offsetSpanToRange(
+  text: string,
+  startOffset: number,
+  endOffset: number,
+): {
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  startOffset: number;
+  endOffset: number;
+} {
+  const clampedStart = Math.max(0, Math.min(startOffset, text.length));
+  const clampedEnd = Math.max(clampedStart, Math.min(endOffset, text.length));
+  let line = 1;
+  let lineStart = 0;
+  let startLine = 1;
+  let startColumn = 1;
+  for (let i = 0; i < clampedEnd; i++) {
+    if (i === clampedStart) {
+      startLine = line;
+      startColumn = i - lineStart + 1;
+    }
+    if (text.charCodeAt(i) === 10) {
+      line++;
+      lineStart = i + 1;
+    }
+  }
+  if (clampedStart === clampedEnd) {
+    startLine = line;
+    startColumn = clampedStart - lineStart + 1;
+  }
+  return {
+    startLine,
+    startColumn,
+    endLine: line,
+    endColumn: clampedEnd - lineStart + 1,
+    startOffset: clampedStart,
+    endOffset: clampedEnd,
+  };
+}
+
+export function collectXmlElementsFromWasm(xmlText: string): XmlElementWithSpans[] {
   const doc = xml.parseXml(xmlText);
   if (!doc.root) return [];
-  const out: Array<{ tagName: string; attrs: Record<string, string>; text: string }> = [];
+  const out: XmlElementWithSpans[] = [];
   const stack = [doc.root];
   while (stack.length > 0) {
     const el = stack.pop()!;
     const attrs: Record<string, string> = {};
+    const attrSpans: Record<string, { start: number; end: number }> = {};
     for (const a of el.attributes) {
       attrs[a.name] = a.value;
+      attrSpans[a.name] = { start: a.valueStart, end: a.valueEnd };
     }
-    out.push({ tagName: el.name, attrs, text: el.text });
+    out.push({
+      tagName: el.name,
+      attrs,
+      text: el.text,
+      start: el.start,
+      end: el.end,
+      openEnd: el.openEnd,
+      closeStart: el.closeStart,
+      attrSpans,
+    });
     for (let i = el.children.length - 1; i >= 0; i--) {
       stack.push(el.children[i]!);
     }

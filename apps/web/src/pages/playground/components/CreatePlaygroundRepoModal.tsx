@@ -79,7 +79,7 @@ export const CreatePlaygroundRepoModal: React.FC<CreatePlaygroundRepoModalProps>
             repoFullName,
             fileName,
             currentCode,
-            `Initial model commit for ${currentTitle} via Ansatz Morsel`,
+            `Initial model commit for ${currentTitle} via Morsel`,
             branch.trim() || "main",
             "local",
             user.username,

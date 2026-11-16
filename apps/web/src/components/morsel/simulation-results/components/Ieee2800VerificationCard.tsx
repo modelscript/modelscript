@@ -416,7 +416,7 @@ export const Ieee2800VerificationCard: React.FC<Ieee2800VerificationCardProps> =
           </ChartLegend>
         </ChartTitle>
         <div style={{ width: "100%", height: 160 }}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 600, height: 160 }}>
             <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#30363d" : "#e1e4e8"} />
               <XAxis dataKey="time" stroke={isDark ? "#8b949e" : "#57606a"} tick={{ fontSize: 10 }} unit="s" />

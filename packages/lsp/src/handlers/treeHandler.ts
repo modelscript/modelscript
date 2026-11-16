@@ -242,7 +242,10 @@ export function registerTreeHandlers(context: LspContext) {
       return existingCached || null;
     }
 
-    if (cleanName.startsWith("Modelica.") || cleanName === "Modelica" || iconCache.size === 0) {
+    const isNonModelicaUri =
+      Boolean(uri) && (uri!.startsWith("sysml2:") || /\.(sysml|sysml2|kerml|owl|ttl|rdf|reqif|step|stp)$/i.test(uri!));
+
+    if (!isNonModelicaUri && (cleanName.startsWith("Modelica.") || cleanName === "Modelica" || iconCache.size === 0)) {
       await loadPrebakedMslIcons((globalThis as any).serverDistBase ?? uri);
       const afterMsl = getCachedClassIcon(cleanName) ?? getCachedClassIcon(className);
       if (afterMsl !== undefined) {
@@ -264,6 +267,8 @@ export function registerTreeHandlers(context: LspContext) {
         symIds = unified.byName.get(leaf);
       }
       if (symIds && symIds.length > 0) {
+        let sawNonModelicaOnly = false;
+        let sawModelica = false;
         for (const id of symIds) {
           const entry = unified.symbols.get(id);
           if (entry?.metadata?.["iconSvg"]) {
@@ -272,18 +277,31 @@ export function registerTreeHandlers(context: LspContext) {
             iconCache.set(cleanName, svg);
             return svg;
           }
-          if (
-            entry?.language === "pscad" ||
-            entry?.metadata?.["language"] === "pscad" ||
-            entry?.ruleName?.startsWith("pscad")
-          ) {
+          const entryLang = String(entry?.language ?? entry?.metadata?.["language"] ?? "").toLowerCase();
+          if (entryLang === "pscad" || entry?.ruleName?.startsWith("pscad")) {
             // PSCAD project, case study, or library container
             iconCache.set(className, null);
             iconCache.set(cleanName, null);
             return null;
           }
+          if (entryLang && entryLang !== "modelica" && entryLang !== "modelscript") {
+            sawNonModelicaOnly = true;
+          } else if (entry) {
+            sawModelica = true;
+          }
+        }
+        if (sawNonModelicaOnly && !sawModelica) {
+          iconCache.set(className, null);
+          iconCache.set(cleanName, null);
+          return null;
         }
       }
+    }
+
+    if (isNonModelicaUri) {
+      iconCache.set(className, null);
+      iconCache.set(cleanName, null);
+      return null;
     }
 
     const getIconSvg = (globalThis as any).getClassIconSvg ?? (globalThis as any).modelicaDiagramOps?.getClassIconSvg;

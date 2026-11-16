@@ -94,6 +94,20 @@ export function parseInp(source: string, filename?: string): EpanetNetwork {
       startOffset: currentOffset,
       endOffset: currentOffset + rawLine.length,
     };
+    const commentIdx = rawLine.indexOf(";");
+    const codeSlice = commentIdx >= 0 ? rawLine.slice(0, commentIdx) : rawLine;
+    const fieldRanges: EpanetRange[] = [];
+    for (const m of codeSlice.matchAll(/\S+/g)) {
+      const idx = m.index ?? 0;
+      fieldRanges.push({
+        startLine: lineNum,
+        startColumn: idx + 1,
+        endLine: lineNum,
+        endColumn: idx + m[0].length + 1,
+        startOffset: currentOffset + idx,
+        endOffset: currentOffset + idx + m[0].length,
+      });
+    }
 
     switch (currentSection) {
       case "TITLE": {
@@ -116,6 +130,7 @@ export function parseInp(source: string, filename?: string): EpanetNetwork {
           demand,
           patternId,
           range,
+          fieldRanges,
         });
         break;
       }
@@ -129,6 +144,7 @@ export function parseInp(source: string, filename?: string): EpanetNetwork {
           totalHead: head,
           patternId,
           range,
+          fieldRanges,
         });
         break;
       }
@@ -152,6 +168,7 @@ export function parseInp(source: string, filename?: string): EpanetNetwork {
           minVol,
           volCurveId,
           range,
+          fieldRanges,
         });
         break;
       }
@@ -179,6 +196,7 @@ export function parseInp(source: string, filename?: string): EpanetNetwork {
           minorLoss,
           status,
           range,
+          fieldRanges,
         });
         break;
       }
@@ -208,6 +226,7 @@ export function parseInp(source: string, filename?: string): EpanetNetwork {
           power,
           status: "OPEN",
           range,
+          fieldRanges,
         });
         break;
       }
@@ -230,6 +249,7 @@ export function parseInp(source: string, filename?: string): EpanetNetwork {
           setting,
           minorLoss,
           range,
+          fieldRanges,
         });
         break;
       }

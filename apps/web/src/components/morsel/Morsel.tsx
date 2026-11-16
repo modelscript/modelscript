@@ -386,12 +386,12 @@ export default function MorselEditor(props: MorselEditorProps) {
       setSelectedComponent(name);
       props.onAnchorClick?.({ elementId: name, kind: "component" });
 
+      const isRichProps = (p: any): boolean =>
+        Boolean(p && (p.schema || p.values || (Array.isArray(p.parameters) && p.parameters.length > 0)));
       const isSameComponent = selectedComponentRef.current === name;
       const currentProps = selectedComponentPropertiesRef.current;
-      const hasRichProps = Boolean(
-        currentProps && (currentProps.schema || currentProps.parameters || currentProps.values),
-      );
-      const isSkeleton = Boolean(cachedProps && !cachedProps.schema && !cachedProps.parameters);
+      const hasRichProps = isRichProps(currentProps);
+      const isSkeleton = Boolean(cachedProps && !isRichProps(cachedProps));
 
       // Prevent skeleton downgrades from diagram re-renders when the same component is already loaded
       if (isSameComponent && hasRichProps && (cachedProps === undefined || isSkeleton)) {
@@ -417,8 +417,8 @@ export default function MorselEditor(props: MorselEditorProps) {
 
       if (cachedProps !== undefined && (!isSkeleton || !hasRichProps)) {
         setSelectedComponentProperties(cachedProps);
-        setIsPropertiesLoading(Boolean(isLoading));
-        if (!isLoading) return;
+        setIsPropertiesLoading(Boolean(isLoading) || isSkeleton);
+        if (!isLoading && !isSkeleton) return;
       } else if (!hasRichProps) {
         // Show lightweight properties immediately while full schema loads
         const initialProps = diagramData?.nodes?.find((n: any) => n.id === name)?.properties ?? null;
@@ -1553,10 +1553,11 @@ export default function MorselEditor(props: MorselEditorProps) {
   const isFloatingWorkspace =
     !isNarrow && !props.embed && Boolean(props.hideCenterFloatingToolbar || isPlaygroundRoute);
   const isFullScreenSplitCanvas = isFloatingWorkspace && isSplit(view) && !showResultsView && !showAnalysisView;
+  const isDiagnosticsFullWidth = isDiagnosticsExpanded || editorDiagnostics.length > 0;
   const diagnosticsBottomOffset =
-    !isNarrow && !props.embed
+    !isNarrow && !props.embed && isDiagnosticsFullWidth
       ? 12 + (isDiagnosticsExpanded ? diagnosticsPanelHeight : COLLAPSED_DIAGNOSTICS_HEIGHT) + 8
-      : 12;
+      : 16;
   const floatingCardShadow =
     colorMode === "dark"
       ? "0 12px 36px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.28)"
@@ -2062,6 +2063,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                     }}
                     onPaste={handleEditorPaste}
                     onDiagnostics={handleDiagnosticsChange}
+                    onSimulate={handleSimulate}
                     theme={colorMode === "dark" ? "vs-dark" : "light"}
                     externalErrors={
                       simulationStatus?.status === "failed" && simulationStatus.error ? [simulationStatus.error] : []

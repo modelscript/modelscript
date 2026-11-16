@@ -103,10 +103,14 @@ function toLspRange(r: ThreeMfSourceRange): LspRange {
   };
 }
 
-export function validateThreeMf(content: string, sourceUri?: string): LspDiagnostic[] {
+export function validateThreeMf(
+  content: string,
+  sourceUri?: string,
+  cstTree?: { rootNode?: unknown } | null,
+): LspDiagnostic[] {
   let doc: ThreeMfDocument;
   try {
-    doc = parseThreeMf(content, sourceUri);
+    doc = parseThreeMf(content, sourceUri, cstTree);
   } catch (err: unknown) {
     return [
       {

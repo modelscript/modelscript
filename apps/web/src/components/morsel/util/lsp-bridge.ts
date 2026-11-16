@@ -267,30 +267,35 @@ export async function simulate(uri: string, params: SimulateParams = {}): Promis
         documentText: opened.text,
         sources,
         durationSec: params.stopTime,
-        timeStepSec: params.stepSize,
+        timeStepSec: params.interval,
       }),
     });
-    const data = (await resp.json()) as any;
+    let data: any = null;
+    try {
+      data = await resp.json();
+    } catch {
+      data = null;
+    }
     if (!resp.ok) {
-      return { success: false, error: data?.error ?? `HTTP ${resp.status}` };
+      return { t: [], y: [], states: [], error: data?.error ?? `HTTP ${resp.status} ${resp.statusText}` };
     }
     const sim = data?.simulationResult;
     if (!sim) {
-      return { success: false, error: "No simulation result returned from PSCAD EMT backend." };
+      return { t: [], y: [], states: [], error: "No simulation result returned from PSCAD EMT backend." };
     }
-    const variables: string[] = [];
+    const states: string[] = [];
     const series: number[][] = [];
     for (const [bus, vals] of Object.entries(sim.busVoltages ?? {})) {
-      variables.push(`V_${bus}`);
+      states.push(`V_${bus}`);
       series.push(vals as number[]);
     }
     for (const [br, vals] of Object.entries(sim.branchCurrents ?? {})) {
-      variables.push(`I_${br}`);
+      states.push(`I_${br}`);
       series.push(vals as number[]);
     }
     const tArr: number[] = sim.time ?? [];
     const y: number[][] = tArr.map((_, idx) => series.map((col) => col[idx] ?? 0));
-    return { success: true, t: tArr, y, variables };
+    return { t: tArr, y, states };
   }
 
   const conn = await lsp();

@@ -288,7 +288,7 @@ export function validateSimpack(content: string): LspDiagnostic[] {
       ? findLineAndCol(content, identifier)
       : {
           start: { line: 0, character: 0 },
-          end: { line: 0, character: 10 },
+          end: { line: 0, character: 1 },
         };
     return {
       range,

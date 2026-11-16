@@ -232,7 +232,8 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         if (db.ast.getType(cls) == $.class_definition) {
           for (const sec of db.ast.getDescendants(cls, $.algorithm_section)) {
             if (sec != 0) {
-              db.diagnostic(node);
+              const extKw = db.ast.getFirstChild(node);
+              db.diagnostic(extKw != 0 ? extKw : node);
               return;
             }
           }
@@ -344,7 +345,9 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
             }
           }
         }
-        db.diagnostic(isOldFrontend ? outerWhen : node);
+        const targetWhen = isOldFrontend ? outerWhen : node;
+        const whenKw = db.ast.getFirstChild(targetWhen);
+        db.diagnostic(whenKw != 0 ? whenKw : targetWhen);
         return;
       }
     },
@@ -1932,7 +1935,8 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
             break;
           }
         }
-        db.diagnostic(firstEq != 0 ? firstEq : node);
+        const eqKw = db.ast.getFirstChild(node);
+        db.diagnostic(eqKw != 0 ? eqKw : firstEq != 0 ? firstEq : node);
       }
     },
   },
@@ -1956,7 +1960,8 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
             break;
           }
         }
-        db.diagnostic(firstStmt != 0 ? firstStmt : node);
+        const algKw = db.ast.getFirstChild(node);
+        db.diagnostic(algKw != 0 ? algKw : firstStmt != 0 ? firstStmt : node);
       }
     },
   },

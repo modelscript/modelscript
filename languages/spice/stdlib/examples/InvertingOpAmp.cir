@@ -1,0 +1,9 @@
+* Inverting Op-Amp Gain Stage (Gain = -10)
+VIN in 0 SIN(0 0.5 1k) AC 1.0
+RIN in inv 1k
+RF inv out 10k
+EAMP out 0 0 inv 100k
+RLOAD out 0 10k
+.tran 10u 3m
+.ac dec 20 10 100k
+.end

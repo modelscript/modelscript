@@ -39,7 +39,7 @@ export function createSspDiagramBackend(backends: DiagramDispatchDeps): DiagramB
   return {
     async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
       try {
-        const text = await readSsdSource(params.uri);
+        const text = params.documentText ?? (await readSsdSource(params.uri));
         if (!text) return null;
         const { buildSspDiagramData } = await import("@modelscript/ssp/diagram");
         return buildSspDiagramData(text) as unknown as DiagramData;

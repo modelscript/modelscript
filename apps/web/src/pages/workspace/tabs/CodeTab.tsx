@@ -875,7 +875,7 @@ git push -u origin ${defaultBranch}`}
                             `/morsel?dialect=${encodeURIComponent(dialect)}&title=${encodeURIComponent(title)}&code=${encodeURIComponent(fileContent)}`,
                           );
                         }}
-                        title="Simulate or inspect this model in interactive Ansatz Morsel"
+                        title="Simulate or inspect this model in interactive Morsel"
                       >
                         Open in Morsel
                       </Button>

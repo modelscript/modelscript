@@ -132,7 +132,10 @@ function spanToRange(span: SourceSpan | undefined, cstDoc: PsseCstDocument, extr
   const maxRow = cstDoc.lines[cstDoc.lines.length - 1]?.row ?? 0;
   const endLine = Math.min(maxRow, startLine + extraLines);
   const startCol = Math.max(0, span.column - 1);
-  const endCol = Math.max(startCol + 1, cstLineLength(cstDoc, endLine));
+  const endCol =
+    extraLines === 0 && span.endOffset > span.startOffset
+      ? startCol + (span.endOffset - span.startOffset)
+      : Math.max(startCol + 1, cstLineLength(cstDoc, endLine));
   return {
     start: { line: startLine, character: startCol },
     end: { line: endLine, character: endCol },

@@ -34,7 +34,7 @@ export interface GeneratedLanguageData {
   group: string;
   pkgName: string;
   version: string;
-  tier: "stable" | "beta" | "preview";
+  tier: "beta" | "alpha" | "pre-alpha";
   cliCommand: string | null;
   actions: string[];
   capabilities: {
@@ -55,7 +55,7 @@ export function generateLanguagesManifest(): GeneratedLanguageData[] {
 
     const pkgName = pkg?.name || `@modelscript/${lang.slug}`;
     const version = pkg?.version || "0.0.0";
-    const tier: "stable" | "beta" | "preview" = pkg?.modelscript?.tier || "preview";
+    const tier: "beta" | "alpha" | "pre-alpha" = pkg?.modelscript?.tier || "pre-alpha";
     const allDeps = { ...(pkg?.dependencies || {}), ...(pkg?.devDependencies || {}) };
 
     // Determine primary CLI command

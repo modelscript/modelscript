@@ -641,8 +641,12 @@ export function lintScadCst(
       for (let i = 0; i < val.length; i++) {
         const comp = val[i];
         if (typeof comp === "number" && (!Number.isFinite(comp) || comp <= 0)) {
+          const targetNode =
+            exprNode?.type === "VectorExpression" && typeof exprNode.namedChild === "function"
+              ? (exprNode.namedChild(i) ?? exprNode)
+              : exprNode;
           emit(
-            exprNode,
+            targetNode,
             "SCAD_INVALID_DIMENSION",
             "error",
             `Invalid non-positive dimension (${comp}) in '${primitiveName}' parameter '${paramLabel}[${i}]': dimensions must be > 0.`,

@@ -255,8 +255,23 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
 
   if (validComponents.length === 0) {
     return (
-      <div className="p-3 text-center color-fg-muted">
-        <em>{props.translations?.noComponents ?? "No components"}</em>
+      <div
+        className="p-3 text-center color-fg-muted"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 4,
+          padding: "14px 16px",
+          fontSize: 12,
+        }}
+      >
+        <span style={{ fontWeight: 500, color: "var(--fgColor-default, var(--ms-text-1))" }}>
+          {props.translations?.noComponents ?? "No schematic components"}
+        </span>
+        <span style={{ fontSize: 11, opacity: 0.78, lineHeight: 1.4 }}>
+          Drag from Libraries above or switch to Split view
+        </span>
       </div>
     );
   }

@@ -1,0 +1,10 @@
+* Second-Order Sallen-Key Low-Pass Filter (fc = 1 kHz)
+V1 in 0 SIN(0 1.0 1000) AC 1.0
+R1 in n1 10k
+R2 n1 out 10k
+C1 n1 out 15.9n
+C2 out 0 15.9n
+Rload out 0 100k
+.tran 10u 5m
+.ac dec 20 10 100k
+.end

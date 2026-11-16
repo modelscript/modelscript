@@ -10,7 +10,7 @@
  * `solref`, `solimp`), `<site>` frames, `<actuator>`, and `<sensor>` declarations.
  */
 
-import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlElement } from "@modelscript/dsl/xml";
 import type {
   MjcfActuatorSpec,
   MjcfContactParams,
@@ -29,6 +29,7 @@ import type {
   UrdfVisual,
   Vector3D,
 } from "../types.js";
+import { parseUrdfXmlDocument } from "./wasm-loader.js";
 
 function getAttr(el: XmlElement, name: string): string | undefined {
   const lower = name.toLowerCase();
@@ -287,6 +288,7 @@ export function isMjcfXml(xml: string): boolean {
 export interface MjcfParseOptions {
   /** Optional resolver for `<include file="..."/>` tags inside MJCF documents. */
   resolveInclude?: ((file: string) => string | undefined) | undefined;
+  cstTree?: { rootNode?: unknown } | null | undefined;
 }
 
 function expandMjcfIncludes(
@@ -302,7 +304,7 @@ function expandMjcfIncludes(
         seen.add(file);
         const incXml = resolveInclude(file);
         if (incXml) {
-          const { root: incRoot } = parseXml(incXml);
+          const { root: incRoot } = parseUrdfXmlDocument(incXml);
           if (incRoot) {
             out.push(...expandMjcfIncludes(incRoot.children, resolveInclude, seen));
           }
@@ -319,7 +321,7 @@ function expandMjcfIncludes(
  * Parses a MuJoCo MJCF XML document into an enriched `UrdfRobot` model.
  */
 export function parseMjcf(xml: string, options?: MjcfParseOptions): UrdfRobot {
-  const { root } = parseXml(xml);
+  const { root } = parseUrdfXmlDocument(xml, options?.cstTree);
   if (!root || root.name.toLowerCase() !== "mujoco") {
     throw new Error("Invalid MJCF XML: missing <mujoco> root element.");
   }

@@ -967,8 +967,9 @@ export function lintCsv(csvText: string, baseStartByte = 0): CsvDiagnostic[] {
           `Row ${r + 1} has ${row.cells.length} columns, expected ${numCols} to match header row.`,
         );
       } else {
+        const lastCell = row.cells[row.cells.length - 1];
         emit(
-          row.startOffset,
+          lastCell ? lastCell.endOffset : row.startOffset,
           row.endOffset,
           "CSV_COLUMN_COUNT_MISMATCH",
           "error",

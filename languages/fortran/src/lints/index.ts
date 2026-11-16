@@ -312,10 +312,10 @@ export function lintFortranSource(
           ...FortranErrorCode.DEAD_CODE_AFTER_RETURN,
           severity: FortranErrorCode.DEAD_CODE_AFTER_RETURN.severity,
           message: FortranErrorCode.DEAD_CODE_AFTER_RETURN.message(),
-          startOffset: lineStartOffset,
-          endOffset: lineStartOffset + rawLine.length,
+          startOffset: lineStartOffset + col - 1,
+          endOffset: lineStartOffset + col - 1 + trimmed.length,
           line: lineIdx + 1,
-          column: 1,
+          column: col,
           endLine: lineIdx + 1,
           endColumn: col + trimmed.length,
         });
@@ -732,6 +732,7 @@ export function lintFortranSource(
       if (commonBlocks.has(blockName)) {
         const existing = commonBlocks.get(blockName)!;
         if (existing.length !== vars.length) {
+          const col = rawLine.indexOf(trimmed) + 1;
           diagnostics.push({
             ...FortranErrorCode.COMMON_BLOCK_MISMATCH,
             severity: FortranErrorCode.COMMON_BLOCK_MISMATCH.severity,
@@ -739,12 +740,12 @@ export function lintFortranSource(
               blockName,
               `Length mismatch: previously declared with ${existing.length} elements, here with ${vars.length}`,
             ),
-            startOffset: lineStartOffset,
-            endOffset: lineStartOffset + rawLine.length,
+            startOffset: lineStartOffset + col - 1,
+            endOffset: lineStartOffset + col - 1 + trimmed.length,
             line: lineIdx + 1,
-            column: 1,
+            column: col,
             endLine: lineIdx + 1,
-            endColumn: rawLine.length + 1,
+            endColumn: col + trimmed.length,
           });
         }
       } else {
@@ -975,10 +976,10 @@ export function lintFortranSource(
         ...FortranErrorCode.OBSOLETE_ARITHMETIC_IF,
         severity: FortranErrorCode.OBSOLETE_ARITHMETIC_IF.severity,
         message: FortranErrorCode.OBSOLETE_ARITHMETIC_IF.message(),
-        startOffset: lineStartOffset,
-        endOffset: lineStartOffset + rawLine.length,
+        startOffset: lineStartOffset + col - 1,
+        endOffset: lineStartOffset + col - 1 + trimmed.length,
         line: lineIdx + 1,
-        column: 1,
+        column: col,
         endLine: lineIdx + 1,
         endColumn: col + trimmed.length,
       });
@@ -1055,47 +1056,56 @@ export function lintFortranSource(
   for (const unclosed of controlStack) {
     const lineIdx = unclosed.line - 1;
     const rawLine = lines[lineIdx] ?? "";
+    const trimmedLen = rawLine.trimEnd().length;
     const lineStartOffset = lineOffsets[lineIdx] ?? 0;
     diagnostics.push({
       ...FortranErrorCode.UNCLOSED_BLOCK,
       severity: FortranErrorCode.UNCLOSED_BLOCK.severity,
       message: FortranErrorCode.UNCLOSED_BLOCK.message(unclosed.kind),
       startOffset: lineStartOffset + unclosed.col - 1,
-      endOffset: lineStartOffset + rawLine.length,
+      endOffset: lineStartOffset + Math.max(unclosed.col, trimmedLen),
       line: unclosed.line,
       column: unclosed.col,
       endLine: unclosed.line,
-      endColumn: rawLine.length + 1,
+      endColumn: Math.max(unclosed.col + 1, trimmedLen + 1),
     });
   }
 
   for (const unclosedUnit of unitStack) {
     const lineIdx = unclosedUnit.line - 1;
     const rawLine = lines[lineIdx] ?? "";
+    const trimmedLen = rawLine.trimEnd().length;
     const lineStartOffset = lineOffsets[lineIdx] ?? 0;
     diagnostics.push({
       ...FortranErrorCode.UNCLOSED_BLOCK,
       severity: FortranErrorCode.UNCLOSED_BLOCK.severity,
       message: FortranErrorCode.UNCLOSED_BLOCK.message(`${unclosedUnit.kind} ${unclosedUnit.name}`),
       startOffset: lineStartOffset + unclosedUnit.col - 1,
-      endOffset: lineStartOffset + rawLine.length,
+      endOffset: lineStartOffset + Math.max(unclosedUnit.col, trimmedLen),
       line: unclosedUnit.line,
       column: unclosedUnit.col,
       endLine: unclosedUnit.line,
-      endColumn: rawLine.length + 1,
+      endColumn: Math.max(unclosedUnit.col + 1, trimmedLen + 1),
     });
   }
 
   // 11. Procedural Algebraic Loop Detection (M4076)
   // Check if variable A depends on B and B depends on A within procedural assignments
   const dependencies = new Map<string, Set<string>>();
-  for (const line of lines) {
-    const trimmed = line.trim();
+  const depLocations = new Map<string, { lineIdx: number; col0: number; len: number }>();
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const rawLine = lines[lineIdx]!;
+    const trimmed = rawLine.trim();
     const assignMatch = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(trimmed);
     if (assignMatch) {
-      const lhs = assignMatch[1]!.toUpperCase();
+      const lhsRaw = assignMatch[1]!;
+      const lhs = lhsRaw.toUpperCase();
       const rhs = assignMatch[2]!;
       if (!dependencies.has(lhs)) dependencies.set(lhs, new Set());
+      if (!depLocations.has(lhs)) {
+        const col0 = Math.max(0, rawLine.indexOf(trimmed));
+        depLocations.set(lhs, { lineIdx, col0, len: lhsRaw.length });
+      }
 
       const rhsIdRegex = /\b([A-Za-z_][A-Za-z0-9_]*)\b/g;
       let m: RegExpExecArray | null;
@@ -1113,16 +1123,21 @@ export function lintFortranSource(
       if (dependencies.has(varB) && dependencies.get(varB)!.has(varA)) {
         // Direct circular loop A -> B -> A
         if (varA < varB) {
+          const loc = depLocations.get(varA) ?? depLocations.get(varB);
+          const lineIdx = loc?.lineIdx ?? 0;
+          const col0 = loc?.col0 ?? 0;
+          const len = loc?.len ?? 1;
+          const lineStartOffset = lineOffsets[lineIdx] ?? 0;
           diagnostics.push({
             ...FortranErrorCode.PROCEDURAL_ALGEBRAIC_LOOP,
             severity: FortranErrorCode.PROCEDURAL_ALGEBRAIC_LOOP.severity,
             message: FortranErrorCode.PROCEDURAL_ALGEBRAIC_LOOP.message(`${varA} <-> ${varB}`),
-            startOffset: 0,
-            endOffset: Math.min(source.length, 10),
-            line: 1,
-            column: 1,
-            endLine: 1,
-            endColumn: 10,
+            startOffset: lineStartOffset + col0,
+            endOffset: lineStartOffset + col0 + len,
+            line: lineIdx + 1,
+            column: col0 + 1,
+            endLine: lineIdx + 1,
+            endColumn: col0 + 1 + len,
           });
         }
       }

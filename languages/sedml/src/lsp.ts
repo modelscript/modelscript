@@ -69,9 +69,9 @@ export interface LspHover {
   };
 }
 
-export function validateSedml(text: string): LspDiagnostic[] {
+export function validateSedml(text: string, cstTree?: { rootNode?: unknown } | null): LspDiagnostic[] {
   try {
-    const doc = parseSedml(text);
+    const doc = parseSedml(text, undefined, cstTree);
     const diags = lintSedml(doc);
 
     return diags.map((d) => {
@@ -101,7 +101,7 @@ export function validateSedml(text: string): LspDiagnostic[] {
       {
         range: {
           start: { line: 0, character: 0 },
-          end: { line: 0, character: 10 },
+          end: { line: 0, character: 1 },
         },
         severity: 1,
         code: "M9150",

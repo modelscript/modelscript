@@ -150,8 +150,8 @@ export interface LanguagePillarSummary {
   hasLspTests: boolean;
   testFileCount: number;
   testCaseCount: number;
-  auditedTier: "stable" | "beta" | "preview";
-  currentDeclaredTier: "stable" | "beta" | "preview";
+  auditedTier: "beta" | "alpha" | "pre-alpha";
+  currentDeclaredTier: "beta" | "alpha" | "pre-alpha";
   gaps: string[];
 }
 
@@ -159,7 +159,7 @@ export interface LanguageBenchmarkReport {
   slug: string;
   name: string;
   pkgName: string;
-  tier: "stable" | "beta" | "preview";
+  tier: "beta" | "alpha" | "pre-alpha";
   reproduceCommand: string;
   catalogIds: string[];
   scorecard: LanguagePillarSummary;
@@ -183,9 +183,9 @@ export interface PolyglotBenchmarkBaseline {
   provenance: BenchmarkProvenance;
   aggregate: {
     totalLanguages: number;
-    stableCount: number;
     betaCount: number;
-    previewCount: number;
+    alphaCount: number;
+    preAlphaCount: number;
     languagesWithAdapters: number;
     totalCases: number;
     passedCases: number;

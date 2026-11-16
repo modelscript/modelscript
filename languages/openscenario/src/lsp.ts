@@ -73,9 +73,9 @@ export interface LspHover {
   };
 }
 
-export function validateOpenScenario(text: string): LspDiagnostic[] {
+export function validateOpenScenario(text: string, cstTree?: { rootNode?: unknown } | null): LspDiagnostic[] {
   try {
-    const doc = parseOpenScenario(text);
+    const doc = parseOpenScenario(text, undefined, { cstTree });
     const diags = lintOpenScenario(doc);
 
     return diags.map((d) => {
@@ -105,7 +105,7 @@ export function validateOpenScenario(text: string): LspDiagnostic[] {
       {
         range: {
           start: { line: 0, character: 0 },
-          end: { line: 0, character: 10 },
+          end: { line: 0, character: 1 },
         },
         severity: 1,
         code: "M8500",

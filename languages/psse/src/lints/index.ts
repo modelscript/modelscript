@@ -67,7 +67,7 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
           PsseErrorCode.VOLTAGE_OUT_OF_BOUNDS.severity,
           PsseErrorCode.VOLTAGE_OUT_OF_BOUNDS.code,
           PsseErrorCode.VOLTAGE_OUT_OF_BOUNDS.message(b.i, b.vm),
-          b.span,
+          b.fieldSpans?.[7] ?? b.span,
         );
       }
       if (b.vm < 0.9 || b.vm > 1.1) {
@@ -75,7 +75,7 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
           PsseErrorCode.SUBSTATION_VOLTAGE_VIOLATION_NERC.severity,
           PsseErrorCode.SUBSTATION_VOLTAGE_VIOLATION_NERC.code,
           PsseErrorCode.SUBSTATION_VOLTAGE_VIOLATION_NERC.message(b.i, b.vm),
-          b.span,
+          b.fieldSpans?.[7] ?? b.span,
         );
       }
     }
@@ -113,7 +113,7 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
         PsseErrorCode.DUPLICATE_EQUIPMENT_ID.severity,
         PsseErrorCode.DUPLICATE_EQUIPMENT_ID.code,
         PsseErrorCode.DUPLICATE_EQUIPMENT_ID.message(g.id, g.i),
-        g.span,
+        g.fieldSpans?.[1] ?? g.span,
       );
     }
     genKeys.add(key);
@@ -124,7 +124,7 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
         PsseErrorCode.BUS_NOT_FOUND.severity,
         PsseErrorCode.BUS_NOT_FOUND.code,
         PsseErrorCode.BUS_NOT_FOUND.message("Generator", g.id, "", g.i),
-        g.span,
+        g.fieldSpans?.[0] ?? g.span,
       );
     } else if (g.stat === 1) {
       if (hostBus.ide === 4) {
@@ -132,14 +132,14 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
           PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.severity,
           PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.code,
           PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.message(g.i, `generator '${g.id}'`),
-          g.span,
+          g.fieldSpans?.[0] ?? g.span,
         );
       } else if (hostBus.ide === 1) {
         addDiag(
           PsseErrorCode.GENERATOR_ON_PQ_BUS.severity,
           PsseErrorCode.GENERATOR_ON_PQ_BUS.code,
           PsseErrorCode.GENERATOR_ON_PQ_BUS.message(g.id, g.i),
-          g.span,
+          g.fieldSpans?.[0] ?? g.span,
         );
       }
       onlineReactiveSourceBuses.add(g.i);
@@ -157,7 +157,7 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
         PsseErrorCode.GENERATOR_NEGATIVE_POWER.severity,
         PsseErrorCode.GENERATOR_NEGATIVE_POWER.code,
         PsseErrorCode.GENERATOR_NEGATIVE_POWER.message(g.id, g.i, g.pg),
-        g.span,
+        g.fieldSpans?.[2] ?? g.span,
       );
     }
 
@@ -166,7 +166,7 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
         PsseErrorCode.GENERATOR_REACTIVE_LIMITS_INVERTED.severity,
         PsseErrorCode.GENERATOR_REACTIVE_LIMITS_INVERTED.code,
         PsseErrorCode.GENERATOR_REACTIVE_LIMITS_INVERTED.message(g.id, g.i, g.qb, g.qt),
-        g.span,
+        g.fieldSpans?.[5] ?? g.span,
       );
     }
 

@@ -72,7 +72,7 @@ export function lintEpanet(net: EpanetNetwork): EpanetDiagnostic[] {
         code: EpanetErrorCode.DUPLICATE_NODE_ID.code,
         severity: EpanetErrorCode.DUPLICATE_NODE_ID.severity,
         message: EpanetErrorCode.DUPLICATE_NODE_ID.message(j.id),
-        range: j.range,
+        range: j.fieldRanges?.[0] ?? j.range,
       });
     } else {
       allNodeIds.add(key);
@@ -87,7 +87,7 @@ export function lintEpanet(net: EpanetNetwork): EpanetDiagnostic[] {
         code: EpanetErrorCode.DUPLICATE_NODE_ID.code,
         severity: EpanetErrorCode.DUPLICATE_NODE_ID.severity,
         message: EpanetErrorCode.DUPLICATE_NODE_ID.message(r.id),
-        range: r.range,
+        range: r.fieldRanges?.[0] ?? r.range,
       });
     } else {
       allNodeIds.add(key);
@@ -102,7 +102,7 @@ export function lintEpanet(net: EpanetNetwork): EpanetDiagnostic[] {
         code: EpanetErrorCode.DUPLICATE_NODE_ID.code,
         severity: EpanetErrorCode.DUPLICATE_NODE_ID.severity,
         message: EpanetErrorCode.DUPLICATE_NODE_ID.message(t.id),
-        range: t.range,
+        range: t.fieldRanges?.[0] ?? t.range,
       });
     } else {
       allNodeIds.add(key);
@@ -121,7 +121,7 @@ export function lintEpanet(net: EpanetNetwork): EpanetDiagnostic[] {
         code: EpanetErrorCode.DUPLICATE_LINK_ID.code,
         severity: EpanetErrorCode.DUPLICATE_LINK_ID.severity,
         message: EpanetErrorCode.DUPLICATE_LINK_ID.message(p.id),
-        range: p.range,
+        range: p.fieldRanges?.[0] ?? p.range,
       });
     } else {
       linkIds.add(key);
@@ -132,7 +132,7 @@ export function lintEpanet(net: EpanetNetwork): EpanetDiagnostic[] {
         code: EpanetErrorCode.ZERO_LENGTH_PIPE.code,
         severity: EpanetErrorCode.ZERO_LENGTH_PIPE.severity,
         message: EpanetErrorCode.ZERO_LENGTH_PIPE.message(p.id, p.length),
-        range: p.range,
+        range: p.fieldRanges?.[3] ?? p.range,
       });
     }
 
@@ -141,7 +141,7 @@ export function lintEpanet(net: EpanetNetwork): EpanetDiagnostic[] {
         code: EpanetErrorCode.ZERO_DIAMETER_PIPE.code,
         severity: EpanetErrorCode.ZERO_DIAMETER_PIPE.severity,
         message: EpanetErrorCode.ZERO_DIAMETER_PIPE.message(p.id, p.diameter),
-        range: p.range,
+        range: p.fieldRanges?.[4] ?? p.range,
       });
     }
 
@@ -150,7 +150,7 @@ export function lintEpanet(net: EpanetNetwork): EpanetDiagnostic[] {
         code: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.code,
         severity: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.severity,
         message: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.message(p.id, p.node1),
-        range: p.range,
+        range: p.fieldRanges?.[1] ?? p.range,
       });
     } else {
       connectedNodeIds.add(p.node1.toLowerCase());
@@ -161,7 +161,7 @@ export function lintEpanet(net: EpanetNetwork): EpanetDiagnostic[] {
         code: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.code,
         severity: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.severity,
         message: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.message(p.id, p.node2),
-        range: p.range,
+        range: p.fieldRanges?.[2] ?? p.range,
       });
     } else {
       connectedNodeIds.add(p.node2.toLowerCase());
@@ -175,7 +175,7 @@ export function lintEpanet(net: EpanetNetwork): EpanetDiagnostic[] {
         code: EpanetErrorCode.DUPLICATE_LINK_ID.code,
         severity: EpanetErrorCode.DUPLICATE_LINK_ID.severity,
         message: EpanetErrorCode.DUPLICATE_LINK_ID.message(pump.id),
-        range: pump.range,
+        range: pump.fieldRanges?.[0] ?? pump.range,
       });
     } else {
       linkIds.add(key);
@@ -186,7 +186,7 @@ export function lintEpanet(net: EpanetNetwork): EpanetDiagnostic[] {
         code: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.code,
         severity: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.severity,
         message: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.message(pump.id, pump.node1),
-        range: pump.range,
+        range: pump.fieldRanges?.[1] ?? pump.range,
       });
     } else {
       connectedNodeIds.add(pump.node1.toLowerCase());
@@ -197,7 +197,7 @@ export function lintEpanet(net: EpanetNetwork): EpanetDiagnostic[] {
         code: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.code,
         severity: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.severity,
         message: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.message(pump.id, pump.node2),
-        range: pump.range,
+        range: pump.fieldRanges?.[2] ?? pump.range,
       });
     } else {
       connectedNodeIds.add(pump.node2.toLowerCase());
@@ -211,7 +211,7 @@ export function lintEpanet(net: EpanetNetwork): EpanetDiagnostic[] {
         code: EpanetErrorCode.DUPLICATE_LINK_ID.code,
         severity: EpanetErrorCode.DUPLICATE_LINK_ID.severity,
         message: EpanetErrorCode.DUPLICATE_LINK_ID.message(v.id),
-        range: v.range,
+        range: v.fieldRanges?.[0] ?? v.range,
       });
     } else {
       linkIds.add(key);
@@ -222,7 +222,7 @@ export function lintEpanet(net: EpanetNetwork): EpanetDiagnostic[] {
         code: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.code,
         severity: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.severity,
         message: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.message(v.id, v.node1),
-        range: v.range,
+        range: v.fieldRanges?.[1] ?? v.range,
       });
     } else {
       connectedNodeIds.add(v.node1.toLowerCase());
@@ -233,7 +233,7 @@ export function lintEpanet(net: EpanetNetwork): EpanetDiagnostic[] {
         code: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.code,
         severity: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.severity,
         message: EpanetErrorCode.UNREFERENCED_NODE_IN_LINK.message(v.id, v.node2),
-        range: v.range,
+        range: v.fieldRanges?.[2] ?? v.range,
       });
     } else {
       connectedNodeIds.add(v.node2.toLowerCase());

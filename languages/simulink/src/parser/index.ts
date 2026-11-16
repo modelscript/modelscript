@@ -6,11 +6,16 @@ import { parseSlx } from "./slx-parser.js";
 
 export * from "./mdl-parser.js";
 export * from "./slx-parser.js";
+export * from "./wasm-loader.js";
 
 /**
  * Universal Simulink parser that auto-detects .slx (ZIP/XML) vs .mdl (ASCII) formats.
  */
-export function parseSimulink(input: string | Uint8Array | Buffer, filename?: string): SimulinkModel {
+export function parseSimulink(
+  input: string | Uint8Array | Buffer,
+  filename?: string,
+  cstTree?: { rootNode?: unknown } | null,
+): SimulinkModel {
   if (typeof input !== "string") {
     // Binary buffer -> SLX
     return parseSlx(input);
@@ -20,6 +25,12 @@ export function parseSimulink(input: string | Uint8Array | Buffer, filename?: st
   if (filename?.toLowerCase().endsWith(".slx") || input.startsWith("PK\x03\x04")) {
     const buffer = Buffer.from(input, "binary");
     return parseSlx(buffer);
+  }
+
+  // Raw SLX/BlockDiagram XML string
+  const trimmed = input.trimStart();
+  if (trimmed.startsWith("<")) {
+    return parseSlx(input, undefined, cstTree);
   }
 
   // ASCII .mdl character scanner

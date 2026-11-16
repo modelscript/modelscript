@@ -70,9 +70,9 @@ export interface LspHover {
   };
 }
 
-export function validateJsbsim(text: string): LspDiagnostic[] {
+export function validateJsbsim(text: string, cstTree?: { rootNode?: unknown } | null): LspDiagnostic[] {
   try {
-    const doc = parseJsbsim(text);
+    const doc = parseJsbsim(text, undefined, { cstTree });
     const diags = lintJsbsim(doc);
 
     return diags.map((d) => {
@@ -101,7 +101,7 @@ export function validateJsbsim(text: string): LspDiagnostic[] {
       {
         range: {
           start: { line: 0, character: 0 },
-          end: { line: 0, character: 10 },
+          end: { line: 0, character: 1 },
         },
         severity: 1,
         code: "M8900",

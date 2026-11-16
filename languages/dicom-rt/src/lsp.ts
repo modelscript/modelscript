@@ -114,10 +114,10 @@ function toLspRange(r: DicomRtSourceRange): LspRange {
   };
 }
 
-export function validateDicomRt(content: string): LspDiagnostic[] {
+export function validateDicomRt(content: string, cstTree?: { rootNode?: unknown } | null): LspDiagnostic[] {
   let doc: DicomRtDocument;
   try {
-    doc = parseDicomRt(content);
+    doc = parseDicomRt(content, undefined, { cstTree });
   } catch (err: unknown) {
     return [
       {

@@ -7,7 +7,7 @@
  * metrics, mass balance, inertia tensor, landing gear, propulsion, flight controls, and aerodynamics.
  */
 
-import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlElement } from "@modelscript/dsl/xml";
 import type {
   JsbsimAeroCoeff,
   JsbsimAeroExpr,
@@ -22,6 +22,7 @@ import type {
   JsbsimModel,
   JsbsimRange,
 } from "../types.js";
+import { parseJsbsimXmlDocument } from "./wasm-loader.js";
 
 function getAttr(elem: XmlElement, name: string): string | undefined {
   const a = elem.attributes.find((attr) => attr.name.toLowerCase() === name.toLowerCase());
@@ -99,8 +100,12 @@ function computeRange(source: string, elem: XmlElement): JsbsimRange {
   };
 }
 
-export function parseJsbsim(source: string, filename?: string): JsbsimDocument {
-  const doc = parseXml(source);
+export function parseJsbsim(
+  source: string,
+  filename?: string,
+  options?: { cstTree?: { rootNode?: unknown } | null | undefined },
+): JsbsimDocument {
+  const doc = parseJsbsimXmlDocument(source, options?.cstTree);
   const root = doc.root;
 
   if (!root || root.name.toLowerCase() !== "fdm_config") {

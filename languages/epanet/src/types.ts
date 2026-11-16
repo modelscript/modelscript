@@ -36,6 +36,7 @@ export interface EpanetJunction {
   demand: number; // Base demand flow rate
   patternId?: string | undefined;
   range: EpanetRange;
+  fieldRanges?: EpanetRange[] | undefined;
 }
 
 export interface EpanetReservoir {
@@ -43,6 +44,7 @@ export interface EpanetReservoir {
   totalHead: number; // Hydraulic head (elevation + pressure head)
   patternId?: string | undefined;
   range: EpanetRange;
+  fieldRanges?: EpanetRange[] | undefined;
 }
 
 export interface EpanetTank {
@@ -55,6 +57,7 @@ export interface EpanetTank {
   minVol: number;
   volCurveId?: string | undefined;
   range: EpanetRange;
+  fieldRanges?: EpanetRange[] | undefined;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,6 +74,7 @@ export interface EpanetPipe {
   minorLoss: number;
   status: "OPEN" | "CLOSED" | "CV";
   range: EpanetRange;
+  fieldRanges?: EpanetRange[] | undefined;
 }
 
 export interface EpanetPump {
@@ -82,6 +86,7 @@ export interface EpanetPump {
   speed?: number | undefined;
   status: "OPEN" | "CLOSED";
   range: EpanetRange;
+  fieldRanges?: EpanetRange[] | undefined;
 }
 
 export type EpanetValveType = "PRV" | "PSV" | "PBV" | "FCV" | "TCV" | "GPV";
@@ -95,6 +100,7 @@ export interface EpanetValve {
   setting: number;
   minorLoss: number;
   range: EpanetRange;
+  fieldRanges?: EpanetRange[] | undefined;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -32,7 +32,7 @@
     "src/**"
   ],
   "modelscript": {
-    "tier": "stable",
+    "tier": "beta",
     "category": "core"
   }
 }

@@ -59,6 +59,7 @@ export interface QifDatumDefinition {
   qpId?: string | undefined;
   label: string;
   featureId?: string | undefined;
+  featureIdRange?: QifSourceRange | undefined;
   datumReferences?: string[] | undefined;
   range: QifSourceRange;
 }
@@ -76,7 +77,9 @@ export interface QifFeature {
   location?: [number, number, number] | undefined;
   normal?: [number, number, number] | undefined;
   stepEntityId?: string | undefined;
+  stepEntityIdRange?: QifSourceRange | undefined;
   probingPoints?: number | undefined;
+  probingPointsRange?: QifSourceRange | undefined;
   range: QifSourceRange;
 }
 
@@ -84,6 +87,7 @@ export interface QifDatumRef {
   datumLabel: string;
   materialCondition?: QifMaterialCondition | undefined;
   precedence?: number | undefined;
+  range?: QifSourceRange | undefined;
 }
 
 export interface QifCompositeLowerTier {
@@ -100,6 +104,7 @@ export interface QifCharacteristic {
   gdtType: QifGdtType;
   nominalValue?: number | undefined;
   toleranceZone: number;
+  toleranceRange?: QifSourceRange | undefined;
   upperTolerance?: number | undefined;
   lowerTolerance?: number | undefined;
   isDiametrical?: boolean | undefined;
@@ -107,11 +112,13 @@ export interface QifCharacteristic {
   datumReferences: QifDatumRef[];
   compositeLowerTier?: QifCompositeLowerTier | undefined;
   featureIds: string[];
+  featureIdRanges?: QifSourceRange[] | undefined;
   deviceId?: string | undefined;
+  deviceIdRange?: QifSourceRange | undefined;
   spcSubgroupSize?: number | undefined;
+  spcSubgroupSizeRange?: QifSourceRange | undefined;
   range: QifSourceRange;
 }
-
 
 export type QifDeviceType = "CMM" | "LaserScanner" | "OpticalGauge" | "Caliper";
 
@@ -134,9 +141,13 @@ export interface QifPlanStep {
   id: string;
   stepNumber: number;
   featureId: string;
+  featureIdRange?: QifSourceRange | undefined;
   characteristicId?: string | undefined;
+  characteristicIdRange?: QifSourceRange | undefined;
   deviceId: string;
+  deviceIdRange?: QifSourceRange | undefined;
   probingPointCount: number;
+  probingPointCountRange?: QifSourceRange | undefined;
   range: QifSourceRange;
 }
 
@@ -145,8 +156,10 @@ export type QifActualStatus = "PASS" | "FAIL" | "REWORK";
 export interface QifCharacteristicActual {
   id: string;
   characteristicId: string;
+  characteristicIdRange?: QifSourceRange | undefined;
   partSerialNumber: string;
   measuredValue: number;
+  measuredValueRange?: QifSourceRange | undefined;
   actualFeatureSize?: number | undefined;
   deviationVector?: [number, number, number] | undefined;
   status: QifActualStatus;

@@ -45,15 +45,7 @@ export type AmplBinaryOp =
   | "symdiff"
   | "cross";
 
-export type AmplReductionKind =
-  | "sum"
-  | "prod"
-  | "min"
-  | "max"
-  | "forall"
-  | "exists"
-  | "count"
-  | "numberof";
+export type AmplReductionKind = "sum" | "prod" | "min" | "max" | "forall" | "exists" | "count" | "numberof";
 
 export interface AmplIterator {
   variables: string[];
@@ -71,12 +63,37 @@ export type AmplExpr =
   | { kind: "unary"; op: AmplUnaryOp; expr: AmplExpr; range?: SourceRange | undefined }
   | { kind: "binary"; op: AmplBinaryOp; left: AmplExpr; right: AmplExpr; range?: SourceRange | undefined }
   | { kind: "call"; fn: string; args: AmplExpr[]; range?: SourceRange | undefined }
-  | { kind: "reduction"; reduction: AmplReductionKind; iterators: AmplIterator[]; expr: AmplExpr; range?: SourceRange | undefined }
-  | { kind: "if_then_else"; condition: AmplExpr; thenExpr: AmplExpr; elseExpr: AmplExpr; range?: SourceRange | undefined }
-  | { kind: "piecewise"; breakpoints: AmplExpr[]; slopes: AmplExpr[]; argument: AmplExpr; zeroPoint?: AmplExpr | undefined; range?: SourceRange | undefined }
+  | {
+      kind: "reduction";
+      reduction: AmplReductionKind;
+      iterators: AmplIterator[];
+      expr: AmplExpr;
+      range?: SourceRange | undefined;
+    }
+  | {
+      kind: "if_then_else";
+      condition: AmplExpr;
+      thenExpr: AmplExpr;
+      elseExpr: AmplExpr;
+      range?: SourceRange | undefined;
+    }
+  | {
+      kind: "piecewise";
+      breakpoints: AmplExpr[];
+      slopes: AmplExpr[];
+      argument: AmplExpr;
+      zeroPoint?: AmplExpr | undefined;
+      range?: SourceRange | undefined;
+    }
   | { kind: "set_literal"; elements: AmplExpr[]; range?: SourceRange | undefined }
   | { kind: "range"; start: AmplExpr; end: AmplExpr; step?: AmplExpr | undefined; range?: SourceRange | undefined }
-  | { kind: "set_op"; op: "union" | "inter" | "diff" | "symdiff" | "cross"; left: AmplExpr; right: AmplExpr; range?: SourceRange | undefined };
+  | {
+      kind: "set_op";
+      op: "union" | "inter" | "diff" | "symdiff" | "cross";
+      left: AmplExpr;
+      right: AmplExpr;
+      range?: SourceRange | undefined;
+    };
 
 // ── Declarations AST ──
 
@@ -86,6 +103,7 @@ export interface AmplIndexing {
 
 export interface AmplSetDecl {
   name: string;
+  nameRange?: SourceRange | undefined;
   dimen: number;
   ordered?: boolean | undefined;
   circular?: boolean | undefined;
@@ -100,6 +118,7 @@ export type AmplParamType = "real" | "integer" | "binary" | "symbolic";
 
 export interface AmplParamDecl {
   name: string;
+  nameRange?: SourceRange | undefined;
   type: AmplParamType;
   indexing?: AmplIndexing | undefined;
   lowerBound?: AmplExpr | undefined;
@@ -125,6 +144,7 @@ export interface AmplVarColumnSpec {
 
 export interface AmplVarDecl {
   name: string;
+  nameRange?: SourceRange | undefined;
   type: AmplVarType;
   indexing?: AmplIndexing | undefined;
   lowerBound?: AmplExpr | undefined;
@@ -250,8 +270,20 @@ export type AmplStmt =
   | { kind: "include_cmd"; filePath: string; range?: SourceRange | undefined }
   | { kind: "option_cmd"; name: string; value: string | number; range?: SourceRange | undefined }
   | { kind: "solve_cmd"; range?: SourceRange | undefined }
-  | { kind: "let_cmd"; indexing?: AmplIndexing | undefined; target: AmplExpr; value: AmplExpr; range?: SourceRange | undefined }
-  | { kind: "fix_cmd"; indexing?: AmplIndexing | undefined; target: AmplExpr; value?: AmplExpr | undefined; range?: SourceRange | undefined }
+  | {
+      kind: "let_cmd";
+      indexing?: AmplIndexing | undefined;
+      target: AmplExpr;
+      value: AmplExpr;
+      range?: SourceRange | undefined;
+    }
+  | {
+      kind: "fix_cmd";
+      indexing?: AmplIndexing | undefined;
+      target: AmplExpr;
+      value?: AmplExpr | undefined;
+      range?: SourceRange | undefined;
+    }
   | { kind: "unfix_cmd"; indexing?: AmplIndexing | undefined; target: AmplExpr; range?: SourceRange | undefined }
   | { kind: "drop_cmd"; indexing?: AmplIndexing | undefined; target: AmplExpr; range?: SourceRange | undefined }
   | { kind: "restore_cmd"; indexing?: AmplIndexing | undefined; target: AmplExpr; range?: SourceRange | undefined }
@@ -261,10 +293,28 @@ export type AmplStmt =
   | { kind: "read_table_cmd"; name: string; range?: SourceRange | undefined }
   | { kind: "write_table_cmd"; name: string; range?: SourceRange | undefined }
   | { kind: "display_cmd"; indexing?: AmplIndexing | undefined; exprs: AmplExpr[]; range?: SourceRange | undefined }
-  | { kind: "printf_cmd"; indexing?: AmplIndexing | undefined; format: string; args: AmplExpr[]; range?: SourceRange | undefined }
+  | {
+      kind: "printf_cmd";
+      indexing?: AmplIndexing | undefined;
+      format: string;
+      args: AmplExpr[];
+      range?: SourceRange | undefined;
+    }
   | { kind: "for_cmd"; indexing: AmplIndexing; body: AmplStmt[]; range?: SourceRange | undefined }
-  | { kind: "repeat_cmd"; condition?: AmplExpr | undefined; isUntil?: boolean | undefined; body: AmplStmt[]; range?: SourceRange | undefined }
-  | { kind: "if_cmd"; condition: AmplExpr; thenBody: AmplStmt[]; elseBody?: AmplStmt[] | undefined; range?: SourceRange | undefined }
+  | {
+      kind: "repeat_cmd";
+      condition?: AmplExpr | undefined;
+      isUntil?: boolean | undefined;
+      body: AmplStmt[];
+      range?: SourceRange | undefined;
+    }
+  | {
+      kind: "if_cmd";
+      condition: AmplExpr;
+      thenBody: AmplStmt[];
+      elseBody?: AmplStmt[] | undefined;
+      range?: SourceRange | undefined;
+    }
   | { kind: "break_cmd"; range?: SourceRange | undefined }
   | { kind: "continue_cmd"; range?: SourceRange | undefined };
 
@@ -295,17 +345,7 @@ export interface AmplData {
 
 // ── Flat Instantiated Optimization Problem ──
 
-export type ProblemClass =
-  | "LP"
-  | "MILP"
-  | "QP"
-  | "MIQP"
-  | "QCP"
-  | "MIQCP"
-  | "SOCP"
-  | "MISOCP"
-  | "NLP"
-  | "MINLP";
+export type ProblemClass = "LP" | "MILP" | "QP" | "MIQP" | "QCP" | "MIQCP" | "SOCP" | "MISOCP" | "NLP" | "MINLP";
 
 export interface ConicConstraint {
   type: "SOC" | "RSOC"; // Standard second-order cone or Rotated second-order cone
@@ -335,7 +375,7 @@ export interface InstantiatedVar {
   initVal: number;
   fixed?: boolean | undefined;
   sosno?: number | undefined; // > 0 => SOS1 group, < 0 => SOS2 group
-  ref?: number | undefined;   // Reference weight in SOS group
+  ref?: number | undefined; // Reference weight in SOS group
   definedExpr?: FlatExpression | undefined;
   customSuffixes?: Map<string, number | string> | undefined;
 }
@@ -359,11 +399,13 @@ export interface InstantiatedConstraint {
   lb: number; // lower bound on expr
   ub: number; // upper bound on expr
   dropped?: boolean | undefined;
-  complements?: {
-    expr: FlatExpression;
-    lb: number;
-    ub: number;
-  } | undefined;
+  complements?:
+    | {
+        expr: FlatExpression;
+        lb: number;
+        ub: number;
+      }
+    | undefined;
   logicalExpr?: AmplExpr | undefined;
   customSuffixes?: Map<string, number | string> | undefined;
 }
@@ -399,7 +441,7 @@ export type BasisStatus = "basic" | "low" | "upp" | "super" | "fixed" | "none";
 
 export interface VariableSuffixes {
   val: number;
-  rc: number;       // Reduced cost: c_j - pi^T A_{*,j}
+  rc: number; // Reduced cost: c_j - pi^T A_{*,j}
   lb: number;
   ub: number;
   init: number;
@@ -408,9 +450,9 @@ export interface VariableSuffixes {
 }
 
 export interface ConstraintSuffixes {
-  body: number;     // Evaluated constraint body
-  dual: number;     // Shadow price / Lagrange multiplier
-  slack: number;    // min(body - lb, ub - body)
+  body: number; // Evaluated constraint body
+  dual: number; // Shadow price / Lagrange multiplier
+  slack: number; // min(body - lb, ub - body)
   lb: number;
   ub: number;
   status: BasisStatus;

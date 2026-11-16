@@ -199,10 +199,7 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
       sidebarSrc.includes("MorselIcon") || sidebarSrc.includes("AnsatzSketchIcon"),
       "Sidebar.tsx must render MorselIcon or AnsatzSketchIcon",
     );
-    assert.ok(
-      sidebarSrc.includes('title="Ansatz Morsel"'),
-      "Sidebar.tsx morsel button must have title='Ansatz Morsel'",
-    );
+    assert.ok(sidebarSrc.includes('title="Morsel"'), "Sidebar.tsx morsel button must have title='Morsel'");
     assert.ok(
       !sidebarSrc.includes("<BrandSketchLink") && !sidebarSrc.includes("<BrandPlaygroundLink"),
       "Sidebar.tsx must not render redundant BrandSketchLink in brand row",

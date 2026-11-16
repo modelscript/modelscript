@@ -1,0 +1,11 @@
+{
+  "name": "SPICE-Standard",
+  "version": "1.0.0",
+  "description": "Standard discrete semiconductor, op-amp, timer, and regulator SPICE models",
+  "license": "BSD-3-Clause",
+  "modelscript": {
+    "languages": [
+      "spice"
+    ]
+  }
+}

@@ -60,12 +60,20 @@ export function lintSpiceWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
       if (targetRaw !== undefined) {
         const resolved = resolveRelativeUri(uri, targetRaw, docs);
         if (!resolved) {
+          const lineText = rawLines[row] ?? "";
+          const idx = targetRaw ? lineText.indexOf(targetRaw) : -1;
+          const col = idx >= 0 ? idx + 1 : 1;
+          const endCol = idx >= 0 ? col + targetRaw.length : lineText.length + 1;
           diagnostics.push({
             uri,
             code: "SP3001",
             rule: "unresolved-spice-include",
             severity: "error",
             message: `SPICE .include/.lib target '${targetRaw}' was not found in the workspace.`,
+            line: row + 1,
+            column: col,
+            endLine: row + 1,
+            endColumn: endCol,
           });
         } else {
           outEdges.push(resolved);
@@ -99,6 +107,8 @@ export function lintSpiceWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
       message: d.message,
       line: d.span?.startLine,
       column: d.span?.startCol,
+      endLine: d.span?.endLine,
+      endColumn: d.span?.endCol,
     });
   }
 

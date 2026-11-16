@@ -153,10 +153,14 @@ function extractTokenAtOffset(content: string, offset: number): string {
   return content.slice(start, end);
 }
 
-export function validateOscal(content: string, options?: OscalLintOptions): LspDiagnostic[] {
+export function validateOscal(
+  content: string,
+  options?: OscalLintOptions,
+  cstTree?: { rootNode?: unknown } | null,
+): LspDiagnostic[] {
   let doc: OscalDocument;
   try {
-    doc = parseOscal(content);
+    doc = parseOscal(content, undefined, { cstTree });
   } catch (err: unknown) {
     return [
       {

@@ -79,12 +79,17 @@ END DO
   test("M4076: flags procedural algebraic dependency cycle", () => {
     const src = `
 REAL x, y
-x = y + 1.0
-y = x * 2.0
+  x = y + 1.0
+  y = x * 2.0
 `;
     const diags = lintFortran(src);
     const m4076 = diags.find((d) => d.code === 4076);
     assert.ok(m4076, "Should report M4076 for algebraic cycle between 'x' and 'y'");
+    assert.equal(m4076.line, 3);
+    assert.equal(m4076.column, 3);
+    assert.equal(m4076.endLine, 3);
+    assert.equal(m4076.endColumn, 4);
+    assert.equal(src.slice(m4076.startOffset, m4076.endOffset), "x");
   });
 
   test("M4078: flags zero or negative array dimension bounds", () => {

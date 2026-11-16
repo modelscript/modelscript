@@ -56,7 +56,7 @@ export interface MorselLanguageInfo {
   id: string;
   name: string;
   label?: string | undefined;
-  tier?: "stable" | "beta" | "preview" | undefined;
+  tier?: "beta" | "alpha" | "pre-alpha" | undefined;
   ext: string;
   extensions: string[];
   family: MorselSyntaxFamily;
@@ -98,7 +98,7 @@ export const ALL_MORSEL_LANGUAGES: readonly MorselLanguageInfo[] = [
   {
     id: "modelica",
     name: "Modelica",
-    tier: "stable",
+    tier: "beta",
     ext: "mo",
     extensions: [".mo", ".mos", ".msim"],
     family: "modelica",
@@ -114,7 +114,7 @@ export const ALL_MORSEL_LANGUAGES: readonly MorselLanguageInfo[] = [
   {
     id: "modelscript",
     name: "ModelScript",
-    tier: "stable",
+    tier: "beta",
     ext: "msx",
     extensions: [".msx", ".modelscript"],
     family: "modelica",
@@ -138,9 +138,36 @@ end Oscillator;
     ],
   },
   {
+    id: "ampl",
+    name: "AMPL",
+    tier: "beta",
+    ext: "ampl",
+    extensions: [".ampl", ".mod", ".dat"],
+    family: "modelica",
+    defaultCode: `# Production Planning Linear Program (AMPL)
+var x1 >= 0;
+var x2 >= 0;
+
+maximize Profit:
+  3 * x1 + 5 * x2;
+
+s.t. Labor:
+  x1 <= 4;
+
+s.t. Machine:
+  2 * x2 <= 12;
+
+s.t. Resource:
+  3 * x1 + 2 * x2 <= 18;
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+  },
+  {
     id: "sysml2",
     name: "SysML v2",
-    tier: "stable",
+    tier: "beta",
     ext: "sysml",
     extensions: [".sysml", ".sysml2", ".kerml"],
     family: "sysml2",
@@ -171,7 +198,7 @@ end Oscillator;
   {
     id: "step",
     name: "STEP (ISO 10303-21)",
-    tier: "stable",
+    tier: "beta",
     ext: "step",
     extensions: [".step", ".stp", ".p21"],
     family: "step",
@@ -196,7 +223,7 @@ END-ISO-10303-21;
   {
     id: "owl2",
     name: "OWL 2 Functional",
-    tier: "stable",
+    tier: "beta",
     ext: "owl",
     extensions: [".owl", ".ofn", ".fss", ".owl2"],
     family: "owl2",
@@ -223,7 +250,7 @@ Ontology(<http://example.org/engineering>
   {
     id: "scad",
     name: "OpenSCAD",
-    tier: "stable",
+    tier: "beta",
     ext: "scad",
     extensions: [".scad"],
     family: "scad",
@@ -241,7 +268,7 @@ difference() {
   {
     id: "csv",
     name: "CSV",
-    tier: "stable",
+    tier: "beta",
     ext: "csv",
     extensions: [".csv", ".tsv"],
     family: "csv",
@@ -258,7 +285,7 @@ difference() {
   {
     id: "c",
     name: "C",
-    tier: "beta",
+    tier: "alpha",
     ext: "c",
     extensions: [".c", ".h"],
     family: "c",
@@ -278,7 +305,7 @@ double pi_step(double setpoint, double measurement, double *integral, double dt)
   {
     id: "fortran",
     name: "Fortran",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "f90",
     extensions: [".f90", ".f95", ".f03", ".f08", ".f", ".for"],
     family: "fortran",
@@ -293,13 +320,13 @@ double pi_step(double setpoint, double measurement, double *integral, double dt)
 end program harmonic_oscillator
 `,
     supportsDiagram: true,
-    supportsSimulation: false,
+    supportsSimulation: true,
     supports3d: false,
   },
   {
     id: "spice",
     name: "SPICE",
-    tier: "stable",
+    tier: "beta",
     ext: "cir",
     extensions: [".cir", ".sp", ".net", ".lib", ".sub"],
     family: "spice",
@@ -317,7 +344,7 @@ C1 out 0 100n
   {
     id: "verilog-a",
     name: "Verilog-A",
-    tier: "beta",
+    tier: "alpha",
     ext: "va",
     extensions: [".va", ".vams"],
     family: "verilog-a",
@@ -340,7 +367,7 @@ endmodule
   {
     id: "pscad",
     name: "PSCAD",
-    tier: "stable",
+    tier: "beta",
     ext: "pscx",
     extensions: [".pscx", ".pslx", ".pswx", ".psmx"],
     family: "xml",
@@ -378,7 +405,7 @@ endmodule
   {
     id: "psse",
     name: "PSS/E",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "raw",
     extensions: [".raw", ".dyr", ".seq"],
     family: "spice",
@@ -396,7 +423,7 @@ endmodule
   {
     id: "opendss",
     name: "OpenDSS",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "dss",
     extensions: [".dss"],
     family: "spice",
@@ -413,7 +440,7 @@ Solve
   {
     id: "comtrade",
     name: "COMTRADE / Oscillography",
-    tier: "beta",
+    tier: "alpha",
     ext: "cfg",
     extensions: [".cfg", ".dat", ".c37"],
     family: "ini",
@@ -438,7 +465,7 @@ ASCII
   {
     id: "plcopen",
     name: "PLCopen / IEC 61131-3",
-    tier: "beta",
+    tier: "alpha",
     ext: "st",
     extensions: [".st", ".plcopen", ".iec"],
     family: "plcopen",
@@ -474,7 +501,7 @@ END_PROGRAM
   {
     id: "simulink",
     name: "MATLAB Simulink",
-    tier: "beta",
+    tier: "alpha",
     ext: "mdl",
     extensions: [".mdl", ".slx"],
     family: "simulink",
@@ -508,7 +535,7 @@ END_PROGRAM
   {
     id: "ssp",
     name: "SSP",
-    tier: "stable",
+    tier: "beta",
     ext: "ssd",
     extensions: [".ssd", ".ssv", ".ssm", ".ssp"],
     family: "xml",
@@ -529,7 +556,7 @@ END_PROGRAM
   {
     id: "urdf",
     name: "ROS URDF / SDFormat",
-    tier: "beta",
+    tier: "alpha",
     ext: "urdf",
     extensions: [".urdf", ".sdf", ".xacro"],
     family: "xml",
@@ -553,7 +580,7 @@ END_PROGRAM
   {
     id: "usd",
     name: "OpenUSD (Universal Scene Description)",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "usda",
     extensions: [".usd", ".usda", ".usdz"],
     family: "c",
@@ -582,7 +609,7 @@ def Xform "World"
   {
     id: "adams",
     name: "MSC Adams",
-    tier: "beta",
+    tier: "alpha",
     ext: "adm",
     extensions: [".adm", ".cmd", ".acf"],
     family: "ini",
@@ -602,7 +629,7 @@ END
   {
     id: "simpack",
     name: "SIMPACK",
-    tier: "beta",
+    tier: "alpha",
     ext: "spck",
     extensions: [".spck", ".sim", ".sub"],
     family: "ini",
@@ -621,7 +648,7 @@ force.damper.c = 1800.0
   {
     id: "gensys",
     name: "GENSYS",
-    tier: "stable",
+    tier: "beta",
     ext: "tsimf",
     extensions: [".tsimf", ".gen", ".runf", ".mplotf", ".optif", ".fresf"],
     family: "ini",
@@ -637,9 +664,9 @@ coupl k_primary k_z  c_body c_bogie  1.2e6
   {
     id: "cfd",
     name: "CFD (SU2)",
-    tier: "preview",
-    ext: "cfg",
-    extensions: [".cfg", ".su2", ".cfd", ".cfgt"],
+    tier: "pre-alpha",
+    ext: "su2",
+    extensions: [".su2", ".cfd", ".cfg", ".cfgt"],
     family: "ini",
     defaultCode: `% SU2 Compressible Flow Configuration
 SOLVER= EULER
@@ -657,7 +684,7 @@ MESH_FILENAME= mesh_naca0012.su2
   {
     id: "fea",
     name: "FEA (Abaqus / Nastran)",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "inp",
     extensions: [".inp", ".fea", ".inpt", ".bdf", ".fem", ".k"],
     family: "ini",
@@ -680,7 +707,7 @@ Cantilever Beam Linear Static Analysis
   {
     id: "easy5",
     name: "EASY5",
-    tier: "beta",
+    tier: "alpha",
     ext: "ez5",
     extensions: [".ez5", ".ezmf", ".easy5", ".ezm", ".ezd", ".eas"],
     family: "ini",
@@ -698,7 +725,7 @@ CONNECT TF01.S_OUT TO INT1.S_IN
   {
     id: "rocets",
     name: "ROCETS",
-    tier: "beta",
+    tier: "alpha",
     ext: "roc",
     extensions: [".roc", ".rocets", ".deck"],
     family: "ini",
@@ -718,7 +745,7 @@ CONNECT TP_LOX.OUT -> MAIN_CC.LOX_IN
   {
     id: "olga",
     name: "OLGA",
-    tier: "stable",
+    tier: "beta",
     ext: "opi",
     extensions: [".opi", ".olga", ".genkey", ".key"],
     family: "ini",
@@ -735,7 +762,7 @@ GEOMETRY X = (0.0, 2500.0, 5000.0), Y = (-450.0, -420.0, -100.0)
   {
     id: "sima",
     name: "SIMA",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "sima",
     extensions: [".sima", ".stask"],
     family: "ini",
@@ -759,7 +786,7 @@ Task FloatingWindTurbine {
   {
     id: "gtsuite",
     name: "GT-SUITE",
-    tier: "beta",
+    tier: "alpha",
     ext: "gtm",
     extensions: [".gtm", ".gtp"],
     family: "ini",
@@ -781,7 +808,7 @@ Object OrificeConn "Throttle" {
   {
     id: "lps",
     name: "LPS",
-    tier: "stable",
+    tier: "beta",
     ext: "lps",
     extensions: [".lps", ".lpsx"],
     family: "ini",
@@ -803,7 +830,7 @@ if tank_low at T1 then
   {
     id: "aspen",
     name: "Aspen Plus",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "bkp",
     extensions: [".bkp", ".apw"],
     family: "ini",
@@ -823,7 +850,7 @@ BLOCK FLASH1 FLASH2
   {
     id: "swmm",
     name: "EPA SWMM",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "swmm",
     extensions: [".swmm"],
     family: "ini",
@@ -846,7 +873,7 @@ C1               J1         J2         180.0      0.013
   {
     id: "epanet",
     name: "EPA EPANET",
-    tier: "beta",
+    tier: "alpha",
     ext: "net",
     extensions: [".net"],
     family: "ini",
@@ -874,7 +901,7 @@ P2       J1      J2      600.0   250.0    110.0
   {
     id: "energyplus",
     name: "EnergyPlus",
-    tier: "beta",
+    tier: "alpha",
     ext: "idf",
     extensions: [".idf", ".epjson"],
     family: "ini",
@@ -906,7 +933,7 @@ Zone,
   {
     id: "touchstone",
     name: "Touchstone (S-parameter)",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "s2p",
     extensions: [".s1p", ".s2p", ".s3p", ".s4p", ".snp"],
     family: "csv",
@@ -923,7 +950,7 @@ Zone,
   {
     id: "ibis",
     name: "IBIS",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "ibs",
     extensions: [".ibs", ".ebd", ".pkg"],
     family: "ini",
@@ -944,7 +971,7 @@ C_pkg 0.6p 0.4p 0.8p
   {
     id: "opendrive",
     name: "ASAM OpenDRIVE",
-    tier: "beta",
+    tier: "alpha",
     ext: "xodr",
     extensions: [".xodr"],
     family: "xml",
@@ -967,7 +994,7 @@ C_pkg 0.6p 0.4p 0.8p
   {
     id: "openscenario",
     name: "ASAM OpenSCENARIO",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "xosc",
     extensions: [".xosc", ".osc"],
     family: "xml",
@@ -988,7 +1015,7 @@ C_pkg 0.6p 0.4p 0.8p
   {
     id: "relap5",
     name: "RELAP5",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "r5",
     extensions: [".r5", ".relap", ".i"],
     family: "ini",
@@ -1006,7 +1033,7 @@ C_pkg 0.6p 0.4p 0.8p
   {
     id: "eclipse",
     name: "ECLIPSE",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "data",
     extensions: [".data", ".grdecl", ".inc"],
     family: "ini",
@@ -1027,7 +1054,7 @@ END
   {
     id: "sbml",
     name: "SBML",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "sbml",
     extensions: [".sbml"],
     family: "xml",
@@ -1051,7 +1078,7 @@ END
   {
     id: "jsbsim",
     name: "JSBSim",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "xml",
     extensions: [".xml"],
     family: "xml",
@@ -1074,7 +1101,7 @@ END
   {
     id: "reqif",
     name: "OMG ReqIF",
-    tier: "stable",
+    tier: "beta",
     ext: "reqif",
     extensions: [".reqif", ".reqifz"],
     family: "xml",
@@ -1101,7 +1128,7 @@ END
   {
     id: "ccsds",
     name: "CCSDS",
-    tier: "beta",
+    tier: "alpha",
     ext: "oem",
     extensions: [".oem", ".opm", ".omm", ".ocm", ".tdm", ".ndm", ".xtce"],
     family: "ini",
@@ -1126,7 +1153,7 @@ META_STOP
   {
     id: "autosar",
     name: "AUTOSAR",
-    tier: "beta",
+    tier: "alpha",
     ext: "arxml",
     extensions: [".arxml"],
     family: "xml",
@@ -1151,7 +1178,7 @@ META_STOP
   {
     id: "qif",
     name: "QIF 3.0 (ISO 23952)",
-    tier: "beta",
+    tier: "alpha",
     ext: "qif",
     extensions: [".qif", ".qif.xml"],
     family: "xml",
@@ -1219,7 +1246,7 @@ META_STOP
   {
     id: "oscal",
     name: "NIST OSCAL 1.1",
-    tier: "beta",
+    tier: "alpha",
     ext: "oscal.json",
     extensions: [".oscal", ".oscal.json", ".oscal.yaml", ".oscal.yml", ".oscal.xml"],
     family: "xml",
@@ -1279,7 +1306,7 @@ META_STOP
   {
     id: "automationml",
     name: "AutomationML (IEC 62714)",
-    tier: "beta",
+    tier: "alpha",
     ext: "aml",
     extensions: [".aml", ".caex"],
     family: "xml",
@@ -1308,7 +1335,7 @@ META_STOP
   {
     id: "three-mf",
     name: "3MF (ISO/IEC 25422)",
-    tier: "beta",
+    tier: "alpha",
     ext: "3mf",
     extensions: [".3mf", ".3mf.xml"],
     family: "xml",
@@ -1345,7 +1372,7 @@ META_STOP
   {
     id: "gproms",
     name: "gPROMS",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "gproms",
     extensions: [".gproms", ".gPJ"],
     family: "modelica",
@@ -1368,7 +1395,7 @@ END
   {
     id: "cantera",
     name: "Cantera Kinetics",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "cti.yaml",
     extensions: [".cti", ".cti.yaml", ".cantera.yaml"],
     family: "ini",
@@ -1392,7 +1419,7 @@ reactions:
   {
     id: "phreeqc",
     name: "USGS PHREEQC",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "pqi",
     extensions: [".pqi", ".phrq", ".phreeqc"],
     family: "ini",
@@ -1415,7 +1442,7 @@ END
   {
     id: "smiles",
     name: "SMILES / OpenSMILES",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "smi",
     extensions: [".smi", ".smiles", ".ism"],
     family: "csv",
@@ -1431,7 +1458,7 @@ CC(C)Cc1ccc(cc1)[C@@H](C)C(=O)O\tS_Ibuprofen\t206.28\t3.97
   {
     id: "antimony",
     name: "Antimony",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "ant",
     extensions: [".ant", ".antimony"],
     family: "modelica",
@@ -1451,7 +1478,7 @@ end
   {
     id: "bngl",
     name: "BioNetGen (BNGL)",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "bngl",
     extensions: [".bngl"],
     family: "ini",
@@ -1480,7 +1507,7 @@ end model
   {
     id: "cellml",
     name: "CellML 2.0",
-    tier: "beta",
+    tier: "alpha",
     ext: "cellml",
     extensions: [".cellml"],
     family: "xml",
@@ -1501,7 +1528,7 @@ end model
   {
     id: "sedml",
     name: "SED-ML (L1V4)",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "sedml",
     extensions: [".sedml"],
     family: "xml",
@@ -1524,7 +1551,7 @@ end model
   {
     id: "sbol",
     name: "SBOL 3.1",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "sbol",
     extensions: [".sbol", ".sbol3"],
     family: "xml",
@@ -1544,7 +1571,7 @@ end model
   {
     id: "genbank",
     name: "GenBank / INSDC",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "gb",
     extensions: [".gb", ".gbk", ".genbank"],
     family: "ini",
@@ -1569,7 +1596,7 @@ ORIGIN
   {
     id: "pdb",
     name: "PDB / mmCIF",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "pdb",
     extensions: [".pdb", ".ent", ".cif", ".mmcif"],
     family: "csv",
@@ -1589,7 +1616,7 @@ END
   {
     id: "nmtran",
     name: "NONMEM NM-TRAN",
-    tier: "preview",
+    tier: "pre-alpha",
     ext: "ctl",
     extensions: [".ctl", ".mod", ".nmtran"],
     family: "ini",
@@ -1617,7 +1644,7 @@ $ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999
   {
     id: "opensim",
     name: "OpenSim 4.x",
-    tier: "beta",
+    tier: "alpha",
     ext: "osim",
     extensions: [".osim"],
     family: "xml",
@@ -1641,7 +1668,7 @@ $ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999
   {
     id: "febio",
     name: "FEBio 4.0",
-    tier: "beta",
+    tier: "alpha",
     ext: "feb",
     extensions: [".feb"],
     family: "xml",
@@ -1670,7 +1697,7 @@ $ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999
   {
     id: "dicom-rt",
     name: "DICOM-RT Plan",
-    tier: "beta",
+    tier: "alpha",
     ext: "dcm.json",
     extensions: [".dcm.json", ".rtplan", ".dicom-rt"],
     family: "xml",
@@ -1695,7 +1722,7 @@ $ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999
   {
     id: "nifti",
     name: "NIfTI-1 / NIfTI-2",
-    tier: "beta",
+    tier: "alpha",
     ext: "nii.json",
     extensions: [".nii.json", ".nifti"],
     family: "xml",
@@ -1720,7 +1747,7 @@ $ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999
   {
     id: "topas",
     name: "TOPAS / Geant4 MC",
-    tier: "beta",
+    tier: "alpha",
     ext: "topas",
     extensions: [".topas", ".tps"],
     family: "ini",
@@ -1742,7 +1769,7 @@ i:So/ProtonPencil/NumberOfHistoriesInRun = 50000
   {
     id: "igtl",
     name: "OpenIGTLink v3",
-    tier: "beta",
+    tier: "alpha",
     ext: "igtl.json",
     extensions: [".igtl", ".igtl.json"],
     family: "xml",
@@ -1809,6 +1836,8 @@ export function detectLanguageFromFilename(filename: string): string {
   const lower = filename.trim().toLowerCase();
   for (const lang of ALL_MORSEL_LANGUAGES) {
     if (lower.endsWith(`.${lang.ext}`)) return lang.id;
+  }
+  for (const lang of ALL_MORSEL_LANGUAGES) {
     for (const ext of lang.extensions) {
       if (lower.endsWith(ext.toLowerCase())) return lang.id;
     }

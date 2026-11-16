@@ -7,7 +7,7 @@
  * integration with the Xacro expansion preprocessor.
  */
 
-import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import { getXmlAttrValueSpan, type XmlElement } from "@modelscript/dsl/xml";
 import type {
   SourceRange,
   UrdfCollision,
@@ -25,6 +25,7 @@ import type {
   UrdfVisual,
   Vector3D,
 } from "../types.js";
+import { parseUrdfXmlDocument } from "./wasm-loader.js";
 import { expandXacro } from "./xacro.js";
 
 function getAttr(el: XmlElement, name: string): string | undefined {
@@ -82,15 +83,19 @@ function offsetToPosition(offset: number, lineStarts: number[]): { line: number;
   return { line, col };
 }
 
-function elementRange(el: XmlElement, lineStarts: number[]): SourceRange {
-  const startPos = offsetToPosition(el.start, lineStarts);
-  const endPos = offsetToPosition(el.end, lineStarts);
+function spanRange(startOffset: number, endOffset: number, lineStarts: number[]): SourceRange {
+  const startPos = offsetToPosition(startOffset, lineStarts);
+  const endPos = offsetToPosition(endOffset, lineStarts);
   return {
     startLine: startPos.line,
     startColumn: startPos.col,
     endLine: endPos.line,
     endColumn: endPos.col,
   };
+}
+
+function elementRange(el: XmlElement, lineStarts: number[]): SourceRange {
+  return spanRange(el.start, el.end, lineStarts);
 }
 
 function parseVector3D(str?: string, defaultVal: Vector3D = { x: 0, y: 0, z: 0 }): Vector3D {
@@ -173,10 +178,10 @@ function parseGeometry(el?: XmlElement): UrdfGeometry {
 /**
  * Parses a URDF, SDF, or Xacro XML string into a strongly-typed UrdfRobot AST.
  */
-export function parseUrdf(content: string, defaultName = "robot"): UrdfRobot {
-  const expandedXml = expandXacro(content);
+export function parseUrdf(content: string, defaultName = "robot", cstTree?: { rootNode?: unknown } | null): UrdfRobot {
+  const expandedXml = expandXacro(content, cstTree);
   const lineStarts = computeLineStarts(expandedXml);
-  const doc = parseXml(expandedXml);
+  const doc = parseUrdfXmlDocument(expandedXml, expandedXml === content ? cstTree : undefined);
   const root = doc.root;
 
   const robot: UrdfRobot = {
@@ -204,7 +209,7 @@ export function parseUrdf(content: string, defaultName = "robot"): UrdfRobot {
 
     if (tag === "link") {
       const name = getAttr(child, "name") ?? `link_${robot.links.size + 1}`;
-      const link = parseLink(child, name, range);
+      const link = parseLink(child, name, range, lineStarts);
       robot.links.set(name, link);
     } else if (tag === "joint") {
       const name = getAttr(child, "name") ?? `joint_${robot.joints.size + 1}`;
@@ -212,7 +217,7 @@ export function parseUrdf(content: string, defaultName = "robot"): UrdfRobot {
         if (!robot.duplicateJointNames) robot.duplicateJointNames = [];
         robot.duplicateJointNames.push(name);
       }
-      const joint = parseJoint(child, name, range);
+      const joint = parseJoint(child, name, range, lineStarts);
       robot.joints.set(name, joint);
     } else if (tag === "material") {
       const name = getAttr(child, "name");
@@ -231,7 +236,8 @@ export function parseUrdf(content: string, defaultName = "robot"): UrdfRobot {
   return robot;
 }
 
-function parseLink(el: XmlElement, name: string, range: SourceRange): UrdfLink {
+function parseLink(el: XmlElement, name: string, range: SourceRange, lineStarts: number[]): UrdfLink {
+  const makeRange = (s: number, e: number): SourceRange => spanRange(s, e, lineStarts);
   let inertial: UrdfInertial | undefined;
   const visuals: UrdfVisual[] = [];
   const collisions: UrdfCollision[] = [];
@@ -253,15 +259,23 @@ function parseLink(el: XmlElement, name: string, range: SourceRange): UrdfLink {
         return Number.isNaN(val) ? def : val;
       };
 
+      const massValSpan = massEl ? getXmlAttrValueSpan(massEl, "value") : undefined;
+      const massRange = massEl
+        ? makeRange(massValSpan?.start ?? massEl.start, massValSpan?.end ?? massEl.end)
+        : undefined;
+      const inertiaRange = inertiaEl ? makeRange(inertiaEl.start, inertiaEl.end) : undefined;
+
       inertial = {
         origin: parseOrigin(originEl),
         mass,
+        massRange,
         ixx: getInertiaComp("ixx", fallbackMass * 0.1),
         ixy: getInertiaComp("ixy", 0.0),
         ixz: getInertiaComp("ixz", 0.0),
         iyy: getInertiaComp("iyy", fallbackMass * 0.1),
         iyz: getInertiaComp("iyz", 0.0),
         izz: getInertiaComp("izz", fallbackMass * 0.1),
+        inertiaRange,
       };
     } else if (tag === "visual") {
       const vName = getAttr(child, "name");
@@ -307,7 +321,8 @@ function parseLink(el: XmlElement, name: string, range: SourceRange): UrdfLink {
   };
 }
 
-function parseJoint(el: XmlElement, name: string, range: SourceRange): UrdfJoint {
+function parseJoint(el: XmlElement, name: string, range: SourceRange, lineStarts: number[]): UrdfJoint {
+  const makeRange = (s: number, e: number): SourceRange => spanRange(s, e, lineStarts);
   const typeStr = (getAttr(el, "type") ?? "revolute").toLowerCase();
   const validTypes: UrdfJointType[] = ["revolute", "continuous", "prismatic", "fixed", "floating", "planar"];
   const type: UrdfJointType = validTypes.includes(typeStr as UrdfJointType) ? (typeStr as UrdfJointType) : "revolute";
@@ -325,6 +340,10 @@ function parseJoint(el: XmlElement, name: string, range: SourceRange): UrdfJoint
 
   const axisStr = axisEl ? getAttr(axisEl, "xyz") : undefined;
   const axis = parseVector3D(axisStr, { x: 0, y: 0, z: 1 });
+  const axisValSpan = axisEl ? getXmlAttrValueSpan(axisEl, "xyz") : undefined;
+  const axisRange = axisEl ? makeRange(axisValSpan?.start ?? axisEl.start, axisValSpan?.end ?? axisEl.end) : undefined;
+  const nameValSpan = getXmlAttrValueSpan(el, "name");
+  const nameRange = nameValSpan ? makeRange(nameValSpan.start, nameValSpan.end) : undefined;
 
   let limits: UrdfJointLimits | undefined;
   if (limitEl) {
@@ -332,12 +351,17 @@ function parseJoint(el: XmlElement, name: string, range: SourceRange): UrdfJoint
     const upperStr = getAttr(limitEl, "upper");
     const effortVal = Number.parseFloat(getAttr(limitEl, "effort") ?? "100.0");
     const velocityVal = Number.parseFloat(getAttr(limitEl, "velocity") ?? "10.0");
+    const effortValSpan = getXmlAttrValueSpan(limitEl, "effort");
+    const velocityValSpan = getXmlAttrValueSpan(limitEl, "velocity");
 
     limits = {
       lower: lowerStr ? Number.parseFloat(lowerStr) : undefined,
       upper: upperStr ? Number.parseFloat(upperStr) : undefined,
       effort: Number.isNaN(effortVal) ? 100.0 : effortVal,
+      effortRange: effortValSpan ? makeRange(effortValSpan.start, effortValSpan.end) : undefined,
       velocity: Number.isNaN(velocityVal) ? 10.0 : velocityVal,
+      velocityRange: velocityValSpan ? makeRange(velocityValSpan.start, velocityValSpan.end) : undefined,
+      limitRange: makeRange(limitEl.start, limitEl.end),
     };
   }
 
@@ -351,14 +375,23 @@ function parseJoint(el: XmlElement, name: string, range: SourceRange): UrdfJoint
     };
   }
 
-  let mimic: { joint: string; multiplier?: number | undefined; offset?: number | undefined } | undefined;
+  let mimic:
+    | {
+        joint: string;
+        jointRange?: SourceRange | undefined;
+        multiplier?: number | undefined;
+        offset?: number | undefined;
+      }
+    | undefined;
   if (mimicEl) {
     const targetJoint = getAttr(mimicEl, "joint");
     if (targetJoint) {
       const multStr = getAttr(mimicEl, "multiplier");
       const offStr = getAttr(mimicEl, "offset");
+      const mimicJointSpan = getXmlAttrValueSpan(mimicEl, "joint");
       mimic = {
         joint: targetJoint,
+        jointRange: mimicJointSpan ? makeRange(mimicJointSpan.start, mimicJointSpan.end) : undefined,
         multiplier: multStr ? Number.parseFloat(multStr) : undefined,
         offset: offStr ? Number.parseFloat(offStr) : undefined,
       };
@@ -367,11 +400,13 @@ function parseJoint(el: XmlElement, name: string, range: SourceRange): UrdfJoint
 
   return {
     name,
+    nameRange,
     type,
     parentLink,
     childLink,
     origin: parseOrigin(originEl),
     axis,
+    axisRange,
     limits,
     dynamics,
     mimic,

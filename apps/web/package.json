@@ -113,7 +113,7 @@
     "vite-tsconfig-paths": "^5.1.4"
   },
   "modelscript": {
-    "tier": "stable",
+    "tier": "beta",
     "category": "app"
   }
 }

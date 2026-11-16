@@ -161,7 +161,7 @@
     "provenance": true
   },
   "modelscript": {
-    "tier": "stable",
+    "tier": "beta",
     "category": "app"
   }
 }

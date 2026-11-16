@@ -178,6 +178,7 @@
       "domain": "power-energy",
       "pack": "power-energy",
       "filename": "SPICE-Standard-1.0.0.zip",
+      "localSourcePath": "languages/spice/stdlib",
       "upstream": {
         "url": "https://ansatz.social/lsp/server/dist/SPICE-Standard-1.0.0.zip",
         "fallbackUrl": "https://raw.githubusercontent.com/ngspice/ngspice-models/master/models.zip",

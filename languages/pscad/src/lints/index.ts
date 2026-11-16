@@ -1178,7 +1178,7 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
             line: wire.line ?? 1,
             column: 1,
             endLine: wire.line ?? 1,
-            endColumn: 20,
+            endColumn: 1 + Math.max(1, wire.id.length),
           });
         }
       }

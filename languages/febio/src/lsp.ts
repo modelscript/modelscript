@@ -108,10 +108,10 @@ function toLspRange(r: FebioSourceRange): LspRange {
   };
 }
 
-export function validateFebio(content: string): LspDiagnostic[] {
+export function validateFebio(content: string, cstTree?: { rootNode?: unknown } | null): LspDiagnostic[] {
   let doc: FebioDocument;
   try {
-    doc = parseFebio(content);
+    doc = parseFebio(content, undefined, { cstTree });
   } catch (err: unknown) {
     return [
       {

@@ -201,7 +201,7 @@ function cleanMarkdown(raw: string): string {
       const c = l.capabilities;
       const hasDae = Boolean(c.dae ?? c.arena);
       const hasProjections = Array.isArray(c.projections) ? c.projections.length > 0 : Boolean(c.projections);
-      const tierInfo = LANGUAGES.find((item) => item.slug === l.slug)?.tier ?? "preview";
+      const tierInfo = LANGUAGES.find((item) => item.slug === l.slug)?.tier ?? "pre-alpha";
       lines.push(
         `| ${l.name} | \`${tierInfo}\` | \`${l.ext}\` | ${l.role} | ${c.parse ? "✓" : "—"} | ${c.lint ? "✓" : "—"} | ${
           hasDae ? "✓" : "—"

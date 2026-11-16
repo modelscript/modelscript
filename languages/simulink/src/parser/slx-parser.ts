@@ -15,7 +15,11 @@ export { parseSlxXml } from "./slx-xml-parser.js";
 /**
  * Parses an SLX buffer or raw XML string into a strongly-typed SimulinkModel.
  */
-export function parseSlx(input: string | Buffer | Uint8Array, defaultName = "simulink_model"): SimulinkModel {
+export function parseSlx(
+  input: string | Buffer | Uint8Array,
+  defaultName = "simulink_model",
+  cstTree?: { rootNode?: unknown } | null,
+): SimulinkModel {
   let xmlContent: string;
 
   if (typeof input === "string") {
@@ -47,5 +51,5 @@ export function parseSlx(input: string | Buffer | Uint8Array, defaultName = "sim
     }
   }
 
-  return parseSlxXml(xmlContent, defaultName);
+  return parseSlxXml(xmlContent, defaultName, typeof input === "string" && xmlContent === input ? cstTree : undefined);
 }

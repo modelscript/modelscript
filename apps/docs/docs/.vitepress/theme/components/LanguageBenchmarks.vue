@@ -298,11 +298,11 @@ function formatDate(iso: string): string {
   color: var(--vp-c-text-1);
 }
 
-.lb-tier[data-tier="stable"] {
+.lb-tier[data-tier="beta"] {
   color: var(--vp-c-green-1);
   text-transform: capitalize;
 }
-.lb-tier[data-tier="beta"] {
+.lb-tier[data-tier="alpha"] {
   color: var(--vp-c-brand-1);
   text-transform: capitalize;
 }

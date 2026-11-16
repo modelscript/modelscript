@@ -8,7 +8,7 @@
  * by-components, findings, and POA&M items.
  */
 
-import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlElement } from "@modelscript/dsl/xml";
 import type {
   OscalAlter,
   OscalByComponent,
@@ -34,6 +34,7 @@ import type {
   OscalSetParameter,
   OscalSourceRange,
 } from "../types.js";
+import { parseOscalXmlDocument } from "./wasm-loader.js";
 
 const OSCAL_MODEL_KINDS: readonly OscalDocumentKind[] = [
   "catalog",
@@ -341,8 +342,8 @@ function xmlElementToNode(el: XmlElement): XmlNode {
   };
 }
 
-function parseXmlTree(xml: string): XmlNode {
-  const doc = parseXml(xml);
+function parseXmlTree(xml: string, cstTree?: { rootNode?: unknown } | null): XmlNode {
+  const doc = parseOscalXmlDocument(xml, cstTree);
   if (!doc.root) {
     throw new Error("No valid XML root element found in OSCAL XML document.");
   }
@@ -500,8 +501,8 @@ function parseXmlImplementedRequirement(node: XmlNode, locator: SourceLocator): 
   };
 }
 
-function parseXmlOscal(text: string, locator: SourceLocator): OscalDocument {
-  const root = parseXmlTree(text);
+function parseXmlOscal(text: string, locator: SourceLocator, cstTree?: { rootNode?: unknown } | null): OscalDocument {
+  const root = parseXmlTree(text, cstTree);
   const kind = root.tag as OscalDocumentKind;
   if (!OSCAL_MODEL_KINDS.includes(kind)) {
     throw new Error(`Unsupported XML OSCAL root element '<${root.tag}>'.`);
@@ -1256,7 +1257,11 @@ function normalizeObjectToOscal(rootObj: Record<string, unknown>, locator: Sourc
 /**
  * Parses an OSCAL 1.1.x document in JSON, YAML, or XML format.
  */
-export function parseOscal(text: string, _uri?: string): OscalDocument {
+export function parseOscal(
+  text: string,
+  _uri?: string,
+  options?: { cstTree?: { rootNode?: unknown } | null | undefined },
+): OscalDocument {
   const trimmed = text.trim();
   if (!trimmed) {
     throw new Error("Cannot parse empty OSCAL document.");
@@ -1265,7 +1270,7 @@ export function parseOscal(text: string, _uri?: string): OscalDocument {
   const locator = new SourceLocator(text);
 
   if (trimmed.startsWith("<")) {
-    return parseXmlOscal(text, locator);
+    return parseXmlOscal(text, locator, options?.cstTree);
   }
 
   if (trimmed.startsWith("{")) {

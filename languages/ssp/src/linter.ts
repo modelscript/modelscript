@@ -9,8 +9,9 @@
  * narrow byte and 1-indexed line/column ranges for each offending XML attribute value.
  */
 
-import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlElement } from "@modelscript/dsl/xml";
 import { SspErrorCode } from "./errors.js";
+import { parseSspXmlDocument } from "./parser/wasm-loader.js";
 import type { SspConnectorKind, SspConnectorType } from "./types.js";
 
 /**
@@ -263,7 +264,7 @@ interface DirectedSignalEdge {
 export function lintSsd(xml: string): SspDiagnostic[] {
   const diagnostics: SspDiagnostic[] = [];
   const locator = new LineLocator(xml);
-  const doc = parseXmlSync(xml);
+  const doc = parseSspXmlDocument(xml);
 
   const emit = (
     startOffset: number,
@@ -1044,6 +1045,6 @@ function lintSsvElement(
  */
 export function lintSsv(xml: string): SspDiagnostic[] {
   const locator = new LineLocator(xml);
-  const doc = parseXmlSync(xml);
+  const doc = parseSspXmlDocument(xml);
   return lintSsvElement(xml, doc.root, locator);
 }

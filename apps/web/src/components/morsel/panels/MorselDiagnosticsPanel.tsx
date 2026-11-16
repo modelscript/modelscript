@@ -143,6 +143,9 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
     document.body.style.userSelect = "none";
   };
 
+  const isCompactPill = isFloatingWorkspace && !isExpanded && counts.total === 0;
+  const headerHeight = isCompactPill ? 36 : COLLAPSED_DIAGNOSTICS_HEIGHT;
+
   const floatingShadow = isDark
     ? "0 12px 32px rgba(0, 0, 0, 0.48), 0 0 0 1px rgba(255, 255, 255, 0.04)"
     : "0 12px 32px rgba(15, 23, 42, 0.10), 0 1px 3px rgba(15, 23, 42, 0.05)";
@@ -151,9 +154,8 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
     ? {
         position: "absolute",
         left: treeVisible ? treeWidth + 24 : 12,
-        right: 12,
-        bottom: 12,
-        height: isExpanded ? panelHeight : COLLAPSED_DIAGNOSTICS_HEIGHT,
+        ...(isCompactPill ? { right: "auto", bottom: 16 } : { right: 12, bottom: 12 }),
+        height: isExpanded ? panelHeight : headerHeight,
         zIndex: 30,
         overflow: "visible",
         pointerEvents: "none",
@@ -169,11 +171,11 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
       };
 
   const cardStyle: React.CSSProperties = {
-    width: "100%",
+    width: isCompactPill ? "auto" : "100%",
     height: "100%",
     display: "flex",
     flexDirection: "column",
-    borderRadius: 8,
+    borderRadius: 12,
     border: isFloatingWorkspace
       ? "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))"
       : "1px solid var(--borderColor-muted, var(--ms-divider))",
@@ -228,12 +230,13 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
         <div
           onClick={onToggleExpand}
           style={{
-            height: COLLAPSED_DIAGNOSTICS_HEIGHT,
+            height: headerHeight,
             flexShrink: 0,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "8px 16px",
+            gap: isCompactPill ? 8 : 12,
+            padding: isCompactPill ? "0 12px" : "8px 16px",
             boxSizing: "border-box",
             cursor: "pointer",
             userSelect: "none",
@@ -242,17 +245,19 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
             fontSize: 12,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <span style={{ fontWeight: 600, letterSpacing: "0.01em" }}>Diagnostics</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            {!isCompactPill && <span style={{ fontWeight: 600, letterSpacing: "0.01em" }}>Diagnostics</span>}
 
             {counts.total === 0 ? (
               <span
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 4,
+                  gap: 5,
                   fontSize: 11,
+                  fontWeight: isCompactPill ? 500 : 400,
                   color: isDark ? "#4ade80" : "#16a34a",
+                  whiteSpace: "nowrap",
                 }}
               >
                 <CheckCircleFillIcon size={12} />

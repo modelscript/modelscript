@@ -239,6 +239,12 @@ export function parseRaw(text: string): PsseCase {
     }
 
     const toks = cstFields.map((f) => f.value);
+    const fieldSpans: SourceSpan[] = cstFields.map((f) => ({
+      startOffset: f.startOffset,
+      endOffset: f.endOffset,
+      line: f.line0 + 1,
+      column: f.startCol0 + 1,
+    }));
     const span: SourceSpan = {
       startOffset: info.startOffset,
       endOffset: info.endOffset,
@@ -267,6 +273,7 @@ export function parseRaw(text: string): PsseCase {
             evhi: toks[11] !== undefined ? parseNum(toks[11], 1.1) : undefined,
             evlo: toks[12] !== undefined ? parseNum(toks[12], 0.9) : undefined,
             span,
+            fieldSpans,
           };
           buses.set(busNum, bus);
           header.minBusColumnCount =
@@ -346,6 +353,7 @@ export function parseRaw(text: string): PsseCase {
             o1: toks[18 + off] !== undefined ? parseNum(toks[18 + off], 1) : undefined,
             f1: toks[19 + off] !== undefined ? parseNum(toks[19 + off], 1.0) : undefined,
             span,
+            fieldSpans,
           });
         }
         break;
@@ -380,6 +388,7 @@ export function parseRaw(text: string): PsseCase {
             o1: toks[16 + off] !== undefined ? parseNum(toks[16 + off], 1) : undefined,
             f1: toks[17 + off] !== undefined ? parseNum(toks[17 + off], 1.0) : undefined,
             span,
+            fieldSpans,
           });
         }
         break;

@@ -30,32 +30,36 @@ import { CORE_PACK_TARGETS, ESM_IMPORT_TARGETS, isIncludedByFilesWhitelist } fro
 // 2. Package maturity metadata classification
 {
   assert.deepStrictEqual(getExpectedMetadata("packages/runtime"), {
-    tier: "stable",
+    tier: "beta",
     category: "core",
   });
   assert.deepStrictEqual(getExpectedMetadata("apps/cli"), {
-    tier: "stable",
+    tier: "beta",
     category: "app",
   });
   assert.deepStrictEqual(getExpectedMetadata("packages/examples/rc-circuit"), {
-    tier: "stable",
+    tier: "beta",
     category: "example",
   });
   assert.deepStrictEqual(getExpectedMetadata("languages/modelica"), {
-    tier: "stable",
-    category: "language",
-  });
-  assert.deepStrictEqual(getExpectedMetadata("languages/simulink"), {
     tier: "beta",
     category: "language",
   });
+  assert.deepStrictEqual(getExpectedMetadata("languages/simulink"), {
+    tier: "alpha",
+    category: "language",
+  });
   assert.deepStrictEqual(getExpectedMetadata("languages/touchstone"), {
-    tier: "preview",
+    tier: "alpha",
+    category: "language",
+  });
+  assert.deepStrictEqual(getExpectedMetadata("languages/las"), {
+    tier: "pre-alpha",
     category: "language",
   });
   // Windows path separator normalization
   assert.deepStrictEqual(getExpectedMetadata("languages\\modelica"), {
-    tier: "stable",
+    tier: "beta",
     category: "language",
   });
 }

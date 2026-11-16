@@ -8,7 +8,7 @@
  * and Hill-type muscles with exact 1-indexed line/column/offset source ranges.
  */
 
-import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlElement } from "@modelscript/dsl/xml";
 import type {
   OpenSimBody,
   OpenSimConstraint,
@@ -26,6 +26,7 @@ import type {
   OpenSimWrapObject,
   OpenSimWrapType,
 } from "../types.js";
+import { parseOpenSimXmlDocument } from "./wasm-loader.js";
 
 function getAttr(elem: XmlElement, name: string): string | undefined {
   const found = elem.attributes.find((a) => a.name.toLowerCase() === name.toLowerCase());
@@ -543,8 +544,12 @@ function parseMuscleElement(mElem: XmlElement, lineOffsets: number[], index: num
   };
 }
 
-export function parseOpenSim(text: string, uri?: string): OpenSimDocument {
-  const xmlDoc = parseXml(text);
+export function parseOpenSim(
+  text: string,
+  uri?: string,
+  options?: { cstTree?: { rootNode?: unknown } | null | undefined },
+): OpenSimDocument {
+  const xmlDoc = parseOpenSimXmlDocument(text, options?.cstTree);
   const root = xmlDoc.root;
   if (!root) {
     throw new Error("Invalid OpenSim XML: empty document");

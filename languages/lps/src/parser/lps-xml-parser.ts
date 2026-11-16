@@ -7,7 +7,7 @@
  * liquid batch schedules, and simulation controls using @modelscript/dsl/xml.
  */
 
-import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlElement } from "@modelscript/dsl/xml";
 import type {
   BatchInjection,
   BatchSchedule,
@@ -28,6 +28,7 @@ import type {
   SimulationControls,
   SimulationType,
 } from "../types.js";
+import { parseLpsXmlDocument } from "./wasm-loader.js";
 
 function getAttr(el: XmlElement | null | undefined, name: string): string | undefined {
   if (!el) return undefined;
@@ -129,8 +130,8 @@ function findElements(node: XmlElement | null | undefined, tagNames: string[]): 
   return result;
 }
 
-export function parseLpsXml(xmlText: string): LpsModel {
-  const doc = parseXml(xmlText);
+export function parseLpsXml(xmlText: string, cstTree?: { rootNode?: unknown } | null): LpsModel {
+  const doc = parseLpsXmlDocument(xmlText, cstTree);
 
   // Extract root and study metadata
   const root = doc.root;

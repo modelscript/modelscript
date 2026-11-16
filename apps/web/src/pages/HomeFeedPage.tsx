@@ -218,8 +218,8 @@ const HomeFeedPage: React.FC = () => {
         </button>
         <Link
           to="/morsel"
-          title="Open Ansatz Morsel"
-          aria-label="Open Ansatz Morsel"
+          title="Open Morsel"
+          aria-label="Open Morsel"
           style={{
             width: 30,
             height: 30,

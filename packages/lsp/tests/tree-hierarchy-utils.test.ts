@@ -53,6 +53,28 @@ describe("LSP Tree Hierarchy & OWL 2 Tree Utilities", () => {
       assert.strictEqual(nodes[0]?.language, "owl2");
     });
 
+    it("deduplicates aliased file:/// and file:/ OWL2 document URIs", () => {
+      const mockWorkspace = {
+        documents: new Map([
+          ["file:///document.owl", { language: "owl2" }],
+          ["file:/document.owl", { uri: "file:/document.owl", text: "", version: 1 }],
+        ]),
+        workspaces: new Map([
+          [
+            "owl2",
+            {
+              documents: new Map([["file:/document.owl", { uri: "file:/document.owl" }]]),
+            },
+          ],
+        ]),
+      };
+
+      const nodes = getOntologyRootNodes(mockWorkspace);
+      assert.strictEqual(nodes.length, 1);
+      assert.strictEqual(nodes[0]?.id, "__ONTOLOGY__:file:///document.owl");
+      assert.strictEqual(nodes[0]?.name, "document.owl");
+    });
+
     it("generates fallback ontology root node when store has axioms but no documents", () => {
       const mockStore = {
         axioms: [{ type: "ClassDeclaration", classIri: "ex:Car" }],

@@ -4,7 +4,7 @@
  * @modelscript/simulink — Pure XML BlockDiagram Parser (browser-safe).
  */
 
-import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlElement } from "@modelscript/dsl/xml";
 import type {
   SimulinkBlock,
   SimulinkBlockType,
@@ -15,6 +15,7 @@ import type {
   SimulinkSystem,
   SourceRange,
 } from "../types.js";
+import { parseSimulinkXmlDocument } from "./wasm-loader.js";
 
 function computeLineStarts(text: string): number[] {
   const starts = [0];
@@ -114,9 +115,13 @@ function mapBlockType(rawType: string): SimulinkBlockType {
 /**
  * Parses a Simulink blockDiagram XML string into a strongly-typed SimulinkModel.
  */
-export function parseSlxXml(xmlContent: string, defaultName = "simulink_model"): SimulinkModel {
+export function parseSlxXml(
+  xmlContent: string,
+  defaultName = "simulink_model",
+  cstTree?: { rootNode?: unknown } | null,
+): SimulinkModel {
   const lineStarts = computeLineStarts(xmlContent);
-  const doc = parseXmlSync(xmlContent);
+  const doc = parseSimulinkXmlDocument(xmlContent, cstTree);
   const root = doc.root;
 
   const model: SimulinkModel = {

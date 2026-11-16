@@ -17,7 +17,7 @@ export interface ManifestViolation {
 
 type Violation = ManifestViolation;
 
-const STABLE_LANGUAGES = new Set([
+const BETA_LANGUAGES = new Set([
   "adams",
   "ampl",
   "cantera",
@@ -47,7 +47,7 @@ const STABLE_LANGUAGES = new Set([
   "urdf",
 ]);
 
-const BETA_LANGUAGES = new Set([
+const ALPHA_LANGUAGES = new Set([
   "antimony",
   "asm",
   "aspen",
@@ -119,30 +119,30 @@ const BETA_LANGUAGES = new Set([
 const CORE_FOUNDATIONAL_LANGUAGES = new Set(["ssp", "csv"]);
 
 export function getExpectedMetadata(relDir: string): {
-  tier: "stable" | "beta" | "preview";
+  tier: "beta" | "alpha" | "pre-alpha";
   category: "core" | "language" | "app" | "example" | "ee";
 } {
   const norm = relDir.replace(/\\/g, "/");
   if (norm === "ee" || norm.startsWith("ee/")) {
-    return { tier: "stable", category: "ee" };
+    return { tier: "beta", category: "ee" };
   }
   if (norm.startsWith("apps/")) {
-    return { tier: "stable", category: "app" };
+    return { tier: "beta", category: "app" };
   }
   if (norm.startsWith("packages/examples/")) {
-    return { tier: "stable", category: "example" };
+    return { tier: "beta", category: "example" };
   }
   if (norm.startsWith("packages/")) {
-    return { tier: "stable", category: "core" };
+    return { tier: "beta", category: "core" };
   }
   const slug = path.posix.basename(norm);
-  if (STABLE_LANGUAGES.has(slug)) {
-    return { tier: "stable", category: "language" };
-  }
   if (BETA_LANGUAGES.has(slug)) {
     return { tier: "beta", category: "language" };
   }
-  return { tier: "preview", category: "language" };
+  if (ALPHA_LANGUAGES.has(slug)) {
+    return { tier: "alpha", category: "language" };
+  }
+  return { tier: "pre-alpha", category: "language" };
 }
 
 function countPackageTestFiles(pkgDir: string): number {
@@ -302,7 +302,7 @@ export function checkPackageManifest(pkgJsonPath: string): Violation[] {
 
   // 2b. Validate "modelscript" maturity metadata & test-suite thresholds
   const meta = pkg["modelscript"] as { tier?: string; category?: string } | undefined;
-  const validTiers = new Set(["stable", "beta", "preview"]);
+  const validTiers = new Set(["beta", "alpha", "pre-alpha"]);
   const validCategories = new Set(["core", "language", "app", "example", "ee"]);
   if (
     !meta ||
@@ -313,7 +313,7 @@ export function checkPackageManifest(pkgJsonPath: string): Violation[] {
     violations.push({
       file: relPath,
       rule: "required-maturity-metadata",
-      message: `Package must declare "modelscript": { "tier": "stable" | "beta" | "preview", "category": "core" | "language" | "app" | "example" | "ee" }. Run "npx tsx scripts/lint-package-manifests.ts --sync-tiers".`,
+      message: `Package must declare "modelscript": { "tier": "beta" | "alpha" | "pre-alpha", "category": "core" | "language" | "app" | "example" | "ee" }. Run "npx tsx scripts/lint-package-manifests.ts --sync-tiers".`,
     });
   } else {
     const expected = getExpectedMetadata(relDir);
@@ -327,17 +327,17 @@ export function checkPackageManifest(pkgJsonPath: string): Violation[] {
     if (relDir.startsWith("languages/")) {
       const slug = path.posix.basename(relDir);
       const testCount = countPackageTestFiles(pkgDir);
-      if (meta.tier === "stable" && !CORE_FOUNDATIONAL_LANGUAGES.has(slug) && testCount < 8) {
+      if (meta.tier === "beta" && !CORE_FOUNDATIONAL_LANGUAGES.has(slug) && testCount < 8) {
         violations.push({
           file: relPath,
           rule: "tier-test-threshold",
-          message: `Language "${slug}" is marked "stable" but only has ${testCount} test file(s) (minimum 8 required for hardened stable tier).`,
+          message: `Language "${slug}" is marked "beta" but only has ${testCount} test file(s) (minimum 8 required for hardened beta tier).`,
         });
-      } else if (meta.tier === "beta" && testCount < 5) {
+      } else if (meta.tier === "alpha" && testCount < 5) {
         violations.push({
           file: relPath,
           rule: "tier-test-threshold",
-          message: `Language "${slug}" is marked "beta" but only has ${testCount} test file(s) (minimum 5 required for beta tier).`,
+          message: `Language "${slug}" is marked "alpha" but only has ${testCount} test file(s) (minimum 5 required for alpha tier).`,
         });
       } else if (testCount < 1) {
         violations.push({

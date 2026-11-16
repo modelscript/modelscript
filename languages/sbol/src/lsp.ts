@@ -78,9 +78,9 @@ export interface LspCompletionItem {
   insertText?: string | undefined;
 }
 
-export function validateSbol(text: string): LspDiagnostic[] {
+export function validateSbol(text: string, cstTree?: { rootNode?: unknown } | null): LspDiagnostic[] {
   try {
-    const doc = parseSbol(text);
+    const doc = parseSbol(text, undefined, cstTree);
     const diags = lintSbol(doc);
 
     return diags.map((d) => {
@@ -110,7 +110,7 @@ export function validateSbol(text: string): LspDiagnostic[] {
       {
         range: {
           start: { line: 0, character: 0 },
-          end: { line: 0, character: 10 },
+          end: { line: 0, character: 1 },
         },
         severity: 1,
         code: "M9500",

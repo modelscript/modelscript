@@ -16,11 +16,11 @@ import type {
 
 const DEFAULT_RANGE: CellmlSourceRange = {
   startOffset: 0,
-  endOffset: 10,
+  endOffset: 1,
   startLine: 1,
   startColumn: 1,
   endLine: 1,
-  endColumn: 10,
+  endColumn: 2,
 };
 
 export const CellmlErrorCode = {

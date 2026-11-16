@@ -76,10 +76,10 @@ export interface LspHover {
   range?: LspRange | undefined;
 }
 
-export function validatePlcopen(content: string): LspDiagnostic[] {
+export function validatePlcopen(content: string, cstTree?: { rootNode?: unknown } | null): LspDiagnostic[] {
   let project: PlcProject;
   try {
-    project = parsePlcopen(content);
+    project = parsePlcopen(content, undefined, { cstTree });
   } catch (err: unknown) {
     return [
       {

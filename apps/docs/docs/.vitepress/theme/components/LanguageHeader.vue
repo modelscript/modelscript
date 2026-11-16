@@ -33,7 +33,7 @@ interface LangItem {
     projections: string[];
   };
   ruleCount: number;
-  tier?: "stable" | "beta" | "preview";
+  tier?: "beta" | "alpha" | "pre-alpha";
 }
 
 const currentSlug = computed<string>(() => {
@@ -53,23 +53,23 @@ const maturity = computed(() => {
   if (!lang.value) return null;
   const t = lang.value.tier;
   const c = lang.value.capabilities;
-  if (t === "stable" || (!t && c.simulate && c.dae && lang.value.ruleCount > 0)) {
-    return {
-      tier: "Stable",
-      badgeClass: "badge-stable",
-      hint: "Production-ready pipeline: native WASM GLR parser, static diagnostics, DAE arena lowering, and numerical solvers verified in CI.",
-    };
-  }
-  if (t === "beta" || (!t && (c.dae || lang.value.ruleCount > 0))) {
+  if (t === "beta" || (!t && c.simulate && c.dae && lang.value.ruleCount > 0)) {
     return {
       tier: "Beta",
       badgeClass: "badge-beta",
+      hint: "Active domain toolchain: native WASM GLR parser, static diagnostics, DAE arena lowering, and numerical solvers verified in CI.",
+    };
+  }
+  if (t === "alpha" || (!t && (c.dae || lang.value.ruleCount > 0))) {
+    return {
+      tier: "Alpha",
+      badgeClass: "badge-alpha",
       hint: "Native WASM parser, semantic linter diagnostics, and DAE arena lowering with cross-language projections.",
     };
   }
   return {
-    tier: "Preview",
-    badgeClass: "badge-preview",
+    tier: "Pre-Alpha",
+    badgeClass: "badge-pre-alpha",
     hint: "Native GLR grammar parser, AST inspection, and schema querying.",
   };
 });
@@ -224,16 +224,6 @@ const maturity = computed(() => {
   border-radius: 50%;
 }
 
-.badge-stable {
-  background: var(--ms-tier-stable-bg);
-  color: var(--ms-tier-stable);
-  border: 1px solid var(--ms-tier-stable-border);
-}
-.badge-stable .badge-dot {
-  background: var(--ms-tier-stable);
-  box-shadow: 0 0 6px var(--ms-tier-stable);
-}
-
 .badge-beta {
   background: var(--ms-tier-beta-bg);
   color: var(--ms-tier-beta);
@@ -244,14 +234,24 @@ const maturity = computed(() => {
   box-shadow: 0 0 6px var(--ms-tier-beta);
 }
 
-.badge-preview {
-  background: var(--ms-tier-preview-bg);
-  color: var(--ms-tier-preview);
-  border: 1px solid var(--ms-tier-preview-border);
+.badge-alpha {
+  background: var(--ms-tier-alpha-bg);
+  color: var(--ms-tier-alpha);
+  border: 1px solid var(--ms-tier-alpha-border);
 }
-.badge-preview .badge-dot {
-  background: var(--ms-tier-preview);
-  box-shadow: 0 0 6px var(--ms-tier-preview);
+.badge-alpha .badge-dot {
+  background: var(--ms-tier-alpha);
+  box-shadow: 0 0 6px var(--ms-tier-alpha);
+}
+
+.badge-pre-alpha {
+  background: var(--ms-tier-pre-alpha-bg);
+  color: var(--ms-tier-pre-alpha);
+  border: 1px solid var(--ms-tier-pre-alpha-border);
+}
+.badge-pre-alpha .badge-dot {
+  background: var(--ms-tier-pre-alpha);
+  box-shadow: 0 0 6px var(--ms-tier-pre-alpha);
 }
 
 .lang-ext-chip code {

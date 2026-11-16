@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { createWasmParserSync } from "@modelscript/ampl/wasm-parser";
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import {
   collectWorkspaceDocuments,
   groupCstLeavesByLine,
@@ -8,19 +9,12 @@ import {
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import { parseAmplData } from "../parser/ampl-dat-parser.js";
 import { parseAmplModel } from "../parser/ampl-mod-parser.js";
 import { lintAmpl } from "./ampl-linter.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getAmplWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/ampl/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("ampl", import.meta.url, createWasmParserSync);
 }
 
 const AMPL_RUN_FILE_COMMANDS = new Set(["model", "data", "include", "commands"]);
@@ -58,6 +52,10 @@ export function lintAmplWorkspace(workspace: WorkspaceDocumentInput, rootUri?: s
           rule: d.rule ?? "ampl-lint",
           severity: d.severity,
           message: d.message,
+          line: d.range?.start.line,
+          column: d.range?.start.column,
+          endLine: d.range?.end.line,
+          endColumn: d.range?.end.column,
         });
       }
     }
@@ -107,6 +105,10 @@ export function lintAmplWorkspace(workspace: WorkspaceDocumentInput, rootUri?: s
           rule: "unresolved-ampl-run-target",
           severity: "error",
           message: `AMPL .run file references '${ref}', which was not found in the workspace.`,
+          line: (targetTok.startPosition?.row ?? 0) + 1,
+          column: (targetTok.startPosition?.column ?? 0) + 1,
+          endLine: (targetTok.startPosition?.row ?? 0) + 1,
+          endColumn: (targetTok.startPosition?.column ?? 0) + targetTok.text.length + 1,
         });
       }
     }

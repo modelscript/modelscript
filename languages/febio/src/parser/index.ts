@@ -5,7 +5,7 @@
  * and line-oriented Biomechanics DSL.
  */
 
-import { parseXml, type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlAttribute, XmlElement } from "@modelscript/dsl/xml";
 import type {
   FebioBoundaryCondition,
   FebioContact,
@@ -25,6 +25,7 @@ import type {
   SofaForceField,
   SofaSceneNode,
 } from "../types.js";
+import { parseFebioXmlDocument } from "./wasm-loader.js";
 
 function buildLineOffsets(text: string): number[] {
   const offsets = [0];
@@ -136,21 +137,30 @@ function parseNumber(raw: string | undefined): number | undefined {
   return Number.isFinite(num) ? num : undefined;
 }
 
-export function parseFebio(content: string, sourceUri?: string): FebioDocument {
+export function parseFebio(
+  content: string,
+  sourceUri?: string,
+  options?: { cstTree?: { rootNode?: unknown } | null | undefined },
+): FebioDocument {
   const lineOffsets = buildLineOffsets(content);
   const trimmed = content.trim();
 
   if (/<febio_spec\b/i.test(trimmed)) {
-    return parseFebioXml(content, lineOffsets, sourceUri);
+    return parseFebioXml(content, lineOffsets, sourceUri, options?.cstTree);
   }
   if (/<Node\b/i.test(trimmed)) {
-    return parseSofaScnXml(content, lineOffsets, sourceUri);
+    return parseSofaScnXml(content, lineOffsets, sourceUri, options?.cstTree);
   }
   return parseFebioDsl(content, lineOffsets, sourceUri);
 }
 
-function parseFebioXml(content: string, lineOffsets: number[], sourceUri?: string): FebioDocument {
-  const xmlDoc = parseXml(content);
+function parseFebioXml(
+  content: string,
+  lineOffsets: number[],
+  sourceUri?: string,
+  cstTree?: { rootNode?: unknown } | null,
+): FebioDocument {
+  const xmlDoc = parseFebioXmlDocument(content, cstTree);
   const root = xmlDoc.root;
   const specEl =
     root && matchTag(root, "febio_spec") ? root : (findDescendants(root, (e) => matchTag(e, "febio_spec"))[0] ?? root);
@@ -534,8 +544,13 @@ function parseFebioXml(content: string, lineOffsets: number[], sourceUri?: strin
   return doc;
 }
 
-function parseSofaScnXml(content: string, lineOffsets: number[], sourceUri?: string): FebioDocument {
-  const xmlDoc = parseXml(content);
+function parseSofaScnXml(
+  content: string,
+  lineOffsets: number[],
+  sourceUri?: string,
+  cstTree?: { rootNode?: unknown } | null,
+): FebioDocument {
+  const xmlDoc = parseFebioXmlDocument(content, cstTree);
   const root = xmlDoc.root;
   const sofaNodes: SofaSceneNode[] = [];
   const materials: FebioMaterial[] = [];

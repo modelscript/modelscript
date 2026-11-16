@@ -13,7 +13,36 @@ import {
 import { lintFortranSource } from "./index.js";
 
 function getFortranWasmParser() {
-  return getOrLoadLanguageWasmParser("fortran", import.meta.url, createWasmParserSync);
+  try {
+    return getOrLoadLanguageWasmParser("fortran", import.meta.url, createWasmParserSync);
+  } catch {
+    return null;
+  }
+}
+
+function scanFortranLinesFallback(text: string): ReturnType<typeof groupCstLeavesByLine> {
+  const rawLines = text.split(/\r?\n/);
+  const result: ReturnType<typeof groupCstLeavesByLine> = [];
+  for (let row = 0; row < rawLines.length; row++) {
+    const stripped = rawLines[row]!.replace(/!.*$/, "").trim();
+    if (!stripped) continue;
+    const tokens: ReturnType<typeof groupCstLeavesByLine>[number]["tokens"] = [];
+    const tokRegex = /#|[A-Za-z_][A-Za-z0-9_]*|"[^"]*"|'[^']*'|[^\s]/g;
+    let m: RegExpExecArray | null;
+    while ((m = tokRegex.exec(stripped)) !== null) {
+      const tokText = m[0]!;
+      const type = /^[A-Za-z_][A-Za-z0-9_]*$/.test(tokText) ? "IDENTIFIER" : "TOKEN";
+      tokens.push({
+        type,
+        text: tokText,
+        startPosition: { row, column: m.index },
+      });
+    }
+    if (tokens.length > 0) {
+      result.push({ row, tokens });
+    }
+  }
+  return result;
 }
 
 const BUILTIN_FORTRAN_MODULES = new Set(["iso_c_binding", "iso_fortran_env", "ieee_arithmetic", "omp_lib", "mpi"]);
@@ -36,8 +65,8 @@ export function lintFortranWorkspace(workspace: WorkspaceDocumentInput, rootUri?
   const parsedLines = new Map<string, ReturnType<typeof groupCstLeavesByLine>>();
 
   for (const [uri, text] of entries) {
-    const tree = parser.parse(text);
-    const lines = groupCstLeavesByLine(tree?.rootNode);
+    const tree = parser ? parser.parse(text) : null;
+    const lines = tree?.rootNode ? groupCstLeavesByLine(tree.rootNode) : scanFortranLinesFallback(text);
     parsedLines.set(uri, lines);
 
     for (const { tokens } of lines) {

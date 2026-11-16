@@ -160,6 +160,7 @@ interface CodeEditorProps {
   onParsed?: (() => void) | undefined;
   onDiagnostics?: ((markers: editor.IMarkerData[]) => void) | undefined;
   onStatusChange?: ((state: string, message: string) => void) | undefined;
+  onSimulate?: (() => void | Promise<void>) | undefined;
   theme: Theme;
   embed: boolean;
   readOnly?: boolean | undefined;
@@ -202,11 +203,13 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const lintOnTypeRef = useRef(lintOnType);
   const onPasteRef = useRef(props.onPaste);
   const onParsedRef = useRef(props.onParsed);
+  const onSimulateRef = useRef(props.onSimulate);
   uriRef.current = props.uri;
   languageIdRef.current = props.languageId ?? "modelica";
   lintOnTypeRef.current = lintOnType;
   onPasteRef.current = props.onPaste;
   onParsedRef.current = props.onParsed;
+  onSimulateRef.current = props.onSimulate;
 
   const overflowWidgetsDomNode = useMemo(() => {
     if (typeof document === "undefined") return undefined;
@@ -277,6 +280,16 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
         },
         onStatus: (state, message) => {
           props.onStatusChange?.(state, message);
+        },
+        onExecuteCommand: async (commandId) => {
+          if (
+            commandId === "modelscript.action.simulate" ||
+            /^modelscript\.[^.]+\.simulate(?:_.*)?$/i.test(commandId)
+          ) {
+            await onSimulateRef.current?.();
+            return true;
+          }
+          return false;
         },
       });
 

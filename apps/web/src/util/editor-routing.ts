@@ -26,6 +26,7 @@ export const EXTENSION_TO_DIALECT: Record<string, string> = {
   ".mo": "modelica",
   ".mos": "modelica",
   ".msim": "modelica",
+  ".ampl": "ampl",
   ".sysml": "sysml2",
   ".sysml2": "sysml2",
   ".kerml": "sysml2",

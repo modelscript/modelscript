@@ -9,7 +9,7 @@
  * <group>/<encapsulation>/<component_ref>.
  */
 
-import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlElement } from "@modelscript/dsl/xml";
 import type {
   CellmlComponent,
   CellmlConnection,
@@ -23,6 +23,7 @@ import type {
   CellmlVariable,
   CellmlVariableMapping,
 } from "../types.js";
+import { parseCellmlXmlDocument } from "./wasm-loader.js";
 
 const SI_PREFIX_EXPONENTS: Record<string, number> = {
   yotta: 24,
@@ -719,8 +720,12 @@ function parseEncapsulationRef(elem: XmlElement, source: string): CellmlEncapsul
 /**
  * Parses a CellML 1.0, 1.1, or 2.0 XML document into a structured CellmlDocument AST.
  */
-export function parseCellml(text: string, uri?: string): CellmlDocument {
-  const xmlDoc = parseXml(text);
+export function parseCellml(
+  text: string,
+  uri?: string,
+  options?: { cstTree?: { rootNode?: unknown } | null | undefined },
+): CellmlDocument {
+  const xmlDoc = parseCellmlXmlDocument(text, options?.cstTree);
   const root = xmlDoc.root;
 
   if (!root || localTagName(root.name) !== "model") {

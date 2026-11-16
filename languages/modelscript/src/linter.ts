@@ -830,7 +830,7 @@ export class ModelScriptLinter {
               ModelScriptErrorCode.ARGUMENT_COUNT_MISMATCH.rule,
               "error",
               ModelScriptErrorCode.ARGUMENT_COUNT_MISMATCH.message(fnName, String(fnSig.paramCount), String(argCount)),
-              argsNode || calleeNode,
+              calleeNode || argsNode,
             );
           } else if (fnSig) {
             for (let i = 0; i < argNodes.length; i++) {

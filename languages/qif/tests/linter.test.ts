@@ -157,5 +157,44 @@ describe("QIF 3.0 Semantic Linter (NIST QIF Rules & ASME Y14.5 M8101–M8108)", 
     assert(m8112 !== undefined, "Expected M8112 SPC_SUBGROUP_SIZE_INSUFFICIENT");
     assert(m8112.message.includes("SpcPos"));
   });
-});
 
+  it("narrows M8101 unresolved featureId range to attribute value or Id text in QIF XML", () => {
+    const xml = `<QIFDocument>
+  <DatumDefinitions>
+    <DatumDefinition id="D_B" label="B" featureId="F_BORE"/>
+  </DatumDefinitions>
+  <FeatureNominals>
+    <CylinderFeatureNominal id="F BORE">
+      <Name>CenterCoolingBoreB</Name>
+      <Diameter>12.000</Diameter>
+      <ProbingPoints>8</ProbingPoints>
+    </CylinderFeatureNominal>
+  </FeatureNominals>
+  <CharacteristicNominals>
+    <PositionCharacteristicNominal id="C_POS" balloonNumber="1">
+      <Name>CoolingBore_TruePosition</Name>
+      <ToleranceValue>0.050</ToleranceValue>
+      <DiametricalZone>true</DiametricalZone>
+      <MaterialCondition>MMC</MaterialCondition>
+      <FeatureNominalIds><Id>F_BORE</Id></FeatureNominalIds>
+    </PositionCharacteristicNominal>
+  </CharacteristicNominals>
+</QIFDocument>`;
+    const doc = parseQif(xml);
+    const diags = lintQifDocument(doc);
+    const m8101 = diags.filter((d) => d.code === "M8101");
+    assert.strictEqual(m8101.length, 2);
+
+    const datumDiag = m8101.find((d) => d.message.includes("Datum 'B'"));
+    assert(datumDiag !== undefined);
+    assert.strictEqual(xml.slice(datumDiag.range.startOffset, datumDiag.range.endOffset), "F_BORE");
+    assert.strictEqual(datumDiag.range.startLine, 3);
+    assert.strictEqual(datumDiag.range.endLine, 3);
+
+    const charDiag = m8101.find((d) => d.message.includes("CoolingBore_TruePosition"));
+    assert(charDiag !== undefined);
+    assert.strictEqual(xml.slice(charDiag.range.startOffset, charDiag.range.endOffset), "F_BORE");
+    assert.strictEqual(charDiag.range.startLine, 18);
+    assert.strictEqual(charDiag.range.endLine, 18);
+  });
+});

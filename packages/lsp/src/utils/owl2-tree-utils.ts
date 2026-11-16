@@ -33,6 +33,10 @@ export function getOntologyDisplayName(uri: string): string {
   return uri;
 }
 
+function normalizeOntologyUri(uri: string): string {
+  return uri.replace(/^([a-z0-9+-]+):\/(?!\/)/i, "$1:///");
+}
+
 /**
  * Returns top-level ontology container nodes found in workspace or owl2Store.
  */
@@ -45,12 +49,13 @@ export function getOntologyRootNodes(workspace: any, store?: any): TreeNodeInfo[
     for (const [uri, doc] of workspace.documents) {
       const ext = uri.slice(uri.lastIndexOf(".")).toLowerCase();
       const isOwlExt = ext === ".owl" || ext === ".ofn" || ext === ".ttl" || ext === ".owl2";
-      if ((isOwlExt || (doc as any)?.language === "owl2") && !seenUris.has(uri)) {
-        seenUris.add(uri);
+      const canonicalUri = normalizeOntologyUri(uri);
+      if ((isOwlExt || (doc as any)?.language === "owl2") && !seenUris.has(canonicalUri)) {
+        seenUris.add(canonicalUri);
         nodes.push({
-          id: `__ONTOLOGY__:${uri}`,
-          name: getOntologyDisplayName(uri),
-          compositeName: uri,
+          id: `__ONTOLOGY__:${canonicalUri}`,
+          name: getOntologyDisplayName(canonicalUri),
+          compositeName: canonicalUri,
           classKind: "ontology",
           icon: "symbol-namespace",
           hasChildren: true,
@@ -64,12 +69,13 @@ export function getOntologyRootNodes(workspace: any, store?: any): TreeNodeInfo[
   const owlWs = workspace?.workspaces?.get ? workspace.workspaces.get("owl2") : null;
   if (owlWs?.documents) {
     for (const [uri] of owlWs.documents) {
-      if (!seenUris.has(uri)) {
-        seenUris.add(uri);
+      const canonicalUri = normalizeOntologyUri(uri);
+      if (!seenUris.has(canonicalUri)) {
+        seenUris.add(canonicalUri);
         nodes.push({
-          id: `__ONTOLOGY__:${uri}`,
-          name: getOntologyDisplayName(uri),
-          compositeName: uri,
+          id: `__ONTOLOGY__:${canonicalUri}`,
+          name: getOntologyDisplayName(canonicalUri),
+          compositeName: canonicalUri,
           classKind: "ontology",
           icon: "symbol-namespace",
           hasChildren: true,

@@ -10,7 +10,7 @@
  * typed attribute values, and hierarchical specification structures with ZERO regex.
  */
 
-import { type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
+import { getXmlAttrValueSpan, getXmlTextContentSpan, type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
 import { defaultContainerToolkit } from "@modelscript/runtime";
 import type {
   AsilLevel,
@@ -55,14 +55,22 @@ function getChild(element: XmlElement | null | undefined, expectedName: string):
   return element.children.find((c: XmlElement) => matchTag(c, expectedName));
 }
 
+function getChildRefElement(
+  parent: XmlElement | null | undefined,
+  wrapperTag: string,
+  refTag: string,
+): XmlElement | undefined {
+  const wrapper = getChild(parent, wrapperTag);
+  if (!wrapper) return undefined;
+  return getChild(wrapper, refTag);
+}
+
 function getChildRefText(
   parent: XmlElement | null | undefined,
   wrapperTag: string,
   refTag: string,
 ): string | undefined {
-  const wrapper = getChild(parent, wrapperTag);
-  if (!wrapper) return undefined;
-  const ref = getChild(wrapper, refTag);
+  const ref = getChildRefElement(parent, wrapperTag, refTag);
   return ref ? ref.text.trim() : undefined;
 }
 
@@ -624,7 +632,11 @@ export function parseReqIf(xmlContent: string, options?: ParseReqIfOptions): Req
 
   function recordIdentifier(id: string, el: XmlElement): void {
     if (seenIdentifiers.has(id)) {
-      duplicateIdentifiers.push({ id, span: createSpan(el.start, el.end, lineStarts) });
+      const idSpan = getXmlAttrValueSpan(el, "IDENTIFIER");
+      duplicateIdentifiers.push({
+        id,
+        span: createSpan(idSpan?.start ?? el.start, idSpan?.end ?? el.end, lineStarts),
+      });
     } else {
       seenIdentifiers.add(id);
     }
@@ -768,9 +780,16 @@ export function parseReqIf(xmlContent: string, options?: ParseReqIfOptions): Req
 
       const id = getAttr(soEl, "IDENTIFIER") || `REQ-${specObjects.size + 1}`;
       recordIdentifier(id, soEl);
+      const idAttrSpan = getXmlAttrValueSpan(soEl, "IDENTIFIER");
+      const identifierSpan = idAttrSpan ? createSpan(idAttrSpan.start, idAttrSpan.end, lineStarts) : undefined;
       const longName = getAttr(soEl, "LONG-NAME");
       const lastChange = getAttr(soEl, "LAST-CHANGE");
-      const typeRef = getChildRefText(soEl, "TYPE", "SPEC-OBJECT-TYPE-REF");
+      const typeRefEl = getChildRefElement(soEl, "TYPE", "SPEC-OBJECT-TYPE-REF");
+      const typeRef = typeRefEl ? typeRefEl.text.trim() : undefined;
+      const typeRefTextSpan = typeRefEl ? getXmlTextContentSpan(typeRefEl, xmlContent) : undefined;
+      const typeRefSpan = typeRefTextSpan
+        ? createSpan(typeRefTextSpan.start, typeRefTextSpan.end, lineStarts)
+        : undefined;
       const span = createSpan(soEl.start, soEl.end, lineStarts);
 
       const attributes = new Map<string, ReqIfAttributeValue>();
@@ -940,9 +959,11 @@ export function parseReqIf(xmlContent: string, options?: ParseReqIfOptions): Req
 
       specObjects.set(id, {
         identifier: id,
+        identifierSpan,
         longName,
         lastChange,
         typeRef,
+        typeRefSpan,
         attributes,
         text: requirementText,
         hasExplicitText,
@@ -963,20 +984,27 @@ export function parseReqIf(xmlContent: string, options?: ParseReqIfOptions): Req
 
       const id = getAttr(srEl, "IDENTIFIER") || `REL-${specRelations.length + 1}`;
       recordIdentifier(id, srEl);
+      const idAttrSpan = getXmlAttrValueSpan(srEl, "IDENTIFIER");
+      const identifierSpan = idAttrSpan ? createSpan(idAttrSpan.start, idAttrSpan.end, lineStarts) : undefined;
       const longName = getAttr(srEl, "LONG-NAME");
-      const typeRef = getChildRefText(srEl, "TYPE", "SPEC-RELATION-TYPE-REF") || getAttr(srEl, "TYPE");
-      const sourceId =
-        getChildRefText(srEl, "SOURCE", "SPEC-OBJECT-REF") ||
-        getChild(srEl, "SOURCE")?.text.trim() ||
-        getAttr(srEl, "SOURCE") ||
-        getAttr(srEl, "SOURCE-REF") ||
-        "";
-      const targetId =
-        getChildRefText(srEl, "TARGET", "SPEC-OBJECT-REF") ||
-        getChild(srEl, "TARGET")?.text.trim() ||
-        getAttr(srEl, "TARGET") ||
-        getAttr(srEl, "TARGET-REF") ||
-        "";
+      const typeRefEl = getChildRefElement(srEl, "TYPE", "SPEC-RELATION-TYPE-REF");
+      const typeAttrSpan = getXmlAttrValueSpan(srEl, "TYPE");
+      const typeRef = (typeRefEl ? typeRefEl.text.trim() : undefined) || getAttr(srEl, "TYPE");
+      const typeRawSpan = typeRefEl ? getXmlTextContentSpan(typeRefEl, xmlContent) : typeAttrSpan;
+      const typeRefSpan = typeRawSpan ? createSpan(typeRawSpan.start, typeRawSpan.end, lineStarts) : undefined;
+
+      const sourceEl = getChildRefElement(srEl, "SOURCE", "SPEC-OBJECT-REF") ?? getChild(srEl, "SOURCE");
+      const sourceAttrSpan = getXmlAttrValueSpan(srEl, "SOURCE") ?? getXmlAttrValueSpan(srEl, "SOURCE-REF");
+      const sourceId = sourceEl?.text.trim() || getAttr(srEl, "SOURCE") || getAttr(srEl, "SOURCE-REF") || "";
+      const sourceRawSpan = sourceEl ? getXmlTextContentSpan(sourceEl, xmlContent) : sourceAttrSpan;
+      const sourceSpan = sourceRawSpan ? createSpan(sourceRawSpan.start, sourceRawSpan.end, lineStarts) : undefined;
+
+      const targetEl = getChildRefElement(srEl, "TARGET", "SPEC-OBJECT-REF") ?? getChild(srEl, "TARGET");
+      const targetAttrSpan = getXmlAttrValueSpan(srEl, "TARGET") ?? getXmlAttrValueSpan(srEl, "TARGET-REF");
+      const targetId = targetEl?.text.trim() || getAttr(srEl, "TARGET") || getAttr(srEl, "TARGET-REF") || "";
+      const targetRawSpan = targetEl ? getXmlTextContentSpan(targetEl, xmlContent) : targetAttrSpan;
+      const targetSpan = targetRawSpan ? createSpan(targetRawSpan.start, targetRawSpan.end, lineStarts) : undefined;
+
       const span = createSpan(srEl.start, srEl.end, lineStarts);
 
       let relationType: ReqIfRelationKind = "satisfies";
@@ -989,11 +1017,15 @@ export function parseReqIf(xmlContent: string, options?: ParseReqIfOptions): Req
 
       specRelations.push({
         identifier: id,
+        identifierSpan,
         longName,
         typeRef,
+        typeRefSpan,
         relationType,
         sourceId,
+        sourceSpan,
         targetId,
+        targetSpan,
         span,
       });
     }

@@ -68,7 +68,7 @@ interface LangManifestEntry {
   slug: string;
   name: string;
   pkgName: string;
-  tier: "stable" | "beta" | "preview";
+  tier: "beta" | "alpha" | "pre-alpha";
   capabilities: {
     parse: boolean;
     lint: boolean;
@@ -537,17 +537,17 @@ function resolveTargetIr(
 }
 
 function buildBaselineAggregate(reports: LanguageBenchmarkReport[]): PolyglotBenchmarkBaseline["aggregate"] {
-  let stableCount = 0;
   let betaCount = 0;
-  let previewCount = 0;
+  let alphaCount = 0;
+  let preAlphaCount = 0;
   let languagesWithAdapters = 0;
   let totalCases = 0;
   let passedCases = 0;
 
   for (const r of reports) {
-    if (r.tier === "stable") stableCount++;
-    else if (r.tier === "beta") betaCount++;
-    else previewCount++;
+    if (r.tier === "beta") betaCount++;
+    else if (r.tier === "alpha") alphaCount++;
+    else preAlphaCount++;
 
     if (r.stages.solve.status === "supported") languagesWithAdapters++;
     totalCases += r.summary.totalCases;
@@ -556,9 +556,9 @@ function buildBaselineAggregate(reports: LanguageBenchmarkReport[]): PolyglotBen
 
   return {
     totalLanguages: reports.length,
-    stableCount,
     betaCount,
-    previewCount,
+    alphaCount,
+    preAlphaCount,
     languagesWithAdapters,
     totalCases,
     passedCases,

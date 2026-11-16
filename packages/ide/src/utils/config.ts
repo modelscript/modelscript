@@ -2,131 +2,131 @@
 
 import * as vscode from "vscode";
 
-export type LanguageMaturityTier = "stable" | "beta" | "experimental";
+export type LanguageMaturityTier = "beta" | "alpha" | "pre-alpha";
 
 export const LANGUAGE_MATURITY_MAP: Record<string, LanguageMaturityTier> = {
-  // Stable (Tier 1 - 24 languages)
-  adams: "stable",
-  ampl: "stable",
-  ccsds: "stable",
-  csv: "stable",
-  easy5: "stable",
-  epanet: "stable",
-  gensys: "stable",
-  lps: "stable",
-  modelica: "stable",
-  modelscript: "stable",
-  olga: "stable",
-  opendrive: "stable",
-  owl2: "stable",
-  pscad: "stable",
-  psse: "stable",
-  relap5: "stable",
-  reqif: "stable",
-  rocets: "stable",
-  scad: "stable",
-  spice: "stable",
-  ssp: "stable",
-  swmm: "stable",
-  sysml2: "stable",
-  urdf: "stable",
+  // Beta (Tier 2 - 24 languages)
+  adams: "beta",
+  ampl: "beta",
+  ccsds: "beta",
+  csv: "beta",
+  easy5: "beta",
+  epanet: "beta",
+  gensys: "beta",
+  lps: "beta",
+  modelica: "beta",
+  modelscript: "beta",
+  olga: "beta",
+  opendrive: "beta",
+  owl2: "beta",
+  pscad: "beta",
+  psse: "beta",
+  relap5: "beta",
+  reqif: "beta",
+  rocets: "beta",
+  scad: "beta",
+  spice: "beta",
+  ssp: "beta",
+  swmm: "beta",
+  sysml2: "beta",
+  urdf: "beta",
 
-  // Aliases for stable languages
-  sysml: "stable",
-  openscad: "stable",
-  owl: "stable",
+  // Aliases for beta languages
+  sysml: "beta",
+  openscad: "beta",
+  owl: "beta",
 
-  // Beta (Tier 2 - 57 languages)
-  antimony: "beta",
-  aspen: "beta",
-  automationml: "beta",
-  autosar: "beta",
-  bngl: "beta",
-  c: "beta",
-  cantera: "beta",
-  cellml: "beta",
-  cfd: "beta",
-  cgmes: "beta",
-  "dicom-rt": "beta",
-  eclipse: "beta",
-  energyplus: "beta",
-  fea: "beta",
-  febio: "beta",
-  fiber: "beta",
-  fortran: "beta",
-  genbank: "beta",
-  gproms: "beta",
-  gtfs: "beta",
-  gtsuite: "beta",
-  "hec-ras": "beta",
-  ibis: "beta",
-  igtl: "beta",
-  jsbsim: "beta",
-  landgem: "beta",
-  modflow: "beta",
-  nifti: "beta",
-  nmtran: "beta",
-  ocpp: "beta",
-  openadr: "beta",
-  opendss: "beta",
-  openscenario: "beta",
-  opensim: "beta",
-  optical: "beta",
-  oscal: "beta",
-  pdb: "beta",
-  phreeqc: "beta",
-  plcopen: "beta",
-  powerfactory: "beta",
-  pslf: "beta",
-  qif: "beta",
-  ran: "beta",
-  sbml: "beta",
-  sbol: "beta",
-  sedml: "beta",
-  sima: "beta",
-  simpack: "beta",
-  simulink: "beta",
-  smiles: "beta",
-  step: "beta",
-  "three-mf": "beta",
-  topas: "beta",
-  touchstone: "beta",
-  tough: "beta",
-  usd: "beta",
-  "verilog-a": "beta",
+  // Alpha (Tier 1 - 57 languages)
+  antimony: "alpha",
+  aspen: "alpha",
+  automationml: "alpha",
+  autosar: "alpha",
+  bngl: "alpha",
+  c: "alpha",
+  cantera: "alpha",
+  cellml: "alpha",
+  cfd: "alpha",
+  cgmes: "alpha",
+  "dicom-rt": "alpha",
+  eclipse: "alpha",
+  energyplus: "alpha",
+  fea: "alpha",
+  febio: "alpha",
+  fiber: "alpha",
+  fortran: "alpha",
+  genbank: "alpha",
+  gproms: "alpha",
+  gtfs: "alpha",
+  gtsuite: "alpha",
+  "hec-ras": "alpha",
+  ibis: "alpha",
+  igtl: "alpha",
+  jsbsim: "alpha",
+  landgem: "alpha",
+  modflow: "alpha",
+  nifti: "alpha",
+  nmtran: "alpha",
+  ocpp: "alpha",
+  openadr: "alpha",
+  opendss: "alpha",
+  openscenario: "alpha",
+  opensim: "alpha",
+  optical: "alpha",
+  oscal: "alpha",
+  pdb: "alpha",
+  phreeqc: "alpha",
+  plcopen: "alpha",
+  powerfactory: "alpha",
+  pslf: "alpha",
+  qif: "alpha",
+  ran: "alpha",
+  sbml: "alpha",
+  sbol: "alpha",
+  sedml: "alpha",
+  sima: "alpha",
+  simpack: "alpha",
+  simulink: "alpha",
+  smiles: "alpha",
+  step: "alpha",
+  "three-mf": "alpha",
+  topas: "alpha",
+  touchstone: "alpha",
+  tough: "alpha",
+  usd: "alpha",
+  "verilog-a": "alpha",
 
   // Aliases & domain variants
-  openfoam: "beta",
-  vhdlams: "beta",
-  verilogams: "beta",
-  bondgraph: "beta",
-  smv: "beta",
-  aml: "beta",
-  caex: "beta",
+  openfoam: "alpha",
+  vhdlams: "alpha",
+  verilogams: "alpha",
+  bondgraph: "alpha",
+  smv: "alpha",
+  aml: "alpha",
+  caex: "alpha",
 };
 
 export function getLanguageMaturity(languageId: string): LanguageMaturityTier {
-  return LANGUAGE_MATURITY_MAP[languageId.toLowerCase()] ?? "experimental";
+  return LANGUAGE_MATURITY_MAP[languageId.toLowerCase()] ?? "pre-alpha";
 }
 
 export function getLanguageMaturityBadge(languageId: string): string {
   const tier = getLanguageMaturity(languageId);
-  if (tier === "stable") return "🟢 Stable";
-  if (tier === "beta") return "🟡 Beta";
-  return "🧪 Experimental";
+  if (tier === "beta") return "🟢 Beta";
+  if (tier === "alpha") return "🟡 Alpha";
+  return "🧪 Pre-Alpha";
 }
 
 export function getLanguageMaturityTierSetting(): LanguageMaturityTier {
   try {
     const cfg = vscode.workspace?.getConfiguration?.("modelscript.languages");
     const tier = cfg?.get<string>("maturityTier");
-    if (tier === "stable" || tier === "beta" || tier === "experimental") {
+    if (tier === "beta" || tier === "alpha" || tier === "pre-alpha") {
       return tier;
     }
   } catch {
     // Fallback
   }
-  return "beta";
+  return "alpha";
 }
 
 export function isLanguageEnabled(languageId: string): boolean {
@@ -144,7 +144,7 @@ export function isLanguageEnabled(languageId: string): boolean {
     }
     const minTier = getLanguageMaturityTierSetting();
     const langTier = getLanguageMaturity(id);
-    const rank: Record<LanguageMaturityTier, number> = { stable: 3, beta: 2, experimental: 1 };
+    const rank: Record<LanguageMaturityTier, number> = { beta: 3, alpha: 2, "pre-alpha": 1 };
     return rank[langTier] >= rank[minTier];
   } catch {
     return true;
@@ -657,4 +657,3 @@ export function getTrustedOrigins(): string[] {
   }
   return [];
 }
-

@@ -86,15 +86,13 @@ export const ReqIfErrorCode = {
     code: 7012,
     rule: "spec-object-empty-description",
     severity: "warning" as const,
-    message: (reqId: string) =>
-      `Safety-critical SpecObject '${reqId}' has empty text description.`,
+    message: (reqId: string) => `Safety-critical SpecObject '${reqId}' has empty text description.`,
   },
   SPEC_HIERARCHY_LEVEL_EXCESSIVE: {
     code: 7013,
     rule: "spec-hierarchy-level-excessive",
     severity: "warning" as const,
-    message: (level: number) =>
-      `SpecHierarchy nesting level (${level}) exceeds recommended maximum (7).`,
+    message: (level: number) => `SpecHierarchy nesting level (${level}) exceeds recommended maximum (7).`,
   },
 };
 
@@ -121,7 +119,7 @@ export function lintReqIf(doc: ReqIfDocument): ReqIfDiagnostic[] {
           rule: ReqIfErrorCode.DUPLICATE_SPEC_OBJECT_ID.rule,
           severity: ReqIfErrorCode.DUPLICATE_SPEC_OBJECT_ID.severity,
           message: ReqIfErrorCode.DUPLICATE_SPEC_OBJECT_ID.message(rel.identifier),
-          span: rel.span,
+          span: rel.identifierSpan ?? rel.span,
         });
       }
       seenRelIds.add(rel.identifier);
@@ -137,7 +135,7 @@ export function lintReqIf(doc: ReqIfDocument): ReqIfDiagnostic[] {
         rule: ReqIfErrorCode.UNRESOLVED_TYPE_REFERENCE.rule,
         severity: ReqIfErrorCode.UNRESOLVED_TYPE_REFERENCE.severity,
         message: ReqIfErrorCode.UNRESOLVED_TYPE_REFERENCE.message(obj.identifier, obj.typeRef),
-        span: obj.span,
+        span: obj.typeRefSpan ?? obj.span,
       });
     } else if (specType) {
       // Check mandatory attributes
@@ -273,7 +271,7 @@ export function lintReqIf(doc: ReqIfDocument): ReqIfDiagnostic[] {
           rule: ReqIfErrorCode.SPEC_RELATION_TYPE_UNKNOWN.rule,
           severity: ReqIfErrorCode.SPEC_RELATION_TYPE_UNKNOWN.severity,
           message: ReqIfErrorCode.SPEC_RELATION_TYPE_UNKNOWN.message(rel.identifier, rel.typeRef),
-          span: rel.span,
+          span: rel.typeRefSpan ?? rel.span,
         });
       }
     }
@@ -284,7 +282,7 @@ export function lintReqIf(doc: ReqIfDocument): ReqIfDiagnostic[] {
         rule: ReqIfErrorCode.DANGLING_RELATION.rule,
         severity: ReqIfErrorCode.DANGLING_RELATION.severity,
         message: ReqIfErrorCode.DANGLING_RELATION.message(rel.identifier, rel.sourceId, "source"),
-        span: rel.span,
+        span: rel.sourceSpan ?? rel.span,
       });
     } else if (rel.sourceId) {
       outgoingRelations.add(rel.sourceId);
@@ -296,7 +294,7 @@ export function lintReqIf(doc: ReqIfDocument): ReqIfDiagnostic[] {
         rule: ReqIfErrorCode.DANGLING_RELATION.rule,
         severity: ReqIfErrorCode.DANGLING_RELATION.severity,
         message: ReqIfErrorCode.DANGLING_RELATION.message(rel.identifier, rel.targetId, "target"),
-        span: rel.span,
+        span: rel.targetSpan ?? rel.span,
       });
     } else if (rel.targetId) {
       incomingRelations.add(rel.targetId);

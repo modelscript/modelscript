@@ -69,9 +69,9 @@ export interface LspHover {
   };
 }
 
-export function validateSbml(text: string): LspDiagnostic[] {
+export function validateSbml(text: string, cstTree?: { rootNode?: unknown } | null): LspDiagnostic[] {
   try {
-    const doc = parseSbml(text);
+    const doc = parseSbml(text, undefined, { cstTree });
     const diags = lintSbml(doc);
 
     return diags.map((d) => {
@@ -101,7 +101,7 @@ export function validateSbml(text: string): LspDiagnostic[] {
       {
         range: {
           start: { line: 0, character: 0 },
-          end: { line: 0, character: 10 },
+          end: { line: 0, character: 1 },
         },
         severity: 1,
         code: "M8800",

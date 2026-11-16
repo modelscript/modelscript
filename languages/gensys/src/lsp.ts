@@ -202,7 +202,7 @@ export function validateGensys(content: string): LspDiagnostic[] {
   } catch (err: unknown) {
     return [
       {
-        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } },
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
         severity: 1,
         code: "M1001",
         source: "gensys",
@@ -219,7 +219,7 @@ export function validateGensys(content: string): LspDiagnostic[] {
       ? findLineAndCol(content, identifier)
       : {
           start: { line: 0, character: 0 },
-          end: { line: 0, character: 10 },
+          end: { line: 0, character: 1 },
         };
     return {
       range,

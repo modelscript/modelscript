@@ -7,7 +7,8 @@
  * and <xacro:macro name="..." params="..."> macro instantiations into pure URDF XML.
  */
 
-import { parseXml, type XmlDocument, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlDocument, XmlElement } from "@modelscript/dsl/xml";
+import { parseUrdfXmlDocument } from "./wasm-loader.js";
 
 /**
  * Evaluates basic math expressions inside ${...} in Xacro attributes:
@@ -143,7 +144,7 @@ interface XacroMacroDef {
 /**
  * Expands Xacro properties and macros within an XML string, returning expanded URDF XML text.
  */
-export function expandXacro(sourceXml: string): string {
+export function expandXacro(sourceXml: string, cstTree?: { rootNode?: unknown } | null): string {
   // If no xacro namespace or tags, return original
   if (!sourceXml.includes("xacro:") && !sourceXml.includes("${")) {
     return sourceXml;
@@ -151,7 +152,7 @@ export function expandXacro(sourceXml: string): string {
 
   let doc: XmlDocument;
   try {
-    doc = parseXml(sourceXml);
+    doc = parseUrdfXmlDocument(sourceXml, cstTree);
   } catch {
     return sourceXml;
   }

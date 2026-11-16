@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "modelscript": {
-    "tier": "stable",
+    "tier": "beta",
     "category": "example"
   }
 }

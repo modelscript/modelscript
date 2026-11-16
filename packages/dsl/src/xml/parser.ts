@@ -602,6 +602,16 @@ export function parseXmlWithWasmParser(
   if (source.length > 2 * 1024 * 1024) {
     return parseXmlSync(source);
   }
+  if (!existingTree?.rootNode) {
+    // Guard against pathological >16KB unclosed/malformed tags causing quadratic GLR error recovery
+    const firstLt = source.indexOf("<");
+    if (firstLt !== -1) {
+      const nextGt = source.indexOf(">", firstLt + 1);
+      if (nextGt === -1 && source.length - firstLt > 16384) {
+        return parseXmlSync(source);
+      }
+    }
+  }
 
   try {
     const tree = existingTree?.rootNode ? existingTree : wasmParser?.parse(source);

@@ -9,7 +9,8 @@ import {
   type TabularMutationResult,
   type TabularRow,
 } from "@modelscript/dsl";
-import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlElement } from "@modelscript/dsl/xml";
+import { parseSspXmlDocument } from "./parser/wasm-loader.js";
 import { parseSsd } from "./ssd-parser.js";
 
 function sspLocalName(name: string): string {
@@ -141,7 +142,7 @@ export function updateSspTabularCell(
   columnId: string,
   newValue: string,
 ): TabularMutationResult {
-  const doc = parseXmlSync(xmlContent);
+  const doc = parseSspXmlDocument(xmlContent);
   if (!doc.root) {
     return {
       success: false,

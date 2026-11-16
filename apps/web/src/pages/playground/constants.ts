@@ -43,7 +43,7 @@ export const ALL_PLAYGROUND_LANGUAGES: PlaygroundLanguageOption[] = [
   { id: "pscad", label: "PSCAD (EMT)", ext: ".pscx" },
   { id: "spice", label: "SPICE Circuit", ext: ".sp" },
   { id: "fea", label: "FEA Deck (CalculiX/Abaqus)", ext: ".inp" },
-  { id: "cfd", label: "CFD Config (SU2)", ext: ".cfg" },
+  { id: "cfd", label: "CFD Config (SU2)", ext: ".su2" },
   { id: "step", label: "STEP (ISO 10303)", ext: ".step" },
   { id: "ssp", label: "SSP Architecture", ext: ".ssd" },
   { id: "psse", label: "PSS/E Power Flow", ext: ".raw" },

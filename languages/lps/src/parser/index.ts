@@ -15,7 +15,11 @@ export { serializeLpsKeyDeck, serializeLpsXml } from "./serializer.js";
 /**
  * Automatically detects whether content is XML or ASCII keyword deck and returns an LpsModel.
  */
-export function parseLps(content: string, filename?: string): LpsModel {
+export function parseLps(
+  content: string,
+  filename?: string,
+  options?: { cstTree?: { rootNode?: unknown } | null | undefined },
+): LpsModel {
   const trimmed = content.trim();
   if (
     trimmed.startsWith("<?xml") ||
@@ -30,7 +34,7 @@ export function parseLps(content: string, filename?: string): LpsModel {
         filename.endsWith(".tlx") ||
         filename.endsWith(".xml")))
   ) {
-    return parseLpsXml(content);
+    return parseLpsXml(content, options?.cstTree);
   }
 
   // Fallback to keyword deck parser

@@ -1,0 +1,16 @@
+* Common-Emitter BJT Amplifier Stage (2N2222)
+VCC vcc 0 DC 12
+VIN in 0 SIN(0 0.02 1k) AC 1.0
+CIN in base 10u
+R1 vcc base 47k
+R2 base 0 10k
+RC vcc coll 2.2k
+RE emit 0 470
+CE emit 0 47u
+Q1 coll base emit Q2N2222
+COUT coll out 10u
+RLOAD out 0 10k
+.MODEL Q2N2222 NPN(IS=14.34F BF=255.9 VAF=74.03)
+.tran 10u 3m
+.ac dec 20 10 1Meg
+.end

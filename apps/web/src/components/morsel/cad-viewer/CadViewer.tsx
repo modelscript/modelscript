@@ -590,7 +590,7 @@ function SceneContents({
     gl.clippingPlanes = [];
   }, [gl, solidPlane, wirePlane]);
 
-  // WebGL context loss interception and resource cleanup on unmount
+  // WebGL context loss interception
   useEffect(() => {
     const dom = gl.domElement;
     const handleContextLost = (e: Event) => {
@@ -601,8 +601,6 @@ function SceneContents({
 
     return () => {
       dom.removeEventListener("webglcontextlost", handleContextLost);
-      gl.dispose();
-      gl.forceContextLoss();
     };
   }, [gl]);
 

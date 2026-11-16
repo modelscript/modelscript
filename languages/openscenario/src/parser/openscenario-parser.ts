@@ -6,7 +6,7 @@
  * Conforms to ASAM OpenSCENARIO v1.0 - v1.2 schema specifications using @modelscript/dsl/xml.
  */
 
-import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlElement } from "@modelscript/dsl/xml";
 import type {
   ConditionRule,
   OpenScenarioDocument,
@@ -28,6 +28,7 @@ import type {
   ScenarioWorldPosition,
   SpeedActionDynamics,
 } from "../types.js";
+import { parseOpenScenarioXmlDocument } from "./wasm-loader.js";
 
 let activeParamMap: Map<string, string> = new Map();
 
@@ -93,7 +94,11 @@ function makeRange(source: string, elem: XmlElement): OpenScenarioRange {
   };
 }
 
-export function parseOpenScenario(source: string, filename?: string): OpenScenarioDocument {
+export function parseOpenScenario(
+  source: string,
+  filename?: string,
+  options?: { cstTree?: { rootNode?: unknown } | null | undefined },
+): OpenScenarioDocument {
   activeParamMap = new Map();
   const trimmed = source.trim();
 
@@ -102,7 +107,7 @@ export function parseOpenScenario(source: string, filename?: string): OpenScenar
     return parseOsc2Dsl(source, filename);
   }
 
-  const xmlDoc = parseXml(source);
+  const xmlDoc = parseOpenScenarioXmlDocument(source, options?.cstTree);
   const root = xmlDoc.root;
   if (!root || root.name.toLowerCase() !== "openscenario") {
     // Return empty document with default header

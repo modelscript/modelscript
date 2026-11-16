@@ -109,10 +109,14 @@ function toLspRange(r: IgtlSourceRange): LspRange {
   };
 }
 
-export function validateIgtl(content: string, sourceUri?: string): LspDiagnostic[] {
+export function validateIgtl(
+  content: string,
+  sourceUri?: string,
+  cstTree?: { rootNode?: unknown } | null,
+): LspDiagnostic[] {
   let doc: IgtlDocument;
   try {
-    doc = parseIgtl(content, sourceUri);
+    doc = parseIgtl(content, sourceUri, { cstTree });
   } catch (err: unknown) {
     return [
       {

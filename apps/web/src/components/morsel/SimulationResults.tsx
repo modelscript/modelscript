@@ -134,6 +134,12 @@ export function SimulationResults({
   const [activeCursorPlacement, setActiveCursorPlacement] = useState<1 | 2>(1);
   const [showStats, setShowStats] = useState<boolean>(false);
 
+  const onVariablesLoadedRef = useRef(onVariablesLoaded);
+  onVariablesLoadedRef.current = onVariablesLoaded;
+  const propSelectedVariablesRef = useRef(propSelectedVariables);
+  propSelectedVariablesRef.current = propSelectedVariables;
+  const lastLoadedVarsKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -152,10 +158,17 @@ export function SimulationResults({
           if (localData.length > 0) {
             const headers = Object.keys(localData[0]!);
             const timeCol = headers.find((h) => h.toLowerCase() === "time") || headers[0]!;
-            const vars = simulationVariables ?? headers.filter((h) => h !== timeCol);
+            const vars =
+              simulationVariables && simulationVariables.length > 0
+                ? simulationVariables
+                : headers.filter((h) => h !== timeCol);
 
-            onVariablesLoaded?.(vars);
-            if (!propSelectedVariables) {
+            const varsKey = vars.join("\0");
+            if (lastLoadedVarsKeyRef.current !== varsKey) {
+              lastLoadedVarsKeyRef.current = varsKey;
+              onVariablesLoadedRef.current?.(vars);
+            }
+            if (!propSelectedVariablesRef.current) {
               setInternalSelectedVars(vars);
             }
 
@@ -175,6 +188,8 @@ export function SimulationResults({
               return newRow;
             });
             setData(chartData);
+          } else {
+            setData([]);
           }
           setLoading(false);
           return;
@@ -208,8 +223,12 @@ export function SimulationResults({
               const timeCol = headers[0]!;
               const vars = headers.filter((h) => h !== timeCol);
 
-              onVariablesLoaded?.(vars);
-              if (!propSelectedVariables) {
+              const varsKey = vars.join("\0");
+              if (lastLoadedVarsKeyRef.current !== varsKey) {
+                lastLoadedVarsKeyRef.current = varsKey;
+                onVariablesLoadedRef.current?.(vars);
+              }
+              if (!propSelectedVariablesRef.current) {
                 setInternalSelectedVars(vars);
               }
 
@@ -243,7 +262,7 @@ export function SimulationResults({
     return () => {
       isMounted = false;
     };
-  }, [jobId, localData, onVariablesLoaded, externalError, simulationVariables, sweepResults, propSelectedVariables]);
+  }, [jobId, localData, externalError, simulationVariables, sweepResults]);
 
   const activeVariables = useMemo(() => {
     return (selectedVariables || []).filter((v) => !hiddenVars.has(v));

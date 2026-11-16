@@ -23,12 +23,14 @@ export interface UrdfOrigin {
 export interface UrdfInertial {
   origin?: UrdfOrigin | undefined;
   mass: number;
+  massRange?: SourceRange | undefined;
   ixx: number;
   ixy: number;
   ixz: number;
   iyy: number;
   iyz: number;
   izz: number;
+  inertiaRange?: SourceRange | undefined;
 }
 
 export type UrdfGeometryType = "box" | "cylinder" | "sphere" | "mesh" | "capsule" | "plane";
@@ -99,7 +101,10 @@ export interface UrdfJointLimits {
   lower?: number | undefined;
   upper?: number | undefined;
   effort: number;
+  effortRange?: SourceRange | undefined;
   velocity: number;
+  velocityRange?: SourceRange | undefined;
+  limitRange?: SourceRange | undefined;
 }
 
 export interface UrdfJointDynamics {
@@ -109,17 +114,20 @@ export interface UrdfJointDynamics {
 
 export interface UrdfJointMimic {
   joint: string;
+  jointRange?: SourceRange | undefined;
   multiplier?: number | undefined;
   offset?: number | undefined;
 }
 
 export interface UrdfJoint {
   name: string;
+  nameRange?: SourceRange | undefined;
   type: UrdfJointType;
   parentLink: string;
   childLink: string;
   origin?: UrdfOrigin | undefined;
   axis: Vector3D;
+  axisRange?: SourceRange | undefined;
   limits?: UrdfJointLimits | undefined;
   dynamics?: UrdfJointDynamics | undefined;
   mimic?: UrdfJointMimic | undefined;

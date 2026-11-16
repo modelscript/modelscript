@@ -123,10 +123,10 @@ function resolveOffset(content: string, positionOrOffset: LspPosition | number):
   return Math.min(content.length, i + Math.max(0, positionOrOffset.character));
 }
 
-export function validateOpenSimDocument(content: string): LspDiagnostic[] {
+export function validateOpenSimDocument(content: string, cstTree?: { rootNode?: unknown } | null): LspDiagnostic[] {
   let doc: OpenSimDocument;
   try {
-    doc = parseOpenSim(content);
+    doc = parseOpenSim(content, undefined, { cstTree });
   } catch (err: unknown) {
     return [
       {

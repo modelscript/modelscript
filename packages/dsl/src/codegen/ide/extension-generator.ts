@@ -2896,6 +2896,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
     ],
     [path.join(repoRoot, "scripts/OpenIPSL_v3.1.0.zip"), "server/dist/OpenIPSL_v3.1.0.zip"],
     [path.join(repoRoot, "scripts/SysML-v2-Release-2026-03.zip"), "server/dist/SysML-v2-Release-2026-03.zip"],
+    [path.join(repoRoot, "scripts/SPICE-Standard-1.0.0.zip"), "server/dist/SPICE-Standard-1.0.0.zip"],
     [path.join(repoRoot, "languages/modelica/assets"), "assets"],
     [path.join(repoRoot, "apps/web/public/ms-logo.png"), "images/icon.png"],
   ];

@@ -113,6 +113,7 @@ export interface SpiceComponent {
   gain?: number | undefined; // For E, F, G, H
   rawLine?: string | undefined;
   span?: SpiceSourceSpan | undefined;
+  tokenSpans?: SpiceSourceSpan[] | undefined;
 }
 
 export type ModelType =

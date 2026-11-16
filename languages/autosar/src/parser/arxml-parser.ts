@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { parseXml, type XmlDocument, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlDocument, XmlElement } from "@modelscript/dsl/xml";
 import type {
   AutosarCanFrame,
   AutosarConnector,
@@ -20,6 +20,7 @@ import type {
   SourceRange,
   SwComponentKind,
 } from "../types.js";
+import { parseAutosarXmlDocument } from "./wasm-loader.js";
 
 function computeLineStarts(source: string): number[] {
   const starts: number[] = [0];
@@ -524,8 +525,11 @@ function parseArPackage(elem: XmlElement, lineStarts: number[], model: AutosarMo
  * Parses an AUTOSAR Classic or Adaptive ARXML document into a typed AutosarModel AST.
  * Completely zero-regex parsing with streaming XML character scanning.
  */
-export function parseArxml(source: string): AutosarModel {
-  const doc: XmlDocument = parseXml(source);
+export function parseArxml(
+  source: string,
+  options?: { cstTree?: { rootNode?: unknown } | null | undefined },
+): AutosarModel {
+  const doc: XmlDocument = parseAutosarXmlDocument(source, options?.cstTree);
   const lineStarts = computeLineStarts(source);
 
   const model: AutosarModel = {

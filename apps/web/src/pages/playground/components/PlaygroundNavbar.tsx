@@ -3,7 +3,6 @@
 import {
   AlertIcon,
   BookmarkIcon,
-  CheckIcon,
   ChevronDownIcon,
   CodeIcon,
   ColumnsIcon,
@@ -27,7 +26,6 @@ import {
   SunIcon,
   TableIcon,
   TerminalIcon,
-  TrashIcon,
   TriangleDownIcon,
   WorkflowIcon,
   XIcon,
@@ -54,6 +52,7 @@ import {
 import {
   Badge,
   BrandLink,
+  BrandTierBadge,
   NavCenter,
   NavDivider,
   NavLeft,
@@ -344,8 +343,8 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           href={branding.docsBaseUrl || "https://modelscript.org"}
           target="_blank"
           rel="noopener noreferrer"
-          title="Ansatz Morsel"
-          aria-label="Ansatz Morsel"
+          title="Morsel"
+          aria-label="Morsel"
         >
           <img
             src={customLogoSrc || (theme === "dark" ? "/brand-dark.png" : "/brand.png")}
@@ -355,11 +354,14 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             data-testid="morsel-brand-icon"
           />
           {Boolean(customLogoSrc) && (
-            <Badge data-testid="playground-brand-badge" title="Ansatz Morsel" className="nav-hide-xl">
+            <Badge data-testid="playground-brand-badge" title="Morsel" className="nav-hide-xl">
               <MorselIcon size={13} style={{ marginRight: "3px" }} />
               <span>Morsel</span>
             </Badge>
           )}
+          <BrandTierBadge data-testid="morsel-brand-beta-badge">
+            {branding.instanceBadge?.trim() || "Beta"}
+          </BrandTierBadge>
         </BrandLink>
 
         <NavDivider />
@@ -455,7 +457,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                 }}
               >
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0 }}>
-                  {isDirty ? (
+                  {isDirty && (
                     <span
                       title="Unsaved changes"
                       aria-label="Unsaved changes"
@@ -469,20 +471,6 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                         flexShrink: 0,
                       }}
                     />
-                  ) : (
-                    <span
-                      title="All changes saved in local session"
-                      aria-label="Saved"
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        color: "var(--ms-text-3, var(--color-fg-muted))",
-                        opacity: 0.65,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <CheckIcon size={12} />
-                    </span>
                   )}
                   <span
                     style={{
@@ -690,26 +678,26 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                 <div style={{ overflowY: "auto", flex: 1 }}>
                   {(() => {
                     const renderLangItem = (lang: (typeof visiblePlaygroundLanguages)[number], keyPrefix = "") => {
-                      const tier = MORSEL_LANGUAGE_MAP.get(lang.id.toLowerCase())?.tier ?? "beta";
-                      const isStable = tier === "stable";
-                      const isPreview = tier === "preview";
-                      const badgeLabel = isStable ? "Stable" : isPreview ? "Preview" : "Beta";
-                      const badgeBg = isStable
+                      const tier = MORSEL_LANGUAGE_MAP.get(lang.id.toLowerCase())?.tier ?? "alpha";
+                      const isBeta = tier === "beta";
+                      const isPreAlpha = tier === "pre-alpha";
+                      const badgeLabel = isBeta ? "Beta" : isPreAlpha ? "Pre-Alpha" : "Alpha";
+                      const badgeBg = isBeta
                         ? theme === "dark"
                           ? "rgba(34, 197, 94, 0.16)"
                           : "rgba(22, 163, 74, 0.10)"
-                        : isPreview
+                        : isPreAlpha
                           ? theme === "dark"
                             ? "rgba(168, 85, 247, 0.16)"
                             : "rgba(147, 51, 234, 0.10)"
                           : theme === "dark"
                             ? "rgba(217, 119, 6, 0.16)"
                             : "rgba(217, 119, 6, 0.10)";
-                      const badgeColor = isStable
+                      const badgeColor = isBeta
                         ? theme === "dark"
                           ? "#4ade80"
                           : "#15803d"
-                        : isPreview
+                        : isPreAlpha
                           ? theme === "dark"
                             ? "#c084fc"
                             : "#7e22ce"
@@ -932,25 +920,6 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           </Button>
         )}
 
-        {/* Clear Model */}
-        <IconButton
-          icon={TrashIcon}
-          size="small"
-          variant="invisible"
-          onClick={() =>
-            onSelectExample({
-              id: "clear",
-              title: "Untitled Model",
-              category: "General",
-              lang: currentLang,
-              code: currentLang === "modelica" ? DEFAULT_EMPTY_MODELICA_CODE : "",
-            })
-          }
-          aria-label="Clear model"
-          title="Clear model"
-          style={{ height: 30, width: 30, borderRadius: 6 }}
-        />
-
         {/* Global Search / Command Palette */}
         <IconButton
           icon={SearchIcon}
@@ -1116,7 +1085,18 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
               </Button>
             </Link>
             <Link to="/signup" style={{ textDecoration: "none" }}>
-              <Button size="small" variant="default" style={{ height: 30, borderRadius: 6, fontWeight: 600 }}>
+              <Button
+                size="small"
+                variant="default"
+                style={{
+                  height: 30,
+                  borderRadius: 8,
+                  fontWeight: 600,
+                  backgroundColor: "var(--fgColor-default, #0f172a)",
+                  color: "var(--bgColor-default, #ffffff)",
+                  borderColor: "transparent",
+                }}
+              >
                 Sign Up
               </Button>
             </Link>

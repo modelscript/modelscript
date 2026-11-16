@@ -2158,7 +2158,30 @@ export class ValidationService {
                 uri,
               ) ||
                 Boolean((plugin.languageDef as { grammar?: { xmlRules?: unknown } } | undefined)?.grammar?.xmlRules)));
-          const usesNativeXmlWasm = (plugin.id === "reqif" || plugin.id === "pscad") && text.length <= 2 * 1024 * 1024;
+          const usesNativeXmlWasm =
+            new Set([
+              "autosar",
+              "cellml",
+              "dicom-rt",
+              "febio",
+              "igtl",
+              "jsbsim",
+              "lps",
+              "opendrive",
+              "openscenario",
+              "opensim",
+              "oscal",
+              "plcopen",
+              "pscad",
+              "reqif",
+              "sbml",
+              "sbol",
+              "sedml",
+              "simulink",
+              "ssp",
+              "three-mf",
+              "urdf",
+            ]).has(plugin.id) && text.length <= 2 * 1024 * 1024;
           if (isXmlDoc && !usesNativeXmlWasm) {
             const xmlDoc = parseXmlSync(text);
             if (xmlDoc.errors.length > 0) {
@@ -2612,10 +2635,18 @@ export class ValidationService {
       if (revisionAtStart !== null && (this.documentRevisions.get(uri) ?? 0) !== revisionAtStart) return true;
       return false;
     };
+    const YIELD_BUDGET_MS = 12;
+    let lastYieldAt = performance.now();
     const yieldToEventLoop = () => new Promise<void>((r) => setTimeout(r, 0));
     const yieldAndCheckStale = async () => {
-      await yieldToEventLoop();
-      return isStale();
+      if (isStale()) return true;
+      const now = performance.now();
+      if (now - lastYieldAt >= YIELD_BUDGET_MS) {
+        await yieldToEventLoop();
+        lastYieldAt = performance.now();
+        return isStale();
+      }
+      return false;
     };
 
     try {
@@ -2964,6 +2995,9 @@ export class ValidationService {
         await this.revalidateCrossLanguageDependents(effectiveUri);
       }
     } catch (e: any) {
+      if (e?.name === "QueryCancelledError" || e?.message === "Query computation was cancelled") {
+        return;
+      }
       this.connection.console.error(`[runUnifiedSemanticPipeline] Error for ${uri}: ${e.message}\n${e.stack}`);
       if (!isStale()) {
         const rawDiagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];

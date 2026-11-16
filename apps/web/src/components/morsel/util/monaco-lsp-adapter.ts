@@ -1116,6 +1116,10 @@ export function registerModelicaLanguage(monaco: typeof Monaco): void {
 export interface MonacoLspAdapterCallbacks {
   onDiagnostics?: (uri: string, markers: Monaco.editor.IMarkerData[]) => void;
   onStatus?: (state: string, message: string) => void;
+  onExecuteCommand?: (
+    command: string,
+    args: unknown[],
+  ) => boolean | Promise<boolean | undefined> | Promise<void> | undefined;
 }
 
 /**
@@ -1133,6 +1137,39 @@ export function setupMonacoLspAdapter(
   registerAllModelscriptLanguages(monaco);
 
   const disposables: Monaco.IDisposable[] = [];
+  const registeredCommands = new Set<string>();
+  const ensureCommandRegistered = (commandId: string): void => {
+    if (!commandId || registeredCommands.has(commandId)) return;
+    registeredCommands.add(commandId);
+    const cmdDisp = monaco.editor.registerCommand(commandId, async (_accessor: unknown, ...args: unknown[]) => {
+      try {
+        const handled = await callbacks?.onExecuteCommand?.(commandId, args);
+        if (handled) return;
+        const match = /^modelscript\.([^.]+)\.(.+)$/.exec(commandId);
+        if (match) {
+          const [, ns, action] = match;
+          const languageId = ns === "action" ? undefined : ns;
+          const arg0 = args[0];
+          const uri =
+            typeof arg0 === "string"
+              ? arg0
+              : arg0 && typeof arg0 === "object" && "uri" in arg0 && typeof (arg0 as any).uri === "string"
+                ? (arg0 as any).uri
+                : _documentUri;
+          const model = uri ? monaco.editor.getModels().find((m) => m.uri.toString() === uri) : undefined;
+          await connection.sendRequest("modelscript/executeAction", {
+            actionId: action,
+            languageId,
+            uri,
+            inputs: model ? { documentText: model.getValue() } : {},
+          });
+        }
+      } catch (err) {
+        console.warn(`[monaco-lsp-adapter] Command '${commandId}' failed:`, err);
+      }
+    });
+    disposables.push(cmdDisp);
+  };
   const languageSelector = MORSEL_LANGUAGES.map((l) => l.id);
 
   // ── Status notifications ──
@@ -1557,17 +1594,22 @@ export function setupMonacoLspAdapter(
           const result: any = await connection.sendRequest("textDocument/codeLens", {
             textDocument: { uri: model.uri.toString() },
           });
-          const lenses: Monaco.languages.CodeLens[] = (result ?? []).map((cl: any) => ({
-            range: lspRangeToMonaco(cl.range),
-            id: cl.data ? String(cl.data) : undefined,
-            command: cl.command
-              ? {
-                  id: cl.command.command ?? "",
-                  title: cl.command.title ?? "",
-                  arguments: cl.command.arguments,
-                }
-              : undefined,
-          }));
+          const lenses: Monaco.languages.CodeLens[] = (result ?? []).map((cl: any) => {
+            if (cl.command?.command) {
+              ensureCommandRegistered(cl.command.command);
+            }
+            return {
+              range: lspRangeToMonaco(cl.range),
+              id: cl.data ? String(cl.data) : undefined,
+              command: cl.command
+                ? {
+                    id: cl.command.command ?? "",
+                    title: cl.command.title ?? "",
+                    arguments: cl.command.arguments,
+                  }
+                : undefined,
+            };
+          });
           return { lenses, dispose: () => {} };
         } catch {
           return { lenses: [], dispose: () => {} };

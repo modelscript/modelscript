@@ -3,6 +3,7 @@
 export * from "./cst-adapter.js";
 export * from "./language.js";
 export * from "./parser.js";
+export * from "./ranges.js";
 export * from "./schema.js";
 export * from "./splices.js";
 export * from "./streaming.js";

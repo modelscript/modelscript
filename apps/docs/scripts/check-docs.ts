@@ -320,8 +320,8 @@ for (const lang of LANGUAGES) {
 // "<N> [engineering|polyglot|supported|registered|…] languages|formats"
 const countClaim =
   /\b(\d{2,3})\+?[\s-]+(?:(?:engineering|polyglot|supported|registered|open|domain|ModelScript|scientific|language|format)\s+){0,3}(?:languages?|formats?|format parsers|language parsers)\b/gi;
-// "26 Stable & 66 Beta" / "26 stable, 66 beta"
-const tierClaim = /\b(\d{1,3})\s+(Stable|Beta|Preview)\b/gi;
+// "26 Beta & 66 Alpha" / "26 beta, 66 alpha"
+const tierClaim = /\b(\d{1,3})\s+(Beta|Alpha|Pre-Alpha)\b/gi;
 
 function checkLanguageCounts(rel: string, line: number, text: string): void {
   for (const m of text.matchAll(countClaim)) {

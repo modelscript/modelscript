@@ -140,7 +140,7 @@
     "node": ">=24"
   },
   "modelscript": {
-    "tier": "stable",
+    "tier": "beta",
     "category": "app"
   }
 }

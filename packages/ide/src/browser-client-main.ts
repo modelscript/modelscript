@@ -769,11 +769,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
       type LangPickItem = vscode.QuickPickItem & { langId?: string };
       const items: LangPickItem[] = [];
-      const tiers: ("stable" | "beta" | "experimental")[] = ["stable", "beta", "experimental"];
-      const tierHeaders: Record<"stable" | "beta" | "experimental", string> = {
-        stable: "🟢 Stable Languages (Production-ready)",
-        beta: "🟡 Beta Languages (Active domain toolchains)",
-        experimental: "🧪 Experimental Languages (Preview / Grammar & AST)",
+      const tiers: ("beta" | "alpha" | "pre-alpha")[] = ["beta", "alpha", "pre-alpha"];
+      const tierHeaders: Record<"beta" | "alpha" | "pre-alpha", string> = {
+        beta: "🟢 Beta Languages (Active domain toolchains)",
+        alpha: "🟡 Alpha Languages (Parser & domain lowering)",
+        "pre-alpha": "🧪 Pre-Alpha Languages (Early grammar & AST)",
       };
 
       for (const tier of tiers) {

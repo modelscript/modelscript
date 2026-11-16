@@ -24,6 +24,18 @@ export interface TrajectoryChartProps {
   onChartClick: (e: { activeLabel?: string | number | undefined } | null) => void;
 }
 
+const CHART_MARGIN = {
+  top: 10,
+  right: 30,
+  left: 20,
+  bottom: 35,
+};
+const X_DOMAIN: ["dataMin", "dataMax"] = ["dataMin", "dataMax"];
+const Y_AUTO_DOMAIN: ["auto", "auto"] = ["auto", "auto"];
+const Y_NORM_DOMAIN: [number, number] = [0, 100];
+const Y_LOG_NORM_DOMAIN: [number, number] = [0.1, 100];
+const INITIAL_CHART_DIMENSION = { width: 600, height: 360 };
+
 export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
   mergedChartData,
   rawData,
@@ -71,17 +83,8 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
   return (
     <div style={{ flex: 1, minHeight: 0, minWidth: 0, position: "relative" }}>
       <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart
-            data={displayData}
-            onClick={onChartClick}
-            margin={{
-              top: 10,
-              right: 30,
-              left: 20,
-              bottom: 35,
-            }}
-          >
+        <ResponsiveContainer width="100%" height="100%" initialDimension={INITIAL_CHART_DIMENSION}>
+          <LineChart data={displayData} onClick={onChartClick} margin={CHART_MARGIN}>
             <CartesianGrid
               strokeDasharray="3 3"
               stroke={
@@ -92,7 +95,7 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
             <XAxis
               dataKey={xAxisVar}
               type="number"
-              domain={["dataMin", "dataMax"]}
+              domain={X_DOMAIN}
               stroke="var(--color-fg-muted, #8b949e)"
               tick={{ fill: "var(--color-fg-muted, #8b949e)", fontSize: 11 }}
               tickFormatter={(val) => (typeof val === "number" ? val.toFixed(2) : String(val))}
@@ -106,7 +109,13 @@ export const TrajectoryChart: React.FC<TrajectoryChartProps> = ({
             <YAxis
               scale={isLogScale ? "log" : "auto"}
               domain={
-                isLogScale ? (isNormalized ? [0.1, 100] : ["auto", "auto"]) : isNormalized ? [0, 100] : ["auto", "auto"]
+                isLogScale
+                  ? isNormalized
+                    ? Y_LOG_NORM_DOMAIN
+                    : Y_AUTO_DOMAIN
+                  : isNormalized
+                    ? Y_NORM_DOMAIN
+                    : Y_AUTO_DOMAIN
               }
               allowDataOverflow={isLogScale ? true : undefined}
               stroke="var(--color-fg-muted, #8b949e)"

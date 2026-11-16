@@ -1379,7 +1379,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
                 onClick={handleMorselClick}
                 className="post-split-btn post-split-btn-morsel"
                 aria-label="Morsel"
-                title="Ansatz Morsel"
+                title="Morsel"
                 data-testid="sidebar-morsel-button"
               >
                 <MorselIcon size={16} color="currentColor" className="post-split-icon post-split-morsel-icon" />
@@ -1405,7 +1405,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
                 onClick={handleMorselClick}
                 className="post-split-btn post-split-btn-morsel"
                 aria-label="Morsel"
-                title="Ansatz Morsel"
+                title="Morsel"
                 data-testid="sidebar-guest-morsel-button"
               >
                 <MorselIcon size={16} color="currentColor" className="post-split-icon" />

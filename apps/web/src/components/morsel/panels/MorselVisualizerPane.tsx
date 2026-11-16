@@ -387,7 +387,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   handleVariablesLoaded,
   treeVisible,
   setTreeVisible,
-  setView: _setView,
+  setView,
   onAutoLayout,
   onSimulate,
   onOpenCloudModal: _onOpenCloudModal,
@@ -399,10 +399,10 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   loadingProgress,
   onLoadStarterExample,
   isSplitActive: _isSplitActive,
-  canSplit: _canSplit = true,
+  canSplit = true,
   splitOrientation: _splitOrientation = "columns",
-  onSelectView: _onSelectView,
-  onToggleSplit: _onToggleSplit,
+  onSelectView,
+  onToggleSplit,
   treeWidth = 260,
   diagnosticsBottomOffset = 12,
 }) => {
@@ -1407,31 +1407,59 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   <div
                     style={{
                       position: "absolute",
-                      bottom: 64,
+                      bottom: isFloatingLayout ? Math.max(20, diagnosticsBottomOffset) : 64,
                       left: "50%",
                       transform: "translateX(-50%)",
                       width: "max-content",
                       maxWidth: "calc(100% - 32px)",
                       textAlign: "center",
-                      pointerEvents: "none",
+                      pointerEvents: "auto",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      gap: 6,
-                      padding: "6px 14px",
+                      gap: 8,
+                      padding: "6px 12px 6px 14px",
                       borderRadius: "999px",
                       background: "var(--ms-surface-glass)",
-                      backdropFilter: "blur(8px)",
+                      backdropFilter: "blur(14px)",
+                      WebkitBackdropFilter: "blur(14px)",
                       border: "1px solid var(--borderColor-muted, var(--ms-divider))",
                       color: "var(--fgColor-muted, var(--ms-text-2))",
                       fontSize: 11,
                       fontWeight: 500,
-                      zIndex: 5,
+                      zIndex: 15,
                       userSelect: "none",
-                      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.12)",
+                      boxShadow: "0 4px 16px rgba(0, 0, 0, 0.08)",
                     }}
                   >
-                    <span>Equation-based model · No schematic components declared</span>
+                    <span>Equation-based model · No schematic components</span>
+                    {!isSplit(view) && (onToggleSplit || onSelectView || setView) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onToggleSplit && canSplit !== false) {
+                            onToggleSplit();
+                          } else if (onSelectView) {
+                            onSelectView("code");
+                          } else {
+                            setView?.(MorselView.CODE);
+                          }
+                        }}
+                        style={{
+                          border: "none",
+                          background: "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))",
+                          color: colorMode === "dark" ? "var(--ms-link, #22d3ee)" : "var(--ms-brand, #0e7490)",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: "3px 9px",
+                          borderRadius: 999,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {onToggleSplit && canSplit !== false ? "Open Split View" : "View Code"}
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -1915,7 +1943,9 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     bottom:
                       isFullScreenSplitCanvas && view === MorselView.SPLIT_ROWS
                         ? `calc(${(1 - splitRatio) * 100}% + 16px)`
-                        : 16,
+                        : isFloatingLayout
+                          ? Math.max(16, diagnosticsBottomOffset)
+                          : 16,
                     right:
                       isFullScreenSplitCanvas && view === MorselView.SPLIT_COLUMNS
                         ? `calc(${(1 - splitRatio) * 100}% + ${selectedComponent ? propertiesWidth + 24 : 16}px)`
@@ -1926,17 +1956,17 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 2,
-                    height: 34,
+                    height: 36,
                     padding: "0 6px",
-                    borderRadius: "var(--ms-radius-pill, 999px)",
+                    borderRadius: "var(--ms-radius-lg, 12px)",
                     background:
                       colorMode === "dark"
-                        ? "var(--ms-surface-glass, rgba(15, 23, 42, 0.85))"
-                        : "rgba(255, 255, 255, 0.94)",
-                    backdropFilter: "blur(16px)",
-                    WebkitBackdropFilter: "blur(16px)",
-                    border: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.12))",
-                    boxShadow: "var(--ms-shadow-card, 0 8px 24px -4px rgba(0, 0, 0, 0.25))",
+                        ? "var(--ms-surface-glass, rgba(24, 24, 27, 0.94))"
+                        : "rgba(255, 255, 255, 0.96)",
+                    backdropFilter: "blur(14px)",
+                    WebkitBackdropFilter: "blur(14px)",
+                    border: "1px solid var(--borderColor-muted, var(--ms-divider))",
+                    boxShadow: "var(--ms-shadow-card, 0 8px 24px -4px rgba(0, 0, 0, 0.14))",
                     userSelect: "none",
                   }}
                 >

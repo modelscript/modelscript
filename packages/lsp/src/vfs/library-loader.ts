@@ -14,6 +14,7 @@ import { globalLibraryRegistry, type ModelscriptLibraryManifest } from "@modelsc
 import type { FederatedQueryCacheStore } from "@modelscript/runtime/wasm_cache_store.js";
 import { strFromU8, unzipSync } from "fflate";
 import { iconCache } from "../handlers/treeHandler.js";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import type { Parser, Tree } from "../utils/cst-facade.js";
 import {
   getLibraryName,
@@ -1378,6 +1379,14 @@ export async function mountPolyglotLibrary(
         const buffer = await response.arrayBuffer();
         zipData = new Uint8Array(buffer);
       }
+      if (zipData.length < 4 || zipData[0] !== 0x50 || zipData[1] !== 0x4b) {
+        loadingLibraryState.delete(normName);
+        ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+        ctx.logger.warn(
+          `[vfs-mount] Library archive at ${serverDistBase}/${options.filename} is not a valid ZIP file (${zipData.length} bytes)`,
+        );
+        return false;
+      }
       fileEntries = unzipSync(zipData);
 
       // Cache extracted files into IndexedDB
@@ -1407,6 +1416,8 @@ export async function mountPolyglotLibrary(
     const textFiles: Record<string, string> = {};
     const binaryFiles: Record<string, Uint8Array> = {};
     const sysmlEntries: Array<{ fullPath: string; content: string }> = [];
+    const polyglotEntries: Array<{ fullPath: string; content: string }> = [];
+    const hasPrebuiltIndex = Boolean(fileEntries["index.json"]);
 
     for (const [name, data] of Object.entries(fileEntries)) {
       if (name.endsWith("/")) {
@@ -1428,6 +1439,16 @@ export async function mountPolyglotLibrary(
         if (isSysmlSourcePath(fullPath)) {
           sysmlEntries.push({ fullPath, content: text });
         }
+      } else if (!hasPrebuiltIndex && name !== "index.json" && name !== "icons.json") {
+        const plugin = globalLanguageRegistry.getPluginForUri(fullPath);
+        if (
+          plugin &&
+          ((plugin.languageDef as any)?.indexing?.indexFile ||
+            typeof (plugin.workspaceIndex as any)?.indexFile === "function")
+        ) {
+          const text = textDecoder.decode(data);
+          polyglotEntries.push({ fullPath, content: text });
+        }
       }
       fileCount++;
     }
@@ -1447,7 +1468,27 @@ export async function mountPolyglotLibrary(
     }
 
     // Populate documentTrees (and lazy-index SysML files if bundle lacked an index.json)
-    mountSysmlEntriesInContext(sysmlEntries, ctx, !fileEntries["index.json"]);
+    mountSysmlEntriesInContext(sysmlEntries, ctx, !hasPrebuiltIndex);
+
+    // Index non-SysML polyglot files (e.g. SPICE .lib/.cir) when bundle lacks an index.json
+    for (const entry of polyglotEntries) {
+      try {
+        const plugin = globalLanguageRegistry.getPluginForUri(entry.fullPath);
+        if (!plugin) continue;
+        const uw = ctx.globalWorkspaceIndex;
+        if ((plugin.languageDef as any)?.indexing?.indexFile && typeof uw?.indexDocumentText === "function") {
+          if (typeof uw.getLanguageDef === "function" && !uw.getLanguageDef(plugin.id)) {
+            uw.registerLanguageDef(plugin.id, plugin.languageDef);
+          }
+          uw.indexDocumentText(`file://${entry.fullPath}`, entry.content, plugin.id);
+        } else {
+          const wsIdx = plugin.workspaceIndex as { indexFile?: (uri: string, text: string) => void } | undefined;
+          wsIdx?.indexFile?.(`file://${entry.fullPath}`, entry.content);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
 
     // If pre-indexed bundle (contains index.json):
     if (fileEntries["index.json"]) {
@@ -1504,6 +1545,39 @@ export async function mountPolyglotLibrary(
     });
     return false;
   }
+}
+
+/**
+ * Mounts an offline curated fallback package bundle (if one exists in
+ * CURATED_PACKAGE_FALLBACKS) and pre-caches its component SVG icons.
+ */
+export async function mountCuratedFallbackPackage(
+  packageName: string,
+  version: string | undefined,
+  ctx: LoaderContext,
+): Promise<boolean> {
+  const curated = findCuratedPackageFallback(packageName);
+  if (!curated) return false;
+  const targetVer = version || curated.version;
+  ctx.logger.log(
+    `[deps] Mounting curated fallback bundle for ${curated.packageName}@${targetVer} (${Object.keys(curated.files).length} files)`,
+  );
+  if (curated.icons) {
+    for (const [cls, svg] of Object.entries(curated.icons)) {
+      iconCache.set(`${curated.packageName}@${targetVer}:${cls}`, svg);
+      iconCache.set(cls, svg);
+    }
+  }
+  await loadRegistryPackage(
+    {
+      name: curated.packageName,
+      version: targetVer,
+      files: curated.files,
+      modelscript: { languages: [curated.language] },
+    },
+    ctx,
+  );
+  return mountedLibraryMetadata.has(normalizeLibraryName(curated.packageName));
 }
 
 /**
@@ -1734,24 +1808,7 @@ export async function ensureLibraryVersionMounted(
             }
           }
           if (!polyglotOk) {
-            ctx.logger.log(
-              `[deps] Mounting curated fallback bundle for ${curated.packageName}@${targetVer} (${Object.keys(curated.files).length} files)`,
-            );
-            if (curated.icons) {
-              for (const [cls, svg] of Object.entries(curated.icons)) {
-                iconCache.set(`${curated.packageName}@${targetVer}:${cls}`, svg);
-                iconCache.set(cls, svg);
-              }
-            }
-            await loadRegistryPackage(
-              {
-                name: curated.packageName,
-                version: targetVer,
-                files: curated.files,
-                modelscript: { languages: [curated.language] },
-              },
-              ctx,
-            );
+            await mountCuratedFallbackPackage(curated.packageName, targetVer, ctx);
           }
         } else {
           throw regErr;

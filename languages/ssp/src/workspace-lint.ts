@@ -3,6 +3,7 @@
 import {
   collectWorkspaceDocuments,
   collectXmlElementsFromWasm,
+  offsetSpanToRange,
   resolveRelativeUri,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
@@ -34,6 +35,10 @@ export function lintSspWorkspace(workspace: WorkspaceDocumentInput, rootUri?: st
           rule: "ssp-ssd",
           severity: d.severity,
           message: d.message,
+          line: d.line,
+          column: d.column,
+          endLine: d.endLine,
+          endColumn: d.endColumn,
         });
       }
       for (const el of collectXmlElementsFromWasm(text)) {
@@ -45,23 +50,37 @@ export function lintSspWorkspace(workspace: WorkspaceDocumentInput, rootUri?: st
             resolveRelativeUri(uri, src, docs) ??
             resolveRelativeUri(uri, `${src.replace(/\/+$/, "")}/modelDescription.xml`, docs);
           if (!resolved) {
+            const span = el.attrSpans["source"] ?? { start: el.start, end: el.openEnd };
+            const r = offsetSpanToRange(text, span.start, span.end);
             diagnostics.push({
               uri,
               code: "SSP3001",
               rule: "unresolved-ssp-component-source",
               severity: "error",
               message: `SSP Component source '${src}' was not found in the workspace.`,
+              line: r.startLine,
+              column: r.startColumn,
+              endLine: r.endLine,
+              endColumn: r.endColumn,
+              range: r,
             });
           }
         } else if (localName === "parametervalues") {
           const ssvSrc = el.attrs["source"];
           if (ssvSrc && !resolveRelativeUri(uri, ssvSrc, docs)) {
+            const span = el.attrSpans["source"] ?? { start: el.start, end: el.openEnd };
+            const r = offsetSpanToRange(text, span.start, span.end);
             diagnostics.push({
               uri,
               code: "SSP3002",
               rule: "unresolved-ssp-ssv-source",
               severity: "error",
               message: `SSP ParameterValues source '${ssvSrc}' was not found in the workspace.`,
+              line: r.startLine,
+              column: r.startColumn,
+              endLine: r.endLine,
+              endColumn: r.endColumn,
+              range: r,
             });
           }
         }
@@ -74,6 +93,10 @@ export function lintSspWorkspace(workspace: WorkspaceDocumentInput, rootUri?: st
           rule: "ssp-ssv",
           severity: d.severity,
           message: d.message,
+          line: d.line,
+          column: d.column,
+          endLine: d.endLine,
+          endColumn: d.endColumn,
         });
       }
     }

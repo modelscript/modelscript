@@ -54,12 +54,13 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
     const sidebarSrc = fs.readFileSync(sidebarPath, "utf-8");
 
     assert.ok(
-      sidebarSrc.includes("MorselIcon") || (sidebarSrc.includes("AnsatzSketchIcon") && sidebarSrc.includes("<AnsatzSketchIcon")),
+      sidebarSrc.includes("MorselIcon") ||
+        (sidebarSrc.includes("AnsatzSketchIcon") && sidebarSrc.includes("<AnsatzSketchIcon")),
       "Sidebar.tsx must render MorselIcon or AnsatzSketchIcon in split button",
     );
     assert.ok(
-      sidebarSrc.includes('title="Ansatz Morsel"') || sidebarSrc.includes('title="Ansatz Sketch"'),
-      "Sidebar.tsx split button must have title='Ansatz Morsel'",
+      sidebarSrc.includes('title="Morsel"') || sidebarSrc.includes('title="Ansatz Sketch"'),
+      "Sidebar.tsx split button must have title='Morsel'",
     );
   });
 
@@ -82,7 +83,9 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
     const navbarSrc = fs.readFileSync(navbarPath, "utf-8");
 
     assert.ok(
-      navbarSrc.includes("MorselIcon") || navbarSrc.includes("AnsatzSketchIcon") || navbarSrc.includes("CodeSquareIcon"),
+      navbarSrc.includes("MorselIcon") ||
+        navbarSrc.includes("AnsatzSketchIcon") ||
+        navbarSrc.includes("CodeSquareIcon"),
       "PlaygroundNavbar.tsx must import MorselIcon, AnsatzSketchIcon or CodeSquareIcon",
     );
     assert.ok(
@@ -107,10 +110,10 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
     );
     assert.ok(!navbarSrc.includes("AnsatzMark"), "PlaygroundNavbar.tsx must not render legacy AnsatzMark");
     assert.ok(
-      navbarSrc.includes('title="Ansatz Morsel"') ||
+      navbarSrc.includes('title="Morsel"') ||
         navbarSrc.includes('title="ModelScript Playground') ||
         navbarSrc.includes("Ansatz Sketch"),
-      "PlaygroundNavbar.tsx BrandLink must have title='Ansatz Morsel'",
+      "PlaygroundNavbar.tsx BrandLink must have title='Morsel'",
     );
     assert.ok(
       navbarSrc.includes("Morsel") || navbarSrc.includes("ModelScript"),
@@ -119,7 +122,7 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
 
     // PlaygroundPage must use Morsel / Playground title
     assert.ok(
-      pageSrc.includes("Ansatz Morsel") || pageSrc.includes("ModelScript Playground"),
+      pageSrc.includes('"Morsel"') || pageSrc.includes("ModelScript Playground"),
       "PlaygroundPage.tsx must set page title",
     );
   });
@@ -147,22 +150,13 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
       modalsSrc.includes("/brand-dark.png") && modalsSrc.includes("/brand.png"),
       "MorselModals.tsx loader must render /brand-dark.png and /brand.png",
     );
-    assert.ok(
-      modalsSrc.includes('id="morsel-app-loader"'),
-      "MorselModals.tsx must define morsel-app-loader",
-    );
+    assert.ok(modalsSrc.includes('id="morsel-app-loader"'), "MorselModals.tsx must define morsel-app-loader");
     assert.ok(
       modalsSrc.includes('data-testid="morsel-brand-icon"'),
       "MorselModals.tsx loader must provide data-testid='morsel-brand-icon'",
     );
-    assert.ok(
-      modalsSrc.includes('alt="Morsel"'),
-      "MorselModals.tsx loader must have alt='Morsel'",
-    );
-    assert.ok(
-      !modalsSrc.includes('alt="ModelScript"'),
-      "MorselModals.tsx loader must not use ModelScript alt text",
-    );
+    assert.ok(modalsSrc.includes('alt="Morsel"'), "MorselModals.tsx loader must have alt='Morsel'");
+    assert.ok(!modalsSrc.includes('alt="ModelScript"'), "MorselModals.tsx loader must not use ModelScript alt text");
     assert.ok(
       !modalsSrc.includes("/ms-logo-light.png") && !modalsSrc.includes("/ms-logo.png"),
       "MorselModals.tsx loader must not use ModelScript turbine logo",

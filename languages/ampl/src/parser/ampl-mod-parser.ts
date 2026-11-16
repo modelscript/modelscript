@@ -175,6 +175,7 @@ export class AmplModParser {
       within,
       default: defaultExpr,
       assignExpr,
+      nameRange: nameToken.range,
       range: { start: startRange.start, end: endRange.end },
     };
     model.sets.set(name, decl);
@@ -232,6 +233,7 @@ export class AmplModParser {
       upperBound,
       default: defaultExpr,
       assignExpr,
+      nameRange: nameToken.range,
       range: { start: startRange.start, end: endRange.end },
     };
     model.params.set(name, decl);
@@ -376,6 +378,7 @@ export class AmplModParser {
       sosno,
       ref,
       columnSpec,
+      nameRange: nameToken.range,
       range: { start: startRange.start, end: endRange.end },
     };
     model.vars.set(name, decl);

@@ -131,20 +131,20 @@ const rowB = LANGUAGES.slice(half);
   font-weight: 600;
   border: 1px solid transparent;
 }
-.chip-tier--stable {
-  color: var(--ms-tier-stable);
-  background: var(--ms-tier-stable-bg);
-  border-color: var(--ms-tier-stable-border);
-}
 .chip-tier--beta {
   color: var(--ms-tier-beta);
   background: var(--ms-tier-beta-bg);
   border-color: var(--ms-tier-beta-border);
 }
-.chip-tier--preview {
-  color: var(--ms-tier-preview);
-  background: var(--ms-tier-preview-bg);
-  border-color: var(--ms-tier-preview-border);
+.chip-tier--alpha {
+  color: var(--ms-tier-alpha);
+  background: var(--ms-tier-alpha-bg);
+  border-color: var(--ms-tier-alpha-border);
+}
+.chip-tier--pre-alpha {
+  color: var(--ms-tier-pre-alpha);
+  background: var(--ms-tier-pre-alpha-bg);
+  border-color: var(--ms-tier-pre-alpha-border);
 }
 
 @keyframes scroll {

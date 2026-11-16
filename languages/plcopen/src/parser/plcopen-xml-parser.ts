@@ -8,7 +8,7 @@
  * configurations, resources, tasks, and Structured Text bodies.
  */
 
-import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlElement } from "@modelscript/dsl/xml";
 import type {
   PlcBody,
   PlcConfiguration,
@@ -27,6 +27,7 @@ import type {
   PlcVariableScope,
 } from "../types.js";
 import { parseStructuredTextStatements } from "./st-parser.js";
+import { parsePlcopenXmlDocument } from "./wasm-loader.js";
 
 function getAttr(elem: XmlElement, name: string): string | undefined {
   const attr = elem.attributes.find((a) => a.name.toLowerCase() === name.toLowerCase());
@@ -69,8 +70,12 @@ function makeElemRange(source: string, elem: XmlElement): PlcRange {
   };
 }
 
-export function parsePlcopenXml(source: string, filename?: string): PlcProject {
-  const doc = parseXml(source);
+export function parsePlcopenXml(
+  source: string,
+  filename?: string,
+  options?: { cstTree?: { rootNode?: unknown } | null | undefined },
+): PlcProject {
+  const doc = parsePlcopenXmlDocument(source, options?.cstTree);
   const root = doc.root;
 
   if (!root || root.name.toLowerCase() !== "project") {

@@ -7,8 +7,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
+import { mountedLibraryMetadata } from "../src/utils/hierarchy-utils.js";
 import { BrowserFileSystem } from "../src/vfs/browser-file-system.js";
-import { mountPolyglotLibrary, type LoaderContext } from "../src/vfs/library-loader.js";
+import { mountCuratedFallbackPackage, mountPolyglotLibrary, type LoaderContext } from "../src/vfs/library-loader.js";
 
 describe("Polyglot VFS Library Mount", () => {
   it("mounts zip archive into VFS and hydrates pre-indexed symbols", async () => {
@@ -82,5 +83,111 @@ describe("Polyglot VFS Library Mount", () => {
 
     // Clean up
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns false cleanly when archive is non-ZIP data (e.g. HTML SPA fallback)", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vfs-mount-html-test-"));
+    const badZipPath = path.join(tmpDir, "SPICE-Standard-1.0.0.zip");
+    fs.writeFileSync(badZipPath, "<!doctype html><html><body>Not found</body></html>", "utf-8");
+
+    const errors: unknown[] = [];
+    const warnings: string[] = [];
+    const loaderCtx: LoaderContext = {
+      connectionState: { sendNotification: () => {} },
+      logger: {
+        log: () => {},
+        warn: (m: string) => warnings.push(m),
+        error: (...args: unknown[]) => errors.push(args),
+      },
+      sharedFs: new BrowserFileSystem(),
+      sharedContext: null,
+      globalWorkspaceIndex: new LanguageWorkspaceIndex(),
+      sysml2WorkspaceIndex: null,
+      documentTrees: new Map(),
+      sysml2Parser: null,
+      federatedEndpoints: [],
+    };
+
+    const success = await mountPolyglotLibrary(`file://${tmpDir}`, loaderCtx, {
+      packageName: "SPICE-Standard",
+      version: "1.0.0",
+      filename: "SPICE-Standard-1.0.0.zip",
+      language: "spice",
+    });
+
+    assert.equal(success, false);
+    assert.equal(errors.length, 0, "Should not throw or log error on non-ZIP archive");
+    assert.ok(warnings.some((w) => w.includes("not a valid ZIP file")));
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("mounts SPICE-Standard curated fallback package when zip is unavailable", async () => {
+    const vfs = new BrowserFileSystem();
+    const loaderCtx: LoaderContext = {
+      connectionState: { sendNotification: () => {} },
+      logger: { log: () => {}, warn: () => {}, error: () => {} },
+      sharedFs: vfs,
+      sharedContext: null,
+      globalWorkspaceIndex: new LanguageWorkspaceIndex(),
+      sysml2WorkspaceIndex: null,
+      documentTrees: new Map(),
+      sysml2Parser: null,
+      federatedEndpoints: [],
+    };
+
+    const ok = await mountCuratedFallbackPackage("SPICE-Standard", "1.0.0", loaderCtx);
+    assert.equal(ok, true);
+    assert.equal(vfs.exists("/packages/SPICE-Standard/SPICE/package.mo"), true);
+    assert.equal(mountedLibraryMetadata.get("SPICE-Standard")?.language, "spice");
+  });
+
+  it("mounts SPICE-Standard-1.0.0.zip and indexes .lib/.cir models into SPICE workspace index", async () => {
+    const scriptsDir = path.resolve(process.cwd(), "scripts");
+    const zipPath = path.join(scriptsDir, "SPICE-Standard-1.0.0.zip");
+    if (!fs.existsSync(zipPath)) return;
+
+    const { spiceLanguage } = await import("@modelscript/spice");
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    const { globalLanguageRegistry } = await import("../src/registry/LanguageRegistry.js");
+    const spiceWorkspace = new UnifiedWorkspace();
+    spiceWorkspace.registerLanguage(spiceLanguage);
+    globalLanguageRegistry.register({
+      id: "spice",
+      name: "SPICE",
+      extensions: [".cir", ".sp", ".net", ".lib"],
+      languageDef: spiceLanguage,
+      workspaceIndex: spiceWorkspace,
+    });
+
+    const vfs = new BrowserFileSystem();
+    const loaderCtx: LoaderContext = {
+      connectionState: { sendNotification: () => {} },
+      logger: { log: () => {}, warn: () => {}, error: () => {} },
+      sharedFs: vfs,
+      sharedContext: null,
+      globalWorkspaceIndex: spiceWorkspace,
+      sysml2WorkspaceIndex: null,
+      documentTrees: new Map(),
+      sysml2Parser: null,
+      federatedEndpoints: [],
+    };
+
+    const ok = await mountPolyglotLibrary(`file://${scriptsDir}`, loaderCtx, {
+      packageName: "SPICE-Standard",
+      version: "1.0.0",
+      filename: "SPICE-Standard-1.0.0.zip",
+      language: "spice",
+    });
+
+    assert.equal(ok, true);
+    assert.equal(vfs.exists("/lib/SPICE-Standard/diodes.lib"), true);
+    assert.equal(vfs.exists("/lib/SPICE-Standard/opamps.lib"), true);
+    assert.equal(vfs.exists("/lib/SPICE-Standard/examples/SallenKeyFilter.cir"), true);
+
+    const spiceIdx = spiceWorkspace.getIndex();
+    assert.ok(spiceIdx.byName.has("D1N4148"), "Expected D1N4148 diode model to be indexed");
+    assert.ok(spiceIdx?.byName?.has("Q2N2222"), "Expected Q2N2222 BJT model to be indexed");
+    assert.ok(spiceIdx?.byName?.has("LM741"), "Expected LM741 op-amp subcircuit to be indexed");
   });
 });

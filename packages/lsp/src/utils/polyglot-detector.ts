@@ -15,6 +15,7 @@ export const UNIQUE_EXT_TO_SLUG: Record<string, string> = {
   ".mo": "modelica",
   ".msx": "modelscript",
   ".modelscript": "modelscript",
+  ".ampl": "ampl",
   ".sysml": "sysml2",
   ".kerml": "sysml2",
   ".sysml2": "sysml2",

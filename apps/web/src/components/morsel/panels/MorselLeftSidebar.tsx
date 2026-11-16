@@ -139,7 +139,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   const showSolverSection = isNarrow ? mobileSection === "solver" : showResultsView;
 
   const isFloating = Boolean(floating && !isNarrow);
-  const isStackedFloating = isFloating && showLibrariesSection && showComponentsSection;
+  const isStackedFloating = false;
   const componentCount = Array.isArray(diagramData?.nodes)
     ? diagramData.nodes.filter((c: any) => {
         if (!c?.id || c.id.startsWith("__diagram_") || c.id.startsWith("solder_dot_")) return false;
@@ -170,7 +170,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
     backgroundColor: _colorMode === "dark" ? "rgba(24, 24, 27, 0.94)" : "rgba(255, 255, 255, 0.96)",
     backdropFilter: "blur(14px)",
     WebkitBackdropFilter: "blur(14px)",
-    borderRadius: 8,
+    borderRadius: 12,
     border: "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))",
     boxShadow: floatingShadow,
   };
@@ -183,7 +183,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
               position: "absolute",
               top: 70,
               left: 12,
-              bottom: 12,
+              bottom: 16,
               zIndex: 30,
               display: "flex",
               flexDirection: "row",
@@ -196,44 +196,29 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
     >
       <div
         ref={columnRef}
-        style={
-          isStackedFloating
-            ? {
-                width: treeWidth,
-                display: "flex",
-                flexDirection: "column",
-                minHeight: 0,
-                height: "100%",
-                minWidth: 200,
-                maxWidth: 600,
-                flexShrink: 0,
-                boxSizing: "border-box",
-                pointerEvents: "none",
-              }
-            : {
-                width: isNarrow ? "100%" : treeWidth,
-                display: "flex",
-                flexDirection: "column",
-                minHeight: 0,
-                height: "100%",
-                minWidth: isNarrow ? 0 : 200,
-                maxWidth: isNarrow ? "100%" : 600,
-                flexShrink: 0,
-                overflow: "hidden",
-                boxSizing: "border-box",
-                pointerEvents: "auto",
-                backgroundColor: isFloating
-                  ? _colorMode === "dark"
-                    ? "rgba(24, 24, 27, 0.94)"
-                    : "rgba(255, 255, 255, 0.96)"
-                  : "var(--bgColor-muted, var(--ms-bg-alt))",
-                backdropFilter: isFloating ? "blur(14px)" : undefined,
-                WebkitBackdropFilter: isFloating ? "blur(14px)" : undefined,
-                borderRadius: isNarrow ? 0 : 8,
-                border: isNarrow ? "none" : "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))",
-                boxShadow: isFloating ? floatingShadow : undefined,
-              }
-        }
+        style={{
+          width: isNarrow ? "100%" : treeWidth,
+          display: "flex",
+          flexDirection: "column",
+          minHeight: 0,
+          height: "100%",
+          minWidth: isNarrow ? 0 : 200,
+          maxWidth: isNarrow ? "100%" : 600,
+          flexShrink: 0,
+          overflow: "hidden",
+          boxSizing: "border-box",
+          pointerEvents: "auto",
+          backgroundColor: isFloating
+            ? _colorMode === "dark"
+              ? "rgba(24, 24, 27, 0.94)"
+              : "rgba(255, 255, 255, 0.96)"
+            : "var(--bgColor-muted, var(--ms-bg-alt))",
+          backdropFilter: isFloating ? "blur(14px)" : undefined,
+          WebkitBackdropFilter: isFloating ? "blur(14px)" : undefined,
+          borderRadius: isNarrow ? 0 : 12,
+          border: isNarrow ? "none" : "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))",
+          boxShadow: isFloating ? floatingShadow : undefined,
+        }}
       >
         {isNarrow && (
           <div

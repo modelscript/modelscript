@@ -206,7 +206,8 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     query: (db: CodeGraph, node: u32, $: any) => {
       // Verify that the enclosing function is pure and the target callee is declared impure
       if (isImpureCalledInPureFunction(db, node, $)) {
-        db.diagnostic(node);
+        const callee = db.ast.getFirstChild(node);
+        db.diagnostic(callee != 0 ? callee : node);
       }
     },
   },
@@ -224,7 +225,8 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     query: (db: CodeGraph, node: u32, $: any) => {
       // Check if an impure function is invoked directly inside an equation_section outside any when_equation
       if (isImpureCalledInEquationSection(db, node, $)) {
-        db.diagnostic(node);
+        const callee = db.ast.getFirstChild(node);
+        db.diagnostic(callee != 0 ? callee : node);
       }
     },
   },

@@ -10,13 +10,13 @@
 
 import {
   appendChildSplice,
-  parseXmlSync,
   removeElementSplice,
   setAttributeSplice,
   type Splice,
   type XmlAttribute,
   type XmlElement,
 } from "@modelscript/dsl/xml";
+import { parseSspXmlDocument } from "./parser/wasm-loader.js";
 import { parseSsd } from "./ssd-parser.js";
 import type { SspComponent, SspConnector, SspConnectorType, SspSystem } from "./types.js";
 
@@ -500,8 +500,17 @@ export function buildSspDiagramData(input: SspSystem | string) {
         y: Math.min(sysGeom.y1, sysGeom.y2),
         width: Math.max(800, Math.abs(sysGeom.x2 - sysGeom.x1)),
         height: Math.max(600, Math.abs(sysGeom.y2 - sysGeom.y1)),
+        axesStyle: { visible: false },
+        boundsStyle: { visible: false },
       }
-    : { x: 0, y: 0, width: Math.max(1000, maxRightX + 260), height: 700 };
+    : {
+        x: 0,
+        y: 0,
+        width: Math.max(1000, maxRightX + 260),
+        height: 700,
+        axesStyle: { visible: false },
+        boundsStyle: { visible: false },
+      };
 
   return {
     nodes,
@@ -553,7 +562,7 @@ export function applySspDiagramEdits(
   parsedSystem?: SspSystem,
 ): SspTextEdit[] {
   const system = parsedSystem ?? parseSsd(xml);
-  const xmlDoc = parseXmlSync(xml);
+  const xmlDoc = parseSspXmlDocument(xml);
   const lineStarts = computeLineStarts(xml);
   const edits: SspTextEdit[] = [];
   const pendingAppends = new Map<XmlElement, string[]>();

@@ -83,22 +83,19 @@ export const SPICE_ERROR_CODES = {
     code: 7111,
     rule: "spice-zero-resistor-short",
     severity: "warning" as const,
-    message: (compName: string) =>
-      `Resistor '${compName}' specifies zero resistance; forms ideal short-circuit.`,
+    message: (compName: string) => `Resistor '${compName}' specifies zero resistance; forms ideal short-circuit.`,
   },
   INDUCTOR_CUTSET: {
     code: 7112,
     rule: "spice-inductor-cutset",
     severity: "error" as const,
-    message: (compName: string) =>
-      `Inductor '${compName}' forms an inductive cutset with ungrounded nodes.`,
+    message: (compName: string) => `Inductor '${compName}' forms an inductive cutset with ungrounded nodes.`,
   },
   UNCONNECTED_PIN: {
     code: 7113,
     rule: "spice-unconnected-pin",
     severity: "warning" as const,
-    message: (compName: string, pin: string) =>
-      `Subcircuit instance '${compName}' port '${pin}' is left unconnected.`,
+    message: (compName: string, pin: string) => `Subcircuit instance '${compName}' port '${pin}' is left unconnected.`,
   },
 };
 
@@ -115,7 +112,7 @@ export function lintSpiceCircuit(circuit: SpiceCircuit): SpiceDiagnostic[] {
         rule: SPICE_ERROR_CODES.DUPLICATE_DEVICE.rule,
         severity: SPICE_ERROR_CODES.DUPLICATE_DEVICE.severity,
         message: SPICE_ERROR_CODES.DUPLICATE_DEVICE.message(comp.name),
-        span: comp.span,
+        span: comp.tokenSpans?.[0] ?? comp.span,
       });
     } else {
       seenNames.set(upperName, comp);
@@ -142,13 +139,14 @@ export function lintSpiceCircuit(circuit: SpiceCircuit): SpiceDiagnostic[] {
 
     // M7105: Invalid passive value (R, L, C <= 0) & M7111: Zero resistor short
     if ((comp.kind === "R" || comp.kind === "L" || comp.kind === "C") && comp.value !== undefined) {
+      const valSpan = comp.tokenSpans?.[comp.nodes.length + 1] ?? comp.span;
       if (comp.value <= 0) {
         diagnostics.push({
           code: SPICE_ERROR_CODES.INVALID_PASSIVE.code,
           rule: SPICE_ERROR_CODES.INVALID_PASSIVE.rule,
           severity: SPICE_ERROR_CODES.INVALID_PASSIVE.severity,
           message: SPICE_ERROR_CODES.INVALID_PASSIVE.message(comp.name, comp.value),
-          span: comp.span,
+          span: valSpan,
         });
       }
       if (comp.kind === "R" && comp.value === 0) {
@@ -157,7 +155,7 @@ export function lintSpiceCircuit(circuit: SpiceCircuit): SpiceDiagnostic[] {
           rule: SPICE_ERROR_CODES.ZERO_RESISTOR_SHORT.rule,
           severity: SPICE_ERROR_CODES.ZERO_RESISTOR_SHORT.severity,
           message: SPICE_ERROR_CODES.ZERO_RESISTOR_SHORT.message(comp.name),
-          span: comp.span,
+          span: valSpan,
         });
       }
     }
@@ -172,7 +170,7 @@ export function lintSpiceCircuit(circuit: SpiceCircuit): SpiceDiagnostic[] {
           rule: SPICE_ERROR_CODES.UNRESOLVED_SUBCIRCUIT.rule,
           severity: SPICE_ERROR_CODES.UNRESOLVED_SUBCIRCUIT.severity,
           message: SPICE_ERROR_CODES.UNRESOLVED_SUBCIRCUIT.message(comp.subcktName, comp.name),
-          span: comp.span,
+          span: comp.tokenSpans?.[comp.nodes.length + 1] ?? comp.span,
         });
       } else {
         if (comp.nodes.length !== sub.ports.length) {
@@ -186,7 +184,7 @@ export function lintSpiceCircuit(circuit: SpiceCircuit): SpiceDiagnostic[] {
               sub.name,
               sub.ports.length,
             ),
-            span: comp.span,
+            span: comp.tokenSpans?.[comp.nodes.length + 1] ?? comp.span,
           });
         }
         const pinCount = Math.min(comp.nodes.length, sub.ports.length);
@@ -194,21 +192,16 @@ export function lintSpiceCircuit(circuit: SpiceCircuit): SpiceDiagnostic[] {
           const nodeUpper = (comp.nodes[i] ?? "").toUpperCase();
           const portName = sub.ports[i] ?? nodeUpper;
           const isExplicitNc =
-            nodeUpper === "NC" ||
-            nodeUpper === "OPEN" ||
-            nodeUpper === "UNCONNECTED" ||
-            nodeUpper.startsWith("NC_");
+            nodeUpper === "NC" || nodeUpper === "OPEN" || nodeUpper === "UNCONNECTED" || nodeUpper.startsWith("NC_");
           const isSinglePinNode =
-            nodeUpper !== "0" &&
-            nodeUpper !== "GND" &&
-            (nodeConnections.get(nodeUpper)?.length ?? 0) === 1;
+            nodeUpper !== "0" && nodeUpper !== "GND" && (nodeConnections.get(nodeUpper)?.length ?? 0) === 1;
           if (isExplicitNc || isSinglePinNode) {
             diagnostics.push({
               code: SPICE_ERROR_CODES.UNCONNECTED_PIN.code,
               rule: SPICE_ERROR_CODES.UNCONNECTED_PIN.rule,
               severity: SPICE_ERROR_CODES.UNCONNECTED_PIN.severity,
               message: SPICE_ERROR_CODES.UNCONNECTED_PIN.message(comp.name, portName),
-              span: comp.span,
+              span: comp.tokenSpans?.[1 + i] ?? comp.span,
             });
           }
         }
@@ -224,7 +217,7 @@ export function lintSpiceCircuit(circuit: SpiceCircuit): SpiceDiagnostic[] {
           rule: SPICE_ERROR_CODES.MISSING_MODEL.rule,
           severity: SPICE_ERROR_CODES.MISSING_MODEL.severity,
           message: SPICE_ERROR_CODES.MISSING_MODEL.message(comp.name, comp.model),
-          span: comp.span,
+          span: comp.tokenSpans?.[1 + comp.nodes.length] ?? comp.span,
         });
       }
     }
@@ -240,12 +233,14 @@ export function lintSpiceCircuit(circuit: SpiceCircuit): SpiceDiagnostic[] {
       const firstConn = conns[0];
       if (firstConn) {
         const comp = firstConn.comp;
+        const nodeIdx = comp.nodes.findIndex((n) => n.toUpperCase() === node);
+        const nodeSpan = nodeIdx >= 0 ? (comp.tokenSpans?.[1 + nodeIdx] ?? comp.span) : comp.span;
         diagnostics.push({
           code: SPICE_ERROR_CODES.FLOATING_NODE.code,
           rule: SPICE_ERROR_CODES.FLOATING_NODE.rule,
           severity: SPICE_ERROR_CODES.FLOATING_NODE.severity,
           message: SPICE_ERROR_CODES.FLOATING_NODE.message(node),
-          span: comp.span,
+          span: nodeSpan,
           quickFix: comp.span
             ? {
                 title: `Connect 1G bleeder resistor from '${node}' to ground (0)`,

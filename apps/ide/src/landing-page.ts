@@ -10,7 +10,7 @@ export interface LandingLanguageGroup {
   tone: "teal" | "indigo" | "amber" | "emerald" | "rose" | "sky";
 }
 
-export type LandingMaturityTier = "stable" | "beta" | "preview";
+export type LandingMaturityTier = "beta" | "alpha" | "pre-alpha";
 
 export interface LandingLanguageTile {
   id: string;
@@ -73,7 +73,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".msx",
     group: "core",
     tone: "teal",
-    tier: "stable",
+    tier: "beta",
     role: "Polyglot Kernel & Coordination DSL",
     summary:
       "Typed struct, constant, and functional orchestration kernel coordinating cross-domain physics, contracts, and solvers.",
@@ -87,7 +87,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".mo",
     group: "core",
     tone: "teal",
-    tier: "stable",
+    tier: "beta",
     role: "Acausal Multi-Physics DAE Modeling",
     summary:
       "Continuous-time differential-algebraic equation (DAE) modeling with full Modelica Standard Library schematic diagrams and CVODE/IDA solvers.",
@@ -101,7 +101,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".sysml",
     group: "core",
     tone: "indigo",
-    tier: "stable",
+    tier: "beta",
     role: "Systems Architecture & Requirements",
     summary:
       "OMG SysML v2 textual architecture definitions, ports, connections, state machines, and formal requirement satisfaction.",
@@ -115,7 +115,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".reqif",
     group: "core",
     tone: "sky",
-    tier: "beta",
+    tier: "alpha",
     role: "Requirements Interchange & Traceability",
     summary:
       "ISO/IEC 29148 and DO-178C requirements interchange specifications with traceability links, quality lints, and SysML v2 projection.",
@@ -129,7 +129,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".ssd",
     group: "core",
     tone: "emerald",
-    tier: "stable",
+    tier: "beta",
     role: "Co-Simulation Architecture",
     summary:
       "Modelica Association System Structure and Parameterization (SSP) multi-FMU co-simulation topology and master orchestration.",
@@ -143,7 +143,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".owl",
     group: "core",
     tone: "rose",
-    tier: "stable",
+    tier: "beta",
     role: "Ontological Reasoning & Units",
     summary:
       "W3C OWL 2 Functional-Style ontologies with tableau description logic consistency checking, subsumption, and SI unit verification.",
@@ -157,7 +157,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".oscal.json",
     group: "core",
     tone: "indigo",
-    tier: "beta",
+    tier: "alpha",
     role: "Cyber-Physical Security & Continuous ATO",
     summary:
       "NIST SP 800-53 Rev 5 and SP 800-82 Rev 3 OT/ICS System Security Plans, profile resolution, CPS compliance auditing, and POA&M tracking.",
@@ -171,7 +171,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".qif",
     group: "geometry",
     tone: "sky",
-    tier: "beta",
+    tier: "alpha",
     role: "MBD GD&T Metrology & Statistical Process Control",
     summary:
       "ISO 23952 / ANSI DMSC Quality Information Framework MBD tolerances, ASME Y14.5 MMC/LMC bonus evaluation, CMM plans, and SPC Cp/Cpk.",
@@ -185,7 +185,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".aml",
     group: "robotics",
     tone: "teal",
-    tier: "beta",
+    tier: "alpha",
     role: "Smart Manufacturing CAEX Topology & Virtual Commissioning",
     summary:
       "IEC 62714 CAEX 2.15/3.0 Product-Process-Resource (PPR) hierarchies, 6-DOF frames, PLCopen/COLLADA links, and closed-loop virtual commissioning.",
@@ -199,7 +199,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".step",
     group: "geometry",
     tone: "indigo",
-    tier: "stable",
+    tier: "beta",
     role: "B-Rep Solid CAD & Multibody Extraction",
     summary:
       "ISO 10303-21 AP203/AP214/AP242 boundary-representation CAD assemblies with 3D viewport inspection and multibody inertia extraction.",
@@ -213,7 +213,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".scad",
     group: "geometry",
     tone: "teal",
-    tier: "stable",
+    tier: "beta",
     role: "Parametric Constructive Solid Geometry",
     summary:
       "Programmatic CSG solid modeling with port tagging for automated FEA structural supports and CFD boundary patches.",
@@ -227,7 +227,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".cfg",
     group: "geometry",
     tone: "sky",
-    tier: "stable",
+    tier: "beta",
     role: "Computational Fluid Dynamics",
     summary:
       "RANS/LES aerodynamic and thermal fluid configuration decks with flowfield convergence verification and reduced-order drag polars.",
@@ -241,7 +241,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".inp",
     group: "geometry",
     tone: "amber",
-    tier: "stable",
+    tier: "beta",
     role: "Finite Element Structural Analysis",
     summary:
       "3D structural and thermal finite element input decks with nodal mesh inspection, von Mises stress slicing, and safety-margin contracts.",
@@ -255,7 +255,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".3mf",
     group: "geometry",
     tone: "emerald",
-    tier: "beta",
+    tier: "alpha",
     role: "Additive Manufacturing & Surgical Guides",
     summary:
       "3MF Consortium XML mesh packages with watertight 2-manifold Euler-Poincare verification, overhang support checks, and surgical guide QA.",
@@ -269,7 +269,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".csv",
     group: "integration",
     tone: "emerald",
-    tier: "stable",
+    tier: "beta",
     role: "Time-Series & Lookup Table Ingestion",
     summary:
       "Structured experimental time-series trajectories and CombiTimeTable lookup datasets with interactive plotting and schema validation.",
@@ -283,7 +283,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".c",
     group: "integration",
     tone: "sky",
-    tier: "stable",
+    tier: "beta",
     role: "Flight Software & Control Laws",
     summary:
       "MISRA-checked embedded C control algorithms with symbolic execution, formal safety verification, and Modelica external function bindings.",
@@ -297,7 +297,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".f90",
     group: "integration",
     tone: "indigo",
-    tier: "beta",
+    tier: "alpha",
     role: "Scientific & Legacy Physics Kernels",
     summary:
       "Fortran 90/95/2008 numerical subroutines and scientific physics kernels with automatic DAE lowering and dimensional audits.",
@@ -311,7 +311,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".jsbsim",
     group: "aerospace",
     tone: "amber",
-    tier: "beta",
+    tier: "alpha",
     role: "6-DOF Flight Dynamics & Trim",
     summary:
       "6-DOF nonlinear aircraft aerodynamics, propulsion, mass balance, and flight control system XML configurations.",
@@ -325,7 +325,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".roc",
     group: "aerospace",
     tone: "rose",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Liquid Rocket Engine Cycle Balance",
     summary:
       "Cryogenic turbopump, regenerative cooling jacket, preburner, and thrust chamber thermodynamic cycle decks.",
@@ -339,7 +339,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".oem",
     group: "aerospace",
     tone: "sky",
-    tier: "beta",
+    tier: "alpha",
     role: "Spacecraft Orbit Ephemeris & Attitude",
     summary:
       "Consultative Committee for Space Data Systems (CCSDS) Orbit Ephemeris Messages (OEM/OPM/OMM) and keplerian trajectory propagation.",
@@ -353,7 +353,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".ez5",
     group: "aerospace",
     tone: "indigo",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Aerospace Flight Controls & Hydraulics",
     summary: "Multi-rate aerospace flight control, thermal management, and environmental control block diagrams.",
     docsUrl: "https://modelscript.org/languages/easy5",
@@ -366,7 +366,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".arxml",
     group: "automotive",
     tone: "emerald",
-    tier: "beta",
+    tier: "alpha",
     role: "Automotive E/E Software Architecture",
     summary:
       "AUTOSAR ARXML software components (SWCs), sender-receiver/client-server ports, periodic timing events, and runnable schedules.",
@@ -380,7 +380,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".mdl",
     group: "automotive",
     tone: "teal",
-    tier: "beta",
+    tier: "alpha",
     role: "Causal Control Block Diagrams",
     summary:
       "Hierarchical causal signal-flow block diagrams and state machines with algebraic-loop detection and Modelica block projection.",
@@ -394,7 +394,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".gtm",
     group: "automotive",
     tone: "amber",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "1D Engine, xEV & Thermal Propulsion",
     summary:
       "1D compressible gas dynamics, turbocharged internal combustion cylinders, battery thermal circuits, and crank-angle simulation.",
@@ -408,7 +408,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".xodr",
     group: "automotive",
     tone: "sky",
-    tier: "beta",
+    tier: "alpha",
     role: "High-Definition Road Networks",
     summary:
       "ASAM OpenDRIVE clothoid/arc/line road reference geometry, lane topology, elevation profiles, and curvature continuity checks.",
@@ -422,7 +422,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".xosc",
     group: "automotive",
     tone: "rose",
-    tier: "beta",
+    tier: "alpha",
     role: "ADAS & Autonomous Driving Maneuvers",
     summary:
       "Dynamic traffic storyboards, cut-in maneuvers, time-to-collision (TTC) safety verification, and RSS minimum distance envelopes.",
@@ -436,7 +436,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".calc",
     group: "rail",
     tone: "rose",
-    tier: "beta",
+    tier: "alpha",
     role: "Rail Vehicle-Track Interaction & EN 14363",
     summary:
       "Railway carbody/bogie/wheelset multibody dynamics, FASTSIM wheel-rail creep contact, Nadine Nadal derailment ratio, and EN 14363 ride acceptance.",
@@ -450,7 +450,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".spck",
     group: "rail",
     tone: "indigo",
-    tier: "beta",
+    tier: "alpha",
     role: "Spatial Multibody Kinematics & Dynamics",
     summary:
       "3D rigid/flexible bodies, kinematic joints, force elements, Grübler-Kutzbach mobility analysis, and DAE lowering.",
@@ -464,7 +464,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".pscx",
     group: "power",
     tone: "amber",
-    tier: "beta",
+    tier: "alpha",
     role: "Electromagnetic Transients & IEEE 2800",
     summary:
       "Dommel companion-circuit EMT solver, Bergeron traveling-wave lines, COMTRADE waveform capture, and IEEE 2800-2022 IBR compliance.",
@@ -478,7 +478,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".raw",
     group: "power",
     tone: "teal",
-    tier: "beta",
+    tier: "alpha",
     role: "Transmission Power Flow & Stability",
     summary:
       "Bulk transmission network buses, generators, branches, transformers, Newton-Raphson AC power flow, and N-1 contingency screening.",
@@ -492,7 +492,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".dss",
     group: "power",
     tone: "emerald",
-    tier: "beta",
+    tier: "alpha",
     role: "Unbalanced Distribution Grids & DERs",
     summary:
       "Multi-phase unbalanced distribution feeders, step voltage regulators, rooftop solar PV inverters, and ANSI C84.1 voltage profile audits.",
@@ -506,7 +506,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".opi",
     group: "oil-gas",
     tone: "teal",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Multiphase Subsea Flow Assurance",
     summary:
       "Three-field gas-oil-water transient multiphase flowlines, terrain-induced slugging, hydrate subcooling margins, and API RP 14E erosion.",
@@ -520,7 +520,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".lps",
     group: "oil-gas",
     tone: "sky",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Transmission Pipeline Hydraulics",
     summary:
       "High-pressure natural gas and liquid transmission networks, centrifugal compressor stations, linepack inventory, and surge transients.",
@@ -534,7 +534,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".data",
     group: "oil-gas",
     tone: "amber",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Subsurface Black-Oil & CO₂ Reservoir",
     summary:
       "3D porous-media reservoir grids, PVT black-oil tables, relative permeability curves, Peaceman well models, and waterflood recovery.",
@@ -548,7 +548,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".r5",
     group: "nuclear",
     tone: "rose",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Nuclear Reactor Thermal-Hydraulics",
     summary:
       "Two-fluid non-equilibrium reactor coolant loops, six-group point reactor kinetics, heat structures, and 10 CFR 50.46 PCT safety limits.",
@@ -562,7 +562,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".sima",
     group: "marine",
     tone: "sky",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Offshore Hydrodynamics & Mooring",
     summary:
       "6-DOF floating offshore wind platforms, JONSWAP irregular wave spectra, Cummins radiation memory, and DNV-OS-E301 mooring tension checks.",
@@ -576,7 +576,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".cir",
     group: "electronics",
     tone: "indigo",
-    tier: "stable",
+    tier: "beta",
     role: "Analog & Mixed-Signal Circuit Simulation",
     summary:
       "Modified Nodal Analysis (MNA) circuit netlists with DC operating point, AC frequency sweep, transient integration, and floating-node lints.",
@@ -590,7 +590,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".va",
     group: "electronics",
     tone: "teal",
-    tier: "stable",
+    tier: "beta",
     role: "Compact Semiconductor Device Modeling",
     summary:
       "Behavioral analog compact device models (V(p,n) <+ ...) with symbolic Jacobian differentiation and Modelica connector lowering.",
@@ -604,7 +604,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".ibs",
     group: "electronics",
     tone: "amber",
-    tier: "beta",
+    tier: "alpha",
     role: "High-Speed SerDes & I/O Buffer Integrity",
     summary:
       "I/O buffer pullup/pulldown I-V curves, rising/falling V-T waveforms, package parasitics, and monotonicity/passivity verification.",
@@ -618,7 +618,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".s2p",
     group: "electronics",
     tone: "rose",
-    tier: "beta",
+    tier: "alpha",
     role: "RF & Microwave S-Parameter Networks",
     summary:
       "Multi-port frequency-domain scattering parameters (.s1p–.s4p) with passivity singular-value checks, reciprocity, and rational vector fitting.",
@@ -632,7 +632,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".urdf",
     group: "robotics",
     tone: "emerald",
-    tier: "stable",
+    tier: "beta",
     role: "Robotic Manipulator Kinematics & Dynamics",
     summary:
       "Articulated robot links, inertial tensors, revolute/prismatic joints, positive-definite triangle-inequality checks, and multibody lowering.",
@@ -646,7 +646,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".st",
     group: "robotics",
     tone: "teal",
-    tier: "beta",
+    tier: "alpha",
     role: "Industrial PLC Control & Structured Text",
     summary:
       "IEC 61131-3 Structured Text programs, Function Block Diagrams, scan-cycle execution, and formal safety interlock verification.",
@@ -660,7 +660,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".adm",
     group: "robotics",
     tone: "indigo",
-    tier: "beta",
+    tier: "alpha",
     role: "Mechanical Multibody Mechanisms",
     summary:
       "Adams-compatible PARTS, MARKERS, kinematic JOINTS, SFORCE/BUSHING elements, and spatial multibody mechanism simulation.",
@@ -674,7 +674,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".idf",
     group: "buildings",
     tone: "amber",
-    tier: "beta",
+    tier: "alpha",
     role: "Building Envelope & HVAC Energy",
     summary:
       "Multi-zone building thermal envelopes, fenestration, internal gains, HVAC air loops, and ASHRAE 90.1 / 55 comfort verification.",
@@ -688,7 +688,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".epanet",
     group: "buildings",
     tone: "sky",
-    tier: "beta",
+    tier: "alpha",
     role: "Pressurized Water Distribution Networks",
     summary:
       "Todini-Pilati Global Gradient Algorithm (GGA) hydraulic head/flow solver, Hazen-Williams pipes, pumps, and chlorine decay.",
@@ -702,7 +702,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".swmm",
     group: "buildings",
     tone: "teal",
-    tier: "beta",
+    tier: "alpha",
     role: "Urban Stormwater & Sanitary Sewer Routing",
     summary:
       "1D Saint-Venant dynamic wave open-channel and conduit routing, Green-Ampt catchment runoff, and node flooding verification.",
@@ -716,7 +716,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".bkp",
     group: "process",
     tone: "amber",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Chemical Process Flowsheets & VLE",
     summary:
       "Flash drums, CSTR/PFR reactors, distillation columns, Peng-Robinson/NRTL vapor-liquid equilibrium, and mass/energy balance checks.",
@@ -730,7 +730,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".gproms",
     group: "process",
     tone: "teal",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Equation-Oriented Process Modeling & DAE",
     summary:
       "Equation-oriented chemical process models, degree-of-freedom audits, non-isothermal CSTR kinetics, and DAE arena lowering.",
@@ -744,7 +744,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".cti",
     group: "process",
     tone: "amber",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Chemical Kinetics, Thermodynamics & Combustion",
     summary:
       "Gas-phase and surface elementary reaction mechanisms, NASA-7 polynomial continuity checks, and stiff Arrhenius kinetics.",
@@ -758,7 +758,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".pqi",
     group: "process",
     tone: "sky",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Aqueous Geochemistry & Reactive Transport",
     summary:
       "Aqueous electrolyte speciation, electroneutrality charge-balance audits, mineral saturation indices, and 1D reactive transport.",
@@ -772,7 +772,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".smi",
     group: "process",
     tone: "emerald",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Cheminformatics & Molecular Graph Topology",
     summary:
       "OpenSMILES molecular line notation with organic-subset valence checks, Huckel aromaticity, and Lipinski Rule-of-Five descriptors.",
@@ -786,7 +786,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".sbml",
     group: "life-sciences",
     tone: "rose",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Biochemical Reaction Networks & PBPK",
     summary:
       "Compartmental biochemical species, Michaelis-Menten and mass-action reaction kinetics, stoichiometry matrices, and conservation laws.",
@@ -800,7 +800,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".ant",
     group: "life-sciences",
     tone: "teal",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Modular Biological Reaction Networks",
     summary:
       "Human-readable modular gene-regulatory and metabolic pathways with bidirectional SBML Level 3 and Modelica DAE compilation.",
@@ -814,7 +814,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".bngl",
     group: "life-sciences",
     tone: "indigo",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Rule-Based Intracellular Signaling",
     summary:
       "Rule-based multi-site phosphorylation and receptor dimerization networks with site-state validation and ODE/Gillespie SSA expansion.",
@@ -828,7 +828,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".cellml",
     group: "life-sciences",
     tone: "rose",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Cardiac Electrophysiology & Cellular Physiology",
     summary:
       "Component-based physiological ODE/DAE models with strict dimensional unit checking (mV, ms, uA/cm2) and Hodgkin-Huxley solvers.",
@@ -842,7 +842,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".sedml",
     group: "life-sciences",
     tone: "sky",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Reproducible Simulation Experiments",
     summary:
       "Simulation Experiment Description Markup Language binding KiSAO solver algorithms (KISAO:0000019) to SBML and CellML models.",
@@ -856,7 +856,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".sbol",
     group: "life-sciences",
     tone: "emerald",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Synthetic Biology Genetic Circuits",
     summary:
       "Synthetic Biology Open Language genetic constructs with Sequence Ontology (SO) and Systems Biology Ontology (SBO) validation.",
@@ -870,7 +870,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".gb",
     group: "life-sciences",
     tone: "teal",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Annotated Genomic & Plasmid Sequences",
     summary:
       "INSDC flatfile DNA/RNA sequence records with coordinate bounds checking, open reading frame (ORF) phase verification, and GC analysis.",
@@ -884,7 +884,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".pdb",
     group: "life-sciences",
     tone: "indigo",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "3D Macromolecular Structural Biology",
     summary:
       "Atomic coordinate records (ATOM, HETATM, HELIX, SHEET, CONECT) with steric clash detection and Ramachandran validation.",
@@ -898,7 +898,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".ctl",
     group: "life-sciences",
     tone: "amber",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Pharmacometrics & Population PK/PD",
     summary:
       "NONMEM-compatible control streams ($PROBLEM, $PK, $DES, $THETA, $OMEGA, $SIGMA) with ADVAN/TRANS validation and compartment ODEs.",
@@ -912,7 +912,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".osim",
     group: "life-sciences",
     tone: "emerald",
-    tier: "beta",
+    tier: "alpha",
     role: "Musculoskeletal Multibody & Hill Muscle Dynamics",
     summary:
       "OpenSim 4.x anatomical bodies, kinematic joints, Hill-type muscle-tendon actuators (Thelen2003Muscle), and inverse dynamics.",
@@ -926,7 +926,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".feb",
     group: "life-sciences",
     tone: "amber",
-    tier: "beta",
+    tier: "alpha",
     role: "Nonlinear Soft-Tissue & Biphasic FEA",
     summary:
       "FEBio 4.0 hyperelastic (Mooney-Rivlin, Ogden, Holzapfel-Gasser-Ogden), viscoelastic, and biphasic poroelastic soft-tissue FEA.",
@@ -940,7 +940,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".dcm.json",
     group: "life-sciences",
     tone: "rose",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Radiation Therapy Plans, DVH & Gamma Index QA",
     summary:
       "DICOM Radiation Therapy (RTPLAN, RTDOSE, RTSTRUCT) with QUANTEC organ-at-risk DVH verification, BED/EQD2, and 3D Gamma Index QA.",
@@ -954,7 +954,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".nii.json",
     group: "life-sciences",
     tone: "sky",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Volumetric Medical Imaging & RAS+ Registration",
     summary:
       "3D/4D CT, MRI, and fMRI neuroimaging headers with qform/sform affine determinant checks and voxel-to-RAS+ world transforms.",
@@ -968,7 +968,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".topas",
     group: "life-sciences",
     tone: "indigo",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Proton & Photon Monte Carlo Radiation Transport",
     summary:
       "TOPAS clinical proton/carbon/photon beamline parameters with Bethe-Bloch stopping power and Bragg peak depth-dose scoring.",
@@ -982,7 +982,7 @@ export const LANDING_LANGUAGE_TILES: LandingLanguageTile[] = [
     ext: ".igtl.json",
     group: "life-sciences",
     tone: "teal",
-    tier: "preview",
+    tier: "pre-alpha",
     role: "Surgical Navigation & Robotic Hand-Eye Calibration",
     summary:
       "Computer-assisted surgery TRANSFORM streams with SO(3) rotation matrix orthogonality checks, pivot calibration, and AX=XB hand-eye alignment.",

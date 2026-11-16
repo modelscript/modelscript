@@ -30,6 +30,7 @@ import {
   LoaderContext,
   loadMSL,
   loadSysML2StandardLibrary,
+  mountCuratedFallbackPackage,
   mountPolyglotLibrary,
   resolveWorkspaceLibraryVersions,
 } from "../vfs/library-loader.js";
@@ -458,18 +459,18 @@ export class ParserService {
           lazyLibTrees.delete(uri);
           lazyLibTrees.set(uri, lazyCache);
         }
-        if ((!lazyCache || !lazyCache.tree) && this.sharedContext) {
+        if ((!lazyCache || !lazyCache.tree) && (this.sharedContext || docTree?.text)) {
           try {
-            let text = lazyCache?.text;
+            let text = lazyCache?.text ?? docTree?.text;
             const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
-            if (!text) {
+            if (!text && this.sharedContext) {
               text = this.sharedContext.fs.read(fsPath);
             }
-            if (!text && uri.startsWith("modelica:")) {
+            if (!text && this.sharedContext && uri.startsWith("modelica:")) {
               const stripped = uri.replace(/^modelica:\/?\/?/, "/");
               text = this.sharedContext.fs.read(stripped.startsWith("/") ? stripped : "/" + stripped);
             }
-            if (!text && uri.startsWith("sources/")) {
+            if (!text && this.sharedContext && uri.startsWith("sources/")) {
               text = this.sharedContext.fs.read(
                 `/modelscript_registry/Modelica/4.1.0/${uri.substring("sources/".length)}`,
               );
@@ -478,15 +479,18 @@ export class ParserService {
               const ext =
                 (this.workspaceManager?.unifiedWorkspace as any)?.extractExtension?.(uri) ??
                 (uri.includes(".") ? `.${uri.split(".").pop()}` : ".mo");
-              const tree = this.sharedContext.parse(ext, text);
-              lazyCache = { tree, text };
-              if (lazyLibTrees) {
-                lazyLibTrees.delete(uri);
-                lazyLibTrees.set(uri, lazyCache);
-                while (lazyLibTrees.size > MAX_LAZY_LIB_TREES) {
-                  const oldest = lazyLibTrees.keys().next().value;
-                  if (oldest === undefined) break;
-                  lazyLibTrees.delete(oldest);
+              const uriParser = this.getParserForUri(uri);
+              const tree = uriParser ? uriParser.parse(text) : this.sharedContext?.parse(ext, text);
+              if (tree) {
+                lazyCache = { tree, text };
+                if (lazyLibTrees) {
+                  lazyLibTrees.delete(uri);
+                  lazyLibTrees.set(uri, lazyCache);
+                  while (lazyLibTrees.size > MAX_LAZY_LIB_TREES) {
+                    const oldest = lazyLibTrees.keys().next().value;
+                    if (oldest === undefined) break;
+                    lazyLibTrees.delete(oldest);
+                  }
                 }
               }
             } else {
@@ -761,7 +765,9 @@ export class ParserService {
   private validationServiceRef: any = null;
   private projectDependenciesRef: { name: string; version: string }[] = [];
   private loadingParserPromises = new Map<string, Promise<void>>();
+  private failedParserLoads = new Set<string>();
   private loadingStdlibPromises = new Map<string, Promise<void>>();
+  private failedStdlibKeys = new Set<string>();
 
   private ensureSharedContext(): void {
     if (this.sharedContext) return;
@@ -891,6 +897,9 @@ export class ParserService {
       this.ensureSharedContext();
       return;
     }
+    if (this.failedParserLoads.has(entry.id)) {
+      return;
+    }
 
     const existingPromise = this.loadingParserPromises.get(entry.id);
     if (existingPromise) {
@@ -1008,6 +1017,7 @@ export class ParserService {
           this.connection.console.info(`ModelScript ${entry.displayName || entry.id} parser initialized`);
         }
       } catch (e) {
+        this.failedParserLoads.add(entry.id);
         this.connection.console.warn(`Failed to load ${entry.id} language: ${e}`);
       }
     })();
@@ -1065,6 +1075,9 @@ export class ParserService {
 
       for (const lib of polyglotLibs) {
         const libKey = `${lib.packageName}@${lib.version}`;
+        if (this.failedStdlibKeys.has(libKey)) {
+          continue;
+        }
         const existingPromise = this.loadingStdlibPromises.get(libKey);
         if (existingPromise) {
           await existingPromise;
@@ -1094,6 +1107,18 @@ export class ParserService {
             this.connection.console.warn(`[lsp] Failed to mount polyglot stdlib ${libKey}: ${mountErr}`);
           }
 
+          if (!mountOk) {
+            try {
+              const fallbackOk = await mountCuratedFallbackPackage(lib.packageName, lib.version, loaderCtx);
+              if (fallbackOk) {
+                mountOk = true;
+                this.connection.console.info(`[lsp] Mounted curated fallback stdlib ${libKey} for ${norm}.`);
+              }
+            } catch (fallbackErr) {
+              this.connection.console.warn(`[lsp] Curated fallback failed for stdlib ${libKey}: ${fallbackErr}`);
+            }
+          }
+
           if (mountOk) {
             for (const doc of this.documents.all()) {
               const docLang = this.resolveNormalizedLanguageId(doc.languageId || doc.uri);
@@ -1108,11 +1133,12 @@ export class ParserService {
             }
 
             this.sendProjectTreeChanged();
-            this.connection.sendNotification("modelscript/status", {
-              state: "ready",
-              message: globalCtx.getReadyMessage?.() ?? "ModelScript",
-            });
           }
+
+          this.connection.sendNotification("modelscript/status", {
+            state: "ready",
+            message: globalCtx.getReadyMessage?.() ?? "ModelScript",
+          });
         })();
 
         this.loadingStdlibPromises.set(libKey, mountPromise);
@@ -1120,6 +1146,7 @@ export class ParserService {
           await mountPromise;
         } finally {
           if (!mountOk) {
+            this.failedStdlibKeys.add(libKey);
             this.loadingStdlibPromises.delete(libKey);
           }
         }
@@ -1199,21 +1226,23 @@ export class ParserService {
         (globalThis as any).clearDiagramCache?.();
         (globalThis as any).diagramCache?.clear();
 
-        const isModelicaDep = dep.name === "Modelica";
-        const isSysmlDep = dep.name === "SysML";
-        for (const doc of this.documents.all()) {
-          const langId = (doc.languageId || "").toLowerCase();
-          if (isModelicaDep && langId !== "modelica" && langId !== "modelscript" && !/\.(mo|msx)$/i.test(doc.uri)) {
-            continue;
-          }
-          if (isSysmlDep && langId !== "sysml2" && langId !== "sysml" && !/\.(sysml|kerml)$/i.test(doc.uri)) {
-            continue;
-          }
-          try {
-            await (this.validationServiceRef?.validateTextDocument?.(doc) ??
-              (globalThis as any).validateTextDocument?.(doc));
-          } catch (err) {
-            this.connection.console.warn(`[lsp] Failed to validate open document after ${dep.name} load: ${err}`);
+        if (!this.validationServiceRef?.dependenciesReady) {
+          const isModelicaDep = dep.name === "Modelica";
+          const isSysmlDep = dep.name === "SysML";
+          for (const doc of this.documents.all()) {
+            const langId = (doc.languageId || "").toLowerCase();
+            if (isModelicaDep && langId !== "modelica" && langId !== "modelscript" && !/\.(mo|msx)$/i.test(doc.uri)) {
+              continue;
+            }
+            if (isSysmlDep && langId !== "sysml2" && langId !== "sysml" && !/\.(sysml|kerml)$/i.test(doc.uri)) {
+              continue;
+            }
+            try {
+              await (this.validationServiceRef?.validateTextDocument?.(doc) ??
+                (globalThis as any).validateTextDocument?.(doc));
+            } catch (err) {
+              this.connection.console.warn(`[lsp] Failed to validate open document after ${dep.name} load: ${err}`);
+            }
           }
         }
 

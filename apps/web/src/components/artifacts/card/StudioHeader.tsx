@@ -567,7 +567,7 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                       if (navigator.share) {
                         navigator
                           .share({
-                            title: artifact?.title || artifact?.name || "Ansatz Morsel",
+                            title: artifact?.title || artifact?.name || "Morsel",
                             url: `${window.location.origin}/render-artifact/${artifactId}`,
                           })
                           .catch(() => onCopyLink());

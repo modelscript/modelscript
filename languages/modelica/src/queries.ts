@@ -6183,8 +6183,9 @@ export const componentDeclarationQueries: Record<string, any> = {
       }
 
       if (specKind) {
-        const startOffset = declNode?.startOffset ?? declNode?.startIndex ?? self.startOffset;
-        const endOffset = declNode?.endOffset ?? declNode?.endIndex ?? self.endOffset;
+        const rangeNode = modNode ?? declNode;
+        const startOffset = rangeNode?.startOffset ?? rangeNode?.startIndex ?? self.startOffset;
+        const endOffset = rangeNode?.endOffset ?? rangeNode?.endIndex ?? self.endOffset;
 
         const msg = ModelicaErrorCode.COMPONENT_BINDING_RESTRICTION.message(self.name, specKind);
         return error(msg, {

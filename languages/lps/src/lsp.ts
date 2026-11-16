@@ -81,9 +81,13 @@ const DEFAULT_RANGE: LspRange = {
 /**
  * Validates a PipelineStudio model deck / XML and emits pre-flight diagnostics.
  */
-export function validateLps(content: string, _uri: string = "network.lps"): LspDiagnostic[] {
+export function validateLps(
+  content: string,
+  _uri: string = "network.lps",
+  cstTree?: { rootNode?: unknown } | null,
+): LspDiagnostic[] {
   try {
-    const model = parseLps(content);
+    const model = parseLps(content, undefined, { cstTree });
     const issues = lintLpsModel(model);
     const lines = content.split(/\r?\n/);
 

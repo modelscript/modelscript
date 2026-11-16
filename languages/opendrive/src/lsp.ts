@@ -75,10 +75,10 @@ export interface LspHover {
   range?: LspRange | undefined;
 }
 
-export function validateOpenDrive(content: string): LspDiagnostic[] {
+export function validateOpenDrive(content: string, cstTree?: { rootNode?: unknown } | null): LspDiagnostic[] {
   let doc: OpenDriveDocument;
   try {
-    doc = parseOpenDrive(content);
+    doc = parseOpenDrive(content, undefined, { cstTree });
   } catch (err: unknown) {
     return [
       {

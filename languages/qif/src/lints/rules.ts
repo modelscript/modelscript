@@ -120,8 +120,7 @@ export const QifErrorCode = {
     code: "M8111",
     rule: "qif-circular-datum-reference",
     severity: "error" as const,
-    message: (datumLabel: string) =>
-      `Datum '${datumLabel}' definition references itself in DatumReferenceFrame.`,
+    message: (datumLabel: string) => `Datum '${datumLabel}' definition references itself in DatumReferenceFrame.`,
   },
   SPC_SUBGROUP_SIZE_INSUFFICIENT: {
     code: "M8112",
@@ -381,7 +380,7 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
         rule: QifErrorCode.UNRESOLVED_QPID.rule,
         severity: QifErrorCode.UNRESOLVED_QPID.severity,
         message: QifErrorCode.UNRESOLVED_QPID.message("featureId", d.featureId, `Datum '${d.label}'`),
-        range: d.range,
+        range: d.featureIdRange ?? d.range,
       });
     }
   }
@@ -399,7 +398,7 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
         rule: QifErrorCode.UNRESOLVED_STEP_ENTITY.rule,
         severity: QifErrorCode.UNRESOLVED_STEP_ENTITY.severity,
         message: QifErrorCode.UNRESOLVED_STEP_ENTITY.message(f.stepEntityId, f.name),
-        range: f.range,
+        range: f.stepEntityIdRange ?? f.range,
       });
     }
 
@@ -418,7 +417,7 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
             f.featureType,
             f.name,
           ),
-          range: f.range,
+          range: f.probingPointsRange ?? f.range,
         });
       }
     }
@@ -474,7 +473,7 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
         rule: QifErrorCode.ZERO_TOLERANCE_ZONE.rule,
         severity: QifErrorCode.ZERO_TOLERANCE_ZONE.severity,
         message: QifErrorCode.ZERO_TOLERANCE_ZONE.message(c.name),
-        range: c.range,
+        range: c.toleranceRange ?? c.range,
       });
     }
 
@@ -485,13 +484,14 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
         rule: QifErrorCode.SPC_SUBGROUP_SIZE_INSUFFICIENT.rule,
         severity: QifErrorCode.SPC_SUBGROUP_SIZE_INSUFFICIENT.severity,
         message: QifErrorCode.SPC_SUBGROUP_SIZE_INSUFFICIENT.message(c.name, c.spcSubgroupSize),
-        range: c.range,
+        range: c.spcSubgroupSizeRange ?? c.range,
       });
     }
 
     // M8101: Unresolved featureIds
     const resolvedFeatures: QifFeature[] = [];
-    for (const fid of c.featureIds) {
+    for (let i = 0; i < c.featureIds.length; i++) {
+      const fid = c.featureIds[i]!;
       const feat = featureById.get(fid);
       if (!feat) {
         diagnostics.push({
@@ -499,7 +499,7 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
           rule: QifErrorCode.UNRESOLVED_QPID.rule,
           severity: QifErrorCode.UNRESOLVED_QPID.severity,
           message: QifErrorCode.UNRESOLVED_QPID.message("featureId", fid, c.name),
-          range: c.range,
+          range: c.featureIdRanges?.[i] ?? c.range,
         });
       } else {
         resolvedFeatures.push(feat);
@@ -515,10 +515,10 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
           rule: QifErrorCode.UNRESOLVED_QPID.rule,
           severity: QifErrorCode.UNRESOLVED_QPID.severity,
           message: QifErrorCode.UNRESOLVED_QPID.message("deviceId", c.deviceId, c.name),
-          range: c.range,
+          range: c.deviceIdRange ?? c.range,
         });
       } else {
-        checkTurForCharacteristicAndDevice(c, dev, c.range);
+        checkTurForCharacteristicAndDevice(c, dev, c.deviceIdRange ?? c.range);
       }
     }
 
@@ -652,7 +652,7 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
         rule: QifErrorCode.UNRESOLVED_QPID.rule,
         severity: QifErrorCode.UNRESOLVED_QPID.severity,
         message: QifErrorCode.UNRESOLVED_QPID.message("featureId", step.featureId, `PlanStep '${step.id}'`),
-        range: step.range,
+        range: step.featureIdRange ?? step.range,
       });
     } else {
       // M8106: Probing point count on plan step
@@ -670,7 +670,7 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
             feat.featureType,
             `PlanStep '${step.id}' (${feat.name})`,
           ),
-          range: step.range,
+          range: step.probingPointCountRange ?? step.range,
         });
       }
     }
@@ -682,7 +682,7 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
         rule: QifErrorCode.UNRESOLVED_QPID.rule,
         severity: QifErrorCode.UNRESOLVED_QPID.severity,
         message: QifErrorCode.UNRESOLVED_QPID.message("deviceId", step.deviceId, `PlanStep '${step.id}'`),
-        range: step.range,
+        range: step.deviceIdRange ?? step.range,
       });
     }
 
@@ -699,7 +699,7 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
             step.characteristicId,
             `PlanStep '${step.id}'`,
           ),
-          range: step.range,
+          range: step.characteristicIdRange ?? step.range,
         });
       }
     }
@@ -707,11 +707,11 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
     // M8107: Check TUR for step device against characteristic
     if (dev) {
       if (stepChar) {
-        checkTurForCharacteristicAndDevice(stepChar, dev, step.range);
+        checkTurForCharacteristicAndDevice(stepChar, dev, step.deviceIdRange ?? step.range);
       } else if (feat) {
         for (const c of doc.characteristics) {
           if (c.featureIds.includes(feat.id) || (feat.qpId && c.featureIds.includes(feat.qpId))) {
-            checkTurForCharacteristicAndDevice(c, dev, step.range);
+            checkTurForCharacteristicAndDevice(c, dev, step.deviceIdRange ?? step.range);
           }
         }
       }
@@ -729,7 +729,7 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
         rule: QifErrorCode.UNRESOLVED_QPID.rule,
         severity: QifErrorCode.UNRESOLVED_QPID.severity,
         message: QifErrorCode.UNRESOLVED_QPID.message("characteristicId", act.characteristicId, `Actual '${act.id}'`),
-        range: act.range,
+        range: act.characteristicIdRange ?? act.range,
       });
       continue;
     }
@@ -750,7 +750,7 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
           act.status,
           char.name,
         ),
-        range: act.range,
+        range: act.measuredValueRange ?? act.range,
       });
     } else if (evalResult.isWithinSpec && act.status === "FAIL") {
       diagnostics.push({
@@ -764,7 +764,7 @@ export function lintQifDocument(doc: QifDocument): QifDiagnostic[] {
           act.status,
           char.name,
         ),
-        range: act.range,
+        range: act.measuredValueRange ?? act.range,
       });
     }
   }

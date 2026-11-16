@@ -20,7 +20,6 @@ COPY package.json package-lock.json ./
 # Apps & Enterprise Edition manifests
 COPY apps/api/package.json apps/api/
 COPY apps/cli/package.json apps/cli/
-COPY apps/desktop/package.json apps/desktop/
 COPY apps/docs/package.json apps/docs/
 COPY apps/ide/github-fs/package.json apps/ide/github-fs/
 COPY apps/ide/package.json apps/ide/

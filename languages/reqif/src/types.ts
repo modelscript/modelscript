@@ -91,9 +91,11 @@ export interface ReqIfContract {
 
 export interface ReqIfSpecObject {
   identifier: string;
+  identifierSpan?: SourceSpan | undefined;
   longName?: string | undefined;
   lastChange?: string | undefined;
   typeRef?: string | undefined;
+  typeRefSpan?: SourceSpan | undefined;
   attributes: Map<string, ReqIfAttributeValue>;
   text: string;
   hasExplicitText?: boolean | undefined;
@@ -107,11 +109,15 @@ export type ReqIfRelationKind = "satisfies" | "verifies" | "allocates" | "refine
 
 export interface ReqIfSpecRelation {
   identifier: string;
+  identifierSpan?: SourceSpan | undefined;
   longName?: string | undefined;
   typeRef?: string | undefined;
+  typeRefSpan?: SourceSpan | undefined;
   relationType: ReqIfRelationKind;
   sourceId: string;
+  sourceSpan?: SourceSpan | undefined;
   targetId: string;
+  targetSpan?: SourceSpan | undefined;
   span?: SourceSpan | undefined;
 }
 

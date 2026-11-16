@@ -54,9 +54,9 @@ const chips = computed<FilterChip[]>(() => {
 
 const tierChips = computed(() => [
   { id: "all" as const, label: "All Tiers", count: LANGUAGES.length },
-  { id: "stable" as const, label: "Stable", count: TIER_COUNTS.stable },
   { id: "beta" as const, label: "Beta", count: TIER_COUNTS.beta },
-  { id: "preview" as const, label: "Preview", count: TIER_COUNTS.preview },
+  { id: "alpha" as const, label: "Alpha", count: TIER_COUNTS.alpha },
+  { id: "pre-alpha" as const, label: "Pre-Alpha", count: TIER_COUNTS["pre-alpha"] },
 ]);
 
 const filtered = computed(() => {
@@ -229,13 +229,13 @@ const industriesByLang = computed(() => {
   height: 7px;
   border-radius: 999px;
 }
-.le-tier-dot--stable {
+.le-tier-dot--beta {
   background: #10b981;
 }
-.le-tier-dot--beta {
+.le-tier-dot--alpha {
   background: #38bdf8;
 }
-.le-tier-dot--preview {
+.le-tier-dot--pre-alpha {
   background: #a855f7;
 }
 
@@ -328,20 +328,20 @@ const industriesByLang = computed(() => {
   letter-spacing: 0.02em;
   border: 1px solid transparent;
 }
-.le-tier--stable {
-  color: var(--ms-tier-stable);
-  background: var(--ms-tier-stable-bg);
-  border-color: var(--ms-tier-stable-border);
-}
 .le-tier--beta {
   color: var(--ms-tier-beta);
   background: var(--ms-tier-beta-bg);
   border-color: var(--ms-tier-beta-border);
 }
-.le-tier--preview {
-  color: var(--ms-tier-preview);
-  background: var(--ms-tier-preview-bg);
-  border-color: var(--ms-tier-preview-border);
+.le-tier--alpha {
+  color: var(--ms-tier-alpha);
+  background: var(--ms-tier-alpha-bg);
+  border-color: var(--ms-tier-alpha-border);
+}
+.le-tier--pre-alpha {
+  color: var(--ms-tier-pre-alpha);
+  background: var(--ms-tier-pre-alpha-bg);
+  border-color: var(--ms-tier-pre-alpha-border);
 }
 
 .le-ext {

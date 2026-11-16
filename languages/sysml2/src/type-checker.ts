@@ -989,8 +989,8 @@ export function checkPortConjugationMismatch(db: QueryDB, self: SymbolEntry): Li
             {
               code: SysML2ErrorCode.PORT_CONJUGATION_MISMATCH.code,
               field: "declaredName",
-              startOffset: self.startOffset,
-              endOffset: self.endOffset,
+              startOffset: refs[r + 1]!.startOffset,
+              endOffset: refs[r + 1]!.endOffset,
             },
           );
         }
@@ -1016,8 +1016,8 @@ export function checkPortConjugationMismatch(db: QueryDB, self: SymbolEntry): Li
       return error(SysML2ErrorCode.PORT_CONJUGATION_MISMATCH.message(sourceName, targetName, srcInfo.baseType), {
         code: SysML2ErrorCode.PORT_CONJUGATION_MISMATCH.code,
         field: "declaredName",
-        startOffset: self.startOffset,
-        endOffset: self.endOffset,
+        startOffset: refs[r + 1]!.startOffset,
+        endOffset: refs[r + 1]!.endOffset,
       });
     }
   }

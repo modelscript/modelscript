@@ -142,12 +142,51 @@ function matchTag(el: XmlElement, name: string): boolean {
   return localName(el.name).toLowerCase() === name.toLowerCase();
 }
 
-function getAttr(el: XmlElement, name: string): string | undefined {
+function getAttrNode(el: XmlElement, name: string): XmlAttribute | undefined {
   const target = name.toLowerCase();
-  const attr = el.attributes.find(
+  return el.attributes.find(
     (a: XmlAttribute) => localName(a.name).toLowerCase() === target || a.name.toLowerCase() === target,
   );
-  return attr?.value;
+}
+
+function getAttr(el: XmlElement, name: string): string | undefined {
+  return getAttrNode(el, name)?.value;
+}
+
+function makeTextContentRange(el: XmlElement, sourceText: string, lineOffsets: number[]): QifSourceRange {
+  if (el.selfClosing || el.closeStart <= el.openEnd) {
+    return makeRange(el.start, el.end, lineOffsets);
+  }
+  let start = el.openEnd;
+  let end = el.closeStart;
+  while (start < end && /\s/.test(sourceText[start]!)) start++;
+  while (end > start && /\s/.test(sourceText[end - 1]!)) end--;
+  if (start >= end) {
+    return makeRange(el.openEnd, el.closeStart, lineOffsets);
+  }
+  return makeRange(start, end, lineOffsets);
+}
+
+function getAttrOrChildWithRange(
+  el: XmlElement,
+  attrNames: string[],
+  childNames: string[],
+  sourceText: string,
+  lineOffsets: number[],
+): { value: string; range: QifSourceRange } | undefined {
+  for (const name of attrNames) {
+    const attr = getAttrNode(el, name);
+    if (attr !== undefined) {
+      return { value: attr.value, range: makeRange(attr.valueStart, attr.valueEnd, lineOffsets) };
+    }
+  }
+  for (const name of childNames) {
+    const child = getChild(el, name);
+    if (child !== undefined) {
+      return { value: child.text.trim(), range: makeTextContentRange(child, sourceText, lineOffsets) };
+    }
+  }
+  return undefined;
 }
 
 function getChild(el: XmlElement | null | undefined, name: string): XmlElement | undefined {
@@ -346,8 +385,13 @@ function parseCstCompositeLowerTier(el: XmlElement): QifCompositeLowerTier | und
   return undefined;
 }
 
-function parseCstFeatureIds(el: XmlElement, attrFeatures?: string): string[] {
-  const ids: string[] = [];
+function parseCstFeatureIds(
+  el: XmlElement,
+  sourceText: string,
+  lineOffsets: number[],
+): { featureIds: string[]; featureIdRanges: QifSourceRange[] } {
+  const featureIds: string[] = [];
+  const featureIdRanges: QifSourceRange[] = [];
   const fnBlock = getChild(el, "FeatureNominalIds") ?? el;
   const idTags = findDescendants(fnBlock, (c) => {
     const t = localName(c.name).toLowerCase();
@@ -355,12 +399,37 @@ function parseCstFeatureIds(el: XmlElement, attrFeatures?: string): string[] {
   });
   for (const it of idTags) {
     const v = it.text.trim();
-    if (v) ids.push(v);
+    if (v) {
+      featureIds.push(v);
+      featureIdRanges.push(makeTextContentRange(it, sourceText, lineOffsets));
+    }
   }
-  if (ids.length === 0 && attrFeatures) {
-    return parseListString(attrFeatures);
+  if (featureIds.length === 0) {
+    const attrNode = getAttrNode(el, "featureIds") ?? getAttrNode(el, "featureId");
+    if (attrNode && attrNode.value) {
+      const rawSlice = sourceText.slice(attrNode.valueStart, attrNode.valueEnd);
+      const tokenRegex = /[^\s,[\]]+/g;
+      let match: RegExpExecArray | null;
+      while ((match = tokenRegex.exec(rawSlice)) !== null) {
+        featureIds.push(match[0]);
+        featureIdRanges.push(
+          makeRange(
+            attrNode.valueStart + match.index,
+            attrNode.valueStart + match.index + match[0].length,
+            lineOffsets,
+          ),
+        );
+      }
+      if (featureIds.length === 0) {
+        const parsed = parseListString(attrNode.value);
+        for (const id of parsed) {
+          featureIds.push(id);
+          featureIdRanges.push(makeRange(attrNode.valueStart, attrNode.valueEnd, lineOffsets));
+        }
+      }
+    }
   }
-  return ids;
+  return { featureIds, featureIdRanges };
 }
 
 function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRange, uri?: string): QifDocument {
@@ -435,12 +504,26 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
       getChildText(el, "Label") ??
       id;
     const fnBlock = getChild(el, "FeatureNominalIds");
-    const featureId =
-      getAttr(el, "featureId") ??
-      getAttr(el, "featureNominalId") ??
-      (fnBlock ? getChildText(fnBlock, "Id") : undefined) ??
-      getChildText(el, "FeatureNominalId") ??
-      getChildText(el, "FeatureId");
+    const featureIdAttr = getAttrNode(el, "featureId") ?? getAttrNode(el, "featureNominalId");
+    const fnBlockIdChild = fnBlock ? getChild(fnBlock, "Id") : undefined;
+    const featureNominalIdChild = getChild(el, "FeatureNominalId");
+    const featureIdChild = getChild(el, "FeatureId");
+
+    let featureId: string | undefined;
+    let featureIdRange: QifSourceRange | undefined;
+    if (featureIdAttr) {
+      featureId = featureIdAttr.value;
+      featureIdRange = makeRange(featureIdAttr.valueStart, featureIdAttr.valueEnd, lineOffsets);
+    } else if (fnBlockIdChild && fnBlockIdChild.text.trim()) {
+      featureId = fnBlockIdChild.text.trim();
+      featureIdRange = makeTextContentRange(fnBlockIdChild, text, lineOffsets);
+    } else if (featureNominalIdChild && featureNominalIdChild.text.trim()) {
+      featureId = featureNominalIdChild.text.trim();
+      featureIdRange = makeTextContentRange(featureNominalIdChild, text, lineOffsets);
+    } else if (featureIdChild && featureIdChild.text.trim()) {
+      featureId = featureIdChild.text.trim();
+      featureIdRange = makeTextContentRange(featureIdChild, text, lineOffsets);
+    }
 
     const datumDef: QifDatumDefinition = {
       id: id.trim(),
@@ -448,7 +531,10 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
       range: makeRange(el.start, el.end, lineOffsets),
     };
     if (qpId) datumDef.qpId = qpId.trim();
-    if (featureId) datumDef.featureId = featureId.trim();
+    if (featureId && featureId.trim()) {
+      datumDef.featureId = featureId.trim();
+      if (featureIdRange) datumDef.featureIdRange = featureIdRange;
+    }
     const datumRefs = parseCstDatumRefs(el, getAttr(el, "datumReferences") ?? getAttr(el, "datums"));
     if (datumRefs.length > 0) {
       datumDef.datumReferences = datumRefs.map((r) => r.datumLabel);
@@ -522,19 +608,21 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
       getChildText(el, "AxisVector") ??
       getChildText(el, "Direction");
 
-    const stepId =
-      getAttr(el, "stepEntityId") ??
-      getAttr(el, "cadEntityId") ??
-      getChildText(el, "StepEntityId") ??
-      getChildText(el, "CADEntityId") ??
-      getChildText(el, "EntityId");
+    const stepIdRes = getAttrOrChildWithRange(
+      el,
+      ["stepEntityId", "cadEntityId"],
+      ["StepEntityId", "CADEntityId", "EntityId"],
+      text,
+      lineOffsets,
+    );
 
-    const pointsStr =
-      getAttr(el, "probingPoints") ??
-      getAttr(el, "points") ??
-      getChildText(el, "ProbingPoints") ??
-      getChildText(el, "MinPoints") ??
-      getChildText(el, "PointCount");
+    const pointsRes = getAttrOrChildWithRange(
+      el,
+      ["probingPoints", "points"],
+      ["ProbingPoints", "MinPoints", "PointCount"],
+      text,
+      lineOffsets,
+    );
 
     const feature: QifFeature = {
       id,
@@ -556,9 +644,13 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
     if (locVec) feature.location = locVec;
     const normVec = parseVector3(normStr);
     if (normVec) feature.normal = normVec;
-    if (stepId) feature.stepEntityId = stepId.trim();
-    if (pointsStr !== undefined && !Number.isNaN(Number(pointsStr))) {
-      feature.probingPoints = Number(pointsStr);
+    if (stepIdRes && stepIdRes.value.trim()) {
+      feature.stepEntityId = stepIdRes.value.trim();
+      feature.stepEntityIdRange = stepIdRes.range;
+    }
+    if (pointsRes && !Number.isNaN(Number(pointsRes.value))) {
+      feature.probingPoints = Number(pointsRes.value);
+      feature.probingPointsRange = pointsRes.range;
     }
 
     doc.features.push(feature);
@@ -619,19 +711,31 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
 
     const datumRefs = parseCstDatumRefs(el, getAttr(el, "datumReferences") ?? getAttr(el, "datums"));
     const lowerTier = parseCstCompositeLowerTier(el);
-    const featureIds = parseCstFeatureIds(el, getAttr(el, "featureIds") ?? getAttr(el, "featureId"));
+    const { featureIds, featureIdRanges } = parseCstFeatureIds(el, text, lineOffsets);
 
-    const deviceId =
-      getAttr(el, "deviceId") ??
-      getAttr(el, "measurementDeviceId") ??
-      getChildText(el, "MeasurementDeviceId") ??
-      getChildText(el, "DeviceId");
+    const deviceIdRes = getAttrOrChildWithRange(
+      el,
+      ["deviceId", "measurementDeviceId"],
+      ["MeasurementDeviceId", "DeviceId"],
+      text,
+      lineOffsets,
+    );
 
-    const subgroupStr =
-      getAttr(el, "spcSubgroupSize") ??
-      getAttr(el, "subgroupSize") ??
-      getChildText(el, "SPCSubgroupSize") ??
-      getChildText(el, "SubgroupSize");
+    const subgroupRes = getAttrOrChildWithRange(
+      el,
+      ["spcSubgroupSize", "subgroupSize"],
+      ["SPCSubgroupSize", "SubgroupSize"],
+      text,
+      lineOffsets,
+    );
+
+    const tolRes = getAttrOrChildWithRange(
+      el,
+      ["toleranceZone", "toleranceValue", "tolerance"],
+      ["ToleranceValue", "ToleranceZone"],
+      text,
+      lineOffsets,
+    );
 
     const characteristic: QifCharacteristic = {
       id,
@@ -643,8 +747,12 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
       materialCondition,
       datumReferences: datumRefs,
       featureIds,
+      featureIdRanges,
       range: makeRange(el.start, el.end, lineOffsets),
     };
+    if (tolRes) {
+      characteristic.toleranceRange = tolRes.range;
+    }
     if (balloonStr !== undefined && !Number.isNaN(Number(balloonStr))) {
       characteristic.balloonNumber = Number(balloonStr);
     }
@@ -660,11 +768,13 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
     if (lowerTier) {
       characteristic.compositeLowerTier = lowerTier;
     }
-    if (deviceId) {
-      characteristic.deviceId = deviceId.trim();
+    if (deviceIdRes && deviceIdRes.value.trim()) {
+      characteristic.deviceId = deviceIdRes.value.trim();
+      characteristic.deviceIdRange = deviceIdRes.range;
     }
-    if (subgroupStr !== undefined && subgroupStr.trim() !== "" && !Number.isNaN(Number(subgroupStr))) {
-      characteristic.spcSubgroupSize = Number(subgroupStr);
+    if (subgroupRes && subgroupRes.value.trim() !== "" && !Number.isNaN(Number(subgroupRes.value))) {
+      characteristic.spcSubgroupSize = Number(subgroupRes.value);
+      characteristic.spcSubgroupSizeRange = subgroupRes.range;
     }
 
     doc.characteristics.push(characteristic);
@@ -746,38 +856,50 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
       getAttr(el, "step") ??
       getChildText(el, "StepNumber") ??
       String(doc.planSteps.length + 1);
-    const featureId = (
-      getAttr(el, "featureId") ??
-      getChildText(el, "FeatureId") ??
-      getChildText(el, "FeatureNominalId") ??
-      ""
-    ).trim();
-    const charId =
-      getAttr(el, "characteristicId") ??
-      getChildText(el, "CharacteristicId") ??
-      getChildText(el, "CharacteristicNominalId");
-    const deviceId = (
-      getAttr(el, "deviceId") ??
-      getChildText(el, "DeviceId") ??
-      getChildText(el, "MeasurementDeviceId") ??
-      ""
-    ).trim();
-    const ptsStr =
-      getAttr(el, "probingPointCount") ??
-      getAttr(el, "points") ??
-      getChildText(el, "ProbingPointCount") ??
-      getChildText(el, "NumberOfPoints") ??
-      "0";
+    const featureIdRes = getAttrOrChildWithRange(
+      el,
+      ["featureId"],
+      ["FeatureId", "FeatureNominalId"],
+      text,
+      lineOffsets,
+    );
+    const charIdRes = getAttrOrChildWithRange(
+      el,
+      ["characteristicId"],
+      ["CharacteristicId", "CharacteristicNominalId"],
+      text,
+      lineOffsets,
+    );
+    const deviceIdRes = getAttrOrChildWithRange(
+      el,
+      ["deviceId"],
+      ["DeviceId", "MeasurementDeviceId"],
+      text,
+      lineOffsets,
+    );
+    const ptsRes = getAttrOrChildWithRange(
+      el,
+      ["probingPointCount", "points"],
+      ["ProbingPointCount", "NumberOfPoints"],
+      text,
+      lineOffsets,
+    );
 
     const step: QifPlanStep = {
       id,
       stepNumber: Number(stepNumStr) || doc.planSteps.length + 1,
-      featureId,
-      deviceId,
-      probingPointCount: Number(ptsStr) || 0,
+      featureId: (featureIdRes?.value ?? "").trim(),
+      deviceId: (deviceIdRes?.value ?? "").trim(),
+      probingPointCount: Number(ptsRes?.value ?? "0") || 0,
       range: makeRange(el.start, el.end, lineOffsets),
     };
-    if (charId) step.characteristicId = charId.trim();
+    if (featureIdRes) step.featureIdRange = featureIdRes.range;
+    if (deviceIdRes) step.deviceIdRange = deviceIdRes.range;
+    if (ptsRes) step.probingPointCountRange = ptsRes.range;
+    if (charIdRes && charIdRes.value.trim()) {
+      step.characteristicId = charIdRes.value.trim();
+      step.characteristicIdRange = charIdRes.range;
+    }
     doc.planSteps.push(step);
   }
 
@@ -785,13 +907,13 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
   const actualElements = findDescendants(rootElement, isActualElement);
   for (const el of actualElements) {
     const id = (getAttr(el, "id") ?? getChildText(el, "Id") ?? `A_${doc.actuals.length + 1}`).trim();
-    const characteristicId = (
-      getAttr(el, "characteristicId") ??
-      getAttr(el, "characteristicNominalId") ??
-      getChildText(el, "CharacteristicNominalId") ??
-      getChildText(el, "CharacteristicId") ??
-      ""
-    ).trim();
+    const charIdRes = getAttrOrChildWithRange(
+      el,
+      ["characteristicId", "characteristicNominalId"],
+      ["CharacteristicNominalId", "CharacteristicId"],
+      text,
+      lineOffsets,
+    );
     const partSerialNumber = (
       getAttr(el, "partSerialNumber") ??
       getAttr(el, "serialNumber") ??
@@ -800,12 +922,13 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
       getChildText(el, "SerialNumber") ??
       "SN-001"
     ).trim();
-    const valStr =
-      getAttr(el, "measuredValue") ??
-      getAttr(el, "value") ??
-      getChildText(el, "MeasuredValue") ??
-      getChildText(el, "Value") ??
-      "0";
+    const valRes = getAttrOrChildWithRange(
+      el,
+      ["measuredValue", "value"],
+      ["MeasuredValue", "Value"],
+      text,
+      lineOffsets,
+    );
     const actualSizeStr =
       getAttr(el, "actualFeatureSize") ??
       getAttr(el, "actualSize") ??
@@ -816,12 +939,14 @@ function parseQifXml(text: string, lineOffsets: number[], fullRange: QifSourceRa
 
     const actual: QifCharacteristicActual = {
       id,
-      characteristicId,
+      characteristicId: (charIdRes?.value ?? "").trim(),
       partSerialNumber,
-      measuredValue: Number(valStr) || 0,
+      measuredValue: Number(valRes?.value ?? "0") || 0,
       status: normalizeStatus(statusRaw),
       range: makeRange(el.start, el.end, lineOffsets),
     };
+    if (charIdRes) actual.characteristicIdRange = charIdRes.range;
+    if (valRes) actual.measuredValueRange = valRes.range;
     if (actualSizeStr !== undefined && actualSizeStr.trim() !== "" && !Number.isNaN(Number(actualSizeStr))) {
       actual.actualFeatureSize = Number(actualSizeStr);
     }

@@ -68,7 +68,7 @@
     "@modelscript/runtime": "*"
   },
   "modelscript": {
-    "tier": "beta",
+    "tier": "alpha",
     "category": "language"
   }
 }

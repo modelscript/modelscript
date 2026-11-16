@@ -37,7 +37,7 @@ describe("66-Language Catalog & 2-Level Example Templates Suite", () => {
     for (const lang of LANGUAGE_TILES) {
       assert.ok(groupIds.has(lang.group), `Language '${lang.id}' has unknown group '${lang.group}'`);
       assert.ok(
-        ["stable", "beta", "preview"].includes(lang.tier),
+        ["beta", "alpha", "pre-alpha"].includes(lang.tier),
         `Language '${lang.id}' has invalid maturity tier '${lang.tier}'`,
       );
       const examples = EXAMPLES_BY_LANGUAGE.get(lang.id) ?? [];

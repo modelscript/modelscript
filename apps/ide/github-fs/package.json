@@ -52,7 +52,7 @@
     "vscode": "^1.72.0"
   },
   "modelscript": {
-    "tier": "stable",
+    "tier": "beta",
     "category": "app"
   }
 }

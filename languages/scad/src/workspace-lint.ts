@@ -39,6 +39,10 @@ export async function lintScadWorkspace(
         rule: "scad-lint",
         severity: d.severity,
         message: d.message,
+        line: d.line,
+        column: d.column,
+        endLine: d.endLine,
+        endColumn: d.endColumn,
       });
     }
 
@@ -50,12 +54,17 @@ export async function lintScadWorkspace(
       if (!target) continue;
       const resolved = resolveRelativeUri(uri, target, docs);
       if (!resolved) {
+        const endPosition = (node as { endPosition?: { row: number; column: number } }).endPosition;
         diagnostics.push({
           uri,
           code: "SCAD3001",
           rule: "unresolved-scad-include",
           severity: "error",
           message: `OpenSCAD include/use target '<${target}>' was not found in the workspace.`,
+          line: node.startPosition ? node.startPosition.row + 1 : undefined,
+          column: node.startPosition ? node.startPosition.column + 1 : undefined,
+          endLine: endPosition ? endPosition.row + 1 : undefined,
+          endColumn: endPosition ? endPosition.column + 1 : undefined,
         });
       } else {
         outEdges.push(resolved);

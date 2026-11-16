@@ -22,7 +22,7 @@ export function lintAmpl(model: AmplModel, data?: AmplData | undefined): Diagnos
         rule: AmplErrorCode.DUPLICATE_DECLARATION.rule,
         severity: AmplErrorCode.DUPLICATE_DECLARATION.severity,
         message: AmplErrorCode.DUPLICATE_DECLARATION.message("set", name),
-        range: decl.range,
+        range: decl.nameRange ?? decl.range,
       });
     }
     knownSets.add(name);
@@ -56,7 +56,7 @@ export function lintAmpl(model: AmplModel, data?: AmplData | undefined): Diagnos
               rule: AmplErrorCode.SET_ARITY_MISMATCH.rule,
               severity: AmplErrorCode.SET_ARITY_MISMATCH.severity,
               message: AmplErrorCode.SET_ARITY_MISMATCH.message(name, expectedDimen, actualArity),
-              range: decl.range,
+              range: decl.nameRange ?? decl.range,
             });
             break;
           }
@@ -66,9 +66,7 @@ export function lintAmpl(model: AmplModel, data?: AmplData | undefined): Diagnos
           const parentName = decl.within.name;
           const parentMembers = data.sets.get(parentName);
           if (parentMembers) {
-            const parentKeySet = new Set(
-              parentMembers.map((pm) => (Array.isArray(pm) ? pm.join(",") : String(pm))),
-            );
+            const parentKeySet = new Set(parentMembers.map((pm) => (Array.isArray(pm) ? pm.join(",") : String(pm))));
             for (const m of members) {
               const mKey = Array.isArray(m) ? m.join(",") : String(m);
               if (!parentKeySet.has(mKey)) {
@@ -77,7 +75,7 @@ export function lintAmpl(model: AmplModel, data?: AmplData | undefined): Diagnos
                   rule: AmplErrorCode.SUBSET_RELATION_VIOLATION.rule,
                   severity: AmplErrorCode.SUBSET_RELATION_VIOLATION.severity,
                   message: AmplErrorCode.SUBSET_RELATION_VIOLATION.message(name, parentName, mKey),
-                  range: decl.range,
+                  range: decl.within.range ?? decl.range,
                 });
                 break;
               }
@@ -96,7 +94,7 @@ export function lintAmpl(model: AmplModel, data?: AmplData | undefined): Diagnos
         rule: AmplErrorCode.DUPLICATE_DECLARATION.rule,
         severity: AmplErrorCode.DUPLICATE_DECLARATION.severity,
         message: AmplErrorCode.DUPLICATE_DECLARATION.message("param", name),
-        range: decl.range,
+        range: decl.nameRange ?? decl.range,
       });
     }
     knownParams.add(name);
@@ -123,7 +121,7 @@ export function lintAmpl(model: AmplModel, data?: AmplData | undefined): Diagnos
         rule: AmplErrorCode.DUPLICATE_DECLARATION.rule,
         severity: AmplErrorCode.DUPLICATE_DECLARATION.severity,
         message: AmplErrorCode.DUPLICATE_DECLARATION.message("var", name),
-        range: decl.range,
+        range: decl.nameRange ?? decl.range,
       });
     }
     knownVars.add(name);
@@ -136,7 +134,7 @@ export function lintAmpl(model: AmplModel, data?: AmplData | undefined): Diagnos
           rule: AmplErrorCode.BOUNDS_CONFLICT.rule,
           severity: AmplErrorCode.BOUNDS_CONFLICT.severity,
           message: AmplErrorCode.BOUNDS_CONFLICT.message(name, decl.lowerBound.value, decl.upperBound.value),
-          range: decl.range,
+          range: decl.upperBound.range ?? decl.lowerBound.range ?? decl.range,
         });
       }
     }
@@ -208,7 +206,12 @@ function checkExpressionScope(
 ): void {
   switch (expr.kind) {
     case "identifier":
-      if (!scope.has(expr.name) && !knownVars.has(expr.name) && !knownParams.has(expr.name) && !knownSets.has(expr.name)) {
+      if (
+        !scope.has(expr.name) &&
+        !knownVars.has(expr.name) &&
+        !knownParams.has(expr.name) &&
+        !knownSets.has(expr.name)
+      ) {
         diagnostics.push({
           code: AmplErrorCode.UNDECLARED_VAR.code,
           rule: AmplErrorCode.UNDECLARED_VAR.rule,

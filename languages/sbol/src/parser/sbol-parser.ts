@@ -11,6 +11,7 @@
  *    semicolon predicate lists, comma object lists, and [...] blank nodes.
  */
 
+import type { XmlElement } from "@modelscript/dsl/xml";
 import {
   SEQUENCE_ONTOLOGY,
   type SbolComponent,
@@ -26,6 +27,7 @@ import {
   type SbolSequence,
   type SbolSubComponent,
 } from "../types.js";
+import { parseSbolXmlDocument } from "./wasm-loader.js";
 
 // ============================================================================
 // Character Classification Helpers (Zero-Regex)
@@ -33,20 +35,6 @@ import {
 
 function isWhitespace(ch: string): boolean {
   return ch === " " || ch === "\t" || ch === "\n" || ch === "\r";
-}
-
-function isNameChar(ch: string): boolean {
-  if (!ch) return false;
-  const code = ch.charCodeAt(0);
-  return (
-    (code >= 65 && code <= 90) || // A-Z
-    (code >= 97 && code <= 122) || // a-z
-    (code >= 48 && code <= 57) || // 0-9
-    ch === "_" ||
-    ch === "-" ||
-    ch === ":" ||
-    ch === "."
-  );
 }
 
 function computeLineColRange(source: string, startOffset: number, endOffset: number): SbolRange {
@@ -261,147 +249,6 @@ interface XmlNode {
   endOffset: number;
 }
 
-function scanXmlNodes(source: string): XmlNode[] {
-  const roots: XmlNode[] = [];
-  const stack: XmlNode[] = [];
-  const n = source.length;
-  let i = 0;
-
-  while (i < n) {
-    const lt = source.indexOf("<", i);
-    if (lt < 0) {
-      const top = stack[stack.length - 1];
-      if (top) {
-        top.text += source.slice(i);
-      }
-      break;
-    }
-
-    if (lt > i) {
-      const top = stack[stack.length - 1];
-      if (top) {
-        top.text += source.slice(i, lt);
-      }
-    }
-
-    i = lt;
-    // Check XML comment <!-- ... -->
-    if (source.startsWith("<!--", i)) {
-      const endComment = source.indexOf("-->", i + 4);
-      i = endComment >= 0 ? endComment + 3 : n;
-      continue;
-    }
-
-    // Check processing instruction <? ... ?> or <!DOCTYPE ... >
-    if (source.startsWith("<?", i)) {
-      const endPi = source.indexOf("?>", i + 2);
-      i = endPi >= 0 ? endPi + 2 : n;
-      continue;
-    }
-    if (source.startsWith("<!", i)) {
-      const endDecl = source.indexOf(">", i + 2);
-      i = endDecl >= 0 ? endDecl + 1 : n;
-      continue;
-    }
-
-    // Check closing tag </tag>
-    if (source.startsWith("</", i)) {
-      const gt = source.indexOf(">", i + 2);
-      const endPos = gt >= 0 ? gt + 1 : n;
-      const top = stack.pop();
-      if (top) {
-        top.endOffset = endPos;
-      }
-      i = endPos;
-      continue;
-    }
-
-    // Opening tag <tag attr="val" ...> or <tag ... />
-    const tagStart = i;
-    i++; // skip '<'
-    while (i < n && isWhitespace(source[i] ?? "")) i++;
-
-    let tagName = "";
-    while (i < n && isNameChar(source[i] ?? "")) {
-      tagName += source[i] ?? "";
-      i++;
-    }
-
-    const attributes = new Map<string, string>();
-    let selfClosing = false;
-
-    while (i < n) {
-      while (i < n && isWhitespace(source[i] ?? "")) i++;
-      const ch = source[i];
-      if (!ch || ch === ">") {
-        if (ch === ">") i++;
-        break;
-      }
-      if (ch === "/" && source[i + 1] === ">") {
-        selfClosing = true;
-        i += 2;
-        break;
-      }
-
-      let attrName = "";
-      while (i < n && isNameChar(source[i] ?? "")) {
-        attrName += source[i] ?? "";
-        i++;
-      }
-      while (i < n && isWhitespace(source[i] ?? "")) i++;
-      let attrVal = "";
-      if (source[i] === "=") {
-        i++;
-        while (i < n && isWhitespace(source[i] ?? "")) i++;
-        const quote = source[i];
-        if (quote === '"' || quote === "'") {
-          i++;
-          const valStart = i;
-          while (i < n && source[i] !== quote) i++;
-          attrVal = source.slice(valStart, i);
-          if (source[i] === quote) i++;
-        } else {
-          const valStart = i;
-          while (i < n && !isWhitespace(source[i] ?? "") && source[i] !== ">" && source[i] !== "/") {
-            i++;
-          }
-          attrVal = source.slice(valStart, i);
-        }
-      }
-      if (attrName) {
-        attributes.set(attrName, attrVal);
-        const colonIdx = attrName.indexOf(":");
-        if (colonIdx >= 0) {
-          attributes.set(attrName.slice(colonIdx + 1), attrVal);
-        }
-      }
-    }
-
-    const node: XmlNode = {
-      tagName,
-      localName: stripLocalName(tagName),
-      attributes,
-      children: [],
-      text: "",
-      startOffset: tagStart,
-      endOffset: i,
-    };
-
-    const parent = stack[stack.length - 1];
-    if (parent) {
-      parent.children.push(node);
-    } else {
-      roots.push(node);
-    }
-
-    if (!selfClosing) {
-      stack.push(node);
-    }
-  }
-
-  return roots;
-}
-
 function getXmlField(node: XmlNode, fieldName: string): string | undefined {
   const target = fieldName.toLowerCase();
   for (const [k, v] of node.attributes) {
@@ -519,9 +366,30 @@ function parseXmlInteraction(node: XmlNode, source: string): SbolInteraction {
   };
 }
 
-function parseXmlSbol(source: string, sourceFile?: string): SbolDocument {
-  const roots = scanXmlNodes(source);
-  const root = roots[0];
+function xmlElementToNode(el: XmlElement): XmlNode {
+  const attributes = new Map<string, string>();
+  for (const attr of el.attributes) {
+    attributes.set(attr.name, attr.value);
+    const colonIdx = attr.name.indexOf(":");
+    if (colonIdx >= 0) {
+      attributes.set(attr.name.slice(colonIdx + 1), attr.value);
+    }
+  }
+  return {
+    tagName: el.name,
+    localName: stripLocalName(el.name),
+    attributes,
+    children: el.children.map(xmlElementToNode),
+    text: el.text,
+    startOffset: el.start,
+    endOffset: el.end,
+  };
+}
+
+function parseXmlSbol(source: string, sourceFile?: string, cstTree?: { rootNode?: unknown } | null): SbolDocument {
+  const xmlDoc = parseSbolXmlDocument(source, cstTree);
+  const root = xmlDoc.root ? xmlElementToNode(xmlDoc.root) : undefined;
+  const roots = root ? [root] : [];
   if (!root) {
     return {
       namespace: "http://sbols.org/v3#",
@@ -1171,7 +1039,7 @@ function parseTurtleSbol(source: string, sourceFile?: string): SbolDocument {
 /**
  * Parses an SBOL3 document in either RDF/XML (`.sbol`, `.rdf`, `.xml`) or Turtle (`.ttl`) format.
  */
-export function parseSbol(text: string, sourceFile?: string): SbolDocument {
+export function parseSbol(text: string, sourceFile?: string, cstTree?: { rootNode?: unknown } | null): SbolDocument {
   let firstNonSpace = "";
   for (let i = 0; i < text.length; i++) {
     const ch = text[i] ?? "";
@@ -1182,7 +1050,7 @@ export function parseSbol(text: string, sourceFile?: string): SbolDocument {
   }
 
   if (firstNonSpace === "<") {
-    return parseXmlSbol(text, sourceFile);
+    return parseXmlSbol(text, sourceFile, cstTree);
   }
   return parseTurtleSbol(text, sourceFile);
 }

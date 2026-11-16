@@ -1,0 +1,11 @@
+* Full-Wave Bridge Rectifier with Capacitive Filter (1N4007)
+VAC ac_p ac_n SIN(0 12 60)
+D1 ac_p dc_p D1N4007
+D2 0 ac_p D1N4007
+D3 ac_n dc_p D1N4007
+D4 0 ac_n D1N4007
+CFILT dc_p 0 470u
+RLOAD dc_p 0 1k
+.MODEL D1N4007 D(IS=7.02E-9 RS=0.034 N=1.8 BV=1000)
+.tran 100u 50m
+.end

@@ -4405,8 +4405,10 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
   if (data.coordinateSystem) {
     const cs = data.coordinateSystem;
     const showBounds = cs.boundsStyle?.visible !== false;
-    const boundsStroke = cs.boundsStyle?.stroke ?? "#999";
-    const boundsDash = cs.boundsStyle?.strokeDasharray ? ` stroke-dasharray: ${cs.boundsStyle.strokeDasharray};` : "";
+    const boundsStroke = cs.boundsStyle?.stroke ?? (isDark ? "rgba(255, 255, 255, 0.10)" : "rgba(15, 23, 42, 0.10)");
+    const boundsDash = cs.boundsStyle?.strokeDasharray
+      ? ` stroke-dasharray: ${cs.boundsStyle.strokeDasharray};`
+      : " stroke-dasharray: 4 4;";
     const boundsWidth = cs.boundsStyle?.strokeWidth ?? 1;
     const boundsFill = cs.boundsStyle?.fill ?? "transparent";
 
@@ -4483,7 +4485,7 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
     const cs = data.coordinateSystem;
     const showAxes = cs.axesStyle?.visible !== false;
     if (showAxes) {
-      const defaultAxisStroke = isDark ? "rgba(255, 255, 255, 0.12)" : "#999";
+      const defaultAxisStroke = isDark ? "rgba(255, 255, 255, 0.07)" : "rgba(15, 23, 42, 0.07)";
       const axisStroke = cs.axesStyle?.stroke ?? defaultAxisStroke;
       const axisWidth = String(cs.axesStyle?.strokeWidth ?? 1);
       const axisDash = cs.axesStyle?.strokeDasharray;

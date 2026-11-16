@@ -22,6 +22,7 @@ export interface ScadCstNode {
   readonly text: string;
   readonly childCount: number;
   child(index: number): ScadCstNode | null;
+  namedChild?(index: number): ScadCstNode | null;
   readonly children?: readonly ScadCstNode[] | undefined;
   readonly startIndex?: number | undefined;
   readonly endIndex?: number | undefined;

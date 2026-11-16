@@ -172,7 +172,7 @@
     "vscode-languageserver": "^9.0.1"
   },
   "modelscript": {
-    "tier": "stable",
+    "tier": "beta",
     "category": "language"
   },
   "nx": {

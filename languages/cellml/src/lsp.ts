@@ -104,10 +104,10 @@ function toLspRange(r: CellmlSourceRange): LspRange {
   };
 }
 
-export function validateCellml(content: string): LspDiagnostic[] {
+export function validateCellml(content: string, cstTree?: { rootNode?: unknown } | null): LspDiagnostic[] {
   let doc: CellmlDocument;
   try {
-    doc = parseCellml(content);
+    doc = parseCellml(content, undefined, { cstTree });
   } catch (err: unknown) {
     return [
       {

@@ -177,12 +177,14 @@ function checkMassProperties(robot: UrdfRobot, diagnostics: UrdfDiagnostic[]): v
     }
 
     const in_ = link.inertial;
+    const massRange = in_.massRange ?? link.range ?? DEFAULT_RANGE;
+    const inertiaRange = in_.inertiaRange ?? link.range ?? DEFAULT_RANGE;
     if (Number.isNaN(in_.mass)) {
       diagnostics.push({
         code: "M7503",
         severity: "error",
         message: `Link '${link.name}' has non-numeric mass value in <mass>.`,
-        range: link.range ?? DEFAULT_RANGE,
+        range: massRange,
       });
       continue;
     }
@@ -191,26 +193,26 @@ function checkMassProperties(robot: UrdfRobot, diagnostics: UrdfDiagnostic[]): v
         code: UrdfErrorCode.NEGATIVE_LINK_MASS.code,
         severity: UrdfErrorCode.NEGATIVE_LINK_MASS.severity,
         message: UrdfErrorCode.NEGATIVE_LINK_MASS.message(link.name, in_.mass),
-        range: link.range ?? DEFAULT_RANGE,
+        range: massRange,
       });
       diagnostics.push({
         code: "M7503",
         severity: "error",
         message: `Link '${link.name}' has non-positive mass (${in_.mass} kg).`,
-        range: link.range ?? DEFAULT_RANGE,
+        range: massRange,
       });
     } else if (in_.mass === 0) {
       diagnostics.push({
         code: UrdfErrorCode.MASSLESS_LINK.code,
         severity: UrdfErrorCode.MASSLESS_LINK.severity,
         message: UrdfErrorCode.MASSLESS_LINK.message(link.name),
-        range: link.range ?? DEFAULT_RANGE,
+        range: massRange,
       });
       diagnostics.push({
         code: "M7503",
         severity: "error",
         message: `Link '${link.name}' has non-positive mass (${in_.mass} kg).`,
-        range: link.range ?? DEFAULT_RANGE,
+        range: massRange,
       });
     }
 
@@ -219,7 +221,7 @@ function checkMassProperties(robot: UrdfRobot, diagnostics: UrdfDiagnostic[]): v
         code: "M7503",
         severity: "error",
         message: `Link '${link.name}' has non-positive principal inertia (ixx=${in_.ixx}, iyy=${in_.iyy}, izz=${in_.izz}).`,
-        range: link.range ?? DEFAULT_RANGE,
+        range: inertiaRange,
       });
       continue;
     }
@@ -232,13 +234,13 @@ function checkMassProperties(robot: UrdfRobot, diagnostics: UrdfDiagnostic[]): v
         code: "M7503",
         severity: "error",
         message: `Inertia tensor for link '${link.name}' violates physical rigid body triangle inequalities (ixx=${in_.ixx}, iyy=${in_.iyy}, izz=${in_.izz}).`,
-        range: link.range ?? DEFAULT_RANGE,
+        range: inertiaRange,
       });
       diagnostics.push({
         code: UrdfErrorCode.INERTIA_TRIANGLE_INEQUALITY.code,
         severity: UrdfErrorCode.INERTIA_TRIANGLE_INEQUALITY.severity,
         message: UrdfErrorCode.INERTIA_TRIANGLE_INEQUALITY.message(link.name),
-        range: link.range ?? DEFAULT_RANGE,
+        range: inertiaRange,
       });
     }
   }
@@ -252,7 +254,7 @@ function checkJointLimits(robot: UrdfRobot, diagnostics: UrdfDiagnostic[]): void
           code: UrdfErrorCode.CONTINUOUS_JOINT_LIMITS.code,
           severity: UrdfErrorCode.CONTINUOUS_JOINT_LIMITS.severity,
           message: UrdfErrorCode.CONTINUOUS_JOINT_LIMITS.message(joint.name),
-          range: joint.range ?? DEFAULT_RANGE,
+          range: joint.limits.limitRange ?? joint.range ?? DEFAULT_RANGE,
         });
       }
     }
@@ -263,7 +265,7 @@ function checkJointLimits(robot: UrdfRobot, diagnostics: UrdfDiagnostic[]): void
           code: "M7504",
           severity: "error",
           message: `Joint '${joint.name}' of type '${joint.type}' is missing mandatory '<limit>' parameters.`,
-          range: joint.range ?? DEFAULT_RANGE,
+          range: joint.nameRange ?? joint.range ?? DEFAULT_RANGE,
           quickFix: {
             title: "Add standard joint limits",
             edit: {
@@ -280,7 +282,7 @@ function checkJointLimits(robot: UrdfRobot, diagnostics: UrdfDiagnostic[]): void
           code: "M7504",
           severity: "error",
           message: `Joint '${joint.name}' effort limit must be strictly positive (${joint.limits.effort} N or N*m).`,
-          range: joint.range ?? DEFAULT_RANGE,
+          range: joint.limits.effortRange ?? joint.limits.limitRange ?? joint.range ?? DEFAULT_RANGE,
         });
       }
 
@@ -289,7 +291,7 @@ function checkJointLimits(robot: UrdfRobot, diagnostics: UrdfDiagnostic[]): void
           code: "M7504",
           severity: "error",
           message: `Joint '${joint.name}' velocity limit must be strictly positive (${joint.limits.velocity} rad/s or m/s).`,
-          range: joint.range ?? DEFAULT_RANGE,
+          range: joint.limits.velocityRange ?? joint.limits.limitRange ?? joint.range ?? DEFAULT_RANGE,
         });
       }
 
@@ -302,14 +304,14 @@ function checkJointLimits(robot: UrdfRobot, diagnostics: UrdfDiagnostic[]): void
           code: UrdfErrorCode.INVALID_JOINT_LIMITS.code,
           severity: UrdfErrorCode.INVALID_JOINT_LIMITS.severity,
           message: UrdfErrorCode.INVALID_JOINT_LIMITS.message(joint.name, joint.limits.lower, joint.limits.upper),
-          range: joint.range ?? DEFAULT_RANGE,
+          range: joint.limits.limitRange ?? joint.range ?? DEFAULT_RANGE,
         });
         if (joint.limits.lower > joint.limits.upper) {
           diagnostics.push({
             code: "M7508",
             severity: "error",
             message: `Joint '${joint.name}' has inverted limits (lower=${joint.limits.lower} > upper=${joint.limits.upper}).`,
-            range: joint.range ?? DEFAULT_RANGE,
+            range: joint.limits.limitRange ?? joint.range ?? DEFAULT_RANGE,
           });
         }
       }
@@ -327,7 +329,7 @@ function checkJointAxes(robot: UrdfRobot, diagnostics: UrdfDiagnostic[]): void {
           code: UrdfErrorCode.ZERO_NORM_JOINT_AXIS.code,
           severity: UrdfErrorCode.ZERO_NORM_JOINT_AXIS.severity,
           message: UrdfErrorCode.ZERO_NORM_JOINT_AXIS.message(joint.name),
-          range: joint.range ?? DEFAULT_RANGE,
+          range: joint.axisRange ?? joint.range ?? DEFAULT_RANGE,
         });
       }
     }
@@ -380,7 +382,7 @@ function checkMimicJointCycles(robot: UrdfRobot, diagnostics: UrdfDiagnostic[]):
             code: UrdfErrorCode.MIMIC_JOINT_CYCLE.code,
             severity: UrdfErrorCode.MIMIC_JOINT_CYCLE.severity,
             message: UrdfErrorCode.MIMIC_JOINT_CYCLE.message(joint.name),
-            range: joint.range ?? DEFAULT_RANGE,
+            range: joint.mimic.jointRange ?? joint.range ?? DEFAULT_RANGE,
           });
         }
         break;

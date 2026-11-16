@@ -110,8 +110,8 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
 
     assert.ok(
       pageContent.includes("<ErrorBoundary") &&
-        (pageContent.includes('name="Ansatz Morsel Editor"') || pageContent.includes('name="Ansatz Sketch Editor"')),
-      "PlaygroundPage must wrap MorselEditor in ErrorBoundary with name 'Ansatz Morsel Editor'",
+        (pageContent.includes('name="Morsel Editor"') || pageContent.includes('name="Ansatz Sketch Editor"')),
+      "PlaygroundPage must wrap MorselEditor in ErrorBoundary with name 'Morsel Editor'",
     );
     assert.ok(
       (pageContent.includes("ansatz_morsel_draft") || pageContent.includes("ansatz_sketch_draft")) &&

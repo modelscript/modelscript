@@ -6,7 +6,7 @@
  * Conforms to ASAM OpenDRIVE v1.6 and v1.7 schemas using @modelscript/dsl/xml.
  */
 
-import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlElement } from "@modelscript/dsl/xml";
 import type {
   OpenDriveConnection,
   OpenDriveDocument,
@@ -26,6 +26,7 @@ import type {
   OpenDriveSignal,
   OpenDriveSuperelevationRecord,
 } from "../types.js";
+import { parseOpenDriveXmlDocument } from "./wasm-loader.js";
 
 function getAttr(elem: XmlElement, name: string): string | undefined {
   const a = elem.attributes.find((attr) => attr.name.toLowerCase() === name.toLowerCase());
@@ -75,8 +76,12 @@ function makeRange(source: string, elem: XmlElement): OpenDriveRange {
   };
 }
 
-export function parseOpenDrive(source: string, filename?: string): OpenDriveDocument {
-  const doc = parseXml(source);
+export function parseOpenDrive(
+  source: string,
+  filename?: string,
+  options?: { cstTree?: { rootNode?: unknown } | null | undefined },
+): OpenDriveDocument {
+  const doc = parseOpenDriveXmlDocument(source, options?.cstTree);
   if (doc.errors && doc.errors.length > 0) {
     throw new Error(`XML syntax error at offset ${doc.errors[0]?.start ?? 0}`);
   }

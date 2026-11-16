@@ -181,7 +181,6 @@ import {
   createPsseDiagramBackend,
   createSimulinkDiagramBackend,
   createSpiceDiagramBackend,
-  createSspDiagramBackend,
 } from "../diagrams/index.js";
 import type { ParserService } from "../services/parser-service.js";
 import type { WorkspaceManager } from "../services/workspace-manager.js";
@@ -1445,13 +1444,17 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".lps", ".tgx", ".tlx", ".tgn", ".tln", ".psg", ".psl"],
     languageDef: lpsLanguage,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
+      symbols: (treeWrapper: string | { text?: string }) =>
         getLpsDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => {
         const lines = text.slice(0, offset).split("\n");
         return getLpsHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
       },
-      validate: (doc: any) => validateLps(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateLps(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     actionHandlers: {
       lint_lps_network: async (ctx: any, params: any) => {
@@ -1506,10 +1509,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".calc", ".run", ".sub", ".geom", ".trax", ".wheel", ".ins"],
     languageDef: gensysLanguage,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
+      symbols: (treeWrapper: string | { text?: string }) =>
         getGensysDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getGensysHover(text, offset),
-      validate: (doc: any) => validateGensys(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateGensys(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     actionHandlers: {
       lint_gensys_deck: async (ctx: any, params: any) => {
@@ -1560,10 +1564,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".spck", ".sim", ".mbs"],
     languageDef: simpackLanguage,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
+      symbols: (treeWrapper: string | { text?: string }) =>
         getSimpackDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getSimpackHover(text, offset),
-      validate: (doc: any) => validateSimpack(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateSimpack(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     actionHandlers: {
       lint_simpack_model: async (ctx: any, params: any) => {
@@ -1626,7 +1631,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".reqif", ".reqifz"],
     languageDef: reqifLanguage,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
+      symbols: (treeWrapper: string | { text?: string }) =>
         getReqifDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => {
         let line = 0;
@@ -1643,8 +1648,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         getReqifDefinition(text, offset, uri ?? "file:///requirements.reqif", workspaceManager.unifiedWorkspace),
       references: (offset: number, text: string, uri?: string) =>
         getReqifReferences(text, offset, uri ?? "file:///requirements.reqif", workspaceManager.unifiedWorkspace),
-      validate: (doc: any, cstTree?: any) =>
-        validateReqif(typeof doc?.getText === "function" ? doc.getText() : String(doc), cstTree),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateReqif(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     actionHandlers: {
       lint_reqif: async (ctx: any, params: any) => {
@@ -1759,7 +1767,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         }
         return getSpiceHover(text, line, offset - lastLineStart);
       },
-      validate: (doc: any) => validateSpice(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateSpice(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     actionHandlers: {
       spice_run_op: async (ctx: any, params: any) => {
@@ -1806,7 +1815,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getAdamsDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getAdamsHover(text, offset),
-      validate: (doc: any) => validateAdams(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateAdams(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     actionHandlers: {
       lint_adams_model: async (ctx: any, params: any) => {
@@ -1899,7 +1909,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getUrdfDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getUrdfHover(text, offset),
-      validate: (doc: any) => validateUrdf(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateUrdf(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     actionHandlers: {
       lint_urdf_robot: async (ctx: any, params: any) => {
@@ -1951,7 +1965,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getVerilogADocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getVerilogAHover(text, offset),
-      validate: (doc: any) => validateVerilogA(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateVerilogA(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     actionHandlers: {
       lint_verilog_a: async (ctx: any, params: any) => {
@@ -2003,7 +2018,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getPlcopenDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getPlcopenHover(text, offset),
-      validate: (doc: any) => validatePlcopen(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validatePlcopen(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     actionHandlers: {
       lint_plcopen: async (ctx: any, params: any) => {
@@ -2057,7 +2076,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getOpenDriveDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getOpenDriveHover(text, offset),
-      validate: (doc: any) => validateOpenDrive(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateOpenDrive(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     actionHandlers: {
       lint_opendrive: async (ctx: any, params: any) => {
@@ -2113,7 +2136,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const lines = text.slice(0, offset).split("\n");
         return getOpenDssHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
       },
-      validate: (doc: any) => validateOpenDss(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateOpenDss(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     actionHandlers: {
       lint_opendss: async (ctx: any, params: any) => {
@@ -2162,7 +2186,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const lines = text.slice(0, offset).split("\n");
         return getOpenScenarioHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
       },
-      validate: (doc: any) => validateOpenScenario(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateOpenScenario(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     actionHandlers: {
       lint_openscenario: async (ctx: any, params: any) => {
@@ -2211,7 +2239,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const lines = text.slice(0, offset).split("\n");
         return getRelap5Hover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
       },
-      validate: (doc: any) => validateRelap5(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateRelap5(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     actionHandlers: {
       lint_relap5: async (ctx: any, params: any) => {
@@ -2260,7 +2289,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const lines = text.slice(0, offset).split("\n");
         return getEclipseHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
       },
-      validate: (doc: any) => validateEclipse(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateEclipse(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     actionHandlers: {
       lint_eclipse: async (ctx: any, params: any) => {
@@ -2309,7 +2339,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const lines = text.slice(0, offset).split("\n");
         return getSbmlHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
       },
-      validate: (doc: any) => validateSbml(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateSbml(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     actionHandlers: {
       lint_sbml: async (ctx: any, params: any) => {
@@ -2354,7 +2388,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const lines = text.slice(0, offset).split("\n");
         return getJsbsimHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
       },
-      validate: (doc: any) => validateJsbsim(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateJsbsim(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     actionHandlers: {
       lint_jsbsim: async (ctx: any, params: any) => {
@@ -2400,7 +2438,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getEnergyPlusDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getEnergyPlusHover(text, offset),
-      validate: (doc: any) => validateEnergyPlus(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateEnergyPlus(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     actionHandlers: {
       lint_energyplus: async (ctx: any, params: any) => {
@@ -2436,7 +2475,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getEpanetDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getEpanetHover(text, offset),
-      validate: (doc: any) => validateEpanet(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateEpanet(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     actionHandlers: {
       lint_epanet: async (ctx: any, params: any) => {
@@ -2485,7 +2525,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getCcsdsDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getCcsdsHover(text, offset),
-      validate: (doc: any) => validateCcsds(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateCcsds(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     actionHandlers: {
       ccsds_lint: async (ctx: any, params: any) => {
@@ -2562,7 +2603,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
           "model.mdl",
         );
       },
-      validate: (doc: any) => validateSimulink(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateSimulink(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     actionHandlers: {
       simulink_lint: async (ctx: any, params: any) => {
@@ -2620,7 +2665,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const lines = text.slice(0, offset).split("\n");
         return getAutosarHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
       },
-      validate: (doc: any) => validateAutosar(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateAutosar(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     actionHandlers: {
       lint_autosar_model: async (ctx: any, params: any) => {
@@ -2667,7 +2716,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: fortranLanguage,
     customHandlers: {
       validate: async (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         const { lintFortran } = await import("@modelscript/fortran");
         return lintFortran(text);
       },
@@ -2745,7 +2794,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: cLanguage,
     customHandlers: {
       validate: async (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         const { lintC } = await import("@modelscript/c");
         return lintC(text);
       },
@@ -2774,7 +2823,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const lines = text.slice(0, offset).split("\n");
         return getSimaHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
       },
-      validate: (doc: any) => validateSima(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateSima(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     actionHandlers: {
       lint_sima_model: async (ctx: any, params: any) => {
@@ -2837,7 +2887,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const lines = text.slice(0, offset).split("\n");
         return getGtsuiteHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
       },
-      validate: (doc: any) => validateGtsuite(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateGtsuite(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     actionHandlers: {
       lint_gtsuite_model: async (ctx: any, params: any) => {
@@ -2900,12 +2951,9 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     name: "System Structure and Parameterization",
     extensions: [".ssd", ".ssv", ".ssm", ".ssp"],
     languageDef: sspLanguage,
-    get diagramBackend() {
-      return createSspDiagramBackend({});
-    },
     customHandlers: {
       validate: async (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         const uri = typeof doc?.uri === "string" ? doc.uri : "";
         const { lintSsd, lintSsv } = await import("@modelscript/ssp");
         const isSsv = uri.endsWith(".ssv") || text.includes("<ssv:ParameterSet");
@@ -2933,7 +2981,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         return getHecRasHover(text, { line, character });
       },
       validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         return validateHecRas(text);
       },
     },
@@ -2958,7 +3006,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         return getOcppHover(text, { line, character });
       },
       validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         return validateOcpp(text);
       },
     },
@@ -2983,7 +3031,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         return getOpenAdrHover(text, { line, character });
       },
       validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         return validateOpenAdr(text);
       },
     },
@@ -3008,7 +3056,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         return getToughHover(text, { line, character });
       },
       validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         return validateTough(text);
       },
     },
@@ -3033,7 +3081,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         return getModflowHover(text, { line, character });
       },
       validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         return validateModflow(text);
       },
     },
@@ -3058,7 +3106,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         return getLandgemHover(text, { line, character });
       },
       validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         return validateLandgem(text);
       },
     },
@@ -3083,7 +3131,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         return getGtfsHover(text, { line, character });
       },
       validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         return validateGtfs(text);
       },
     },
@@ -3109,7 +3157,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getAntimonyDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getAntimonyHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) => validateAntimony(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateAntimony(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     disposables: [],
   });
@@ -3124,7 +3173,10 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getAutomationMLDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getAutomationMLHover(text, offset),
-      validate: (doc: any) => validateAutomationML(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateAutomationML(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+        ),
     },
     disposables: [],
   });
@@ -3139,7 +3191,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getBnglDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getBnglHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) => validateBngl(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateBngl(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     disposables: [],
   });
@@ -3181,7 +3234,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getCanteraDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getCanteraHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) => validateCantera(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateCantera(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     disposables: [],
   });
@@ -3196,7 +3250,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getCellmlDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getCellmlHover(text, offset),
-      validate: (doc: any) => validateCellml(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateCellml(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     disposables: [],
   });
@@ -3209,7 +3267,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: cgmesLanguage,
     customHandlers: {
       validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         const model = parseCgmesRdf(text);
         return lintCgmesModel(model);
       },
@@ -3227,7 +3285,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getDicomRtDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getDicomRtHover(text, offset),
-      validate: (doc: any) => validateDicomRt(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateDicomRt(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     disposables: [],
   });
@@ -3242,7 +3304,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getFebioDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getFebioHover(text, offset),
-      validate: (doc: any) => validateFebio(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateFebio(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     disposables: [],
   });
@@ -3255,7 +3321,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: fiberLanguage,
     customHandlers: {
       validate: async (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         const { parseFiberGis, lintFiberNetwork } = await import("@modelscript/fiber");
         try {
           const network = parseFiberGis(text);
@@ -3300,7 +3366,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getGenbankDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getGenbankHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) => validateGenbank(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateGenbank(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     disposables: [],
   });
@@ -3315,7 +3382,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getGpromsDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getGpromsHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) => validateGproms(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateGproms(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     disposables: [],
   });
@@ -3330,7 +3398,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getIgtlDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getIgtlHover(text, offset),
-      validate: (doc: any) => validateIgtl(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateIgtl(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     disposables: [],
   });
@@ -3345,7 +3417,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getNiftiDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getNiftiHover(text, offset),
-      validate: (doc: any) => validateNifti(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateNifti(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     disposables: [],
   });
@@ -3360,7 +3433,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getNmtranDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getNmtranHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) => validateNmtran(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateNmtran(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     disposables: [],
   });
@@ -3375,7 +3449,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getOpenSimDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getOpenSimHover(text, offset),
-      validate: (doc: any) => validateOpenSim(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateOpenSim(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     disposables: [],
   });
@@ -3388,7 +3466,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: opticalLanguage,
     customHandlers: {
       validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         if (text.trim().startsWith("{")) {
           return lintOpticalTopology(parseOpenRoadmTopology(text));
         }
@@ -3408,7 +3486,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getOscalDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getOscalHover(text, offset),
-      validate: (doc: any) => validateOscal(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateOscal(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     disposables: [],
   });
@@ -3423,7 +3505,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getPdbDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getPdbHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) => validatePdb(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validatePdb(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     disposables: [],
   });
@@ -3438,7 +3521,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getPhreeqcDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getPhreeqcHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) => validatePhreeqc(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validatePhreeqc(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     disposables: [],
   });
@@ -3451,7 +3535,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: powerFactoryLanguage,
     customHandlers: {
       validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         if (text.trim().startsWith("<")) {
           return lintPowerFactoryModel(parsePowerFactoryXml(text));
         }
@@ -3469,7 +3553,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: pslfLanguage,
     customHandlers: {
       validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         const uri = typeof doc?.uri === "string" ? doc.uri : "";
         if (uri.toLowerCase().endsWith(".dyd") || text.includes("models")) {
           return lintPslfDyd(parsePslfDyd(text));
@@ -3494,7 +3578,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         getQifDefinition(text, offset, uri ?? "file:///document.qif", workspaceManager.unifiedWorkspace),
       references: (offset: number, text: string, uri?: string) =>
         getQifReferences(text, offset, uri ?? "file:///document.qif", workspaceManager.unifiedWorkspace),
-      validate: (doc: any) => validateQif(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateQif(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     disposables: [],
   });
@@ -3507,7 +3592,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: ranLanguage,
     customHandlers: {
       validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
         const isNsma = text.includes("REVNUM:") || text.includes("MANUF:") || text.includes("NOFREQ:");
         const deck = isNsma ? parseNsmaAdf(text) : parsePlanetPat(text);
         return lintAntennaPatternDeck(deck);
@@ -3526,7 +3611,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getSbolDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getSbolHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) => validateSbol(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateSbol(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     disposables: [],
   });
@@ -3541,7 +3630,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getSedmlDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getSedmlHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) => validateSedml(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateSedml(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     disposables: [],
   });
@@ -3556,7 +3649,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getSmilesDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getSmilesHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) => validateSmiles(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateSmiles(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     disposables: [],
   });
@@ -3571,7 +3665,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getThreeMfDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getThreeMfHover(text, offset),
-      validate: (doc: any) => validateThreeMf(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
+        validateThreeMf(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+          cstTree,
+        ),
     },
     disposables: [],
   });
@@ -3586,7 +3684,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getTopasDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getTopasHover(text, offset),
-      validate: (doc: any) => validateTopas(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) =>
+        validateTopas(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     disposables: [],
   });

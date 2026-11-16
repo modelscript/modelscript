@@ -25,7 +25,7 @@ interface LanguageManifest {
     projections: string[];
   };
   ruleCount: number;
-  tier: "stable" | "beta" | "preview";
+  tier: "beta" | "alpha" | "pre-alpha";
 }
 
 const props = withDefaults(
@@ -48,7 +48,7 @@ const selectedFilter = ref<string>(
   props.group ? `group:${props.group}` : props.industry ? `industry:${props.industry}` : "all",
 );
 const capabilityFilter = ref<"all" | "simulate" | "dae" | "projections">("all");
-const tierFilter = ref<"all" | "stable" | "beta" | "preview">("all");
+const tierFilter = ref<"all" | "beta" | "alpha" | "pre-alpha">("all");
 
 const groupOptions = computed(() => {
   if (props.industry || props.group) return [];
@@ -171,14 +171,6 @@ const filteredLanguages = computed(() => {
           <button
             type="button"
             class="toggle-btn"
-            :class="{ active: tierFilter === 'stable' }"
-            @click="tierFilter = 'stable'"
-          >
-            Stable
-          </button>
-          <button
-            type="button"
-            class="toggle-btn"
             :class="{ active: tierFilter === 'beta' }"
             @click="tierFilter = 'beta'"
           >
@@ -187,10 +179,18 @@ const filteredLanguages = computed(() => {
           <button
             type="button"
             class="toggle-btn"
-            :class="{ active: tierFilter === 'preview' }"
-            @click="tierFilter = 'preview'"
+            :class="{ active: tierFilter === 'alpha' }"
+            @click="tierFilter = 'alpha'"
           >
-            Preview
+            Alpha
+          </button>
+          <button
+            type="button"
+            class="toggle-btn"
+            :class="{ active: tierFilter === 'pre-alpha' }"
+            @click="tierFilter = 'pre-alpha'"
+          >
+            Pre-Alpha
           </button>
         </div>
 
@@ -631,22 +631,22 @@ const filteredLanguages = computed(() => {
   border: 1px solid transparent;
 }
 
-.tier-stable {
-  background: var(--ms-tier-stable-bg);
-  color: var(--ms-tier-stable);
-  border-color: var(--ms-tier-stable-border);
-}
-
 .tier-beta {
   background: var(--ms-tier-beta-bg);
   color: var(--ms-tier-beta);
   border-color: var(--ms-tier-beta-border);
 }
 
-.tier-preview {
-  background: var(--ms-tier-preview-bg);
-  color: var(--ms-tier-preview);
-  border-color: var(--ms-tier-preview-border);
+.tier-alpha {
+  background: var(--ms-tier-alpha-bg);
+  color: var(--ms-tier-alpha);
+  border-color: var(--ms-tier-alpha-border);
+}
+
+.tier-pre-alpha {
+  background: var(--ms-tier-pre-alpha-bg);
+  color: var(--ms-tier-pre-alpha);
+  border-color: var(--ms-tier-pre-alpha-border);
 }
 
 .lang-role {

@@ -367,9 +367,9 @@ const annualSavings = computed(() => (interval.value === "annual" ? "Billed annu
 }
 .badge.badge-pilot {
   background-color: var(--vp-c-bg-soft);
-  background: color-mix(in srgb, var(--ms-tier-beta, #38bdf8) 12%, var(--vp-c-bg-soft));
-  color: var(--ms-tier-beta, #38bdf8);
-  border-color: var(--ms-tier-beta-border, rgba(56, 189, 248, 0.45));
+  background: color-mix(in srgb, var(--ms-tier-alpha, #38bdf8) 12%, var(--vp-c-bg-soft));
+  color: var(--ms-tier-alpha, #38bdf8);
+  border-color: var(--ms-tier-alpha-border, rgba(56, 189, 248, 0.45));
 }
 .name {
   margin: 0;

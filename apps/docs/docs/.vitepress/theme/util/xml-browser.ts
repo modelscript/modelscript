@@ -2,6 +2,7 @@
 
 import type { XmlAttribute, XmlDocument, XmlElement } from "../../../../../../packages/dsl/src/xml/types.js";
 
+export * from "../../../../../../packages/dsl/src/xml/ranges.js";
 export type { Splice, XmlAttribute, XmlDocument, XmlElement } from "../../../../../../packages/dsl/src/xml/types.js";
 
 export function decodeEntities(s: string): string {

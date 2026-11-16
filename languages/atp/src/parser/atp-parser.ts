@@ -8,18 +8,12 @@
  */
 
 import { createWasmParserSync } from "@modelscript/atp/wasm-parser";
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { cstLineText, groupCstLeavesByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import type { AtpBranch, AtpCase, AtpSimulationControl, AtpSource, AtpSwitch } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getAtpWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/atp/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("atp", import.meta.url, createWasmParserSync);
 }
 
 type ParserSection = "HEADER" | "CONTROL" | "BRANCH" | "SWITCH" | "SOURCE" | "OUTPUT" | "UNKNOWN";

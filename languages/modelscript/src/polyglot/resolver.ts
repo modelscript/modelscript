@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync as createModelicaParserSync } from "@modelscript/modelica/parser";
 import { collectCstNodes, extractCstLeafNodes, type CstNodeLike } from "@modelscript/runtime";
 import { createWasmParserSync as createStepParserSync } from "@modelscript/step/parser";
 import { createWasmParserSync as createSysml2ParserSync } from "@modelscript/sysml2/parser";
 import { isMjcfXml, parseMjcf, parseUrdf } from "@modelscript/urdf";
-import { createRequire } from "node:module";
 import type { ModelScriptCstNode } from "../queries.js";
 
 export interface ModelicaComponentInfo {
@@ -55,30 +55,40 @@ export interface PolyglotModel {
   ports: PolyglotPortInfo[];
 }
 
-const require = createRequire(import.meta.url);
-let cachedModelicaParser: ReturnType<typeof createModelicaParserSync>["parser"] | undefined;
-let cachedSysml2Parser: ReturnType<typeof createSysml2ParserSync>["parser"] | undefined;
-let cachedStepParser: ReturnType<typeof createStepParserSync>["parser"] | undefined;
+function resolvePackageWasmPath(specifier: string, fallbackRelative: string): string {
+  const resolved =
+    typeof import.meta.resolve === "function"
+      ? import.meta.resolve(specifier)
+      : new URL(fallbackRelative, import.meta.url).href;
+  if (resolved.startsWith("file://")) {
+    const pathname = decodeURIComponent(new URL(resolved).pathname);
+    return typeof process !== "undefined" && process?.platform === "win32" && pathname.startsWith("/")
+      ? pathname.slice(1)
+      : pathname;
+  }
+  return resolved;
+}
 
 function getModelicaParser() {
-  if (!cachedModelicaParser) {
-    cachedModelicaParser = createModelicaParserSync(require.resolve("@modelscript/modelica/parser.wasm")).parser;
-  }
-  return cachedModelicaParser;
+  return getOrLoadLanguageWasmParser("modelica", import.meta.url, () =>
+    createModelicaParserSync(
+      resolvePackageWasmPath("@modelscript/modelica/parser.wasm", "../../../modelica/dist/parser.wasm"),
+    ),
+  );
 }
 
 function getSysml2Parser() {
-  if (!cachedSysml2Parser) {
-    cachedSysml2Parser = createSysml2ParserSync(require.resolve("@modelscript/sysml2/parser.wasm")).parser;
-  }
-  return cachedSysml2Parser;
+  return getOrLoadLanguageWasmParser("sysml2", import.meta.url, () =>
+    createSysml2ParserSync(
+      resolvePackageWasmPath("@modelscript/sysml2/parser.wasm", "../../../sysml2/dist/parser.wasm"),
+    ),
+  );
 }
 
 function getStepParser() {
-  if (!cachedStepParser) {
-    cachedStepParser = createStepParserSync(require.resolve("@modelscript/step/parser.wasm")).parser;
-  }
-  return cachedStepParser;
+  return getOrLoadLanguageWasmParser("step", import.meta.url, () =>
+    createStepParserSync(resolvePackageWasmPath("@modelscript/step/parser.wasm", "../../../step/dist/parser.wasm")),
+  );
 }
 
 const MODELICA_PRIMITIVE_TYPES = new Set(["Real", "Integer", "Boolean", "String"]);

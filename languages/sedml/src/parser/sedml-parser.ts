@@ -12,6 +12,7 @@
  * - <listOfOutputs>: <plot2D>, <plot3D>, and <report>
  */
 
+import type { XmlElement } from "@modelscript/dsl/xml";
 import type {
   SedmlAlgorithm,
   SedmlAlgorithmParameter,
@@ -31,28 +32,11 @@ import type {
   SedmlTask,
   SedmlVariable,
 } from "../types.js";
+import { parseSedmlXmlDocument } from "./wasm-loader.js";
 
 // ============================================================================
 // Character Classification & XML Entity Helpers (Zero-Regex)
 // ============================================================================
-
-function isWhitespace(ch: string): boolean {
-  return ch === " " || ch === "\t" || ch === "\n" || ch === "\r";
-}
-
-function isNameChar(ch: string): boolean {
-  if (!ch) return false;
-  const code = ch.charCodeAt(0);
-  return (
-    (code >= 65 && code <= 90) || // A-Z
-    (code >= 97 && code <= 122) || // a-z
-    (code >= 48 && code <= 57) || // 0-9
-    ch === "_" ||
-    ch === "-" ||
-    ch === ":" ||
-    ch === "."
-  );
-}
 
 function stripLocalName(tagName: string): string {
   const trimmed = tagName.trim();
@@ -61,16 +45,6 @@ function stripLocalName(tagName: string): string {
     return trimmed.slice(colonIdx + 1);
   }
   return trimmed;
-}
-
-function decodeXmlEntities(raw: string): string {
-  if (!raw.includes("&")) return raw;
-  return raw
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&apos;", "'")
-    .replaceAll("&amp;", "&");
 }
 
 function escapeXmlAttr(raw: string): string {
@@ -136,188 +110,6 @@ interface XmlNode {
   text: string;
   startOffset: number;
   endOffset: number;
-}
-
-function scanXmlNodes(source: string): XmlNode[] {
-  const roots: XmlNode[] = [];
-  const stack: XmlNode[] = [];
-  const n = source.length;
-  let i = 0;
-
-  while (i < n) {
-    const lt = source.indexOf("<", i);
-    if (lt < 0) {
-      const top = stack[stack.length - 1];
-      if (top) {
-        top.text += decodeXmlEntities(source.slice(i));
-      }
-      break;
-    }
-
-    if (lt > i) {
-      const top = stack[stack.length - 1];
-      if (top) {
-        top.text += decodeXmlEntities(source.slice(i, lt));
-      }
-    }
-
-    i = lt;
-
-    // XML comment <!-- ... -->
-    if (source.startsWith("<!--", i)) {
-      const endComment = source.indexOf("-->", i + 4);
-      i = endComment >= 0 ? endComment + 3 : n;
-      continue;
-    }
-
-    // CDATA section <![CDATA[ ... ]]>
-    if (source.startsWith("<![CDATA[", i)) {
-      const endCdata = source.indexOf("]]>", i + 9);
-      const cdataText = endCdata >= 0 ? source.slice(i + 9, endCdata) : source.slice(i + 9);
-      const top = stack[stack.length - 1];
-      if (top) {
-        top.text += cdataText;
-      }
-      i = endCdata >= 0 ? endCdata + 3 : n;
-      continue;
-    }
-
-    // Processing instruction <? ... ?>
-    if (source.startsWith("<?", i)) {
-      const endPi = source.indexOf("?>", i + 2);
-      i = endPi >= 0 ? endPi + 2 : n;
-      continue;
-    }
-
-    // DOCTYPE or other declaration <! ... >
-    if (source.startsWith("<!", i)) {
-      const endDecl = source.indexOf(">", i + 2);
-      i = endDecl >= 0 ? endDecl + 1 : n;
-      continue;
-    }
-
-    // Closing tag </tag>
-    if (source.startsWith("</", i)) {
-      const gt = source.indexOf(">", i + 2);
-      const endPos = gt >= 0 ? gt + 1 : n;
-      const closeRaw = gt >= 0 ? source.slice(i + 2, gt).trim() : "";
-      const closeLocal = stripLocalName(closeRaw).toLowerCase();
-
-      if (stack.length > 0) {
-        let matchIdx = stack.length - 1;
-        while (matchIdx >= 0 && stack[matchIdx]?.localName.toLowerCase() !== closeLocal) {
-          matchIdx--;
-        }
-        if (matchIdx >= 0) {
-          while (stack.length > matchIdx) {
-            const popped = stack.pop();
-            if (popped) {
-              popped.endOffset = endPos;
-            }
-          }
-        } else {
-          const popped = stack.pop();
-          if (popped) {
-            popped.endOffset = endPos;
-          }
-        }
-      }
-      i = endPos;
-      continue;
-    }
-
-    // Opening tag <tag attr="val" ...> or <tag ... />
-    const tagStart = i;
-    i++; // skip '<'
-    while (i < n && isWhitespace(source[i] ?? "")) i++;
-
-    let tagName = "";
-    while (i < n && isNameChar(source[i] ?? "")) {
-      tagName += source[i] ?? "";
-      i++;
-    }
-
-    if (!tagName) {
-      throw new Error(`Malformed XML tag at offset ${tagStart}`);
-    }
-
-    const attributes = new Map<string, string>();
-    let selfClosing = false;
-
-    while (i < n) {
-      while (i < n && isWhitespace(source[i] ?? "")) i++;
-      const ch = source[i];
-      if (!ch || ch === ">") {
-        if (ch === ">") i++;
-        break;
-      }
-      if (ch === "/" && source[i + 1] === ">") {
-        selfClosing = true;
-        i += 2;
-        break;
-      }
-
-      let attrName = "";
-      while (i < n && isNameChar(source[i] ?? "")) {
-        attrName += source[i] ?? "";
-        i++;
-      }
-      if (!attrName) {
-        i++;
-        continue;
-      }
-
-      while (i < n && isWhitespace(source[i] ?? "")) i++;
-      let attrVal = "";
-      if (source[i] === "=") {
-        i++;
-        while (i < n && isWhitespace(source[i] ?? "")) i++;
-        const quote = source[i];
-        if (quote === '"' || quote === "'") {
-          i++;
-          const valStart = i;
-          while (i < n && source[i] !== quote) i++;
-          attrVal = decodeXmlEntities(source.slice(valStart, i));
-          if (source[i] === quote) i++;
-        } else {
-          const valStart = i;
-          while (i < n && !isWhitespace(source[i] ?? "") && source[i] !== ">" && source[i] !== "/") {
-            i++;
-          }
-          attrVal = decodeXmlEntities(source.slice(valStart, i));
-        }
-      }
-
-      attributes.set(attrName, attrVal);
-      const colonIdx = attrName.indexOf(":");
-      if (colonIdx >= 0 && colonIdx + 1 < attrName.length) {
-        attributes.set(attrName.slice(colonIdx + 1), attrVal);
-      }
-    }
-
-    const node: XmlNode = {
-      tagName,
-      localName: stripLocalName(tagName),
-      attributes,
-      children: [],
-      text: "",
-      startOffset: tagStart,
-      endOffset: i,
-    };
-
-    const parent = stack[stack.length - 1];
-    if (parent) {
-      parent.children.push(node);
-    } else {
-      roots.push(node);
-    }
-
-    if (!selfClosing) {
-      stack.push(node);
-    }
-  }
-
-  return roots;
 }
 
 function getAttr(node: XmlNode, name: string): string | undefined {
@@ -847,9 +639,29 @@ function parseOutputNode(outNode: XmlNode, source: string): SedmlOutput | undefi
 // Public Parse & Serialize API
 // ============================================================================
 
-export function parseSedml(source: string, filename?: string): SedmlDocument {
-  const roots = scanXmlNodes(source);
-  const root = roots[0];
+function xmlElementToNode(el: XmlElement): XmlNode {
+  const attributes = new Map<string, string>();
+  for (const attr of el.attributes) {
+    attributes.set(attr.name, attr.value);
+    const colonIdx = attr.name.indexOf(":");
+    if (colonIdx >= 0) {
+      attributes.set(attr.name.slice(colonIdx + 1), attr.value);
+    }
+  }
+  return {
+    tagName: el.name,
+    localName: stripLocalName(el.name),
+    attributes,
+    children: el.children.map(xmlElementToNode),
+    text: el.text,
+    startOffset: el.start,
+    endOffset: el.end,
+  };
+}
+
+export function parseSedml(source: string, filename?: string, cstTree?: { rootNode?: unknown } | null): SedmlDocument {
+  const xmlDoc = parseSedmlXmlDocument(source, cstTree);
+  const root = xmlDoc.root ? xmlElementToNode(xmlDoc.root) : undefined;
 
   if (!root || root.localName.toLowerCase() !== "sedml") {
     throw new Error("Invalid SED-ML: root element must be <sedML>");

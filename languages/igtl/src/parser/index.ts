@@ -10,7 +10,7 @@
  * 3. JSON serialized representation
  */
 
-import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlElement } from "@modelscript/dsl/xml";
 import type {
   IgtlDataSource,
   IgtlDevice,
@@ -23,6 +23,7 @@ import type {
   IgtlTransformDefinition,
   Matrix4x4,
 } from "../types.js";
+import { parseIgtlXmlDocument } from "./wasm-loader.js";
 
 export const IDENTITY_4X4: Matrix4x4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
@@ -128,7 +129,11 @@ function splitPlusTransformName(rawName: string): { from: string; to: string; ra
   return { from: rawName, to: "Reference", rawName };
 }
 
-export function parseIgtl(text: string, sourceUri?: string): IgtlDocument {
+export function parseIgtl(
+  text: string,
+  sourceUri?: string,
+  options?: { cstTree?: { rootNode?: unknown } | null | undefined },
+): IgtlDocument {
   const trimmed = text.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     const parsed = JSON.parse(trimmed) as IgtlDocument;
@@ -141,11 +146,11 @@ export function parseIgtl(text: string, sourceUri?: string): IgtlDocument {
   const lineOffsets = computeLineOffsets(text);
   const docRange = makeRange(0, text.length, lineOffsets);
 
-  let xmlDoc = parseXmlSync(text);
+  let xmlDoc = parseIgtlXmlDocument(text, options?.cstTree);
   let offsetShift = 0;
   if ((!xmlDoc.root && text.includes("<")) || (xmlDoc.root && text.slice(xmlDoc.root.end).includes("<"))) {
     const prefix = "<_root_>";
-    xmlDoc = parseXmlSync(prefix + text + "</_root_>");
+    xmlDoc = parseIgtlXmlDocument(prefix + text + "</_root_>");
     offsetShift = prefix.length;
   }
 

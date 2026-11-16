@@ -394,31 +394,31 @@ export function lintOwl2Document(
 
           if (entityNode.type === "ClassEntity") {
             if (declaredClasses.has(iri)) {
-              emit(Owl2ErrorCode.DUPLICATE_DECLARATION, node, ["Class", iri], iri);
+              emit(Owl2ErrorCode.DUPLICATE_DECLARATION, iriNode, ["Class", iri], iri);
             } else {
               declaredClasses.set(iri, node);
             }
           } else if (entityNode.type === "ObjectPropertyEntity") {
             if (declaredObjectProps.has(iri)) {
-              emit(Owl2ErrorCode.DUPLICATE_DECLARATION, node, ["ObjectProperty", iri], iri);
+              emit(Owl2ErrorCode.DUPLICATE_DECLARATION, iriNode, ["ObjectProperty", iri], iri);
             } else {
               declaredObjectProps.set(iri, node);
             }
             if (declaredDataProps.has(iri)) {
-              emit(Owl2ErrorCode.ILLEGAL_PROPERTY_PUNNING, node, [iri, "ObjectProperty", "DataProperty"], iri);
+              emit(Owl2ErrorCode.ILLEGAL_PROPERTY_PUNNING, iriNode, [iri, "ObjectProperty", "DataProperty"], iri);
             }
           } else if (entityNode.type === "DataPropertyEntity") {
             if (declaredDataProps.has(iri)) {
-              emit(Owl2ErrorCode.DUPLICATE_DECLARATION, node, ["DataProperty", iri], iri);
+              emit(Owl2ErrorCode.DUPLICATE_DECLARATION, iriNode, ["DataProperty", iri], iri);
             } else {
               declaredDataProps.set(iri, node);
             }
             if (declaredObjectProps.has(iri)) {
-              emit(Owl2ErrorCode.ILLEGAL_PROPERTY_PUNNING, node, [iri, "DataProperty", "ObjectProperty"], iri);
+              emit(Owl2ErrorCode.ILLEGAL_PROPERTY_PUNNING, iriNode, [iri, "DataProperty", "ObjectProperty"], iri);
             }
           } else if (entityNode.type === "NamedIndividualEntity") {
             if (declaredIndividuals.has(iri)) {
-              emit(Owl2ErrorCode.DUPLICATE_DECLARATION, node, ["NamedIndividual", iri], iri);
+              emit(Owl2ErrorCode.DUPLICATE_DECLARATION, iriNode, ["NamedIndividual", iri], iri);
             } else {
               declaredIndividuals.set(iri, node);
             }
@@ -981,7 +981,7 @@ export function lintOwl2Document(
           const subIri = checkClassExpressionRole(exprs[0]!, "SubClassOf");
           const supIri = checkClassExpressionRole(exprs[1]!, "SubClassOf");
           if (subIri && supIri && subIri === supIri) {
-            emit(Owl2ErrorCode.SELF_REFERENTIAL_AXIOM, node, ["SubClassOf", subIri], subIri);
+            emit(Owl2ErrorCode.SELF_REFERENTIAL_AXIOM, exprs[1]!, ["SubClassOf", subIri], subIri);
           }
         }
         break;
@@ -995,7 +995,7 @@ export function lintOwl2Document(
           const iri = checkClassExpressionRole(expr, construct);
           if (iri) {
             if (seen.has(iri)) {
-              emit(Owl2ErrorCode.SELF_REFERENTIAL_AXIOM, node, [construct, iri], iri);
+              emit(Owl2ErrorCode.SELF_REFERENTIAL_AXIOM, expr, [construct, iri], iri);
             }
             seen.add(iri);
           }
@@ -1011,7 +1011,7 @@ export function lintOwl2Document(
           const p1 = checkObjectPropertyRole(iriNodes[0]!, construct);
           const p2 = checkObjectPropertyRole(iriNodes[1]!, construct);
           if (t === "SubObjectPropertyOfAxiom" && p1 && p2 && p1 === p2) {
-            emit(Owl2ErrorCode.SELF_REFERENTIAL_AXIOM, node, [construct, p1], p1);
+            emit(Owl2ErrorCode.SELF_REFERENTIAL_AXIOM, iriNodes[1]!, [construct, p1], p1);
           }
         }
         break;
@@ -1023,7 +1023,7 @@ export function lintOwl2Document(
           const p1 = checkDataPropertyRole(iriNodes[0]!, "SubDataPropertyOf");
           const p2 = checkDataPropertyRole(iriNodes[1]!, "SubDataPropertyOf");
           if (p1 && p2 && p1 === p2) {
-            emit(Owl2ErrorCode.SELF_REFERENTIAL_AXIOM, node, ["SubDataPropertyOf", p1], p1);
+            emit(Owl2ErrorCode.SELF_REFERENTIAL_AXIOM, iriNodes[1]!, ["SubDataPropertyOf", p1], p1);
           }
         }
         break;
@@ -1035,7 +1035,7 @@ export function lintOwl2Document(
           const p = checkObjectPropertyRole(iriNode, "DisjointObjectProperties");
           if (p) {
             if (seen.has(p)) {
-              emit(Owl2ErrorCode.SELF_REFERENTIAL_AXIOM, node, ["DisjointObjectProperties", p], p);
+              emit(Owl2ErrorCode.SELF_REFERENTIAL_AXIOM, iriNode, ["DisjointObjectProperties", p], p);
             }
             seen.add(p);
           }

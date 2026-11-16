@@ -8,7 +8,7 @@
  * as well as JSON serialized representations.
  */
 
-import { parseXml, type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlAttribute, XmlElement } from "@modelscript/dsl/xml";
 import type {
   ThreeMfBaseMaterial,
   ThreeMfBaseMaterialsGroup,
@@ -23,6 +23,9 @@ import type {
   ThreeMfUnit,
   ThreeMfVertex,
 } from "../types.js";
+import { parseThreeMfXmlDocument } from "./wasm-loader.js";
+
+export * from "./wasm-loader.js";
 
 function computeLineOffsets(text: string): number[] {
   const offsets = [0];
@@ -122,7 +125,11 @@ function parseVec3(raw: string | undefined, fallback: [number, number, number] =
   return fallback;
 }
 
-export function parseThreeMf(text: string, sourceUri?: string): ThreeMfDocument {
+export function parseThreeMf(
+  text: string,
+  sourceUri?: string,
+  cstTree?: { rootNode?: unknown } | null,
+): ThreeMfDocument {
   const trimmed = text.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     const parsed = JSON.parse(trimmed) as ThreeMfDocument;
@@ -135,7 +142,7 @@ export function parseThreeMf(text: string, sourceUri?: string): ThreeMfDocument 
   const lineOffsets = computeLineOffsets(text);
   const docRange = makeRange(0, text.length, lineOffsets);
 
-  const xmlDoc = parseXml(text);
+  const xmlDoc = parseThreeMfXmlDocument(text, cstTree);
   const root = xmlDoc.root;
   const modelEl =
     root && matchTag(root, "model") ? root : (findDescendants(root, (e) => matchTag(e, "model"))[0] ?? root);

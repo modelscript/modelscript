@@ -83,9 +83,13 @@ const DEFAULT_RANGE: LspRange = {
 /**
  * Validates a Simulink document and produces LSP diagnostics.
  */
-export function validateSimulink(content: string | Buffer | Uint8Array, uri: string = "model.mdl"): LspDiagnostic[] {
+export function validateSimulink(
+  content: string | Buffer | Uint8Array,
+  uri: string = "model.mdl",
+  cstTree?: { rootNode?: unknown } | null,
+): LspDiagnostic[] {
   try {
-    const model = parseSimulink(content, uri);
+    const model = parseSimulink(content, uri, cstTree);
     const rawDiags = lintSimulinkModel(model);
 
     return rawDiags.map((d) => ({

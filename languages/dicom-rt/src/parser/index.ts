@@ -9,7 +9,7 @@
  * JSON representations with exact line/column/offset source tracking.
  */
 
-import { parseXml, type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
+import type { XmlAttribute, XmlElement } from "@modelscript/dsl/xml";
 import type {
   ContourGeometricType,
   DicomRtDocument,
@@ -24,6 +24,7 @@ import type {
   RtRoiStructure,
   RtTreatmentDeliveryType,
 } from "../types.js";
+import { parseDicomRtXmlDocument } from "./wasm-loader.js";
 
 export function computeLineOffsets(text: string): number[] {
   const offsets = [0];
@@ -69,7 +70,11 @@ export function makeRange(startOffset: number, endOffset: number, lineOffsets: n
   };
 }
 
-export function parseDicomRt(text: string, uri?: string): DicomRtDocument {
+export function parseDicomRt(
+  text: string,
+  uri?: string,
+  options?: { cstTree?: { rootNode?: unknown } | null | undefined },
+): DicomRtDocument {
   const trimmed = text.trim();
   const lineOffsets = computeLineOffsets(text);
   const fullRange = makeRange(0, text.length, lineOffsets);
@@ -83,7 +88,7 @@ export function parseDicomRt(text: string, uri?: string): DicomRtDocument {
   }
 
   if (trimmed.startsWith("<")) {
-    return parseDicomRtXml(text, lineOffsets, fullRange, uri);
+    return parseDicomRtXml(text, lineOffsets, fullRange, uri, options?.cstTree);
   }
 
   return parseDicomRtDsl(text, lineOffsets, fullRange, uri);
@@ -154,6 +159,7 @@ function parseDicomRtXml(
   lineOffsets: number[],
   fullRange: DicomRtSourceRange,
   uri?: string,
+  cstTree?: { rootNode?: unknown } | null,
 ): DicomRtDocument {
   if (
     !text.includes(">") ||
@@ -162,7 +168,7 @@ function parseDicomRtXml(
     throw new Error("Malformed DICOM-RT XML document: unclosed <DicomRtPlan> element.");
   }
 
-  const parsed = parseXml(text);
+  const parsed = parseDicomRtXmlDocument(text, cstTree);
   if (!parsed.root) {
     throw new Error("Malformed DICOM-RT XML document: unclosed <DicomRtPlan> element.");
   }

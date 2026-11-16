@@ -1283,9 +1283,11 @@ export function useMorselEngine({
   }, []);
 
   const handleVariablesLoaded = useCallback((variables: string[]) => {
-    setSimulationVariables(variables);
+    setSimulationVariables((prev) =>
+      prev.length === variables.length && prev.every((v, i) => v === variables[i]) ? prev : variables,
+    );
     setSelectedSimulationVariables((prev) => {
-      if (prev.length > 0 || userSelectionMadeRef.current) return prev;
+      if (prev.length > 0 || userSelectionMadeRef.current || variables.length === 0) return prev;
       return variables.slice(0, 3);
     });
   }, []);

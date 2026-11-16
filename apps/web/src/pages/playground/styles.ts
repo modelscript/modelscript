@@ -24,7 +24,7 @@ export const PlaygroundNavbar = styled.header`
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08));
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow:
     0 8px 28px rgba(15, 23, 42, 0.08),
     0 1px 4px rgba(15, 23, 42, 0.05);
@@ -261,7 +261,7 @@ export const SplitToggleButton = styled.button<{ $active?: boolean }>`
   gap: 5px;
   height: 30px;
   padding: 0 10px;
-  border-radius: var(--ms-radius-pill, 999px);
+  border-radius: 10px;
   font-size: 12px;
   font-weight: ${(props) => (props.$active ? 600 : 500)};
   font-family: inherit;
@@ -274,10 +274,10 @@ export const SplitToggleButton = styled.button<{ $active?: boolean }>`
   background: ${(props) =>
     props.$active
       ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))"
-      : "var(--ms-surface-hover, var(--color-canvas-subtle, rgba(0, 0, 0, 0.04)))"};
+      : "var(--bgColor-inset, var(--ms-bg-inset, rgba(0, 0, 0, 0.04)))"};
   border: 1px solid
     ${(props) =>
-      props.$active ? "var(--ms-brand, #0891b2)" : "var(--ms-divider, var(--color-border-subtle, rgba(0, 0, 0, 0.1)))"};
+      props.$active ? "var(--ms-brand, #0891b2)" : "var(--borderColor-muted, var(--ms-divider, rgba(0, 0, 0, 0.08)))"};
   color: ${(props) => (props.$active ? "var(--ms-brand, #0891b2)" : "var(--ms-text-2, var(--color-fg-muted))")};
   box-shadow: ${(props) =>
     props.$active ? "0 1px 4px var(--ms-glow-cyan, rgba(8, 145, 178, 0.2))" : "inset 0 1px 2px rgba(0, 0, 0, 0.03)"};
@@ -351,6 +351,20 @@ export const BrandLink = styled.a`
     text-decoration: none;
     opacity: 0.85;
   }
+`;
+
+export const BrandTierBadge = styled.span`
+  font-size: var(--text-2xs);
+  font-weight: var(--ms-fw-bold);
+  letter-spacing: var(--ms-tracking-wide);
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--ms-brand-soft);
+  border: 1px solid var(--color-accent-blue-border);
+  color: var(--ms-brand);
+  line-height: var(--leading-2xs);
+  flex-shrink: 0;
 `;
 
 export const Badge = styled.span`

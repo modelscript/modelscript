@@ -727,8 +727,8 @@ export const allocationLints = {
               ),
               {
                 code: SysML2ErrorCode.DIMENSIONAL_CONNECTION_MISMATCH.code,
-                startOffset: self.startOffset,
-                endOffset: self.endOffset,
+                startOffset: refs[1]!.startOffset,
+                endOffset: refs[1]!.endOffset,
               },
             );
           }
@@ -986,8 +986,8 @@ export const checkCalculationReturn = (db: QueryDB, self: SymbolEntry): LintResu
   return warning(SysML2ErrorCode.CALC_RETURN_MISSING.message(self.name || "<anonymous>"), {
     code: SysML2ErrorCode.CALC_RETURN_MISSING.code,
     field: "declaredName",
-    startOffset: self.startOffset,
-    endOffset: self.endOffset,
+    startOffset: self.fieldRanges?.["declaredName"]?.startOffset ?? self.startOffset,
+    endOffset: self.fieldRanges?.["declaredName"]?.endOffset ?? self.endOffset,
   });
 };
 

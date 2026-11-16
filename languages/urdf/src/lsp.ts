@@ -57,10 +57,10 @@ function findLineAndCol(text: string, searchPattern: string): LspRange {
 /**
  * Validates URDF/SDF XML document and returns diagnostics with M7501-M7508 codes.
  */
-export function validateUrdf(content: string): LspDiagnostic[] {
+export function validateUrdf(content: string, cstTree?: { rootNode?: unknown } | null): LspDiagnostic[] {
   let robot: UrdfRobot;
   try {
-    robot = parseUrdf(content);
+    robot = parseUrdf(content, "robot", cstTree);
   } catch (err: unknown) {
     return [
       {

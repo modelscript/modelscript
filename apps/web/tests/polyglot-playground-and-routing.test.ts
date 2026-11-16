@@ -56,6 +56,7 @@ describe("66-Language Playground Registry & Single-File vs. Multi-File Editor Ro
     );
 
     const seenIds = new Set<string>();
+    const seenExts = new Set<string>();
     for (const lang of ALL_MORSEL_LANGUAGES) {
       assert.ok(lang.id && lang.id.length > 0, "Language must have an id");
       assert.ok(!seenIds.has(lang.id), `Duplicate language id: ${lang.id}`);
@@ -63,10 +64,14 @@ describe("66-Language Playground Registry & Single-File vs. Multi-File Editor Ro
 
       assert.ok(lang.name && lang.name.length > 0, `Language ${lang.id} must have a display name`);
       assert.ok(
-        lang.tier === "stable" || lang.tier === "beta" || lang.tier === "preview",
+        lang.tier === "beta" || lang.tier === "alpha" || lang.tier === "pre-alpha",
         `Language ${lang.id} must have a valid maturity tier`,
       );
       assert.ok(lang.ext && lang.ext.length > 0, `Language ${lang.id} must have a primary file extension`);
+      assert.ok(!lang.ext.startsWith("."), `Language ${lang.id}.ext must not start with '.': ${lang.ext}`);
+      assert.ok(!seenExts.has(lang.ext), `Duplicate primary ext '${lang.ext}' on language ${lang.id}`);
+      seenExts.add(lang.ext);
+      assert.ok(lang.extensions.includes(`.${lang.ext}`), `Language ${lang.id}.extensions must include '.${lang.ext}'`);
       assert.ok(lang.defaultCode && lang.defaultCode.trim().length > 0, `Language ${lang.id} must have starter code`);
       assert.equal(getLanguageExtension(lang.id), lang.ext);
       assert.equal(getLanguageInfo(lang.id).id, lang.id);
@@ -180,6 +185,9 @@ describe("66-Language Playground Registry & Single-File vs. Multi-File Editor Ro
     assert.equal(inferDialectFromArtifact({}, "housing.scad"), "scad");
     assert.equal(inferDialectFromArtifact({}, "highway.xodr"), "opendrive");
     assert.equal(inferDialectFromArtifact({}, "cut_in.xosc"), "openscenario");
+    assert.equal(inferDialectFromArtifact({}, "diet.ampl"), "ampl");
+    assert.equal(getLanguageInfo("ampl").id, "ampl");
+    assert.equal(getLanguageExtension("ampl"), "ampl");
   });
 
   it("verifies apps/web/nginx.conf routes /playground, /ide, and /studio to the React SPA across all hosts including modelscript.org", () => {

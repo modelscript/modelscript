@@ -20,10 +20,14 @@ export {
 /**
  * Parses PLCopen TC6 XML or Structured Text source into a unified PlcProject AST.
  */
-export function parsePlcopen(source: string, filename?: string): PlcProject {
+export function parsePlcopen(
+  source: string,
+  filename?: string,
+  options?: { cstTree?: { rootNode?: unknown } | null | undefined },
+): PlcProject {
   const trimmed = source.trim();
   if (trimmed.startsWith("<") || (filename && (filename.endsWith(".xml") || filename.endsWith(".plcopen")))) {
-    return parsePlcopenXml(source, filename);
+    return parsePlcopenXml(source, filename, options);
   }
   return parseStructuredTextFile(source, filename);
 }

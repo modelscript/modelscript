@@ -8,7 +8,7 @@ import { REPO_ROOT } from "./lib/workspaces.js";
 
 const __filename = fileURLToPath(import.meta.url);
 
-export type MaturityTier = "stable" | "beta" | "preview";
+export type MaturityTier = "beta" | "alpha" | "pre-alpha";
 
 export interface PillarScorecard {
   // Domain category
@@ -106,7 +106,7 @@ export function auditLanguage(slug: string): LanguageAuditResult {
   };
 
   const name = pkg.name || `@modelscript/${slug}`;
-  const currentDeclaredTier: MaturityTier = pkg.modelscript?.tier || "preview";
+  const currentDeclaredTier: MaturityTier = pkg.modelscript?.tier || "pre-alpha";
 
   const testsDir = path.join(langDir, "tests");
   const srcDir = path.join(langDir, "src");
@@ -300,14 +300,14 @@ export function auditLanguage(slug: string): LanguageAuditResult {
   if (!hasLinter || !hasLinterTests) gaps.push("Missing negative linter / diagnostic tests");
   if (!hasLsp || !hasLspTests) gaps.push("Missing Language Server Protocol (LSP) or tests");
   if (testFileCount < 5 && !isFoundational)
-    gaps.push(`Test file count (${testFileCount}) below Beta threshold (min 5 required)`);
+    gaps.push(`Test file count (${testFileCount}) below Alpha threshold (min 5 required)`);
   if (testFileCount < 8 && !isFoundational)
-    gaps.push(`Test file count (${testFileCount}) below hardened Stable threshold (>=8)`);
+    gaps.push(`Test file count (${testFileCount}) below hardened Beta threshold (>=8)`);
 
-  let auditedTier: MaturityTier = "preview";
+  let auditedTier: MaturityTier = "pre-alpha";
 
   if (isFoundational) {
-    auditedTier = "stable";
+    auditedTier = "beta";
   } else if (
     testFileCount >= 8 &&
     hasParser &&
@@ -322,7 +322,7 @@ export function auditLanguage(slug: string): LanguageAuditResult {
     hasLspTests &&
     usesRuntimeArena
   ) {
-    auditedTier = "stable";
+    auditedTier = "beta";
   } else if (
     testFileCount >= 5 &&
     hasParser &&
@@ -331,9 +331,9 @@ export function auditLanguage(slug: string): LanguageAuditResult {
     hasBenchmark &&
     usesRuntimeArena
   ) {
-    auditedTier = "beta";
+    auditedTier = "alpha";
   } else {
-    auditedTier = "preview";
+    auditedTier = "pre-alpha";
   }
 
   return {
@@ -400,20 +400,20 @@ function run(): void {
   console.log("=========================================================================================\n");
 
   const tierSummary = {
-    stable: results.filter((r) => r.scorecard.auditedTier === "stable"),
     beta: results.filter((r) => r.scorecard.auditedTier === "beta"),
-    preview: results.filter((r) => r.scorecard.auditedTier === "preview"),
+    alpha: results.filter((r) => r.scorecard.auditedTier === "alpha"),
+    preAlpha: results.filter((r) => r.scorecard.auditedTier === "pre-alpha"),
   };
 
   console.log(`Audited ${results.length} Polyglot Languages against 6-Pillar Robustness Criteria:\n`);
   console.log(
-    `  - Tier 2 (Stable):  ${tierSummary.stable.length.toString().padStart(2)} languages (${((tierSummary.stable.length / results.length) * 100).toFixed(1)}%)`,
+    `  - Tier 2 (Beta):      ${tierSummary.beta.length.toString().padStart(2)} languages (${((tierSummary.beta.length / results.length) * 100).toFixed(1)}%)`,
   );
   console.log(
-    `  - Tier 1 (Beta):    ${tierSummary.beta.length.toString().padStart(2)} languages (${((tierSummary.beta.length / results.length) * 100).toFixed(1)}%)`,
+    `  - Tier 1 (Alpha):     ${tierSummary.alpha.length.toString().padStart(2)} languages (${((tierSummary.alpha.length / results.length) * 100).toFixed(1)}%)`,
   );
   console.log(
-    `  - Tier 0 (Preview): ${tierSummary.preview.length.toString().padStart(2)} languages (${((tierSummary.preview.length / results.length) * 100).toFixed(1)}%)\n`,
+    `  - Tier 0 (Pre-Alpha): ${tierSummary.preAlpha.length.toString().padStart(2)} languages (${((tierSummary.preAlpha.length / results.length) * 100).toFixed(1)}%)\n`,
   );
 
   console.log("--------------------------------------------------------------------------------------------------");
@@ -437,7 +437,7 @@ function run(): void {
 
     let status = "MATCH";
     if (sc.auditedTier !== sc.currentDeclaredTier) {
-      status = sc.auditedTier === "stable" ? "PROMOTE" : "DEMOTE";
+      status = sc.auditedTier === "beta" ? "PROMOTE" : "DEMOTE";
     }
     const statusCol = status.padEnd(8);
 
@@ -449,8 +449,8 @@ function run(): void {
 
   const demotions = results.filter(
     (r) =>
-      (r.scorecard.currentDeclaredTier === "stable" && r.scorecard.auditedTier !== "stable") ||
-      (r.scorecard.currentDeclaredTier === "beta" && r.scorecard.auditedTier === "preview"),
+      (r.scorecard.currentDeclaredTier === "beta" && r.scorecard.auditedTier !== "beta") ||
+      (r.scorecard.currentDeclaredTier === "alpha" && r.scorecard.auditedTier === "pre-alpha"),
   );
 
   if (demotions.length > 0) {
@@ -467,15 +467,15 @@ function run(): void {
   if (isApply) {
     console.log("Applying audited maturity tiers to package manifests and linter script...\n");
     let updatedManifests = 0;
-    const newStable = new Set<string>();
     const newBeta = new Set<string>();
-    const newPreview = new Set<string>();
+    const newAlpha = new Set<string>();
+    const newPreAlpha = new Set<string>();
 
     for (const r of results) {
       const targetTier = r.scorecard.auditedTier;
-      if (targetTier === "stable") newStable.add(r.slug);
-      else if (targetTier === "beta") newBeta.add(r.slug);
-      else newPreview.add(r.slug);
+      if (targetTier === "beta") newBeta.add(r.slug);
+      else if (targetTier === "alpha") newAlpha.add(r.slug);
+      else newPreAlpha.add(r.slug);
 
       const pkgJsonPath = path.join(r.dir, "package.json");
       const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8")) as Record<string, unknown>;
@@ -495,28 +495,28 @@ function run(): void {
     const linterPath = path.join(REPO_ROOT, "scripts", "lint-package-manifests.ts");
     let linterSrc = fs.readFileSync(linterPath, "utf-8");
 
-    const stableEntries = Array.from(newStable)
-      .map((s) => `  "${s}",`)
-      .join("\n");
     const betaEntries = Array.from(newBeta)
       .map((s) => `  "${s}",`)
       .join("\n");
+    const alphaEntries = Array.from(newAlpha)
+      .map((s) => `  "${s}",`)
+      .join("\n");
 
     linterSrc = linterSrc.replace(
-      /const STABLE_LANGUAGES = new Set\(\[[\s\S]*?\]\);/,
-      `const STABLE_LANGUAGES = new Set([\n${stableEntries}\n]);`,
+      /const BETA_LANGUAGES = new Set\(\[[\s\S]*?\]\);/,
+      `const BETA_LANGUAGES = new Set([\n${betaEntries}\n]);`,
     );
 
     linterSrc = linterSrc.replace(
-      /const BETA_LANGUAGES = new Set<string>\(\[[\s\S]*?\]\);|const BETA_LANGUAGES = new Set\(\[[\s\S]*?\]\);/,
-      `const BETA_LANGUAGES = new Set([\n${betaEntries}\n]);`,
+      /const ALPHA_LANGUAGES = new Set<string>\(\[[\s\S]*?\]\);|const ALPHA_LANGUAGES = new Set\(\[[\s\S]*?\]\);/,
+      `const ALPHA_LANGUAGES = new Set([\n${alphaEntries}\n]);`,
     );
 
     fs.writeFileSync(linterPath, linterSrc, "utf-8");
 
     console.log(`✓ Updated ${updatedManifests} package manifest(s).`);
     console.log(
-      `✓ Synchronized STABLE_LANGUAGES (${newStable.size}) and BETA_LANGUAGES (${newBeta.size}) in scripts/lint-package-manifests.ts.`,
+      `✓ Synchronized BETA_LANGUAGES (${newBeta.size}) and ALPHA_LANGUAGES (${newAlpha.size}) in scripts/lint-package-manifests.ts.`,
     );
   }
 
