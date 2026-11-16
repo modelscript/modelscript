@@ -717,8 +717,8 @@ describe("Full-Scale Industrial Benchmark Verification Matrix", () => {
       assert.strictEqual(rep.minCurtailmentKW, 150.0);
       assert.strictEqual(rep.maxEnergyShedKWh, 750.0);
       assert.strictEqual(rep.eventDurationSeconds, 10800);
-      assert.strictEqual(rep.daeVarCount, 2);
-      assert.strictEqual(rep.daeEqCount, 2);
+      assert.strictEqual(rep.daeVarCount, 5);
+      assert.strictEqual(rep.daeEqCount, 5);
       assert.strictEqual(rep.isSquare, true);
     });
   });
@@ -1023,8 +1023,8 @@ describe("Full-Scale Industrial Benchmark Verification Matrix", () => {
       assert.ok(rep.digesterElectricPowerKW > 500);
       assert.ok(rep.digesterThermalPowerKW > 600);
       assert.strictEqual(rep.vfaRisk, "low");
-      assert.strictEqual(rep.daeVarCount, 5);
-      assert.strictEqual(rep.daeEqCount, 5);
+      assert.strictEqual(rep.daeVarCount, 8);
+      assert.strictEqual(rep.daeEqCount, 8);
       assert.strictEqual(rep.isSquare, true);
     });
   });
@@ -1064,8 +1064,8 @@ describe("Full-Scale Industrial Benchmark Verification Matrix", () => {
       assert.strictEqual(rep.jointAxis, "Z");
       assert.strictEqual(rep.totalMassKg, 17.0);
       assert.strictEqual(rep.diagnosticsCount, 0);
-      assert.strictEqual(rep.daeVarCount, 9);
-      assert.strictEqual(rep.daeEqCount, 8);
+      assert.strictEqual(rep.daeVarCount, 15);
+      assert.strictEqual(rep.daeEqCount, 14);
       assert.strictEqual(rep.isMechanicallyBalanced, true);
     });
   });
